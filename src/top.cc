@@ -152,26 +152,6 @@ void* operator new(size_t size, const std::nothrow_t& tag) {
   return result;
 }
 
-// Override delete operator (normal version) so we can log allocations.
-void operator delete(void* ptr) {
-#ifdef TOIT_DEBUG
-  if (toit::Flags::cheap) {
-    printf("delete [%p]\n", ptr);
-  }
-#endif
-  free(ptr);
-}
-
-// Override delete operator (no-exceptions version) so we can log allocations.
-void operator delete(void* ptr, const std::nothrow_t& tag) {
-#ifdef TOIT_DEBUG
-  if (toit::Flags::cheap) {
-    printf("delete [%p]\n", ptr);
-  }
-#endif
-  free(ptr);
-}
-
 // Override new[] operator (normal version) so we can log allocations.
 void* operator new[](size_t size) {
   // We should not call this since the constructor will fail with a null
@@ -197,16 +177,6 @@ void* operator new[](size_t size, const std::nothrow_t& tag) {
   }
 #endif
   return result;
-}
-
-// Override delete[] operator (normal version) so we can log allocations.
-void operator delete[](void* ptr) {
-#ifdef TOIT_DEBUG
-  if (toit::Flags::cheap) {
-    printf("delete[] [%p]\n", ptr);
-  }
-#endif
-  free(ptr);
 }
 
 // Override delete[] operator (no-exceptions version) so we can log allocations.

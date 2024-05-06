@@ -36,8 +36,8 @@ class ProgramBuilder {
  public:
   explicit ProgramBuilder(Program* program);
 
-  Program* program() const { return _program; }
-  int size() const { return _stack.size(); }
+  Program* program() const { return program_; }
+  int size() const { return stack_.size(); }
 
   void drop() { pop(); }
   void dup();
@@ -64,7 +64,7 @@ class ProgramBuilder {
 
   // Removes the top 'len' elements and replaces them with an array containing those elements.
   void create_class(int id, const char* name, int instance_size, bool is_runtime);
-  int create_method(int selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height);
+  int create_method(word selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height);
   int create_lambda(int captured_count, int arity, List<uint8> codes, int max_height);
   int create_block(int arity, List<uint8> codes, int max_height);
   int absolute_bci_for(int method_id);
@@ -76,7 +76,6 @@ class ProgramBuilder {
   void create_literals();
 
   void set_dispatch_table_entry(int index, int id);
-  void set_source_mapping(const char* data);
   void set_class_check_ids(const List<uint16>& class_check_ids);
   void set_interface_check_offsets(const List<uint16>& interface_check_offsets);
 
@@ -94,12 +93,14 @@ class ProgramBuilder {
   int payload_size();
 
   void set_entry_point_index(int entry_point_index, int dispatch_index) {
-    _program->_set_entry_point_index(entry_point_index, dispatch_index);
+    program_->_set_entry_point_index(entry_point_index, dispatch_index);
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
-    _program->set_invoke_bytecode_offset(opcode, offset);
+    program_->set_invoke_bytecode_offset(opcode, offset);
   }
+
+  int global_max_stack_height() const { return global_max_stack_height_; }
 
  private:
   void allocate_method(int bytecode_size, int max_height, int* method_id, Method* method);
@@ -108,33 +109,36 @@ class ProgramBuilder {
 
   void set_built_in_class_tags_and_sizes();
   void set_built_in_class_tag_and_size(Symbol name, TypeTag tag=TypeTag::INSTANCE_TAG, int size=-1) {
-    _built_in_class_tags[std::string(name.c_str())] = tag;
+    built_in_class_tags_[std::string(name.c_str())] = tag;
     if (size != -1) {
-      _built_in_class_sizes[std::string(name.c_str())] = size;
+      built_in_class_sizes_[std::string(name.c_str())] = size;
     }
   }
   String* lookup_symbol(const char* str);
   String* lookup_symbol(const char* str, int length);
 
-  ProgramHeap _program_heap;
-  Program* _program;
+  ProgramHeap program_heap_;
+  Program* program_;
 
-  UnorderedMap<std::string, String*> _symbols;
-  std::vector<Object*> _stack;
+  UnorderedMap<std::string, String*> symbols_;
+  std::vector<Object*> stack_;
 
-  Map<std::string, int> _string_literals; // index of strings in literal vector.
-  Map<std::string, int> _byte_array_literals; // index of strings in literal vector.
-  Map<int64, int> _integer_interals; // index of int64 in literal vector.
-  Map<uint64, int> _double_literals; // index of doubles in literal vector.
+  Map<std::string, int> string_literals_; // index of strings in literal vector.
+  Map<std::string, int> byte_array_literals_; // index of strings in literal vector.
+  Map<int64, int> integer_interals_; // index of int64 in literal vector.
+  Map<uint64, int> double_literals_; // index of doubles in literal vector.
   // Class tags for built-in classes.
   // A built-in class must be present in the map to be counted as builtin.
-  Map<std::string, TypeTag> _built_in_class_tags;
+  Map<std::string, TypeTag> built_in_class_tags_;
   // Class size for built-in classes.
   // If the class is not present, then the computed size (from the compiler) is used.
-  Map<std::string, int> _built_in_class_sizes;
-  std::vector<Object*> _literals;
+  Map<std::string, int> built_in_class_sizes_;
+  std::vector<Object*> literals_;
 
-  std::vector<uint8> _all_bytecodes;
+  std::vector<uint8> all_bytecodes_;
+
+  // The biggest max stack-height of all functions.
+  int global_max_stack_height_ = 0;
 
   // Basic stack operations.
   Object* top();

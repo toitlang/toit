@@ -15,8 +15,7 @@
 
 import encoding.json as json
 import encoding.ubjson as ubjson
-import reader show BufferedReader
-import writer show Writer
+import io
 import monitor
 import .protocol.message
 
@@ -31,104 +30,105 @@ class MapWrapper:
   lookup_ key:
     return lookup_ key: it
 
-  lookup_ key [when_present]:
-    return map_.get key --if_present=: when_present.call it
+  lookup_ key [when-present]:
+    return map_.get key --if-present=: when-present.call it
 
   at_ key:
     return at_ key: it
 
-  at_ key [when_present]:
-    return when_present.call map_[key]
+  at_ key [when-present]:
+    return when-present.call map_[key]
 
-encode_value_ value:
+encode-value_ value:
   encoded := null
   if value is MapWrapper:
-    encoded = encode_map_ value.map_
+    encoded = encode-map_ value.map_
   else if value is Map:
-    encoded = encode_map_ value
+    encoded = encode-map_ value
   else if value is List:
-    encoded = encode_list_ value
+    encoded = encode-list_ value
   else:
     encoded = value
   return encoded
 
-encode_list_ list:
-  return list.map: encode_value_ it
+encode-list_ list:
+  return list.map: encode-value_ it
 
-encode_map_ map:
+encode-map_ map:
   result := {:}
   map.do: |key value|
-    encoded := encode_value_ value
+    encoded := encode-value_ value
     if encoded != null:
       result[key] = encoded
   return result
 
 class RpcConnection:
-  static CONTENT_TYPE_JSON_   ::= "application/vscode-jsonrpc; charset=utf8"
-  static CONTENT_TYPE_UBJSON_ ::= "application/vscode-ubjsonrpc"
+  static CONTENT-TYPE-JSON_   ::= "application/vscode-jsonrpc; charset=utf8"
+  static CONTENT-TYPE-UBJSON_ ::= "application/vscode-ubjsonrpc"
 
   // The id counter for request sent from the server to the client.
-  request_id_              := 0
-  pending_requests_       ::= {:}  // From request-id to Channel.
+  request-id_              := 0
+  pending-requests_       ::= {:}  // From request-id to Channel.
 
-  reader_ /BufferedReader ::= ?
-  writer_                 ::= ?
+  reader_ /io.Reader ::= ?
+  writer_ /io.Writer ::= ?
   mutex_  /monitor.Mutex  ::= monitor.Mutex
 
-  use_ubjson_             := false
+  use-ubjson_             := false
 
-  json_count_             := 0
-  ubjson_count_           := 0
+  json-count_             := 0
+  ubjson-count_           := 0
 
-  constructor .reader_ writer:
-    writer_ = Writer writer
+  constructor .reader_ .writer_:
 
-  enable_ubjson: use_ubjson_ = true
+  enable-ubjson: use-ubjson_ = true
 
-  uses_json: return not use_ubjson_
+  uses-json: return not use-ubjson_
 
-  read_packet:
+  read-packet:
     while true:
-      line := reader_.read_line
+      line := reader_.read-line
       if line == null or line == "": return null
-      payload_len := -1
-      content_type := ""
+      payload-len := -1
+      content-type := ""
       while line != "":
         if line == null: throw "Unexpected end of header"
-        if line.starts_with "Content-Length:":
-          payload_len = int.parse (line.trim --left "Content-Length:").trim
-        else if line.starts_with "Content-Type:":
-          content_type = (line.trim --left "Content-Type: ").trim
+        if line.starts-with "Content-Length:":
+          payload-len = int.parse (line.trim --left "Content-Length:").trim
+        else if line.starts-with "Content-Type:":
+          content-type = (line.trim --left "Content-Type: ").trim
         else:
           throw "Unexpected RPC header $line"
-        line = reader_.read_line
-      if payload_len == -1: throw "Bad RPC header (no payload size)"
-      encoded := reader_.read_bytes payload_len
+        line = reader_.read-line
+      if payload-len == -1: throw "Bad RPC header (no payload size)"
+      encoded := reader_.read-bytes payload-len
 
-      if content_type == CONTENT_TYPE_JSON_ or content_type == "":
-        json_count_++
+      if content-type == CONTENT-TYPE-JSON_ or content-type == "":
+        json-count_++
         return (json.Decoder).decode encoded
-      if content_type == CONTENT_TYPE_UBJSON_:
-        ubjson_count_++
+      if content-type == CONTENT-TYPE-UBJSON_:
+        ubjson-count_++
         return ubjson.decode encoded
-      throw "Unexpected content-type: '$content_type'"
+      throw "Unexpected content-type: '$content-type'"
 
-  write_packet packet:
-    encoder := use_ubjson_ ? ubjson.Encoder : json.Encoder
-    encoder.encode packet
-    payload := encoder.to_byte_array
+  write-packet packet:
+    payload/ByteArray := ?
+    if use-ubjson_:
+      payload = ubjson.encode packet
+    else:
+      payload = json.encode packet
     mutex_.do:
       writeln_ "Content-Length: $(payload.size)"
-      writeln_ "Content-Type: $(use_ubjson_ ? CONTENT_TYPE_UBJSON_ : CONTENT_TYPE_JSON_)"
+      writeln_ "Content-Type: $(use-ubjson_ ? CONTENT-TYPE-UBJSON_ : CONTENT-TYPE-JSON_)"
       writeln_ ""
       write_   payload
 
   read:
     while true:
-      packet := read_packet
+      packet := read-packet
       if packet == null: return null
       if packet.contains "result" or packet.contains "error":
-        handle_response_ packet
+        handle-response_ packet
       else:
         return packet
 
@@ -137,46 +137,46 @@ class RpcConnection:
       "jsonrpc": "2.0",
       "id": id,
     }
-    encoded_value := encode_value_ msg
+    encoded-value := encode-value_ msg
     if msg is ResponseError:
-      response["error"] = encoded_value
+      response["error"] = encoded-value
     else:
-      response["result"] = encoded_value
-    write_packet response
+      response["result"] = encoded-value
+    write-packet response
 
   send method/string params/any -> none:
-    write_packet {
+    write-packet {
       "jsonrpc": "2.0",
       "method": method,
-      "params": (encode_value_ params)
+      "params": (encode-value_ params)
     }
 
   request method/string params/any -> any:
-    return request method params --id_callback=: null
+    return request method params --id-callback=: null
 
-  request method/string params/any [--id_callback] -> any:
-    id := request_id_++
+  request method/string params/any [--id-callback] -> any:
+    id := request-id_++
     channel := monitor.Channel 1
     // Update the map before sending the request, in case there is an extremely fast response.
-    pending_requests_[id] = channel
-    write_packet {
+    pending-requests_[id] = channel
+    write-packet {
       "jsonrpc": "2.0",
       "method": method,
       "id"    : id,
-      "params": (encode_value_ params)
+      "params": (encode-value_ params)
     }
-    id_callback.call id
+    id-callback.call id
     return channel.receive
 
-  handle_response_ decoded -> none:
+  handle-response_ decoded -> none:
     id := decoded["id"]
-    channel := pending_requests_[id]
-    pending_requests_.remove id
+    channel := pending-requests_[id]
+    pending-requests_.remove id
     channel.send
-      decoded.get "result" --if_absent=: decoded["error"]
+      decoded.get "result" --if-absent=: decoded["error"]
 
   writeln_ line/string -> none:
-    writer_.write line.to_byte_array
+    writer_.write line.to-byte-array
     array := ByteArray 2
     array[0] = '\r'
     array[1] = '\n'

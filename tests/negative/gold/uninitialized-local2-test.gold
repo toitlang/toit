@@ -1,0 +1,34 @@
+tests/negative/uninitialized-local2-test.toit:55:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized-local2-test.toit:18:9: error: Can't assign to final local
+  local = 42
+        ^
+tests/negative/uninitialized-local2-test.toit:23:10: error: Can't assign to final local multiple times
+  local2 = 42
+         ^
+tests/negative/uninitialized-local2-test.toit:31:7: error: Local 'local3' must be initialized before first use
+  use local3
+      ^~~~~~
+tests/negative/uninitialized-local2-test.toit:35:12: error: Can't assign to final local multiple times
+    local4 = 42
+           ^
+tests/negative/uninitialized-local2-test.toit:39:29: error: Can't assign to final local multiple times
+  for i := 0; i < 0; local5 = 0:
+                            ^
+tests/negative/uninitialized-local2-test.toit:43:12: error: Can't assign to final local multiple times
+    local6 = 42
+           ^
+tests/negative/uninitialized-local2-test.toit:44:7: error: Local 'local6' must be initialized before first use
+  use local6
+      ^~~~~~
+tests/negative/uninitialized-local2-test.toit:48:12: error: Can't assign to final local multiple times
+    local7 = 42
+           ^
+tests/negative/uninitialized-local2-test.toit:49:7: error: Local 'local7' must be initialized before first use
+  use local7
+      ^~~~~~
+tests/negative/uninitialized-local2-test.toit:52:29: error: Can't assign to final local multiple times
+  for i := 0; i < 2; local8 = 42:
+                            ^
+Compilation failed

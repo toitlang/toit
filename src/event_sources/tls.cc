@@ -20,76 +20,108 @@
 
 namespace toit {
 
-TLSEventSource* TLSEventSource::_instance = null;
+TlsEventSource* TlsEventSource::instance_ = null;
 
-TLSEventSource::TLSEventSource()
+TlsEventSource::TlsEventSource()
     : LazyEventSource("TLS", 1)
     , Thread("TLS") {
-  _instance = this;
+  instance_ = this;
 }
 
-TLSEventSource::~TLSEventSource() {
-  ASSERT(_sockets_changed == null);
-  _instance = null;
+TlsEventSource::~TlsEventSource() {
+  ASSERT(sockets_changed_ == null);
+  instance_ = null;
 }
 
-bool TLSEventSource::start() {
+bool TlsEventSource::start() {
   Locker locker(mutex());
-  ASSERT(_sockets_changed == null);
-  _sockets_changed = OS::allocate_condition_variable(mutex());
-  if (_sockets_changed == null) return false;
+  ASSERT(sockets_changed_ == null);
+  sockets_changed_ = OS::allocate_condition_variable(mutex());
+  if (sockets_changed_ == null) return false;
   if (!spawn(5 * KB)) {
-    OS::dispose(_sockets_changed);
-    _sockets_changed = null;
+    OS::dispose(sockets_changed_);
+    sockets_changed_ = null;
     return false;
   }
-  _stop = false;
+  stop_ = false;
   return true;
 }
 
-void TLSEventSource::stop() {
+void TlsEventSource::stop() {
   {
     // Stop the main thread.
     Locker locker(mutex());
-    _stop = true;
+    stop_ = true;
 
-    OS::signal(_sockets_changed);
+    OS::signal(sockets_changed_);
   }
 
   join();
-  OS::dispose(_sockets_changed);
-  _sockets_changed = null;
+  OS::dispose(sockets_changed_);
+  sockets_changed_ = null;
 }
 
-void TLSEventSource::handshake(TLSSocket* socket) {
+void TlsEventSource::handshake(TlsSocket* socket) {
   Locker locker(mutex());
-  _sockets.append(socket);
-  OS::signal(_sockets_changed);
+  sockets_.append(socket);
+  OS::signal(sockets_changed_);
 }
 
-void TLSEventSource::on_unregister_resource(Locker& locker, Resource* r) {
+void TlsEventSource::close(TlsSocket* socket) {
+  { Locker locker(mutex());
+    if (sockets_.is_linked(socket)) {
+      // Delay the close until the event source is
+      // done with the socket.
+      socket->delay_close();
+      return;
+    }
+  }
+  socket->resource_group()->unregister_resource(socket);
+}
+
+void TlsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
-  TLSSocket* socket = r->as<TLSSocket*>();
-  _sockets.remove(socket);
+#ifdef DEBUG
+  // We never close a socket that is currently in the
+  // event source socket list. We may get non-socket
+  // resources in here, so we need to run through the
+  // list to safely figure out if they are present.
+  for (auto s : sockets_) {
+    ASSERT(s != r);
+  }
+#endif
 }
 
-void TLSEventSource::entry() {
+void TlsEventSource::entry() {
   Locker locker(mutex());
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
-  while (!_stop) {
+  while (!stop_) {
     while (true) {
-      TLSSocket* socket = _sockets.remove_first();
+      TlsSocket* socket = sockets_.first();
       if (socket == null) break;
 
-      // Keep locker while handshake is going on, to avoid conflicting remove.
-      // If we want to better support multiple concurrent handshakes, this
-      // can be further optimized but will be quite complex.
-      word result = socket->handshake();
-      dispatch(locker, socket, result);
+      word result = 0;
+      if (!socket->needs_delayed_close()) {
+        Unlocker unlocker(locker);
+        result = socket->handshake();
+      }
+
+      // We maintain a simple invariant: We never close a socket
+      // that is currently in the event source socket list. Remove
+      // the socket now, so that the call to unregister will be
+      // reached in the right state.
+      sockets_.remove_first();
+
+      if (socket->needs_delayed_close()) {
+        Unlocker unlocker(locker);
+        socket->resource_group()->unregister_resource(socket);
+      } else {
+        dispatch(locker, socket, result);
+      }
     }
 
-    OS::wait(_sockets_changed);
+    OS::wait(sockets_changed_);
   }
 }
 

@@ -21,17 +21,17 @@ class FlashReservation implements FlashRegion:
   canceled_/bool := false
 
   constructor .offset .size:
-    flash_registry_reserve_hole_ offset size
+    flash-registry-reserve-hole_ offset size
 
   close -> none:
     if canceled_: return
-    flash_registry_cancel_reservation_ offset
+    flash-registry-cancel-reservation_ offset
     canceled_ = true
 
 // ----------------------------------------------------------------------------
 
-flash_registry_reserve_hole_ offset size:
-  #primitive.flash.reserve_hole
+flash-registry-reserve-hole_ offset size:
+  #primitive.flash.reserve-hole
 
-flash_registry_cancel_reservation_ offset:
-  #primitive.flash.cancel_reservation
+flash-registry-cancel-reservation_ offset:
+  #primitive.flash.cancel-reservation

@@ -1,0 +1,4 @@
+EXCEPTION error. 
+in mixin
+  0: M1.foo                    tests/negative/mixin-stack-test.toit:6:8
+  1: main                      tests/negative/mixin-stack-test.toit:12:5

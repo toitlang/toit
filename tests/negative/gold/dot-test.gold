@@ -1,0 +1,7 @@
+tests/negative/dot-test.toit:8:10: error: Incomplete expression
+  prefix.
+         ^
+tests/negative/dot-test.toit:9:9: error: Unresolved identifier: 'unresolved'
+  print unresolved
+        ^~~~~~~~~~
+Compilation failed

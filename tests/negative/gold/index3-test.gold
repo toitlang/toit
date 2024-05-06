@@ -1,0 +1,16 @@
+tests/negative/index3-test.toit:10:14: error: Can't have space between '[' and ']'
+  operator [ ] n:
+             ^
+tests/negative/index3-test.toit:11:15: error: Can't have space between ']' and '='
+  operator [] = n val:
+              ^
+tests/negative/index3-test.toit:14:14: error: Can't have space between '[' and ']'
+  operator [ ]= n val:
+             ^
+tests/negative/index3-test.toit:18:5: error: Missing argument for indexing operator
+  a[]
+    ^
+tests/negative/index3-test.toit:6:3: error: Invalid method shape for '[]'
+  operator[]:
+  ^~~~~~~~~~
+Compilation failed

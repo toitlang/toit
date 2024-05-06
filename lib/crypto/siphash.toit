@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import ..io as io
 
 /**
 SipHash
@@ -17,23 +18,26 @@ The $data must be a string or a byte array.
 
 The $key must be a 16 element byte array.
 
-The $output_length must be 8 or 16 bytes.
+The $output-length must be 8 or 16 bytes.
 */
-siphash data key/ByteArray --output_length/int=16 --c_rounds/int=2 --d_rounds/int=4 from/int=0 to/int=data.size -> ByteArray:
-  return checksum (Siphash key --output_length=output_length --c_rounds=c_rounds --d_rounds=d_rounds) data from to
+siphash data/io.Data key/ByteArray --output-length/int=16 --c-rounds/int=2 --d-rounds/int=4 from/int=0 to/int=data.byte-size -> ByteArray:
+  return checksum (Siphash key --output-length=output-length --c-rounds=c-rounds --d-rounds=d-rounds) data from to
 
 /** SipHash state. */
 class Siphash extends Checksum:
-  siphash_state_ := ?
+  siphash-state_ := ?
 
   /** Constructs an empty SipHash state. */
-  constructor key --output_length/int=16 --c_rounds/int=2 --d_rounds/int=4:
-    siphash_state_ = siphash_start_ resource_freeing_module_ key output_length c_rounds d_rounds
-    add_finalizer this:: finalize_checksum_ this
+  constructor key --output-length/int=16 --c-rounds/int=2 --d-rounds/int=4:
+    siphash-state_ = siphash-start_ resource-freeing-module_ key output-length c-rounds d-rounds
+    add-finalizer this:: finalize-checksum_ this
+
+  constructor.private_ .siphash-state_:
+    add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
-    siphash_add_ siphash_state_ data from to
+  add data/io.Data from/int to/int -> none:
+    siphash-add_ siphash-state_ data from to
 
   /**
   See $super.
@@ -41,17 +45,26 @@ class Siphash extends Checksum:
   Calculates the SipHash.
   */
   get -> ByteArray:
-    remove_finalizer this
-    return siphash_get_ siphash_state_
+    remove-finalizer this
+    return siphash-get_ siphash-state_
+
+  clone -> Siphash:
+    return Siphash.private_ (siphash-clone_ siphash-state_)
 
 // Gets a new empty SipHash object.
-siphash_start_ group key output_length c_rounds d_rounds -> none:
-  #primitive.crypto.siphash_start
+siphash-start_ group key output-length c-rounds d-rounds:
+  #primitive.crypto.siphash-start
+
+// Clones
+siphash-clone_ other:
+  #primitive.crypto.siphash-clone
 
 // Adds a UTF-8 string or a byte array to the Sip hash.
-siphash_add_ siphash data from/int to/int -> none:
-  #primitive.crypto.siphash_add
+siphash-add_ siphash data/io.Data from/int to/int -> none:
+  #primitive.crypto.siphash-add:
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      siphash-add_ siphash bytes 0 bytes.size
 
 // Rounds off a Sip hash.
-siphash_get_ siphash -> ByteArray:
-  #primitive.crypto.siphash_get
+siphash-get_ siphash -> ByteArray:
+  #primitive.crypto.siphash-get

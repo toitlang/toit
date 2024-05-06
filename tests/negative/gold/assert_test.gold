@@ -1,3 +1,0 @@
-in assert
-ASSERTION_FAILED error.
-  0: main                      tests/negative/assert_test.toit:6:3

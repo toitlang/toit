@@ -21,7 +21,7 @@ OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
 
-OldSpace::~OldSpace() { }
+OldSpace::~OldSpace() {}
 
 void OldSpace::flush() {
   if (top_ != 0) {
@@ -43,17 +43,10 @@ void OldSpace::flush() {
   }
 }
 
-HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  ASSERT(GcMetadata::is_marked(old_location));
-  if (compacting_) {
-    return HeapObject::from_address(GcMetadata::get_destination(old_location));
-  } else {
-    return old_location;
-  }
-}
-
 bool OldSpace::is_alive(HeapObject* old_location) {
+  // Objects like null are in the program space and live forever.
+  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
   // marked and can be checked for liveness.  The finalizers
@@ -62,6 +55,10 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   // they will remain (untouched) in the new-space until the
   // next scavenge.
   return GcMetadata::is_marked(old_location);
+}
+
+bool OldSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
 }
 
 void OldSpace::use_whole_chunk(Chunk* chunk) {
@@ -99,24 +96,22 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  uword max_expansion = heap_->max_external_allocation();
-  uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
-  uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
-  // Toit uses arraylets and external objects, so all objects should fit on a page.
-  ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
-  uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
+  word max_expansion_signed = heap_->max_external_allocation();
+  if (max_expansion_signed > 0) {
+    uword max_expansion = max_expansion_signed;
+    uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
+    uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+    // Toit uses arraylets and external objects, so all objects should fit on a page.
+    ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
+    uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
 
-  if (chunk_size <= max_expansion) {
-    Chunk* chunk = allocate_and_use_chunk(chunk_size);
-    while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
-      // If we fail to get a multi-page chunk, try for a smaller chunk.
-      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-      chunk = allocate_and_use_chunk(chunk_size);
-    }
-    if (chunk != null) {
-      return allocate(size);
-    } else {
-      heap_->report_malloc_failed();
+    if (chunk_size <= max_expansion) {
+      Chunk* chunk = allocate_and_use_chunk(chunk_size);
+      if (chunk != null) {
+        return allocate(size);
+      } else {
+        heap_->report_malloc_failed();
+      }
     }
   }
 
@@ -231,8 +226,8 @@ void OldSpace::zap_object_starts() {
 
 class RememberedSetRebuilder2 : public RootCallback {
  public:
-  virtual void do_roots(Object** pointers, int length) override {
-    for (int i = 0; i < length; i++) {
+  virtual void do_roots(Object** pointers, word length) override {
+    for (word i = 0; i < length; i++) {
       Object* object = pointers[i];
       if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
         found = true;
@@ -252,7 +247,7 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
     pointer_callback.found = false;
     object->roots_do(program_, &pointer_callback);
     if (pointer_callback.found) {
-      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+      *GcMetadata::remembered_set_for(object) = GcMetadata::NEW_SPACE_POINTERS;
     }
     return object->size(program_);
   }
@@ -260,13 +255,6 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
  private:
   RememberedSetRebuilder2 pointer_callback;
 };
-
-// Until we have a write barrier we have to iterate the whole
-// of old space.
-void OldSpace::rebuild_remembered_set() {
-  RememberedSetRebuilder rebuilder(program_);
-  iterate_objects(&rebuilder);
-}
 
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
@@ -384,9 +372,9 @@ bool OldSpace::complete_scavenge(
     if (traverse != end) {
       found_work = true;
     }
-    for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
+    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj->_raw()));
+      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
@@ -418,7 +406,7 @@ void OldSpace::mark_chunk_ends_free() {
   });
 }
 
-void FixPointersVisitor::do_roots(Object** start, int length) {
+void FixPointersVisitor::do_roots(Object** start, word length) {
   Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
@@ -494,7 +482,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if (object->_raw() != dest_.address) {
     object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object->_raw()) !=
+    if (*GcMetadata::remembered_set_for(object) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
       *GcMetadata::remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;
@@ -513,7 +501,7 @@ uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
-  const word SINGLE_FREE_WORD = -44;
+  const word SINGLE_FREE_WORD = -108;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
   chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();
@@ -706,8 +694,8 @@ void OldSpace::validate() {
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
+    object->roots_do(program_, visitor);  // Changes size of stacks!
     GcMetadata::mark_all(object, object->size(program_));
-    object->roots_do(program_, visitor);
   }
 }
 

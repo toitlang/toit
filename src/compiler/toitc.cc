@@ -29,18 +29,22 @@ static void print_usage(int exit_code) {
   // relevant for users.
   printf("Usage:\n");
   printf("toit\n");
-  printf("  [-h] [--help]                        // This help message.\n");
-  printf("  [--version]                          // Prints version information.\n");
-  printf("  [-X<flag>]*                          // Provide a compiler flag.\n");
-  printf("  [--dependency-file <file>]           // Write a dependency file ('-' for stdout).\n");
-  printf("  [--dependency-format {plain|ninja}]  // The format of the dependency file.\n");
-  printf("  [--project-root <path>]              // Path to the project root. Any package.lock file must be in that folder.\n");
-  printf("  [--force]                            // Finish compilation even with errors (if possible).\n");
-  printf("  [-Werror]                            // Treat warnings like errors.\n");
-  printf("  [--show-package-warnings]            // Show warnings from packages.\n");
-  printf("  { -o <executable> <toitfile> |       // Write executable.\n");
-  printf("    -w <snapshot> <toitfile> |         // Write snapshot file.\n");
-  printf("    --analyze <toitfiles>...           // Analyze Toit files.\n");
+  printf("  [-h] [--help]                            // This help message.\n");
+  printf("  [--version]                              // Prints version information.\n");
+  printf("  [-O<level>]                              // Set optimization level (default = 1).\n");
+  printf("  [-X<flag>]*                              // Provide a compiler flag.\n");
+  printf("  [--dependency-file <file>]               // Write a dependency file ('-' for stdout).\n");
+  printf("  [--dependency-format {plain|ninja}]      // The format of the dependency file.\n");
+  printf("  [--project-root <path>]                  // Path to the project root. Any package.lock file must be in that folder.\n");
+  printf("  [--force]                                // Finish compilation even with errors (if possible).\n");
+  printf("  [-Werror]                                // Treat warnings like errors.\n");
+  printf("  [--show-package-warnings]                // Show warnings from packages.\n");
+  printf("  [--os <system>]                          // Cross-compilation system target.\n");
+  printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
+  printf("  [--strip]                                // Strip the output of debug information.\n");
+  printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
+  printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
+  printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
   printf("  }\n");
   exit(exit_code);
 }
@@ -98,6 +102,11 @@ int main(int argc, char **argv) {
   auto dep_format = compiler::Compiler::DepFormat::none;
   bool for_language_server = false;
   bool for_analysis = false;
+  const char* vessels_root = null;
+  const char* cross_os = null;
+  const char* cross_arch = null;
+  int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
+  bool should_strip = false;
 
   int processed_args = 1;  // The executable name has already been processed.
 
@@ -111,7 +120,16 @@ int main(int argc, char **argv) {
               argv[processed_args]);
       print_usage(1);
     }
-    if (strcmp(argv[processed_args], "-w") == 0) {
+    if (strcmp(argv[processed_args], "-O0") == 0) {
+      optimization_level = 0;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "-O1") == 0) {
+      optimization_level = 1;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "-O2") == 0) {
+      optimization_level = 2;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "-w") == 0) {
       // Bundle writing.
       processed_args++;
       if (processed_args == argc) {
@@ -185,12 +203,48 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
       project_root = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--vessels-root") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--vessels-root'\n");
+        print_usage(1);
+      }
+      if (vessels_root != null) {
+        fprintf(stderr, "Only one '--vessels-root' flag is allowed.\n");
+        print_usage(1);
+      }
+      vessels_root = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--arch") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--arch'\n");
+        print_usage(1);
+      }
+      if (cross_arch != null) {
+        fprintf(stderr, "Only one '--arch' flag is allowed.\n");
+        print_usage(1);
+      }
+      cross_arch = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--os") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--os'\n");
+        print_usage(1);
+      }
+      if (cross_os != null) {
+        fprintf(stderr, "Only one '--os' flag is allowed.\n");
+        print_usage(1);
+      }
+      cross_os = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--lsp") == 0 ||
                 strcmp(argv[processed_args], "--analyze") == 0) {
       for_language_server = strcmp(argv[processed_args], "--lsp") == 0;
       for_analysis = strcmp(argv[processed_args], "--analyze") == 0;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--strip") == 0) {
+      should_strip = true;
+      processed_args++;
     } else if (argv[processed_args][0] == '-' &&
                 strcmp(argv[processed_args], "--") != 0) {
       fprintf(stderr, "Unknown flag '%s'\n", argv[processed_args]);
@@ -221,6 +275,24 @@ int main(int argc, char **argv) {
     } else {
       fprintf(stderr, "Toit-file, snapshot, or string-expressions are exclusive\n");
     }
+    print_usage(1);
+  }
+
+  if (vessels_root != null && exe_filename == null) {
+    fprintf(stderr, "The --vessels-root flag can only be used when compiling executables\n");
+    print_usage(1);
+  }
+
+  if (cross_arch != null && cross_os == null) {
+    fprintf(stderr, "The --arch flag can only be used together with the --os flag\n");
+    print_usage(1);
+  }
+  if (cross_os != null && cross_arch == null) {
+    fprintf(stderr, "The --os flag can only be used together with the --arch flag\n");
+    print_usage(1);
+  }
+  if (exe_filename == null && cross_os != null) {
+    fprintf(stderr, "The --os/--arch flags can only be used when compiling executables\n");
     print_usage(1);
   }
 
@@ -270,6 +342,8 @@ int main(int argc, char **argv) {
     .force = force,
     .werror = werror,
     .show_package_warnings = show_package_warnings,
+    .print_diagnostics_on_stdout = true,
+    .optimization_level = optimization_level,
   };
 
   if (for_language_server) {
@@ -283,17 +357,26 @@ int main(int argc, char **argv) {
     auto compiled = SnapshotBundle::invalid();
     compiler::Compiler compiler;
     auto source_path = source_path_count == 0 ? null : source_paths[0];
-    compiled = compiler.compile(source_path,
-                                direct_script,
-                                bundle_filename == null ? exe_filename : bundle_filename,
-                                compiler_config);
+    if (SnapshotBundle::is_bundle_file(source_path)) {
+      compiled = SnapshotBundle::read_from_file(source_path);
+    } else {
+      compiled = compiler.compile(source_path,
+                                  direct_script,
+                                  bundle_filename == null ? exe_filename : bundle_filename,
+                                  compiler_config);
+    }
 
+    if (should_strip) {
+      auto stripped = compiled.stripped();
+      free(compiled.buffer());
+      compiled = stripped;
+    }
     if (bundle_filename != null) {
       if (!compiled.write_to_file(bundle_filename)) {
         print_usage(1);
       }
     } else {
-      exit_state = create_executable(exe_filename, compiled);
+      exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
     }
     free(compiled.buffer());
   } else {

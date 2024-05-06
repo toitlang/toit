@@ -48,7 +48,7 @@ class DepWriter {
   virtual void generate_footer() = 0;
 
  private:
-  std::string _buffer;
+  std::string buffer_;
 };
 
 class PlainDepWriter : public DepWriter {

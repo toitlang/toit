@@ -83,7 +83,7 @@ static int baud_rate_to_int(speed_t speed) {
   }
 }
 
-static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_rate) {
+static int int_to_baud_rate(int baud_rate, speed_t* speed, bool* arbitrary_baud_rate) {
   // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer.
   *arbitrary_baud_rate = false;
   switch (baud_rate) {
@@ -131,11 +131,11 @@ const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 
-class UARTResourceGroup : public ResourceGroup {
+class UartResourceGroup : public ResourceGroup {
  public:
-  TAG(UARTResourceGroup);
-  UARTResourceGroup(Process* process, EventSource* event_source)
-    : ResourceGroup(process, event_source){ }
+  TAG(UartResourceGroup);
+  UartResourceGroup(Process* process, EventSource* event_source)
+    : ResourceGroup(process, event_source){}
 
   int create_uart(const char* path, speed_t speed, int data_bits, int stop_bits, int parity) {
     // We always set the close-on-exec flag otherwise we leak descriptors when we fork.
@@ -170,6 +170,9 @@ class UARTResourceGroup : public ResourceGroup {
 
     // Disable special handling of bytes on receive. Just give the raw data.
     tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL);
+
+    // Disable software flow control.
+    tty.c_iflag &= ~(IXON|IXOFF|IXANY);
 
     // Disable any special handling for the output.
     tty.c_oflag &= ~OPOST;
@@ -252,62 +255,62 @@ class UARTResourceGroup : public ResourceGroup {
   }
 };
 
-// Defined in primitive_file_posix.cc.
+// Defined in primitive_file_non_win.cc.
 extern Object* return_open_error(Process* process, int err);
 
 MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #if defined(TOIT_LINUX)
-  UARTResourceGroup* resource_group = _new UARTResourceGroup(process, EpollEventSource::instance());
+  UartResourceGroup* resource_group = _new UartResourceGroup(process, EpollEventSource::instance());
 #elif defined(TOIT_BSD)
-  UARTResourceGroup* resource_group = _new UARTResourceGroup(process, KQueueEventSource::instance());
+  UartResourceGroup* resource_group = _new UartResourceGroup(process, KQueueEventSource::instance());
 #endif
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
 }
 
 PRIMITIVE(create) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(create_path) {
-  ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
+  ARGS(UartResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
   bool arbitrary_baud_rate;
-  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) INVALID_ARGUMENT;
+  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) FAIL(INVALID_ARGUMENT);
 
-  if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
-  if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
-  if (parity < 1 || parity > 3) INVALID_ARGUMENT;
+  if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
+  if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
+  if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_uart(path, speed, data_bits, stop_bits, parity);
   if (id == -1) return Primitive::os_error(errno, process);
-  if (id == -2) INVALID_ARGUMENT;
+  if (id == -2) FAIL(INVALID_ARGUMENT);
 
   IntResource* resource = resource_group->register_id(id);
   // We are running on Linux. As such we should never have malloc that fails.
   // Normally, we would need to clean up, if the allocation fails, but if that
   // happens on Linux, we are in big trouble anyway.
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
   resource_proxy->set_external_address(resource);
   return resource_proxy;
 }
 
 PRIMITIVE(close) {
-  ARGS(UARTResourceGroup, resource_group, IntResource, uart_resource);
+  ARGS(UartResourceGroup, resource_group, IntResource, uart_resource);
   resource_group->close_uart(uart_resource->id());
   uart_resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -321,7 +324,7 @@ PRIMITIVE(get_baud_rate) {
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
   int int_speed = baud_rate_to_int(speed);
-  if (int_speed == -1) OTHER_ERROR;
+  if (int_speed == -1) FAIL(ERROR);
   return Primitive::integer(int_speed, process);
 }
 
@@ -332,7 +335,7 @@ PRIMITIVE(set_baud_rate) {
   speed_t speed;
   bool arbitrary_rate;
   int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
-  if (result != 0) INVALID_ARGUMENT;
+  if (result != 0) FAIL(INVALID_ARGUMENT);
   if (!arbitrary_rate) {
     // Use standard Posix/Linux line speed setup
     struct termios tty;
@@ -345,43 +348,35 @@ PRIMITIVE(set_baud_rate) {
 #ifdef TOIT_DARWIN
     if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
 #else
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
 #endif
 
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Writes the data to the UART.
-// If wait is true, waits, unless the baud-rate is too low. If the function did
-// not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
-  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
+  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
   int fd = resource->id();
 
-  const uint8* tx = data.address();
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  tx += from;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  if (break_length < 0) FAIL(OUT_OF_RANGE);
 
-  if (break_length < 0) OUT_OF_RANGE;
-
-  ssize_t written = write(fd, tx, to - from);
+  ssize_t written = write(fd, data.address() + from, to - from);
   if (written < 0) {
     if (errno != EAGAIN) return Primitive::os_error(errno, process);
     written = 0;
   }
 
   int baud_rate = 0;
-  if (break_length > 0 || wait) {
+  if (break_length > 0) {
     // If we have a break, or need to wait we need the current baud_rate.
     struct termios tty;
     if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
     // We assume that the input and output speed are the same and only query the output speed.
     speed_t speed = cfgetospeed(&tty);
     baud_rate = baud_rate_to_int(speed);
-  }
-
-  if (break_length > 0) {
     // Toit (because of ESP32) defines the break-length as equal to the time it takes to write 1 bit.
     // Linux uses 'ms' instead. We need to get the baud-rate so we can convert from bit-duration to ms.
     int ms = break_length * 1000 / baud_rate;
@@ -389,39 +384,34 @@ PRIMITIVE(write) {
     if (tcsendbreak(fd, ms) != 0) return Primitive::os_error(errno, process);
   }
 
-  if (wait) {
-    if (baud_rate < 100000) {
-      return Smi::from(-written);
-    }
-    // TODO(florian): do we ever want to do a blocking wait on Linux?
-    // Wait until the data has been drained.
-    if (tcdrain(fd) != 0) return Primitive::os_error(errno, process);
-  }
-
   return Smi::from(written);
 }
 
 PRIMITIVE(wait_tx) {
   ARGS(IntResource, resource);
-  int fd = resource->id();
+  int fd = static_cast<int>(resource->id());
 
-  // If we have a break, or need to wait we need the current baud_rate.
-  struct termios tty;
+  // If we need to wait we need the current baud_rate.
+  struct termios tty = {};
   if (tcgetattr(fd, &tty) < 0) return Primitive::os_error(errno, process);
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
   int baud_rate = baud_rate_to_int(speed);
-  if (baud_rate > 100000) {
-    // TODO(florian): do we ever want to do a blocking wait on Linux?
-
-    // Just wait for the data to be flushed.
-    if (!tcdrain(fd)) return Primitive::os_error(errno, process);
-    return BOOL(true);
-  }
 
   int queued;
   if (ioctl(fd, TIOCOUTQ, &queued) != 0) return Primitive::os_error(errno, process);
-  return BOOL(queued == 0);
+  if (queued == 0) return BOOL(true);
+
+  // Upper bound on time to drain queue (12 is a conservative estimate
+  // on the number of transferred bits per byte). If it takes longer
+  // than 1 ms, just return back to Toit code.
+  if (queued * 12 * 1000 > baud_rate) return BOOL(false);
+
+  // TODO(florian): do we ever want to do a blocking wait on Linux?
+
+  // Just wait for the data to be flushed.
+  if (tcdrain(fd) != 0) return Primitive::os_error(errno, process);
+  return BOOL(true);
 }
 
 PRIMITIVE(read) {
@@ -430,11 +420,10 @@ PRIMITIVE(read) {
 
   size_t available = 0;
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(available));
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
   int received = read(fd, rx.address(), rx.length());
@@ -460,7 +449,7 @@ PRIMITIVE(set_control_flags) {
 
   if (ioctl(fd, TIOCMSET, &flags) != 0) return Primitive::os_error(errno, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_control_flags) {

@@ -21,11 +21,11 @@ Boot the system and run the necessary containers. Returns when the
 
 Returns an error code which is 0 when no errors occurred.
 */
-boot container_manager/ContainerManager -> int:
+boot container-manager/ContainerManager -> int:
   // Always start the system image which is technically already
   // running. This allows the container manager to correctly keep
   // track of the number of running processes.
-  container_manager.system_image.start
-  container_manager.images.do: | image/ContainerImage |
-    if image.run_boot: image.start
-  return container_manager.wait_until_done
+  container-manager.system-image.load.start
+  container-manager.images.do: | image/ContainerImage |
+    if image.run-boot: image.load.start
+  return container-manager.wait-until-done

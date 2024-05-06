@@ -14,24 +14,27 @@
 // directory of this repository.
 
 import net
-import net.modules.udp
 
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceProvider ServiceResource
 import system.api.network show NetworkService
 
-import ..shared.network_base
+import ..shared.network-base
 
-class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
+class NetworkServiceProvider extends NetworkServiceProviderBase:
   constructor:
     super "system/network/host" --major=0 --minor=1
 
   connect client/int -> List:
     resource := NetworkResource this client
-    return [resource.serialize_for_rpc, NetworkService.PROXY_NONE]
+    return [
+      resource.serialize-for-rpc,
+      NetworkService.PROXY-NONE,
+      "system"
+    ]
 
 class NetworkResource extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
+  constructor provider/ServiceProvider client/int:
+    super provider client
 
-  on_closed -> none:
+  on-closed -> none:
     // Do nothing.

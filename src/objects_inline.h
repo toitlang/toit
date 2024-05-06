@@ -24,15 +24,15 @@
 
 namespace toit {
 
-int Array::max_length_in_process() {
+word Array::max_length_in_process() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
-int Array::max_length_in_program() {
+word Array::max_length_in_program() {
   return (ProgramHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
-int Stack::max_length() {
+word Stack::max_length() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
@@ -66,36 +66,27 @@ T* ByteArray::as_external() {
   return 0;
 }
 
-inline bool HeapObject::on_program_heap(Process* process) {
+inline bool HeapObject::on_program_heap(Process* process) const {
   return process->on_program_heap(this);
 }
 
-inline void Array::at_put(int index, Object* value) {
+inline void Array::at_put(word index, Object* value) {
   ASSERT(index >= 0 && index < length());
   GcMetadata::insert_into_remembered_set(this);
   _at_put(_offset_from(index), value);
 }
 
-inline void Array::fill(int from, Object* filler) {
+inline void Array::fill(word from, Object* filler) {
   GcMetadata::insert_into_remembered_set(this);
-  int len = length();
-  for (int index = from; index < len; index++) {
+  word len = length();
+  for (word index = from; index < len; index++) {
     at_put_no_write_barrier(index, filler);
   }
 }
 
-inline void Instance::at_put(int index, Object* value) {
+inline void Instance::at_put(word index, Object* value) {
   GcMetadata::insert_into_remembered_set(this);
   _at_put(_offset_from(index), value);
-}
-
-inline void Stack::set_task(Task* value) {
-  GcMetadata::insert_into_remembered_set(this);
-  _at_put(TASK_OFFSET, value);
-}
-
-inline void Task::set_result(Object* value) {
-  at_put(RESULT_INDEX, value);
 }
 
 } // namespace toit

@@ -25,9 +25,17 @@
 
 #include "objects_inline.h"
 
+#if defined(TOIT_FREERTOS)
+#undef TOIT_CHECK_PROPAGATED_TYPES
+#endif
+
+#if defined(TOIT_CHECK_PROPAGATED_TYPES)
+#include "compiler/propagation/type_database.h"
+#endif
+
 namespace toit {
 
-inline bool are_smis(Object* a, Object* b) {
+inline bool Interpreter::are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
   bool result = is_smi(reinterpret_cast<Object*>(bits));
   // The or-trick only works if smis are tagged with a zero-bit.
@@ -36,8 +44,12 @@ inline bool are_smis(Object* a, Object* b) {
   return result;
 }
 
-inline Object* Interpreter::boolean(Program* program, bool x) const {
-  return x ? program->true_object() : program->false_object();
+inline bool Interpreter::are_floats(Object* a, Object* b) {
+  uword bits = reinterpret_cast<uword>(a) & reinterpret_cast<uword>(b);
+  bool has_smi = is_smi(reinterpret_cast<Object*>(bits));
+  if (has_smi) return false;
+  return HeapObject::cast(a)->has_class_tag(DOUBLE_TAG) &&
+         HeapObject::cast(b)->has_class_tag(DOUBLE_TAG);
 }
 
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
@@ -57,7 +69,7 @@ inline bool Interpreter::typecheck_class(Program* program,
     Smi* class_id = is_smi(value)
         ? program->smi_class_id()
         : HeapObject::cast(value)->class_id();
-    int value_class_id = class_id->value();
+    int value_class_id = Smi::value(class_id);
     int start_id = program->class_check_ids[2 * class_index];
     int end_id = program->class_check_ids[2 * class_index + 1];
     return start_id <= value_class_id && value_class_id < end_id;
@@ -68,16 +80,15 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              Object* value,
                                              int interface_selector_index,
                                              bool is_nullable) const {
-
   if (is_nullable && value == program->null_object()) return true;
-  int selector_offset = program->interface_check_offsets[interface_selector_index];
+  word selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);
   return target.is_valid();
 }
 
-Method Program::find_method(Object* receiver, int offset) {
+Method Program::find_method(Object* receiver, word offset) {
   Smi* class_id = is_smi(receiver) ? smi_class_id() : HeapObject::cast(receiver)->class_id();
-  int index = class_id->value() + offset;
+  int index = Smi::value(class_id) + offset;
   int entry_id = dispatch_table[index];
   if (entry_id == -1) return Method::invalid();
   Method entry(bytecodes, entry_id);
@@ -94,6 +105,7 @@ Method Program::find_method(Object* receiver, int offset) {
 #define DISPATCH(n)                                                                \
     { ASSERT(program->bytecodes.data() <= bcp + n);                                \
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
+      ASSERT(!process_->object_heap()->has_pending_limit());                       \
       Opcode next = static_cast<Opcode>(bcp[n]);                                   \
       bcp += n;                                                                    \
       OPCODE_TRACE()                                                               \
@@ -141,18 +153,18 @@ Method Program::find_method(Object* receiver, int offset) {
 // CHECK_STACK_OVERFLOW checks if there is enough stack space to call
 // the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
-  if (sp - target.max_height() < _watermark) {                        \
+  if (sp - target.max_height() < watermark_) {                        \
     OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
         break;                                                        \
       case OVERFLOW_PREEMPT:                                          \
-        _preemption_method_header_bcp = target.header_bcp();          \
+        preemption_method_header_bcp_ = target.header_bcp();          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
-        store_stack(sp);                                              \
+        store_stack(sp, target);                                      \
         return Result(Result::PREEMPTED);                             \
       case OVERFLOW_EXCEPTION:                                        \
         goto THROW_IMPLEMENTATION;                                    \
@@ -161,9 +173,9 @@ Method Program::find_method(Object* receiver, int offset) {
 
 // CHECK_PREEMPT checks for preemption by looking at the watermark.
 #define CHECK_PREEMPT(entry)                                          \
-  if (_watermark == PREEMPTION_MARKER) {                              \
-    _watermark = null;                                                \
-    _preemption_method_header_bcp = Method::header_from_entry(entry); \
+  if (watermark_ == PREEMPTION_MARKER) {                              \
+    watermark_ = null;                                                \
+    preemption_method_header_bcp_ = Method::header_from_entry(entry); \
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
@@ -171,11 +183,31 @@ Method Program::find_method(Object* receiver, int offset) {
     return Result(Result::PREEMPTED);                                 \
   }
 
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)   \
+  if (propagated_types) {                             \
+    propagated_types->check_method_entry(target, sp); \
+  }
+#define CHECK_PROPAGATED_TYPES_TOP()                  \
+  if (propagated_types) {                             \
+    propagated_types->check_top(bcp, *sp);            \
+  }
+#define CHECK_PROPAGATED_TYPES_RETURN()               \
+  if (propagated_types) {                             \
+    propagated_types->check_return(bcp, *sp);         \
+  }
+#else
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
+#define CHECK_PROPAGATED_TYPES_TOP()
+#define CHECK_PROPAGATED_TYPES_RETURN()
+#endif
+
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");            \
   PUSH(reinterpret_cast<Object*>(return_address));                    \
   PUSH(program->frame_marker());                                      \
   CHECK_STACK_OVERFLOW(target)                                        \
+  CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);                        \
   bcp = target.entry();                                               \
   DISPATCH(0)
 
@@ -191,7 +223,7 @@ inline word mul(word a, word b) { return a * b; }
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -201,7 +233,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -211,7 +243,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
 #elif BUILD_64
@@ -220,8 +252,8 @@ inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = (Smi*) (((word) a) << bits_to_shift);
   // Only succeed if no bits are lost.
@@ -229,17 +261,17 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
-  *result = Smi::from(Smi::cast(a)->value() >> bits_to_shift);
+  *result = Smi::from(Smi::value(a) >> bits_to_shift);
   return true;
 }
 
 inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
-  word a_value = Smi::cast(a)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
+  word a_value = Smi::value(a);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE || a_value < 0) return false;
   *result = Smi::from(a_value >> bits_to_shift);
   return true;
@@ -252,17 +284,38 @@ Interpreter::Result Interpreter::run() {
   };
 #undef LABEL
 
+  // We sometimes suspend processes and collect their garbage
+  // from the outside. In that case, we are not calling the GC
+  // after a failed allocation attempt, so we do not get the
+  // pending heap limit installed. Do it here before starting
+  // the interpretation.
+  process_->object_heap()->leave_primitive();
+
   // Interpretation state.
-  _preemption_method_header_bcp = null;
-  Object** sp = load_stack();
-  Program* program = _process->program();
-  uword _index_ = 0;
-  static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  {
+  Program* program = process_->program();
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+  compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
+#endif
+  preemption_method_header_bcp_ = null;
+  uword index__ = 0;
+  Object** sp;
+  uint8* bcp;
+
+  { Method pending = Method::invalid();
+    sp = load_stack(&pending);
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
     Object* frame_marker = POP();
     ASSERT(frame_marker == program->frame_marker());
+    bcp = reinterpret_cast<uint8*>(POP());
+    // When we are preempted at a call-site, we haven't done the
+    // correct stack overflow check yet. We do the check now,
+    // using the remembered 'pending' target method.
+    // This is also another preemption check so we risk making no
+    // progress if we keep getting preempted.
+    if (pending.is_valid()) CHECK_STACK_OVERFLOW(pending);
   }
-  uint8* bcp = reinterpret_cast<uint8*>(POP());
+
+  // Dispatch to the first bytecode. Here we go!
   DISPATCH(0);
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LOCAL, stack_offset);
@@ -315,6 +368,7 @@ Interpreter::Result Interpreter::run() {
     Smi* block = Smi::cast(POP());
     Object** block_ptr = from_block(block);
     PUSH(block_ptr[stack_offset]);
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
@@ -329,6 +383,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     Instance* instance = Instance::cast(POP());
     PUSH(instance->at(field_index));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
@@ -337,6 +392,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local));
     PUSH(instance->at(field));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
@@ -345,6 +401,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local + 1));
     STACK_AT_PUT(0, instance->at(field));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
@@ -396,24 +453,29 @@ Interpreter::Result Interpreter::run() {
     PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 
+  OPCODE_BEGIN(LOAD_METHOD);
+    PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
+  OPCODE_END();
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
-    int global_index = Smi::cast(POP())->value();
+    int global_index = Smi::value(POP());
     if (!(0 <= global_index && global_index < program->global_variables.length())) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
       Method target = program->program_failure();
       CALL_METHOD(target, LOAD_GLOBAL_VAR_DYNAMIC_LENGTH);
     }
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     Object* value = global_variables[global_index];
     if (is_instance(value)) {
       Instance* instance = Instance::cast(value);
@@ -428,22 +490,23 @@ Interpreter::Result Interpreter::run() {
     } else {
       PUSH(value);
     }
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     global_variables[global_index] = STACK_AT(0);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
     Object* value = POP();
-    int global_index = Smi::cast(POP())->value();
+    int global_index = Smi::value(POP());
     if (!(0 <= global_index && global_index < program->global_variables.length())) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
       Method target = program->program_failure();
       CALL_METHOD(target, STORE_GLOBAL_VAR_DYNAMIC_LENGTH);
     }
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     global_variables[global_index] = value;
   OPCODE_END();
 
@@ -461,41 +524,42 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(POP);
     B_ARG1(index);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     ASSERT(index > 0);
     DROP(index);
   OPCODE_END();
 
   OPCODE_BEGIN(POP_1);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     DROP1();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
-    Object* result = _process->object_heap()->allocate_instance(Smi::from(class_index));
+    process_->set_current_bcp(bcp);
+    Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
       if (attempts == 3) {
         printf("[gc @ %p%s | 3rd time allocate failure %zd]\n",
-            _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
+            process_, VM::current()->scheduler()->is_boot_process(process_) ? "*" : " ",
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = gc(sp, false, attempts, false);
-      result = _process->object_heap()->allocate_instance(Smi::from(class_index));
+      sp = gc(sp, false, attempts, false, "'allocate instance'", class_index);
+      result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
+    process_->object_heap()->leave_primitive();
+    process_->set_current_bcp(null);
+
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
-    Instance* instance = Instance::cast(result);
-    int fields = Instance::fields_from_size(program->instance_size_for(instance));
-    for (int i = 0; i < fields; i++) {
-      instance->at_put(i, program->null_object());
-    }
     PUSH(result);
-    if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    _process->object_heap()->check_install_heap_limit();
+    if (Flags::gc_a_lot) {
+      sp = gc(sp, false, 1, false, "'gc a lot'");
+      process_->object_heap()->leave_primitive();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -541,7 +605,7 @@ Interpreter::Result Interpreter::run() {
       // The receiver is still on the stack.
       // Push the absolute bci of the as-check, so that we can find the interface name.
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp + _length_)));
-      Method target  = program->as_check_failure();
+      Method target = program->as_check_failure();
       CALL_METHOD(target, _length_);
     }
   OPCODE_END();
@@ -559,7 +623,7 @@ Interpreter::Result Interpreter::run() {
       PUSH(value);
       // Push the absolute bci of the as-check, so that we can find the interface name.
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp + AS_LOCAL_LENGTH)));
-      Method target  = program->as_check_failure();
+      Method target = program->as_check_failure();
       CALL_METHOD(target, AS_LOCAL_LENGTH);
     }
   OPCODE_END();
@@ -592,7 +656,7 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(index);
     Smi* block = Smi::cast(STACK_AT(index - 1));
     Object** block_ptr = from_block(block);
-    Method target(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target(program->bytecodes, Smi::value(*block_ptr));
     int extra = index - target.arity();
     if (extra < 0) {
       PUSH(program->true_object());  // It's a block.
@@ -611,7 +675,7 @@ Interpreter::Result Interpreter::run() {
     unsigned outer_arity = bcp[2];
     Smi* method_id = Smi::cast(POP());
     height--;
-    Method target(program->bytecodes, method_id->value());
+    Method target(program->bytecodes, Smi::value(method_id));
     unsigned call_arity = target.arity();
     if (call_arity != 0) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
@@ -633,7 +697,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
-    int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
+    word selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -645,7 +709,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -677,7 +741,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     Object* receiver = STACK_AT(1);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -702,21 +766,44 @@ Interpreter::Result Interpreter::run() {
 
   INVOKE_VIRTUAL_FALLBACK: {
     Object* receiver = POP();
-    Method target = program->find_method(receiver, _index_);
+    Method target = program->find_method(receiver, index__);
     if (!target.is_valid()) {
       PUSH(receiver);
-      PUSH(Smi::from(_index_));
+      PUSH(Smi::from(index__));
       target = program->lookup_failure();
     }
     CALL_METHOD(target, INVOKE_EQ_LENGTH);
   }
+
+  OPCODE_BEGIN(IDENTICAL);
+    Object* a0 = STACK_AT(1);
+    Object* a1 = STACK_AT(0);
+    if (a0 == a1) {
+      STACK_AT_PUT(1, program->true_object());
+    } else if (is_double(a0) && is_double(a1)) {
+      auto d0 = Double::cast(a0);
+      auto d1 = Double::cast(a1);
+      STACK_AT_PUT(1, program->boolean(d0->bits() == d1->bits()));
+    } else if (is_large_integer(a0) && is_large_integer(a1)) {
+      auto l0 = LargeInteger::cast(a0);
+      auto l1 = LargeInteger::cast(a1);
+      STACK_AT_PUT(1, program->boolean(l0->value() == l1->value()));
+    } else if (is_string(a0) && is_string(a1)) {
+      auto s0 = String::cast(a0);
+      auto s1 = String::cast(a1);
+      STACK_AT_PUT(1, program->boolean(s0->compare(s1) == 0));
+    } else {
+      STACK_AT_PUT(1, program->false_object());
+    }
+    DROP1();
+  OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_EQ);
     Object* a0 = STACK_AT(1);
     Object* a1 = STACK_AT(0);
     if (a0 == a1) {
       // All identical objects, except for NaNs, are equal to themselves.
-      STACK_AT_PUT(1, boolean(program, !(is_double(a0) && isnan(Double::cast(a0)->value()))));
+      STACK_AT_PUT(1, program->boolean(!(is_double(a0) && isnan(Double::cast(a0)->value()))));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (a0 == program->null_object() || a1 == program->null_object()) {
@@ -724,38 +811,38 @@ Interpreter::Result Interpreter::run() {
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (are_smis(a0, a1)) {
-      word i0 = Smi::cast(a0)->value();
-      word i1 = Smi::cast(a1)->value();
-      STACK_AT_PUT(1, boolean(program, i0 == i1));
+      word i0 = Smi::value(a0);
+      word i1 = Smi::value(a1);
+      STACK_AT_PUT(1, program->boolean(i0 == i1));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (int result = compare_numbers(a0, a1)) {
-      STACK_AT_PUT(1, boolean(program, (result & COMPARE_FLAG_EQUAL) != 0));
+      STACK_AT_PUT(1, program->boolean((result & COMPARE_FLAG_EQUAL) != 0));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     }
     PUSH(a0);
-    _index_ = program->invoke_bytecode_offset(INVOKE_EQ);
+    index__ = program->invoke_bytecode_offset(INVOKE_EQ);
     goto INVOKE_VIRTUAL_FALLBACK;
-  OPCODE_END()
+  OPCODE_END();
 
 #define INVOKE_RELATIONAL(opcode, op, bit)                             \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1)) {                                            \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
-      STACK_AT_PUT(1, boolean(program, i0 op i1));                     \
-      DROP1();                                                          \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
+      STACK_AT_PUT(1, program->boolean(i0 op i1));                     \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     } else if (int result = compare_numbers(a0, a1)) {                 \
-      STACK_AT_PUT(1, boolean(program, (result & bit) != 0));          \
-      DROP1();                                                          \
+      STACK_AT_PUT(1, program->boolean((result & bit) != 0));          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -770,14 +857,14 @@ Interpreter::Result Interpreter::run() {
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1)) {                                            \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(op(i0, i1)));                          \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -791,14 +878,14 @@ Interpreter::Result Interpreter::run() {
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -806,41 +893,63 @@ Interpreter::Result Interpreter::run() {
   INVOKE_ARITHMETIC_NO_ZERO(INVOKE_MOD, %)
 #undef INVOKE_ARITHMETIC_NO_ZERO
 
-#define INVOKE_OVERFLOW_ARITHMETIC(opcode, op)                         \
+#define INVOKE_ARITHMETIC(opcode, op)                                  \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     Smi* result;                                                       \
     if (op(a0, a1, &result)) {                                         \
       STACK_AT_PUT(1, result);                                         \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_ADD, intrinsic_add)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_SUB, intrinsic_sub)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_MUL, intrinsic_mul)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
-#undef INVOKE_OVERFLOW_ARITHMETIC
+#define INVOKE_ARITHMETIC_FP(opcode, op, fop)                          \
+  OPCODE_BEGIN(opcode);                                                \
+    Object* a0 = STACK_AT(1);                                          \
+    Object* a1 = STACK_AT(0);                                          \
+    Smi* result;                                                       \
+    if (op(a0, a1, &result)) {                                         \
+      STACK_AT_PUT(1, result);                                         \
+      DROP1();                                                         \
+      DISPATCH(opcode##_LENGTH);                                       \
+    } else if (Interpreter::are_floats(a0, a1)) {                                   \
+      Object* float_object = float_op(process(), a0, a1, fop);         \
+      if (float_object) {                                              \
+        STACK_AT_PUT(1, float_object);                                 \
+        DROP1();                                                       \
+        DISPATCH(opcode##_LENGTH);                                     \
+      }                                                                \
+    }                                                                  \
+    PUSH(a0);                                                          \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
+    goto INVOKE_VIRTUAL_FALLBACK;                                      \
+  OPCODE_END();
+
+  INVOKE_ARITHMETIC_FP(INVOKE_ADD, intrinsic_add, &double_add)
+  INVOKE_ARITHMETIC_FP(INVOKE_SUB, intrinsic_sub, &double_sub)
+  INVOKE_ARITHMETIC_FP(INVOKE_MUL, intrinsic_mul, &double_mul)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
+  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
+#undef INVOKE_ARITHMETIC
 
   OPCODE_BEGIN(INVOKE_AT);
     Object* receiver = STACK_AT(1);
     Object* arg = STACK_AT(0);
     Object* value = null;
 
-    if (fast_at(_process, receiver, arg, false, &value)) {
+    if (fast_at(process_, receiver, arg, false, &value)) {
       STACK_AT_PUT(1, value);
       DROP1();
       DISPATCH(INVOKE_AT_LENGTH);
     }
     PUSH(receiver);
-    _index_ = program->invoke_bytecode_offset(INVOKE_AT);
+    index__ = program->invoke_bytecode_offset(INVOKE_AT);
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END();
 
@@ -849,15 +958,26 @@ Interpreter::Result Interpreter::run() {
     Object* arg = STACK_AT(1);
     Object* value = STACK_AT(0);
 
-    if (fast_at(_process, receiver, arg, true, &value)) {
+    if (fast_at(process_, receiver, arg, true, &value)) {
       STACK_AT_PUT(2, value);
       DROP1();
       DROP1();
       DISPATCH(INVOKE_AT_PUT_LENGTH);
     }
     PUSH(receiver);
-    _index_ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
+    index__ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     goto INVOKE_VIRTUAL_FALLBACK;
+  OPCODE_END();
+
+  OPCODE_BEGIN(INVOKE_SIZE);
+    Object* receiver = STACK_AT(0);
+    Smi* result;
+
+    if (fast_size(process_, receiver, &result)) {
+      STACK_AT_PUT(0, result);
+      DISPATCH(INVOKE_SIZE_LENGTH);
+    }
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -907,7 +1027,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
     B_ARG1(bci_offset)
     Instance* receiver = Instance::cast(STACK_AT(bci_offset + FRAME_SIZE));
-    Method target(program->bytecodes, Smi::cast(receiver->at(0))->value());
+    Method target(program->bytecodes, Smi::value(receiver->at(0)));
     int captured_size = 1;
     Object* argument = receiver->at(1);
     if (is_array(argument)) {
@@ -952,23 +1072,24 @@ Interpreter::Result Interpreter::run() {
     const int parameter_offset = Interpreter::FRAME_SIZE;
     unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
     const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
-    if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_module, primitive_index);
+    if (Flags::primitives) printf("[invoking primitive %d::%d]\n", primitive_module, primitive_index);
     if (primitive == null) {
       PUSH(Smi::from(primitive_module));
       PUSH(Smi::from(primitive_index));
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
+      process_->set_current_bcp(bcp);
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
-      _sp = sp;
-      Object* result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
-      sp = _sp;
+      sp_ = sp;
+      Object* result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
+      sp = sp_;
 
       for (int attempts = 1; true; attempts++) {
         if (!Primitive::is_error(result)) goto done;
-        result = Primitive::unmark_from_error(result);
+        result = Primitive::unmark_from_error(program, result);
         bool malloc_failed = (result == program->malloc_failed());
         bool allocation_failed = (result == program->allocation_failed());
         bool force_cross_process = false;
@@ -987,20 +1108,22 @@ Interpreter::Result Interpreter::run() {
 #ifdef TOIT_GC_LOGGING
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
-              _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
+              process_, VM::current()->scheduler()->is_boot_process(process_) ? "*" : " ",
               primitive_module, primitive_index,
               malloc_failed ? " (malloc)" : "");
         }
 #endif
 
-        sp = gc(sp, malloc_failed, attempts, force_cross_process);
-        _sp = sp;
-        result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
-        sp = _sp;
+        sp = gc(sp, malloc_failed, attempts, force_cross_process, "primitive", primitive_module, primitive_index);
+        sp_ = sp;
+        result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
+        sp = sp_;
       }
 
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
+      process_->object_heap()->leave_primitive();
+      process_->set_current_bcp(null);
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1012,7 +1135,9 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      _process->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
+      CHECK_PROPAGATED_TYPES_RETURN();
+      process_->set_current_bcp(null);
       DISPATCH(0);
     }
   OPCODE_END();
@@ -1023,7 +1148,7 @@ Interpreter::Result Interpreter::run() {
     // The exception is already in TOS.
     // Push the target address (the base), and the marker that this is an exception.
     // The unwind-code will find the first finally and execute it.
-    PUSH(to_block(_base));
+    PUSH(to_block(base_));
     PUSH(Smi::from(UNWIND_REASON_WHEN_THROWING_EXCEPTION));
     goto UNWIND_IMPLEMENTATION;
   OPCODE_END();
@@ -1043,6 +1168,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(result);
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1060,6 +1186,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(program->null_object());
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1071,8 +1198,8 @@ Interpreter::Result Interpreter::run() {
     PUSH(to_block(target_sp));                                                                \
     /* -1 and -2 are used as markers.*/                                                       \
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");   \
-    ASSERT(Smi::from(arity << 1)->value() != -1);                                             \
-    ASSERT(Smi::from(arity << 1)->value() != -2);                                             \
+    ASSERT(Smi::value(Smi::from(arity << 1)) != -1);                                          \
+    ASSERT(Smi::value(Smi::from(arity << 1)) != -2);                                          \
     PUSH(Smi::from(arity << 1));                                                              \
     goto UNWIND_IMPLEMENTATION                                                                \
 
@@ -1095,14 +1222,14 @@ Interpreter::Result Interpreter::run() {
     uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
     Smi* block = Smi::cast(POP());
     Object** target_sp = from_block(block);
-    _index_ = 0;
+    index__ = 0;
     PUSH(Smi::from(height_diff));
     PUSH(to_block(target_sp));
     auto encoded_bci = Smi::from((absolute_bci << 1) | 1);
     // -1 and -2 are used as markers.
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");
-    ASSERT(encoded_bci->value() != -1);
-    ASSERT(encoded_bci->value() != -2);
+    ASSERT(Smi::value(encoded_bci) != -1);
+    ASSERT(Smi::value(encoded_bci) != -2);
     PUSH(encoded_bci);
     goto UNWIND_IMPLEMENTATION;
   OPCODE_END();
@@ -1116,12 +1243,12 @@ Interpreter::Result Interpreter::run() {
                                        //   the method_index and height-difference (of a non-local branch)
     PUSH(Smi::from(-0xdead));          // The target SP of an unwind.
     PUSH(Smi::from(-1));               // Marker how the unwind is entered. Can also contain arity and/or bci.
-    PUSH(Smi::from(_base - _try_sp));  // Chain to the next _try_sp (see UNLINK below)
-    _try_sp = sp;
+    PUSH(Smi::from(base_ - try_sp_));  // Chain to the next try_sp_ (see UNLINK below)
+    try_sp_ = sp;
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
-    _try_sp = _base - Smi::cast(POP())->value();
+    try_sp_ = base_ - Smi::value(POP());
   OPCODE_END();
 
   UNWIND_IMPLEMENTATION: {
@@ -1146,7 +1273,7 @@ Interpreter::Result Interpreter::run() {
     //   target-sp, and the third slot the height-difference.
     //   (Which basically adjusts the SP to the height of the loop-entry/exit).
     Object* tos = POP();
-    int tos_value = Smi::cast(tos)->value();
+    int tos_value = Smi::value(tos);
     if (tos_value == -1) {
       // Leaving the try/finally normally. Just clean up.
       Smi* target = Smi::cast(POP());
@@ -1160,19 +1287,19 @@ Interpreter::Result Interpreter::run() {
     Object** target_sp = from_block(block);
     Object* result_or_height_diff = POP();
 
-    if (target_sp > _try_sp) {
+    if (target_sp > try_sp_) {
       // Hit unwind protect.
 
       // Remember: the try-block is implemented as a 0-argument block call.
       // We want to continue the finally-block as if we had returned from the
       // try-block call. At the end of the finally-block there will be an
       // unwind.
-      // Before starting the finally-block we update the link-information (at _try_sp)
+      // Before starting the finally-block we update the link-information (at try_sp_)
       // so that the `unwind` can then proceed accordingly (continuing with the
       // non-local return or exception).
       //
       // Since the implementation of the try-block-call is deterministic we can
-      // find the call from the _try_sp. We had pushed 1 for the block-pointer and
+      // find the call from the try_sp_. We had pushed 1 for the block-pointer and
       // the `CALL_METHOD` then pushed FRAME_SIZE more entries (including the return
       // address).
       //
@@ -1184,9 +1311,9 @@ Interpreter::Result Interpreter::run() {
       // Set the sp to the point where we had the try-call.
       int block_pointer_slot = 1;
       int frame_size = Interpreter::FRAME_SIZE;
-      sp = _try_sp - block_pointer_slot - frame_size;
+      sp = try_sp_ - block_pointer_slot - frame_size;
       // Update the link-information.
-      int link_offset = _try_sp - sp;
+      int link_offset = try_sp_ - sp;
       STACK_AT_PUT(link_offset + 1, tos);
       STACK_AT_PUT(link_offset + 2, to_block(target_sp));
       STACK_AT_PUT(link_offset + 3, result_or_height_diff);
@@ -1216,10 +1343,13 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result_or_height_diff);
+      if (tos_value != UNWIND_REASON_WHEN_THROWING_EXCEPTION) {
+        CHECK_PROPAGATED_TYPES_RETURN();
+      }
     } else {
       // A non-local branch.
       int absolute_bci = tos_value >> 1;
-      int height_diff = Smi::cast(result_or_height_diff)->value();
+      int height_diff = Smi::value(result_or_height_diff);
       sp = target_sp;
       bcp = program->bcp_from_absolute_bci(absolute_bci);
       DROP(height_diff);
@@ -1243,14 +1373,7 @@ Interpreter::Result Interpreter::run() {
       if (Flags::trace) printf("[yield from interpretation]\n");
       return Result(Result::YIELDED);
     } else if (return_code == 1) {
-      static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-      PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
-      PUSH(program->frame_marker());
-      store_stack(sp);
-      if (Flags::trace) printf("[stop interpretation]\n");
-      return Result(0);
-    } else if (return_code == 2) {
-      int exit_value = Smi::cast(POP())->value();
+      int exit_value = Smi::value(POP());
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
       PUSH(program->frame_marker());
@@ -1258,11 +1381,11 @@ Interpreter::Result Interpreter::run() {
       if (Flags::trace) printf("[exit interpretation exit_value=%d]\n", exit_value);
       return Result(exit_value);
     } else {
-      ASSERT(return_code == 3);
+      ASSERT(return_code == 2);
       Object* duration = POP();
       int64 value = 0;
       if (is_smi(duration)) {
-        value = Smi::cast(duration)->value();
+        value = Smi::value(duration);
       } else if (is_large_integer(duration)) {
         value = LargeInteger::cast(duration)->value();
       } else {
@@ -1278,7 +1401,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
     Smi* current = Smi::cast(STACK_AT(0));
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
@@ -1286,7 +1409,7 @@ Interpreter::Result Interpreter::run() {
     Smi* end = Smi::cast(STACK_AT(parameter_offset + 1));  // This.
 
     Object** block_ptr = from_block(block);
-    Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target = Method(program->bytecodes, Smi::value(*block_ptr));
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
     // continue to the next bytecode (like for primitives).
@@ -1294,18 +1417,19 @@ Interpreter::Result Interpreter::run() {
 
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
-    word current_value = current->value();
-    if (current_value >= end->value()) {
-      DROP(1);
+    word current_value = Smi::value(current);
+    if (current_value >= Smi::value(end)) {
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());
       bcp = reinterpret_cast<uint8*>(POP());
       // Discard arguments in callers frame.
-      DROP(1);
+      DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1318,8 +1442,8 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_ARRAY_DO);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
-    word current = Smi::cast(STACK_AT(0))->value();
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
+    word current = Smi::value(STACK_AT(0));
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
     Smi* block = Smi::cast(STACK_AT(parameter_offset + 0));
@@ -1327,7 +1451,7 @@ Interpreter::Result Interpreter::run() {
     Array* backing = Array::cast(STACK_AT(parameter_offset + 2));
 
     Object** block_ptr = from_block(block);
-    Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target = Method(program->bytecodes, Smi::value(*block_ptr));
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
     // continue to the next bytecode (like for primitives).
@@ -1335,8 +1459,8 @@ Interpreter::Result Interpreter::run() {
 
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
-    if (current >= end->value()) {
-      DROP(1);
+    if (current >= Smi::value(end)) {
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
@@ -1346,6 +1470,7 @@ Interpreter::Result Interpreter::run() {
       DROP(2);
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1387,21 +1512,21 @@ Interpreter::Result Interpreter::run() {
 
     Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
     Object* backing = collection->at(Instance::MAP_BACKING_INDEX);
-    int step = Smi::cast(STACK_AT(parameter_offset + STEP))->value();
+    int step = Smi::value(STACK_AT(parameter_offset + STEP));
     if (program->true_object() == STACK_AT(parameter_offset + REVERSED)) step = -step;
     Object* entry;
     Object* return_value = hash_do(program, STACK_AT(STATE), backing, step, STACK_AT(parameter_offset + BLOCK), &entry);
-    if (is_smi(return_value) && Smi::cast(return_value)->value() < 0) {
+    if (is_smi(return_value) && Smi::value(return_value) < 0) {
       // Negative Smi means call the block.
-      word c = -(Smi::cast(return_value)->value() + 1);
+      word c = -(Smi::value(return_value) + 1);
       STACK_AT_PUT(STATE, Smi::from(c));
       Smi* block = Smi::cast(STACK_AT(parameter_offset + BLOCK));
-      Method target = Method(program->bytecodes, Smi::cast(*from_block(block))->value());
+      Method target = Method(program->bytecodes, Smi::value(*from_block(block)));
       PUSH(block);
       PUSH(entry);
       if (target.arity() > 2) {
         Object* value;
-        bool result = fast_at(_process, backing, Smi::from(c + 1), false, &value);
+        bool result = fast_at(process_, backing, Smi::from(c + 1), false, &value);
         ASSERT(result);
         PUSH(value);
       }
@@ -1420,320 +1545,35 @@ Interpreter::Result Interpreter::run() {
     DROP(NUMBER_OF_ARGUMENTS - 1);
     ASSERT(!is_stack_empty());
     STACK_AT_PUT(0, return_value);
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
-    UNREACHABLE();
   OPCODE_END();
 
-  OPCODE_BEGIN(INTRINSIC_HASH_FIND);
-    // This opcode attempts to implement the find_body_ method on hash sets and
-    // maps.  It is best read in conjunction with that method, remembering
-    // that the byte code restarts after each block call.  It take three blocks:
-    // [not_found] This is called at most once if the entry is not
-    //             found.  For methods like `contains` it will not return.  In
-    //             other cases it will add a new entry to the backing and
-    //             return the position to be entered in the index.  We remember
-    //             if we have called this and never call it twice.
-    // [rebuild]   This rebuilds the index, usually because it is full.  It
-    //             is only called after not_found, and we restart the whole
-    //             index search after this.
-    // [compare]   This is called to compare two items, one in the collection and
-    //             one new key.  It is only called if the low bits of the hash
-    //             code match, and we handle common cases where the objects are
-    //             equal and of simple types without calling it.  In the case
-    //             where this returns true we don't have much work to do.  The
-    //             case where it returns false is quite rare and it would be OK
-    //             to fall back to Toit code in this case, but we have to
-    //             preserve `append_position` which ensures we don't call the
-    //             not_found block again.
-
-    // Local variable offsets.  We push zeros onto the stack just before the HASH_FIND
-    // bytecode so that it has space for these locals.
-    enum {
-      STATE = 0,  // Must be zero and the stack slot must be initialized to zero (STATE_START).
-      OLD_SIZE,   // Other enum values auto-increment.
-      DELETED_SLOT,
-      SLOT,
-      POSITION,
-      SLOT_STEP,
-      STARTING_SLOT,
-      NUMBER_OF_BYTECODE_LOCALS,  // Must be last.
-    };
-    // Parameter offsets, correspond to the argument order of hash_find_.
-    enum {
-      COMPARE             = 0,
-      REBUILD             = 1,
-      NOT_FOUND           = 2,
-      APPEND_POSITION     = 3,
-      HASH                = 4,
-      KEY                 = 5,
-      COLLECTION          = 6,
-      NUMBER_OF_ARGUMENTS = 7,  // Must be last.
-    };
-    // States.
-    enum {
-      STATE_START = 0,  // Must be zero - initial value of local variables pushed just before the byte code.
-      STATE_NOT_FOUND,
-      STATE_REBUILD,
-      STATE_AFTER_COMPARE,
-    };
-    // Return value of find_, coordinate with collections.toit
-    static const int APPEND_ = -1;
-
-    static const int INVALID_SLOT = -1;
-
-    // Coordinate constants with collections.toit.
-    static const int HASH_SHIFT_ = 12;
-    static const int HASH_MASK_ = ((1 << HASH_SHIFT_) - 1);
-
-    // Either the result of the previously called block or (the first time we
-    // run the bytecode) a zero.
-    Object* block_result = POP();
-
-    // This bytecode should be run with an empty stack.
-    ASSERT(STACK_AT(NUMBER_OF_BYTECODE_LOCALS) == program->frame_marker());
-    int parameter_offset = NUMBER_OF_BYTECODE_LOCALS + Interpreter::FRAME_SIZE;
-
-    int state = Smi::cast(STACK_AT(STATE))->value();
-    if (state == STATE_REBUILD) {
-      // Store result of calling not_found block.
-      STACK_AT_PUT(parameter_offset + APPEND_POSITION, block_result);
-      // Ensure we will restart the index search after rebuild.
-      STACK_AT_PUT(STATE, Smi::from(STATE_START));
-      // Call the rebuild block with old_size as argument.
-      Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
-      Method rebuild_target = Method(program->bytecodes, Smi::cast(*from_block(rebuild_block))->value());
-      PUSH(rebuild_block);
-      PUSH(STACK_AT(OLD_SIZE));
-      CALL_METHOD(rebuild_target, 0);  // Continue at the same bytecode after the block call.
-      UNREACHABLE();
-    }
-
-    Object* hash_object = STACK_AT(parameter_offset + HASH);
-    Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
-    // Some safety checking.  We only need this on the first entry (state 0) but we do
-    // it again after state 3, where we called the user-provided compare routine, which
-    // could mess with our assumptions.
-    // We only support small arrays as index_.
-    if (state == STATE_START || state == STATE_AFTER_COMPARE) {
-      Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
-      Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
-      Object* not_found_block = *from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
-      Object* rebuild_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
-      Object* compare_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
-      Method not_found_target = Method(program->bytecodes, Smi::cast(not_found_block)->value());
-      Method rebuild_target   = Method(program->bytecodes, Smi::cast(rebuild_block)->value());
-      Method compare_target   = Method(program->bytecodes, Smi::cast(compare_block)->value());
-      if (!is_smi(index_spaces_left_object)
-       || !is_smi(hash_object)
-       || !is_smi(size_object)
-       || not_found_target.arity() != 1
-       || rebuild_target.arity() != 2
-       || compare_target.arity() != 3) {
-        // Let the intrinsic fail and continue to the next bytecode (like for
-        // primitives).
-        // Leave one value on the stack, which the compiler expects to find as
-        // the result of the intrinsic.
-        DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
-        DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
-        UNREACHABLE();
-      }
-    }
-    Object* index_object = collection->at(Instance::MAP_INDEX_INDEX);
-    word index_mask;
-    if (is_array(index_object)) {
-      index_mask = Array::cast(index_object)->length() - 1;
-      ASSERT(Array::ARRAYLET_SIZE < (Smi::MAX_SMI_VALUE >> HASH_SHIFT_));
-    } else {
-      bool bail = true;
-      if (is_instance(index_object) && HeapObject::cast(index_object)->class_id() == program->large_array_class_id()) {
-        Object* size_object = Instance::cast(index_object)->at(Instance::LARGE_ARRAY_SIZE_INDEX);
-        if (is_smi(size_object)) {
-          index_mask = Smi::cast(size_object)->value() - 1;
-          bail = false;
-        }
-      }
-      if (bail || index_mask >= (Smi::MAX_SMI_VALUE >> HASH_SHIFT_)) {
-        // We don't want to run into number allocation problems when we construct
-        // the hash-and-position.  This is basically only an issue on the server
-        // in the 32 bit VM - others don't have enough memory to hit it.  Bail out.
-        // Leave one value on the stack, which the compiler expects to find as
-        // the result of the intrinsic.
-        DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
-        DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
-        UNREACHABLE();
-      }
-    }
-    ASSERT(Utils::is_power_of_two(index_mask + 1));
-
-    word hash = Smi::cast(hash_object)->value();
-
-    if (state == STATE_NOT_FOUND) {
-      Object* append_position = block_result;
-      STACK_AT_PUT(parameter_offset + APPEND_POSITION, append_position);
-      ASSERT(is_smi(append_position));
-      // Update free position in index with new entry.
-      word new_hash_and_position = ((Smi::cast(append_position)->value() + 1) << HASH_SHIFT_) | (hash & HASH_MASK_);
-      ASSERT(Smi::is_valid(new_hash_and_position));
-      word deleted_slot = Smi::cast(STACK_AT(DELETED_SLOT))->value();
-      word index_position;
-      if (deleted_slot < 0) {
-        // Calculate index for: index_[slot] = new_hash_and_position
-        index_position = Smi::cast(STACK_AT(SLOT))->value() & index_mask;
-        // index_spaces_left_--
-        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
-        word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
-        collection->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(index_spaces_left - 1));
-      } else {
-        // Calculate index for: index_[deleted_slot] = new_hash_and_position
-        index_position = deleted_slot & index_mask;
-      }
-      Object* entry = Smi::from(new_hash_and_position);
-      if (is_array(index_object)) {
-        Array::cast(index_object)->at_put(index_position, entry);
-      } else {
-        bool success = fast_at(_process, index_object, Smi::from(index_position), true, &entry);
-        ASSERT(success);
-      }
-    }
-
-    if (state == STATE_NOT_FOUND ||
-        (state == STATE_AFTER_COMPARE && is_true_value(program, block_result))) {
-      // We now have an entry in the index for the new entry (we either found one or
-      // created one in the STATE_NOT_FOUND code above), so we return the
-      // position in the backing to our caller.
-      Object* result;
-      if (state == STATE_NOT_FOUND) {
-        result = Smi::from(APPEND_);
-      } else {
-        Object* append_position = STACK_AT(parameter_offset + APPEND_POSITION);
-        if (is_smi(append_position)) {
-          result = Smi::from(APPEND_);
-        } else {
-          result = STACK_AT(POSITION);
-        }
-      }
-      // return result.
-      DROP(NUMBER_OF_BYTECODE_LOCALS);
-      // Restore bcp.
-      static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-      Object* frame_marker = POP();
-      ASSERT(frame_marker == program->frame_marker());
+  OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
+#if defined(ESP32) && !defined(CONFIG_TOIT_INTERPRETER_HELPERS_IN_IRAM)
+    DROP(7);  // NUMBER_OF_ARGUMENTS from Interpreter::hash_find.
+    DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+#else
+    Method block_to_call(0);
+    HashFindAction action;
+    Object* result;
+    sp = hash_find(sp, program, &action, &block_to_call, &result);
+    if (action == kBail) {
+      DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+    } else if (action == kRestartBytecode) {
+      DISPATCH(0);
+    } else if (action == kReturnValue) {
       bcp = reinterpret_cast<uint8*>(POP());
-      // Discard arguments in callers frame.
-      DROP(NUMBER_OF_ARGUMENTS - 1);
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, result);
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
-      UNREACHABLE();
-    }
-
-    // These three must be synced to their local variable stack slots before
-    // restarting the byte code.  They are used for normal flow control in the
-    // while loop below.
-    word slot;
-    word slot_step;
-    word starting_slot;
-
-    bool increment;
-    if (state == STATE_START) {
-      // Initial values for the search in the hash index.
-      slot = hash & index_mask;
-      starting_slot = slot;
-      STACK_AT_PUT(DELETED_SLOT, Smi::from(INVALID_SLOT));
-      slot_step = 1;
-      increment = false;
     } else {
-      ASSERT(state == STATE_AFTER_COMPARE);  // State AFTER_COMPARE with false compare result.
-      ASSERT(!is_true_value(program, block_result));
-      // We reinitialize these locals from the Toit stack.
-      slot          = Smi::cast(STACK_AT(SLOT))->value() & index_mask;
-      starting_slot = Smi::cast(STACK_AT(STARTING_SLOT))->value();
-      slot_step     = Smi::cast(STACK_AT(SLOT_STEP))->value();
-      increment = true;
+      ASSERT(action == kCallBlockThenRestartBytecode);
+      CALL_METHOD(block_to_call, 0);  // Continue at the same bytecode after the block call.
     }
-    // Look or keep looking through the index.
-    while (true) {
-      bool exhausted = false;
-      if (increment) {
-        slot += slot_step;
-        slot &= index_mask;
-        slot_step++;
-        exhausted = (slot == starting_slot);
-      }
-      increment = true;
-      word hash_and_position;
-      if (is_array(index_object)) {
-        hash_and_position = Smi::cast(Array::cast(index_object)->at(slot))->value();
-      } else {
-        Object* hap;
-        bool success = fast_at(_process, index_object, Smi::from(slot), false, &hap);
-        ASSERT(success);
-        ASSERT(is_smi(hap));
-        hash_and_position = Smi::cast(hap)->value();
-      }
-      if (hash_and_position == 0 || exhausted) {
-        // Found free slot.
-        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
-        word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
-        if (index_spaces_left == 0 || exhausted) {
-          Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
-          STACK_AT_PUT(OLD_SIZE, size_object);
-          STACK_AT_PUT(STATE, Smi::from(STATE_REBUILD)); // Go there if not_found returns.
-        } else {
-          STACK_AT_PUT(SLOT, Smi::from(slot));
-          STACK_AT_PUT(STATE, Smi::from(STATE_NOT_FOUND)); // Go there if not_found returns.
-        }
-        Object* append_position = STACK_AT(parameter_offset + APPEND_POSITION);
-        if (!is_smi(append_position)) {  // If it is null we haven't called not_found yet.
-          Smi* not_found_block = Smi::cast(STACK_AT(parameter_offset + NOT_FOUND));
-          Method not_found_target =
-              Method(program->bytecodes, Smi::cast(*from_block(not_found_block))->value());
-          PUSH(not_found_block);
-          CALL_METHOD(not_found_target, 0);  // Continue at the same bytecode.
-          UNREACHABLE();
-        } else {
-          // Here we already called the not_found block once, so we want to go
-          // directly to state NOT_FOUND or REBUILD without a block call.  This
-          // is quite rare, so we do the simple solution.  We push the append
-          // position as if it had been returned from the block, then restart
-          // the byte code to go to the correct place.
-          PUSH(append_position);  // Fake block return value.
-          DISPATCH(0);  // Restart byte code.
-          UNREACHABLE();
-        }
-      }
-      // Found non-free slot.
-      Smi* position = Smi::from((hash_and_position >> HASH_SHIFT_) - 1);
-      // k := backing_[position]
-      Object* backing_object = HeapObject::cast(collection->at(Instance::MAP_BACKING_INDEX));
-      Object* k;
-      bool success = fast_at(_process, backing_object, position, false, &k);
-      ASSERT(success);
-      word deleted_slot = Smi::cast(STACK_AT(DELETED_SLOT))->value();
-      // if deleted_slot is invalid and k is Tombstone_
-      if (deleted_slot == INVALID_SLOT && !is_smi(k) && HeapObject::cast(k)->class_id() == program->tombstone_class_id()) {
-        STACK_AT_PUT(DELETED_SLOT, Smi::from(slot));
-      }
-      if ((hash_and_position & HASH_MASK_) == (hash & HASH_MASK_)) {
-        if (is_smi(k) || HeapObject::cast(k)->class_id() != program->tombstone_class_id()) {
-          // Found hash match.
-          // TODO: Handle string and number cases here.
-          STACK_AT_PUT(STATE, Smi::from(STATE_AFTER_COMPARE)); // Go there afterwards.
-          STACK_AT_PUT(SLOT, Smi::from(slot));
-          STACK_AT_PUT(STARTING_SLOT, Smi::from(starting_slot));
-          STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
-          STACK_AT_PUT(POSITION, position);
-          Smi* compare_block  = Smi::cast(STACK_AT(parameter_offset + COMPARE));
-          Method compare_target   = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
-          Object* key = STACK_AT(parameter_offset + KEY);
-          PUSH(compare_block);
-          PUSH(key);
-          PUSH(k);
-          CALL_METHOD(compare_target, 0);  // Continue at the same bytecode.
-          UNREACHABLE();
-        }
-      }
-    }  // while(true) loop.
+#endif
+  }
   OPCODE_END();
 }
 
@@ -1741,5 +1581,320 @@ Interpreter::Result Interpreter::run() {
 #undef DISPATCH_TO
 #undef OPCODE_BEGIN
 #undef OPCODE_END
+
+Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::HashFindAction* action_return, Method* block_to_call, Object** result_to_return) {
+  // This opcode attempts to implement the find_body_ method on hash sets and
+  // maps.  It is best read in conjunction with that method, remembering
+  // that the byte code restarts after each block call.  It take three blocks:
+  // [not_found] This is called at most once if the entry is not
+  //             found.  For methods like `contains` it will not return.  In
+  //             other cases it will add a new entry to the backing and
+  //             return the position to be entered in the index.  We remember
+  //             if we have called this and never call it twice.
+  // [rebuild]   This rebuilds the index, usually because it is full.  It
+  //             is only called after not_found, and we restart the whole
+  //             index search after this.
+  // [compare]   This is called to compare two items, one in the collection and
+  //             one new key.  It is only called if the low bits of the hash
+  //             code match, and we handle common cases where the objects are
+  //             equal and of simple types without calling it.  In the case
+  //             where this returns true we don't have much work to do.  The
+  //             case where it returns false is quite rare and it would be OK
+  //             to fall back to Toit code in this case, but we have to
+  //             preserve `append_position` which ensures we don't call the
+  //             not_found block again.
+
+  // Local variable offsets.  We push zeros onto the stack just before the HASH_FIND
+  // bytecode so that it has space for these locals.
+  enum {
+    STATE = 0,  // Must be zero and the stack slot must be initialized to zero (STATE_START).
+    OLD_SIZE,   // Other enum values auto-increment.
+    DELETED_SLOT,
+    SLOT,
+    POSITION,
+    SLOT_STEP,
+    STARTING_SLOT,
+    NUMBER_OF_BYTECODE_LOCALS,  // Must be last.
+  };
+  // Parameter offsets, correspond to the argument order of hash_find_.
+  enum {
+    COMPARE             = 0,
+    REBUILD             = 1,
+    NOT_FOUND           = 2,
+    APPEND_POSITION     = 3,
+    HASH                = 4,
+    KEY                 = 5,
+    COLLECTION          = 6,
+    NUMBER_OF_ARGUMENTS = 7,  // Must be last.  See also INTRINSIC_HASH_FIND implementation.
+  };
+  // States.
+  enum {
+    STATE_START = 0,  // Must be zero - initial value of local variables pushed just before the byte code.
+    STATE_NOT_FOUND,
+    STATE_REBUILD,
+    STATE_AFTER_COMPARE,
+  };
+  // Return value of find_, coordinate with collections.toit
+  static const int APPEND_ = -1;
+
+  static const int INVALID_SLOT = -1;
+
+  // Coordinate constants with collections.toit.
+  static const int HASH_SHIFT_ = 12;
+  static const int HASH_MASK_ = ((1 << HASH_SHIFT_) - 1);
+
+  // Either the result of the previously called block or (the first time we
+  // run the bytecode) a zero.
+  Object* block_result = POP();
+
+  // This bytecode should be run with an empty stack.
+  ASSERT(STACK_AT(NUMBER_OF_BYTECODE_LOCALS) == program->frame_marker());
+  int parameter_offset = NUMBER_OF_BYTECODE_LOCALS + Interpreter::FRAME_SIZE;
+
+  int state = Smi::value(STACK_AT(STATE));
+  if (state == STATE_REBUILD) {
+    // Store result of calling not_found block.
+    STACK_AT_PUT(parameter_offset + APPEND_POSITION, block_result);
+    // Ensure we will restart the index search after rebuild.
+    STACK_AT_PUT(STATE, Smi::from(STATE_START));
+    // Call the rebuild block with old_size as argument.
+    Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
+    Method rebuild_target = Method(program->bytecodes, Smi::value(*from_block(rebuild_block)));
+    PUSH(rebuild_block);
+    PUSH(STACK_AT(OLD_SIZE));
+    *block_to_call = rebuild_target;
+    *action_return = kCallBlockThenRestartBytecode;
+    return sp;
+  }
+
+  Object* hash_object = STACK_AT(parameter_offset + HASH);
+  Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
+  // Some safety checking.  We only need this on the first entry (state 0) but we do
+  // it again after state 3, where we called the user-provided compare routine, which
+  // could mess with our assumptions.
+  // We only support small arrays as index_.
+  if (state == STATE_START || state == STATE_AFTER_COMPARE) {
+    Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
+    Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
+    Object* not_found_block = *from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
+    Object* rebuild_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
+    Object* compare_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
+    Method not_found_target = Method(program->bytecodes, Smi::value(not_found_block));
+    Method rebuild_target   = Method(program->bytecodes, Smi::value(rebuild_block));
+    Method compare_target   = Method(program->bytecodes, Smi::value(compare_block));
+    if (!is_smi(index_spaces_left_object)
+     || !is_smi(hash_object)
+     || !is_smi(size_object)
+     || not_found_target.arity() != 1
+     || rebuild_target.arity() != 2
+     || compare_target.arity() != 3) {
+      // Let the intrinsic fail and continue to the next bytecode (like for
+      // primitives).
+      // Leave one value on the stack, which the compiler expects to find as
+      // the result of the intrinsic.
+      DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
+      *action_return = kBail;
+      return sp;
+    }
+  }
+  Object* index_object = collection->at(Instance::MAP_INDEX_INDEX);
+  word index_mask;
+  if (is_array(index_object)) {
+    index_mask = Array::cast(index_object)->length() - 1;
+    ASSERT(Array::ARRAYLET_SIZE < (Smi::MAX_SMI_VALUE >> HASH_SHIFT_));
+  } else {
+    bool bail = true;
+    if (is_instance(index_object) && HeapObject::cast(index_object)->class_id() == program->large_array_class_id()) {
+      Object* size_object = Instance::cast(index_object)->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+      if (is_smi(size_object)) {
+        index_mask = Smi::value(size_object) - 1;
+        bail = false;
+      }
+    }
+    if (bail || index_mask >= (Smi::MAX_SMI_VALUE >> HASH_SHIFT_)) {
+      // We don't want to run into number allocation problems when we construct
+      // the hash-and-position.  This is basically only an issue on the server
+      // in the 32 bit VM - others don't have enough memory to hit it.  Bail out.
+      // Leave one value on the stack, which the compiler expects to find as
+      // the result of the intrinsic.
+      DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
+      *action_return = kBail;
+      return sp;
+    }
+  }
+  ASSERT(Utils::is_power_of_two(index_mask + 1));
+
+  word hash = Smi::value(hash_object);
+
+  if (state == STATE_NOT_FOUND) {
+    Object* append_position = block_result;
+    STACK_AT_PUT(parameter_offset + APPEND_POSITION, append_position);
+    ASSERT(is_smi(append_position));
+    // Update free position in index with new entry.
+    word new_hash_and_position = ((Smi::value(append_position) + 1) << HASH_SHIFT_) | (hash & HASH_MASK_);
+    ASSERT(Smi::is_valid(new_hash_and_position));
+    word deleted_slot = Smi::value(STACK_AT(DELETED_SLOT));
+    word index_position;
+    if (deleted_slot < 0) {
+      // Calculate index for: index_[slot] = new_hash_and_position
+      index_position = Smi::value(STACK_AT(SLOT)) & index_mask;
+      // index_spaces_left_--
+      Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
+      word index_spaces_left = Smi::value(index_spaces_left_object);
+      collection->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(index_spaces_left - 1));
+    } else {
+      // Calculate index for: index_[deleted_slot] = new_hash_and_position
+      index_position = deleted_slot & index_mask;
+    }
+    Object* entry = Smi::from(new_hash_and_position);
+    if (is_array(index_object)) {
+      Array::cast(index_object)->at_put(index_position, entry);
+    } else {
+      bool success = fast_at(process_, index_object, Smi::from(index_position), true, &entry);
+      ASSERT(success);
+    }
+  }
+
+  if (state == STATE_NOT_FOUND ||
+      (state == STATE_AFTER_COMPARE && is_true_value(program, block_result))) {
+    // We now have an entry in the index for the new entry (we either found one or
+    // created one in the STATE_NOT_FOUND code above), so we return the
+    // position in the backing to our caller.
+    Object* result;
+    if (state == STATE_NOT_FOUND) {
+      result = Smi::from(APPEND_);
+    } else {
+      Object* append_position = STACK_AT(parameter_offset + APPEND_POSITION);
+      if (is_smi(append_position)) {
+        result = Smi::from(APPEND_);
+      } else {
+        result = STACK_AT(POSITION);
+      }
+    }
+    // Return result.
+    DROP(NUMBER_OF_BYTECODE_LOCALS);
+    // Restore bcp.
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
+    Object* frame_marker = POP();
+    ASSERT(frame_marker == program->frame_marker());
+    *result_to_return = result;
+    Object* new_bcp = POP();
+    // Discard arguments in callers frame.
+    DROP(NUMBER_OF_ARGUMENTS - 1);
+    PUSH(new_bcp);
+    *action_return = kReturnValue;
+    return sp;
+  }
+
+  // These three must be synced to their local variable stack slots before
+  // restarting the byte code.  They are used for normal flow control in the
+  // while loop below.
+  word slot;
+  word slot_step;
+  word starting_slot;
+
+  bool increment;
+  if (state == STATE_START) {
+    // Initial values for the search in the hash index.
+    slot = hash & index_mask;
+    starting_slot = slot;
+    STACK_AT_PUT(DELETED_SLOT, Smi::from(INVALID_SLOT));
+    slot_step = 1;
+    increment = false;
+  } else {
+    ASSERT(state == STATE_AFTER_COMPARE);  // State AFTER_COMPARE with false compare result.
+    ASSERT(!is_true_value(program, block_result));
+    // We reinitialize these locals from the Toit stack.
+    slot          = Smi::value(STACK_AT(SLOT)) & index_mask;
+    starting_slot = Smi::value(STACK_AT(STARTING_SLOT));
+    slot_step     = Smi::value(STACK_AT(SLOT_STEP));
+    increment = true;
+  }
+  // Look or keep looking through the index.
+  while (true) {
+    bool exhausted = false;
+    if (increment) {
+      slot += slot_step;
+      slot &= index_mask;
+      slot_step++;
+      exhausted = (slot == starting_slot);
+    }
+    increment = true;
+    word hash_and_position;
+    if (is_array(index_object)) {
+      hash_and_position = Smi::value(Array::cast(index_object)->at(slot));
+    } else {
+      Object* hap;
+      bool success = fast_at(process_, index_object, Smi::from(slot), false, &hap);
+      ASSERT(success);
+      ASSERT(is_smi(hap));
+      hash_and_position = Smi::value(hap);
+    }
+    if (hash_and_position == 0 || exhausted) {
+      // Found free slot.
+      Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
+      word index_spaces_left = Smi::value(index_spaces_left_object);
+      if (index_spaces_left == 0 || exhausted) {
+        Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
+        STACK_AT_PUT(OLD_SIZE, size_object);
+        STACK_AT_PUT(STATE, Smi::from(STATE_REBUILD)); // Go there if not_found returns.
+      } else {
+        STACK_AT_PUT(SLOT, Smi::from(slot));
+        STACK_AT_PUT(STATE, Smi::from(STATE_NOT_FOUND)); // Go there if not_found returns.
+      }
+      Object* append_position = STACK_AT(parameter_offset + APPEND_POSITION);
+      if (!is_smi(append_position)) {  // If it is null we haven't called not_found yet.
+        Smi* not_found_block = Smi::cast(STACK_AT(parameter_offset + NOT_FOUND));
+        Method not_found_target =
+            Method(program->bytecodes, Smi::value(*from_block(not_found_block)));
+        PUSH(not_found_block);
+        *block_to_call = not_found_target;
+        *action_return = kCallBlockThenRestartBytecode;
+        return sp;
+      } else {
+        // Here we already called the not_found block once, so we want to go
+        // directly to state NOT_FOUND or REBUILD without a block call.  This
+        // is quite rare, so we do the simple solution.  We push the append
+        // position as if it had been returned from the block, then restart
+        // the byte code to go to the correct place.
+        PUSH(append_position);  // Fake block return value.
+        *action_return = kRestartBytecode;
+        return sp;
+      }
+    }
+    // Found non-free slot.
+    Smi* position = Smi::from((hash_and_position >> HASH_SHIFT_) - 1);
+    // k := backing_[position]
+    Object* backing_object = HeapObject::cast(collection->at(Instance::MAP_BACKING_INDEX));
+    Object* k;
+    bool success = fast_at(process_, backing_object, position, false, &k);
+    ASSERT(success);
+    word deleted_slot = Smi::value(STACK_AT(DELETED_SLOT));
+    // if deleted_slot is invalid and k is Tombstone_
+    if (deleted_slot == INVALID_SLOT && !is_smi(k) && HeapObject::cast(k)->class_id() == program->tombstone_class_id()) {
+      STACK_AT_PUT(DELETED_SLOT, Smi::from(slot));
+    }
+    if ((hash_and_position & HASH_MASK_) == (hash & HASH_MASK_)) {
+      if (is_smi(k) || HeapObject::cast(k)->class_id() != program->tombstone_class_id()) {
+        // Found hash match.
+        // TODO: Handle string and number cases here.
+        STACK_AT_PUT(STATE, Smi::from(STATE_AFTER_COMPARE)); // Go there afterwards.
+        STACK_AT_PUT(SLOT, Smi::from(slot));
+        STACK_AT_PUT(STARTING_SLOT, Smi::from(starting_slot));
+        STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
+        STACK_AT_PUT(POSITION, position);
+        Smi* compare_block = Smi::cast(STACK_AT(parameter_offset + COMPARE));
+        Method compare_target = Method(program->bytecodes, Smi::value(*from_block(compare_block)));
+        Object* key = STACK_AT(parameter_offset + KEY);
+        PUSH(compare_block);
+        PUSH(key);
+        PUSH(k);
+        *block_to_call = compare_target;
+        *action_return = kCallBlockThenRestartBytecode;
+        return sp;
+      }
+    }
+  }  // while(true) loop.
+}
 
 } // namespace toit

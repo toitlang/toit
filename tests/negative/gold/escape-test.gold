@@ -1,0 +1,12 @@
+tests/negative/escape-test.toit:9:3: error: Unexpected <illegal>
+  \ 
+  ^
+tests/negative/escape-test.toit:6:3: error: Invalid string: '\h'
+
+  "\h"
+  ^~~~
+tests/negative/escape-test.toit:7:3: error: Invalid string: '\s'
+
+  "\s"
+  ^~~~
+Compilation failed

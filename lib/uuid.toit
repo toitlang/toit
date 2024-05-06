@@ -32,24 +32,35 @@ Supports the canonical textual representation, consisting of 16 bytes encoded
   groups, separated by a dash ('-'). The groups should contain respectively
   8, 4, 4, 4, and 12 hexadecimal characters.
 
+Calls $on-error (and returns its result) if $str is not a valid UUID.
+
 # Examples
 ```
 parse "123e4567-e89b-12d3-a456-426614174000"
 ```
 */
-parse str/string:
+parse str/string [--on-error] -> Uuid:
   uuid := ByteArray SIZE
   index := 0
   i := 0
-  thrower := (: throw "INVALID_UUID")
+  error-handler := (: return on-error.call)
   while i < str.size and index < uuid.size:
     if (str.at --raw i) == '-': i++
-    v := hex_digit str[i++] thrower
+    if i + 1 >= str.size: return on-error.call
+    v := hex-char-to-value str[i++] --on-error=error-handler
     v <<= 4
-    v |= hex_digit str[i++] thrower
+    v |= hex-char-to-value str[i++] --on-error=error-handler
     uuid[index++] = v
-  if i < str.size or index != uuid.size: throw "INVALID_UUID"
+  if i < str.size or index != uuid.size:
+    return on-error.call
   return Uuid uuid
+
+/**
+Variant of $(parse str [--on-error]) that throws an error if $str is not a
+  valid UUID.
+*/
+parse str/string -> Uuid:
+  return parse str --on-error=(: throw "INVALID_UUID")
 
 /**
 Builds a version 5 UUID from the given $namespace and $data.
@@ -59,12 +70,12 @@ The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
   thus also known as "Leach-Salz" UUID.
 */
 // TODO(4197): should be typed.
-uuid5 namespace data:
+uuid5 namespace data -> Uuid:
   hash := crypto.Sha1
   // TODO(4197): why do we need to call `to_byte_array` here.
   //   Is the documentation wrong and we want to accept more than
   //   just strings and byte arrays?
-  hash.add namespace.to_byte_array
+  hash.add namespace.to-byte-array
   hash.add data
   uuid := hash.get
 
@@ -99,14 +110,12 @@ class Uuid:
     if bytes_.size != SIZE: throw "INVALID_UUID"
 
   /**
-  Creates the NIL UUID.
-  All bits of the UUID are zero.
+  Converts this instance to a string.
 
-  Deprecated. Use $NIL instead.
+  Use $to-string to get the canonical text representation of UUIDs.
   */
-  constructor.all_zeros:
-    zeros := ByteArray SIZE: 0
-    return Uuid zeros
+  stringify -> string:
+    return to-string
 
   /**
   Converts this instance to the canonical text representation of UUIDs.
@@ -117,16 +126,16 @@ class Uuid:
   For example, a result of this method could be:
     `"123e4567-e89b-12d3-a456-426614174000"`
   */
-  stringify:
+  to-string -> string:
     buffer := ByteArray 36
     index := 0
     for i := 0; i < SIZE; i++:
       if index == 8 or index == 13 or index == 18 or index == 23:
         buffer[index++] = '-'
       c := bytes_[i]
-      buffer[index++] = to_lower_case_hex c >> 4
-      buffer[index++] = to_lower_case_hex c & 0xf
-    return buffer.to_string
+      buffer[index++] = to-lower-case-hex c >> 4
+      buffer[index++] = to-lower-case-hex c & 0xf
+    return buffer.to-string
 
   /**
   Converts this instance into a byte array.
@@ -135,25 +144,25 @@ class Uuid:
 
   The returned byte array is a valid input for the UUID constructor.
   */
-  to_byte_array -> ByteArray:
+  to-byte-array -> ByteArray:
     return bytes_
 
   /** Whether this instance has the same 128 bits as $other. */
   operator == other -> bool:
     if other is not Uuid: return false
-    other_bytes := other.bytes_
+    other-bytes := other.bytes_
     for i := 0; i < SIZE; i++:
-      if bytes_[i] != other_bytes[i]: return false
+      if bytes_[i] != other-bytes[i]: return false
     return true
 
   /** A hash code for this instance. */
   // The "randomness" of the UUID bytes is uniformly distributed
   // across all the bytes, so we just use the first three bytes
   // and stay in the small integer range.
-  hash_code -> int:
+  hash-code -> int:
     hash := hash_
     if hash: return hash
     else: return hash_ = bytes_[0] | bytes_[1] << 8 | bytes_[2] << 16
 
   /** Whether this instance is equal to the nil UUID $NIL. */
-  is_nil -> bool: return not bytes_.any: it != 0
+  is-nil -> bool: return not bytes_.any: it != 0

@@ -65,6 +65,10 @@ class Compiler {
     bool werror;
     /// Whether to show warnings in packages.
     bool show_package_warnings;
+    /// Whether to print diagnostics on stdout (true) or stderr (false).
+    bool print_diagnostics_on_stdout;
+    /// Optimization level.
+    int optimization_level;
   };
 
   Compiler();

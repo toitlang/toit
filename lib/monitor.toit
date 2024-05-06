@@ -35,11 +35,11 @@ A latch that allows one task to wait until a value (object) has been provided
 This class must not be extended.
 */
 monitor Latch:
-  static STATE_UNSET_         ::= 0
-  static STATE_HAS_VALUE_     ::= 1
-  static STATE_HAS_EXCEPTION_ ::= 2
+  static STATE-UNSET_         ::= 0
+  static STATE-HAS-VALUE_     ::= 1
+  static STATE-HAS-EXCEPTION_ ::= 2
 
-  state_ / int := STATE_UNSET_
+  state_ / int := STATE-UNSET_
   value_ := null
 
   /**
@@ -50,9 +50,9 @@ monitor Latch:
   May be called multiple times.
   */
   get -> any:
-    await: state_ != STATE_UNSET_
+    await: state_ != STATE-UNSET_
     value := value_
-    if state_ == STATE_HAS_EXCEPTION_:
+    if state_ == STATE-HAS-EXCEPTION_:
       if value is not Exception_: throw value
       rethrow value.value value.trace
     return value
@@ -68,11 +68,11 @@ monitor Latch:
   */
   set value/any --exception/bool=false -> none:
     value_ = value
-    state_ = exception ? STATE_HAS_EXCEPTION_ : STATE_HAS_VALUE_
+    state_ = exception ? STATE-HAS-EXCEPTION_ : STATE-HAS-VALUE_
 
   /** Whether this latch has already a value or an exception set. */
-  has_value -> bool:
-    return state_ != STATE_UNSET_
+  has-value -> bool:
+    return state_ != STATE-UNSET_
 
 /**
 A semaphore synchronization primitive.
@@ -128,6 +128,7 @@ A signal synchronization primitive.
 This class must not be extended.
 */
 monitor Signal:
+  waiters_ /int := 0
   current_ /int := 0
   awaited_ /int := 0
 
@@ -169,17 +170,20 @@ monitor Signal:
 
   // Helper method for condition waiting.
   wait_ [condition] -> none:
-    while true:
-      awaited := awaited_
-      if current_ == awaited:
+    waiters_++
+    try:
+      while true:
+        awaited := awaited_
+        awaited_ = ++awaited
+        await: current_ >= awaited
+        if condition.call: return
+    finally:
+      if waiters_-- == 1:
         // No other task is waiting for this signal to be raised,
         // so it is safe to reset the counters. This helps avoid
         // the ever increasing counter issue that may lead to poor
         // performance in (very) extreme cases.
-        current_ = awaited = 0
-      awaited_ = ++awaited
-      await: current_ >= awaited
-      if condition.call: return
+        current_ = awaited_ = 0
 
 /**
 A synchronization gate.
@@ -205,7 +209,7 @@ class Gate:
   Does nothing if the gate is already unlocked.
   */
   unlock -> none:
-    if not is_locked: return
+    if not is-locked: return
     locked_ = false
     signal_.raise
 
@@ -223,17 +227,17 @@ class Gate:
   This method blocks until the gate is open.
   */
   enter -> none:
-    signal_.wait: is_unlocked
+    signal_.wait: is-unlocked
 
   /**
   Whether the gate is unlocked.
   */
-  is_unlocked -> bool: return not locked_
+  is-unlocked -> bool: return not locked_
 
   /**
   Whether the gate is locked.
   */
-  is_locked -> bool: return locked_
+  is-locked -> bool: return locked_
 
 /**
 A one-way communication channel between tasks.
@@ -288,7 +292,7 @@ monitor Channel:
   Returns true if the message was successfully delivered to the channel. Returns false
     if the channel is full and the message was not delivered
   */
-  try_send value/any -> bool:
+  try-send value/any -> bool:
     if size_ >= buffer_.size: return false
     index := (start_ + size_) % buffer_.size
     buffer_[index] = value
@@ -331,12 +335,12 @@ A two-way communication channel between tasks with replies to each message.
 This class must not be extended.
 */
 monitor Mailbox:
-  static STATE_READY_    / int ::= 0
-  static STATE_SENT_     / int ::= 1
-  static STATE_RECEIVED_ / int ::= 2
-  static STATE_REPLIED_  / int ::= 3
+  static STATE-READY_    / int ::= 0
+  static STATE-SENT_     / int ::= 1
+  static STATE-RECEIVED_ / int ::= 2
+  static STATE-REPLIED_  / int ::= 3
 
-  state_ / int := STATE_READY_
+  state_ / int := STATE-READY_
   message_ / any := null
 
   /**
@@ -345,12 +349,12 @@ monitor Mailbox:
   This operation blocks until the other task replies.
   */
   send message/any -> any:
-    await: state_ == STATE_READY_
-    state_ = STATE_SENT_
+    await: state_ == STATE-READY_
+    state_ = STATE-SENT_
     message_ = message
-    await: state_ == STATE_REPLIED_
+    await: state_ == STATE-REPLIED_
     result := message_
-    state_ = STATE_READY_
+    state_ = STATE-READY_
     message_ = null
     return result
 
@@ -361,9 +365,9 @@ monitor Mailbox:
     to indefinitely blocked tasks.
   */
   receive -> any:
-    await: state_ == STATE_SENT_
+    await: state_ == STATE-SENT_
     result := message_
-    state_ = STATE_RECEIVED_
+    state_ = STATE-RECEIVED_
     message_ = null
     return result
 
@@ -372,6 +376,6 @@ monitor Mailbox:
   This unblocks the other task, which is waiting in $send.
   */
   reply message/any -> none:
-    if state_ != STATE_RECEIVED_: throw "No message received"
-    state_ = STATE_REPLIED_
+    if state_ != STATE-RECEIVED_: throw "No message received"
+    state_ = STATE-REPLIED_
     message_ = message

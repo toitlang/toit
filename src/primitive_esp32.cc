@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "flash_allocation.h"
 #include "objects_inline.h"
@@ -24,52 +24,63 @@
 #include "process.h"
 #include "scheduler.h"
 #include "sha1.h"
-#include "sha256.h"
+#include "sha.h"
 
 #include "rtc_memory_esp32.h"
 
 #include "uuid.h"
 #include "vm.h"
 
-#include <math.h>
-#include <unistd.h>
-#include <sys/types.h> /* See NOTES */
-#include <errno.h>
 #include <atomic>
+#include <errno.h>
+#include <math.h>
+#include <sys/types.h> /* See NOTES */
+#include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include <driver/adc.h>
 #include <driver/rtc_io.h>
-#include <esp_adc_cal.h>
+#include <esp_image_format.h>
 #include <esp_log.h>
+#include <esp_mac.h>
 #include <esp_sleep.h>
 #include <esp_ota_ops.h>
-#include <esp_spi_flash.h>
 #include <esp_timer.h>
+#include <rom/ets_sys.h>
+#include <esp_task_wdt.h>
 
 #include <soc/rtc_cntl_reg.h>
+
+#include <driver/gpio.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
-  #include <esp32c3/rom/ets_sys.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rom/rtc.h>
+  #include <driver/touch_sensor.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rom/rtc.h>
 #else
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>
-  #include <esp32/rom/ets_sys.h>
   #include <driver/touch_sensor.h>
-  #include <esp32/ulp.h>
 #endif
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
 
 #include "event_sources/system_esp32.h"
+#include "resource_pool.h"
 #include "resources/touch_esp32.h"
 
 namespace toit {
+
+const int kInvalidWatchdogTimer = -1;
+const int kWatchdogSingletonId = 0;
+ResourcePool<int, kInvalidWatchdogTimer> watchdog_timers(
+  kWatchdogSingletonId
+);
 
 MODULE_IMPLEMENTATION(esp32, MODULE_ESP32)
 
@@ -82,12 +93,18 @@ static const esp_partition_t* ota_partition = null;
 static int ota_size = 0;
 static int ota_written = 0;
 
+PRIMITIVE(ota_current_partition_name) {
+  const esp_partition_t* current_partition = esp_ota_get_running_partition();
+  if (current_partition == null) FAIL(ERROR);
+  return process->allocate_string_or_error(current_partition->label);
+}
+
 PRIMITIVE(ota_begin) {
   PRIVILEGED;
   ARGS(int, from, int, to);
   if (!(0 <= from && from < to)) {
     ESP_LOGE("Toit", "Unordered ota_begin args: %d-%d", from, to);
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ota_partition = esp_ota_get_next_update_partition(null);
@@ -95,17 +112,17 @@ PRIMITIVE(ota_begin) {
     ESP_LOGE("Toit", "Cannot find OTA partition - retrying after GC");
     // This can actually be caused by a malloc failure in the
     // esp-idf libraries.
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (to > ota_partition->size) {
-    ESP_LOGE("Toit", "Oversized ota_begin args: %d-%d", to, ota_partition->size);
-    OUT_OF_BOUNDS;
+    ESP_LOGE("Toit", "Oversized ota_begin args: %d-%" PRId32, to, ota_partition->size);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   ota_size = to;
   ota_written = from;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(ota_write) {
@@ -114,7 +131,7 @@ PRIMITIVE(ota_write) {
 
   if (ota_partition == null) {
     ESP_LOGE("Toit", "Cannot write to OTA session before starting it");
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   if (bytes.length() == FLASH_PAGE_SIZE && ota_written == Utils::round_up(ota_written, FLASH_PAGE_SIZE)) {
@@ -140,13 +157,13 @@ PRIMITIVE(ota_write) {
   // by 16.
   if (ota_written != Utils::round_up(ota_written, FLASH_SEGMENT_SIZE)) {
     ESP_LOGE("Toit", "More OTA was written after last block");
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   if (ota_size > 0 && (ota_written + bytes.length() > ota_size)) {
     ESP_LOGE("Toit", "OTA write overflows predetermined size (%d + %d > %d)",
         ota_written, bytes.length(), ota_size);
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   uword to_write = Utils::round_down(bytes.length(), FLASH_SEGMENT_SIZE);
@@ -158,7 +175,7 @@ PRIMITIVE(ota_write) {
     if (err != ESP_OK) {
       ota_partition = null;
       ESP_LOGE("Toit", "esp_partition_erase_range failed (%s)", esp_err_to_name(err));
-      OUT_OF_BOUNDS;
+      FAIL(OUT_OF_BOUNDS);
     }
   }
 
@@ -175,7 +192,7 @@ PRIMITIVE(ota_write) {
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_partition_write failed (%s)!", esp_err_to_name(err));
     ota_partition = null;
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   ota_written += bytes.length();
@@ -190,22 +207,22 @@ PRIMITIVE(ota_end) {
   const int BLOCK = 1024;
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(BLOCK);
-  if (buffer == null) ALLOCATION_FAILED;
+  if (buffer == null) FAIL(ALLOCATION_FAILED);
 
-  Sha256* sha256 = _new Sha256(null);
-  if (sha256 == null) ALLOCATION_FAILED;
-  DeferDelete<Sha256> d(sha256);
+  Sha* sha256 = _new Sha(null, 256);
+  if (sha256 == null) FAIL(ALLOCATION_FAILED);
+  DeferDelete<Sha> d(sha256);
 
   if (size != 0) {
     if (ota_partition == null) {
       ESP_LOGE("Toit", "Cannot end OTA session before starting it");
-      OUT_OF_BOUNDS;
+      FAIL(OUT_OF_BOUNDS);
     }
 
     ASSERT(ota_size == 0 || (ota_written <= ota_size));
     if (ota_size > 0 && ota_written < ota_size) {
       ESP_LOGE("Toit", "OTA only partially written (%d < %d)", ota_written, ota_size);
-      OUT_OF_BOUNDS;
+      FAIL(OUT_OF_BOUNDS);
     }
 
     const esp_partition_pos_t partition_position = {
@@ -219,7 +236,7 @@ PRIMITIVE(ota_end) {
     if (err != ESP_OK) {
       ESP_LOGE("Toit", "esp_image_verify failed (%s)!", esp_err_to_name(err));
       ota_partition = null;
-      OUT_OF_BOUNDS;
+      FAIL(OUT_OF_BOUNDS);
     }
 
     // The system SHA256 checksum is optional, so we add an explicit verification
@@ -227,23 +244,23 @@ PRIMITIVE(ota_end) {
     // byte, and so not really reliable.)
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
-      if (checksum_bytes.length() != Sha256::HASH_LENGTH) INVALID_ARGUMENT;
+      if (checksum_bytes.length() != Sha::HASH_LENGTH_256) FAIL(INVALID_ARGUMENT);
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
-        if (err != ESP_OK) OUT_OF_BOUNDS;
+        if (err != ESP_OK) FAIL(OUT_OF_BOUNDS);
         sha256->add(buffer, chunk);
       }
-      uint8 calculated[Sha256::HASH_LENGTH];
+      uint8 calculated[Sha::HASH_LENGTH_256];
       sha256->get(calculated);
       int diff = 0;
-      for (int i = 0; i < Sha256::HASH_LENGTH; i++) {
+      for (int i = 0; i < Sha::HASH_LENGTH_256; i++) {
         diff |= calculated[i] ^ checksum_bytes.address()[i];
       }
       if (diff != 0) {
         ESP_LOGE("Toit", "esp_image_verify failed!");
         ota_partition = null;
-        OUT_OF_BOUNDS;
+        FAIL(OUT_OF_BOUNDS);
       }
     }
 
@@ -256,7 +273,7 @@ PRIMITIVE(ota_end) {
 
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
   return Smi::zero();
 }
@@ -285,10 +302,10 @@ PRIMITIVE(ota_validate) {
 PRIMITIVE(ota_rollback) {
   PRIVILEGED;
   bool is_rollback_possible = esp_ota_check_rollback_is_possible();
-  if (!is_rollback_possible) PERMISSION_DENIED;
+  if (!is_rollback_possible) FAIL(PERMISSION_DENIED);
   esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
   ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
-  OTHER_ERROR;
+  FAIL(ERROR);
 }
 
 PRIMITIVE(reset_reason) {
@@ -296,7 +313,7 @@ PRIMITIVE(reset_reason) {
 }
 
 PRIMITIVE(total_deep_sleep_time) {
-  return Primitive::integer(RtcMemory::total_deep_sleep_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
 }
 
 PRIMITIVE(enable_external_wakeup) {
@@ -305,10 +322,10 @@ PRIMITIVE(enable_external_wakeup) {
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
-    OTHER_ERROR;
+    FAIL(ERROR);
   }
 #endif
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
@@ -316,16 +333,16 @@ PRIMITIVE(enable_touchpad_wakeup) {
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
-    OTHER_ERROR;
+    FAIL(ERROR);
   }
   err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
-    OTHER_ERROR;
+    FAIL(ERROR);
   }
   keep_touch_active();
 #endif
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(wakeup_cause) {
@@ -356,26 +373,16 @@ PRIMITIVE(touchpad_wakeup_status) {
 }
 
 PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::total_run_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
 }
 
 PRIMITIVE(get_mac_address) {
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(6, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(6);
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
   if (err != ESP_OK) memset(bytes.address(), 0, 6);
-
-  return result;
-}
-
-PRIMITIVE(rtc_user_bytes) {
-  uint8* rtc_memory = RtcMemory::user_data_address();
-  Error* error = null;
-  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) return error;
 
   return result;
 }
@@ -516,13 +523,92 @@ PRIMITIVE(memory_page_report) {
     report.next_memory_base();
   }
   encoder.write_int(report.GRANULARITY);
-  if (buffer.has_overflow()) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  if (buffer.has_overflow()) FAIL(OUT_OF_BOUNDS);
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
+}
+
+PRIMITIVE(watchdog_init) {
+  ARGS(uint32, ms);
+
+  int watchdog = watchdog_timers.any();
+  if (watchdog == kInvalidWatchdogTimer) FAIL(ALREADY_IN_USE);
+
+  esp_task_wdt_config_t config = {
+    .timeout_ms = ms,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_err_t err = esp_task_wdt_init(&config);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_add(null);  // Add the SystemEventSource thread.
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_reset) {
+  esp_err_t err;
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_reset();
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_deinit) {
+  esp_err_t err;
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_delete(null);  // Remove the SystemEventSource thread.
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  err = esp_task_wdt_deinit();
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  watchdog_timers.put(kWatchdogSingletonId);
+  return process->null_object();
+}
+
+PRIMITIVE(pin_hold_enable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_en(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(pin_hold_disable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_dis(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(deep_sleep_pin_hold_enable) {
+  gpio_deep_sleep_hold_en();
+  return process->null_object();
+}
+
+PRIMITIVE(deep_sleep_pin_hold_disable) {
+  gpio_deep_sleep_hold_dis();
+  return process->null_object();
 }
 
 } // namespace toit

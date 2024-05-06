@@ -1,0 +1,4 @@
+As check failed: an int (499) is not a string.
+  0: main.<block>              tests/negative/typeB-test.toit:10:13
+  1: run                       tests/negative/typeB-test.toit:5:16
+  2: main                      tests/negative/typeB-test.toit:10:3

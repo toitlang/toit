@@ -32,21 +32,22 @@ class SymbolCanonicalizer;
 class Backend {
  public:
   explicit Backend(SourceManager* source_manager, SourceMapper* source_mapper)
-      : _source_manager(source_manager)
-      , _source_mapper(source_mapper) { }
+      : source_manager_(source_manager)
+      , source_mapper_(source_mapper) {}
 
   // As a side-effect fills in the source-mapper.
   Program* emit(ir::Program* program);
 
  private:
-  SourceManager* _source_manager;
-  SourceMapper* _source_mapper;
+  SourceManager* source_manager_;
+  SourceMapper* source_mapper_;
 
-  SourceMapper* source_mapper() { return _source_mapper; }
+  SourceMapper* source_mapper() { return source_mapper_; }
   void assign_global_ids(List<ir::Global*> globals);
   void assign_field_indexes(List<ir::Class*> classes);
   void emit_method(ir::Method* method,
                    ByteGen* gen,
+                   UnorderedMap<ir::Class*, int>* typecheck_indexes,
                    DispatchTable* dispatch_table,
                    ProgramBuilder* program_builder);
   void emit_global(ir::Global* globals,

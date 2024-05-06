@@ -15,10 +15,11 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
-#include "driver/rmt.h"
-#include "driver/gpio.h"
+#include <driver/rmt.h>
+#include <driver/gpio.h>
+#include <hal/gpio_hal.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -30,43 +31,104 @@ namespace toit {
 
 const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
-    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
+// Copied from rmt_legacy.c.
+#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP-SOC_RMT_TX_CANDIDATES_PER_GROUP)
+#define RMT_TX_CHANNEL_ENCODING_END   (SOC_RMT_TX_CANDIDATES_PER_GROUP-1)
+
+// Copied from rmt_legacy.c.
+#define RMT_IS_RX_CHANNEL(channel) ((channel) >= RMT_RX_CHANNEL_ENCODING_START)
+#define RMT_IS_TX_CHANNEL(channel) ((channel) <= RMT_TX_CHANNEL_ENCODING_END)
+
+#ifndef SOC_RMT_CHANNELS_PER_GROUP
+#error "SOC_RMT_CHANNELS_PER_GROUP not defined"
+#endif
+
+#if SOC_RMT_CHANNELS_PER_GROUP == SOC_RMT_TX_CANDIDATES_PER_GROUP
+// All channels are TX channels. We assume that they also are RX channels.
+// This is the setup on the ESP32 and ESP32S2 chips.
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1
+#if SOC_RMT_CHANNEL_PER_GROUP > 2
+    , RMT_CHANNEL_2, RMT_CHANNEL_3
 #if SOC_RMT_CHANNELS_PER_GROUP > 4
     , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 #endif
+#endif
 );
 
-class RMTResource : public Resource {
- public:
-  TAG(RMTResource);
-  RMTResource(ResourceGroup* group, rmt_channel_t channel, int memory_block_count)
-      : Resource(group)
-      , _channel(channel)
-      , _memory_block_count(memory_block_count) {}
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
 
-  rmt_channel_t channel() const { return _channel; }
-  int memory_block_count() const { return _memory_block_count; }
+#else
+// Some channels are TX, some are RX.
+// This is the configuration on the ESP32C3, ESP32H2, and ESP32S3 chips.
+// The TX channels are always before the RX channels.
+
+#if SOC_RMT_RX_CANDIDATES_PER_GROUP != SOC_RMT_TX_CANDIDATES_PER_GROUP
+#error "Expected same number of RX as TX channels"
+#endif
+
+#if SOC_RMT_TX_CANDIDATES_PER_GROUP == 2
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1
+);
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+    RMT_CHANNEL_2, RMT_CHANNEL_3
+);
+#elif SOC_RMT_TX_CANDIDATES_PER_GROUP == 4
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
+);
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+    RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
+);
+#else
+error "Unexpected amount of RMT channels"
+#endif
+
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_tx_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_rx_channels_;
+
+#endif
+
+static void put_channel_into_pool(rmt_channel_t channel) {
+  if (RMT_IS_TX_CHANNEL(channel)) {
+    rmt_tx_channels->put(channel);
+  } else {
+    rmt_rx_channels->put(channel);
+  }
+}
+
+class RmtResource : public Resource {
+ public:
+  TAG(RmtResource);
+  RmtResource(ResourceGroup* group, rmt_channel_t channel, int memory_block_count)
+      : Resource(group)
+      , channel_(channel)
+      , memory_block_count_(memory_block_count) {}
+
+  rmt_channel_t channel() const { return channel_; }
+  int memory_block_count() const { return memory_block_count_; }
 
  private:
-  rmt_channel_t _channel;
-  int _memory_block_count;
+  rmt_channel_t channel_;
+  int memory_block_count_;
 };
 
-class RMTResourceGroup : public ResourceGroup {
+class RmtResourceGroup : public ResourceGroup {
  public:
-  TAG(RMTResourceGroup);
-  RMTResourceGroup(Process* process)
-    : ResourceGroup(process, null) { }
+  TAG(RmtResourceGroup);
+  RmtResourceGroup(Process* process)
+    : ResourceGroup(process, null) {}
 
   virtual void on_unregister_resource(Resource* r) override {
-    RMTResource* rmt_resource = static_cast<RMTResource*>(r);
+    RmtResource* rmt_resource = static_cast<RmtResource*>(r);
     rmt_channel_t channel = rmt_resource->channel();
     rmt_channel_status_result_t channel_status;
     rmt_get_channel_status(&channel_status);
     if (channel_status.status[channel] != RMT_CHANNEL_UNINIT) rmt_driver_uninstall(channel);
     for (int i = 0; i < rmt_resource->memory_block_count(); i++) {
-      rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
+      put_channel_into_pool(static_cast<rmt_channel_t>(channel + i));
     }
   }
 };
@@ -75,35 +137,49 @@ MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  RMTResourceGroup* rmt = _new RMTResourceGroup(process);
-  if (!rmt) MALLOC_FAILED;
+  RmtResourceGroup* rmt = _new RmtResourceGroup(process);
+  if (!rmt) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(rmt);
   return proxy;
 }
 
 PRIMITIVE(channel_new) {
-  ARGS(RMTResourceGroup, resource_group, int, memory_block_count, int, channel_num)
+  // The direction is:
+  // * 0: no direction given.
+  // * -1: input
+  // * +1: output
+  ARGS(RmtResourceGroup, resource_group, int, memory_block_count, int, channel_num, int, direction)
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-  if (memory_block_count <= 0) INVALID_ARGUMENT;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  if (memory_block_count <= 0) FAIL(INVALID_ARGUMENT);
+
+  // Output by default (unless a channel_num was given).
+  if (channel_num != -1 && direction == 0) {
+    direction = RMT_IS_RX_CHANNEL(channel_num) ? -1 : 1;
+  } else if (direction == 0) {
+    // Output by default.
+    direction = 1;
+  }
+
+  auto channel_pool = direction == -1 ? rmt_rx_channels : rmt_tx_channels;
 
   rmt_channel_t channel = kInvalidChannel;
 
   if (channel_num == -1 && memory_block_count == 1) {
-    channel = rmt_channels.any();
+    channel = channel_pool->any();
   } else if (memory_block_count == 1) {
     channel = static_cast<rmt_channel_t>(channel_num);
-    if (!rmt_channels.take(channel)) channel = kInvalidChannel;
+    if (!channel_pool->take(channel)) channel = kInvalidChannel;
   } else {
     // Try to find adjacent channels that are still free.
     int current_start_id = (channel_num == -1) ? 0 : channel_num;
     while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_PER_GROUP) {
       int taken = 0;
       for (int i = 0; i < memory_block_count; i++) {
-        bool succeeded = rmt_channels.take(static_cast<rmt_channel_t>(current_start_id + i));
+        bool succeeded = channel_pool->take(static_cast<rmt_channel_t>(current_start_id + i));
         if (!succeeded) break;
         taken++;
       }
@@ -115,7 +191,7 @@ PRIMITIVE(channel_new) {
         // Release all the channels we have reserved, and then try at a later
         // position.
         for (int i = 0; i < taken; i++) {
-          rmt_channels.put(static_cast<rmt_channel_t>(current_start_id + i));
+          channel_pool->put(static_cast<rmt_channel_t>(current_start_id + i));
         }
         if (channel_num == -1) {
           // Continue searching after the current failure.
@@ -127,16 +203,16 @@ PRIMITIVE(channel_new) {
       }
     }
   }
-  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  if (channel == kInvalidChannel) FAIL(ALREADY_IN_USE);
 
-  RMTResource* resource = null;
+  RmtResource* resource = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    resource = _new RMTResource(resource_group, channel, memory_block_count);
+    resource = _new RmtResource(resource_group, channel, memory_block_count);
     if (!resource) {
       for (int i = 0; i < memory_block_count; i++) {
-        rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
+        channel_pool->put(static_cast<rmt_channel_t>(channel + i));
       }
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
   }
 
@@ -148,10 +224,10 @@ PRIMITIVE(channel_new) {
 }
 
 PRIMITIVE(channel_delete) {
-  ARGS(RMTResourceGroup, resource_group, RMTResource, resource)
+  ARGS(RmtResourceGroup, resource_group, RmtResource, resource)
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size) {
@@ -175,13 +251,13 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
 }
 
 PRIMITIVE(config_tx) {
-  ARGS(RMTResource, resource, int, pin_num, uint8, clk_div, int, flags,
+  ARGS(RmtResource, resource, int, pin_num, uint8, clk_div, int, flags,
        bool, carrier_en, uint32, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
        bool, loop_en, bool, idle_output_en, int, idle_level)
 
-  if (carrier_en && carrier_level != 0 && carrier_level != 1) INVALID_ARGUMENT;
-  if (carrier_duty_percent < 0 || carrier_duty_percent > 100) INVALID_ARGUMENT;
-  if (idle_output_en && idle_level != 0 && idle_level != 1) INVALID_ARGUMENT;
+  if (carrier_en && carrier_level != 0 && carrier_level != 1) FAIL(INVALID_ARGUMENT);
+  if (carrier_duty_percent < 0 || carrier_duty_percent > 100) FAIL(INVALID_ARGUMENT);
+  if (idle_output_en && idle_level != 0 && idle_level != 1) FAIL(INVALID_ARGUMENT);
 
   rmt_channel_t channel = resource->channel();
   rmt_config_t config = RMT_DEFAULT_CONFIG_TX(static_cast<gpio_num_t>(pin_num), channel);
@@ -201,11 +277,11 @@ PRIMITIVE(config_tx) {
   esp_err_t err = configure(&config, channel, 0);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_rx) {
-  ARGS(RMTResource, resource, int, pin_num, uint8, clk_div, int, flags,
+  ARGS(RmtResource, resource, int, pin_num, uint8, clk_div, int, flags,
        uint16, idle_threshold, bool, filter_en, uint8, filter_ticks_thresh, int, buffer_size)
 
   rmt_channel_t channel = resource->channel();
@@ -226,11 +302,11 @@ PRIMITIVE(config_rx) {
   esp_err_t err = configure(&config, channel, buffer_size);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_idle_threshold) {
-  ARGS(RMTResource, resource)
+  ARGS(RmtResource, resource)
   uint16_t threshold;
   esp_err_t err = rmt_get_rx_idle_thresh(resource->channel(), &threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -238,31 +314,52 @@ PRIMITIVE(get_idle_threshold) {
 }
 
 PRIMITIVE(set_idle_threshold) {
-  ARGS(RMTResource, resource, uint16, threshold)
+  ARGS(RmtResource, resource, uint16, threshold)
   esp_err_t err = rmt_set_rx_idle_thresh(resource->channel(), threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_bidirectional_pin) {
-  ARGS(int, pin, RMTResource, resource);
+  ARGS(int, pin, RmtResource, resource, bool, enable_pullup);
 
-  // Set open collector?
+  // This function has to be called after the pin was first
+  // configured as an output channel, and then as an input channel.
+  // We now need to reenable the output without losing the input.
+
+  // Enable the pin. "w1ts" = "write 1 to set".
+  // TODO(florian): not completely sure why this is needed, but without it
+  // it won't work.
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  if (pin >= MAX_GPIO_NUM) FAIL(INVALID_ARGUMENT);
+  GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
+#else
   if (pin < 32) {
     GPIO.enable_w1ts = (0x1 << pin);
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
-  rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
+#endif
+  esp_err_t err = rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  // Make the pin an input again.
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
+
+  // Make the pin open-drain.
   GPIO.pin[pin].pad_driver = 1;
 
-  return process->program()->null_object();
+  if (enable_pullup) {
+    err = gpio_pullup_en(static_cast<gpio_num_t>(pin));
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
+
+  return process->null_object();
 }
 
 PRIMITIVE(transmit) {
-  ARGS(RMTResource, resource, Blob, items_bytes)
-  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  ARGS(RmtResource, resource, Blob, items_bytes)
+  if (items_bytes.length() % 4 != 0) FAIL(INVALID_ARGUMENT);
 
   // We are going to pass a pointer to a C function which will consume it, while we
   // yield back to the Toit VM. There could be GCs while the C function uses the memory.
@@ -274,10 +371,9 @@ PRIMITIVE(transmit) {
   } else {
     // Create an external byte array with the same size.
     // We will return it to the caller, so they can keep it alive.
-    Error* error = null;
     // Force external.
-    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), &error, true);
-    if (external_copy == null) return error;
+    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), true);
+    if (external_copy == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes bytes(external_copy);
     memcpy(bytes.address(), address, items_bytes.length());
     address = bytes.address();
@@ -294,7 +390,7 @@ PRIMITIVE(transmit) {
 }
 
 PRIMITIVE(transmit_done) {
-  ARGS(RMTResource, resource, ByteArray, keep_alive)
+  ARGS(RmtResource, resource, ByteArray, keep_alive)
   USE(keep_alive);
   esp_err_t err = rmt_wait_tx_done(resource->channel(), 0);
   if (err == ESP_ERR_TIMEOUT) return BOOL(false);
@@ -311,7 +407,7 @@ static void flush_buffer(RingbufHandle_t rb) {
 }
 
 PRIMITIVE(start_receive) {
-  ARGS(RMTResource, resource, bool, flush)
+  ARGS(RmtResource, resource, bool, flush)
 
   if (flush) {
     RingbufHandle_t rb = null;
@@ -323,28 +419,27 @@ PRIMITIVE(start_receive) {
   bool reset_memory;
   esp_err_t err = rmt_rx_start(resource->channel(), reset_memory=flush);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(prepare_receive) {
-  ARGS(RMTResource, resource)
+  ARGS(RmtResource, resource)
 
   RingbufHandle_t rb = null;
   esp_err_t err = rmt_get_ringbuf_handle(resource->channel(), &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   size_t max_size = xRingbufferGetMaxItemSize(rb);
 
-  Error* error = null;
   // Force external, so we can adjust the length after the read.
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), &error, true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), true);
+  if (data == null) FAIL(ALLOCATION_FAILED);
   return data;
 }
 
 PRIMITIVE(receive) {
   // If resize is true, then we expect that the output array was allocated in prepare_receive.
   // As such it is an external byte array that we can resize.
-  ARGS(RMTResource, resource, ByteArray, output, bool, resize)
+  ARGS(RmtResource, resource, ByteArray, output, bool, resize)
 
   RingbufHandle_t rb = null;
   esp_err_t err = rmt_get_ringbuf_handle(resource->channel(), &rb);
@@ -352,11 +447,11 @@ PRIMITIVE(receive) {
 
   size_t received_length;
   auto received_bytes = xRingbufferReceive(rb, &received_length, 0);
-  if (received_bytes == null) return process->program()->null_object();
+  if (received_bytes == null) return process->null_object();
   if (received_length == 0) {
     // We got a 0-length item. The RMT sometimes does this. Ignore it.
     vRingbufferReturnItem(rb, received_bytes);
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray::Bytes bytes(output);
@@ -373,11 +468,11 @@ PRIMITIVE(receive) {
 }
 
 PRIMITIVE(stop_receive) {
-  ARGS(RMTResource, resource)
+  ARGS(RmtResource, resource)
   esp_err_t err = rmt_rx_stop(resource->channel());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

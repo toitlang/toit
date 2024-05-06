@@ -1,0 +1,58 @@
+tests/negative/invalid-assignment-test.toit:24:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:26:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:29:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:33:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:34:10: error: Assignment to variable not allowed at this location
+  y := x = 42 ? true : false
+         ^
+tests/negative/invalid-assignment-test.toit:35:18: error: Assignment to variable not allowed at this location
+  y2 := true ? x = 42 : false
+                 ^
+tests/negative/invalid-assignment-test.toit:36:25: error: Assignment to variable not allowed at this location
+  y3 := true ? true : x = 42
+                        ^
+tests/negative/invalid-assignment-test.toit:38:9: error: Assignment to variable not allowed at this location
+  not x = 499
+        ^
+tests/negative/invalid-assignment-test.toit:40:6: error: Assignment to variable not allowed at this location
+  (x = 499)
+     ^
+tests/negative/invalid-assignment-test.toit:42:8: error: Assignment to variable not allowed at this location
+  if x = 42: null
+       ^
+tests/negative/invalid-assignment-test.toit:43:11: error: Assignment to variable not allowed at this location
+  while x = 42: null
+          ^
+tests/negative/invalid-assignment-test.toit:11:14: error: Assignment to variable not allowed at this location
+  field := x = 499
+             ^
+tests/negative/invalid-assignment-test.toit:14:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:17:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:20:11: error: Assignment to variable not allowed at this location
+    foo x = 499
+          ^
+tests/negative/invalid-assignment-test.toit:8:13: error: Assignment to variable not allowed at this location
+global := x = 499
+            ^
+tests/negative/invalid-assignment-test.toit:34:15: warning: Condition always evaluates to true
+  y := x = 42 ? true : false
+              ^
+tests/negative/invalid-assignment-test.toit:42:3: warning: Condition always evaluates to true
+  if x = 42: null
+  ^~
+tests/negative/invalid-assignment-test.toit:43:3: warning: Condition always evaluates to true
+  while x = 42: null
+  ^~~~~
+Compilation failed

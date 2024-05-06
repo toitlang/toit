@@ -14,8 +14,8 @@
 // directory of this repository.
 
 import host.pipe
-import writer
 import host.file
+import io
 import monitor
 
 /**
@@ -23,17 +23,17 @@ Starts piping all data from [from_stream] to [to_stream] while logging
   all transferred data in log_stream, using the given mutex to make
   sure that the log stream is consistent.
 */
-start_piping from_stream to_stream --log_stream --mutex -> none:
+start-piping from-stream to-stream --log-stream --mutex -> none:
   task::
     catch --trace:
-      to_writer := writer.Writer to_stream
-      log_writer := writer.Writer log_stream
+      to-writer := io.Writer.adapt to-stream
+      log-writer := io.Writer.adapt log-stream
       while true:
-        chunk := from_stream.read
+        chunk := from-stream.read
         if not chunk: break
-        to_writer.write chunk
+        to-writer.write chunk
         mutex.do:
-          log_writer.write chunk
+          log-writer.write chunk
 
 
 /**
@@ -45,34 +45,34 @@ This makes it possible to detect spurious output that interferes with
   have been a communication based on ports...).
 */
 main args:
-  TOIT_RUN := "toit.run"
+  TOIT-RUN := "toit.run"
   SERVER := "tools/lsp/server/server.toit"
   LOG := "/tmp/lsp_logs"
 
   pipes := pipe.fork
     true
-    pipe.PIPE_CREATED  // stdin
-    pipe.PIPE_CREATED  // stdout
-    pipe.PIPE_INHERITED  // stderr
-    TOIT_RUN
+    pipe.PIPE-CREATED  // stdin
+    pipe.PIPE-CREATED  // stdout
+    pipe.PIPE-INHERITED  // stderr
+    TOIT-RUN
     [
-      TOIT_RUN,
+      TOIT-RUN,
       SERVER
     ]
-  pipe_to := pipes[0]
-  pipe_from := pipes[1]
+  pipe-to := pipes[0]
+  pipe-from := pipes[1]
   pid := pipes[3]
 
   mutex := monitor.Mutex
-  log_file := file.Stream.for_write LOG
+  log-file := file.Stream.for-write LOG
 
-  start_piping pipe.stdin pipe_to --log_stream=log_file --mutex=mutex
-  start_piping pipe_from pipe.stdout --log_stream=log_file --mutex=mutex
+  start-piping pipe.stdin pipe-to --log-stream=log-file --mutex=mutex
+  start-piping pipe-from pipe.stdout --log-stream=log-file --mutex=mutex
 
-  exit_value := pipe.wait_for pid
-  exit_code := pipe.exit_code exit_value
-  exit_signal := pipe.exit_signal exit_value
-  if exit_signal:
-    throw "$TOIT_RUN exited with signal $exit_signal"
-  if exit_code != 0:
-    throw "$TOIT_RUN exited with code $exit_code"
+  exit-value := pipe.wait-for pid
+  exit-code := pipe.exit-code exit-value
+  exit-signal := pipe.exit-signal exit-value
+  if exit-signal:
+    throw "$TOIT-RUN exited with signal $exit-signal"
+  if exit-code != 0:
+    throw "$TOIT-RUN exited with code $exit-code"

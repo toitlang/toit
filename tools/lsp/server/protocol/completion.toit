@@ -30,35 +30,35 @@ interface CompletionTriggerKind:
   Completion was triggered by a trigger character specified by
     the `triggerCharacters` properties of the `CompletionRegistrationOptions`.
   */
-  static trigger_character ::= 2
+  static trigger-character ::= 2
 
   /**
   Completion was re-triggered as the current completion list is incomplete.
   */
-  static trigger_for_incomplete_completions ::= 3
+  static trigger-for-incomplete-completions ::= 3
 
 
 /**
 Contains additional information about the context in which a completion request is triggered.
 */
 class CompletionContext extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   How the completion was triggered.
    */
-  trigger_kind -> int:  // A CompletionTriggerKind
+  trigger-kind -> int:  // A CompletionTriggerKind
     return at_ "trigger_kind"
 
   /**
   The trigger character (a single character) that has trigger code complete.
     Is undefined if `triggerKind !== CompletionTriggerKind.TriggerCharacter`
   */
-  trigger_character -> string?:
+  trigger-character -> string?:
     return lookup_ "triggerCharacter"
 
 class CompletionParams extends TextDocumentPositionParams:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   The completion context. This is only available if the client specifies
@@ -77,3 +77,38 @@ class CompletionItem extends MapWrapper:
       --kind  /int:
     map_["label"] = label
     if kind != -1: map_["kind"] = kind
+
+  set-text-edit edit/TextEdit: map_["textEdit"] = edit
+  label -> string: return at_ "label"
+
+/**
+A collection of $CompletionItem elements.
+*/
+class CompletionList extends MapWrapper:
+  /**
+  Creates a completion-list.
+
+  If $is-incomplete is true, indicates that the completion list is not complete.
+  */
+  constructor
+      --items         /List  // of CompletionItem
+      --is-incomplete /bool = false
+      --item-defaults /CompletionItemDefaults?:
+    map_["items"] = items
+    if is-incomplete: map_["isIncomplete"] = is-incomplete
+    if item-defaults: map_["itemDefaults"] = item-defaults
+
+/**
+Properties that are shared among many completion items, and are
+the default if not overridden by the individual completion items.
+*/
+class CompletionItemDefaults extends MapWrapper:
+  /**
+  Creates a new instance.
+
+  The $edit-range specifies the range of the document that should be replaced by
+    the completion item. It's the "prefix" of the completion items.
+  */
+  constructor
+      --edit-range /Range?:
+    if edit-range: map_["editRange"] = edit-range

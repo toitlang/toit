@@ -1,0 +1,64 @@
+tests/negative/bad-type-test.toit:7:8: error: Unexpected token in type: 'extends'
+foo -> extends: return unresolved
+       ^~~~~~~
+tests/negative/bad-type-test.toit:8:17: error: Unexpected token in type: 'implements'
+foo x -> prefix.implements: return unresolved
+                ^~~~~~~~~~
+tests/negative/bad-type-test.toit:9:8: error: Unexpected token in type: 'extends'
+bar -> extends.A: return unresolved
+       ^~~~~~~
+tests/negative/bad-type-test.toit:10:17: error: Unexpected token in type: 'implements'
+bar x -> prefix.implements.A: return unresolved
+                ^~~~~~~~~~
+tests/negative/bad-type-test.toit:12:17: error: Unexpected token in type: 'extends'
+class A extends extends:
+                ^~~~~~~
+tests/negative/bad-type-test.toit:13:17: error: Missing super class
+class B extends implements:
+                ^~~~~~~~~~
+tests/negative/bad-type-test.toit:13:27: error: Unexpected token while parsing type
+class B extends implements:
+                          ^
+tests/negative/bad-type-test.toit:15:25: error: Unexpected token in type: 'extends'
+class A2 extends prefix.extends.A:
+                        ^~~~~~~
+tests/negative/bad-type-test.toit:16:25: error: Unexpected token in type: 'implements'
+class B2 extends prefix.implements.B:
+                        ^~~~~~~~~~
+tests/negative/bad-type-test.toit:12:17: error: Unresolved super class
+class A extends extends:
+                ^~~~~~~
+tests/negative/bad-type-test.toit:13:27: error: Unresolved interface
+class B extends implements:
+                          ^
+tests/negative/bad-type-test.toit:15:33: error: Unresolved super class
+class A2 extends prefix.extends.A:
+                                ^
+tests/negative/bad-type-test.toit:16:36: error: Unresolved super class
+class B2 extends prefix.implements.B:
+                                   ^
+tests/negative/bad-type-test.toit:7:8: error: Unresolved type: 'extends'
+foo -> extends: return unresolved
+       ^~~~~~~
+tests/negative/bad-type-test.toit:7:24: error: Unresolved identifier: 'unresolved'
+foo -> extends: return unresolved
+                       ^~~~~~~~~~
+tests/negative/bad-type-test.toit:8:17: error: Unresolved type: 'implements'
+foo x -> prefix.implements: return unresolved
+                ^~~~~~~~~~
+tests/negative/bad-type-test.toit:8:36: error: Unresolved identifier: 'unresolved'
+foo x -> prefix.implements: return unresolved
+                                   ^~~~~~~~~~
+tests/negative/bad-type-test.toit:9:16: error: Invalid type
+bar -> extends.A: return unresolved
+               ^
+tests/negative/bad-type-test.toit:9:26: error: Unresolved identifier: 'unresolved'
+bar -> extends.A: return unresolved
+                         ^~~~~~~~~~
+tests/negative/bad-type-test.toit:10:28: error: Invalid type
+bar x -> prefix.implements.A: return unresolved
+                           ^
+tests/negative/bad-type-test.toit:10:38: error: Unresolved identifier: 'unresolved'
+bar x -> prefix.implements.A: return unresolved
+                                     ^~~~~~~~~~
+Compilation failed

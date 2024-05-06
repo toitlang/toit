@@ -26,7 +26,7 @@ class CodeActionKind:
   /**
   Base kind for quickfix actions: 'quickfix'
   */
-  static quick_fix ::= "quickfix"
+  static quick-fix ::= "quickfix"
 
   /**
   Base kind for refactoring actions: 'refactor'
@@ -43,7 +43,7 @@ class CodeActionKind:
   - Extract interface from class
   - ...
   */
-  static refactor_extract ::= "refactor.extract"
+  static refactor-extract ::= "refactor.extract"
 
   /**
   Base kind for refactoring inline actions: 'refactor.inline'
@@ -54,7 +54,7 @@ class CodeActionKind:
   - Inline constant
   - ...
   */
-  static refactor_inline ::= "refactor.inline"
+  static refactor-inline ::= "refactor.inline"
 
   /**
   Base kind for refactoring rewrite actions: 'refactor.rewrite'
@@ -67,7 +67,7 @@ class CodeActionKind:
   - Move method to base class
   - ...
   */
-  static refactor_rewrite ::= "refactor.rewrite"
+  static refactor-rewrite ::= "refactor.rewrite"
 
   /**
   Base kind for source actions: `source`
@@ -79,4 +79,4 @@ class CodeActionKind:
   /**
   Base kind for an organize imports source action: `source.organizeImports`
   */
-  static source_organize_imports ::= "source.organizeImports"
+  static source-organize-imports ::= "source.organizeImports"

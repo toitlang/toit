@@ -2,33 +2,45 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system
+
 // This is the system entry point. It is responsible for
 // calling the main function and halting the system after
 // it returns.
-__entry__main -> none:
-  current := Task_.current
-  current.initialize_entry_task_
-  current.evaluate_:
-    #primitive.intrinsics.main main_arguments_
+__entry__main task -> none:
+  // First we set the current task variable. We must do this early,
+  // because other parts of the core library code might rely on it.
+  // As an example, accessing a lazily initialized global variable
+  // requires access to the task.
+  Task_.current = task
+  task.evaluate_:
+    task.initialize-entry-task_
+    #primitive.intrinsics.main main-arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
-__entry__spawn -> none:
-  current := Task_.current
-  current.initialize_entry_task_
-  lambda := Lambda.__ spawn_method_ spawn_arguments_
-  current.evaluate_: lambda.call
+__entry__spawn task -> none:
+  // First we set the current task variable. We must do this early,
+  // because other parts of the core library code might rely on it.
+  // As an example, accessing a lazily initialized global variable
+  // requires access to the task.
+  Task_.current = task
+  task.evaluate_:
+    task.initialize-entry-task_
+    lambda := Lambda.__ spawn-method_ spawn-arguments_
+    lambda.call
 
 // This is the entry point for newly created tasks.
 __entry__task lambda -> none:
   // The entry stack setup is a bit complicated, so when we
   // transfer to a task stack for the first time, the
-  // `task transfer` primitive will provide a value for us
-  // on the stack. The `null` assigned to `life` below is
-  // skipped and we let the value passed to us take its place.
-  life := null
-  assert: life == 42
-  Task_.current.evaluate_: lambda.call
+  // `task transfer` primitive will provide the current task
+  // for us on the stack. The `null` assigned to `task` below
+  // is skipped and we let the value passed to us take its place.
+  task := null
+  task.evaluate_:
+    assert: identical task Task_.current
+    lambda.call
 
 // --------------------------------------------------------
 
@@ -36,15 +48,17 @@ __entry__task lambda -> none:
 Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
   is not available.
+
+Deprecated. Use $system.program-name instead.
 */
-program_name -> string?:
-  #primitive.core.command
+program-name -> string?:
+  #primitive.core.program-name
 
-main_arguments_ -> any:
-  #primitive.core.main_arguments
+main-arguments_ -> any:
+  #primitive.core.main-arguments
 
-spawn_method_ -> int:
-  #primitive.core.spawn_method
+spawn-method_ -> int:
+  #primitive.core.spawn-method
 
-spawn_arguments_ -> any:
-  #primitive.core.spawn_arguments
+spawn-arguments_ -> any:
+  #primitive.core.spawn-arguments

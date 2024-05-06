@@ -14,12 +14,31 @@
 // directory of this repository.
 
 #include "utils.h"
+#include "objects.h"
+#include "process.h"
 
 #ifndef TOIT_MODEL
 #error "TOIT_MODEL is not set"
 #endif
 
 namespace toit {
+
+// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor
+// cache usage against speed": http://www.geocities.com/malbrain/.
+uint32 Utils::crc32(uint32 crc, const uint8* ptr, size_t length) {
+  static const uint32 s_crc32[16] = {
+      0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+      0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
+  };
+  uint32 crcu32 = crc;
+  crcu32 = ~crcu32;
+  while (length--) {
+    uint8 b = *ptr++;
+    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b & 0xF)];
+    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b >> 4)];
+  }
+  return ~crcu32;
+}
 
 #ifdef BUILD_64
 
@@ -276,7 +295,7 @@ static const uint32 HIGH_BIT_OF_EACH_BYTE = 0x80808080;
 
 #endif
 
-bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
+bool Utils::is_valid_utf_8(const uint8* buffer, word length) {
   // Align.
   while (length != 0 && !is_aligned(buffer, WORD_SIZE) && (buffer[0] & 0xff) <= MAX_ASCII) {
     length--;
@@ -293,7 +312,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   // Thanks to Per Vognsen.  Explanation at
   // https://gist.github.com/pervognsen/218ea17743e1442e59bb60d29b1aa725
   uint64 state = UTF_BASE;
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     unsigned char c = buffer[i];
     state = UTF_8_STATE_TABLE[c] >> (state & UTF_MASK);  // The '&' is optimized out.
   }
@@ -301,7 +320,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
 #else
   int32 state = UTF_BASE;
   int allowed_nibbles = START;
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     unsigned char c = buffer[i];
     int high_nibble = c >> 4;
     if ((allowed_nibbles & (1 << high_nibble)) == 0) return false;
@@ -311,6 +330,212 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   return (state & UTF_MASK) == UTF_BASE;
 #endif
 }
+
+// Assumes the input is valid UTF-8, for example from a Toit string.
+// See also is_valid_utf_8.  Returns size in 16 bit code units.
+// If output is null, does not write.  If output_length is too small,
+// returns -1.
+word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word output_length) {
+  word size = 0;
+  for (word i = 0; i < length; ) {
+    uint8 prefix = input[i];
+    word count = Utils::bytes_in_utf_8_sequence(prefix);
+    int c;
+    if (prefix > Utils::MAX_ASCII) {
+      c = Utils::payload_from_prefix(prefix);
+      for (word j = 1; j < count; j++) {
+        c <<= Utils::UTF_8_BITS_PER_BYTE;
+        c |= input[i + j] & Utils::UTF_8_MASK;
+      }
+    } else {
+      c = prefix;
+    }
+    if (c < 0x10000) {
+      if (output) {
+        if (size >= output_length) return -1;
+        output[size] = c;
+      }
+      size++;
+    } else {
+      // Surrogate pair.
+      if (output) {
+        c -= 0x10000;
+        if (size + 1 >= output_length) return -1;
+        output[size] = 0xd800 + (c >> 10);
+        output[size + 1] = 0xdc00 + (c & 0x3ff);
+      }
+      size += 2;
+    }
+    i += count;
+  }
+  return size;
+}
+
+// Returns size in bytes.  Replaces invalid UTF-16 with 0xFFFD, the replacement
+//   character.
+// length is given in 16 bit UTF-16 code points.
+// If output is null, does not write.
+word Utils::utf_16_to_8(const uint16* input, word length, uint8* output, word output_length) {
+  word size = 0;
+  for (word i = 0; i < length; i++) {
+    int c = input[i];
+    if (Utils::MIN_SURROGATE <= c && c <= Utils::MAX_SURROGATE) {
+      // Surrogate pairs.
+      int decoded = 0xfffd;  // Substitute character for illegal sequences.
+      if (i + 1 != length) {
+        uint16 part2 = input[i + 1];
+        if (0xd800 <= c && c <= 0xdbff && 0xdc00 <= part2 && part2 <= 0xdfff) {
+          decoded = 0x10000 + ((c & 0x3ff) << 10) + (part2 & 0x3ff);
+          i++;
+        }
+      }
+      c = decoded;
+    }
+    if (c <= Utils::MAX_ASCII) {
+      if (output) {
+        if (size == output_length) return -1;
+        output[size] = c;
+      }
+      size++;
+    } else if (c <= Utils::MAX_TWO_BYTE_UNICODE) {
+      if (output) {
+        if (size + 1 >= output_length) return -1;
+        output[size]     = 0xc0 + (c >> 6);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 2;
+    } else if (c <= Utils::MAX_THREE_BYTE_UNICODE) {
+      if (output) {
+        if (size + 2 >= output_length) return -1;
+        output[size]     = 0xe0 + (c >> 12);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        output[size + 2] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 3;
+    } else {
+      if (output) {
+        if (size + 3 >= output_length) return -1;
+        output[size]     = 0xf0 + (c >> 18);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 12) & Utils::UTF_8_MASK);
+        output[size + 2] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        output[size + 3] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 4;
+    }
+  }
+  return size;
+}
+
+bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2) {
+  // The UTF-16 encoding always has fewer code units than the UTF-8 encoding.
+  if (length2 > length1) return false;
+
+  // Zero length strings are equal.
+  if (length1 == 0) return true;
+
+  // Worst blow-up is 3x because all UTF-8 sequences are 1-4 bytes and the
+  // 4-byte encodings correspond to two UTF-16 surrogates.  Broken UTF-16
+  // surrogates are encoded as a 3-byte substitution (0xfffd).
+  if (length1 > length2 * 3) return false;
+
+  // Quick out for different first ASCII letter.
+  if ((input1[0] <= MAX_ASCII || input2[0] <= MAX_ASCII) && input1[0] != input2[0]) return false;
+
+  // Start with length comparison of the UTF-16 version.
+  if (length2 != utf_8_to_16(input1, length1)) return false;
+
+  // Now we know the UTF-16 versions are the same length, generate the UTF-16
+  // version of the UTF-8 input, and compare them.
+  static const word BUFFER_SIZE = 260;
+  uint16 buffer[BUFFER_SIZE];
+  uint16* wide_input1 = length2 < BUFFER_SIZE
+      ? buffer
+      : unvoid_cast<uint16*>(malloc(sizeof(uint16) * length2));
+  utf_8_to_16(input1, length1, wide_input1, length2);
+  bool match = memcmp(wide_input1, input2, length2 * sizeof(uint16)) == 0;
+  if (wide_input1 != buffer) free(wide_input1);
+  return match;
+}
+
+// For use on Windows.  Takes the old environment in the format returned by
+// GetEnvironmentStringsW() and an array of key-value pairs.  Returns a new
+// environment in the same format, which should be freed when done.  Assumes
+// that allocations don't fail.
+// The format is a long series of null-terminated wide strings, followed by a
+// null, so a zero length string is not possible.  Each string contains an
+// equals sign that separates the key from the value.  If there is no equals
+// sign then the whole thing is taken to be the key.
+uint16* Utils::create_new_environment(Process* process, uint16* previous_environment, Array* environment) {
+  uint16* new_environment = null;
+  word length_so_far;
+  word new_environment_length = 0;
+  // First run calculates the length of the result.  Second run actually writes
+  // the result.
+  for (int runs = 0; runs < 2; runs++) {
+    length_so_far = 0;
+    bool writing = runs != 0;
+    for (uint16* p = previous_environment; *p; ) {
+      word len = 0;
+      word utf_16_key_length = -1;
+      while (p[len] != 0) {
+        if (utf_16_key_length == -1 && p[len] == '=') utf_16_key_length = len;
+        len++;
+      }
+      if (utf_16_key_length == -1) utf_16_key_length = len;  // No '=' symbol found.
+      word utf_16_key_value_length = len;
+      bool in_new_environment = false;
+      // Environment variable key  from p to p + utf_16_key_value_length.
+      // Environment variable name from p to p + utf_16_key_length.
+      for (word i = 0; i < environment->length(); i += 2) {
+        Blob key;
+        environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+        if (utf_8_equals_utf_16(key.address(), key.length(), p, utf_16_key_length)) {
+          // Keys match, so we won't be taking this key-value pair from the old environment.
+          in_new_environment = true;
+          break;
+        }
+      }
+      if (!in_new_environment) {
+        if (writing) {
+          memcpy(new_environment + length_so_far, p, (utf_16_key_value_length + 1) * sizeof(uint16));
+        }
+        length_so_far += utf_16_key_value_length + 1;  // Add the null terminator.
+      }
+      p += utf_16_key_value_length + 1;
+    }
+    // Now that we have inherited the environment variables that were not
+    // mentioned in the new environment map, add the new variables.
+    for (word i = 0; i < environment->length(); i += 2) {
+      Blob key;
+      if (environment->at(i + 1) != process->null_object()) {
+        Blob key, value;
+        environment->at(i    )->byte_content(process->program(), &key, STRINGS_ONLY);
+        environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);
+        uint16* dest = writing ? new_environment + length_so_far : null;
+        word utf_16_key_length = utf_8_to_16(key.address(), key.length(), dest, new_environment_length - length_so_far);
+        length_so_far += utf_16_key_length + 1;
+        if (writing) {
+          new_environment[length_so_far - 1] = '=';
+          dest = new_environment + length_so_far;
+        }
+        word utf_16_value_length = utf_8_to_16(value.address(), value.length(), dest, new_environment_length - length_so_far);
+        length_so_far += utf_16_value_length + 1;
+        if (writing) {
+          new_environment[length_so_far - 1] = 0;
+        }
+      }
+    }
+    length_so_far++;   // Ends with a double null terminator.
+    if (writing) {
+      new_environment[length_so_far - 1] = 0;
+    } else {
+      new_environment = unvoid_cast<uint16*>(malloc(sizeof(uint16) * length_so_far));
+      new_environment_length = length_so_far;
+    }
+  }
+  return new_environment;
+}
+
 
 #define L0 0, 1, 1, 2, 1, 2, 2, 3,
 #define L1 1, 2, 2, 3, 2, 3, 3, 4,
@@ -329,8 +554,6 @@ const uint8 Utils::popcount_table[256] = {
 const char* vm_git_version() { return VM_GIT_VERSION; }
 const char* vm_git_info() { return VM_GIT_INFO; }
 const char* vm_sdk_model() { return TOIT_MODEL; }
-
-void dont_optimize_away_these_allocations(void** blocks) {}
 
 const uint8 Utils::REVERSE_NIBBLE[16] = {
     0b0000,
@@ -420,7 +643,7 @@ void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
 void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
   ASSERT((bytes & 3) == 0);
   ASSERT(((uintptr_t)src & 3) == 0);
-#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(TOIT_ESP32) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
   uint32_t tmp;
   __asm__ __volatile__(
     "srai %3, %3, 2   \n"  // Divide bytes by 4.

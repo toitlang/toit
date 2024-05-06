@@ -27,27 +27,25 @@ abstract class Mirror:
 
   constructor .json .program:
 
-  abstract stringify -> string
-
-  terminal_stringify: return stringify
+  terminal-stringify: return stringify
 
 class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program? [on_error]:
+  constructor json program/Program? [on-error]:
     if not program: throw "Stack trace can't be decoded without a snapshot"
-    frames = json[1].map: decode_json_ it program on_error
+    frames = json[1].map: decode-json_ it program on-error
     super json program
 
   stringify -> string:
-    if frames.is_empty: return "the empty stack"
+    if frames.is-empty: return "the empty stack"
     result := []
-    previous_index := -1
+    previous-index := -1
     frames.do:
-      if it.index != previous_index + 1: result.add "..."
-      if it.is_user_boundary: return result.join "\n"
-      previous_index = it.index
+      if it.index != previous-index + 1: result.add "..."
+      if it.is-user-boundary: return result.join "\n"
+      previous-index = it.index
       result.add it.stringify
     return result.join "\n"
 
@@ -56,49 +54,50 @@ class Frame extends Mirror:
   static tag ::= 'F'
   index ::= 0
   id ::= 0
-  absolute_bci ::= 0
+  absolute-bci ::= 0
   bci ::= 0
 
-  stacktrace_method_string/string ::= ?
+  stacktrace-method-string/string ::= ?
   method/ToitMethod ::= ?
-  method_info/MethodInfo ::= ?
+  method-info/MethodInfo ::= ?
   position/Position ::= ?
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program [on-error]:
     index = json[1]
-    absolute_bci = json[2]
-    method = program.method_from_absolute_bci absolute_bci
+    absolute-bci = json[2]
+    method = program.method-from-absolute-bci absolute-bci
     id = method.id
-    method_info = program.method_info_for id: null
-    bci = method_info and method.bci_from_absolute_bci absolute_bci
-    position = method_info and method_info.position bci
-    stacktrace_method_string = method_info.stacktrace_string program
+    method-info = program.method-info-for id: null
+    bci = method-info and method.bci-from-absolute-bci absolute-bci
+    position = method-info and method-info.position bci
+    stacktrace-method-string = method-info.stacktrace-string program
     super json program
 
-  is_user_boundary -> bool:
-    return (method_info != null) and stacktrace_method_string.starts_with "__entry__"
+  is-user-boundary -> bool:
+    return (method-info != null) and stacktrace-method-string.starts-with "__entry__"
 
   stringify -> string:
-    prefix := "$(%3d index): " + stacktrace_method_string
-    if not (method_info and position): return "$(%-30s prefix) method id=$id, bci=$bci"
-    return "$(%-30s prefix) $method_info.error_path:$position.line:$position.column"
+    prefix := "$(%3d index): " + stacktrace-method-string
+    if not (method-info and position): return "$(%-30s prefix) method id=$id, bci=$bci"
+    return "$(%-30s prefix) $method-info.error-path:$position.line:$position.column"
 
 
 class Instance extends Mirror:
   static tag ::= 'I'
-  class_id/int ::= ?
+  class-id/int ::= ?
 
-  constructor json program/Program [on_error]:
-    class_id = json[1]
+  constructor json program/Program? [on-error]:
+    class-id = json[1]
     super json program
 
-  is_vowel char/int -> bool:
+  is-vowel char/int -> bool:
     "aeiouAEIOU".do: if it == char: return true
     return false
 
   stringify -> string:
-    class_name := program.class_name_for class_id
-    return "$((is_vowel class_name[0]) ? "an" : "a") $class_name"
+    if not program: return "instance of class $class-id"
+    class-name := program.class-name-for class-id
+    return "$((is-vowel class-name[0]) ? "an" : "a") $class-name"
 
 
 class Array extends Mirror:
@@ -106,9 +105,9 @@ class Array extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on-error]:
     size = json[1]
-    content = json[2].map: decode_json_ it program on_error
+    content = json[2].map: decode-json_ it program on-error
     super json program
 
   stringify -> string:
@@ -122,9 +121,9 @@ class MList extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on-error]:
     size = json[1]
-    content = json[2].map: decode_json_ it program on_error
+    content = json[2].map: decode-json_ it program on-error
     super json program
 
   stringify -> string:
@@ -140,137 +139,158 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program? [on_error]:
-    if not program: throw "Error can't be decoded without a snapshot"
-    type = decode_json_ json[1] program on_error
-    message = decode_json_ json[2] program on_error
-    trace = decode_json_ json[3] program on_error
+  constructor json program/Program? [on-error]:
+    type = decode-json_ json[1] program on-error
+    message = decode-json_ json[2] program on-error
+    if program:
+      trace = decode-json_ json[3] program on-error
+    else:
+      trace = null
     super json program
 
   // Whether the class has a selector.
   // Looks also in super classes.
-  class_has_selector_ class_id/int selector/string -> bool:
-    class_info := program.class_info_for class_id
-    location_id := class_info.location_id
+  class-has-selector_ class-id/int selector/string -> bool:
+    class-info := program.class-info-for class-id
+    location-id := class-info.location-id
     while true:
-      selector_class := program.selector_class_for location_id
-      selectors := selector_class.selectors
+      selector-class := program.selector-class-for location-id
+      selectors := selector-class.selectors
       // A linear search through the selectors.
       if selectors.contains selector: return true
-      if not selector_class.has_super: return false
-      location_id = selector_class.super_location_id
+      if not selector-class.has-super: return false
+      location-id = selector-class.super-location-id
 
-  lookup_failure_stringify -> string:
+  lookup-failure-stringify -> string:
     // message is an array [selector string or a method id, receiver] that can identify a selector.
-    if message is not Array: return "Lookup failed message:$message.\n$trace"
-    selector_or_method_id := message.content[0]
-    receiver_class_id := message.content[1]
+    if message is not Array or not program:
+      trace-suffix := trace ? "\n$trace" : ""
+      return "Lookup failed message:$message.$trace-suffix"
+    selector-or-method-id := message.content[0]
+    receiver-class-id := message.content[1]
     receiver := message.content[2]
 
     selector := null
-    if selector_or_method_id is num:
-      selector = program.selector_from_dispatch_offset selector_or_method_id
-          --if_absent= :
+    if selector-or-method-id is num:
+      selector = program.selector-from-dispatch-offset selector-or-method-id
+          --if-absent= :
             return """
               Lookup failed when calling selector with offset \
-              $selector_or_method_id on $(typed_expression_string_ receiver).
+              $selector-or-method-id on $(typed-expression-string_ receiver).
               $trace"""
     else:
-      selector = selector_or_method_id
-    has_selector := class_has_selector_ receiver_class_id selector
-    class_name := class_name_for_ receiver receiver_class_id
-    if has_selector:
-      return "Argument mismatch for '$class_name.$selector'.\n$trace"
-    return "Class '$class_name' does not have any method '$selector'.\n$trace"
+      selector = selector-or-method-id
+    has-selector := class-has-selector_ receiver-class-id selector
+    class-name := class-name-for_ receiver receiver-class-id
+    if has-selector:
+      return "Argument mismatch for '$class-name.$selector'.\n$trace"
+    return "Class '$class-name' does not have any method '$selector'.\n$trace"
 
-  as_check_failure_stringify -> string:
+  as-check-failure-stringify -> string:
     // message is an array [expression, id]
-    if message is not Array: return "As check failed message:$message.\n$trace"
+    if message is not Array or not program:
+      trace-suffix := trace ? "\n$trace" : ""
+      return "As check failed message:$message.$trace-suffix"
     expression := message.content[0]
     id := message.content[1]
-    class_name := id
+    class-name := id
     if id is string:
-      class_name = id
+      class-name = id
     else:
       assert: id is int
-      method := program.method_from_absolute_bci id
-      relative_bci := method.bci_from_absolute_bci id
-      method_info := program.method_info_for method.id
-      class_name = method_info.as_class_name relative_bci
-    return "As check failed: $(typed_expression_string_ expression) is not a $class_name.\n$trace"
+      method := program.method-from-absolute-bci id
+      relative-bci := method.bci-from-absolute-bci id
+      method-info := program.method-info-for method.id
+      class-name = method-info.as-class-name relative-bci
+    return "As check failed: $(typed-expression-string_ expression) is not a $class-name.\n$trace"
 
-  allocation_failed_stringify -> string:
-    if message is not int:
+  serialization-failed-stringify -> string:
+    // message is an integer, the failing class-id.
+    if message is not int or not program:
+      trace-suffix := trace ? "\n$trace" : ""
+      return "Serialization failed: Cannot encode instance.$trace-suffix"
+    class-id := message
+    class-name := program.class-name-for class-id
+    return "Serialization failed: Cannot encode instance of $class-name.\n$trace"
+
+  allocation-failed-stringify -> string:
+    if message is not int or not program:
       return "Allocation failed:$message.\n$trace"
     id := message
-    class_info := program.class_info_for id:
+    class-info := program.class-info-for id:
       // Bad class id.
       return "Allocation failed:$message.\n$trace"
-    class_name := class_info.name
-    return "Allocation failed when trying to allocate an instance of $class_name\n$trace"
+    class-name := class-info.name
+    return "Allocation failed when trying to allocate an instance of $class-name\n$trace"
 
-  initialization_in_progress_stringify -> string:
-    if message is not int or not 0 <= message < program.global_table.size:
-      return "Initialization of variable in progress: $message.\n$trace"
-    global_id := message
-    global_info := program.global_table[global_id]
-    name := global_info.name
+  initialization-in-progress-stringify -> string:
+    if message is not int or not program or not 0 <= message < program.global-table.size:
+      trace-suffix := trace ? "\n$trace" : ""
+      return "Initialization of variable in progress: $message.$trace-suffix"
+    global-id := message
+    global-info := program.global-table[global-id]
+    name := global-info.name
     kind := "global"
-    if global_info.holder_name:
-      name = "$(global_info.holder_name).$name"
+    if global-info.holder-name:
+      name = "$(global-info.holder-name).$name"
       kind = "static field"
     return "Initialization of $kind '$name' in progress.\n$trace"
 
-  uninitialized_global_stringify -> string:
-    if message is not int or not 0 <= message < program.global_table.size:
-      return "Trying to access uninitialized variable: $message.\n$trace"
-    global_id := message
-    global_info := program.global_table[global_id]
-    name := global_info.name
+  uninitialized-global-stringify -> string:
+    if message is not int or not program or not 0 <= message < program.global-table.size:
+      trace-suffix := trace ? "\n$trace" : ""
+      return "Trying to access uninitialized variable: $message.$trace-suffix"
+    global-id := message
+    global-info := program.global-table[global-id]
+    name := global-info.name
     kind := "global"
-    if global_info.holder_name:
-      name = "$(global_info.holder_name).$name"
+    if global-info.holder-name:
+      name = "$(global-info.holder-name).$name"
       kind = "static field"
     return "Trying to access uninitialized $kind '$name'.\n$trace"
 
-  code_invocation_stringify -> string:
+  code-invocation-stringify -> string:
     if message is not Array or
+        not program or
         message.content.size != 4 or
         message.content[0] is not bool or
         message.content[1] is not int or
         message.content[2] is not int or
         message.content[3] is not int:
-      return "Called block or lambda with too few arguments: $message\n$trace"
-    is_block := message.content[0]
+      trace-suffix := trace ? "\n$trace" : ""
+      return "Called block or lambda with too few arguments: $message$trace-suffix"
+    is-block := message.content[0]
     expected := message.content[1]
     provided := message.content[2]
-    absolute_bci := message.content[3]
-    if is_block:
+    absolute-bci := message.content[3]
+    if is-block:
       // Remove the implicit block argument.
       expected--
       provided--
-    method := program.method_from_absolute_bci absolute_bci
-    method_info := program.method_info_for method.id
-    name := method_info.stacktrace_string program
+    method := program.method-from-absolute-bci absolute-bci
+    method-info := program.method-info-for method.id
+    name := method-info.stacktrace-string program
     return """
-      Called $(is_block ? "block" : "lambda") with too few arguments.
+      Called $(is-block ? "block" : "lambda") with too few arguments.
       Got: $provided Expected: $expected.
       Target:
-           $(%-25s name) $method_info.error_path:$method_info.position
+           $(%-25s name) $method-info.error-path:$method-info.position
 
       $trace"""
 
   stringify -> string:
-    if type == "LOOKUP_FAILED": return lookup_failure_stringify
-    if type == "AS_CHECK_FAILED": return as_check_failure_stringify
-    if type == "ALLOCATION_FAILED": return allocation_failed_stringify
-    if type == "INITIALIZATION_IN_PROGRESS": return initialization_in_progress_stringify
-    if type == "UNINITIALIZED_GLOBAL": return uninitialized_global_stringify
-    if type == "CODE_INVOCATION_FAILED": return code_invocation_stringify
+    if type == "LOOKUP_FAILED": return lookup-failure-stringify
+    if type == "AS_CHECK_FAILED": return as-check-failure-stringify
+    if type == "SERIALIZATION_FAILED": return serialization-failed-stringify
+    if type == "ALLOCATION_FAILED": return allocation-failed-stringify
+    if type == "INITIALIZATION_IN_PROGRESS": return initialization-in-progress-stringify
+    if type == "UNINITIALIZED_GLOBAL": return uninitialized-global-stringify
+    if type == "CODE_INVOCATION_FAILED": return code-invocation-stringify
     if message is string and message.size == 0: return "$type error.\n$trace"
-    return "$type error. \n$message\n$trace"
+    trace-suffix := trace ? "\n$trace" : ""
+    return "$type error. \n$message$trace-suffix"
 
-  typed_expression_string_ expr:
+  typed-expression-string_ expr:
     if expr is Instance: return expr.stringify
     if expr is MList: return expr.stringify
     if expr is Array: return expr.stringify
@@ -280,14 +300,14 @@ class Error extends Mirror:
     if expr is bool: return "a bool ($expr)"
     return expr.stringify
 
-  class_name_for_ expr class_id:
+  class-name-for_ expr class-id:
     if expr is MList: return "List"
     if expr is Array: return "Array_"
     if expr is string: return "string"
     if expr is int: return "int"
     if expr is float: return "float"
     if expr is bool: return "bool"
-    return program.class_name_for class_id
+    return program.class-name-for class-id
 
 class Record:
   method ::= ?
@@ -296,7 +316,7 @@ class Record:
   constructor .method .count:
 
   stringify program total/int -> string:
-    percentage ::= (count * 100).to_float/total
+    percentage ::= (count * 100).to-float/total
     return "$(%5.1f percentage)% $(%-20s method.stringify program)"
 
 class Profile extends Mirror:
@@ -307,18 +327,18 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program? [on_error]:
+  constructor json program/Program? [on-error]:
     if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
-    title = decode_json_ json[1] program on_error
-    cutoff = decode_json_ json[2] program on_error
-    total = decode_json_ json[3] program on_error
+    title = decode-json_ json[1] program on-error
+    cutoff = decode-json_ json[2] program on-error
+    total = decode-json_ json[3] program on-error
     ((json.size - 4) / 2).repeat:
       entries.add
         Record
-          program.method_info_for json[pos++]
+          program.method-info-for json[pos++]
           json[pos++]
-    entries.sort --in_place: | a b | b.count - a.count
+    entries.sort --in-place: | a b | b.count - a.count
     super json program
 
   table:
@@ -326,19 +346,19 @@ class Profile extends Mirror:
     return result.join "\n"
 
   stringify -> string:
-    return "Profile of $title ($total ticks, cutoff $(cutoff.to_float/10)%):\n$table"
+    return "Profile of $title ($total ticks, cutoff $(cutoff.to-float/10)%):\n$table"
 
 class HistogramEntry:
-  class_name /string
+  class-name /string
   count /int
   size /int
 
-  constructor .class_name .count .size:
+  constructor .class-name .count .size:
 
   stringify -> string:
     k := size < 1024 ? "       " : "$(%6d size >> 10)k"
     c := count == 0 ? "       " : "$(%7d count)"
-    return "  │ $c │ $k $(%4d size & 0x3ff) │ $(%-45s class_name)│"
+    return "  │ $c │ $k $(%4d size & 0x3ff) │ $(%-45s class-name)│"
 
 class Histogram extends Mirror:
   static tag ::= 'O'  // For Objects.
@@ -346,17 +366,17 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program? [on_error]:
+  constructor json program/Program? [on-error]:
     if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
-    first_entry := 2
+    first-entry := 2
 
-    for i := first_entry; i < json.size; i += 3:
-      class_name := program.class_name_for json[i]
+    for i := first-entry; i < json.size; i += 3:
+      class-name := program.class-name-for json[i]
       entries.add
-          HistogramEntry class_name json[i + 1] json[i + 2]
-    entries.sort --in_place: | a b | b.size - a.size
+          HistogramEntry class-name json[i + 1] json[i + 2]
+    entries.sort --in-place: | a b | b.size - a.size
     super json program
 
   stringify -> string:
@@ -374,17 +394,17 @@ class Histogram extends Mirror:
 
 class CoreDump extends Mirror:
   static tag ::= 'c'
-  core_dump ::= ?
+  core-dump ::= ?
 
-  constructor json program [on_error]:
-    core_dump = json[1]
+  constructor json program [on-error]:
+    core-dump = json[1]
     super json program
 
   stringify -> string:
     output := "#    ************ ESP32 core dump file received.            **************\n"
     output += "#    ************ Decode by running the following commands: **************\n"
     output += "echo "
-    output += base64.encode core_dump
+    output += base64.encode core-dump
     output += " | base64 --decode | zcat > /tmp/core.dump\n"
     output += "./third_party/esp-idf/components/espcoredump/espcoredump.py info_corefile -t raw -c /tmp/core.dump ./esp/toit/build/toit.elf"
     return output
@@ -392,120 +412,119 @@ class CoreDump extends Mirror:
 class MallocReport extends Mirror:
   static tag ::= 'M'
 
-  uses_list /List := []        // List of byte arrays, each entry is a bitmap.
-  fullnesses_list /List := []  // List of byte arrays, each entry is a percentage fullness.
-  base_addresses /List := []   // List of base adddresses.
+  uses-list /List := []        // List of byte arrays, each entry is a bitmap.
+  fullnesses-list /List := []  // List of byte arrays, each entry is a percentage fullness.
+  base-addresses /List := []   // List of base adddresses.
   granularity /int
 
-  static TERMINAL_SET_BACKGROUND_ ::= "\x1b[48;5;"
-  static TERMINAL_SET_FOREGROUND_ ::= "\x1b[38;5;"
-  static TERMINAL_RESET_COLORS_   ::= "\x1b[0m"
-  static TERMINAL_WHITE_ ::= 231
-  static TERMINAL_DARK_GREY_ ::= 232
-  static TERMINAL_LIGHT_GREY_ ::= 255
-  static TERMINAL_TOIT_HEAP_COLOR_ ::= 174  // Orange-ish.
+  static TERMINAL-SET-BACKGROUND_ ::= "\x1b[48;5;"
+  static TERMINAL-SET-FOREGROUND_ ::= "\x1b[38;5;"
+  static TERMINAL-RESET-COLORS_   ::= "\x1b[0m"
+  static TERMINAL-WHITE_ ::= 231
+  static TERMINAL-DARK-GREY_ ::= 232
+  static TERMINAL-LIGHT-GREY_ ::= 255
+  static TERMINAL-TOIT-HEAP-COLOR_ ::= 174  // Orange-ish.
 
-  static MEMORY_PAGE_MALLOC_MANAGED_ ::= 1 << 0
+  static MEMORY-PAGE-MALLOC-MANAGED_ ::= 1 << 0
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates the page was allocated for the Toit heap.
   */
-  static MEMORY_PAGE_TOIT_            ::= 1 << 1
+  static MEMORY-PAGE-TOIT_            ::= 1 << 1
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates the page contains at least one allocation for external (large)
   Toit strings and byte arrays.
   */
-  static MEMORY_PAGE_EXTERNAL_        ::= 1 << 2
+  static MEMORY-PAGE-EXTERNAL_        ::= 1 << 2
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates the page contains at least one allocation for TLS and other
   cryptographic uses.
   */
-  static MEMORY_PAGE_TLS_             ::= 1 << 3
+  static MEMORY-PAGE-TLS_             ::= 1 << 3
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates the page contains at least one allocation for network buffers.
   */
-  static MEMORY_PAGE_BUFFERS_         ::= 1 << 4
+  static MEMORY-PAGE-BUFFERS_         ::= 1 << 4
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates the page contains at least one miscellaneous or unknown allocation.
   */
-  static MEMORY_PAGE_MISC_            ::= 1 << 5
+  static MEMORY-PAGE-MISC_            ::= 1 << 5
 
   /**
-  Bitmap mask for $uses_list.
+  Bitmap mask for $uses-list.
   Indicates that this page and the next page are part of a large multi-page
   allocation.
   */
-  static MEMORY_PAGE_MERGE_WITH_NEXT_ ::= 1 << 6
+  static MEMORY-PAGE-MERGE-WITH-NEXT_ ::= 1 << 6
 
-  constructor json program [on_error]:
+  constructor json program [on-error]:
     for i := 1; i + 2 < json.size; i += 3:
-      uses_list.add       json[i + 0]
-      fullnesses_list.add json[i + 1]
-      base_addresses.add  json[i + 2]
+      uses-list.add       json[i + 0]
+      fullnesses-list.add json[i + 1]
+      base-addresses.add  json[i + 2]
     granularity = json[json.size - 1]
     super json program
 
   stringify -> string:
     result := []
     key_ result --terminal=false
-    for i := 0; i < uses_list.size; i++:
-      uses := uses_list[i]
-      fullnesses := fullnesses_list[i]
-      base := base_addresses[i]
+    for i := 0; i < uses-list.size; i++:
+      uses := uses-list[i]
+      fullnesses := fullnesses-list[i]
+      base := base-addresses[i]
       for j := 0; j < uses.size; j++:
         if uses[j] != 0 or fullnesses[j] != 0:
-          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(usage_letters_ uses[j] fullnesses[j])"
-        if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
-          result.add "--------------------------------------------------------"
+          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(plain-usage-description_ uses[j] fullnesses[j])"
+        if uses[j] & MEMORY-PAGE-MERGE-WITH-NEXT_ == 0:
+          separator := "--------------------------------------------------------"
+          if result[result.size - 1] != separator: result.add separator
     return result.join "\n"
 
   key_ result/List --terminal/bool -> none:
     k := granularity >> 10
     scale := ""
-    for i := 232; i <= 255; i++: scale += "$TERMINAL_SET_BACKGROUND_$(i)m "
-    scale += TERMINAL_RESET_COLORS_
+    for i := 232; i <= 255; i++: scale += "$TERMINAL-SET-BACKGROUND_$(i)m "
+    scale += TERMINAL-RESET-COLORS_
     result.add   "┌────────────────────────────────────────────────────────────────────────┐"
     if terminal:
       result.add "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
       result.add "│ because they have many different allocations in them.                  │"
     else:
-      result.add "│Each line is a $(%2d k)k page.                                                      │"
-    result.add   "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
-    result.add   "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
-    result.add   "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+      result.add "│Each line is a $(%2d k)k page.                                                │"
     if terminal:
+      result.add "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+      result.add "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+      result.add "│   To = Toit managed heap.                  -- = Free page.             │"
       result.add "│        Fully allocated $scale Completely free page.  │"
     result.add   "└────────────────────────────────────────────────────────────────────────┘"
 
-  usage_letters_ use/int fullness/int -> string:
-    symbols := ""
-    if use & MEMORY_PAGE_TOIT_ != 0: symbols += "🐱"
-    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
-    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols = "X"
-    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"
-    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"
-    if fullness == 0:
-      symbols = "--"
-    while symbols.size < 2:
-      symbols += " "
-    return symbols
+  // Only used for plain ASCII mode, not for terminal graphics mode.
+  plain-usage-description_ use/int fullness/int -> string:
+    if fullness == 0: return "(Free)"
+    symbols := []
+    if use & MEMORY-PAGE-TOIT_ != 0: symbols.add "Toit"
+    if use & MEMORY-PAGE-BUFFERS_ != 0: symbols.add "Network Buffers"
+    if use & MEMORY-PAGE-EXTERNAL_ != 0: symbols.add "External strings/bytearrays"
+    if use & MEMORY-PAGE-TLS_ != 0: symbols.add "TLS/Crypto"
+    if use & MEMORY-PAGE-MISC_ != 0: symbols.add "Misc"
+    return symbols.join ", "
 
-  terminal_stringify -> string:
+  terminal-stringify -> string:
     result := []
     key_ result --terminal=true
-    for i := 0; i < uses_list.size; i++:
-      uses := uses_list[i]
-      fullnesses := fullnesses_list[i]
-      base := base_addresses[i]
+    for i := 0; i < uses-list.size; i++:
+      uses := uses-list[i]
+      fullnesses := fullnesses-list[i]
+      base := base-addresses[i]
       lowest := uses.size
       highest := 0
       for j := 0; j < uses.size; j++:
@@ -514,56 +533,56 @@ class MallocReport extends Mirror:
           highest = max highest j
       if lowest > highest: continue
       result.add "0x$(%08x base + lowest * granularity)-0x$(%08x base + (highest + 1) * granularity)"
-      generate_line result uses fullnesses "┌"  "──┬"  "───"  "──┐" false
-      generate_line result uses fullnesses "│"    "│"    " "    "│" true
-      generate_line result uses fullnesses "└"  "──┴"  "───"  "──┘" false
+      generate-line result uses fullnesses "┌"  "──┬"  "───"  "──┐" false
+      generate-line result uses fullnesses "│"    "│"    " "    "│" true
+      generate-line result uses fullnesses "└"  "──┴"  "───"  "──┘" false
     return result.join "\n"
 
-  generate_line result/List uses/ByteArray fullnesses/ByteArray open/string allocation_end/string allocation_continue/string end/string is_data_line/bool -> none:
+  generate-line result/List uses/ByteArray fullnesses/ByteArray open/string allocation-end/string allocation-continue/string end/string is-data-line/bool -> none:
     line := []
     for i := 0; i < uses.size; i++:
       use := uses[i]
       if use == 0 and fullnesses[i] == 0: continue
       symbols := ""
-      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "🐱"
-      if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
-      if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols += "X"
-      if use & MEMORY_PAGE_TLS_ != 0: symbols += "W"  // For WWW.
-      if use & MEMORY_PAGE_MISC_ != 0: symbols += "M"  // For WWW.
-      previous_was_unmanaged := i == 0 or (uses[i - 1] == 0 and fullnesses[i - 1] == 0)
-      if previous_was_unmanaged:
+      if use & MEMORY-PAGE-TOIT_ != 0: symbols = "To"
+      if use & MEMORY-PAGE-BUFFERS_ != 0: symbols = "B"
+      if use & MEMORY-PAGE-EXTERNAL_ != 0: symbols += "X"
+      if use & MEMORY-PAGE-TLS_ != 0: symbols += "W"  // For WWW.
+      if use & MEMORY-PAGE-MISC_ != 0: symbols += "M"  // For WWW.
+      previous-was-unmanaged := i == 0 or (uses[i - 1] == 0 and fullnesses[i - 1] == 0)
+      if previous-was-unmanaged:
         line.add open
       fullness := fullnesses[i]
       if fullness == 0:
         symbols = "--"
       while symbols.size < 2:
         symbols += " "
-      if is_data_line:
-        white_text := fullness > 50  // Percent.
-        background_color := TERMINAL_LIGHT_GREY_ - (24 * fullness) / 100
-        background_color = max background_color TERMINAL_DARK_GREY_
+      if is-data-line:
+        white-text := fullness > 50  // Percent.
+        background-color := TERMINAL-LIGHT-GREY_ - (24 * fullness) / 100
+        background-color = max background-color TERMINAL-DARK-GREY_
         if fullness == 0:
-          background_color = TERMINAL_WHITE_
-        else if use & MEMORY_PAGE_TOIT_ != 0:
-          background_color = TERMINAL_TOIT_HEAP_COLOR_
+          background-color = TERMINAL-WHITE_
+        else if use & MEMORY-PAGE-TOIT_ != 0:
+          background-color = TERMINAL-TOIT-HEAP-COLOR_
 
-        line.add "$TERMINAL_SET_BACKGROUND_$(background_color)m"
-               + "$TERMINAL_SET_FOREGROUND_$(white_text ? TERMINAL_WHITE_ : TERMINAL_DARK_GREY_)m"
-               + symbols + TERMINAL_RESET_COLORS_
-      next_is_unmanaged := i == uses.size - 1 or (uses[i + 1] == 0 and fullnesses[i + 1] == 0)
-      line_drawing := ?
-      if next_is_unmanaged:
-        line_drawing = end
-      else if use & MEMORY_PAGE_MERGE_WITH_NEXT_ != 0:
-        line_drawing = allocation_continue
+        line.add "$TERMINAL-SET-BACKGROUND_$(background-color)m"
+               + "$TERMINAL-SET-FOREGROUND_$(white-text ? TERMINAL-WHITE_ : TERMINAL-DARK-GREY_)m"
+               + symbols + TERMINAL-RESET-COLORS_
+      next-is-unmanaged := i == uses.size - 1 or (uses[i + 1] == 0 and fullnesses[i + 1] == 0)
+      line-drawing := ?
+      if next-is-unmanaged:
+        line-drawing = end
+      else if use & MEMORY-PAGE-MERGE-WITH-NEXT_ != 0:
+        line-drawing = allocation-continue
       else:
-        line_drawing = allocation_end
-      if symbols.size > 2 and not is_data_line and symbols != "🐱":
+        line-drawing = allocation-end
+      if symbols.size > 2 and not is-data-line:
         // Pad the line drawings on non-data lines to match the width of the
         // data.
-        first_character := line_drawing[0..utf_8_bytes line_drawing[0]]
-        line_drawing = (first_character * (symbols.size - 2)) + line_drawing
-      line.add line_drawing
+        first-character := line-drawing[0..utf-8-bytes line-drawing[0]]
+        line-drawing = (first-character * (symbols.size - 2)) + line-drawing
+      line.add line-drawing
     result.add
         "  " + (line.join "")
 
@@ -572,26 +591,26 @@ class HeapReport extends Mirror:
   reason := ""
   pages ::= []
 
-  constructor json program/Program? [on_error]:
+  constructor json program/Program? [on-error]:
     reason = json[1]
-    pages = json[2].map: decode_json_ it program on_error
-    pages.sort --in_place: | a b | a.address.compare_to b.address
+    pages = json[2].map: decode-json_ it program on-error
+    pages.sort --in-place: | a b | a.address.compare-to b.address
     super json program
 
   stringify -> string:
-    if pages.is_empty: return "$reason: empty heap"
+    if pages.is-empty: return "$reason: empty heap"
     output := []
     output.add "$reason\n"
     pages.do:
       output.add it.stringify
     return (output.join "") + (BlackWhiteBlockOutputter_).key
 
-  terminal_stringify -> string:
-    if pages.is_empty: return "$reason: empty heap"
+  terminal-stringify -> string:
+    if pages.is-empty: return "$reason: empty heap"
     output := []
     output.add "$reason\n"
     pages.do:
-      output.add it.terminal_stringify
+      output.add it.terminal-stringify
     return (output.join "") + (ColorBlockOutputter_).key
 
 class HeapPage extends Mirror:
@@ -624,10 +643,10 @@ class HeapPage extends Mirror:
 
   static GRANULARITY_ ::= 8
   static HEADER_ ::= 8
-  static PAGE_HEADER_ ::= 24
+  static PAGE-HEADER_ ::= 24
   static PAGE_ ::= 4096
 
-  constructor json program [on_error]:
+  constructor json program [on-error]:
     address = json[1]
     map = json[2]
     super json program
@@ -646,8 +665,8 @@ class HeapPage extends Mirror:
         offset += HEADER_
       repetitions := extra + (((byte >> 4) & 0b11) + 1) * GRANULARITY_
       use := byte & 0b1111
-      usage_char := "?ABSTUFWH?EOP?W "[use]
-      block.call offset repetitions usage_char (offset + repetitions == PAGE_)
+      usage-char := "?ABSTUFWH?EOP?W "[use]
+      block.call offset repetitions usage-char (offset + repetitions == PAGE_)
       offset += repetitions
     if offset < PAGE_:
       block.call offset (PAGE_ - offset) ' ' true
@@ -655,23 +674,23 @@ class HeapPage extends Mirror:
   stringify -> string:
     return print_ false
 
-  terminal_stringify -> string:
+  terminal-stringify -> string:
     return print_ true
 
   print_ color:
     allocations := 0
-    largest_free := 0
+    largest-free := 0
     unused := 0
-    do: | offset size usage_char last_flag |
-      if usage_char != 'F' and usage_char != 'H' and usage_char != ' ': allocations++
-      if usage_char == 'F':
-        if size > largest_free: largest_free = size
+    do: | offset size usage-char last-flag |
+      if usage-char != 'F' and usage-char != 'H' and usage-char != ' ': allocations++
+      if usage-char == 'F':
+        if size > largest-free: largest-free = size
         unused += size
-    ram_type := 0x4008_0000 <= address < 0x400A_0000 ? "  (IRAM)" : ""
-    result := "    0x$(%08x address): $(unused * 100 / 4096)% free, largest space $largest_free bytes, allocations: $allocations$ram_type\n"
+    ram-type := 0x4008_0000 <= address < 0x400A_0000 ? "  (IRAM)" : ""
+    result := "    0x$(%08x address): $(unused * 100 / 4096)% free, largest space $largest-free bytes, allocations: $allocations$ram-type\n"
     blocks := color ? ColorBlockOutputter_ : BlackWhiteBlockOutputter_
-    do: | offset size usage_char last_flag |
-      (size / GRANULARITY_).repeat: blocks.add usage_char (it == size / GRANULARITY_ - 1 and last_flag)
+    do: | offset size usage-char last-flag |
+      (size / GRANULARITY_).repeat: blocks.add usage-char (it == size / GRANULARITY_ - 1 and last-flag)
     return result + blocks.buffer
 
 DESCRIPTIONS_ ::= {
@@ -691,25 +710,25 @@ DESCRIPTIONS_ ::= {
 
 abstract class BlockOutputter_:
   atoms := 0
-  abstract add usage_char last_flag
+  abstract add usage-char last-flag
   abstract buffer
 
 class CharacterBlockOutputter_ extends BlockOutputter_:
   buffer := ""
 
-  add usage_char last_flag:
-    buffer += "$(%c usage_char)"
+  add usage-char last-flag:
+    buffer += "$(%c usage-char)"
     atoms++
     if atoms & 0x7f == 0: buffer += "\n"
 
 abstract class UnicodeBlockOutputter_ extends BlockOutputter_:
-  previous_usage := null
+  previous-usage := null
   buffer := "     $("▁" * 64)\n    ▕"
 
-  increment_atoms last_flag reset [block]:
+  increment-atoms last-flag reset [block]:
     atoms++
     if atoms & 0x7f == 0:
-      buffer += last_flag ?  "$reset▏\n     $("▔" * 64)\n" : "$reset▏\n    ▕"
+      buffer += last-flag ?  "$reset▏\n     $("▔" * 64)\n" : "$reset▏\n    ▕"
       block.call
 
   abstract key
@@ -718,27 +737,27 @@ class BlackWhiteBlockOutputter_ extends UnicodeBlockOutputter_:
   key:
     result := ""
     DESCRIPTIONS_.do: | letter description |
-      letter_string := letter == 'F' ? "█" : "$(%c letter)"
-      result += "    $(description.pad 30) $letter_string\n"
+      letter-string := letter == 'F' ? "█" : "$(%c letter)"
+      result += "    $(description.pad 30) $letter-string\n"
     return result
 
-  add usage_char last_flag:
+  add usage-char last-flag:
     if atoms & 1 == 0:
-      previous_usage = usage_char
+      previous-usage = usage-char
     else:
-      atom_was_free := previous_usage == 'F' or previous_usage == 'H'
-      new_atom_is_free := usage_char == 'F' or usage_char == 'H'
-      if not atom_was_free:
-        if not new_atom_is_free:
-          buffer += "$(%c usage_char)"
+      atom-was-free := previous-usage == 'F' or previous-usage == 'H'
+      new-atom-is-free := usage-char == 'F' or usage-char == 'H'
+      if not atom-was-free:
+        if not new-atom-is-free:
+          buffer += "$(%c usage-char)"
         else:
           buffer += "▐"
       else:
-        if not new_atom_is_free:
+        if not new-atom-is-free:
           buffer += "▌"
         else:
           buffer += "█"
-    increment_atoms last_flag "": null
+    increment-atoms last-flag "": null
 
 class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   background := -1
@@ -773,55 +792,55 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
 
   reset ::= "\u001b[0m"
 
-  add usage_char last_flag:
+  add usage-char last-flag:
     if atoms & 1 == 0:
-      previous_usage = usage_char
+      previous-usage = usage-char
     else:
-      new_background := colors[previous_usage]
-      new_foreground := colors[usage_char]
-      if new_background == new_foreground:
-        if background != new_background:
-          background = new_background
+      new-background := colors[previous-usage]
+      new-foreground := colors[usage-char]
+      if new-background == new-foreground:
+        if background != new-background:
+          background = new-background
           buffer += "$BG$(background)m"
-      if background == new_background and background == new_foreground:
+      if background == new-background and background == new-foreground:
         if foreground != 239:  // Dark grey
           foreground = 239
           buffer += "$FG$(foreground)m"
-        buffer += "$(%c usage_char)"
+        buffer += "$(%c usage-char)"
       else:
         sequence := ""
-        if background != new_background:
-          sequence += "$BG$(new_background)m"
-        if foreground != new_foreground:
-          sequence += "$FG$(new_foreground)m"
+        if background != new-background:
+          sequence += "$BG$(new-background)m"
+        if foreground != new-foreground:
+          sequence += "$FG$(new-foreground)m"
         sequence += "▐"
         buffer += sequence
-        foreground = new_foreground
-        background = new_background
+        foreground = new-foreground
+        background = new-background
 
-    increment_atoms last_flag reset:
+    increment-atoms last-flag reset:
       foreground = -1
       background = -1
 
-decode byte_array program/Program? [on_error]:
-  assert: byte_array is ByteArray and byte_array[0] == '['
+decode byte-array program/Program? [on-error]:
+  assert: byte-array is ByteArray and byte-array[0] == '['
   json := null
-  error ::= catch: json = ubjson.decode byte_array
+  error ::= catch: json = ubjson.decode byte-array
   if error:
-    on_error.call error
+    on-error.call error
     unreachable  // on_error callback shouldn't continue decoding.
 
   // First decode the header without using the program.
-  if json is not List: return on_error.call "Expecting a list when decoding a structure"
-  if json.size != 5: return on_error.call "Expecting five element list"
-  if json.first != 'X': return on_error.call "Expecting Message"
-  sdk_version  ::= json[1]
-  sdk_model  ::= json[2]
-  program_uuid ::= json[3]
+  if json is not List: return on-error.call "Expecting a list when decoding a structure"
+  if json.size != 5: return on-error.call "Expecting five element list"
+  if json.first != 'X': return on-error.call "Expecting Message"
+  sdk-version  ::= json[1]
+  sdk-model  ::= json[2]
+  program-uuid ::= json[3]
   // Then decode the payload.
-  return decode_json_ json[4] program on_error
+  return decode-json_ json[4] program on-error
 
-decode_json_ json program/Program? [on_error]:
+decode-json_ json program/Program? [on-error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json
@@ -831,18 +850,18 @@ decode_json_ json program/Program? [on_error]:
   // Then decode a real list as a system encoded data structure.
   assert: not json is ByteArray // Note: a ByteArray is also a List.
   assert: json is List
-  if json.size == 0: return on_error.call "Expecting a non empty list"
+  if json.size == 0: return on-error.call "Expecting a non empty list"
   tag := json.first
-  if      tag == Array.tag:        return Array        json program on_error
-  else if tag == MList.tag:        return MList        json program on_error
-  else if tag == Stack.tag:        return Stack        json program on_error
-  else if tag == Frame.tag:        return Frame        json program on_error
-  else if tag == Error.tag:        return Error        json program on_error
-  else if tag == Instance.tag:     return Instance     json program on_error
-  else if tag == Profile.tag:      return Profile      json program on_error
-  else if tag == Histogram.tag:    return Histogram    json program on_error
-  else if tag == HeapReport.tag:   return HeapReport   json program on_error
-  else if tag == HeapPage.tag:     return HeapPage     json program on_error
-  else if tag == CoreDump.tag:     return CoreDump     json program on_error
-  else if tag == MallocReport.tag: return MallocReport json program on_error
-  return on_error.call "Unknown tag: $tag"
+  if      tag == Array.tag:        return Array        json program on-error
+  else if tag == MList.tag:        return MList        json program on-error
+  else if tag == Stack.tag:        return Stack        json program on-error
+  else if tag == Frame.tag:        return Frame        json program on-error
+  else if tag == Error.tag:        return Error        json program on-error
+  else if tag == Instance.tag:     return Instance     json program on-error
+  else if tag == Profile.tag:      return Profile      json program on-error
+  else if tag == Histogram.tag:    return Histogram    json program on-error
+  else if tag == HeapReport.tag:   return HeapReport   json program on-error
+  else if tag == HeapPage.tag:     return HeapPage     json program on-error
+  else if tag == CoreDump.tag:     return CoreDump     json program on-error
+  else if tag == MallocReport.tag: return MallocReport json program on-error
+  return on-error.call "Unknown tag: $tag"

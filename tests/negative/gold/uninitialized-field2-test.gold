@@ -1,0 +1,52 @@
+tests/negative/uninitialized-field2-test.toit:91:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized-field2-test.toit:58:11: error: Can't assign final field in dynamic part of constructor
+    field = 499
+          ^
+tests/negative/uninitialized-field2-test.toit:56:5: note: Expression that switched to dynamic part
+    call-lambda true::
+    ^~~~~~~~~~~
+tests/negative/uninitialized-field2-test.toit:63:11: error: Can't assign final field in dynamic part of constructor
+    field = 499
+          ^
+tests/negative/uninitialized-field2-test.toit:61:5: note: Expression that switched to dynamic part
+    call-lambda true::
+    ^~~~~~~~~~~
+tests/negative/uninitialized-field2-test.toit:16:14: error: Field 'field' must be initialized before first use
+    some-fun field
+             ^~~~~
+tests/negative/uninitialized-field2-test.toit:21:16: error: Field 'field' must be initialized before first use
+      some-fun field
+               ^~~~~
+tests/negative/uninitialized-field2-test.toit:28:16: error: Field 'field' must be initialized before first use
+      some-fun field
+               ^~~~~
+tests/negative/uninitialized-field2-test.toit:32:10: error: Field 'field' must be initialized before first use
+    field++
+         ^~
+tests/negative/uninitialized-field2-test.toit:35:5: error: Field 'field' not initialized on all paths before implicit super-call
+    some-fun this
+    ^~~~~~~~
+tests/negative/uninitialized-field2-test.toit:41:12: error: Field 'field' must be initialized before first use
+      field++
+           ^~
+tests/negative/uninitialized-field2-test.toit:47:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized-field2-test.toit:52:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized-field2-test.toit:56:5: error: Field 'field' not initialized on all paths before implicit super-call
+    call-lambda true::
+    ^~~~~~~~~~~
+tests/negative/uninitialized-field2-test.toit:61:5: error: Field 'field' not initialized on all paths before implicit super-call
+    call-lambda true::
+    ^~~~~~~~~~~
+tests/negative/uninitialized-field2-test.toit:69:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized-field2-test.toit:73:28: error: Field 'field' must be initialized before first use
+    for i := 0; i < 2; i < field:
+                           ^~~~~
+Compilation failed

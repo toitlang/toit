@@ -31,14 +31,14 @@ namespace toit {
 namespace compiler {
 
 void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
-  if (_is_initialized) return;
-  _is_initialized = true;
+  if (is_initialized_) return;
+  is_initialized_ = true;
 
- // Initialize Winsock
-  WSADATA wsaData;
-  int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-  if (iResult != NO_ERROR) {
-      FATAL(L"WSAStartup function failed with error: %d\n", iResult);
+ // Initialize Winsock.
+  WSADATA wsa_data;
+  int status = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+  if (status != NO_ERROR) {
+    FATAL("WSAStartup function failed with error: %d\n", status);
   }
 
   addrinfo hints;
@@ -48,20 +48,20 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   hints.ai_flags = 0;
   hints.ai_protocol = 0;           // Any protocol.
 
-  addrinfo* result;
-  int status = getaddrinfo(null, _port, &hints, &result);
+  addrinfo* head;
+  status = getaddrinfo(null, port_, &hints, &head);
   if (status != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     exit(EXIT_FAILURE);
   }
 
-  for (auto info = result; info != null; info = info->ai_next) {
+  for (auto info = head; info != null; info = info->ai_next) {
     SOCKET sock = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
     if (sock == INVALID_SOCKET) continue;
     BOOL value = TRUE;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&value, sizeof(value));
     if (connect(sock, info->ai_addr, info->ai_addrlen) == 0) {
-      _socket = sock;
+      socket_ = sock;
       break;
     }
     closesocket(sock);
@@ -69,9 +69,9 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
 }
 
 LspFsConnectionSocket::~LspFsConnectionSocket() {
-  if (_socket != -1) {
-    closesocket(_socket);
-    _socket = -1;
+  if (socket_ != -1) {
+    closesocket(socket_);
+    socket_ = -1;
   }
   WSACleanup();
 }

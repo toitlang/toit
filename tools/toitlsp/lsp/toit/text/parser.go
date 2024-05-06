@@ -172,13 +172,26 @@ func (r *summaryReader) readClass() (*toit.Class, error) {
 	if err != nil {
 		return nil, err
 	}
-	res.IsInterface = kind == "interface"
-	res.IsAbstract = kind == "abstract"
+	if kind != string(toit.KindClass) && kind != string(toit.KindInterface) && kind != string(toit.KindMixin) {
+		return nil, fmt.Errorf("unknown class kind: %s", kind)
+	}
+	res.Kind = toit.ClassKind(kind)
+
+	isAbstract, err := r.readLine()
+	if err != nil {
+		return nil, err
+	}
+	res.IsAbstract = isAbstract == "abstract"
+
 	if res.SuperClass, err = r.readTopLevelReference(); err != nil {
 		return nil, err
 	}
 
 	if res.Interfaces, err = r.readTopLevelReferences(); err != nil {
+		return nil, err
+	}
+
+	if res.Mixins, err = r.readTopLevelReferences(); err != nil {
 		return nil, err
 	}
 

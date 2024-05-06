@@ -30,27 +30,12 @@
 #include "../top.h"
 #include "../utils.h"
 
-// Old C library version of stat.
-extern "C" {
-
-extern int __xstat64(int ver, const char* path, struct stat64* stat_buf);
-
-}
-
-#if defined(TOIT_LINUX) && !defined(__riscv)
-  #define USE_XSTAT64 1
-#endif
-
-#ifdef BUILD_64
-# define STAT_VERSION 1
-#else
-# define STAT_VERSION 3
-#endif
-
 namespace toit {
 namespace compiler {
 
-char* get_executable_path();
+char* FilesystemLocal::get_executable_path() {
+  return OS::get_executable_path();
+}
 
 List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
   auto result = ListBuilder<const char*>::allocate(paths.length());
@@ -61,29 +46,15 @@ List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
 }
 
 bool FilesystemLocal::do_exists(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   return stat_result == 0;
 }
 
 
 bool FilesystemLocal::do_is_regular_file(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   if (stat_result == 0) {
     return S_ISREG(path_stat.st_mode);
   } else {
@@ -92,15 +63,8 @@ bool FilesystemLocal::do_is_regular_file(const char* path) {
 }
 
 bool FilesystemLocal::do_is_directory(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   if (stat_result == 0) {
     return S_ISDIR(path_stat.st_mode);
   } else {
@@ -109,34 +73,35 @@ bool FilesystemLocal::do_is_directory(const char* path) {
 }
 
 const char* FilesystemLocal::sdk_path() {
-  if (_sdk_path == null) {
-    if (Flags::lib_path != null) {
-      _sdk_path = to_local_path(Flags::lib_path);
-    } else {
-      // Compute the library_root based on the executable path.
-      char* path = get_executable_path();
-      // TODO: We should check if the current folder contains a lib folder and if not,
-      //   return an appropriate error code.
-      char* toit_root = ::dirname(path);
-      int root_len = strlen(toit_root);
-      // `dirname` might return its result in a static buffer (especially on macos), and we
-      // have to copy the result back into path. (+1 for the terminating '\0' character).
-      memmove(path, toit_root, root_len + 1);
-      _sdk_path = path;
-    }
+  if (sdk_path_ == null) {
+    // Compute the library_root based on the executable path.
+    char* path = get_executable_path();
+    // TODO: We should check if the current folder contains a lib folder and if not,
+    //   return an appropriate error code.
+    char* toit_root = ::dirname(path);
+    int root_len = strlen(toit_root);
+    // `dirname` might return its result in a static buffer (especially on macos), and we
+    // have to copy the result back into path. (+1 for the terminating '\0' character).
+    memmove(path, toit_root, root_len + 1);
+    sdk_path_ = path;
   }
-  return _sdk_path;
+  return sdk_path_;
 }
 
 List<const char*> FilesystemLocal::package_cache_paths() {
-  if (!_has_computed_cache_paths) {
-    _has_computed_cache_paths = true;
+  if (!has_computed_cache_paths_) {
+    bool is_windows = strcmp(OS::get_platform(), "Windows") == 0;
+    has_computed_cache_paths_ = true;
     char* cache_paths = getenv("TOIT_PACKAGE_CACHE_PATHS");
     if (cache_paths != null) {
-      _package_cache_paths = string_split(strdup(cache_paths), ":");
+      const char* separator = ":";
+      if (is_windows) {
+        separator = ";";
+      }
+      package_cache_paths_ = string_split(strdup(cache_paths), separator);
     } else {
       char* home_path;
-      if (strcmp(OS::get_platform(), "Windows") == 0) {
+      if (is_windows) {
         home_path = getenv("USERPROFILE");
       } else {
         home_path = getenv("HOME");
@@ -146,11 +111,11 @@ List<const char*> FilesystemLocal::package_cache_paths() {
         // However, the LSP server currently only looks at the env var.
         FATAL("Couldn't determine home");
       }
-      _package_cache_paths = ListBuilder<const char*>::build(
+      package_cache_paths_ = ListBuilder<const char*>::build(
         compute_package_cache_path_from_home(home_path, this));
     }
   }
-  return _package_cache_paths;
+  return package_cache_paths_;
 }
 
 const char* FilesystemLocal::getcwd(char* buffer, int buffer_size) {

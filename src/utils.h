@@ -19,8 +19,11 @@
 #include <type_traits>
 
 #include "top.h"
+#include "os.h"
 
 namespace toit {
+
+class Process;
 
 class Utils {
  public:
@@ -40,13 +43,13 @@ class Utils {
   }
 
   template<typename T>
-  static inline bool is_aligned(T x, int n) {
+  static inline bool is_aligned(T x, uword n) {
     ASSERT(is_power_of_two(n));
     return ((x - static_cast<T>(0)) & (n - 1)) == 0;
   }
 
   template<typename T>
-  static inline T round_down(T x, int n) {
+  static inline T round_down(T x, uword n) {
     ASSERT(is_power_of_two(n));
     return (T)((uintptr_t)(x) & -n);
   }
@@ -88,8 +91,8 @@ class Utils {
   static inline int popcount(T x) {
     typename std::make_unsigned<T>::type u = x;
 #ifdef __XTENSA__
-    int result = 0;
-    for (int i = 0; i < sizeof(u); i++) {
+    word result = 0;
+    for (word i = 0; i < sizeof(u); i++) {
       uint8 b = u & 0xff;
       result += popcount_table[b];
       u >>= 8;
@@ -108,7 +111,7 @@ class Utils {
   }
 
   template<typename T>
-  static inline T address_at(T base, int byte_offset) {
+  static inline T address_at(T base, word byte_offset) {
     return reinterpret_cast<T>(((uword) base) + byte_offset);
   }
 
@@ -118,8 +121,20 @@ class Utils {
   }
 
   template<typename T>
-  static inline T round_up(T x, int n) {
+  static inline T round_up(T x, word n) {
     return round_down(x + n - 1, n);
+  }
+
+  static inline void* round_up(void* p, word n) {
+    return reinterpret_cast<void*>(round_up(reinterpret_cast<uword>(p), n));
+  }
+
+  static inline void* void_add(void* x, uword y) {
+    return reinterpret_cast<void*>(reinterpret_cast<uword>(x) + y);
+  }
+
+  static inline uword void_sub(void* x, void* y) {
+    return reinterpret_cast<uword>(x) - reinterpret_cast<uword>(y);
   }
 
   // Implementation is from "Hacker's Delight" by Henry S. Warren, Jr.,
@@ -135,11 +150,87 @@ class Utils {
     return x + 1;
   }
 
+  /**
+  Sets `bit_size` contiguous bits to ones in an area starting at the `from`
+    bit.
+  Bits are numbered in little-endian order within a T.  Normally T would be
+    uint32 or uword.
+  `from` should be less than the bit-size of T.
+  */
+  template<typename T>
+  static inline void mark_bits(T* data, int from, int bit_size) {
+    set_or_clear_bits<T, true>(data, from, bit_size);
+  }
+
+  /**
+  Sets bit_size contiguous bits to zeros in an area starting at the `from` bit.
+  Bits are numbered in little-endian order within a T.  Normally T would be
+    uint32 or uword.
+  `from` should be less than the bit-size of T.
+  */
+  template<typename T>
+  static inline void clear_bits(T* data, int from, int bit_size) {
+    set_or_clear_bits<T, false>(data, from, bit_size);
+  }
+
+  // See `mark_bits` and `clear_bits`.
+  template<typename T, bool set>
+  static inline void set_or_clear_bits(T* data, int from, int bit_size) {
+    static const int T_BITS = BYTE_BIT_SIZE * sizeof(T);
+    static const T ALL_ONES = -1;
+    static const T ONE = 1;
+    if (bit_size + from >= T_BITS) {
+      // Handle the first word of marking where some bits at the start of the
+      // word are not set.
+      if (set) {
+        *data |= ALL_ONES << from;
+      } else {
+        *data &= (ONE << from) - 1;
+      }
+    } else {
+      // This is the case where the marked area both starts and ends in the same
+      // word.
+      T mask = 1;
+      mask = (mask << bit_size) - 1;
+      if (set) {
+        *data |= mask << from;
+      } else {
+        *data &= ~(mask << from);
+      }
+      return;
+    }
+
+    data++;
+    ASSERT(bit_size + from >= T_BITS);
+    for (bit_size -= T_BITS - from; bit_size >= T_BITS; bit_size -= T_BITS) {
+      // Full bit_size where whole words are marked.
+      if (set) {
+        *data++ = ALL_ONES;
+      } else {
+        *data++ = 0;
+      }
+    }
+    if (bit_size != 0) {
+      // The last word where some bits near the end of the word are not marked.
+      if (set) {
+        *data |= (ONE << bit_size) - 1;
+      } else {
+        *data &= ALL_ONES << bit_size;
+      }
+    }
+  }
+
   template<typename T>
   static inline uint16 read_unaligned_uint16(T* ptr) {
     uint16 result;
     memcpy(&result, ptr, sizeof(result));
     return result;
+  }
+
+  template<typename T>
+  static inline uint16 read_unaligned_uint16_be(T* ptr) {
+    uint16 le = read_unaligned_uint16(ptr);
+    return (le >> 8) | (le << 8);
   }
 
   template<typename T>
@@ -151,6 +242,12 @@ class Utils {
   template<typename T>
   static inline uint32 read_unaligned_uint32_le(T* ptr) {
     return read_unaligned_uint32(ptr);
+  }
+
+  template<typename T>
+  static inline uint32 read_unaligned_uint32_be(T* ptr) {
+    uint32 le = read_unaligned_uint32(ptr);
+    return (le >> 24) | ((le >> 8) & 0xff00) | ((le << 8) & 0xff0000) | (le << 24);
   }
 
   template<typename T>
@@ -178,6 +275,8 @@ class Utils {
     return result;
   }
 
+  static uint32 crc32(uint32 crc, const uint8* ptr, size_t length);
+
   // Reverse the order of the bits in an 8 bit byte.
   static inline uint8 reverse_8(uint8 b) {
     return (REVERSE_NIBBLE[b & 0b1111] << 4) | REVERSE_NIBBLE[b >> 4];
@@ -186,6 +285,8 @@ class Utils {
   // The maximum value that is ASCII.  ASCII characters are represented by
   // themselves in UTF-8.
   static const int MAX_ASCII = 0x7f;
+  static const int MAX_TWO_BYTE_UNICODE = 0x7ff;
+  static const int MAX_THREE_BYTE_UNICODE = 0xffff;
   static const int MAX_UNICODE = 0x10ffff;
   static const int MIN_SURROGATE = 0xd800;
   static const int MAX_SURROGATE = 0xdfff;
@@ -202,12 +303,29 @@ class Utils {
     return c >= UTF_8_PREFIX;
   }
 
+  static word utf_16_to_8(const uint16* input, word length, uint8* output = null, word output_length = 0);
+  static word utf_8_to_16(const uint8* input, word length, uint16* output = null, word output_length = 0);
+#ifdef TOIT_WINDOWS
+  static inline word utf_16_to_8(const wchar_t* input, word length, uint8* output, word output_length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, output, output_length);
+  }
+  static inline word utf_8_to_16(const uint8* input, word length, wchar_t* output, word output_length) {
+    return utf_8_to_16(input, length, reinterpret_cast<uint16*>(output), output_length);
+  }
+  static inline word utf_16_to_8(const wchar_t* input, word length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, static_cast<uint8*>(null), 0);
+  }
+#endif
+  // Note: Does malloc - not suitable for embedded.
+  static bool utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2);
+  static uint16* create_new_environment(Process* process, uint16* previous_environment, Array* environment);
+
   // The number of leading ones in the prefix byte determines the length of a
   // UTF-8 sequence.
-  static int bytes_in_utf_8_sequence(unsigned char prefix) {
+  static word bytes_in_utf_8_sequence(unsigned char prefix) {
     if (prefix <= MAX_ASCII) return 1;
-    int count = 0;
-    int mask = 0x80;
+    word count = 0;
+    word mask = 0x80;
     while ((prefix & mask) != 0) {
       count++;
       mask >>= 1;
@@ -215,18 +333,22 @@ class Utils {
     return count;
   }
 
-  static int payload_from_prefix(unsigned char prefix) {
-    int n_byte_sequence = bytes_in_utf_8_sequence(prefix);
+  static word payload_from_prefix(unsigned char prefix) {
+    word n_byte_sequence = bytes_in_utf_8_sequence(prefix);
     return prefix & ((1 << (7 - n_byte_sequence)) - 1);
   }
 
-  static bool is_valid_utf_8(const uint8* buffer, int length);
+  static bool is_valid_utf_8(const uint8* buffer, word length);
 
  private:
   static const uint8 REVERSE_NIBBLE[16];
 };
 
-static const int MAX_UTF_8_VALUES[3] = { Utils::MAX_ASCII, 0x7ff, 0xffff };
+static inline void memcpy_reverse(void* dst, const void* src, size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    reinterpret_cast<uint8*>(dst)[n-1-i] = reinterpret_cast<const uint8*>(src)[i];
+  }
+}
 
 // Use instead of a reinterpret_cast if the only thing you want to do is to
 // convert a pointer to a signed type into a pointer to an unsigned type.
@@ -320,76 +442,81 @@ bit_cast(const From& src) noexcept {
   return dst;
 }
 
-// This does nothing, but the optimizer can't see that at the use point, so it
-// forces the optimizer to preserve allocations that are immediately freed.
-extern void dont_optimize_away_these_allocations(void** blocks);
-
-
 template<typename T>
 class List {
  public:
-  List() : _data(null), _length(0) { }
-  List(T* data, int length) : _data(data), _length(length) {
+  List() : data_(null), length_(0) {}
+  List(T* data, word length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }
 
-  T* data() const { return _data; }
-  T*& data() { return _data; }
-  int length() const { return _length; }
-  bool is_empty() const { return _length == 0; }
-
-  T& operator[](int index) {
-    ASSERT(index >= 0 && index < _length);
-    return _data[index];
+  // Mainly for use in passing a non-const List to something that expects a
+  // const List.
+  template <typename U>
+  List(List<U> other) : data_(other.data_), length_(other.length_) {
+    ASSERT(other.length_ >= 0);
   }
 
-  const T& operator[](int index) const {
-    ASSERT(index >= 0 && index < _length);
-    return _data[index];
+  T* data() const { return data_; }
+  T*& data() { return data_; }
+  word length() const { return length_; }
+  bool is_empty() const { return length_ == 0; }
+
+  T& operator[](word index) {
+    ASSERT(index >= 0 && index < length_);
+    return data_[index];
+  }
+
+  const T& operator[](word index) const {
+    ASSERT(index >= 0 && index < length_);
+    return data_[index];
   }
 
   void clear() {
-    _data = null;
-    _length = 0;
+    data_ = null;
+    length_ = 0;
   }
 
-  T* begin() { return _data; }
-  const T* begin() const { return _data; }
-  T* end() { return &_data[_length]; }
-  const T* end() const { return &_data[_length]; }
+  T* begin() { return data_; }
+  const T* begin() const { return data_; }
+  T* end() { return &data_[length_]; }
+  const T* end() const { return &data_[length_]; }
 
   bool is_inside(const T* pointer) const {
     return (pointer >= begin() && pointer < end());
   }
 
-  const List<T> sublist(int from, int to) const {
-    ASSERT(0 <= from && from <= to && to < _length);
-    return List<T>(&_data[from], to - from);
+  const List<T> sublist(word from, word to) const {
+    ASSERT(0 <= from && from <= to && to <= length_);
+    return List<T>(&data_[from], to - from);
   }
 
   T& first() {
-    ASSERT(_length > 0);
-    return _data[0];
+    ASSERT(length_ > 0);
+    return data_[0];
   }
 
   T& last() {
-    ASSERT(_length > 0);
-    return _data[_length - 1];
+    ASSERT(length_ > 0);
+    return data_[length_ - 1];
   }
 
   const T& first() const {
-    ASSERT(_length > 0);
-    return _data[0];
+    ASSERT(length_ > 0);
+    return data_[0];
   }
 
   const T& last() const {
-    ASSERT(_length > 0);
-    return _data[_length - 1];
+    ASSERT(length_ > 0);
+    return data_[length_ - 1];
   }
 
  private:
-  T* _data;
-  int _length;
+  T* data_;
+  word length_;
+
+  template <typename U>
+  friend class List;
 };
 
 class Base64Encoder {
@@ -436,11 +563,33 @@ struct Defer {
 template <typename T>
 class DeferDelete {
  public:
-  DeferDelete(T* object) : _object(object) {}
-  ~DeferDelete() { delete _object; }
+  DeferDelete(T* object) : object_(object) {}
+  ~DeferDelete() { delete object_; }
+  void keep() { object_ = null; }
 
  private:
-  T* _object;
+  T* object_;
 };
+
+class AsyncThread : public Thread {
+ public:
+  static void run_async(const std::function<void()> &func) {
+    _new AsyncThread(func);
+  }
+
+ protected:
+  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
+    spawn();
+  }
+
+  void entry() override {
+    _func();
+    delete this;
+  }
+
+ private:
+  const std::function<void()> _func;
+};
+
 
 } // namespace toit

@@ -1,0 +1,28 @@
+tests/negative/export-cyclic6-b.toit:6:1: error: Cyclic export dependency
+export *
+^~~~~~
+tests/negative/export-cyclic6-c.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic6-d.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic6-c.toit:6:1: error: Cyclic export dependency
+export *
+^~~~~~
+tests/negative/export-cyclic6-b.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic6-d.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic6-d.toit:6:1: error: Cyclic export dependency
+export *
+^~~~~~
+tests/negative/export-cyclic6-b.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic6-c.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+Compilation failed

@@ -4,7 +4,7 @@
 
 /** Exception throwing and handling. */
 
-import system.trace show send_trace_message
+import system.trace show send-trace-message
 
 /**
 Assertion failed error.
@@ -12,20 +12,20 @@ Assertion failed error.
 Thrown when an assertion fails both by the 'assert:' language construct
   and by other assertion checking libraries.
 */
-ASSERTION_FAILED_ERROR ::= "ASSERTION_FAILED"
+ASSERTION-FAILED-ERROR ::= "ASSERTION_FAILED"
 
 /**
 Cancelled error.
 
 Thrown when a $task has been cancelled.
 */
-CANCELED_ERROR ::= "CANCELED"
+CANCELED-ERROR ::= "CANCELED"
 /**
 Deadline exceeded error.
 
-Thrown when a $with_timeout times out.
+Thrown when a $with-timeout times out.
 */
-DEADLINE_EXCEEDED_ERROR ::= "DEADLINE_EXCEEDED"
+DEADLINE-EXCEEDED-ERROR ::= "DEADLINE_EXCEEDED"
 
 
 /**
@@ -37,7 +37,7 @@ Unwinds the stack of this task calling associated finally-blocks. By default,
 The exception can also be caught with a $(catch [block]).
 */
 throw exception/any -> none:
-  trace ::= encode_error_ "EXCEPTION" "$exception"
+  trace ::= encode-error_ "EXCEPTION" "$exception"
   __throw__ (Exception_ exception trace)
 
 /**
@@ -123,18 +123,22 @@ catch [--trace] [--unwind] [block]:
   try:
     block.call
     return null
-  finally: | is_exception exception |
-    if is_exception:
+  finally: | is-exception exception |
+    if is-exception:
       stack ::= exception.trace
       value ::= exception.value
       // If the task is unwinding due to cancelation, don't catch the exception and
       // don't print a stack trace; just unwind.
-      is_canceled_unwind := value == CANCELED_ERROR and Task.current.is_canceled
-      if not is_canceled_unwind:
+      self := Task_.current
+      is-canceled-unwind := value == CANCELED-ERROR and self.is-canceled
+      if not is-canceled-unwind:
         if stack and trace.call value stack:
           exception.trace = null  // Avoid reporting the same stack trace multiple times.
-          send_trace_message stack
-        if not unwind.call value stack: return value
+          send-trace-message stack
+        if not unwind.call value stack:
+          deadline := self.deadline
+          if deadline and Time.monotonic-us >= deadline: throw DEADLINE-EXCEEDED-ERROR
+          return value
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
@@ -150,22 +154,22 @@ class Exception_:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
 // We use 'rethrow' to avoid extra frame in trace.
-lookup_failure_ receiver selector_or_selector_offset:
+lookup-failure_ receiver selector-or-selector-offset:
   rethrow "LOOKUP_FAILED"
-    encode_error_ "LOOKUP_FAILED"
-      create_array_ selector_or_selector_offset  (Object.class_id receiver) receiver
+    encode-error_ "LOOKUP_FAILED"
+      create-array_ selector-or-selector-offset (Object.class-id receiver) receiver
 
-uninitialized_global_failure_ global_id:
+uninitialized-global-failure_ global-id:
   rethrow "UNINITIALIZED_GLOBAL"
-    encode_error_ "UNINITIALIZED_GLOBAL" global_id
+    encode-error_ "UNINITIALIZED_GLOBAL" global-id
 
-initialization_in_progress_failure_ global_id:
+initialization-in-progress-failure_ global-id:
   rethrow "INITIALIZATION_IN_PROGRESS"
-    encode_error_ "INITIALIZATION_IN_PROGRESS" global_id
+    encode-error_ "INITIALIZATION_IN_PROGRESS" global-id
 
-program_failure_ bci:
+program-failure_ bci:
   rethrow "INVALID_PROGRAM"
-    encode_error_ "INVALID_PROGRAM" bci
+    encode-error_ "INVALID_PROGRAM" bci
 
 /**
 Signals an 'as' failure.
@@ -173,16 +177,20 @@ $id might be either:
 - a class name of type $string
 - an absolute BCI of the 'as' check.
 */
-as_check_failure_ receiver id:
+as-check-failure_ receiver id:
   rethrow "AS_CHECK_FAILED"
-    encode_error_ "AS_CHECK_FAILED"
-      create_array_ receiver id
+    encode-error_ "AS_CHECK_FAILED"
+      create-array_ receiver id
 
-primitive_lookup_failure_ module index:
+serialization-failure_ id:
+  rethrow "SERIALIZATION_FAILED"
+    encode-error_ "SERIALIZATION_FAILED" id
+
+primitive-lookup-failure_ module index:
   rethrow "PRIMITIVE_LOOKUP_FAILED"
-    encode_error_ "PRIMITIVE_LOOKUP_FAILED" "Failed to find primitive $module:$index"
+    encode-error_ "PRIMITIVE_LOOKUP_FAILED" "Failed to find primitive $module:$index"
 
-too_few_code_arguments_failure_ is_block expected provided bci:
+too-few-code-arguments-failure_ is-block expected provided bci:
   rethrow "CODE_INVOCATION_FAILED"
-    encode_error_ "CODE_INVOCATION_FAILED"
-        create_array_ is_block expected provided bci
+    encode-error_ "CODE_INVOCATION_FAILED"
+        create-array_ is-block expected provided bci

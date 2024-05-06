@@ -2,47 +2,83 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import reader show Reader
+import io
+import reader show Reader BufferedReader
+import .json-like-encoder_
 
-INITIAL_BUFFER_SIZE_ ::= 64
-MAX_BUFFER_GROWTH_ ::= 1024
-
+MAX-BUFFER-GROWTH_ ::= 1024
 
 /**
-Encodes the $obj as a JSON ByteArray.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(encode obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put_list,
-  or Encoder.put_unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+  the $converter block can call the $Encoder.encode, $Encoder.put-list,
+  or $Encoder.put-unquoted methods on the encoder.
 */
 encode obj [converter] -> ByteArray:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
-  return e.to_byte_array
+  return buffer.bytes
 
+/**
+Variant of $(encode obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 encode obj converter/Lambda -> ByteArray:
   return encode obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON ByteArray.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-Utf-8 encoding is used for strings.
+UTF-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
   return encode obj: throw "INVALID_JSON_OBJECT"
 
 /**
+Variant of $(encode-stream --writer obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
+The $converter block is passed an object to be serialized and an instance
+  of the $Encoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $Encoder.encode, $Encoder.put-list,
+  or $Encoder.put-unquoted methods on the encoder.
+*/
+encode-stream --writer/io.Writer obj [converter] -> none:
+  e := Encoder.private_ writer
+  e.encode obj converter
+
+/**
+Variant of $(encode-stream --writer obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
+encode-stream --writer/io.Writer obj converter/Lambda -> none:
+  encode-stream --writer=writer obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj onto an $io.Writer in JSON format.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+UTF-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj -> none:
+  encode-stream --writer=writer obj: throw "INVALID_JSON_OBJECT"
+
+/**
 Decodes the $bytes, which is a ByteArray in JSON format.
-The result is null or an instance of int, bool, float, string, List, or Map.
+The result is null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 decode bytes/ByteArray -> any:
@@ -50,31 +86,34 @@ decode bytes/ByteArray -> any:
   return d.decode bytes
 
 /**
-Encodes the $obj as a JSON string.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(stringify obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put_list,
-  or Encoder.put_unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+  the $converter block can call the $Encoder.encode, $Encoder.put-list,
+  or $Encoder.put-unquoted methods on the encoder.
 */
 stringify obj/any [converter] -> string:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
-  return e.to_string
+  return buffer.to-string
 
+/**
+Variant of $(stringify obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 stringify obj converter/Lambda -> string:
   return stringify obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON string.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
-  Maps must have only string keys.  The elements of lists and the values of
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
+Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 */
 stringify obj/any -> string:
@@ -82,7 +121,7 @@ stringify obj/any -> string:
 
 /**
 Decodes the $str, which is a string in JSON format.
-The result is null or an instance of of int, bool, float, string, List, or Map.
+The result is null, or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 parse str/string:
@@ -94,251 +133,169 @@ parse str/string:
   // makes the string more like a ByteArray.
   return d.decode (StringView_ str)
 
-decode_stream reader/Reader:
+/// $reader can be either an io.Reader, $Reader or a $BufferedReader.
+/// Supportfor $Reader and $BufferedReader will be removed in the future.
+decode-stream reader:
   d := StreamingDecoder
-  return d.decode_stream reader
+  return d.decode-stream reader
 
-class Buffer_:
-  buffer_ := ByteArray INITIAL_BUFFER_SIZE_
-  offset_ := 0
-
-  to_string:
-    return buffer_.to_string 0 offset_
-
-  to_byte_array:
-    return buffer_.copy 0 offset_
-
-  ensure_ size -> none:
-    if offset_ + size <= buffer_.size: return
-    new_size := buffer_.size * 2
-    while new_size < offset_ + size:
-      new_size *= 2
-    new := ByteArray new_size
-    new.replace 0 buffer_
-    buffer_ = new
+class Encoder extends EncoderBase_:
+  /**
+  Deprecated.  Use the top-level json.encode functions instead.
+  Returns an encoder that encodes into an internal buffer.  The
+    result can be extracted with $to-string or $to-byte-array.
+  */
+  constructor:
+    super io.Buffer
 
   /**
-  Outputs a string directly to the JSON stream.
-  No quoting, no escaping.  This is mainly used for things
-    that will be parsed as numbers by the receiver.
+  Returns an encoder that encodes onto an $io.Writer.
   */
-  put_unquoted str/string:
-    len := str.size
-    ensure_ len
-    buffer_.replace offset_ str
-    offset_ += len
+  constructor.private_ writer/io.Writer:
+    super writer
 
-  put_string_ str from to:
-    len := to - from
-    ensure_ len
-    buffer_.replace offset_ str from to
-    offset_ += len
-
-  put_byte_ byte:
-    ensure_ 1
-    buffer_[offset_++] = byte
-
-  clear_:
-    offset_ = 0
-
-class Encoder extends Buffer_:
-  encode obj/any [converter]:
-    if obj is string: encode_string_ obj
-    else if obj is num: encode_number_ obj
-    else if identical obj true: encode_true_
-    else if identical obj false: encode_false_
-    else if identical obj null: encode_null_
-    else if obj is Map: encode_map_ obj converter
-    else if obj is List: encode_list_ obj converter
-    else:
-      result := converter.call obj this
-      if result != null: encode result converter
-
+  /** See $EncoderBase_.encode */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
   encode obj/any converter/Lambda:
-    encode obj: converter.call obj this
+    return super obj converter
 
-  encode obj/any:
-    encode obj: throw "INVALID_JSON_OBJECT"
+  /** See $EncoderBase_.put-unquoted */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
+  put-unquoted data -> none:
+    super data
 
-  encode_string_ str:
-    size := str.size
-    ensure_ str.size + 2
+  encode-string_ str:
+    escaped := escape-string str
+    size := escaped.size
+    writer_.write-byte '"'
+    writer_.write escaped
+    writer_.write-byte '"'
 
-    put_byte_ '"'
-
-    offset := 0
-    for i := 0; i < size; i++:
-      c := str.at --raw i
-      // Backlash is the largest special character we need to consider,
-      // so start by checking for that.
-      if '\\' < c: continue
-      if c < 32:
-        // Handle control characters.
-        if i > offset: put_string_ str offset i
-        offset = i + 1
-        put_byte_ '\\'
-        if c == '\b':
-          put_byte_ 'b'
-        else if c == '\f':
-          put_byte_ 'f'
-        else if c == '\n':
-          put_byte_ 'n'
-        else if c == '\r':
-          put_byte_ 'r'
-        else if c == '\t':
-          put_byte_ 't'
-        else:
-          put_unicode_escape_ c
-      else if c == '"' or c == '\\':
-        // And finally handle double-quotes and backslash.
-        if i > offset: put_string_ str offset i
-        offset = i + 1
-        put_byte_ '\\'
-        put_byte_ c
-
-    if offset < size: put_string_ str offset size
-
-    put_byte_ '"'
-
-  encode_number_ number:
+  encode-number_ number:
     str := number is float ? number.stringify 2 : number.stringify
-    put_unquoted str
+    writer_.write str
 
-  encode_true_:
-    put_unquoted "true"
+  encode-true_:
+    writer_.write "true"
 
-  encode_false_:
-    put_unquoted "false"
+  encode-false_:
+    writer_.write "false"
 
-  encode_null_:
-    put_unquoted "null"
+  encode-null_:
+    writer_.write "null"
 
-  encode_map_ map [converter]:
-    put_byte_ '{'
+  encode-map_ map [converter]:
+    writer_.write-byte '{'
 
     first := true
     map.do: |key value|
-      if not first: put_byte_ ','
+      if not first: writer_.write-byte ','
       first = false
       if key is not string:
         throw "INVALID_JSON_OBJECT"
-      encode_string_ key
-      put_byte_ ':'
+      encode-string_ key
+      writer_.write-byte ':'
       encode value converter
 
-    put_byte_ '}'
+    writer_.write-byte '}'
 
-  encode_list_ list [converter]:
-    put_list list.size (: list[it]) converter
+  encode-list_ list [converter]:
+    put-list list.size (: list[it]) converter
 
   /**
   Outputs a list-like thing to the JSON stream.
   This can be used by converter blocks.
   The generator is called repeatedly with indices from 0 to size - 1.
   */
-  put_list size/int [generator] [converter]:
-    put_byte_ '['
+  put-list size/int [generator] [converter]:
+    writer_.write-byte '['
 
     for i := 0; i < size; i++:
-      if i > 0: put_byte_ ','
+      if i > 0: writer_.write-byte ','
       encode (generator.call i) converter
 
-    put_byte_ ']'
-
-  put_unicode_escape_ code_point/int:
-    put_byte_ 'u'
-    put_byte_
-      _hex_digit (code_point >> 12) & 0xf
-    put_byte_
-      _hex_digit (code_point >> 8) & 0xf
-    put_byte_
-      _hex_digit (code_point >> 4) & 0xf
-    put_byte_
-      _hex_digit code_point & 0xf
-
-
-_hex_digit x: return x < 10 ? '0' + x : 'a' + x - 10
+    writer_.write-byte ']'
 
 class Decoder:
   bytes_ := null
   offset_ := 0
-  tmp_buffer_ ::= Buffer_
-  utf_8_buffer_/ByteArray? := null
-  seen_strings_/Set? := null
-  reader_/Reader? := null
-  static MAX_DEDUPED_STRING_SIZE_ ::= 128
-  static MAX_DEDUPED_STRINGS_ ::= 128
+  tmp-buffer_ ::= io.Buffer
+  utf-8-buffer_/ByteArray? := null
+  seen-strings_/Set? := null
+  buffered-reader_/io.Reader? := null
+  static MAX-DEDUPED-STRING-SIZE_ ::= 128
+  static MAX-DEDUPED-STRINGS_ ::= 128
 
   decode bytes -> any:
     bytes_ = bytes
     offset_ = 0
-    seen_strings_ = {}
+    seen-strings_ = {}
 
     result := decode_
-    offset_ = skip_whitespaces_ bytes_ offset_
+    offset_ = skip-whitespaces_ bytes_ offset_
     if offset_ != bytes.size: throw "INVALID_JSON_CHARACTER"
     return result
 
   decode_:
-    offset_ = skip_whitespaces_ bytes_ offset_
+    offset_ = skip-whitespaces_ bytes_ offset_
     c := bytes_[offset_]
-    if c == '"': return decode_string_
-    else if c == '{': return decode_map_
-    else if c == '[': return decode_list_
-    else if c == 't': return decode_true_
-    else if c == 'f': return decode_false_
-    else if c == 'n': return decode_null_
-    else if c == '-' or '0' <= c <= '9': return decode_number_
+    if c == '"': return decode-string_
+    else if c == '{': return decode-map_
+    else if c == '[': return decode-list_
+    else if c == 't': return decode-true_
+    else if c == 'f': return decode-false_
+    else if c == 'n': return decode-null_
+    else if c == '-' or '0' <= c <= '9': return decode-number_
     else: throw "INVALID_JSON_CHARACTER"
 
   // Gets the hash of a string that contains no backslashes and ends
   // at the next double quote character.  Returns -1 if this is too
   // difficult.
-  static hash_simple_string_ bytes offset -> int:
-    #primitive.core.hash_simple_json_string:
+  static hash-simple-string_ bytes offset -> int:
+    #primitive.core.hash-simple-json-string:
       return -1
 
   // Uses blob_index_of primitive to get the size of a string that ends at the
   // next double quote character.  We know from hash_simple_string_ that there
   // are no backslash-escapes before the closing double quote.
-  static end_of_json_string_ bytes character offset end -> int:
-    #primitive.core.blob_index_of
+  static end-of-json-string_ bytes character offset end -> int:
+    #primitive.core.blob-index-of
 
   // Compares the found string (from the set) with the bytes in
   // the buffer, terminated by a double quote.
-  static compare_simple_string_ bytes offset found/string -> bool:
-    #primitive.core.compare_simple_json_string
+  static compare-simple-string_ bytes offset found/string -> bool:
+    #primitive.core.compare-simple-json-string
 
-  decode_string_:
+  decode-string_:
     expect_ '"'
 
-    hash := hash_simple_string_ bytes_ offset_
+    hash := hash-simple-string_ bytes_ offset_
     if hash == -1:
-      return slow_decode_string_
+      return slow-decode-string_
 
     result := null
-    seen_strings_.get_by_hash_ hash
+    seen-strings_.get-by-hash_ hash
       --initial=:
-        length := (end_of_json_string_ bytes_ '"' offset_ bytes_.size) - offset_
-        result = bytes_.to_string offset_ offset_ + length
+        length := (end-of-json-string_ bytes_ '"' offset_ bytes_.size) - offset_
+        result = bytes_.to-string offset_ offset_ + length
         offset_ += length + 1
         // Don't put huge strings in the cache, and don't grow it when it has
         // likely seen all the repeated key strings.
-        put_in_set := result.size <= MAX_DEDUPED_STRING_SIZE_ and seen_strings_.size < MAX_DEDUPED_STRINGS_
-        put_in_set ? result : null
+        put-in-set := result.size <= MAX-DEDUPED-STRING-SIZE_ and seen-strings_.size < MAX-DEDUPED-STRINGS_
+        put-in-set ? result : null
       --compare=: | found |
-        if compare_simple_string_ bytes_ offset_ found:
+        if compare-simple-string_ bytes_ offset_ found:
           offset_ += found.size + 1
           return found
         false
     return result
 
-  slow_decode_string_:
-    buffer := tmp_buffer_
-    buffer.clear_
-    bytes_size := bytes_.size
+  slow-decode-string_:
+    buffer := tmp-buffer_
+    buffer.clear
+    bytes-size := bytes_.size
     while true:
-      if offset_ >= bytes_size: throw "UNTERMINATED_JSON_STRING"
+      if offset_ >= bytes-size: throw "UNTERMINATED_JSON_STRING"
 
       c := bytes_[offset_]
 
@@ -355,51 +312,44 @@ class Decoder:
         else if c == 'u':
           offset_++
           // Read 4 hex digits.
-          if offset_ + 4 > bytes_size: throw "UNTERMINATED_JSON_STRING"
-          c = read_four_hex_digits_
+          if offset_ + 4 > bytes-size: throw "UNTERMINATED_JSON_STRING"
+          c = read-four-hex-digits_
           if 0xd800 <= c <= 0xdbff:
             // First part of a surrogate pair.
-            if offset_ + 6 > bytes_size: throw "UNTERMINATED_JSON_STRING"
+            if offset_ + 6 > bytes-size: throw "UNTERMINATED_JSON_STRING"
             if bytes_[offset_] != '\\' or bytes_[offset_ + 1] != 'u': throw "UNPAIRED_SURROGATE"
             offset_ += 2
-            part_2 := read_four_hex_digits_
-            if not 0xdc00 <= part_2 <= 0xdfff: throw "INVALID_SURROGATE_PAIR"
-            c = 0x10000 + ((c & 0x3ff) << 10) | (part_2 & 0x3ff)
-          buf_8 := utf_8_buffer_
-          if not buf_8:
-            utf_8_buffer_ = ByteArray 4
-            buf_8 = utf_8_buffer_
-          bytes := utf_8_bytes c
-          write_utf_8_to_byte_array buf_8 0 c
-          bytes.repeat:
-            buffer.put_byte_ buf_8[it]
+            part-2 := read-four-hex-digits_
+            if not 0xdc00 <= part-2 <= 0xdfff: throw "INVALID_SURROGATE_PAIR"
+            c = 0x10000 + ((c & 0x3ff) << 10) | (part-2 & 0x3ff)
+          buf-8 := utf-8-buffer_
+          if not buf-8:
+            utf-8-buffer_ = ByteArray 4
+            buf-8 = utf-8-buffer_
+          bytes := utf-8-bytes c
+          write-utf-8-to-byte-array buf-8 0 c
+          buffer.write buf-8 0 bytes
           continue
 
-      buffer.put_byte_ c
+      buffer.write-byte c
       offset_++
 
     offset_++
-    result := buffer.to_string
-    if seen_strings_.size >= MAX_DEDUPED_STRINGS_ or result.size > MAX_DEDUPED_STRING_SIZE_:
+    result := buffer.to-string
+    if seen-strings_.size >= MAX-DEDUPED-STRINGS_ or result.size > MAX-DEDUPED-STRING-SIZE_:
       return result
-    return seen_strings_.get_by_hash_ result.hash_code
+    return seen-strings_.get-by-hash_ result.hash-code
       --initial=: result
       --compare=: | found | found == result
 
-  read_four_hex_digits_ -> int:
-    hex_value := 0
+  read-four-hex-digits_ -> int:
+    hex-value := 0
     4.repeat:
-      hex_digit := bytes_[offset_++]
-      // Lower case the character.
-      if 'A' <= hex_digit <= 'Z': hex_digit -= 'A' - 'a'
-      // Add the digit to the value.
-      hex_value <<= 4
-      if '0' <= hex_digit <= '9':      hex_value += hex_digit - '0'
-      else if 'a' <= hex_digit <= 'f': hex_value += hex_digit - 'a' + 10
-      else: throw "BAD \\u ESCAPE IN JSON STRING"
-    return hex_value
+      hex-value <<= 4
+      hex-value += hex-char-to-value bytes_[offset_++] --on-error=(: throw "BAD \\u ESCAPE IN JSON STRING")
+    return hex-value
 
-  decode_map_:
+  decode-map_:
     expect_ '{'
 
     map := {:}
@@ -408,27 +358,27 @@ class Decoder:
       checkpoint := offset_
 
       error := catch:
-        offset_ = skip_whitespaces_ bytes_ offset_
+        offset_ = skip-whitespaces_ bytes_ offset_
 
         if bytes_[offset_] == '}': break
 
         if map.size > 0: expect_ ','
 
-        offset_ = skip_whitespaces_ bytes_ offset_
-        key := decode_string_
+        offset_ = skip-whitespaces_ bytes_ offset_
+        key := decode-string_
 
-        offset_ = skip_whitespaces_ bytes_ offset_
+        offset_ = skip-whitespaces_ bytes_ offset_
         expect_ ':'
 
         value := decode_
         map[key] = value
 
-      if error != null: handle_error_ error checkpoint
+      if error != null: handle-error_ error checkpoint
 
     offset_++
     return map
 
-  decode_list_:
+  decode-list_:
     expect_ '['
 
     list := []
@@ -437,7 +387,7 @@ class Decoder:
       checkpoint := offset_
 
       error := catch:
-        offset_ = skip_whitespaces_ bytes_ offset_
+        offset_ = skip-whitespaces_ bytes_ offset_
 
         if bytes_[offset_] == ']': break
 
@@ -446,26 +396,26 @@ class Decoder:
         value := decode_
         list.add value
 
-      if error != null: handle_error_ error checkpoint
+      if error != null: handle-error_ error checkpoint
 
     offset_++
     return list
 
   // Overridden by StreamingDecoder
-  handle_error_ error checkpoint/int -> none:
+  handle-error_ error checkpoint/int -> none:
     throw error
 
   // An int used as a 32-entry bitmap that distinguishes between
   // characters that can continue a number and characters that
   // can terminate a number.  See explanation in the primitive code.
-  static NUMBER_TABLE ::= 0x3ff6820
+  static NUMBER-TABLE ::= 0x3ff6820
   // A bitmap that identifies which characters indicate a floating
   // point number.  Those characters are '.', 'e', and 'E'.
-  static FLOAT_TABLE  ::=    0x4020
+  static FLOAT-TABLE  ::=    0x4020
 
-  static simple_size_of_number bytes offset -> int:
-    #primitive.core.size_of_json_number:
-      is_float := 0
+  static simple-size-of-number bytes offset -> int:
+    #primitive.core.size-of-json-number:
+      is-float := 0
       o := offset + 1
       for ; o < bytes.size; o++:
         c := bytes[o]
@@ -473,39 +423,40 @@ class Decoder:
         // misidentified as a continuation of a number by the bitmap and must
         // be handled specially.
         if c == null or c == '\r': break
-        if (NUMBER_TABLE >> (c & 0x1f)) & 1 == 0: break
-        is_float |= (FLOAT_TABLE >> (c & 0x1f)) & 1
-      return is_float == 1 ? -o : o
+        if (NUMBER-TABLE >> (c & 0x1f)) & 1 == 0: break
+        is-float |= (FLOAT-TABLE >> (c & 0x1f)) & 1
+      return is-float == 1 ? -o : o
 
-  decode_number_:
-    o/int := simple_size_of_number bytes_ offset_
+  decode-number_:
+    o/int := simple-size-of-number bytes_ offset_
     start := offset_
     offset_ = o.abs
     // If the number ends at the end of the buffer we need to read more to
-    // see if it continues in the next byte array.
-    if offset_ == bytes_.size and reader_: throw "UNEXPECTED_END_OF_INPUT"
+    // see if it continues in the next byte array.  (The throw triggers
+    // another read in streaming mode.)
+    if offset_ == bytes_.size and buffered-reader_: throw "UNEXPECTED_END_OF_INPUT"
 
     data := bytes_ is StringView_ ? bytes_.str_ : bytes_
     if o < 0: return float.parse_ data start -o
-    return int.parse_ data start o --radix=10 --on_error=: throw it
+    return int.parse_ data start o --radix=10 --on-error=: throw it
 
-  decode_true_:
+  decode-true_:
     "true".do: expect_ it
     return true
 
-  decode_false_:
+  decode-false_:
     "false".do: expect_ it
     return false
 
-  decode_null_:
+  decode-null_:
     "null".do: expect_ it
     return null
 
   expect_ byte:
     if bytes_[offset_++] != byte: throw "INVALID_JSON_CHARACTER"
 
-  static skip_whitespaces_ bytes offset -> int:
-    #primitive.core.json_skip_whitespace:
+  static skip-whitespaces_ bytes offset -> int:
+    #primitive.core.json-skip-whitespace:
       while offset < bytes.size:
         c := bytes[offset]
         if c != ' ' and c != '\n' and c != '\t' and c != '\r':
@@ -513,17 +464,23 @@ class Decoder:
         offset++
       return offset
 
+
 class StreamingDecoder extends Decoder:
-  decode_stream reader/Reader -> any:
-    reader_ = reader
-    seen_strings_ = {}
+  /// $reader can be either an $io.Reader, $Reader or a $BufferedReader.
+  /// Support for $Reader and $BufferedReader will be removed in a future.
+  decode-stream reader -> any:
+    if reader is not io.Reader:
+      buffered-reader_ = io.Reader.adapt reader
+    else:
+      buffered-reader_ = reader as io.Reader
+    seen-strings_ = {}
     // Skip whitespace to get to the first data, which might be
     // a top-level number.
     while true:
       offset_ = 0
       bytes_ = reader.read
       if not bytes_: throw "EMPTY_READER"
-      offset_ = Decoder.skip_whitespaces_ bytes_ offset_
+      offset_ = Decoder.skip-whitespaces_ bytes_ offset_
       if offset_ != bytes_.size:
         break
     c := bytes_[offset_]
@@ -536,41 +493,48 @@ class StreamingDecoder extends Decoder:
       // terminated in a visible way.  To solve this, read the
       // whole stream - it can't be so big if it consists of one
       // number.
-      while get_more_:
+      while get-more_:
         // Slurp up whole stream.
-      reader_ = null  // Use non-incremental parsing.
+      buffered-reader_ = null  // Use non-incremental parsing.
 
     while true:
       error := catch:
-        return decode_
+        result := decode_
+        if offset_ != bytes_.size:
+          buffered-reader_.unget bytes_[offset_..]
+          if reader is BufferedReader and buffered-reader_.buffered-size != 0:
+            // Copy over the buffered data to the reader that was passed in.
+            (reader as BufferedReader).unget (buffered-reader_.peek-bytes buffered-reader_.buffered-size)
+        bytes_ = null
+        offset_ = 0
+        return result
       if error is WrappedException_:
         throw error.inner
       offset_ = 0
-      if false == get_more_:
+      if not get-more_:
         throw error
 
-  // Returns true if we ran out of input.
-  get_more_ -> bool:
-    if not reader_: return false
-    old_bytes := bytes_
-    next_bytes := #[]
-    while next_bytes.size == 0:
+  // Returns true if we still have input.
+  get-more_ -> bool:
+    if not buffered-reader_: return false
+    old-bytes := bytes_
+    next-bytes/ByteArray? := #[]
+    while next-bytes.size == 0:
       error := catch:
-        next_bytes = reader_.read
+        next-bytes = buffered-reader_.read
       if error:
-        throw
-          WrappedException_ error
-      if not next_bytes: return false
-    bytes_ = old_bytes + next_bytes
+        throw (WrappedException_ error)
+      if not next-bytes: return false
+    bytes_ = old-bytes + next-bytes
     return true
 
-  handle_error_ error checkpoint/int -> none:
+  handle-error_ error checkpoint/int -> none:
     if error is WrappedException_: throw error
     bytes_ = bytes_[checkpoint..]
     offset_ = 0
-    if false == get_more_:
-      throw error
-    offset_ = Decoder.skip_whitespaces_ bytes_ offset_
+    if not get-more_:
+      throw (WrappedException_ error)
+    offset_ = Decoder.skip-whitespaces_ bytes_ offset_
 
 class StringView_:
   str_ ::= ?
@@ -583,7 +547,7 @@ class StringView_:
   operator [..] --from=0 --to=size:
     return StringView_ str_[from..to]
 
-  to_string from to:
+  to-string from to:
     return str_.copy from to
 
   size:

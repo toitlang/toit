@@ -23,18 +23,18 @@ void Label::use(int position, int height) {
   int use_count = uses();
   int index = use_count;
   if (index < _FIRST_USES_SIZE) {
-    _first_uses[index] = position;
+    first_uses_[index] = position;
   } else {
-    _additional_uses.push_back(position);
+    additional_uses_.push_back(position);
   }
 
-  _position_or_use_count = _encode_use_count(use_count + 1);
+  position_or_use_count_ = _encode_use_count(use_count + 1);
 
   ASSERT(use_at(uses() - 1) == position);
 
-  ASSERT(_height == -1 || _height == height);
-  _height = height;
-  ASSERT(_height >= 0);
+  ASSERT(height_ == -1 || height_ == height);
+  height_ = height;
+  ASSERT(height_ >= 0);
 }
 
 } // namespace toit::compiler

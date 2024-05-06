@@ -1,0 +1,7 @@
+tests/negative/clashing-field-test.toit:7:3: error: Redefinition of 'foo'
+  foo := 2
+  ^~~
+tests/negative/clashing-field-test.toit:6:3: note: First definition of 'foo'
+  foo := 1
+  ^~~
+Compilation failed

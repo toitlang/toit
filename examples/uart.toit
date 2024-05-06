@@ -4,8 +4,6 @@
 
 import uart
 import gpio
-import reader show BufferedReader
-import writer show Writer
 
 /**
 Example to demonstrate the use of the UART.
@@ -22,14 +20,14 @@ main:
   port := uart.Port
       --rx=gpio.Pin RX
       --tx=gpio.Pin TX
-      --baud_rate=115200
+      --baud-rate=115200
 
   task::
-    reader := BufferedReader port
-    while line := reader.read_line:
+    reader := port.in
+    while line := reader.read-line:
       print "Received: $line"
 
-  writer := Writer port
+  writer := port.out
   10.repeat:
     writer.write "sending $it\n"
     sleep --ms=1000

@@ -1,7 +1,0 @@
-tests/negative/import1_test.toit:5:24: error: Name clash with toplevel declaration 'foo'
-import .import1_a show foo
-                       ^~~
-tests/negative/import1_test.toit:7:1: note: Toplevel declaration of 'foo'
-foo:
-^~~
-Compilation failed.

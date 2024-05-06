@@ -14,8 +14,8 @@
 # directory of this repository.
 
 file(GLOB CC_FILES "*.cc")
-file(GLOB CC_TESTS "*_test.cc")
-file(GLOB TOIT_TESTS "*_test.toit")
+file(GLOB CC_TESTS "*-test.cc")
+file(GLOB TOIT_TESTS "*-test.toit")
 
 set(CTEST_DIR ${CMAKE_BINARY_DIR}/ctest)
 
@@ -53,9 +53,7 @@ foreach(file ${CC_FILES})
     ${TOIT_LINK_LIBS}
   )
 
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  add_dependencies(build_test_assets ${exe})
 endforeach()
 
 foreach(file ${CC_TESTS})
@@ -65,19 +63,22 @@ foreach(file ${CC_TESTS})
     continue()
   endif()
 
+  set(TEST_EXPECTATION_NAME "${test_name}")
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+  endif()
+
   get_filename_component(exe ${file} NAME_WE)
-  string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
+  string(REGEX REPLACE "-test.cc$" "-input.toit" test_input ${file})
   add_test(
-    NAME ${test_name}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND ${CTEST_DIR}/${exe} ${test_input}
   )
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+  add_dependencies(build_test_assets ${exe})
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()
 
@@ -88,16 +89,19 @@ foreach(file ${TOIT_TESTS})
     continue()
   endif()
 
+  set(TEST_EXPECTATION_NAME "${test_name}")
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${test_name}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
 
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+  add_dependencies(build_test_assets ${exe})
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

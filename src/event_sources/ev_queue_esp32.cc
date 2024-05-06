@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 
@@ -25,18 +25,22 @@
 #include "system_esp32.h"
 #include "ev_queue_esp32.h"
 
+// The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
+// up to two UART queues and the stop semaphore.
+#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + 1)
+
 namespace toit {
 
-EventQueueEventSource* EventQueueEventSource::_instance = null;
+EventQueueEventSource* EventQueueEventSource::instance_ = null;
 
 EventQueueEventSource::EventQueueEventSource()
     : EventSource("EVQ")
     , Thread("EVQ")
-    , _stop(xSemaphoreCreateBinary())
-    , _gpio_queue(xQueueCreate(32, sizeof(word)))
-    , _queue_set(xQueueCreateSet(32)) {
-  xQueueAddToSet(_stop, _queue_set);
-  xQueueAddToSet(_gpio_queue, _queue_set);
+    , stop_(xSemaphoreCreateBinary())
+    , gpio_queue_(xQueueCreate(GPIO_QUEUE_SIZE, sizeof(GpioEvent)))
+    , queue_set_(xQueueCreateSet(MAX_QUEUE_SET_SIZE)) {
+  xQueueAddToSet(stop_, queue_set_);
+  xQueueAddToSet(gpio_queue_, queue_set_);
 
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_install_isr_service(ESP_INTR_FLAG_IRAM));
@@ -45,12 +49,12 @@ EventQueueEventSource::EventQueueEventSource()
   // Create OS thread to handle events.
   spawn();
 
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 }
 
 EventQueueEventSource::~EventQueueEventSource() {
-  xSemaphoreGive(_stop);
+  xSemaphoreGive(stop_);
 
   join();
 
@@ -58,10 +62,10 @@ EventQueueEventSource::~EventQueueEventSource() {
     gpio_uninstall_isr_service();
   });
 
-  vQueueDelete(_queue_set);
-  vQueueDelete(_gpio_queue);
-  vSemaphoreDelete(_stop);
-  _instance = null;
+  vQueueDelete(queue_set_);
+  vQueueDelete(gpio_queue_);
+  vSemaphoreDelete(stop_);
+  instance_ = null;
 }
 
 void EventQueueEventSource::entry() {
@@ -69,34 +73,42 @@ void EventQueueEventSource::entry() {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (true) {
+    QueueSetMemberHandle_t handle;
     { Unlocker unlock(locker);
       // Wait for any queue/semaphore to wake up.
-      xQueueSelectFromSet(_queue_set, portMAX_DELAY);
+      handle = xQueueSelectFromSet(queue_set_, portMAX_DELAY);
     }
+
+    // The handle is now the queue/semaphore that has woken up. Remove at most one event from the underlying queues,
+    // so that the queue set does not overflow. If the queues are emptied at a different rate than the queue set, then
+    // the queue might have free space where the queue set does not have free space.
 
     // First test if we should shut down.
-    if (xSemaphoreTake(_stop, 0)) {
-      return;
-    }
-
-    // See if there's a GPIO event.
-    word pin;
-    while (xQueueReceive(_gpio_queue, &pin, 0)) {
-      bool data = gpio_get_level(gpio_num_t(pin)) != 0;
-      for (auto r : resources()) {
-        auto resource = static_cast<EventQueueResource*>(r);
-        if (resource->check_gpio(pin)) {
-          dispatch(locker, r, data);
+    if (handle == stop_) {
+      if (xSemaphoreTake(stop_, 0)) {
+        return;
+      }
+    } else if (handle == gpio_queue_) {
+      // See if there's a GPIO event.
+      GpioEvent data;
+      if (xQueueReceive(gpio_queue_, &data, 0)) {
+        for (auto r : resources()) {
+          auto resource = static_cast<EventQueueResource*>(r);
+          if (resource->check_gpio(data.pin)) {
+            dispatch(locker, r, data.timestamp);
+          }
         }
       }
-    }
-
-    // Then loop through other queues.
-    for (auto r : resources()) {
-      auto resource = static_cast<EventQueueResource*>(r);
-      word data;
-      while (resource->receive_event(&data)) {
-        dispatch(locker, r, data);
+    } else {
+      // Then loop through other queues.
+      for (auto r: resources()) {
+        auto resource = static_cast<EventQueueResource*>(r);
+        if (resource->queue() == handle) {
+          word data;
+          if (resource->receive_event(&data)) {
+            dispatch(locker, r, data);
+          }
+        }
       }
     }
   }
@@ -115,7 +127,7 @@ void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
     while (resource->receive_event(&data)) {
       dispatch(locker, r, data);
     }
-  } while (xQueueAddToSet(queue, _queue_set) != pdPASS);
+  } while (xQueueAddToSet(queue, queue_set_) != pdPASS);
 }
 
 void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
@@ -131,9 +143,9 @@ void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) 
     while (resource->receive_event(&data)) {
       // Don't dispatch while unregistering.
     }
-  } while (xQueueRemoveFromSet(queue, _queue_set) != pdPASS);
+  } while (xQueueRemoveFromSet(queue, queue_set_) != pdPASS);
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

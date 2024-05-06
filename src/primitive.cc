@@ -17,7 +17,7 @@
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_err.h"
 #endif
 
@@ -31,11 +31,11 @@ enum {
 #undef MODULE_ENUM
 
 #define MODULE_PRIMITIVES_WEAK(name, entries) \
-  const PrimitiveEntry* name##_primitives __attribute__((weak));
+  const PrimitiveEntry* name##_primitives_ __attribute__((weak)) = null;
 #define MODULE_PRIMITIVES(name, entries) \
-  _primitives[INDEX_##name] = name##_primitives;
+  primitives_[INDEX_##name] = name##_primitives_;
 
-const PrimitiveEntry* Primitive::_primitives[COUNT];
+const PrimitiveEntry* Primitive::primitives_[COUNT];
 
 MODULES(MODULE_PRIMITIVES_WEAK)
 void Primitive::set_up() {
@@ -59,21 +59,46 @@ Object* Primitive::allocate_large_integer(int64 value, Process* process) {
   return mark_as_error(process->program()->allocation_failed());
 }
 
-Object* Primitive::allocate_array(int length, Object* filler, Process* process) {
+Object* Primitive::allocate_array(word length, Object* filler, Process* process) {
   ASSERT(length <= Array::max_length_in_process());
+  if (length > Array::max_length_in_process()) return null;
   Object* result = length == 0 ? process->program()->empty_array() :process->object_heap()->allocate_array(length, filler);
   if (result != null) return result;
   return mark_as_error(process->program()->allocation_failed());
 }
 
 Object* Primitive::os_error(int error, Process* process) {
-#ifdef TOIT_FREERTOS
-  if (error == ESP_ERR_NO_MEM) MALLOC_FAILED;
+#ifdef TOIT_ESP32
+  if (error == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
+  const size_t BUF_SIZE = 200;
+  char buffer[BUF_SIZE];
+  // This makes a string that is either informative or of the form: "UNKNOWN
+  // ERROR 0x2a(42)"
+  esp_err_to_name_r(error, buffer, BUF_SIZE);
+  buffer[BUF_SIZE - 1] = '\0';
+  char* error_text = buffer;
+#else
+  char* error_text = strerror(error);
 #endif
-  Error* err = null;
-  String* result = process->allocate_string(strerror(error), &err);
-  if (result == null) return err;
+  String* result = process->allocate_string(error_text);
+  if (result == null) FAIL(ALLOCATION_FAILED);
   return Error::from(result);
+}
+
+Object* Primitive::return_not_a_smi(Process* process, Object* value) {
+  if (is_large_integer(value)) {
+    FAIL(OUT_OF_RANGE);
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+}
+
+Object* Primitive::unmark_from_error(Program* program, Object* marked_error) {
+  ASSERT((reinterpret_cast<uword>(marked_error) & 3) == Error::ERROR_TAG);
+  if (reinterpret_cast<uword>(marked_error) < Error::MAX_TAGGED_ERROR) {
+    return program->root(reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT);
+  }
+  return marked_error->unmark();
 }
 
 }  // namespace toit

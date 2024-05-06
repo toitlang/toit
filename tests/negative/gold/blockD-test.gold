@@ -1,0 +1,151 @@
+tests/negative/blockD-test.toit:80:7: error: Unexpected :=
+  not := not block
+      ^~
+tests/negative/blockD-test.toit:21:8: error: Can't use the index operator on a block
+  x := block[10]
+       ^~~~~
+tests/negative/blockD-test.toit:22:7: error: Can't cast a block
+  x = block as string
+      ^~~~~
+tests/negative/blockD-test.toit:24:11: error: Can't assign block to instance member
+  y.foo = block
+          ^~~~~
+tests/negative/blockD-test.toit:25:3: error: Can't set field of a block
+  block.foo = 42
+  ^~~~~
+tests/negative/blockD-test.toit:26:3: error: Can't use []= operator on a block
+  block[10] = 42
+  ^~~~~
+tests/negative/blockD-test.toit:27:11: error: Can't use []= with a block value
+  y[10] = block
+          ^~~~~
+tests/negative/blockD-test.toit:28:3: error: Can't use []= operator on a block
+  block[10] += 4
+  ^~~~~
+tests/negative/blockD-test.toit:31:3: error: Can't assign to block variable 'block'
+  block = block2
+  ^~~~~
+tests/negative/blockD-test.toit:32:3: error: Can't assign to block variable 'block'
+  block += block2
+  ^~~~~
+tests/negative/blockD-test.toit:36:5: error: If branches may not evaluate to blocks
+    tmp
+    ^~~
+tests/negative/blockD-test.toit:39:5: error: If branches may not evaluate to blocks
+    tmp
+    ^~~
+tests/negative/blockD-test.toit:42:5: error: If branches may not evaluate to blocks
+    tmp
+    ^~~
+tests/negative/blockD-test.toit:44:6: error: Condition can't be a block
+  if block:
+     ^~~~~
+tests/negative/blockD-test.toit:48:5: error: If branches may not evaluate to blocks
+    block
+    ^~~~~
+tests/negative/blockD-test.toit:55:5: error: If branches may not evaluate to blocks
+    block
+    ^~~~~
+tests/negative/blockD-test.toit:58:15: error: Condition may not be a block
+  while xx := block:
+              ^~~~~
+tests/negative/blockD-test.toit:61:13: error: Loop variables may not be blocks
+  for xx := block; false; false:
+            ^~~~~
+tests/negative/blockD-test.toit:64:16: error: Can't use a block in an is-test
+  is-result := block is Lambda
+               ^~~~~
+tests/negative/blockD-test.toit:65:18: error: Can't cast a block
+  cast-result := block as any
+                 ^~~~~
+tests/negative/blockD-test.toit:67:14: error: Can't use blocks in binary expression
+  binary :=  block + 3
+             ^~~~~
+tests/negative/blockD-test.toit:68:16: error: Can't use blocks in binary expression
+  binary = 3 + block
+               ^~~~~
+tests/negative/blockD-test.toit:70:11: error: Can't use blocks in comparison
+  comp := block < 3
+          ^~~~~
+tests/negative/blockD-test.toit:71:14: error: Can't use blocks in comparison
+  comp = 3 < block
+             ^~~~~
+tests/negative/blockD-test.toit:72:14: error: Can't use blocks in comparison
+  comp = 3 < block < 10
+             ^~~~~
+tests/negative/blockD-test.toit:73:10: error: Can't use blocks in comparison
+  comp = block < 3 < 10
+         ^~~~~
+tests/negative/blockD-test.toit:74:19: error: Can't use blocks in comparison
+  comp = 3 < 10 < block
+                  ^~~~~
+tests/negative/blockD-test.toit:76:14: error: Can't use blocks in logical expression
+  logical := block or 3
+             ^~~~~
+tests/negative/blockD-test.toit:77:18: error: Can't use blocks in logical expression
+  logical = 3 or block
+                 ^~~~~
+tests/negative/blockD-test.toit:78:13: error: Can't use blocks in logical expression
+  logical = block and true or false
+            ^~~~~
+tests/negative/blockD-test.toit:81:13: error: Can't minus blocks
+  minus := -block
+            ^~~~~
+tests/negative/blockD-test.toit:83:5: error: Can't have a block as interpolated entry in a string
+  "$block"
+    ^~~~~
+tests/negative/blockD-test.toit:84:5: error: Can't have a block as interpolated entry in a string
+  "$block $block"
+    ^~~~~
+tests/negative/blockD-test.toit:84:12: error: Can't have a block as interpolated entry in a string
+  "$block $block"
+           ^~~~~
+tests/negative/blockD-test.toit:86:4: error: List elements may not be blocks
+  [block, block]
+   ^~~~~
+tests/negative/blockD-test.toit:86:11: error: List elements may not be blocks
+  [block, block]
+          ^~~~~
+tests/negative/blockD-test.toit:87:4: error: Set elements may not be blocks
+  {block, block}
+   ^~~~~
+tests/negative/blockD-test.toit:87:11: error: Set elements may not be blocks
+  {block, block}
+          ^~~~~
+tests/negative/blockD-test.toit:88:4: error: Map keys may not be blocks
+  {block : block}
+   ^~~~~
+tests/negative/blockD-test.toit:88:12: error: Map values may not be blocks
+  {block : block}
+           ^~~~~
+tests/negative/blockD-test.toit:6:13: error: Unexpected block
+  field := (: 499)
+            ^~~~~
+tests/negative/blockD-test.toit:6:12: error: Can't initialize field with a block
+  field := (: 499)
+           ^
+tests/negative/blockD-test.toit:10:13: error: Can't store a block in a field
+    field = block
+            ^~~~~
+tests/negative/blockD-test.toit:11:14: error: Can't use blocks in binary expression
+    field += block
+             ^~~~~
+tests/negative/blockD-test.toit:14:14: error: Unexpected block
+    field = (: 499)
+             ^~~~~
+tests/negative/blockD-test.toit:14:13: error: Can't assign block to instance member
+    field = (: 499)
+            ^
+tests/negative/blockD-test.toit:15:19: error: Unexpected block
+    this.field = (: 499)
+                  ^~~~~
+tests/negative/blockD-test.toit:15:18: error: Can't assign block to instance member
+    this.field = (: 499)
+                 ^
+tests/negative/blockD-test.toit:17:12: error: Unexpected block
+global := (: 499)
+           ^~~~~
+tests/negative/blockD-test.toit:17:11: error: Can't initialize global with a block
+global := (: 499)
+          ^
+Compilation failed

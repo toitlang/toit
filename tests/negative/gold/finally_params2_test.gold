@@ -1,2 +1,0 @@
-As check failed: an Exception_ is not a int.
-  0: main                      tests/negative/finally_params2_test.toit:8:23

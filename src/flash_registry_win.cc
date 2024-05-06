@@ -22,50 +22,56 @@
 
 namespace toit {
 
-const char* FlashRegistry::allocations_memory_ = null;
+static const word ALLOCATION_SIZE = 2 * MB;
+
+// An aligned (FLASH_BASED_SIZE) view into the allocations_malloced.
+uint8* FlashRegistry::allocations_memory_ = null;
+static void* allocations_malloced = null;
 
 void FlashRegistry::set_up() {
+  ASSERT(allocations_malloced == null);
+  ASSERT(allocations_memory() == null);
+
+  allocations_malloced = malloc(ALLOCATION_SIZE + FLASH_PAGE_SIZE);
+  // Align the memory to FLASH_PAGE_SIZE.
+  // Note that we allocated FLASH_PAGE_SIZE more than necessary, so we could do this.
+  allocations_memory_ = Utils::round_up(unvoid_cast<uint8*>(allocations_malloced), FLASH_PAGE_SIZE);
 }
 
 void FlashRegistry::tear_down() {
-}
-
-bool FlashRegistry::is_allocations_set_up() {
-  return true;
+  allocations_memory_ = null;
+  free(allocations_malloced);
+  allocations_malloced = null;
 }
 
 void FlashRegistry::flush() {
-  UNIMPLEMENTED();
+  // No flushing necessary.
 }
 
 int FlashRegistry::allocations_size() {
-  return 0;
+  return ALLOCATION_SIZE;
 }
 
-int FlashRegistry::erase_chunk(int offset, int size) {
-  UNIMPLEMENTED();
+int FlashRegistry::erase_chunk(word offset, word size) {
+  ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
+  size = Utils::round_up(size, FLASH_PAGE_SIZE);
+  memset(region(offset, size), 0xff, size);
+  return size;
 }
 
-bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
-  UNIMPLEMENTED();
-}
-
-int FlashRegistry::read_raw_chunk(int offset, void* destination, int size) {
-  UNIMPLEMENTED();
-}
-
-bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
-  UNIMPLEMENTED();
-}
-
-int FlashRegistry::offset(const void* cursor) {
-  UNIMPLEMENTED();
+bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
+  uint8* destination = region(offset, size);
+  const uint8* source = static_cast<const uint8*>(chunk);
+  for (word i = 0; i < size; i++) destination[i] &= source[i];
+  return true;
 }
 
 bool FlashRegistry::erase_flash_registry() {
-  UNIMPLEMENTED();
+  ASSERT(allocations_memory() != null);
+  FlashRegistry::erase_chunk(0, allocations_size());
+  return true;
 }
 
 } // namespace toit
 
-#endif // defined(TOIT_LINUX) || defined(TOIT_BSD)
+#endif // defined(TOIT_WINDOWS)

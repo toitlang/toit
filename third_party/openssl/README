@@ -1,0 +1,4 @@
+The evptests.txt file in this directory is downloaded from
+https://raw.githubusercontent.com/openssl/openssl/307e3978b973ff4566b69f631096deba117b51ea/crypto/evp/evptests.txt
+It has no Copyright header.
+No local modifications.

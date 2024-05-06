@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "objects_inline.h"
 #include "vm.h"
@@ -33,13 +33,17 @@ namespace toit {
 void VM::load_platform_event_sources() {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
   event_manager()->add_event_source(_new TimerEventSource());
-  event_manager()->add_event_source(_new LwIPEventSource());
   event_manager()->add_event_source(_new SystemEventSource());
   event_manager()->add_event_source(_new EventQueueEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
-  event_manager()->add_event_source(_new BLEEventSource());
+#if defined(CONFIG_TOIT_ENABLE_IP)
+  event_manager()->add_event_source(_new LwipEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
+#endif
+#ifdef CONFIG_BT_ENABLED
+  event_manager()->add_event_source(_new BleEventSource());
+#endif
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

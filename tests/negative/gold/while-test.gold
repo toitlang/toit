@@ -1,0 +1,37 @@
+tests/negative/while-test.toit:6:8: error: Incomplete expression
+  while
+       ^
+tests/negative/while-test.toit:6:3: error: Missing colon for loop condition
+  while
+  ^~~~~
+tests/negative/while-test.toit:7:3: error: Missing colon for loop condition
+  while break
+  ^~~~~
+tests/negative/while-test.toit:9:3: error: Missing colon for loop condition
+  while break print unresolved
+  ^~~~~
+tests/negative/while-test.toit:10:12: error: Incomplete expression
+  while "".
+           ^
+tests/negative/while-test.toit:10:3: error: Missing colon for loop condition
+  while "".
+  ^~~~~
+tests/negative/while-test.toit:11:8: error: Missing condition
+  while:
+       ^
+tests/negative/while-test.toit:7:9: error: 'break' must be inside loop
+  while break
+        ^~~~~
+tests/negative/while-test.toit:8:11: error: Unresolved identifier: 'unresolved'
+    print unresolved
+          ^~~~~~~~~~
+tests/negative/while-test.toit:9:9: error: 'break' must be inside loop
+  while break print unresolved
+        ^~~~~
+tests/negative/while-test.toit:9:21: error: Unresolved identifier: 'unresolved'
+  while break print unresolved
+                    ^~~~~~~~~~
+tests/negative/while-test.toit:12:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed

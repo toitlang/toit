@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -25,7 +25,7 @@
 
 namespace toit {
 
-bool Object::byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) {
+bool Object::byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only) const {
   if (is_string(this)) {
     String::Bytes bytes(String::cast(this));
     *length = bytes.length();
@@ -33,11 +33,11 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     return true;
   }
   if (strings_only == STRINGS_OR_BYTE_ARRAYS && is_byte_array(this)) {
-    ByteArray* byte_array = ByteArray::cast(this);
+    const ByteArray* byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
     if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;
-    ByteArray::Bytes bytes(byte_array);
+    ByteArray::ConstBytes bytes(byte_array);
     *length = bytes.length();
     *content = bytes.address();
     return true;
@@ -48,8 +48,11 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
       auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
       return backing->byte_content(program, content, length, strings_only);
-    } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id()) || class_id == program->string_slice_class_id()) {
+    } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id())
+          || class_id == program->string_slice_class_id()
+          || class_id == program->string_byte_slice_class_id()) {
       ASSERT(Instance::STRING_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      ASSERT(Instance::STRING_BYTE_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
       ASSERT(Instance::STRING_SLICE_FROM_INDEX == Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
       ASSERT(Instance::STRING_SLICE_TO_INDEX == Instance::BYTE_ARRAY_SLICE_TO_INDEX);
       auto wrapped = instance->at(Instance::STRING_SLICE_STRING_INDEX);
@@ -59,8 +62,8 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
       // TODO(florian): we could eventually accept larger integers here.
       if (!is_smi(from)) return false;
       if (!is_smi(to)) return false;
-      int from_value = Smi::cast(from)->value();
-      int to_value = Smi::cast(to)->value();
+      word from_value = Smi::value(from);
+      word to_value = Smi::value(to);
       bool inner_success = HeapObject::cast(wrapped)->byte_content(program, content, length, strings_only);
       if (!inner_success) return false;
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
@@ -74,9 +77,9 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
   return false;
 }
 
-bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) {
+bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) const {
   const uint8* content = null;
-  int length = 0;
+  word length = 0;
   bool result = byte_content(program, &content, &length, strings_only);
   *blob = Blob(content, length);
   return result;
@@ -87,8 +90,8 @@ bool Blob::slow_equals(const char* c_string) const {
   return memcmp(address(), c_string, length()) == 0;
 }
 
-int HeapObject::size(Program* program) {
-  int size = program->instance_size_for(this);
+word HeapObject::size(Program* program) const {
+  word size = program->instance_size_for(this);
   if (size != 0) return size;
   switch (class_tag()) {
     case TypeTag::ARRAY_TAG:
@@ -123,7 +126,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
       break;
     case TypeTag::TASK_TAG:
     case TypeTag::INSTANCE_TAG:
-      Instance::cast(this)->roots_do(program->instance_size_for(this), cb);
+      Instance::cast(this)->instance_roots_do(program->instance_size_for(this), cb);
       break;
     case TypeTag::STRING_TAG:
     case TypeTag::ODDBALL_TAG:
@@ -164,18 +167,18 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
 
 Object* FreeListRegion::single_free_word_header() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   return Smi::from(header);
 }
 
 bool HeapObject::is_a_free_object() {
   int tag = class_tag();
   if (tag == FREE_LIST_REGION_TAG) {
-    ASSERT(class_id()->value() == FREE_LIST_REGION_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == FREE_LIST_REGION_CLASS_ID);
     return true;
   }
   if (tag == SINGLE_FREE_WORD_TAG) {
-    ASSERT(class_id()->value() == SINGLE_FREE_WORD_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == SINGLE_FREE_WORD_CLASS_ID);
     return true;
   }
   return false;
@@ -184,8 +187,8 @@ bool HeapObject::is_a_free_object() {
 class PointerRootCallback : public RootCallback {
  public:
   explicit PointerRootCallback(PointerCallback* callback) : callback(callback) {}
-  void do_roots(Object** roots, int length) {
-    for (int i = 0; i < length; i++) {
+  void do_roots(Object** roots, word length) {
+    for (word i = 0; i < length; i++) {
       callback->object_address(&roots[i]);
     }
   }
@@ -193,10 +196,10 @@ class PointerRootCallback : public RootCallback {
 };
 
 void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
-  if (class_tag() == BYTE_ARRAY_TAG) {
+  if (has_class_tag(BYTE_ARRAY_TAG)) {
     auto byte_array = ByteArray::cast(this);
     byte_array->do_pointers(cb);
-  } else if (class_tag() == STRING_TAG) {
+  } else if (has_class_tag(STRING_TAG)) {
     auto str = String::cast(this);
     str->do_pointers(cb);
   } else {
@@ -204,6 +207,29 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
     PointerRootCallback root_callback(cb);
     roots_do(program, &root_callback);
   }
+}
+
+bool HeapObject::can_be_toit_finalized(Program* program) const {
+  auto tag = class_tag();
+  if (tag != INSTANCE_TAG) return false;
+  // Some instances are banned for Toit finalizers.  These are typically
+  // things like string slices, which are implemented as special instances,
+  // but don't have identity.  We reuse the byte_content function to check
+  // this.
+  const uint8* dummy1;
+  word dummy2;
+  if (byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS)) {
+    // Can't finalize strings and byte arrays.  This is partly because it
+    // doesn't make sense, but also because we only have one finalizer bit in
+    // the header, and it's also for VM finalizers, that free external memory.
+    return false;
+  }
+  if (is_instance(this) && class_id() == program->map_class_id()) {
+    // Can't finalize maps, because we use the finalize bit in the header to
+    // mark weak maps.
+    return false;
+  }
+  return true;
 }
 
 void ByteArray::do_pointers(PointerCallback* cb) {
@@ -234,12 +260,43 @@ int Stack::absolute_bci_at_preemption(Program* program) {
 }
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
   int top = this->top();
+  ASSERT(top >= 0);
+  ASSERT(top <= length());
   // Skip over pointers into the bytecodes.
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
+  // The stack overflow check happens on function entry, so we can't shrink the
+  // stack so much that an overflow check would have failed.  Luckily the
+  // compiler kept track of the maximum space that any function could need, so
+  // we can use that.
+  int minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
+  // Don't shrink the stack unless we can halve the size.  The growing algo
+  // grows it by 50%, to try to avoid too much churn.
+  if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
+    int reduction = top - minimum_space;
+    if (Flags::shrink_stacks_a_lot || reduction >= 8) {
+      auto destin = _array_address(0);
+      auto source = _array_address(reduction);
+      memmove(destin, source, (length() - reduction) << WORD_SIZE_LOG_2);
+      // We don't need to update the remembered set/write barrier because the
+      // start of the stack object has not moved.
+      word len = length() - reduction;
+      top -= reduction;
+      _set_length(len);
+      _set_top(top);
+      _set_try_top(try_top() - reduction);
+      // Now that the stack is smaller we need to fill the space after it with
+      // something to keep the heap iterable.
+      for (int i = 0; i < reduction; i++) {
+        auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
+        one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
+      }
+    }
+  }
   Object** roots = _root_at(_array_offset_from(top));
   int used_length = length() - top;
   for (int i = 0; i < used_length; i++) {
@@ -253,10 +310,10 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   int stack_length = _stack_base_addr() - _stack_sp_addr();
   int frame_no = 0;
   // The last return address we encountered. Represents the location inside the
-  //   method that is currently on the frame.
+  // method that is currently on the frame.
   uint8* last_return_bcp = null;
   bool is_first_frame = true;
-  for (int index = 0; index < stack_length - 1; index++) {
+  for (word index = 0; index < stack_length - 1; index++) {
     Object* probe = at(index);
     if (probe != program->frame_marker()) continue;
     uint8* return_bcp = reinterpret_cast<uint8*>(at(index + 1));
@@ -275,57 +332,19 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
-void Stack::copy_to(HeapObject* other, int other_length) {
-  other->_at_put(HeapObject::HEADER_OFFSET, _at(HeapObject::HEADER_OFFSET));
-  Stack* to = Stack::cast(other);
-  int used = length() - top();
-  ASSERT(other_length >= used);
-  int displacement = other_length - length();
-  memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  to->_at_put(TASK_OFFSET, _at(TASK_OFFSET));
-  to->_set_length(other_length);
-  to->_set_top(displacement + top());
-  to->_set_try_top(displacement + try_top());
-}
-
-void Instance::roots_do(int instance_size, RootCallback* cb) {
+void Instance::instance_roots_do(int instance_size, RootCallback* cb) {
+  if (has_active_finalizer() && cb->skip_marking(this)) return;
   int fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
-}
-
-void Instance::initialize(int instance_size) {
-  int fields = fields_from_size(instance_size);
-  for (int i = 0; i < fields; i++) {
-    at_put(i, Smi::from(0));
-  }
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
   return encoder->encode(this);
 }
 
-void Stack::transfer_to_interpreter(Interpreter* interpreter) {
-  ASSERT(top() >= 0);
-  ASSERT(top() <= length());
-  interpreter->_limit = _stack_limit_addr();
-  interpreter->_base = _stack_base_addr();
-  interpreter->_sp = _stack_sp_addr();
-  interpreter->_try_sp = _stack_try_sp_addr();
-  ASSERT(top() == (interpreter->_sp - _stack_limit_addr()));
-  _set_top(-1);
-}
-
-void Stack::transfer_from_interpreter(Interpreter* interpreter) {
-  ASSERT(top() == -1);
-  _set_top(interpreter->_sp - _stack_limit_addr());
-  _set_try_top(interpreter->_try_sp - _stack_limit_addr());
-  ASSERT(top() >= 0);
-  ASSERT(top() <= length());
-}
-
 bool String::starts_with_vowel() {
   Bytes bytes(this);
-  int len = bytes.length();
+  word len = bytes.length();
   int pos = 0;
   while (pos < len && bytes.at(pos) == '_') pos++;
   if (pos == len) return false;
@@ -344,7 +363,7 @@ uint16 String::compute_hash_code_for(const char* str) {
 uint16 String::compute_hash_code_for(const char* str, int str_len) {
   // Trivial computation of hash code for string.
   uint16 hash = str_len;
-  for (int index = 0; index < str_len; index++) {
+  for (word index = 0; index < str_len; index++) {
     // The sign of 'char' is implementation dependent.
     // Force the value to be unsigned to have a deterministic hash.
     hash = 31 * hash + static_cast<uint8>(str[index]);
@@ -361,7 +380,7 @@ uint16 String::_assign_hash_code() {
 
 char* String::cstr_dup() {
   Bytes bytes(this);
-  int len = bytes.length();
+  word len = bytes.length();
   char* buffer = unvoid_cast<char*>(malloc(len + 1));
   if (!buffer) return null;
   memcpy(buffer, bytes.address(), len + 1);
@@ -401,7 +420,7 @@ bool String::_is_valid_utf8() {
 
 void PromotedTrack::zap() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   Object* filler = Smi::from(header);
   for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
     *reinterpret_cast<Object**>(p) = filler;
@@ -411,8 +430,8 @@ void PromotedTrack::zap() {
 #ifndef TOIT_FREERTOS
 
 void Array::write_content(SnapshotWriter* st) {
-  int len = length();
-  for (int index = 0; index < len; index++) st->write_object(at(index));
+  word len = length();
+  for (word index = 0; index < len; index++) st->write_object(at(index));
 }
 
 void ByteArray::write_content(SnapshotWriter* st) {
@@ -421,31 +440,31 @@ void ByteArray::write_content(SnapshotWriter* st) {
     if (has_external_address() && external_tag() != RawByteTag) {
       FATAL("Can only serialize raw bytes");
     }
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length()));
+    st->write_external_list_uint8(List<const uint8>(bytes.address(), bytes.length()));
   } else {
-    for (int index = 0; index < bytes.length(); index++) {
+    for (word index = 0; index < bytes.length(); index++) {
       st->write_cardinal(bytes.at(index));
     }
   }
 }
 
 void Instance::write_content(int instance_size, SnapshotWriter* st) {
-  int fields = fields_from_size(instance_size);
+  word fields = fields_from_size(instance_size);
   st->write_cardinal(fields);
-  for (int index = 0; index < fields; index++) {
+  for (word index = 0; index < fields; index++) {
     st->write_object(at(index));
   }
 }
 
 void String::write_content(SnapshotWriter* st) {
   Bytes bytes(this);
-  int len = bytes.length();
+  word len = bytes.length();
   if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     // TODO(florian): we should remove the '\0'.
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
+    st->write_external_list_uint8(List<const uint8>(bytes.address(), bytes.length() + 1));
   } else {
     ASSERT(content_on_heap());
-    for (int index = 0; index < len; index++) st->write_byte(bytes.at(index));
+    for (word index = 0; index < len; index++) st->write_byte(bytes.at(index));
   }
 }
 
@@ -454,14 +473,14 @@ void Double::write_content(SnapshotWriter* st) {
 }
 
 void Instance::read_content(SnapshotReader* st) {
-  int len = st->read_cardinal();
-  for (int index = 0; index < len; index++) {
+  word len = st->read_cardinal();
+  for (word index = 0; index < len; index++) {
     // Only used to read snapshots onto the program heap, which has no write barrier.
     at_put_no_write_barrier(index, st->read_object());
   }
 }
 
-void String::read_content(SnapshotReader* st, int len) {
+void String::read_content(SnapshotReader* st, word len) {
   if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     _set_external_length(len);
     auto external_bytes = st->read_external_list_uint8();
@@ -470,8 +489,8 @@ void String::read_content(SnapshotReader* st, int len) {
     _assign_hash_code();
   } else {
     _set_length(len);
-    Bytes bytes(this);
-    for (int index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
+    MutableBytes bytes(this);
+    for (word index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
     bytes._set_end();
     _assign_hash_code();
     ASSERT(content_on_heap());
@@ -482,13 +501,13 @@ void Double::read_content(SnapshotReader* st) {
   _set_value(st->read_double());
 }
 
-void Array::read_content(SnapshotReader* st, int len) {
+void Array::read_content(SnapshotReader* st, word len) {
   _set_length(len);
   // Only used to read snapshots onto the program heap, which has no write barrier.
-  for (int index = 0; index < len; index++) at_put_no_write_barrier(index, st->read_object());
+  for (word index = 0; index < len; index++) at_put_no_write_barrier(index, st->read_object());
 }
 
-void ByteArray::read_content(SnapshotReader* st, int len) {
+void ByteArray::read_content(SnapshotReader* st, word len) {
   if (len > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     _set_external_length(len);
     auto external_bytes = st->read_external_list_uint8();
@@ -499,7 +518,7 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
     _set_length(len);
     Bytes bytes(this);
 
-    for (int index = 0; index < len; index++)
+    for (word index = 0; index < len; index++)
       bytes.at_put(index, st->read_cardinal());
   }
 }

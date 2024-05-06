@@ -1,0 +1,8 @@
+tests/negative/incomplete-string4-test.toit:6:3: error: Unterminated string
+  "\
+  ^~
+tests/negative/incomplete-string4-test.toit:6:3: error: Invalid string: '\'
+
+  "\
+  ^~
+Compilation failed

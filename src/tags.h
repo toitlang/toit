@@ -17,72 +17,93 @@
 
 namespace toit {
 
-#define NON_TLS_RESOURCE_CLASSES_DO(fn) \
+#define NON_BLE_RESOURCE_CLASSES_DO(fn) \
   fn(IntResource)                       \
   fn(LookupResult)                      \
-  fn(LwIPSocket)                        \
+  fn(LwipSocket)                        \
   fn(Timer)                             \
   fn(Peer)                              \
-  fn(UDPSocket)                         \
+  fn(UdpSocket)                         \
   fn(WifiEvents)                        \
   fn(WifiIpEvents)                      \
   fn(EthernetEvents)                    \
   fn(EthernetIpEvents)                  \
-  fn(SPIDevice)                         \
+  fn(SpiDevice)                         \
   fn(X509Certificate)                   \
   fn(AesContext)                        \
+  fn(FlashRegion)                       \
   fn(AesCbcContext)                     \
   fn(SslSession)                        \
   fn(Sha1)                              \
-  fn(Sha256)                            \
+  fn(Blake2s)                           \
+  fn(Sha)                               \
   fn(Siphash)                           \
   fn(Adler32)                           \
   fn(ZlibRle)                           \
-  fn(UARTResource)                      \
-  fn(GPIOResource)                      \
-  fn(I2SResource)                       \
+  fn(Zlib)                              \
+  fn(UartResource)                      \
+  fn(GpioResource)                      \
+  fn(I2sResource)                       \
   fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
-  fn(PWMResource)                       \
-  fn(RMTResource)                       \
-  fn(GAPResource)                       \
-  fn(GATTResource)                      \
-  fn(BLEServerServiceResource)          \
-  fn(BLEServerCharacteristicResource)   \
+  fn(PwmResource)                       \
+  fn(RmtResource)                       \
   fn(Directory)                         \
+  fn(UdpSocketResource)                 \
+  fn(TcpSocketResource)                 \
+  fn(TcpServerSocketResource)           \
+  fn(SubprocessResource)                \
+  fn(PipeResource)                      \
+  fn(AeadContext)                       \
+  fn(TlsHandshakeToken)                 \
+  fn(EspNowResource)                    \
+  fn(MbedTlsSocket)                     \
 
-#define TLS_CLASSES_DO(fn)              \
-  fn(MbedTLSSocket)                     \
+// When adding a class make sure that they all are subclasses of
+// the BleCallbackResource. If it isn't update the Min/MaxTag below.
+// Similarly, check, whether the new class is a read-write class.
+#define BLE_CLASSES_DO(fn)              \
+  fn(BleAdapterResource)                \
+  fn(BleCentralManagerResource)         \
+  fn(BlePeripheralManagerResource)      \
+  fn(BleRemoteDeviceResource)           \
+  fn(BleServiceResource)                \
+
+#define BLE_READ_WRITE_CLASSES_DO(fn)   \
+  fn(BleCharacteristicResource)         \
+  fn(BleDescriptorResource)             \
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
   fn(DacResourceGroup)                  \
-  fn(GPIOResourceGroup)                 \
-  fn(I2CResourceGroup)                  \
-  fn(I2SResourceGroup)                  \
-  fn(SPIResourceGroup)                  \
+  fn(GpioResourceGroup)                 \
+  fn(I2cResourceGroup)                  \
+  fn(I2sResourceGroup)                  \
+  fn(SpiResourceGroup)                  \
+  fn(SpiFlashResourceGroup)             \
   fn(SignalResourceGroup)               \
   fn(SocketResourceGroup)               \
-  fn(TCPResourceGroup)                  \
+  fn(TcpResourceGroup)                  \
   fn(TimerResourceGroup)                \
   fn(RpcResourceGroup)                  \
-  fn(MbedTLSResourceGroup)              \
-  fn(UDPResourceGroup)                  \
-  fn(UARTResourceGroup)                 \
-  fn(RMTResourceGroup)                  \
+  fn(MbedTlsResourceGroup)              \
+  fn(UdpResourceGroup)                  \
+  fn(UartResourceGroup)                 \
+  fn(RmtResourceGroup)                  \
   fn(WifiResourceGroup)                 \
   fn(EthernetResourceGroup)             \
-  fn(BLEResourceGroup)                  \
-  fn(BLEServerConfigGroup)              \
+  fn(BleResourceGroup)                  \
+  fn(BleServerConfigGroup)              \
   fn(PipeResourceGroup)                 \
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \
   fn(X509ResourceGroup)                 \
   fn(PcntChannelResourceGroup)          \
   fn(PcntUnitResourceGroup)             \
-  fn(PWMResourceGroup)                  \
+  fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
+  fn(EspNowResourceGroup)               \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \
@@ -94,10 +115,15 @@ enum StructTag {
 
   // Resource subclasses.
   ResourceMinTag,
-  NON_TLS_RESOURCE_CLASSES_DO(MAKE_ENUM)
-  BaseTLSSocketMinTag,
-  TLS_CLASSES_DO(MAKE_ENUM)
-  BaseTLSSocketMaxTag,
+  NON_BLE_RESOURCE_CLASSES_DO(MAKE_ENUM)
+  BleResourceMinTag,
+  BleCallbackResourceMinTag,
+  BLE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMinTag,
+  BLE_READ_WRITE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMaxTag,
+  BleCallbackResourceMaxTag,
+  BleResourceMaxTag,
   ResourceMaxTag,
 
   // ResourceGroup subclasses.
@@ -106,7 +132,6 @@ enum StructTag {
   ResourceGroupMaxTag,
 
   // Misc.
-  LeakyDirectoryTag,
   FontTag,
   ImageOutputStreamTag,
   ChannelTag

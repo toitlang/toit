@@ -15,64 +15,44 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "flash_registry.h"
 
 #include <math.h>
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
-
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-  #include <esp32c3/rom/cache.h>
-#else
-  #include <esp32/rom/cache.h>
-#endif
+#include "spi_flash_mmap.h"
 
 namespace toit {
 
 static const esp_partition_t* allocations_partition = null;
 static spi_flash_mmap_handle_t allocations_handle;
-const char* FlashRegistry::allocations_memory_ = null;
+uint8* FlashRegistry::allocations_memory_ = null;
 
-static bool is_dirty = false;
-
-static uint32_t to_raw_address(int offset) {
-  return allocations_partition->address + offset;
+static bool is_erased_page(word offset) {
+  ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
+  return FlashRegistry::is_erased(offset, FLASH_PAGE_SIZE);
 }
 
-static bool is_clean_page(const char* memory, unsigned offset) {
-  uint32_t* cursor = reinterpret_cast<uint32_t*>(const_cast<char*>(memory + offset));
-  uint32_t* end = cursor + FLASH_PAGE_SIZE / sizeof(uint32_t);
-  do {
-    if (*cursor != 0xffffffff) return false;
-    ++cursor;
-  } while (cursor < end);
-
-  return true;
-}
-
-static esp_err_t ensure_erased(const char* memory, unsigned offset, int size) {
+static esp_err_t ensure_erased(word offset, word size) {
   FlashRegistry::flush();
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
-  unsigned end = offset + size;
-  for (unsigned cursor = offset; cursor < end; cursor += FLASH_PAGE_SIZE) {
-    if (!is_clean_page(memory, cursor)) {
+  int to = offset + size;
+  for (word cursor = offset; cursor < to; cursor += FLASH_PAGE_SIZE) {
+    if (!is_erased_page(cursor)) {
       // Determine size of dirty range.
-      unsigned dirty_end = cursor + FLASH_PAGE_SIZE;
-      while (dirty_end < end && !is_clean_page(memory, dirty_end)) {
-        dirty_end += FLASH_PAGE_SIZE;
+      int dirty_to = cursor + FLASH_PAGE_SIZE;
+      while (dirty_to < to && !is_erased_page(dirty_to)) {
+        dirty_to += FLASH_PAGE_SIZE;
       }
-      // Erase dirty range: [cursor, dirty_end).
-      esp_err_t result = esp_partition_erase_range(allocations_partition, cursor, dirty_end - cursor);
-      if (result == ESP_OK) {
-        is_dirty = true;
-      } else {
+      // Erase dirty range: [cursor, dirty_to).
+      esp_err_t result = esp_partition_erase_range(allocations_partition, cursor, dirty_to - cursor);
+      if (result != ESP_OK) {
         return result;
       }
-      cursor = dirty_end;  // Will continue at [dirty_end] + FLASH_PAGE_SIZE.
+      cursor = dirty_to;  // Will continue at [dirty_to] + FLASH_PAGE_SIZE.
     }
   }
   return ESP_OK;
@@ -87,8 +67,8 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_partition != null);
   ASSERT(allocations_memory() == null);
   const void* memory = null;
-  esp_partition_mmap(allocations_partition, 0, allocations_size(), SPI_FLASH_MMAP_DATA, &memory, &allocations_handle);
-  allocations_memory_ = static_cast<const char*>(memory);
+  esp_partition_mmap(allocations_partition, 0, allocations_size(), ESP_PARTITION_MMAP_DATA, &memory, &allocations_handle);
+  allocations_memory_ = reinterpret_cast<uint8*>(const_cast<void*>(memory));
   ASSERT(allocations_memory() != null);
 }
 
@@ -98,35 +78,19 @@ void FlashRegistry::tear_down() {
   allocations_partition = null;
 }
 
-bool FlashRegistry::is_allocations_set_up() {
-  return allocations_memory_ != null;
-}
-
 void FlashRegistry::flush() {
-  if (!is_dirty) return;
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-  Cache_Flush(0);
-#ifndef CONFIG_FREERTOS_UNICORE
-  Cache_Flush(1);
-#endif
-#endif
-  is_dirty = false;
 }
 
 int FlashRegistry::allocations_size() {
   return static_cast<int>(allocations_partition->size);
 }
 
-int FlashRegistry::erase_chunk(int offset, int size) {
+int FlashRegistry::erase_chunk(word offset, word size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
-  esp_err_t result = ensure_erased(FlashRegistry::allocations_memory(), offset, size);
+  esp_err_t result = ensure_erased(offset, size);
   if (result == ESP_OK) {
-    // TODO(kasper): Not strictly necessary if we always proceed to overwrite
-    // the erased section with the image. For now, we sometimes use this to
-    // erase a program header (see _Program.remove in programs_registry.toit)
-    // and to make sure the following flash scan doesn't find pseudo-erased
-    // programs, we flush here.
+    // Flush to make sure we don't find stale cached information.
     FlashRegistry::flush();
     return size;
   } else {
@@ -134,43 +98,9 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   }
 }
 
-bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
+bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
-  if (result == ESP_OK) {
-    is_dirty = true;
-    return true;
-  } else {
-    return false;
-  }
-}
-
-int FlashRegistry::read_raw_chunk(int offset, void* destination, int size) {
-  uint32_t raw_address = to_raw_address(offset);
-  ASSERT(0 <= offset && raw_address + size < allocations_partition->address + allocations_size());
-  // TODO(lau): Use esp_flash_read - could potentially reduce code size.
-  esp_err_t result = spi_flash_read(raw_address, destination, size);
-  return  result == ESP_OK;
-}
-
-bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
-  uint32_t raw_address = to_raw_address(offset);
-  ASSERT(0 <= offset && raw_address + size < allocations_partition->address + allocations_size());
-  // TODO(lau): Use esp_flash_write - could potentially reduce code size.
-  esp_err_t result = spi_flash_write(raw_address, chunk, size);
-  if (result == ESP_OK) {
-    FlashRegistry::flush();
-    is_dirty = true;
-    return true;
-  } else {
-    return false;
-  }
-}
-
-int FlashRegistry::offset(const void* cursor) {
-  ASSERT(allocations_memory() != null);
-  int offset = reinterpret_cast<int>(cursor) - reinterpret_cast<int>(allocations_memory());
-  ASSERT(0 <= offset && offset < allocations_size());
-  return offset;
+  return result == ESP_OK;
 }
 
 bool FlashRegistry::erase_flash_registry() {
@@ -181,4 +111,4 @@ bool FlashRegistry::erase_flash_registry() {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

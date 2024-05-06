@@ -1,0 +1,10 @@
+tests/negative/ambiguous-test.toit:9:3: error: Ambiguous resolution of 'foo'
+  foo  // Ambiguous import.
+  ^~~
+tests/negative/ambiguous-a.toit:5:1: note: Resolution candidate for 'foo'
+foo:
+^~~
+tests/negative/ambiguous-b.toit:5:1: note: Resolution candidate for 'foo'
+foo:
+^~~
+Compilation failed

@@ -54,8 +54,8 @@ void Visitor::accept(Object* object) {
     case TypeTag::TASK_TAG:
       visit_task(Task::cast(heap_object));
       break;
-  default:
-    FATAL("Unexpected class tag");
+    default:
+      FATAL("Unexpected class tag");
   }
 }
 

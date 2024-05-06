@@ -1,0 +1,10 @@
+tests/negative/bad-string-interpolation-test.toit:7:15: error: Non-identifier member name
+  print "$foo.while "
+              ^~~~~
+tests/negative/bad-string-interpolation-test.toit:8:15: error: Invalid member name 'this'
+  print "$foo.this "
+              ^~~~
+tests/negative/bad-string-interpolation-test.toit:9:15: error: Invalid member name 'super'
+  print "$foo.super "
+              ^~~~~
+Compilation failed

@@ -1,0 +1,2 @@
+As check failed: an int (499) is not a A.
+  0: main                      tests/negative/as8-test.toit:16:5

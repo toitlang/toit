@@ -1,0 +1,37 @@
+tests/negative/interfaceC-test.toit:9:7: error: Missing implementations for interface methods
+class A implements I1:
+      ^
+tests/negative/interfaceC-test.toit:6:3: note: Method 'foo' is only partially implemented
+  foo x y=499 --named1 --named2=42 --named3=499
+  ^~~
+tests/negative/interfaceC-test.toit:7:3: note: Method 'bar' is only partially implemented
+  bar x y=499 [block] --named1 --named2=42 --named3=499 [--b]
+  ^~~
+tests/negative/interfaceC-test.toit:33:7: error: Missing implementations for interface methods
+class B implements I2:
+      ^
+tests/negative/interfaceC-test.toit:25:3: note: Method 'foo' is only partially implemented
+  foo x y --named1 --named2=42 --named3=499 --named4=11
+  ^~~
+tests/negative/interfaceC-test.toit:31:3: note: Method 'bar' is only partially implemented
+  bar x y [block] --named1 --named2=42 --named3=499 [--b] --named4=11
+  ^~~
+tests/negative/interfaceC-test.toit:37:7: error: Missing implementations for interface methods
+class C implements I1 I2:
+      ^
+tests/negative/interfaceC-test.toit:25:3: note: Method 'foo' is only partially implemented
+  foo x y --named1 --named2=42 --named3=499 --named4=11
+  ^~~
+tests/negative/interfaceC-test.toit:31:3: note: Method 'bar' is only partially implemented
+  bar x y [block] --named1 --named2=42 --named3=499 [--b] --named4=11
+  ^~~
+tests/negative/interfaceC-test.toit:41:7: error: Missing implementations for interface methods
+class D implements I1 I2:
+      ^
+tests/negative/interfaceC-test.toit:25:3: note: Method 'foo' is only partially implemented
+  foo x y --named1 --named2=42 --named3=499 --named4=11
+  ^~~
+tests/negative/interfaceC-test.toit:31:3: note: Method 'bar' is only partially implemented
+  bar x y [block] --named1 --named2=42 --named3=499 [--b] --named4=11
+  ^~~
+Compilation failed

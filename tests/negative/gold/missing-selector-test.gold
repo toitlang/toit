@@ -1,0 +1,10 @@
+tests/negative/missing-selector-test.toit:8:13: error: Expected identifier
+  none-fun. = unresolved
+            ^
+tests/negative/missing-selector-test.toit:8:15: error: Unresolved identifier: 'unresolved'
+  none-fun. = unresolved
+              ^~~~~~~~~~
+tests/negative/missing-selector-test.toit:8:13: error: Can't invoke method on 'none' type
+  none-fun. = unresolved
+            ^
+Compilation failed

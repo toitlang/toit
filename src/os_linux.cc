@@ -21,15 +21,26 @@
 #include "flags.h"
 #include "memory.h"
 #include "program_memory.h"
-#include <sys/time.h>
-#include <time.h>
 #include <errno.h>
 #include <pthread.h>
 #include <sys/mman.h>
 #include <sys/sysinfo.h>
+#include <sys/time.h>
+#include <limits.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace toit {
+
+char* OS::get_executable_path() {
+  char* path = _new char[PATH_MAX];
+  int nb_written = readlink("/proc/self/exe", path, PATH_MAX - 1);
+  if (nb_written == -1) {
+    FATAL("failure reading executable path: %d", errno);
+  }
+  path[nb_written] = '\0';
+  return path;
+}
 
 int OS::num_cores() {
   return get_nprocs();
@@ -67,13 +78,9 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, getpagesize());
   uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
-#ifdef TOIT_DEBUG
-  // Calls to use_virtual_memory are rounded up by one due to the single-word
-  // object problem, but we don't want to poison data belonging to the next
-  // page's metadata.
-  memset(addr, 0xc1, sz - 1);
-#endif
-  if (result == 0) return true;
+  if (result == 0) {
+    return true;
+  }
   if (errno == ENOMEM) return false;
   perror("mprotect");
   exit(1);
@@ -96,19 +103,13 @@ void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
 }
 
-void OS::tear_down() {
-  dispose(_global_mutex);
-  dispose(_scheduler_mutex);
-  dispose(_resource_mutex);
-}
-
 const char* OS::get_platform() {
   return "Linux";
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FILE *file;
-  int length;
+  FILE* file;
+  word length;
   file = fopen(name, "rb");
   if (!file) return -1;
   fseek(file, 0, SEEK_END);
@@ -148,12 +149,10 @@ word OS::get_heap_tag() {
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
-
-void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 }
 

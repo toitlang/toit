@@ -55,10 +55,10 @@ static void close_keep_errno(int fd) {
   errno = err;
 }
 
-class UDPResourceGroup : public ResourceGroup {
+class UdpResourceGroup : public ResourceGroup {
  public:
-  TAG(UDPResourceGroup);
-  UDPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(UdpResourceGroup);
+  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -103,26 +103,26 @@ MODULE_IMPLEMENTATION(udp, MODULE_UDP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  UDPResourceGroup* resource_group = _new UDPResourceGroup(process, EpollEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  UdpResourceGroup* resource_group = _new UdpResourceGroup(process, EpollEventSource::instance());
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
 }
 
 PRIMITIVE(bind) {
-  ARGS(UDPResourceGroup, resource_group, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_socket();
   if (id == -1) return Primitive::os_error(errno, process);
 
   IntResource* resource = resource_group->register_id(id);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
   AutoUnregisteringResource<IntResource> resource_manager(resource_group, resource);
 
   struct sockaddr_in addr;
@@ -168,9 +168,8 @@ PRIMITIVE(receive)  {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (is_array(output)) {
-    Error* error = null;
-    address = process->allocate_byte_array(4, &error);
-    if (address == null) return error;
+    address = process->allocate_byte_array(4);
+    if (address == null) FAIL(ALLOCATION_FAILED);
   }
 
   int available = 0;
@@ -178,9 +177,8 @@ PRIMITIVE(receive)  {
     return Primitive::os_error(errno, process);
   }
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
@@ -192,14 +190,14 @@ PRIMITIVE(receive)  {
     }
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->program()->null_object();
+  if (read == 0) return process->null_object();
 
   // Please note that the array might change length so no ByteArray::Bytes variables can pass this point.
   array->resize_external(process, read);
 
   if (is_array(output)) {
     Array* out = Array::cast(output);
-    ASSERT(out->length() == 3);
+    if (out->length() < 3) FAIL(INVALID_ARGUMENT);
     out->at_put(0, array);
     memcpy(ByteArray::Bytes(address).address(), &addr.sin_addr.s_addr, 4);
     out->at_put(1, address);
@@ -215,16 +213,16 @@ PRIMITIVE(send) {
   USE(proxy);
   int fd = connection_resource->id();
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   struct sockaddr_in addr_in;
   struct sockaddr* addr = null;
   size_t size = 0;
-  if (address != process->program()->null_object()) {
+  if (address != process->null_object()) {
     bzero((char*)&addr_in, sizeof(addr_in));
     addr_in.sin_family = AF_INET;
     Blob address_bytes;
-    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     // TODO(florian): we are not checking that the address fits into the `s_addr`.
     memcpy(&addr_in.sin_addr.s_addr, address_bytes.address(), address_bytes.length());
     addr_in.sin_port = htons(port);
@@ -287,12 +285,11 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
-
       return BOOL(value != 0);
     }
 
     default:
-      return process->program()->unimplemented();
+      FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -304,10 +301,10 @@ PRIMITIVE(set_option) {
   switch (option) {
     case UDP_BROADCAST: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
-        WRONG_TYPE;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
@@ -316,13 +313,13 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      return process->program()->unimplemented();
+      FAIL(UNIMPLEMENTED);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, connection_resource);
   int fd = connection_resource->id();
 
@@ -332,18 +329,18 @@ PRIMITIVE(error) {
     error = errno;
   }
 
-  return process->allocate_string_or_error(strerror(error));
+  return Smi::from(error);
 }
 
 PRIMITIVE(close) {
-  ARGS(UDPResourceGroup, resource_group, IntResource, connection_resource);
+  ARGS(UdpResourceGroup, resource_group, IntResource, connection_resource);
   int fd = connection_resource->id();
 
   resource_group->close_socket(fd);
 
   connection_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(gc) {

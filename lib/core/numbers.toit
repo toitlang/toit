@@ -2,11 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/** A number. */
+import ..io as io
+
+/**
+A number.
+This is an abstract super class for $int and $float.
+See also https://docs.toit.io/language/math.
+*/
 abstract class num implements Comparable:
-  equals_from_float_ other/float -> bool: return false
-  equals_from_small_integer_ other/int -> bool: return false
-  equals_from_large_integer_ other/int -> bool: return false
+  equals-from-float_ other/float -> bool: return false
+  equals-from-small-integer_ other/int -> bool: return false
+  equals-from-large-integer_ other/int -> bool: return false
 
   /**
   Converts this number to an integer.
@@ -27,7 +33,7 @@ abstract class num implements Comparable:
   float.NAN.to_int         // Error.
   ```
   */
-  abstract to_int -> int
+  abstract to-int -> int
 
   /**
   The sign of this number.
@@ -446,8 +452,8 @@ abstract class num implements Comparable:
   3.compare_to float.INFINITY               // => -1
   ```
   */
-  compare_to other/num -> int:
-    #primitive.core.compare_to
+  compare-to other/num -> int:
+    #primitive.core.compare-to
 
   /**
   The absolute value of this number.
@@ -485,17 +491,17 @@ abstract class num implements Comparable:
 
   ```
   */
-  to_float -> float:
-    #primitive.core.number_to_float
+  to-float -> float:
+    #primitive.core.number-to-float
 
   /**
-  Variant of $(compare_to other).
+  Variant of $(compare-to other).
 
-  Calls $if_equal if this number is equal to $other.
+  Calls $if-equal if this number is equal to $other.
 
   # Examples
   In the example, `MyTime` implements a lexicographical ordering of seconds
-    and nanoseconds using $(compare_to other [--if_equal]) to move on to
+    and nanoseconds using $(compare-to other [--if-equal]) to move on to
     nanoseconds when the seconds component is equal.
   ```
   class MyTime:
@@ -505,13 +511,13 @@ abstract class num implements Comparable:
     constructor .seconds .nanoseconds:
 
     compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if_equal=:
+      return seconds.compare_to other.seconds --if-equal=:
         nanoseconds.compare_to other.nanoseconds
   ```
   */
-  compare_to other/num [--if_equal] -> int:
-    result := compare_to other
-    if result == 0: return if_equal.call
+  compare-to other/num [--if-equal] -> int:
+    result := compare-to other
+    if result == 0: return if-equal.call
     return result
 
   /**
@@ -529,15 +535,22 @@ abstract class num implements Comparable:
   */
   abstract sqrt -> float
 
+/**
+A 64 bit integer.
+Ints are always 64 bit two's complement signed values between $int.MIN and
+  $int.MAX.  Overflow is silent.
+This is a fully fledged class, not a 'primitive type'.
+Ints are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 abstract class int extends num:
   /**
   The maximum integer value.
 
   The maximum value is equal to:
-    * 9223372036854775807
-    * 2**63-1
-    * 0x7fff_ffff_ffff_ffff
-  (** is "to the power of".)
+  * 9223372036854775807
+  * 2**63-1  (** is "to the power of")
+  * 0x7fff_ffff_ffff_ffff
   */
   static MAX ::= 0x7fff_ffff_ffff_ffff
 
@@ -545,23 +558,47 @@ abstract class int extends num:
   The minimum integer value.
 
   The minimum value is equal to:
-    * -9223372036854775808
-    * -2**63
-    * 0x8000_0000_0000_0000
-  (** is "to the power of".)
+  * -9223372036854775808
+  * -2**63 (** is "to the power of").
+  * 0x8000_0000_0000_0000
   */
   static MIN ::= -MAX - 1
 
-  static PARSE_ERR_ ::= "INTEGER_PARSING_ERROR"
-  static RANGE_ERR_ ::= "OUT_OF_RANGE"
-  static MAX_INT64_DIV_10_ ::= 922337203685477580
+  /** The minimum signed 8-bit integer value. */
+  static MIN-8 ::= -MAX-8 - 1
+  /** The maximum signed 8-bit integer value. */
+  static MAX-8 ::= 0x7F
+  /** The minimum signed 16-bit integer value. */
+  static MIN-16 ::= -MAX-16 - 1
+  /** The maximum signed 16-bit integer value. */
+  static MAX-16 ::= 0x7FFF
+  /** The minimum signed 24-bit integer value. */
+  static MIN-24 ::= -MAX-24 - 1
+  /** The maximum signed 24-bit integer value. */
+  static MAX-24 ::= 0x7F_FFFF
+  /** The minimum signed 32-bit integer value. */
+  static MIN-32 ::= -MAX-32 - 1
+  /** The maximum signed 32-bit integer values. */
+  static MAX-32 ::= 0x7FFF_FFFF
 
-  static MAX_INT64_LAST_CHARS_ ::= #[0, 0, 1, 1, 3, 2, 1, 0, 7, 7, 7, 7, 7, 7, 7, 7, 15, 8, 7, 17, 7, 7, 7, 2, 7, 7, 7, 25, 7, 11, 7, 7, 31, 7, 25, 7, 7]
+  /** The maximum unsigned 8-bit integer values. */
+  static MAX-U8 ::= 0xFF
+  /** The maximum unsigned 16-bit integer values. */
+  static MAX-U16 ::= 0xFFFF
+  /** The maximum unsigned 24-bit integer values. */
+  static MAX-U24 ::= 0xFF_FFFF
+  /** The maximum unsigned 32-bit integer values. */
+  static MAX-U32 ::= 0xFFFF_FFFF
+
+
+  static PARSE-ERR_ ::= "INTEGER_PARSING_ERROR"
+  static RANGE-ERR_ ::= "OUT_OF_RANGE"
+  static MAX-INT64-DIV-10_ ::= 922337203685477580
+
+  static MAX-INT64-LAST-CHARS_ ::= #[0, 0, 1, 1, 3, 2, 1, 0, 7, 7, 7, 7, 7, 7, 7, 7, 15, 8, 7, 17, 7, 7, 7, 2, 7, 7, 7, 25, 7, 11, 7, 7, 31, 7, 25, 7, 7]
 
   /**
   Parses the $data as an integer.
-
-  The data must be a $string or $ByteArray.
 
   The given $radix must be in the range 2 and 36 (inclusive).
 
@@ -589,135 +626,138 @@ abstract class int extends num:
   int.parse "A" --radix=16        // => 10
   ```
   */
-  static parse data --radix=10 -> int:
-    return parse_ data 0 data.size --radix=radix --on_error=: throw it
+  static parse data/io.Data --radix=10 -> int:
+    return parse_ data 0 data.byte-size --radix=radix --on-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
-  static parse data from/int to/int=data.size --radix=10 -> int:
-    return parse_ data from to --radix=radix --on_error=: throw it
+  static parse data/io.Data from/int to/int=data.byte-size --radix=10 -> int:
+    return parse_ data from to --radix=radix --on-error=: throw it
 
   /**
   Variant of $(parse data from to --radix).
 
-  If the data can't be parsed correctly, returns the result of calling the $on_error
+  If the data can't be parsed correctly, returns the result of calling the $on-error
     lambda.
   */
-  static parse data --radix=10 [--on_error] -> int?:
-    return parse_ data 0 data.size --radix=radix --on_error=on_error
+  static parse data/io.Data --radix=10 [--on-error] -> int?:
+    return parse_ data 0 data.byte-size --radix=radix --on-error=on-error
 
   /**
-  Deprecated. Use $(parse data --radix [--on_error]) with a slice instead.
+  Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
   */
-  static parse data from/int to/int=data.size --radix=10 [--on_error] -> int?:
-    return parse_ data from to --radix=10 --on_error=on_error
+  static parse data/io.Data from/int to/int=data.byte-size --radix=10 [--on-error] -> int?:
+    return parse_ data from to --radix=10 --on-error=on-error
 
-  static parse_ data from/int to/int=data.size --radix [--on_error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix [--on-error] -> int?:
     if radix == 10:
-      return parse_10_ data from to --on_error=on_error
+      return parse-10_ data from to --on-error=on-error
     else if radix == 16:
-      return parse_16_ data from to --on_error=on_error
+      return parse-16_ data from to --on-error=on-error
     else:
-      return parse_generic_radix_ radix data from to --on_error=on_error
+      return parse-generic-radix_ radix data from to --on-error=on-error
 
-  static char_to_int_ c/int -> int:
+  static char-to-int_ c/int -> int:
     if '0' <= c <= '9': return c - '0'
     else if 'A' <= c <= 'Z': return 10 + c - 'A'
     else if 'a' <= c <= 'z': return 10 + c - 'a'
-    throw PARSE_ERR_
+    throw PARSE-ERR_
 
-  static parse_generic_radix_ radix/int data from/int to/int [--on_error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int [--on-error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
-    max_num := (min radix 10) + '0' - 1
-    max_char := radix - 10 + 'a' - 1
-    max_char_C := radix - 10 + 'A' - 1
+    max-num := (min radix 10) + '0' - 1
+    max-char := radix - 10 + 'a' - 1
+    max-char-C := radix - 10 + 'A' - 1
     // The minimum number of characters required to overflow a big number is 13
     // (There are 13 characters in 2 ** 63 base 36).  Therefore we avoid the
     // expensive division for strings with less than 13 characters.
-    max_int64_div_radix := (to - from > 12) ? MAX / radix : MAX
-    max_last_char := MAX_INT64_LAST_CHARS_[radix]
+    max-int64-div-radix := (to - from > 12) ? MAX / radix : MAX
+    max-last-char := MAX-INT64-LAST-CHARS_[radix]
 
-    return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
+    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
       value := 0
 
-      if result > max_int64_div_radix or (result == max_int64_div_radix and (char_to_int_ char) > max_last_char):
-        min_last_char := (max_last_char + 1) % radix
-        if negative and is_last and (char_to_int_ char) == min_last_char:
-          if result == max_int64_div_radix:
+      if result > max-int64-div-radix or (result == max-int64-div-radix and (char-to-int_ char) > max-last-char):
+        min-last-char := (max-last-char + 1) % radix
+        if negative and is-last and (char-to-int_ char) == min-last-char:
+          if result == max-int64-div-radix:
             return int.MIN
-          else if result == max_int64_div_radix + 1:
+          else if result == max-int64-div-radix + 1:
             return int.MIN
-        return on_error.call RANGE_ERR_
+        return on-error.call RANGE-ERR_
 
-      if '0' <= char <= max_num:
+      if '0' <= char <= max-num:
         value = char - '0'
-      else if radix > 10 and 'a' <= char <= max_char:
+      else if radix > 10 and 'a' <= char <= max-char:
         value = 10 + char - 'a'
-      else if radix > 10 and 'A' <= char <= max_char_C:
+      else if radix > 10 and 'A' <= char <= max-char-C:
         value = 10 + char - 'A'
       else:
-        return on_error.call PARSE_ERR_
+        return on-error.call PARSE-ERR_
       result *= radix
       result += value
-      continue.generic_parser_ result
+      continue.generic-parser_ result
 
-  static parse_10_ data from/int to/int [--on_error] -> int?:
-    #primitive.core.int_parse:
-      return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
-        if not '0' <= char <= '9': return on_error.call PARSE_ERR_
-        // The max int64 ends with a '7' and the min int64 ends with an '8'
-        if result > MAX_INT64_DIV_10_ or (result == MAX_INT64_DIV_10_ and char > '7'):
-          if negative and result == MAX_INT64_DIV_10_ and is_last and char == '8':
-            return int.MIN
-          return on_error.call RANGE_ERR_
-        continue.generic_parser_ result * 10 + char - '0'
+  static parse-10_ data/io.Data from/int to/int [--on-error] -> int?:
+    #primitive.core.int-parse:
+      if it == "WRONG_BYTES_TYPE":
+        return parse-10_ (ByteArray.from data) from to --on-error=on-error
+      else:
+        return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+          if not '0' <= char <= '9': return on-error.call PARSE-ERR_
+          // The max int64 ends with a '7' and the min int64 ends with an '8'
+          if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
+            if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
+              return int.MIN
+            return on-error.call RANGE-ERR_
+          continue.generic-parser_ result * 10 + char - '0'
 
-  static generic_parser_ data from/int to/int [--on_error] [parse_char] -> int?:
+  static generic-parser_ data from/int to/int [--on-error] [parse-char] -> int?:
     result := 0
     negative := false
     underscore := false
     size := to - from
-    if size == 0: throw "OUT_OF_BOUNDS"
+    if size == 0: return on-error.call PARSE-ERR_
     size.repeat:
       char := data[from + it]
       if char == '-':
-        if it != 0 or size == 1: return on_error.call PARSE_ERR_
+        if it != 0 or size == 1: return on-error.call PARSE-ERR_
         negative = true
       else if char == '_' and not underscore:
-        if is_invalid_underscore it size negative:
-          return on_error.call PARSE_ERR_
+        if is-invalid-underscore_ it size negative:
+          return on-error.call PARSE-ERR_
         else:
           underscore = true
       else:
         underscore = false
-        is_last := it == size - 1
-        result = parse_char.call char result is_last negative
+        is-last := it == size - 1
+        result = parse-char.call char result is-last negative
     if negative: result = -result
     return result
 
-  static is_invalid_underscore index size negative:
+  static is-invalid-underscore_ index size negative:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
-  static parse_16_ data from/int to/int [--on_error] -> int?:
-    max_int64_div_radix := MAX / 16
+  static parse-16_ data from/int to/int [--on-error] -> int?:
+    max-int64-div-radix := MAX / 16
 
-    return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
-      if result > max_int64_div_radix or (result == max_int64_div_radix and char > 'f'):
-        if negative and is_last and char == '0' and result == max_int64_div_radix + 1:
+    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+      if result > max-int64-div-radix or (result == max-int64-div-radix and char > 'f'):
+        if negative and is-last and char == '0' and result == max-int64-div-radix + 1:
             return int.MIN
-        return on_error.call RANGE_ERR_
+        return on-error.call RANGE-ERR_
 
-      value := hex_digit char: on_error.call PARSE_ERR_
+      value := hex-char-to-value char --on-error=(: on-error.call PARSE-ERR_)
       result <<= 4
       result |= value
-      continue.generic_parser_ result
+      continue.generic-parser_ result
 
   /** See $super. */
   abstract operator - -> int
 
   /**
-  Negates this number bitwise.
+  Negates this integer bitwise.
 
   # Examples
   ```
@@ -728,7 +768,7 @@ abstract class int extends num:
   abstract operator ~ -> int
 
   /**
-  Bitwise-ANDs this number with the $other.
+  Bitwise-ANDs this integer with the $other.
 
   # Examples
   ```
@@ -746,7 +786,7 @@ abstract class int extends num:
   abstract operator & other/int -> int
 
   /**
-  Bitwise-ORs this number with the $other.
+  Bitwise-ORs this integer with the $other.
 
   # Examples
   ```
@@ -763,7 +803,7 @@ abstract class int extends num:
   abstract operator | other/int -> int
 
   /**
-  Bitwise-XORs this number with the $other.
+  Bitwise-XORs this integer with the $other.
 
   # Examples
   ```
@@ -781,9 +821,9 @@ abstract class int extends num:
   abstract operator ^ other/int -> int
 
   /**
-  Right shifts this number with $number_of_bits.
+  Right shifts this integer with $number-of-bits.
 
-  The left most bit of this number is inserted to the left of the shifted
+  The left-most bit of this integer is inserted to the left of the shifted
     bits preserving the sign.
 
   # Examples
@@ -798,10 +838,10 @@ abstract class int extends num:
   -16 >> 5  // => -1
   ```
   */
-  abstract operator >> number_of_bits/int -> int
+  abstract operator >> number-of-bits/int -> int
 
   /**
-  Right shifts this number with $number_of_bits erasing the sign bit.
+  Right shifts this integer with $number-of-bits, erasing the sign bit.
 
   # Examples
   ```
@@ -817,10 +857,10 @@ abstract class int extends num:
   -16 >>> 64  // => 0
   ```
   */
-  abstract operator >>> number_of_bits/int -> int
+  abstract operator >>> number-of-bits/int -> int
 
   /**
-  Left shifts this number with $number_of_bits.
+  Left shifts this integer with $number-of-bits.
 
   # Examples
   ```
@@ -837,11 +877,11 @@ abstract class int extends num:
   -1 << 0  // => 0
   ```
   */
-  abstract operator << number_of_bits/int -> int
+  abstract operator << number-of-bits/int -> int
 
   /**
   Variant of $stringify.
-  Unlike string interpolation with base 8 or 16, negative
+  Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
 
@@ -859,14 +899,14 @@ abstract class int extends num:
   ```
   */
   stringify radix/int:
-    #primitive.core.int64_to_string
+    #primitive.core.int64-to-string
 
   /** See $super. */
   abs -> int:
     return sign == -1 ? -this : this
 
   /** See $super. */
-  to_int -> int:
+  to-int -> int:
     return this
 
   /** See $super. */
@@ -884,7 +924,7 @@ abstract class int extends num:
   127.sign_extend --bits=8  // => 127
   ```
   */
-  sign_extend --bits/int -> int:
+  sign-extend --bits/int -> int:
     if not 1 <= bits <= 63:
       if bits == 64: return this
       throw "OUT_OF_RANGE"
@@ -895,17 +935,17 @@ abstract class int extends num:
   /**
   The hash code of this number.
   */
-  hash_code -> int:
+  hash-code -> int:
     return this
 
   /** See $super. */
   sqrt -> float:
-    return to_float.sqrt
+    return to-float.sqrt
 
   /**
-  Whether this number is a power of two.
+  Whether this integer is a power of two.
 
-  A number is a power of two if here exists a number `n` such that the number
+  An integer is a power of two if there exists a number `n` such that the integer
     is equal to 2**n.
   (** is "to the power of".)
 
@@ -922,13 +962,13 @@ abstract class int extends num:
   14.is_power_of_two    // => false
   ```
   */
-  is_power_of_two -> bool:
+  is-power-of-two -> bool:
     return (this & this - 1) == 0 and this != 0
 
   /**
-  Whether this number is aligned with $n.
+  Whether this integer is aligned with $n.
 
-  This number and the given $n must be a power of 2 or 0.
+  The given $n must be a power of 2.
 
   # Examples
   ```
@@ -938,18 +978,18 @@ abstract class int extends num:
   0.is_aligned 4096      // => true
 
   2.is_aligned 1024  // => false
+  3.is_aligned 2     // => false.
 
   2.is_aligned 3     // Error.
-  3.is_aligned 2     // Error.
     ```
   */
-  is_aligned n/int -> bool:
-    if not n.is_power_of_two: throw "INVALID ARGUMENT"
+  is-aligned n/int -> bool:
+    if not n.is-power-of-two: throw "INVALID ARGUMENT"
     return (this & n - 1) == 0
 
   /**
   Calls the given $block a number of times corresponding to the value of
-    this number.
+    this integer.
 
   If the number is negative, then the given block is not called.
 
@@ -985,8 +1025,8 @@ abstract class int extends num:
   int.MAX.count_leading_zeros   // => 1
   ```
   */
-  count_leading_zeros -> int:
-    #primitive.core.count_leading_zeros
+  count-leading-zeros -> int:
+    #primitive.core.count-leading-zeros
 
   /**
   Returns the number of trailing zeros in the binary representation of the
@@ -1004,10 +1044,10 @@ abstract class int extends num:
   int.MAX.count_trailing_zeros      // => 0
   ```
   */
-  count_trailing_zeros -> int:
+  count-trailing-zeros -> int:
     if this == 0: return 64
     value := this ^ (this - 1)
-    return 63 - value.count_leading_zeros
+    return 63 - value.count-leading-zeros
 
   /**
   Returns the number of ones in the binary representation of the integer.
@@ -1025,271 +1065,339 @@ abstract class int extends num:
   int.MAX.population_count     // => 63
   ```
   */
-  population_count -> int:
+  population-count -> int:
     #primitive.core.popcount
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns 1 if the number is odd, zero if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns 0 if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => 0
+  (0b101100).parity  // => 1
+  (0b101110).parity  // => 0
+  (0b101111).parity  // => 1
+  (0).parity         // => 0
+  (-1).parity        // => 0
+  int.MIN.parity     // => 1
+  int.MAX.parity     // => 1
+  ```
+  */
+  parity -> int:
+    return population-count & 1
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns false if the number is odd, true if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns false if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => true
+  (0b101100).parity  // => false
+  (0b101110).parity  // => true
+  (0b101111).parity  // => false
+  (0).parity         // => true
+  (-1).parity        // => true
+  int.MIN.parity     // => false
+  int.MAX.parity     // => false
+  ```
+  */
+  has-even-parity -> bool:
+    return (population-count & 1) == 0
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns true if the number is odd, false if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns true if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => false
+  (0b101100).parity  // => true
+  (0b101110).parity  // => false
+  (0b101111).parity  // => true
+  (0).parity         // => false
+  (-1).parity        // => false
+  int.MIN.parity     // => true
+  int.MAX.parity     // => true
+  ```
+  */
+  has-odd-parity -> bool:
+    return (population-count & 1) == 1
 
 class SmallInteger_ extends int:
   /** See $super. */
   operator + other:
-    #primitive.core.smi_add:
-      return other.add_from_small_integer_ this
+    #primitive.core.smi-add:
+      return other.add-from-small-integer_ this
 
   /** See $super. */
   operator - other:
-    #primitive.core.smi_subtract:
-      return other.subtract_from_small_integer_ this
+    #primitive.core.smi-subtract:
+      return other.subtract-from-small-integer_ this
 
   /** See $super. */
   operator * other:
-    #primitive.core.smi_multiply:
-      return other.multiply_from_small_integer_ this
+    #primitive.core.smi-multiply:
+      return other.multiply-from-small-integer_ this
 
   /** See $super. */
   operator / other:
-    #primitive.core.smi_divide:
+    #primitive.core.smi-divide:
       if it == "DIVISION_BY_ZERO": throw it
-      return other.divide_from_small_integer_ this
+      return other.divide-from-small-integer_ this
 
   /** See $super. */
   operator % other:
-    #primitive.core.smi_mod:
+    #primitive.core.smi-mod:
       if it == "DIVISION_BY_ZERO": throw it
-      return other.mod_from_small_integer_ this
+      return other.mod-from-small-integer_ this
 
   /** See $super. */
   operator == other -> bool:
-    #primitive.core.smi_equals:
-      return other is num and other.equals_from_small_integer_ this
+    #primitive.core.smi-equals:
+      return other is num and other.equals-from-small-integer_ this
 
   /** See $super. */
   operator < other -> bool:
-    #primitive.core.smi_less_than:
-      return other.less_than_from_small_integer_ this
+    #primitive.core.smi-less-than:
+      return other.less-than-from-small-integer_ this
 
   /** See $super. */
   operator <= other -> bool:
-    #primitive.core.smi_less_than_or_equal:
-      return other.less_than_or_equal_from_small_integer_ this
+    #primitive.core.smi-less-than-or-equal:
+      return other.less-than-or-equal-from-small-integer_ this
 
   /** See $super. */
   operator > other -> bool:
-    #primitive.core.smi_greater_than:
-      return other.greater_than_from_small_integer_ this
+    #primitive.core.smi-greater-than:
+      return other.greater-than-from-small-integer_ this
 
   /** See $super. */
   operator >= other -> bool:
-    #primitive.core.smi_greater_than_or_equal:
-      return other.greater_than_or_equal_from_small_integer_ this
+    #primitive.core.smi-greater-than-or-equal:
+      return other.greater-than-or-equal-from-small-integer_ this
 
   /** See $super. */
   operator - -> int:
-    #primitive.core.smi_unary_minus
+    #primitive.core.smi-unary-minus
 
   /** See $super. */
   operator ~ -> int:
-    #primitive.core.smi_not
+    #primitive.core.smi-not
 
   /** See $super. */
   operator & other -> int:
-    #primitive.core.smi_and:
-      return other.and_from_small_integer_ this
+    #primitive.core.smi-and:
+      return other.and-from-small-integer_ this
 
   /** See $super. */
   operator | other -> int:
-    #primitive.core.smi_or:
-      return other.or_from_small_integer_ this
+    #primitive.core.smi-or:
+      return other.or-from-small-integer_ this
 
   /** See $super. */
   operator ^ other -> int:
-    #primitive.core.smi_xor:
-      return other.xor_from_small_integer_ this
+    #primitive.core.smi-xor:
+      return other.xor-from-small-integer_ this
 
   /** See $super. */
-  operator >> number_of_bits -> int:
-    #primitive.core.smi_shift_right
+  operator >> number-of-bits -> int:
+    #primitive.core.smi-shift-right
 
   /** See $super. */
-  operator >>> number_of_bits -> int:
-    #primitive.core.smi_unsigned_shift_right
+  operator >>> number-of-bits -> int:
+    #primitive.core.smi-unsigned-shift-right
 
   /** See $super. */
-  operator << number_of_bits -> int:
-    #primitive.core.smi_shift_left
+  operator << number-of-bits -> int:
+    #primitive.core.smi-shift-left
 
   /** See $super. */
   stringify -> string:
-    #primitive.core.smi_to_string_base_10
+    #primitive.core.smi-to-string-base-10
 
   /** See $super. */
   repeat [block] -> none:
-    #primitive.intrinsics.smi_repeat:
+    #primitive.intrinsics.smi-repeat:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
-      block.call null
+      block.call this
 
   // Double dispatch support for binary operations.
 
-  add_from_float_ other:
-    return other + to_float
+  add-from-float_ other:
+    return other + to-float
 
-  subtract_from_float_ other:
-    return other - to_float
+  subtract-from-float_ other:
+    return other - to-float
 
-  multiply_from_float_ other:
-    return other * to_float
+  multiply-from-float_ other:
+    return other * to-float
 
-  divide_from_float_ other:
-    return other / to_float
+  divide-from-float_ other:
+    return other / to-float
 
-  mod_from_float_ other:
-    return other % to_float
+  mod-from-float_ other:
+    return other % to-float
 
-  equals_from_float_ other:
-    return other == to_float
+  equals-from-float_ other:
+    return other == to-float
 
-  less_than_from_float_ other:
-    return other < to_float
+  less-than-from-float_ other:
+    return other < to-float
 
-  less_than_or_equal_from_float_ other:
-    return other <= to_float
+  less-than-or-equal-from-float_ other:
+    return other <= to-float
 
-  greater_than_from_float_ other:
-    return other > to_float
+  greater-than-from-float_ other:
+    return other > to-float
 
-  greater_than_or_equal_from_float_ other:
-    return other >= to_float
+  greater-than-or-equal-from-float_ other:
+    return other >= to-float
 
 class LargeInteger_ extends int:
   /** See $super. */
   operator + other:
-    #primitive.core.large_integer_add:
-      return other.add_from_large_integer_ this
+    #primitive.core.large-integer-add:
+      return other.add-from-large-integer_ this
 
   /** See $super. */
   operator - other:
-    #primitive.core.large_integer_subtract:
-      return other.subtract_from_large_integer_ this
+    #primitive.core.large-integer-subtract:
+      return other.subtract-from-large-integer_ this
 
   /** See $super. */
   operator * other:
-    #primitive.core.large_integer_multiply:
-      return other.multiply_from_large_integer_ this
+    #primitive.core.large-integer-multiply:
+      return other.multiply-from-large-integer_ this
 
   /** See $super. */
   operator / other:
-    #primitive.core.large_integer_divide:
+    #primitive.core.large-integer-divide:
       if it == "DIVISION_BY_ZERO": throw it
-      return other.divide_from_large_integer_ this
+      return other.divide-from-large-integer_ this
 
   /** See $super. */
   operator % other:
-    #primitive.core.large_integer_mod:
+    #primitive.core.large-integer-mod:
       if it == "DIVISION_BY_ZERO": throw it
-      return other.mod_from_large_integer_ this
+      return other.mod-from-large-integer_ this
 
   /** See $super. */
   operator == other -> bool:
-    #primitive.core.large_integer_equals:
-      return other is num and other.equals_from_large_integer_ this
+    #primitive.core.large-integer-equals:
+      return other is num and other.equals-from-large-integer_ this
 
   /** See $super. */
   operator < other -> bool:
-    #primitive.core.large_integer_less_than:
-      return other.less_than_from_large_integer_ this
+    #primitive.core.large-integer-less-than:
+      return other.less-than-from-large-integer_ this
 
   /** See $super. */
   operator <= other -> bool:
-    #primitive.core.large_integer_less_than_or_equal:
-      return other.less_than_or_equal_from_large_integer_ this
+    #primitive.core.large-integer-less-than-or-equal:
+      return other.less-than-or-equal-from-large-integer_ this
 
   /** See $super. */
   operator > other -> bool:
-    #primitive.core.large_integer_greater_than:
-      return other.greater_than_from_large_integer_ this
+    #primitive.core.large-integer-greater-than:
+      return other.greater-than-from-large-integer_ this
 
   /** See $super. */
   operator >= other -> bool:
-    #primitive.core.large_integer_greater_than_or_equal:
-      return other.greater_than_or_equal_from_large_integer_ this
+    #primitive.core.large-integer-greater-than-or-equal:
+      return other.greater-than-or-equal-from-large-integer_ this
 
   /** See $super. */
   operator - -> int:
-    #primitive.core.large_integer_unary_minus
+    #primitive.core.large-integer-unary-minus
 
   /** See $super. */
   operator ~ -> int:
-    #primitive.core.large_integer_not
+    #primitive.core.large-integer-not
 
   /** See $super. */
   operator & other -> int:
-    #primitive.core.large_integer_and:
-      return other.and_from_large_integer_ this
+    #primitive.core.large-integer-and:
+      return other.and-from-large-integer_ this
 
   /** See $super. */
   operator | other -> int:
-    #primitive.core.large_integer_or:
-      return other.or_from_large_integer_ this
+    #primitive.core.large-integer-or:
+      return other.or-from-large-integer_ this
 
   /** See $super. */
   operator ^ other -> int:
-    #primitive.core.large_integer_xor:
-      return other.xor_from_large_integer_ this
+    #primitive.core.large-integer-xor:
+      return other.xor-from-large-integer_ this
 
   /** See $super. */
-  operator >> number_of_bits -> int:
-    #primitive.core.large_integer_shift_right
+  operator >> number-of-bits -> int:
+    #primitive.core.large-integer-shift-right
 
   /** See $super. */
-  operator >>> number_of_bits -> int:
-    #primitive.core.large_integer_unsigned_shift_right
+  operator >>> number-of-bits -> int:
+    #primitive.core.large-integer-unsigned-shift-right
 
   /** See $super. */
-  operator << number_of_bits -> int:
-    #primitive.core.large_integer_shift_left
+  operator << number-of-bits -> int:
+    #primitive.core.large-integer-shift-left
 
   /** Se $super. */
   stringify -> string:
     return stringify 10
 
   /** See $super */
-  to_int -> int: return this
+  to-int -> int: return this
 
-  add_from_float_ other:
-    return other + to_float
+  add-from-float_ other:
+    return other + to-float
 
-  subtract_from_float_ other:
-    return other - to_float
+  subtract-from-float_ other:
+    return other - to-float
 
-  multiply_from_float_ other:
-    return other * to_float
+  multiply-from-float_ other:
+    return other * to-float
 
-  divide_from_float_ other:
-    return other / to_float
+  divide-from-float_ other:
+    return other / to-float
 
-  mod_from_float_ other:
-    return other % to_float
+  mod-from-float_ other:
+    return other % to-float
 
-  equals_from_float_ other:
-    return other == to_float
+  equals-from-float_ other:
+    return other == to-float
 
-  less_than_from_float_ other:
-    return other < to_float
+  less-than-from-float_ other:
+    return other < to-float
 
-  less_than_or_equal_from_float_ other:
-    return other <= to_float
+  less-than-or-equal-from-float_ other:
+    return other <= to-float
 
-  greater_than_from_float_ other:
-    return other > to_float
+  greater-than-from-float_ other:
+    return other > to-float
 
-  greater_than_or_equal_from_float_ other:
-    return other >= to_float
+  greater-than-or-equal-from-float_ other:
+    return other >= to-float
 
+/**
+A 64 bit floating point value.
+Floats are double precision IEEE 754 values, including $float.NAN,
+  $float.INFINITY, -$float.INFINITY and negative zero.
+This is a fully fledged class, not a 'primitive type'.
+Floats are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 class float extends num:
 
   /**
   A not-a-number representation.
 
-  Use $is_nan to check for not-a-number.
+  Use $is-nan to check for not-a-number.
 
   # Advanced
   There are multiple representations of not-a-number. For example, the
@@ -1301,7 +1409,7 @@ class float extends num:
   ```
   float.NAN == float.from_bits (float.NAN.bits + 1)  // => false
   ```
-  It is therefore important to use $is_nan to check for not-a-number.
+  It is therefore important to use $is-nan to check for not-a-number.
   */
   static NAN          /float ::= 0.0 / 0.0
   /**
@@ -1311,16 +1419,14 @@ class float extends num:
   /**
   The maximum finite float.
   */
-  static MAX_FINITE   /float ::= 0x1F_FFFF_FFFF_FFFFp971
+  static MAX-FINITE   /float ::= 0x1F_FFFF_FFFF_FFFFp971
   /**
   The minimum positive float.
   */
-  static MIN_POSITIVE /float ::= 0x1p-1074
+  static MIN-POSITIVE /float ::= 0x1p-1074
 
 /**
   Parses the $data to a float.
-
-  The data must be a $string or $ByteArray.
 
   Returns the nearest floating point number for $data not representable by any
     floating point number.
@@ -1339,17 +1445,18 @@ class float extends num:
   float.parse "anno 2017"  // Error.
   ```
   */
-  static parse data -> float:
-    return parse_ data 0 data.size
+  static parse data/io.Data -> float:
+    return parse_ data 0 data.byte-size
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
-  static parse data from/int to/int=data.size -> float:
+  static parse data/io.Data from/int to/int=data.byte-size -> float:
     return parse_ data from to
 
-  static parse_ data from/int to/int -> float:
-    #primitive.core.float_parse:
+  static parse_ data/io.Data from/int to/int -> float:
+    #primitive.core.float-parse:
+      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to
       if it == "ERROR": throw "FLOAT_PARSING_ERROR"
       throw it
 
@@ -1362,61 +1469,61 @@ class float extends num:
   - 1 for positive numbers.
   */
   sign -> int:
-    #primitive.core.float_sign
+    #primitive.core.float-sign
 
   /** See $super. */
   operator - -> float:
-    #primitive.core.float_unary_minus
+    #primitive.core.float-unary-minus
 
   /** See $super. */
   operator + other -> float:
-    #primitive.core.float_add:
-      return other.add_from_float_ this
+    #primitive.core.float-add:
+      return other.add-from-float_ this
 
   /** See $super. */
   operator - other -> float:
-    #primitive.core.float_subtract:
-      return other.subtract_from_float_ this
+    #primitive.core.float-subtract:
+      return other.subtract-from-float_ this
 
   /** See $super. */
   operator * other -> float:
-    #primitive.core.float_multiply:
-      return other.multiply_from_float_ this
+    #primitive.core.float-multiply:
+      return other.multiply-from-float_ this
 
   /** See $super. */
   operator / other -> float:
-    #primitive.core.float_divide:
-      return other.divide_from_float_ this
+    #primitive.core.float-divide:
+      return other.divide-from-float_ this
 
   /** See $super. */
   operator % other -> float:
-    #primitive.core.float_mod:
-      return other.mod_from_float_ this
+    #primitive.core.float-mod:
+      return other.mod-from-float_ this
 
   /** See $super. */
   operator == other -> bool:
-    #primitive.core.float_equals:
-      return other is num and other.equals_from_float_ this
+    #primitive.core.float-equals:
+      return other is num and other.equals-from-float_ this
 
   /** See $super. */
   operator < other -> bool:
-    #primitive.core.float_less_than:
-      return other.less_than_from_float_ this
+    #primitive.core.float-less-than:
+      return other.less-than-from-float_ this
 
   /** See $super. */
   operator <= other -> bool:
-    #primitive.core.float_less_than_or_equal:
-      return other.less_than_or_equal_from_float_ this
+    #primitive.core.float-less-than-or-equal:
+      return other.less-than-or-equal-from-float_ this
 
   /** See $super. */
   operator > other -> bool:
-    #primitive.core.float_greater_than:
-      return other.greater_than_from_float_ this
+    #primitive.core.float-greater-than:
+      return other.greater-than-from-float_ this
 
   /** See $super. */
   operator >= other -> bool:
-    #primitive.core.float_greater_than_or_equal:
-      return other.greater_than_or_equal_from_float_ this
+    #primitive.core.float-greater-than-or-equal:
+      return other.greater-than-or-equal-from-float_ this
 
   /** See $super. */
   abs -> float:
@@ -1424,7 +1531,7 @@ class float extends num:
 
   /** See $super. */
   sqrt -> float:
-    #primitive.core.float_sqrt
+    #primitive.core.float-sqrt
 
   /**
   Rounds this number to the nearest integer.
@@ -1449,11 +1556,11 @@ class float extends num:
   ```
   */
   round -> int:
-    rounded_float := round_ --precision=0
-    return rounded_float.to_int
+    rounded-float := round_ --precision=0
+    return rounded-float.to-int
 
   round_ --precision -> float:
-    #primitive.core.float_round
+    #primitive.core.float-round
 
   /** Deprecated. */
   round --precision -> float:
@@ -1465,7 +1572,7 @@ class float extends num:
   If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
   */
   ceil -> float:
-    #primitive.core.float_ceil
+    #primitive.core.float-ceil
 
   /**
   Returns the largest integer not greater than this number.
@@ -1473,7 +1580,7 @@ class float extends num:
   If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
   */
   floor -> float:
-    #primitive.core.float_floor
+    #primitive.core.float-floor
 
   /**
   Rounds this to the nearest value that is not larger in magnitude than this number.
@@ -1481,7 +1588,7 @@ class float extends num:
   If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
   */
   truncate -> float:
-    #primitive.core.float_trunc
+    #primitive.core.float-trunc
 
   /**
   See $super.
@@ -1493,7 +1600,7 @@ class float extends num:
   The $precision must be an integer in range [0..64] or null.
   */
   stringify precision=null -> string:
-    #primitive.core.float_to_string
+    #primitive.core.float-to-string
 
   /**
   Whether this number is a NaN ($float.NAN).
@@ -1511,8 +1618,8 @@ class float extends num:
   float.MIN_POSITIVE.is_nan  // => false
   ```
   */
-  is_nan -> bool:
-    #primitive.core.float_is_nan
+  is-nan -> bool:
+    #primitive.core.float-is-nan
 
   /**
   Whether this number is finite.
@@ -1530,12 +1637,12 @@ class float extends num:
   float.INFINITY.is_finite  // => false
   ```
   */
-  is_finite -> bool:
-    #primitive.core.float_is_finite
+  is-finite -> bool:
+    #primitive.core.float-is-finite
 
   /** See $super. */
-  to_int -> int:
-    #primitive.core.number_to_integer
+  to-int -> int:
+    #primitive.core.number-to-integer
 
   /**
   Converts this number to its bit representation.
@@ -1544,10 +1651,10 @@ class float extends num:
     64 bits, of which 1 bit is used as sign, 11 for the exponent, and 52 for the
     significant.
 
-  This function is the inverse of $from_bits.
+  This function is the inverse of $from-bits.
   */
   bits -> int:
-    #primitive.core.float_to_raw
+    #primitive.core.float-to-raw
 
   /**
   Converts this instance to a 32-bit floating-point number and returns its bits.
@@ -1562,15 +1669,15 @@ class float extends num:
     0x7F80_0000 (positive) or 0xFF80_0000 (negative).
   */
   bits32 -> int:
-    #primitive.core.float_to_raw32
+    #primitive.core.float-to-raw32
 
   /**
   Converts to $raw bit pattern to the corresponding $float.
 
   This function is the inverse of $bits.
   */
-  static from_bits raw/int -> float:
-    #primitive.core.raw_to_float
+  static from-bits raw/int -> float:
+    #primitive.core.raw-to-float
 
   /**
   Converts the given $raw bits to a 32-bit floating-point number and
@@ -1582,67 +1689,78 @@ class float extends num:
 
   This function is the inverse of $bits32.
   */
-  static from_bits32 raw/int -> float:
-    #primitive.core.raw32_to_float
+  static from-bits32 raw/int -> float:
+    #primitive.core.raw32-to-float
 
   // Double dispatch support for binary operations.
 
-  add_from_small_integer_ other:
-    return other.to_float + this
+  add-from-small-integer_ other:
+    return other.to-float + this
 
-  subtract_from_small_integer_ other:
-    return other.to_float - this
+  subtract-from-small-integer_ other:
+    return other.to-float - this
 
-  multiply_from_small_integer_ other:
-    return other.to_float * this
+  multiply-from-small-integer_ other:
+    return other.to-float * this
 
-  divide_from_small_integer_ other:
-    return other.to_float / this
+  divide-from-small-integer_ other:
+    return other.to-float / this
 
-  mod_from_small_integer_ other:
-    return other.to_float % this
+  mod-from-small-integer_ other:
+    return other.to-float % this
 
-  equals_from_small_integer_ other:
-    return other.to_float == this
+  equals-from-small-integer_ other:
+    return other.to-float == this
 
-  less_than_from_small_integer_ other:
-    return other.to_float < this
+  less-than-from-small-integer_ other:
+    return other.to-float < this
 
-  less_than_or_equal_from_small_integer_ other:
-    return other.to_float <= this
+  less-than-or-equal-from-small-integer_ other:
+    return other.to-float <= this
 
-  greater_than_from_small_integer_ other:
-    return other.to_float > this
+  greater-than-from-small-integer_ other:
+    return other.to-float > this
 
-  greater_than_or_equal_from_small_integer_ other:
-    return other.to_float >= this
+  greater-than-or-equal-from-small-integer_ other:
+    return other.to-float >= this
 
-  add_from_large_integer_ other:
-    return other.to_float + this
+  add-from-large-integer_ other:
+    return other.to-float + this
 
-  subtract_from_large_integer_ other:
-    return other.to_float - this
+  subtract-from-large-integer_ other:
+    return other.to-float - this
 
-  multiply_from_large_integer_ other:
-    return other.to_float * this
+  multiply-from-large-integer_ other:
+    return other.to-float * this
 
-  divide_from_large_integer_ other:
-    return other.to_float / this
+  divide-from-large-integer_ other:
+    return other.to-float / this
 
-  mod_from_large_integer_ other:
-    return other.to_float % this
+  mod-from-large-integer_ other:
+    return other.to-float % this
 
-  equals_from_large_integer_ other:
-    return other.to_float == this
+  // For int/float comparisons we should never get to these routines because
+  // the byte code takes care of it, even getting the tricky cases right where
+  // the int is too large to convert exactly to a float without rounding.  That
+  // tricky case is not replicated here, so we want to ensure we never get
+  // here.
 
-  less_than_from_large_integer_ other:
-    return other.to_float < this
+  equals-from-large-integer_ other:
+    if other is int: unreachable
+    return other.to-float == this
 
-  less_than_or_equal_from_large_integer_ other:
-    return other.to_float <= this
+  less-than-from-large-integer_ other:
+    if other is int: unreachable
+    return other.to-float < this
 
-  greater_than_from_large_integer_ other:
-    return other.to_float > this
+  less-than-or-equal-from-large-integer_ other:
+    if other is int: unreachable
+    return other.to-float <= this
 
-  greater_than_or_equal_from_large_integer_ other:
-    return other.to_float >= this
+  greater-than-from-large-integer_ other:
+    if other is int: unreachable
+    return other.to-float > this
+
+  greater-than-or-equal-from-large-integer_ other:
+    if other is int: unreachable
+    return other.to-float >= this

@@ -17,6 +17,7 @@
 
 namespace toit {
 
+#ifdef CONFIG_TOIT_ZLIB_RLE
 void ZlibRle::output_byte(uint8 b) {
   // Sanity check that we are not overflowing the buffer.  This 'if' should
   // always be true.
@@ -258,5 +259,7 @@ void ZlibRle::output_bits(uint32 bits, int bit_count) {
     partial_ = partial_ >> 8;
   }
 }
+
+#endif
 
 }

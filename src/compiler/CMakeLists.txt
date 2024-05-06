@@ -20,6 +20,8 @@ file(GLOB toit_compiler_SRC
     "lsp/*.cc"
     "optimizations/*.h"
     "optimizations/*.cc"
+    "propagation/*.h"
+    "propagation/*.cc"
 )
 list(FILTER toit_compiler_SRC EXCLUDE REGEX "/toitc.cc$")
 
@@ -31,11 +33,21 @@ add_library(
   ${toit_compiler_SRC}
   )
 
+set_source_files_properties(propagation/type_database.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_stack.cc PROPERTIES COMPILE_OPTIONS "-O3")
+
+if (${TOIT_IS_CROSS})
+  set(TOIT_COMPILER_STATIC -static)
+endif()
+
 target_link_libraries(
   toit_compiler
+  ${TOIT_COMPILER_STATIC}
   ${YAML_STATIC_LIB_NAME}
   ${SEMVER_STATIC_LIB_NAME}
-)
+  )
 
 add_executable(
   toit.compile
@@ -56,15 +68,17 @@ endif()
 
 target_link_libraries(
   toit.compile
+  ${TOIT_COMPILER_STATIC}
   toit_compiler
   toit_core
   mbedtls
   ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
+  toit_porting
   )
 
-if (APPLE)
+if (CMAKE_HOST_APPLE)
   set(LN_FORCE "F")
 else()
   set(LN_FORCE "Tf")

@@ -1,4 +1,0 @@
-tests/negative/import_show_test.toit:5:13: error: 'show' must be followed by '*' or identifiers
-import math show
-            ^~~~
-Compilation failed.

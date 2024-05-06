@@ -18,6 +18,8 @@
 #ifdef TOIT_WINDOWS
 
 #include "os.h"
+#include "process.h"
+#include "program.h"
 #include "utils.h"
 #include "uuid.h"
 #include "memory.h"
@@ -31,6 +33,73 @@
 
 namespace toit {
 
+/// Converts the given string to wide (16-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static wchar_t* to_wide_string(const char* string) {
+  word length_w = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
+  wchar_t* result_w = reinterpret_cast<wchar_t*>(malloc((length_w + 1) * sizeof(wchar_t)));
+  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result_w, length_w);
+  result_w[length_w] = '\0';
+  return result_w;
+}
+
+/// Converts the given string to narrow (8-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static char* to_narrow_string(const wchar_t* string_w, word length_w) {
+  word length = Utils::utf_16_to_8(string_w, length_w, null, 0);
+  char* result = unvoid_cast<char*>(malloc(length + 1));
+  Utils::utf_16_to_8(string_w, length_w, unsigned_cast(result), length);
+  result[length] = '\0';
+  return result;
+}
+
+/// Converts the given string to narrow (8-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static char* to_narrow_string(const wchar_t* string_w) {
+  word length_w = wcslen(string_w);
+  return to_narrow_string(string_w, length_w);
+}
+
+char* OS::get_executable_path() {
+  const int BUFFER_SIZE = 32767 + 1;
+  wchar_t* buffer = unvoid_cast<wchar_t*>(malloc(BUFFER_SIZE));
+  word length_w = GetModuleFileNameW(NULL, buffer, BUFFER_SIZE);
+  // GetModuleFileNameW truncates the path to the buffer size.
+  // If the returned length is equal to the BUFFER_SIZE we assume that the
+  // buffer wasn't big enough.
+  if (length_w == 0 || length_w >= BUFFER_SIZE) {
+    free(buffer);
+    return null;
+  }
+  char* result = to_narrow_string(buffer, length_w);
+  free(buffer);
+  return result;
+}
+
+char* OS::get_executable_path_from_arg(const char* source_arg) {
+  wchar_t* source_arg_w = to_wide_string(source_arg);
+
+  word result_length_w = GetFullPathNameW(source_arg_w, 0, NULL, NULL);
+  if (result_length_w == 0) {
+    free(source_arg_w);
+    return null;
+  }
+
+  wchar_t* result_w = unvoid_cast<wchar_t*>(malloc(result_length_w * sizeof(wchar_t)));
+
+  if (GetFullPathNameW(source_arg_w, result_length_w, result_w, NULL) == 0) {
+    free(source_arg_w);
+    free(result_w);
+    return null;
+  }
+
+  free(source_arg_w);
+
+  char* result = to_narrow_string(result_w);
+  free(result_w);
+  return result;
+}
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -42,26 +111,26 @@ int64 OS::get_system_time() {
 class Mutex {
  public:
   Mutex(int level, const char* name)
-    : _level(level) {
-    pthread_mutex_init(&_mutex, null);
+    : level_(level), name_(name) {
+    pthread_mutex_init(&mutex_, null);
   }
 
   ~Mutex() {
-    pthread_mutex_destroy(&_mutex);
+    pthread_mutex_destroy(&mutex_);
   }
 
   void lock() {
-    int error = pthread_mutex_lock(&_mutex);
+    int error = pthread_mutex_lock(&mutex_);
     if (error != 0) FATAL("mutex lock failed with error %d", error);
   }
 
   void unlock() {
-    int error = pthread_mutex_unlock(&_mutex);
+    int error = pthread_mutex_unlock(&mutex_);
     if (error != 0) FATAL("mutex unlock failed with error %d", error);
   }
 
   bool is_locked() {
-    int error = pthread_mutex_trylock(&_mutex);
+    int error = pthread_mutex_trylock(&mutex_);
     if (error == 0) {
       unlock();
       return false;
@@ -70,27 +139,28 @@ class Mutex {
     return true;
   }
 
-  int level() const { return _level; }
-
-  int _level;
-  pthread_mutex_t _mutex;
+  int level() const { return level_; }
+  const char* name() const { return name_?name_:""; }
+  int level_;
+  pthread_mutex_t mutex_;
+  const char* name_;
 };
 
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
-      : _mutex(mutex) {
-    if (pthread_cond_init(&_cond, NULL) != 0) {
+      : mutex_(mutex) {
+    if (pthread_cond_init(&cond_, NULL) != 0) {
       FATAL("pthread_cond_init() error");
     }
   }
 
   ~ConditionVariable() {
-    pthread_cond_destroy(&_cond);
+    pthread_cond_destroy(&cond_);
   }
 
   void wait() {
-    if (pthread_cond_wait(&_cond, &_mutex->_mutex) != 0) {
+    if (pthread_cond_wait(&cond_, &mutex_->mutex_) != 0) {
       FATAL("pthread_cond_timedwait() error");
     }
   }
@@ -104,62 +174,62 @@ class ConditionVariable {
       FATAL("cannot get time for deadline");
     }
     OS::timespec_increment(&deadline, us * 1000LL);
-    int error = pthread_cond_timedwait(&_cond, &_mutex->_mutex, &deadline);
+    int error = pthread_cond_timedwait(&cond_, &mutex_->mutex_, &deadline);
     if (error == 0) return true;
     if (error == ETIMEDOUT) return false;
     FATAL("pthread_cond_timedwait() error: %d", error);
   }
 
   void signal() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal on unlocked mutex");
     }
-    int error = pthread_cond_signal(&_cond);
+    int error = pthread_cond_signal(&cond_);
     if (error != 0) {
       FATAL("pthread_cond_signal() error: %d", error);
     }
   }
 
   void signal_all() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    int error = pthread_cond_broadcast(&_cond);
+    int error = pthread_cond_broadcast(&cond_);
     if (error != 0) {
       FATAL("pthread_cond_broadcast() error: %d", error);
     }
   }
 
  private:
-  Mutex* _mutex;
-  pthread_cond_t _cond;
+  Mutex* mutex_;
+  pthread_cond_t cond_;
 };
 
 void Locker::leave() {
   Thread* thread = Thread::current();
-  if (thread->_locker != this) FATAL("unlocking would break lock order");
-  thread->_locker = _previous;
+  if (thread->locker_ != this) FATAL("unlocking would break lock order");
+  thread->locker_ = previous_;
   // Perform the actual unlock.
-  _mutex->unlock();
+  mutex_->unlock();
 }
 
 void Locker::enter() {
   Thread* thread = Thread::current();
-  int level = _mutex->level();
-  Locker* previous_locker = thread->_locker;
+  int level = mutex_->level();
+  Locker* previous_locker = thread->locker_;
   if (previous_locker != null) {
-    int previous_level = previous_locker->_mutex->level();
+    int previous_level = previous_locker->mutex_->level();
     if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
+      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, mutex_->name(), previous_level, previous_locker->mutex_->name());
     }
   }
   // Lock after checking the precondition to avoid deadlocking
   // instead of just failing the precondition check.
-  _mutex->lock();
+  mutex_->lock();
   // Only update variables after we have the lock - that grants right
   // to update the locker.
-  _previous = thread->_locker;
-  thread->_locker = this;
+  previous_ = thread->locker_;
+  thread->locker_ = this;
 }
 
 static pthread_key_t thread_key;
@@ -169,10 +239,10 @@ static pthread_t pthread_from_handle(void* handle) {
 }
 
 Thread::Thread(const char* name)
-    : _name(name)
-    , _handle(null)
-    , _locker(null) {
-  USE(_name);
+    : name_(name)
+    , handle_(null)
+    , locker_(null) {
+  USE(name_);
 }
 
 void* thread_start(void* arg) {
@@ -189,7 +259,7 @@ void Thread::_boot() {
 }
 
 bool Thread::spawn(int stack_size, int core) {
-  int result = pthread_create(reinterpret_cast<pthread_t*>(&_handle), null, &thread_start, void_cast(this));
+  int result = pthread_create(reinterpret_cast<pthread_t*>(&handle_), null, &thread_start, void_cast(this));
   if (result != 0) {
     FATAL("pthread_create failed");
   }
@@ -198,14 +268,14 @@ bool Thread::spawn(int stack_size, int core) {
 
 // Run on current thread.
 void Thread::run() {
-  ASSERT(_handle == null);
+  ASSERT(handle_ == null);
   thread_start(void_cast(this));
 }
 
 void Thread::join() {
-  ASSERT(_handle != null);
+  ASSERT(handle_ != null);
   void* return_value;
-  pthread_join(pthread_from_handle(_handle), &return_value);
+  pthread_join(pthread_from_handle(handle_), &return_value);
 }
 
 void Thread::ensure_system_thread() {
@@ -218,12 +288,15 @@ void Thread::ensure_system_thread() {
 }
 
 void OS::set_up() {
+  SetConsoleOutputCP(65001);  // Enable UTF-8 on the terminal.
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
   Thread::ensure_system_thread();
-  _global_mutex = allocate_mutex(0, "Global mutex");
-  _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
-  _resource_mutex = allocate_mutex(99, "Resource mutex");
+  set_up_mutexes();
+}
+
+void OS::tear_down() {
+  tear_down_mutexes();
 }
 
 Thread* Thread::current() {
@@ -254,28 +327,47 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
-const uint8* OS::image_uuid() {
-  // Windows "devices" does not support images (ota, factory promote, factory reset) so the uuid
-  // doesn't need to be unique.
-  static uint8_t uuid[UUID_SIZE] = {0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5, 0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a};
-  return uuid;
+char* OS::getenv(const char* variable) {
+  wchar_t* variable_w = to_wide_string(variable);
+
+  const int BUFFER_SIZE = 32767;
+  wchar_t* buffer = unvoid_cast<wchar_t*>(malloc(BUFFER_SIZE));
+  int length_w = GetEnvironmentVariableW(variable_w, buffer, BUFFER_SIZE);
+  free(variable_w);
+  // The GetEnvironmentVariableW function returns the length the variable needs,
+  // which could be bigger than the buffer.
+  // If the returned length is equal to the BUFFER_SIZE then no `\0` was written
+  // but we pass the length to `to_narrow_string` so that's fine.
+  if (length_w == 0 || length_w > BUFFER_SIZE) {
+    free(buffer);
+    return null;
+  }
+  char* result = to_narrow_string(buffer, length_w);
+  free(buffer);
+  return result;
 }
 
-const uword* OS::image_bundled_programs_table() {
-  FATAL("should not be used on windows")
-  return null;
+bool OS::setenv(const char* variable, const char* value) {
+  wchar_t* variable_w = to_wide_string(variable);
+  wchar_t* value_w = to_wide_string(value);
+  bool ok = SetEnvironmentVariableW(variable_w, value_w);
+  free(variable_w);
+  free(value_w);
+  return ok;
 }
 
-const char* OS::getenv(const char* variable) {
-  return ::getenv(variable);
+bool OS::unsetenv(const char* variable) {
+  wchar_t* variable_w = to_wide_string(variable);
+  bool ok = SetEnvironmentVariableW(variable_w, null);
+  free(variable_w);
+  return ok;
 }
 
 bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
 }
 
-ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-}
+ProtectableAlignedMemory::~ProtectableAlignedMemory() {}
 
 void ProtectableAlignedMemory::mark_read_only() {
   // TODO(anders): Unimplemented.
@@ -334,14 +426,20 @@ void OS::set_writable(ProgramBlock* block, bool value) {
   // TODO(anders): Unimplemented.
 }
 
-void OS::tear_down() {
-  dispose(_global_mutex);
-  dispose(_scheduler_mutex);
-  dispose(_resource_mutex);
-}
-
 const char* OS::get_platform() {
   return "Windows";
+}
+
+const char* OS::get_architecture() {
+#if defined(_M_AMD64)
+  return "x86_64";
+#elif defined(_M_ARM64)
+  return "arm64";
+#elif defined(_M_IX86)
+  return "x86";
+#else
+  #error "Unknown architecture"
+#endif
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
@@ -352,7 +450,17 @@ void OS::set_heap_tag(word tag) {}
 
 word OS::get_heap_tag() { return 0; }
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  const uint8* uuid = process->program()->id();
+  fprintf(stderr, "Out of memory in process %d: %08x-%04x-%04x-%04x-%04x%08x.\n",
+      process->id(),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+}
 
 } // namespace toit
 

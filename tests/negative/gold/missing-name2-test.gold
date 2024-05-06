@@ -1,0 +1,59 @@
+tests/negative/missing-name2-test.toit:5:8: error: Missing parameter name
+foo -- --foo:
+       ^~
+tests/negative/missing-name2-test.toit:5:8: error: Unexpected token: --
+foo -- --foo:
+       ^~
+tests/negative/missing-name2-test.toit:8:13: error: Missing parameter name
+bar --foo --:
+            ^
+tests/negative/missing-name2-test.toit:11:8: error: Missing parameter name
+foo [--] [--foo]:
+       ^
+tests/negative/missing-name2-test.toit:11:8: error: Missing parameter name
+foo [--] [--foo]:
+       ^
+tests/negative/missing-name2-test.toit:14:16: error: Missing parameter name
+bar [--foo] [--]:
+               ^
+tests/negative/missing-name2-test.toit:14:16: error: Missing parameter name
+bar [--foo] [--]:
+               ^
+tests/negative/missing-name2-test.toit:17:7: error: Missing parameter name
+gee --
+      ^
+tests/negative/missing-name2-test.toit:19:8: error: Missing parameter name
+gee -- -> none:
+       ^~
+tests/negative/missing-name2-test.toit:21:7: error: Missing parameter name
+gee ---> none:
+      ^~
+tests/negative/missing-name2-test.toit:17:1: error: Missing body
+gee --
+^~~
+tests/negative/missing-name2-test.toit:19:1: error: Redefinition of 'gee'
+gee -- -> none:
+^~~
+tests/negative/missing-name2-test.toit:17:1: note: First definition of 'gee'
+gee --
+^~~
+tests/negative/missing-name2-test.toit:21:1: error: Redefinition of 'gee'
+gee ---> none:
+^~~
+tests/negative/missing-name2-test.toit:17:1: note: First definition of 'gee'
+gee --
+^~~
+tests/negative/missing-name2-test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing-name2-test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing-name2-test.toit:12:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing-name2-test.toit:15:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/missing-name2-test.toit'
+Compilation failed

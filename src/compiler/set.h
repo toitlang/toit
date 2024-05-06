@@ -26,9 +26,11 @@ namespace compiler {
 
 template<typename T> class Set {
  public:
-  void insert(T x) {
-    auto p = _set.insert(x);
-    if (p.second) _vector.push_back(x);
+  bool insert(T x) {
+    auto p = set_.insert(x);
+    if (!p.second) return false;
+    vector_.push_back(x);
+    return true;
   }
 
   template<class InputIt> void insert(InputIt begin, InputIt end) {
@@ -38,84 +40,101 @@ template<typename T> class Set {
     }
   }
 
-  void insert_all(Set<T> other_set) {
+  void insert_all(const Set<T>& other_set) {
     for (auto& x : other_set) insert(x);
   }
 
   void erase_all(const Set<T>& other_set) {
     bool did_erase = false;
-    for (auto& x : other_set._set) {
-      size_t removed_count = _set.erase(x);
+    for (auto& x : other_set.set_) {
+      size_t removed_count = set_.erase(x);
       did_erase |= removed_count != 0;
     }
     if (did_erase) {
       // Keep one element so we can pass it to `resize`.
-      T dummy = _vector[0];
+      T dummy = vector_[0];
       size_t i = 0;
       int j = 0;
-      for (; i < _vector.size(); i++) {
-        if (!other_set.contains(_vector[i])) _vector[j++] = _vector[i];
+      for (; i < vector_.size(); i++) {
+        if (!other_set.contains(vector_[i])) vector_[j++] = vector_[i];
       }
       // The dummy argument is unused since we only shrink here.
-      _vector.resize(j, dummy);
+      vector_.resize(j, dummy);
     }
   }
 
   void erase_last(T x) {
-    ASSERT(_vector.back() == x);
-    _set.erase(x);
-    _vector.pop_back();
+    ASSERT(vector_.back() == x);
+    set_.erase(x);
+    vector_.pop_back();
   }
 
-  typename std::vector<T>::iterator begin() { return _vector.begin(); }
-  typename std::vector<T>::iterator end() { return _vector.end(); }
-  typename std::vector<T>::const_iterator begin() const { return _vector.begin(); }
-  typename std::vector<T>::const_iterator end() const { return _vector.end(); }
+  typename std::vector<T>::iterator begin() { return vector_.begin(); }
+  typename std::vector<T>::iterator end() { return vector_.end(); }
+  typename std::vector<T>::const_iterator begin() const { return vector_.begin(); }
+  typename std::vector<T>::const_iterator end() const { return vector_.end(); }
 
-  bool contains(T x) const { return _set.find(x) != _set.end(); }
-  bool empty() const { return _set.empty(); }
-  void clear() { _set.clear(); _vector.clear(); }
-  int size() const { return static_cast<int>(_set.size()); }
+  bool contains(T x) const { return set_.find(x) != set_.end(); }
+  bool empty() const { return set_.empty(); }
+  void clear() { set_.clear(); vector_.clear(); }
+  int size() const { return static_cast<int>(set_.size()); }
 
-  List<T> to_list() const { return ListBuilder<T>::build_from_vector(_vector); }
-  std::vector<T> to_vector() const { return _vector; }
+  List<T> to_list() const { return ListBuilder<T>::build_from_vector(vector_); }
+  std::vector<T> to_vector() const { return vector_; }
 
  private:
-  std::unordered_set<T> _set;
-  std::vector<T> _vector;  // To keep insertion order.
+  std::unordered_set<T> set_;
+  std::vector<T> vector_;  // To keep insertion order.
 };
 
 /// A wrapper around the std::set to make its API more convenient and close to
 /// how we use it.
 template<typename T> class UnorderedSet {
  public:
-  void insert(T x) { _set.insert(x); }
-  template<class InputIt> void insert(InputIt begin, InputIt end) { _set.insert(begin, end); }
-  void insert_all(UnorderedSet<T> other_set) {
-    _set.insert(other_set._set.begin(), other_set._set.end());
+  void insert(T x) { set_.insert(x); }
+  template<class InputIt> void insert(InputIt begin, InputIt end) { set_.insert(begin, end); }
+  void insert_all(const UnorderedSet<T>& other_set) {
+    set_.insert(other_set.set_.begin(), other_set.set_.end());
   }
-  void insert_all(Set<T> other_set) {
-    _set.insert(other_set.begin(), other_set.end());
+  void insert_all(const Set<T>& other_set) {
+    set_.insert(other_set.begin(), other_set.end());
   }
-  bool erase(T x) { return _set.erase(x) > 0; }
+  bool erase(T x) { return set_.erase(x) > 0; }
+
+  template<typename F>
+  void erase_if(const F& callback) {
+    auto it = set_.begin();
+    while (it != set_.end()) {
+      if (callback(*it)) {
+        it = set_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 
   template<typename E>
   void erase_all(const List<E>& other) {
     for (auto entry : other) {
-      _set.erase(entry);
+      set_.erase(entry);
     }
   }
 
-  bool contains(T x) const { return _set.find(x) != _set.end(); }
-  bool empty() const { return _set.empty(); }
-  void clear() { _set.clear(); }
-  int size() const { return static_cast<int>(_set.size()); }
+  template<typename E>
+  void erase_all(const UnorderedSet<E>& other_set) {
+    set_.erase(other_set.set_.begin(), other_set.set_.end());
+  }
 
-  const std::unordered_set<T>& underlying_set() const { return _set; }
-  std::unordered_set<T>& underlying_set() { return _set; }
+  bool contains(T x) const { return set_.find(x) != set_.end(); }
+  bool empty() const { return set_.empty(); }
+  void clear() { set_.clear(); }
+  int size() const { return static_cast<int>(set_.size()); }
+
+  const std::unordered_set<T>& underlying_set() const { return set_; }
+  std::unordered_set<T>& underlying_set() { return set_; }
 
  private:
-  std::unordered_set<T> _set;
+  std::unordered_set<T> set_;
 };
 
 } // namespace toit::compiler

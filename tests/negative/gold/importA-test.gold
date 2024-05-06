@@ -1,0 +1,10 @@
+tests/negative/importA-test.toit:5:1: error: Failed to import '.non-existing'
+import .non-existing as pre
+^~~~~~
+tests/negative/importA-test.toit:5:9: note: Missing library file. Tried 'tests/negative/non_existing.toit' and 'tests/negative/non_existing/non-existing.toit'
+import .non-existing as pre
+        ^~~~~~~~~~~~
+tests/negative/importA-test.toit:8:12: error: Unresolved identifier: 'C'
+  c := pre.C
+           ^
+Compilation failed

@@ -1,0 +1,37 @@
+tests/negative/uninitialized-local-test.toit:68:14: error: Can't assign '?' to condition loop variable
+  while x := ?:
+             ^
+tests/negative/uninitialized-local-test.toit:71:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized-local-test.toit:25:7: error: Local 'local' must be initialized before first use
+  use local
+      ^~~~~
+tests/negative/uninitialized-local-test.toit:30:7: error: Local 'local2' must be initialized before first use
+  use local2
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:37:7: error: Local 'local3' must be initialized before first use
+  use local3
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:42:7: error: Local 'local4' must be initialized before first use
+  use local4
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:47:7: error: Local 'local5' must be initialized before first use
+  use local5
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:52:7: error: Local 'local6' must be initialized before first use
+  use local6
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:58:7: error: Local 'local7' must be initialized before first use
+  use local7
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:62:7: error: Local 'local8' must be initialized before first use
+  use local8
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:66:7: error: Local 'local9' must be initialized before first use
+  use local9
+      ^~~~~~
+tests/negative/uninitialized-local-test.toit:21:9: error: Local 'local' must be initialized before first use
+    use local
+        ^~~~~
+Compilation failed

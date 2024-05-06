@@ -22,6 +22,7 @@
 #include "token.h"
 #include "tree.h"
 #include "../flags.h"
+#include "optimizations/utils.h"
 
 namespace toit {
 namespace compiler {
@@ -30,34 +31,119 @@ using namespace ir;
 
 typedef Selector<CallShape> CallSelector;
 
-class GrowerVisitor : public TraversingVisitor {
+/// A typed selector set is a set of selectors, where
+/// each selector only applies to specific types.
+/// In the current implementation the type is represented by the
+/// single target that the selector can reach.
+/// For example, a selector 'foo' that applies only to type `A` (or maybe
+/// its subclasses) would be represented by the method `A.foo`.
+/// This representation is not optimal, but historical. Eventually,
+/// this set should keep track of the types that are available, making
+/// it more flexible, intuitive and powerful.
+class TypedSelectorSet {
  public:
-  explicit GrowerVisitor(Method* identical, Method* as_check_failure)
-      : _identical(identical), _as_check_failure(as_check_failure) {}
+  void insert(const CallSelector& selector, Method* target) {
+    selectors_[selector].insert(target);
+  }
 
-  Set<Class*> found_classes() const { return _found_classes; }
-  Set<Method*> found_methods() const { return _found_methods; }
-  Set<CallSelector> found_selectors() const { return _found_selectors; }
+  /// Adds all typed selectors of other to this set.
+  /// Ignores all methods that are in the 'ignored_methods' set.
+  /// Ignores all selectors that are in the 'ignored_selectors' set.
+  void insert_all(TypedSelectorSet& other,
+                  const Set<Method*> ignored_methods,
+                  const Set<CallSelector> ignored_selectors) {
+    other.selectors_.for_each([&](const CallSelector& selector, const UnorderedSet<Method*> methods) {
+      if (ignored_selectors.contains(selector)) return;
+      for (auto method : methods.underlying_set()) {
+        if (ignored_methods.contains(method)) continue;
+        selectors_[selector].insert(method);
+      }
+    });
+  }
 
+  void match_and_filter(const QueryableClass& queryable,
+                        const std::function<bool (const CallSelector&, Method*)>& on_match) {
+    // A typed selector hit, if there is a class that has a method for it, and
+    // that method is in the set.
+    selectors_.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
+      if (methods.empty()) return;
+      auto probe = queryable.lookup(selector);
+      if (probe != null && methods.contains(probe)) {
+        bool should_erase = on_match(selector, probe);
+        if (should_erase) methods.erase(probe);
+        // We would like to completely erase entries for call selectors that don't have any
+        // target, but since we are using an ordered `Map`, that functionality is
+        // currently not available.
+      }
+    });
+  }
+
+  bool empty() const {
+    // Only looks at whether there are entries in the map. Does not
+    // run through them to see if all of the sets are empty.
+    return selectors_.empty();
+  }
+
+ private:
+  Map<CallSelector, UnorderedSet<Method*>> selectors_;
+};
+
+class GrowerVisitor : protected TraversingVisitor {
+ public:
+  explicit GrowerVisitor(Method* as_check_failure)
+      : as_check_failure_(as_check_failure) {}
+
+  const Set<Class*>& found_classes() const { return found_classes_; }
+  const Set<Method*>& found_methods() const { return found_methods_; }
+  TypedSelectorSet& found_typed_selectors() { return found_typed_selectors_; }
+  const Set<CallSelector>& found_selectors() const { return found_selectors_; }
+
+  void grow(Method* method) {
+    current_method_ = method;
+    visit(method);
+  }
+
+ protected:
   void visit_CallConstructor(CallConstructor* node) {
-    _found_classes.insert(node->klass());
-    _found_methods.insert(node->target()->target());
+    found_classes_.insert(node->klass());
+    found_methods_.insert(node->target()->target());
     TraversingVisitor::visit_CallConstructor(node);
   }
 
+  bool is_super_call(CallStatic* node) const {
+    auto current_holder = current_method_->holder();
+    auto target = node->target()->target();
+    if (!is_This(node->arguments()[0], current_holder, target)) return false;
+    auto target_holder = target->holder();
+    // Make sure this is actually a super call (and not a sub call).
+    return target_holder->is_transitive_super_of(current_holder);
+  }
+
   void visit_CallStatic(CallStatic* node) {
-    _found_methods.insert(node->target()->target());
+    auto target = node->target()->target();
+    if (target->is_instance()) {
+      if (is_super_call(node) || target->holder()->is_mixin()) {
+        // For super calls or mixins we don't need to ensure that the
+        // holder class is actually instantiated and its method isn't shadowed.
+        found_methods_.insert(target);
+      } else {
+        CallSelector selector(target->name(), node->shape());
+        found_typed_selectors_.insert(selector, target);
+      }
+    } else {
+      found_methods_.insert(target);
+    }
     TraversingVisitor::visit_CallStatic(node);
   }
 
   void visit_CallVirtual(CallVirtual* node) {
     CallSelector selector(node->target()->selector(), node->shape());
-    _found_selectors.insert(selector);
+    found_selectors_.insert(selector);
     TraversingVisitor::visit_CallVirtual(node);
   }
 
   void visit_ReferenceGlobal(ReferenceGlobal* node) {
-    _found_methods.insert(node->target());
+    found_methods_.insert(node->target());
     TraversingVisitor::visit_ReferenceGlobal(node);
   }
 
@@ -65,62 +151,62 @@ class GrowerVisitor : public TraversingVisitor {
     // TODO(florian): if we always assign to a global before reading from it
     // the initializer isn't executed and we could shake it away. However, that's
     // probably a rare case and not worth the effort here.
-    _found_methods.insert(node->global());
+    found_methods_.insert(node->global());
     TraversingVisitor::visit_AssignmentGlobal(node);
   }
 
   void visit_Typecheck(Typecheck* node) {
-    if (node->type().is_nullable()) _found_methods.insert(_identical);
-    if (node->is_as_check()) _found_methods.insert(_as_check_failure);
+    if (node->is_as_check()) found_methods_.insert(as_check_failure_);
     if (node->is_interface_check()) {
-      _found_selectors.insert(node->type().klass()->typecheck_selector());
+      found_selectors_.insert(node->type().klass()->typecheck_selector());
     }
     TraversingVisitor::visit_Typecheck(node);
   }
 
  private:
-  ir::Method* _identical;
-  ir::Method* _as_check_failure;
-  Set<Class*> _found_classes;
-  Set<Method*> _found_methods;
-  Set<CallSelector> _found_selectors;
+  Method* current_method_;
+  Method* as_check_failure_;
+  Set<Class*> found_classes_;
+  Set<Method*> found_methods_;
+  TypedSelectorSet found_typed_selectors_;
+  Set<CallSelector> found_selectors_;
 };
 
 class TreeLogger {
  public:
-  virtual void root(Method* method) { }
-  virtual void root(Class* klass) { }
+  virtual void root(Method* method) {}
+  virtual void root(Class* klass) {}
   virtual void add(Method* method,
                    Set<Class*> classes,
                    Set<Method*> methods,
-                   Set<CallSelector> selectors) { }
-  virtual void add_method_with_selector(CallSelector selector, Method* method) { }
+                   Set<CallSelector> selectors) {}
+  virtual void add_method_with_selector(CallSelector selector, Method* method) {}
 
-  virtual void print() { }
+  virtual void print() {}
 };
 
 class GraphvizTreeLogger : public TreeLogger {
  public:
-  GraphvizTreeLogger() { }
+  GraphvizTreeLogger() {}
 
-  void root(Method* method) { _root_methods.push_back(method); }
-  void root(Class* klass) { _root_classes.push_back(klass); }
+  void root(Method* method) { root_methods_.push_back(method); }
+  void root(Class* klass) { root_classes_.push_back(klass); }
   void add(Method* method,
            Set<Class*> classes,
            Set<Method*> methods,
            Set<CallSelector> selectors) {
-    auto& class_vector = _method_to_classes[method];
+    auto& class_vector = method_to_classes_[method];
     class_vector.insert(class_vector.end(), classes.begin(), classes.end());
-    auto& method_vector = _method_to_methods[method];
+    auto& method_vector = method_to_methods_[method];
     method_vector.insert(method_vector.end(), methods.begin(), methods.end());
-    auto& selector_vector = _method_to_selectors[method];
+    auto& selector_vector = method_to_selectors_[method];
     for (auto selector : selectors) {
       selector_vector.push_back(selector);
     }
   }
 
   void add_method_with_selector(CallSelector selector, Method* method) {
-    _selector_to_methods[selector].insert(method);
+    selector_to_methods_[selector].insert(method);
   }
 
   void print() {
@@ -147,11 +233,11 @@ class GraphvizTreeLogger : public TreeLogger {
       printf("  c%d [label=\"%s\", shape=doublecircle];\n", id, klass->name().c_str());
     };
 
-    for (auto klass : _root_classes) {
+    for (auto klass : root_classes_) {
       register_class(klass);
     }
-    for (auto method : _method_to_classes.keys()) {
-      auto class_vector = _method_to_classes.at(method);
+    for (auto method : method_to_classes_.keys()) {
+      auto class_vector = method_to_classes_.at(method);
       for (auto klass : class_vector) {
         register_class(klass);
       }
@@ -174,56 +260,56 @@ class GraphvizTreeLogger : public TreeLogger {
       }
     };
 
-    for (auto method : _root_methods) {
+    for (auto method : root_methods_) {
       register_method(method);
     }
-    for (auto method : _method_to_classes.keys()) {
+    for (auto method : method_to_classes_.keys()) {
       register_method(method);
     }
-    for (auto method : _method_to_methods.keys()) {
+    for (auto method : method_to_methods_.keys()) {
       register_method(method);
     }
-    for (auto method : _method_to_selectors.keys()) {
+    for (auto method : method_to_selectors_.keys()) {
       register_method(method);
     }
 
     // Label all selectors.
     UnorderedMap<CallSelector, int> selector_ids;
     int selector_counter = 0;
-    for (auto& selector : _selector_to_methods.keys()) {
+    for (auto& selector : selector_to_methods_.keys()) {
       int selector_id = selector_counter++;
       selector_ids[selector] = selector_id;
       printf("  s%d [label=\"%s\", shape=polygon];\n", selector_id, selector.name().c_str());
     }
 
     // Print the links.
-    for (auto method : _method_to_classes.keys()) {
+    for (auto method : method_to_classes_.keys()) {
       int method_id = method_ids.at(method);
-      for (auto klass : _method_to_classes.at(method)) {
+      for (auto klass : method_to_classes_.at(method)) {
         int class_id = class_ids.at(klass);
         printf("  m%d -> c%d;\n", method_id, class_id);
       }
     }
-    for (auto method : _method_to_methods.keys()) {
+    for (auto method : method_to_methods_.keys()) {
       int method_id = method_ids.at(method);
-      for (auto method2 : _method_to_methods.at(method)) {
+      for (auto method2 : method_to_methods_.at(method)) {
         int method2_id = method_ids.at(method2);
         printf("  m%d -> m%d;\n", method_id, method2_id);
       }
     }
-    for (auto method : _method_to_selectors.keys()) {
+    for (auto method : method_to_selectors_.keys()) {
       int method_id = method_ids.at(method);
-      for (auto selector : _method_to_selectors.at(method)) {
+      for (auto selector : method_to_selectors_.at(method)) {
         if (excluded_selectors.contains(selector)) continue;
-        auto probe = _selector_to_methods.find(selector);
-        if (probe == _selector_to_methods.end()) continue;  // No class was instantiated.
+        auto probe = selector_to_methods_.find(selector);
+        if (probe == selector_to_methods_.end()) continue;  // No class was instantiated.
         int selector_id = selector_ids.at(selector);
         printf("  m%d -> s%d;\n", method_id, selector_id);
       }
     }
-    for (auto& selector : _selector_to_methods.keys()) {
+    for (auto& selector : selector_to_methods_.keys()) {
       int selector_id = selector_ids.at(selector);
-      for (auto method : _selector_to_methods.at(selector)) {
+      for (auto method : selector_to_methods_.at(selector)) {
         int method_id = method_ids.at(method);
         printf("  s%d -> m%d;\n", selector_id, method_id);
         if (!excluded_selectors.contains(selector)) {
@@ -238,32 +324,34 @@ class GraphvizTreeLogger : public TreeLogger {
   }
 
  private:
-  std::vector<Method*> _root_methods;
-  std::vector<Class*> _root_classes;
-  Map<Method*, std::vector<Class*>> _method_to_classes;
-  Map<Method*, std::vector<Method*>> _method_to_methods;
-  Map<Method*, std::vector<CallSelector>> _method_to_selectors;
-  Map<CallSelector, Set<Method*>> _selector_to_methods;
+  std::vector<Method*> root_methods_;
+  std::vector<Class*> root_classes_;
+  Map<Method*, std::vector<Class*>> method_to_classes_;
+  Map<Method*, std::vector<Method*>> method_to_methods_;
+  Map<Method*, std::vector<CallSelector>> method_to_selectors_;
+  Map<CallSelector, Set<Method*>> selector_to_methods_;
 };
 
 
 class TreeGrower {
  public:
-  void grow(ir::Program* program);
+  void grow(Program* program);
 
-  Set<Class*> grown_classes() const { return _grown_classes; }
+  Set<Class*> grown_classes() const { return grown_classes_; }
   // Includes globals, static functions and instance functions.
-  Set<Method*> grown_methods() const { return _grown_methods; }
+  Set<Method*> grown_methods() const { return grown_methods_; }
 
  private:
-  Set<Class*> _grown_classes;
-  Set<Method*> _grown_methods;
+  Set<Class*> grown_classes_;
+  Set<Method*> grown_methods_;
 };
 
 void TreeGrower::grow(Program* program) {
-  auto queryables = build_queryables_from_plain_shapes(program->classes());
+  bool include_abstracts;
+  auto queryables = build_queryables_from_plain_shapes(program->classes(), include_abstracts=false);
 
   Set<CallSelector> handled_selectors;
+  TypedSelectorSet handled_typed_selectors;
 
   std::vector<Method*> method_queue;
 
@@ -278,7 +366,7 @@ void TreeGrower::grow(Program* program) {
 
   for (auto klass : program->tree_roots()) {
     logger->root(klass);
-    _grown_classes.insert(klass);
+    grown_classes_.insert(klass);
   }
 
   for (auto entry_point : program->entry_points()) {
@@ -289,19 +377,24 @@ void TreeGrower::grow(Program* program) {
   while (!method_queue.empty()) {
     Set<Class*> found_classes;
     Set<Method*> found_methods;
+    TypedSelectorSet found_typed_selectors;
     Set<CallSelector> found_selectors;
 
     for (auto method : method_queue) {
-      if (method->is_abstract()) continue;
+      if (method->is_abstract() || method->is_dead()) continue;
 
-      GrowerVisitor visitor(program->identical(), program->as_check_failure());
       // Skip already visited methods.
-      if (_grown_methods.contains(method)) continue;
-      _grown_methods.insert(method);
-      visitor.visit(method);
+      if (grown_methods_.contains(method)) continue;
+      grown_methods_.insert(method);
+      GrowerVisitor visitor(program->as_check_failure());
+      visitor.grow(method);
       logger->add(method, visitor.found_classes(), visitor.found_methods(), visitor.found_selectors());
       found_classes.insert_all(visitor.found_classes());
       found_methods.insert_all(visitor.found_methods());
+      // Ignore already grown methods, and selectors that cover every type.
+      found_typed_selectors.insert_all(visitor.found_typed_selectors(),
+                                       grown_methods_,
+                                       handled_selectors);
       found_selectors.insert_all(visitor.found_selectors());
     }
 
@@ -310,8 +403,8 @@ void TreeGrower::grow(Program* program) {
     method_queue.insert(method_queue.end(), found_methods.begin(), found_methods.end());
 
     for (auto klass : found_classes) {
-      if (_grown_classes.contains(klass)) continue;
-      _grown_classes.insert(klass);
+      if (grown_classes_.contains(klass)) continue;
+      grown_classes_.insert(klass);
       auto queryable = queryables[klass];
       for (auto selector : handled_selectors) {
         auto probe = queryable.lookup(selector);
@@ -320,12 +413,20 @@ void TreeGrower::grow(Program* program) {
           method_queue.push_back(probe);
         }
       }
+      handled_typed_selectors.match_and_filter(queryable,
+                                               [&](const CallSelector& selector, Method* matched) {
+        logger->add_method_with_selector(selector, matched);
+        method_queue.push_back(matched);
+        // Allow the removal of the now handled method.
+        return true;
+      });
     }
 
+    // No need to look for selectors we already know about.
     found_selectors.erase_all(handled_selectors);
-    handled_selectors.insert(found_selectors.begin(), found_selectors.end());
-    if (!found_selectors.empty()) {
-      for (auto klass : _grown_classes) {
+
+    if (!found_selectors.empty() || !found_typed_selectors.empty()) {
+      for (auto klass : grown_classes_) {
         auto queryable = queryables[klass];
         for (auto selector : found_selectors) {
           auto probe = queryable.lookup(selector);
@@ -334,58 +435,74 @@ void TreeGrower::grow(Program* program) {
             method_queue.push_back(probe);
           }
         }
+        found_typed_selectors.match_and_filter(queryable,
+                                               [&](const CallSelector& selector, Method* matched) {
+          logger->add_method_with_selector(selector, matched);
+          method_queue.push_back(matched);
+          // Allow the removal of the now handled method.
+          return true;
+        });
       }
     }
+
+    handled_selectors.insert_all(found_selectors);
+    // Add the newly found typed selectors, but ignore them for
+    // known methods and for selectors that are already matching everything.
+    handled_typed_selectors.insert_all(found_typed_selectors,
+                                       grown_methods_,
+                                       handled_selectors);
   }
 
   logger->print();
 
-  for (auto klass : _grown_classes) {
+  for (auto klass : grown_classes_) {
     klass->set_is_instantiated(true);
   }
 
   // Add superclasses as grown classes.
   // We didn't add them earlier, since their methods aren't needed if they have
   // been overridden.
-  std::vector<ir::Class*> super_classes;
-  for (auto klass : _grown_classes) {
+  std::vector<Class*> super_classes;
+  for (auto klass : grown_classes_) {
     auto current = klass->super();
     while (current != null) {
-      if (_grown_classes.contains(current)) break;
+      if (grown_classes_.contains(current)) break;
       super_classes.push_back(current);
       current->set_is_instantiated(false);
       current = current->super();
     }
   }
-  _grown_classes.insert(super_classes.begin(), super_classes.end());
+  grown_classes_.insert(super_classes.begin(), super_classes.end());
 }
 
 class Fixup : public ReplacingVisitor {
  public:
   explicit Fixup(Set<Class*>& grown_classes,
-                 UnorderedSet<Method*>& unreachable_methods,
+                 Set<Method*>& grown_methods,
                  Type null_type,
                  Method* as_check_failure)
-      : _null_type(null_type)
-      , _unreachable_methods(unreachable_methods)
-      , _as_check_failure(as_check_failure) {
-    _grown_classes_and_interfaces.insert_all(grown_classes);
-
-    std::function<void (Class*)> add_interface;
-    add_interface = [&](Class* interface) {
-      if (_grown_classes_and_interfaces.contains(interface)) return;
-      _grown_classes_and_interfaces.insert(interface);
-      for (auto sub_interface : interface->interfaces()) {
-        add_interface(sub_interface);
-      }
-      if (interface->super() != null) {
-        add_interface(interface->super());
-      }
-    };
+      : null_type_(null_type)
+      , grown_methods_(grown_methods)
+      , as_check_failure_(as_check_failure) {
+    valid_check_targets_.insert_all(grown_classes);
 
     for (auto klass : grown_classes) {
       for (auto interface : klass->interfaces()) {
-        add_interface(interface);
+        valid_check_targets_.insert(interface);
+      }
+      for (auto current = klass; current != null; current = current->super()) {
+        if (current != klass && valid_check_targets_.contains(current)) {
+          // No need to duplicate work. The current class will be (or was already)
+          // traversed independently.
+          break;
+        }
+        for (auto method : current->methods()) {
+          // This looks like the simplest way to figure out whether a class
+          // "implements" a mixin.
+          if (method->is_IsInterfaceOrMixinStub()) {
+            valid_check_targets_.insert(method->as_IsInterfaceOrMixinStub()->interface_or_mixin());
+          }
+        }
       }
     }
   }
@@ -394,17 +511,17 @@ class Fixup : public ReplacingVisitor {
     auto result = ReplacingVisitor::visit_Typecheck(node)->as_Typecheck();
     ASSERT(result == node);
     if (node->type().is_any()) return node;
-    if (_grown_classes_and_interfaces.contains(node->type().klass())) return result;
+    if (valid_check_targets_.contains(node->type().klass())) return result;
 
     // At this point, neither the class nor any of its subclasses were instantiated.
 
     if (node->type().is_nullable()) {
       // Simply replace the original type with `Null_`.
-      return _new ir::Typecheck(node->kind(),
-                                node->expression(),
-                                _null_type.to_nullable(),  // So the error message is more correct.
-                                node->type_name(),
-                                node->range());
+      return _new Typecheck(node->kind(),
+                            node->expression(),
+                            null_type_.to_nullable(),  // So the error message is more correct.
+                            node->type_name(),
+                            node->range());
     }
 
     // At this point we know that the expression can't satisfy the type.
@@ -420,12 +537,12 @@ class Fixup : public ReplacingVisitor {
 
     // For as-checks we create a call to `as_check_failure` with the expression as argument.
     const char* name = node->type().klass()->name().c_str();
-    ListBuilder<ir::Expression*> arguments_builder;
+    ListBuilder<Expression*> arguments_builder;
     arguments_builder.add(node->expression());
     arguments_builder.add(_new LiteralString(name, strlen(name), node->range()));
     auto arguments = arguments_builder.build();
     auto shape = CallShape::for_static_call_no_named(arguments);
-    auto fail_call = _new CallStatic(_new ReferenceMethod(_as_check_failure, node->range()),
+    auto fail_call = _new CallStatic(_new ReferenceMethod(as_check_failure_, node->range()),
                                      shape,
                                      arguments,
                                      node->range());
@@ -436,10 +553,12 @@ class Fixup : public ReplacingVisitor {
     auto result = ReplacingVisitor::visit_CallStatic(node)->as_CallStatic();
     ASSERT(result == node);
     Method* method = node->target()->target();
-    if (_unreachable_methods.contains(method)) {
-      ASSERT(method->is_MethodInstance());
-      // We changed a dynamic call to a static call, but the target doesn't exist anymore.
-      // Just ignore the call, but still evaluate all parameters.
+    if (!grown_methods_.contains(method)) {
+      // The static method or constructor is unreachable. This might be
+      // because our type propagation phase has told us that the method
+      // is dead, but this can also happen when we have changed a dynamic
+      // call to a static call, and then tree shake the target. Either way,
+      // we just ignore the call, but still evaluate all parameters.
       auto arguments = node->arguments();
       if (arguments.length() == 1) return arguments[0];
       return _new Sequence(arguments, node->range());
@@ -450,7 +569,7 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldLoad(FieldLoad* node) {
     auto result = ReplacingVisitor::visit_FieldLoad(node);
     auto holder = node->field()->holder();
-    if (_grown_classes_and_interfaces.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The load is dead code, as a type-check earlier would have thrown earlier.
@@ -461,20 +580,20 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldStore(FieldStore* node) {
     auto result = ReplacingVisitor::visit_FieldStore(node);
     auto holder = node->field()->holder();
-    if (_grown_classes_and_interfaces.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The store is dead code, as a type-check earlier would have thrown earlier.
     // Drop the store.
-    return _new Sequence(ListBuilder<ir::Expression*>::build(node->receiver(), node->value()),
+    return _new Sequence(ListBuilder<Expression*>::build(node->receiver(), node->value()),
                          node->range());
   }
 
  private:
-  Type _null_type;
-  Set<Class*> _grown_classes_and_interfaces;
-  UnorderedSet<Method*> _unreachable_methods;
-  Method* _as_check_failure;
+  Type null_type_;
+  Set<Class*> valid_check_targets_;
+  Set<Method*> grown_methods_;
+  Method* as_check_failure_;
 };
 
 template<class T>
@@ -500,7 +619,7 @@ static std::vector<Method*> shake_methods(std::vector<Method*> methods,
   return remaining_methods;
 }
 
-static void shake(ir::Program* program,
+static void shake(Program* program,
                   Set<Class*> grown_classes,
                   Set<Method*> grown_methods) {
   auto null_type = Type::invalid();
@@ -512,47 +631,44 @@ static void shake(ir::Program* program,
   }
   ASSERT(null_type.is_valid());
 
-  ListBuilder<ir::Class*> remaining_classes;
+  ListBuilder<Class*> remaining_classes;
   // Keep the order of the classes.
   for (auto klass : program->classes()) {
-    if (grown_classes.contains(klass)) {
+    if (klass->is_mixin() || grown_classes.contains(klass)) {
       remaining_classes.add(klass);
     }
   }
   if (Flags::report_tree_shaking) {
+    int remaining_classes_length = remaining_classes.length();
+    int program_classes_length = program->classes().length();
     printf("Kept %d out of %d classes\n",
-           remaining_classes.length(),
-           program->classes().length());
+           remaining_classes_length,
+           program_classes_length);
   }
   program->replace_classes(remaining_classes.build());
 
-  // The set of grown methods might contain methods that aren't actually reachable.
-  // This can happen when the optimizer changed a dynamic call into a static call, but
-  //   the receiver-type was never instantiated.
-  // The following set contains all methods that were grown, but not added to the program.
-  UnorderedSet<ir::Method*> unreachable_methods;
-  unreachable_methods.insert_all(grown_methods);  // Starts out with all grown methods.
-
   auto remaining_methods = shake_methods(program->methods(), grown_methods);
-  unreachable_methods.erase_all(remaining_methods);
   if (Flags::report_tree_shaking) {
+    int remaining_methods_length = remaining_methods.length();
+    int program_methods_length = program->methods().length();
     printf("Kept %d out of %d global functions\n",
-           remaining_methods.length(),
-           program->methods().length());
+           remaining_methods_length,
+           program_methods_length);
   }
   program->replace_methods(remaining_methods);
 
-  ListBuilder<ir::Global*> remaining_globals;
+  ListBuilder<Global*> remaining_globals;
   for (auto global : program->globals()) {
     if (grown_methods.contains(global)) {
       remaining_globals.add(global);
-      unreachable_methods.erase(global);
     }
   }
   if (Flags::report_tree_shaking) {
+    int remaining_globals_length = remaining_globals.length();
+    int program_globals_length = program->globals().length();
     printf("Kept %d out of %d globals\n",
-           remaining_globals.length(),
-           program->globals().length());
+           remaining_globals_length,
+           program_globals_length);
   }
   program->replace_globals(remaining_globals.build());
 
@@ -562,21 +678,17 @@ static void shake(ir::Program* program,
   for (auto klass : program->classes()) {
     // Note that we already shook the copies of constructors/factories/statics that had
     //   been copied into program->methods.
-    auto remaining_constructors = shake_methods(klass->constructors(), grown_methods);
-    unreachable_methods.erase_all(remaining_constructors);
-    klass->replace_constructors(remaining_constructors);
+    auto remaining_constructors = shake_methods(klass->unnamed_constructors(), grown_methods);
+    klass->replace_unnamed_constructors(remaining_constructors);
     auto remaining_factories = shake_methods(klass->factories(), grown_methods);
     klass->replace_factories(remaining_factories);
-    unreachable_methods.erase_all(remaining_factories);
     klass->statics()->invalidate_resolution_map();
     auto remaining_statics = shake_methods(klass->statics()->nodes(), grown_methods);
     klass->statics()->replace_nodes(remaining_statics);
-    unreachable_methods.erase_all(remaining_factories);
     auto remaining_methods = shake_methods(klass->methods(), grown_methods);
     total_methods_count += klass->methods().length();
     remaining_methods_count += remaining_methods.length();
     klass->replace_methods(remaining_methods);
-    unreachable_methods.erase_all(remaining_methods);
   }
   if (Flags::report_tree_shaking) {
     printf("Kept %d out of %d instance methods\n",
@@ -586,7 +698,7 @@ static void shake(ir::Program* program,
 
   // Fixup references to types and methods that don't exist anymore.
   Fixup visitor(grown_classes,
-                unreachable_methods,
+                grown_methods,
                 null_type,
                 program->as_check_failure());
   for (auto method : grown_methods) {
@@ -595,12 +707,12 @@ static void shake(ir::Program* program,
   }
 }
 
-void tree_shake(ir::Program* program) {
+void tree_shake(Program* program) {
   if (Flags::disable_tree_shaking) {
     // Just remove the abstract methods, so that later phases don't need to deal with non-existing bodies.
     for (auto klass : program->classes()) {
       if (!klass->is_abstract()) continue;
-      ListBuilder<ir::MethodInstance*> non_abstract_methods;
+      ListBuilder<MethodInstance*> non_abstract_methods;
       for (auto method : klass->methods()) {
         if (!method->is_abstract()) non_abstract_methods.add(method);
       }

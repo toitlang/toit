@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
 
 #include <driver/gpio.h>
 #include <driver/touch_sensor.h>
@@ -68,7 +68,7 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
   }
 }
 
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 static touch_pad_t get_touch_pad(int pin) {
   switch (pin) {
@@ -195,10 +195,10 @@ MODULE_IMPLEMENTATION(touch, MODULE_TOUCH)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   TouchResourceGroup* touch = _new TouchResourceGroup(process);
-  if (!touch) MALLOC_FAILED;
+  if (!touch) FAIL(MALLOC_FAILED);
 
   Locker locker(OS::resource_mutex());
 
@@ -230,15 +230,22 @@ PRIMITIVE(use) {
   // This obviously fails, if someone calls the primitive directly without acquiring the pin first.
 
   touch_pad_t pad = get_touch_pad(num);
-  if (pad == kInvalidTouchPad) OUT_OF_RANGE;
+  if (pad == kInvalidTouchPad) FAIL(OUT_OF_RANGE);
 
   auto resource = _new IntResource(resource_group, pad);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+  esp_err_t err = touch_pad_config(pad);
+  if (err == ESP_OK) {
+    err = touch_pad_set_thresh(pad, threshold);
+  }
+#else
   esp_err_t err = touch_pad_config(pad, threshold);
+#endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   resource_group->register_resource(resource);
@@ -258,15 +265,25 @@ PRIMITIVE(unuse) {
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
+#ifdef CONFIG_IDF_TARGET_ESP32
   uint16_t val;
+  // The ESP32 also has a 'touch_pad_read_raw' but that requires a
+  // call to 'touch_pad_filter_start' before the function is allowed
+  // to be called.
+  // The other variants don't even have a 'touch_pad_filter_start' or
+  // 'touch_pad_read' function anymore.
   esp_err_t err = touch_pad_read(pad, &val);
+#else
+  uint32_t val;
+  esp_err_t err = touch_pad_read_raw_data(pad, &val);
+#endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
 }
@@ -275,7 +292,11 @@ PRIMITIVE(get_threshold) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+  uint32_t val;
+#else
   uint16_t val;
+#endif
   esp_err_t err = touch_pad_get_thresh(pad, &val);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
@@ -287,9 +308,9 @@ PRIMITIVE(set_threshold) {
 
   esp_err_t err = touch_pad_set_thresh(pad, threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)

@@ -6,154 +6,169 @@ import net
 import net.udp
 import net.tcp
 
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
 
 // For references in documentation comments.
 import system.services show ServiceResource ServiceResourceProxy
 
 interface NetworkService:
-  static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 3
+  static SELECTOR ::= ServiceSelector
+      --uuid="063e228a-3a7a-44a8-b024-d55127255ccb"
+      --major=0
+      --minor=4
+
+  /**
+  List of common tags that providers of $NetworkService may use
+    to make their services easier to distinguish.
+  */
+  static TAG-CELLULAR /string ::= "cellular"
+  static TAG-ETHERNET /string ::= "ethernet"
+  static TAG-WIFI     /string ::= "wifi"
 
   /**
   Proxy mask bits that indicate which operations must be proxied
     through the service. See $connect.
   */
-  static PROXY_NONE    /int ::= 0
-  static PROXY_ADDRESS /int ::= 1 << 0
-  static PROXY_RESOLVE /int ::= 1 << 1
-  static PROXY_UDP     /int ::= 1 << 2
-  static PROXY_TCP     /int ::= 1 << 3
+  static PROXY-NONE       /int ::= 0
+  static PROXY-ADDRESS    /int ::= 1 << 0
+  static PROXY-RESOLVE    /int ::= 1 << 1
+  static PROXY-UDP        /int ::= 1 << 2
+  static PROXY-TCP        /int ::= 1 << 3
+  static PROXY-QUARANTINE /int ::= 1 << 4
 
   /**
-  The socket options can be read or written using $socket_get_option
-    and $socket_set_option.
+  The socket options can be read or written using $socket-get-option
+    and $socket-set-option.
   */
-  static SOCKET_OPTION_UDP_BROADCAST /int ::= 0
-  static SOCKET_OPTION_TCP_NO_DELAY  /int ::= 100
+  static SOCKET-OPTION-UDP-BROADCAST /int ::= 0
+  static SOCKET-OPTION-TCP-NO-DELAY  /int ::= 100
 
   /**
   The notification constants are used as arguments to $ServiceResource.notify_
-    and consequently $ServiceResourceProxy.on_notified_.
+    and consequently $ServiceResourceProxy.on-notified_.
   */
-  static NOTIFY_CLOSED /int ::= 200
+  static NOTIFY-CLOSED /int ::= 200
 
   // The connect call returns a handle to the network resource and
   // the proxy mask bits in a list. The proxy mask bits indicate
   // which operations the service definition wants the client to
   // proxy through it.
-  static CONNECT_INDEX /int ::= 0
   connect -> List
+  static CONNECT-INDEX /int ::= 0
 
-  static ADDRESS_INDEX /int ::= 1
   address handle/int -> ByteArray
+  static ADDRESS-INDEX /int ::= 1
 
-  static RESOLVE_INDEX /int ::= 2
   resolve handle/int host/string -> List
+  static RESOLVE-INDEX /int ::= 2
 
-  static UDP_OPEN_INDEX /int ::= 100
-  udp_open handle/int port/int? -> int
+  quarantine name/string -> none
+  static QUARANTINE-INDEX /int ::= 3
 
-  static UDP_CONNECT_INDEX /int ::= 101
-  udp_connect handle/int ip/ByteArray port/int -> none
+  udp-open handle/int port/int? -> int
+  static UDP-OPEN-INDEX /int ::= 100
 
-  static UDP_RECEIVE_INDEX /int ::= 102
-  udp_receive handle/int -> List
+  udp-connect handle/int ip/ByteArray port/int -> none
+  static UDP-CONNECT-INDEX /int ::= 101
 
-  static UDP_SEND_INDEX /int ::= 103
-  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none
+  udp-receive handle/int -> List
+  static UDP-RECEIVE-INDEX /int ::= 102
 
-  static TCP_CONNECT_INDEX /int ::= 200
-  tcp_connect handle/int ip/ByteArray port/int -> int
+  udp-send handle/int data/ByteArray ip/ByteArray port/int -> none
+  static UDP-SEND-INDEX /int ::= 103
 
-  static TCP_LISTEN_INDEX /int ::= 201
-  tcp_listen handle/int port/int -> int
+  tcp-connect handle/int ip/ByteArray port/int -> int
+  static TCP-CONNECT-INDEX /int ::= 200
 
-  static TCP_ACCEPT_INDEX /int ::= 202
-  tcp_accept handle/int -> int
+  tcp-listen handle/int port/int -> int
+  static TCP-LISTEN-INDEX /int ::= 201
 
-  static TCP_CLOSE_WRITE_INDEX /int ::= 203
-  tcp_close_write handle/int -> none
+  tcp-accept handle/int -> int
+  static TCP-ACCEPT-INDEX /int ::= 202
 
-  static SOCKET_GET_OPTION_INDEX /int ::= 300
-  socket_get_option handle/int option/int -> any
+  tcp-close-write handle/int -> none
+  static TCP-CLOSE-WRITE-INDEX /int ::= 203
 
-  static SOCKET_SET_OPTION_INDEX /int ::= 301
-  socket_set_option handle/int option/int value/any -> none
+  socket-get-option handle/int option/int -> any
+  static SOCKET-GET-OPTION-INDEX /int ::= 300
 
-  static SOCKET_LOCAL_ADDRESS_INDEX /int ::= 302
-  socket_local_address handle/int -> List
+  socket-set-option handle/int option/int value/any -> none
+  static SOCKET-SET-OPTION-INDEX /int ::= 301
 
-  static SOCKET_PEER_ADDRESS_INDEX /int ::= 303
-  socket_peer_address handle/int -> List
+  socket-local-address handle/int -> List
+  static SOCKET-LOCAL-ADDRESS-INDEX /int ::= 302
 
-  static SOCKET_READ_INDEX /int ::= 304
-  socket_read handle/int -> ByteArray?
+  socket-peer-address handle/int -> List
+  static SOCKET-PEER-ADDRESS-INDEX /int ::= 303
 
-  static SOCKET_WRITE_INDEX /int ::= 305
-  socket_write handle/int data -> int
+  socket-read handle/int -> ByteArray?
+  static SOCKET-READ-INDEX /int ::= 304
 
-  static SOCKET_MTU_INDEX /int ::= 306
-  socket_mtu handle/int -> int
+  socket-write handle/int data -> int
+  static SOCKET-WRITE-INDEX /int ::= 305
+
+  socket-mtu handle/int -> int
+  static SOCKET-MTU-INDEX /int ::= 306
 
 class NetworkServiceClient extends ServiceClient implements NetworkService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> NetworkServiceClient?:
-    return (open_ NetworkService.UUID NetworkService.MAJOR NetworkService.MINOR) and this
+  static SELECTOR ::= NetworkService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   connect -> List:
-    return invoke_ NetworkService.CONNECT_INDEX null
+    return invoke_ NetworkService.CONNECT-INDEX null
 
   address handle/int -> ByteArray:
-    return invoke_ NetworkService.ADDRESS_INDEX handle
+    return invoke_ NetworkService.ADDRESS-INDEX handle
 
   resolve handle/int host/string -> List:
-    return invoke_ NetworkService.RESOLVE_INDEX [handle, host]
+    return invoke_ NetworkService.RESOLVE-INDEX [handle, host]
 
-  udp_open handle/int port/int? -> int:
-    return invoke_ NetworkService.UDP_OPEN_INDEX [handle, port]
+  quarantine name/string -> none:
+    invoke_ NetworkService.QUARANTINE-INDEX name
 
-  udp_connect handle/int ip/ByteArray port/int -> none:
-    invoke_ NetworkService.UDP_CONNECT_INDEX [handle, ip, port]
+  udp-open handle/int port/int? -> int:
+    return invoke_ NetworkService.UDP-OPEN-INDEX [handle, port]
 
-  udp_receive handle/int -> List:
-    return invoke_ NetworkService.UDP_RECEIVE_INDEX handle
+  udp-connect handle/int ip/ByteArray port/int -> none:
+    invoke_ NetworkService.UDP-CONNECT-INDEX [handle, ip, port]
 
-  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none:
-    invoke_ NetworkService.UDP_SEND_INDEX [handle, data, ip, port]
+  udp-receive handle/int -> List:
+    return invoke_ NetworkService.UDP-RECEIVE-INDEX handle
 
-  tcp_connect handle/int ip/ByteArray port/int -> int:
-    return invoke_ NetworkService.TCP_CONNECT_INDEX [handle, ip, port]
+  udp-send handle/int data/ByteArray ip/ByteArray port/int -> none:
+    invoke_ NetworkService.UDP-SEND-INDEX [handle, data, ip, port]
 
-  tcp_listen handle/int port/int -> int:
-    return invoke_ NetworkService.TCP_LISTEN_INDEX [handle, port]
+  tcp-connect handle/int ip/ByteArray port/int -> int:
+    return invoke_ NetworkService.TCP-CONNECT-INDEX [handle, ip, port]
 
-  tcp_accept handle/int -> int:
-    return invoke_ NetworkService.TCP_ACCEPT_INDEX handle
+  tcp-listen handle/int port/int -> int:
+    return invoke_ NetworkService.TCP-LISTEN-INDEX [handle, port]
 
-  tcp_close_write handle/int -> none:
-    invoke_ NetworkService.TCP_CLOSE_WRITE_INDEX handle
+  tcp-accept handle/int -> int:
+    return invoke_ NetworkService.TCP-ACCEPT-INDEX handle
 
-  socket_get_option handle/int option/int -> any:
-    return invoke_ NetworkService.SOCKET_GET_OPTION_INDEX [handle, option]
+  tcp-close-write handle/int -> none:
+    invoke_ NetworkService.TCP-CLOSE-WRITE-INDEX handle
 
-  socket_set_option handle/int option/int value/any -> none:
-    invoke_ NetworkService.SOCKET_SET_OPTION_INDEX [handle, option, value]
+  socket-get-option handle/int option/int -> any:
+    return invoke_ NetworkService.SOCKET-GET-OPTION-INDEX [handle, option]
 
-  socket_local_address handle/int -> List:
-    return invoke_ NetworkService.SOCKET_LOCAL_ADDRESS_INDEX handle
+  socket-set-option handle/int option/int value/any -> none:
+    invoke_ NetworkService.SOCKET-SET-OPTION-INDEX [handle, option, value]
 
-  socket_peer_address handle/int -> List:
-    return invoke_ NetworkService.SOCKET_PEER_ADDRESS_INDEX handle
+  socket-local-address handle/int -> List:
+    return invoke_ NetworkService.SOCKET-LOCAL-ADDRESS-INDEX handle
 
-  socket_read handle/int -> ByteArray?:
-    return invoke_ NetworkService.SOCKET_READ_INDEX handle
+  socket-peer-address handle/int -> List:
+    return invoke_ NetworkService.SOCKET-PEER-ADDRESS-INDEX handle
 
-  socket_write handle/int data:
-    return invoke_ NetworkService.SOCKET_WRITE_INDEX [handle, data]
+  socket-read handle/int -> ByteArray?:
+    return invoke_ NetworkService.SOCKET-READ-INDEX handle
 
-  socket_mtu handle/int -> int:
-    return invoke_ NetworkService.SOCKET_MTU_INDEX handle
+  socket-write handle/int data:
+    return invoke_ NetworkService.SOCKET-WRITE-INDEX [handle, data]
+
+  socket-mtu handle/int -> int:
+    return invoke_ NetworkService.SOCKET-MTU-INDEX handle

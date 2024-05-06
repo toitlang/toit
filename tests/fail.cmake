@@ -24,34 +24,27 @@ endif()
 list(APPEND TOIT_SKIP_TESTS
 )
 
+list(APPEND TOIT_FLAKY_TESTS
+  tests/tls-client-cert-test.toit
+  tests/tls-global-cert-test-slow.toit
+  tests/tls-test-slow.toit
+  tests/tls-ubuntu-test.toit
+  tests/tls-global-cert-simple-test.toit
+  tests/tls-simple-cert.toit
+)
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/close_test.toit
-    tests/containers_test.toit
-    tests/dns_test.toit
-    tests/interface_address_test.toit
-    tests/keepalive_test.toit
-    tests/regress/issue3_test.toit
-    tests/services_network_test.toit
-    tests/socket_close_test.toit
-    tests/socket_option_test.toit
-    tests/socket_task_test.toit
-    tests/socket_test.toit
-    tests/socket_timeout_test.toit
-    tests/tcp_close_test.toit
-    tests/time_test.toit
-    tests/tls2_test.toit
-    tests/udp_test.toit
-    tests/zlib_test.toit
-    tests/class_field_limit_test_compiler.toit
-    tests/cow_read_only_test_compiler.toit
-    tests/tls_test_slow.toit
-    tests/uart_test.toit
+    tests/time-test.toit # https://github.com/toitlang/toit/issues/1369
+    tests/zlib-test.toit
+    tests/zlib-deprecated-test.toit
+    tests/cow-read-only-test-compiler.toit
+    tests/uart-test.toit
   )
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
   list(APPEND TOIT_FAILING_TESTS
-    tests/uart_test.toit
+    tests/uart-test.toit
   )
 endif()

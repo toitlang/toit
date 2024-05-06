@@ -1,0 +1,10 @@
+tests/negative/super4-test.toit:6:12: error: Can't access 'super' in field initializers
+  field := super
+           ^~~~~
+tests/negative/super4-test.toit:7:24: error: Can't access 'super' in field initializers
+  field2 := unresolved super
+                       ^~~~~
+tests/negative/super4-test.toit:7:13: error: Unresolved identifier: 'unresolved'
+  field2 := unresolved super
+            ^~~~~~~~~~
+Compilation failed

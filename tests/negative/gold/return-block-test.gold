@@ -1,0 +1,94 @@
+tests/negative/return-block-test.toit:6:10: error: Can't return a block
+  return block
+         ^~~~~
+tests/negative/return-block-test.toit:10:10: error: Can't return a block
+  return block
+         ^~~~~
+tests/negative/return-block-test.toit:14:17: error: If branches may not evaluate to blocks
+  return true ? block : block
+                ^~~~~
+tests/negative/return-block-test.toit:14:25: error: If branches may not evaluate to blocks
+  return true ? block : block
+                        ^~~~~
+tests/negative/return-block-test.toit:18:19: error: If branches may not evaluate to blocks
+  return if true: block else: block
+                  ^~~~~
+tests/negative/return-block-test.toit:18:31: error: If branches may not evaluate to blocks
+  return if true: block else: block
+                              ^~~~~
+tests/negative/return-block-test.toit:21:20: error: Unexpected block
+  return if true: (: 499) else: (: 499)
+                   ^~~~~
+tests/negative/return-block-test.toit:21:19: error: If branches may not evaluate to blocks
+  return if true: (: 499) else: (: 499)
+                  ^
+tests/negative/return-block-test.toit:21:34: error: Unexpected block
+  return if true: (: 499) else: (: 499)
+                                 ^~~~~
+tests/negative/return-block-test.toit:21:33: error: If branches may not evaluate to blocks
+  return if true: (: 499) else: (: 499)
+                                ^
+tests/negative/return-block-test.toit:25:5: error: Unexpected block
+    : 499
+    ^~~~~
+tests/negative/return-block-test.toit:25:5: error: Can't return a block from a lambda
+    : 499
+    ^~~~~
+tests/negative/return-block-test.toit:29:6: error: Unexpected block
+    (: 499)
+     ^~~~~
+tests/negative/return-block-test.toit:29:5: error: Can't return a block from a lambda
+    (: 499)
+    ^
+tests/negative/return-block-test.toit:34:5: error: Can't return a block from a lambda
+    lambda-block
+    ^~~~~~~~~~~~
+tests/negative/return-block-test.toit:38:13: error: Unexpected block
+    return (: 499)
+            ^~~~~
+tests/negative/return-block-test.toit:38:12: error: Can't return a block
+    return (: 499)
+           ^
+tests/negative/return-block-test.toit:38:5: error: Can't explicitly return from within a lambda
+    return (: 499)
+    ^~~~~~
+tests/negative/return-block-test.toit:43:12: error: Can't return a block
+    return lambda-block
+           ^~~~~~~~~~~~
+tests/negative/return-block-test.toit:43:5: error: Can't explicitly return from within a lambda
+    return lambda-block
+    ^~~~~~
+tests/negative/return-block-test.toit:48:14: error: If branches may not evaluate to blocks
+    if true: lambda-block
+             ^~~~~~~~~~~~
+tests/negative/return-block-test.toit:53:14: error: If branches may not evaluate to blocks
+    if true: lambda-block
+             ^~~~~~~~~~~~
+tests/negative/return-block-test.toit:54:11: error: If branches may not evaluate to blocks
+    else: lambda-block
+          ^~~~~~~~~~~~
+tests/negative/return-block-test.toit:61:5: error: Unexpected block
+    : 499
+    ^~~~~
+tests/negative/return-block-test.toit:61:5: error: Can't return a block from a block
+    : 499
+    ^~~~~
+tests/negative/return-block-test.toit:66:6: error: Unexpected block
+    (: 499))
+     ^~~~~
+tests/negative/return-block-test.toit:66:5: error: Can't return a block from a block
+    (: 499))
+    ^
+tests/negative/return-block-test.toit:71:5: error: Can't return a block from a block
+    block-block
+    ^~~~~~~~~~~
+tests/negative/return-block-test.toit:77:7: error: If branches may not evaluate to blocks
+      block-block
+      ^~~~~~~~~~~
+tests/negative/return-block-test.toit:83:7: error: If branches may not evaluate to blocks
+      block-block
+      ^~~~~~~~~~~
+tests/negative/return-block-test.toit:84:11: error: If branches may not evaluate to blocks
+    else: block-block
+          ^~~~~~~~~~~
+Compilation failed

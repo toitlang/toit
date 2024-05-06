@@ -49,7 +49,7 @@ main:
 
   // Generally, the acceptable duty-factor range of servos is 0.025 to 0.125.
   // Therefore start the pin with 0.075.
-  channel := generator.start servo --duty_factor=0.075
+  channel := generator.start servo --duty-factor=0.075
   sleep --ms=1000
 
   // Max angle.
@@ -75,16 +75,16 @@ class Pwm:
   pwm_ := ?
 
   /**
-  Constructs the PWM generator with the given $frequency and $max_frequency.
+  Constructs the PWM generator with the given $frequency and $max-frequency.
 
   The resolution of the PWM is dependent on the max frequency. The higher it is
     the less resolution there is.
 
   The frequency of the PWM must lie within a certain factor of the max frequency.
-    For example, given a $max_frequency of 10KHz, the lowest frequency that is
+    For example, given a $max-frequency of 10KHz, the lowest frequency that is
     accepted is 20Hz.
 
-  The $max_frequency is limited to 40MHz.
+  The $max-frequency is limited to 40MHz.
   The lowest acceptable frequency is 1Hz.
 
   # Advanced
@@ -99,24 +99,24 @@ class Pwm:
   See https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/ledc.html#supported-range-of-frequency-and-duty-resolutions
     for the limitations of the frequency with respect to the duty resolution.
   */
-  constructor --frequency/int --max_frequency/int=frequency:
-    pwm_ = pwm_init_ frequency max_frequency
+  constructor --frequency/int --max-frequency/int=frequency:
+    pwm_ = pwm-init_ frequency max-frequency
 
   /**
   Starts a new $PwmChannel on the provided pin. The channel is started,
-    with the given $duty_factor.
+    with the given $duty-factor.
 
-  The default $duty_factor of 0.0 means the pin stays low until otherwise configured.
+  The default $duty-factor of 0.0 means the pin stays low until otherwise configured.
 
-  See $PwmChannel.set_duty_factor for more information on duty factors.
+  See $PwmChannel.set-duty-factor for more information on duty factors.
   */
-  start pin/Pin --duty_factor/num=0.0 -> PwmChannel:
-    channel := pwm_start_ pwm_ pin.num duty_factor.to_float
-    return PwmChannel.from_pwm_ this channel
+  start pin/Pin --duty-factor/num=0.0 -> PwmChannel:
+    channel := pwm-start_ pwm_ pin.num duty-factor.to-float
+    return PwmChannel.from-pwm_ this channel
 
   /** The frequency of this PWM. */
   frequency -> int:
-    return pwm_frequency_ pwm_
+    return pwm-frequency_ pwm_
 
   /**
   Sets the frequency of the PWM.
@@ -127,14 +127,14 @@ class Pwm:
   It may not be too far below the max frequency, either.
   */
   frequency= value/int:
-    pwm_set_frequency_ pwm_ value
+    pwm-set-frequency_ pwm_ value
 
   /**
   Closes the instance and all channels associated with it.
   */
   close:
     if not pwm_: return
-    pwm_close_ pwm_
+    pwm-close_ pwm_
     pwm_ = null
 
 /**
@@ -147,13 +147,13 @@ class PwmChannel:
   pwm_/Pwm
   channel_ := ?
 
-  constructor.from_pwm_ .pwm_ .channel_:
+  constructor.from-pwm_ .pwm_ .channel_:
 
   /**
   Gets the current duty factor.
   */
-  duty_factor -> float:
-    return pwm_factor_ pwm_.pwm_ channel_
+  duty-factor -> float:
+    return pwm-factor_ pwm_.pwm_ channel_
 
   /**
   Sets the duty factor. The duty factor is clamped to the [0..1] range.
@@ -162,37 +162,37 @@ class PwmChannel:
     means the pin is steady high. A duty factor of 0.25 means the pin will
     stay high for one quarter of the cycle, low for the remaining 3 quarters.
   */
-  set_duty_factor duty_factor/num:
-    pwm_set_factor_ pwm_.pwm_ channel_ duty_factor.to_float
+  set-duty-factor duty-factor/num:
+    pwm-set-factor_ pwm_.pwm_ channel_ duty-factor.to-float
 
   /**
   Closes the channel and detaches from the GPIO pin.
   */
   close:
     if not channel_: return
-    pwm_close_channel_ pwm_.pwm_ channel_
+    pwm-close-channel_ pwm_.pwm_ channel_
     channel_ = null
 
-pwm_init_ frequency max_frequency:
+pwm-init_ frequency max-frequency:
   #primitive.pwm.init
 
-pwm_close_ pwm:
+pwm-close_ pwm:
   #primitive.pwm.close
 
-pwm_start_ pwm pin factor:
+pwm-start_ pwm pin factor:
   #primitive.pwm.start
 
-pwm_factor_ pwm channel:
+pwm-factor_ pwm channel:
   #primitive.pwm.factor
 
-pwm_set_factor_ pwm channel factor:
-  #primitive.pwm.set_factor
+pwm-set-factor_ pwm channel factor:
+  #primitive.pwm.set-factor
 
-pwm_frequency_ pwm:
+pwm-frequency_ pwm:
   #primitive.pwm.frequency
 
-pwm_set_frequency_ pwm frequency:
-  #primitive.pwm.set_frequency
+pwm-set-frequency_ pwm frequency:
+  #primitive.pwm.set-frequency
 
-pwm_close_channel_ pwm channel:
-  #primitive.pwm.close_channel
+pwm-close-channel_ pwm channel:
+  #primitive.pwm.close-channel

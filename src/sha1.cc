@@ -18,47 +18,47 @@
 
 namespace toit {
 
-Sha1::Sha1(SimpleResourceGroup* group) : SimpleResource(group), _data(), _block_posn(0), _length(0) {
-  _h[0] = 0x67452301;
-  _h[1] = 0xEFCDAB89;
-  _h[2] = 0x98BADCFE;
-  _h[3] = 0x10325476;
-  _h[4] = 0xC3D2E1F0;
+Sha1::Sha1(SimpleResourceGroup* group) : SimpleResource(group), data_(), block_posn_(0), length_(0) {
+  h_[0] = 0x67452301;
+  h_[1] = 0xEFCDAB89;
+  h_[2] = 0x98BADCFE;
+  h_[3] = 0x10325476;
+  h_[4] = 0xC3D2E1F0;
 }
 
 void Sha1::add(const uint8* contents, intptr_t extra) {
-  _length += extra;
+  length_ += extra;
   while (extra) {
-    intptr_t end = Utils::min<intptr_t>(BLOCK_SIZE, _block_posn + extra);
-    intptr_t size = end - _block_posn;
-    memcpy(_data + _block_posn, contents, size);
+    intptr_t end = Utils::min<intptr_t>(BLOCK_SIZE, block_posn_ + extra);
+    intptr_t size = end - block_posn_;
+    memcpy(data_ + block_posn_, contents, size);
     contents += size;
     extra -= size;
-    _block_posn = end;
-    if (_block_posn == BLOCK_SIZE) {
+    block_posn_ = end;
+    if (block_posn_ == BLOCK_SIZE) {
       process_block();
-      _block_posn = 0;
+      block_posn_ = 0;
     }
   }
 }
 
 void Sha1::get_hash(uint8* hash) {
-  int64_t original_length = _length * 8;  // In bits.
+  int64_t original_length = length_ * 8;  // In bits.
   uint8 terminator = 0x80;
   add(&terminator, 1);
-  intptr_t remaining = BLOCK_SIZE - _block_posn;
-  memset(_data + _block_posn, 0, remaining);
+  intptr_t remaining = BLOCK_SIZE - block_posn_;
+  memset(data_ + block_posn_, 0, remaining);
   if (remaining < 8) {
     process_block();
-    memset(_data, 0, BLOCK_SIZE);
+    memset(data_, 0, BLOCK_SIZE);
   }
-  for (int i = 0; i < 8; i++) _data[BLOCK_SIZE - 1 - i] = original_length >> (i << 3);
+  for (int i = 0; i < 8; i++) data_[BLOCK_SIZE - 1 - i] = original_length >> (i << 3);
   process_block();
   for (int i = 0; i < 5; i++) {
-    hash[i * 4 + 0] = (_h[i] >> 24) & 0xff;
-    hash[i * 4 + 1] = (_h[i] >> 16) & 0xff;
-    hash[i * 4 + 2] = (_h[i] >> 8) & 0xff;
-    hash[i * 4 + 3] = (_h[i] >> 0) & 0xff;
+    hash[i * 4 + 0] = (h_[i] >> 24) & 0xff;
+    hash[i * 4 + 1] = (h_[i] >> 16) & 0xff;
+    hash[i * 4 + 2] = (h_[i] >> 8) & 0xff;
+    hash[i * 4 + 3] = (h_[i] >> 0) & 0xff;
   }
 }
 
@@ -70,11 +70,11 @@ void Sha1::process_block() {
     w[i] = (n << 1) | (n >> 31);
   }
 
-  uint32_t a = _h[0];
-  uint32_t b = _h[1];
-  uint32_t c = _h[2];
-  uint32_t d = _h[3];
-  uint32_t e = _h[4];
+  uint32_t a = h_[0];
+  uint32_t b = h_[1];
+  uint32_t c = h_[2];
+  uint32_t d = h_[3];
+  uint32_t e = h_[4];
 
   for (int i = 0; i < 80; i++) {
     uint32_t f = 0;
@@ -101,11 +101,11 @@ void Sha1::process_block() {
     a = temp;
   }
 
-  _h[0] += a;
-  _h[1] += b;
-  _h[2] += c;
-  _h[3] += d;
-  _h[4] += e;
+  h_[0] += a;
+  h_[1] += b;
+  h_[2] += c;
+  h_[3] += d;
+  h_[4] += e;
 }
 
 }

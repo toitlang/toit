@@ -2,22 +2,22 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
 
 interface PrintService:
-  static UUID  /string ::= "0b7e3aa1-9fc9-4632-bb09-4605cd11897e"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 1
+  static SELECTOR ::= ServiceSelector
+      --uuid="0b7e3aa1-9fc9-4632-bb09-4605cd11897e"
+      --major=0
+      --minor=1
 
-  static PRINT_INDEX /int ::= 0
   print message/string -> none
+  static PRINT-INDEX /int ::= 0
 
 class PrintServiceClient extends ServiceClient implements PrintService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> PrintServiceClient?:
-    return (open_ PrintService.UUID PrintService.MAJOR PrintService.MINOR) and this
+  static SELECTOR ::= PrintService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   print message/string -> none:
-    invoke_ PrintService.PRINT_INDEX message
+    invoke_ PrintService.PRINT-INDEX message

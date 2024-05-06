@@ -19,6 +19,8 @@ project(toit)
 
 include(tools/toit.cmake)
 
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 set(TOIT_IS_CROSS FALSE)
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
     (NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_HOST_SYSTEM_PROCESSOR}"))
@@ -27,6 +29,9 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
   # need a different host build to compile the snapshots.
   set(TOIT_IS_CROSS TRUE)
+  # We are using the compiler from the host system, but we want to use the vessels
+  # from the target system.
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
@@ -79,13 +84,15 @@ if (CCACHE_FOUND)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  if (NOT ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "MSYS"))
+    set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  endif()
 endif()
 
-if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
+if (NOT ${ESP32_CHIP} STREQUAL "esp32c3")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
 endif()
 
@@ -117,7 +124,7 @@ endif()
 # the input buffer length to 8k because some sites have very large certificates
 # (eg Telegram, over 5100 bytes) and this is not something we can control.
 # There are some protocol extensions for telling the other side about our buffer
-# sizes, but they just cause the other side to fragment packets more agressively.
+# sizes, but they just cause the other side to fragment packets more aggressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -126,8 +133,12 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
 else()
-  # These constants should stay in sync with the ones in the sdkconfig file of the ESP32 toolchain.
-  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=8100 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+  # For now we run with the full 16k size in the input buffer on host systems.
+  # For devices we still run with a smaller buffer, which saves memory
+  # pressure, but means the TLS connection often breaks after a while when the
+  # counterpart makes the packets larger.  This ...IN_CONTENT_LEN define is
+  # overriddden in sdkconfig files for devices.
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
@@ -150,53 +161,58 @@ endif()
 
 add_custom_target(
   build_version_file
-  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
+  # It's important that there is no space after the version (before the '>'), as
+  # Windows would add a space into the output otherwise.
+  COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
 add_subdirectory(src)
-add_subdirectory(tools)
 
-set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
-separate_arguments(GO_ENV)
-list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_subdirectory(tools)
 
-set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
+  separate_arguments(GO_ENV)
+  list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-add_custom_command(
-  OUTPUT "${TOITLSP_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
-)
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
 
-add_custom_command(
-  OUTPUT "${TOITPKG_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
-)
-
-add_custom_target(
-  build_go_tools
-  DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
-)
-add_dependencies(build_tools build_go_tools)
-
-enable_testing()
-add_subdirectory(tests)
-
-add_subdirectory(examples)
-# External Toit packages and projects.
-add_subdirectory(external)
-
-set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
-# The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
-# such they might interfere with other libraries.
-# Eventually, we need to import mbedtls differently.
-set(ENABLE_TESTING CACHE BOOL OFF)
-set(ENABLE_PROGRAMS CACHE BOOL OFF)
-add_subdirectory(
-  "${IDF_PATH}/components/mbedtls/mbedtls"
-  "${CMAKE_BINARY_DIR}/mbedtls"
-  EXCLUDE_FROM_ALL
+  add_custom_command(
+    OUTPUT "${TOITLSP_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
   )
 
-set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+  add_custom_command(
+    OUTPUT "${TOITPKG_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
+  )
+
+  add_custom_target(
+    build_go_tools
+    DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+  )
+  add_dependencies(build_tools build_go_tools)
+
+  enable_testing()
+  add_subdirectory(tests)
+
+  add_subdirectory(examples)
+  # External Toit packages and projects.
+  add_subdirectory(external)
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
+  # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
+  # such they might interfere with other libraries.
+  # Eventually, we need to import mbedtls differently.
+  set(ENABLE_TESTING CACHE BOOL OFF)
+  set(ENABLE_PROGRAMS CACHE BOOL OFF)
+  add_subdirectory(
+    "${IDF_PATH}/components/mbedtls/mbedtls"
+    "${CMAKE_BINARY_DIR}/mbedtls"
+    EXCLUDE_FROM_ALL
+    )
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+endif() # TOIT_SYSTEM_NAME != esp32

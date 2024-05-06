@@ -15,10 +15,7 @@ namespace toit {
 
 class Program;
 
-static void write_sentinel_at(uword address) {
-  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
-  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
-}
+void write_sentinel_at(uword address);
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
@@ -114,11 +111,6 @@ void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_
 }
 #endif
 
-HeapObject* SemiSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  return old_location->forwarding_address();
-}
-
 bool SemiSpace::is_alive(HeapObject* old_location) {
   // If we are doing a scavenge and are asked whether an old-space object is
   // alive, return true.
@@ -126,16 +118,21 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
   return old_location->has_forwarding_address();
 }
 
+bool SemiSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
+}
+
 void Space::append(Chunk* chunk) {
   chunk->set_owner(this);
-  // We could insert chunks in increasing address order.  See the git history
-  // pre-May-22 for the code for that.  This might be useful for a partial
-  // compactor, but we don't have partial compaction currently.  Instead we
-  // just append the new chunk at the end, which gives predictable behaviour
-  // even with randomized allocation addresses, and ensures that if the space
-  // shrinks down again the smallest (oldest) chunks will be left, avoiding a
-  // large mostly-empty chunk at the start of the space.
-  chunk_list_.append(chunk);
+  // Insert chunk in increasing address order in the list.  This means when
+  // the heap shrinks the highest addresses will be freed.  However, we group
+  // similar sized chunks together so that the big chunks will always be at the
+  // end.  This means when the heap shrinks because of successful GC we won't
+  // be left with one big (mostly empty) chunk.  On ESP32 all the chunks are 4k.
+  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) {
+    if (it->size() > chunk->size()) return true;
+    return it->start() > chunk->start() && it->size() == chunk->size();
+  });
 }
 
 void SemiSpace::append(Chunk* chunk) {

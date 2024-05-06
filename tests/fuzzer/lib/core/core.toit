@@ -6,10 +6,10 @@ always: fail  // So that we don't need to worry if a test succeeds.
 
 throw exception:
 rethrow exception trace:
-lookup_failure_ receiver selector_or_selector_offset:
-as_check_failure_ receiver id:
-run_global_initializer_ id initializer:
-program_failure_ bci:
+lookup-failure_ receiver selector-or-selector-offset:
+as-check-failure_ receiver id:
+run-global-initializer__ id initializer:
+program-failure_ bci:
 unreachable:
 
 class SmallArray_:
@@ -18,14 +18,17 @@ interface ByteArray:
 class ByteArray_:
   constructor len:
 class List_:
+class ListSlice_:
 class string:
 class String_:
 class StringSlice_:
+class StringByteSlice_:
 class float:
 class LargeInteger_:
 class False_:
 class Null_:
 class Object:
+  stringify:
 class SmallInteger_:
 class Task_:
 class True_:
@@ -43,35 +46,36 @@ class CowByteArray_:
 class ByteArraySlice_:
 
 interface Interface_:
+mixin Mixin_:
 class Class_:
 class Stack_:
 class Exception_:
 
-__entry__main:
-__entry__spawn:
+__entry__main task:
+__entry__spawn task:
 __entry__task lambda:
 
-primitive_lookup_failure_ module index:
-too_few_code_arguments_failure_ is_block expected provided bci:
-uninitialized_global_failure_ global_name:
+primitive-lookup-failure_ module index:
+too-few-code-arguments-failure_ is-block expected provided bci:
+uninitialized-global-failure_ global-name:
 
-create_array_ x:
-create_array_ x y:
-create_array_ x y z:
-create_array_ x y z u:
+create-array_ x:
+create-array_ x y:
+create-array_ x y z:
+create-array_ x y z u:
 
-create_byte_array_ x:
-create_byte_array_ x y:
-create_byte_array_ x y z:
+create-byte-array_ x:
+create-byte-array_ x y:
+create-byte-array_ x y z:
 
-create_list_literal_from_array_ array:
-create_cow_byte_array_ byte_array:
+create-list-literal-from-array_ array:
+create-cow-byte-array_ byte-array:
 
 identical x y:
 
-lambda_ method arguments arg_count:
+lambda__ method arguments arg-count:
 class Lambda:
 
-simple_interpolate_strings_ array:
-interpolate_strings_ array:
+simple-interpolate-strings_ array:
+interpolate-strings_ array:
 assert_ [cond]:

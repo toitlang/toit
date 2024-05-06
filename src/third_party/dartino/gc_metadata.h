@@ -24,6 +24,7 @@ class GcMetadata {
  public:
   static void set_up();
   static void tear_down();
+  static void get_metadata_extent(uword* address_return, uword* size_return);
 
   // When calculating the locations of compacted objects we want to use the
   // object starts array, which is arranged in card sizes for the remembered
@@ -38,8 +39,8 @@ class GcMetadata {
   static const int CARD_SIZE_IN_BITS_LOG_2 = CARD_SIZE_LOG_2 + 3;
 
   // There is a byte per card, and any two byte values would work here.
-  static const int NO_NEW_SPACE_POINTERS = 0;
-  static const int NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
+  static const uint8 NO_NEW_SPACE_POINTERS = 0;
+  static const uint8 NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
 
   // One bit per word of heap, so the size in bytes is 1/8th of that.
   static const int MARK_BITS_SHIFT = 3 + WORD_SHIFT;
@@ -97,17 +98,36 @@ class GcMetadata {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
     uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
-    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
     // When checking if one-word objects are black we may look one bit into the
     // next page.  Add one to the area to account for this possibility.
-    OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
-    uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
-    uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
-    OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
+    mark_size++;
+    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    round_metadata_extent(&mark_bits, &mark_size);
+    bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size);
+    if (ok) {
+      uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
+      uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+      round_metadata_extent(&cumulative_mark_bits, &cumulative_mark_size);
+      ok = OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
+    }
+    if (!ok) FATAL("Out of memory when mapping heap metadata");
+  }
+
+  // Avoid too many fragments of virtual memory with different permissions by
+  // rounding up the area to be unprotected.  We choose 2MB as the granularity
+  // in order to take advantage of huge pages.
+  static void round_metadata_extent(uword* address, uword* size) {
+#ifdef TOIT_FREERTOS
+    return;
+#endif
+    uword start = reinterpret_cast<uword>(singleton_.metadata_);
+    uword end = reinterpret_cast<uword>(singleton_.metadata_) + singleton_.metadata_size_;
+    uword old_address = *address;
+    *address = Utils::max(start, Utils::round_down(old_address, 2 * MB));
+    *size = Utils::min(end - *address, Utils::round_up(old_address + *size, 2 * MB) - *address);
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for_chunk(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
@@ -116,7 +136,7 @@ class GcMetadata {
   }
 
   // Safe to call with any object, even a Smi.
-  static INLINE PageType get_page_type(Object* object) {
+  static INLINE PageType get_page_type(const Object* object) {
     uword addr = reinterpret_cast<uword>(object);
     uword offset = addr >> 1 | addr << (8 * sizeof(uword) - 1);
     offset -= singleton_.heap_start_munged_;
@@ -144,6 +164,14 @@ class GcMetadata {
     ASSERT(in_metadata_range(address));
     return reinterpret_cast<uint8*>((address >> CARD_SIZE_LOG_2) +
                                     singleton_.starts_bias_);
+  }
+
+  static inline uint8* remembered_set_for(HeapObject* object) {
+    return remembered_set_for(reinterpret_cast<uword>(object));
+  }
+
+  static inline const uint8* remembered_set_for(const HeapObject* object) {
+    return remembered_set_for(reinterpret_cast<uword>(object));
   }
 
   static inline uint8* remembered_set_for(uword address) {
@@ -375,19 +403,23 @@ class GcMetadata {
     return base + (Utils::popcount(bits) << WORD_SHIFT);
   }
 
-  static int heap_allocation_arena() {
-    return singleton_.heap_allocation_arena_;
-  }
-
   static uword lowest_old_space_address() { return singleton_.lowest_address_; }
 
   static uword heap_extent() { return singleton_.heap_extent_; }
 
+  // This method returns true for the end of the very last page
+  // in the metadata range.  This means it can be used for the end
+  // of a page when calculating a range of metadata corresponding
+  // to a page.  However if we are accessing the metadata for a
+  // particular HeapObject, we would normally obtain the address
+  // with a cast, which means it would be one higher because of
+  // tagging.  So an object at the start of the first page after
+  // the range would be correctly rejected here.
   template<typename T>
   static bool in_metadata_range(T address_argument) {
     uword address = reinterpret_cast<uword>(address_argument);
     uword lowest = singleton_.lowest_address_;
-    return lowest <= address && address < lowest + singleton_.heap_extent_;
+    return lowest <= address && address <= lowest + singleton_.heap_extent_;
   }
 
   static uword remembered_set_bias() { return singleton_.remembered_set_bias_; }
@@ -430,6 +462,14 @@ class GcMetadata {
 
   static uword object_address_from_start(uword line, uint8 start);
 
+  static int large_heap_heuristics() {
+    return singleton_.large_heap_heuristics_;
+  }
+
+  static void set_large_heap_heuristics(int value) {
+    singleton_.large_heap_heuristics_ = value;
+  }
+
  private:
   GcMetadata() {}
   ~GcMetadata() {}
@@ -450,7 +490,6 @@ class GcMetadata {
   uword heap_extent_munged_;
   uword number_of_cards_;
   uword metadata_size_;
-  int heap_allocation_arena_;
   uint8* metadata_;
   uint8* remembered_set_;
   uint8* object_starts_;
@@ -463,6 +502,11 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+#ifdef TOIT_FREERTOS
+  int large_heap_heuristics_ = 0;
+#else
+  int large_heap_heuristics_ = 100;
+#endif
 };
 
 }  // namespace toit

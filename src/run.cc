@@ -52,7 +52,7 @@ int run_program(const char* boot_bundle_path, SnapshotBundle application_bundle,
   // TODO(florian): we are currently doing a copy of the snapshot as the
   // snapshot is sent in a message, and then freed as part of the finalizer when
   // releasing external memory.
-  auto copy = unvoid_cast<uint8*>(malloc(toit_run_snapshot_len));
+  auto copy = unvoid_cast<uint8*>(malloc(toit_run_snapshot_len));  // Never fails on host.
   memcpy(copy, toit_run_snapshot, toit_run_snapshot_len);
   SnapshotBundle boot_bundle(copy, toit_run_snapshot_len);
   return run_program(boot_bundle, application_bundle, argv);
@@ -90,7 +90,7 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
         sleep_time.tv_sec = exit.value / 1000;
         sleep_time.tv_nsec = (exit.value % 1000) * 1000000;
 
-        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) { }
+        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {}
         break;
       }
     }
