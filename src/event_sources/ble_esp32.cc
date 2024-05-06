@@ -23,7 +23,7 @@ namespace toit {
 BleEventSource* BleEventSource::instance_ = null;
 
 BleEventSource::BleEventSource()
-    : LazyEventSource("BLE", 1) {
+    : EventSource("BLE", 1) {
   instance_ = this;
 }
 
@@ -35,12 +35,6 @@ void BleEventSource::on_event(BleResource* resource, word data) {
   Locker locker(mutex());
   if (resource) dispatch(locker, resource, data);
 }
-
-bool BleEventSource::start() {
-  return true;
-}
-
-void BleEventSource::stop() {}
 
 } // namespace toit
 

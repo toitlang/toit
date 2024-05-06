@@ -15,7 +15,7 @@
 
 import host.file
 import host.pipe
-import bytes
+import io
 
 find-tar-exec_:
   ["/bin/tar", "/usr/bin/tar"].do:
@@ -42,10 +42,9 @@ tar-extract --binary/bool archive/string file-in-archive/string -> ByteArray:
   to := pipes[0]
   from := pipes[1]
   pid := pipes[3]
-  result := bytes.Buffer
+  result := io.Buffer
   try:
-    while byte-array := from.read:
-      result.write byte-array
+    result.write-from from
   finally:
     from.close
     to.close

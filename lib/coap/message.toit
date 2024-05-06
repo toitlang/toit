@@ -2,9 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
-import bytes
-import reader
+import io
 
 import .option
 
@@ -55,7 +53,7 @@ class Message:
 
   code := 0
   token/Token? := null
-  payload/reader.SizedReader? := null
+  payload/io.Reader? := null
 
   options := []
 
@@ -86,11 +84,11 @@ class Message:
 
   read-payload -> ByteArray:
     if not payload: return ByteArray 0
-    buffer := bytes.Buffer.with-initial-size payload.size
+    buffer := io.Buffer.with-capacity payload.content-size
     buffer.write-from payload
-    return buffer.buffer
+    return buffer.bytes
 
-  write-options_ buffer/bytes.Buffer:
+  write-options_ buffer/io.Buffer:
     // TODO: Perform a stable sort instead?
     sorted := options.is-empty or options.is-sorted: | a b | a.number - b.number
     if not sorted: throw "UNSORTED_OPTIONS"
@@ -109,11 +107,11 @@ class Message:
       option-write-ext_ length-bits length buffer
       buffer.write it.value
 
-  write-payload_ buffer/bytes.Buffer:
+  write-payload_ buffer/io.Buffer:
     if payload:
       buffer.write-from payload
 
-  parse-options_ msg-length/int reader/reader.BufferedReader -> int:
+  parse-options_ msg-length/int reader/io.Reader -> int:
     read := 0
     number := 0
     while read < msg-length:
@@ -129,9 +127,9 @@ class Message:
         read++
       else if delta == OPTION-2-BYTE-MARKER_:
         if msg-length < read + 2: throw "OUT_OF_RANGE"
-        data := reader.read-bytes 2
+        data := reader.big-endian.read-uint16
         read += 2
-        delta =  OPTION-2-BYTE-OFFSET_ + (binary.BIG-ENDIAN.uint16 data 0)
+        delta =  OPTION-2-BYTE-OFFSET_ + data
       else if delta == OPTION-ERROR-MARKER_:
         throw "FORMAT_ERROR"
       number += delta
@@ -144,9 +142,9 @@ class Message:
         read++
       else if length == OPTION-2-BYTE-MARKER_:
         if msg-length < read + 2: throw "OUT_OF_RANGE"
-        data := reader.read-bytes 2
+        data := reader.big-endian.read-uint16
         read += 2
-        length = OPTION-2-BYTE-OFFSET_ + (binary.BIG-ENDIAN.uint16 data 0)
+        length = OPTION-2-BYTE-OFFSET_ + data
       else if length == OPTION-ERROR-MARKER_:
         throw "FORMAT_ERROR"
       if msg-length < read + length: throw "OUT_OF_RANGE"
@@ -162,10 +160,8 @@ class Message:
     if value < OPTION-2-BYTE-OFFSET_: return OPTION-1-BYTE-MARKER_
     return OPTION-2-BYTE-MARKER_
 
-  static option-write-ext_ bits value buffer:
+  static option-write-ext_ bits value buffer/io.Buffer:
     if bits == OPTION-1-BYTE-MARKER_:
       buffer.write-byte value - OPTION-1-BYTE-MARKER_
     else if bits == OPTION-2-BYTE-MARKER_:
-      array := ByteArray 2
-      binary.BIG-ENDIAN.put-uint16 array 0 value - OPTION-2-BYTE-OFFSET_
-      buffer.write array
+      buffer.big-endian.write-uint16 (value - OPTION-2-BYTE-OFFSET_)

@@ -30,7 +30,7 @@ main:
         break
       if instruction != "DO-NOTHING":
         print "Sending $instruction"
-        port.write instruction
+        port.out.write instruction
       sleep --ms=1_000
 
   pin-in := gpio.Pin PIN-IN --input --pull-down

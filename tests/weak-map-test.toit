@@ -36,9 +36,8 @@ test-map:
     expect-equals null weak[0]
     expect-equals null weak[9]
 
-    sleep --ms=10  // Allow cleanup to happen.
+    sleep-until: weak.size == 0
 
-    expect-equals 0 weak.size
     expect (not weak.contains 0)
     expect (not weak.contains 9)
 
@@ -61,9 +60,8 @@ test-some-survive:
     expect-equals null weak[8]
     expect-equals null weak[9]
 
-    sleep --ms=10  // Allow cleanup to happen.
+    sleep-until: weak.size == 1
 
-    expect-equals 1 weak.size
     expect-equals "String number $iteration" weak[iteration]
     expect (not weak.contains 8)
     expect (not weak.contains 9)
@@ -90,9 +88,8 @@ test-large-map:
   expect-equals null weak[942]
   expect-equals 1000 weak.size
 
-  sleep --ms=10  // Allow cleanup to happen.
+  sleep-until: weak.size == 0
 
-  expect-equals 0 weak.size
   expect (not weak.contains 42)
   expect (not weak.contains 942)
 
@@ -112,9 +109,8 @@ test-reachable-through-keys:
   expect-equals 10 weak.size
   expect-equals null weak["String number 4"]
 
-  sleep --ms=10  // Allow cleanup to happen.
+  sleep-until: weak.size == 0
 
-  expect-equals 0 weak.size
   expect (not weak.contains "String number 4")
 
 // Test that weak maps that are GCed are handled correctly.
@@ -155,9 +151,7 @@ test-revived-maps:
 
   provoke-weak-processing
 
-  sleep --ms=10  // Run finalizers.
-
-  expect-equals true notifier.notified
+  sleep-until: notifier.notified
 
   map := notifier.map
 
@@ -170,7 +164,13 @@ test-revived-maps:
 
   provoke-weak-processing
 
-  sleep --ms=10
+  sleep-until: map.size == 10
 
-  expect-equals 10 map.size
   expect-equals "String number 7" map[7]
+
+// Pause the main task until the finalizer task has had time to satisfy the
+// condition in the given block.
+sleep-until [block]:
+  with-timeout --ms=2000:
+    while not block.call:
+      sleep --ms=1

@@ -6,7 +6,7 @@ import coap
 import coap.tcp as coap
 import coap.message as coap
 import expect show *
-import reader show Reader
+import io
 
 // Inject known token id, as the token is random.
 TOKEN-ID_ ::= ByteArray 4: it + 42
@@ -130,7 +130,32 @@ test-timeout-while-reading:
   e = catch: client.get "/" --token-id=TOKEN-ID_
   expect-equals "TRANSPORT_CLOSED" e
 
-monitor TestSocket implements Reader:
+class TestSocket extends Object with io.CloseableInMixin io.CloseableOutMixin:
+  coordinator_ := TestSocketCoordinator_
+
+  // Ignore value, as it's only relevant if the implementation has Nagle implemented.
+  no-delay -> bool: return false
+  no-delay= value/bool -> none: // Do nothing.
+
+  instruct expect/ByteArray return-value/ByteArray:
+    coordinator_.instruct expect return-value
+
+  read_ -> ByteArray?:
+    return coordinator_.read
+
+  try-write_ bytes/ByteArray? from/int to/int -> int:
+    return coordinator_.write bytes from to
+
+  close -> none:
+    coordinator_.close
+
+  close-writer_ -> none:
+    // TODO(florian): should we do something here?
+
+  close-reader_ -> none:
+    coordinator_.close
+
+monitor TestSocketCoordinator_:
   expect_ := null
   return-value_ := null
 
@@ -141,10 +166,9 @@ monitor TestSocket implements Reader:
     expect_ = expect
     return-value_ = return-value
 
-
   close: closed_ = true
 
-  write data from=0 to=data.size:
+  write data from to:
     expect-bytes-equal
       expect_
       data.copy from to
@@ -157,7 +181,3 @@ monitor TestSocket implements Reader:
     r := return-value_
     return-value_ = null
     return ByteArray r.size: r[it]
-
-  // Ignore value, as it's only relevant if the implementation has Nagle implemented.
-  no-delay -> bool: return false
-  no-delay= value/bool -> none: // Do nothing.

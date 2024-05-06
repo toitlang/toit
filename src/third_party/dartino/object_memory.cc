@@ -168,8 +168,8 @@ bool Space::includes(uword address) {
 class InSpaceVisitor : public RootCallback {
  public:
   explicit InSpaceVisitor(Space* space) : space(space) {}
-  void do_roots(Object** p, int length) {
-    for (int i = 0; i < length; i++) {
+  void do_roots(Object** p, word length) {
+    for (word i = 0; i < length; i++) {
       Object* object = p[i];
       if (is_smi(object)) continue;
       if (space->includes(reinterpret_cast<uword>(object))) {

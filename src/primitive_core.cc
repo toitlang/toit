@@ -285,7 +285,7 @@ PRIMITIVE(byte_array_convert_to_string) {
 }
 
 PRIMITIVE(blob_index_of) {
-  ARGS(Blob, bytes, int, byte, int, from, int, to);
+  ARGS(Blob, bytes, int, byte, word, from, word, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) FAIL(OUT_OF_BOUNDS);
 #if defined(__x86_64__) && !defined(__SANITIZE_THREAD__)
   const uint8* address = bytes.address();
@@ -323,7 +323,7 @@ PRIMITIVE(blob_index_of) {
   return Smi::from(-1);
 #else
   const uint8* from_address = bytes.address() + from;
-  int len = to - from;
+  word len = to - from;
   const uint8* value = reinterpret_cast<const uint8*>(memchr(from_address, byte, len));
   return Smi::from(value != null ? value - bytes.address() : -1);
 #endif
@@ -346,7 +346,7 @@ static Array* get_array_from_list(Object* object, Process* process) {
 }
 
 PRIMITIVE(crc) {
-  ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
+  ARGS(int64, accumulator, word, width, Blob, data, word, from, word, to, Object, table_object);
   if ((width != 0 && width < 8) || width > 64) FAIL(INVALID_ARGUMENT);
   bool big_endian = width != 0;
   if (to == from) return _raw_accumulator;
@@ -426,7 +426,7 @@ PRIMITIVE(string_from_rune) {
 }
 
 PRIMITIVE(string_write_to_byte_array) {
-  ARGS(Blob, source_bytes, MutableBlob, dest, int, from, int, to, int, dest_index);
+  ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
   if (dest_index + to - from > dest.length()) FAIL(OUT_OF_BOUNDS);
@@ -435,11 +435,11 @@ PRIMITIVE(string_write_to_byte_array) {
 }
 
 PRIMITIVE(put_uint_big_endian) {
-  ARGS(Object, unused, MutableBlob, dest, int, width, int, offset, int64, value);
+  ARGS(Object, unused, MutableBlob, dest, int, width, word, offset, int64, value);
   USE(unused);
   unsigned unsigned_width = width;
-  unsigned unsigned_offset = offset;
-  unsigned length = dest.length();
+  uword unsigned_offset = offset;
+  uword length = dest.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -454,18 +454,18 @@ PRIMITIVE(put_uint_big_endian) {
 }
 
 PRIMITIVE(put_uint_little_endian) {
-  ARGS(Object, unused, MutableBlob, dest, int, width, int, offset, int64, value);
+  ARGS(Object, unused, MutableBlob, dest, int, width, word, offset, int64, value);
   USE(unused);
   unsigned width_minus_1 = width - 1;  // This means width 0 is rejected.
-  unsigned unsigned_offset = offset;
-  unsigned length = dest.length();
+  uword unsigned_offset = offset;
+  uword length = dest.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
   if (unsigned_offset > length || width_minus_1 >= 8 || unsigned_offset + width_minus_1 >= length) {
     FAIL(OUT_OF_BOUNDS);
   }
-  for (unsigned i = 0; i <= width_minus_1; i++) {
+  for (uword i = 0; i <= width_minus_1; i++) {
     dest.address()[offset + i] = value;
     value >>= 8;
   }
@@ -473,10 +473,10 @@ PRIMITIVE(put_uint_little_endian) {
 }
 
 PRIMITIVE(put_float_32_little_endian) {
-  ARGS(Object, unused, MutableBlob, dest, int, offset, double, value);
+  ARGS(Object, unused, MutableBlob, dest, word, offset, double, value);
   USE(unused);
-  unsigned unsigned_offset = offset;
-  unsigned length = dest.length();
+  uword unsigned_offset = offset;
+  uword length = dest.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -489,10 +489,10 @@ PRIMITIVE(put_float_32_little_endian) {
 }
 
 PRIMITIVE(put_float_64_little_endian) {
-  ARGS(Object, unused, MutableBlob, dest, int, offset, double, value);
+  ARGS(Object, unused, MutableBlob, dest, word, offset, double, value);
   USE(unused);
-  unsigned unsigned_offset = offset;
-  unsigned length = dest.length();
+  uword unsigned_offset = offset;
+  uword length = dest.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -504,11 +504,11 @@ PRIMITIVE(put_float_64_little_endian) {
 }
 
 PRIMITIVE(read_uint_big_endian) {
-  ARGS(Object, unused, Blob, source, int, width, int, offset);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
   unsigned unsigned_width = width;
-  unsigned unsigned_offset = offset;
-  unsigned length = source.length();
+  uword unsigned_offset = offset;
+  uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -524,11 +524,11 @@ PRIMITIVE(read_uint_big_endian) {
 }
 
 PRIMITIVE(read_uint_little_endian) {
-  ARGS(Object, unused, Blob, source, int, width, int, offset);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
   unsigned unsigned_width = width;
-  unsigned unsigned_offset = offset;
-  unsigned length = source.length();
+  uword unsigned_offset = offset;
+  uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -536,7 +536,7 @@ PRIMITIVE(read_uint_little_endian) {
     FAIL(OUT_OF_BOUNDS);
   }
   uint64 value = 0;
-  for (int i = width - 1; i >= 0; i--) {
+  for (word i = width - 1; i >= 0; i--) {
     value <<= 8;
     value |= source.address()[offset + i];
   }
@@ -544,11 +544,11 @@ PRIMITIVE(read_uint_little_endian) {
 }
 
 PRIMITIVE(read_int_big_endian) {
-  ARGS(Object, unused, Blob, source, int, width, int, offset);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
   unsigned width_minus_1 = width - 1;  // This means size 0 is rejected.
-  unsigned unsigned_offset = offset;
-  unsigned length = source.length();
+  uword unsigned_offset = offset;
+  uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -556,7 +556,7 @@ PRIMITIVE(read_int_big_endian) {
     FAIL(OUT_OF_BOUNDS);
   }
   int64 value = static_cast<int8>(source.address()[offset]);  // Sign extend.
-  for (unsigned i = 1; i <= width_minus_1; i++) {
+  for (uword i = 1; i <= width_minus_1; i++) {
     value <<= 8;
     value |= source.address()[offset + i];
   }
@@ -564,11 +564,11 @@ PRIMITIVE(read_int_big_endian) {
 }
 
 PRIMITIVE(read_int_little_endian) {
-  ARGS(Object, unused, Blob, source, int, width, int, offset);
+  ARGS(Object, unused, Blob, source, int, width, word, offset);
   USE(unused);
   unsigned width_minus_1 = width - 1;  // This means size 0 is rejected.
-  unsigned unsigned_offset = offset;
-  unsigned length = source.length();
+  uword unsigned_offset = offset;
+  uword length = source.length();
   // We don't need to check for <0 on unsigned values.  Can't have integer
   // overflow when they are both constrained in size (assuming the byte
   // array can't be close to 4Gbytes large).
@@ -576,7 +576,7 @@ PRIMITIVE(read_int_little_endian) {
     FAIL(OUT_OF_BOUNDS);
   }
   int64 value = static_cast<int8>(source.address()[offset + width_minus_1]);  // Sign extend.
-  for (unsigned i = width_minus_1; i != 0; i--) {
+  for (uword i = width_minus_1; i != 0; i--) {
     value <<= 8;
     value |= source.address()[offset + i - 1];
   }
@@ -881,23 +881,23 @@ PRIMITIVE(float_mod) {
 }
 
 PRIMITIVE(float_round) {
-  ARGS(double, receiver, int, precission);
-  if (precission < 0 || precission > 15) FAIL(INVALID_ARGUMENT);
+  ARGS(double, receiver, int, precision);
+  if (precision < 0 || precision > 15) FAIL(INVALID_ARGUMENT);
   if (isnan(receiver)) FAIL(OUT_OF_RANGE);
   if (receiver > pow(10,54)) return _raw_receiver;
-  int factor = pow(10, precission);
+  int factor = pow(10, precision);
   return Primitive::allocate_double(round(receiver * factor) / factor, process);
 }
 
 PRIMITIVE(int_parse) {
-  ARGS(Blob, input, int, from, int, to, int, block_arg_dont_use_this);
+  ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
   if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
   // Difficult cases, handled by Toit code.  If the ASCII length is always less
   // than 18 we don't have to worry about 64 bit overflow.
   if (to - from > 18) FAIL(OUT_OF_RANGE);
   uint64 result = 0;
   bool negative = false;
-  int index = from;
+  word index = from;
   const uint8* in = input.address();
   if (in[index] == '-') {
     negative = true;
@@ -919,7 +919,7 @@ PRIMITIVE(int_parse) {
 }
 
 PRIMITIVE(float_parse) {
-  ARGS(Blob, input, int, from, int, to);
+  ARGS(Blob, input, word, from, word, to);
   if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
   const char* from_ptr = char_cast(input.address() + from);
   // strtod removes leading whitespace, but float.parse doesn't accept it.
@@ -1172,7 +1172,7 @@ PRIMITIVE(blob_hash_code) {
 }
 
 PRIMITIVE(hash_simple_json_string) {
-  ARGS(Blob, bytes, int, offset);
+  ARGS(Blob, bytes, word, offset);
   if (offset < 0) FAIL(INVALID_ARGUMENT);
   for (word i = offset; i < bytes.length(); i++) {
     uint8 c = bytes.address()[i];
@@ -1187,7 +1187,7 @@ PRIMITIVE(hash_simple_json_string) {
 }
 
 PRIMITIVE(json_skip_whitespace) {
-  ARGS(Blob, bytes, int, offset);
+  ARGS(Blob, bytes, word, offset);
   if (offset < 0) FAIL(INVALID_ARGUMENT);
   word i = offset;
   for ( ; i < bytes.length(); i++) {
@@ -1198,7 +1198,7 @@ PRIMITIVE(json_skip_whitespace) {
 }
 
 PRIMITIVE(compare_simple_json_string) {
-  ARGS(Blob, bytes, int, offset, StringOrSlice, string);
+  ARGS(Blob, bytes, word, offset, StringOrSlice, string);
   if (offset < 0) FAIL(INVALID_ARGUMENT);
   if (string.length() >= bytes.length() - offset) {
     return BOOL(false);
@@ -1211,7 +1211,7 @@ PRIMITIVE(compare_simple_json_string) {
 }
 
 PRIMITIVE(size_of_json_number) {
-  ARGS(Blob, bytes, int, offset);
+  ARGS(Blob, bytes, word, offset);
   if (offset < 0 || offset >= bytes.length() - 1) FAIL(INVALID_ARGUMENT);
   int is_float = 0;
   const uint8_t* p = bytes.address() + offset;
@@ -1291,12 +1291,12 @@ PRIMITIVE(string_rune_count) {
   word count = 0;
   const uword WORD_MASK = WORD_SIZE - 1;
   const uint8* address = bytes.address();
-  int len = bytes.length();
+  word len = bytes.length();
   // This algorithm counts the runes in word-sized chunks of UTF-8.
   // We have to ensure that the memory reads are word aligned to avoid memory
   // faults.
   // The first mask will make sure we skip over the bytes we don't need.
-  int skipped_start_bytes = reinterpret_cast<uword>(address) & WORD_MASK;
+  word skipped_start_bytes = reinterpret_cast<uword>(address) & WORD_MASK;
   address -= skipped_start_bytes;  // Align the address
   len += skipped_start_bytes;
 
@@ -1496,8 +1496,8 @@ static bool is_validated_string(Program* program, Object* object) {
 }
 
 static String* concat_strings(Process* process,
-                              const uint8* bytes_a, int len_a,
-                              const uint8* bytes_b, int len_b) {
+                              const uint8* bytes_a, word len_a,
+                              const uint8* bytes_b, word len_b) {
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
@@ -1532,9 +1532,9 @@ static inline bool utf_8_continuation_byte(int c) {
 }
 
 PRIMITIVE(string_slice) {
-  ARGS(String, receiver, int, from, int, to);
+  ARGS(String, receiver, word, from, word, to);
   String::Bytes bytes(receiver);
-  int length = bytes.length();
+  word length = bytes.length();
   if (from == 0 && to == length) return receiver;
   if (from < 0 || to > length || from > to) FAIL(OUT_OF_BOUNDS);
   if (from != length) {
@@ -1556,7 +1556,7 @@ PRIMITIVE(string_slice) {
   ASSERT(from >= 0);
   ASSERT(to <= receiver->length());  // Checked above.
   ASSERT(from < to);
-  int result_len = to - from;
+  word result_len = to - from;
   String* result = process->allocate_string(result_len);
   if (result == null) FAIL(ALLOCATION_FAILED);
   // Initialize object.
@@ -1569,11 +1569,11 @@ PRIMITIVE(concat_strings) {
   ARGS(Array, array);
   Program* program = process->program();
   // First make sure we have an array of strings.
-  for (int index = 0; index < array->length(); index++) {
+  for (word index = 0; index < array->length(); index++) {
     if (!is_validated_string(process->program(), array->at(index))) FAIL(WRONG_OBJECT_TYPE);
   }
-  int length = 0;
-  for (int index = 0; index < array->length(); index++) {
+  word length = 0;
+  for (word index = 0; index < array->length(); index++) {
     Blob blob;
     HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
     length += blob.length();
@@ -1581,11 +1581,11 @@ PRIMITIVE(concat_strings) {
   String* result = process->allocate_string(length);
   if (result == null) FAIL(ALLOCATION_FAILED);
   String::MutableBytes bytes(result);
-  int pos = 0;
-  for (int index = 0; index < array->length(); index++) {
+  word pos = 0;
+  for (word index = 0; index < array->length(); index++) {
     Blob blob;
     HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
-    int len = blob.length();
+    word len = blob.length();
     bytes._initialize(pos, blob.address(), 0, len);
     pos += len;
   }
@@ -1814,7 +1814,7 @@ PRIMITIVE(byte_array_new_external) {
 PRIMITIVE(byte_array_replace) {
   ARGS(MutableBlob, receiver, int, index, Blob, source_object, int, from, int, to);
   if (index < 0 || from < 0 || to < 0 || to > source_object.length()) FAIL(OUT_OF_BOUNDS);
-  int length = to - from;
+  word length = to - from;
   if (length < 0 || index + length > receiver.length()) FAIL(OUT_OF_BOUNDS);
 
   uint8* dest = receiver.address() + index;
@@ -2250,6 +2250,13 @@ PRIMITIVE(get_system_time) {
   return Primitive::integer(OS::get_system_time(), process);
 }
 
+PRIMITIVE(tune_memory_use) {
+  ARGS(int, percent);
+  if (!(0 <= percent && percent <= 100)) FAIL(OUT_OF_RANGE);
+  GcMetadata::set_large_heap_heuristics(percent);
+  return process->null_object();
+}
+
 PRIMITIVE(debug_set_memory_limit) {
   PRIVILEGED;
   ARGS(int64, limit);
@@ -2496,8 +2503,8 @@ PRIMITIVE(firmware_unmap) {
 
 PRIMITIVE(firmware_mapping_at) {
   ARGS(Instance, receiver, int, index);
-  int offset = Smi::value(receiver->at(1));
-  int size = Smi::value(receiver->at(2));
+  word offset = Smi::value(receiver->at(1));
+  word size = Smi::value(receiver->at(2));
   if (index < 0 || index >= size) FAIL(OUT_OF_BOUNDS);
 
   Blob input;
@@ -2515,9 +2522,10 @@ PRIMITIVE(firmware_mapping_at) {
 }
 
 PRIMITIVE(firmware_mapping_copy) {
-  ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
-  int offset = Smi::value(receiver->at(1));
-  int size = Smi::value(receiver->at(2));
+  ARGS(Instance, receiver, word, from, word, to, ByteArray, into, word, index);
+  if (index < 0) FAIL(OUT_OF_BOUNDS);
+  word offset = Smi::value(receiver->at(1));
+  word size = Smi::value(receiver->at(2));
   if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
@@ -2531,7 +2539,8 @@ PRIMITIVE(firmware_mapping_copy) {
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.
   ByteArray::Bytes output(into);
-  int bytes = to - from;
+  word bytes = to - from;
+  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
   return Smi::from(index + bytes);
 }

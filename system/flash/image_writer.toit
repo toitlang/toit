@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary
+import io show LITTLE-ENDIAN
 import uuid
 import system
 import system.services show ServiceProvider ServiceResource
@@ -54,7 +54,7 @@ class ContainerImageWriter extends ServiceResource:
     try:
       if partial-chunk-fill_ > 0: throw "Incomplete image"
       metadata := #[flags, 0, 0, 0, 0]
-      binary.LITTLE-ENDIAN.put-uint32 metadata 1 data
+      LITTLE-ENDIAN.put-uint32 metadata 1 data
       image-writer-commit_ image_ metadata
       return FlashAllocation reservation_.offset
     finally:

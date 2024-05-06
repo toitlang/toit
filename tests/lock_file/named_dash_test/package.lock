@@ -1,0 +1,19 @@
+prefixes:
+  foo: foo
+  bar: bar
+  foo2: foo2
+  bar2: bar2
+
+packages:
+  foo:
+    name: foo_underscore
+    path: foo
+  bar:
+    name: bar-dash
+    path: bar
+  foo2:
+    name: foo-underscore
+    path: foo2
+  bar2:
+    name: bar-dash
+    path: bar2

@@ -8,8 +8,6 @@ import certificate-roots
 import tls
 import .tcp as tcp
 import net.x509 as net
-import writer
-import reader
 import system
 import system show platform
 
@@ -90,11 +88,10 @@ connect-to-site host port cert key expected-cert-name:
 
   expect-equals cert.common-name expected-cert-name
 
-  writer := writer.Writer socket
-  writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
+  socket.out.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
-  reader := reader.BufferedReader socket
-  first-line := reader.read-until "\r"
+  reader := socket.in
+  first-line := reader.read-string-up-to '\r'
   status := int.parse (first-line.split ":")[1]
 
   if 400 <= status < 600:

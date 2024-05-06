@@ -215,6 +215,7 @@ enum Precedence {
   I(String)                                                              \
   I(String_)                                                             \
   I(StringSlice_)                                                        \
+  I(StringByteSlice_)                                                    \
   I(LargeInteger_)                                                       \
   I(False_)                                                              \
   I(Null_)                                                               \

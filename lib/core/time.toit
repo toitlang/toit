@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
+import io
 import .time-impl_
 
 /**
@@ -722,7 +723,7 @@ class Time implements Comparable:
 
   This operation is the inverse of $to-byte-array.
   */
-  constructor.deserialize bytes/ByteArray:
+  constructor.deserialize bytes/io.Data:
     values := tison.decode bytes
     return Time.epoch --s=values[0] --ns=values[1]
 
@@ -961,5 +962,5 @@ class Time implements Comparable:
   The returned byte array is a valid input for the constructor
     $Time.deserialize.
   */
-  to-byte-array:
+  to-byte-array -> ByteArray:
     return tison.encode [seconds_, ns_]

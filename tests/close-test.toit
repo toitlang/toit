@@ -8,8 +8,8 @@ import .udp as udp
 
 main:
   socket := tcp.TcpSocket
-  socket.close-write
-  socket.close-write
+  socket.out.close
+  socket.out.close
   socket.close
   socket.close
 
@@ -18,7 +18,7 @@ main:
   u-socket.close
 
   tls-socket := tls.Socket.client socket
-  tls-socket.close-write
-  tls-socket.close-write
+  tls-socket.out.close
+  tls-socket.out.close
   tls-socket.close
   tls-socket.close

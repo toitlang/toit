@@ -58,11 +58,11 @@ class Buffer {
 
 class MallocedBuffer : public Buffer {
  public:
-  explicit MallocedBuffer(int length) : buffer_(null) {
+  explicit MallocedBuffer(word length) : buffer_(null) {
     allocate(length);
   }
 
-  void allocate(int length) {
+  void allocate(word length) {
     ASSERT(length > 0);
     ASSERT(buffer_ == null);
     buffer_ = reinterpret_cast<uint8*>(malloc(length));
@@ -93,12 +93,12 @@ class MallocedBuffer : public Buffer {
     return pos_ >= length_;
   }
 
-  int size() { return pos_; }
+  word size() { return pos_; }
 
  private:
   uint8* buffer_;
-  int length_;
-  int pos_;
+  word length_;
+  word pos_;
 };
 
 class Encoder {
@@ -109,9 +109,9 @@ class Encoder {
 
   void write_byte(uint8 c);
   void write_int(int64 value);
-  void write_header(int size, uint8 tag);
+  void write_header(word size, uint8 tag);
   void write_double(double value);
-  void write_byte_array_header(int length);
+  void write_byte_array_header(word length);
   void write_string(const char* string);
   // Always uses the 32 bit encoding even if a smaller one would suffice.  This
   // helps make the size of something predictable.

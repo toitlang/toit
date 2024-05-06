@@ -2,7 +2,6 @@ import expect show *
 import net.modules.tcp
 import net.x509 as net
 import tls
-import writer
 
 // Test connections to a site that immediately starts sending 16k TLS records.
 
@@ -24,14 +23,15 @@ test-site url:
   socket := tls.Socket.client raw
     --root-certificates=[GLOBALSIGN-ROOT-CA, DIGICERT-GLOBAL-ROOT-G2, ISRG-ROOT-X1]
 
-  writer := writer.Writer socket
+  writer := socket.out
   writer.write """GET /daily-canary/current/lunar-desktop-canary-amd64.manifest HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
   bytes := 0
 
   expect socket.session_.mode == tls.SESSION-MODE-TOIT
 
-  while data := socket.read:
+  reader := socket.in
+  while data := reader.read:
     bytes += data.size
     // The 16k records are broken up into MTU-sized byte arrays.
     print "Read of $data.size"

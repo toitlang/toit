@@ -3,10 +3,11 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import io
+import monitor show *
+import net.tcp show Socket
 
 import .tcp
-import monitor show *
-import writer show *
 
 PACKET-SIZE := 1024
 PACKAGES := 128
@@ -43,29 +44,30 @@ run-client port:
   done.receive
   socket.close
 
-writer socket delay done:
+writer socket/Socket delay done:
   sleep --ms=delay
 
-  writer := Writer socket
+  writer := socket.out
   array := ByteArray PACKET-SIZE
   for i := 0; i < PACKAGES; i++:
     writer.write array
 
   print "DONE WRITER"
-  socket.close-write
+  writer.close
   done.send null
 
-reader socket delay done:
+reader socket/Socket delay done:
   sleep --ms=delay
 
   count := 0
 
+  reader := socket.in
   while count < PACKET-SIZE * PACKAGES:
-    data := socket.read
+    data := reader.read
     count += data.size
 
   while true:
-    data := socket.read
+    data := reader.read
     if data == null:  break
     expect data.size == 0
 

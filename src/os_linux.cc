@@ -109,7 +109,7 @@ const char* OS::get_platform() {
 
 int OS::read_entire_file(char* name, uint8** buffer) {
   FILE* file;
-  int length;
+  word length;
   file = fopen(name, "rb");
   if (!file) return -1;
   fseek(file, 0, SEEK_END);

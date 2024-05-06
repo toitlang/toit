@@ -4,26 +4,42 @@
 
 import ..json-like-encoder_
 import .yaml
+import io
 
 class YamlEncoder extends EncoderBase_:
   current-line-start-offset_/int := 0
   indent_/int := 0
   enclosed_in_map_ := false
-  indent_buffer_/string := "      " // A buffer of spaces, extends as nescessary.
+  indent_buffer_/string := "      "  // A buffer of spaces, extends as nescessary.
+
+  /**
+  Deprecated.  Use the top level yaml.encode or yaml.stringify functions
+    instead.
+  Returns an encoder that encodes into an internal buffer.  The
+    result can be extracted with $to-string or $to-byte-array.
+  */
+  constructor:
+    super io.Buffer
+
+  /**
+  Returns an encoder that encodes onto an $io.Writer.
+  */
+  constructor.private_ writer/io.Writer:
+    super writer
 
   /** See $EncoderBase_.encode */
   // TODO(florian): Remove when toitdoc compile understands inherited methods
   encode obj/any converter/Lambda:
     return super obj converter
 
-  /** See $Buffer_.put-unquoted */
+  /** See $EncoderBase_.put-unquoted */
   // TODO(florian): Remove when toitdoc compile understands inherited methods
   put-unquoted data -> none:
     super data
 
   put-value_ val/string:
-    if enclosed_in_map_: put-byte_ ' '
-    put-unquoted val
+    if enclosed_in_map_: writer_.write-byte ' '
+    writer_.write val
 
   encode-string_ str/string:
     // To determine if the str needs to be double quoted, we try to parse it, and if it comes back as a string,
@@ -37,11 +53,12 @@ class YamlEncoder extends EncoderBase_:
 
     escaped := escape-string str
 
-    if enclosed_in_map_: put-byte_ ' '
+    writer := writer_
+    if enclosed_in_map_: writer.write-byte ' '
 
-    if should_quote: put-byte_ '"'
-    put-unquoted escaped
-    if should_quote: put-byte_ '"'
+    if should_quote: writer.write-byte '"'
+    writer.write escaped
+    if should_quote: writer.write-byte '"'
 
   encode-number_ number:
     // For floating point numbers, the YAML specification has a core tag for float (tag:yaml.org,2002:float)
@@ -61,17 +78,17 @@ class YamlEncoder extends EncoderBase_:
     // In yaml, a null value is written as an empty string.
 
   put-new-line:
-    put-byte_ '\n'
-    current-line-start-offset_ = offset_
+    writer_.write-byte '\n'
+    current-line-start-offset_ = writer_.processed
 
   close_element_:
-    if peek-last-byte_ != '\n':
+    if writer_.processed != current-line-start-offset_:
       put-new-line
 
   put-indent_:
     if indent_buffer_.size < indent_:
       indent_buffer_ = indent_buffer_ * (indent_ / indent_buffer_.size + 1)
-    put-unquoted indent_buffer_[..indent_]
+    writer_.write indent_buffer_ 0 indent_
 
   encode-sub-value_ value --is-map/bool=false new-indent/int [converter]:
     old_indent := indent_
@@ -90,13 +107,14 @@ class YamlEncoder extends EncoderBase_:
     if enclosed_in_map_:
       put-new-line
       do_indent = true
+    writer := writer_
     map.do: |key value|
       if key is not string:
         throw "INVALID_YAML_OBJECT"
       if do_indent: put-indent_
       do_indent = true
       encode-sub-value_ key indent_ converter
-      put-byte_ ':'
+      writer.write-byte ':'
       encode-sub-value_ value --is-map indent_ + 2 converter
       close_element_
 
@@ -116,12 +134,13 @@ class YamlEncoder extends EncoderBase_:
     if enclosed_in_map_:
       put-new-line
       put-indent_
+    writer := writer_
     for i := 0; i < size; i++:
       if i != 0: put-indent_
-      put-byte_ '-'
-      put-byte_ ' '
+      writer.write-byte '-'
+      writer.write-byte ' '
       encode-sub-value_
           generator.call i
-          offset_ - current-line-start-offset_
+          writer.processed - current-line-start-offset_
           converter
       close_element_

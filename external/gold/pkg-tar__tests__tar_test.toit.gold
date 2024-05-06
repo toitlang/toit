@@ -1,9 +1,0 @@
-pkg-tar/tests/tar_test.toit:83:19: warning: Deprecated 'platform'
-    name_index := platform == "macOS" ? 8 : 5
-                  ^~~~~~~~
-pkg-tar/tests/tar_test.toit:84:19: warning: Deprecated 'platform'
-    size_index := platform == "macOS" ? 4 : 2
-                  ^~~~~~~~
-pkg-tar/tests/tar_test.toit:117:6: warning: Deprecated 'platform'
-  if platform == "FreeRTOS": return
-     ^~~~~~~~

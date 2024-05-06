@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
+import io
 import .uri-path-translator
 import .protocol.document-symbol as lsp
 import .protocol.document as lsp
@@ -176,7 +176,7 @@ class Class:
         is-abstract == other.is-abstract and
         (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
         (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
-        (mixins.equals other.mixins --element_equals=: |a b| a.equals-external b) and
+        (mixins.equals other.mixins --element-equals=: |a b| a.equals-external b) and
         (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
         (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
         (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and
@@ -301,7 +301,7 @@ class Parameter:
         (type == other.type or (type and type.equals-external other.type))
 
 class SummaryReader:
-  reader_ / BufferedReader ::= ?
+  reader_ / io.Reader ::= ?
   uri-path-translator_ / UriPathTranslator ::= ?
 
   module-uris_             / List ::= []

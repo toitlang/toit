@@ -15,12 +15,11 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.base64 as base64
 import cli
-import host.file
+import encoding.base64 as base64
 import encoding.json
+import host.file
 import host.pipe
-import bytes
 import .snapshot
 
 main args:

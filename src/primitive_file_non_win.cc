@@ -218,7 +218,7 @@ PRIMITIVE(readdir) {
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  const int MAX_VFAT = 260;  // Max filename length.
+  const word MAX_VFAT = 260;  // Max filename length.
   AllocationManager allocation(process);
   uint8* backing = allocation.alloc(MAX_VFAT);
   if (!backing) FAIL(ALLOCATION_FAILED);
@@ -231,7 +231,7 @@ PRIMITIVE(readdir) {
     return process->null_object();
   }
 
-  int len = strlen(entry->d_name);
+  word len = strlen(entry->d_name);
 
   if (len <= MAX_VFAT) {
     // Take ownership of the entire allocated backing array.

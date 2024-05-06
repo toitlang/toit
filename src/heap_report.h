@@ -61,7 +61,7 @@ class HeapFragmentationDumper : public Buffer {
 
   void log_allocation(void* allocation, uword size, void* tag);
   void write_start();
-  void rewrite_start(int size, int pages);
+  void rewrite_start(word size, word pages);
   void write_end();
 
   void flush() {

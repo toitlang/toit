@@ -1,0 +1,7 @@
+Name: Blake2
+Short Name: Blake2
+URL: https://github.com/BLAKE2/BLAKE2
+Version: -
+Revision: ed1974ea83433eba7b2d95c5dcd9ac33cb847913
+Date: 2023-02-12
+License: All code is triple-licensed under the CC0, the OpenSSL Licence, or the Apache Public License 2.0, at your choosing.

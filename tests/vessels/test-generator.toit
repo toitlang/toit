@@ -46,7 +46,5 @@ main args:
 
   // Write the content into the given file.
   stream := file.Stream.for-write out-file
-  written := 0
-  while written != content.size:
-    written += stream.write content[written..]
+  stream.out.write content
   stream.close

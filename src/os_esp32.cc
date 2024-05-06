@@ -663,7 +663,7 @@ class HeapSummaryPage {
 
 class HeapSummaryCollector {
  public:
-  HeapSummaryCollector(int max_pages, Process* current_process)
+  HeapSummaryCollector(word max_pages, Process* current_process)
       : current_process_(current_process)
       , max_pages_(max_pages) {
     if (max_pages > 0) {
@@ -748,8 +748,8 @@ class HeapSummaryCollector {
     printf("  │   Bytes   │  Count   │  Type                                               │\n");
     printf("  ├───────────┼──────────┼─────────────────────────────────────────────────────┤\n");
 
-    int size = 0;
-    int count = 0;
+    word size = 0;
+    word count = 0;
     uword metadata_location, metadata_size;
     GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
@@ -799,21 +799,23 @@ class HeapSummaryCollector {
     multi_heap_info_t info;
     int caps = OS::toit_heap_caps_flags_for_heap();
     heap_caps_get_info(&info, caps);
-    int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
-    int used_bytes = size * 100 / capacity_bytes;
+    word capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
+    word used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴──────────┴─────────────────────────────────────────────────────┘\n");
     printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
-        size, count, used_bytes,
+        static_cast<int>(size),
+        static_cast<int>(count),
+        static_cast<int>(used_bytes),
         static_cast<int>(info.largest_free_block >> 10),
         static_cast<int>(info.total_free_bytes >> 10));
 
-    int page_count = 0;
-    for (int i = 0; i < max_pages_; i++) {
+    word page_count = 0;
+    for (word i = 0; i < max_pages_; i++) {
       if (!pages_[i].unused()) page_count++;
     }
     if (page_count == 0) return;
 
-    for (int i = 0; i < max_pages_; i++) {
+    for (word i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
@@ -830,8 +832,8 @@ class HeapSummaryCollector {
   uword toit_memory_[MAX_PROCESSES];
   Process* processes_[MAX_PROCESSES];
   Process* current_process_;
-  const int max_pages_;
-  int dropped_pages_ = 0;
+  const word max_pages_;
+  word dropped_pages_ = 0;
   bool out_of_memory_ = false;
 };
 

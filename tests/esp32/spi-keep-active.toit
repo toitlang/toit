@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests the '--keep_cs_active' flag of the SPI transfer.
+Tests the '--keep-cs-active' flag of the SPI transfer.
 
 Setup:
 Connect pin 19 and 21 with a 330 Ohm resistor. The resistor isn't

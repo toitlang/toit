@@ -639,17 +639,21 @@ static void shake(Program* program,
     }
   }
   if (Flags::report_tree_shaking) {
+    int remaining_classes_length = remaining_classes.length();
+    int program_classes_length = program->classes().length();
     printf("Kept %d out of %d classes\n",
-           remaining_classes.length(),
-           program->classes().length());
+           remaining_classes_length,
+           program_classes_length);
   }
   program->replace_classes(remaining_classes.build());
 
   auto remaining_methods = shake_methods(program->methods(), grown_methods);
   if (Flags::report_tree_shaking) {
+    int remaining_methods_length = remaining_methods.length();
+    int program_methods_length = program->methods().length();
     printf("Kept %d out of %d global functions\n",
-           remaining_methods.length(),
-           program->methods().length());
+           remaining_methods_length,
+           program_methods_length);
   }
   program->replace_methods(remaining_methods);
 
@@ -660,9 +664,11 @@ static void shake(Program* program,
     }
   }
   if (Flags::report_tree_shaking) {
+    int remaining_globals_length = remaining_globals.length();
+    int program_globals_length = program->globals().length();
     printf("Kept %d out of %d globals\n",
-           remaining_globals.length(),
-           program->globals().length());
+           remaining_globals_length,
+           program_globals_length);
   }
   program->replace_globals(remaining_globals.build());
 

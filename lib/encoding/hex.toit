@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import bitmap show blit OR
+import ..io as io
 
 ENCODING-MAP_ ::= create-encoding-map_
 
@@ -12,8 +13,7 @@ create-encoding-map_ -> ByteArray:
   return result
 
 /**
-Takes an input byte array or string
-  and returns the corresponding string of hex digits.
+Takes an input $data and returns the corresponding string of hex digits.
 # Examples
 ```
   hex.encode #[0x12, 0x34]  // Evaluates to the string "1234".
@@ -22,18 +22,20 @@ Takes an input byte array or string
   hex.encode #[]            // Evaluates to the empty string "".
 ```
 */
-encode data -> string:
-  if data.size == 0: return ""
-  if data.size == 1: return "$(%02x data[0])"
-  result := ByteArray data.size * 2
-  blit data result data.size
+encode data/io.Data -> string:
+  if data.byte-size == 0: return ""
+  if data.byte-size == 1:
+    c := data.byte-at 0
+    return "$(%02x c)"
+  result := ByteArray data.byte-size * 2
+  blit data result data.byte-size
       --destination-pixel-stride=2
       --shift=4
       --mask=0b1111
-  blit data result[1..] data.size
+  blit data result[1..] data.byte-size
       --destination-pixel-stride=2
       --mask=0b1111
-  blit result result result.size
+  blit result result result.byte-size
       --lookup-table=ENCODING-MAP_
   return result.to-string
 

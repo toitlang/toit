@@ -66,7 +66,7 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
     unvoid_cast<LwipSocket*>(arg)->on_wrote(length);
     return ERR_OK;
   }
-  void on_wrote(int length);
+  void on_wrote(word length);
 
   static void on_error(void* arg, err_t err) {
     // Ignore if already deleted.

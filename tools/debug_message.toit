@@ -14,14 +14,12 @@
 // directory of this repository.
 
 import ar show *
-import bytes
 import encoding.ubjson as ubjson
 import host.file
 import host.directory
 import host.pipe
+import io
 import .snapshot
-import reader show BufferedReader
-import writer show Writer
 
 to-json_ o/ToitObject program/Program -> any:
   // TODO(florian): deal with cyclic structures.
@@ -83,11 +81,11 @@ run-debug-snapshot snapshot-bytes json-message:
   tmp-directory := directory.mkdtemp "/tmp/debug_snapshot-"
   debug-toit := "$tmp-directory/debug.toit"
   try:
-    ar-reader := ArReader (bytes.Reader snapshot-bytes)
+    ar-reader := ArReader (io.Reader snapshot-bytes)
     magic-bytes := ar-reader.find SnapshotBundle.MAGIC-NAME
     debug-snapshot := ar-reader.find "D-snapshot"
     debug-source-map := ar-reader.find "D-source-map"
-    out-bytes := bytes.Buffer
+    out-bytes := io.Buffer
     ar-writer := ArWriter out-bytes
     ar-writer.add SnapshotBundle.MAGIC-NAME magic-bytes.content
     ar-writer.add SnapshotBundle.SNAPSHOT-NAME debug-snapshot.content
@@ -96,7 +94,7 @@ run-debug-snapshot snapshot-bytes json-message:
     ar-writer.add "D-snapshot" debug-snapshot.content
     ar-writer.add "D-source-map" debug-source-map.content
     stream := file.Stream.for-write debug-toit
-    (Writer stream).write out-bytes.bytes
+    (io.Writer.adapt stream).write out-bytes.bytes
     stream.close
 
     // TODO(florian): we should use `spawn` or something similar to
@@ -116,12 +114,12 @@ run-debug-snapshot snapshot-bytes json-message:
     from := pipes[1]
     pid  := pipes[3]
 
-    (Writer to).write (ubjson.encode json-message)
+    (io.Writer.adapt to).write (ubjson.encode json-message)
     to.close
 
-    sub-reader := BufferedReader from
+    sub-reader := io.Reader.adapt from
     sub-reader.buffer-all
-    bytes := sub-reader.read-bytes sub-reader.buffered
+    bytes := sub-reader.read-bytes sub-reader.buffered-size
     return bytes.to-string
   finally:
     if file.is-file debug-toit: file.delete debug-toit

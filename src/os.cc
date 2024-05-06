@@ -195,7 +195,7 @@ void* OS::allocate_pages(uword size) {
 
 void OS::free_pages(void* address, uword size) {
   Locker locker(OS::resource_mutex());
-  int size_in_pages = size >> TOIT_PAGE_SIZE_LOG2;
+  word size_in_pages = size >> TOIT_PAGE_SIZE_LOG2;
   uword page_number = Utils::void_sub(address, toit_heap_range) >> TOIT_PAGE_SIZE_LOG2;
   uword index = page_number >> BITS_PER_UINT64_LOG_2;
   ASSERT(size_in_pages <= 64);  // 64 bits per bitmap, since we use uint64.

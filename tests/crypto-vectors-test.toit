@@ -4,9 +4,10 @@
 
 import expect show *
 import host.file
-import reader show BufferedReader
+import io
 import encoding.hex
 import crypto.aes show *
+import crypto.blake2 show *
 import crypto.sha1 show *
 import crypto.sha256 show *
 
@@ -18,10 +19,13 @@ class Test:
 
   constructor --.data --.line-number --.comment --.source:
 
+BLAKE2S := "Blake2s"
+
 main:
   map := {:}
   read-file map "third_party/boringssl/cipher_test.txt"
   read-file map "third_party/openssl/evptests.txt"
+  read-blake-file map "third_party/BLAKE2/testvectors/blake2s-kat.txt"
   add-fragility-tests map
 
   map.do: | algorithm tests |
@@ -36,10 +40,12 @@ main:
         test-hash test: Sha1
       else if algorithm == "SHA256":
         test-hash test: Sha256
+      else if algorithm == BLAKE2S:
+        test-blake test
 
 read-file map/Map filename/string -> none:
   stream := file.Stream.for-read filename
-  reader := BufferedReader stream
+  reader := stream.in
   line-number := 0
   current-comment := ""
   while line := reader.read-line:
@@ -50,6 +56,30 @@ read-file map/Map filename/string -> none:
       else:
         add-line line --source=filename --comment=current-comment --line-number="line $line-number" --to=map
 
+read-blake-file map/Map filename/string -> none:
+  stream := file.Stream.for-read filename
+  reader := stream.in
+  line-number := 0
+  current-in := #[]
+  current-key := #[]
+
+  while line := reader.read-line:
+    line-number++
+    if line != "":
+      parts := line.split "\t"
+      key := parts[0]
+      value := parts[1]
+      if key == "in:":
+        current-in = hex.decode value
+      else if key == "key:":
+        current-key = hex.decode value
+      else if key == "hash:":
+        data := [current-key, current-in, value]
+        (map.get BLAKE2S --init=:[]).add (Test --data=data --source=filename --line-number="line $line-number" --comment="")
+      else:
+        throw "Unparsed: $filename:$line-number $line"
+  expect-equals 256 map[BLAKE2S].size
+
 add-line line/string --source/string --comment/string --line-number/string --to/Map -> none:
   line = line.trim
   colon := line.index-of ":"
@@ -58,6 +88,15 @@ add-line line/string --source/string --comment/string --line-number/string --to/
   data := []
   vectors.split ":": data.add (hex.decode it)
   (to.get algorithm --init=:[]).add (Test --data=data --source=source --line-number=line-number --comment=comment)
+
+test-blake test/Test -> none:
+  input := test.data[1]
+  expected-hash := test.data[2]
+
+  hasher := Blake2s --key=test.data[0]
+  hasher.add input
+  hash := hex.encode hasher.get
+  expect-equals expected-hash hash
 
 test-hash test/Test [block] -> none:
   input := test.data[2]

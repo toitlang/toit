@@ -4,11 +4,11 @@
 
 import ..tests.syntax
 import .syntax show show-foo2
-import bytes
+import io
 
 import ..tests.syntax show global-x global-y
 import .syntax show global-x global-y
-import bytes show Buffer
+import io show Buffer
 
 import ..tests.syntax show
   global-x
@@ -18,10 +18,10 @@ import .syntax
     global-x
     global-y
 import
-  bytes
+  io
   show
   Buffer
-  BufferConsumer
+  InMixin
 
 import ..tests.syntax show *
 import .syntax show *
@@ -109,16 +109,16 @@ global-fun6 x / any y/Type?: while true: some-fun "2" /*comment*/ null true
 global-fun7 -> none:
   while true: some-fun "2" /*comment*/ null true
 
-global-fun8 x/bytes.Buffer -> none:
+global-fun8 x/io.Buffer -> none:
   while true: some-fun "2" /*comment*/ null true
 
 global-fun9 -> none
-    x / bytes.Buffer?
+    x / io.Buffer?
     y/any:
   while true: some-fun "2" /*comment*/ null true
 
 global-fun9b -> none
-    x /bytes.Buffer? /*comment*/
+    x /io.Buffer? /*comment*/
     y /any:
   while true: some-fun "2" /*comment*/ null true
 

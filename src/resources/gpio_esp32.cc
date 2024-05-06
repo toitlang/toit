@@ -42,7 +42,7 @@ enum GpioState {
   GPIO_STATE_EDGE_TRIGGERED = 1,
 };
 
-ResourcePool<int, -1> gpio_pins(
+static ResourcePool<int, -1> gpio_pins(
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
 #ifdef CONFIG_IDF_TARGET_ESP32S3

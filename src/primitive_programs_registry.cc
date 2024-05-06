@@ -94,10 +94,10 @@ PRIMITIVE(kill) {
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_ESP32
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
-  int length = extension->images();
+  word length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) FAIL(ALLOCATION_FAILED);
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     // We store the distance from the start of the header to the image
     // because it naturally fits as a smi even if the virtual addresses
     // involved are large. We tag the entry so we can tell the difference
@@ -119,7 +119,7 @@ PRIMITIVE(bundled_images) {
 
 PRIMITIVE(assets) {
   Program* program = process->program();
-  int size;
+  word size;
   uint8* bytes;
   Object* result = null;
   if (program->program_assets_size(&bytes, &size) == 0) {

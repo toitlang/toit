@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import ..io as io
 
 /**
 Secure Hash Algorithm 1 (SHA-1).
@@ -14,10 +15,8 @@ See https://en.wikipedia.org/wiki/SHA-1.
 
 /**
 Calculates the SHA-1 hash of the given $data.
-
-The $data must be a string or a byte array.
 */
-sha1 data from/int=0 to/int=data.size -> ByteArray:
+sha1 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha1 data from to
 
 /** SHA-1 hash state. */
@@ -33,7 +32,7 @@ class Sha1 extends Checksum:
     add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     sha1-add_ sha1-state_ data from to
 
   /**
@@ -57,8 +56,10 @@ sha1-clone_ sha1:
   #primitive.crypto.sha1-clone
 
 // Adds a UTF-8 string or a byte array to the sha1 hash.
-sha1-add_ sha1 data from/int to/int -> none:
-  #primitive.crypto.sha1-add
+sha1-add_ sha1 data/io.Data from/int to/int -> none:
+  #primitive.crypto.sha1-add:
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      sha1-add_ sha1 bytes 0 bytes.size
 
 // Rounds off a sha1 hash.
 sha1-get_ sha1 -> ByteArray:

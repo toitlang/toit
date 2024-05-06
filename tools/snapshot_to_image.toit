@@ -24,9 +24,9 @@ import .image
 import .snapshot
 import .firmware show pad
 
-import binary show LITTLE-ENDIAN ByteOrder
-import bytes
 import encoding.ubjson
+import io
+import io show LITTLE-ENDIAN ByteOrder
 import system
 import uuid
 
@@ -155,7 +155,7 @@ main args:
         --system-uuid=system-uuid
         --snapshot-uuid=snapshot-uuid
         --id=id
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     buffer.write image.build-relocatable
     if assets:
       // Send the assets prefixed with the size and make sure
@@ -177,10 +177,11 @@ main args:
     images.add { "flags": [machine], "bytes": buffer.bytes }
 
   out := file.Stream.for-write output-path
+  writer := io.Writer.adapt out
   if format == "binary":
-    out.write output["images"].first["bytes"]
+    writer.write output["images"].first["bytes"]
   else:
-    out.write (ubjson.encode output)
+    writer.write (ubjson.encode output)
   out.close
 
 sdk-version-uuid --sdk-version/string -> uuid.Uuid:

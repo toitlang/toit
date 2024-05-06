@@ -4,7 +4,7 @@
 
 import expect show *
 
-import binary show *
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
 
 main:
   test-little-endian

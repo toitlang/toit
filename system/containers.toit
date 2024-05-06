@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary
+import io show LITTLE-ENDIAN
 import uuid
 import monitor
 
@@ -160,7 +160,7 @@ class ContainerImageFlash extends ContainerImage:
     return allocation_.metadata[0]
 
   data -> int:
-    return binary.LITTLE-ENDIAN.uint32 allocation_.metadata 1
+    return LITTLE-ENDIAN.uint32 allocation_.metadata 1
 
   spawn container/Container arguments/any:
     return container-spawn_ allocation_.offset container.id arguments

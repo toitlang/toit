@@ -15,7 +15,7 @@
 
 import ar show *
 import host.file
-import binary show *
+import io show LITTLE-ENDIAN
 import uuid show Uuid NIL
 
 // Library for parsing a snapshot file into a useful structure.

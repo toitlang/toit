@@ -56,7 +56,7 @@ static const int format_length[] { BYTECODE_FORMATS(THE_LENGTH) -1 };
 #undef THE_LENGTH
 
 void print_name(Printer* printer, String* string) {
-  const int MAX = 300;
+  const word MAX = 300;
   String::Bytes bytes(string);
   printer->print_buffer(bytes.address(), Utils::min(bytes.length(), MAX));
   if (MAX < string->length()) printer->printf("...");
@@ -286,7 +286,7 @@ class ShortPrintVisitor : public PrintVisitor {
   }
 
   void visit_string(String* string) {
-    const int MAX = 1280;
+    const word MAX = 1280;
     if (!toplevel_) printer_->printf("\"");
     String::Bytes bytes(string);
     printer_->print_buffer(bytes.address(), Utils::min(bytes.length(), MAX));
@@ -299,17 +299,17 @@ class ShortPrintVisitor : public PrintVisitor {
   }
 
   void visit_byte_array(ByteArray* byte_array) {
-    int length = byte_array->raw_length();
+    word length = byte_array->raw_length();
     if (length < 0) length = -1 - length;
     if (byte_array->has_external_address()) {
-      printer_->printf("an external ByteArray (tag:%ld) [%d]", byte_array->external_tag(), length);
+      printer_->printf("an external ByteArray (tag:%ld) [%" PRIdPTR "]", byte_array->external_tag(), length);
     } else {
-      printer_->printf("a ByteArray [%d]", length);
+      printer_->printf("a ByteArray [%" PRIdPTR "]", length);
     }
   }
 
   void visit_stack(Stack* stack) {
-    printer_->printf("a Stack [%d, %d]", stack->top(), stack->length());
+    printer_->printf("a Stack [%" PRIdPTR ", %" PRIdPTR "]", stack->top(), stack->length());
   }
 
   void visit_instance(Instance* instance) {
@@ -449,10 +449,10 @@ void print_object_short(Printer* printer, Object* object, bool is_top_level) {
   p.accept(object);
 }
 
-void Printer::print_buffer(const uint8_t* s, int len) {
-  const int BUF_LEN = 16;
+void Printer::print_buffer(const uint8_t* s, word len) {
+  const word BUF_LEN = 16;
   char buf[BUF_LEN];
-  for (int i = 0; i < len; ) {
+  for (word i = 0; i < len; ) {
     unsigned chunk = Utils::min(len - i, BUF_LEN - 1);
     memcpy(buf, s + i, chunk);
     buf[chunk] = '\0';

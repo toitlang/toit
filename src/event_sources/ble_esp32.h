@@ -23,18 +23,13 @@
 #include "ble.h"
 namespace toit {
 
-class BleEventSource : public LazyEventSource {
+class BleEventSource : public EventSource {
  public:
   static BleEventSource* instance() { return instance_; }
 
   BleEventSource();
 
   void on_event(BleResource* resource, word data);
-
- protected:
-  bool start() override;
-
-  void stop() override;
 
  protected:
   static BleEventSource* instance_;

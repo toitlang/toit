@@ -4,7 +4,6 @@
 
 import .dns
 import expect show *
-import writer
 import tls
 import .tcp as tcp
 import net.x509 as net
@@ -45,7 +44,16 @@ monitor LimitLoad:
 load-limiter := LimitLoad
 
 main:
+  // While the test runs we have another task that causes a lot of garbage
+  // collections, to make sure the TLS handshake does not have any race
+  // conditions.
+  task --background::
+    while true:
+      system.process-stats --gc
+      yield
+  // Install the usual certs.  This should be enough for all these sites.
   add-global-certs
+
   run-tests
 
 run-tests:
@@ -155,11 +163,12 @@ connect-to-site host port expected-certificate-name:
     expect-not socket.session-resumed  // Not connected yet.
 
     try:
-      writer := writer.Writer socket
+      writer := socket.out
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
       print "$host: $((socket as any).session_.mode == tls.SESSION-MODE-TOIT ? "Toit mode" : "MbedTLS mode")"
 
-      while data := socket.read:
+      reader := socket.in
+      while data := reader.read:
         bytes += data.size
 
     finally:

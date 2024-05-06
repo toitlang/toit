@@ -65,12 +65,12 @@ static int get_for_decode(const Blob& bytes, int index, bool url_mode) {
 
 PRIMITIVE(base64_decode)  {
   ARGS(Blob, input, bool, url_mode);
-  int length = input.length();
-  int out_len;
+  word length = input.length();
+  word out_len;
   if (url_mode) {
     // Padding = signs not required.
     out_len = (length >> 2) * 3;
-    int last_group_length = length & 3;  // Can be 0 if input length is a multiple of 4.
+    word last_group_length = length & 3;  // Can be 0 if input length is a multiple of 4.
     if (last_group_length == 1) {
       FAIL(OUT_OF_RANGE);  // 6 bits are not enough to encode another byte.
     } else if (last_group_length == 2) {
@@ -93,7 +93,7 @@ PRIMITIVE(base64_decode)  {
 
   uint8* buffer = ByteArray::Bytes(result).address();
   // Iterate over the groups of 3 output characters that have 4 regular input characters.
-  for (int i = 0, j = 0; i <= out_len - 3; i += 3, j += 4) {
+  for (word i = 0, j = 0; i <= out_len - 3; i += 3, j += 4) {
     uint32_t wrd =
       (get_for_decode(input, j + 0, url_mode) << 18) |
       (get_for_decode(input, j + 1, url_mode) << 12) |

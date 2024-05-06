@@ -1,0 +1,12 @@
+tests/reader-writer-test.toit:19:13: warning: Class 'ReaderWriter' is deprecated
+  writer := ReaderWriter
+            ^~~~~~~~~~~~
+tests/reader-writer-test.toit:33:13: warning: Class 'ReaderWriter' is deprecated
+  writer := ReaderWriter
+            ^~~~~~~~~~~~
+tests/reader-writer-test.toit:51:13: warning: Class 'ReaderWriter' is deprecated
+  writer := ReaderWriter 2
+            ^~~~~~~~~~~~
+tests/reader-writer-test.toit:101:13: warning: Class 'ReaderWriter' is deprecated
+  writer := ReaderWriter 2
+            ^~~~~~~~~~~~

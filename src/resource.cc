@@ -41,7 +41,7 @@ void ResourceGroup::tear_down() {
       event_source_->unregister_resource(resource);
     }
     on_unregister_resource(resource);
-    resource->make_deletable();
+    resource->delete_or_mark_for_deletion();
   }
 
   if (event_source_ != null) {
@@ -87,7 +87,7 @@ void ResourceGroup::unregister_resource(Resource* resource) {
     on_unregister_resource(resource);
   }
 
-  delete resource;
+  resource->delete_or_mark_for_deletion();
 }
 
 EventSource::EventSource(const char* name, int lock_level)

@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
+import io
 import .socket-address
 
 interface Interface:
@@ -42,7 +43,7 @@ interface Socket:
   read -> ByteArray?
 
   // Write data to the remote peer.
-  write data from=0 to=data.size -> int
+  write data/io.Data from/int=0 to/int=data.byte-size -> int
 
   // Close the socket, releasing any resources associated. Calling
   // read on a closed socket will return null.

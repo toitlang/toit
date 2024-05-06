@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.json as json
+import expect show *
 import host.file
 import host.directory
-import expect show *
-import writer show Writer
-import encoding.json as json
 import host.pipe
+import io
 
 import .lock-parser
 
@@ -16,7 +16,7 @@ LOCAL-PACKAGE-DIR ::= ".packages"
 
 write-to-file path content:
   stream := file.Stream.for-write path
-  (Writer stream).write content
+  (io.Writer.adapt stream).write content
   stream.close
 
 copy-all source-dir target-dir:

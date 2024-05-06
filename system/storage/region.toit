@@ -15,8 +15,8 @@
 
 import .storage show StorageServiceProvider
 
-import binary show LITTLE-ENDIAN
 import encoding.tison
+import io show LITTLE-ENDIAN
 import system.services show ServiceResource
 import system.storage show Region
 import uuid

@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..io as io
+
 /**
 Base class for the hardware accelerated Advanced Encryption Standard (AES).
 
@@ -241,16 +243,16 @@ class Aead_:
   This method is equivalent to calling $start, $add, and $finish, and
     therefore it closes this instance.
   */
-  encrypt plaintext --authenticated-data="" -> ByteArray:
+  encrypt plaintext/io.Data --authenticated-data="" -> ByteArray:
     if not aead_: throw "ALREADY_CLOSED"
 
-    result := ByteArray plaintext.size + TAG-SIZE
+    result := ByteArray plaintext.byte-size + TAG-SIZE
 
     aead-start-message_ aead_ authenticated-data initialization-vector_
     number-of-bytes /int := aead-add_ aead_ plaintext result
-    if number-of-bytes != (round-down plaintext.size BLOCK-SIZE_): throw "UNKNOWN_ERROR"
+    if number-of-bytes != (round-down plaintext.byte-size BLOCK-SIZE_): throw "UNKNOWN_ERROR"
     rest-and-tag := aead-finish_ aead_
-    if number-of-bytes + rest-and-tag.size != plaintext.size + TAG-SIZE: throw "UNKNOWN_ERROR"
+    if number-of-bytes + rest-and-tag.size != plaintext.byte-size + TAG-SIZE: throw "UNKNOWN_ERROR"
     result.replace number-of-bytes rest-and-tag
     close
     return result
@@ -374,8 +376,10 @@ If the result byte array was big enough, returns a Smi to indicate how much
 If the result byte array was not big enough, returns null.  In this case no
   data was consumed.
 */
-aead-add_ aead data result/ByteArray -> int?:
-  #primitive.crypto.aead-add
+aead-add_ aead data/io.Data result/ByteArray -> int?:
+  #primitive.crypto.aead-add:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      aead-add_ aead bytes result
 
 /**
 Returns the last ciphertext bytes and the tag, concatenated.

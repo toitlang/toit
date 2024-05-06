@@ -3,14 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import host.file
-import bytes
 import host.pipe
-import reader show BufferedReader
+import io
 import system
 import system show platform
 
 combine-and-replace lines replacement-index replacement-line:
-  builder := bytes.Buffer
+  builder := io.Buffer
   for i := 0; i < lines.size; i++:
     if i == replacement-index:
       builder.write replacement-line
@@ -98,7 +97,7 @@ run-toit toitc args -> List?:
 
     lines := []
     try:
-      reader := BufferedReader cpp-from
+      reader := io.Reader.adapt cpp-from
       while line := reader.read-line:
         lines.add line
     finally:

@@ -13,11 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import http
-import net
 import certificate_roots
-import reader
-import bytes
+import http
+import io
+import net
 
 import .pack
 import ..file-system-view
@@ -55,7 +54,7 @@ HEAD-INDICATOR_ ::= "HEAD"
 // See: git help protocol-v2
 //      git help protocol-http
 class GitProtocol_:
-  client ::= http.Client net.open --root_certificates=certificate_roots.ALL
+  client ::= http.Client net.open --root-certificates=certificate-roots.ALL
   server-capabilities-cache ::= {:}
   version-2-header ::= http.Headers.from_map {"Git-Protocol": "version=2"}
 
@@ -87,7 +86,7 @@ class GitProtocol_:
     refs-response := client.post (pack-command_ "ls-refs" [] [])
         --uri="https://$(url)/git-upload-pack"
         --headers=version-2-header
-        --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
+        --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if refs-response.status_code != 200:
       throw "Invalid repository $url, $refs-response.status_message"
@@ -113,7 +112,7 @@ class GitProtocol_:
     fetch-response := client.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
         --uri="https://$url/git-upload-pack"
         --headers=version-2-header
-        --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
+        --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if fetch-response.status_code != 200:
       throw "Invalid repository $url, $fetch-response.status_message"
@@ -121,7 +120,7 @@ class GitProtocol_:
     lines := parse-response_ fetch-response
 
     reading-data-lines := false
-    buffer/bytes.Buffer := bytes.Buffer
+    buffer := io.Buffer
     lines.do:
       if not reading-data-lines:
         if it is ByteArray and it.to-string.trim == "packfile":
@@ -142,7 +141,7 @@ class GitProtocol_:
     throw "Missing flush packet from server"
 
   pack-command_ command/string capabilities/List arguments/List -> ByteArray:
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     pack-line_ buffer "command=$command"
     if not capabilities.is-empty:
       capabilities.do: pack-line_ buffer it
@@ -151,30 +150,30 @@ class GitProtocol_:
     pack-flush_ buffer
     return buffer.bytes
 
-  pack-line_ buffer/bytes.Buffer data/string:
+  pack-line_ buffer/io.Buffer data/string:
     buffer.write "$(%04x data.size+5)"
     buffer.write data
     buffer.write "\n"
 
-  pack-delim_ buffer/bytes.Buffer:
+  pack-delim_ buffer/io.Buffer:
     buffer.write "0001"
 
-  pack-flush_ buffer/bytes.Buffer:
+  pack-flush_ buffer/io.Buffer:
     buffer.write "0000"
 
   static FLUSH-PACKET ::= 0
   static DELIMITER-PACKET ::= 1
   static RESPONSE-END-PACKET ::= 2
   parse-response_ response/http.Response -> List:
-    buffer := reader.BufferedReader response.body
+    buffer := io.Reader.adapt response.body
     lines := []
     while true:
-      if not buffer.can-ensure 4: return lines
+      if not buffer.try-ensure-buffered 4: return lines
       length := int.parse --radix=16 (buffer.read-bytes 4)
       if length < 4:
         lines.add length
         continue
-      if not buffer.can-ensure length:
+      if not buffer.try-ensure-buffered length:
         throw "Premature end of input"
       lines.add (buffer.read-bytes length - 4)
 
@@ -200,4 +199,3 @@ class GitFileSystemView implements FileSystemView:
 
   list -> Map:
     return content_.map: | k v | if v is Map: GitFileSystemView v else: k
-

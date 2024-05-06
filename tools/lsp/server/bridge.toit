@@ -14,8 +14,8 @@
 // directory of this repository.
 
 import host.pipe
-import writer
 import host.file
+import io
 import monitor
 
 /**
@@ -26,8 +26,8 @@ Starts piping all data from [from_stream] to [to_stream] while logging
 start-piping from-stream to-stream --log-stream --mutex -> none:
   task::
     catch --trace:
-      to-writer := writer.Writer to-stream
-      log-writer := writer.Writer log-stream
+      to-writer := io.Writer.adapt to-stream
+      log-writer := io.Writer.adapt log-stream
       while true:
         chunk := from-stream.read
         if not chunk: break

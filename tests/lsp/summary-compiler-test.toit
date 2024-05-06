@@ -16,7 +16,7 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""

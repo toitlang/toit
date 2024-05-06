@@ -9,7 +9,6 @@ import tls
 import net.modules.dns
 import .tcp as tcp
 import net.x509 as net
-import writer
 
 main:
   certificate-roots.install-common-trusted-roots
@@ -84,12 +83,14 @@ test-site host/string --read-data/bool=true -> none:
 
     expect: got-id or got-ticket
 
+    writer := socket.out
+    reader := socket.in
     if read-data:
-      socket.write "GET / HTTP/1.1\r\n"
-      socket.write "Host: $host\r\n"
-      socket.write "\r\n"
+      writer.write "GET / HTTP/1.1\r\n"
+      writer.write "Host: $host\r\n"
+      writer.write "\r\n"
 
-      while data := socket.read:
+      while data := reader.read:
         str := data.to-string
         if str.contains "301 Moved Permanently":
           break

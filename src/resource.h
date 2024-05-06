@@ -56,8 +56,8 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
 
   // When a resource group is torn down we call this.  Normally it deletes it, but
   // it may just mark it for deletion in case there are still other references to it,
-  // eg from callbacks at the OS level.
-  virtual void make_deletable() {
+  // for example from callbacks at the OS level.
+  virtual void delete_or_mark_for_deletion() {
     delete this;
   }
 

@@ -185,7 +185,7 @@ SystemMessage* Process::take_termination_message(uint8 result) {
 }
 
 
-String* Process::allocate_string(const char* content, int length) {
+String* Process::allocate_string(const char* content, word length) {
   String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
@@ -194,14 +194,14 @@ String* Process::allocate_string(const char* content, int length) {
   return result;
 }
 
-String* Process::allocate_string(int length) {
+String* Process::allocate_string(word length) {
   ASSERT(length >= 0);
   bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
 #ifdef TOIT_GC_LOGGING
-    printf("[gc @ %p%s | string allocation failed, length = %d (heap)]\n",
+    printf("[gc @ %p%s | string allocation failed, length = %" PRIdPTR " (heap)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
@@ -216,7 +216,7 @@ String* Process::allocate_string(int length) {
   }
   if (memory == null) {
 #ifdef TOIT_GC_LOGGING
-      printf("[gc @ %p%s | string allocation failed, length = %d (malloc)]\n",
+      printf("[gc @ %p%s | string allocation failed, length = %" PRIdPTR " (malloc)]\n",
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
@@ -229,7 +229,7 @@ String* Process::allocate_string(int length) {
     return result;
   }
 #ifdef TOIT_GC_LOGGING
-    printf("[gc @ %p%s | string allocation failed, length = %d (after malloc)]\n",
+    printf("[gc @ %p%s | string allocation failed, length = %" PRIdPTR " (after malloc)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
@@ -240,7 +240,7 @@ Object* Process::allocate_string_or_error(const char* content) {
   return allocate_string_or_error(content, strlen(content));
 }
 
-Object* Process::allocate_string_or_error(const char* content, int length) {
+Object* Process::allocate_string_or_error(const char* content, word length) {
   String* result = allocate_string(content, length);
   if (result == null) return Error::from(program()->allocation_failed());
   return result;
@@ -250,7 +250,7 @@ String* Process::allocate_string(const char* content) {
   return allocate_string(content, strlen(content));
 }
 
-ByteArray* Process::allocate_byte_array(int length, bool force_external) {
+ByteArray* Process::allocate_byte_array(word length, bool force_external) {
   ASSERT(length >= 0);
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
@@ -263,7 +263,7 @@ ByteArray* Process::allocate_byte_array(int length, bool force_external) {
     if (memory == null) {
       // Malloc failed, report it.
 #ifdef TOIT_GC_LOGGING
-      printf("[gc @ %p%s | byte array allocation failed, length = %d (malloc)]\n",
+      printf("[gc @ %p%s | byte array allocation failed, length = %" PRIdPTR " (malloc)]\n",
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
@@ -274,7 +274,7 @@ ByteArray* Process::allocate_byte_array(int length, bool force_external) {
       return result;
     }
 #ifdef TOIT_GC_LOGGING
-    printf("[gc @ %p%s | byte array allocation failed, length = %d (after malloc)]\n",
+    printf("[gc @ %p%s | byte array allocation failed, length = %" PRIdPTR " (after malloc)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
@@ -282,7 +282,7 @@ ByteArray* Process::allocate_byte_array(int length, bool force_external) {
   }
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
 #ifdef TOIT_GC_LOGGING
-  printf("[gc @ %p%s | byte array allocation failed, length = %d (heap)]\n",
+  printf("[gc @ %p%s | byte array allocation failed, length = %" PRIdPTR " (heap)]\n",
       this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
       length);
 #endif

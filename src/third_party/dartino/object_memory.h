@@ -31,7 +31,7 @@ class Smi;
 class Space;
 class TwoSpaceHeap;
 
-static const int SENTINEL_SIZE = sizeof(void*);
+static const uword SENTINEL_SIZE = sizeof(void*);
 
 // In oldspace, the sentinel marks the end of each chunk, and never moves or is
 // overwritten.
@@ -498,7 +498,6 @@ class OldSpace : public Space {
   // Actually new space garbage found since last compacting GC. Used to
   // evaluate whether we are out of memory.
   uword new_space_garbage_found_since_last_gc_ = 0;
-  int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
   uword used_ = 0;               // Allocated bytes.
   // Record whether a promotion failed during a scavenge, so we can save time

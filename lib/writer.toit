@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 
 /**
@@ -11,6 +12,8 @@ A lightweight writer wrapper that enhances the the user experience of the
 The internal writer must have the following method: `write data -> int`
 It can optionally have `close` and `close_writer`, which are transparently
   forwarded from the `Writer` to the internal writer.
+
+Deprecated. Use $io.Writer instead.
 */
 class Writer:
   writer_ := ?
@@ -33,24 +36,12 @@ class Writer:
     the internal writer must be used directly.
   May yield.
   */
-  write data from/int=0 to/int=data.size:
+  write data/io.Data from/int=0 to/int=data.byte-size:
     size := to - from
     while from < to:
-      from += writer_.write data[from..to]
+      from += writer_.write (data.byte-slice from to)
       if from != to:
         yield
-        while data is string and from != to and data[from] == null:  // Not on a character boundary.
-          // We can't slice a string at non-character boundaries.
-          // If the `write` function only wrote parts of a character, we
-          // extract the rest of the character as a byte array and write it
-          // this way.  Uses `while` instead of `if` because even a 2-byte
-          // byte array might not be written in one operation.
-          cut-point := from + 1
-          while cut-point != to and data[cut-point] == null:
-            cut-point++
-          // `to_byte_array` doesn't have an issue with character boundaries.
-          snip := data.to-byte-array from cut-point
-          from += writer_.write snip
     return size
 
   /**

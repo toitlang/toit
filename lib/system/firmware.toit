@@ -35,6 +35,17 @@ Map the current firmware into memory, so the content
 
 The mapping is only valid while executing the given
   $block.
+
+# Examples
+
+```
+map: | mapping/FirmwareMapping |
+  print "Size of firmware: $mapping.size"
+  print "First byte of firmware: $mapping[0]"
+  bytes := ByteArray 128
+  mapping.copy 0 128 --into=bytes
+  print "First 128 bytes of firmware: $bytes"
+```
 */
 map --from/int=0 --to/int?=null [block] -> none:
   mapping/FirmwareMapping_? := null
@@ -253,6 +264,7 @@ class FirmwareMapping_ implements FirmwareMapping:
 
   copy from/int to/int --into/ByteArray -> none:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
+    if into.size < to - from: throw "OUT_OF_BOUNDS"
     // Determine if we can do an aligned block copy taking
     // the offset into account.
     offset := offset_

@@ -28,7 +28,6 @@
 #include "../objects_inline.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
@@ -54,7 +53,7 @@ class SpinLocker {
 };
 
 struct Datagram {
-  int len;
+  word len;
   uint8 mac[6];
   uint8 buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
 };

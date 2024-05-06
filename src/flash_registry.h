@@ -29,23 +29,23 @@ class FlashRegistry {
   static void flush();
 
   // Find next empty slot.
-  static int find_next(int offset, ReservationList::Iterator* reservations);
+  static int find_next(word offset, ReservationList::Iterator* reservations);
 
   // Get a pointer to the memory of an allocation.
-  static const FlashAllocation* allocation(int offset);
+  static const FlashAllocation* allocation(word offset);
 
   // Get a pointer to the memory of a region.
-  static uint8* region(int offset, int size) {
+  static uint8* region(word offset, word size) {
     ASSERT(is_allocations_set_up());
     ASSERT(0 <= offset && offset + size <= allocations_size());
     return reinterpret_cast<uint8*>(allocations_memory()) + offset;
   }
 
   // Flash writing support.
-  static bool write_chunk(const void* chunk, int offset, int size);
+  static bool write_chunk(const void* chunk, word offset, word size);
 
   // Get the offset from the cursor.
-  static int offset(const void* cursor) {
+  static word offset(const void* cursor) {
     ASSERT(is_allocations_set_up());
     word offset = Utils::address_distance(allocations_memory(), cursor);
     ASSERT(0 <= offset && offset < allocations_size());
@@ -53,8 +53,8 @@ class FlashRegistry {
   }
 
   // Flash erasing support.
-  static bool is_erased(int offset, int size);
-  static int erase_chunk(int offset, int size);
+  static bool is_erased(word offset, word size);
+  static int erase_chunk(word offset, word size);
   static bool erase_flash_registry();
 
   // Get the size of the allocations area in bytes.

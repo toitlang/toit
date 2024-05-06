@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import log
 import monitor
-import bytes
 
 import .transport
 import .message
@@ -101,14 +101,14 @@ class Client:
     msg := transport_.new-message
     msg.code = CODE-POST
     msg.add-path path
-    msg.payload = bytes.Reader payload
+    msg.payload = io.Reader payload
     return unary --token-id=token-id msg
 
   put path payload/ByteArray --token-id=null -> Message:
     msg := transport_.new-message
     msg.code = CODE-PUT
     msg.add-path path
-    msg.payload = bytes.Reader payload
+    msg.payload = io.Reader payload
     return unary --token-id=token-id msg
 
   max-suggested-payload-size -> int:
@@ -194,7 +194,7 @@ class Client:
           logger_.debug "underlying transport closed the connection"
           return
         if not sessions_.dispatch-response response:
-          while response.message.payload.read:
+          response.message.payload.drain
           logger_.warn "unpaired response"
     finally:
       close

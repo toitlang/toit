@@ -115,7 +115,14 @@ class Interpreter {
   void deactivate();
 
   // Garbage collection support.
-  Object** gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process);
+  Object** gc(
+      Object** sp,
+      bool malloc_failed,
+      int attempts,
+      bool force_cross_process,
+      const char* reason,
+      int parameter1 = 0,
+      int parameter2 = 0);
 
   // Boot the interpreter on the current process.
   void prepare_process();

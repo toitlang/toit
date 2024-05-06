@@ -18,7 +18,7 @@ import encoding.json
 import host.pipe
 import host.os
 import host.file
-import reader show BufferedReader
+import io
 import semver
 import system
 import system show platform
@@ -107,9 +107,9 @@ migrate parsed/cli.Parsed:
         toitc
         [toitc, "-Xmigrate-dash-ids", "--analyze", source]
     child-process := pipes[3]
-    reader := BufferedReader pipe-ends
+    reader := io.Reader.adapt pipe-ends
     reader.buffer-all
-    out := reader.read-string reader.buffered
+    out := reader.read-string reader.buffered-size
     pipe-ends.close
     exit-value := pipe.wait-for child-process
     if pipe.exit-signal exit-value:

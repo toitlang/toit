@@ -4,6 +4,7 @@
 
 import .tcp
 import monitor show *
+import net.tcp show Socket
 
 main:
   close-server-socket-test
@@ -26,27 +27,29 @@ close-connected-socket:
   with-server: | port |
     socket := TcpSocket
     socket.connect "127.0.0.1" port
-    socket.close-write
-    while socket.read:
+    socket.out.close
+    socket.in.drain
     socket.close
 
 close-connected-socket-after-write:
   with-server: | port |
     socket := TcpSocket
     socket.connect "127.0.0.1" port
-    socket.write "hammer fedt"
-    socket.close-write
-    while socket.read:
+    socket.out.write "hammer fedt"
+    socket.out.close
+    socket.in.drain
     socket.close
 
 simple-server ready:
   server := TcpServerSocket
   server.listen "127.0.0.1" 0
   ready.send server.local-address.port
-  socket := server.accept
+  socket/Socket := server.accept
 
-  while data := socket.read:
-    socket.write data
+  reader := socket.in
+  writer := socket.out
+  while data := reader.read:
+    writer.write data
 
   socket.close
   server.close

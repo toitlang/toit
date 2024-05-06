@@ -13,7 +13,6 @@ Connect pin 26 to pin 33, optionally with a resistor.
 import expect show *
 import gpio
 import uart
-import writer
 
 RX1 := 18
 TX1 := 26
@@ -43,10 +42,9 @@ main:
     after := 0
     task::
       print "writing to slow port"
-      writer := writer.Writer port1
-      writer.write TEST-STR
+      port1.out.write TEST-STR
       before = Time.monotonic-us
-      port1.flush
+      port1.out.flush
       after = Time.monotonic-us
       print "flush took $(after - before) us"
       done = true
@@ -68,7 +66,7 @@ main:
     // When the baud rate is too low we seem to have problems reading... :(
     // Generally, it's enough to do a second round.
     // https://github.com/espressif/esp-idf/issues/9397
-    data := port2.read
+    data := port2.in.read
     // expect_equals TEST_STR data.to_string_non_throwing
     if TEST-STR != data.to-string-non-throwing:
       print "***********************************  NOT EQUAL"
