@@ -21,6 +21,7 @@ namespace compiler {
 MODULE_TYPES(ble, MODULE_BLE)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(create_adapter)
 TYPE_PRIMITIVE_ANY(create_peripheral_manager)
 TYPE_PRIMITIVE_ANY(create_central_manager)
 TYPE_PRIMITIVE_ANY(close)
@@ -44,6 +45,7 @@ TYPE_PRIMITIVE_ANY(set_characteristic_notify)
 TYPE_PRIMITIVE_ANY(advertise_start)
 TYPE_PRIMITIVE_ANY(advertise_stop)
 TYPE_PRIMITIVE_ANY(add_service)
+TYPE_PRIMITIVE_ANY(reserve_services)
 TYPE_PRIMITIVE_ANY(start_gatt_server)
 TYPE_PRIMITIVE_ANY(add_characteristic)
 TYPE_PRIMITIVE_ANY(add_descriptor)
@@ -55,8 +57,10 @@ TYPE_PRIMITIVE_ANY(get_att_mtu)
 TYPE_PRIMITIVE_ANY(set_preferred_mtu)
 TYPE_PRIMITIVE_ANY(get_error)
 TYPE_PRIMITIVE_ANY(clear_error)
-TYPE_PRIMITIVE_ANY(read_request_reply)
 TYPE_PRIMITIVE_ANY(get_bonded_peers)
+TYPE_PRIMITIVE_ANY(toit_callback_init)
+TYPE_PRIMITIVE_ANY(toit_callback_deinit)
+TYPE_PRIMITIVE_ANY(toit_callback_reply)
 
 }  // namespace toit::compiler
 }  // namespace toit

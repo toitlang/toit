@@ -71,7 +71,7 @@ class ServiceContainer : public BleResource {
     [_service_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
@@ -115,6 +115,15 @@ class DiscoverableResource {
   bool _returned;
 };
 
+class BleAdapterResource: public BleResource {
+ public:
+  TAG(BleAdapterResource);
+
+  BleAdapterResource(BleResourceGroup* group)
+      : BleResource(group, ADAPTER) {}
+};
+
+
 // Supports two use cases:
 //    - as a service on a remote device (_device is not null)
 //    - as a local exposed service (_peripheral_manager is not null)
@@ -144,7 +153,7 @@ class BleServiceResource: public BleResource, public DiscoverableResource {
     [_characteristics_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   CBService* service() { return _service; }
   BleRemoteDeviceResource* device() { return _device; }
@@ -661,7 +670,7 @@ BleServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
 }
 
 template<typename T>
-void ServiceContainer<T>::make_deletable() {
+void ServiceContainer<T>::delete_or_mark_for_deletion() {
   // Tearing down the resource group will also delete the services (resources) that
 	// this service container holds on to. We don't want to do that twice.
   if (!group()->is_tearing_down()) {
@@ -670,7 +679,7 @@ void ServiceContainer<T>::make_deletable() {
       group()->unregister_resource(services[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_resource(
@@ -686,14 +695,14 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_reso
   return resource;
 }
 
-void BleServiceResource::make_deletable() {
+void BleServiceResource::delete_or_mark_for_deletion() {
   if (!group()->is_tearing_down()) {
     NSArray<BleResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
     for (int i = 0; i < [characteristics count]; i++) {
       group()->unregister_resource(characteristics[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 NSString* ns_string_from_blob(Blob &blob) {
@@ -738,12 +747,28 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-PRIMITIVE(create_central_manager) {
+PRIMITIVE(create_adapter) {
   ARGS(BleResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // On the host we expect '_new' to succeed.
+  BleAdapterResource* adapter_resource = _new BleAdapterResource(group);
+  group->register_resource(adapter_resource);
+  proxy->set_external_address(adapter_resource);
+  return proxy;
+}
+
+PRIMITIVE(create_central_manager) {
+  ARGS(BleAdapterResource, adapter);
+
+  auto group = adapter->group();
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // On the host we expect '_new' to succeed.
   BleCentralManagerResource* central_manager_resource = _new BleCentralManagerResource(group);
   group->register_resource(central_manager_resource);
 
@@ -764,7 +789,10 @@ PRIMITIVE(create_central_manager) {
 }
 
 PRIMITIVE(create_peripheral_manager) {
-  ARGS(BleResourceGroup, group);
+  ARGS(BleAdapterResource, adapter);
+
+  auto group = adapter->group();
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
@@ -1084,7 +1112,7 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, flush, bool, allow_retry);
+  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, allow_retry);
 
   // TODO(florian): check that the bytes fit into the MTU.
   // TODO(florian): take 'flush' into account.
@@ -1178,9 +1206,11 @@ PRIMITIVE(add_characteristic) {
 
   CBUUID* uuid = cb_uuid_from_blob(raw_uuid);
 
+  if (value == process->null_object()) FAIL(UNIMPLEMENTED);
+
   NSData* data = nil;
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
   if (bytes.length()) {
     data = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
   }
@@ -1211,8 +1241,13 @@ PRIMITIVE(handle) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(reserve_services) {
+  // Nothing to be done on this platform.
+  return process->null_object();
+}
+
 PRIMITIVE(deploy_service) {
-  ARGS(BleServiceResource, service_resource);
+  ARGS(BleServiceResource, service_resource, int, index);
 
   if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
   if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
@@ -1231,7 +1266,7 @@ PRIMITIVE(start_gatt_server) {
 PRIMITIVE(set_value) {
   ARGS(BleCharacteristicResource, characteristic_resource, Object, value);
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   characteristic.value = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
@@ -1255,7 +1290,7 @@ PRIMITIVE(notify_characteristics_value) {
   if (!peripheral_manager) FAIL(WRONG_OBJECT_TYPE);
 
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   [peripheral_manager->peripheral_manager()
@@ -1287,6 +1322,7 @@ PRIMITIVE(get_att_mtu) {
 }
 
 PRIMITIVE(set_preferred_mtu) {
+  ARGS(BleAdapterResource, resource);
   // Ignore
   return process->null_object();
 }
@@ -1312,15 +1348,20 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(gc) {
+PRIMITIVE(toit_callback_init) {
   FAIL(UNIMPLEMENTED);
 }
 
-PRIMITIVE(read_request_reply) {
+PRIMITIVE(toit_callback_deinit) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(toit_callback_reply) {
   FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(get_bonded_peers) {
+  ARGS(BleCentralManagerResource, central_manager);
   FAIL(UNIMPLEMENTED);
 }
 

@@ -23,7 +23,8 @@ CHARACTERISTIC-INDICATE ::= BleUuid "01dc8c2f-038d-4f75-b836-b6c4245b23ad"
 CHARACTERISTIC-WRITE-ONLY ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384134606fc2"
 
-READ-ONLY-VALUE ::= #[0x70, 0x17]
+VALUE-BYTES ::= #[0x70, 0x17]
+VALUE-STRING ::= "7017"
 
 main-peripheral --iteration/int:
   print "Iteration $iteration"
@@ -34,7 +35,8 @@ main-peripheral --iteration/int:
   service1 := peripheral.add-service SERVICE-TEST
   service2 := peripheral.add-service SERVICE-TEST2
 
-  read-only := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
+  value := iteration == 0 ? VALUE-BYTES : VALUE-STRING
+  read-only := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=value
   read-only-callback := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
 
   callback-task-done := monitor.Latch
@@ -76,11 +78,45 @@ main-peripheral --iteration/int:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
 
+  // Notifications and indications use different mechanisms for read-requests and subscriptions.
+  // The 'write' is sent to all subscribers.
+  // The 'handle-read-request' is activated for each read-request.
+
+  task --background=is-background::
+    notify.handle-read-request:
+      #['F', 'O', 'O']
+
+  task --background=is-background::
+    indicate.handle-read-request:
+      #['B', 'A', 'R']
+
+  notify.write value
+  indicate.write value
+
   data = write-only.read
   if iteration == 0:
     expect data.size < 500
   else:
     expect-equals 512 data.size
+
+  counter := 0
+  while true:  // We use a loop so we can break out of the handle function.
+    write-only-with-response.handle-write-request: | chunk/ByteArray |
+      expect-equals #[counter++] chunk
+      if counter == 5:
+        break
+    unreachable
+
+  data = write-only.read  // Wait for data from the client
+  expect-equals #['n', 'o', 'w'] data
+
+  // At this data was accumulated in the write-only-with-response characteristic.
+  // The handle call should get all of the data.
+  while true:  // We use a loop so we can break out of the handle function.
+    write-only-with-response.handle-write-request: | chunk/ByteArray |
+      expect-equals #[0, 1, 2, 3, 4] chunk
+      break
+    unreachable
 
   if iteration == 0:
     // In the first iteration close correctly down.
@@ -153,20 +189,34 @@ main-central --iteration/int:
   seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
   expect-equals 6 seen-handles.size
 
-  expect-equals READ-ONLY-VALUE read-only.read
+  notify-latch := monitor.Latch
+  indicate-latch := monitor.Latch
+  notify.subscribe
+  indicate.subscribe
+  task::
+    notify-latch.set notify.wait-for-notification
+  task::
+    indicate-latch.set indicate.wait-for-notification
 
-  counter := 0
-  5.repeat:
-    value := read-only-callback.read
-    expect-equals #[counter++] value
+  value := iteration == 0 ? VALUE-BYTES : VALUE-STRING.to-byte-array
 
-  counter = 0
-  5.repeat:
-    write-only.write #[counter++]
+  expect-equals value read-only.read
 
-  counter = 0
   5.repeat:
-    write-only-with-response.write #[counter++]
+    expect-equals #[it] read-only-callback.read
+
+  5.repeat:
+    write-only.write #[it]
+
+  5.repeat:
+    write-only-with-response.write #[it]
+
+  expect-equals value notify-latch.get
+  expect-equals value indicate-latch.get
+
+  // We can also read from the notify/indicate characteristics.
+  expect-equals #['F', 'O', 'O'] notify.read
+  expect-equals #['B', 'A', 'R'] indicate.read
 
   expect-throw "OUT_OF_RANGE":
     // Check that the MTU is enforced.
@@ -179,6 +229,21 @@ main-central --iteration/int:
   else:
     max-packet-size = 512
   write-only.write (ByteArray max-packet-size)
+
+  // Give the peripheral time to set up the write-handler.
+  sleep --ms=200
+
+  5.repeat:
+    write-only-with-response.write #[it]
+
+  // Give the peripheral time to uninitialize the handler.
+  sleep --ms=200
+
+  // Write into the characteristic that doesn't have any 'read' or handler.
+  5.repeat:
+    write-only-with-response.write #[it]
+  // Signal that the data was sent.
+  write-only.write #['n', 'o', 'w']
 
   if iteration == 0:
     // In the first iteration close correctly down.

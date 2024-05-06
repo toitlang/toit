@@ -61,9 +61,10 @@ namespace toit {
   fn(MbedTlsSocket)                     \
 
 // When adding a class make sure that they all are subclasses of
-// the BleErrorCapableResource. If it isn't update the Min/MaxTag below.
+// the BleCallbackResource. If it isn't update the Min/MaxTag below.
 // Similarly, check, whether the new class is a read-write class.
 #define BLE_CLASSES_DO(fn)              \
+  fn(BleAdapterResource)                \
   fn(BleCentralManagerResource)         \
   fn(BlePeripheralManagerResource)      \
   fn(BleRemoteDeviceResource)           \
@@ -116,12 +117,12 @@ enum StructTag {
   ResourceMinTag,
   NON_BLE_RESOURCE_CLASSES_DO(MAKE_ENUM)
   BleResourceMinTag,
-  BleErrorCapableResourceMinTag,
+  BleCallbackResourceMinTag,
   BLE_CLASSES_DO(MAKE_ENUM)
   BleReadWriteElementMinTag,
   BLE_READ_WRITE_CLASSES_DO(MAKE_ENUM)
   BleReadWriteElementMaxTag,
-  BleErrorCapableResourceMaxTag,
+  BleCallbackResourceMaxTag,
   BleResourceMaxTag,
   ResourceMaxTag,
 

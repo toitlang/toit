@@ -151,7 +151,7 @@ class WritePipeResource : public HandlePipeResource {
   bool ready_for_write() const { return write_ready_; }
 
 
-  bool send(const uint8* buffer, int length) {
+  bool send(const uint8* buffer, word length) {
     if (write_buffer_ != null) free(write_buffer_);
 
     write_ready_ = false;

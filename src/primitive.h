@@ -335,7 +335,8 @@ namespace toit {
   PRIMITIVE(get_ip, 1)                       \
 
 #define MODULE_BLE(PRIMITIVE)                \
-  PRIMITIVE(init, 1)                         \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create_adapter, 1)               \
   PRIMITIVE(create_peripheral_manager, 3)    \
   PRIMITIVE(create_central_manager, 1)       \
   PRIMITIVE(close, 1)                        \
@@ -353,25 +354,28 @@ namespace toit {
   PRIMITIVE(discover_descriptors_result, 1)  \
   PRIMITIVE(request_read, 1)                 \
   PRIMITIVE(get_value, 1)                    \
-  PRIMITIVE(write_value, 5)                  \
+  PRIMITIVE(write_value, 4)                  \
   PRIMITIVE(handle, 1)                       \
   PRIMITIVE(set_characteristic_notify, 2)    \
   PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
-  PRIMITIVE(add_characteristic, 6)           \
+  PRIMITIVE(add_characteristic, 5)           \
   PRIMITIVE(add_descriptor, 5)               \
-  PRIMITIVE(deploy_service, 1)               \
+  PRIMITIVE(reserve_services, 2)             \
+  PRIMITIVE(deploy_service, 2)               \
   PRIMITIVE(start_gatt_server, 1)            \
   PRIMITIVE(set_value, 2)                    \
   PRIMITIVE(get_subscribed_clients, 1)       \
   PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
-  PRIMITIVE(set_preferred_mtu, 1)            \
+  PRIMITIVE(set_preferred_mtu, 2)            \
   PRIMITIVE(get_error, 2)                    \
   PRIMITIVE(clear_error, 2)                  \
-  PRIMITIVE(read_request_reply, 2)           \
-  PRIMITIVE(get_bonded_peers, 0)             \
+  PRIMITIVE(get_bonded_peers, 1)             \
+  PRIMITIVE(toit_callback_init, 3)           \
+  PRIMITIVE(toit_callback_deinit, 2)         \
+  PRIMITIVE(toit_callback_reply, 3)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -448,7 +452,7 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 3)                  \
+  PRIMITIVE(channel_new, 4)                  \
   PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(config_rx, 8)                    \
   PRIMITIVE(config_tx, 11)                   \
@@ -1052,8 +1056,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
+#define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
-#define _A_T_BleErrorCapableResource(N, name)   MAKE_UNPACKING_MACRO(BleErrorCapableResource, N, name)
+#define _A_T_BleCallbackResource(N, name) MAKE_UNPACKING_MACRO(BleCallbackResource, N, name)
 #define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)
 #define _A_T_BleRemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BleRemoteDeviceResource, N, name)
 
@@ -1226,7 +1231,7 @@ class Primitive {
   // Allocates or returns allocation failure.
   static Object* allocate_double(double value, Process* process);
   static Object* allocate_large_integer(int64 value, Process* process);
-  static Object* allocate_array(int length, Object* filler, Process* process);
+  static Object* allocate_array(word length, Object* filler, Process* process);
 
   static Object* integer(int64 value, Process* process) {
     if (Smi::is_valid(value)) return Smi::from((word) value);

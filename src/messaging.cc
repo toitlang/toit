@@ -141,7 +141,7 @@ bool TisonEncoder::encode(Object* object) {
   // Later, when we're not encoding for size, we know the payload size
   // and will encode this before the payload.
   if (encoding_for_size()) {
-    unsigned payload_size = size() - sizeof(uint32);
+    uword payload_size = size() - sizeof(uint32);
     ASSERT(payload_size > 0 && payload_size_ == 0);
     // Make the payload size available to the outside.
     payload_size_ = payload_size;
@@ -183,8 +183,8 @@ bool MessageEncoder::encode_any(Object* object) {
       Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
       Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
       if (!is_smi(from_object) || !is_smi(to_object)) return false;
-      int from = Smi::value(from_object);
-      int to = Smi::value(to_object);
+      word from = Smi::value(from_object);
+      word to = Smi::value(to_object);
       if (is_array(list)) return encode_array(Array::cast(list), from, to);
       return encode_list(Instance::cast(list), from, to);
     } else if (class_id == program->map_class_id()) {
@@ -230,17 +230,17 @@ bool MessageEncoder::encode_any(Object* object) {
   return false;
 }
 
-bool MessageEncoder::encode_array(Array* object, int from, int to) {
+bool MessageEncoder::encode_array(Array* object, word from, word to) {
   ASSERT(from <= to);
   write_uint8(TAG_ARRAY);
   write_cardinal(to - from);
-  for (int i = from; i < to; i++) {
+  for (word i = from; i < to; i++) {
     if (!encode_any(object->at(i))) return false;
   }
   return true;
 }
 
-bool MessageEncoder::encode_list(Instance* instance, int from, int to) {
+bool MessageEncoder::encode_list(Instance* instance, word from, word to) {
   Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
   if (is_smi(backing)) return false;
   Smi* class_id = HeapObject::cast(backing)->class_id();
@@ -280,8 +280,8 @@ bool MessageEncoder::encode_map(Instance* instance) {
     return false;
   }
   Array* array = Array::cast(backing);
-  int count = 0;
-  for (int i = 0; count < size; i += 2) {
+  word count = 0;
+  for (word i = 0; count < size; i += 2) {
     Object* key = array->at(i);
     Object* value = array->at(i + 1);
     if (is_smi(key) || HeapObject::cast(key)->class_id() != program_->tombstone_class_id()) {
@@ -316,7 +316,7 @@ bool MessageEncoder::encode_arguments(char** argv, int argc) {
   write_uint8(TAG_ARRAY);
   write_cardinal(argc);
   for (int i = 0; i < argc; i++) {
-    int length = strlen(argv[i]);
+    word length = strlen(argv[i]);
     write_uint8(TAG_STRING_INLINE);
     write_cardinal(length);
     if (!encoding_for_size()) {
@@ -335,7 +335,7 @@ bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle applic
 }
 #endif
 
-bool MessageEncoder::encode_bytes_external(void* data, int length, bool free_on_failure) {
+bool MessageEncoder::encode_bytes_external(void* data, word length, bool free_on_failure) {
   if (encoding_tison()) return false;
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(length);
@@ -356,7 +356,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   ASSERT(TAG_BYTE_ARRAY_INLINE == TAG_BYTE_ARRAY + 1);
 
   const uint8* source;
-  int length = 0;
+  word length = 0;
   if (!object->byte_content(program_, &source, &length, STRINGS_OR_BYTE_ARRAYS)) {
     // TODO(kasper): Report meaningful error.
     return false;
@@ -424,7 +424,7 @@ void MessageEncoder::write_uint64(uint64 value) {
 
 MessageDecoder::MessageDecoder(Process* process,
                                const uint8* buffer,
-                               int size,
+                               word size,
                                MessageFormat format)
     : process_(process)
     , program_(process ? process->program() : null)
@@ -458,7 +458,7 @@ void MessageDecoder::remove_disposing_finalizers() {
   }
 }
 
-void MessageDecoder::register_external(HeapObject* object, int length) {
+void MessageDecoder::register_external(HeapObject* object, word length) {
   ASSERT(!decoding_tison());
   unsigned index = externals_count();
   if (index >= ARRAY_SIZE(externals_)) {
@@ -484,7 +484,7 @@ Object* TisonDecoder::decode() {
     }
     return mark_malformed();
   }
-  int payload_size = read_cardinal();
+  word payload_size = read_cardinal();
   if (payload_size != remaining()) return mark_malformed();
   Object* result = decode_any();
   if (!success()) return result;
@@ -555,16 +555,16 @@ void MessageDecoder::deallocate() {
       break;
     case TAG_STRING_INLINE:
     case TAG_BYTE_ARRAY_INLINE: {
-      int length = read_cardinal();
+      word length = read_cardinal();
       cursor_ += length;
       break;
     }
     case TAG_ARRAY:
     case TAG_MAP: {
-      int length = read_cardinal();
+      word length = read_cardinal();
       // Maps have two nested encodings per entry.
       if (tag == TAG_MAP) length *= 2;
-      for (int i = 0; i < length; i++) deallocate();
+      for (word i = 0; i < length; i++) deallocate();
       break;
     }
     case TAG_DOUBLE:
@@ -577,7 +577,7 @@ void MessageDecoder::deallocate() {
 }
 
 Object* MessageDecoder::decode_string(bool inlined) {
-  int length = read_cardinal();
+  word length = read_cardinal();
   if (length == 0 && overflown()) return mark_malformed();
   String* result = null;
   if (inlined) {
@@ -595,11 +595,11 @@ Object* MessageDecoder::decode_string(bool inlined) {
 }
 
 Object* MessageDecoder::decode_array() {
-  int length = read_cardinal();
+  word length = read_cardinal();
   if (length == 0 && overflown()) return mark_malformed();
   Array* result = process_->object_heap()->allocate_array(length, Smi::zero());
   if (result == null) return mark_allocation_failed();
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     Object* inner = decode_any();
     if (!success()) return inner;
     result->at_put(i, inner);
@@ -608,7 +608,7 @@ Object* MessageDecoder::decode_array() {
 }
 
 Object* MessageDecoder::decode_map() {
-  int size = read_cardinal();
+  word size = read_cardinal();
   if (size == 0 && overflown()) return mark_malformed();
   Instance* result = process_->object_heap()->allocate_instance(program_->map_class_id());
   if (result == null) return mark_allocation_failed();
@@ -621,7 +621,7 @@ Object* MessageDecoder::decode_map() {
   }
   Array* array = process_->object_heap()->allocate_array(size * 2, Smi::zero());
   if (array == null) return mark_allocation_failed();
-  for (int i = 0; i < size * 2; i++) {
+  for (word i = 0; i < size * 2; i++) {
     Object* inner = decode_any();
     if (!success()) return inner;
     array->at_put(i, inner);
@@ -634,7 +634,7 @@ Object* MessageDecoder::decode_map() {
 }
 
 Object* MessageDecoder::decode_byte_array(bool inlined) {
-  int length = read_cardinal();
+  word length = read_cardinal();
   if (length == 0 && overflown()) return mark_malformed();
   ByteArray* result = null;
   if (inlined) {
@@ -655,7 +655,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   return result;
 }
 
-bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
+bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
   if (decoding_tison()) return false;
   int tag = read_uint8();
   if (tag == TAG_BYTE_ARRAY) {
@@ -694,8 +694,8 @@ Object* MessageDecoder::decode_large_integer() {
 
 uint8* MessageDecoder::read_pointer() {
   uint8* result = null;
-  int cursor = cursor_;
-  int next = cursor + sizeof(result);
+  word cursor = cursor_;
+  word next = cursor + sizeof(result);
   if (next <= size_) {
     memcpy(&result, &buffer_[cursor], sizeof(result));
   }
@@ -719,8 +719,8 @@ uword MessageDecoder::read_cardinal() {
 
 uint32 MessageDecoder::read_uint32() {
   uint32 result = 0;
-  int cursor = cursor_;
-  int next = cursor + sizeof(result);
+  word cursor = cursor_;
+  word next = cursor + sizeof(result);
   if (next <= size_) {
     memcpy(&result, &buffer_[cursor], sizeof(result));
   }
@@ -730,8 +730,8 @@ uint32 MessageDecoder::read_uint32() {
 
 uint64 MessageDecoder::read_uint64() {
   uint64 result = 0;
-  int cursor = cursor_;
-  int next = cursor + sizeof(result);
+  word cursor = cursor_;
+  word next = cursor + sizeof(result);
   if (next <= size_) {
     memcpy(&result, &buffer_[cursor], sizeof(result));
   }
@@ -762,8 +762,8 @@ bool ExternalSystemMessageHandler::set_priority(uint8 priority) {
   return (pid < 0) ? false : vm_->scheduler()->set_priority(pid, priority);
 }
 
-bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length, bool free_on_failure) {
-  int buffer_size = 0;
+bool ExternalSystemMessageHandler::send(int pid, int type, void* data, word length, bool free_on_failure) {
+  word buffer_size = 0;
   { MessageEncoder encoder(null);
     encoder.encode_bytes_external(data, length);
     buffer_size = encoder.size();
@@ -802,8 +802,11 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       SystemMessage* system_message = static_cast<SystemMessage*>(message);
       MessageDecoder decoder(system_message->data());
       void* data = null;
-      int length = 0;
+      word length = 0;
       bool success = decoder.decode_byte_array_external(&data, &length);
+      if (success && length > INT_MAX) {
+        abort();
+      }
 
       // If the allocation failed, we ask the handler if we should retry the failed
       // allocation. If so, we leave the message in place and try again. Otherwise,

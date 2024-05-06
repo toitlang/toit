@@ -240,16 +240,16 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   Process* process = process_;
-  int length = process->task()->stack()->length();
-  int new_length = -1;
+  word length = process->task()->stack()->length();
+  word new_length = -1;
   if (length < Stack::max_length()) {
-    int needed_space = method.max_height() + RESERVED_STACK_FOR_CALLS;
-    int headroom = sp - limit_;
+    word needed_space = method.max_height() + RESERVED_STACK_FOR_CALLS;
+    word headroom = sp - limit_;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
     new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
     new_length = Utils::min(Stack::max_length(), new_length);
-    int new_headroom = headroom + (new_length - length);
+    word new_headroom = headroom + (new_length - length);
     if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not give us enough space.
   }
 
@@ -265,7 +265,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   for (int attempts = 1; new_stack == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
     if (attempts == 3) {
-      printf("[gc @ %p%s | 3rd time stack allocate failure %d->%d]\n",
+      printf("[gc @ %p%s | 3rd time stack allocate failure % " PRIdPTR "->% " PRIdPTR "]\n",
           process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
           length, new_length);
     }

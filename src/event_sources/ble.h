@@ -45,7 +45,8 @@ enum {
   kBleDataReceived = 1 << 20,
   kBleDiscoverOperationFailed = 1 << 21,
   kBleMallocFailed = 1 << 22,
-  kBleDataReadRequest = 1 << 23
+  kBleDataReadRequest = 1 << 23,
+  kBleDataWriteRequest = 1 << 24,
 
 };
 
@@ -56,6 +57,7 @@ class BleResource : public Resource {
   TAGS(BleResource);
 
   enum Kind {
+    ADAPTER,
     CENTRAL_MANAGER,
     PERIPHERAL_MANAGER,
     REMOTE_DEVICE,

@@ -35,9 +35,6 @@ main:
       --tx=gpio.Pin TX2
       --baud-rate=9600
 
-  // We expect all messages to go through in one go.
-  // As such we don't buffer or use a Writer.
-
   port1.out.write "toit" --flush
   bytes := port2.in.read
   expect-equals "toit" bytes.to-string

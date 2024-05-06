@@ -33,7 +33,7 @@ class Printer {
 
   // For printing strings.  %s relies on a terminating null, but for this
   // you get to specify the length.
-  void print_buffer(const uint8_t* buffer, int length);
+  void print_buffer(const uint8_t* buffer, word length);
 
   Program* program() { return program_; }
  private:
@@ -53,10 +53,10 @@ class ConsolePrinter : public Printer {
 
 class BufferPrinter : public Printer {
  public:
-  BufferPrinter(Program* program, char* buffer, int buffer_len)
+  BufferPrinter(Program* program, char* buffer, word buffer_len)
     : Printer(program), ptr_(buffer), buffer_(buffer), buffer_len_(buffer_len), remaining_(buffer_len) {}
 
-  int length() const {
+  word length() const {
     return ptr_ - buffer_;
   }
 
@@ -65,8 +65,8 @@ class BufferPrinter : public Printer {
  private:
   char* ptr_;
   char* buffer_;
-  int buffer_len_;
-  int remaining_;
+  word buffer_len_;
+  word remaining_;
 };
 
 void print_object(Printer* printer, Object* object);

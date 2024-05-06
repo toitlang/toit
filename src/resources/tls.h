@@ -82,7 +82,7 @@ class BaseMbedTlsSocket : public TlsSocket {
   void record_error_detail(const mbedtls_asn1_named_data* issuer, int flags, int index);
   // Hash a textual description of the issuer of a certificate, or the
   // subject of a root certificate. These should match.
-  static uint32 hash_subject(uint8* buffer, int length);
+  static uint32 hash_subject(uint8* buffer, word length);
   uint32_t error_flags() const { return error_flags_; }
   char* error_detail(int index) const { return error_details_[index]; }
   void clear_error_data();
