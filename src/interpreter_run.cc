@@ -81,12 +81,12 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              int interface_selector_index,
                                              bool is_nullable) const {
   if (is_nullable && value == program->null_object()) return true;
-  int selector_offset = program->interface_check_offsets[interface_selector_index];
+  word selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);
   return target.is_valid();
 }
 
-Method Program::find_method(Object* receiver, int offset) {
+Method Program::find_method(Object* receiver, word offset) {
   Smi* class_id = is_smi(receiver) ? smi_class_id() : HeapObject::cast(receiver)->class_id();
   int index = Smi::value(class_id) + offset;
   int entry_id = dispatch_table[index];
@@ -545,7 +545,7 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = gc(sp, false, attempts, false);
+      sp = gc(sp, false, attempts, false, "'allocate instance'", class_index);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     process_->object_heap()->leave_primitive();
@@ -557,7 +557,7 @@ Interpreter::Result Interpreter::run() {
     }
     PUSH(result);
     if (Flags::gc_a_lot) {
-      sp = gc(sp, false, 1, false);
+      sp = gc(sp, false, 1, false, "'gc a lot'");
       process_->object_heap()->leave_primitive();
     }
   OPCODE_END();
@@ -697,7 +697,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
-    int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
+    word selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -709,7 +709,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -741,7 +741,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     Object* receiver = STACK_AT(1);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -969,6 +969,17 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END();
 
+  OPCODE_BEGIN(INVOKE_SIZE);
+    Object* receiver = STACK_AT(0);
+    Smi* result;
+
+    if (fast_size(process_, receiver, &result)) {
+      STACK_AT_PUT(0, result);
+      DISPATCH(INVOKE_SIZE_LENGTH);
+    }
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH);
     bcp += Utils::read_unaligned_uint16(bcp + 1);
     DISPATCH(0);
@@ -1103,7 +1114,7 @@ Interpreter::Result Interpreter::run() {
         }
 #endif
 
-        sp = gc(sp, malloc_failed, attempts, force_cross_process);
+        sp = gc(sp, malloc_failed, attempts, force_cross_process, "primitive", primitive_module, primitive_index);
         sp_ = sp;
         result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = sp_;

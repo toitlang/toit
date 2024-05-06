@@ -1,4 +1,4 @@
 tests/negative/prefixed-assign1-test.toit:8:6: error: Can't assign to unknown 'non-existent'
   pa.non-existent = 3
      ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

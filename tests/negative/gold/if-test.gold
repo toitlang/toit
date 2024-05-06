@@ -25,4 +25,4 @@ tests/negative/if-test.toit:8:11: error: Unresolved identifier: 'unresolved'
 tests/negative/if-test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

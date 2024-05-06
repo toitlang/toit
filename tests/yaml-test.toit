@@ -6,8 +6,8 @@ import expect show *
 
 import encoding.yaml
 import fixed_point show FixedPoint
+import io
 import math
-import reader show Reader BufferedReader
 
 main:
   test-stringify
@@ -21,6 +21,9 @@ main:
   test-from-spec
   test-stream
   test-value-converter
+  test-reserved
+  test-indented-block
+  test-implicit-key
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -300,6 +303,7 @@ test-encode:
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
   expect-list-equals ["-O0"] (yaml.decode """["-O0"]""".to-byte-array)
+  expect-structural-equals { "x": "Q" } (yaml.decode "x: Q".to-byte-array)
 
 BIG-JSON ::= """
 [
@@ -423,9 +427,29 @@ BIG-BLOCK ::= """
   baz: fizz
 """
 
+class TestWriter extends io.Writer:
+  ba := #[]
+  try-write_ data from/int to/int -> int:
+    slice := data[from..to]
+    if slice is string:
+      ba += slice.to-byte-array
+    else:
+      ba += slice
+    return to - from
+
 test-stream:
   expect-equals [] (yaml.parse --as-stream "")
   expect-equals ["foo","bar"] (yaml.parse --as-stream "---\nfoo\n...\nbar\n...")
+
+  OBJ ::= {"foo": 42}
+
+  writer := TestWriter
+  yaml.encode-stream --writer=writer OBJ
+
+  encoded := yaml.encode OBJ
+
+  expect-equals "foo: 42\n" encoded.to-string
+  expect-equals writer.ba encoded
 
 test-from-spec:
   // Example 6.7
@@ -555,19 +579,60 @@ test-value-converter:
   expect result["float-as-string"] is string
   expect result["int-as-string"] is string
 
-class TestReader implements Reader:
-  pos := 0
-  list := ?
-  throw-on-last-part := false
+test-reserved:
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: @"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: `"
 
-  constructor .list:
-    list.size.repeat:
-      if list[it] is not ByteArray:
-        list[it] = list[it].to-byte-array
+test-indented-block:
+  result := yaml.parse """
+    bar: |1  # Next line is indented by 1.
+      baz
+    bar2: |2
+      baz
+    bar3:    # Next line is intended by first non-empty indentation.
+        baz
+    bar4:
 
-  read:
-    if pos == list.size: return null
-    if throw-on-last-part and pos == list.size - 1:
-      throw "READ_ERROR"
-    return list[pos++]
+          baz
+    bar5:
 
+      baz
+    foo:
+        gee:
+          bar: |1  # Next line is indented by 1.
+            baz
+          bar2: |2
+            baz
+          bar3:    # Next line is intended by first non-empty indentation.
+              baz
+          bar4:
+
+                baz
+          bar5:
+
+            baz
+    """
+  expect-structural-equals {
+    "bar": " baz\n", // Note the leading space.
+    "bar2": "baz\n",
+    "bar3": "baz",
+    "bar4": "baz",
+    "bar5": "baz",
+    "foo": {
+      "gee": {
+        "bar": " baz\n",
+        "bar2": "baz\n",
+        "bar3": "baz",
+        "bar4": "baz",
+        "bar5": "baz"
+      }
+    }
+  } result
+
+test-implicit-key:
+  result := yaml.parse """
+    foo/{bar}: the '{' and '}' is valid in an implicit key.
+    """
+  expect-structural-equals {
+    "foo/{bar}": "the '{' and '}' is valid in an implicit key."
+  } result

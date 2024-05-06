@@ -4,4 +4,4 @@ tests/negative/static1-test.toit:8:3: error: Redefinition of 'f'
 tests/negative/static1-test.toit:6:10: note: First definition of 'f'
   static f := 42
          ^
-Compilation failed.
+Compilation failed

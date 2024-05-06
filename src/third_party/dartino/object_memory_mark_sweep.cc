@@ -226,8 +226,8 @@ void OldSpace::zap_object_starts() {
 
 class RememberedSetRebuilder2 : public RootCallback {
  public:
-  virtual void do_roots(Object** pointers, int length) override {
-    for (int i = 0; i < length; i++) {
+  virtual void do_roots(Object** pointers, word length) override {
+    for (word i = 0; i < length; i++) {
       Object* object = pointers[i];
       if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
         found = true;
@@ -406,7 +406,7 @@ void OldSpace::mark_chunk_ends_free() {
   });
 }
 
-void FixPointersVisitor::do_roots(Object** start, int length) {
+void FixPointersVisitor::do_roots(Object** start, word length) {
   Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;

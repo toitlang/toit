@@ -10,4 +10,4 @@ export *
 tests/negative/export-cyclic5-b.toit:6:1: note: This clause contributes to the 'export' cycle
 export *
 ^~~~~~
-Compilation failed.
+Compilation failed

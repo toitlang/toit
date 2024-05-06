@@ -1,4 +1,4 @@
 tests/negative/indent4-test.toit:9:11: error: Unexpected delimiter
     break ? true : false
           ^
-Compilation failed.
+Compilation failed

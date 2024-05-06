@@ -16,4 +16,4 @@ tests/negative/uninitialized-field4-test.toit:9:13: error: Unexpected delimiter
 tests/negative/uninitialized-field4-test.toit:8:3: error: Missing body
   := ?
   ^~
-Compilation failed.
+Compilation failed

@@ -19,9 +19,11 @@
 #include <limits.h>
 
 #include "../top.h"
+#include "../flags.h"
 #include "../utils.h"
 
 #include "filesystem.h"
+#include "filesystem_local.h"
 #include "scanner.h"
 #include "sources.h"
 #include "util.h"
@@ -39,7 +41,9 @@ const char* Filesystem::cwd() {
 }
 
 const char* Filesystem::library_root() {
-  if (library_root_ == null) {
+  if (library_root_ == null && Flags::lib_path != null) {
+      library_root_ = FilesystemLocal::to_local_path(Flags::lib_path);
+  } else if (library_root_ == null) {
     auto sdk = sdk_path();
     const char* LIB_SUFFIX = "lib";
     PathBuilder builder(this);

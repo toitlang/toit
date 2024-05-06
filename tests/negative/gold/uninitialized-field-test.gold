@@ -37,4 +37,4 @@ tests/negative/uninitialized-field-test.toit:51:3: error: Field 'field' not init
 tests/negative/uninitialized-field-test.toit:54:3: error: Field 'field' not initialized on all paths in constructor
   constructor.logical-or arg:
   ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

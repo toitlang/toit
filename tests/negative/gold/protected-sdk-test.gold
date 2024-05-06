@@ -31,4 +31,4 @@ tests/negative/protected-sdk-test.toit:16:9: error: Can't access protected membe
 tests/negative/protected-sdk-test.toit:17:19: error: Can't access protected member '__' of the SDK libraries
   LazyInitializer_.__ 42
                   ^
-Compilation failed.
+Compilation failed

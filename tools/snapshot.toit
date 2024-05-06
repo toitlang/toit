@@ -15,7 +15,7 @@
 
 import ar show *
 import host.file
-import binary show *
+import io show LITTLE-ENDIAN
 import uuid show Uuid NIL
 
 // Library for parsing a snapshot file into a useful structure.
@@ -883,6 +883,7 @@ BYTE-CODES ::= [
   Bytecode "INVOKE_MOD"                 1 OP "invoke mod",
   Bytecode "INVOKE_AT"                  1 OP "invoke at",
   Bytecode "INVOKE_AT_PUT"              1 OP "invoke at_put",
+  Bytecode "INVOKE_SIZE"                3 OP-SO "invoke size",
   Bytecode "BRANCH"                     3 OP-SF "branch",
   Bytecode "BRANCH_IF_TRUE"             3 OP-SF "branch if true",
   Bytecode "BRANCH_IF_FALSE"            3 OP-SF "branch if false",

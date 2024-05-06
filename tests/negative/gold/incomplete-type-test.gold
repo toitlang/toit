@@ -10,4 +10,4 @@ tests/negative/incomplete-type-test.toit:8:9: error: Prefix can't be used as typ
 tests/negative/incomplete-type-test.toit:13:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

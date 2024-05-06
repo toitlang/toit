@@ -2,8 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show BIG-ENDIAN
-import bytes show Buffer
+import io
 import net.modules.udp as udp-module
 import net
 import system
@@ -423,8 +422,8 @@ This is a light-weight version of create-dns-packet for applications that
   like the ones used by mDNS.
 */
 create-query_ name/string query-id/int record-type/int -> ByteArray:
-  result := Buffer
-  result.write-int16-big-endian query-id
+  result := io.Buffer
+  result.big-endian.write-int16 query-id
   result.write #[
     1, 0,  // Set RD bit.
     0, 1,  // One query.
@@ -433,8 +432,8 @@ create-query_ name/string query-id/int record-type/int -> ByteArray:
     0, 0,  // No additional
   ]
   write-name_ name --locations=null --buffer=result
-  result.write-int16-big-endian record-type
-  result.write-int16-big-endian CLASS-INTERNET
+  result.big-endian.write-int16 record-type
+  result.big-endian.write-int16 CLASS-INTERNET
   return result.bytes
 
 select-random-ip_ name/string list/List -> net.IpAddress:
@@ -463,25 +462,25 @@ The $error-name is only used for error messages.
 */
 decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
   response := packet
-  received-id    := BIG-ENDIAN.uint16 response 0
-  status-bits    := BIG-ENDIAN.uint16 response 2
-  queries        := BIG-ENDIAN.uint16 response 4
-  response-count := BIG-ENDIAN.uint16 response 6
+  reader := io.Reader response
+  received-id    := reader.big-endian.read-uint16
+  status-bits    := reader.big-endian.read-uint16
+  queries        := reader.big-endian.read-uint16
+  response-count := reader.big-endian.read-uint16
   // Ignore NSCOUNT and ANCOUNT at 8 and 10.
+  reader.skip 4
 
   error := status-bits & 0xf
   if error != ERROR-NONE:
     detail := ERROR-NAMES.get error --if-absent=: "error code $error"
     throw (DnsException "Server responded: $detail" --name=error-name)
-  position := 12
 
   result := DecodedPacket --id=received-id --status-bits=status-bits
 
   queries.repeat:
-    q-name := decode-name response position: position = it
-    q-type := BIG-ENDIAN.uint16 response position
-    q-class := BIG-ENDIAN.uint16 response position + 2
-    position += 4
+    q-name := decode-name reader response
+    q-type := reader.big-endian.read-uint16
+    q-class := reader.big-endian.read-uint16
     unicast-ok := q-class & 0x8000 != 0
     if q-class & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
 
@@ -489,42 +488,44 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
         Question q-name q-type --unicast-ok=unicast-ok
 
   response-count.repeat:
-    r-name := decode-name response position: position = it
-    clas := BIG-ENDIAN.uint16 response (position + 2)
-    type := BIG-ENDIAN.uint16 response position
-    ttl  := BIG-ENDIAN.int32 response (position + 4)
-    rd-length := BIG-ENDIAN.uint16 response (position + 8)
-    position += 10
+    r-name := decode-name reader response
+    type := reader.big-endian.read-uint16
+    clas := reader.big-endian.read-uint16
+    ttl  := reader.big-endian.read-int32
+    rd-length := reader.big-endian.read-uint16
 
     flush := clas & 0x8000 != 0
     if clas & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
 
+    read-before-record := reader.processed
     if type == RECORD-A or type == RECORD-AAAA:
       length := type == RECORD-A ? 4 : 16
       if rd-length != length: protocol-error_  // Unexpected IP address length.
       result.resources.add
           AResource r-name type ttl flush
               net.IpAddress
-                  response.copy position position + length
+                  reader.read-bytes length
     else if type == RECORD-PTR or type == RECORD-CNAME:
       result.resources.add
           StringResource r-name type ttl flush
-              decode-name response position: null
+              decode-name reader response
     else if type == RECORD-TXT:
-      length := response[position]
+      length := reader.read-byte
       if rd-length < length + 1: protocol-error_  // Unexpected TXT length.
-      value := response[position + 1..position + 1 + length].to-string
+      value := reader.read-string length
       result.resources.add
           StringResource r-name type ttl flush value
     else if type == RECORD-SRV:
-      priority := BIG-ENDIAN.uint16 response position
-      weight := BIG-ENDIAN.uint16 response (position + 2)
-      port := BIG-ENDIAN.uint16 response (position + 4)
-      length := response[position + 6]
-      value := response[position + 7..position + 7 + length].to-string
+      priority := reader.big-endian.read-uint16
+      weight := reader.big-endian.read-uint16
+      port := reader.big-endian.read-uint16
+      length := reader.read-byte
+      value := reader.read-string length
       result.resources.add
           SrvResource r-name type ttl flush value priority weight port
-    position += rd-length
+    read-after-record := reader.processed
+    // Skip the rest of the record if it wasn't consumed.
+    reader.skip (rd-length - (read-after-record - read-before-record))
 
   return result
 
@@ -641,28 +642,41 @@ class SrvResource extends StringResource:
 /**
 Decodes a name from a DNS (RFC 1035) packet.
 The block is invoked with the index of the next data in the packet.
+
+Deprecated. Use $(decode-name reader packet) instead.
 */
 decode-name packet/ByteArray position/int [position-block] -> string:
+  reader := io.Reader packet[position..]
+  result := decode-name reader packet
+  position-block.call (position + reader.processed)
+  return result
+
+/**
+Decodes a name from a DNS (RFC 1035) packet.
+
+Takes both the $reader and the $packet, as the parts can contain
+  pointers that are absolute in the packet.
+*/
+decode-name reader/io.Reader packet/ByteArray -> string:
   parts := []
-  parts_ packet position parts position-block
+  parts_ reader packet parts
   return parts.join "."
 
-parts_ packet/ByteArray position/int parts/List [position-block] -> none:
-  while packet[position] != 0:
-    size := packet[position]
+parts_ reader/io.Reader packet/ByteArray parts/List -> none:
+  while true:
+    size := reader.peek-byte
+    if size == 0: break
     if size <= 63:
-      position++
-      part := packet.to-string position position + size
+      reader.read-byte
+      part := reader.read-string size
       if part == "\0": throw (DnsException "Strange Samsung phone query detected")
       parts.add part
-      position += size
     else:
       if size < 192: protocol-error_
-      pointer := (BIG-ENDIAN.uint16 packet position) & 0x3fff
-      parts_ packet pointer parts: null
-      position-block.call position + 2
+      pointer := reader.big-endian.read-uint16 & 0x3fff
+      parts_ (io.Reader packet[pointer..]) packet parts
       return
-  position-block.call position + 1
+  reader.read-byte
 
 /**
 Create a DNS packet for lookups or reponses.
@@ -674,58 +688,59 @@ create-dns-packet queries/List records/List -> ByteArray
 
   previous-locations := {:}
 
-  result := Buffer
+  result := io.Buffer
 
   status-bits := is-response ? 0x8000 : 0x0000
   if is-authoritative: status-bits |= 0x0400
 
-  result.write-int16-big-endian id
-  result.write-int16-big-endian status-bits
-  result.write-int16-big-endian queries.size
-  result.write-int16-big-endian records.size
-  result.write-int32-big-endian 0  // Don't support the other things.
+  result-be := result.big-endian
+  result-be.write-int16 id
+  result-be.write-int16 status-bits
+  result-be.write-int16 queries.size
+  result-be.write-int16 records.size
+  result-be.write-int32 0  // Don't support the other things.
 
   queries.do: | query/Question |
     write-name_ query.name --locations=previous-locations --buffer=result
-    result.write-int16-big-endian query.type
+    result-be.write-int16 query.type
     clas := CLASS-INTERNET + (query.unicast-ok ? 0x8000 : 0)
-    result.write-int16-big-endian clas
+    result-be.write-int16 clas
   records.do: | record/Resource |
     write-name_ record.name --locations=previous-locations --buffer=result
     type := record.type
-    result.write-int16-big-endian type
+    result-be.write-int16 type
     clas := CLASS-INTERNET + (record.flush ? 0x8000 : 0)
-    result.write-int16-big-endian clas
-    result.write-int32-big-endian record.ttl
+    result-be.write-int16 clas
+    result-be.write-int32 record.ttl
     if record is AResource:
       bytes := (record as AResource).address.raw
-      result.write-int16-big-endian bytes.size
+      result-be.write-int16 bytes.size
       result.write bytes
     else if type == RECORD-CNAME or type == RECORD-PTR:
       str := (record as StringResource).value
       length := write-name_ str --locations=previous-locations --buffer=null
-      result.write-int16-big-endian length
+      result-be.write-int16 length
       write-name_ str --locations=previous-locations --buffer=result
     else if type == RECORD-TXT:
       str := (record as StringResource).value
       if str.size > 255: throw (DnsException "TXT records cannot exceed 255 bytes" --name=str)
-      result.write-int16-big-endian str.size
+      result-be.write-int16 str.size
       result.write str
     else if record is SrvResource:
       srv := record as SrvResource
       str := srv.value
       if str.size > 255: throw (DnsException "SRV records cannot exceed 255 bytes" --name=str)
-      result.write-int16-big-endian (str.size + 7)
-      result.write-int16-big-endian srv.priority
-      result.write-int16-big-endian srv.weight
-      result.write-int16-big-endian srv.port
+      result-be.write-int16 (str.size + 7)
+      result-be.write-int16 srv.priority
+      result-be.write-int16 srv.weight
+      result-be.write-int16 srv.port
       result.write-byte str.size
       result.write str
     else:
       throw "Unknown record type: $record"
   return result.bytes
 
-write-name_ name/string --locations/Map? --buffer/Buffer? -> int:
+write-name_ name/string --locations/Map? --buffer/io.Buffer? -> int:
   parts := name.split "."
   length := 1
   pos := 0
@@ -736,7 +751,7 @@ write-name_ name/string --locations/Map? --buffer/Buffer? -> int:
     pos += part.size + 1
     if locations:
       locations.get tail --if-present=: | location/int |
-        if buffer: buffer.write-int16-big-endian location + 0xc000
+        if buffer: buffer.big-endian.write-int16 location + 0xc000
         length += 2
         return length
     if buffer:
@@ -746,4 +761,3 @@ write-name_ name/string --locations/Map? --buffer/Buffer? -> int:
     length += part.size + 1
   if buffer: buffer.write-byte 0
   return length
-

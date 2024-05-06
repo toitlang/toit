@@ -2,46 +2,83 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader show Reader BufferedReader
 import .json-like-encoder_
 
 MAX-BUFFER-GROWTH_ ::= 1024
 
 /**
-Encodes the $obj as a JSON ByteArray.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(encode obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+  or $Encoder.put-unquoted methods on the encoder.
 */
 encode obj [converter] -> ByteArray:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
-  return e.to-byte-array
+  return buffer.bytes
 
+/**
+Variant of $(encode obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 encode obj converter/Lambda -> ByteArray:
   return encode obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON ByteArray.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-Utf-8 encoding is used for strings.
+UTF-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
   return encode obj: throw "INVALID_JSON_OBJECT"
 
 /**
+Variant of $(encode-stream --writer obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
+The $converter block is passed an object to be serialized and an instance
+  of the $Encoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $Encoder.encode, $Encoder.put-list,
+  or $Encoder.put-unquoted methods on the encoder.
+*/
+encode-stream --writer/io.Writer obj [converter] -> none:
+  e := Encoder.private_ writer
+  e.encode obj converter
+
+/**
+Variant of $(encode-stream --writer obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
+encode-stream --writer/io.Writer obj converter/Lambda -> none:
+  encode-stream --writer=writer obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj onto an $io.Writer in JSON format.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+UTF-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj -> none:
+  encode-stream --writer=writer obj: throw "INVALID_JSON_OBJECT"
+
+/**
 Decodes the $bytes, which is a ByteArray in JSON format.
-The result is null or an instance of int, bool, float, string, List, or Map.
+The result is null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 decode bytes/ByteArray -> any:
@@ -49,31 +86,34 @@ decode bytes/ByteArray -> any:
   return d.decode bytes
 
 /**
-Encodes the $obj as a JSON string.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(stringify obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+  or $Encoder.put-unquoted methods on the encoder.
 */
 stringify obj/any [converter] -> string:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
-  return e.to-string
+  return buffer.to-string
 
+/**
+Variant of $(stringify obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 stringify obj converter/Lambda -> string:
   return stringify obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON string.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
-  Maps must have only string keys.  The elements of lists and the values of
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
+Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 */
 stringify obj/any -> string:
@@ -81,7 +121,7 @@ stringify obj/any -> string:
 
 /**
 Decodes the $str, which is a string in JSON format.
-The result is null or an instance of of int, bool, float, string, List, or Map.
+The result is null, or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 parse str/string:
@@ -93,19 +133,33 @@ parse str/string:
   // makes the string more like a ByteArray.
   return d.decode (StringView_ str)
 
-/// $reader can be either a $Reader or a $BufferedReader.
+/// $reader can be either an io.Reader, $Reader or a $BufferedReader.
+/// Supportfor $Reader and $BufferedReader will be removed in the future.
 decode-stream reader:
   d := StreamingDecoder
   return d.decode-stream reader
 
-
 class Encoder extends EncoderBase_:
+  /**
+  Deprecated.  Use the top-level json.encode functions instead.
+  Returns an encoder that encodes into an internal buffer.  The
+    result can be extracted with $to-string or $to-byte-array.
+  */
+  constructor:
+    super io.Buffer
+
+  /**
+  Returns an encoder that encodes onto an $io.Writer.
+  */
+  constructor.private_ writer/io.Writer:
+    super writer
+
   /** See $EncoderBase_.encode */
   // TODO(florian): Remove when toitdoc compile understands inherited methods
   encode obj/any converter/Lambda:
     return super obj converter
 
-  /** See $Buffer_.put-unquoted */
+  /** See $EncoderBase_.put-unquoted */
   // TODO(florian): Remove when toitdoc compile understands inherited methods
   put-unquoted data -> none:
     super data
@@ -113,38 +167,37 @@ class Encoder extends EncoderBase_:
   encode-string_ str:
     escaped := escape-string str
     size := escaped.size
-    ensure_ str.size + 2
-    put-byte_ '"'
-    put-unquoted escaped
-    put-byte_ '"'
+    writer_.write-byte '"'
+    writer_.write escaped
+    writer_.write-byte '"'
 
   encode-number_ number:
     str := number is float ? number.stringify 2 : number.stringify
-    put-unquoted str
+    writer_.write str
 
   encode-true_:
-    put-unquoted "true"
+    writer_.write "true"
 
   encode-false_:
-    put-unquoted "false"
+    writer_.write "false"
 
   encode-null_:
-    put-unquoted "null"
+    writer_.write "null"
 
   encode-map_ map [converter]:
-    put-byte_ '{'
+    writer_.write-byte '{'
 
     first := true
     map.do: |key value|
-      if not first: put-byte_ ','
+      if not first: writer_.write-byte ','
       first = false
       if key is not string:
         throw "INVALID_JSON_OBJECT"
       encode-string_ key
-      put-byte_ ':'
+      writer_.write-byte ':'
       encode value converter
 
-    put-byte_ '}'
+    writer_.write-byte '}'
 
   encode-list_ list [converter]:
     put-list list.size (: list[it]) converter
@@ -155,22 +208,21 @@ class Encoder extends EncoderBase_:
   The generator is called repeatedly with indices from 0 to size - 1.
   */
   put-list size/int [generator] [converter]:
-    put-byte_ '['
+    writer_.write-byte '['
 
     for i := 0; i < size; i++:
-      if i > 0: put-byte_ ','
+      if i > 0: writer_.write-byte ','
       encode (generator.call i) converter
 
-    put-byte_ ']'
-
+    writer_.write-byte ']'
 
 class Decoder:
   bytes_ := null
   offset_ := 0
-  tmp-buffer_ ::= Buffer_
+  tmp-buffer_ ::= io.Buffer
   utf-8-buffer_/ByteArray? := null
   seen-strings_/Set? := null
-  buffered-reader_/BufferedReader? := null
+  buffered-reader_/io.Reader? := null
   static MAX-DEDUPED-STRING-SIZE_ ::= 128
   static MAX-DEDUPED-STRINGS_ ::= 128
 
@@ -240,7 +292,7 @@ class Decoder:
 
   slow-decode-string_:
     buffer := tmp-buffer_
-    buffer.clear_
+    buffer.clear
     bytes-size := bytes_.size
     while true:
       if offset_ >= bytes-size: throw "UNTERMINATED_JSON_STRING"
@@ -276,11 +328,10 @@ class Decoder:
             buf-8 = utf-8-buffer_
           bytes := utf-8-bytes c
           write-utf-8-to-byte-array buf-8 0 c
-          bytes.repeat:
-            buffer.put-byte_ buf-8[it]
+          buffer.write buf-8 0 bytes
           continue
 
-      buffer.put-byte_ c
+      buffer.write-byte c
       offset_++
 
     offset_++
@@ -415,11 +466,13 @@ class Decoder:
 
 
 class StreamingDecoder extends Decoder:
-  /// $reader can be either a $Reader or a $BufferedReader.
+  /// $reader can be either an $io.Reader, $Reader or a $BufferedReader.
+  /// Support for $Reader and $BufferedReader will be removed in a future.
   decode-stream reader -> any:
-    if reader is not BufferedReader:
-      reader = BufferedReader reader
-    buffered-reader_ = reader as BufferedReader
+    if reader is not io.Reader:
+      buffered-reader_ = io.Reader.adapt reader
+    else:
+      buffered-reader_ = reader as io.Reader
     seen-strings_ = {}
     // Skip whitespace to get to the first data, which might be
     // a top-level number.
@@ -449,6 +502,9 @@ class StreamingDecoder extends Decoder:
         result := decode_
         if offset_ != bytes_.size:
           buffered-reader_.unget bytes_[offset_..]
+          if reader is BufferedReader and buffered-reader_.buffered-size != 0:
+            // Copy over the buffered data to the reader that was passed in.
+            (reader as BufferedReader).unget (buffered-reader_.peek-bytes buffered-reader_.buffered-size)
         bytes_ = null
         offset_ = 0
         return result
@@ -458,11 +514,11 @@ class StreamingDecoder extends Decoder:
       if not get-more_:
         throw error
 
-  // Returns true if we ran out of input.
+  // Returns true if we still have input.
   get-more_ -> bool:
     if not buffered-reader_: return false
     old-bytes := bytes_
-    next-bytes := #[]
+    next-bytes/ByteArray? := #[]
     while next-bytes.size == 0:
       error := catch:
         next-bytes = buffered-reader_.read

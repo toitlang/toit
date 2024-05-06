@@ -25,4 +25,4 @@ tests/negative/short-types-test.toit:15:10: error: Type annotation does not reso
 tests/negative/short-types-test.toit:16:11: error: Type annotation does not resolve to class or interface: 'bool'
   true is bool
           ^~~~
-Compilation failed.
+Compilation failed

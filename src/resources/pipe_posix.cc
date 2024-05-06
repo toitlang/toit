@@ -394,7 +394,7 @@ static Object* fork_helper(
       if (!args->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) {
         FAIL(WRONG_OBJECT_TYPE);
       }
-      int len = blob.length();
+      word len = blob.length();
       char* c_string = unvoid_cast<char*>(malloc(len + 1));
       memcpy(c_string, blob.address(), len);
       c_string[len] = '\0';

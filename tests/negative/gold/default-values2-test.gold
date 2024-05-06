@@ -4,4 +4,4 @@ foo x=(:499):
 tests/negative/default-values2-test.toit:6:7: error: Default value can't be a block
 foo x=(:499):
       ^
-Compilation failed.
+Compilation failed

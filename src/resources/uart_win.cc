@@ -111,7 +111,7 @@ public:
     return overlapped_result;
   }
 
-  bool send(const uint8* buffer, int length) {
+  bool send(const uint8* buffer, word length) {
     if (write_buffer_ != null) free(write_buffer_);
 
     write_ready_ = false;

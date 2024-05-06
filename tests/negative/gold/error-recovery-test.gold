@@ -7,4 +7,4 @@ import .error-recovery2 as 5
 tests/negative/error-recovery-test.toit:9:9: error: Unresolved identifier: 'from-module'
   print from-module
         ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

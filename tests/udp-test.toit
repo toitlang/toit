@@ -9,12 +9,14 @@ import net
 import net.udp as net
 import monitor
 import .dns as dns
+import .io-data
 
 BROADCAST-ADDRESS ::= net.IpAddress.parse "255.255.255.255"
 
 main:
   ping-ping-test
   ping-ping-timeout-test
+  io-data-test
   broadcast-test
   close-test
 
@@ -84,6 +86,31 @@ ping-ping-timeout-test:
       expect-null e
     else:
       expect e != null
+
+io-data-test:
+  times := 10
+
+  ready := monitor.Channel 1
+  // Also echo the large message after the loop.
+  task:: echo-responder (times + 1) ready
+  port := ready.receive
+
+  socket := udp.Socket "127.0.0.1" 0
+
+  socket.connect
+    net.SocketAddress
+      net.IpAddress.parse "127.0.0.1"
+      port
+
+  for i := 0; i < times; i++:
+    socket.write (FakeData "testing")
+    expect-equals "testing" socket.read.to-string
+
+  data := "testing" * 700
+  socket.write (FakeData data)
+  expect-equals data socket.read.to-string
+
+  socket.close
 
 echo-resend-responder times ready:
   socket := udp.Socket "127.0.0.1" 0

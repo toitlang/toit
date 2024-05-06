@@ -10,4 +10,4 @@ tests/negative/incomplete-string-interpolation-format3-test.toit:6:5: error: Mis
 tests/negative/incomplete-string-interpolation-format3-test.toit:6:7: error: Unterminated string
   "$(%
       ^
-Compilation failed.
+Compilation failed

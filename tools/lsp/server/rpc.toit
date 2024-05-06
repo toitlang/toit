@@ -15,8 +15,7 @@
 
 import encoding.json as json
 import encoding.ubjson as ubjson
-import reader show BufferedReader
-import writer show Writer
+import io
 import monitor
 import .protocol.message
 
@@ -71,8 +70,8 @@ class RpcConnection:
   request-id_              := 0
   pending-requests_       ::= {:}  // From request-id to Channel.
 
-  reader_ /BufferedReader ::= ?
-  writer_                 ::= ?
+  reader_ /io.Reader ::= ?
+  writer_ /io.Writer ::= ?
   mutex_  /monitor.Mutex  ::= monitor.Mutex
 
   use-ubjson_             := false
@@ -80,8 +79,7 @@ class RpcConnection:
   json-count_             := 0
   ubjson-count_           := 0
 
-  constructor .reader_ writer:
-    writer_ = Writer writer
+  constructor .reader_ .writer_:
 
   enable-ubjson: use-ubjson_ = true
 
@@ -114,9 +112,11 @@ class RpcConnection:
       throw "Unexpected content-type: '$content-type'"
 
   write-packet packet:
-    encoder := use-ubjson_ ? ubjson.Encoder : json.Encoder
-    encoder.encode packet
-    payload := encoder.to-byte-array
+    payload/ByteArray := ?
+    if use-ubjson_:
+      payload = ubjson.encode packet
+    else:
+      payload = json.encode packet
     mutex_.do:
       writeln_ "Content-Length: $(payload.size)"
       writeln_ "Content-Type: $(use-ubjson_ ? CONTENT-TYPE-UBJSON_ : CONTENT-TYPE-JSON_)"

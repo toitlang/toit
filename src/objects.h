@@ -77,7 +77,7 @@ class Object {
 
   // Primitive support that sets content and length iff receiver is String or ByteArray.
   // Returns whether the content and length are set.
-  bool byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) const;
+  bool byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only) const;
 
   // Same as above, but with a blob.
   bool byte_content(Program* program, Blob* blob, BlobKind strings_only) const;
@@ -87,7 +87,7 @@ class Object {
   // 'error' indicates the reason.  Most likely this is either a type error or
   // the function tried to allocate a ByteArray (for making a CowByteArray
   // mutable), but failed due to out-of-memory.
-  bool mutable_byte_content(Process* process, uint8** content, int* length, Error** error);
+  bool mutable_byte_content(Process* process, uint8** content, word* length, Error** error);
 
   // Same as above, but with a blob.
   bool mutable_byte_content(Process* process, MutableBlob* blob, Error** error);
@@ -104,17 +104,17 @@ class Blob {
  public:
   inline Blob(uninitialized_t& u) {}
   inline Blob() : address_(null), length_(0) {}
-  Blob(const uint8* address, int length)
+  Blob(const uint8* address, word length)
       : address_(address), length_(length) {}
 
   const uint8* address() const { return address_; }
-  int length() const { return length_; }
+  word length() const { return length_; }
 
   bool slow_equals(const char* c_string) const;
 
  private:
   const uint8* address_;
-  int length_;
+  word length_;
 };
 
 // A class that combines a memory address with the size of it.
@@ -122,15 +122,15 @@ class Blob {
 class MutableBlob {
  public:
   MutableBlob() : address_(null), length_(0) {}
-  MutableBlob(uint8* address, int length)
+  MutableBlob(uint8* address, word length)
       : address_(address), length_(length) {}
 
   uint8* address() { return address_; }
-  int length() { return length_; }
+  word length() { return length_; }
 
  private:
   uint8* address_;
-  int length_;
+  word length_;
 };
 
 // An error is a temporary object (a tagged string) only used for signaling a primitive has failed.
@@ -195,7 +195,7 @@ class Smi : public Object {
 class RootCallback {
  public:
   void do_root(Object** root) { do_roots(root, 1); }
-  virtual void do_roots(Object** roots, int length) = 0;
+  virtual void do_roots(Object** roots, word length) = 0;
   virtual bool shrink_stacks() const { return false; }
   virtual bool skip_marking(HeapObject* object) const { return false; }
 };
@@ -277,7 +277,7 @@ class HeapObject : public Object {
   bool in_remembered_set() const;
 
   // Pseudo virtual member functions.
-  int size(Program* program) const;  // Returns the byte size of this object.
+  word size(Program* program) const;  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
   void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
@@ -368,28 +368,30 @@ class HeapObject : public Object {
 
   void _set_header(Program* program, Smi* id);
 
-  uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
-  uword* _raw_at(int offset) { return reinterpret_cast<uword*>(_raw() + offset); }
-  const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(_raw() + offset); }
+  INLINE uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
+  INLINE uword* _raw_at() { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  INLINE uword* _raw_at(word offset) { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
+  INLINE const uword* _raw_at() const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  INLINE const uword* _raw_at(word offset) const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
 
-  Object* _at(int offset) const { return *reinterpret_cast<Object* const*>(_raw_at(offset)); }
-  void _at_put(int offset, Object* value) { *reinterpret_cast<Object**>(_raw_at(offset)) = value; }
-  Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at(offset)); }
+  INLINE Object* _at(word offset) const { return reinterpret_cast<Object* const*>(_raw_at())[offset / WORD_SIZE]; }
+  INLINE void _at_put(word offset, Object* value) { reinterpret_cast<Object**>(_raw_at())[offset / WORD_SIZE] = value; }
+  INLINE Object** _root_at(word offset) { return reinterpret_cast<Object**>(_raw_at()) + offset / WORD_SIZE; }
 
-  uword _word_at(int offset) const { return *_raw_at(offset); }
-  void _word_at_put(int offset, uword value) { *_raw_at(offset) = value; }
+  INLINE uword _word_at(word offset) const { return _raw_at()[offset / WORD_SIZE]; }
+  INLINE void _word_at_put(word offset, uword value) { _raw_at()[offset / WORD_SIZE] = value; }
 
-  uint8 _byte_at(int offset) const { return *reinterpret_cast<const uint8*>(_raw_at(offset)); }
-  void _byte_at_put(int offset, uint8 value) { *reinterpret_cast<uint8*>(_raw_at(offset)) = value; }
+  INLINE uint8 _byte_at(word offset) const { return reinterpret_cast<const uint8*>(_raw_at())[offset]; }
+  INLINE void _byte_at_put(word offset, uint8 value) { reinterpret_cast<uint8*>(_raw_at())[offset] = value; }
 
-  uhalf_word _half_word_at(int offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
-  void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
+  INLINE uhalf_word _half_word_at(word offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
+  INLINE void _half_word_at_put(word offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
 
-  double _double_at(int offset) const { return bit_cast<double>(_int64_at(offset)); }
-  void _double_at_put(int offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
+  INLINE double _double_at(word offset) const { return bit_cast<double>(_int64_at(offset)); }
+  INLINE void _double_at_put(word offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
 
-  int64 _int64_at(int offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
-  void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
+  INLINE int64 _int64_at(word offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
+  INLINE void _int64_at_put(word offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
 
   static int _align(int byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
 
@@ -413,45 +415,44 @@ class HeapObject : public Object {
 
 class Array : public HeapObject {
  public:
-  int length() const { return _word_at(LENGTH_OFFSET); }
+  word length() const { return _word_at(LENGTH_OFFSET); }
 
-  static INLINE int max_length_in_process();
-  static INLINE int max_length_in_program();
+  static INLINE word max_length_in_process();
+  static INLINE word max_length_in_program();
 
   // Must match collections.toit.
   static const int ARRAYLET_SIZE = 500;
 
-  INLINE Object* at(int index) const {
+  INLINE Object* at(word index) const {
     ASSERT(index >= 0 && index < length());
     return _at(_offset_from(index));
   }
 
-  INLINE void at_put(int index, Smi* value) {
+  INLINE void at_put(word index, Smi* value) {
     ASSERT(index >= 0 && index < length());
     _at_put(_offset_from(index), value);
   }
 
-  INLINE void at_put(int index, Object* value);
+  INLINE void at_put(word index, Object* value);
 
-  INLINE void at_put_no_write_barrier(int index, Object* value) {
+  INLINE void at_put_no_write_barrier(word index, Object* value) {
     ASSERT(index >= 0 && index < length());
     _at_put(_offset_from(index), value);
   }
 
-  void copy_from(Array* other, int length) {
+  void copy_from(Array* other, word length) {
     memcpy(content(), other->content(), length * WORD_SIZE);
   }
 
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
 
-
-  int size() const { return allocation_size(length()); }
+  word size() const { return allocation_size(length()); }
 
   void roots_do(RootCallback* cb);
 
 #ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int length);
+  void read_content(SnapshotReader* st, word length);
 #endif
 
   static Array* cast(Object* array) {
@@ -466,17 +467,17 @@ class Array : public HeapObject {
 
   Object** base() { return reinterpret_cast<Object**>(_raw_at(_offset_from(0))); }
 
-  static int allocation_size(int length) { return  _align(_offset_from(length)); }
+  static int allocation_size(word length) { return  _align(_offset_from(length)); }
 
-  static void allocation_size(int length, int* word_count, int* extra_bytes) {
+  static void allocation_size(word length, int* word_count, int* extra_bytes) {
     *word_count = HEADER_SIZE / WORD_SIZE + length;
     *extra_bytes = 0;
   }
 
-  void fill(int from, Object* filler);
+  void fill(word from, Object* filler);
 
  private:
-  static const int LENGTH_OFFSET = HeapObject::SIZE;
+  static const word LENGTH_OFFSET = HeapObject::SIZE;
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
@@ -484,14 +485,14 @@ class Array : public HeapObject {
   // Can only be called on newly allocated objects that will be either
   // in new-space or were added to the remembered set on creation.
   // Is also called from the compiler, where there are no write barriers.
-  void _initialize_no_write_barrier(int length, Object* filler) {
+  void _initialize_no_write_barrier(word length, Object* filler) {
     _set_length(length);
-    for (int index = 0; index < length; index++) {
+    for (word index = 0; index < length; index++) {
       at_put_no_write_barrier(index, filler);
     }
   }
 
-  void _initialize(int length) {
+  void _initialize(word length) {
     _set_length(length);
   }
 
@@ -499,7 +500,7 @@ class Array : public HeapObject {
   friend class ProgramHeap;
 
  protected:
-  static int _offset_from(int index) { return HEADER_SIZE + index * WORD_SIZE; }
+  static int _offset_from(word index) { return HEADER_SIZE + index * WORD_SIZE; }
 };
 
 
@@ -520,28 +521,28 @@ class ByteArray : public HeapObject {
       }
       ASSERT(length() >= 0);
     }
-    Bytes(uint8* address, const int length) : address_(address), length_(length) {}
+    Bytes(uint8* address, const word length) : address_(address), length_(length) {}
 
     uint8* address() { return address_; }
-    int length() { return length_; }
+    word length() { return length_; }
 
-    uint8 at(int index) {
+    uint8 at(word index) {
       ASSERT(index >= 0 && index < length());
       return *(address() + index);
     }
 
-    void at_put(int index, uint8 value) {
+    void at_put(word index, uint8 value) {
       ASSERT(index >= 0 && index < length());
       *(address() + index) = value;
     }
 
-    bool is_valid_index(int index) {
+    bool is_valid_index(word index) {
       return index >= 0 && index < length();
     }
 
    private:
     uint8* address_;
-    int length_;
+    word length_;
   };
 
   class ConstBytes {
@@ -557,14 +558,14 @@ class ByteArray : public HeapObject {
       }
       ASSERT(length() >= 0);
     }
-    ConstBytes(const uint8* address, const int length) : address_(address), length_(length) {}
+    ConstBytes(const uint8* address, const word length) : address_(address), length_(length) {}
 
     const uint8* address() { return address_; }
-    int length() { return length_; }
+    word length() { return length_; }
 
    private:
     const uint8* address_;
-    int length_;
+    word length_;
   };
 
 
@@ -588,7 +589,7 @@ class ByteArray : public HeapObject {
     return 0;
   }
 
-  int size() const {
+  word size() const {
     return has_external_address()
          ? external_allocation_size()
          : internal_allocation_size(raw_length());
@@ -614,7 +615,7 @@ class ByteArray : public HeapObject {
   }
 
 #ifndef TOIT_FREERTOS
-  static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
+  static void snapshot_allocation_size(word length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
     } else {
@@ -623,7 +624,7 @@ class ByteArray : public HeapObject {
   }
 
   void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int byte_length);
+  void read_content(SnapshotReader* st, word byte_length);
 #endif
 
   static ByteArray* cast(Object* byte_array) {
@@ -647,7 +648,7 @@ class ByteArray : public HeapObject {
     _set_external_tag(T::tag);
   }
 
-  void set_external_address(int length, uint8* value) {
+  void set_external_address(word length, uint8* value) {
     _initialize_external_memory(length, value, false);
   }
 
@@ -669,7 +670,7 @@ class ByteArray : public HeapObject {
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
   const uint8* content() const { return reinterpret_cast<const uint8*>(_raw() + _offset_from(0)); }
 
-  static const int LENGTH_OFFSET = HeapObject::SIZE;
+  static const word LENGTH_OFFSET = HeapObject::SIZE;
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   // Constants for external representation.
@@ -698,7 +699,7 @@ class ByteArray : public HeapObject {
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
 
-  void _set_external_length(int length) { _set_length(-1 - length); }
+  void _set_external_length(word length) { _set_length(-1 - length); }
 
   int _external_length() {
     ASSERT(has_external_address());
@@ -710,12 +711,12 @@ class ByteArray : public HeapObject {
     memset(bytes.address(), 0, bytes.length());
   }
 
-  void _initialize(int length) {
+  void _initialize(word length) {
     _set_length(length);
     _clear();
   }
 
-  void _initialize_external_memory(int length, uint8* external_address, bool clear_content = true) {
+  void _initialize_external_memory(word length, uint8* external_address, bool clear_content = true) {
     ASSERT(length >= 0);
     _set_external_length(length);
     _set_external_address(external_address);
@@ -733,7 +734,7 @@ class ByteArray : public HeapObject {
   friend class VmFinalizerNode;
 
  protected:
-  static int _offset_from(int index) {
+  static int _offset_from(word index) {
     ASSERT(index >= 0);
     ASSERT(index <= max_internal_size());
     return HEADER_SIZE + index;
@@ -790,7 +791,7 @@ class FrameCallback {
 
 class Method {
  public:
-  Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
+  Method(List<uint8> all_bytes, word offset) : Method(&all_bytes[offset]) {}
   explicit Method(uint8* bytes) : bytes_(bytes) {}
 
   static Method invalid() { return Method(null); }
@@ -868,13 +869,13 @@ class Method {
     ASSERT(this->value_() == value);
   }
 
-  int _int16_at(int offset) const {
+  int _int16_at(word offset) const {
     int16 result;
     memcpy(&result, &bytes_[offset], 2);
     return result;
   }
 
-  void _set_int16_at(int offset, int value) {
+  void _set_int16_at(word offset, int value) {
     int16 source = value;
     memcpy(&bytes_[offset], &source, 2);
   }
@@ -910,7 +911,7 @@ class Method {
 
 class Stack : public HeapObject {
  public:
-  int length() const { return _word_at(LENGTH_OFFSET); }
+  word length() const { return _word_at(LENGTH_OFFSET); }
   int top() const { return _word_at(TOP_OFFSET); }
   int try_top() const { return _word_at(TRY_TOP_OFFSET); }
   int absolute_bci_at_preemption(Program* program);
@@ -934,7 +935,7 @@ class Stack : public HeapObject {
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
 
-  int size() const { return allocation_size(length()); }
+  word size() const { return allocation_size(length()); }
 
   void copy_to(Stack* other);
 
@@ -943,8 +944,8 @@ class Stack : public HeapObject {
   // Iterates over all frames on this stack and returns the number of frames.
   int frames_do(Program* program, FrameCallback* cb);
 
-  static INLINE int initial_length() { return 64; }
-  static INLINE int max_length();
+  static INLINE word initial_length() { return 64; }
+  static INLINE word max_length();
 
   static Stack* cast(Object* stack) {
     ASSERT(is_stack(stack));
@@ -956,8 +957,8 @@ class Stack : public HeapObject {
     return static_cast<const Stack*>(stack);
   }
 
-  static int allocation_size(int length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
-  static void allocation_size(int length, int* word_count, int* extra_bytes) {
+  static int allocation_size(word length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
+  static void allocation_size(word length, int* word_count, int* extra_bytes) {
     ASSERT(length > 0);
     *word_count = HEADER_SIZE / WORD_SIZE + length;
     *extra_bytes = 0;
@@ -983,7 +984,7 @@ class Stack : public HeapObject {
 #endif
   static const int GUARD_ZONE_SIZE = GUARD_ZONE_WORDS * WORD_SIZE;
 
-  static const int LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
+  static const word LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
   static const int PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
@@ -994,7 +995,7 @@ class Stack : public HeapObject {
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
 
-  void _initialize(int length) {
+  void _initialize(word length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
@@ -1011,7 +1012,7 @@ class Stack : public HeapObject {
     return false;
   }
 
-  uword* guard_zone_address(int index) {
+  uword* guard_zone_address(word index) {
     ASSERT(index >= 0 && index < GUARD_ZONE_WORDS);
     return _raw_at(GUARD_ZONE_OFFSET + index * WORD_SIZE);
   }
@@ -1021,7 +1022,7 @@ class Stack : public HeapObject {
   Object** _stack_sp_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(top()))); }
   Object** _stack_try_sp_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(try_top()))); }
 
-  Object* at(int index) {
+  Object* at(word index) {
     ASSERT((_stack_sp_addr() + index) < _stack_base_addr());
     return *(_stack_sp_addr() + index);
   }
@@ -1038,8 +1039,8 @@ class Stack : public HeapObject {
     return (_stack_base_addr() > value) && (value >= _stack_sp_addr());
   }
 
-  uword* _array_address(int index) { return _raw_at(_array_offset_from(index)); }
-  static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
+  uword* _array_address(word index) { return _raw_at(_array_offset_from(index)); }
+  static int _array_offset_from(word index) { return HEADER_SIZE + index  * WORD_SIZE; }
 
   friend class ObjectHeap;
   friend class ProgramHeap;
@@ -1081,25 +1082,25 @@ class Double : public HeapObject {
 class String : public HeapObject {
  public:
   uint16 hash_code() {
-    int result = _raw_hash_code();
+    word result = _raw_hash_code();
     return result != NO_HASH_CODE ? result : _assign_hash_code();
   }
 
-  int length() const {
-     int result = _internal_length();
+  word length() const {
+     word result = _internal_length();
      return result != SENTINEL ? result : _external_length();
   }
 
   // Tells whether the string content is on the heap or external.
   bool content_on_heap() const { return _internal_length() != SENTINEL; }
 
-  static INLINE int max_length_in_process();
-  static INLINE int max_length_in_program();
+  static INLINE word max_length_in_process();
+  static INLINE word max_length_in_program();
 
   bool is_empty() { return length() == 0; }
 
-  int size() const {
-    int len = _internal_length();
+  word size() const {
+    word len = _internal_length();
     if (len != SENTINEL) return internal_allocation_size(length());
     return external_allocation_size();
   }
@@ -1107,10 +1108,10 @@ class String : public HeapObject {
   bool equals(Object* other);
   bool slow_equals(const char* string, int string_length);
   bool slow_equals(const char* string);
-  static bool slow_equals(const char* string_a, int length_a, const char* string_b, int length_b) {
+  static bool slow_equals(const char* string_a, word length_a, const char* string_b, word length_b) {
     return length_a == length_b && memcmp(string_a, string_b, length_a) == 0;
   }
-  static bool slow_equals(const uint8* bytes_a, int length_a, const uint8* bytes_b, int length_b) {
+  static bool slow_equals(const uint8* bytes_a, word length_a, const uint8* bytes_b, word length_b) {
     return length_a == length_b && memcmp(bytes_a, bytes_b, length_a) == 0;
   }
 
@@ -1118,7 +1119,7 @@ class String : public HeapObject {
 
   // Returns -1, 0, or 1.
   int compare(String* other);
-  static int compare(const char* string_a, int length_a, const char* string_b, int length_b) {
+  static int compare(const char* string_a, word length_a, const char* string_b, word length_b) {
     int min_len;
     int equal_result;
     // We don't just use strcmp, in case one of the strings contains a '\0'.
@@ -1137,7 +1138,7 @@ class String : public HeapObject {
     if (comp < 0) return -1;
     return 1;
   }
-  static int compare(const uint8* bytes_a, int length_a, const uint8* bytes_b, int length_b) {
+  static int compare(const uint8* bytes_a, word length_a, const uint8* bytes_b, word length_b) {
     return compare(reinterpret_cast<const char*>(bytes_a),
                    length_a,
                    reinterpret_cast<const char*>(bytes_b),
@@ -1150,7 +1151,7 @@ class String : public HeapObject {
 
 #ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int length);
+  void read_content(SnapshotReader* st, word length);
 #endif
 
   // Returns a derived pointer that can be used as a null terminated c string.
@@ -1177,10 +1178,10 @@ class String : public HeapObject {
   static inline word max_internal_size_in_program();
   static word max_internal_size();
 
-  static int internal_allocation_size(int length) {
+  static int internal_allocation_size(word length) {
     return _align(_offset_from(length+1));
   }
-  static void internal_allocation_size(int length, int* word_count, int* extra_bytes) {
+  static void internal_allocation_size(word length, int* word_count, int* extra_bytes) {
     ASSERT(length <= max_internal_size());
     // The length and hash-code are stored as half-word sizes.
     static_assert(INTERNAL_HEADER_SIZE == HeapObject::SIZE + 2 * HALF_WORD_SIZE,
@@ -1196,7 +1197,7 @@ class String : public HeapObject {
   }
 
 #ifndef TOIT_FREERTOS
-  static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
+  static void snapshot_allocation_size(word length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
     } else {
@@ -1212,7 +1213,7 @@ class String : public HeapObject {
   class Bytes {
    public:
     explicit Bytes(const String* string) {
-      int len = string->_internal_length();
+      word len = string->_internal_length();
       if (len != SENTINEL) {
         address_ = string->_as_utf8bytes();
         length_ = len;
@@ -1222,29 +1223,29 @@ class String : public HeapObject {
       }
       ASSERT(length() >= 0);
     }
-    Bytes(const uint8* address, const int length) : address_(address), length_(length) {}
+    Bytes(const uint8* address, const word length) : address_(address), length_(length) {}
 
     const uint8* address() { return address_; }
-    int length() { return length_; }
+    word length() { return length_; }
 
-    uint8 at(int index) {
+    uint8 at(word index) {
       ASSERT(index >= 0 && index < length());
       return *(address() + index);
     }
 
-    bool is_valid_index(int index) {
+    bool is_valid_index(word index) {
       return index >= 0 && index < length();
     }
 
    private:
     const uint8* address_;
-    int length_;
+    word length_;
   };
 
   class MutableBytes {
    public:
     explicit MutableBytes(String* string) {
-      int len = string->_internal_length();
+      word len = string->_internal_length();
       if (len != SENTINEL) {
         address_ = string->_as_utf8bytes();
         length_ = len;
@@ -1256,22 +1257,22 @@ class String : public HeapObject {
     }
 
     uint8* address() { return address_; }
-    int length() { return length_; }
+    word length() { return length_; }
 
     void _initialize(const char* str) {
       memcpy(address(), str, length());
     }
 
-    void _initialize(int index, String* other, int start, int length) {
+    void _initialize(word index, String* other, int start, word length) {
       Bytes ot(other);
       memcpy(address() + index, ot.address() + start, length);
     }
 
-    void _initialize(int index, const uint8* chars, int start, int length) {
+    void _initialize(word index, const uint8* chars, int start, word length) {
       memcpy(address() + index, chars + start, length);
     }
 
-    void _at_put(int index, uint8 value) {
+    void _at_put(word index, uint8 value) {
       ASSERT(index >= 0 && index < length());
       *(address() + index) = value;
     }
@@ -1281,13 +1282,13 @@ class String : public HeapObject {
       *(address() + length()) = 0;
     }
 
-    bool is_valid_index(int index) {
+    bool is_valid_index(word index) {
       return index >= 0 && index < length();
     }
 
    private:
     uint8* address_;
-    int length_;
+    word length_;
   };
 
  private:
@@ -1316,7 +1317,7 @@ class String : public HeapObject {
   void _raw_set_hash_code(uint16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
   void _set_length(int value) { _half_word_at_put(INTERNAL_LENGTH_OFFSET, value); }
 
-  static int _offset_from(int index) {
+  static int _offset_from(word index) {
     ASSERT(index >= 0);
     // We allow _offset_from of the null at the end of an internal string, so
     // add one to the limit here.
@@ -1386,25 +1387,25 @@ class String : public HeapObject {
 
 class Instance : public HeapObject {
  public:
-  Object* at(int index) const {
+  Object* at(word index) const {
     return _at(_offset_from(index));
   }
 
-  INLINE void at_put(int index, Smi* value) {
+  INLINE void at_put(word index, Smi* value) {
     _at_put(_offset_from(index), value);
   }
 
-  INLINE Object** root_at(int index) {
+  INLINE Object** root_at(word index) {
     return _root_at(_offset_from(index));
   }
 
-  void at_put_no_write_barrier(int index, Object* value) {
+  void at_put_no_write_barrier(word index, Object* value) {
     _at_put(_offset_from(index), value);
   }
 
   // Using this from the compiler will cause link errors.  Use
   // at_put_no_write_barrier in the compiler instead.
-  void at_put(int index, Object* value);
+  void at_put(word index, Object* value);
 
   void instance_roots_do(int instance_size, RootCallback* cb);
 
@@ -1428,8 +1429,8 @@ class Instance : public HeapObject {
     return static_cast<const Instance*>(value);
   }
 
-  static int allocation_size(int length) { return  _align(_offset_from(length)); }
-  static void allocation_size(int length, int* word_count, int* extra_bytes) {
+  static int allocation_size(word length) { return  _align(_offset_from(length)); }
+  static void allocation_size(word length, int* word_count, int* extra_bytes) {
     *word_count = HEADER_SIZE / WORD_SIZE + length;
     *extra_bytes = 0;
   }
@@ -1463,12 +1464,16 @@ class Instance : public HeapObject {
   static const int STRING_SLICE_FROM_INDEX   = 1;
   static const int STRING_SLICE_TO_INDEX     = 2;
 
+  static const int STRING_BYTE_SLICE_STRING_INDEX = 0;
+  static const int STRING_BYTE_SLICE_FROM_INDEX   = 1;
+  static const int STRING_BYTE_SLICE_TO_INDEX     = 2;
+
   static const int TOMBSTONE_DISTANCE_INDEX = 0;
 
  private:
   static const int HEADER_SIZE = HeapObject::SIZE;
 
-  static int _offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
+  static int _offset_from(word index) { return HEADER_SIZE + index  * WORD_SIZE; }
 
   friend class ObjectHeap;
   friend class ProgramHeap;

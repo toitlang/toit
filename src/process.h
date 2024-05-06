@@ -184,15 +184,15 @@ class Process : public ProcessListFromProcessGroup::Element,
   int gc_count(GcType type) { return object_heap_.gc_count(type); }
 
   String* allocate_string(const char* content);
-  String* allocate_string(int length);
-  String* allocate_string(const char* content, int length);
+  String* allocate_string(word length);
+  String* allocate_string(const char* content, word length);
   Object* allocate_string_or_error(const char* content);
-  Object* allocate_string_or_error(const char* content, int length);
+  Object* allocate_string_or_error(const char* content, word length);
 #if defined(TOIT_WINDOWS)
   String* allocate_string(const wchar_t* content);
   String* allocate_string(const wchar_t* content, word length);
 #endif
-  ByteArray* allocate_byte_array(int length, bool force_external=false);
+  ByteArray* allocate_byte_array(word length, bool force_external=false);
 
   void set_max_heap_size(word bytes) {
     object_heap_.set_max_heap_size(bytes);

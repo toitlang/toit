@@ -4,6 +4,8 @@
 
 import bitmap
 
+import ..io as io
+
 // Returns the number of bytes needed to code the char in UTF-8.
 utf-8-bytes char:
   return write-utf-8-to-byte-array null 0 char
@@ -57,7 +59,7 @@ A string can only contain valid UTF-8 byte sequences.  To store arbitrary
 Strings are immutable objects.
 See more on strings at https://docs.toit.io/language/strings.
 */
-abstract class string implements Comparable:
+abstract class string implements Comparable io.Data:
   static MIN-SLICE-SIZE_ ::= 16
 
   /**
@@ -266,7 +268,7 @@ abstract class string implements Comparable:
   ```
   heavy_metalize str/string -> string:
     return str.flat_map: | c |
-      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=: c
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if-absent=: c
   ```
   ```
   lower_case str/string -> string:
@@ -566,7 +568,7 @@ abstract class string implements Comparable:
   ```
   // In class A with fields str_field1 and str_field2:
   compare_to other/A -> int:
-    return str_field1.compare_to other.str_field1 --if_equal=:
+    return str_field1.compare_to other.str_field1 --if-equal=:
       str_field2.compare_to other.str_field2
   ```
   */
@@ -812,11 +814,11 @@ abstract class string implements Comparable:
   # Examples
   Also see $index-of for more examples.
   ```
-  "foo".index_of "bar" --if_absent=: it.size            // => 3 (the size of "foo")
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 499      // => 499
-  "".index_of "" -3 -3 --if_absent=: throw "not found"  // Error
-  "".index_of "" 2 2   --if_absent=: -1                 // => -1
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 42       // => 42
+  "foo".index_of "bar" --if-absent=: it.size            // => 3 (the size of "foo")
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 499      // => 499
+  "".index_of "" -3 -3 --if-absent=: throw "not found"  // Error
+  "".index_of "" 2 2   --if-absent=: -1                 // => -1
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 42       // => 42
   ```
   */
   index-of --last/bool=false needle/string from/int=0 to/int=size [--if-absent]:
@@ -927,12 +929,12 @@ abstract class string implements Comparable:
 
   # Examples
   ```
-  "https://www.example.com".trim --left "http://" --if_absent=: it.trim --left "https://"  // => "www.example.com"
+  "https://www.example.com".trim --left "http://" --if-absent=: it.trim --left "https://"  // => "www.example.com"
   str := "foobar"
-  str.trim --left "foo" --if_absent=: "not_used" // => "bar"
-  str.trim --left ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --left "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --left "gee" --if_absent=: throw "missing prefix" // ERROR
+  str.trim --left "foo" --if-absent=: "not_used" // => "bar"
+  str.trim --left ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --left "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
   trim --left/bool prefix/string [--if-absent] -> string:
@@ -967,10 +969,10 @@ abstract class string implements Comparable:
   # Examples
   ```
   str := "foobar"
-  str.trim --right "bar" --if_absent=: "not_used" // => "bar"
-  str.trim --right ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --right "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --right "gee" --if_absent=: throw "missing suffix" // ERROR
+  str.trim --right "bar" --if-absent=: "not_used" // => "bar"
+  str.trim --right ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --right "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
   trim --right/bool suffix/string [--if-absent] -> string:
@@ -1080,19 +1082,19 @@ abstract class string implements Comparable:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e": print it // prints the contents of gadsby
 
-  "Toad the Wet Sprocket".split --at_first "e": print it  // prints "Toad th", " Wet Sprocket"
-  " the dust ".split            --at_first " ": print it  // prints "", "the dust "
-  gadsby.split                  --at_first "e": print it  // prints the contents of gadsby
+  "Toad the Wet Sprocket".split --at-first "e": print it  // prints "Toad th", " Wet Sprocket"
+  " the dust ".split            --at-first " ": print it  // prints "", "the dust "
+  gadsby.split                  --at-first "e": print it  // prints the contents of gadsby
 
-  "abc".split  --at_first "":    print it     // prints "a" and "bc"
-  "foo".split  --at_first "foo": print it     // prints "" and ""
-  "afoo".split --at_first "foo": print it     // prints "a" and ""
-  "foob".split --at_first "foo": print it     // prints "" and "b"
-  "".split     --at_first "":    print it     // This is an error.
-  "a".split    --at_first "":    print it     // prints "a" and ""
+  "abc".split  --at-first "":    print it     // prints "a" and "bc"
+  "foo".split  --at-first "foo": print it     // prints "" and ""
+  "afoo".split --at-first "foo": print it     // prints "a" and ""
+  "foob".split --at-first "foo": print it     // prints "" and "b"
+  "".split     --at-first "":    print it     // This is an error.
+  "a".split    --at-first "":    print it     // prints "a" and ""
 
-  "foo".split "foo" --drop_empty: print it                 // Doesn't print.
-  "afoo".split "foo" --drop_empty: print it                 // prints "a"
+  "foo".split "foo" --drop-empty: print it                 // Doesn't print.
+  "afoo".split "foo" --drop-empty: print it                 // prints "a"
   ```
   */
   split --at-first/bool=false separator/string --drop-empty/bool=false [process-part] -> none:
@@ -1151,15 +1153,15 @@ abstract class string implements Comparable:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e"   // => [gadsby]
 
-  "Toad the Wet Sprocket".split --at_first "e"  // => ["Toad th", " Wet Sprocket"]
-  " the dust ".split            --at_first " "  // => ["", "the dust "]
-  gadsby.split                  --at_first "e"  // => [gadsby]
+  "Toad the Wet Sprocket".split --at-first "e"  // => ["Toad th", " Wet Sprocket"]
+  " the dust ".split            --at-first " "  // => ["", "the dust "]
+  gadsby.split                  --at-first "e"  // => [gadsby]
 
-  "abc".split  --at_first ""      // => ["", "abc"]
-  "foo".split  --at_first "foo"   // => ["", ""]
-  "afoo".split --at_first "foo"   // => ["a", ""]
-  "foob".split --at_first "foo"   // => ["", "b"]
-  "".split     --at_first ""      // => [""]
+  "abc".split  --at-first ""      // => ["", "abc"]
+  "foo".split  --at-first "foo"   // => ["", ""]
+  "afoo".split --at-first "foo"   // => ["a", ""]
+  "foob".split --at-first "foo"   // => ["", "b"]
+  "".split     --at-first ""      // => [""]
   ```
   */
   split --at-first/bool=false separator/string --drop-empty/bool=false -> List/*<string>*/ :
@@ -1331,22 +1333,37 @@ abstract class string implements Comparable:
   /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
-  write-to-byte-array byte-array:
+  write-to-byte-array byte-array/ByteArray:
     return write-to-byte-array_ byte-array 0 size 0
 
   /**
   Writes the raw UTF-8 bytes of the string to the given
     offset of an existing ByteArray.
   */
-  write-to-byte-array byte-array dest-index:
+  write-to-byte-array byte-array/ByteArray dest-index:
     return write-to-byte-array_ byte-array 0 size dest-index
 
   /** Deprecated. Use $write-to-byte-array on a string slice instead. */
-  write-to-byte-array byte-array start end dest-index:
+  write-to-byte-array byte-array/ByteArray start end dest-index:
     return write-to-byte-array_ byte-array start end dest-index
 
-  write-to-byte-array_ byte-array start end dest-index:
+  write-to-byte-array_ byte-array/ByteArray start end dest-index:
     #primitive.core.string-write-to-byte-array
+
+  byte-size -> int:
+    return size
+
+  byte-slice from to/int -> io.Data:
+    if this is String_: return StringByteSlice_ (this as String_) from to
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
+    slice := this as StringSlice_
+    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
+
+  byte-at index/int -> int:
+    return raw-at_ index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
+    write-to-byte-array_ byte-array from to at
 
 class String_ extends string:
   constructor.private_:
@@ -1401,6 +1418,40 @@ class StringSlice_ extends string:
 
   compute-hash_ -> int:
     #primitive.core.blob-hash-code
+
+class StringByteSlice_ implements io.Data:
+  str_ / String_
+  from_ / int
+  to_ / int
+
+  constructor .str_ .from_ .to_:
+
+  // TODO(florian): this method is only here for backwards-compatability.
+  // Some methods used to take 'any' and then take the 'size' of it.
+  // Once we have migrated all these locations to use 'io.Data' and 'byte-size', it
+  // can be removed.
+  size -> int:
+    return byte-size
+
+  byte-size -> int:
+    return to_ - from_
+
+  byte-slice from/int to/int -> io.Data:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    return StringByteSlice_ str_ actual-from actual-to
+
+  byte-at index/int -> int:
+    if not 0 <= index < (to_ - from_): throw "OUT_OF_BOUNDS"
+    actual-index := from_ + index
+    return str_.byte-at actual-index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    str_.write-to-byte-array --at=at byte-array actual-from actual-to
 
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:

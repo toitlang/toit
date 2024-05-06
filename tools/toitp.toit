@@ -122,6 +122,205 @@ print-sizes snapshot/SnapshotBundle:
 
 filter := ""
 
+with-filtered-cli-program parsed/cli.Parsed [block]:
+  filter = parsed["filter"] or ""
+  snapshot := SnapshotBundle.from-file parsed["snapshot"]
+  program := snapshot.decode
+  block.call program
+
+is-number-string str/string -> bool:
+  if str.size == 0: return false
+  str.size.repeat:
+    if not '0' <= str[it] <= '9': return false
+  return true
+
+build-command -> cli.Command:
+  snapshot-command := cli.Command "snapshot"
+      --help="""
+          Inspect a Toit snapshot.
+          """
+
+  snapshot-option := cli.Option "snapshot"
+      --help="The snapshot to inspect."
+      --type="file"
+      --required
+  filter-option := cli.Option "filter"
+      --help="Only print elements matching the filter pattern."
+  filter-help := """
+          The optional filter pattern is a glob pattern, where '*' matches any sequence of
+          characters and '?' matches any single character. The filter is case-sensitive."""
+
+  literals-command := cli.Command "literals"
+      --help="""
+          Print the literals in the snapshot.
+
+          The filter can either be a literal index or a glob pattern, where '*' matches any
+          sequence of characters and '?' matches any single character. The filter is case-sensitive.
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print all literals of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print all literals starting with 'http://':"
+            --arguments="foo.snapshot 'http://*'",
+        cli.Example "Print the literal with id 42:"
+            --arguments="foo.snapshot 42",
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            filter-arg := parsed["filter"]
+            if filter-arg and is-number-string filter-arg:
+              // Ignore the filter argument if it is a number.
+              print-literal program (int.parse filter-arg)
+            else:
+              print-literals program
+  snapshot-command.add literals-command
+
+  classes-command := cli.Command "classes"
+      --help="""
+          Print the classes in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print all classes of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print all classes ending with 'Handler':"
+            --arguments="foo.snapshot '*Handler'",
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-classes program
+  snapshot-command.add classes-command
+
+  dispatch-table-command := cli.Command "dispatch-table"
+      --help="""
+          Print the dispatch table in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the dispatch table of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print the dispatch table restricted to methods containing 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'"
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-dispatch-table program
+  snapshot-command.add dispatch-table-command
+
+  method-table-command := cli.Command "method-table"
+      --help="""
+          Print the method table in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the method table of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print the method table for methods containing 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'"
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-method-table program
+  snapshot-command.add method-table-command
+
+  method-sizes-command := cli.Command "method-sizes"
+      --help="""
+          Print the method sizes in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the method sizes of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print the method sizes for methods containing 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'"
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-method-sizes program
+  snapshot-command.add method-sizes-command
+
+  primitive-table-command := cli.Command "primitive-table"
+      --help="""
+          Print the primitive table in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the primitive table of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print the primitive table for primitives containing 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'"
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-primitive-table program
+  snapshot-command.add primitive-table-command
+
+  senders-command := cli.Command "callers"
+      --help="""
+          Print the methods that call another method.
+
+          $filter-help
+          """
+      --options=[
+        cli.Flag "bytecodes" --short-name="bc" --help="Print the bytecodes of the methods."
+      ]
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the methods that call the method 'bar':"
+            --arguments="foo.snapshot bar",
+        cli.Example "Print the methods that call methods that have 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'",
+        cli.Example "Print the bytecodes of all methods that call 'gee':"
+            --arguments="foo.snapshot gee --bytecodes",
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-senders program parsed["bytecodes"]
+  snapshot-command.add senders-command
+
+  bytecodes-command := cli.Command "bytecodes"
+      --help="""
+          Print the bytecodes of the methods in the snapshot.
+
+          $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print the bytecodes of all methods in snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+        cli.Example "Print the bytecodes for methods containing 'bar' in their name:"
+            --arguments="foo.snapshot '*bar*'"
+      ]
+      --run=:: | parsed/cli.Parsed |
+          with-filtered-cli-program parsed: | program/Program |
+            print-bytecodes program
+  snapshot-command.add bytecodes-command
+
+  uuid-command := cli.Command "uuid"
+      --help="Print the UUID of the snapshot."
+      --rest=[snapshot-option]
+      --examples=[
+        cli.Example "Print the UUID of snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+      ]
+      --run=:: | parsed/cli.Parsed |
+        snapshot := SnapshotBundle.from-file parsed["snapshot"]
+        print-uuid snapshot
+  snapshot-command.add uuid-command
+
+  return snapshot-command
+
 main args:
   parsed := null
   parser := cli.Command "toitp"

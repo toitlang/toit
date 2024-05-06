@@ -45,14 +45,9 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
 
   void entry();
 
-  bool is_pinned() const { return is_pinned_; }
-  void pin() { is_pinned_ = true; }
-  void unpin() { is_pinned_ = false; }
-
  private:
   Scheduler* const scheduler_;
   Interpreter interpreter_;
-  bool is_pinned_ = false;
 };
 
 class Scheduler {
@@ -240,6 +235,7 @@ class Scheduler {
 
   static const int NUMBER_OF_READY_QUEUES = 5;
   ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
+  int ready_count_ = 0;
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
     return ready_queue_[compute_ready_queue_index(priority)];
@@ -252,8 +248,6 @@ class Scheduler {
     if (priority != Process::PRIORITY_IDLE) return 3;
     return 4;
   }
-
-  bool has_ready_processes(Locker& locker);
 
   int num_threads_;
   int max_threads_;

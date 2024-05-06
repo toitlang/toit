@@ -1,4 +1,4 @@
 tests/negative/abstract6-test.toit:22:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

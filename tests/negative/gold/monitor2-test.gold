@@ -4,4 +4,4 @@ tests/negative/monitor2-test.toit:7:3: error: Redefinition of 'get'
 tests/negative/monitor2-test.toit:6:3: note: First definition of 'get'
   get x:
   ^~~
-Compilation failed.
+Compilation failed

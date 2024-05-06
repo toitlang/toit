@@ -115,7 +115,14 @@ class Interpreter {
   void deactivate();
 
   // Garbage collection support.
-  Object** gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process);
+  Object** gc(
+      Object** sp,
+      bool malloc_failed,
+      int attempts,
+      bool force_cross_process,
+      const char* reason,
+      int parameter1 = 0,
+      int parameter2 = 0);
 
   // Boot the interpreter on the current process.
   void prepare_process();
@@ -126,6 +133,7 @@ class Interpreter {
 
   // Fast helpers for indexing and number comparisons.
   static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;
+  static bool fast_size(Process* process, Object* receiver, Smi** result) INTERPRETER_HELPER;
   static int compare_numbers(Object* lhs, Object* rhs) INTERPRETER_HELPER;
   static int compare_ints(int64 lhs, int64 rhs) INTERPRETER_HELPER;
 

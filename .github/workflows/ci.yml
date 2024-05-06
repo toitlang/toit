@@ -80,28 +80,9 @@ jobs:
 
       # Use Go 1.20
       - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps.
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-      - name: Go cache
-        # On Windows this takes 3-5 minutes, and doesn't seem to help the build speed much.
-        if: runner.os != 'Windows'
-        uses: actions/cache@v4
+        uses: actions/setup-go@v5
         with:
-          path: |
-            ${{ steps.go-cache-paths.outputs.go-build }}
-            ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
+          go-version: '1.20'
 
       - name: Ccache cache
         uses: actions/cache@v4
@@ -198,6 +179,14 @@ jobs:
           fi
           ccache -s
 
+      # Build 64-bit debug if we are comitting to master.
+      - name: Build 64-bit debug
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          ccache -s
+          make BUILD=build-debug BUILD_TYPE=Debug sdk
+          ccache -s
+
       # Test.
       - name: Test
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
@@ -224,6 +213,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
+
+      - name: Test 64-bit debug
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug test
 
       - name: Test install
         if : matrix.shard == 1
@@ -401,17 +395,9 @@ jobs:
 
       # Use Go 1.20
       - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps.
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
 
       # Get values for sha hashes to be used in later steps.
       - name: Get Sha hashes
@@ -419,22 +405,6 @@ jobs:
         shell: bash
         run: |
           echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
-
-      # Cache go build cache, used to speedup go test.
-      - name: Go Build Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds.
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
         uses: actions/cache@v4
@@ -576,33 +546,9 @@ jobs:
 
       # Use Go 1.20
       - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v4
+        uses: actions/setup-go@v5
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
+          go-version: '1.20'
 
       - name: Ccache cache
         uses: actions/cache@v4
@@ -1004,7 +950,7 @@ jobs:
   AUR:
     name: Update AUR package
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [combine]
     if: github.event_name == 'release' &&
         !github.event.release.prerelease &&
         github.repository_owner == 'toitlang'

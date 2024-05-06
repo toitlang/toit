@@ -76,4 +76,4 @@ tests/negative/bad-loop-variable-test.toit:8:3: warning: Condition always evalua
 tests/negative/bad-loop-variable-test.toit:12:3: warning: Condition always evaluates to true
   while this ::= 499: print 1
   ^~~~~
-Compilation failed.
+Compilation failed

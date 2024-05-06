@@ -37,4 +37,4 @@ tests/negative/final-field-test.toit:26:5: error: Expression assigns to final fi
 tests/negative/final-field-test.toit:27:12: note: Assignment to final field 'field'
       field--  // A hidden assignment.
            ^~
-Compilation failed.
+Compilation failed

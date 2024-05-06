@@ -49,4 +49,4 @@ tests/negative/missing-colon-test.toit:36:12: error: Unresolved identifier: 'x'
 tests/negative/missing-colon-test.toit:33:3: error: Field 'y' must be initialized in a constructor
   y/int
   ^
-Compilation failed.
+Compilation failed

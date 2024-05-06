@@ -3,7 +3,7 @@ main tests/type_propagation/time-test.toit
   1[020] - load literal counter = 
   3[015] - load local 1
   4[058] - invoke virtual stringify // [{LargeInteger_|SmallInteger_}] -> {String_}
-  8[048] - as class StringSlice_(14 - 16) // {True_}
+  8[048] - as class StringSlice_(17 - 19) // {True_}
  10[073] - invoke add // [{String_}, {String_}] -> {String_}
  11[053] - invoke static print <sdk>/core/print.toit // [{String_}] -> {Null_}
  14[041] - pop 1
@@ -18,5 +18,5 @@ main tests/type_propagation/time-test.toit
  28[027] - load smi 1000
  31[053] - invoke static sleep <sdk>/core/timer.toit // [{SmallInteger_}] -> {Null_}
  34[041] - pop 1
- 35[083] - branch back T1
- 40[089] - return null S1 0
+ 35[084] - branch back T1
+ 40[090] - return null S1 0

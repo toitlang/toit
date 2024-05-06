@@ -14,12 +14,12 @@
 // directory of this repository.
 
 import crypto.sha1
-import binary
+import encoding.hex
 import host.file
 import host.directory
-import encoding.hex
+import io
+import io show BIG-ENDIAN
 import zlib
-import bytes
 
 import ..file-system-view
 import .git
@@ -33,7 +33,7 @@ class Pack:
     // See: git help format-pack.
     if "PACK" != binary-data_[0..4].to-string-non-throwing:
       throw "Invalid pack file"
-    version = binary.BIG-ENDIAN.uint32 binary-data_ 4
+    version = BIG-ENDIAN.uint32 binary-data_ 4
     if version > 2: throw "Unsuported pack version $version"
 
     content_ = parse-binary-data_ binary-data_ ref-hash
@@ -78,7 +78,7 @@ class Pack:
   static TYPE_REF_DELTA_ ::= 7
 
   static parse-binary-data_ binary-data/ByteArray ref-hash/string -> Map:
-    num-entries := binary.BIG-ENDIAN.uint32 binary-data 8
+    num-entries := BIG-ENDIAN.uint32 binary-data 8
 
     offset := 12
     objects := {:}
@@ -141,19 +141,19 @@ class Pack:
   static read-uncompressed_ uncompressed-size/int input/ByteArray -> List:
     decoder := zlib.Decoder
     try:
-      buffer := bytes.Buffer
+      buffer := io.Buffer
       written := 0
 
       while true:
-        written += decoder.write --no-wait input[written..]
-        buffer.write (decoder.reader.read --no-wait)
+        written += decoder.out.try-write input[written..]
+        buffer.write (decoder.in.read --no-wait)
         if buffer.size >= uncompressed-size: break
 
       if buffer.size != uncompressed-size:
         throw "Invalid entry, expected $uncompressed-size bytes, but got $buffer.size"
       return [written, buffer.bytes]
     finally:
-      decoder.close
+      decoder.out.close
 
   static read-size-encoding_ data -> List:
     offset := 0
@@ -175,7 +175,7 @@ class Pack:
     offset += read[0]
     reconstructed-size := read[1]
 
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     while offset < delta-data.size:
       control := delta-data[offset++]
       if control & 0b1000_0000 == 0:
@@ -257,4 +257,3 @@ class TreeEntry_:
 
   stringify:
     return "$(%-6s permission) $(%-22s name) $(hex.encode hash)"
-

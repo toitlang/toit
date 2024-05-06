@@ -5,6 +5,8 @@
 import crypto.sha show Sha224 Sha256 Sha384 Sha512
 import crypto.checksum show Checksum checksum
 
+import ..io as io
+
 /**
 HMAC keyed hashing for message authentication.
 */
@@ -36,7 +38,7 @@ class Hmac extends Checksum:
 
   constructor.private_ .final-hasher_ .hasher_:
 
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     hasher_.add data from to
 
   get -> ByteArray:

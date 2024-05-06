@@ -12,6 +12,8 @@
 
 namespace toit {
 
+class ScavengeVisitor;
+
 class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
@@ -90,7 +92,7 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() const { return old_space_.used() + semi_space_.used(); }
+  word used() const { return old_space_.used() + semi_space_.used(); }
 
   HeapObject* new_space_allocation_failure(uword size);
 
@@ -117,13 +119,17 @@ class TwoSpaceHeap {
  private:
   friend class ScavengeVisitor;
 
+  void do_scavenge(ScavengeVisitor* visitor);
+
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
   SemiSpace semi_space_;
+  Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
+  bool large_allocation_failed_ = false;
   bool malloc_failed_ = false;
 };
 
@@ -162,7 +168,7 @@ class ScavengeVisitor : public RootCallback {
     return reinterpret_cast<uword>(object) - to_start_ < to_size_;
   }
 
-  virtual void do_roots(Object** start, int count);
+  virtual void do_roots(Object** start, word count);
 
   bool trigger_old_space_gc() { return trigger_old_space_gc_; }
 
