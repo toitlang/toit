@@ -30,6 +30,13 @@ class VM;
 
 typedef LinkedFifo<Message> MessageFIFO;
 
+// Keep in sync with constants in messages.toit.
+enum message_err_t : int {
+  MESSAGE_OK = 0,
+  MESSAGE_OOM = 1,
+  MESSAGE_NO_SUCH_RECEIVER = 2,
+};
+
 enum MessageType {
   MESSAGE_INVALID = 0,
   MESSAGE_MONITOR_NOTIFY = 1,
@@ -373,7 +380,9 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // always freed even on failures; otherwise, only messages that are
   // succesfully sent are taken over by the receiver and must not be touched or
   // deallocated by the sender.
-  bool send(int pid, int type, void* data, word length, bool free_on_failure = false);
+  bool send(int pid, int type, void* data, word length, bool free_on_failure = false) {
+    return send_(pid, type, data, length, free_on_failure) == MESSAGE_OK;
+  }
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false
@@ -384,6 +393,15 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // processes and get them to stop before garbage collecting their heaps.
   void collect_garbage(bool try_hard);
 
+ protected:
+  // Send a message to a specific pid, using Scheduler::send_message.
+  //
+  // The data is assumed to be a malloced message. If free_on_failure is true, the data is
+  // always freed even on failures; otherwise, only messages that are
+  // succesfully sent are taken over by the receiver and must not be touched or
+  // deallocated by the sender.
+  message_err_t send_(int pid, int type, void* data, word length, bool free_on_failure = false);
+
  private:
   VM* vm_;
   Process* process_;
@@ -393,6 +411,13 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   virtual void set_process(Process* process) override;
 };
 
-void create_and_start_external_message_handlers(VM* vm);
+/// Creates and starts all external processes.
+/// This function must be called early (before Toit programs are started), and
+/// assumes that memory allocations don't fail.
+void create_and_start_external_processes(VM* vm);
+
+/// Returns the pid for the given external id.
+/// If the id is unknown returns -1.
+int pid_for_external_id(String* id);
 
 }  // namespace toit

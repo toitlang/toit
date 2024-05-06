@@ -113,8 +113,8 @@ static void start() {
   Scheduler::ExitState exit_state;
   { VM vm;
     vm.load_platform_event_sources();
+    create_and_start_external_processes(&vm);
     int group_id = vm.scheduler()->next_group_id();
-    create_and_start_external_message_handlers(&vm);
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
 

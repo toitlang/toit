@@ -248,6 +248,8 @@ TYPE_PRIMITIVE(process_send) {
   failure.add_array(program);
 }
 
+TYPE_PRIMITIVE_INT(pid_for_external_id)
+
 TYPE_PRIMITIVE(spawn) {
   result.add_smi(program);
   failure.add_string(program);

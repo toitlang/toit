@@ -14,7 +14,7 @@
 // directory of this repository.
 
 #include "messaging.h"
-#include <toit/cmessaging.h>
+#include <toit/ctoit.h>
 
 #include "objects.h"
 #include "process.h"
@@ -762,7 +762,7 @@ bool ExternalSystemMessageHandler::set_priority(uint8 priority) {
   return (pid < 0) ? false : vm_->scheduler()->set_priority(pid, priority);
 }
 
-bool ExternalSystemMessageHandler::send(int pid, int type, void* data, word length, bool free_on_failure) {
+message_err_t ExternalSystemMessageHandler::send_(int pid, int type, void* data, word length, bool free_on_failure) {
   word buffer_size = 0;
   { MessageEncoder encoder(null);
     encoder.encode_bytes_external(data, length);
@@ -772,23 +772,28 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, word leng
   uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
   if (buffer == null) {
     if (free_on_failure) free(data);
-    return false;
+    return MESSAGE_OOM;
   }
   MessageEncoder encoder(buffer);  // Takes over buffer.
+  // Takes ownership of the data.
   encoder.encode_bytes_external(data, length, free_on_failure);
 
-  // Takes over the buffer and neutralizes the MessageEncoder.
+  // Takes over the buffer and neuters the MessageEncoder.
   SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), &encoder);
-  if (system_message == null) return false;
+  if (system_message == null) {
+    // No need to free the data or the buffer, since the destructor of the
+    // encoder already takes care of that.
+    return MESSAGE_OOM;
+  }
 
   // Sending the message can only fail if the pid is invalid.
-  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
-  bool success = result == MESSAGE_OK;
-  if (!success && !free_on_failure) {
+  message_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
+  ASSERT(result == MESSAGE_OK || result == MESSAGE_NO_SUCH_RECEIVER);
+  if (result != MESSAGE_OK && !free_on_failure) {
     system_message->free_data_but_keep_externals();
     delete system_message;
   }
-  return success;
+  return result;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
@@ -808,7 +813,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
         abort();
       }
 
-      // If the allocation failed, we ask the handler if we should retry the failed
+      // If the allocation failed, we ask the process if we should retry the failed
       // allocation. If so, we leave the message in place and try again. Otherwise,
       // we remove it but do not call on_message.
       bool allocation_failed = !success && decoder.allocation_failed();
@@ -840,102 +845,156 @@ void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
 
 namespace {
 
-struct RegisteredHandler {
-  int requested_pid;
+struct RegisteredExternalProcess {
+  const char* id;
   void* user_context;
-  void (*create_handler)(void* user_context, HandlerContext* handler_context);
+  start_cb_t start;
 };
 
-struct RegisteredHandlerList {
-  RegisteredHandlerList* next;
-  RegisteredHandler handler;
+struct RegisteredProcessList {
+  RegisteredProcessList* next;
+  RegisteredExternalProcess process;
 };
 
-RegisteredHandlerList* registered_handlers = null;
+RegisteredProcessList* registered_processes = null;
 
-typedef void (*ReceiverCallback)(void* user_context, int sender, int type, void* data, int length);
-typedef void (*ReleaseCallback)(void* user_context);
-
-class ExternalMessageHandler : public ExternalSystemMessageHandler {
+class ExternalProcess : public ExternalSystemMessageHandler {
  public:
-  ExternalMessageHandler(VM* vm,
-                         void* user_context)
+  ExternalProcess(VM* vm, void* user_context)
       : ExternalSystemMessageHandler(vm)
       , user_context_(user_context) {}
-  virtual ~ExternalMessageHandler() {
-    if (release_ != null) release_(user_context_);
+
+  virtual ~ExternalProcess() {
+    if (on_removed_ != null) on_removed_(user_context_);
   }
 
   void on_message(int pid, int type, void* data, int length) override {
     if (on_message_ == null) return;
-    printf("Calling on-message %p\n", user_context_);
     on_message_(user_context_, pid, type, data, length);
   }
 
-  void set_on_message(ReceiverCallback on_message) {
+  void set_on_message(on_message_cb_t on_message) {
     on_message_ = on_message;
   }
 
-  void set_release(ReleaseCallback release) {
-    release_ = release;
+  void set_on_removed(on_removed_cb_t on_removed) {
+    on_removed_ = on_removed;
+  }
+
+  message_err_t send_with_err(int pid, int type, void* data, word length, bool free_on_failure) {
+    return send_(pid, type, data, length, free_on_failure);
   }
 
  private:
   void* user_context_;
-  ReceiverCallback on_message_ = null;
-  ReleaseCallback release_ = null;
+  on_message_cb_t on_message_ = null;
+  on_removed_cb_t on_removed_ = null;
+};
+
+struct IdPidEntry {
+  const char* id;
+  int pid;
 };
 
 }  // anonymous namespace.
 
-void create_and_start_external_message_handlers(VM* vm) {
-  for (RegisteredHandlerList* list = registered_handlers; list != null; list = list->next) {
-    // TODO(florian): use requested pid.
-    ExternalMessageHandler* handler = _new ExternalMessageHandler(vm, list->handler.user_context);
-    if (!handler->start()) {
-      FATAL("[failed to start external message handler]");
+static IdPidEntry* id_pid_entry_mapping = null;
+static int id_pid_entry_mapping_length = 0;
+
+void create_and_start_external_processes(VM* vm) {
+  int count = 0;
+  for (RegisteredProcessList* list = registered_processes; list != null; list = list->next) {
+    count++;
+  }
+  if (count == 0) return;
+
+  // Create the mapping from ID to PID.
+  id_pid_entry_mapping = unvoid_cast<IdPidEntry*>(malloc(count * sizeof(IdPidEntry)));
+  id_pid_entry_mapping_length = count;
+  if (!id_pid_entry_mapping) {
+    FATAL("[OOM while creating external message processs]");
+  }
+
+  int i = 0;
+  for (RegisteredProcessList* list = registered_processes; list != null; list = list->next) {
+    ExternalProcess* process = _new ExternalProcess(vm, list->process.user_context);
+    if (!process) {
+      FATAL("[OOM while creating external message processs]");
     }
-    list->handler.create_handler(list->handler.user_context, reinterpret_cast<HandlerContext*>(handler));
+    if (!process->start()) {
+      FATAL("[failed to start external message process]");
+    }
+    list->process.start(list->process.user_context, reinterpret_cast<toit_process_context_t*>(process));
+    id_pid_entry_mapping[i].id = list->process.id;
+    id_pid_entry_mapping[i].pid = process->pid();
+    i++;
   }
   // Free the list.
-  while (registered_handlers != null) {
-    RegisteredHandlerList* next = registered_handlers->next;
-    free(registered_handlers);
-    registered_handlers = next;
+  while (registered_processes != null) {
+    RegisteredProcessList* next = registered_processes->next;
+    free(registered_processes);
+    registered_processes = next;
   }
+}
+
+int pid_for_external_id(String* id) {
+  auto c_id = id->as_cstr();
+  for (int i = 0; i < id_pid_entry_mapping_length; i++) {
+    auto entry = id_pid_entry_mapping[i];
+    if (strcmp(c_id, entry.id) == 0) {
+      return entry.pid;
+    }
+  }
+  return -1;
 }
 
 }  // namespace toit
 
 extern "C" {
 
-void toit_register_external_message_handler(void* user_context,
-                                            int requested_pid,
-                                            void (*create_handler)(void* user_context, HandlerContext* handler_context)) {
-  auto old = toit::registered_handlers;
-  auto list = reinterpret_cast<toit::RegisteredHandlerList*>(malloc(sizeof(toit::RegisteredHandlerList)));
-  if (list == null) return;
+// Functions that are exported through Toit's C API.
+
+toit_err_t toit_add_external_process(void* user_context,
+                                     const char* id,
+                                     start_cb_t start) {
+  auto old = toit::registered_processes;
+  auto list = toit::unvoid_cast<toit::RegisteredProcessList*>(malloc(sizeof(toit::RegisteredProcessList)));
+  if (list == null) FATAL("[OOM during external process setup]");
   list->next = old;
-  list->handler.requested_pid = requested_pid;
-  list->handler.user_context = user_context;
-  list->handler.create_handler = create_handler;
-  toit::registered_handlers = list;
+  list->process.id = id;
+  list->process.user_context = user_context;
+  list->process.start = start;
+  toit::registered_processes = list;
+  return TOIT_ERR_SUCCESS;
 }
 
-void toit_set_callbacks(HandlerContext* handler_context, toit::ReceiverCallback on_message, toit::ReleaseCallback release) {
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
-  handler->set_on_message(on_message);
-  handler->set_release(release);
+toit_err_t toit_set_callbacks(toit_process_context_t* process_context, toit_process_cbs_t cbs) {
+  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
+  process->set_on_message(cbs.on_message);
+  process->set_on_removed(cbs.on_removed);
+  return TOIT_ERR_SUCCESS;
 }
 
-bool toit_send_message(HandlerContext* handler_context, int target_pid, int type, void* data, int length, bool free_on_failure) {
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
-  return handler->send(target_pid, type, data, length, free_on_failure);
+toit_err_t toit_send_message(toit_process_context_t* process_context,
+                             int target_pid, int type,
+                             void* data, int length,
+                             bool free_on_failure) {
+  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
+  bool success = process->send(target_pid, type, data, length, free_on_failure);
+  // TODO(florian): distinguish between the different errors.
+  return success ? TOIT_ERR_SUCCESS : TOIT_ERR_ERROR;
 }
 
-void toit_release_handler(HandlerContext* handler_context) {
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
-  delete handler;
+toit_err_t toit_remove_process(toit_process_context_t* process_context) {
+  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
+  delete process;
+  return TOIT_ERR_SUCCESS;
+}
+
+toit_err_t toit_gc(toit_process_context_t* process_context, bool try_hard) {
+  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
+  process->collect_garbage(try_hard);
+  return TOIT_ERR_SUCCESS;
 }
 
 } // Extern C.

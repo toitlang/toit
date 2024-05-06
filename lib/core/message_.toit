@@ -29,6 +29,14 @@ process-send_ pid/int type/int message -> bool:
       serialization-failure_ it[0]
     throw it
 
+/**
+Returns the process ID for the process with the given external $id.
+
+If no process with the external ID exists, returns -1.
+*/
+pid-for-external-id_ id/string -> int:
+  #primitive.core.pid-for-external-id
+
 /** Registered system message handlers for this process. */
 system-message-handlers_ ::= {:}
 

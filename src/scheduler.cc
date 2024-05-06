@@ -268,12 +268,12 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   return process;
 }
 
-scheduler_err_t Scheduler::send_system_message(SystemMessage* message) {
+message_err_t Scheduler::send_system_message(SystemMessage* message) {
   Locker locker(mutex_);
   return send_system_message(locker, message);
 }
 
-scheduler_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
+message_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
   Locker locker(mutex_);
   Process* p = find_process(locker, process_id);
   if (p == null) {
@@ -285,7 +285,7 @@ scheduler_err_t Scheduler::send_message(int process_id, Message* message, bool f
   return MESSAGE_OK;
 }
 
-scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {
+message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {
   if (boot_process_ != null) {
     boot_process_->_append_message(message);
     process_ready(locker, boot_process_);

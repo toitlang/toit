@@ -64,9 +64,9 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
+      create_and_start_external_processes(&vm);
       ProgramImage boot_image = read_image_from_bundle(boot_bundle);
       int group_id = vm.scheduler()->next_group_id();
-      create_and_start_external_message_handlers(&vm);
       if (boot_image.is_valid()) {
         exit = vm.scheduler()->run_boot_program(
             boot_image.program(), boot_bundle, application_bundle, argv, group_id);
