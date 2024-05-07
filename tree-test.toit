@@ -1,5 +1,13 @@
 import .tree
 
+main:
+  test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
+  test RedBlackTree: | us/int lambda/Lambda | RBTimeout us lambda
+  bench false SplayTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
+  bench false RedBlackTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
+  bench true SplayTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
+  bench true RedBlackTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
+
 class RBTimeout extends RedBlackNode:
   us /int
   lambda /Lambda
@@ -27,10 +35,6 @@ class SplayTimeout extends SplayNode:
 
   stringify -> string:
     return "Timeout-$us"
-
-main:
-  test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
-  test RedBlackTree: | us/int lambda/Lambda | RBTimeout us lambda
 
 test tree/Tree [create-timeout] -> none:
 
@@ -78,3 +82,27 @@ check tree/Tree:
     i++
   if i != tree.size:
     throw "Error: $i(i) != $tree.size(tree.size)"
+
+bench one-end/bool tree/Tree name/string [create-timeout] -> none:
+  start := Time.monotonic-us
+  list := []
+  SIZE ::= 100_000
+  SIZE.repeat: | i |
+    r := random SIZE
+    r += (i & 1) * SIZE
+    t := create-timeout.call r::
+        print "Timed out"
+    if r >= SIZE:
+      list.add t
+    tree.add t
+
+  if one-end:
+    while tree.size > 0:
+      tree.remove (tree.first)
+  else:
+    list.do: | t |
+      tree.remove t
+      tree.remove (tree.first)
+
+  end := Time.monotonic-us
+  print "Time $name $(one-end ? "one-end " : " ")for $SIZE elements: $((end - start) / 1000) us"

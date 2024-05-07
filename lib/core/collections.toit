@@ -104,7 +104,6 @@ interface Collection:
   */
   reduce --initial [block]
 
-
 abstract class CollectionBase implements Collection:
   /// See $Collection.do.
   abstract do [block] -> none

@@ -10,12 +10,26 @@ class Tree extends CollectionBase:
     if root_:
       do_ root_ block
 
-  do_ node/TreeNode [block] -> none:
-    if node.left_:
-      do_ node.left_ block
-    block.call node
-    if node.right_:
-      do_ node.right_ block
+  first -> TreeNode?:
+    do: return it
+    throw "empty"
+
+  do_ node/TreeNode? [block] -> none:
+    // Avoids recursion because it can go too deep on the splay tree.
+    todo := []
+    while true:
+      if not node:
+        if todo.size == 0:
+          return
+        node = todo.remove-last
+        block.call node
+        node = node.right_
+      else if node.left_:
+        todo.add node
+        node = node.left_
+      else:
+        block.call node
+        node = node.right_
 
   abstract dump -> none
 
@@ -204,7 +218,7 @@ class RedBlackTree extends Tree:
           value.parent_ = node
           node.left_ = value
           value.red_ = true
-          insert-check_ value node
+          add-fix-invariants_ value node
           return
         node = node.left_
       else:
@@ -212,11 +226,11 @@ class RedBlackTree extends Tree:
           value.parent_ = node
           node.right_ = value
           value.red_ = true
-          insert-check_ value node
+          add-fix-invariants_ value node
           return
         node = node.right_
 
-  insert-check_ node/RedBlackNode parent/RedBlackNode? -> none:
+  add-fix-invariants_ node/RedBlackNode parent/RedBlackNode? -> none:
     while node != root_:
       if not parent.red_:
         // I1.
@@ -285,62 +299,63 @@ class RedBlackTree extends Tree:
         v = v.parent_
       v == root_
     size_--
-    if left != null and right != null:
-      // Both children exist.
-      // Replace with leftmost successor.
-      successor := leftmost_ right
-      successor-parent := successor.parent_
-      successor-right := successor.right_
-      // Wikipedia says we free leftmost node instead of the value node, but
-      // we don't want to mess with object lifetimes, so we patch around it.
-      successor.left_ = left
-      left.parent_ = successor
-      value.left_ = null
-      value.right_ = successor-right
-      if successor-right:
-        successor-right.parent_ = value
-      if successor-parent != value:
-        successor.right_ = right
-        right.parent_ = successor
-        overwrite-child_ value successor
-        overwrite-child_ successor value --parent=successor-parent
+    if left == null:
+      if right == null:
+        // Leaf node.
+        index := (not parent or value == parent.left_) ? 0 : 1
+        overwrite-child_ value null
+        if value != root_ and not value.red_:
+          // Leaf node is black - the difficult case.
+          remove-fix-invariants_ value parent index
       else:
-        // Successor is the right child of value.
-        overwrite-child_ value successor
-        successor.right_ = value
-        value.parent_ = successor
-      red := successor.red_
-      successor.red_ = value.red_
-      value.red_ = red
-      size_++  // Don't decrement twice.
-      remove value
-      return
-    else if left != null or right != null:
-      // Exactly one of the children is non-null.
-      child := ?
-      if left:
-        child = left
-        value.left_ = null
-      else:
-        assert: right
-        child = right
+        // Only right child.
+        child := right
         value.right_ = null
-      overwrite-child_ value child
-      child.red_ = false
+        overwrite-child_ value child
+        child.red_ = false
     else:
-      assert: left == null and right == null
-      // Leaf node.
-      index := (not parent or value == parent.left_) ? 0 : 1
-      overwrite-child_ value null
-      if value != root_ and not value.red_:
-        // Leaf node is black - the difficult case.
-        delete-check_ value parent index
+      if right == null:
+        // Only left child.
+        child := left
+        value.left_ = null
+        overwrite-child_ value child
+        child.red_ = false
+      else:
+        // Both children exist.
+        // Replace with leftmost successor.
+        successor := leftmost_ right
+        successor-parent := successor.parent_
+        successor-right := successor.right_
+        // Wikipedia says we swap the payloads, then free the leftmost node
+        // instead of the value node, but this version doesn't change object
+        // identities, so we move the nodes in the tree.
+        successor.left_ = left
+        left.parent_ = successor
+        value.left_ = null
+        value.right_ = successor-right
+        if successor-right:
+          successor-right.parent_ = value
+        if successor-parent != value:
+          successor.right_ = right
+          right.parent_ = successor
+          overwrite-child_ value successor
+          overwrite-child_ successor value --parent=successor-parent
+        else:
+          // Successor is the right child of value.
+          overwrite-child_ value successor
+          successor.right_ = value
+          value.parent_ = successor
+        red := successor.red_
+        successor.red_ = value.red_
+        value.red_ = red
+        size_++  // Don't decrement twice.
+        remove value  // After moving the nodes, call the method again.
 
     assert: value.parent_ == null
     assert: value.left_ == null
     assert: value.right_ == null
 
-  delete-check_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
+  remove-fix-invariants_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
     if parent == null: return
     sibling := parent[1 - index] as RedBlackNode
     close := sibling[index]        // Distant nephew.
