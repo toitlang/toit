@@ -1,6 +1,10 @@
 abstract
-class Tree:
+class Tree extends CollectionBase:
   root_ /TreeNode? := null
+  size_ /int := 0
+
+  size -> int:
+    return size_
 
   do [block] -> none:
     if root_:
@@ -19,40 +23,103 @@ class Tree:
 
   abstract delete value/TreeNode -> none
 
-  dump_ node/TreeNode depth/int [block] -> none:
+  dump_ node/TreeNode left-indent/string self-indent/string right-indent/string [block] -> none:
     if node.left_:
-      dump_ node.left_ (depth + 1):
+      dump_ node.left_ (left-indent + "  ") (left-indent + "╭─") (left-indent + "│ "):
         if node.left_.parent_ != node:
-          throw "node.left_.parent is not node"
+          throw "node.left_.parent is not node (node=$node, node.left_=$node.left_, node.left_.parent_=$node.left_.parent_)"
       block.call node node.left_
-    print "  " * depth + node.stringify
+    print self-indent + node.stringify
     if node.right_:
-      dump_ node.right_ (depth + 1):
+      dump_ node.right_ (right-indent + "│ ") (right-indent + "╰─") (right-indent + "  "):
         if node.right_.parent_ != node:
-          throw "node.right_.parent is not node"
+          throw "node.right_.parent is not node (node=$node, node.right_=$node.right_, node.right_.parent_=$node.right_.parent_)"
       block.call node node.right_
+
+  overwrite-child_ from/TreeNode to/TreeNode? -> none:
+    parent := from.parent_
+    if parent:
+      if parent.left_ == from:
+        parent.left_ = to
+      else:
+        assert: parent.right_ == from
+        parent.right_ = to
+    else:
+      root_ = to
+    if to:
+      to.parent_ = parent
+    from.parent_ = null
+
+  overwrite-child_ from/TreeNode to/TreeNode? --parent -> none:
+    if parent:
+      if parent.left_ == from:
+        parent.left_ = to
+      else:
+        assert: parent.right_ == from
+        parent.right_ = to
+    else:
+      root_ = to
+    if to:
+      to.parent_ = parent
 
 class SplayTree extends Tree:
   dump -> none:
     print "***************************"
-    if root_.parent_:
-      throw "root_.parent is not null"
     if root_:
-      dump_ root_ 0: | parent child |
+      if root_.parent_:
+        throw "root_.parent is not null"
+      dump_ root_ "" "" "": | parent child |
         if child.parent_ != parent:
           throw "child.parent is not parent"
 
-  add value/TreeNode -> none:
+  add value/SplayNode -> none:
+    // The value cannot already be in a tree.
+    assert: value.parent_ == null
+    assert: value.left_ == null
+    assert: value.right_ == null
     if root_ == null:
       root_ = value
       return
-    insert_ value root_
+    insert_ value (root_ as SplayNode)
     splay_ value
+    size_++
 
-  delete value/TreeNode -> none:
-    unreachable
+  delete value/SplayNode -> none:
+    parent := value.parent_
+    if value.left_ == null:
+      if value.right_ == null:
+        // No children.
+        overwrite-child_ value null
+      else:
+        // Only right child.
+        overwrite-child_ value value.right_
+    else:
+      if value.right_ == null:
+        // Only left child.
+        overwrite-child_ value value.left_
+      else:
+        // Both children exist.  Move up the left child to be the new
+        // parent.
+        replacement := value.left_
+        old-right := replacement.right_
+        replacement.right_ = value.right_
+        value.right_.parent_ = replacement
+        value.right_ = null
+        value.left_ = null
+        overwrite-child_ value replacement
+        if old-right:
+          insert_ old-right replacement
+          splay_ replacement
+          return
 
-  insert_ value/TreeNode node/TreeNode -> none:
+    if parent:
+      splay_ parent
+
+    assert: value.parent_ == null
+    assert: value.left_ == null
+    assert: value.right_ == null
+
+  insert_ value/SplayNode node/SplayNode -> none:
     if value < node:
       if node.left_ == null:
         value.parent_ = node
@@ -66,7 +133,7 @@ class SplayTree extends Tree:
       else:
         insert_ value node.right_
 
-  splay_ node/TreeNode -> none:
+  splay_ node/SplayNode -> none:
     while node.parent_:
       parent := node.parent_
       gramps := parent.parent_
@@ -83,7 +150,7 @@ class SplayTree extends Tree:
           rotate_ node
           rotate_ node
 
-  rotate_ node/TreeNode -> none:
+  rotate_ node/SplayNode -> none:
     parent := node.parent_
     if parent == null:
       return
@@ -111,18 +178,37 @@ class SplayTree extends Tree:
     parent.parent_ = node
 
 class RedBlackTree extends Tree:
-  dump -> none:
+  dump --check-black-depth=true -> none:
     print "***************************"
-    if root_.parent_:
-      throw "root_.parent is not null"
     if root_:
-      dump_ root_ 0: | parent child |
+      if root_.parent_:
+        throw "root_.parent is not null"
+      dump_ root_ "" "" "": | parent child |
         if parent.red_ and child.red_:
           throw "red-red violation"
         if child.parent_ != parent:
           throw "child.parent is not parent"
+      if check-black-depth: check-black-depth_ (root_ as RedBlackNode) [-1] 0
+
+  check-black-depth_ node/RedBlackNode tree-depth/List depth/int -> none:
+    if not node.red_:
+      depth++
+    if (not node.left_ and not node.right_):
+      if tree-depth[0] == -1:
+        tree-depth[0] = depth
+      else:
+        if tree-depth[0] != depth:
+          throw "black depth mismatch at $node"
+    if node.left_:
+      check-black-depth_ node.left_ tree-depth depth
+    if node.right_:
+      check-black-depth_ node.right_ tree-depth depth
 
   add value/RedBlackNode -> none:
+    // The value cannot already be in a tree.
+    assert: value.parent_ == null
+    assert: value.left_ == null
+    assert: value.right_ == null
     if root_ == null:
       root_ = value
       value.red_ = false
@@ -209,29 +295,57 @@ class RedBlackTree extends Tree:
 
   delete value/RedBlackNode -> none:
     parent := value.parent_
-    if value.left_ != null and value.right_ != null:
+    left := value.left_
+    right := value.right_
+    if left != null and right != null:
       // Both children exist.
       // Replace with leftmost successor.
-      successor := leftmost_ value.right_
-      overwrite-child_ successor null
-      overwrite-child_ value successor
-    else if value.left_ != null or value.right_ != null:
+      successor := leftmost_ right
+      print "Successor is $successor"
+      successor-parent := successor.parent_
+      successor-right := successor.right_
+      // Wikipedia says we free leftmost node instead of the value node, but
+      // we don't want to mess with object lifetimes, so we patch around it.
+      successor.left_ = left
+      left.parent_ = successor
+      value.left_ = null
+      value.right_ = successor-right
+      if successor-right:
+        successor-right.parent_ = value
+      if successor-parent != value:
+        successor.right_ = right
+        right.parent_ = successor
+        overwrite-child_ value successor
+        overwrite-child_ successor value --parent=successor-parent
+      else:
+        // Successor is the right child of value.
+        overwrite-child_ value successor
+        successor.right_ = value
+        value.parent_ = successor
+      red := successor.red_
+      successor.red_ = value.red_
+      value.red_ = red
+      print "Rewired - deleting $value recursively"
+      dump
+      delete value
+      return
+    else if left != null or right != null:
       // Exactly one of the children is non-null.
       child := ?
-      if value.left_:
-        child = value.left_
+      if left:
+        child = left
         value.left_ = null
       else:
-        assert: value.right_
-        child = value.right_
+        assert: right
+        child = right
         value.right_ = null
-      overwrite_child_ value child
+      overwrite-child_ value child
       child.red_ = false
     else:
-      assert: value.left_ == null and value.right_ == null
+      assert: left == null and right == null
       // Leaf node.
       index := (not parent or value == parent.left_) ? 0 : 1
-      overwrite_child_ value null
+      overwrite-child_ value null
       if value != root_ and not value.red_:
         // Leaf node is black - the difficult case.
         delete-check_ value parent index
@@ -240,52 +354,71 @@ class RedBlackTree extends Tree:
     assert: value.left_ == null
     assert: value.right_ == null
 
-  delete-check_ value/RedBlackNode parent/RedBlackNode index/int -> none:
-    while value != root_:
-      sibling := index == 0 ? parent.right_ : parent.left_
-      distant := index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
-      close := index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
+  delete-check_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
+    if parent == null: return
+    print "delete-check value=$value, parent=$parent, index=$index"
+    sibling := index == 0 ? parent.right_ : parent.left_
+    close := index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
+    distant := index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
+    while parent != null:  // return on D1
+      print "delete-check loop, value=$value, parent=$parent, index=$index"
+      print "delete-check loop, sibling=$sibling, close=$close, distant=$distant"
+      dump --no-check-black-depth
       if sibling.red_:
+        print "D3"
         // D3.
-        assert: parent.red_
+        assert: not parent.red_
         assert: is-black_ close
         assert: is-black_ distant
-        unreachable
-      else if distant and distant.red_:
-        // D6.
-        unreachable
-      else if close and close.red_:
+        rotate_ parent index
+        parent.red_ = true
+        sibling.red_ = false
+        sibling = close
+        distant = index == 0 ? sibling.right_ : sibling.left_
+        close = index == 0 ? sibling.left_ : sibling.right_
+        // Iterate to go to D6, D5 or D4.
+      else if close != null and close.red_:
+        print "D5"
         // D5.
-        unreachable
+        rotate_ sibling (1 - index)
+        sibling.red_ = true
+        close.red_ = false
+        distant = sibling
+        sibling = close
+        // Iterate to go to D6.
+      else if distant != null and distant.red_:
+        print "D6"
+        // D6.
+        rotate_ parent index
+        sibling.red_ = parent.red_
+        parent.red_ = false
+        distant.red_ = false
+        print "D6 return"
+        return
       else:
+        print "D4 and D2"
         // D4 and D2
         sibling.red_ = true
         if parent.red_:
+          print "D4"
           // D4.
           parent.red_ = false
+          print "D4 return"
           return
-        // D2.  Got up the tree.
+        print "D2"
+        // D2.  Go up the tree.
+        sibling.red_ = true
         value = parent
         parent = value.parent_
-        index = value == parent.left_ ? 0 : 1
-    // D1.  Return.
+        if parent:
+          index = value == parent.left_ ? 0 : 1
+          sibling = index == 0 ? parent.right_ : parent.left_
+          close = index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
+          distant = index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
+    print "D1 return"
 
   is-black_ node/RedBlackNode? -> bool:
     return node == null or not node.red_
-
-  overwrite_child_ from/RedBlackNode to/RedBlackNode? -> none:
-    parent := from.parent_
-    if parent:
-      if parent.left_ == from:
-        parent.left_ = to
-      else:
-        assert: parent.right_ == from
-        parent.right_ = to
-    else:
-      root_ = to
-    if to:
-      to.parent_ = parent
-    from.parent_ = null
 
   leftmost_ node/RedBlackNode -> RedBlackNode:
     while node.left_:
@@ -299,6 +432,9 @@ class TreeNode:
   parent_ /any := null
 
   abstract operator < other/TreeNode -> bool
+
+abstract
+class SplayNode extends TreeNode:
 
 abstract
 class RedBlackNode extends TreeNode:

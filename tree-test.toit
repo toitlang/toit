@@ -1,4 +1,4 @@
-import .red-black
+import .tree
 
 class RBTimeout extends RedBlackNode:
   us /int
@@ -10,10 +10,13 @@ class RBTimeout extends RedBlackNode:
     return us < other.us
 
   stringify -> string:
-    color := red_ ? "r" : "b"
+    RESET := "\x1b[0m"
+    RED := "\x1b[31m"
+    BLACK := "\x1b[30m"
+    color := red_ ? "$RED⬤ r-$RESET" : "$(BLACK)⬤ b-$RESET"
     return "$(color)Timeout-$us"
 
-class SplayTimeout extends TreeNode:
+class SplayTimeout extends SplayNode:
   us /int
   lambda /Lambda
 
@@ -26,15 +29,17 @@ class SplayTimeout extends TreeNode:
     return "Timeout-$us"
 
 main:
+  //test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
   test RedBlackTree: | us/int lambda/Lambda | RBTimeout us lambda
-  test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
 
 test tree/Tree [create-timeout] -> none:
 
   elements := []
 
-  100.repeat: | i |
-    t := create-timeout.call (random i)::
+  set-random-seed "jdflkjsdlfkjsdl"
+
+  200.repeat: | i |
+    t := create-timeout.call (random 100)::
         print "Timed out"
     tree.add t
     elements.add t
@@ -45,6 +50,7 @@ test tree/Tree [create-timeout] -> none:
       throw "Error: $node.us < $x"
     x = node.us
 
+  print "Dumping 1"
   tree.dump
 
   cent := create-timeout.call 100::
@@ -52,13 +58,15 @@ test tree/Tree [create-timeout] -> none:
 
   tree.add cent
 
+  print "Dumping 2"
   tree.dump
 
   tree.delete cent
 
+  print "Dumping 3"
   tree.dump
 
   elements.do: | e |
-    print "Removing $e"
+    print "Removing xx $e"
     tree.delete e
     tree.dump
