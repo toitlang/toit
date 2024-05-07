@@ -63,15 +63,6 @@ class Tree extends CollectionBase:
       to.parent_ = parent
 
 class SplayTree extends Tree:
-  dump --check=true -> none:
-    print "***************************"
-    if root_:
-      if root_.parent_:
-        throw "root_.parent is not null"
-      dump_ root_ "" "" "": | parent child |
-        if child.parent_ != parent:
-          throw "child.parent is not parent"
-
   add value/SplayNode -> none:
     // The value cannot already be in a tree.
     assert: value.parent_ == null
@@ -147,10 +138,8 @@ class SplayTree extends Tree:
       if gramps == null:
         rotate_ node
       else:
-        if node == parent.left_ and parent == gramps.left_:
-          rotate_ parent
-          rotate_ node
-        else if node == parent.right_ and parent == gramps.right_:
+        if (node == parent.left_ and parent == gramps.left_) or
+           (node == parent.right_ and parent == gramps.right_):
           rotate_ parent
           rotate_ node
         else:
@@ -184,33 +173,16 @@ class SplayTree extends Tree:
     node.parent_ = gramps
     parent.parent_ = node
 
-class RedBlackTree extends Tree:
   dump --check=true -> none:
     print "***************************"
     if root_:
       if root_.parent_:
         throw "root_.parent is not null"
       dump_ root_ "" "" "": | parent child |
-        if parent.red_ and child.red_:
-          throw "red-red violation"
         if child.parent_ != parent:
           throw "child.parent is not parent"
-      if check: check-black-depth_ (root_ as RedBlackNode) [-1] 0
 
-  check-black-depth_ node/RedBlackNode tree-depth/List depth/int -> none:
-    if not node.red_:
-      depth++
-    if (not node.left_ and not node.right_):
-      if tree-depth[0] == -1:
-        tree-depth[0] = depth
-      else:
-        if tree-depth[0] != depth:
-          throw "black depth mismatch at $node"
-    if node.left_:
-      check-black-depth_ node.left_ tree-depth depth
-    if node.right_:
-      check-black-depth_ node.right_ tree-depth depth
-
+class RedBlackTree extends Tree:
   add value/RedBlackNode -> none:
     // The value cannot already be in a tree.
     assert: value.parent_ == null
@@ -423,6 +395,32 @@ class RedBlackTree extends Tree:
     while node.left_:
       node = node.left_
     return node
+
+  dump --check=true -> none:
+    print "***************************"
+    if root_:
+      if root_.parent_:
+        throw "root_.parent is not null"
+      dump_ root_ "" "" "": | parent child |
+        if parent.red_ and child.red_:
+          throw "red-red violation"
+        if child.parent_ != parent:
+          throw "child.parent is not parent"
+      if check: check-black-depth_ (root_ as RedBlackNode) [-1] 0
+
+  check-black-depth_ node/RedBlackNode tree-depth/List depth/int -> none:
+    if not node.red_:
+      depth++
+    if (not node.left_ and not node.right_):
+      if tree-depth[0] == -1:
+        tree-depth[0] = depth
+      else:
+        if tree-depth[0] != depth:
+          throw "black depth mismatch at $node"
+    if node.left_:
+      check-black-depth_ node.left_ tree-depth depth
+    if node.right_:
+      check-black-depth_ node.right_ tree-depth depth
 
 abstract
 class TreeNode:
