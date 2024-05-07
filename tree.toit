@@ -21,7 +21,7 @@ class Tree extends CollectionBase:
 
   abstract add value/TreeNode -> none
 
-  abstract delete value/TreeNode -> none
+  abstract remove value/TreeNode -> none
 
   dump_ node/TreeNode left-indent/string self-indent/string right-indent/string [block] -> none:
     if node.left_:
@@ -63,7 +63,7 @@ class Tree extends CollectionBase:
       to.parent_ = parent
 
 class SplayTree extends Tree:
-  dump -> none:
+  dump --check=true -> none:
     print "***************************"
     if root_:
       if root_.parent_:
@@ -77,15 +77,22 @@ class SplayTree extends Tree:
     assert: value.parent_ == null
     assert: value.left_ == null
     assert: value.right_ == null
+    size_++
     if root_ == null:
       root_ = value
       return
     insert_ value (root_ as SplayNode)
     splay_ value
-    size_++
 
-  delete value/SplayNode -> none:
+  remove value/SplayNode -> none:
     parent := value.parent_
+    assert: parent != null or root_ == value
+    assert:
+      v := value
+      while v != root_:
+        v = v.parent_
+      v == root_  // Assert that the item being removed is in this tree.
+    size_--
     if value.left_ == null:
       if value.right_ == null:
         // No children.
@@ -104,13 +111,13 @@ class SplayTree extends Tree:
         old-right := replacement.right_
         replacement.right_ = value.right_
         value.right_.parent_ = replacement
-        value.right_ = null
-        value.left_ = null
         overwrite-child_ value replacement
         if old-right:
           insert_ old-right replacement
           splay_ replacement
           return
+    value.right_ = null
+    value.left_ = null
 
     if parent:
       splay_ parent
@@ -178,7 +185,7 @@ class SplayTree extends Tree:
     parent.parent_ = node
 
 class RedBlackTree extends Tree:
-  dump --check-black-depth=true -> none:
+  dump --check=true -> none:
     print "***************************"
     if root_:
       if root_.parent_:
@@ -188,7 +195,7 @@ class RedBlackTree extends Tree:
           throw "red-red violation"
         if child.parent_ != parent:
           throw "child.parent is not parent"
-      if check-black-depth: check-black-depth_ (root_ as RedBlackNode) [-1] 0
+      if check: check-black-depth_ (root_ as RedBlackNode) [-1] 0
 
   check-black-depth_ node/RedBlackNode tree-depth/List depth/int -> none:
     if not node.red_:
@@ -209,6 +216,7 @@ class RedBlackTree extends Tree:
     assert: value.parent_ == null
     assert: value.left_ == null
     assert: value.right_ == null
+    size_++
     if root_ == null:
       root_ = value
       value.red_ = false
@@ -237,14 +245,12 @@ class RedBlackTree extends Tree:
   insert-check_ node/RedBlackNode parent/RedBlackNode? -> none:
     while node != root_:
       if not parent.red_:
-        print "  L1"
         // I1.
         return
       gramps := parent.parent_
       if gramps == null:
         // I4.
         parent.red_ = false
-        print "  L4"
         return
       index := parent == gramps.left_ ? 0 : 1
       uncle := index == 0 ? gramps.right_ : gramps.left_
@@ -293,15 +299,21 @@ class RedBlackTree extends Tree:
     else:
       root_ = sibling
 
-  delete value/RedBlackNode -> none:
+  remove value/RedBlackNode -> none:
     parent := value.parent_
     left := value.left_
     right := value.right_
+    assert: parent != null or root_ == value
+    assert:
+      v := value
+      while v != root_:
+        v = v.parent_
+      v == root_
+    size_--
     if left != null and right != null:
       // Both children exist.
       // Replace with leftmost successor.
       successor := leftmost_ right
-      print "Successor is $successor"
       successor-parent := successor.parent_
       successor-right := successor.right_
       // Wikipedia says we free leftmost node instead of the value node, but
@@ -325,9 +337,8 @@ class RedBlackTree extends Tree:
       red := successor.red_
       successor.red_ = value.red_
       value.red_ = red
-      print "Rewired - deleting $value recursively"
-      dump
-      delete value
+      size_++  // Don't decrement twice.
+      remove value
       return
     else if left != null or right != null:
       // Exactly one of the children is non-null.
@@ -356,16 +367,11 @@ class RedBlackTree extends Tree:
 
   delete-check_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
     if parent == null: return
-    print "delete-check value=$value, parent=$parent, index=$index"
     sibling := index == 0 ? parent.right_ : parent.left_
     close := index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
     distant := index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
     while parent != null:  // return on D1
-      print "delete-check loop, value=$value, parent=$parent, index=$index"
-      print "delete-check loop, sibling=$sibling, close=$close, distant=$distant"
-      dump --no-check-black-depth
       if sibling.red_:
-        print "D3"
         // D3.
         assert: not parent.red_
         assert: is-black_ close
@@ -378,7 +384,6 @@ class RedBlackTree extends Tree:
         close = index == 0 ? sibling.left_ : sibling.right_
         // Iterate to go to D6, D5 or D4.
       else if close != null and close.red_:
-        print "D5"
         // D5.
         rotate_ sibling (1 - index)
         sibling.red_ = true
@@ -387,25 +392,19 @@ class RedBlackTree extends Tree:
         sibling = close
         // Iterate to go to D6.
       else if distant != null and distant.red_:
-        print "D6"
         // D6.
         rotate_ parent index
         sibling.red_ = parent.red_
         parent.red_ = false
         distant.red_ = false
-        print "D6 return"
         return
       else:
-        print "D4 and D2"
         // D4 and D2
         sibling.red_ = true
         if parent.red_:
-          print "D4"
           // D4.
           parent.red_ = false
-          print "D4 return"
           return
-        print "D2"
         // D2.  Go up the tree.
         sibling.red_ = true
         value = parent
@@ -415,7 +414,7 @@ class RedBlackTree extends Tree:
           sibling = index == 0 ? parent.right_ : parent.left_
           close = index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
           distant = index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
-    print "D1 return"
+    // D1 return.
 
   is-black_ node/RedBlackNode? -> bool:
     return node == null or not node.red_

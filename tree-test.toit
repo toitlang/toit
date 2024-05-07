@@ -29,7 +29,7 @@ class SplayTimeout extends SplayNode:
     return "Timeout-$us"
 
 main:
-  //test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
+  test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
   test RedBlackTree: | us/int lambda/Lambda | RBTimeout us lambda
 
 test tree/Tree [create-timeout] -> none:
@@ -41,6 +41,7 @@ test tree/Tree [create-timeout] -> none:
   200.repeat: | i |
     t := create-timeout.call (random 100)::
         print "Timed out"
+    print "Adding $t"
     tree.add t
     elements.add t
 
@@ -50,23 +51,30 @@ test tree/Tree [create-timeout] -> none:
       throw "Error: $node.us < $x"
     x = node.us
 
-  print "Dumping 1"
-  tree.dump
+  check tree
 
   cent := create-timeout.call 100::
     print "Timed out"
 
   tree.add cent
 
-  print "Dumping 2"
-  tree.dump
+  check tree
 
-  tree.delete cent
+  tree.remove cent
 
-  print "Dumping 3"
-  tree.dump
+  check tree
+
+  print "Tree size is $tree.size"
 
   elements.do: | e |
-    print "Removing xx $e"
-    tree.delete e
-    tree.dump
+    print "Removing $e"
+    tree.remove e
+    check tree
+
+check tree/Tree:
+  tree.dump
+  i := 0
+  tree.do: | node |
+    i++
+  if i != tree.size:
+    throw "Error: $i(i) != $tree.size(tree.size)"
