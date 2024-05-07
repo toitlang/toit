@@ -116,7 +116,6 @@ set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;$
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
-
 set(BOOT_SNAPSHOT ${GEN_DIR}/toit.run.snapshot)
 set(BOOT_SNAPSHOT_CC ${GEN_DIR}/toit.run.snapshot.cc)
 set(TOIT_SNAPSHOT ${GEN_DIR}/toit.snapshot)
@@ -130,6 +129,8 @@ add_custom_command(
   DEPENDS "${BOOT_SNAPSHOT}"
   WORKING_DIRECTORY "${GEN_DIR}"
 )
+
+add_custom_target(build_boot_snapshot DEPENDS ${BOOT_SNAPSHOT_CC})
 
 add_custom_command(
   OUTPUT "${TOIT_SNAPSHOT_CC}"

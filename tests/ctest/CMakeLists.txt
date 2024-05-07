@@ -14,6 +14,8 @@
 # directory of this repository.
 
 file(GLOB CC_FILES "*.cc")
+file(GLOB C_FILES "*.c")
+file(GLOB C_TESTS "*-test.c")
 file(GLOB CC_TESTS "*-test.cc")
 file(GLOB TOIT_TESTS "*-test.toit")
 
@@ -33,17 +35,37 @@ add_custom_command(
   VERBATIM
 )
 
+set(ORIGINAL_BOOT_SNAPSHOT ${PROJECT_BINARY_DIR}/generated/toit.run.snapshot.cc)
+set(BOOT_SNAPSHOT ${CMAKE_CURRENT_BINARY_DIR}/toit.run.snapshot.cc)
+
+add_custom_command(
+  OUTPUT ${BOOT_SNAPSHOT}
+  COMMAND ${CMAKE_COMMAND} -E copy ${ORIGINAL_BOOT_SNAPSHOT} ${BOOT_SNAPSHOT}
+  DEPENDS build_boot_snapshot
+  VERBATIM
+)
+
 add_custom_target(
     generate-ctest-lib-symlink
     DEPENDS ${CTEST_DIR}/lib
     )
 
-foreach(file ${CC_FILES})
+foreach(file ${CC_FILES};${C_FILES})
   get_filename_component(exe ${file} NAME_WE)
-  add_executable(
-    ${exe}
-    ${file}
-  )
+  if (${file} MATCHES "toit-run-test.c")
+    add_executable(
+      ${exe}
+      ${CMAKE_SOURCE_DIR}/src/toit_run.cc
+      ${CMAKE_SOURCE_DIR}/src/run.cc
+      ${BOOT_SNAPSHOT}
+      ${file}
+    )
+  else()
+    add_executable(
+      ${exe}
+      ${file}
+    )
+  endif()
 
   set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_DIR})
   add_dependencies(${exe} generate-ctest-lib-symlink)
@@ -56,7 +78,7 @@ foreach(file ${CC_FILES})
   add_dependencies(build_test_assets ${exe})
 endforeach()
 
-foreach(file ${CC_TESTS})
+foreach(file ${CC_TESTS};${C_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
 
   if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
@@ -69,7 +91,7 @@ foreach(file ${CC_TESTS})
   endif()
 
   get_filename_component(exe ${file} NAME_WE)
-  string(REGEX REPLACE "-test.cc$" "-input.toit" test_input ${file})
+  string(REGEX REPLACE "-test.cc?$" "-input.toit" test_input ${file})
   add_test(
     NAME ${TEST_EXPECTATION_NAME}
     COMMAND ${CTEST_DIR}/${exe} ${test_input}
