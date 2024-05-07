@@ -253,7 +253,7 @@ class RedBlackTree extends Tree:
         parent.red_ = false
         return
       index := parent == gramps.left_ ? 0 : 1
-      uncle := index == 0 ? gramps.right_ : gramps.left_
+      uncle := gramps[1 - index]
       if is-black_ uncle:
         // I5 or I6, parent is red, uncle is black.
         sibling := index == 0 ? parent.right_ : parent.left_
@@ -261,7 +261,7 @@ class RedBlackTree extends Tree:
           // I5, parent is red, uncle is black node is inner grandchild of gramps.
           rotate_ parent index
           node = parent
-          parent = index == 0 ? gramps.left_ : gramps.right_
+          parent = gramps[index]
           // Fall through to I6.
         rotate_ gramps (1 - index)
         parent.red_ = false
@@ -278,8 +278,8 @@ class RedBlackTree extends Tree:
 
   rotate_ parent/RedBlackNode index/int -> none:
     gramps := parent.parent_
-    sibling := index == 0 ? parent.right_ : parent.left_
-    close := index == 0 ? sibling.left_ : sibling.right_  // Close nephew.
+    sibling := parent[1 - index]
+    close := sibling[index]  // Close nephew.
     if index == 0:
       parent.right_ = close
     else:
@@ -367,9 +367,9 @@ class RedBlackTree extends Tree:
 
   delete-check_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
     if parent == null: return
-    sibling := index == 0 ? parent.right_ : parent.left_
-    close := index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
-    distant := index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
+    sibling := parent[1 - index] as RedBlackNode
+    close := sibling[index]        // Distant nephew.
+    distant := sibling[1 - index]  // Close nephew.
     while parent != null:  // return on D1
       if sibling.red_:
         // D3.
@@ -380,8 +380,8 @@ class RedBlackTree extends Tree:
         parent.red_ = true
         sibling.red_ = false
         sibling = close
-        distant = index == 0 ? sibling.right_ : sibling.left_
-        close = index == 0 ? sibling.left_ : sibling.right_
+        distant = sibling[1 - index]
+        close = sibling[index]
         // Iterate to go to D6, D5 or D4.
       else if close != null and close.red_:
         // D5.
@@ -411,9 +411,9 @@ class RedBlackTree extends Tree:
         parent = value.parent_
         if parent:
           index = value == parent.left_ ? 0 : 1
-          sibling = index == 0 ? parent.right_ : parent.left_
-          close = index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
-          distant = index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
+          sibling = parent[1 - index]
+          close = sibling[index]        // Distant nephew.
+          distant = sibling[1 - index]  // Close nephew.
     // D1 return.
 
   is-black_ node/RedBlackNode? -> bool:
@@ -432,9 +432,19 @@ class TreeNode:
 
   abstract operator < other/TreeNode -> bool
 
+  operator [] index/int -> TreeNode?:
+    if index == 0:
+      return left_
+    else:
+      assert: index == 1
+      return right_
+
 abstract
 class SplayNode extends TreeNode:
 
 abstract
 class RedBlackNode extends TreeNode:
   red_ /bool := false
+
+  operator [] index/int -> RedBlackNode?:
+    return (super index) as any
