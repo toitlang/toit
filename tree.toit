@@ -118,28 +118,29 @@ class SplayTree extends Tree:
     assert: value.right_ == null
 
   insert_ value/SplayNode node/SplayNode -> none:
-    if value < node:
-      if node.left_ == null:
-        value.parent_ = node
-        node.left_ = value
+    while true:
+      if value < node:
+        if node.left_ == null:
+          value.parent_ = node
+          node.left_ = value
+          return
+        node = node.left_
       else:
-        insert_ value node.left_
-    else:
-      if node.right_ == null:
-        value.parent_ = node
-        node.right_ = value
-      else:
-        insert_ value node.right_
+        if node.right_ == null:
+          value.parent_ = node
+          node.right_ = value
+          return
+        node = node.right_
 
   splay_ node/SplayNode -> none:
     while node.parent_:
       parent := node.parent_
-      gramps := parent.parent_
-      if gramps == null:
+      grandparent := parent.parent_
+      if grandparent == null:
         rotate_ node
       else:
-        if (node == parent.left_ and parent == gramps.left_) or
-           (node == parent.right_ and parent == gramps.right_):
+        if (node == parent.left_ and parent == grandparent.left_) or
+           (node == parent.right_ and parent == grandparent.right_):
           rotate_ parent
           rotate_ node
         else:
@@ -150,13 +151,13 @@ class SplayTree extends Tree:
     parent := node.parent_
     if parent == null:
       return
-    gramps := parent.parent_
-    if gramps:
-      if parent == gramps.left_:
-        gramps.left_ = node
+    grandparent := parent.parent_
+    if grandparent:
+      if parent == grandparent.left_:
+        grandparent.left_ = node
       else:
-        assert: parent == gramps.right_
-        gramps.right_ = node
+        assert: parent == grandparent.right_
+        grandparent.right_ = node
     else:
       root_ = node
     if node == parent.left_:
@@ -170,7 +171,7 @@ class SplayTree extends Tree:
       if node.left_:
         node.left_.parent_ = parent
       node.left_ = parent
-    node.parent_ = gramps
+    node.parent_ = grandparent
     parent.parent_ = node
 
   dump --check=true -> none:
@@ -192,64 +193,66 @@ class RedBlackTree extends Tree:
     if root_ == null:
       root_ = value
       value.red_ = false
-      return 
+      return
     value.red_ = true
     insert_ value (root_ as any)
 
   insert_ value/RedBlackNode node/RedBlackNode -> none:
-    if value < node:
-      if node.left_ == null:
-        value.parent_ = node
-        node.left_ = value
-        value.red_ = true
-        insert-check_ value node
+    while true:
+      if value < node:
+        if node.left_ == null:
+          value.parent_ = node
+          node.left_ = value
+          value.red_ = true
+          insert-check_ value node
+          return
+        node = node.left_
       else:
-        insert_ value node.left_
-    else:
-      if node.right_ == null:
-        value.parent_ = node
-        node.right_ = value
-        value.red_ = true
-        insert-check_ value node
-      else:
-        insert_ value node.right_
+        if node.right_ == null:
+          value.parent_ = node
+          node.right_ = value
+          value.red_ = true
+          insert-check_ value node
+          return
+        node = node.right_
 
   insert-check_ node/RedBlackNode parent/RedBlackNode? -> none:
     while node != root_:
       if not parent.red_:
         // I1.
         return
-      gramps := parent.parent_
-      if gramps == null:
+      grandparent := parent.parent_
+      if grandparent == null:
         // I4.
         parent.red_ = false
         return
-      index := parent == gramps.left_ ? 0 : 1
-      uncle := gramps[1 - index]
+      index := parent == grandparent.left_ ? 0 : 1
+      uncle := grandparent[1 - index]
       if is-black_ uncle:
         // I5 or I6, parent is red, uncle is black.
         sibling := index == 0 ? parent.right_ : parent.left_
         if node == sibling:
-          // I5, parent is red, uncle is black node is inner grandchild of gramps.
+          // I5, parent is red, uncle is black node is inner grandchild of
+          // grandparent.
           rotate_ parent index
           node = parent
-          parent = gramps[index]
+          parent = grandparent[index]
           // Fall through to I6.
-        rotate_ gramps (1 - index)
+        rotate_ grandparent (1 - index)
         parent.red_ = false
-        gramps.red_ = true
+        grandparent.red_ = true
         return
       else:
         // I2, parent and uncle are red.
         parent.red_ = false
         uncle.red_ = false
-        gramps.red_ = true
-        node = gramps
+        grandparent.red_ = true
+        node = grandparent
         parent = node.parent_
     // I3.
 
   rotate_ parent/RedBlackNode index/int -> none:
-    gramps := parent.parent_
+    grandparent := parent.parent_
     sibling := parent[1 - index]
     close := sibling[index]  // Close nephew.
     if index == 0:
@@ -262,12 +265,12 @@ class RedBlackTree extends Tree:
     else:
       sibling.right_ = parent
     parent.parent_ = sibling
-    sibling.parent_ = gramps
-    if gramps:
-      if parent == gramps.right_:
-        gramps.right_ = sibling
+    sibling.parent_ = grandparent
+    if grandparent:
+      if parent == grandparent.right_:
+        grandparent.right_ = sibling
       else:
-        gramps.left_ = sibling
+        grandparent.left_ = sibling
     else:
       root_ = sibling
 
