@@ -1,5 +1,5 @@
 abstract
-class Tree extends CollectionBase:
+class NodeTree extends CollectionBase:
   root_ /TreeNode? := null
   size_ /int := 0
 
@@ -40,23 +40,23 @@ class Tree extends CollectionBase:
   dump_ node/TreeNode left-indent/string self-indent/string right-indent/string [block] -> none:
     if node.left_:
       dump_ node.left_ (left-indent + "  ") (left-indent + "╭─") (left-indent + "│ "):
-        if node.left_.parent_ != node:
+        if not identical node.left_.parent_ node:
           throw "node.left_.parent is not node (node=$node, node.left_=$node.left_, node.left_.parent_=$node.left_.parent_)"
       block.call node node.left_
     print self-indent + node.stringify
     if node.right_:
       dump_ node.right_ (right-indent + "│ ") (right-indent + "╰─") (right-indent + "  "):
-        if node.right_.parent_ != node:
+        if not identical node.right_.parent_ node:
           throw "node.right_.parent is not node (node=$node, node.right_=$node.right_, node.right_.parent_=$node.right_.parent_)"
       block.call node node.right_
 
   overwrite-child_ from/TreeNode to/TreeNode? -> none:
     parent := from.parent_
     if parent:
-      if parent.left_ == from:
+      if identical parent.left_ from:
         parent.left_ = to
       else:
-        assert: parent.right_ == from
+        assert: identical parent.right_ from
         parent.right_ = to
     else:
       root_ = to
@@ -66,17 +66,26 @@ class Tree extends CollectionBase:
 
   overwrite-child_ from/TreeNode to/TreeNode? --parent -> none:
     if parent:
-      if parent.left_ == from:
+      if identical parent.left_ from:
         parent.left_ = to
       else:
-        assert: parent.right_ == from
+        assert: identical parent.right_ from
         parent.right_ = to
     else:
       root_ = to
     if to:
       to.parent_ = parent
 
-class SplayTree extends Tree:
+/**
+A splay tree which self-adjusts to avoid imbalance on average.
+This tree can store elements of type $SplayNode.
+See SplayTree for a version that can store any element.
+Implements Collection.
+The nodes should implement $Comparable.  The same node cannot be
+  added twice or added to two different trees, but a tree can contain
+  two different nodes that are equal according to the == operator.
+*/
+class SplayNodeTree extends NodeTree:
   add value/SplayNode -> none:
     // The value cannot already be in a tree.
     assert: value.parent_ == null
@@ -91,12 +100,12 @@ class SplayTree extends Tree:
 
   remove value/SplayNode -> none:
     parent := value.parent_
-    assert: parent != null or root_ == value
+    assert: parent != null or (identical root_ value)
     assert:
       v := value
-      while v != root_:
+      while not identical v root_:
         v = v.parent_
-      v == root_  // Assert that the item being removed is in this tree.
+      identical v root_  // Assert that the item being removed is in this tree.
     size_--
     if value.left_ == null:
       if value.right_ == null:
@@ -153,8 +162,8 @@ class SplayTree extends Tree:
       if grandparent == null:
         rotate_ node
       else:
-        if (node == parent.left_ and parent == grandparent.left_) or
-           (node == parent.right_ and parent == grandparent.right_):
+        if ((identical node parent.left_) and (identical parent grandparent.left_)) or
+           ((identical node parent.right_) and (identical parent grandparent.right_)):
           rotate_ parent
           rotate_ node
         else:
@@ -167,20 +176,20 @@ class SplayTree extends Tree:
       return
     grandparent := parent.parent_
     if grandparent:
-      if parent == grandparent.left_:
+      if identical parent grandparent.left_:
         grandparent.left_ = node
       else:
-        assert: parent == grandparent.right_
+        assert: identical parent grandparent.right_
         grandparent.right_ = node
     else:
       root_ = node
-    if node == parent.left_:
+    if identical node parent.left_:
       parent.left_ = node.right_
       if node.right_:
         node.right_.parent_ = parent
       node.right_ = parent
     else:
-      assert: node == parent.right_
+      assert: identical node parent.right_
       parent.right_ = node.left_
       if node.left_:
         node.left_.parent_ = parent
@@ -194,10 +203,10 @@ class SplayTree extends Tree:
       if root_.parent_:
         throw "root_.parent is not null"
       dump_ root_ "" "" "": | parent child |
-        if child.parent_ != parent:
+        if not identical child.parent_ parent:
           throw "child.parent is not parent"
 
-class RedBlackTree extends Tree:
+class RedBlackNodeTree extends NodeTree:
   add value/RedBlackNode -> none:
     // The value cannot already be in a tree.
     assert: value.parent_ == null
@@ -231,7 +240,7 @@ class RedBlackTree extends Tree:
         node = node.right_
 
   add-fix-invariants_ node/RedBlackNode parent/RedBlackNode? -> none:
-    while node != root_:
+    while not identical node root_:
       if not parent.red_:
         // I1.
         return
@@ -240,12 +249,12 @@ class RedBlackTree extends Tree:
         // I4.
         parent.red_ = false
         return
-      index := parent == grandparent.left_ ? 0 : 1
+      index := (identical parent grandparent.left_) ? 0 : 1
       uncle := grandparent[1 - index]
       if is-black_ uncle:
         // I5 or I6, parent is red, uncle is black.
         sibling := index == 0 ? parent.right_ : parent.left_
-        if node == sibling:
+        if identical node sibling:
           // I5, parent is red, uncle is black node is inner grandchild of
           // grandparent.
           rotate_ parent index
@@ -281,7 +290,7 @@ class RedBlackTree extends Tree:
     parent.parent_ = sibling
     sibling.parent_ = grandparent
     if grandparent:
-      if parent == grandparent.right_:
+      if identical parent grandparent.right_:
         grandparent.right_ = sibling
       else:
         grandparent.left_ = sibling
@@ -292,19 +301,19 @@ class RedBlackTree extends Tree:
     parent := value.parent_
     left := value.left_
     right := value.right_
-    assert: parent != null or root_ == value
+    assert: parent != null or identical root_ value
     assert:
       v := value
-      while v != root_:
+      while not identical v root_:
         v = v.parent_
-      v == root_
+      identical v root_
     size_--
     if left == null:
       if right == null:
         // Leaf node.
-        index := (not parent or value == parent.left_) ? 0 : 1
+        index := (not parent or (identical value parent.left_)) ? 0 : 1
         overwrite-child_ value null
-        if value != root_ and not value.red_:
+        if (not identical value root_) and not value.red_:
           // Leaf node is black - the difficult case.
           remove-fix-invariants_ value parent index
       else:
@@ -335,7 +344,7 @@ class RedBlackTree extends Tree:
         value.right_ = successor-right
         if successor-right:
           successor-right.parent_ = value
-        if successor-parent != value:
+        if not identical successor-parent value:
           successor.right_ = right
           right.parent_ = successor
           overwrite-child_ value successor
@@ -400,7 +409,7 @@ class RedBlackTree extends Tree:
         value = parent
         parent = value.parent_
         if parent:
-          index = value == parent.left_ ? 0 : 1
+          index = (identical value parent.left_) ? 0 : 1
           sibling = parent[1 - index]
           close = sibling[index]        // Distant nephew.
           distant = sibling[1 - index]  // Close nephew.
@@ -422,7 +431,7 @@ class RedBlackTree extends Tree:
       dump_ root_ "" "" "": | parent child |
         if parent.red_ and child.red_:
           throw "red-red violation"
-        if child.parent_ != parent:
+        if not identical child.parent_ parent:
           throw "child.parent is not parent"
       if check: check-black-depth_ (root_ as RedBlackNode) [-1] 0
 

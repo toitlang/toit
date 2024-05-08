@@ -1,12 +1,12 @@
 import .tree
 
 main:
-  test SplayTree: | us/int lambda/Lambda | SplayTimeout us lambda
-  test RedBlackTree: | us/int lambda/Lambda | RBTimeout us lambda
-  bench false SplayTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
-  bench false RedBlackTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
-  bench true SplayTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
-  bench true RedBlackTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
+  test SplayNodeTree: | us/int lambda/Lambda | SplayTimeout us lambda
+  test RedBlackNodeTree: | us/int lambda/Lambda | RBTimeout us lambda
+  bench false SplayNodeTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
+  bench false RedBlackNodeTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
+  bench true SplayNodeTree "splay": | us/int lambda/Lambda | SplayTimeout us lambda
+  bench true RedBlackNodeTree "red-black": | us/int lambda/Lambda | RBTimeout us lambda
 
 class RBTimeout extends RedBlackNode:
   us /int
@@ -36,7 +36,7 @@ class SplayTimeout extends SplayNode:
   stringify -> string:
     return "Timeout-$us"
 
-test tree/Tree [create-timeout] -> none:
+test tree/NodeTree [create-timeout] -> none:
 
   elements := []
 
@@ -75,7 +75,7 @@ test tree/Tree [create-timeout] -> none:
     tree.remove e
     check tree
 
-check tree/Tree:
+check tree/NodeTree:
   tree.dump
   i := 0
   tree.do: | node |
@@ -83,7 +83,7 @@ check tree/Tree:
   if i != tree.size:
     throw "Error: $i(i) != $tree.size(tree.size)"
 
-bench one-end/bool tree/Tree name/string [create-timeout] -> none:
+bench one-end/bool tree/NodeTree name/string [create-timeout] -> none:
   start := Time.monotonic-us
   list := []
   SIZE ::= 100_000
