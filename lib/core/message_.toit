@@ -14,6 +14,9 @@ SYSTEM-RPC-CANCEL_            ::= 5
 SYSTEM-RPC-NOTIFY-TERMINATED_ ::= 6
 SYSTEM-RPC-NOTIFY-RESOURCE_   ::= 7
 
+// System message types for external notifications.
+SYSTEM-EXTERNAL_NOTIFICATION_ ::= 8
+
 RESERVED-MESSAGE-TYPES_ ::= 64
 
 /**

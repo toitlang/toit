@@ -985,7 +985,8 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
 
   void on_message(int pid, int type, void* data, int length) override {
     if (callbacks_.on_message == null) return;
-    callbacks_.on_message(user_context_, pid, type, data, length);
+    if (type != SYSTEM_EXTERNAL_NOTIFICATION) return;
+    callbacks_.on_message(user_context_, pid, data, length);
   }
 
   message_err_t send_with_err(int pid, int type, void* data, word length, bool free_on_failure) {
@@ -1120,13 +1121,13 @@ static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
 }
 
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
-                           int target_pid, int type,
+                           int target_pid,
                            void* data, int length,
                            bool free_on_failure) {
   static_assert(TOIT_MSG_RESERVED_TYPES == toit::MESSAGING_RESERVED_MESSAGE_TYPES,
                 "Public reserved types doesn't match internal reserved types");
-  if (type < toit::MESSAGING_RESERVED_MESSAGE_TYPES) return TOIT_ERR_RESERVED_TYPE;
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
+  auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
   toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
   return message_err_to_toit_err(err);
 }

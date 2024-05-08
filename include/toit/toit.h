@@ -34,8 +34,6 @@ typedef enum {
   TOIT_ERR_NO_SUCH_RECEIVER,
   // The corresponding resource was not found.
   TOIT_ERR_NOT_FOUND,
-  // The given type is reserved.
-  TOIT_ERR_RESERVED_TYPE,
   // An unknown error.
   TOIT_ERR_ERROR,
 } toit_err_t;
@@ -52,7 +50,7 @@ typedef struct {
 } toit_msg_request_handle_t;
 
 typedef toit_err_t (*toit_msg_on_created_cb_t)(void* user_data, toit_msg_context_t* context);
-typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, int type, void* data, int length);
+typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, void* data, int length);
 typedef toit_err_t (*toit_msg_on_request_cb_t)(void* user_data,
                                                int sender,
                                                int function,
@@ -74,7 +72,7 @@ toit_err_t toit_msg_add_handler(const char* id,
 toit_err_t toit_msg_remove_handler(toit_msg_context_t* context);
 
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
-                           int target_pid, int type,
+                           int target_pid,
                            void* data, int length,
                            bool free_on_failure);
 

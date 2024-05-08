@@ -70,6 +70,7 @@ enum SystemMessageType {
   SYSTEM_RPC_CANCEL = 5,
   SYSTEM_RPC_NOTIFY_TERMINATED = 6,
   SYSTEM_RPC_NOTIFY_RESOURCE = 7,
+  SYSTEM_EXTERNAL_NOTIFICATION = 8,
 };
 
 class Message : public MessageFIFO::Element {
