@@ -4,59 +4,44 @@
 
 import expect show *
 import monitor
-import rpc
+import system.external show External
 
-EXTERNAL-PID ::= pid-for-external-id_ "toit.io/external-test"
+EXTERNAL-ID ::= "toit.io/external-test"
+
+incoming-notifications/monitor.Channel := monitor.Channel 1
 
 main:
   print "starting"
-  handler := MessageHandler
-  expect-not-equals EXTERNAL-PID Process.current.id
+  c-lib := External.get EXTERNAL-ID
+  c-lib.set-notification-handler:: incoming-notifications.send it
 
-  test-rpc handler #[42]
+  test-rpc c-lib #[42]
   e := catch:
-    test-rpc handler #[99, 99]
+    test-rpc c-lib #[99, 99]
   expect-equals "EXTERNAL-ERROR" e
 
-  test handler #[1]
-  test handler #[1, 2, 3, 4]
-  test handler #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-  test handler (ByteArray 3: it)
-  test handler (ByteArray 319: it)
-  test handler (ByteArray 3197: it)
-  test handler (ByteArray 31971: it)
-  test handler #[99, 99]
+  test c-lib #[1]
+  test c-lib #[1, 2, 3, 4]
+  test c-lib #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  test c-lib (ByteArray 3: it)
+  test c-lib (ByteArray 319: it)
+  test c-lib (ByteArray 3197: it)
+  test c-lib (ByteArray 31971: it)
+  test c-lib #[99, 99]
 
-test-rpc handler/MessageHandler data/ByteArray:
-  copy := data.copy  // Data can be neutered as part of the transfer.
+  c-lib.close
+
+test-rpc c-lib/External data/ByteArray:
   print "calling RPC"
-  response := rpc.invoke 0 EXTERNAL-PID copy
-  expect-bytes-equal copy response
+  response := c-lib.request 0 data
+  expect-bytes-equal data response
 
-test handler/MessageHandler data/ByteArray:
-  handler.send data
+test c-lib/External data/ByteArray:
+  print "sending notification"
+  expect-equals 0 incoming-notifications.size
+  c-lib.notify data
   print "receiving"
-  result := handler.receive
+  result := incoming-notifications.receive
   print "received $result.size"
+  expect-equals 0 incoming-notifications.size
   expect-bytes-equal data result
-
-class MessageHandler implements SystemMessageHandler_:
-  static TYPE ::= SYSTEM-EXTERNAL-NOTIFICATION_
-
-  messages_ ::= monitor.Channel 1
-
-  constructor:
-    set-system-message-handler_ TYPE this
-
-  send data/ByteArray:
-    // Data can be neutered as part of the transfer.
-    copy := data.copy
-    process-send_ EXTERNAL-PID TYPE copy
-
-  on-message type/int gid/int pid/int argument -> none:
-    expect-equals EXTERNAL-PID pid
-    expect-equals TYPE type
-    messages_.send argument
-
-  receive -> any:
-    return messages_.receive

@@ -58,6 +58,12 @@ Sets the $handler as the system message handler for message of the $type.
 set-system-message-handler_ type/int handler/SystemMessageHandler_:
   system-message-handlers_[type] = handler
 
+/**
+Removes the handler for the given $type.
+*/
+clear-system-message-handler_ type/int:
+  system-message-handlers_.remove type
+
 /** Flag to track if we're currently processing messages. */
 is-processing-messages_ := false
 
