@@ -91,6 +91,29 @@ class NodeTree extends CollectionBase:
   operator == other/NodeTree -> bool:
     return equals_ other: | a b | a.compare-to b
 
+  /**
+  Returns either a node that compares equal or a node that is the closest
+    parent to a new, correctly placed node.  The block is passed a node and
+    should return a negative integer if the new node should be placed to the
+    left, 0 if there is an exact match, and a positive integer if the new
+    node should be placed to the right.
+  If the collection is empty, returns null.
+  */
+  find_ [compare] -> SplayNode?:
+    node/SplayNode? := root_ as any
+    while node:
+      if (compare.call node) < 0:
+        if node.left_ == null:
+          return node
+        node = node.left_
+      else if (compare.call node) > 0:
+        if node.right_ == null:
+          return node
+        node = node.right_
+      else:
+        return node
+    return null
+
   equals_ other/NodeTree [equality-block] -> bool:
     if other is not NodeTree: return false
     // TODO(florian): we want to be more precise and check for exact class-match?
@@ -238,10 +261,8 @@ class SplaySet extends SplayNodeTree:
   If an equal key is already in this instance, it is overwritten by the new one.
   */
   add key/Comparable -> none:
-    nearest-temp := find_: | node/SetSplayNode_ |
+    nearest/any := find_: | node/SetSplayNode_ |
         key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
@@ -273,10 +294,8 @@ class SplaySet extends SplayNodeTree:
   Equality is determined by the compare-to method from $Comparable.
   */
   contains key/Comparable -> bool:
-    nearest-temp := find_: | node/SetSplayNode_ |
+    nearest/any := find_: | node |
         key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       return result == 0
@@ -305,10 +324,8 @@ class SplaySet extends SplayNodeTree:
   If the key is absent, calls $if-absent with the given key.
   */
   remove key/Comparable [--if-absent] -> none:
-    nearest-temp := find_: | node/SetSplayNode_ |
+    nearest/any := find_: | node |
         key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
@@ -330,9 +347,8 @@ class RedBlackSet extends RedBlackNodeTree:
   If an equal key is already in this instance, it is overwritten by the new one.
   */
   add key/Comparable -> none:
-    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetRedBlackNode_? := nearest-temp as any
+    nearest/any := find_: | node/SetRedBlackNode_ |
+        key.compare-to node.value_
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
@@ -364,9 +380,8 @@ class RedBlackSet extends RedBlackNodeTree:
   Equality is determined by the compare-to method from $Comparable.
   */
   contains key/Comparable -> bool:
-    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetRedBlackNode_? := nearest-temp as any
+    nearest/any := find_: | node |
+        key.compare-to node.value_
     if nearest:
       result := key.compare-to nearest.value_
       return result == 0
@@ -395,16 +410,14 @@ class RedBlackSet extends RedBlackNodeTree:
   If the key is absent, calls $if-absent with the given key.
   */
   remove key/Comparable [--if-absent] -> none:
-    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
-    // We can't use nullable types with `as`.
-    nearest/SetRedBlackNode_? := nearest-temp as any
+    nearest/any := find_: | node |
+        key.compare-to node.value_
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
         super nearest
       else:
         if-absent.call key
-
 
 /**
 A splay tree which self-adjusts to avoid imbalance on average.
@@ -494,29 +507,6 @@ class SplayNodeTree extends NodeTree:
           node.right_ = value
           return
         node = node.right_
-
-  /**
-  Returns either a node that compares equal or a node that is the closest
-    parent to a new, correctly placed node.  The block is passed a node and
-    should return a negative integer if the new node should be placed to the
-    left, 0 if there is an exact match, and a positive integer if the new
-    node should be placed to the right.
-  If the collection is empty, returns null.
-  */
-  find_ [compare] -> SplayNode?:
-    node/SplayNode? := root_ as any
-    while node:
-      if (compare.call node) < 0:
-        if node.left_ == null:
-          return node
-        node = node.left_
-      else if (compare.call node) > 0:
-        if node.right_ == null:
-          return node
-        node = node.right_
-      else:
-        return node
-    return null
 
   splay_ node/SplayNode -> none:
     while node.parent_:
