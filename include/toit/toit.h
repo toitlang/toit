@@ -79,7 +79,7 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
 toit_err_t toit_msg_request_reply(toit_msg_request_handle_t handle, void* data, int length, bool free_on_failure);
 toit_err_t toit_msg_request_fail(toit_msg_request_handle_t handle, const char* error);
 
-toit_err_t toit_gc(toit_msg_context_t* context, bool try_hard);
+toit_err_t toit_gc();
 
 #ifdef __cplusplus
 }

@@ -1144,9 +1144,9 @@ toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* da
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_gc(toit_msg_context_t* context, bool try_hard) {
-  auto process = reinterpret_cast<toit::ExternalMessageHandler*>(context);
-  process->collect_garbage(try_hard);
+// TODO(florian): this isn't really a messaging function. It should probably be somewhere else.
+toit_err_t toit_gc() {
+  toit::VM::current()->scheduler()->gc(NULL, true, true);
   return TOIT_ERR_SUCCESS;
 }
 
