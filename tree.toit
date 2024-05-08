@@ -19,63 +19,124 @@ class NodeTree extends CollectionBase:
     do: return it
     throw "empty"
 
-  do_ node/TreeNode? [block] -> none:
+  static LEFT_ ::= 0
+  static CENTER_ ::= 1
+  static RIGHT_ ::= 2
+  static UP_ ::= 3
+
+  do_ node/TreeNode [block] -> none:
     // Avoids recursion because it can go too deep on the splay tree.
-    todo := []
+    // Also avoids a collection based stack, since we have parent pointers.
+    direction := LEFT_
     while true:
-      if not node:
-        if todo.size == 0:
-          return
-        node = todo.remove-last
+      if direction == LEFT_:
+        if node.left_:
+          node = node.left_
+        else:
+          direction = CENTER_
+      else if direction == CENTER_:
         block.call node
-        node = node.right_
-      else if node.left_:
-        todo.add node
-        node = node.left_
-      else:
-        block.call node
-        node = node.right_
+        direction = RIGHT_
+      else if direction == RIGHT_:
+        if node.right_:
+          node = node.right_
+          direction = LEFT_
+        else:
+          direction = UP_
+      else if direction == UP_:
+        parent := node.parent_
+        if not parent: return
+        if identical node parent.left_:
+          direction = CENTER_
+        else:
+          direction = UP_
+        node = parent
 
   do-reversed_ node/TreeNode? [block] -> none:
     // Avoids recursion because it can go too deep on the splay tree.
-    todo := []
+    // Also avoids a collection based stack, since we have parent pointers.
+    direction := RIGHT_
     while true:
-      if not node:
-        if todo.size == 0:
-          return
-        node = todo.remove-last
+      if direction == RIGHT_:
+        if node.right_:
+          node = node.right_
+        else:
+          direction = CENTER_
+      else if direction == CENTER_:
         block.call node
-        node = node.left_
-      else if node.right_:
-        todo.add node
-        node = node.right_
-      else:
-        block.call node
-        node = node.left_
+        direction = LEFT_
+      else if direction == LEFT_:
+        if node.left_:
+          node = node.left_
+          direction = RIGHT_
+        else:
+          direction = UP_
+      else if direction == UP_:
+        parent := node.parent_
+        if not parent: return
+        if identical node parent.right_:
+          direction = CENTER_
+        else:
+          direction = UP_
+        node = parent
 
-  operator == other/NodeTree -> bool:
+  equals_ other/NodeTree [equality-block] -> bool:
     if other is not NodeTree: return false
     // TODO(florian): we want to be more precise and check for exact class-match?
     if other.size != size: return false
+    if size == 0: return true
     // Avoids recursion because it can go too deep on the splay tree.
-    todo := []
-    other-todo := []
-    node := root_
-    other-node := other.root_
+    // Also avoids doing a log n lookup for each element, which would make
+    //   the operation O(log n) instead of linear.
+    // Also avoids a collection based stack, since we have parent pointers.
+    node1 := root_
+    node2 := other.root_
+    direction1 := LEFT_
+    direction2 := LEFT_
     while true:
-      if not node:
-        if todo.size == 0:
-          return false
-        node = todo.remove-last
-        //block.call node
-        node = node.right_
-      else if node.left_:
-        todo.add node
-        node = node.left_
-      else:
-        //block.call node
-        node = node.right_
-    return true
+      while direction1 != CENTER_:
+        if direction1 == LEFT_:
+          if node1.left_:
+            node1 = node1.left_
+          else:
+            direction1 = CENTER_
+        else if direction1 == RIGHT_:
+          if node1.right_:
+            node1 = node1.right_
+            direction1 = LEFT_
+          else:
+            direction1 = UP_
+        else if direction1 == UP_:
+          parent := node1.parent_
+          if parent == null: return true
+          if identical node1 parent.left_:
+            direction1 = CENTER_
+          else:
+            direction1 = UP_
+          node1 = parent
+      while direction2 != CENTER_:
+        if direction2 == LEFT_:
+          if node2.left_:
+            node2 = node2.left_
+          else:
+            direction2 = CENTER_
+        else if direction2 == RIGHT_:
+          if node2.right_:
+            node2 = node2.right_
+            direction2 = LEFT_
+          else:
+            direction2 = UP_
+        else if direction2 == UP_:
+          parent := node2.parent_
+          assert: parent != null
+          if identical node2 parent.left_:
+            direction2 = CENTER_
+          else:
+            direction2 = UP_
+          node2 = parent
+      if not equality-block.call node1 node2: return false
+      direction1 = RIGHT_
+      direction2 = RIGHT_
 
   abstract dump -> none
 
