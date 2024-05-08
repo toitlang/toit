@@ -15,13 +15,13 @@ class Client:
   notification-callback_/Lambda? := null
   is-closed_/bool := false
 
-  constructor.private_ .pid .id:
+  constructor.private_ .pid .id .notification-callback_:
 
-  static open id/string -> Client?:
+  static open id/string --notification-callback/Lambda?=null -> Client?:
     pid := pid-for-external-id_ id
     if pid == -1: throw "NOT_FOUND"
     if clients_.contains pid: throw "ALREADY_IN_USE"
-    result := Client.private_ pid id
+    result := Client.private_ pid id notification-callback
     clients_[pid] = result
     return result
 
