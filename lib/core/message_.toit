@@ -14,6 +14,8 @@ SYSTEM-RPC-CANCEL_            ::= 5
 SYSTEM-RPC-NOTIFY-TERMINATED_ ::= 6
 SYSTEM-RPC-NOTIFY-RESOURCE_   ::= 7
 
+RESERVED-MESSAGE-TYPES_ ::= 64
+
 /**
 Sends the $message with $type to the process identified by $pid and
   returns whether the $message was delivered.

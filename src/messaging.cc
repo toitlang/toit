@@ -14,7 +14,7 @@
 // directory of this repository.
 
 #include "messaging.h"
-#include <toit/ctoit.h>
+#include <toit/toit.h>
 
 #include "objects.h"
 #include "process.h"
@@ -350,6 +350,48 @@ bool MessageEncoder::encode_bytes_external(void* data, word length, bool free_on
   return true;
 }
 
+bool MessageEncoder::encode_rpc_reply_external(int id,
+                                               bool is_exception, const char* exception,
+                                               void* data, word length, bool free_on_failure) {
+  if (encoding_tison()) return false;
+
+  // Either:
+  // - it's an exception: [id, true, exception-string, null], or
+  // - it's not an exception: [id, false, data].
+  write_uint8(TAG_ARRAY);
+  write_cardinal(is_exception ? 4 : 3);  // Length.
+  // Slot 0:
+  write_uint8(TAG_POSITIVE_SMI);
+  write_cardinal(id);
+
+  if (is_exception) {
+    // Slot 1:
+    write_uint8(TAG_TRUE);
+
+    // Slot 2:
+    // Inline the exception message.
+    int exception_length = strnlen(exception, MESSAGING_ENCODING_MAX_INLINED_SIZE + 1);
+    if (exception_length > MESSAGING_ENCODING_MAX_INLINED_SIZE) return false;
+    write_uint8(TAG_STRING_INLINE);
+    write_cardinal(exception_length);
+    if (!encoding_for_size()) {
+      memcpy(&buffer_[cursor_], exception, exception_length);
+    }
+    cursor_ += exception_length;
+
+    // Slot 3:
+    // No stack information.
+    write_uint8(TAG_NULL);
+    return true;
+  } else {
+    // Slot 2:
+    write_uint8(TAG_FALSE);  // Not an exception.
+
+    // Slot 3:
+    return encode_bytes_external(data, length, free_on_failure);
+  }
+}
+
 bool MessageEncoder::encode_copy(Object* object, int tag) {
   ASSERT(tag == TAG_STRING || tag == TAG_BYTE_ARRAY);
   ASSERT(TAG_STRING_INLINE == TAG_STRING + 1);
@@ -668,12 +710,34 @@ bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
     // We always want to have a valid pointer, so we allocate at least one byte.
     int malloc_length = Utils::max(1, encoded_length);
     void* copy = malloc(malloc_length);
-    if (copy == null) return mark_allocation_failed();
+    if (copy == null) {
+      mark_allocation_failed();
+      return false;
+    }
     memcpy(copy, &buffer_[cursor_], encoded_length);
     *data = copy;
     return true;
   }
   return false;
+}
+
+bool MessageDecoder::decode_rpc_request_external(int* id, int* name, void** data, word* length) {
+  // An external RPC request is an array consisting of 3 elements,
+  // the id, the name and a byte-array.
+  if (decoding_tison()) return false;
+  int tag = read_uint8();
+  if (tag != TAG_ARRAY) return false;
+  word array_length = read_cardinal();
+  if (array_length != 3) return false;
+  tag = read_uint8();
+  if (tag != TAG_POSITIVE_SMI) return false;
+  *id = read_cardinal();
+  if (overflown()) return false;
+  tag = read_uint8();
+  if (tag != TAG_POSITIVE_SMI) return false;
+  *name = read_cardinal();
+  if (overflown()) return false;
+  return decode_byte_array_external(data, length);
 }
 
 Object* MessageDecoder::decode_double() {
@@ -778,8 +842,41 @@ message_err_t ExternalSystemMessageHandler::send_(int pid, int type, void* data,
   // Takes ownership of the data.
   encoder.encode_bytes_external(data, length, free_on_failure);
 
-  // Takes over the buffer and neuters the MessageEncoder.
-  SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), &encoder);
+  // Takes over the buffer and neuters the message encoder.
+  return send_(pid, type, &encoder, free_on_failure);
+}
+
+message_err_t ExternalSystemMessageHandler::reply_rpc(int pid,
+                                                      int id,
+                                                      bool is_exception,
+                                                      const char* exception,
+                                                      void* data,
+                                                      word length,
+                                                      bool free_on_failure) {
+  word buffer_size = 0;
+  { MessageEncoder encoder(null);
+    encoder.encode_rpc_reply_external(id, is_exception, exception, data, length, free_on_failure);
+    buffer_size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
+  if (buffer == null) {
+    if (free_on_failure && !is_exception) free(data);
+    return MESSAGE_OOM;
+  }
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  // Takes ownership of the data.
+  encoder.encode_rpc_reply_external(id, is_exception, exception, data, length, free_on_failure);
+
+  int type = SYSTEM_RPC_REPLY;
+
+  // Takes over the buffer and neuters the message encoder.
+  return send_(pid, type, &encoder, free_on_failure);
+}
+
+message_err_t ExternalSystemMessageHandler::send_(int pid, int type, MessageEncoder* encoder, bool free_on_failure) {
+  // Takes over the buffer and neuters the message encoder.
+  SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), encoder);
   if (system_message == null) {
     // No need to free the data or the buffer, since the destructor of the
     // encoder already takes care of that.
@@ -805,10 +902,20 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
     }
     if (message->is_system()) {
       SystemMessage* system_message = static_cast<SystemMessage*>(message);
-      MessageDecoder decoder(system_message->data());
+      int pid = system_message->pid();
+      int type = system_message->type();
+
+      int id = -1;  // Handle to respond to.
+      int name = -1;  // Id of the method to call.
       void* data = null;
       word length = 0;
-      bool success = decoder.decode_byte_array_external(&data, &length);
+      MessageDecoder decoder(system_message->data());
+      bool success = false;
+      if (type == SYSTEM_RPC_REQUEST && supports_rpc_requests()) {
+        success = decoder.decode_rpc_request_external(&id, &name, &data, &length);
+      } else {
+        success = decoder.decode_byte_array_external(&data, &length);
+      }
       if (success && length > INT_MAX) {
         abort();
       }
@@ -819,14 +926,16 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       bool allocation_failed = !success && decoder.allocation_failed();
       if (allocation_failed && on_failed_allocation(length)) continue;
 
-      int pid = system_message->pid();
-      int type = system_message->type();
       if (success) {
         system_message->free_data_but_keep_externals();
       }
       process->remove_first_message();
       if (success) {
-        on_message(pid, type, data, length);
+        if (type == SYSTEM_RPC_REQUEST && supports_rpc_requests()) {
+          on_request(pid, id, name, data, length);
+        } else {
+          on_message(pid, type, data, length);
+        }
       }
     }
   }
@@ -845,104 +954,122 @@ void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
 
 namespace {
 
-struct RegisteredExternalProcess {
+struct RegisteredExternalMessageHandler {
   const char* id;
   void* user_context;
-  start_cb_t start;
+  toit_msg_cbs_t callbacks;
 };
 
-struct RegisteredProcessList {
-  RegisteredProcessList* next;
-  RegisteredExternalProcess process;
+struct RegisteredExternalMessageHandlerList {
+  RegisteredExternalMessageHandlerList* next;
+  RegisteredExternalMessageHandler registered_handler;
 };
 
-RegisteredProcessList* registered_processes = null;
+RegisteredExternalMessageHandlerList* registered_message_handlers = null;
 
-class ExternalProcess : public ExternalSystemMessageHandler {
+class ExternalMessageHandler : public ExternalSystemMessageHandler {
  public:
-  ExternalProcess(VM* vm, void* user_context)
+  ExternalMessageHandler(VM* vm, void* user_context, toit_msg_cbs_t callbacks)
       : ExternalSystemMessageHandler(vm)
-      , user_context_(user_context) {}
+      , user_context_(user_context)
+      , callbacks_(callbacks) {}
 
-  virtual ~ExternalProcess() {
-    if (on_removed_ != null) on_removed_(user_context_);
+  virtual ~ExternalMessageHandler() {
+    if (callbacks_.on_removed != null) callbacks_.on_removed(user_context_);
+  }
+
+  void on_created() {
+    if (!callbacks_.on_created) return;
+    callbacks_.on_created(user_context_, as_msg_context());
   }
 
   void on_message(int pid, int type, void* data, int length) override {
-    if (on_message_ == null) return;
-    on_message_(user_context_, pid, type, data, length);
-  }
-
-  void set_on_message(on_message_cb_t on_message) {
-    on_message_ = on_message;
-  }
-
-  void set_on_removed(on_removed_cb_t on_removed) {
-    on_removed_ = on_removed;
+    if (callbacks_.on_message == null) return;
+    callbacks_.on_message(user_context_, pid, type, data, length);
   }
 
   message_err_t send_with_err(int pid, int type, void* data, word length, bool free_on_failure) {
     return send_(pid, type, data, length, free_on_failure);
   }
 
+  bool supports_rpc_requests() const override { return true; }
+
+  void on_request(int sender, int id, int name, void* data, int length) override {
+    if (callbacks_.on_rpc_request == null) return;
+    toit_msg_request_handle_t rpc_handle = {
+      .sender = sender,
+      .request_handle = id,
+      .context = as_msg_context()
+    };
+    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, data, length);
+  }
+
+  toit_msg_context_t* as_msg_context() {
+    return reinterpret_cast<toit_msg_context_t*>(this);
+  }
+
  private:
   void* user_context_;
-  on_message_cb_t on_message_ = null;
-  on_removed_cb_t on_removed_ = null;
+  toit_msg_cbs_t callbacks_;
 };
 
-struct IdPidEntry {
+struct IdHandlerEntry {
   const char* id;
-  int pid;
+  ExternalMessageHandler* handler;
 };
 
 }  // anonymous namespace.
 
-static IdPidEntry* id_pid_entry_mapping = null;
-static int id_pid_entry_mapping_length = 0;
+static IdHandlerEntry* id_handler_entry_mapping = null;
+static int id_handler_entry_mapping_length = 0;
 
-void create_and_start_external_processes(VM* vm) {
+void create_and_start_external_message_handlers(VM* vm) {
   int count = 0;
-  for (RegisteredProcessList* list = registered_processes; list != null; list = list->next) {
+  for (RegisteredExternalMessageHandlerList* list = registered_message_handlers; list != null; list = list->next) {
     count++;
   }
   if (count == 0) return;
 
   // Create the mapping from ID to PID.
-  id_pid_entry_mapping = unvoid_cast<IdPidEntry*>(malloc(count * sizeof(IdPidEntry)));
-  id_pid_entry_mapping_length = count;
-  if (!id_pid_entry_mapping) {
+  id_handler_entry_mapping = unvoid_cast<IdHandlerEntry*>(malloc(count * sizeof(IdHandlerEntry)));
+  id_handler_entry_mapping_length = count;
+  if (!id_handler_entry_mapping) {
     FATAL("[OOM while creating external message processs]");
   }
 
   int i = 0;
-  for (RegisteredProcessList* list = registered_processes; list != null; list = list->next) {
-    ExternalProcess* process = _new ExternalProcess(vm, list->process.user_context);
-    if (!process) {
+  for (RegisteredExternalMessageHandlerList* list = registered_message_handlers; list != null; list = list->next) {
+    auto registered_handler = list->registered_handler;
+    const char* id = registered_handler.id;
+    void* user_context = registered_handler.user_context;
+    auto cbs = registered_handler.callbacks;
+    ExternalMessageHandler* handler = _new ExternalMessageHandler(vm, user_context, cbs);
+    if (!handler) {
       FATAL("[OOM while creating external message processs]");
     }
-    if (!process->start()) {
+    if (!handler->start()) {
       FATAL("[failed to start external message process]");
     }
-    list->process.start(list->process.user_context, reinterpret_cast<toit_process_context_t*>(process));
-    id_pid_entry_mapping[i].id = list->process.id;
-    id_pid_entry_mapping[i].pid = process->pid();
+    handler->on_created();
+    id_handler_entry_mapping[i].id = id;
+    id_handler_entry_mapping[i].handler = handler;
     i++;
   }
   // Free the list.
-  while (registered_processes != null) {
-    RegisteredProcessList* next = registered_processes->next;
-    free(registered_processes);
-    registered_processes = next;
+  while (registered_message_handlers != null) {
+    RegisteredExternalMessageHandlerList* next = registered_message_handlers->next;
+    free(registered_message_handlers);
+    registered_message_handlers = next;
   }
 }
 
 int pid_for_external_id(String* id) {
   auto c_id = id->as_cstr();
-  for (int i = 0; i < id_pid_entry_mapping_length; i++) {
-    auto entry = id_pid_entry_mapping[i];
+  for (int i = 0; i < id_handler_entry_mapping_length; i++) {
+    auto entry = id_handler_entry_mapping[i];
     if (strcmp(c_id, entry.id) == 0) {
-      return entry.pid;
+      if (entry.handler == null) return -1;
+      return entry.handler->pid();
     }
   }
   return -1;
@@ -954,45 +1081,70 @@ extern "C" {
 
 // Functions that are exported through Toit's C API.
 
-toit_err_t toit_add_external_process(void* user_context,
-                                     const char* id,
-                                     start_cb_t start) {
-  auto old = toit::registered_processes;
-  auto list = toit::unvoid_cast<toit::RegisteredProcessList*>(malloc(sizeof(toit::RegisteredProcessList)));
+toit_err_t toit_msg_add_handler(const char* id,
+                                             void* user_context,
+                                             toit_msg_cbs_t cbs) {
+  auto old = toit::registered_message_handlers;
+  auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
+      malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
   if (list == null) FATAL("[OOM during external process setup]");
   list->next = old;
-  list->process.id = id;
-  list->process.user_context = user_context;
-  list->process.start = start;
-  toit::registered_processes = list;
+  list->registered_handler.id = id;
+  list->registered_handler.user_context = user_context;
+  list->registered_handler.callbacks = cbs;
+  toit::registered_message_handlers = list;
   return TOIT_ERR_SUCCESS;
 }
 
-toit_err_t toit_set_callbacks(toit_process_context_t* process_context, toit_process_cbs_t cbs) {
-  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
-  process->set_on_message(cbs.on_message);
-  process->set_on_removed(cbs.on_removed);
-  return TOIT_ERR_SUCCESS;
+toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
+  // TODO(florian): this lookup and removal should be protected by a lock.
+  for (int i = 0; i < toit::id_handler_entry_mapping_length; i++) {
+    auto entry = toit::id_handler_entry_mapping[i];
+    if (toit::void_cast(entry.handler) == toit::void_cast(context)) {
+      auto handler = entry.handler;
+      toit::id_handler_entry_mapping[i].handler = null;
+      delete handler;
+      return TOIT_ERR_SUCCESS;
+    }
+  }
+  return TOIT_ERR_NOT_FOUND;
 }
 
-toit_err_t toit_send_message(toit_process_context_t* process_context,
-                             int target_pid, int type,
-                             void* data, int length,
-                             bool free_on_failure) {
-  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
-  bool success = process->send(target_pid, type, data, length, free_on_failure);
-  // TODO(florian): distinguish between the different errors.
-  return success ? TOIT_ERR_SUCCESS : TOIT_ERR_ERROR;
+static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
+  switch (err) {
+    case toit::MESSAGE_OK: return TOIT_ERR_SUCCESS;
+    case toit::MESSAGE_OOM: return TOIT_ERR_OOM;
+    case toit::MESSAGE_NO_SUCH_RECEIVER: return TOIT_ERR_NO_SUCH_RECEIVER;
+  }
+  UNREACHABLE();
 }
 
-toit_err_t toit_remove_process(toit_process_context_t* process_context) {
-  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
-  delete process;
-  return TOIT_ERR_SUCCESS;
+toit_err_t toit_msg_notify(toit_msg_context_t* context,
+                           int target_pid, int type,
+                           void* data, int length,
+                           bool free_on_failure) {
+  static_assert(TOIT_MSG_RESERVED_TYPES == toit::MESSAGING_RESERVED_MESSAGE_TYPES,
+                "Public reserved types doesn't match internal reserved types");
+  if (type < toit::MESSAGING_RESERVED_MESSAGE_TYPES) return TOIT_ERR_RESERVED_TYPE;
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
+  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
+  return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_gc(toit_process_context_t* process_context, bool try_hard) {
-  auto process = reinterpret_cast<toit::ExternalProcess*>(process_context);
+toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const char* error) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
+  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  return message_err_to_toit_err(err);
+}
+
+toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* data, int length, bool free_on_failure) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
+  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
+  return message_err_to_toit_err(err);
+}
+
+toit_err_t toit_gc(toit_msg_context_t* context, bool try_hard) {
+  auto process = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   process->collect_garbage(try_hard);
   return TOIT_ERR_SUCCESS;
 }
