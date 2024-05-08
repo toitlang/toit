@@ -932,7 +932,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       process->remove_first_message();
       if (success) {
         if (type == SYSTEM_RPC_REQUEST && supports_rpc_requests()) {
-          on_request(pid, type, id, name, data, length);
+          on_request(pid, id, name, data, length);
         } else {
           on_message(pid, type, data, length);
         }
@@ -957,7 +957,7 @@ namespace {
 struct RegisteredExternalMessageHandler {
   const char* id;
   void* user_context;
-  toit_message_handler_cbs_t cbs;
+  toit_msg_cbs_t callbacks;
 };
 
 struct RegisteredExternalMessageHandlerList {
@@ -969,7 +969,7 @@ RegisteredExternalMessageHandlerList* registered_message_handlers = null;
 
 class ExternalMessageHandler : public ExternalSystemMessageHandler {
  public:
-  ExternalMessageHandler(VM* vm, void* user_context, toit_message_handler_cbs_t callbacks)
+  ExternalMessageHandler(VM* vm, void* user_context, toit_msg_cbs_t callbacks)
       : ExternalSystemMessageHandler(vm)
       , user_context_(user_context)
       , callbacks_(callbacks) {}
@@ -980,7 +980,7 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
 
   void on_created() {
     if (!callbacks_.on_created) return;
-    callbacks_.on_created(user_context_, as_handler_context());
+    callbacks_.on_created(user_context_, as_msg_context());
   }
 
   void on_message(int pid, int type, void* data, int length) override {
@@ -994,23 +994,23 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
 
   bool supports_rpc_requests() const override { return true; }
 
-  void on_request(int sender, int type, int id, int name, void* data, int length) override {
+  void on_request(int sender, int id, int name, void* data, int length) override {
     if (callbacks_.on_rpc_request == null) return;
-    toit_rpc_handle_t rpc_handle = {
+    toit_msg_request_handle_t rpc_handle = {
       .sender = sender,
       .request_handle = id,
-      .handler_context = as_handler_context()
+      .context = as_msg_context()
     };
-    callbacks_.on_rpc_request(user_context_, sender, rpc_handle, data, length);
+    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, data, length);
   }
 
-  toit_message_handler_context_t* as_handler_context() {
-    return reinterpret_cast<toit_message_handler_context_t*>(this);
+  toit_msg_context_t* as_msg_context() {
+    return reinterpret_cast<toit_msg_context_t*>(this);
   }
 
  private:
   void* user_context_;
-  toit_message_handler_cbs_t callbacks_;
+  toit_msg_cbs_t callbacks_;
 };
 
 struct IdHandlerEntry {
@@ -1042,7 +1042,7 @@ void create_and_start_external_message_handlers(VM* vm) {
     auto registered_handler = list->registered_handler;
     const char* id = registered_handler.id;
     void* user_context = registered_handler.user_context;
-    auto cbs = registered_handler.cbs;
+    auto cbs = registered_handler.callbacks;
     ExternalMessageHandler* handler = _new ExternalMessageHandler(vm, user_context, cbs);
     if (!handler) {
       FATAL("[OOM while creating external message processs]");
@@ -1081,9 +1081,9 @@ extern "C" {
 
 // Functions that are exported through Toit's C API.
 
-toit_err_t toit_add_external_message_handler(const char* id,
+toit_err_t toit_msg_add_handler(const char* id,
                                              void* user_context,
-                                             toit_message_handler_cbs_t cbs) {
+                                             toit_msg_cbs_t cbs) {
   auto old = toit::registered_message_handlers;
   auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
       malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
@@ -1091,16 +1091,16 @@ toit_err_t toit_add_external_message_handler(const char* id,
   list->next = old;
   list->registered_handler.id = id;
   list->registered_handler.user_context = user_context;
-  list->registered_handler.cbs = cbs;
+  list->registered_handler.callbacks = cbs;
   toit::registered_message_handlers = list;
   return TOIT_ERR_SUCCESS;
 }
 
-toit_err_t toit_remove_external_message_handler(toit_message_handler_context_t* message_handler_context) {
+toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
   // TODO(florian): this lookup and removal should be protected by a lock.
   for (int i = 0; i < toit::id_handler_entry_mapping_length; i++) {
     auto entry = toit::id_handler_entry_mapping[i];
-    if (toit::void_cast(entry.handler) == toit::void_cast(message_handler_context)) {
+    if (toit::void_cast(entry.handler) == toit::void_cast(context)) {
       auto handler = entry.handler;
       toit::id_handler_entry_mapping[i].handler = null;
       delete handler;
@@ -1119,30 +1119,32 @@ static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
   UNREACHABLE();
 }
 
-toit_err_t toit_send_message(toit_message_handler_context_t* message_handler_context,
-                             int target_pid, int type,
-                             void* data, int length,
-                             bool free_on_failure) {
+toit_err_t toit_msg_notify(toit_msg_context_t* context,
+                           int target_pid, int type,
+                           void* data, int length,
+                           bool free_on_failure) {
+  static_assert(TOIT_MSG_RESERVED_TYPES == toit::MESSAGING_RESERVED_MESSAGE_TYPES,
+                "Public reserved types doesn't match internal reserved types");
   if (type < toit::MESSAGING_RESERVED_MESSAGE_TYPES) return TOIT_ERR_RESERVED_TYPE;
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(message_handler_context);
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_fail_rpc_request(toit_rpc_handle_t rpc_handle, const char* error) {
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.handler_context);
+toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const char* error) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_reply_rpc_request(toit_rpc_handle_t rpc_handle, void* data, int length, bool free_on_failure) {
-  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.handler_context);
+toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* data, int length, bool free_on_failure) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_gc(toit_message_handler_context_t* message_handler_context, bool try_hard) {
-  auto process = reinterpret_cast<toit::ExternalMessageHandler*>(message_handler_context);
+toit_err_t toit_gc(toit_msg_context_t* context, bool try_hard) {
+  auto process = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   process->collect_garbage(try_hard);
   return TOIT_ERR_SUCCESS;
 }

@@ -6,13 +6,11 @@ import expect show *
 import monitor
 import rpc
 
-TYPE ::= 100  // Don't overlap with system messages.
 EXTERNAL-PID ::= pid-for-external-id_ "toit.io/external-test"
 
 main:
   print "starting"
   handler := MessageHandler
-  set-system-message-handler_ (TYPE + 1) handler
   expect-not-equals EXTERNAL-PID Process.current.id
 
   test-rpc handler #[42]
@@ -36,15 +34,24 @@ test-rpc handler/MessageHandler data/ByteArray:
   expect-bytes-equal copy response
 
 test handler/MessageHandler data/ByteArray:
-  copy := data.copy  // Data can be neutered as part of the transfer.
-  process-send_ EXTERNAL-PID TYPE data
+  handler.send data
   print "receiving"
   result := handler.receive
   print "received $result.size"
-  expect-bytes-equal copy result
+  expect-bytes-equal data result
 
 class MessageHandler implements SystemMessageHandler_:
+  static TYPE ::= 100  // Don't overlap with system messages.
+
   messages_ ::= monitor.Channel 1
+
+  constructor:
+    set-system-message-handler_ (TYPE + 1) this
+
+  send data/ByteArray:
+    // Data can be neutered as part of the transfer.
+    copy := data.copy
+    process-send_ EXTERNAL-PID TYPE copy
 
   on-message type/int gid/int pid/int argument -> none:
     expect-equals EXTERNAL-PID pid

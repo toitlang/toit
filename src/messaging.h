@@ -396,7 +396,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   virtual void on_message(int sender, int type, void* data, int length) = 0;
 
   // Callback for received requests.
-  virtual void on_request(int sender, int type, int id, int name, void* data, int length) {
+  virtual void on_request(int sender, int id, int name, void* data, int length) {
     FATAL("on_request on message handler that doesn't support it");
   }
 
