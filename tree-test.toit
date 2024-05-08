@@ -14,8 +14,14 @@ class RBTimeout extends RedBlackNode:
 
   constructor .us .lambda:
 
-  operator < other/RBTimeout -> bool:
-    return us < other.us
+  compare-to other/RBTimeout -> int:
+    return us - other.us
+
+  compare-to other/RBTimeout [--if-equal]-> int:
+    other-us/int := other.us
+    if us == other-us:
+      return if-equal.call this other
+    return us - other-us
 
   stringify -> string:
     RESET := "\x1b[0m"
@@ -30,8 +36,14 @@ class SplayTimeout extends SplayNode:
 
   constructor .us .lambda:
 
-  operator < other/SplayTimeout -> bool:
-    return us < other.us
+  compare-to other/SplayTimeout -> int:
+    return us - other.us
+
+  compare-to other/SplayTimeout [--if-equal]-> int:
+    other-us/int := other.us
+    if us == other-us:
+      return if-equal.call this other
+    return us - other-us
 
   stringify -> string:
     return "Timeout-$us"

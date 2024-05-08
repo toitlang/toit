@@ -10,6 +10,11 @@ class NodeTree extends CollectionBase:
     if root_:
       do_ root_ block
 
+  do --reversed/bool [block] -> none:
+    if reversed != true: throw "Argument Error"
+    if root_:
+      do-reversed_ root_ block
+
   first -> TreeNode?:
     do: return it
     throw "empty"
@@ -30,6 +35,47 @@ class NodeTree extends CollectionBase:
       else:
         block.call node
         node = node.right_
+
+  do-reversed_ node/TreeNode? [block] -> none:
+    // Avoids recursion because it can go too deep on the splay tree.
+    todo := []
+    while true:
+      if not node:
+        if todo.size == 0:
+          return
+        node = todo.remove-last
+        block.call node
+        node = node.left_
+      else if node.right_:
+        todo.add node
+        node = node.right_
+      else:
+        block.call node
+        node = node.left_
+
+  operator == other/NodeTree -> bool:
+    if other is not NodeTree: return false
+    // TODO(florian): we want to be more precise and check for exact class-match?
+    if other.size != size: return false
+    // Avoids recursion because it can go too deep on the splay tree.
+    todo := []
+    other-todo := []
+    node := root_
+    other-node := other.root_
+    while true:
+      if not node:
+        if todo.size == 0:
+          return false
+        node = todo.remove-last
+        //block.call node
+        node = node.right_
+      else if node.left_:
+        todo.add node
+        node = node.left_
+      else:
+        //block.call node
+        node = node.right_
+    return true
 
   abstract dump -> none
 
@@ -76,14 +122,71 @@ class NodeTree extends CollectionBase:
     if to:
       to.parent_ = parent
 
+class ValueSplayNode_ extends SplayNode:
+  value_ /Comparable := ?
+
+  constructor .value_:
+
+  compare-to other/ValueSplayNode_ -> int:
+    return value_.compare-to other.value_
+
+  compare-to other/ValueSplayNode_ [--if-equal] -> int:
+    return value_.compare-to other.value_ --if-equal=: | self other |
+      return if-equal.call self.value_ other.value
+
+class SplayTree extends SplayNodeTree:
+  // Adds a value to the tree.
+  // If an equal key is already in this instance, it is overwritten by the new
+  //   one.
+  add value/Comparable -> none:
+    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+    if nearest:
+      result := value.compare-to nearest.value_
+      if result == 0:
+        nearest.value_ = value
+        splay_ nearest
+        return
+      node := ValueSplayNode_ value
+      node.parent_ = nearest
+      if result < 0:
+        nearest.left_ = node
+      else:
+        nearest.right_ = node
+      splay_ node
+    else:
+      root_ = ValueSplayNode_ value
+
+  do [block] -> none:
+    do: block.call it.value_
+
+  contains value/Comparable -> bool:
+    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+    if nearest:
+      result := value.compare-to nearest.value_
+      return result == 0
+    return false
+
+  remove value/Comparable -> none:
+    remove value --if-absent=(: null)
+
+  remove value/Comparable [--if-absent] -> none:
+    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+    if nearest:
+      result := value.compare-to nearest.value_
+      if result == 0:
+        super nearest
+      else:
+        if-absent.call value
+
 /**
 A splay tree which self-adjusts to avoid imbalance on average.
-This tree can store elements of type $SplayNode.
-See SplayTree for a version that can store any element.
-Implements Collection.
+This tree can store elements that are subtypes $SplayNode.
+See $SplayTree for a version that can store any element.
+Implements $Collection.
 The nodes should implement $Comparable.  The same node cannot be
   added twice or added to two different trees, but a tree can contain
   two different nodes that are equal according to the == operator.
+To remove a node from the tree, use a reference to the node.
 */
 class SplayNodeTree extends NodeTree:
   add value/SplayNode -> none:
@@ -142,7 +245,7 @@ class SplayNodeTree extends NodeTree:
 
   insert_ value/SplayNode node/SplayNode -> none:
     while true:
-      if value < node:
+      if (value.compare-to node) < 0:
         if node.left_ == null:
           value.parent_ = node
           node.left_ = value
@@ -154,6 +257,27 @@ class SplayNodeTree extends NodeTree:
           node.right_ = value
           return
         node = node.right_
+
+  // Returns either a node that compares equal or a node that is the closest
+  //   parent to a new, correctly placed node.  The block is passed a node and
+  //   should return a negative integer if the new node should be placed to the
+  //   left, 0 if there is an exact match, and a positive integer if the new
+  //   node should be placed to the right.
+  // If the collection is empty, returns null.
+  find_ [compare] -> SplayNode?:
+    node/SplayNode? := root_ as any
+    while node:
+      if (compare.call node) < 0:
+        if node.left_ == null:
+          return node
+        node = node.left_
+      else if (compare.call node) > 0:
+        if node.right_ == null:
+          return node
+        node = node.right_
+      else:
+        return node
+    return null
 
   splay_ node/SplayNode -> none:
     while node.parent_:
@@ -222,7 +346,7 @@ class RedBlackNodeTree extends NodeTree:
 
   insert_ value/RedBlackNode node/RedBlackNode -> none:
     while true:
-      if value < node:
+      if (value.compare-to node) < 0:
         if node.left_ == null:
           value.parent_ = node
           node.left_ = value
@@ -450,12 +574,13 @@ class RedBlackNodeTree extends NodeTree:
       check-black-depth_ node.right_ tree-depth depth
 
 abstract
-class TreeNode:
+class TreeNode implements Comparable:
   left_ /any := null
   right_ /any := null
   parent_ /any := null
 
-  abstract operator < other/TreeNode -> bool
+  abstract compare-to other/TreeNode -> int
+  abstract compare-to other/TreeNode [--if-equal] -> int
 
   operator [] index/int -> TreeNode?:
     if index == 0:
