@@ -18,10 +18,10 @@ static toit_err_t on_created(void* user_data, toit_msg_context_t* context) {
   return TOIT_ERR_SUCCESS;
 }
 
-static toit_err_t on_message(void* user_data, int sender, int type, void* data, int length) {
+static toit_err_t on_message(void* user_data, int sender, void* data, int length) {
   printf("received message in C\n");
   toit_msg_context_t* handler_context = ((test_handler_t*)(user_data))->handler_context;
-  if (toit_msg_notify(handler_context, sender, type + 1, data, length, true) != TOIT_ERR_SUCCESS) {
+  if (toit_msg_notify(handler_context, sender, data, length, true) != TOIT_ERR_SUCCESS) {
     printf("unable to send\n");
   }
   if (length == 2 && ((char*)data)[0] == 99 && ((char*)data)[1] == 99) {

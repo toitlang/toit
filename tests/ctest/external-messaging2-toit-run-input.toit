@@ -41,12 +41,12 @@ test handler/MessageHandler data/ByteArray:
   expect-bytes-equal data result
 
 class MessageHandler implements SystemMessageHandler_:
-  static TYPE ::= 100  // Don't overlap with system messages.
+  static TYPE ::= SYSTEM-EXTERNAL-NOTIFICATION_
 
   messages_ ::= monitor.Channel 1
 
   constructor:
-    set-system-message-handler_ (TYPE + 1) this
+    set-system-message-handler_ TYPE this
 
   send data/ByteArray:
     // Data can be neutered as part of the transfer.
@@ -55,7 +55,7 @@ class MessageHandler implements SystemMessageHandler_:
 
   on-message type/int gid/int pid/int argument -> none:
     expect-equals EXTERNAL-PID pid
-    expect-equals (TYPE + 1) type
+    expect-equals TYPE type
     messages_.send argument
 
   receive -> any:
