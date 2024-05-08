@@ -212,6 +212,18 @@ class SetSplayNode_ extends SplayNode:
     return value_.compare-to other.value_ --if-equal=: | self other |
       return if-equal.call self.value_ other.value
 
+class SetRedBlackNode_ extends RedBlackNode:
+  value_ /Comparable := ?
+
+  constructor .value_:
+
+  compare-to other/SetRedBlackNode_ -> int:
+    return value_.compare-to other.value_
+
+  compare-to other/SetRedBlackNode_ [--if-equal] -> int:
+    return value_.compare-to other.value_ --if-equal=: | self other |
+      return if-equal.call self.value_ other.value
+
 /**
 A set of keys.
 The objects used as keys must be $Comparable and immutable in the sense
@@ -226,7 +238,10 @@ class SplaySet extends SplayNodeTree:
   If an equal key is already in this instance, it is overwritten by the new one.
   */
   add key/Comparable -> none:
-    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
+    nearest-temp := find_: | node/SetSplayNode_ |
+        key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
@@ -258,7 +273,10 @@ class SplaySet extends SplayNodeTree:
   Equality is determined by the compare-to method from $Comparable.
   */
   contains key/Comparable -> bool:
-    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
+    nearest-temp := find_: | node/SetSplayNode_ |
+        key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       return result == 0
@@ -287,13 +305,106 @@ class SplaySet extends SplayNodeTree:
   If the key is absent, calls $if-absent with the given key.
   */
   remove key/Comparable [--if-absent] -> none:
-    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
+    nearest-temp := find_: | node/SetSplayNode_ |
+        key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetSplayNode_? := nearest-temp as any
     if nearest:
       result := key.compare-to nearest.value_
       if result == 0:
         super nearest
       else:
         if-absent.call key
+
+/**
+A set of keys.
+The objects used as keys must be $Comparable and immutable in the sense
+  that they do not change their comparison value while they are in the set.
+Equality is determined by the compare-to method from $Comparable.
+A hash code is not needed for the keys.  Duplicate keys will not be added.
+Iteration is in order of the keys.
+*/
+class RedBlackSet extends RedBlackNodeTree:
+  /**
+  Adds the given $key to this instance.
+  If an equal key is already in this instance, it is overwritten by the new one.
+  */
+  add key/Comparable -> none:
+    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetRedBlackNode_? := nearest-temp as any
+    if nearest:
+      result := key.compare-to nearest.value_
+      if result == 0:
+        // Equal.  Overwrite.
+        nearest.value_ = key
+        //splay_ nearest
+        return
+      node := SetRedBlackNode_ key
+      node.parent_ = nearest
+      if result < 0:
+        nearest.left_ = node
+      else:
+        nearest.right_ = node
+      size_++
+      //splay_ node
+    else:
+      root_ = SetRedBlackNode_ key
+      size_ = 1
+
+  do [block] -> none:
+    super: block.call it.value_
+
+  do --reversed/bool [block] -> none:
+    if not reversed: throw "Argument Error"
+    super --reversed: block.call it.value_
+
+  /**
+  Whether this instance contains a key equal to the given $key.
+  Equality is determined by the compare-to method from $Comparable.
+  */
+  contains key/Comparable -> bool:
+    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetRedBlackNode_? := nearest-temp as any
+    if nearest:
+      result := key.compare-to nearest.value_
+      return result == 0
+    return false
+
+  /** Whether this instance contains all elements of $collection. */
+  contains-all collection/Collection -> bool:
+    collection.do: if not contains it: return false
+    return true
+
+  /** Removes all elements of $collection from this instance. */
+  remove-all collection/Collection -> none:
+    collection.do: remove it --if-absent=: null
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  The key does not need to be present.
+  */
+  remove key/Comparable -> none:
+    remove key --if-absent=(: null)
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  If the key is absent, calls $if-absent with the given key.
+  */
+  remove key/Comparable [--if-absent] -> none:
+    nearest-temp := null // TODO: find_: | node/SetRedBlackNode_ | key.compare-to node.value_
+    // We can't use nullable types with `as`.
+    nearest/SetRedBlackNode_? := nearest-temp as any
+    if nearest:
+      result := key.compare-to nearest.value_
+      if result == 0:
+        super nearest
+      else:
+        if-absent.call key
+
 
 /**
 A splay tree which self-adjusts to avoid imbalance on average.
