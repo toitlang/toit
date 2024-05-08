@@ -15,9 +15,17 @@ class NodeTree extends CollectionBase:
     if root_:
       do-reversed_ root_ block
 
-  first -> TreeNode?:
+  first -> any:
     do: return it
     throw "empty"
+
+  last -> any:
+    do --reversed: return it
+    throw "empty"
+
+  clear -> none:
+    root_ = null
+    size_ = 0
 
   static LEFT_ ::= 0
   static CENTER_ ::= 1
@@ -79,6 +87,9 @@ class NodeTree extends CollectionBase:
         else:
           direction = UP_
         node = parent
+
+  operator == other/NodeTree -> bool:
+    return equals_ other: | a b | a.compare-to b
 
   equals_ other/NodeTree [equality-block] -> bool:
     if other is not NodeTree: return false
@@ -142,6 +153,12 @@ class NodeTree extends CollectionBase:
 
   abstract add value/TreeNode -> none
 
+  /**
+  Adds all elements of the given $collection to this instance.
+  */
+  add-all collection/Collection -> none:
+    collection.do: add it
+
   abstract remove value/TreeNode -> none
 
   dump_ node/TreeNode left-indent/string self-indent/string right-indent/string [block] -> none:
@@ -183,75 +200,118 @@ class NodeTree extends CollectionBase:
     if to:
       to.parent_ = parent
 
-class ValueSplayNode_ extends SplayNode:
+class SetSplayNode_ extends SplayNode:
   value_ /Comparable := ?
 
   constructor .value_:
 
-  compare-to other/ValueSplayNode_ -> int:
+  compare-to other/SetSplayNode_ -> int:
     return value_.compare-to other.value_
 
-  compare-to other/ValueSplayNode_ [--if-equal] -> int:
+  compare-to other/SetSplayNode_ [--if-equal] -> int:
     return value_.compare-to other.value_ --if-equal=: | self other |
       return if-equal.call self.value_ other.value
 
-class SplayTree extends SplayNodeTree:
-  // Adds a value to the tree.
-  // If an equal key is already in this instance, it is overwritten by the new
-  //   one.
-  add value/Comparable -> none:
-    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+/**
+A set of keys.
+The objects used as keys must be $Comparable and immutable in the sense
+  that they do not change their comparison value while they are in the set.
+Equality is determined by the compare-to method from $Comparable.
+A hash code is not needed for the keys.  Duplicate keys will not be added.
+Iteration is in order of the keys.
+*/
+class SplaySet extends SplayNodeTree:
+  /**
+  Adds the given $key to this instance.
+  If an equal key is already in this instance, it is overwritten by the new one.
+  */
+  add key/Comparable -> none:
+    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
     if nearest:
-      result := value.compare-to nearest.value_
+      result := key.compare-to nearest.value_
       if result == 0:
-        nearest.value_ = value
+        // Equal.  Overwrite.
+        nearest.value_ = key
         splay_ nearest
         return
-      node := ValueSplayNode_ value
+      node := SetSplayNode_ key
       node.parent_ = nearest
       if result < 0:
         nearest.left_ = node
       else:
         nearest.right_ = node
+      size_++
       splay_ node
     else:
-      root_ = ValueSplayNode_ value
+      root_ = SetSplayNode_ key
+      size_ = 1
 
   do [block] -> none:
-    do: block.call it.value_
+    super: block.call it.value_
 
-  contains value/Comparable -> bool:
-    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+  do --reversed/bool [block] -> none:
+    if not reversed: throw "Argument Error"
+    super --reversed: block.call it.value_
+
+  /**
+  Whether this instance contains a key equal to the given $key.
+  Equality is determined by the compare-to method from $Comparable.
+  */
+  contains key/Comparable -> bool:
+    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
     if nearest:
-      result := value.compare-to nearest.value_
+      result := key.compare-to nearest.value_
       return result == 0
     return false
 
-  remove value/Comparable -> none:
-    remove value --if-absent=(: null)
+  /** Whether this instance contains all elements of $collection. */
+  contains-all collection/Collection -> bool:
+    collection.do: if not contains it: return false
+    return true
 
-  remove value/Comparable [--if-absent] -> none:
-    nearest/ValueSplayNode_? := (find_: | node/ValueSplayNode_ | value.compare-to node.value_) as any
+  /** Removes all elements of $collection from this instance. */
+  remove-all collection/Collection -> none:
+    collection.do: remove it --if-absent=: null
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  The key does not need to be present.
+  */
+  remove key/Comparable -> none:
+    remove key --if-absent=(: null)
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  If the key is absent, calls $if-absent with the given key.
+  */
+  remove key/Comparable [--if-absent] -> none:
+    nearest/SetSplayNode_? := (find_: | node/SetSplayNode_ | key.compare-to node.value_) as any
     if nearest:
-      result := value.compare-to nearest.value_
+      result := key.compare-to nearest.value_
       if result == 0:
         super nearest
       else:
-        if-absent.call value
+        if-absent.call key
 
 /**
 A splay tree which self-adjusts to avoid imbalance on average.
+Iteration is in order of the values according to the compare-to method.
 This tree can store elements that are subtypes $SplayNode.
-See $SplayTree for a version that can store any element.
+See $SplaySet for a version that can store any element.
 Implements $Collection.
 The nodes should implement $Comparable.  The same node cannot be
   added twice or added to two different trees, but a tree can contain
-  two different nodes that are equal according to the == operator.
+  two different nodes that are equal according to compare-to method.
 To remove a node from the tree, use a reference to the node.
 */
 class SplayNodeTree extends NodeTree:
+  /**
+  Adds a value to this tree.
+  The value must not already be in a tree.
+  */
   add value/SplayNode -> none:
-    // The value cannot already be in a tree.
     assert: value.parent_ == null
     assert: value.left_ == null
     assert: value.right_ == null
@@ -262,6 +322,11 @@ class SplayNodeTree extends NodeTree:
     insert_ value (root_ as SplayNode)
     splay_ value
 
+  /**
+  Removes the given value from this tree.
+  Equality is determined by object identity ($identical).
+  The given value must be in this tree.
+  */
   remove value/SplayNode -> none:
     parent := value.parent_
     assert: parent != null or (identical root_ value)
@@ -319,12 +384,14 @@ class SplayNodeTree extends NodeTree:
           return
         node = node.right_
 
-  // Returns either a node that compares equal or a node that is the closest
-  //   parent to a new, correctly placed node.  The block is passed a node and
-  //   should return a negative integer if the new node should be placed to the
-  //   left, 0 if there is an exact match, and a positive integer if the new
-  //   node should be placed to the right.
-  // If the collection is empty, returns null.
+  /**
+  Returns either a node that compares equal or a node that is the closest
+    parent to a new, correctly placed node.  The block is passed a node and
+    should return a negative integer if the new node should be placed to the
+    left, 0 if there is an exact match, and a positive integer if the new
+    node should be placed to the right.
+  If the collection is empty, returns null.
+  */
   find_ [compare] -> SplayNode?:
     node/SplayNode? := root_ as any
     while node:
@@ -382,6 +449,9 @@ class SplayNodeTree extends NodeTree:
     node.parent_ = grandparent
     parent.parent_ = node
 
+  /**
+  A debugging method that prints a representation of the tree.
+  */
   dump --check=true -> none:
     print "***************************"
     if root_:
@@ -391,7 +461,22 @@ class SplayNodeTree extends NodeTree:
         if not identical child.parent_ parent:
           throw "child.parent is not parent"
 
+/**
+A red-black tree which self-adjusts to avoid imbalance.
+Iteration is in order of the values according to the compare-to method.
+This tree can store elements that are subtypes $RedBlackNode.
+See $RedBlackSet for a version that can store any element.
+Implements $Collection.
+The nodes should implement $Comparable.  The same node cannot be
+  added twice or added to two different trees, but a tree can contain
+  two different nodes that are equal according to compare-to method.
+To remove a node from the tree, use a reference to the node.
+*/
 class RedBlackNodeTree extends NodeTree:
+  /**
+  Adds a value to this tree.
+  The value must not already be in a tree.
+  */
   add value/RedBlackNode -> none:
     // The value cannot already be in a tree.
     assert: value.parent_ == null
@@ -482,6 +567,11 @@ class RedBlackNodeTree extends NodeTree:
     else:
       root_ = sibling
 
+  /**
+  Removes the given value from this tree.
+  Equality is determined by object identity ($identical).
+  The given value must be in this tree.
+  */
   remove value/RedBlackNode -> none:
     parent := value.parent_
     left := value.left_
@@ -608,6 +698,9 @@ class RedBlackNodeTree extends NodeTree:
       node = node.left_
     return node
 
+  /**
+  A debugging method that prints a representation of the tree.
+  */
   dump --check=true -> none:
     print "***************************"
     if root_:
@@ -650,9 +743,15 @@ class TreeNode implements Comparable:
       assert: index == 1
       return right_
 
+/**
+A class that can be specialized to store nodes in a $SplayNodeTree.
+*/
 abstract
 class SplayNode extends TreeNode:
 
+/**
+A class that can be specialized to store nodes in a $RedBlackNodeTree.
+*/
 abstract
 class RedBlackNode extends TreeNode:
   red_ /bool := false
