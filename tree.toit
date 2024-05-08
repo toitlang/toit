@@ -520,7 +520,7 @@ class RedBlackNodeTree extends NodeTree:
         parent.red_ = false
         return
       index := (identical parent grandparent.left_) ? 0 : 1
-      uncle := grandparent[1 - index]
+      uncle := grandparent.get_ (1 - index)
       if is-black_ uncle:
         // I5 or I6, parent is red, uncle is black.
         sibling := index == 0 ? parent.right_ : parent.left_
@@ -529,7 +529,7 @@ class RedBlackNodeTree extends NodeTree:
           // grandparent.
           rotate_ parent index
           node = parent
-          parent = grandparent[index]
+          parent = grandparent.get_ index
           // Fall through to I6.
         rotate_ grandparent (1 - index)
         parent.red_ = false
@@ -546,8 +546,8 @@ class RedBlackNodeTree extends NodeTree:
 
   rotate_ parent/RedBlackNode index/int -> none:
     grandparent := parent.parent_
-    sibling := parent[1 - index]
-    close := sibling[index]  // Close nephew.
+    sibling := parent.get_ (1 - index)
+    close := sibling.get_ index  // Close nephew.
     if index == 0:
       parent.right_ = close
     else:
@@ -641,9 +641,9 @@ class RedBlackNodeTree extends NodeTree:
 
   remove-fix-invariants_ value/RedBlackNode parent/RedBlackNode? index/int -> none:
     if parent == null: return
-    sibling := parent[1 - index] as RedBlackNode
-    close := sibling[index]        // Distant nephew.
-    distant := sibling[1 - index]  // Close nephew.
+    sibling := (parent.get_ (1 - index)) as RedBlackNode
+    close := sibling.get_ index          // Distant nephew.
+    distant := sibling.get_ (1 - index)  // Close nephew.
     while parent != null:  // return on D1
       if sibling.red_:
         // D3.
@@ -654,8 +654,8 @@ class RedBlackNodeTree extends NodeTree:
         parent.red_ = true
         sibling.red_ = false
         sibling = close
-        distant = sibling[1 - index]
-        close = sibling[index]
+        distant = sibling.get_ (1 - index)
+        close = sibling.get_ index
         // Iterate to go to D6, D5 or D4.
       else if close != null and close.red_:
         // D5.
@@ -685,9 +685,9 @@ class RedBlackNodeTree extends NodeTree:
         parent = value.parent_
         if parent:
           index = (identical value parent.left_) ? 0 : 1
-          sibling = parent[1 - index]
-          close = sibling[index]        // Distant nephew.
-          distant = sibling[1 - index]  // Close nephew.
+          sibling = parent.get_ (1 - index)
+          close = sibling.get_ index          // Distant nephew.
+          distant = sibling.get_ (1 - index)  // Close nephew.
     // D1 return.
 
   is-black_ node/RedBlackNode? -> bool:
@@ -736,7 +736,7 @@ class TreeNode implements Comparable:
   abstract compare-to other/TreeNode -> int
   abstract compare-to other/TreeNode [--if-equal] -> int
 
-  operator [] index/int -> TreeNode?:
+  get_ index/int -> TreeNode?:
     if index == 0:
       return left_
     else:
@@ -756,5 +756,5 @@ abstract
 class RedBlackNode extends TreeNode:
   red_ /bool := false
 
-  operator [] index/int -> RedBlackNode?:
+  get_ index/int -> RedBlackNode?:
     return (super index) as any
