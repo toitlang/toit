@@ -4,44 +4,62 @@
 
 import expect show *
 import monitor
-import system.external show External
+import system.external
 
-EXTERNAL-ID ::= "toit.io/external-test"
+EXTERNAL-ID0 ::= "toit.io/external-test0"
+EXTERNAL-ID1 ::= "toit.io/external-test1"
 
-incoming-notifications/monitor.Channel := monitor.Channel 1
+incoming-notifications := [
+  monitor.Channel 1,
+  monitor.Channel 1,
+]
 
 main:
-  print "starting"
-  c-lib := External.get EXTERNAL-ID
-  c-lib.set-notification-handler:: incoming-notifications.send it
+  clients := [
+    external.Client.open EXTERNAL-ID0,
+    external.Client.open EXTERNAL-ID1,
+  ]
+  clients.size.repeat: | i |
+    clients[i].set-notification-callback:: incoming-notifications[i].send it
 
-  test-rpc c-lib #[42]
-  e := catch:
-    test-rpc c-lib #[99, 99]
-  expect-equals "EXTERNAL-ERROR" e
+  test-id clients
 
-  test c-lib #[1]
-  test c-lib #[1, 2, 3, 4]
-  test c-lib #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-  test c-lib (ByteArray 3: it)
-  test c-lib (ByteArray 319: it)
-  test c-lib (ByteArray 3197: it)
-  test c-lib (ByteArray 31971: it)
-  test c-lib #[99, 99]
+  test-rpc clients #[42]
+  test-rpc-fail clients
 
-  c-lib.close
+  test-notification clients #[1]
+  test-notification clients #[1, 2, 3, 4]
+  test-notification clients #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  test-notification clients (ByteArray 3: it)
+  test-notification clients (ByteArray 319: it)
+  test-notification clients (ByteArray 3197: it)
+  test-notification clients (ByteArray 31971: it)
+  test-notification clients #[99, 99]
 
-test-rpc c-lib/External data/ByteArray:
-  print "calling RPC"
-  response := c-lib.request 0 data
-  expect-bytes-equal data response
+  clients.do: it.close
 
-test c-lib/External data/ByteArray:
-  print "sending notification"
-  expect-equals 0 incoming-notifications.size
-  c-lib.notify data
-  print "receiving"
-  result := incoming-notifications.receive
-  print "received $result.size"
-  expect-equals 0 incoming-notifications.size
-  expect-bytes-equal data result
+test-id clients/List:
+  clients.size.repeat: | i |
+    id := i
+    client/external.Client := clients[i]
+    response := client.request 0 #[0xFF]  // Request for id.
+    expect-equals 1 response.size
+    expect-equals id response[0]
+
+test-rpc clients/List data/ByteArray:
+  clients.do: | client/external.Client |
+    response := client.request 0 data
+    expect-bytes-equal data response
+
+test-rpc-fail clients/List:
+  clients.do: | client/external.Client |
+    e := catch:
+      client.request 0 #[99, 99]
+    expect-equals "EXTERNAL-ERROR" e
+
+test-notification clients/List data/ByteArray:
+  clients.size.repeat: | i |
+    client/external.Client := clients[i]
+    client.notify data
+    result := incoming-notifications[i].receive
+    expect-bytes-equal data result

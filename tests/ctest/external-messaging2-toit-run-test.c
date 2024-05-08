@@ -4,37 +4,44 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "../../include/toit/toit.h"
 
 typedef struct {
-  toit_msg_context_t* handler_context;
-} test_handler_t;
+  int id;
+  toit_msg_context_t* msg_context;
+} test_service_t;
 
 static toit_err_t on_created(void* user_data, toit_msg_context_t* context) {
-  printf("created external message handler\n");
-  test_handler_t* test_handler = (test_handler_t*)(user_data);
-  test_handler->handler_context = context;
+  test_service_t* test_service = (test_service_t*)user_data;
+  printf("created external message handler %d\n", test_service->id);
+  test_service->msg_context = context;
   return TOIT_ERR_SUCCESS;
 }
 
 static toit_err_t on_message(void* user_data, int sender, void* data, int length) {
-  printf("received message in C\n");
-  toit_msg_context_t* handler_context = ((test_handler_t*)(user_data))->handler_context;
-  if (toit_msg_notify(handler_context, sender, data, length, true) != TOIT_ERR_SUCCESS) {
+  test_service_t* test_service = (test_service_t*)user_data;
+  printf("received message in C %d\n", test_service->id);
+  toit_msg_context_t* context = ((test_service_t*)(user_data))->msg_context;
+  if (toit_msg_notify(context, sender, data, length, true) != TOIT_ERR_SUCCESS) {
     printf("unable to send\n");
   }
   if (length == 2 && ((char*)data)[0] == 99 && ((char*)data)[1] == 99) {
-    toit_msg_remove_handler(handler_context);
+    toit_msg_remove_handler(context);
   }
   return TOIT_ERR_SUCCESS;
 }
 
 static toit_err_t on_rpc_request(void* user_data, int sender, int function, toit_msg_request_handle_t handle, void* data, int length) {
-  printf("received rpc request in C\n");
+  test_service_t* test_service = (test_service_t*)user_data;
+  printf("received rpc request in C %d\n", test_service->id);
   if (length == 2 && ((char*)data)[0] == 99 && ((char*)data)[1] == 99) {
     toit_msg_request_fail(handle, "EXTERNAL-ERROR");
   } else {
+    uint8_t* response = (uint8_t*) data;
+    // If the message is #[0xFF], respond with our id.
+    if (length == 1 && response[0] == 0xFF) response[0] = test_service->id;
     if (toit_msg_request_reply(handle, data, length, true) != TOIT_ERR_SUCCESS) {
       printf("unable to reply\n");
     }
@@ -43,19 +50,36 @@ static toit_err_t on_rpc_request(void* user_data, int sender, int function, toit
 }
 
 static toit_err_t on_removed(void* user_data) {
-  printf("freeing user context\n");
+  test_service_t* test_service = (test_service_t*)user_data;
+  printf("freeing user data %d\n", test_service->id);
   free(user_data);
   return TOIT_ERR_SUCCESS;
 }
 
 static void __attribute__((constructor)) init() {
-  printf("registering external handler\n");
-  test_handler_t* test_handler = (test_handler_t*)malloc(sizeof(test_handler_t));
+  printf("registering external handler 0\n");
+  test_service_t* test_service = (test_service_t*)malloc(sizeof(test_service_t));
+  test_service->id = 0;
+  test_service->msg_context = NULL;
   toit_msg_cbs_t cbs = {
     .on_created = &on_created,
     .on_message = &on_message,
     .on_rpc_request = &on_rpc_request,
     .on_removed = &on_removed,
   };
-  toit_msg_add_handler("toit.io/external-test", test_handler, cbs);
+  toit_msg_add_handler("toit.io/external-test0", test_service, cbs);
+}
+
+static void __attribute__((constructor)) init2() {
+  printf("registering external handler 1\n");
+  test_service_t* test_service = (test_service_t*)malloc(sizeof(test_service_t));
+  test_service->id = 1;
+  test_service->msg_context = NULL;
+  toit_msg_cbs_t cbs = {
+    .on_created = &on_created,
+    .on_message = &on_message,
+    .on_rpc_request = &on_rpc_request,
+    .on_removed = &on_removed,
+  };
+  toit_msg_add_handler("toit.io/external-test1", test_service, cbs);
 }
