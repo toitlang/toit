@@ -4,59 +4,63 @@
 
 import expect show *
 import monitor
-import rpc
+import system.external
 
-EXTERNAL-PID ::= pid-for-external-id_ "toit.io/external-test"
+EXTERNAL-ID0 ::= "toit.io/external-test0"
+EXTERNAL-ID1 ::= "toit.io/external-test1"
+
+incoming-notifications := [
+  monitor.Channel 1,
+  monitor.Channel 1,
+]
 
 main:
-  print "starting"
-  handler := MessageHandler
-  expect-not-equals EXTERNAL-PID Process.current.id
+  clients := [
+    external.Client.open EXTERNAL-ID0,
+    external.Client.open EXTERNAL-ID1,
+  ]
+  clients.size.repeat: | i |
+    client/external.Client := clients[i]
+    client.set-on-notify:: incoming-notifications[i].send it
 
-  test-rpc handler #[42]
-  e := catch:
-    test-rpc handler #[99, 99]
-  expect-equals "EXTERNAL-ERROR" e
+  test-id clients
 
-  test handler #[1]
-  test handler #[1, 2, 3, 4]
-  test handler #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-  test handler (ByteArray 3: it)
-  test handler (ByteArray 319: it)
-  test handler (ByteArray 3197: it)
-  test handler (ByteArray 31971: it)
-  test handler #[99, 99]
+  test-rpc clients #[42]
+  test-rpc-fail clients
 
-test-rpc handler/MessageHandler data/ByteArray:
-  copy := data.copy  // Data can be neutered as part of the transfer.
-  print "calling RPC"
-  response := rpc.invoke 0 EXTERNAL-PID copy
-  expect-bytes-equal copy response
+  test-notification clients #[1]
+  test-notification clients #[1, 2, 3, 4]
+  test-notification clients #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  test-notification clients (ByteArray 3: it)
+  test-notification clients (ByteArray 319: it)
+  test-notification clients (ByteArray 3197: it)
+  test-notification clients (ByteArray 31971: it)
+  test-notification clients #[99, 99]
 
-test handler/MessageHandler data/ByteArray:
-  handler.send data
-  print "receiving"
-  result := handler.receive
-  print "received $result.size"
-  expect-bytes-equal data result
+  clients.do: it.close
 
-class MessageHandler implements SystemMessageHandler_:
-  static TYPE ::= SYSTEM-EXTERNAL-NOTIFICATION_
+test-id clients/List:
+  clients.size.repeat: | i |
+    id := i
+    client/external.Client := clients[i]
+    response := client.request 0 #[0xFF]  // Request for id.
+    expect-equals 1 response.size
+    expect-equals id response[0]
 
-  messages_ ::= monitor.Channel 1
+test-rpc clients/List data/ByteArray:
+  clients.do: | client/external.Client |
+    response := client.request 0 data
+    expect-bytes-equal data response
 
-  constructor:
-    set-system-message-handler_ TYPE this
+test-rpc-fail clients/List:
+  clients.do: | client/external.Client |
+    e := catch:
+      client.request 0 #[99, 99]
+    expect-equals "EXTERNAL_ERROR" e
 
-  send data/ByteArray:
-    // Data can be neutered as part of the transfer.
-    copy := data.copy
-    process-send_ EXTERNAL-PID TYPE copy
-
-  on-message type/int gid/int pid/int argument -> none:
-    expect-equals EXTERNAL-PID pid
-    expect-equals TYPE type
-    messages_.send argument
-
-  receive -> any:
-    return messages_.receive
+test-notification clients/List data/ByteArray:
+  clients.size.repeat: | i |
+    client/external.Client := clients[i]
+    client.notify data
+    result := incoming-notifications[i].receive
+    expect-bytes-equal data result
