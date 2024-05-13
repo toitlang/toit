@@ -1009,6 +1009,11 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
     return reinterpret_cast<toit_msg_context_t*>(this);
   }
 
+  bool on_failed_allocation(word length) override {
+    collect_garbage(true);
+    return true;
+  }
+
  private:
   void* user_context_;
   toit_msg_cbs_t callbacks_;
