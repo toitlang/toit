@@ -56,7 +56,7 @@ test-rpc-fail clients/List:
   clients.do: | client/external.Client |
     e := catch:
       client.request 0 #[99, 99]
-    expect-equals "EXTERNAL-ERROR" e
+    expect-equals "EXTERNAL_ERROR" e
 
 test-gc clients/List:
   clients.do: | client/external.Client |

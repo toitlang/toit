@@ -37,7 +37,7 @@ static toit_err_t on_rpc_request(void* user_data, int sender, int function, toit
   test_service_t* test_service = (test_service_t*)user_data;
   printf("received rpc request in C %d\n", test_service->id);
   if (length == 2 && ((char*)data)[0] == 99 && ((char*)data)[1] == 99) {
-    toit_msg_request_fail(handle, "EXTERNAL-ERROR");
+    toit_msg_request_fail(handle, "EXTERNAL_ERROR");
   } else {
     uint8_t* response = (uint8_t*) data;
     if (length == 1 && response[0] == 0xFF) {
