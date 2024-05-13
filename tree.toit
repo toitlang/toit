@@ -99,8 +99,8 @@ class NodeTree extends CollectionBase:
     node should be placed to the right.
   If the collection is empty, returns null.
   */
-  find_ [compare] -> SplayNode?:
-    node/SplayNode? := root_ as any
+  find_ [compare] -> TreeNode?:
+    node/TreeNode? := root_ as any
     while node:
       if (compare.call node) < 0:
         if node.left_ == null:
@@ -354,16 +354,10 @@ class RedBlackSet extends RedBlackNodeTree:
       if result == 0:
         // Equal.  Overwrite.
         nearest.value_ = key
-        //splay_ nearest
         return
       node := SetRedBlackNode_ key
-      node.parent_ = nearest
-      if result < 0:
-        nearest.left_ = node
-      else:
-        nearest.right_ = node
+      insert_ node nearest
       size_++
-      //splay_ node
     else:
       root_ = SetRedBlackNode_ key
       size_ = 1
@@ -674,6 +668,9 @@ class RedBlackNodeTree extends NodeTree:
   The given value must be in this tree.
   */
   remove value/RedBlackNode -> none:
+    remove_ value
+
+  remove_ value/RedBlackNode -> none:
     parent := value.parent_
     left := value.left_
     right := value.right_
@@ -734,7 +731,7 @@ class RedBlackNodeTree extends NodeTree:
         successor.red_ = value.red_
         value.red_ = red
         size_++  // Don't decrement twice.
-        remove value  // After moving the nodes, call the method again.
+        remove_ value  // After moving the nodes, call the method again.
 
     assert: value.parent_ == null
     assert: value.left_ == null

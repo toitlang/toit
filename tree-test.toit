@@ -10,6 +10,7 @@ main:
   test2 (: SplayNodeTree) (: | us/int | SplayTimeout us LAMBDA) (: it as SplayTimeout)
   test2 (: RedBlackNodeTree) (: | us/int | RBTimeout us LAMBDA) (: it as RBTimeout)
   test2 --no-identity (: SplaySet) (: | us/int | us) (: it as int)
+  test2 --no-identity (: RedBlackSet) (: | us/int | us) (: it as int)
   test-set: SplaySet
   bench false SplayNodeTree "splay": | us/int | SplayTimeout us LAMBDA
   bench false RedBlackNodeTree "red-black": | us/int | RBTimeout us LAMBDA
