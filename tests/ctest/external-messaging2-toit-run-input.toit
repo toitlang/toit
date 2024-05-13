@@ -20,7 +20,8 @@ main:
     external.Client.open EXTERNAL-ID1,
   ]
   clients.size.repeat: | i |
-    clients[i].set-notification-callback:: incoming-notifications[i].send it
+    client/external.Client := clients[i]
+    client.set-on-notify:: incoming-notifications[i].send it
 
   test-id clients
 
