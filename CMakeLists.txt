@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.19.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(toit)
 
@@ -166,6 +166,9 @@ add_custom_target(
   # Windows would add a space into the output otherwise.
   COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
+
+set(EXTERNAL_TOIT_LIBS)
+include(tools/external.cmake)
 
 add_subdirectory(src)
 
