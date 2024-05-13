@@ -37,6 +37,12 @@ runs:
         echo "ESP32 build is only available on Linux."
         exit 1
 
+    - name: Fetch tags
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}
+        git fetch --tags --recurse-submodules=no
+
       # We only need the mbedtls submodule for building.
     - name: Initialize mbedtls submodule
       if: inputs.esp32 == 'false'
@@ -65,8 +71,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ${{inputs.cache-key}}-${{ runner.os }}-${{ github.sha }}
-        restore-keys: ${{inputs.cache-key}}-${{ runner.os }}-
+        key: ${{inputs.cache-key-prefix}}-${{ runner.os }}-${{ github.sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-${{ runner.os }}-
 
     # Fetch the dependencies. Different for each platform.
     - name: Install dependencies - Linux
@@ -118,8 +124,8 @@ runs:
       # is no match (which should almost always be the case).
       with:
         path: /home/runner/.espressif
-        key: ${{inputs.cache-key}}-espressif-${{ steps.sha-hashes.outputs.espressif_sha }}
-        restore-keys: ${{inputs.cache-key}}-espressif-
+        key: ${{inputs.cache-key-prefix}}-espressif-${{ steps.sha-hashes.outputs.espressif_sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-espressif-
 
     - name: Set up Python modules for MbedTLS
       shell: bash
