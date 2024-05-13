@@ -37,14 +37,14 @@ static toit_err_t on_rpc_request(void* user_data, int sender, int function, toit
   test_service_t* test_service = (test_service_t*)user_data;
   printf("received rpc request in C %d\n", test_service->id);
   if (length == 2 && ((char*)data)[0] == 99 && ((char*)data)[1] == 99) {
-    toit_msg_request_fail(handle, "EXTERNAL-ERROR");
+    toit_msg_request_fail(handle, "EXTERNAL_ERROR");
   } else {
     uint8_t* response = (uint8_t*) data;
     if (length == 1 && response[0] == 0xFF) {
       // If the message is #[0xFF], respond with our id.
       response[0] = test_service->id;
     } else if (length == 1 && response[0] == 0xFE) {
-      // If the message is #[0xFE], do a GC and reploy with #[0].
+      // If the message is #[0xFE], do a GC and reply with #[0].
       toit_gc();
       response[0] = 0;
     }
