@@ -44,7 +44,7 @@ static toit_err_t on_rpc_request(void* user_data, int sender, int function, toit
       // If the message is #[0xFF], respond with our id.
       response[0] = test_service->id;
     } else if (length == 1 && response[0] == 0xFE) {
-      // If the message is #[0xFE], do a GC and reploy with #[0].
+      // If the message is #[0xFE], do a GC and reply with #[0].
       toit_gc();
       response[0] = 0;
     }
