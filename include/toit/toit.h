@@ -38,8 +38,6 @@ typedef enum {
   TOIT_ERR_ERROR,
 } toit_err_t;
 
-const int TOIT_MSG_RESERVED_TYPES = 64;
-
 struct toit_msg_context_t;
 typedef struct toit_msg_context_t toit_msg_context_t;
 
