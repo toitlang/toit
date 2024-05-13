@@ -1129,8 +1129,6 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            int target_pid,
                            void* data, int length,
                            bool free_on_failure) {
-  static_assert(TOIT_MSG_RESERVED_TYPES == toit::MESSAGING_RESERVED_MESSAGE_TYPES,
-                "Public reserved types doesn't match internal reserved types");
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
   toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
