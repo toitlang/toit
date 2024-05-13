@@ -12,23 +12,23 @@ notification-handler_/ExternalMessageHandler_? := null
 class Client:
   pid/int
   id/string
-  notification-callback_/Lambda? := null
+  on-notify_/Lambda? := null
   is-closed_/bool := false
 
-  constructor.private_ .pid .id .notification-callback_:
+  constructor.private_ .pid .id .on-notify_:
 
-  static open id/string --notification-callback/Lambda?=null -> Client?:
+  static open id/string --on-notify/Lambda?=null -> Client?:
     pid := pid-for-external-id_ id
     if pid == -1: throw "NOT_FOUND"
     if clients_.contains pid: throw "ALREADY_IN_USE"
-    result := Client.private_ pid id notification-callback
+    result := Client.private_ pid id on-notify
     clients_[pid] = result
     return result
 
   close -> none:
     if is-closed_: return
     // Go through the function so that the ref-counting is correct.
-    set-notification-callback null
+    set-on-notify null
     is-closed_ = true
 
   is-closed -> bool:
@@ -54,15 +54,13 @@ class Client:
     bytes := encode-message_ message --copy=copy
     return rpc.invoke pid function bytes
 
-  set-notification-callback callback/Lambda? -> none:
+  set-on-notify callback/Lambda? -> none:
     if is-closed_: throw "ALREADY_CLOSED"
-    if notification-callback_ != null: notification-listeners_--
-    notification-callback_ = callback
+    if on-notify_ != null: notification-listeners_--
+    on-notify_ = callback
     if callback:
       notification-listeners_++
-      ExternalMessageHandler_.start-if-necessary
-    else:
-      ExternalMessageHandler_.stop-if-necessary
+    ExternalMessageHandler_.handle-listener-change
 
 class ExternalMessageHandler_ implements SystemMessageHandler_:
   static TYPE ::= SYSTEM-EXTERNAL-NOTIFICATION_
@@ -73,15 +71,13 @@ class ExternalMessageHandler_ implements SystemMessageHandler_:
   on-message type/int gid/int pid/int argument -> none:
     client/Client? := clients_.get pid
     if not client: return
-    if client.notification-callback_:
-      client.notification-callback_.call argument
+    if client.on-notify_:
+      client.on-notify_.call argument
 
-  static start-if-necessary -> none:
+  static handle-listener-change -> none:
     if notification-listeners_ > 0 and not notification-handler_:
       notification-handler_ = ExternalMessageHandler_
       set-system-message-handler_ TYPE notification-handler_
-
-  static stop-if-necessary -> none:
-    if notification-listeners_ == 0 and notification-handler_:
+    else if notification-listeners_ <= 0 and notification-handler_:
       notification-handler_.close
       notification-handler_ = null
