@@ -55,11 +55,11 @@ else
 endif
 
 .PHONY: all
-all: sdk
+all: sdk build-test-assets
 
 .PHONY: debug
 debug:
-	LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
+	cmake -E env LOCAL_CFLAGS="-O0" LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
 
 .PHONY: sdk
 sdk: tools toit-tools version-file

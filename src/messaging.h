@@ -30,6 +30,13 @@ class VM;
 
 typedef LinkedFifo<Message> MessageFIFO;
 
+// Keep in sync with constants in messages.toit.
+enum message_err_t : int {
+  MESSAGE_OK = 0,
+  MESSAGE_OOM = 1,
+  MESSAGE_NO_SUCH_RECEIVER = 2,
+};
+
 enum MessageType {
   MESSAGE_INVALID = 0,
   MESSAGE_MONITOR_NOTIFY = 1,
@@ -48,6 +55,22 @@ enum {
   MESSAGING_ENCODING_MAX_NESTING      = 8,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
+
+  // This constant needs to be kept in sync with the one in lib/core/message_.toit.
+  MESSAGING_RESERVED_MESSAGE_TYPES = 64,
+};
+
+// These constants need to be kept in sync with the ones in lib/core/message_.toit.
+enum SystemMessageType {
+  SYSTEM_TERMINATED = 0,
+  SYSTEM_SPAWNED = 1,
+  SYSTEM_TRACE = 2,  // Stack traces, histograms, and profiling information.
+  SYSTEM_RPC_REQUEST = 3,
+  SYSTEM_RPC_REPLY = 4,
+  SYSTEM_RPC_CANCEL = 5,
+  SYSTEM_RPC_NOTIFY_TERMINATED = 6,
+  SYSTEM_RPC_NOTIFY_RESOURCE = 7,
+  SYSTEM_EXTERNAL_NOTIFICATION = 8,
 };
 
 class Message : public MessageFIFO::Element {
@@ -166,6 +189,11 @@ class MessageEncoder {
 
   bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
   bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
+  // If 'is_exception' is true, encodes the string.
+  // Otherwise the data and length.
+  bool encode_rpc_reply_external(int id,
+                                 bool is_exception, const char* exception,
+                                 void* data, word length, bool free_on_failure);
 
 #ifndef TOIT_FREERTOS
   bool encode_arguments(char** argv, int argc);
@@ -270,6 +298,7 @@ class MessageDecoder {
 
   Object* decode() { ASSERT(!decoding_tison()); return decode_any(); }
   bool decode_byte_array_external(void** data, word* length);
+  bool decode_rpc_request_external(int* id, int* name, void** data, word* length);
 
   // Encoded messages may contain pointers to external areas allocated using
   // malloc. To deallocate such messages, we have to traverse them and free
@@ -367,13 +396,32 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
 
-  // Send a message to a specific pid, using Scheduler::send_message. Returns
+  // Callback for received requests.
+  virtual void on_request(int sender, int id, int name, void* data, int length) {
+    FATAL("on_request on message handler that doesn't support it");
+  }
+
+  virtual bool supports_rpc_requests() const { return false; }
+
+  // Send a message to a specified pid, using Scheduler::send_message. Returns
   // true if the data was sent or false if an error occurred. The data is
   // assumed to be a malloced message. If free_on_failure is true, the data is
   // always freed even on failures; otherwise, only messages that are
   // succesfully sent are taken over by the receiver and must not be touched or
   // deallocated by the sender.
-  bool send(int pid, int type, void* data, word length, bool free_on_failure = false);
+  bool send(int pid, int type, void* data, word length, bool free_on_failure = false) {
+    return send_(pid, type, data, length, free_on_failure) == MESSAGE_OK;
+  }
+
+  // Send a message to the specified pid, using Scheduler::send_message.
+  //
+  // If 'is_exception' is true, then only the exception is used, and 'data',
+  // 'length', and 'free_on_failure' is completely ignored.
+  // Otherwise, the data is used as reply. See 'send' for information on
+  // 'data', and 'free_on_failure'.
+  message_err_t reply_rpc(int pid, int id,
+                          bool is_exception, const char* exception,
+                          void* data, word length, bool free_on_failure);
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false
@@ -384,6 +432,16 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // processes and get them to stop before garbage collecting their heaps.
   void collect_garbage(bool try_hard);
 
+ protected:
+  // Send a message to a specific pid, using Scheduler::send_message.
+  // Returns the message_err_t code. Otherwise this is the same as 'send'.
+  //
+  // The data is assumed to be a malloced message. If free_on_failure is true, the data is
+  // always freed even on failures; otherwise, only messages that are
+  // succesfully sent are taken over by the receiver and must not be touched or
+  // deallocated by the sender.
+  message_err_t send_(int pid, int type, void* data, word length, bool free_on_failure);
+
  private:
   VM* vm_;
   Process* process_;
@@ -391,6 +449,17 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Called by the scheduler.
   virtual Interpreter::Result run() override;
   virtual void set_process(Process* process) override;
+
+  message_err_t send_(int pid, int type, MessageEncoder* encoder, bool free_on_failure);
 };
+
+/// Creates and starts all external processes.
+/// This function must be called early (before Toit programs are started), and
+/// assumes that memory allocations don't fail.
+void create_and_start_external_message_handlers(VM* vm);
+
+/// Returns the pid for the given external id.
+/// If the id is unknown returns -1.
+int pid_for_external_id(String* id);
 
 }  // namespace toit

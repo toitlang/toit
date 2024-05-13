@@ -181,6 +181,7 @@ namespace toit {
   PRIMITIVE(process_signal_kill, 1)          \
   PRIMITIVE(process_current_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
+  PRIMITIVE(pid_for_external_id, 1)          \
   PRIMITIVE(process_get_priority, 1)         \
   PRIMITIVE(process_set_priority, 2)         \
   PRIMITIVE(task_has_messages, 0)            \

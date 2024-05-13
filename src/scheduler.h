@@ -27,12 +27,6 @@ namespace toit {
 
 typedef LinkedList<SchedulerThread> SchedulerThreadList;
 
-// Keep in sync with constants in messages.toit.
-enum scheduler_err_t : int {
-  MESSAGE_OK = 0,
-  MESSAGE_NO_SUCH_RECEIVER = 1
-};
-
 class SchedulerThread : public Thread, public SchedulerThreadList::Element {
  public:
   explicit SchedulerThread(Scheduler* scheduler)
@@ -95,12 +89,12 @@ class Scheduler {
   Process* run_external(ProcessRunner* runner);
 
   // Send a system message. Returns an error code to signal whether the message was delivered.
-  scheduler_err_t send_system_message(SystemMessage* message);
+  message_err_t send_system_message(SystemMessage* message);
 
   // Send message to the process by id. Returns an error code to signal whether the message was delivered.
   // Takes over the message (should not be freed on success or failure).
   // This only fails if the process id is invalid there are no retryable (allocation related) failures.
-  scheduler_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
+  message_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
   // Send notify message.
   void send_notify_message(ObjectNotifier* notifier);
@@ -188,7 +182,7 @@ class Scheduler {
 
   bool has_exit_reason() { return exit_state_.reason != EXIT_NONE; }
 
-  scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
+  message_err_t send_system_message(Locker& locker, SystemMessage* message);
 
   void terminate_execution(Locker& locker, ExitState exit);
 
