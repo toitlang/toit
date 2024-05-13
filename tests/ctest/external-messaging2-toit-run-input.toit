@@ -27,6 +27,7 @@ main:
 
   test-rpc clients #[42]
   test-rpc-fail clients
+  test-gc clients
 
   test-notification clients #[1]
   test-notification clients #[1, 2, 3, 4]
@@ -57,6 +58,12 @@ test-rpc-fail clients/List:
     e := catch:
       client.request 0 #[99, 99]
     expect-equals "EXTERNAL_ERROR" e
+
+test-gc clients/List:
+  clients.do: | client/external.Client |
+    response := client.request 0 #[0xFE]  // Request for GC.
+    expect-equals 1 response.size
+    expect-equals 0 response[0]
 
 test-notification clients/List data/ByteArray:
   clients.size.repeat: | i |
