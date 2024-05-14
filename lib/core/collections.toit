@@ -302,7 +302,7 @@ abstract class List extends CollectionBase:
     collection.do: this[index++] = it
 
   /**
-  Inserts the given $alue at the given index.
+  Inserts the given $value at the given index.
   It is valid to insert at the $size position, in which case this is
     equivalent to $add.
   If n is the distance to the end of the list, the operation
