@@ -302,6 +302,24 @@ abstract class List extends CollectionBase:
     collection.do: this[index++] = it
 
   /**
+  Inserts the given $value at the given index.
+  It is valid to insert at the $size position, in which case this is
+    equivalent to $add.
+  If n is the distance to the end of the list, the operation
+    runs in `O(n)` and is thus not efficient for insertions that are not near
+    the end of the list.
+  */
+  insert --at/int value/any -> none:
+    sz := size
+    if at == sz:
+      add value
+      return
+    if not 0 <= at < sz: throw "OUT_OF_BOUNDS"
+    add value  // Will soon be overwritten.
+    replace (at + 1) this at sz
+    this[at] = value
+
+  /**
   Removes the last element of this instance.
   Returns the removed element.
 
@@ -324,12 +342,23 @@ abstract class List extends CollectionBase:
   remove needle -> none:
     i := 0
     while i < size and this[i] != needle: i++
-    if i == size: return
-    i++
-    while i < size:
-      this[i - 1] = this[i]
-      i++
+    if i != size: remove --at=i
+
+  /**
+  Removes the value at the given index.
+  It is valid to remove at the $size - 1 position, in which case this is
+    equivalent to $remove-last.
+  If n is the distance to the end of the list, the operation
+    runs in `O(n)` and is thus not efficient for deletions that are not near
+    the end of the list.
+  Returns the value that was removed.
+  */
+  remove --at/int -> any:
+    result := this[at]
+    if at != size - 1:
+      replace at this (at + 1) size
     resize size - 1
+    return result
 
   /**
   Removes all entries that are equal to the given $needle.
@@ -3222,7 +3251,7 @@ A collection of items, where new items can be added at the end. They can
 A deque is a generalization of a stack and a queue, and can be used for both
   purposes.
 */
-class Deque implements Collection:
+class Deque extends List implements Collection:
   // Traditionally we would have a head index, a tail index and an array
   // backing, used as a circular buffer.  Instead we have only the tail index
   // (called first_) and use a growable list as backing, copying down when
@@ -3235,10 +3264,18 @@ class Deque implements Collection:
   first_ := 0
   backing_/List := []
 
+  /**
+  Constructs an empty Deque.
+  */
   constructor:
+    super.from-subclass
 
+  /**
+  Constructs a new Deque that initially contains the elements of the collection.
+  */
   constructor.from collection/Collection:
     backing_ = List.from collection
+    super.from-subclass
 
   size -> int:
     return backing_.size - first_
@@ -3278,15 +3315,15 @@ class Deque implements Collection:
     first_ = 0
 
   first -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_[first_]
 
   last -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_.last
 
   remove-last -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     result := backing_.remove-last
     shrink-if-needed_
     return result
@@ -3294,7 +3331,7 @@ class Deque implements Collection:
   remove-first -> any:
     backing := backing_
     first := first_
-    if first == backing.size: throw "OUT_OF_RANGE"
+    if first == backing.size: throw "OUT_OF_BOUNDS"
     result := backing[first]
     backing[first] = null
     first_++
@@ -3317,8 +3354,71 @@ class Deque implements Collection:
     first_ = first
 
   operator [] index/int:
-    if index < 0 or index > backing_.size - first_: throw "OUT_OF_RANGE"
+    if index < 0: throw "OUT_OF_BOUNDS"
     return backing_[first_ + index]
+
+  operator []= index/int value:
+    if index < 0: throw "OUT_OF_BOUNDS"
+    backing_[first_ + index] = value
+
+  /**
+  Returns a new Deque that contains the elements of this.
+  */
+  copy from/int=0 to/int=size -> Deque:
+    if from < 0: throw "OUT_OF_BOUNDS"
+    return Deque.from backing_[first_ + from .. first_ + to]
+
+  /**
+  Inserts the given $value at the given index.
+  It is valid to insert at the $size position, in which case this is
+    equivalent to $add.  It is also valid to add at the zero position,
+    in which case this is equivalent to $add-first.
+  If n is the shortest distance to the start or end of the deque, the operation
+    runs in `O(n)` and is thus not efficient for insertions that are not near
+    the start or end of the deque.
+  */
+  insert --at/int value -> none:
+    sz := size
+    if at < 0 or at > sz: throw "OUT_OF_BOUNDS"
+    if at >= sz >> 1:
+      backing_.insert --at=(at + first_) value
+    else:
+      add-first value
+      if at != 0:
+        // Need to move down the elements.
+        first := first_  // This is the decremented value after the add.
+        at += first
+        backing_.replace first backing_ (first + 1) (at + 1)
+        backing_[at] = value
+
+  /**
+  Removes the value at the given index.
+  It is valid to remove at the $size - 1 position, in which case this is
+    equivalent to $remove-last.  It is also valid to remove at the zero
+    position, in which case this is equivalent to $remove-first.
+  If n is the shortest distance to the start or end of the deque, the operation
+    runs in `O(n)` and is thus not efficient for deletions that are not near
+    the start or end of the deque.
+  Returns the value that was removed.
+  */
+  remove --at/int -> any:
+    last := size - 1
+    if at < 0 or at > last: throw "OUT_OF_BOUNDS"
+    if at >= last >> 1:
+      return backing_.remove --at=(first_ + at)
+    removed := remove-first
+    if at == 0: return removed
+    // Need to move up the elements.
+    first := first_  // This is the incremented value after the remove-first.
+    at += first
+    result := backing_[at - 1]
+    backing_.replace (first + 1) backing_ first (at - 1)
+    backing_[first] = removed
+    return result
+
+  resize new-size/int:
+    if new-size < 0: throw "OUT_OF_BOUNDS"
+    backing_.resize first_ + new-size
 
   shrink-if-needed_ -> none:
     backing := backing_
