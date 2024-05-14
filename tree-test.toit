@@ -9,8 +9,10 @@ main:
   test (: RedBlackNodeTree): | us/int | RBTimeout us LAMBDA
   test2 (: SplayNodeTree) (: | us/int | SplayTimeout us LAMBDA) (: it as SplayTimeout)
   test2 (: RedBlackNodeTree) (: | us/int | RBTimeout us LAMBDA) (: it as RBTimeout)
+  test2 (: OrderedDeque) (: | us/int | FlatTimeout us LAMBDA) (: it as FlatTimeout)
   test2 --no-identity (: SplaySet) (: | us/int | us) (: it as int)
   test2 --no-identity (: RedBlackSet) (: | us/int | us) (: it as int)
+  test2 (: DequeSet) (: | us/int | us) (: it as int)
   test-set: SplaySet
   bench false SplayNodeTree "splay": | us/int | SplayTimeout us LAMBDA
   bench false RedBlackNodeTree "red-black": | us/int | RBTimeout us LAMBDA
@@ -49,6 +51,24 @@ class SplayTimeout extends SplayNode:
     return us - other.us
 
   compare-to other/SplayTimeout [--if-equal]-> int:
+    other-us/int := other.us
+    if us == other-us:
+      return if-equal.call this other
+    return us - other-us
+
+  stringify -> string:
+    return "Timeout-$us"
+
+class FlatTimeout implements Comparable:
+  us /int
+  lambda /Lambda
+
+  constructor .us .lambda:
+
+  compare-to other/FlatTimeout -> int:
+    return us - other.us
+
+  compare-to other/FlatTimeout [--if-equal]-> int:
     other-us/int := other.us
     if us == other-us:
       return if-equal.call this other
@@ -130,8 +150,20 @@ test2 --identity/bool=true [create-tree] [create-item] [verify-item] -> none:
       tree.remove tree.first
       tree.remove tree.last
       tree.remove tree.last
-      tree.remove tree.last
-      tree.remove tree.last
+      count := 0
+      removals := []
+      tree.do:
+        count++
+        if count == 5 or count == 90: removals.add it
+      removals.do: tree.remove it
+      dupes := List 5: create-item.call 1066
+      tree.add-all dupes
+      dupes.do: expect (tree.contains it)
+      dupes.do --reversed: tree.remove it
+      tree.add-all dupes
+      dupes.do: tree.remove it
+      dupes.do: expect-not (tree.contains it)
+        
     expect (tree.contains tree.first)
     expect (tree.contains tree.last)
     verify-item.call tree.first
@@ -157,9 +189,9 @@ test2 --identity/bool=true [create-tree] [create-item] [verify-item] -> none:
     expect-equals 95 tree.size
     expect (not tree.is-empty)
 
-  expect-equals tree1 tree2
-  expect-equals tree1 tree3
-  expect-equals tree3 tree2
+  expect: tree1.test-equals_ tree2
+  expect: tree1.test-equals_ tree3
+  expect: tree3.test-equals_ tree2
 
   [tree1, tree2, tree3].do: | tree |
     tree.clear

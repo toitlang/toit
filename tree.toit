@@ -1,3 +1,10 @@
+/**
+Abstract base class for tree-based ordered collections.
+These collections manage objects that imlement $Comparable.
+Internally they maintain a tree structure, meaning that addition runs in
+  O(log n) time and iteration runs in O(n) time.
+Storage requires O(size) space, and stack depths are O(log n) or better.
+*/
 abstract
 class NodeTree extends CollectionBase:
   root_ /TreeNode? := null
@@ -88,9 +95,6 @@ class NodeTree extends CollectionBase:
           direction = UP_
         node = parent
 
-  operator == other/NodeTree -> bool:
-    return equals_ other: | a b | a.compare-to b
-
   /**
   Returns either a node that compares equal or a node that is the closest
     parent to a new, correctly placed node.  The block is passed a node and
@@ -114,9 +118,12 @@ class NodeTree extends CollectionBase:
         return node
     return null
 
-  equals_ other/NodeTree [equality-block] -> bool:
+  /**
+  Only for testing.  Only works if there are no values that compare equal
+    in a given collection.
+  */
+  test-equals_ other/NodeTree -> bool:
     if other is not NodeTree: return false
-    // TODO(florian): we want to be more precise and check for exact class-match?
     if other.size != size: return false
     if size == 0: return true
     // Avoids recursion because it can go too deep on the splay tree.
@@ -168,7 +175,7 @@ class NodeTree extends CollectionBase:
           else:
             direction2 = UP_
           node2 = parent
-      if not equality-block.call node1 node2: return false
+      if (node1.compare-to node2) != 0: return false
       direction1 = RIGHT_
       direction2 = RIGHT_
 
@@ -223,6 +230,7 @@ class NodeTree extends CollectionBase:
     if to:
       to.parent_ = parent
 
+/// Used to implement $SplaySet.
 class SetSplayNode_ extends SplayNode:
   value_ /Comparable := ?
 
@@ -235,6 +243,7 @@ class SetSplayNode_ extends SplayNode:
     return value_.compare-to other.value_ --if-equal=: | self other |
       return if-equal.call self.value_ other.value
 
+/// Used to implement $RedBlackSet.
 class SetRedBlackNode_ extends RedBlackNode:
   value_ /Comparable := ?
 
@@ -254,8 +263,14 @@ The objects used as keys must be $Comparable and immutable in the sense
 Equality is determined by the compare-to method from $Comparable.
 A hash code is not needed for the keys.  Duplicate keys will not be added.
 Iteration is in order of the keys.
+Since this collection bases on a splay tree it is not guaranteed to be
+  efficient for all access patterns, but is believed to be efficient in
+  practice.
 */
 class SplaySet extends SplayNodeTree:
+  operator == other/SplaySet -> bool:
+    return test-equals_ other
+
   /**
   Adds the given $key to this instance.
   If an equal key is already in this instance, it is overwritten by the new one.
@@ -340,8 +355,14 @@ The objects used as keys must be $Comparable and immutable in the sense
 Equality is determined by the compare-to method from $Comparable.
 A hash code is not needed for the keys.  Duplicate keys will not be added.
 Iteration is in order of the keys.
+Since this collection is based on a red-black tree it offers O(log n)
+  time for insertion and removal.  Checking for containment and getting
+  the largest and smallest elements are also O(log n) time operations.
 */
 class RedBlackSet extends RedBlackNodeTree:
+  operator == other/RedBlackSet -> bool:
+    return test-equals_ other
+
   /**
   Adds the given $key to this instance.
   If an equal key is already in this instance, it is overwritten by the new one.
@@ -423,6 +444,9 @@ The nodes should implement $Comparable.  The same node cannot be
   added twice or added to two different trees, but a tree can contain
   two different nodes that are equal according to compare-to method.
 To remove a node from the tree, use a reference to the node.
+Since this collection bases on a splay tree it is not guaranteed to be
+  efficient for all access patterns, but is believed to be efficient in
+  practice.
 */
 class SplayNodeTree extends NodeTree:
   /**
@@ -566,6 +590,9 @@ The nodes should implement $Comparable.  The same node cannot be
   added twice or added to two different trees, but a tree can contain
   two different nodes that are equal according to compare-to method.
 To remove a node from the tree, use a reference to the node.
+Since this collection is based on a red-black tree it offers O(log n)
+  time for insertion and O(1) amortized time for removal.
+  Getting the largest and smallest elements are also O(log n) time operations.
 */
 class RedBlackNodeTree extends NodeTree:
   /**
@@ -856,3 +883,150 @@ class RedBlackNode extends TreeNode:
 
   get_ index/int -> RedBlackNode?:
     return (super index) as any
+
+/**
+An ordered collection for elements that are $Comparable.
+Iteration is in order of the values according to the compare-to method.
+Implements $Collection.
+The nodes should implement $Comparable.  A collection can contain
+  two different values that are equal according to compare-to method.
+To remove an object from the tree, use a reference to the object.
+This collection is efficient if most additions and removals happen
+  near the beginning or end of the collection, and if elements do not
+  often test equal according to compare-to.
+*/
+class OrderedDeque extends Deque:
+  /**
+  Only for testing.  Only works if there are no values that compare equal
+    in a given collection.
+  */
+  test-equals_ other/OrderedDeque -> bool:
+    if size != other.size: return false
+    i := 0
+    do: | value |
+      if (value.compare-to other[i++]) != 0: return false
+    return true
+
+  /**
+  Removes a value from this collection.  The value must be present in the
+    collection.
+  If many values in the collection compare equal to each other using compare-to,
+    that will affect the performance of this method.
+  Only this (identical) object is removed, even if there are others that compare
+    equal to it.
+  */
+  remove value/Comparable -> none:
+    index := index-of
+        value
+        --binary-compare=: | a b | a.compare-to b
+        --if-absent=: throw "NOT_FOUND"
+    backwards := index
+    while backwards >= 0:
+      element := this[backwards]
+      if identical element value:
+        remove --at=backwards
+        return
+      if (element.compare-to value) != 0:
+        break
+      backwards--
+    forwards := index + 1
+    while forwards < size:
+      element := this[forwards]
+      if identical element value:
+        remove --at=forwards
+        return
+      if (element.compare-to value) != 0:
+        throw "NOT_FOUND"
+      forwards++
+
+  /**
+  Inserts the given value into this collection.  There is no attempt to remove
+    duplicates.  All values must be ordered by their compare-to method.
+  */
+  add value/Comparable -> none:
+    index := index-of
+        value
+        --binary-compare=: | a b | a.compare-to b
+        --if-absent=: it 
+    insert --at=index value
+
+/**
+A set of keys.
+The objects used as keys must be $Comparable and immutable in the sense
+  that they do not change their comparison value while they are in the set.
+Equality is determined by the compare-to method from $Comparable.
+A hash code is not needed for the keys.  Duplicate keys will not be added.
+Iteration is in order of the keys.
+This class is efficient if most additions and removals happen near the
+  beginning or end of the collection.
+*/
+class DequeSet extends Deque:
+  /**
+  Returns whether the two collections are equal.  May call the compare-to
+    method on every element of the collection.
+  */
+  operator == other/DequeSet -> bool:
+    if size != other.size: return false
+    i := 0
+    do: | value |
+      if (value.compare-to other[i++]) != 0: return false
+    return true
+
+  /// Only for testing.
+  test-equals_ other/DequeSet -> bool:
+    return this == other
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  The key does not need to be present.
+  */
+  remove key/Comparable -> none:
+    remove key --if-absent=(: null)
+
+  /**
+  Removes a key equal to the given $key from this instance.
+  Equality is determined by the compare-to method from $Comparable.
+  If the key is absent, calls $if-absent with the given key.
+  */
+  remove key/Comparable [--if-absent] -> none:
+    index := index-of
+        key
+        --binary-compare=: | a b | a.compare-to b
+        --if-absent=:
+          if-absent.call key
+          return
+    remove --at=index
+
+  /** Removes all elements of $collection from this instance. */
+  remove-all collection/Collection -> none:
+    collection.do: remove it --if-absent=: null
+
+  /**
+  Adds the given $key to this instance.
+  If an equal key is already in this instance, it is overwritten by the new one.
+  */
+  add key/Comparable -> none:
+    index := index-of
+        key
+        --binary-compare=: | a b | a.compare-to b
+        --if-absent=: | index |
+          insert --at=index key
+          return
+    this[index] = key
+
+  /**
+  Return whether this instance contains a key equal to the given $key.
+  Equality is determined by the compare-to method from $Comparable.
+  */
+  contains key/Comparable -> bool:
+    index-of
+        key
+        --binary-compare=: | a b | a.compare-to b
+        --if-absent=: return false
+    return true
+
+  /** Whether this instance contains all elements of $collection. */
+  contains-all collection/Collection -> bool:
+    collection.do: if not contains it: return false
+    return true
