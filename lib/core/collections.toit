@@ -1622,7 +1622,7 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   The number of bytes in this instance.
   */
-  size:
+  size -> int:
     #primitive.core.byte-array-length
 
   /**
@@ -1680,7 +1680,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
     if not 0 <= from_ <= to_ <= byte-array_.size:
       throw "OUT_OF_BOUNDS"
 
-  size:
+  size -> int:
     return to_ - from_
 
   operator [] n/int -> int:
@@ -1734,7 +1734,7 @@ class CowByteArray_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     return backing_.index-of byte --from=from --to=to
 
-  size:
+  size -> int:
     return backing_.size
 
   is-empty -> bool:
@@ -1916,7 +1916,7 @@ class List_ extends List:
     return result
 
   /** See $super. */
-  size:
+  size -> int:
     return size_
 
   /** See $super. */
