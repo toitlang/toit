@@ -82,11 +82,11 @@ main-peripheral --iteration/int:
   // The 'write' is sent to all subscribers.
   // The 'handle-read-request' is activated for each read-request.
 
-  task::
+  task --background=is-background::
     notify.handle-read-request:
       #['F', 'O', 'O']
 
-  task::
+  task --background=is-background::
     indicate.handle-read-request:
       #['B', 'A', 'R']
 
@@ -98,6 +98,25 @@ main-peripheral --iteration/int:
     expect data.size < 500
   else:
     expect-equals 512 data.size
+
+  counter := 0
+  while true:  // We use a loop so we can break out of the handle function.
+    write-only-with-response.handle-write-request: | chunk/ByteArray |
+      expect-equals #[counter++] chunk
+      if counter == 5:
+        break
+    unreachable
+
+  data = write-only.read  // Wait for data from the client
+  expect-equals #['n', 'o', 'w'] data
+
+  // At this data was accumulated in the write-only-with-response characteristic.
+  // The handle call should get all of the data.
+  while true:  // We use a loop so we can break out of the handle function.
+    write-only-with-response.handle-write-request: | chunk/ByteArray |
+      expect-equals #[0, 1, 2, 3, 4] chunk
+      break
+    unreachable
 
   if iteration == 0:
     // In the first iteration close correctly down.
@@ -183,17 +202,14 @@ main-central --iteration/int:
 
   expect-equals value read-only.read
 
-  counter := 0
   5.repeat:
-    expect-equals #[counter++] read-only-callback.read
+    expect-equals #[it] read-only-callback.read
 
-  counter = 0
   5.repeat:
-    write-only.write #[counter++]
+    write-only.write #[it]
 
-  counter = 0
   5.repeat:
-    write-only-with-response.write #[counter++]
+    write-only-with-response.write #[it]
 
   expect-equals value notify-latch.get
   expect-equals value indicate-latch.get
@@ -213,6 +229,21 @@ main-central --iteration/int:
   else:
     max-packet-size = 512
   write-only.write (ByteArray max-packet-size)
+
+  // Give the peripheral time to set up the write-handler.
+  sleep --ms=200
+
+  5.repeat:
+    write-only-with-response.write #[it]
+
+  // Give the peripheral time to uninitialize the handler.
+  sleep --ms=200
+
+  // Write into the characteristic that doesn't have any 'read' or handler.
+  5.repeat:
+    write-only-with-response.write #[it]
+  // Signal that the data was sent.
+  write-only.write #['n', 'o', 'w']
 
   if iteration == 0:
     // In the first iteration close correctly down.

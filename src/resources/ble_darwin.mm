@@ -71,7 +71,7 @@ class ServiceContainer : public BleResource {
     [_service_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
@@ -153,7 +153,7 @@ class BleServiceResource: public BleResource, public DiscoverableResource {
     [_characteristics_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   CBService* service() { return _service; }
   BleRemoteDeviceResource* device() { return _device; }
@@ -670,7 +670,7 @@ BleServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
 }
 
 template<typename T>
-void ServiceContainer<T>::make_deletable() {
+void ServiceContainer<T>::delete_or_mark_for_deletion() {
   // Tearing down the resource group will also delete the services (resources) that
 	// this service container holds on to. We don't want to do that twice.
   if (!group()->is_tearing_down()) {
@@ -679,7 +679,7 @@ void ServiceContainer<T>::make_deletable() {
       group()->unregister_resource(services[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_resource(
@@ -695,14 +695,14 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_reso
   return resource;
 }
 
-void BleServiceResource::make_deletable() {
+void BleServiceResource::delete_or_mark_for_deletion() {
   if (!group()->is_tearing_down()) {
     NSArray<BleResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
     for (int i = 0; i < [characteristics count]; i++) {
       group()->unregister_resource(characteristics[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 NSString* ns_string_from_blob(Blob &blob) {
@@ -1112,7 +1112,7 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, flush, bool, allow_retry);
+  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, allow_retry);
 
   // TODO(florian): check that the bytes fit into the MTU.
   // TODO(florian): take 'flush' into account.
@@ -1348,7 +1348,15 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(read_request_reply) {
+PRIMITIVE(toit_callback_init) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(toit_callback_deinit) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(toit_callback_reply) {
   FAIL(UNIMPLEMENTED);
 }
 

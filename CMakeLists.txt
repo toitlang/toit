@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.19.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(toit)
 
@@ -99,6 +99,7 @@ endif()
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
+  "${TOIT_SDK_SOURCE_DIR}/include"
   "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
 
@@ -165,6 +166,9 @@ add_custom_target(
   # Windows would add a space into the output otherwise.
   COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
+
+set(EXTERNAL_TOIT_LIBS)
+include(tools/external.cmake)
 
 add_subdirectory(src)
 

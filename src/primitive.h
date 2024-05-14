@@ -182,6 +182,7 @@ namespace toit {
   PRIMITIVE(process_signal_kill, 1)          \
   PRIMITIVE(process_current_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
+  PRIMITIVE(pid_for_external_id, 1)          \
   PRIMITIVE(process_get_priority, 1)         \
   PRIMITIVE(process_set_priority, 2)         \
   PRIMITIVE(task_has_messages, 0)            \
@@ -361,13 +362,13 @@ namespace toit {
   PRIMITIVE(discover_descriptors_result, 1)  \
   PRIMITIVE(request_read, 1)                 \
   PRIMITIVE(get_value, 1)                    \
-  PRIMITIVE(write_value, 5)                  \
+  PRIMITIVE(write_value, 4)                  \
   PRIMITIVE(handle, 1)                       \
   PRIMITIVE(set_characteristic_notify, 2)    \
   PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
-  PRIMITIVE(add_characteristic, 6)           \
+  PRIMITIVE(add_characteristic, 5)           \
   PRIMITIVE(add_descriptor, 5)               \
   PRIMITIVE(reserve_services, 2)             \
   PRIMITIVE(deploy_service, 2)               \
@@ -379,8 +380,10 @@ namespace toit {
   PRIMITIVE(set_preferred_mtu, 2)            \
   PRIMITIVE(get_error, 2)                    \
   PRIMITIVE(clear_error, 2)                  \
-  PRIMITIVE(read_request_reply, 2)           \
   PRIMITIVE(get_bonded_peers, 1)             \
+  PRIMITIVE(toit_callback_init, 3)           \
+  PRIMITIVE(toit_callback_deinit, 2)         \
+  PRIMITIVE(toit_callback_reply, 3)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -457,7 +460,7 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 3)                  \
+  PRIMITIVE(channel_new, 4)                  \
   PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(config_rx, 8)                    \
   PRIMITIVE(config_tx, 11)                   \

@@ -36,10 +36,10 @@ const int kReadState = 1 << 0;
 const int kWriteState = 1 << 1;
 const int kErrorState = 1 << 2;
 
-ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
+static ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
     I2S_NUM_0
 #if SOC_I2S_NUM > 1
-    , I2S_NUM_1
+  , I2S_NUM_1
 #endif
 );
 

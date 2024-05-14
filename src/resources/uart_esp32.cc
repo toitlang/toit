@@ -52,12 +52,12 @@ const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 
-ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
-  // Uart 0 is reserved serial communication (stdout).
+static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
+    // Uart 0 is reserved for serial communication (stdout).
+    UART_NUM_1
 #if SOC_UART_NUM > 2
-  UART_NUM_2,
+  , UART_NUM_2
 #endif
-  UART_NUM_1
 );
 
 typedef enum {

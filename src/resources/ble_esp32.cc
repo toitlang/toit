@@ -45,7 +45,7 @@ const int kInvalidBle = -1;
 const int kInvalidHandle = UINT16_MAX;
 
 // Only allow one instance of BLE running.
-ResourcePool<int, kInvalidBle> ble_pool(
+static ResourcePool<int, kInvalidBle> ble_pool(
     0
 );
 
@@ -79,7 +79,8 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
   uint8 event_type_;
 };
 
-static const uword kInvalidToken = std::numeric_limits<uword>::max();
+static const uword kInvalidToken = std::numeric_limits<uword>::max() - 1;
+static const uword kDeletedToken = std::numeric_limits<uword>::max();
 
 /// A map from tokens to BleResources.
 ///
@@ -283,7 +284,7 @@ class BleCallbackResource : public BleResource {
       , error_(0) {}
 
   ~BleCallbackResource() {
-    if (token_ != kInvalidToken) group()->token_resource_map.remove(token_);
+    if (token_ != kDeletedToken) FATAL("token must be set to deleted");
   }
 
   bool has_malloc_error() const { return malloc_error_;}
@@ -293,7 +294,8 @@ class BleCallbackResource : public BleResource {
 
 
   void* token() const {
-    if (token_ == kInvalidToken) FATAL("Ble Resource token wasn't set");
+    if (token_ == kInvalidToken) FATAL("BleResource token wasn't set");
+    if (token_ == kDeletedToken) FATAL("BleResource token taken for deleted object");
     return reinterpret_cast<void*>(token_);
   }
 
@@ -301,6 +303,7 @@ class BleCallbackResource : public BleResource {
   /// This function should be called before the resource is registered for a
   /// NimBLE callback.
   bool ensure_token() {
+    if (token_ == kDeletedToken) FATAL("BleResource ensure token for deleted object");
     if (token_ == kInvalidToken) {
       uword token;
       bool succeeded = group()->token_resource_map.add(this, &token);
@@ -310,11 +313,73 @@ class BleCallbackResource : public BleResource {
     return true;
   }
 
+ protected:
+  void delete_token() {
+    Locker locker(group()->mutex());
+    if (token_ != kInvalidToken && token_ != kDeletedToken) {
+      group()->token_resource_map.remove(token_);
+    }
+    token_ = kDeletedToken;
+  }
+
  private:
   bool malloc_error_;
   int error_;
   // The token we use for callbacks.
   uword token_ = kInvalidToken;
+};
+
+class BleReadWriteElement;
+
+class ToitCallback {
+ public:
+  ToitCallback(int timeout_ms, Mutex* mutex, ConditionVariable* condition)
+      : timeout_ms_(timeout_ms)
+      , mutex_(mutex)
+      , condition_(condition) {}
+
+  ~ToitCallback() {
+    OS::dispose(mutex_);
+    OS::dispose(condition_);
+  }
+
+  bool is_pending_deletion() const { return pending_deletion_; }
+  void mark_for_deletion() { pending_deletion_ = true; }
+  int timeout_ms() const { return timeout_ms_; }
+
+  bool needs_value() const { return state_ == WAITING_FOR_VALUE; }
+  os_mbuf* value() const { return value_; }
+
+  int call_toit(BleCallbackScope& scope,
+                BleReadWriteElement* element,
+                word request_kind,
+                ble_gatt_access_ctxt* ctxt);
+
+  /// The Toit code has produced a value.
+  /// Make it available to the NimBLE thread.
+  void handle_reply(os_mbuf* new_value);
+
+  void delete_or_mark_for_deletion();
+
+ private:
+  // State relevant to the NimBLE thread.
+  enum State {
+    // No callback in progress.
+    NO_CALLBACK,
+    // Callback in progress. No value yet.
+    WAITING_FOR_VALUE,
+    // Callback in progress. Value has been set by the Toit callback.
+    VALUE_PENDING,
+    // Callback in progress. Toit callback has been canceled.
+    CANCELED,
+  };
+
+  State state_ = NO_CALLBACK;
+  bool pending_deletion_ = false;
+  os_mbuf* value_ = null;
+  int timeout_ms_;
+  Mutex* mutex_;
+  ConditionVariable* condition_;
 };
 
 class BleServiceResource;
@@ -329,17 +394,14 @@ class BleReadWriteElement : public BleCallbackResource {
       , handle_(handle)
       , mbuf_received_(null)
       , mbuf_to_send_(null)
-      , read_request_mbuf_(null)
-      , read_request_mutex_(null)
-      , read_request_condition_(null)
-      , read_timeout_ms_(0) {}
+      , read_handler_(null)
+      , write_handler_(null) {}
 
   ~BleReadWriteElement() override {
     if (mbuf_received_) os_mbuf_free_chain(mbuf_received_);
     if (mbuf_to_send_) os_mbuf_free(mbuf_to_send_);
-    if (read_request_mbuf_) os_mbuf_free(read_request_mbuf_);
-    if (read_request_mutex_) OS::dispose(read_request_mutex_);
-    if (read_request_condition_) OS::dispose(read_request_condition_);
+    toit_callback_deinit(true);
+    toit_callback_deinit(false);
   }
 
   ble_uuid_any_t &uuid() { return uuid_; }
@@ -348,6 +410,8 @@ class BleReadWriteElement : public BleCallbackResource {
   uint16* ptr_handle() { return &handle_; }
   virtual BleServiceResource* service() = 0;
 
+  // Sets received buffer to the new value.
+  // Unless mbuf is null, this is done by the NimBLE thread.
   void set_mbuf_received(os_mbuf* mbuf) {
     if (mbuf_received_ == null)  {
       mbuf_received_ = mbuf;
@@ -372,6 +436,8 @@ class BleReadWriteElement : public BleCallbackResource {
     mbuf_to_send_ = mbuf;
   }
 
+  // Callback for when we receive a response from a remote device.
+  // We requested to read an attribute, and are now getting called back.
   static int on_attribute_read(uint16_t conn_handle,
                                const ble_gatt_error* error,
                                ble_gatt_attr* attr,
@@ -380,19 +446,20 @@ class BleReadWriteElement : public BleCallbackResource {
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleReadWriteElement*>(resource)->_on_attribute_read(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
+  // Callback for when this peripheral is accessed.
   static int on_access(uint16_t conn_handle, uint16_t attr_handle,
                        struct ble_gatt_access_ctxt* ctxt, void* arg) {
     USE(conn_handle);
     USE(attr_handle);
     BleCallbackScope scope;
-    // If the resource has been deleted ignore the callback and just return an empty value.
+    // If the resource has been deleted ignore the callback and cancel it.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     return static_cast<BleReadWriteElement*>(resource)->_on_access(scope, ctxt);
   }
 
@@ -406,24 +473,14 @@ class BleReadWriteElement : public BleCallbackResource {
     return total_len;
   }
 
-  bool setup_callback_readable_characteristic(int read_timeout_ms) {
-    read_request_mutex_ = OS::allocate_mutex(1, "Read request");
-    if (!read_request_mutex_) return false;
-    read_request_condition_ = OS::allocate_condition_variable(read_request_mutex_);
-    if (!read_request_condition_) {
-      OS::dispose(read_request_mutex_);
-      return false;
-    }
-    read_timeout_ms_ = read_timeout_ms;
-    return true;
-  }
+  bool toit_callback_needs_value(bool for_read) const;
+  bool toit_callback_init(int timeout_ms, bool for_read);
+  void toit_callback_deinit(bool for_read);
+  void toit_callback_handle_reply(os_mbuf* mbuf, bool for_read);
+  bool toit_callback_is_setup(bool for_read) const;
 
-  void handle_read_reply_request(os_mbuf* mbuf) {
-    Locker locker(read_request_mutex_);
-    if (read_request_mbuf_ != null) os_mbuf_free(read_request_mbuf_);
-    read_request_mbuf_ = mbuf;
-    OS::signal_all(read_request_condition_);
-  }
+ protected:
+  virtual bool marked_for_deletion() const = 0;
 
  private:
   void _on_attribute_read(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
@@ -433,10 +490,8 @@ class BleReadWriteElement : public BleCallbackResource {
   uint16 handle_;
   os_mbuf* mbuf_received_;
   os_mbuf* mbuf_to_send_;
-  os_mbuf* read_request_mbuf_;
-  Mutex* read_request_mutex_;
-  ConditionVariable* read_request_condition_;
-  int read_timeout_ms_;
+  ToitCallback* read_handler_;
+  ToitCallback* write_handler_;
 };
 
 class BleDescriptorResource;
@@ -447,15 +502,24 @@ class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::
  public:
   TAG(BleDescriptorResource);
   BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource* characteristic,
-                        const ble_uuid_any_t& uuid, uint16 handle, int properties)
-    : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
-    , characteristic_(characteristic)
-    , properties_(properties) {}
+                        const ble_uuid_any_t& uuid, uint16 handle, int properties);
 
   ~BleDescriptorResource() override;
 
   BleServiceResource* service() override;
   uint8 properties() const { return properties_; }
+
+  void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
+    delete this;
+  }
+
+ protected:
+  bool marked_for_deletion() const override {
+    // Descriptors don't need to be marked for deletion, as they can always
+    // get deleted immediately.
+    return false;
+  }
 
  private:
   BleCharacteristicResource* characteristic_;
@@ -491,16 +555,16 @@ class BleCharacteristicResource :
   TAG(BleCharacteristicResource);
   BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
                             const ble_uuid_any_t& uuid, uint16 properties, uint16 handle,
-                            uint16 definition_handle)
-      : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
-      , service_(service)
-      , properties_(properties)
-      , definition_handle_(definition_handle) {}
+                            uint16 definition_handle);
 
   ~BleCharacteristicResource() override;
 
-  void remove_descriptor(BleDescriptorResource* descriptor) {
-    descriptors_.unlink(descriptor);
+  void delete_or_mark_for_deletion() override {
+    if (marked_for_deletion_) return;
+    delete_token();  // From now on, callbacks can't reach this instance.
+    marked_for_deletion_ = true;
+    clear_pending_descriptors();
+    delete_if_able();
   }
 
   BleServiceResource* service() override { return service_; }
@@ -521,8 +585,38 @@ class BleCharacteristicResource :
     return get_descriptor(uuid);
   }
 
+  // Called from the constructor of the BleDescriptorResource.
+  void add_descriptor(BleDescriptorResource* descriptor) {
+    descriptors_.append(descriptor);
+  }
+
+  // Called from the destructor of the BleDescriptorResource.
+  void remove_descriptor(BleDescriptorResource* descriptor) {
+    if (descriptors_.is_linked(descriptor)) {
+      descriptors_.unlink(descriptor);
+      delete_if_able();
+    } else {
+      // This could happen when we are clearing the pending descriptors, where
+      // these entries are currently unlinked, but will be removed from the list.
+      ASSERT(!descriptor->is_returned());
+    }
+  }
+
   DescriptorList& descriptors() {
     return descriptors_;
+  }
+
+  /// Clears descriptors that have not yet been returned to the user.
+  /// During discovery, the 'descriptors_' list is used to store newly discovered
+  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  /// yet.
+  /// This can only happen for remote characteristics.
+  void clear_pending_descriptors() {
+    descriptors_.remove_wherever([&](BleDescriptorResource* descriptor) -> bool {
+      if (descriptor->is_returned()) return false;
+      group()->unregister_resource(descriptor);
+      return true;
+    });
   }
 
   bool update_subscription_status(const BleCallbackScope& scope, uint8_t indicate, uint8_t notify, uint16_t conn_handle);
@@ -536,7 +630,7 @@ class BleCharacteristicResource :
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCharacteristicResource*>(resource)->_on_write_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
@@ -549,14 +643,24 @@ class BleCharacteristicResource :
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCharacteristicResource*>(resource)->_on_subscribe_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
   uint16 get_mtu();
 
+ protected:
+  bool marked_for_deletion() const override {
+    return marked_for_deletion_;
+  }
+
  private:
+  void delete_if_able() {
+    if (marked_for_deletion_ && descriptors_.is_empty()) {
+      delete this;
+    }
+  }
   void _on_write_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
   void _on_subscribe_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
 
@@ -565,6 +669,7 @@ class BleCharacteristicResource :
   uint16 definition_handle_;
   DescriptorList descriptors_;
   SubscriptionList subscriptions_;
+  bool marked_for_deletion_ = false;
 };
 
 typedef DoubleLinkedList<BleServiceResource> ServiceResourceList;
@@ -591,18 +696,27 @@ class BleServiceResource:
  public:
   TAG(BleServiceResource);
   BleServiceResource(BleResourceGroup* group, BleRemoteDeviceResource* device,
-                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
-      : BleServiceResource(group, uuid, start_handle, end_handle) {
-    device_ = device;
-  }
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle);
 
   BleServiceResource(BleResourceGroup* group, BlePeripheralManagerResource* peripheral_manager,
-                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
-      : BleServiceResource(group, uuid, start_handle, end_handle) {
-    peripheral_manager_ = peripheral_manager;
-  }
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle);
 
   ~BleServiceResource() override;
+
+  /// Deletes this instance if no children are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void delete_or_mark_for_deletion() override {
+    if (marked_for_deletion_) return;
+    delete_token();  // From now on, callbacks can't reach this instance.
+    // Clear the pending characteristics. We must be careful not to add any new ones
+    // as there wouldn't be anything deleting them anymore.
+    clear_pending_characteristics();
+    marked_for_deletion_ = true;
+    delete_if_able();
+  }
 
   BleCharacteristicResource* get_characteristic(const ble_uuid_any_t& uuid);
   BleCharacteristicResource* get_or_create_characteristic(
@@ -619,13 +733,26 @@ class BleServiceResource:
   BlePeripheralManagerResource* peripheral_manager() const { return peripheral_manager_; }
   CharacteristicResourceList& characteristics() { return characteristics_; }
 
-  void remove_characteristic(BleCharacteristicResource* characteristic) {
-    characteristics_.unlink(characteristic);
+  // Called from the constructor of the BleCharacteristicResource.
+  void add_characteristic(BleCharacteristicResource* characteristic) {
+    characteristics_.append(characteristic);
   }
 
-  /// Clears services that have not yet been returned to the user.
-  /// During discovery, the 'services_' list is used to store newly discovered
-  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  // Called from the destructor of the BleCharacteristicResource.
+  void remove_characteristic(BleCharacteristicResource* characteristic) {
+    if (characteristics_.is_linked(characteristic)) {
+      characteristics_.unlink(characteristic);
+      delete_if_able();
+    } else {
+      // This could happen when we are clearing the pending characteristics, where
+      // these entries are currently unlinked, but will be removed from the list.
+      ASSERT(!characteristic->is_returned());
+    }
+  }
+
+  /// Clears characteristics that have not yet been returned to the user.
+  /// During discovery, the 'characteristics_' list is used to store newly discovered
+  /// characteristics. As long as their 'returned' state is not set, they don't have a proxy
   /// yet.
   /// This can only happen for remote characteristics (when the 'device_' field is set).
   void clear_pending_characteristics() {
@@ -652,7 +779,7 @@ class BleServiceResource:
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleServiceResource*>(resource)->_on_characteristic_discovered(scope, error, chr);
     return BLE_ERR_SUCCESS;
   }
@@ -666,7 +793,7 @@ class BleServiceResource:
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleServiceResource*>(resource)->_on_descriptor_discovered(scope, error, dsc, chr_val_handle, false);
     return BLE_ERR_SUCCESS;
   }
@@ -694,6 +821,11 @@ class BleServiceResource:
   }
 
  private:
+  void delete_if_able() {
+    if (marked_for_deletion_ && characteristics_.is_empty()) {
+      delete this;
+    }
+  }
   void _on_characteristic_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_chr* chr);
   void _on_descriptor_discovered(const BleCallbackScope& scope,
                                  const struct ble_gatt_error* error,
@@ -709,16 +841,14 @@ class BleServiceResource:
   BleRemoteDeviceResource* device_;
   BlePeripheralManagerResource* peripheral_manager_;
   bool deployed_ = false;
+  bool marked_for_deletion_ = false;
 };
 
 class BleCentralManagerResource : public BleCallbackResource {
  public:
   TAG(BleCentralManagerResource);
 
-  explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
-      : BleCallbackResource(group, CENTRAL_MANAGER)
-      , adapter_(adapter)
-      , marked_for_deletion_(false) {}
+  explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter);
 
   /// Deletes the central manager resource.
   /// The resource may only get deleted when all children (devices) have been
@@ -739,7 +869,7 @@ class BleCentralManagerResource : public BleCallbackResource {
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCentralManagerResource*>(resource)->_on_discovery(scope, event);
     return BLE_ERR_SUCCESS;
   }
@@ -758,7 +888,8 @@ class BleCentralManagerResource : public BleCallbackResource {
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     marked_for_deletion_ = true;
     delete_if_able();
   }
@@ -769,6 +900,7 @@ class BleCentralManagerResource : public BleCallbackResource {
       delete this;
     }
   }
+
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
   BleAdapterResource* adapter_;
   int device_count_ = 0;
@@ -789,9 +921,21 @@ class ServiceContainer : public BleCallbackResource {
   ServiceContainer(BleResourceGroup* group, Kind kind)
       : BleCallbackResource(group, kind) {}
 
+  // Called from the constructor of the BleServiceResource.
+  void add_service(BleServiceResource* service) {
+    services_.append(service);
+  }
+
+  // Called from the destructor of the BleServiceResource.
   void remove_service(BleServiceResource* service) {
-    services_.unlink(service);
-    delete_if_able();
+    if (services_.is_linked(service)) {
+      services_.unlink(service);
+      delete_if_able();
+    } else {
+      // This can happen when being called through the 'clear_pending_services'.
+      // In this case the service will be unlinked there.
+      ASSERT(!service->is_returned());
+    }
   }
 
   virtual T* type() = 0;
@@ -826,12 +970,7 @@ class ServiceContainer : public BleCallbackResource {
 class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManagerResource> {
  public:
   TAG(BlePeripheralManagerResource);
-  explicit BlePeripheralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
-      : ServiceContainer(group, PERIPHERAL_MANAGER)
-      , adapter_(adapter)
-      , advertising_params_({})
-      , advertising_started_(false)
-      , marked_for_deletion_(false) {}
+  explicit BlePeripheralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter);
 
   /// Deletes the peripheral manager resource.
   /// The resource may only get deleted when all children (services) have been
@@ -873,7 +1012,8 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     marked_for_deletion_ = true;
     stop();  // Always stop our activity, even if we can't fully shut down yet.
     delete_if_able();
@@ -918,10 +1058,8 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
-    auto device = static_cast<BleRemoteDeviceResource*>(resource);
-    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
-    device->_on_event(scope, event);
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_event(scope, event);
     return BLE_ERR_SUCCESS;
   }
 
@@ -932,10 +1070,8 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
-    auto device = static_cast<BleRemoteDeviceResource*>(resource);
-    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
-    device->_on_service_discovered(scope, error, service);
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_service_discovered(scope, error, service);
     return BLE_ERR_SUCCESS;
   }
 
@@ -943,7 +1079,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
   int connect(uint8 own_addr_type, ble_addr_t* addr) {
-    if (state_ == DELETABLE) return BLE_ERR_SUCCESS;  // Should never happen.
+    if (state_ == DELETABLE) return BLE_ERR_OPERATION_CANCELLED;  // Should never happen.
     // The 'connect' primitive ensured that the token is set.
     // NimBLE reports descriptive errors if we are already connecting or in another
     // bad state.
@@ -975,11 +1111,10 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     state_ = DELETABLE;
     // Clears all services that haven't been given to the user yet.
-    // We must be careful not to add new pending services, as there would be nothing
-    // deleting them anymore.
     clear_pending_services();
     delete_if_able();
   }
@@ -1081,7 +1216,7 @@ class BleAdapterResource : public BleResource, public Thread {
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
     state_ = CLOSED;
     delete_if_able();
   }
@@ -1164,8 +1299,13 @@ class BleAdapterResource : public BleResource, public Thread {
     return central_manager_;
   }
 
-  /// Clears the central_manager field.
-  /// This should only be called from the destructor of the central manager.
+  // Called in the constructor of the BleCentralManagerResource.
+  void set_central_manager(BleCentralManagerResource* manager) {
+    ASSERT(central_manager_ == null);
+    central_manager_ = manager;
+  }
+
+  // Called in the destructor of the BleCentralManagerResource.
   void remove_central_manager(BleCentralManagerResource* manager) {
     ASSERT(central_manager_ == manager);
     central_manager_ = null;
@@ -1176,8 +1316,13 @@ class BleAdapterResource : public BleResource, public Thread {
     return peripheral_manager_;
   }
 
-  /// Clears the peripheral_manager field.
-  /// This should only be called from the destructor of the peripheral manager.
+  // Called in the constructor of the BlePeripheralManagerResource.
+  void set_peripheral_manager(BlePeripheralManagerResource* manager) {
+    ASSERT(peripheral_manager_ == null);
+    peripheral_manager_ = manager;
+  }
+
+  // Called in the destructor of the BlePeripheralManagerResource.
   void remove_peripheral_manager(BlePeripheralManagerResource* manager) {
     ASSERT(peripheral_manager_ == manager);
     peripheral_manager_ = null;
@@ -1350,6 +1495,16 @@ uint32_t BleResourceGroup::on_event(Resource* resource, word data, uint32_t stat
   return state;
 }
 
+BleDescriptorResource::BleDescriptorResource(ResourceGroup* group,
+                                             BleCharacteristicResource* characteristic,
+                                             const ble_uuid_any_t& uuid, uint16 handle, int properties)
+    : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
+    , characteristic_(characteristic)
+    , properties_(properties) {
+  characteristic->add_descriptor(this);
+}
+
+
 BleDescriptorResource::~BleDescriptorResource() {
   characteristic_->remove_descriptor(this);
 }
@@ -1358,15 +1513,20 @@ BleServiceResource* BleDescriptorResource::service() {
   return characteristic_->service();
 }
 
+BleCharacteristicResource::BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
+                                                     const ble_uuid_any_t& uuid, uint16 properties, uint16 handle,
+                                                     uint16 definition_handle)
+    : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
+    , service_(service)
+    , properties_(properties)
+    , definition_handle_(definition_handle) {
+  service->add_characteristic(this);
+}
+
 BleCharacteristicResource::~BleCharacteristicResource() {
   while (!subscriptions_.is_empty()) {
     auto subscription = subscriptions_.remove_first();
     delete subscription;
-  }
-  while (!descriptors_.is_empty()) {
-    auto descriptor = descriptors_.first();
-    // Unregistering the descriptor will remove it from the list.
-    group()->unregister_resource(descriptor);
   }
   service_->remove_characteristic(this);
 }
@@ -1380,6 +1540,20 @@ uint16 BleCharacteristicResource::get_mtu() {
   }
   if (min_sub_mtu != -1) return min_sub_mtu;
   return service()->device()->get_mtu();
+}
+
+BleServiceResource::BleServiceResource(BleResourceGroup* group, BleRemoteDeviceResource* device,
+                                       const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
+    : BleServiceResource(group, uuid, start_handle, end_handle) {
+  device_ = device;
+  device->add_service(this);
+}
+
+BleServiceResource::BleServiceResource(BleResourceGroup* group, BlePeripheralManagerResource* peripheral_manager,
+                                       const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
+    : BleServiceResource(group, uuid, start_handle, end_handle) {
+  peripheral_manager_ = peripheral_manager;
+  peripheral_manager->add_service(this);
 }
 
 BleServiceResource::~BleServiceResource() {
@@ -1424,7 +1598,6 @@ ServiceContainer<T>::get_or_create_service(const BleCallbackScope* scope,
   }
   if (!service) return null;
   group()->register_resource(service);
-  services_.append(service);
   return service;
 }
 
@@ -1498,8 +1671,15 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic(
   }
   if (!characteristic) return null;
   group()->register_resource(characteristic);
-  characteristics_.append(characteristic);
   return characteristic;
+}
+
+BleCentralManagerResource::BleCentralManagerResource(BleResourceGroup* group,
+                                                     BleAdapterResource* adapter)
+    : BleCallbackResource(group, CENTRAL_MANAGER)
+    , adapter_(adapter)
+    , marked_for_deletion_(false) {
+  adapter_->set_central_manager(this);
 }
 
 BleCentralManagerResource::~BleCentralManagerResource() {
@@ -1564,6 +1744,16 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
       BleEventSource::instance()->on_event(this, kBleDiscovery);
     }
   }
+}
+
+BlePeripheralManagerResource::BlePeripheralManagerResource(BleResourceGroup* group,
+                                                           BleAdapterResource* adapter)
+    : ServiceContainer(group, PERIPHERAL_MANAGER)
+    , adapter_(adapter)
+    , advertising_params_({})
+    , advertising_started_(false)
+    , marked_for_deletion_(false) {
+  adapter_->set_peripheral_manager(this);
 }
 
 BlePeripheralManagerResource::~BlePeripheralManagerResource() {
@@ -1683,8 +1873,139 @@ BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const
   }
   if (!descriptor) return null;
   group()->register_resource(descriptor);
-  descriptors_.append(descriptor);
   return descriptor;
+}
+
+int ToitCallback::call_toit(BleCallbackScope& scope,
+                             BleReadWriteElement* element,
+                             word request_kind,
+                             ble_gatt_access_ctxt* ctxt) {
+  ASSERT(state_ == NO_CALLBACK);
+  // Signal a pending handler (if one exists) that it should produce data.
+  BleEventSource::instance()->on_event(element, request_kind);
+  state_ = WAITING_FOR_VALUE;
+  { Unlocker unlocker(scope.locker);
+    Locker locker(mutex_);
+    // Wait for the value, or the timeout.
+    // Due to the unlocker other BLE calls are allowed, but they might
+    // be blocked by us (the NimBLE thread) being stuck here. Due to the timeout,
+    // this can only be temporary.
+    OS::wait_us(condition_, 1000 * timeout_ms_);
+  }
+  int result = BLE_ERR_SUCCESS;
+  switch (state_) {
+    case NO_CALLBACK:
+      UNREACHABLE();
+    case WAITING_FOR_VALUE:
+      // The timeout triggered without any value.
+      result = BLE_ERR_OPERATION_CANCELLED;
+      break;
+    case VALUE_PENDING:
+      if (value_ != null) {
+        result = os_mbuf_appendfrom(ctxt->om,
+                                    value_,
+                                    0,
+                                    BleReadWriteElement::mbuf_total_len(value_));
+        os_mbuf_free(value_);
+        value_ = null;
+      } else {
+        // Empty response. Do nothing (but return with BLE_ERR_SUCCESS).
+      }
+      break;
+    case CANCELED:
+      result = BLE_ERR_OPERATION_CANCELLED;
+      break;
+  }
+  if (pending_deletion_) {
+    delete this;
+  }
+  return result;
+}
+
+void ToitCallback::delete_or_mark_for_deletion() {
+  if (pending_deletion_) return;
+  switch (state_) {
+    case NO_CALLBACK:
+      delete this;
+      return;
+    case WAITING_FOR_VALUE:
+      // Since a request is in progress, we can't delete the mutex and condition variable yet.
+      // We have to let the NimBLE thread do that. We need to wake the thread, though.
+      state_ = CANCELED;
+      pending_deletion_ = true;
+      { Locker callback_locker(mutex_);
+        OS::signal_all(condition_);
+      }
+      break;
+    case VALUE_PENDING:
+    case CANCELED:
+      // We don't need to signal the NimBLE thread anymore, but we need to
+      // mark ourselves.
+      pending_deletion_ = true;
+      break;
+  }
+}
+
+void ToitCallback::handle_reply(os_mbuf* new_value) {
+  ASSERT(value_ == null);
+  ASSERT(needs_value());
+  value_ = new_value;
+  state_ = VALUE_PENDING;
+  Locker callback_locker(mutex_);
+  OS::signal_all(condition_);
+}
+
+bool BleReadWriteElement::toit_callback_needs_value(bool for_read) const {
+  auto handler = for_read ? read_handler_ : write_handler_;
+  return handler != null && handler->needs_value();
+}
+
+bool BleReadWriteElement::toit_callback_init(int timeout_ms, bool for_read) {
+  auto handler = for_read ? read_handler_ : write_handler_;
+  ASSERT(handler == null);
+  auto mutex = OS::allocate_mutex(1, for_read ? "Read request" : "Write request");
+  if (!mutex) return false;
+  auto condition = OS::allocate_condition_variable(mutex);
+  if (!condition) {
+    OS::dispose(mutex);
+    return false;
+  }
+  auto callback = _new ToitCallback(timeout_ms, mutex, condition);
+  if (!callback) {
+    OS::dispose(condition);
+    OS::dispose(mutex);
+    return false;
+  }
+  if (for_read) {
+    read_handler_ = callback;
+  } else {
+    write_handler_ = callback;
+  }
+  return true;
+}
+
+void BleReadWriteElement::toit_callback_deinit(bool for_read) {
+  if (for_read) {
+    if (read_handler_ == null) return;
+    read_handler_->delete_or_mark_for_deletion();
+    read_handler_ = null;
+  } else {
+    if (write_handler_ == null) return;
+    write_handler_->delete_or_mark_for_deletion();
+    write_handler_ = null;
+  }
+}
+
+/// The Toit code gave us a value for the request.
+/// Signal the NimBLE thread that it should use it.
+void BleReadWriteElement::toit_callback_handle_reply(os_mbuf* mbuf, bool for_read) {
+  auto handler = for_read ? read_handler_ : write_handler_;
+  handler->handle_reply(mbuf);
+}
+
+bool BleReadWriteElement::toit_callback_is_setup(bool for_read) const {
+  auto handler = for_read ? read_handler_ : write_handler_;
+  return handler != null;
 }
 
 void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
@@ -1711,34 +2032,39 @@ void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
 int BleReadWriteElement::_on_access(BleCallbackScope& scope, ble_gatt_access_ctxt* ctxt) {
   switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-    case BLE_GATT_ACCESS_OP_READ_DSC:
-      if (mbuf_to_send() != null) {
-        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
-      } else {
-        BleEventSource::instance()->on_event(this, kBleDataReadRequest);
-        {
-          {
-            Unlocker unlocker(scope.locker);
-            Locker locker(read_request_mutex_);
-            if (!OS::wait_us(read_request_condition_, 1000 * read_timeout_ms_)) return BLE_ERR_OPERATION_CANCELLED;
-          }
-          if (read_request_mbuf_) {
-            int result = os_mbuf_appendfrom(ctxt->om, read_request_mbuf_, 0, mbuf_total_len(read_request_mbuf_));
-            os_mbuf_free(read_request_mbuf_);
-            read_request_mbuf_ = null;
-            return result;
-          } else {  // Empty response
-            return BLE_ERR_SUCCESS;
-          }
+    case BLE_GATT_ACCESS_OP_READ_DSC: {
+      auto callback = read_handler_;
+      if (callback == null) {
+        if (mbuf_to_send() != null) {
+          return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
+        } else {
+          // Complete without data.
+          return BLE_ERR_SUCCESS;
         }
+      } else {
+        // Note that 'call_toit' will release the BLE lock.
+        // It is thus unsafe to use 'this' after the call, as this instance might have
+        // been deleted in the meantime.
+        return callback->call_toit(scope, this, kBleDataReadRequest, ctxt);
       }
       break;
+    }
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
-    case BLE_GATT_ACCESS_OP_WRITE_DSC:
+    case BLE_GATT_ACCESS_OP_WRITE_DSC: {
       set_mbuf_received(ctxt->om);
       ctxt->om = null;
-      BleEventSource::instance()->on_event(this, kBleDataReceived);
+      auto callback = write_handler_;
+      if (callback == null) {
+        // Notify any 'read' function that there is data.
+        BleEventSource::instance()->on_event(this, kBleDataReceived);
+      } else {
+        // Note that 'call_toit' will release the BLE lock.
+        // It is thus unsafe to use 'this' after the call, as this instance might have
+        // been deleted in the meantime.
+        return callback->call_toit(scope, this, kBleDataWriteRequest, ctxt);
+      }
       break;
+    }
     default:
       // Unhandled event, no dispatching.
       return 0;
@@ -2283,15 +2609,8 @@ PRIMITIVE(disconnect) {
 PRIMITIVE(release_resource) {
   ARGS(BleResource, resource)
 
-
-  if (resource->kind() != BleResource::ADAPTER) {
-    Locker locker(resource->group()->mutex());
-    resource->resource_group()->unregister_resource(resource);
-  } else {
-    // The adapter resource shuts down the NimBLE thread. It must allow the
-    // thread to take the BLE lock. As such we can't take the BLE lock here.
-    resource->resource_group()->unregister_resource(resource);
-  }
+  // We don't take the lock while calling unregister.
+  resource->resource_group()->unregister_resource(resource);
 
   resource_proxy->clear_external_address();
 
@@ -2521,13 +2840,13 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, flush, bool, allow_retry)
+  ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, allow_retry)
 
   Locker locker(element->group()->mutex());
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
-  if (with_response || flush) {
+  if (with_response) {
     if (!element->ensure_token()) FAIL(ALLOCATION_FAILED);
   }
 
@@ -2545,7 +2864,7 @@ PRIMITIVE(write_value) {
   if (error) return error;
 
   int err;
-  if (with_response || flush) {
+  if (with_response) {
     err = ble_gattc_write_long(
         element->service()->device()->handle(),
         element->handle(),
@@ -2574,7 +2893,7 @@ PRIMITIVE(write_value) {
     return nimble_stack_error(process, err);
   }
 
-  return Smi::from((with_response || flush) ? 1 : 0);
+  return Smi::from(with_response ? 1 : 0);
 }
 
 PRIMITIVE(handle) {
@@ -2817,7 +3136,7 @@ PRIMITIVE(add_service) {
 
 PRIMITIVE(add_characteristic) {
   ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties,
-       int, permissions, Object, value, int, read_timeout_ms)
+       int, permissions, Object, value)
 
   Locker locker(service_resource->group()->mutex());
 
@@ -2876,11 +3195,6 @@ PRIMITIVE(add_characteristic) {
 
   if (om != null) {
     characteristic->set_mbuf_to_send(om);
-  } else {
-    if (!characteristic->setup_callback_readable_characteristic(read_timeout_ms)) {
-      delete characteristic;
-      FAIL(MALLOC_FAILED);
-    }
   }
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all characteristics are automatically returned. It is more consistent this way, though.
@@ -3180,16 +3494,44 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(read_request_reply) {
-  ARGS(BleCharacteristicResource, characteristic, Object, value)
+PRIMITIVE(toit_callback_init) {
+  ARGS(BleCharacteristicResource, characteristic, int, timeout_ms, bool, for_read)
 
   Locker locker(characteristic->group()->mutex());
+
+  if (timeout_ms < 0 || timeout_ms > 2500) FAIL(INVALID_ARGUMENT);
+  if (characteristic->toit_callback_is_setup(for_read)) FAIL(ALREADY_IN_USE);
+  if (!characteristic->toit_callback_init(timeout_ms, for_read)) FAIL(MALLOC_FAILED);
+  return process->null_object();
+}
+
+PRIMITIVE(toit_callback_deinit) {
+  ARGS(BleCharacteristicResource, characteristic, bool, for_read)
+
+  Locker locker(characteristic->group()->mutex());
+
+  if (!characteristic->toit_callback_is_setup(for_read)) {
+    return process->null_object();
+  }
+  characteristic->toit_callback_deinit(for_read);
+  return process->null_object();
+}
+
+PRIMITIVE(toit_callback_reply) {
+  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, for_read)
+
+  Locker locker(characteristic->group()->mutex());
+
+  // We might throw if the callback is too late.
+  if (!characteristic->toit_callback_needs_value(for_read)) FAIL(INVALID_STATE);
+
+  if (!for_read && value != process->null_object()) FAIL(INVALID_ARGUMENT);
 
   os_mbuf* mbuf = null;
   Object* error = object_to_mbuf(process, value, &mbuf);
   if (error) return error;
 
-  characteristic->handle_read_reply_request(mbuf);
+  characteristic->toit_callback_handle_reply(mbuf, for_read);
 
   return process->null_object();
 }

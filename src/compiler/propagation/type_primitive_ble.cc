@@ -57,8 +57,10 @@ TYPE_PRIMITIVE_ANY(get_att_mtu)
 TYPE_PRIMITIVE_ANY(set_preferred_mtu)
 TYPE_PRIMITIVE_ANY(get_error)
 TYPE_PRIMITIVE_ANY(clear_error)
-TYPE_PRIMITIVE_ANY(read_request_reply)
 TYPE_PRIMITIVE_ANY(get_bonded_peers)
+TYPE_PRIMITIVE_ANY(toit_callback_init)
+TYPE_PRIMITIVE_ANY(toit_callback_deinit)
+TYPE_PRIMITIVE_ANY(toit_callback_reply)
 
 }  // namespace toit::compiler
 }  // namespace toit

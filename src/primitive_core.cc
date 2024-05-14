@@ -1947,10 +1947,15 @@ PRIMITIVE(process_send) {
   if (message == null) FAIL(MALLOC_FAILED);
 
   // One of the calls below takes over the SystemMessage.
-  scheduler_err_t result = (process_id >= 0)
+  message_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
   return BOOL(result == MESSAGE_OK);
+}
+
+PRIMITIVE(pid_for_external_id) {
+  ARGS(String, id)
+  return Smi::from(pid_for_external_id(id));
 }
 
 Object* MessageEncoder::create_error_object(Process* process) {

@@ -40,10 +40,10 @@ const pcnt_channel_t kInvalidChannel = static_cast<pcnt_channel_t>(-1);
 #error "SOC_PCNT_UNITS_PER_GROUP not defined"
 #endif
 
-ResourcePool<pcnt_unit_t, kInvalidUnitId> pcnt_unit_ids(
+static ResourcePool<pcnt_unit_t, kInvalidUnitId> pcnt_unit_ids(
     PCNT_UNIT_0, PCNT_UNIT_1, PCNT_UNIT_2, PCNT_UNIT_3
 #if SOC_PCNT_UNITS_PER_GROUP > 4
-    , PCNT_UNIT_4, PCNT_UNIT_5, PCNT_UNIT_6, PCNT_UNIT_7
+  , PCNT_UNIT_4, PCNT_UNIT_5, PCNT_UNIT_6, PCNT_UNIT_7
 #endif
 );
 

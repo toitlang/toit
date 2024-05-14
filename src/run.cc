@@ -19,6 +19,7 @@
 #include "top.h"
 #include "run.h"
 #include "interpreter.h"
+#include "messaging.h"
 #include "scheduler.h"
 #include "vm.h"
 #include "os.h"
@@ -63,6 +64,7 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
+      create_and_start_external_message_handlers(&vm);
       ProgramImage boot_image = read_image_from_bundle(boot_bundle);
       int group_id = vm.scheduler()->next_group_id();
       if (boot_image.is_valid()) {
@@ -98,4 +100,3 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
 }
 
 } // namespace toit
-
