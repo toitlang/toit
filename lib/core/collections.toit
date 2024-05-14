@@ -302,22 +302,22 @@ abstract class List extends CollectionBase:
     collection.do: this[index++] = it
 
   /**
-  Insert a value at the given index.
+  Inserts the given $alue at the given index.
   It is valid to insert at the $size position, in which case this is
     equivalent to $add.
   If n is the distance to the end of the list, the operation
     runs in `O(n)` and is thus not efficient for insertions that are not near
     the end of the list.
   */
-  insert-at index/int value/any -> none:
+  insert --at/int value/any -> none:
     sz := size
-    if index == sz:
+    if at == sz:
       add value
       return
-    if not 0 <= index < sz: throw "OUT_OF_BOUNDS"
+    if not 0 <= at < sz: throw "OUT_OF_BOUNDS"
     add value  // Will soon be overwritten.
-    replace (index + 1) this index sz
-    this[index] = value
+    replace (at + 1) this at sz
+    this[at] = value
 
   /**
   Removes the last element of this instance.
@@ -342,10 +342,10 @@ abstract class List extends CollectionBase:
   remove needle -> none:
     i := 0
     while i < size and this[i] != needle: i++
-    if i != size: remove-at i
+    if i != size: remove --at=i
 
   /**
-  Remove a value at the given index.
+  Removes the value at the given index.
   It is valid to remove at the $size - 1 position, in which case this is
     equivalent to $remove-last.
   If n is the distance to the end of the list, the operation
@@ -353,10 +353,10 @@ abstract class List extends CollectionBase:
     the end of the list.
   Returns the value that was removed.
   */
-  remove-at index/int -> any:
-    result := this[index]
-    if index != size - 1:
-      replace index this (index + 1) size
+  remove --at/int -> any:
+    result := this[at]
+    if at != size - 1:
+      replace at this (at + 1) size
     resize size - 1
     return result
 
@@ -3369,7 +3369,7 @@ class Deque extends List implements Collection:
     return Deque.from backing_[first_ + from .. first_ + to]
 
   /**
-  Insert a value at the given index.
+  Inserts the given $value at the given index.
   It is valid to insert at the $size position, in which case this is
     equivalent to $add.  It is also valid to add at the zero position,
     in which case this is equivalent to $add-first.
@@ -3377,22 +3377,22 @@ class Deque extends List implements Collection:
     runs in `O(n)` and is thus not efficient for insertions that are not near
     the start or end of the deque.
   */
-  insert-at index/int value -> none:
+  insert --at/int value -> none:
     sz := size
-    if index < 0 or index > sz: throw "OUT_OF_BOUNDS"
-    if index >= sz >> 1:
-      backing_.insert-at (index + first_) value
+    if at < 0 or at > sz: throw "OUT_OF_BOUNDS"
+    if at >= sz >> 1:
+      backing_.insert --at=(at + first_) value
     else:
       add-first value
-      if index != 0:
+      if at != 0:
         // Need to move down the elements.
         first := first_  // This is the decremented value after the add.
-        index += first
-        backing_.replace first backing_ (first + 1) (index + 1)
-        backing_[index] = value
+        at += first
+        backing_.replace first backing_ (first + 1) (at + 1)
+        backing_[at] = value
 
   /**
-  Remove a value at the given index.
+  Removes the value at the given index.
   It is valid to remove at the $size - 1 position, in which case this is
     equivalent to $remove-last.  It is also valid to remove at the zero
     position, in which case this is equivalent to $remove-first.
@@ -3401,18 +3401,18 @@ class Deque extends List implements Collection:
     the start or end of the deque.
   Returns the value that was removed.
   */
-  remove-at index/int -> any:
+  remove --at/int -> any:
     last := size - 1
-    if index < 0 or index > last: throw "OUT_OF_BOUNDS"
-    if index >= last >> 1:
-      return backing_.remove-at (first_ + index)
+    if at < 0 or at > last: throw "OUT_OF_BOUNDS"
+    if at >= last >> 1:
+      return backing_.remove --at=(first_ + at)
     removed := remove-first
-    if index == 0: return removed
+    if at == 0: return removed
     // Need to move up the elements.
     first := first_  // This is the incremented value after the remove-first.
-    index += first
-    result := backing_[index - 1]
-    backing_.replace (first + 1) backing_ first (index - 1)
+    at += first
+    result := backing_[at - 1]
+    backing_.replace (first + 1) backing_ first (at - 1)
     backing_[first] = removed
     return result
 

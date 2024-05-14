@@ -97,20 +97,20 @@ test-deque:
 test-at list:
   expect-equals 0 list.size
   expect-equals "[]" list.stringify
-  expect-throws "OUT_OF_BOUNDS": list[0]
-  expect-throws "OUT_OF_BOUNDS": list.remove-last
-  expect-throws "OUT_OF_BOUNDS": list.remove-at 0
-  expect-throws "OUT_OF_BOUNDS": list.remove-at -1
-  expect-throws "OUT_OF_BOUNDS": list.remove-at 1
-  expect-throws "OUT_OF_BOUNDS": list.insert-at -1 "foo"
-  expect-throws "OUT_OF_BOUNDS": list.insert-at 1 "foo"
+  expect-throw "OUT_OF_BOUNDS": list[0]
+  expect-throw "OUT_OF_BOUNDS": list.remove-last
+  expect-throw "OUT_OF_BOUNDS": list.remove-at 0
+  expect-throw "OUT_OF_BOUNDS": list.remove-at -1
+  expect-throw "OUT_OF_BOUNDS": list.remove-at 1
+  expect-throw "OUT_OF_BOUNDS": list.insert-at -1 "foo"
+  expect-throw "OUT_OF_BOUNDS": list.insert-at 1 "foo"
   list.insert-at 0 "foo"
   expect-equals 1 list.size
   expect-equals "[foo]" list.stringify
-  expect-throws "OUT_OF_BOUNDS": list.remove-at -1
-  expect-throws "OUT_OF_BOUNDS": list.remove-at 1
-  expect-throws "OUT_OF_BOUNDS": list.insert-at -1 "bar"
-  expect-throws "OUT_OF_BOUNDS": list.insert-at 2 "bar"
+  expect-throw "OUT_OF_BOUNDS": list.remove-at -1
+  expect-throw "OUT_OF_BOUNDS": list.remove-at 1
+  expect-throw "OUT_OF_BOUNDS": list.insert-at -1 "bar"
+  expect-throw "OUT_OF_BOUNDS": list.insert-at 2 "bar"
   expect-equals "foo" (list.remove-at 0)
   expect-equals 0 list.size
   expect-equals "[]" list.stringify
@@ -211,8 +211,3 @@ test-copy:
   d2.remove-first
   expect-equals "[1, 42]" d.stringify
   expect-equals "[103, 3]" d2.stringify
-
-expect-throws name [code]:
-  expect-equals
-    name
-    catch code
