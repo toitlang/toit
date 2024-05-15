@@ -8,6 +8,7 @@
 extern "C" {
 #else
 #include <stdbool.h>
+#include <stddef.h>
 #endif
 
 /*
@@ -221,6 +222,16 @@ toit_err_t toit_msg_request_fail(toit_msg_request_handle_t handle, const char* e
  * @return toit_err_t The result of the call.
  */
 toit_err_t toit_gc();
+
+/**
+ * @brief A wrapper around `malloc` that calls `toit_gc` if `malloc` fails.
+ *
+ * If `malloc` fails, this function calls `toit_gc` and then retries the allocation.
+ *
+ * @param size The size of the memory to allocate.
+ * @return void* A pointer to the allocated memory, or `NULL` if the allocation failed.
+ */
+void* toit_malloc(size_t size);
 
 #ifdef __cplusplus
 }

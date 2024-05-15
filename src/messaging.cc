@@ -1153,4 +1153,11 @@ toit_err_t toit_gc() {
   return TOIT_ERR_SUCCESS;
 }
 
+void* toit_malloc(size_t size) {
+  void* ptr = malloc(size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return malloc(size);
+}
+
 } // Extern C.
