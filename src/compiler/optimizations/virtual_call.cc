@@ -54,11 +54,14 @@ static Opcode opcode_for(Selector<CallShape> selector) {
 
 /// Transforms virtual calls into static calls (when possible).
 /// Transforms virtual getters/setters into field accesses (when possible).
+/// The 'direct_queryables' map only contains methods that are known to be "good"
+///   if a receiver has the given type. That is, methods that are overwritten have
+///   been removed from it.
 Expression* optimize_virtual_call(CallVirtual* node,
                                   Class* holder,
                                   Method* method,
                                   UnorderedSet<Symbol>& field_names,
-                                  UnorderedMap<Class*, QueryableClass>& queryables) {
+                                  UnorderedMap<Class*, QueryableClass>& direct_queryables) {
   auto dot = node->target();
   auto receiver = dot->receiver();
 
@@ -71,7 +74,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
     // change a virtual call to a static one, but it requires more work.
     if (holder->is_mixin()) return node;
 
-    auto queryable = queryables.at(holder);
+    auto queryable = direct_queryables.at(holder);
     direct_method = queryable.lookup(selector);
   } else {
     Type guaranteed_type = compute_guaranteed_type(receiver, holder, method);
@@ -81,7 +84,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
         // For simplicity, don't optimize mixins. There are some cases where we could
         // change a virtual call to a static one, but it requires more work.
         && !guaranteed_type.klass()->is_mixin()) {
-      auto queryable = queryables.at(guaranteed_type.klass());
+      auto queryable = direct_queryables.at(guaranteed_type.klass());
       direct_method = queryable.lookup(selector);
     }
 
