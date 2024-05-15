@@ -59,10 +59,6 @@ Expression* optimize_virtual_call(CallVirtual* node,
                                   Method* method,
                                   UnorderedSet<Symbol>& field_names,
                                   UnorderedMap<Class*, QueryableClass>& queryables) {
-  // For simplicity, don't optimize mixins. There are some cases where we could
-  // change a virtual call to a static one, but it requires more work.
-  if (holder != null && holder->is_mixin()) return node;
-
   auto dot = node->target();
   auto receiver = dot->receiver();
 
@@ -71,14 +67,20 @@ Expression* optimize_virtual_call(CallVirtual* node,
   Opcode opcode = opcode_for(selector);
 
   if (is_This(receiver, holder, method)) {
+    // For simplicity, don't optimize mixins. There are some cases where we could
+    // change a virtual call to a static one, but it requires more work.
+    if (holder->is_mixin()) return node;
+
     auto queryable = queryables.at(holder);
     direct_method = queryable.lookup(selector);
   } else {
     Type guaranteed_type = compute_guaranteed_type(receiver, holder, method);
     if (guaranteed_type.is_valid()
         && !guaranteed_type.is_nullable()
-        && guaranteed_type.klass()->is_instantiated()
-        && !guaranteed_type.klass()->is_interface()) {
+        && !guaranteed_type.klass()->is_interface()
+        // For simplicity, don't optimize mixins. There are some cases where we could
+        // change a virtual call to a static one, but it requires more work.
+        && !guaranteed_type.klass()->is_mixin()) {
       auto queryable = queryables.at(guaranteed_type.klass());
       direct_method = queryable.lookup(selector);
     }
