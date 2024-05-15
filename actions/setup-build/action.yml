@@ -28,15 +28,6 @@ runs:
         echo "Use ccache: ${{ inputs.use-ccache }}"
         echo "Cache key prefix: ${{ inputs.cache-key-prefix }}"
 
-    - name: ESP platform check
-      if: inputs.esp32 == 'true' && runner.os != 'Linux'
-      shell: bash
-      run: |
-        echo ${{ inputs.esp32 == 'true' }}
-        echo ${{ runner.os }}
-        echo "ESP32 build is only available on Linux."
-        exit 1
-
     - name: Fetch tags
       shell: bash
       run: |
@@ -124,20 +115,30 @@ runs:
       # is no match (which should almost always be the case).
       with:
         path: /home/runner/.espressif
-        key: ${{inputs.cache-key-prefix}}-espressif-${{ steps.sha-hashes.outputs.espressif_sha }}
-        restore-keys: ${{inputs.cache-key-prefix}}-espressif-
+        key: ${{inputs.cache-key-prefix}}-${{ runner.os }}-espressif-${{ steps.sha-hashes.outputs.espressif_sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-${{ runner.os }}-espressif-
 
     - name: Set up Python modules for MbedTLS
       shell: bash
       run: |
         pip install jsonschema jinja2
 
-    - name: Install ESP32 tools
-      if: inputs.esp32 == 'true'
+    - name: Install ESP32 tools - Linux, macOS
+      if: inputs.esp32 == 'true' && runner.os != 'Windows'
       shell: bash
       run: |
-        sh ${{inputs.toit-dir}}/third_party/esp-idf/install.sh
+        ${{inputs.toit-dir}}/third_party/esp-idf/install.sh
         source ${{inputs.toit-dir}}/third_party/esp-idf/export.sh
+        # Install the MbedTLS dependencies in the sourced Python environment.
+        pip install jsonschema jinja2
+
+    - name: Install ESP32 tools - Windows
+      if: inputs.esp32 == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        ${{inputs.toit-dir}}/third_party/esp-idf/install.ps1
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
+        ./export.ps1
         # Install the MbedTLS dependencies in the sourced Python environment.
         pip install jsonschema jinja2
 
