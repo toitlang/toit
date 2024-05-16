@@ -67,7 +67,7 @@ class Client:
   /** Helper to convert the $message to a string or ByteArray. */
   encode-message_ message/io.Data --copy/bool -> io.Data:
     bytes/ByteArray := ?
-    if message is string and message is not StringSlice_:
+    if message is string:
       return message
     if not copy and message is ByteArray:
       return message
