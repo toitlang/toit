@@ -21,7 +21,7 @@ extern "C" {
  * @brief Toit error constants.
  */
 typedef enum {
-  TOIT_OK = 0,        /*!< The operation succeeded (no error). */
+  TOIT_OK = 0,                 /*!< The operation succeeded (no error). */
   TOIT_ERR_OOM,                /*!< Out of memory. */
   TOIT_ERR_NO_SUCH_RECEIVER,   /*!< The receiver of a system message didn't exist. */
   TOIT_ERR_NOT_FOUND,          /*!< The corresponding resource was not found. */
