@@ -180,16 +180,19 @@ bool MessageEncoder::encode_any(Object* object) {
       return encode_list(instance, 0, Smi::value(size));
     } else if (class_id == program->list_slice_class_id()) {
       Object* list = instance->at(Instance::LIST_SLICE_LIST_INDEX);
+      if (!is_array(list)) {
+        if (!is_instance(list)) return false;
+        Instance* list_instance = Instance::cast(list);
+        if (list_instance->class_id() != program->list_class_id()) {
+          return false;
+        }
+      }
       Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
       Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
       if (!is_smi(from_object) || !is_smi(to_object)) return false;
       word from = Smi::value(from_object);
       word to = Smi::value(to_object);
       if (is_array(list)) return encode_array(Array::cast(list), from, to);
-      Smi* perhaps_list_class_id = list->class_id();
-      if (perhaps_list_class_id != program->list_class_id()) {
-        return false;
-      }
       return encode_list(Instance::cast(list), from, to);
     } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
