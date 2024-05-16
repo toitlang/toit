@@ -62,8 +62,8 @@ typedef toit_err_t (*toit_msg_on_created_cb_t)(void* user_data, toit_msg_context
  * service) to this service.
  *
  * The data is owned by the receiver and must be freed.
- * If the Toit side sent a string, then the data is guaranteed to be null-terminated. The
- * length does *not* include the null-terminator.
+ * If the Toit side sent a string, then the data is guaranteed to be 0-terminated. The
+ * length does *not* include the 0-terminator.
  *
  * @param user_data The user data passed to `toit_msg_add_handler`.
  * @param sender The PID of the sender.
@@ -87,8 +87,8 @@ typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, uint
  * It is an error to not reply to the request, or to reply more than once.
  *
  * The data is owned by the receiver and must be freed.
- * If the Toit side sent a string, then the data is guaranteed to be null-terminated. The
- * length does *not* include the null-terminator.
+ * If the Toit side sent a string, then the data is guaranteed to be 0-terminated. The
+ * length does *not* include the 0-terminator.
  *
  * @param user_data The user data passed to `toit_msg_add_handler`.
  * @param sender The PID of the sender.
