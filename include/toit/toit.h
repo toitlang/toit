@@ -250,7 +250,8 @@ void* toit_malloc(size_t size);
  *
  * If `calloc` fails, this function calls `toit_gc` and then retries the allocation.
  *
- * @param size The size of the memory to allocate.
+ * @param nmemb The number of elements to allocate.
+ * @param size The size of each element.
  * @return void* A pointer to the allocated memory, or `NULL` if the allocation failed.
  */
 void* toit_calloc(size_t nmemb, size_t size);
