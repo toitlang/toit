@@ -80,11 +80,10 @@ static void __attribute__((constructor)) init2() {
   test_service_t* test_service = (test_service_t*)malloc(sizeof(test_service_t));
   test_service->id = 1;
   test_service->msg_context = NULL;
-  toit_msg_cbs_t cbs = {
-    .on_created = on_created,
-    .on_message = on_message,
-    .on_rpc_request = on_rpc_request,
-    .on_removed = on_removed,
-  };
+  toit_msg_cbs_t cbs = TOIT_MSG_EMPTY_CBS();
+  cbs.on_created = on_created;
+  cbs.on_message = on_message;
+  cbs.on_rpc_request = on_rpc_request;
+  cbs.on_removed = on_removed;
   toit_msg_add_handler("toit.io/external-test1", test_service, cbs);
 }
