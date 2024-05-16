@@ -990,7 +990,7 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
   void on_message(int pid, int type, void* data, int length) override {
     if (callbacks_.on_message == null) return;
     if (type != SYSTEM_EXTERNAL_NOTIFICATION) return;
-    callbacks_.on_message(user_context_, pid, data, length);
+    callbacks_.on_message(user_context_, pid, unvoid_cast<uint8_t*>(data), length);
   }
 
   message_err_t send_with_err(int pid, int type, void* data, word length, bool free_on_failure) {
@@ -1006,7 +1006,7 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
       .request_handle = id,
       .context = as_msg_context()
     };
-    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, data, length);
+    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, unvoid_cast<uint8_t*>(data), length);
   }
 
   toit_msg_context_t* as_msg_context() {
@@ -1092,8 +1092,8 @@ extern "C" {
 // Functions that are exported through Toit's C API.
 
 toit_err_t toit_msg_add_handler(const char* id,
-                                             void* user_context,
-                                             toit_msg_cbs_t cbs) {
+                                void* user_context,
+                                toit_msg_cbs_t cbs) {
   auto old = toit::registered_message_handlers;
   auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
       malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
@@ -1131,7 +1131,7 @@ static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
 
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            int target_pid,
-                           void* data, int length,
+                           uint8_t* data, int length,
                            bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
@@ -1145,7 +1145,7 @@ toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const cha
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* data, int length, bool free_on_failure) {
+toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, uint8_t* data, int length, bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
   return message_err_to_toit_err(err);
@@ -1155,6 +1155,13 @@ toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* da
 toit_err_t toit_gc() {
   toit::VM::current()->scheduler()->gc(NULL, true, true);
   return TOIT_ERR_SUCCESS;
+}
+
+void* toit_malloc(size_t size) {
+  void* ptr = malloc(size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return malloc(size);
 }
 
 } // Extern C.
