@@ -186,6 +186,10 @@ bool MessageEncoder::encode_any(Object* object) {
       word from = Smi::value(from_object);
       word to = Smi::value(to_object);
       if (is_array(list)) return encode_array(Array::cast(list), from, to);
+      Smi* perhaps_list_class_id = list->class_id();
+      if (perhaps_list_class_id != program->list_class_id()) {
+        return false;
+      }
       return encode_list(Instance::cast(list), from, to);
     } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
