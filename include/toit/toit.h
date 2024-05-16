@@ -122,6 +122,16 @@ typedef struct toit_msg_cbs_t {
 } toit_msg_cbs_t;
 
 /**
+ * @brief Macro to create an empty set of message handler callbacks.
+ */
+#define TOIT_MSG_EMPTY_CBS() { \
+  .on_created = NULL, \
+  .on_message = NULL, \
+  .on_rpc_request = NULL, \
+  .on_removed = NULL, \
+}
+
+/**
  * @brief Add a message handler for this service.
  *
  * This function must be called *before* the Toit system is started.
