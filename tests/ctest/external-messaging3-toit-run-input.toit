@@ -22,7 +22,9 @@ main:
     "foobar" * 1000,
     "foo"[3..],
     "foobar"[3..],
+    ("foobar" * 1000)[1..],
   ]
   strings.do: | str/string |
     response/ByteArray := client.request 0 str
+    expect-equals (str.size + 1) response.size
     expect-equals 0 response.last
