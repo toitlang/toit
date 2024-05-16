@@ -245,6 +245,27 @@ toit_err_t toit_gc();
  */
 void* toit_malloc(size_t size);
 
+/**
+ * @brief A wrapper around `calloc` that calls `toit_gc` if `calloc` fails.
+ *
+ * If `calloc` fails, this function calls `toit_gc` and then retries the allocation.
+ *
+ * @param size The size of the memory to allocate.
+ * @return void* A pointer to the allocated memory, or `NULL` if the allocation failed.
+ */
+void* toit_calloc(size_t nmemb, size_t size);
+
+/**
+ * @brief A wrapper around `realloc` that calls `toit_gc` if `realloc` fails.
+ *
+ * If `realloc` fails, this function calls `toit_gc` and then retries the allocation.
+ *
+ * @param ptr The pointer to the memory to reallocate.
+ * @param size The size of the memory to allocate.
+ * @return void* A pointer to the allocated memory, or `NULL` if the allocation failed.
+ */
+void* toit_realloc(void* ptr, size_t size);
+
 #ifdef __cplusplus
 }
 #endif
