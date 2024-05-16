@@ -1708,6 +1708,7 @@ PRIMITIVE(array_replace) {
   if (index < 0 || from < 0 || from > to || to > source_length) FAIL(OUT_OF_BOUNDS);
   word len = to - from;
   if (index + len > dest_length) FAIL(OUT_OF_BOUNDS);
+  if (dest != source) GcMetadata::insert_into_remembered_set(dest);
   memmove(dest->content() + index * WORD_SIZE,
           source->content() + from * WORD_SIZE,
           len * WORD_SIZE);
