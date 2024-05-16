@@ -1093,7 +1093,7 @@ toit_err_t toit_msg_add_handler(const char* id,
   auto old = toit::registered_message_handlers;
   auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
       malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
-  if (list == null) FATAL("[OOM during external process setup]");
+  if (list == null) return TOIT_ERR_OOM;
   list->next = old;
   list->registered_handler.id = id;
   list->registered_handler.user_context = user_context;
