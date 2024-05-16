@@ -5,10 +5,12 @@
 #pragma once
 
 #ifdef __cplusplus
+#include <cstdint>
 extern "C" {
 #else
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #endif
 
 /*
@@ -67,7 +69,7 @@ typedef toit_err_t (*toit_msg_on_created_cb_t)(void* user_data, toit_msg_context
  * @param length The length of the data.
  * @return toit_err_t The result of the callback. Must be `TOIT_ERR_SUCCESS`.
  */
-typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, void* data, int length);
+typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, uint8_t* data, int length);
 
 /**
  * @brief Callback type for when an RPC request is received.
@@ -96,7 +98,7 @@ typedef toit_err_t (*toit_msg_on_request_cb_t)(void* user_data,
                                                int sender,
                                                int function,
                                                toit_msg_request_handle_t rpc_handle,
-                                               void* data, int length);
+                                               uint8_t* data, int length);
 
 /**
  * @brief Callback type for when the message handler is removed.
@@ -179,7 +181,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context);
  */
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            int target_pid,
-                           void* data, int length,
+                           uint8_t* data, int length,
                            bool free_on_failure);
 
 /**
@@ -198,7 +200,7 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
  * @param free_on_failure Whether to free the data if the message cannot be sent.
  * @return toit_err_t The result of the call.
  */
-toit_err_t toit_msg_request_reply(toit_msg_request_handle_t handle, void* data, int length, bool free_on_failure);
+toit_err_t toit_msg_request_reply(toit_msg_request_handle_t handle, uint8_t* data, int length, bool free_on_failure);
 
 /**
  * @brief Fail an RPC request.
