@@ -1131,19 +1131,33 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
-  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
+  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->send_with_err(target_pid, type, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
 toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const char* error) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  }
   return message_err_to_toit_err(err);
 }
 
 toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, uint8_t* data, int length, bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
-  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
+  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
