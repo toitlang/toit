@@ -1700,7 +1700,7 @@ PRIMITIVE(array_expand) {
   return new_array;
 }
 
-// Memcpy betwen arrays.
+// Memmove between arrays.
 PRIMITIVE(array_replace) {
   ARGS(Array, dest, word, index, Array, source, word, from, word, to);
   word dest_length = dest->length();
@@ -1708,7 +1708,11 @@ PRIMITIVE(array_replace) {
   if (index < 0 || from < 0 || from > to || to > source_length) FAIL(OUT_OF_BOUNDS);
   word len = to - from;
   if (index + len > dest_length) FAIL(OUT_OF_BOUNDS);
-  if (dest != source) GcMetadata::insert_into_remembered_set(dest);
+  // Our write barrier is only there to record the presence of pointers
+  // from old-space to new-space, and the resolution is per-object.  If
+  // there were no pointers from old-space to new-space then an intra-
+  // array copy is not going to create any.
+  if (len != 0 && dest != source) GcMetadata::insert_into_remembered_set(dest);
   memmove(dest->content() + index * WORD_SIZE,
           source->content() + from * WORD_SIZE,
           len * WORD_SIZE);
