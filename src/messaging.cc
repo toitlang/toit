@@ -697,7 +697,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   return result;
 }
 
-bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
+bool MessageDecoder::decode_external_data(void** data, word* length) {
   if (decoding_tison()) return false;
   int tag = read_uint8();
   if (tag == TAG_BYTE_ARRAY) {
@@ -715,6 +715,22 @@ bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
       return false;
     }
     memcpy(copy, &buffer_[cursor_], encoded_length);
+    *data = copy;
+    return true;
+  } else if (tag == TAG_STRING) {
+    *length = read_cardinal();
+    *data = read_pointer();
+    return true;
+  } else if (tag == TAG_STRING_INLINE) {
+    int encoded_length = *length = read_cardinal();
+    char* copy = unvoid_cast<char*>(malloc(encoded_length + 1));
+    if (copy == null) {
+      mark_allocation_failed();
+      return false;
+    }
+    memcpy(copy, &buffer_[cursor_], encoded_length);
+    copy[encoded_length] = '\0';
+    *length = encoded_length;  // Exclude the '\0'.
     *data = copy;
     return true;
   }
@@ -737,7 +753,7 @@ bool MessageDecoder::decode_rpc_request_external(int* id, int* name, void** data
   if (tag != TAG_POSITIVE_SMI) return false;
   *name = read_cardinal();
   if (overflown()) return false;
-  return decode_byte_array_external(data, length);
+  return decode_external_data(data, length);
 }
 
 Object* MessageDecoder::decode_double() {
@@ -914,7 +930,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       if (type == SYSTEM_RPC_REQUEST && supports_rpc_requests()) {
         success = decoder.decode_rpc_request_external(&id, &name, &data, &length);
       } else {
-        success = decoder.decode_byte_array_external(&data, &length);
+        success = decoder.decode_external_data(&data, &length);
       }
       if (success && length > INT_MAX) {
         abort();
