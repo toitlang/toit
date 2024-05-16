@@ -1160,4 +1160,18 @@ void* toit_malloc(size_t size) {
   return malloc(size);
 }
 
+void* toit_calloc(size_t nmemb, size_t size) {
+  void* ptr = calloc(nmemb, size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return calloc(nmemb, size);
+}
+
+void* toit_realloc(void* ptr, size_t size) {
+  void* new_ptr = realloc(ptr, size);
+  if (new_ptr != NULL) return new_ptr;
+  toit_gc();
+  return realloc(ptr, size);
+}
+
 } // Extern C.
