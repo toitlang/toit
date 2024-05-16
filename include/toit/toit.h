@@ -153,7 +153,9 @@ typedef struct toit_msg_cbs_t {
  * @param id The unique identifier for the message handler.
  * @param user_data The user data to pass to the callbacks.
  * @param cbs The callbacks for the message handler.
- * @return toit_err_t The result of adding the message handler.
+ * @return toit_err_t
+ *     - TOIT_OK: The message handler was added successfully.
+ *     - TOIT_ERR_OOM: Out of memory.
  */
 toit_err_t toit_msg_add_handler(const char* id,
                                 void* user_data,
@@ -165,7 +167,9 @@ toit_err_t toit_msg_add_handler(const char* id,
  * Once the message handler is removed, the `on_removed` callback will be called.
  *
  * @param context The context of the message handler.
- * @return toit_err_t The result of the call.
+ * @return toit_err_t
+ *     - TOIT_OK: The message handler was removed successfully.
+ *     - TOIT_ERR_NOT_FOUND: The message handler was not found.
  */
 toit_err_t toit_msg_remove_handler(toit_msg_context_t* context);
 
@@ -187,7 +191,10 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context);
  * @param data The data to send.
  * @param length The length of the data.
  * @param free_on_failure Whether to free the data if the message cannot be sent.
- * @return toit_err_t The result of the call.
+ * @return toit_err_t
+ *     - TOIT_OK: The message was sent successfully.
+ *     - TOIT_ERR_NO_SUCH_RECEIVER: The target process does not exist.
+ *     - TOIT_ERR_OOM: Out of memory, despite calling `toit_gc`.
  */
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            int target_pid,
@@ -208,7 +215,10 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
  * @param data The data to send.
  * @param length The length of the data.
  * @param free_on_failure Whether to free the data if the message cannot be sent.
- * @return toit_err_t The result of the call.
+ * @return toit_err_t
+ *    - TOIT_OK: The message was sent successfully.
+ *    - TOIT_ERR_NO_SUCH_RECEIVER: The target process does not exist.
+ *    - TOIT_ERR_OOM: Out of memory, despite calling `toit_gc`.
  */
 toit_err_t toit_msg_request_reply(toit_msg_request_handle_t handle, uint8_t* data, int length, bool free_on_failure);
 
@@ -224,14 +234,18 @@ toit_err_t toit_msg_request_reply(toit_msg_request_handle_t handle, uint8_t* dat
  * @param handle The handle to the request. This handle must have been received
  *              through the `on_rpc_request` callback.
  * @param error The error message to send.
- * @return toit_err_t The result of the call.
+ * @return toit_err_t
+ *     - TOIT_OK: The failure message was sent successfully.
+ *     - TOIT_ERR_NO_SUCH_RECEIVER: The target process does not exist.
+ *     - TOIT_ERR_OOM: Out of memory, despite calling `toit_gc`.
  */
 toit_err_t toit_msg_request_fail(toit_msg_request_handle_t handle, const char* error);
 
 /**
  * @brief Perform a garbage collection on all Toit processes.
  *
- * @return toit_err_t The result of the call.
+ * @return toit_err_t
+ *     - TOIT_OK: The garbage collection was run successfully.
  */
 toit_err_t toit_gc();
 
@@ -262,8 +276,8 @@ void* toit_calloc(size_t nmemb, size_t size);
  * If `realloc` fails, this function calls `toit_gc` and then retries the allocation.
  *
  * @param ptr The pointer to the memory to reallocate.
- * @param size The size of the memory to allocate.
- * @return void* A pointer to the allocated memory, or `NULL` if the allocation failed.
+ * @param size The new size that is requested.
+ * @return void* A pointer to the allocated memory, or `NULL` if the reallocation failed.
  */
 void* toit_realloc(void* ptr, size_t size);
 
