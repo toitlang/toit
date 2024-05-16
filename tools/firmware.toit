@@ -131,8 +131,7 @@ build-command -> cli.Command:
         Manipulate firmware envelopes.
 
         An envelope is an artifact that bundles native firmware images with Toit containers.
-        This command can be used to
-
+        This command can be used to create, inspect, extract, and manipulate envelopes.
         """
       --options=[
         cli.Option OPTION-ENVELOPE
