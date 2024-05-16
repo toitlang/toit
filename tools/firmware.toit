@@ -122,7 +122,17 @@ write-file-or-print --path/string? output/string -> none:
     print output
 
 main arguments/List:
-  root-cmd := cli.Command "root"
+  firmware-cmd := build-command
+  firmware-cmd.run arguments
+
+build-command -> cli.Command:
+  firmware-cmd := cli.Command "firmware"
+      --help="""
+        Manipulate firmware envelopes.
+
+        An envelope is an artifact that bundles native firmware images with Toit containers.
+        This command can be used to create, inspect, extract, and manipulate envelopes.
+        """
       --options=[
         cli.Option OPTION-ENVELOPE
             --short-name="e"
@@ -130,14 +140,14 @@ main arguments/List:
             --type="file"
             --required
       ]
-  root-cmd.add create-cmd
-  root-cmd.add extract-cmd
-  root-cmd.add flash-cmd
-  root-cmd.add container-cmd
-  root-cmd.add property-cmd
-  root-cmd.add show-cmd
-  root-cmd.add tool-cmd
-  root-cmd.run arguments
+  firmware-cmd.add create-cmd
+  firmware-cmd.add extract-cmd
+  firmware-cmd.add flash-cmd
+  firmware-cmd.add container-cmd
+  firmware-cmd.add property-cmd
+  firmware-cmd.add show-cmd
+  firmware-cmd.add tool-cmd
+  return firmware-cmd
 
 create-cmd -> cli.Command:
   options := AR-ENTRY-FILE-MAP.map: | key/string value/string |
@@ -146,6 +156,11 @@ create-cmd -> cli.Command:
         --type="file"
         --required=(key == "firmware.bin")
   return cli.Command "create"
+      --help="""
+        Create a firmware envelope from a native firmware image.
+
+        Add the Toit system snapshot to the envelope with the 'firmware.bin' option.
+        """
       --options=options.values + [
         cli.Option "system.snapshot"
             --type="file"
@@ -185,6 +200,7 @@ create-envelope parsed/cli.Parsed -> none:
 
 container-cmd -> cli.Command:
   cmd := cli.Command "container"
+      --help="Manipulate Toit containers in a firmware envelope."
   option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
       --help="Set the output envelope."
@@ -195,6 +211,8 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "install"
+          --help="Add a container to the envelope."
+          --aliases=["add"]
           --options=[
             option-output,
             cli.Option "assets"
@@ -216,6 +234,7 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "extract"
+          --help="Extract a container from the envelope."
           --options=[
             cli.Option "output"
                 --help="Set the output file name."
@@ -230,12 +249,15 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "uninstall"
+          --help="Remove a container from the envelope."
+          --aliases=["remove"]
           --options=[ option-output ]
           --rest=[ option-name ]
           --run=:: container-uninstall it
 
   cmd.add
       cli.Command "list"
+          --help="List the containers in the envelope."
           --options=[
             cli.Option "output"
                 --help="Set the output file name."
@@ -407,6 +429,7 @@ build-entries-json entries/Map -> Map:
 
 property-cmd -> cli.Command:
   cmd := cli.Command "property"
+      --help="Manipulate properties in a firmware envelope."
 
   option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
@@ -653,7 +676,7 @@ find-esptool_ -> List:
 
 tool-cmd -> cli.Command:
   return cli.Command "tool"
-      --help="Provides information about used tools."
+      --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
       ]
@@ -675,6 +698,7 @@ esptool parsed/cli.Parsed -> none:
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
+      --help="Flash a firmware envelope to a device."
       --options=[
         cli.Option "config"
             --type="file",
