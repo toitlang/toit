@@ -125,10 +125,10 @@ typedef struct toit_msg_cbs_t {
  * @brief Macro to create an empty set of message handler callbacks.
  */
 #define TOIT_MSG_EMPTY_CBS() { \
-  .on_created = NULL, \
-  .on_message = NULL, \
-  .on_rpc_request = NULL, \
-  .on_removed = NULL, \
+  .on_created = NULL,          \
+  .on_message = NULL,          \
+  .on_rpc_request = NULL,      \
+  .on_removed = NULL,          \
 }
 
 /**
