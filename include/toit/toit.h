@@ -21,7 +21,7 @@ extern "C" {
  * @brief Toit error constants.
  */
 typedef enum {
-  TOIT_ERR_SUCCESS = 0,        /*!< The operation succeeded (no error). */
+  TOIT_OK = 0,                 /*!< The operation succeeded (no error). */
   TOIT_ERR_OOM,                /*!< Out of memory. */
   TOIT_ERR_NO_SUCH_RECEIVER,   /*!< The receiver of a system message didn't exist. */
   TOIT_ERR_NOT_FOUND,          /*!< The corresponding resource was not found. */
@@ -51,7 +51,7 @@ typedef struct {
  *
  * @param user_data The user data passed to `toit_msg_add_handler`.
  * @param context The context of the message handler.
- * @return toit_err_t The result of the callback. Must be `TOIT_ERR_SUCCESS`.
+ * @return toit_err_t The result of the callback. Must be `TOIT_OK`.
  */
 typedef toit_err_t (*toit_msg_on_created_cb_t)(void* user_data, toit_msg_context_t* context);
 
@@ -67,7 +67,7 @@ typedef toit_err_t (*toit_msg_on_created_cb_t)(void* user_data, toit_msg_context
  * @param sender The PID of the sender.
  * @param data The data of the message. Must be freed by the receiver.
  * @param length The length of the data.
- * @return toit_err_t The result of the callback. Must be `TOIT_ERR_SUCCESS`.
+ * @return toit_err_t The result of the callback. Must be `TOIT_OK`.
  */
 typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, uint8_t* data, int length);
 
@@ -92,7 +92,7 @@ typedef toit_err_t (*toit_msg_on_message_cb_t)(void* user_data, int sender, uint
  * @param rpc_handle The handle to the request.
  * @param data The data of the request. Must be freed by the receiver.
  * @param length The length of the data.
- * @return toit_err_t The result of the callback. Must be `TOIT_ERR_SUCCESS`.
+ * @return toit_err_t The result of the callback. Must be `TOIT_OK`.
  */
 typedef toit_err_t (*toit_msg_on_request_cb_t)(void* user_data,
                                                int sender,
@@ -107,7 +107,7 @@ typedef toit_err_t (*toit_msg_on_request_cb_t)(void* user_data,
  * point, the user data is no longer needed and can be freed.
  *
  * @param user_data The user data passed to `toit_msg_add_handler`.
- * @return toit_err_t The result of the callback. Must be `TOIT_ERR_SUCCESS`.
+ * @return toit_err_t The result of the callback. Must be `TOIT_OK`.
  */
 typedef toit_err_t (*toit_msg_on_removed_cb_t)(void* user_data);
 

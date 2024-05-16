@@ -1099,7 +1099,7 @@ toit_err_t toit_msg_add_handler(const char* id,
   list->registered_handler.user_context = user_context;
   list->registered_handler.callbacks = cbs;
   toit::registered_message_handlers = list;
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
 }
 
 toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
@@ -1110,7 +1110,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
       auto handler = entry.handler;
       toit::id_handler_entry_mapping[i].handler = null;
       delete handler;
-      return TOIT_ERR_SUCCESS;
+      return TOIT_OK;
     }
   }
   return TOIT_ERR_NOT_FOUND;
@@ -1118,7 +1118,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
 
 static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
   switch (err) {
-    case toit::MESSAGE_OK: return TOIT_ERR_SUCCESS;
+    case toit::MESSAGE_OK: return TOIT_OK;
     case toit::MESSAGE_OOM: return TOIT_ERR_OOM;
     case toit::MESSAGE_NO_SUCH_RECEIVER: return TOIT_ERR_NO_SUCH_RECEIVER;
   }
@@ -1164,7 +1164,7 @@ toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, uint8_t*
 // TODO(florian): this isn't really a messaging function. It should probably be somewhere else.
 toit_err_t toit_gc() {
   toit::VM::current()->scheduler()->gc(NULL, true, true);
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
 }
 
 void* toit_malloc(size_t size) {
