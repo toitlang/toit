@@ -36,7 +36,7 @@ class Client:
   constructor.private_ .pid .id .on-notify_:
 
   /**
-  Opens a connection to an external process with the given $id.
+  Opens a client for an external process with the given $id.
 
   Throws, if no external process with the given $id is found, or if there
     already exists an open client for that $id.
@@ -53,7 +53,7 @@ class Client:
     clients_[pid] = result
     return result
 
-  /** Closes the connection to the external process. */
+  /** Closes the client. */
   close -> none:
     if is-closed_: return
     // Go through the function so that the ref-counting is correct.
@@ -94,7 +94,7 @@ class Client:
   The $function id is an integer that the external process receives as
     argument. External processes are free to interpret this id as they see fit.
 
-  If $copy is true (the default) copies the given $message before sending it.
+  If $copy is true (the default), copies the given $message before sending it.
   If $copy is false, attempts to transfer ownership of the $message to the
     external process. This is only possible for $ByteArray instances that
     have their data stored in external memory, that is, not in the Toit heap.
