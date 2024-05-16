@@ -284,6 +284,11 @@ PRIMITIVE(init) {
 PRIMITIVE(init_spi) {
   ARGS(int, mac_chip, SpiResourceGroup, spi, int, frequency, int, cs, int, int_num)
 
+#ifndef CONFIG_ETH_SPI_ETHERNET_W5500
+  if (mac_chip == MAC_CHIP_W5500) {
+    return Primitive::os_error(ESP_ERR_NOT_SUPPORTED, process);
+  }
+#endif
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
@@ -323,6 +328,7 @@ PRIMITIVE(init_spi) {
   esp_eth_mac_t* mac = null;
   esp_eth_phy_t* phy = null;
   switch (mac_chip) {
+#ifdef CONFIG_ETH_SPI_ETHERNET_W5500
     case MAC_CHIP_W5500: {
       eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_host, &spi_config);
       w5500_config.int_gpio_num = int_num;
@@ -330,6 +336,7 @@ PRIMITIVE(init_spi) {
       phy = esp_eth_phy_new_w5500(&phy_config);
       break;
     }
+#endif
   }
   if (!phy || !mac) {
     ethernet_pool.put(id);
