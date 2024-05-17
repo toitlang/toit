@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-User-space side of the service API for key-value storage.
+User-space side of the service API for storage.
 
 # Examples
 Store and read a value in a RAM-backed bucket. The used memory
