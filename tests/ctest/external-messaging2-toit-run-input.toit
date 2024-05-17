@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import io
 import monitor
 import system.external
 
@@ -26,6 +27,7 @@ main:
   test-id clients
 
   test-rpc clients #[42]
+  test-rpc clients "foobar"
   test-rpc-fail clients
   test-gc clients
 
@@ -36,6 +38,10 @@ main:
   test-notification clients (ByteArray 319: it)
   test-notification clients (ByteArray 3197: it)
   test-notification clients (ByteArray 31971: it)
+  test-notification clients ""
+  test-notification clients "foobar"
+  test-notification clients "foobar"[3..]
+  test-notification clients "foobar" * 100
   test-notification clients #[99, 99]
 
   clients.do: it.close
@@ -48,10 +54,11 @@ test-id clients/List:
     expect-equals 1 response.size
     expect-equals id response[0]
 
-test-rpc clients/List data/ByteArray:
+test-rpc clients/List data/io.Data:
   clients.do: | client/external.Client |
     response := client.request 0 data
-    expect-bytes-equal data response
+    bytes := ByteArray.from data
+    expect-equals bytes response
 
 test-rpc-fail clients/List:
   clients.do: | client/external.Client |
@@ -65,9 +72,10 @@ test-gc clients/List:
     expect-equals 1 response.size
     expect-equals 0 response[0]
 
-test-notification clients/List data/ByteArray:
+test-notification clients/List data/io.Data:
   clients.size.repeat: | i |
     client/external.Client := clients[i]
     client.notify data
     result := incoming-notifications[i].receive
-    expect-bytes-equal data result
+    bytes := ByteArray.from data
+    expect-equals bytes result

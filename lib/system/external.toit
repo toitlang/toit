@@ -64,18 +64,24 @@ class Client:
   is-closed -> bool:
     return is-closed_
 
-  /** Helper to convert the $message to a ByteArray. */
-  encode-message_ message/io.Data --copy/bool -> ByteArray:
+  /** Helper to convert the $message to a string or ByteArray. */
+  encode-message_ message/io.Data --copy/bool -> io.Data:
     bytes/ByteArray := ?
-    if copy or message is not ByteArray:
-      bytes = ByteArray message.byte-size
-      message.write-to-byte-array bytes --at=0 0 message.byte-size
-    else:
-      bytes = message as ByteArray
+    if message is string:
+      return message
+    if not copy and message is ByteArray:
+      return message
+    bytes = ByteArray message.byte-size
+    message.write-to-byte-array bytes --at=0 0 message.byte-size
     return bytes
 
   /**
   Sends a notification message to the external process.
+
+  If the $message is a string, then the receiver is guaranteed to receive
+    the string data with an additional 0-terminator. The external process can
+    safely interpret it as a C string. The length argument to the receiver
+    does *not* include the 0-terminator.
 
   If $copy is true (the default) copies the given $message before sending it.
   If $copy is false, attempts to transfer ownership of the $message to the
@@ -93,6 +99,11 @@ class Client:
 
   The $function id is an integer that the external process receives as
     argument. External processes are free to interpret this id as they see fit.
+
+  If the $message is a string, then the receiver is guaranteed to receive
+    the string data with an additional 0-terminator. The external process can
+    safely interpret it as a C string. The length argument to the receiver
+    does *not* include the 0-terminator.
 
   If $copy is true (the default), copies the given $message before sending it.
   If $copy is false, attempts to transfer ownership of the $message to the
