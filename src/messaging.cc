@@ -1093,13 +1093,13 @@ toit_err_t toit_msg_add_handler(const char* id,
   auto old = toit::registered_message_handlers;
   auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
       malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
-  if (list == null) FATAL("[OOM during external process setup]");
+  if (list == null) return TOIT_ERR_OOM;
   list->next = old;
   list->registered_handler.id = id;
   list->registered_handler.user_context = user_context;
   list->registered_handler.callbacks = cbs;
   toit::registered_message_handlers = list;
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
 }
 
 toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
@@ -1110,7 +1110,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
       auto handler = entry.handler;
       toit::id_handler_entry_mapping[i].handler = null;
       delete handler;
-      return TOIT_ERR_SUCCESS;
+      return TOIT_OK;
     }
   }
   return TOIT_ERR_NOT_FOUND;
@@ -1118,7 +1118,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
 
 static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
   switch (err) {
-    case toit::MESSAGE_OK: return TOIT_ERR_SUCCESS;
+    case toit::MESSAGE_OK: return TOIT_OK;
     case toit::MESSAGE_OOM: return TOIT_ERR_OOM;
     case toit::MESSAGE_NO_SUCH_RECEIVER: return TOIT_ERR_NO_SUCH_RECEIVER;
   }
@@ -1131,26 +1131,40 @@ toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
-  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
+  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->send_with_err(target_pid, type, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
 toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const char* error) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  }
   return message_err_to_toit_err(err);
 }
 
 toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, uint8_t* data, int length, bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
-  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
+  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
 // TODO(florian): this isn't really a messaging function. It should probably be somewhere else.
 toit_err_t toit_gc() {
   toit::VM::current()->scheduler()->gc(NULL, true, true);
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
 }
 
 void* toit_malloc(size_t size) {
@@ -1158,6 +1172,20 @@ void* toit_malloc(size_t size) {
   if (ptr != NULL) return ptr;
   toit_gc();
   return malloc(size);
+}
+
+void* toit_calloc(size_t nmemb, size_t size) {
+  void* ptr = calloc(nmemb, size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return calloc(nmemb, size);
+}
+
+void* toit_realloc(void* ptr, size_t size) {
+  void* new_ptr = realloc(ptr, size);
+  if (new_ptr != NULL) return new_ptr;
+  toit_gc();
+  return realloc(ptr, size);
 }
 
 } // Extern C.
