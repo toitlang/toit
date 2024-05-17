@@ -87,7 +87,8 @@ static void report_no_such_method(List<ir::Node*> candidates,
   Map<Symbol, int> call_site_names;  // The names that are used at the call site.
 
   int index = 0;
-  for (auto symbol : selector.shape().names()) {
+  auto names = selector.shape().names();
+  for (auto symbol : names) {
     call_site_names.set(symbol, selector.shape().is_block_name(index) ? BLOCK_NAME : NAME);
     index++;
   }
