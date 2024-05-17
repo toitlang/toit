@@ -167,6 +167,12 @@ test-problematic myself/int -> none:
   test-serialization-failed myself [MyClass]
   test-serialization-failed myself [MySerializable 4]
 
+  // Deques are special lists that we cannot serialize for now.
+  deque := Deque
+  deque.add-all [1, 2, 3, 4]
+  test-serialization-failed myself [deque]
+  test-serialization-failed myself [deque[1..3]]
+
   // Check for cyclic data structure.
   cyclic := []
   cyclic.add cyclic
