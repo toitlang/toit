@@ -54,7 +54,6 @@ foreach(input ${INPUT})
     COMMAND "${CMAKE_COMMAND}"
         "-DSNAP=${snap}"
         "-DTOITVM=$<TARGET_FILE:toit.run>"
-        "-DTOITC=$<TARGET_FILE:toit.compile>"
         "-DSNAPSHOT_TO_IMAGE=${TOIT_SDK_SOURCE_DIR}/tools/snapshot_to_image.toit"
         "-DASM=${CMAKE_ASM_COMPILER}"
         "-DRUN_IMAGE=$<TARGET_FILE:toit_run_image>"
