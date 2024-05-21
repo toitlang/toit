@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import system.trace show send-trace-message
+import system.storage  // For toitdoc.
 
 ESP-RST-UNKNOWN   ::= 0 // Reset reason can not be determined.
 ESP-RST-POWERON   ::= 1 // Reset due to power-on event.
@@ -119,6 +120,10 @@ set-real-time-clock time/Time -> none:
 set-real-time-clock_ seconds/int ns/int -> none:
   #primitive.core.set-real-time-clock
 
+/** The WiFi MAC address of the ESP32. */
+mac-address -> ByteArray:
+  #primitive.esp32.get-mac-address
+
 /**
 Size of the user accessible RTC memory.
 
@@ -129,7 +134,7 @@ RTC-MEMORY-SIZE ::= 4096
 /**
 Constructs a $ByteArray backed by the RTC user data.
 
-Deprecated.
+Deprecated. Use $storage.Bucket instead.
 
 # Advanced
 RTC memory is volatile memory that is powered during deep sleep. RTC memory is
