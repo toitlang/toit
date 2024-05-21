@@ -68,7 +68,7 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
 
-// HOST AR entries.
+// Host AR entries.
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 SYSTEM-CONTAINER-NAME ::= "system"
