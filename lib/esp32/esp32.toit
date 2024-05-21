@@ -134,7 +134,7 @@ RTC-MEMORY-SIZE ::= 4096
 /**
 Constructs a $ByteArray backed by the RTC user data.
 
-Deprecated. Use $storage.Region instead.
+Deprecated. Use $storage.Bucket instead.
 
 # Advanced
 RTC memory is volatile memory that is powered during deep sleep. RTC memory is
