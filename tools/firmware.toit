@@ -39,10 +39,16 @@ import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 6
+ENVELOPE-FORMAT-VERSION ::= 7
 
 WORD-SIZE ::= 4
 
+// Shared AR entries.
+AR-ENTRY-INFO        ::= "\$envelope"
+AR-ENTRY-SDK-VERSION ::= "\$sdk-version"
+AR-ENTRY-PLATFORM    ::= "\$platform"
+
+// ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
 AR-ENTRY-ESP32-FIRMWARE-ELF   ::= "\$firmware.elf"
 AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
@@ -51,7 +57,6 @@ AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
 AR-ENTRY-ESP32-PROPERTIES     ::= "\$properties"
-AR-ENTRY-ESP32-SDK-VERSION    ::= "\$sdk-version"
 
 AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
@@ -63,6 +68,7 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
 
+// Host AR entries.
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 SYSTEM-CONTAINER-NAME ::= "system"
@@ -216,6 +222,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
+      --platform=Envelope.PLATFORM-ESP32
   envelope.store output-path
 
 create-host-cmd -> cli.Command:
@@ -250,6 +257,7 @@ create-envelope-host parsed/cli.Parsed -> none:
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
+      --platform=Envelope.PLATFORM-HOST
   envelope.store output-path
 
 container-cmd -> cli.Command:
@@ -960,6 +968,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
 
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
+      --platform=existing.platform
   envelope.store output-path
 
 extract-binary-content -> ByteArray
@@ -1062,8 +1071,10 @@ show parsed/cli.Parsed -> none:
 
   envelope := Envelope.load input-path
   entries-json := build-entries-json envelope.entries
+  platform-string := envelope.platform == Envelope.PLATFORM-ESP32 ? "ESP32" : "host"
   result := {
     "envelope-format-version": envelope.version_,
+    "platform": platform-string,
     "sdk-version": envelope.sdk-version,
     "containers": entries-json["containers"],
   }
@@ -1132,32 +1143,44 @@ json-to-human o/any --indentation/int=0 --skip-indentation/bool=false --chain/Li
 class Envelope:
   static MARKER ::= 0x0abeca70
 
-  static INFO-ENTRY-NAME           ::= "\$envelope"
-  static INFO-ENTRY-MARKER-OFFSET  ::= 0
-  static INFO-ENTRY-VERSION-OFFSET ::= 4
-  static INFO-ENTRY-SIZE           ::= 8
+  static PLATFORM-ESP32 ::= 0
+  static PLATFORM-HOST  ::= 1
+
+  static INFO-ENTRY-MARKER-OFFSET   ::= 0
+  static INFO-ENTRY-VERSION-OFFSET  ::= 4
+  static INFO-ENTRY-SIZE            ::= 8
 
   version_/int
 
   path/string? ::= null
   sdk-version/string
+  platform/int
   entries/Map ::= {:}
 
   constructor.load .path/string:
     version/int? := null
     sdk-version = ""
+    platform = -1
     read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
-        if file.name == INFO-ENTRY-NAME:
+        if file.name == AR-ENTRY-INFO:
           version = validate file.content
-        else if file.name == AR-ENTRY-ESP32-SDK-VERSION:
+        else if file.name == AR-ENTRY-SDK-VERSION:
           sdk-version = file.content.to-string-non-throwing
+        else if file.name == AR-ENTRY-PLATFORM:
+          if file.content.size != 1:
+            throw "cannot open envelope - malformed platform entry"
+          platform = file.content[0]
+          if platform != PLATFORM-ESP32 and platform != PLATFORM-HOST:
+            throw "cannot open envelope - unknown platform $platform"
         else:
           entries[file.name] = file.content
+    if not version: throw "cannot open envelope - missing info entry"
+    if platform == -1: throw "cannot open envelope - missing platform entry"
     version_ = version
 
-  constructor.create .entries --.sdk-version:
+  constructor.create .entries --.sdk-version --.platform:
     version_ = ENVELOPE-FORMAT-VERSION
 
   store path/string -> none:
@@ -1167,8 +1190,9 @@ class Envelope:
       info := ByteArray INFO-ENTRY-SIZE
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-MARKER-OFFSET MARKER
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
-      ar.add INFO-ENTRY-NAME info
-      ar.add AR-ENTRY-ESP32-SDK-VERSION sdk-version
+      ar.add AR-ENTRY-INFO info
+      ar.add AR-ENTRY-SDK-VERSION sdk-version
+      ar.add AR-ENTRY-PLATFORM #[platform]
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
