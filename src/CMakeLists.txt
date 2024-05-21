@@ -258,6 +258,22 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${TOIT_LINK_LIBS}
     )
 
+  set(ENVELOPE "${CMAKE_BINARY_DIR}/firmware.envelope")
+
+  add_custom_command(
+    OUTPUT "${ENVELOPE}"
+    COMMAND $<TARGET_FILE:toit> tool firmware create host
+        -e "${ENVELOPE}"
+        --run-image "$<TARGET_FILE:toit_run_image>"
+        --system.snapshot "${BOOT_SNAPSHOT}"
+    DEPENDS toit toit_run_image ${BOOT_SNAPSHOT}
+  )
+  add_custom_target(
+    build_envelope
+    DEPENDS ${ENVELOPE}
+  )
+  add_dependencies(build_tools build_envelope)
+
   set(VESSEL_SIZES 128 256 512 1024 8192)
   foreach(VESSEL_SIZE ${VESSEL_SIZES})
     set(VESSEL_TARGET vessel${VESSEL_SIZE})

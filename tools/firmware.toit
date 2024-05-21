@@ -42,25 +42,28 @@ import .snapshot-to-image
 ENVELOPE-FORMAT-VERSION ::= 6
 
 WORD-SIZE ::= 4
-AR-ENTRY-FIRMWARE-BIN   ::= "\$firmware.bin"
-AR-ENTRY-FIRMWARE-ELF   ::= "\$firmware.elf"
-AR-ENTRY-BOOTLOADER-BIN ::= "\$bootloader.bin"
-AR-ENTRY-PARTITIONS-BIN ::= "\$partitions.bin"
-AR-ENTRY-PARTITIONS-CSV ::= "\$partitions.csv"
-AR-ENTRY-OTADATA-BIN    ::= "\$otadata.bin"
-AR-ENTRY-FLASHING-JSON  ::= "\$flashing.json"
-AR-ENTRY-PROPERTIES     ::= "\$properties"
-AR-ENTRY-SDK-VERSION    ::= "\$sdk-version"
 
-AR-ENTRY-FILE-MAP ::= {
-  "firmware.bin"    : AR-ENTRY-FIRMWARE-BIN,
-  "firmware.elf"    : AR-ENTRY-FIRMWARE-ELF,
-  "bootloader.bin"  : AR-ENTRY-BOOTLOADER-BIN,
-  "partitions.bin"  : AR-ENTRY-PARTITIONS-BIN,
-  "partitions.csv"  : AR-ENTRY-PARTITIONS-CSV,
-  "otadata.bin"     : AR-ENTRY-OTADATA-BIN,
-  "flashing.json"   : AR-ENTRY-FLASHING-JSON,
+AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
+AR-ENTRY-ESP32-FIRMWARE-ELF   ::= "\$firmware.elf"
+AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
+AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
+AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
+AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
+AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
+AR-ENTRY-ESP32-PROPERTIES     ::= "\$properties"
+AR-ENTRY-ESP32-SDK-VERSION    ::= "\$sdk-version"
+
+AR-ENTRY-ESP32-FILE-MAP ::= {
+  "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
+  "firmware.elf"    : AR-ENTRY-ESP32-FIRMWARE-ELF,
+  "bootloader.bin"  : AR-ENTRY-ESP32-BOOTLOADER-BIN,
+  "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
+  "partitions.csv"  : AR-ENTRY-ESP32-PARTITIONS-CSV,
+  "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
+  "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
+
+AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -122,10 +125,10 @@ write-file-or-print --path/string? output/string -> none:
     print output
 
 main arguments/List:
-  firmware-cmd := build-command
+  firmware-cmd := build-command --create-esp32-only
   firmware-cmd.run arguments
 
-build-command -> cli.Command:
+build-command --create-esp32-only/bool=false -> cli.Command:
   firmware-cmd := cli.Command "firmware"
       --help="""
         Manipulate firmware envelopes.
@@ -140,7 +143,10 @@ build-command -> cli.Command:
             --type="file"
             --required
       ]
-  firmware-cmd.add create-cmd
+  if create-esp32-only:
+    firmware-cmd.add (create-esp32-cmd --name="create")
+  else:
+    firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
   firmware-cmd.add flash-cmd
   firmware-cmd.add container-cmd
@@ -150,12 +156,26 @@ build-command -> cli.Command:
   return firmware-cmd
 
 create-cmd -> cli.Command:
-  options := AR-ENTRY-FILE-MAP.map: | key/string value/string |
+  options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
     cli.Option key
         --help="Set the $key part."
         --type="file"
         --required=(key == "firmware.bin")
-  return cli.Command "create"
+  cmd := cli.Command "create"
+      --help="""
+        Create a firmware envelope for the specificed platform.
+        """
+  cmd.add (create-esp32-cmd --name="esp32")
+  cmd.add create-host-cmd
+  return cmd
+
+create-esp32-cmd --name/string -> cli.Command:
+  options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
+    cli.Option key
+        --help="Set the $key part."
+        --type="file"
+        --required=(key == "firmware.bin")
+  return cli.Command name
       --help="""
         Create a firmware envelope from a native firmware image.
 
@@ -166,9 +186,9 @@ create-cmd -> cli.Command:
             --type="file"
             --required,
       ]
-      --run=:: create-envelope it
+      --run=:: create-envelope-esp32 it
 
-create-envelope parsed/cli.Parsed -> none:
+create-envelope-esp32 parsed/cli.Parsed -> none:
   output-path := parsed[OPTION-ENVELOPE]
   input-path := parsed["firmware.bin"]
 
@@ -180,19 +200,53 @@ create-envelope parsed/cli.Parsed -> none:
   system-snapshot := SnapshotBundle system-snapshot-content
 
   entries := {
-    AR-ENTRY-FIRMWARE-BIN: binary.bits,
+    AR-ENTRY-ESP32-FIRMWARE-BIN: binary.bits,
     SYSTEM-CONTAINER-NAME: system-snapshot-content,
-    AR-ENTRY-PROPERTIES: json.encode {
+    AR-ENTRY-ESP32-PROPERTIES: json.encode {
       PROPERTY-CONTAINER-FLAGS: {
         SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL
       }
     }
   }
 
-  AR-ENTRY-FILE-MAP.do: | key/string value/string |
+  AR-ENTRY-ESP32-FILE-MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
     filename := parsed[key]
     if filename: entries[value] = read-file filename
+
+  envelope := Envelope.create entries
+      --sdk-version=system-snapshot.sdk-version
+  envelope.store output-path
+
+create-host-cmd -> cli.Command:
+  return cli.Command "host"
+      --help="""
+        Create a firmware envelope for the host system.
+        """
+      --options=[
+        cli.Option "run-image"
+            --help="Path to the run-image executable."
+            --type="file"
+            --required,
+        cli.Option "system.snapshot"
+            --type="file"
+            --required,
+      ]
+      --run=:: create-envelope-host it
+
+create-envelope-host parsed/cli.Parsed -> none:
+  output-path := parsed[OPTION-ENVELOPE]
+
+  run-image-path := parsed["run-image"]
+  run-image-bytes := read-file run-image-path
+
+  system-snapshot-content := read-file parsed["system.snapshot"]
+  system-snapshot := SnapshotBundle system-snapshot-content
+
+  entries := {
+    AR-ENTRY-HOST-RUN-IMAGE: run-image-bytes,
+    SYSTEM-CONTAINER-NAME: system-snapshot-content,
+  }
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
@@ -393,7 +447,7 @@ container-list parsed/cli.Parsed -> none:
   write-file-or-print --path=output-path output-string
 
 build-entries-json entries/Map -> Map:
-  properties/Map? := entries.get AR-ENTRY-PROPERTIES
+  properties/Map? := entries.get AR-ENTRY-ESP32-PROPERTIES
       --if-present=: json.decode it
   flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
   containers := {:}
@@ -470,7 +524,7 @@ property-get parsed/cli.Parsed -> none:
     return
 
   entries := envelope.entries
-  entry := entries.get AR-ENTRY-PROPERTIES
+  entry := entries.get AR-ENTRY-ESP32-PROPERTIES
   if not entry: return
 
   properties := json.decode entry
@@ -503,10 +557,10 @@ property-set parsed/cli.Parsed -> none:
     properties
 
 properties-update envelope/Envelope [block] -> none:
-  properties/Map? := envelope.entries.get AR-ENTRY-PROPERTIES
+  properties/Map? := envelope.entries.get AR-ENTRY-ESP32-PROPERTIES
       --if-present=: json.decode it
   properties = block.call properties
-  if properties: envelope.entries[AR-ENTRY-PROPERTIES] = json.encode properties
+  if properties: envelope.entries[AR-ENTRY-ESP32-PROPERTIES] = json.encode properties
 
 properties-update-with-key parsed/cli.Parsed [block] -> none:
   key/string := parsed["key"]
@@ -567,7 +621,7 @@ extract parsed/cli.Parsed -> none:
   if parsed["format"] == "elf":
     if config-path:
       print "WARNING: config is ignored when extracting elf file"
-    write-file output-path: it.write (envelope.entries.get AR-ENTRY-FIRMWARE-ELF)
+    write-file output-path: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
     return
 
   config-encoded := ByteArray 0
@@ -582,7 +636,7 @@ extract parsed/cli.Parsed -> none:
     return
 
   if parsed["format"] == "qemu":
-    flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
+    flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
         --if-present=: json.decode it
         --if-absent=: throw "cannot create qemu image without 'flashing.json'"
 
@@ -601,11 +655,11 @@ extract parsed/cli.Parsed -> none:
   write-file output-path: it.write (ubjson.encode output)
 
 write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope:
-  flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
+  flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot create qemu image without 'flashing.json'"
 
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-PARTITIONS-BIN)
+  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
   partition-table := PartitionTable.decode bundled-partitions-bin
 
   // TODO(kasper): Allow adding more partitions.
@@ -616,13 +670,13 @@ write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope:
   out-image := ByteArray 4 * 1024 * 1024  // 4 MB.
   out-image.replace
       int.parse flashing["bootloader"]["offset"][2..] --radix=16
-      envelope.entries.get AR-ENTRY-BOOTLOADER-BIN
+      envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
   out-image.replace
       int.parse flashing["partition-table"]["offset"][2..] --radix=16
       encoded-partitions-bin
   out-image.replace
       otadata-partition.offset
-      envelope.entries.get AR-ENTRY-OTADATA-BIN
+      envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN
   out-image.replace
       app-partition.offset
       firmware-bin
@@ -741,11 +795,11 @@ flash parsed/cli.Parsed -> none:
 
   esptool := find-esptool_
 
-  flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
+  flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot flash without 'flashing.json'"
 
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-PARTITIONS-BIN)
+  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
   partition-table := PartitionTable.decode bundled-partitions-bin
 
   // Map the file:<name>=<path> and empty:<name>=<size> partitions
@@ -792,9 +846,9 @@ flash parsed/cli.Parsed -> none:
 
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    write-file "$tmp/bootloader.bin": it.write (envelope.entries.get AR-ENTRY-BOOTLOADER-BIN)
+    write-file "$tmp/bootloader.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN)
     write-file "$tmp/partitions.bin": it.write encoded-partitions-bin
-    write-file "$tmp/otadata.bin": it.write (envelope.entries.get AR-ENTRY-OTADATA-BIN)
+    write-file "$tmp/otadata.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN)
     write-file "$tmp/firmware.bin": it.write firmware-bin
 
     partition-args := [
@@ -826,7 +880,7 @@ flash parsed/cli.Parsed -> none:
 extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   containers ::= []
   entries := envelope.entries
-  properties := entries.get AR-ENTRY-PROPERTIES
+  properties := entries.get AR-ENTRY-ESP32-PROPERTIES
       --if-present=: json.decode it
       --if-absent=: {:}
   flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
@@ -859,9 +913,9 @@ extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     assets-encoded := assets.encode system-assets
     containers[0] = extract-container name flags content --assets=assets-encoded
 
-  firmware-bin := entries.get AR-ENTRY-FIRMWARE-BIN
+  firmware-bin := entries.get AR-ENTRY-ESP32-FIRMWARE-BIN
   if not firmware-bin:
-    throw "cannot find $AR-ENTRY-FIRMWARE-BIN entry in envelope '$envelope.path'"
+    throw "cannot find $AR-ENTRY-ESP32-FIRMWARE-BIN entry in envelope '$envelope.path'"
 
   system-uuid/uuid.Uuid? := null
   if properties.contains "uuid":
@@ -1097,7 +1151,7 @@ class Envelope:
       while file := ar.next:
         if file.name == INFO-ENTRY-NAME:
           version = validate file.content
-        else if file.name == AR-ENTRY-SDK-VERSION:
+        else if file.name == AR-ENTRY-ESP32-SDK-VERSION:
           sdk-version = file.content.to-string-non-throwing
         else:
           entries[file.name] = file.content
@@ -1114,7 +1168,7 @@ class Envelope:
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-MARKER-OFFSET MARKER
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
       ar.add INFO-ENTRY-NAME info
-      ar.add AR-ENTRY-SDK-VERSION sdk-version
+      ar.add AR-ENTRY-ESP32-SDK-VERSION sdk-version
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
