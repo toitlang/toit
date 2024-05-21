@@ -38,8 +38,9 @@ set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}"
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 
 if (NOT ${TOIT_IS_CROSS})
-  set(TOITC "$<TARGET_FILE:toit.compile>")
-  set(TOITPKG "${TOITPKG_BIN}")
+  set(HOST_TOIT "$<TARGET_FILE:toit>")
+  set(HOST_TOITC "$<TARGET_FILE:toit.compile>")
+  set(HOST_TOITPKG "${TOITPKG_BIN}")
 endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
