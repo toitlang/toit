@@ -262,11 +262,11 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   add_custom_command(
     OUTPUT "${ENVELOPE}"
-    COMMAND $<TARGET_FILE:toit> tool firmware create host
+    COMMAND ${HOST_TOIT} tool firmware create host
         -e "${ENVELOPE}"
         --run-image "$<TARGET_FILE:toit_run_image>"
         --system.snapshot "${BOOT_SNAPSHOT}"
-    DEPENDS toit toit_run_image ${BOOT_SNAPSHOT}
+    DEPENDS ${HOST_TOIT} toit_run_image ${BOOT_SNAPSHOT}
   )
   add_custom_target(
     build_envelope
