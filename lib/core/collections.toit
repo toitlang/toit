@@ -539,12 +539,16 @@ abstract class List extends CollectionBase:
     (to - from).repeat: this[it + from] = block.call it
 
   /** See $super. */
-  stringify -> string:
-    str := "["
-    size.repeat:
-      if it != 0: str = str + ", "
-      str = str + this[it].stringify
-    return str + "]"
+  stringify:
+    key-strings := []
+    size := 0
+    do: | key |
+      key-string := key.stringify
+      size += key-string.size + 2
+      if size > MAX-PRINT-STRING_:
+        return "[$(key-strings.join ", ")..."
+      key-strings.add key-string
+    return "[$(key-strings.join ", ")]"
 
   /**
   Calls stringify on each element of the list, and concatenates the results
@@ -2626,12 +2630,15 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
     return filter --in-place=in-place: other.contains it
 
   stringify:
-    str := "{"
-    first := true
-    do:
-      if first: first = false else: str = str + ", "
-      str = str + it.stringify
-    return str + "}"
+    key-strings := []
+    size := 0
+    do: | key |
+      key-string := key.stringify
+      size += key-string.size + 2
+      if size > MAX-PRINT-STRING_:
+        return "{$(key-strings.join ", ")..."
+      key-strings.add key-string
+    return "{$(key-strings.join ", ")}"
 
   /**
   Returns an element that is equal to the $key.
