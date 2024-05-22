@@ -17,6 +17,10 @@ Tests that the Toit implementation of the relocation works.
 */
 
 main args:
+  run-test args --word-size=4
+  run-test args --word-size=8
+
+run-test args/List --word-size/int:
   arg-index := 0
   ignored-snap := args[arg-index++]
   toitrun := args[arg-index++]
@@ -26,8 +30,7 @@ main args:
   try:
     toit-file := "$test-dir/test.toit"
     snap-file := "$test-dir/test.snap"
-    img32-file := "$test-dir/test32.img"
-    img64-file := "$test-dir/test64.img"
+    img-file := "$test-dir/test.img"
 
     file.write-content --path=toit-file """
       main:
@@ -35,16 +38,17 @@ main args:
       """
     pipe.run-program toitrun "-w" snap-file toit-file
 
-    pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-m32", "-o", img32-file, snap-file]
-    pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-m64", "-o", img64-file, snap-file]
+    if word-size == 4:
+      pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-m32", "-o", img-file, snap-file]
+    else:
+      pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-m64", "-o", img-file, snap-file]
 
     snapshot := file.read-content snap-file
     snapshot-bundle := SnapshotBundle "snapshot" snapshot
     snapshot-uuid ::= snapshot-bundle.uuid
 
-    word-size := 4
     buffer := io.Buffer
-    relocatable := file.read-content img32-file
+    relocatable := file.read-content img-file
     relocated-output := BinaryRelocatedOutput buffer 0x00000000 --word-size=word-size
     relocated-output.write relocatable
     relocated := buffer.bytes
@@ -53,19 +57,6 @@ main args:
     expected-size := relocatable.size - chunks-count * word-size
     expect-equals expected-size relocated.size
     header := firmware.ImageHeader relocated --word-size=word-size
-    expect-equals snapshot-uuid header.snapshot-uuid
-
-    word-size = 8
-    buffer = io.Buffer
-    relocatable = file.read-content img64-file
-    relocated-output = BinaryRelocatedOutput buffer 0x00000000 --word-size=word-size
-    relocated-output.write relocatable
-    relocated = buffer.bytes
-    chunk-size = (word-size * 8 + 1) * word-size
-    chunks-count = (relocatable.size + chunk-size - 1) / chunk-size
-    expected-size = relocatable.size - chunks-count * word-size
-    expect-equals expected-size relocated.size
-    header = firmware.ImageHeader relocated --word-size=word-size
     expect-equals snapshot-uuid header.snapshot-uuid
 
   finally:
