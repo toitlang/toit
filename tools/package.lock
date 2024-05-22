@@ -6,6 +6,7 @@ prefixes:
   host: pkg-host
   partition-table: toit-partition-table-esp32
   semver: toit-semver
+  tar: pkg-tar
 packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
@@ -32,6 +33,11 @@ packages:
     name: host
     version: 1.15.1
     hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
+  pkg-tar:
+    url: github.com/toitlang/pkg-tar
+    name: tar
+    version: 1.1.0
+    hash: c5d75bdb3b301099b7037bdf86d424177770ba58
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table
