@@ -18,9 +18,6 @@ file(GLOB INPUT RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-input.toit")
 
 set(S2I_TEST_DIR ${CMAKE_BINARY_DIR}/snapshot_to_image_test)
 
-add_custom_target(build_toit_run_image DEPENDS $<TARGET_FILE:toit_run_image>)
-add_dependencies(build_tools build_toit_run_image)
-
 include(fail.cmake)
 
 foreach(input ${INPUT})

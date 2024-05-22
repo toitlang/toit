@@ -236,9 +236,6 @@ create-host-cmd -> cli.Command:
             --help="Path to the run-image executable."
             --type="file"
             --required,
-        cli.Option "system.snapshot"
-            --type="file"
-            --required,
       ]
       --run=:: create-envelope-host it
 
@@ -248,16 +245,15 @@ create-envelope-host parsed/cli.Parsed -> none:
   run-image-path := parsed["run-image"]
   run-image-bytes := read-file run-image-path
 
-  system-snapshot-content := read-file parsed["system.snapshot"]
-  system-snapshot := SnapshotBundle system-snapshot-content
-
   entries := {
     AR-ENTRY-HOST-RUN-IMAGE: run-image-bytes,
-    SYSTEM-CONTAINER-NAME: system-snapshot-content,
   }
 
+  // TODO(florian): we are using the sdk-version of the firmware-tool.
+  // That's almost always correct, but we should verify that the
+  // run-image has the same version.
   envelope := Envelope.create entries
-      --sdk-version=system-snapshot.sdk-version
+      --sdk-version=system.app-sdk-version
       --platform=Envelope.PLATFORM-HOST
   envelope.store output-path
 
