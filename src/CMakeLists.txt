@@ -201,7 +201,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   set_target_properties(toit_run_image
     PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/toit_run_image_test/bin"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/run_image"
     )
 endif()
 
