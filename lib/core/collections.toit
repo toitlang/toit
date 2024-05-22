@@ -1099,7 +1099,8 @@ class LargeArray_ extends Array_:
         // to iterate backwards.
         List.chunk-up -to -from first-chunk-max ARRAYLET-SIZE: | _ _ length |
           part1-size := min length source-mod
-          vector_[dest-div].replace (dest-mod - part1-size) source.vector_[source-div] (source-mod - part1-size) source-mod
+          if part1-size != 0:
+            vector_[dest-div].replace (dest-mod - part1-size) source.vector_[source-div] (source-mod - part1-size) source-mod
           if length != part1-size:
             // Copy part two from the next source arraylet.
             vector_[dest-div].replace (dest-mod - length) source.vector_[source-div - 1] (ARRAYLET-SIZE - length + part1-size) ARRAYLET-SIZE
