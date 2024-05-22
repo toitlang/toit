@@ -109,8 +109,8 @@ main args:
           cli.Flag M32-FLAG --short-name="m32",
           cli.Flag M64-FLAG --short-name="m64",
           cli.Flag BINARY-FLAG,
-          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.Option OUTPUT-OPTION --short-name="o",
+          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required,
+          cli.Option OUTPUT-OPTION --short-name="o" --required,
           cli.Option ASSETS-OPTION,
         ]
       --run=:: parsed = it
@@ -119,9 +119,6 @@ main args:
 
   output-path/string? := parsed[OUTPUT-OPTION]
 
-  if not output-path:
-    print-usage parser --error="-o flag is not optional"
-
   format := ?
   if parsed[BINARY-FLAG]:
     if parsed[FORMAT-OPTION] != null:
@@ -129,9 +126,6 @@ main args:
     format = "binary"
   else:
     format = parsed[FORMAT-OPTION]
-
-  if not format:
-    print-usage parser --error="no output format specified"
 
   machine-word-sizes := []
   if parsed[M32-FLAG]:
