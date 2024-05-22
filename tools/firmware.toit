@@ -346,10 +346,10 @@ read-assets path/string? -> ByteArray?:
 
 decode-image data/ByteArray -> ImageHeader:
   out := io.Buffer
-  output := BinaryRelocatedOutput out 0x12345678
-  output.write WORD-SIZE data
+  output := BinaryRelocatedOutput out 0x12345678 --word-size=WORD-SIZE
+  output.write data
   decoded := out.bytes
-  return ImageHeader decoded
+  return ImageHeader decoded --word-size=WORD-SIZE
 
 get-container-name parsed/cli.Parsed -> string:
   name := parsed["name"]
@@ -948,7 +948,7 @@ extract-container name/string flags/Map? content/ByteArray -> ContainerEntry
         --system-uuid=uuid.NIL
         --snapshot-uuid=snapshot-uuid
         --assets=assets
-    header = ImageHeader image.all-memory
+    header = ImageHeader image.all-memory --word-size=WORD-SIZE
     if header.snapshot-uuid != snapshot-uuid: throw "corrupt snapshot uuid encoding"
     relocatable = image.build-relocatable
   else:
@@ -987,8 +987,8 @@ extract-binary-content -> ByteArray
   containers.do: | container/ContainerEntry |
     relocatable := container.relocatable
     out := io.Buffer
-    output := BinaryRelocatedOutput out relocation-base
-    output.write WORD-SIZE relocatable
+    output := BinaryRelocatedOutput out relocation-base --word-size=WORD-SIZE
+    output.write relocatable
     image-bits := out.bytes
     image-size := image-bits.size
 
@@ -998,7 +998,7 @@ extract-binary-content -> ByteArray
         image-size
     image-bits = pad image-bits 4
 
-    image-header ::= ImageHeader image-bits
+    image-header ::= ImageHeader image-bits --word-size=WORD-SIZE
     image-header.system-uuid = system-uuid
     image-header.flags = container.flags
 
@@ -1221,14 +1221,20 @@ class ImageHeader:
   static ID-OFFSET_            ::= 8
   static METADATA-OFFSET_      ::= 24
   static UUID-OFFSET_          ::= 32
-  static SNAPSHOT-UUID-OFFSET_ ::= 48 + 7 * 2 * 4  // 7 tables and lists.
-  static HEADER-SIZE_          ::= SNAPSHOT-UUID-OFFSET_ + uuid.SIZE
 
   static MARKER_ ::= 0xdeadface
 
   header_/ByteArray
-  constructor image/ByteArray:
-    header_ = validate image
+  word-size/int
+
+  constructor image/ByteArray --.word-size:
+    header_ = validate image --word-size=word-size
+
+  static snapshot-uuid-offset_ word-size/int -> int:
+    return 48 + 7 * 2 * word-size  // 7 tables and lists.
+
+  static header-size_ word-size/int -> int:
+    return (snapshot-uuid-offset_ word-size) + uuid.SIZE
 
   flags -> int:
     return header_[METADATA-OFFSET_]
@@ -1240,7 +1246,7 @@ class ImageHeader:
     return read-uuid_ ID-OFFSET_
 
   snapshot-uuid -> uuid.Uuid:
-    return read-uuid_ SNAPSHOT-UUID-OFFSET_
+    return read-uuid_ (snapshot-uuid-offset_ word-size)
 
   system-uuid -> uuid.Uuid:
     return read-uuid_ UUID-OFFSET_
@@ -1254,11 +1260,11 @@ class ImageHeader:
   write-uuid_ offset/int value/uuid.Uuid -> none:
     header_.replace offset value.to-byte-array
 
-  static validate image/ByteArray -> ByteArray:
-    if image.size < HEADER-SIZE_: throw "image too small"
+  static validate image/ByteArray --word-size/int -> ByteArray:
+    if image.size < (header-size_ word-size): throw "image too small"
     marker := LITTLE-ENDIAN.uint32 image MARKER-OFFSET_
     if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
-    return image[0..HEADER-SIZE_]
+    return image[0..(header-size_ word-size)]
 
 /*
 The image format is as follows:
