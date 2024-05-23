@@ -45,18 +45,17 @@ add-image path/string -> none:
   image-data := file.read-content path
   writer := containers.ContainerImageWriter image-data.size
   writer.write image-data
-  writer.commit
+  writer.commit --run-boot --run-critical
 
 main arguments:
-  if arguments.is-empty:
-    print_ "Usage: run-image <image|directory>"
-    exit 1
-
   registry ::= FlashRegistry.scan
   container-manager ::= initialize-system registry [
   ]
   container-manager.register-system-image (SystemImage container-manager)
 
+  if arguments.is-empty:
+    print_ "Usage: run-image <image|directory>"
+    exit 1
 
   arg := arguments.first
   if file.is-file arg:
