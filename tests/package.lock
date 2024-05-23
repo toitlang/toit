@@ -6,6 +6,7 @@ prefixes:
   font_x11_adobe: pkg-font-x11-adobe
   fs: pkg-fs
   host: pkg-host
+  partition-table: toit-partition-table-esp32
   tar: pkg-tar
 packages:
   pkg-ar:
@@ -48,3 +49,8 @@ packages:
     name: certificate_roots
     version: 1.6.1
     hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
+  toit-partition-table-esp32:
+    url: github.com/toitware/toit-partition-table-esp32
+    name: partition-table
+    version: 1.2.0
+    hash: 839d191d419caf43df86ce67c3c596e92f350bda

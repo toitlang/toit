@@ -14,6 +14,9 @@ main:
   buffer.big-endian.write-int64 0x6162636465666768
   buffer.write "**-fish-**"
   expect-equals "ABCDE1234abcdefgh**-fish-**" buffer.bytes.to-string
+  expect-equals 0x4142 (buffer.big-endian.int16 --at=0)
+  expect-equals 0x434445 (buffer.big-endian.int24 --at=2)
+  expect-equals 0x31323334 (buffer.big-endian.int32 --at=5)
 
   buffer = Buffer
   buffer.little-endian.write-int16 0x4142

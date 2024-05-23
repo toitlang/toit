@@ -44,15 +44,17 @@ SNAPSHOT-FILE    ::= "snapshot-file"
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE-ENDIAN
 
-  out ::= ?
-  constructor .out:
+  out-le/io.EndianWriter
+  word-size/int
+
+  constructor out/io.Writer --.word-size:
+    out-le = out.little-endian
 
   abstract write-start -> none
   abstract write-word word/int is-relocatable/bool -> none
   abstract write-end -> none
 
-  write word-size/int relocatable/ByteArray -> none:
-    if word-size != 4: unreachable
+  write relocatable/ByteArray -> none:
     chunk-size := (word-size * 8 + 1) * word-size
     write-start
     List.chunk-up 0 relocatable.size chunk-size: | from to |
@@ -60,19 +62,26 @@ abstract class RelocatedOutput:
     write-end
 
   write-chunk chunk/ByteArray -> none:
-    mask := ENDIAN.uint32 chunk 0
-    for pos := 4; pos < chunk.size; pos += 4:
-      write-word
-          ENDIAN.uint32 chunk pos
-          (mask & 1) != 0
-      mask = mask >> 1
+    if word-size == 4:
+      mask := ENDIAN.uint32 chunk 0
+      for pos := word-size; pos < chunk.size; pos += word-size:
+        word := ENDIAN.uint32 chunk pos
+        write-word word ((mask & 1) != 0)
+        mask = mask >> 1
+    else if word-size == 8:
+      mask := ENDIAN.int64 chunk 0
+      for pos := word-size; pos < chunk.size; pos += word-size:
+        word := ENDIAN.int64 chunk pos
+        write-word word ((mask & 1) != 0)
+        mask = mask >> 1
+    else:
+      unreachable
 
 class BinaryRelocatedOutput extends RelocatedOutput:
   relocation-base/int ::= ?
-  buffer_/ByteArray := ByteArray 4
 
-  constructor out .relocation-base:
-    super out
+  constructor out/io.Writer .relocation-base --word-size/int:
+    super out --word-size=word-size
 
   write-start -> none:
     // Nothing to add here.
@@ -82,15 +91,10 @@ class BinaryRelocatedOutput extends RelocatedOutput:
 
   write-word word/int is-relocatable/bool -> none:
     if is-relocatable: word += relocation-base
-    write-uint32 word
-
-  write-uint16 halfword/int:
-    RelocatedOutput.ENDIAN.put-uint16 buffer_ 0 halfword
-    out.write buffer_[0..2]
-
-  write-uint32 word/int:
-    RelocatedOutput.ENDIAN.put-uint32 buffer_ 0 word
-    out.write buffer_
+    if word-size == 4:
+      out-le.write-uint32 word
+    else:
+      out-le.write-int64 word
 
 print-usage parser/cli.Command --error/string?=null:
   if error: print-on-stderr_ "Error: $error\n"
@@ -105,8 +109,8 @@ main args:
           cli.Flag M32-FLAG --short-name="m32",
           cli.Flag M64-FLAG --short-name="m64",
           cli.Flag BINARY-FLAG,
-          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.Option OUTPUT-OPTION --short-name="o",
+          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required,
+          cli.Option OUTPUT-OPTION --short-name="o" --required,
           cli.Option ASSETS-OPTION,
         ]
       --run=:: parsed = it
@@ -115,9 +119,6 @@ main args:
 
   output-path/string? := parsed[OUTPUT-OPTION]
 
-  if not output-path:
-    print-usage parser --error="-o flag is not optional"
-
   format := ?
   if parsed[BINARY-FLAG]:
     if parsed[FORMAT-OPTION] != null:
@@ -125,9 +126,6 @@ main args:
     format = "binary"
   else:
     format = parsed[FORMAT-OPTION]
-
-  if not format:
-    print-usage parser --error="no output format specified"
 
   machine-word-sizes := []
   if parsed[M32-FLAG]:
