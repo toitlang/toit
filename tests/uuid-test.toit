@@ -68,6 +68,8 @@ test-parse:
   expect-equals error-uuid (UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44"   --on-error=: error-uuid)
   expect-equals error-uuid (UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa" --on-error=: error-uuid)
 
+  expect-null (UUID.parse "" --on-error=: null)
+
 test-to-string:
   expect-equals
     "9c20dadc-1abe-5520-b92c-85b948daf44a"
