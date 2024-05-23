@@ -475,7 +475,9 @@ tool-path sdk-dir/string? tool/string -> string:
 
 run sdk-dir/string? tool/string args/List:
   args = [tool-path sdk-dir tool] + args
-  pipe.run-program args
+  exit-code := pipe.run-program args
+  if exit-code != 0:
+    throw "Failed to run $tool"
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   args := []
