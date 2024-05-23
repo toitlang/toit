@@ -161,13 +161,13 @@ else()
 endif()
 add_custom_command(
   OUTPUT "${RUN_IMAGE_IMAGE}"
-  COMMAND "$<TARGET_FILE:toit.run>"
-      ${CMAKE_SOURCE_DIR}/tools/snapshot_to_image.toit
+  COMMAND "${HOST_TOIT}" run --
+      "${CMAKE_SOURCE_DIR}/tools/snapshot_to_image.toit"
       -o "${RUN_IMAGE_IMAGE}"
       --format binary
       "${RUN_IMAGE_ARCH_FLAG}"
       "${RUN_IMAGE_SNAPSHOT}"
-  DEPENDS "$<TARGET_FILE:toit.run>" ${RUN_IMAGE_SNAPSHOT}
+  DEPENDS "${HOST_TOIT}" ${RUN_IMAGE_SNAPSHOT}
 )
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -194,7 +194,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     toit_run_image
     toit_run_image.cc
     ${RUN_IMAGE_IMAGE_CC}
-    run.cc
     )
 
   add_dependencies(build_tools toit_run_image)
