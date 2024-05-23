@@ -39,7 +39,7 @@ Calls $on-error (and returns its result) if $str is not a valid UUID.
 parse "123e4567-e89b-12d3-a456-426614174000"
 ```
 */
-parse str/string [--on-error] -> Uuid:
+parse str/string [--on-error] -> Uuid?:
   uuid := ByteArray SIZE
   index := 0
   i := 0
