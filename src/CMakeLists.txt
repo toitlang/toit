@@ -118,6 +118,9 @@ set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 set(BOOT_SNAPSHOT ${GEN_DIR}/toit.run.snapshot)
 set(BOOT_SNAPSHOT_CC ${GEN_DIR}/toit.run.snapshot.cc)
+set(RUN_IMAGE_SNAPSHOT ${GEN_DIR}/run-image.snapshot)
+set(RUN_IMAGE_IMAGE ${GEN_DIR}/run-image.image)
+set(RUN_IMAGE_IMAGE_CC ${GEN_DIR}/run-image.image.cc)
 set(TOIT_SNAPSHOT ${GEN_DIR}/toit.snapshot)
 set(TOIT_SNAPSHOT_CC ${GEN_DIR}/toit.snapshot.cc)
 
@@ -139,6 +142,32 @@ add_custom_command(
   COMMAND xxd -i "toit.snapshot" "${TOIT_SNAPSHOT_CC}"
   DEPENDS "${TOIT_SNAPSHOT}"
   WORKING_DIRECTORY "${GEN_DIR}"
+)
+
+add_custom_command(
+  OUTPUT "${RUN_IMAGE_IMAGE_CC}"
+  # We can't use ${RUN_IMAGE_IMAGE} here, as that would include the full path.
+  # xxd just got a patch to change the name, but it's not really released/widely available yet.
+  COMMAND xxd -i "run-image.image" "${RUN_IMAGE_IMAGE_CC}"
+  DEPENDS "${RUN_IMAGE_IMAGE}"
+  WORKING_DIRECTORY "${GEN_DIR}"
+)
+
+# If the target architecture is 32-bit use -m32; otherwise -m64.
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+  set(RUN_IMAGE_ARCH_FLAG "-m32")
+else()
+  set(RUN_IMAGE_ARCH_FLAG "-m64")
+endif()
+add_custom_command(
+  OUTPUT "${RUN_IMAGE_IMAGE}"
+  COMMAND "${HOST_TOIT}" run --
+      "${CMAKE_SOURCE_DIR}/tools/snapshot_to_image.toit"
+      -o "${RUN_IMAGE_IMAGE}"
+      --format binary
+      "${RUN_IMAGE_ARCH_FLAG}"
+      "${RUN_IMAGE_SNAPSHOT}"
+  DEPENDS "${HOST_TOIT}" ${RUN_IMAGE_SNAPSHOT}
 )
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -164,13 +193,14 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_executable(
     toit_run_image
     toit_run_image.cc
-    ${BOOT_SNAPSHOT_CC}
-    run.cc
+    ${RUN_IMAGE_IMAGE_CC}
     )
+
+  add_dependencies(build_tools toit_run_image)
 
   set_target_properties(toit_run_image
     PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/toit_run_image_test/bin"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/run_image"
     )
 endif()
 
@@ -265,8 +295,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     COMMAND ${HOST_TOIT} tool firmware create host
         -e "${ENVELOPE}"
         --run-image "$<TARGET_FILE:toit_run_image>"
-        --system.snapshot "${BOOT_SNAPSHOT}"
-    DEPENDS ${HOST_TOIT} toit_run_image ${BOOT_SNAPSHOT}
+    DEPENDS ${HOST_TOIT} toit_run_image
   )
   add_custom_target(
     build_envelope
@@ -322,6 +351,14 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${TOIT_SNAPSHOT_SOURCE}
     ${TOIT_SNAPSHOT}
     ${CMAKE_CURRENT_BINARY_DIR}/toit.dep
+    ""
+  )
+
+  set(RUN_IMAGE_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/run-image.toit)
+  ADD_TOIT_SNAPSHOT(
+    ${RUN_IMAGE_SNAPSHOT_SOURCE}
+    ${RUN_IMAGE_SNAPSHOT}
+    ${CMAKE_CURRENT_BINARY_DIR}/run-image.dep
     ""
   )
 
