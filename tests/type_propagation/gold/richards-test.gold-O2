@@ -311,7 +311,7 @@ Scheduler.release tests/type_propagation/richards-test.toit
 Scheduler.queue tests/type_propagation/richards-test.toit
  - argument 0: {Scheduler}
  - argument 1: {Null_|Packet}
-  0[052] - load local, as class, pop 2 - Packet(39 - 40) // {True_|False_}
+  0[052] - load local, as class, pop 2 - Packet(40 - 41) // {True_|False_}
   2[009] - load field local 35 // [{Scheduler}] -> {Null_|List_}
   4[009] - load field local 19 // [{Packet}] -> {Null_|LargeInteger_|SmallInteger_}
   6[078] - invoke at // [{Null_|List_}, {Null_|LargeInteger_|SmallInteger_}] -> {*}
@@ -367,7 +367,7 @@ TaskControlBlock tests/type_propagation/richards-test.toit
  - argument 5: {HandlerTask|WorkerTask|DeviceTask|IdleTask}
   0[000] - load local S7
   2[000] - load local S7
-  4[048] - as class TaskControlBlock?(44 - 45) // {True_|False_}
+  4[048] - as class TaskControlBlock?(45 - 46) // {True_|False_}
   6[013] - store field, pop 0
   8[000] - load local S7
  10[000] - load local S6

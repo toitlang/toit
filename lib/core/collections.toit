@@ -540,11 +540,7 @@ abstract class List extends CollectionBase:
 
   /** See $super. */
   stringify -> string:
-    str := "["
-    size.repeat:
-      if it != 0: str = str + ", "
-      str = str + this[it].stringify
-    return str + "]"
+    return stringify_ this "[" "]"
 
   /**
   Calls stringify on each element of the list, and concatenates the results
@@ -2625,13 +2621,8 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   intersect --in-place/bool=false other/Set -> Set:
     return filter --in-place=in-place: other.contains it
 
-  stringify:
-    str := "{"
-    first := true
-    do:
-      if first: first = false else: str = str + ", "
-      str = str + it.stringify
-    return str + "}"
+  stringify -> string:
+    return stringify_ this "{" "}"
 
   /**
   Returns an element that is equal to the $key.
@@ -3200,17 +3191,9 @@ class Map extends HashedInsertionOrderedCollection_:
     shrink-if-needed_
     return this
 
-  stringify:
+  stringify -> string:
     if is-empty: return "{:}"
-    key-value-strings := []
-    size := 0
-    do: | key value |
-      key-value-string := "$key.stringify: $value.stringify"
-      size += key-value-string.size + 2
-      if size > MAX-PRINT-STRING_:
-        return "{$(key-value-strings.join ", ")..."
-      key-value-strings.add key-value-string
-    return "{$(key-value-strings.join ", ")}"
+    return stringify_ (MapStringify_ this) "{" "}"
 
   /**
   The first key of the map by insertion order.
@@ -3427,3 +3410,25 @@ class Deque extends List implements Collection:
       backing.replace 0 backing first first + size
       backing.resize size
       first_ = 0
+
+stringify_ collection open/string close/string -> string:
+  key-strings := []
+  size := 0
+  collection.do: | key |
+    key-string := key.stringify
+    size += key-string.size + 2
+    if size > MAX-PRINT-STRING_:
+      return "$open$(key-strings.join ", ")..."
+    key-strings.add key-string
+  return "$open$(key-strings.join ", ")$close"
+
+// We need this helper class because the do method of Map passes two arguments,
+// while for the other collections we only pass one argument.
+class MapStringify_:
+  map/Map
+
+  constructor .map:
+
+  do [block] -> none:
+    map.do: | key value |
+      block.call "$key: $value"
