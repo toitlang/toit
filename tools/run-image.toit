@@ -43,6 +43,19 @@ class SystemImage extends ContainerImage:
   delete -> none:
     unreachable  // Not implemented yet.
 
+main arguments:
+  registry ::= FlashRegistry.scan
+  container-manager ::= initialize-system registry [
+  ]
+  container-manager.register-system-image (SystemImage container-manager)
+
+  if arguments.is-empty:
+    print_ "Usage: run-image <image|directory>"
+    exit 1
+  add-images arguments container-manager
+
+  exit (boot container-manager)
+
 add-image path/string existing-uuids/Set -> none:
   path = path.replace --all "\\" "/"
   last-separator := path.index-of --last "/"
@@ -58,16 +71,7 @@ add-image path/string existing-uuids/Set -> none:
   writer.write image-data
   writer.commit --run-boot --run-critical
 
-main arguments:
-  registry ::= FlashRegistry.scan
-  container-manager ::= initialize-system registry [
-  ]
-  container-manager.register-system-image (SystemImage container-manager)
-
-  if arguments.is-empty:
-    print_ "Usage: run-image <image|directory>"
-    exit 1
-
+add-images arguments/List container-manager/ContainerManager -> none:
   existing-uuids/Set := {}
   container-manager.images.do: | image/ContainerImage |
     existing-uuids.add image.id
@@ -87,5 +91,3 @@ main arguments:
   else:
     print_ "Invalid argument: $arg"
     exit 1
-
-  exit (boot container-manager)
