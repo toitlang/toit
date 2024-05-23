@@ -303,6 +303,7 @@ PRIMITIVE(ota_rollback) {
   PRIVILEGED;
   bool is_rollback_possible = esp_ota_check_rollback_is_possible();
   if (!is_rollback_possible) FAIL(PERMISSION_DENIED);
+  RtcMemory::invalidate();   // Careful: This clears the RTC memory on boot.
   esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
   ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
   FAIL(ERROR);
