@@ -62,8 +62,8 @@ compile bigger-chunk-count small-string-size -> int:
   stream := file.Stream.for-write toit-file
   (Writer.adapt stream).write str
   stream.close
-  pipe.backticks [toitrun, "-w", snap-file, toit-file]
-  pipe.backticks [toitrun, snapshot-to-image, "--binary", "-o", img-file, snap-file]
+  pipe.run-program [toitrun, "-w", snap-file, toit-file]
+  pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-o", img-file, snap-file]
   return file.size img-file
 
 // Tests that the image creation works when a heap page is completely full.
