@@ -334,7 +334,7 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
           *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
         }
         bytes++;
-      } while (bytes < bytes_end && *bytes != GcMetadata::NO_NEW_SPACE_POINTERS);
+      } while (bytes < bytes_end && *bytes == GcMetadata::NEW_SPACE_POINTERS);
       earliest_iteration_start = iteration_start;
     }
     next_chunk:
