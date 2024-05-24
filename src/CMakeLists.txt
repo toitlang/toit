@@ -294,6 +294,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     OUTPUT "${ENVELOPE}"
     COMMAND ${HOST_TOIT} tool firmware create host
         -e "${ENVELOPE}"
+        --word-size ${CMAKE_SIZEOF_VOID_P}
         --run-image "$<TARGET_FILE:toit_run_image>"
     DEPENDS ${HOST_TOIT} toit_run_image
   )

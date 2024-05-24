@@ -41,15 +41,18 @@ import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 7
+ENVELOPE-FORMAT-VERSION ::= 8
 
 WORD-SIZE-ESP32 ::= 4
 
 // Shared AR entries.
-AR-ENTRY-INFO        ::= "\$envelope"
-AR-ENTRY-SDK-VERSION ::= "\$sdk-version"
-AR-ENTRY-PLATFORM    ::= "\$platform"
-AR-ENTRY-PROPERTIES     ::= "\$properties"
+AR-ENTRY-INFO       ::= "\$envelope"
+AR-ENTRY-METADATA   ::= "\$metadata"
+AR-ENTRY-PROPERTIES ::= "\$properties"
+
+META-SDK-VERSION ::= "sdk-version"
+META-WORD-SIZE   ::= "word-size"
+META-PLATFORM    ::= "platform"
 
 // ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
@@ -225,6 +228,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
       --platform=Envelope.PLATFORM-ESP32
+      --word-size=WORD-SIZE-ESP32
   envelope.store output-path
 
 create-host-cmd -> cli.Command:
@@ -237,12 +241,15 @@ create-host-cmd -> cli.Command:
             --help="Path to the run-image executable."
             --type="file"
             --required,
+        cli.OptionInt "word-size"
+            --required,
       ]
       --run=:: create-envelope-host it
 
 create-envelope-host parsed/cli.Parsed -> none:
   output-path := parsed[OPTION-ENVELOPE]
 
+  word-size := parsed["word-size"]
   run-image-path := parsed["run-image"]
   run-image-bytes := read-file run-image-path
 
@@ -256,6 +263,7 @@ create-envelope-host parsed/cli.Parsed -> none:
   envelope := Envelope.create entries
       --sdk-version=system.app-sdk-version
       --platform=Envelope.PLATFORM-HOST
+      --word-size=word-size
   envelope.store output-path
 
 container-cmd -> cli.Command:
@@ -1090,6 +1098,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
       --platform=existing.platform
+      --word-size=existing.word-size
   envelope.store output-path
 
 extract-binary-content -> ByteArray
@@ -1276,49 +1285,63 @@ class Envelope:
   path/string? ::= null
   sdk-version/string
   platform/int
+  word-size/int
   entries/Map ::= {:}
 
   constructor.load .path/string:
-    version/int? := null
+    version_ = -1
     sdk-version = ""
     platform = -1
+    word-size = -1
     read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == AR-ENTRY-INFO:
-          version = validate file.content
-        else if file.name == AR-ENTRY-SDK-VERSION:
-          sdk-version = file.content.to-string-non-throwing
-        else if file.name == AR-ENTRY-PLATFORM:
-          if file.content.size != 1:
-            throw "cannot open envelope - malformed platform entry"
-          platform = file.content[0]
-          if platform != PLATFORM-ESP32 and platform != PLATFORM-HOST:
-            throw "cannot open envelope - unknown platform $platform"
+          version_ = validate file.content
+        else if file.name == AR-ENTRY-METADATA:
+          metadata := json.decode file.content
+          sdk-version = metadata[META-SDK-VERSION]
+          platform-string := metadata[META-PLATFORM]
+          if platform-string == "esp32":
+            platform = PLATFORM-ESP32
+          else if platform-string == "host":
+            platform = PLATFORM-HOST
+          else:
+            throw "unsupported platform: $platform-string"
+          word-size = metadata[META-WORD-SIZE]
         else:
           entries[file.name] = file.content
-    if not version: throw "cannot open envelope - missing info entry"
-    if platform == -1: throw "cannot open envelope - missing platform entry"
-    version_ = version
+    if version_ == -1: throw "cannot open envelope - missing info entry"
+    if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
-  constructor.create .entries --.sdk-version --.platform:
+  constructor.create .entries --.sdk-version --.platform --.word-size:
     version_ = ENVELOPE-FORMAT-VERSION
-
-  word-size -> int:
-    if platform == PLATFORM-ESP32: return WORD-SIZE-ESP32
-    // TODO(florian): don't assume 64-bit platform for host.
-    return 8
 
   store path/string -> none:
     write-file path: | writer/io.Writer |
       ar := ar.ArWriter writer
+
       // Add the envelope info entry.
       info := ByteArray INFO-ENTRY-SIZE
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-MARKER-OFFSET MARKER
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
       ar.add AR-ENTRY-INFO info
-      ar.add AR-ENTRY-SDK-VERSION sdk-version
-      ar.add AR-ENTRY-PLATFORM #[platform]
+
+      platform-string := ""
+      if platform == PLATFORM-ESP32:
+        platform-string = "esp32"
+      else if platform == PLATFORM-HOST:
+        platform-string = "host"
+      else:
+        throw "unsupported platform: $(platform)"
+
+      metadata := json.encode {
+        META-SDK-VERSION: sdk-version,
+        META-PLATFORM: platform-string,
+        META-WORD-SIZE: word-size,
+      }
+      ar.add AR-ENTRY-METADATA metadata
+
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
