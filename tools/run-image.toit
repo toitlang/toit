@@ -101,14 +101,17 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     return FirmwareWriter_ this client from to --ota-dir-inactive=ota-dir-inactive_
 
 class FirmwareWriter_ extends services.ServiceResource implements FirmwareWriter:
-  static image/ByteArray := #[]
+  image/ByteArray := #[]
   view_/ByteArray? := null
   cursor_/int := 0
   ota-dir-inactive_/string
 
   constructor provider/FirmwareServiceProvider client/int from/int to/int --ota-dir-inactive/string:
     ota-dir-inactive_ = ota-dir-inactive
-    if to > image.size: image = image + (ByteArray to - image.size: random 0x100)
+    if to > image.size:
+      // Grow the static image to the size this writer works on.
+      // Replace the 0s with some value to avoid accidental use of uninitialized memory.
+      image += ByteArray (to - image.size): it & 0xff
     view_ = image[from..to]
     super provider client
 
