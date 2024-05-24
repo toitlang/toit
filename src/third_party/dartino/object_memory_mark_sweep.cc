@@ -265,83 +265,80 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
     uint8* bytes_end = reinterpret_cast<uint8*>(GcMetadata::remembered_set_for(chunk->end()));
     uword earliest_iteration_start = current;
     while (bytes < bytes_end) {
-      if (Utils::is_aligned(reinterpret_cast<uword>(bytes), sizeof(uword))) {
-        ASSERT(GcMetadata::NO_NEW_SPACE_POINTERS == 0);
-        while (*reinterpret_cast<word*>(bytes) == 0) {
-          bytes += WORD_SIZE;
-          current += WORD_SIZE * GcMetadata::CARD_SIZE;
-          if (bytes >= bytes_end) goto next_chunk;
-        }
-      }
-      if (*bytes != GcMetadata::NO_NEW_SPACE_POINTERS) {
-        uint8* starts = GcMetadata::starts_for(current);
-        // Since there is a dirty object starting in this card, we would like
-        // to assert that there is an object starting in this card.
-        // Unfortunately, the sweeper does not clean the dirty object bytes,
-        // and we don't want to slow down the sweeper, so we cannot make this
-        // assertion in the case where a dirty object died and was made into
-        // free-list.
-        uword iteration_start = current;
-        if (starts != GcMetadata::starts_for(chunk->start())) {
-          // If we are not at the start of the chunk, step back into previous
-          // card to find a place to start iterating from that is guaranteed to
-          // be before the start of the card.  We have to do this because the
-          // starts-table can contain the start offset of any object in the
-          // card, including objects that have higher addresses than the one(s)
-          // with new-space pointers in them.
-          do {
-            starts--;
-            iteration_start -= GcMetadata::CARD_SIZE;
-            // Step back across object-start entries that have not been filled
-            // in (because of large objects).
-          } while (iteration_start > earliest_iteration_start &&
-                   *starts == GcMetadata::NO_OBJECT_START);
-
-          if (iteration_start > earliest_iteration_start) {
-            uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
-            iteration_start -= iteration_low_byte;
-            iteration_start += *starts;
-          } else {
+      ASSERT(GcMetadata::NEW_SPACE_POINTERS == 0);
+      uword skip_cards = strnlen(char_cast(bytes), bytes_end - bytes);
+      bytes += skip_cards;
+      if (bytes == bytes_end) break;
+      current += skip_cards << GcMetadata::CARD_SIZE_LOG_2;
+      uint8* starts = GcMetadata::starts_for(current);
+      // Since there is a dirty object starting in this card, we would like
+      // to assert that there is an object starting in this card.
+      // Unfortunately, the sweeper does not clean the dirty object bytes,
+      // and we don't want to slow down the sweeper, so we cannot make this
+      // assertion in the case where a dirty object died and was made into
+      // free-list.
+      uword iteration_start = current;
+      if (current != chunk->start()) {
+        // If we are not at the start of the chunk, step back into previous
+        // card to find a place to start iterating from that is guaranteed to
+        // be before the start of the card.  We have to do this because the
+        // starts-table can contain the start offset of any object in the
+        // card, including objects that have higher addresses than the one(s)
+        // with new-space pointers in them.
+        while (true) {
+          starts--;
+          iteration_start -= GcMetadata::CARD_SIZE;
+          // Step back across object-start entries that have not been filled
+          // in (because of large objects).
+          if (iteration_start <= earliest_iteration_start) {
             // Do not step back to before the end of an object that we already
             // scanned. This is both for efficiency, and also to avoid backing
             // into a PromotedTrack object, which contains newly allocated
             // objects inside it, which are not yet traversable.
             iteration_start = earliest_iteration_start;
+            break;
+          }
+          if (*starts != GcMetadata::NO_OBJECT_START) {
+            uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
+            iteration_start -= iteration_low_byte;
+            iteration_start += *starts;
+            break;
           }
         }
-        // Skip objects that start in the previous card.
-        while (iteration_start < current) {
-          if (has_sentinel_at(iteration_start)) break;
+      }
+      // We have the start of an object that is before the previous card.
+      // Skip objects that start in the previous card.
+      while (iteration_start < current) {
+        if (has_sentinel_at(iteration_start)) break;
+        HeapObject* object = HeapObject::from_address(iteration_start);
+        iteration_start += object->size(program_);
+      }
+      do {
+        // Reset in case there are no new-space pointers any more.
+        *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
+        // If we find any new-space pointers in the visitor, remark this card.
+        visitor->set_record_new_space_pointers(bytes);
+        // Iterate objects that start in the relevant card.
+        while (iteration_start < current + GcMetadata::CARD_SIZE) {
+          if (has_sentinel_at(iteration_start)) goto next_chunk;
           HeapObject* object = HeapObject::from_address(iteration_start);
+          object->roots_do(program_, visitor);
           iteration_start += object->size(program_);
         }
-        while (*bytes != GcMetadata::NO_NEW_SPACE_POINTERS) {
-          // Reset in case there are no new-space pointers any more.
-          *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
-          visitor->set_record_new_space_pointers(bytes);
-          // Iterate objects that start in the relevant card.
-          while (iteration_start < current + GcMetadata::CARD_SIZE) {
-            if (has_sentinel_at(iteration_start)) goto next_chunk;
-            HeapObject* object = HeapObject::from_address(iteration_start);
-            object->roots_do(program_, visitor);
-            iteration_start += object->size(program_);
-          }
-          uword increment = (iteration_start - current) >> GcMetadata::CARD_SIZE_LOG_2;
-          for (uword i = 1; i < increment; i++) {
-            bytes++;
-            *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
-          }
+        uword increment = (iteration_start - current) >> GcMetadata::CARD_SIZE_LOG_2;
+        current = iteration_start & ~(GcMetadata::CARD_SIZE - 1);
+        // Clean up any remembered set entries that the sweeper has left over
+        // that are in the middle of an object.
+        for (uword i = 1; i < increment; i++) {
           bytes++;
-          current = iteration_start & ~(GcMetadata::CARD_SIZE - 1);
-          if (bytes == bytes_end) goto next_chunk;
+          *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
         }
-        earliest_iteration_start = iteration_start;
-      } else {
         bytes++;
-        current += GcMetadata::CARD_SIZE;
-      }
+      } while (bytes < bytes_end && *bytes != GcMetadata::NO_NEW_SPACE_POINTERS);
+      earliest_iteration_start = iteration_start;
     }
     next_chunk:
+    // Old C++ standards don't allow a label to be the last thing in a block.
     (void)42;
   }
 }

@@ -39,8 +39,8 @@ class GcMetadata {
   static const int CARD_SIZE_IN_BITS_LOG_2 = CARD_SIZE_LOG_2 + 3;
 
   // There is a byte per card, and any two byte values would work here.
-  static const uint8 NO_NEW_SPACE_POINTERS = 0;
-  static const uint8 NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
+  static const uint8 NO_NEW_SPACE_POINTERS = 1;
+  static const uint8 NEW_SPACE_POINTERS = 0;
 
   // One bit per word of heap, so the size in bytes is 1/8th of that.
   static const int MARK_BITS_SHIFT = 3 + WORD_SHIFT;
