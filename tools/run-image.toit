@@ -38,6 +38,7 @@ BITS-FILE-NAME_ ::= "bits.bin"
 STARTUP-DIR-NAME ::= "startup-images"
 BUNDLED-DIR-NAME ::= "bundled-images"
 INSTALLED-DIR-NAME ::= "installed-images"
+VALIDATED-FILE-NAME_ ::= "validated"
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -67,16 +68,20 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     super "system/firmware" --major=0 --minor=1
 
   is-validation-pending -> bool:
-    return false
+    return not file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_"
 
   is-rollback-possible -> bool:
-    return false
+    return is-validation-pending
 
   validate -> bool:
-    throw "UNIMPLEMENTED"
+    file.write-content --path="$ota-dir-active_/$VALIDATED-FILE-NAME_" #[]
+    return true
 
   rollback -> none:
-    throw "UNIMPLEMENTED"
+    if file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_":
+      throw "Can't rollback after validation"
+    // By exiting without validating the outer script will automatically rollback.
+    exit 18
 
   upgrade -> none:
     if not ota-dir-inactive_: throw "No OTA directory"

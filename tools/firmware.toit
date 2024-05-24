@@ -36,6 +36,7 @@ import host.pipe
 import partition-table show *
 import tar
 
+import .firmware-boot-sh
 import .image
 import .snapshot
 import .snapshot-to-image
@@ -759,16 +760,20 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     write-file output-path: it.write encoded-ubjson
     return
 
+  assert: format == "tar"
+
   // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
   tar-writer := tar.Tar tar-bytes
-  tar-writer.add "run-image" run-image --permissions=0b111_000_000
-  tar-writer.add "config.ubjson" encoded-ubjson
+  tar-writer.add "boot.sh" BOOT-SH
+  tar-writer.add "ota0/validated" ""
+  tar-writer.add "ota0/run-image" run-image --permissions=0b111_000_000
+  tar-writer.add "ota0/bits.bin" bits.bytes
+  tar-writer.add "ota0/config.ubjson" encoded-ubjson
   startup-images.do: | uuid/string image/ByteArray |
-    tar-writer.add "startup-images/$uuid" image
+    tar-writer.add "ota0/startup-images/$uuid" image
   bundled-images.do: | uuid/string image/ByteArray |
-    tar-writer.add "bundled-images/$uuid" image
-  tar-writer.add "bits.bin" bits.bytes
+    tar-writer.add "ota0/bundled-images/$uuid" image
   tar-writer.close --close-writer
 
   write-file output-path: it.write tar-bytes.bytes

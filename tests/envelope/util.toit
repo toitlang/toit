@@ -17,60 +17,68 @@ with-test arguments/List [block]:
     test.close
 
 class EnvelopeTest:
+  original-envelope/string
   toit-bin/string
   envelope/string
   tmp-dir/string
 
   constructor arguments/List:
     toit-bin = arguments[0]
-    original-envelope := arguments[1]
+    original-envelope = arguments[1]
 
     tmp-dir = directory.mkdtemp "/tmp/envelope-test-"
     envelope = "$tmp-dir/firmware.envelope"
     file.copy --source=original-envelope --target=envelope
 
-  close:
+  close -> none:
     directory.rmdir --recursive tmp-dir
 
-  compile --path/string --source/string:
+  compile --path/string --source/string -> none:
     tmp-toit-path := "$tmp-dir/__tmp__.toit"
     file.write-content --path=tmp-toit-path source
     compile --path=path --source-path=tmp-toit-path
 
-  compile --path/string --source-path/string:
+  compile --path/string --source-path/string -> none:
     if fs.is-relative source-path:
       // Make the path relative to the test.
       source-path = fs.join (fs.dirname system.program-path) source-path
 
     run-program_ [toit-bin, "compile", "--snapshot", "--output", path, source-path]
 
-  install --name/string --snapshot-path/string --boot/bool=true:
+  install --name/string --snapshot-path/string --boot/bool=true -> none:
     cmd := [toit-bin, "tool", "firmware", "-e", envelope, "container", "install", name, snapshot-path]
     if boot:
       cmd.add-all ["--trigger", "boot"]
     run-program_ cmd
 
-  install --name/string --source/string --boot/bool=true:
-    tmp-snapshot-path := "$tmp-dir/__tmp__.snapshot"
-    compile --path=tmp-snapshot-path --source=source
-    install --name=name --snapshot-path=tmp-snapshot-path --boot=boot
+  install --name/string --source/string --boot/bool=true -> none:
+    tmp-source-path := "$tmp-dir/__tmp__.toit"
+    file.write-content --path=tmp-source-path source
+    install --name=name --source-path=tmp-source-path --boot=boot
 
-  install --name/string --source-path/string --boot/bool=true:
+  install --name/string --source-path/string --boot/bool=true -> none:
     tmp-snapshot-path := "$tmp-dir/__tmp__.snapshot"
     compile --path=tmp-snapshot-path --source-path=source-path
     install --name=name --snapshot-path=tmp-snapshot-path --boot=boot
 
-  extract --path/string --format/string="binary":
+  extract --path/string --format/string="binary" -> none:
     run-program_ [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
 
-  extract-to-dir --dir-path/string:
+  extract-to-dir --dir-path/string -> none:
     directory.mkdir --recursive dir-path
     tmp-extracted := "$tmp-dir/__extracted__"
     extract --path=tmp-extracted --format="tar"
-    // TODO(florian): this doesn't work on Windows.
     run-program_ ["tar", "x", "-f", tmp-extracted, "-C", dir-path]
-    // TODO(florian): currently the run-image is not marked as executable inside the tar.
-    file.chmod "$dir-path/run-image" 0b111_000_000
+
+  build-ota --name/string --source/string --output/string -> none:
+    tmp-source-path := "$tmp-dir/__tmp__.toit"
+    file.write-content --path=tmp-source-path source
+    build-ota --name=name --source-path=tmp-source-path --output=output
+
+  build-ota --name/string --source-path/string --output/string -> none:
+    with-test [toit-bin, original-envelope]: | test-other/EnvelopeTest |
+      test-other.install --name=name --source-path=source-path
+      test-other.extract --path=output
 
   backticks ota-active/string --env/Map?=null -> string:
     return backticks --env=env --ota-active=ota-active --ota-inactive="$tmp-dir/__inactive__"
@@ -89,6 +97,9 @@ class EnvelopeTest:
     // TODO(florian): this doesn't work on Windows. Would require an .exe suffix.
     exe := "$ota-active/run-image"
     return run-program_ [exe, ota-active, ota-inactive] --env=env --allow-fail=allow-fail
+
+  boot dir/string --env/Map?=null -> string:
+    return backticks_ --env=env ["bash", "$dir/boot.sh"]
 
   run-program_ args/List --env/Map?=null --allow-fail/bool=false -> int:
     exit-code := pipe.run-program args --environment=env
