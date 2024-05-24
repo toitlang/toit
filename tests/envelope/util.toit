@@ -6,6 +6,7 @@ import fs
 import host.file
 import host.directory
 import host.pipe
+import host.os
 import system
 import tar
 
@@ -99,7 +100,22 @@ class EnvelopeTest:
     return run-program_ [exe, ota-active, ota-inactive] --env=env --allow-fail=allow-fail
 
   boot dir/string --env/Map?=null -> string:
-    return backticks_ --env=env ["bash", "$dir/boot.sh"]
+    bash := "bash"
+    path := "$dir/boot.sh"
+    if system.platform == system.PLATFORM-WINDOWS:
+      // Running on Windows is tricky...
+      // - We want Git's bash and not any other. The path to the git-bash must
+      //   be in Windows format.
+      // - We provide a shell script as argument. That script must be in Unix
+      //   (cygwin) format.
+      // Example: `C:/Program Files/Git/usr/bin/bash.exe /tmp/envelope-test-...`.
+      path = (backticks_ ["cygpath", "-u", path] --env=null).trim
+      program-files-path := os.env.get "ProgramFiles"
+      if not program-files-path:
+        // This is brittle, as Windows localizes the name of the folder.
+        program-files-path = "C:/Program Files"
+      bash = "$program-files-path/Git/usr/bin/bash.exe"
+    return backticks_ --env=env [bash, path]
 
   run-program_ args/List --env/Map?=null --allow-fail/bool=false -> int:
     exit-code := pipe.run-program args --environment=env
