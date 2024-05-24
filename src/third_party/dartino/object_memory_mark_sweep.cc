@@ -261,24 +261,19 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
     uword current = chunk->start();
-    uword bytes = reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
+    uint8* bytes = reinterpret_cast<uint8*>(GcMetadata::remembered_set_for(current));
+    uint8* bytes_end = reinterpret_cast<uint8*>(GcMetadata::remembered_set_for(chunk->end()));
     uword earliest_iteration_start = current;
-    while (current < chunk->end()) {
-      if (Utils::is_aligned(bytes, sizeof(uword))) {
-        uword* words = reinterpret_cast<uword*>(bytes);
-        // Skip blank cards n at a time.
+    while (bytes < bytes_end) {
+      if (Utils::is_aligned(reinterpret_cast<uword>(bytes), sizeof(uword))) {
         ASSERT(GcMetadata::NO_NEW_SPACE_POINTERS == 0);
-        if (*words == 0) {
-          do {
-            bytes += sizeof *words;
-            words++;
-            current += sizeof(*words) * GcMetadata::CARD_SIZE;
-          } while (current < chunk->end() && *words == 0);
-          continue;
+        while (*reinterpret_cast<word*>(bytes) == 0) {
+          bytes += WORD_SIZE;
+          current += WORD_SIZE * GcMetadata::CARD_SIZE;
+          if (bytes >= bytes_end) goto next_chunk;
         }
       }
-      uint8* byte = reinterpret_cast<uint8*>(bytes);
-      if (*byte != GcMetadata::NO_NEW_SPACE_POINTERS) {
+      if (*bytes != GcMetadata::NO_NEW_SPACE_POINTERS) {
         uint8* starts = GcMetadata::starts_for(current);
         // Since there is a dirty object starting in this card, we would like
         // to assert that there is an object starting in this card.
@@ -320,21 +315,34 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
           HeapObject* object = HeapObject::from_address(iteration_start);
           iteration_start += object->size(program_);
         }
-        // Reset in case there are no new-space pointers any more.
-        *byte = GcMetadata::NO_NEW_SPACE_POINTERS;
-        visitor->set_record_new_space_pointers(byte);
-        // Iterate objects that start in the relevant card.
-        while (iteration_start < current + GcMetadata::CARD_SIZE) {
-          if (has_sentinel_at(iteration_start)) break;
-          HeapObject* object = HeapObject::from_address(iteration_start);
-          object->roots_do(program_, visitor);
-          iteration_start += object->size(program_);
+        while (*bytes != GcMetadata::NO_NEW_SPACE_POINTERS) {
+          // Reset in case there are no new-space pointers any more.
+          *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
+          visitor->set_record_new_space_pointers(bytes);
+          // Iterate objects that start in the relevant card.
+          while (iteration_start < current + GcMetadata::CARD_SIZE) {
+            if (has_sentinel_at(iteration_start)) goto next_chunk;
+            HeapObject* object = HeapObject::from_address(iteration_start);
+            object->roots_do(program_, visitor);
+            iteration_start += object->size(program_);
+          }
+          uword increment = (iteration_start - current) >> GcMetadata::CARD_SIZE_LOG_2;
+          for (uword i = 1; i < increment; i++) {
+            bytes++;
+            *bytes = GcMetadata::NO_NEW_SPACE_POINTERS;
+          }
+          bytes++;
+          current = iteration_start & ~(GcMetadata::CARD_SIZE - 1);
+          if (bytes == bytes_end) goto next_chunk;
         }
         earliest_iteration_start = iteration_start;
+      } else {
+        bytes++;
+        current += GcMetadata::CARD_SIZE;
       }
-      current += GcMetadata::CARD_SIZE;
-      bytes++;
     }
+    next_chunk:
+    (void)42;
   }
 }
 
@@ -519,7 +527,7 @@ uword OldSpace::sweep() {
           // areas are at least 32 words long.
           // The object starts may end up pointing at one of these single free
           // word things, but that's OK because they are iterable.
-          for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
+          for (uword i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
             if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
             }

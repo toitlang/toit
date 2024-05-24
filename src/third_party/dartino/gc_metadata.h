@@ -31,10 +31,10 @@ class GcMetadata {
   // set. Therefore it is currently necessary that each entry in the cumulative
   // mark bits array corresponds to one card of heap.  That means each card
   // should be 32 words long.
-  static const int CARD_SIZE_LOG_2 = 5 + WORD_SHIFT;
+  static const uword CARD_SIZE_LOG_2 = 5 + WORD_SHIFT;
 
   // Number of bytes per remembered-set card.
-  static const int CARD_SIZE = 1 << CARD_SIZE_LOG_2;
+  static const uword CARD_SIZE = 1 << CARD_SIZE_LOG_2;
 
   static const int CARD_SIZE_IN_BITS_LOG_2 = CARD_SIZE_LOG_2 + 3;
 
