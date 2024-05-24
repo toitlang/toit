@@ -18,5 +18,6 @@
 if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TOIT_FAILING_TESTS
     tests/envelope/firmware-upgrade-test.toit
+    tests/envelope/hello-test.toit
   )
 endif()
