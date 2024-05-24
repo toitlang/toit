@@ -18,6 +18,8 @@ import host.directory
 
 import system.containers
 
+import uuid
+
 import ..system.boot
 import ..system.containers
 import ..system.flash.registry
@@ -41,12 +43,6 @@ class SystemImage extends ContainerImage:
   delete -> none:
     unreachable  // Not implemented yet.
 
-add-image path/string -> none:
-  image-data := file.read-content path
-  writer := containers.ContainerImageWriter image-data.size
-  writer.write image-data
-  writer.commit --run-boot --run-critical
-
 main arguments:
   registry ::= FlashRegistry.scan
   container-manager ::= initialize-system registry [
@@ -56,21 +52,42 @@ main arguments:
   if arguments.is-empty:
     print_ "Usage: run-image <image|directory>"
     exit 1
+  add-images arguments container-manager
+
+  exit (boot container-manager)
+
+add-image path/string existing-uuids/Set -> none:
+  path = path.replace --all "\\" "/"
+  last-separator := path.index-of --last "/"
+  last-segment := path[last-separator + 1..]
+  file-uuid/uuid.Uuid? := uuid.parse last-segment --on-error=: null
+
+  if file-uuid and existing-uuids.contains file-uuid:
+    // Already in the flash.
+    return
+
+  image-data := file.read-content path
+  writer := containers.ContainerImageWriter image-data.size
+  writer.write image-data
+  writer.commit --run-boot --run-critical
+
+add-images arguments/List container-manager/ContainerManager -> none:
+  existing-uuids/Set := {}
+  container-manager.images.do: | image/ContainerImage |
+    existing-uuids.add image.id
 
   arg := arguments.first
   if file.is-file arg:
-    add-image arg
+    add-image arg existing-uuids
   else if file.is-directory arg:
     stream := directory.DirectoryStream arg
     try:
       while file-name/string? := stream.next:
         path := "$arg/$file-name"
         if file.is-file path:
-          add-image path
+          add-image path existing-uuids
     finally:
       stream.close
   else:
     print_ "Invalid argument: $arg"
     exit 1
-
-  exit (boot container-manager)

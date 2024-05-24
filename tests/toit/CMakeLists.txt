@@ -15,8 +15,7 @@
 
 file(GLOB TOIT_BIN_TESTS "*-test.toit")
 
-include(fail.cmake)
-include("${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake")
+include(fail.cmake OPTIONAL)
 
 set(TEST_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
 set(TOIT_BIN_SOURCE "${TOIT_SDK_SOURCE_DIR}/tools/toit.toit")
