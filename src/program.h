@@ -166,17 +166,17 @@ class Program : public FlashAllocation {
     return Instance::fields_from_size(allocation_instance_size_for(class_id));
   }
 
-  inline int allocation_instance_size_for(Smi* class_id) {
+  inline uword allocation_instance_size_for(Smi* class_id) {
     word value = Smi::value(class_id);
     ASSERT(value >= 0);
     return instance_size_from_class_bits(class_bits[value]);
   }
 
-  static inline int instance_size_from_class_bits(int class_bits) {
-    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
+  static inline uword instance_size_from_class_bits(int class_bits) {
+    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) << WORD_SIZE_LOG_2;
   }
 
-  int instance_size_for(const HeapObject* object) {
+  uword instance_size_for(const HeapObject* object) {
     word value = Smi::value(object->class_id());
     if (value < 0) {
       if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
