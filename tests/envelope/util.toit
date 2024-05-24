@@ -60,13 +60,13 @@ class EnvelopeTest:
     compile --path=tmp-snapshot-path --source-path=source-path
     install --name=name --snapshot-path=tmp-snapshot-path --boot=boot
 
-  extract --path/string:
-    run-program_ [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", "binary", "-o", path]
+  extract --path/string --format/string="binary":
+    run-program_ [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
 
   extract-to-dir --dir-path/string:
     directory.mkdir --recursive dir-path
     tmp-extracted := "$tmp-dir/__extracted__"
-    extract --path=tmp-extracted
+    extract --path=tmp-extracted --format="tar"
     // TODO(florian): this doesn't work on Windows.
     run-program_ ["tar", "x", "-f", tmp-extracted, "-C", dir-path]
     // TODO(florian): currently the run-image is not marked as executable inside the tar.

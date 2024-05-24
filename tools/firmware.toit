@@ -590,7 +590,8 @@ extract-cmd -> cli.Command:
         - ubjson: a UBJSON encoding of the sections of the image.
         - qemu: a full binary image suitable for running on QEMU.
         For host:
-        - binary: a tar ball that can be used with the run_host.sh script.
+        - tar: a tar ball with a bash script to run the extracted firmware.
+        - binary: the binary image of the firmware, which can be used for firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
         # QEMU
@@ -615,7 +616,7 @@ extract-cmd -> cli.Command:
             --required,
         cli.Option "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
       ]
@@ -643,7 +644,11 @@ extract parsed/cli.Parsed -> none:
 extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> none:
   output-path := parsed[OPTION-OUTPUT]
 
-  if parsed["format"] == "elf":
+  format := parsed["format"]
+  if format == "tar":
+    throw "unsupported format for ESP32 platform: '$format'"
+
+  if format == "elf":
     if not config-encoded.is-empty:
       print "WARNING: config is ignored when extracting elf file"
     write-file output-path: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
@@ -651,16 +656,16 @@ extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> 
 
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
 
-  if parsed["format"] == "binary":
+  if format == "binary":
     write-file output-path: it.write firmware-bin
     return
 
-  if parsed["format"] == "qemu":
+  if format == "qemu":
     write-qemu_ output-path firmware-bin envelope
     return
 
-  if not parsed["format"] == "ubjson":
-    throw "unknown format: $(parsed["format"])"
+  if not format == "ubjson":
+    throw "unknown format: $(format)"
 
   binary := Esp32Binary firmware-bin
   parts := binary.parts firmware-bin
@@ -674,7 +679,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   output-path := parsed[OPTION-OUTPUT]
 
   format := parsed["format"]
-  if format != "binary" and format != "ubjson":
+  if format != "tar" and format != "binary" and format != "ubjson":
     throw "unsupported format for host platform: '$format'"
 
   entries := envelope.entries
@@ -741,6 +746,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
 
   bits.close
 
+  if format == "binary":
+    write-file output-path: it.write bits.bytes
+    return
+
   ubjson-data := {
     "parts": parts,
     "binary": bits.bytes,
@@ -750,10 +759,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     write-file output-path: it.write encoded-ubjson
     return
 
-  // For the "binary" output create a tarball.
+  // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
   tar-writer := tar.Tar tar-bytes
-  tar-writer.add "run-image" run-image
+  tar-writer.add "run-image" run-image --permissions=0b111_000_000
   tar-writer.add "config.ubjson" encoded-ubjson
   startup-images.do: | uuid/string image/ByteArray |
     tar-writer.add "startup-images/$uuid" image
