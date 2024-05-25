@@ -898,7 +898,7 @@ abstract class int extends num:
   35.stringify 36 // => z
   ```
   */
-  stringify radix/int:
+  stringify radix/int -> string:
     #primitive.core.int64-to-string
 
   /** See $super. */
