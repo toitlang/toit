@@ -3005,7 +3005,6 @@ class Map extends HashedInsertionOrderedCollection_ with MapMixin:
     return stringify_ (MapStringify_ this) "{" "}"
 
 abstract mixin MapMixin:
-  abstract is-empty -> bool
   abstract do [block] -> none
   abstract do --reversed [block] -> none
 
@@ -3041,12 +3040,12 @@ abstract mixin MapMixin:
   */
   reduce --values/bool [block]:
     if values != true: throw "Bad Argument"
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do --values:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /**
@@ -3066,12 +3065,12 @@ abstract mixin MapMixin:
   */
   reduce --keys/bool [block]:
     if keys != true: throw "Bad Argument"
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do --keys:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /**
