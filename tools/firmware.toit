@@ -48,6 +48,7 @@ WORD-SIZE-ESP32 ::= 4
 AR-ENTRY-INFO        ::= "\$envelope"
 AR-ENTRY-SDK-VERSION ::= "\$sdk-version"
 AR-ENTRY-PLATFORM    ::= "\$platform"
+AR-ENTRY-PROPERTIES     ::= "\$properties"
 
 // ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
@@ -57,7 +58,6 @@ AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
 AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
-AR-ENTRY-ESP32-PROPERTIES     ::= "\$properties"
 
 AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
@@ -209,7 +209,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
   entries := {
     AR-ENTRY-ESP32-FIRMWARE-BIN: binary.bits,
     SYSTEM-CONTAINER-NAME: system-snapshot-content,
-    AR-ENTRY-ESP32-PROPERTIES: json.encode {
+    AR-ENTRY-PROPERTIES: json.encode {
       PROPERTY-CONTAINER-FLAGS: {
         SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL
       }
@@ -453,7 +453,7 @@ container-list parsed/cli.Parsed -> none:
   write-file-or-print --path=output-path output-string
 
 build-entries-json entries/Map --word-size/int -> Map:
-  properties/Map? := entries.get AR-ENTRY-ESP32-PROPERTIES
+  properties/Map? := entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
   flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
   containers := {:}
@@ -530,7 +530,7 @@ property-get parsed/cli.Parsed -> none:
     return
 
   entries := envelope.entries
-  entry := entries.get AR-ENTRY-ESP32-PROPERTIES
+  entry := entries.get AR-ENTRY-PROPERTIES
   if not entry: return
 
   properties := json.decode entry
@@ -563,10 +563,10 @@ property-set parsed/cli.Parsed -> none:
     properties
 
 properties-update envelope/Envelope [block] -> none:
-  properties/Map? := envelope.entries.get AR-ENTRY-ESP32-PROPERTIES
+  properties/Map? := envelope.entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
   properties = block.call properties
-  if properties: envelope.entries[AR-ENTRY-ESP32-PROPERTIES] = json.encode properties
+  if properties: envelope.entries[AR-ENTRY-PROPERTIES] = json.encode properties
 
 properties-update-with-key parsed/cli.Parsed [block] -> none:
   key/string := parsed["key"]
@@ -590,7 +590,8 @@ extract-cmd -> cli.Command:
         - ubjson: a UBJSON encoding of the sections of the image.
         - qemu: a full binary image suitable for running on QEMU.
         For host:
-        - binary: a tar ball that can be used with the run_host.sh script.
+        - tar: a tar ball with a bash script to run the extracted firmware.
+        - binary: the binary image of the firmware, which can be used for firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
         # QEMU
@@ -615,7 +616,7 @@ extract-cmd -> cli.Command:
             --required,
         cli.Option "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
       ]
@@ -643,7 +644,11 @@ extract parsed/cli.Parsed -> none:
 extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> none:
   output-path := parsed[OPTION-OUTPUT]
 
-  if parsed["format"] == "elf":
+  format := parsed["format"]
+  if format == "tar":
+    throw "unsupported format for ESP32 platform: '$format'"
+
+  if format == "elf":
     if not config-encoded.is-empty:
       print "WARNING: config is ignored when extracting elf file"
     write-file output-path: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
@@ -651,16 +656,16 @@ extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> 
 
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
 
-  if parsed["format"] == "binary":
+  if format == "binary":
     write-file output-path: it.write firmware-bin
     return
 
-  if parsed["format"] == "qemu":
+  if format == "qemu":
     write-qemu_ output-path firmware-bin envelope
     return
 
-  if not parsed["format"] == "ubjson":
-    throw "unknown format: $(parsed["format"])"
+  if not format == "ubjson":
+    throw "unknown format: $(format)"
 
   binary := Esp32Binary firmware-bin
   parts := binary.parts firmware-bin
@@ -674,10 +679,11 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   output-path := parsed[OPTION-OUTPUT]
 
   format := parsed["format"]
-  if format != "binary" and format != "ubjson":
+  if format != "tar" and format != "binary" and format != "ubjson":
     throw "unsupported format for host platform: '$format'"
 
   entries := envelope.entries
+  flags := get-flags envelope
   run-image := entries.get AR-ENTRY-HOST-RUN-IMAGE
   startup-images := {:}
   bundled-images := {:}
@@ -685,7 +691,6 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   entries.do: | name/string content/ByteArray |
     if not is-container-name name: continue.do
     entry-assets := entries.get "+$name"
-    flags := null // TODO(florian): handle flags.
     entry := extract-container name flags content --assets=entry-assets --word-size=envelope.word-size
     uuid := entry.id.to-string
     // TODO(florian): add the assets to the image.
@@ -700,32 +705,32 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
 
   // Reserve space for the header.
   header-size := 6 * 4
-  bits.reserve header-size
+  bits.grow-by header-size
   parts.add { "type": "header", "from": 0, "to": header-size }
 
-  part-start := bits.processed
+  part-start := bits.size
   bits.write run-image
-  parts.add { "type": "run-image", "from": part-start, "to": bits.processed }
+  parts.add { "type": "run-image", "from": part-start, "to": bits.size }
 
-  part-start = bits.processed
+  part-start = bits.size
   bits.write config-encoded
-  parts.add { "type": "config", "from": part-start, "to": bits.processed }
+  parts.add { "type": "config", "from": part-start, "to": bits.size }
 
-  part-start = bits.processed
+  part-start = bits.size
   bits.write (ubjson.encode name-to-uuid-mapping)
-  parts.add { "type": "name-to-uuid-mapping", "from": part-start, "to": bits.processed }
+  parts.add { "type": "name-to-uuid-mapping", "from": part-start, "to": bits.size }
 
-  part-start = bits.processed
+  part-start = bits.size
   ar-writer := ar.ArWriter bits
   startup-images.do: | uuid/string image/ByteArray |
     ar-writer.add uuid image
-  parts.add { "type": "startup-images", "from": part-start, "to": bits.processed }
+  parts.add { "type": "startup-images", "from": part-start, "to": bits.size }
 
-  part-start = bits.processed
+  part-start = bits.size
   ar-writer = ar.ArWriter bits
   bundled-images.do: | uuid/string image/ByteArray |
     ar-writer.add uuid image
-  parts.add { "type": "bundled-images", "from": part-start, "to": bits.processed }
+  parts.add { "type": "bundled-images", "from": part-start, "to": bits.size }
 
   // Update the header with the parts offsets.
   bits-le := bits.little-endian
@@ -741,6 +746,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
 
   bits.close
 
+  if format == "binary":
+    write-file output-path: it.write bits.bytes
+    return
+
   ubjson-data := {
     "parts": parts,
     "binary": bits.bytes,
@@ -750,10 +759,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     write-file output-path: it.write encoded-ubjson
     return
 
-  // For the "binary" output create a tarball.
+  // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
   tar-writer := tar.Tar tar-bytes
-  tar-writer.add "run-image" run-image
+  tar-writer.add "run-image" run-image --permissions=0b111_000_000
   tar-writer.add "config.ubjson" encoded-ubjson
   startup-images.do: | uuid/string image/ByteArray |
     tar-writer.add "startup-images/$uuid" image
@@ -987,13 +996,18 @@ flash parsed/cli.Parsed -> none:
   finally:
     directory.rmdir --recursive tmp
 
+get-flags envelope/Envelope -> Map?:
+  properties := envelope.entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+  return properties and properties.get PROPERTY-CONTAINER-FLAGS
+
 extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   containers ::= []
   entries := envelope.entries
-  properties := entries.get AR-ENTRY-ESP32-PROPERTIES
+  properties := entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
       --if-absent=: {:}
-  flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
+  flags := get-flags envelope
 
   // The system image, if any, must be the first image, so
   // we reserve space for it in the list of containers.
