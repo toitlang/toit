@@ -41,93 +41,122 @@ BOOT-SH ::= """
 # Directory structure:
 #
 #   <prefix>/boot.sh <- this file
-#   <prefix>/secret.ubjson
-#   <prefix>/current -> <prefix>/ota0 (symbolic link)
 #
-#   <prefix>/ota0/metadata/this.txt <- (contains "ota0")
-#   <prefix>/ota0/metadata/next.txt <- (contains "ota1")
-#   <prefix>/ota0/config.ubjson
-#   <prefix>/ota0/flash.registry
-#   <prefix>/ota0/flash.uuid
-#   <prefix>/ota0/flash.validity
-#   <prefix>/ota0/toit.boot
-#   <prefix>/ota0/toit.boot.image
+#   The following two files are created if they don't exist yet.
+#   <prefix>/current           (contains the string "ota0" or "ota1")
+#   <prefix>/flash-registry
 #
-#   <prefix>/ota1/metadata/this.txt <- (contains "ota1")
-#   <prefix>/ota1/metadata/next.txt <- (contains "ota0")
-#   <prefix>/ota1/config.ubjson
-#   <prefix>/ota0/flash.registry
-#   <prefix>/ota0/flash.uuid
-#   <prefix>/ota0/flash.validity
-#   <prefix>/ota0/toit.boot
-#   <prefix>/ota0/toit.boot.image
+#   <prefix>/otaX/run-image
+#   <prefix>/otaX/config.ubjson
+#   <prefix>/otaX/bits.bin
+#   <prefix>/otaX/startup-images    (optional)
+#   <prefix>/otaX/bundled-images    (optional)
+#   <prefix>/otaX/installed-images  (optional)
+#
+#   If an ota is validated, it also contains:
+#     <prefix>/otaX/validated
+#
+#   Each firmware gets assigned a UUID at first boot, stored in:
+#     <prefix>/otaX/uuid
+#
+#  We use <prefix>/scratch as temporary directory where a firmware can store the
+#  updated firmware image.
 
 # Compute the directory of this script and use it as the PREFIX.
 PREFIX=\$(cd -- "\$(dirname -- "\${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
-# Check if we can find the secret.ubjson file.
-export TOIT_SECURE_DATA=\$(realpath \$PREFIX/secret.ubjson)
-if [ ! -f "\$TOIT_SECURE_DATA" ]; then
-  echo "Cannot locate identity file: \$TOIT_SECURE_DATA"
-  exit 1
-fi
-
-# Create the 'current' symlink to 'ota0' if it doesn't exist yet.
-if [ ! -d "\$PREFIX/current" ]; then
-  ln -sTf \$PREFIX/ota0 \$PREFIX/current
+# Create the 'current' file, pointing to 'ota0' if it doesn't exist yet.
+if [ ! -e "\$PREFIX/current" ]; then
+  echo "ota0" > \$PREFIX/current
 fi
 
 for (( ; ; )); do
-  this=\$(cat \$PREFIX/current/metadata/this.txt)
-  next=\$(cat \$PREFIX/current/metadata/next.txt)
+  current=\$(cat \$PREFIX/current)
+  if [ "\$current" == "ota0" ]; then
+    next="ota1"
+  else
+    next="ota0"
+  fi
   echo "*******************************"
-  echo "*** Running from \$this"
+  echo "*** Running from \$current"
   echo "*******************************"
 
-  export TOIT_CONFIG_DATA=\$(realpath \$PREFIX/current/config.ubjson)
-  export TOIT_FLASH_REGISTRY_FILE=\$(realpath \$PREFIX/current/flash.registry)
-  export TOIT_FLASH_UUID_FILE=\$(realpath \$PREFIX/current/flash.uuid)
+  export TOIT_CONFIG_DATA=\$(realpath \$PREFIX/\$current/config.ubjson)
 
-  (cd \$PREFIX/current; ./toit.boot toit.boot.image)
+  if [ -e \$PREFIX/\$current/validated ]; then
+    already_validated=true
+  else
+    already_validated=false
+  fi
+
+  # Clear out the scratch directory.
+  rm -rf \$PREFIX/scratch
+  mkdir -p \$PREFIX/scratch
+
+  # Run the image.
+  export TOIT_FLASH_UUID_FILE=\$PREFIX/\$current/uuid
+  export TOIT_FLASH_REGISTRY_FILE=\$PREFIX/flash-registry
+  (cd \$PREFIX/\$current; ./run-image \$PREFIX/\$current \$PREFIX/scratch)
   exit_code=\$?
 
   if [ \$exit_code -eq 17 ]; then
+    # Move scratch into the place of the inactive ota and switch current.
     echo
     echo
     echo "****************************************"
-    echo "*** Testing firmware update in \$next"
+    echo "*** Switching firmware to \$next"
     echo "****************************************"
-    export TOIT_CONFIG_DATA=\$(realpath \$PREFIX/\$next/config.ubjson)
-    export TOIT_FLASH_REGISTRY_FILE=\$(realpath \$PREFIX/\$next/flash.registry)
-    export TOIT_FLASH_UUID_FILE=\$(realpath \$PREFIX/\$next/flash.uuid)
-    rm -f \$TOIT_FLASH_UUID_FILE
-    (cd \$PREFIX/\$next && tar --overwrite -xzf ../current/firmware.tgz && ./toit.boot toit.boot.image)
-    firmware_update_exit_code=\$?
-    echo
-    echo
-    if [ \$firmware_update_exit_code -eq 0 ]; then
-      ln -sTf \$PREFIX/\$next \$PREFIX/current
-      echo "****************************************"
-      echo "*** Firmware update done: \$this -> \$next"
-      echo "****************************************"
-    else
-      echo "****************************************"
-      echo "*** Firmware update failed (still \$this)"
-      echo "****************************************"
+    # Remove any old backup.
+    rm -rf \$PREFIX/\$next.old
+    # Move the old ota to the backup.
+    if [ -e \$PREFIX/\$next ]; then
+      mv \$PREFIX/\$next \$PREFIX/\$next.old
     fi
-    echo
-    echo
-  elif [ \$exit_code -eq 0 ]; then
+    # Move the scratch in place.
+    mv \$PREFIX/scratch \$PREFIX/\$next
+    # Update the current pointer.
+    echo \$next > \$PREFIX/current
+    # Switch the current and next variables.
+    tmp=\$next
+    next=\$current
+    current=\$tmp
+  elif [ \$exit_code -eq 19 ]; then
+    # Stop the script.
     echo "****************************************"
-    echo "*** Firmware restarting (still \$this)"
+    echo "*** Stopping the boot script"
     echo "****************************************"
+    break
   else
-    echo "***********************************************"
-    echo "*** Firmware crashed with code=\$exit_code (still \$this)"
-    echo "***********************************************"
-    # Clear flash.registry and flash.validity files and try again.
-    rm -f \$TOIT_FLASH_REGISTRY_FILE \$PREFIX/current/flash.validity
-    sleep 5
+    if [ ! \$exit_code -eq 0 -a ! \$exit_code -eq 18 ]; then
+      echo "***********************************************"
+      echo "*** Firmware crashed with code=\$exit_code"
+      echo "***********************************************"
+    fi
+    if [ -e \$PREFIX/\$current/validated ]; then
+      if [ \$already_validated == false ]; then
+        echo "****************************************"
+        echo "*** Firmware successfully validated"
+        echo "****************************************"
+      fi
+    else
+      if [ \$exit_code -eq 18 ]; then
+        echo "****************************************"
+        echo "*** Rollback requested"
+        echo "****************************************"
+      else
+        echo "****************************************"
+        echo "*** Validation failed. Rolling back."
+        echo "****************************************"
+      fi
+      # Update the current pointer.
+      echo \$next > \$PREFIX/current
+      # Switch the current and next variables.
+      tmp=\$next
+      next=\$current
+      current=\$tmp
+      # Sleep a bit.
+      sleep 1
+    fi
   fi
 done
 """

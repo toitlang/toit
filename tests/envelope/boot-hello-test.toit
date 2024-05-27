@@ -8,9 +8,10 @@ import .util show EnvelopeTest with-test
 main args:
   with-test args: | test/EnvelopeTest |
     test.install --name="hello" --source="""
-      main: print "hello world"
+      main:
+        print "hello world"
+        exit 19
       """
     test.extract-to-dir --dir-path=test.tmp-dir
-    ota0 := "$test.tmp-dir/ota0"
-    output := test.backticks ota0
+    output := test.boot test.tmp-dir
     expect (output.contains "hello world")
