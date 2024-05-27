@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+// The produced file has an MIT license.
 BOOT-SH ::= """
 #!/usr/bin/env bash
 
@@ -154,7 +155,7 @@ for (( ; ; )); do
       next=\$current
       current=\$tmp
       # Sleep a bit.
-      sleep 5
+      sleep 1
     fi
   fi
 done
