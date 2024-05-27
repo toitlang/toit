@@ -155,7 +155,7 @@ for (( ; ; )); do
       next=\$current
       current=\$tmp
       # Sleep a bit.
-      sleep 5
+      sleep 1
     fi
   fi
 done
