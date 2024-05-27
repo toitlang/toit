@@ -13,10 +13,11 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-# doesn't work on 32 bits.
-
+# Doesn't work on 32 bits yet.
 if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(TOIT_FAILING_TESTS
+  set(TOIT_SKIP_TESTS
+    tests/envelope/boot-hello-test.toit
+    tests/envelope/boot-upgrade-test.toit
     tests/envelope/firmware-upgrade-test.toit
     tests/envelope/hello-test.toit
   )
