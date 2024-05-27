@@ -106,19 +106,21 @@ interface Collection:
 
 
 abstract class CollectionBase extends Object with CollectionMixin implements Collection:
-
-abstract mixin CollectionMixin:
-  /// See $Collection.do.
-  abstract do [block] -> none
   /// See $Collection.size.
   abstract size -> int
-  /// See $Collection.==.
-  abstract operator == other/Collection -> bool
+
   abstract add value -> none
 
   /// See $Collection.is-empty.
   is-empty -> bool:
     return size == 0
+
+  add-all collection/Collection -> none:
+    collection.do: add it
+
+abstract mixin CollectionMixin:
+  /// See $Collection.do.
+  abstract do [block] -> none
 
   /// See $Collection.every.
   every [predicate] -> bool:
@@ -136,12 +138,12 @@ abstract mixin CollectionMixin:
 
   /// See $Collection.reduce.
   reduce [block]:
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /// See $Collection.reduce.
@@ -150,9 +152,6 @@ abstract mixin CollectionMixin:
     do:
       result = block.call result it
     return result
-
-  add-all collection/Collection -> none:
-    collection.do: add it
 
 /**
 A linear collection of objects.
@@ -2414,6 +2413,10 @@ See also https://docs.toit.io/language/listsetmap.
 */
 class Set extends HashedInsertionOrderedCollection_ with CollectionMixin implements Collection:
   static STEP_ ::= 1
+
+  /// See $Collection.is-empty.
+  is-empty -> bool:
+    return size == 0
 
   /**
   Removes the given $key from this instance.
