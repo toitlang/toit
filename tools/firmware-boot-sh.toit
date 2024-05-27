@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+// The produced file has an MIT license.
 BOOT-SH ::= """
 #!/usr/bin/env bash
 
