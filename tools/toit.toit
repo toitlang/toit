@@ -21,6 +21,7 @@ import system
 
 import .toitp as toitp
 import .firmware as firmware
+import .assets as assets
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -449,6 +450,7 @@ main args/List:
 
   tool-command.add toitp.build-command
   tool-command.add firmware.build-command
+  tool-command.add assets.build-command
 
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
   tool-lsp-command := cli.Command "lsp"
