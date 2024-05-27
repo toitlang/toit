@@ -1,6 +1,6 @@
 import net.modules.tun show *
 
-import .red-black
+import ordered-collections show *
 
 TOIT-TUN-READ_    ::= 1 << 0
 TOIT-TUN-WRITE_   ::= 1 << 1

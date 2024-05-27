@@ -1,0 +1,5 @@
+prefixes:
+  ordered-collections: pkg-ordered-collections
+packages:
+  pkg-ordered-collections:
+    path: /home/erik/toitlang/pkg-ordered-collections
