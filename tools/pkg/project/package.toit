@@ -135,7 +135,7 @@ abstract class PackageFile:
     other-dir := directory.realpath project-package.root-dir
     if other-dir == my-dir: error "Reference to self in $project-package.file-name"
 
-    return fs.to-relative my-dir other-dir
+    return fs.to-relative my-dir --base=other-dir
 
   absolute-path-for-dependency path/string:
     if fs.is-absolute path: return path
