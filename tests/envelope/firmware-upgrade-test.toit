@@ -9,18 +9,18 @@ import .util show EnvelopeTest with-test
 
 main args:
   with-test args: | test/EnvelopeTest |
+    update-bits-path := "$test.tmp-dir/update-bits.bin"
+
     with-test args: | test2/EnvelopeTest |
       test2.install --name="hello" --source="""
         main: print "hello world!"
         """
-      test2.extract-to-dir --dir-path="$test.tmp-dir/update"
+      test2.extract --path=update-bits-path --format="binary"
 
     test.install --name="update" --source-path="./firmware-upgrade-source.toit"
     ota0 := "$test.tmp-dir/ota0"
     ota1 := "$test.tmp-dir/ota1"
     test.extract-to-dir --dir-path=ota0
-
-    update-bits-path := "$test.tmp-dir/update/bits.bin"
 
     exit-code := test.run --ota-active=ota0 --ota-inactive=ota1 --allow-fail --env={
       "TOIT_FIRMWARE_TEST_PATH": update-bits-path
