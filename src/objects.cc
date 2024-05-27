@@ -248,7 +248,7 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-int Stack::absolute_bci_at_preemption(Program* program) {
+word Stack::absolute_bci_at_preemption(Program* program) {
   // Check that the stack has both words.
   if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
   // Check that the frame marker is correct.
@@ -261,7 +261,7 @@ int Stack::absolute_bci_at_preemption(Program* program) {
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
   if (is_guard_zone_touched()) FATAL("stack overflow detected");
-  int top = this->top();
+  word top = this->top();
   ASSERT(top >= 0);
   ASSERT(top <= length());
   // Skip over pointers into the bytecodes.
@@ -273,11 +273,11 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // stack so much that an overflow check would have failed.  Luckily the
   // compiler kept track of the maximum space that any function could need, so
   // we can use that.
-  int minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
+  word minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
   // Don't shrink the stack unless we can halve the size.  The growing algo
   // grows it by 50%, to try to avoid too much churn.
   if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
-    int reduction = top - minimum_space;
+    word reduction = top - minimum_space;
     if (Flags::shrink_stacks_a_lot || reduction >= 8) {
       auto destin = _array_address(0);
       auto source = _array_address(reduction);
@@ -291,15 +291,15 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
       _set_try_top(try_top() - reduction);
       // Now that the stack is smaller we need to fill the space after it with
       // something to keep the heap iterable.
-      for (int i = 0; i < reduction; i++) {
+      for (word i = 0; i < reduction; i++) {
         auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
         one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
       }
     }
   }
   Object** roots = _root_at(_array_offset_from(top));
-  int used_length = length() - top;
-  for (int i = 0; i < used_length; i++) {
+  word used_length = length() - top;
+  for (word i = 0; i < used_length; i++) {
     Object* root_object = roots[i];
     if (bytecodes_from <= root_object && root_object < bytecodes_to) continue;
     cb->do_root(&roots[i]);
@@ -307,8 +307,8 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
 }
 
 int Stack::frames_do(Program* program, FrameCallback* cb) {
-  int stack_length = _stack_base_addr() - _stack_sp_addr();
-  int frame_no = 0;
+  word stack_length = _stack_base_addr() - _stack_sp_addr();
+  word frame_no = 0;
   // The last return address we encountered. Represents the location inside the
   // method that is currently on the frame.
   uint8* last_return_bcp = null;
@@ -332,9 +332,9 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
-void Instance::instance_roots_do(int instance_size, RootCallback* cb) {
+void Instance::instance_roots_do(word instance_size, RootCallback* cb) {
   if (has_active_finalizer() && cb->skip_marking(this)) return;
-  int fields = fields_from_size(instance_size);
+  word fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
 }
 
@@ -345,7 +345,7 @@ bool Object::encode_on(ProgramOrientedEncoder* encoder) {
 bool String::starts_with_vowel() {
   Bytes bytes(this);
   word len = bytes.length();
-  int pos = 0;
+  word pos = 0;
   while (pos < len && bytes.at(pos) == '_') pos++;
   if (pos == len) return false;
   return strchr("aeiouAEIOU", bytes.at(pos)) != null;
@@ -360,7 +360,7 @@ uint16 String::compute_hash_code_for(const char* str) {
   return compute_hash_code_for(str, strlen(str));
 }
 
-uint16 String::compute_hash_code_for(const char* str, int str_len) {
+uint16 String::compute_hash_code_for(const char* str, word str_len) {
   // Trivial computation of hash code for string.
   uint16 hash = str_len;
   for (word index = 0; index < str_len; index++) {
@@ -408,7 +408,7 @@ bool String::slow_equals(const char* other) {
   return slow_equals(other, strlen(other));
 }
 
-bool String::slow_equals(const char* other, int other_length) {
+bool String::slow_equals(const char* other, word other_length) {
   Bytes bytes(this);
   return slow_equals(reinterpret_cast<const char*>(bytes.address()), bytes.length(), other, other_length);
 }
@@ -448,7 +448,7 @@ void ByteArray::write_content(SnapshotWriter* st) {
   }
 }
 
-void Instance::write_content(int instance_size, SnapshotWriter* st) {
+void Instance::write_content(word instance_size, SnapshotWriter* st) {
   word fields = fields_from_size(instance_size);
   st->write_cardinal(fields);
   for (word index = 0; index < fields; index++) {
