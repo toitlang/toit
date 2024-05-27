@@ -685,7 +685,9 @@ extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> 
   write-file output-path: it.write (ubjson.encode output)
 
 extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
+  word-size := envelope.word-size
   output-path := parsed[OPTION-OUTPUT]
+  system-uuid := sdk-version-uuid --sdk-version=envelope.sdk-version
 
   format := parsed["format"]
   if format != "tar" and format != "binary" and format != "ubjson":
@@ -700,13 +702,19 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   entries.do: | name/string content/ByteArray |
     if not is-container-name name: continue.do
     entry-assets := entries.get "+$name"
-    entry := extract-container name flags content --assets=entry-assets --word-size=envelope.word-size
-    uuid := entry.id.to-string
-    // TODO(florian): add the assets to the image.
-    if entry.flags & IMAGE-FLAG-RUN-BOOT != 0 or entry.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
-      startup-images[name] = entry.relocatable
+    container := extract-container name flags content --assets=entry-assets --word-size=word-size
+    uuid := container.id.to-string
+    cooked := container.cook
+        --relocation-base=0 // Must be 0, since we add the relaction information back.
+        --system-uuid=system-uuid
+        --attach-assets
+    // The image needs to be padded to page-size.
+    cooked = pad cooked (1 << 12)
+    relocatable := container.relocation-information.make-relocatable cooked
+    if container.flags & IMAGE-FLAG-RUN-BOOT != 0 or container.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
+      startup-images[name] = relocatable
     else:
-      bundled-images[name] = entry.relocatable
+      bundled-images[name] = relocatable
     name-to-uuid-mapping[name] = uuid
 
   parts := []
@@ -1056,7 +1064,7 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
 
   system-uuid/uuid.Uuid? := null
   if properties.contains "uuid":
-    catch: system-uuid = uuid.parse properties["uuid"]
+    system-uuid = uuid.parse properties["uuid"] --on-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
   return extract-binary-content
@@ -1085,7 +1093,7 @@ extract-container -> ContainerEntry
     relocatable = content
   flag-bits := flags and flags.get name
   flag-bits = flag-bits or 0
-  return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets
+  return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets --word-size=word-size
 
 update-envelope parsed/cli.Parsed [block] -> none:
   input-path := parsed[OPTION-ENVELOPE]
@@ -1115,31 +1123,16 @@ extract-binary-content -> ByteArray
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
-    relocatable := container.relocatable
-    out := io.Buffer
-    output := BinaryRelocatedOutput out relocation-base --word-size=WORD-SIZE-ESP32
-    output.write relocatable
-    image-bits := out.bytes
-    image-size := image-bits.size
+    image-size := container.relocated-size
 
     LITTLE-ENDIAN.put-uint32 image-table index * 8
         relocation-base
     LITTLE-ENDIAN.put-uint32 image-table index * 8 + 4
         image-size
-    image-bits = pad image-bits 4
-
-    image-header ::= ImageHeader image-bits --word-size=WORD-SIZE-ESP32
-    image-header.system-uuid = system-uuid
-    image-header.flags = container.flags
-
-    if container.assets:
-      image-header.flags |= IMAGE-FLAG-HAS-ASSETS
-      assets-size := ByteArray 4
-      LITTLE-ENDIAN.put-uint32 assets-size 0 container.assets.size
-      image-bits += assets-size
-      image-bits += container.assets
-      image-bits = pad image-bits 4
-
+    image-bits := container.cook
+        --relocation-base=relocation-base
+        --system-uuid=system-uuid
+        --attach-assets
     images.add image-bits
     relocation-base += image-bits.size
     index++
@@ -1357,13 +1350,97 @@ class Envelope:
       throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION, was $version"
     return version
 
+class RelocationInformation:
+  relocation-bytes/ByteArray
+  word-size/int  // In bytes.
+
+  constructor.from relocatable/ByteArray --.word-size:
+    chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    chunk-count := ceil_ relocatable.size chunk-size
+    relocation-bytes = ByteArray chunk-count * word-size
+    for i := 0; i < chunk-count; i++:
+      relocation-bytes.replace (i * word-size) relocatable[i * chunk-size..i * chunk-size + word-size]
+
+  make-relocatable image/ByteArray -> ByteArray:
+    relocatable-chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    relocated-chunk-size := get-relocated-chunk-byte-size --word-size=word-size
+    result := ByteArray (ceil_ image.size relocated-chunk-size) * relocatable-chunk-size
+
+    image-i := 0
+    result-i := 0
+    relocation-i := 0
+    while image-i < image.size:
+      relocation-info := relocation-i < relocation-bytes.size
+          ? relocation-bytes[relocation-i..relocation-i + word-size]
+          : ByteArray word-size  // We want to be able to attach assets to the image.
+      relocation-i += word-size
+
+      chunk := image[image-i..min image.size (image-i + relocated-chunk-size)]
+      image-i += chunk.size
+
+      result.replace result-i relocation-info
+      result-i += relocation-info.size
+      result.replace result-i chunk
+      result-i += chunk.size
+
+    return result
+
+  static relocated-size relocatable-size/int --word-size/int -> int:
+    relocatable-chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    relocated-chunk-size := get-relocated-chunk-byte-size --word-size=word-size
+    chunk-count := ceil_ relocatable-size relocatable-chunk-size
+    // One word of every chunk is used for relocation information.
+    return chunk-count * relocated-chunk-size
+
+  static get-relocatable-chunk-byte-size --word-size/int -> int:
+    word-bit-size := word-size * 8
+    // One word for the relocation-information, followed by one word for each bit of it.
+    chunk-word-size := 1 + word-bit-size
+    return chunk-word-size * word-size
+
+  static get-relocated-chunk-byte-size --word-size/int -> int:
+    word-bit-size := word-size * 8
+    return word-size * word-bit-size
+
+ceil_ x/int y/int -> int:
+  return (x + y - 1) / y
+
 class ContainerEntry:
   id/uuid.Uuid
   name/string
   flags/int
   relocatable/ByteArray
   assets/ByteArray?
-  constructor .id .name .relocatable --.flags --.assets:
+  word-size/int
+
+  constructor .id .name .relocatable --.flags --.assets --.word-size:
+
+  relocated-size -> int:
+    return relocatable.size - (RelocationInformation.relocated-size relocatable.size --word-size=word-size)
+
+  cook --relocation-base/int --attach-assets/bool --system-uuid/uuid.Uuid -> ByteArray:
+    out := io.Buffer
+    output := BinaryRelocatedOutput out relocation-base --word-size=word-size
+    output.write relocatable
+    image-bits := out.bytes
+    image-bits = pad image-bits 4
+
+    image-header ::= ImageHeader image-bits --word-size=word-size
+    image-header.system-uuid = system-uuid
+    image-header.flags = flags
+
+    if attach-assets and assets:
+      image-header.flags |= IMAGE-FLAG-HAS-ASSETS
+      assets-size := ByteArray 4
+      LITTLE-ENDIAN.put-uint32 assets-size 0 assets.size
+      image-bits += assets-size
+      image-bits += assets
+      image-bits = pad image-bits 4
+
+    return image-bits
+
+  relocation-information -> RelocationInformation:
+    return RelocationInformation.from relocatable --word-size=word-size
 
 class ImageHeader:
   static MARKER-OFFSET_        ::= 0
