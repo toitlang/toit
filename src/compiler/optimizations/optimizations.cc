@@ -144,7 +144,9 @@ void optimize(Program* program, TypeOracle* oracle) {
 
   auto classes = program->classes();
   bool include_abstracts;
-  auto queryables = build_queryables_from_plain_shapes(classes, include_abstracts=false);
+  // We construct the direct_queryables from the original "full" queryable set,
+  // and then remove methods that are overwritten.
+  auto direct_queryables = build_queryables_from_plain_shapes(classes, include_abstracts=false);
 
   UnorderedSet<Symbol> field_names;
 
@@ -161,7 +163,7 @@ void optimize(Program* program, TypeOracle* oracle) {
       // Nuke members in the superclass if they have been overridden.
       auto current = klass->super();
       while (current != null) {
-        auto& queryable = queryables[current];
+        auto& queryable = direct_queryables[current];
         bool was_present = queryable.remove(selector);
         // No need to go further if the super didn't have it.
         if (!was_present) break;
@@ -170,7 +172,7 @@ void optimize(Program* program, TypeOracle* oracle) {
     }
   }
 
-  OptimizationVisitor visitor(oracle, queryables, field_names);
+  OptimizationVisitor visitor(oracle, direct_queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);

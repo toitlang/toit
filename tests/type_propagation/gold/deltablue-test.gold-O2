@@ -125,8 +125,8 @@ WEAKEST tests/type_propagation/deltablue-test.toit
 stronger tests/type_propagation/deltablue-test.toit
  - argument 0: {Null_|Strength}
  - argument 1: {Null_|Strength}
-  0[052] - load local, as class, pop 3 - Strength(46 - 47) // {True_|False_}
-  2[052] - load local, as class, pop 2 - Strength(46 - 47) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Strength(47 - 48) // {True_|False_}
+  2[052] - load local, as class, pop 2 - Strength(47 - 48) // {True_|False_}
   4[009] - load field local 3 // [{Strength}] -> {Null_|SmallInteger_}
   6[009] - load field local 3 // [{Strength}] -> {Null_|SmallInteger_}
   8[063] - invoke lt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True_|False_}
@@ -135,8 +135,8 @@ stronger tests/type_propagation/deltablue-test.toit
 weaker tests/type_propagation/deltablue-test.toit
  - argument 0: {Null_|Strength}
  - argument 1: {Null_|Strength}
-  0[052] - load local, as class, pop 3 - Strength(46 - 47) // {True_|False_}
-  2[052] - load local, as class, pop 2 - Strength(46 - 47) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Strength(47 - 48) // {True_|False_}
+  2[052] - load local, as class, pop 2 - Strength(47 - 48) // {True_|False_}
   4[009] - load field local 3 // [{Strength}] -> {Null_|SmallInteger_}
   6[009] - load field local 3 // [{Strength}] -> {Null_|SmallInteger_}
   8[064] - invoke gt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True_|False_}
@@ -145,8 +145,8 @@ weaker tests/type_propagation/deltablue-test.toit
 weakest tests/type_propagation/deltablue-test.toit
  - argument 0: {Null_|Strength}
  - argument 1: {Null_|Strength}
-  0[052] - load local, as class, pop 3 - Strength(46 - 47) // {True_|False_}
-  2[052] - load local, as class, pop 2 - Strength(46 - 47) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Strength(47 - 48) // {True_|False_}
+  2[052] - load local, as class, pop 2 - Strength(47 - 48) // {True_|False_}
   4[017] - load local 3
   5[017] - load local 3
   6[053] - invoke static weaker tests/type_propagation/deltablue-test.toit // [{Strength}, {Strength}] -> {True_|False_}
@@ -356,7 +356,7 @@ StayConstraint tests/type_propagation/deltablue-test.toit
  - argument 0: {StayConstraint}
  - argument 1: {Strength}
  - argument 2: {Null_|Variable}
-  0[052] - load local, as class, pop 2 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 2 - Variable(42 - 43) // {True_|False_}
   2[018] - load local 4
   3[018] - load local 4
   4[018] - load local 4
@@ -372,7 +372,7 @@ EditConstraint tests/type_propagation/deltablue-test.toit
  - argument 0: {EditConstraint}
  - argument 1: {Strength}
  - argument 2: {Null_|Variable}
-  0[052] - load local, as class, pop 2 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 2 - Variable(42 - 43) // {True_|False_}
   2[018] - load local 4
   3[018] - load local 4
   4[018] - load local 4
@@ -527,7 +527,7 @@ BinaryConstraint.input tests/type_propagation/deltablue-test.toit
   8[009] - load field local 18 // [{EqualityConstraint|ScaleConstraint}] -> {Null_|Variable}
  10[081] - branch T15
  13[009] - load field local 34 // [{EqualityConstraint|ScaleConstraint}] -> {Null_|Variable}
- 15[048] - as class Variable(41 - 42) // {True_|False_}
+ 15[048] - as class Variable(42 - 43) // {True_|False_}
  17[089] - return S1 1
 
 BinaryConstraint.output tests/type_propagation/deltablue-test.toit
@@ -539,7 +539,7 @@ BinaryConstraint.output tests/type_propagation/deltablue-test.toit
   8[009] - load field local 34 // [{EqualityConstraint|ScaleConstraint}] -> {Null_|Variable}
  10[081] - branch T15
  13[009] - load field local 18 // [{EqualityConstraint|ScaleConstraint}] -> {Null_|Variable}
- 15[048] - as class Variable(41 - 42) // {True_|False_}
+ 15[048] - as class Variable(42 - 43) // {True_|False_}
  17[089] - return S1 1
 
 BinaryConstraint.recalculate tests/type_propagation/deltablue-test.toit
@@ -721,7 +721,7 @@ EqualityConstraint tests/type_propagation/deltablue-test.toit
  - argument 1: {Strength}
  - argument 2: {Null_|Variable}
  - argument 3: {Variable}
-  0[052] - load local, as class, pop 3 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Variable(42 - 43) // {True_|False_}
   2[019] - load local 5
   3[019] - load local 5
   4[019] - load local 5
@@ -857,7 +857,7 @@ Planner tests/type_propagation/deltablue-test.toit
 Planner.incremental-add tests/type_propagation/deltablue-test.toit
  - argument 0: {Planner}
  - argument 1: {*}
-  0[052] - load local, as class, pop 2 - EqualityConstraint(42 - 46) // {True_|False_}
+  0[052] - load local, as class, pop 2 - EqualityConstraint(43 - 47) // {True_|False_}
   2[017] - load local 3
   3[053] - invoke static Planner.new-mark tests/type_propagation/deltablue-test.toit // [{Planner}] -> {LargeInteger_|SmallInteger_}
   6[017] - load local 3
@@ -935,37 +935,37 @@ Planner.make-plan tests/type_propagation/deltablue-test.toit
   6[053] - invoke static Plan tests/type_propagation/deltablue-test.toit // [{Plan}] -> {Plan}
   9[018] - load local 4
  10[014] - load local 0
- 11[058] - invoke virtual is-empty // [{List_}] -> {True_|False_}
- 15[082] - branch if true T78
- 18[014] - load local 0
- 19[058] - invoke virtual remove-last // [{List_}] -> {*}
- 23[014] - load local 0
- 24[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 28[060] - invoke virtual get mark // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
- 31[018] - load local 4
- 32[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
- 33[082] - branch if true T72
- 36[014] - load local 0
- 37[018] - load local 4
- 38[058] - invoke virtual inputs-known // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
- 42[083] - branch if false T72
- 45[016] - load local 2
- 46[015] - load local 1
- 47[053] - invoke static Plan.add-constraint tests/type_propagation/deltablue-test.toit // [{Plan}, {*}] -> {Null_}
- 50[002] - pop, load local S0
- 52[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 56[018] - load local 4
- 57[061] - invoke virtual set mark // [{Null_|Variable}, {LargeInteger_|SmallInteger_}] -> {LargeInteger_|SmallInteger_}
- 60[002] - pop, load local S7
- 62[015] - load local 1
- 63[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 67[017] - load local 3
- 68[053] - invoke static Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit // [{Planner}, {Null_|Variable}, {List_}] -> {Null_}
+ 11[053] - invoke static CollectionBase.is-empty <sdk>/core/collections.toit // [{List_}] -> {True_|False_}
+ 14[082] - branch if true T77
+ 17[014] - load local 0
+ 18[058] - invoke virtual remove-last // [{List_}] -> {*}
+ 22[014] - load local 0
+ 23[058] - invoke virtual output // [{*}] -> {Null_|Variable}
+ 27[060] - invoke virtual get mark // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
+ 30[018] - load local 4
+ 31[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+ 32[082] - branch if true T71
+ 35[014] - load local 0
+ 36[018] - load local 4
+ 37[058] - invoke virtual inputs-known // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+ 41[083] - branch if false T71
+ 44[016] - load local 2
+ 45[015] - load local 1
+ 46[053] - invoke static Plan.add-constraint tests/type_propagation/deltablue-test.toit // [{Plan}, {*}] -> {Null_}
+ 49[002] - pop, load local S0
+ 51[058] - invoke virtual output // [{*}] -> {Null_|Variable}
+ 55[018] - load local 4
+ 56[061] - invoke virtual set mark // [{Null_|Variable}, {LargeInteger_|SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+ 59[002] - pop, load local S7
+ 61[015] - load local 1
+ 62[058] - invoke virtual output // [{*}] -> {Null_|Variable}
+ 66[017] - load local 3
+ 67[053] - invoke static Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit // [{Planner}, {Null_|Variable}, {List_}] -> {Null_}
+ 70[041] - pop 1
  71[041] - pop 1
- 72[041] - pop 1
- 73[084] - branch back T10
- 78[015] - load local 1
- 79[089] - return S4 2
+ 72[084] - branch back T10
+ 77[015] - load local 1
+ 78[089] - return S4 2
 
 Planner.extract-plan-from-constraints tests/type_propagation/deltablue-test.toit
  - argument 0: {Planner}
@@ -992,15 +992,15 @@ Planner.extract-plan-from-constraints tests/type_propagation/deltablue-test.toit
   0[022] - load null
   1[017] - load local 3
   2[058] - invoke virtual is-input // [{*}] -> {True_|False_}
-  6[083] - branch if false T25
+  6[083] - branch if false T24
   9[017] - load local 3
  10[060] - invoke virtual get is-satisfied // [{*}] -> {Null_|True_|False_}
- 13[083] - branch if false T25
+ 13[083] - branch if false T24
  16[002] - pop, load local S3
  18[005] - load outer S1 // {List_}
  20[017] - load local 3
- 21[058] - invoke virtual add // [{List_}, {*}] -> {Null_}
- 25[089] - return S1 2
+ 21[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {*}] -> {Null_}
+ 24[089] - return S1 2
 
 Planner.add-propagate tests/type_propagation/deltablue-test.toit
  - argument 0: {Planner}
@@ -1010,38 +1010,38 @@ Planner.add-propagate tests/type_propagation/deltablue-test.toit
   1[053] - invoke static create-array_ <sdk>/core/collections.toit // [{EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {LargeArray_|SmallArray_}
   4[053] - invoke static create-list-literal-from-array_ <sdk>/core/collections.toit // [{LargeArray_|SmallArray_}] -> {List_}
   7[014] - load local 0
-  8[058] - invoke virtual is-empty // [{List_}] -> {True_|False_}
- 12[082] - branch if true T69
- 15[014] - load local 0
- 16[058] - invoke virtual remove-last // [{List_}] -> {*}
- 20[014] - load local 0
- 21[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 25[060] - invoke virtual get mark // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
- 28[019] - load local 5
- 29[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
- 30[083] - branch if false T46
- 33[000] - load local S6
- 35[000] - load local S6
- 37[053] - invoke static Planner.incremental-remove tests/type_propagation/deltablue-test.toit // [{Planner}, {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {Null_}
- 40[041] - pop 1
- 41[020] - load literal false
- 43[089] - return S3 3
- 46[014] - load local 0
- 47[058] - invoke virtual recalculate // [{*}] -> {Null_}
- 51[002] - pop, load local S6
- 53[015] - load local 1
- 54[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 58[017] - load local 3
- 59[053] - invoke static Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit // [{Planner}, {Null_|Variable}, {List_}] -> {Null_}
- 62[040] - pop 2
- 64[084] - branch back T7
- 69[020] - load literal true
- 71[089] - return S2 3
+  8[053] - invoke static CollectionBase.is-empty <sdk>/core/collections.toit // [{List_}] -> {True_|False_}
+ 11[082] - branch if true T68
+ 14[014] - load local 0
+ 15[058] - invoke virtual remove-last // [{List_}] -> {*}
+ 19[014] - load local 0
+ 20[058] - invoke virtual output // [{*}] -> {Null_|Variable}
+ 24[060] - invoke virtual get mark // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
+ 27[019] - load local 5
+ 28[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+ 29[083] - branch if false T45
+ 32[000] - load local S6
+ 34[000] - load local S6
+ 36[053] - invoke static Planner.incremental-remove tests/type_propagation/deltablue-test.toit // [{Planner}, {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {Null_}
+ 39[041] - pop 1
+ 40[020] - load literal false
+ 42[089] - return S3 3
+ 45[014] - load local 0
+ 46[058] - invoke virtual recalculate // [{*}] -> {Null_}
+ 50[002] - pop, load local S6
+ 52[015] - load local 1
+ 53[058] - invoke virtual output // [{*}] -> {Null_|Variable}
+ 57[017] - load local 3
+ 58[053] - invoke static Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit // [{Planner}, {Null_|Variable}, {List_}] -> {Null_}
+ 61[040] - pop 2
+ 63[084] - branch back T7
+ 68[020] - load literal true
+ 70[089] - return S2 3
 
 Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
  - argument 0: {Planner}
  - argument 1: {Null_|Variable}
-  0[052] - load local, as class, pop 2 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 2 - Variable(42 - 43) // {True_|False_}
   2[016] - load local 2
   3[022] - load null
   4[013] - store field, pop 2
@@ -1061,27 +1061,27 @@ Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
  28[053] - invoke static create-array_ <sdk>/core/collections.toit // [{Variable}] -> {LargeArray_|SmallArray_}
  31[053] - invoke static create-list-literal-from-array_ <sdk>/core/collections.toit // [{LargeArray_|SmallArray_}] -> {List_}
  34[014] - load local 0
- 35[058] - invoke virtual is-empty // [{List_}] -> {True_|False_}
- 39[082] - branch if true T90
- 42[014] - load local 0
- 43[058] - invoke virtual remove-last // [{List_}] -> {*}
- 47[029] - load method [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
- 52[015] - load local 1
- 53[060] - invoke virtual get constraints // [{*}] -> {Null_|List_}
- 56[038] - load block 1
- 58[058] - invoke virtual do // [{Null_|List_}, [block]] -> {Null_}
- 62[041] - pop 1
- 63[002] - pop, load local S0
- 65[060] - invoke virtual get determined-by // [{*}] -> {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
- 68[029] - load method [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
- 73[016] - load local 2
- 74[060] - invoke virtual get constraints // [{*}] -> {Null_|List_}
- 77[038] - load block 1
- 79[058] - invoke virtual do // [{Null_|List_}, [block]] -> {Null_}
- 83[040] - pop 4
- 85[084] - branch back T34
- 90[015] - load local 1
- 91[089] - return S3 2
+ 35[053] - invoke static CollectionBase.is-empty <sdk>/core/collections.toit // [{List_}] -> {True_|False_}
+ 38[082] - branch if true T89
+ 41[014] - load local 0
+ 42[058] - invoke virtual remove-last // [{List_}] -> {*}
+ 46[029] - load method [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
+ 51[015] - load local 1
+ 52[060] - invoke virtual get constraints // [{*}] -> {Null_|List_}
+ 55[038] - load block 1
+ 57[058] - invoke virtual do // [{Null_|List_}, [block]] -> {Null_}
+ 61[041] - pop 1
+ 62[002] - pop, load local S0
+ 64[060] - invoke virtual get determined-by // [{*}] -> {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
+ 67[029] - load method [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
+ 72[016] - load local 2
+ 73[060] - invoke virtual get constraints // [{*}] -> {Null_|List_}
+ 76[038] - load block 1
+ 78[058] - invoke virtual do // [{Null_|List_}, [block]] -> {Null_}
+ 82[040] - pop 4
+ 84[084] - branch back T34
+ 89[015] - load local 1
+ 90[089] - return S3 2
 
 [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
  - argument 0: [block]
@@ -1089,12 +1089,12 @@ Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
   0[022] - load null
   1[017] - load local 3
   2[060] - invoke virtual get is-satisfied // [{*}] -> {Null_|True_|False_}
-  5[082] - branch if true T17
+  5[082] - branch if true T16
   8[002] - pop, load local S3
  10[005] - load outer S3 // {List_}
  12[017] - load local 3
- 13[058] - invoke virtual add // [{List_}, {*}] -> {Null_}
- 17[089] - return S1 2
+ 13[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {*}] -> {Null_}
+ 16[089] - return S1 2
 
 [block] in Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
  - argument 0: [block]
@@ -1104,24 +1104,24 @@ Planner.remove-propagate-from tests/type_propagation/deltablue-test.toit
   2[019] - load local 5
   3[005] - load outer S1 // {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
   5[062] - invoke eq // [{*}, {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {True_|False_}
-  6[082] - branch if true T35
+  6[082] - branch if true T34
   9[017] - load local 3
  10[060] - invoke virtual get is-satisfied // [{*}] -> {Null_|True_|False_}
- 13[083] - branch if false T35
+ 13[083] - branch if false T34
  16[002] - pop, load local S2
  18[058] - invoke virtual recalculate // [{*}] -> {Null_}
  22[002] - pop, load local S3
  24[005] - load outer S3 // {List_}
  26[017] - load local 3
  27[058] - invoke virtual output // [{*}] -> {Null_|Variable}
- 31[058] - invoke virtual add // [{List_}, {Null_|Variable}] -> {Null_}
- 35[089] - return S1 2
+ 31[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {Null_|Variable}] -> {Null_}
+ 34[089] - return S1 2
 
 Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit
  - argument 0: {Planner}
  - argument 1: {Null_|Variable}
  - argument 2: {List_}
-  0[052] - load local, as class, pop 3 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Variable(42 - 43) // {True_|False_}
   2[009] - load field local 35 // [{Variable}] -> {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
   4[029] - load method [block] in Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit
   9[009] - load field local 101 // [{Variable}] -> {Null_|List_}
@@ -1137,15 +1137,15 @@ Planner.add-constraints-consuming-to tests/type_propagation/deltablue-test.toit
   2[019] - load local 5
   3[005] - load outer S1 // {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
   5[062] - invoke eq // [{*}, {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {True_|False_}
-  6[082] - branch if true T25
+  6[082] - branch if true T24
   9[017] - load local 3
  10[060] - invoke virtual get is-satisfied // [{*}] -> {Null_|True_|False_}
- 13[083] - branch if false T25
+ 13[083] - branch if false T24
  16[002] - pop, load local S3
  18[005] - load outer S4 // {List_}
  20[017] - load local 3
- 21[058] - invoke virtual add // [{List_}, {*}] -> {Null_}
- 25[089] - return S1 2
+ 21[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {*}] -> {Null_}
+ 24[089] - return S1 2
 
 Plan tests/type_propagation/deltablue-test.toit
  - argument 0: {Plan}
@@ -1163,11 +1163,11 @@ Plan tests/type_propagation/deltablue-test.toit
 Plan.add-constraint tests/type_propagation/deltablue-test.toit
  - argument 0: {Plan}
  - argument 1: {*}
-  0[052] - load local, as class, pop 2 - EqualityConstraint(42 - 46) // {True_|False_}
+  0[052] - load local, as class, pop 2 - EqualityConstraint(43 - 47) // {True_|False_}
   2[009] - load field local 3 // [{Plan}] -> {Null_|List_}
   4[017] - load local 3
-  5[058] - invoke virtual add // [{Null_|List_}, {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {Null_}
-  9[090] - return null S1 2
+  5[053] - invoke static List.add <sdk>/core/collections.toit // [{Null_|List_}, {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}] -> {Null_}
+  8[090] - return null S1 2
 
 Plan.execute tests/type_propagation/deltablue-test.toit
  - argument 0: {Plan}
@@ -1329,7 +1329,7 @@ projection-test tests/type_propagation/deltablue-test.toit
  41[014] - load local 0
  42[000] - load local S9
  44[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
- 45[083] - branch if false T122
+ 45[083] - branch if false T121
  48[042] - allocate instance Variable
  50[020] - load literal src
  52[016] - load local 2
@@ -1348,120 +1348,120 @@ projection-test tests/type_propagation/deltablue-test.toit
  78[004] - store local, pop S3
  80[015] - load local 1
  81[017] - load local 3
- 82[058] - invoke virtual add // [{List_}, {Variable}] -> {Null_}
- 86[041] - pop 1
- 87[042] - allocate instance StayConstraint
- 89[032] - load global var lazy G4 // {Strength}
- 91[019] - load local 5
- 92[053] - invoke static StayConstraint tests/type_propagation/deltablue-test.toit // [{StayConstraint}, {Strength}, {Variable}] -> {StayConstraint}
- 95[041] - pop 1
- 96[042] - allocate instance ScaleConstraint
- 98[032] - load global var lazy G0 // {Strength}
+ 82[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {Variable}] -> {Null_}
+ 85[041] - pop 1
+ 86[042] - allocate instance StayConstraint
+ 88[032] - load global var lazy G4 // {Strength}
+ 90[019] - load local 5
+ 91[053] - invoke static StayConstraint tests/type_propagation/deltablue-test.toit // [{StayConstraint}, {Strength}, {Variable}] -> {StayConstraint}
+ 94[041] - pop 1
+ 95[042] - allocate instance ScaleConstraint
+ 97[032] - load global var lazy G0 // {Strength}
+ 99[019] - load local 5
 100[019] - load local 5
-101[019] - load local 5
-102[000] - load local S9
-104[000] - load local S9
-106[053] - invoke static ScaleConstraint tests/type_propagation/deltablue-test.toit // [{ScaleConstraint}, {Strength}, {Variable}, {Variable}, {Variable}, {Variable}] -> {ScaleConstraint}
-109[041] - pop 1
+101[000] - load local S9
+103[000] - load local S9
+105[053] - invoke static ScaleConstraint tests/type_propagation/deltablue-test.toit // [{ScaleConstraint}, {Strength}, {Variable}, {Variable}, {Variable}, {Variable}] -> {ScaleConstraint}
+108[041] - pop 1
+109[014] - load local 0
 110[014] - load local 0
-111[014] - load local 0
-112[025] - load smi 1
-113[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-114[004] - store local, pop S2
-116[041] - pop 1
-117[084] - branch back T41
-122[002] - pop, load local S2
-124[026] - load smi 17
-126[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Null_|Variable}, {SmallInteger_}] -> {Null_}
-129[002] - pop, load local S1
-131[060] - invoke virtual get value // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
-134[027] - load smi 1170
-137[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
-138[082] - branch if true T147
-141[020] - load literal Projection 1 failed
-143[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
-146[041] - pop 1
-147[015] - load local 1
-148[027] - load smi 1050
-151[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Null_|Variable}, {SmallInteger_}] -> {Null_}
-154[002] - pop, load local S2
-156[060] - invoke virtual get value // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
-159[026] - load smi 5
-161[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
-162[082] - branch if true T171
-165[020] - load literal Projection 2 failed
-167[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
-170[041] - pop 1
-171[018] - load local 4
-172[026] - load smi 5
-174[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Variable}, {SmallInteger_}] -> {Null_}
-177[041] - pop 1
-178[023] - load smi 0
-179[014] - load local 0
-180[000] - load local S9
-182[025] - load smi 1
-183[074] - invoke sub // [{SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-184[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
-185[083] - branch if false T224
+111[025] - load smi 1
+112[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+113[004] - store local, pop S2
+115[041] - pop 1
+116[084] - branch back T41
+121[002] - pop, load local S2
+123[026] - load smi 17
+125[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Null_|Variable}, {SmallInteger_}] -> {Null_}
+128[002] - pop, load local S1
+130[060] - invoke virtual get value // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
+133[027] - load smi 1170
+136[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+137[082] - branch if true T146
+140[020] - load literal Projection 1 failed
+142[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+145[041] - pop 1
+146[015] - load local 1
+147[027] - load smi 1050
+150[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Null_|Variable}, {SmallInteger_}] -> {Null_}
+153[002] - pop, load local S2
+155[060] - invoke virtual get value // [{Null_|Variable}] -> {Null_|LargeInteger_|SmallInteger_}
+158[026] - load smi 5
+160[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+161[082] - branch if true T170
+164[020] - load literal Projection 2 failed
+166[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+169[041] - pop 1
+170[018] - load local 4
+171[026] - load smi 5
+173[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Variable}, {SmallInteger_}] -> {Null_}
+176[041] - pop 1
+177[023] - load smi 0
+178[014] - load local 0
+179[000] - load local S9
+181[025] - load smi 1
+182[074] - invoke sub // [{SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+183[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+184[083] - branch if false T223
+187[015] - load local 1
 188[015] - load local 1
-189[015] - load local 1
-190[078] - invoke at // [{List_}, {LargeInteger_|SmallInteger_}] -> {*}
-191[060] - invoke virtual get value // [{*}] -> {*}
-194[015] - load local 1
-195[026] - load smi 5
-197[075] - invoke mul // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-198[027] - load smi 1000
-201[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-202[062] - invoke eq // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
-203[082] - branch if true T212
-206[020] - load literal Projection 3 failed
-208[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
-211[041] - pop 1
+189[078] - invoke at // [{List_}, {LargeInteger_|SmallInteger_}] -> {*}
+190[060] - invoke virtual get value // [{*}] -> {*}
+193[015] - load local 1
+194[026] - load smi 5
+196[075] - invoke mul // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+197[027] - load smi 1000
+200[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+201[062] - invoke eq // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+202[082] - branch if true T211
+205[020] - load literal Projection 3 failed
+207[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+210[041] - pop 1
+211[014] - load local 0
 212[014] - load local 0
-213[014] - load local 0
-214[025] - load smi 1
-215[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-216[004] - store local, pop S2
-218[041] - pop 1
-219[084] - branch back T179
-224[002] - pop, load local S3
-226[027] - load smi 2000
-229[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Variable}, {SmallInteger_}] -> {Null_}
-232[041] - pop 1
-233[023] - load smi 0
-234[014] - load local 0
-235[000] - load local S9
-237[025] - load smi 1
-238[074] - invoke sub // [{SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-239[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
-240[083] - branch if false T279
+213[025] - load smi 1
+214[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+215[004] - store local, pop S2
+217[041] - pop 1
+218[084] - branch back T178
+223[002] - pop, load local S3
+225[027] - load smi 2000
+228[053] - invoke static change tests/type_propagation/deltablue-test.toit // [{Variable}, {SmallInteger_}] -> {Null_}
+231[041] - pop 1
+232[023] - load smi 0
+233[014] - load local 0
+234[000] - load local S9
+236[025] - load smi 1
+237[074] - invoke sub // [{SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+238[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+239[083] - branch if false T278
+242[015] - load local 1
 243[015] - load local 1
-244[015] - load local 1
-245[078] - invoke at // [{List_}, {LargeInteger_|SmallInteger_}] -> {*}
-246[060] - invoke virtual get value // [{*}] -> {*}
-249[015] - load local 1
-250[026] - load smi 5
-252[075] - invoke mul // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-253[027] - load smi 2000
-256[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-257[062] - invoke eq // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
-258[082] - branch if true T267
-261[020] - load literal Projection 4 failed
-263[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
-266[041] - pop 1
+244[078] - invoke at // [{List_}, {LargeInteger_|SmallInteger_}] -> {*}
+245[060] - invoke virtual get value // [{*}] -> {*}
+248[015] - load local 1
+249[026] - load smi 5
+251[075] - invoke mul // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+252[027] - load smi 2000
+255[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+256[062] - invoke eq // [{*}, {LargeInteger_|SmallInteger_}] -> {True_|False_}
+257[082] - branch if true T266
+260[020] - load literal Projection 4 failed
+262[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+265[041] - pop 1
+266[014] - load local 0
 267[014] - load local 0
-268[014] - load local 0
-269[025] - load smi 1
-270[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
-271[004] - store local, pop S2
-273[041] - pop 1
-274[084] - branch back T234
-279[090] - return null S6 1
+268[025] - load smi 1
+269[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+270[004] - store local, pop S2
+272[041] - pop 1
+273[084] - branch back T233
+278[090] - return null S6 1
 
 change tests/type_propagation/deltablue-test.toit
  - argument 0: {Null_|Variable}
  - argument 1: {SmallInteger_}
-  0[052] - load local, as class, pop 3 - Variable(41 - 42) // {True_|False_}
+  0[052] - load local, as class, pop 3 - Variable(42 - 43) // {True_|False_}
   2[042] - allocate instance EditConstraint
   4[032] - load global var lazy G2 // {Strength}
   6[019] - load local 5

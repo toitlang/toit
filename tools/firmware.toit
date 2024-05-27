@@ -34,33 +34,43 @@ import host.file
 import host.os
 import host.pipe
 import partition-table show *
+import tar
 
 import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 6
+ENVELOPE-FORMAT-VERSION ::= 7
 
-WORD-SIZE ::= 4
-AR-ENTRY-FIRMWARE-BIN   ::= "\$firmware.bin"
-AR-ENTRY-FIRMWARE-ELF   ::= "\$firmware.elf"
-AR-ENTRY-BOOTLOADER-BIN ::= "\$bootloader.bin"
-AR-ENTRY-PARTITIONS-BIN ::= "\$partitions.bin"
-AR-ENTRY-PARTITIONS-CSV ::= "\$partitions.csv"
-AR-ENTRY-OTADATA-BIN    ::= "\$otadata.bin"
-AR-ENTRY-FLASHING-JSON  ::= "\$flashing.json"
+WORD-SIZE-ESP32 ::= 4
+
+// Shared AR entries.
+AR-ENTRY-INFO        ::= "\$envelope"
+AR-ENTRY-SDK-VERSION ::= "\$sdk-version"
+AR-ENTRY-PLATFORM    ::= "\$platform"
 AR-ENTRY-PROPERTIES     ::= "\$properties"
-AR-ENTRY-SDK-VERSION    ::= "\$sdk-version"
 
-AR-ENTRY-FILE-MAP ::= {
-  "firmware.bin"    : AR-ENTRY-FIRMWARE-BIN,
-  "firmware.elf"    : AR-ENTRY-FIRMWARE-ELF,
-  "bootloader.bin"  : AR-ENTRY-BOOTLOADER-BIN,
-  "partitions.bin"  : AR-ENTRY-PARTITIONS-BIN,
-  "partitions.csv"  : AR-ENTRY-PARTITIONS-CSV,
-  "otadata.bin"     : AR-ENTRY-OTADATA-BIN,
-  "flashing.json"   : AR-ENTRY-FLASHING-JSON,
+// ESP32 AR entries.
+AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
+AR-ENTRY-ESP32-FIRMWARE-ELF   ::= "\$firmware.elf"
+AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
+AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
+AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
+AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
+AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
+
+AR-ENTRY-ESP32-FILE-MAP ::= {
+  "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
+  "firmware.elf"    : AR-ENTRY-ESP32-FIRMWARE-ELF,
+  "bootloader.bin"  : AR-ENTRY-ESP32-BOOTLOADER-BIN,
+  "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
+  "partitions.csv"  : AR-ENTRY-ESP32-PARTITIONS-CSV,
+  "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
+  "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
+
+// Host AR entries.
+AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -122,7 +132,17 @@ write-file-or-print --path/string? output/string -> none:
     print output
 
 main arguments/List:
-  root-cmd := cli.Command "root"
+  firmware-cmd := build-command --create-esp32-only
+  firmware-cmd.run arguments
+
+build-command --create-esp32-only/bool=false -> cli.Command:
+  firmware-cmd := cli.Command "firmware"
+      --help="""
+        Manipulate firmware envelopes.
+
+        An envelope is an artifact that bundles native firmware images with Toit containers.
+        This command can be used to create, inspect, extract, and manipulate envelopes.
+        """
       --options=[
         cli.Option OPTION-ENVELOPE
             --short-name="e"
@@ -130,30 +150,52 @@ main arguments/List:
             --type="file"
             --required
       ]
-  root-cmd.add create-cmd
-  root-cmd.add extract-cmd
-  root-cmd.add flash-cmd
-  root-cmd.add container-cmd
-  root-cmd.add property-cmd
-  root-cmd.add show-cmd
-  root-cmd.add tool-cmd
-  root-cmd.run arguments
+  if create-esp32-only:
+    firmware-cmd.add (create-esp32-cmd --name="create")
+  else:
+    firmware-cmd.add create-cmd
+  firmware-cmd.add extract-cmd
+  firmware-cmd.add flash-cmd
+  firmware-cmd.add container-cmd
+  firmware-cmd.add property-cmd
+  firmware-cmd.add show-cmd
+  firmware-cmd.add tool-cmd
+  return firmware-cmd
 
 create-cmd -> cli.Command:
-  options := AR-ENTRY-FILE-MAP.map: | key/string value/string |
+  options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
     cli.Option key
         --help="Set the $key part."
         --type="file"
         --required=(key == "firmware.bin")
-  return cli.Command "create"
+  cmd := cli.Command "create"
+      --help="""
+        Create a firmware envelope for the specificed platform.
+        """
+  cmd.add (create-esp32-cmd --name="esp32")
+  cmd.add create-host-cmd
+  return cmd
+
+create-esp32-cmd --name/string -> cli.Command:
+  options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
+    cli.Option key
+        --help="Set the $key part."
+        --type="file"
+        --required=(key == "firmware.bin")
+  return cli.Command name
+      --help="""
+        Create a firmware envelope from a native firmware image.
+
+        Add the Toit system snapshot to the envelope with the 'firmware.bin' option.
+        """
       --options=options.values + [
         cli.Option "system.snapshot"
             --type="file"
             --required,
       ]
-      --run=:: create-envelope it
+      --run=:: create-envelope-esp32 it
 
-create-envelope parsed/cli.Parsed -> none:
+create-envelope-esp32 parsed/cli.Parsed -> none:
   output-path := parsed[OPTION-ENVELOPE]
   input-path := parsed["firmware.bin"]
 
@@ -165,7 +207,7 @@ create-envelope parsed/cli.Parsed -> none:
   system-snapshot := SnapshotBundle system-snapshot-content
 
   entries := {
-    AR-ENTRY-FIRMWARE-BIN: binary.bits,
+    AR-ENTRY-ESP32-FIRMWARE-BIN: binary.bits,
     SYSTEM-CONTAINER-NAME: system-snapshot-content,
     AR-ENTRY-PROPERTIES: json.encode {
       PROPERTY-CONTAINER-FLAGS: {
@@ -174,17 +216,50 @@ create-envelope parsed/cli.Parsed -> none:
     }
   }
 
-  AR-ENTRY-FILE-MAP.do: | key/string value/string |
+  AR-ENTRY-ESP32-FILE-MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
     filename := parsed[key]
     if filename: entries[value] = read-file filename
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
+      --platform=Envelope.PLATFORM-ESP32
+  envelope.store output-path
+
+create-host-cmd -> cli.Command:
+  return cli.Command "host"
+      --help="""
+        Create a firmware envelope for the host system.
+        """
+      --options=[
+        cli.Option "run-image"
+            --help="Path to the run-image executable."
+            --type="file"
+            --required,
+      ]
+      --run=:: create-envelope-host it
+
+create-envelope-host parsed/cli.Parsed -> none:
+  output-path := parsed[OPTION-ENVELOPE]
+
+  run-image-path := parsed["run-image"]
+  run-image-bytes := read-file run-image-path
+
+  entries := {
+    AR-ENTRY-HOST-RUN-IMAGE: run-image-bytes,
+  }
+
+  // TODO(florian): we are using the sdk-version of the firmware-tool.
+  // That's almost always correct, but we should verify that the
+  // run-image has the same version.
+  envelope := Envelope.create entries
+      --sdk-version=system.app-sdk-version
+      --platform=Envelope.PLATFORM-HOST
   envelope.store output-path
 
 container-cmd -> cli.Command:
   cmd := cli.Command "container"
+      --help="Manipulate Toit containers in a firmware envelope."
   option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
       --help="Set the output envelope."
@@ -195,6 +270,8 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "install"
+          --help="Add a container to the envelope."
+          --aliases=["add"]
           --options=[
             option-output,
             cli.Option "assets"
@@ -216,6 +293,7 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "extract"
+          --help="Extract a container from the envelope."
           --options=[
             cli.Option "output"
                 --help="Set the output file name."
@@ -230,12 +308,15 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "uninstall"
+          --help="Remove a container from the envelope."
+          --aliases=["remove"]
           --options=[ option-output ]
           --rest=[ option-name ]
           --run=:: container-uninstall it
 
   cmd.add
       cli.Command "list"
+          --help="List the containers in the envelope."
           --options=[
             cli.Option "output"
                 --help="Set the output file name."
@@ -260,12 +341,12 @@ read-assets path/string? -> ByteArray?:
   exit 1
   unreachable
 
-decode-image data/ByteArray -> ImageHeader:
+decode-image data/ByteArray --word-size/int -> ImageHeader:
   out := io.Buffer
-  output := BinaryRelocatedOutput out 0x12345678
-  output.write WORD-SIZE data
+  output := BinaryRelocatedOutput out 0x12345678 --word-size=word-size
+  output.write data
   decoded := out.bytes
-  return ImageHeader decoded
+  return ImageHeader decoded --word-size=word-size
 
 get-container-name parsed/cli.Parsed -> string:
   name := parsed["name"]
@@ -306,7 +387,7 @@ container-install parsed/cli.Parsed -> none:
         exit 1
     else:
       header := null
-      catch: header = decode-image image-data
+      catch: header = decode-image image-data --word-size=envelope.word-size
       if not header:
         print "Input is not a valid snapshot or image ('$image-path')."
         exit 1
@@ -356,9 +437,10 @@ container-list parsed/cli.Parsed -> none:
   output-path := parsed[OPTION-OUTPUT]
   input-path := parsed[OPTION-ENVELOPE]
   output-format := parsed["output-format"]
-  entries := (Envelope.load input-path).entries
+  envelope := Envelope.load input-path
+  entries := envelope.entries
 
-  entries-json := build-entries-json entries
+  entries-json := build-entries-json entries --word-size=envelope.word-size
   output := entries-json["containers"]
 
   output-string := ""
@@ -370,7 +452,7 @@ container-list parsed/cli.Parsed -> none:
 
   write-file-or-print --path=output-path output-string
 
-build-entries-json entries/Map -> Map:
+build-entries-json entries/Map --word-size/int -> Map:
   properties/Map? := entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
   flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
@@ -378,7 +460,7 @@ build-entries-json entries/Map -> Map:
   entries.do: | name/string content/ByteArray |
     if not is-container-name name: continue.do
     assets := entries.get "+$name"
-    entry := extract-container name flags content --assets=assets
+    entry := extract-container name flags content --assets=assets --word-size=word-size
     map := {
       "kind": (is-snapshot-bundle content) ? "snapshot" : "image",
       "id"  : entry.id.to-string,
@@ -407,6 +489,7 @@ build-entries-json entries/Map -> Map:
 
 property-cmd -> cli.Command:
   cmd := cli.Command "property"
+      --help="Manipulate properties in a firmware envelope."
 
   option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
@@ -499,12 +582,17 @@ extract-cmd -> cli.Command:
         Extracts the firmware image of the envelope to a file.
 
         The following formats are supported:
+        For ESP32:
         - binary: the binary app partition. This format can be used with
           the 'esptool' tool.
         - elf: the ELF file of the executable. This is typically used
           for debugging.
         - ubjson: a UBJSON encoding of the sections of the image.
         - qemu: a full binary image suitable for running on QEMU.
+        For host:
+        - tar: a tar ball with a bash script to run the extracted firmware.
+        - binary: the binary image of the firmware, which can be used for firmware upgrades.
+        - ubjson: a UBJSON encoding suitable for incremental updates.
 
         # QEMU
         The generated image (say 'output.bin') can be run with the
@@ -528,7 +616,7 @@ extract-cmd -> cli.Command:
             --required,
         cli.Option "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
       ]
@@ -536,38 +624,48 @@ extract-cmd -> cli.Command:
 
 extract parsed/cli.Parsed -> none:
   input-path := parsed[OPTION-ENVELOPE]
-  output-path := parsed[OPTION-OUTPUT]
   envelope := Envelope.load input-path
 
   config-path := parsed["config"]
-
-  if parsed["format"] == "elf":
-    if config-path:
-      print "WARNING: config is ignored when extracting elf file"
-    write-file output-path: it.write (envelope.entries.get AR-ENTRY-FIRMWARE-ELF)
-    return
 
   config-encoded := ByteArray 0
   if config-path:
     config-encoded = read-file config-path
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
-  firmware-bin := extract-binary envelope --config-encoded=config-encoded
 
-  if parsed["format"] == "binary":
+  if envelope.platform == Envelope.PLATFORM-ESP32:
+    extract-esp32 parsed envelope --config-encoded=config-encoded
+  else if envelope.platform == Envelope.PLATFORM-HOST:
+    extract-host parsed envelope --config-encoded=config-encoded
+  else:
+    throw "unsupported platform: $(envelope.platform)"
+
+extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> none:
+  output-path := parsed[OPTION-OUTPUT]
+
+  format := parsed["format"]
+  if format == "tar":
+    throw "unsupported format for ESP32 platform: '$format'"
+
+  if format == "elf":
+    if not config-encoded.is-empty:
+      print "WARNING: config is ignored when extracting elf file"
+    write-file output-path: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
+    return
+
+  firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
+
+  if format == "binary":
     write-file output-path: it.write firmware-bin
     return
 
-  if parsed["format"] == "qemu":
-    flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
-        --if-present=: json.decode it
-        --if-absent=: throw "cannot create qemu image without 'flashing.json'"
-
+  if format == "qemu":
     write-qemu_ output-path firmware-bin envelope
     return
 
-  if not parsed["format"] == "ubjson":
-    throw "unknown format: $(parsed["format"])"
+  if not format == "ubjson":
+    throw "unknown format: $(format)"
 
   binary := Esp32Binary firmware-bin
   parts := binary.parts firmware-bin
@@ -577,12 +675,110 @@ extract parsed/cli.Parsed -> none:
   }
   write-file output-path: it.write (ubjson.encode output)
 
-write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope:
-  flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
+extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
+  output-path := parsed[OPTION-OUTPUT]
+
+  format := parsed["format"]
+  if format != "tar" and format != "binary" and format != "ubjson":
+    throw "unsupported format for host platform: '$format'"
+
+  entries := envelope.entries
+  flags := get-flags envelope
+  run-image := entries.get AR-ENTRY-HOST-RUN-IMAGE
+  startup-images := {:}
+  bundled-images := {:}
+  name-to-uuid-mapping := {:}
+  entries.do: | name/string content/ByteArray |
+    if not is-container-name name: continue.do
+    entry-assets := entries.get "+$name"
+    entry := extract-container name flags content --assets=entry-assets --word-size=envelope.word-size
+    uuid := entry.id.to-string
+    // TODO(florian): add the assets to the image.
+    if entry.flags & IMAGE-FLAG-RUN-BOOT != 0 or entry.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
+      startup-images[name] = entry.relocatable
+    else:
+      bundled-images[name] = entry.relocatable
+    name-to-uuid-mapping[name] = uuid
+
+  parts := []
+  bits := io.Buffer
+
+  // Reserve space for the header.
+  header-size := 6 * 4
+  bits.grow-by header-size
+  parts.add { "type": "header", "from": 0, "to": header-size }
+
+  part-start := bits.size
+  bits.write run-image
+  parts.add { "type": "run-image", "from": part-start, "to": bits.size }
+
+  part-start = bits.size
+  bits.write config-encoded
+  parts.add { "type": "config", "from": part-start, "to": bits.size }
+
+  part-start = bits.size
+  bits.write (ubjson.encode name-to-uuid-mapping)
+  parts.add { "type": "name-to-uuid-mapping", "from": part-start, "to": bits.size }
+
+  part-start = bits.size
+  ar-writer := ar.ArWriter bits
+  startup-images.do: | uuid/string image/ByteArray |
+    ar-writer.add uuid image
+  parts.add { "type": "startup-images", "from": part-start, "to": bits.size }
+
+  part-start = bits.size
+  ar-writer = ar.ArWriter bits
+  bundled-images.do: | uuid/string image/ByteArray |
+    ar-writer.add uuid image
+  parts.add { "type": "bundled-images", "from": part-start, "to": bits.size }
+
+  // Update the header with the parts offsets.
+  bits-le := bits.little-endian
+  header-offset := 0
+  parts.do: | part |
+    bits-le.put-int32 --at=header-offset (part["to"] - part["from"])
+    header-offset += 4
+  if header-offset != header-size:
+    throw "header size mismatch"
+
+  checksum := crypto.sha256 bits.bytes
+  bits.write checksum
+
+  bits.close
+
+  if format == "binary":
+    write-file output-path: it.write bits.bytes
+    return
+
+  ubjson-data := {
+    "parts": parts,
+    "binary": bits.bytes,
+  }
+  encoded-ubjson := ubjson.encode ubjson-data
+  if format == "ubjson":
+    write-file output-path: it.write encoded-ubjson
+    return
+
+  // For the "tar" output create a tarball.
+  tar-bytes := io.Buffer
+  tar-writer := tar.Tar tar-bytes
+  tar-writer.add "run-image" run-image --permissions=0b111_000_000
+  tar-writer.add "config.ubjson" encoded-ubjson
+  startup-images.do: | uuid/string image/ByteArray |
+    tar-writer.add "startup-images/$uuid" image
+  bundled-images.do: | uuid/string image/ByteArray |
+    tar-writer.add "bundled-images/$uuid" image
+  tar-writer.add "bits.bin" bits.bytes
+  tar-writer.close --close-writer
+
+  write-file output-path: it.write tar-bytes.bytes
+
+write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope -> none:
+  flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot create qemu image without 'flashing.json'"
 
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-PARTITIONS-BIN)
+  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
   partition-table := PartitionTable.decode bundled-partitions-bin
 
   // TODO(kasper): Allow adding more partitions.
@@ -593,13 +789,13 @@ write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope:
   out-image := ByteArray 4 * 1024 * 1024  // 4 MB.
   out-image.replace
       int.parse flashing["bootloader"]["offset"][2..] --radix=16
-      envelope.entries.get AR-ENTRY-BOOTLOADER-BIN
+      envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
   out-image.replace
       int.parse flashing["partition-table"]["offset"][2..] --radix=16
       encoded-partitions-bin
   out-image.replace
       otadata-partition.offset
-      envelope.entries.get AR-ENTRY-OTADATA-BIN
+      envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN
   out-image.replace
       app-partition.offset
       firmware-bin
@@ -653,7 +849,7 @@ find-esptool_ -> List:
 
 tool-cmd -> cli.Command:
   return cli.Command "tool"
-      --help="Provides information about used tools."
+      --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
       ]
@@ -675,6 +871,7 @@ esptool parsed/cli.Parsed -> none:
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
+      --help="Flash a firmware envelope to a device."
       --options=[
         cli.Option "config"
             --type="file",
@@ -712,16 +909,16 @@ flash parsed/cli.Parsed -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  firmware-bin := extract-binary envelope --config-encoded=config-encoded
+  firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
   binary := Esp32Binary firmware-bin
 
   esptool := find-esptool_
 
-  flashing := envelope.entries.get AR-ENTRY-FLASHING-JSON
+  flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot flash without 'flashing.json'"
 
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-PARTITIONS-BIN)
+  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
   partition-table := PartitionTable.decode bundled-partitions-bin
 
   // Map the file:<name>=<path> and empty:<name>=<size> partitions
@@ -768,9 +965,9 @@ flash parsed/cli.Parsed -> none:
 
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    write-file "$tmp/bootloader.bin": it.write (envelope.entries.get AR-ENTRY-BOOTLOADER-BIN)
+    write-file "$tmp/bootloader.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN)
     write-file "$tmp/partitions.bin": it.write encoded-partitions-bin
-    write-file "$tmp/otadata.bin": it.write (envelope.entries.get AR-ENTRY-OTADATA-BIN)
+    write-file "$tmp/otadata.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN)
     write-file "$tmp/firmware.bin": it.write firmware-bin
 
     partition-args := [
@@ -799,13 +996,18 @@ flash parsed/cli.Parsed -> none:
   finally:
     directory.rmdir --recursive tmp
 
-extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
+get-flags envelope/Envelope -> Map?:
+  properties := envelope.entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+  return properties and properties.get PROPERTY-CONTAINER-FLAGS
+
+extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   containers ::= []
   entries := envelope.entries
   properties := entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
       --if-absent=: {:}
-  flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
+  flags := get-flags envelope
 
   // The system image, if any, must be the first image, so
   // we reserve space for it in the list of containers.
@@ -818,7 +1020,7 @@ extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
       continue.do  // Skip.
     assets := entries.get "+$name"
-    entry := extract-container name flags content --assets=assets
+    entry := extract-container name flags content --assets=assets --word-size=envelope.word-size
     containers.add entry
     non-system-images[name] = entry.id.to-byte-array
 
@@ -833,11 +1035,11 @@ extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
     // Encode the system assets and add them to the container.
     assets-encoded := assets.encode system-assets
-    containers[0] = extract-container name flags content --assets=assets-encoded
+    containers[0] = extract-container name flags content --assets=assets-encoded --word-size=envelope.word-size
 
-  firmware-bin := entries.get AR-ENTRY-FIRMWARE-BIN
+  firmware-bin := entries.get AR-ENTRY-ESP32-FIRMWARE-BIN
   if not firmware-bin:
-    throw "cannot find $AR-ENTRY-FIRMWARE-BIN entry in envelope '$envelope.path'"
+    throw "cannot find $AR-ENTRY-ESP32-FIRMWARE-BIN entry in envelope '$envelope.path'"
 
   system-uuid/uuid.Uuid? := null
   if properties.contains "uuid":
@@ -850,23 +1052,23 @@ extract-binary envelope/Envelope --config-encoded/ByteArray -> ByteArray:
       --system-uuid=system-uuid
       --config-encoded=config-encoded
 
-extract-container name/string flags/Map? content/ByteArray -> ContainerEntry
-    --assets/ByteArray?:
+extract-container -> ContainerEntry
+    name/string flags/Map? content/ByteArray --word-size/int --assets/ByteArray?:
   header/ImageHeader := ?
   relocatable/ByteArray := ?
   if is-snapshot-bundle content:
     snapshot-bundle := SnapshotBundle name content
     snapshot-uuid ::= snapshot-bundle.uuid
     program := snapshot-bundle.decode
-    image := build-image program WORD-SIZE
+    image := build-image program word-size
         --system-uuid=uuid.NIL
         --snapshot-uuid=snapshot-uuid
         --assets=assets
-    header = ImageHeader image.all-memory
+    header = ImageHeader image.all-memory --word-size=word-size
     if header.snapshot-uuid != snapshot-uuid: throw "corrupt snapshot uuid encoding"
     relocatable = image.build-relocatable
   else:
-    header = decode-image content
+    header = decode-image content --word-size=word-size
     relocatable = content
   flag-bits := flags and flags.get name
   flag-bits = flag-bits or 0
@@ -882,6 +1084,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
 
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
+      --platform=existing.platform
   envelope.store output-path
 
 extract-binary-content -> ByteArray
@@ -900,8 +1103,8 @@ extract-binary-content -> ByteArray
   containers.do: | container/ContainerEntry |
     relocatable := container.relocatable
     out := io.Buffer
-    output := BinaryRelocatedOutput out relocation-base
-    output.write WORD-SIZE relocatable
+    output := BinaryRelocatedOutput out relocation-base --word-size=WORD-SIZE-ESP32
+    output.write relocatable
     image-bits := out.bytes
     image-size := image-bits.size
 
@@ -911,7 +1114,7 @@ extract-binary-content -> ByteArray
         image-size
     image-bits = pad image-bits 4
 
-    image-header ::= ImageHeader image-bits
+    image-header ::= ImageHeader image-bits --word-size=WORD-SIZE-ESP32
     image-header.system-uuid = system-uuid
     image-header.flags = container.flags
 
@@ -983,9 +1186,11 @@ show parsed/cli.Parsed -> none:
   show-all := parsed["all"]
 
   envelope := Envelope.load input-path
-  entries-json := build-entries-json envelope.entries
+  entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
+  platform-string := envelope.platform == Envelope.PLATFORM-ESP32 ? "ESP32" : "host"
   result := {
     "envelope-format-version": envelope.version_,
+    "platform": platform-string,
     "sdk-version": envelope.sdk-version,
     "containers": entries-json["containers"],
   }
@@ -1054,33 +1259,50 @@ json-to-human o/any --indentation/int=0 --skip-indentation/bool=false --chain/Li
 class Envelope:
   static MARKER ::= 0x0abeca70
 
-  static INFO-ENTRY-NAME           ::= "\$envelope"
-  static INFO-ENTRY-MARKER-OFFSET  ::= 0
-  static INFO-ENTRY-VERSION-OFFSET ::= 4
-  static INFO-ENTRY-SIZE           ::= 8
+  static PLATFORM-ESP32 ::= 0
+  static PLATFORM-HOST  ::= 1
+
+  static INFO-ENTRY-MARKER-OFFSET   ::= 0
+  static INFO-ENTRY-VERSION-OFFSET  ::= 4
+  static INFO-ENTRY-SIZE            ::= 8
 
   version_/int
 
   path/string? ::= null
   sdk-version/string
+  platform/int
   entries/Map ::= {:}
 
   constructor.load .path/string:
     version/int? := null
     sdk-version = ""
+    platform = -1
     read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
-        if file.name == INFO-ENTRY-NAME:
+        if file.name == AR-ENTRY-INFO:
           version = validate file.content
         else if file.name == AR-ENTRY-SDK-VERSION:
           sdk-version = file.content.to-string-non-throwing
+        else if file.name == AR-ENTRY-PLATFORM:
+          if file.content.size != 1:
+            throw "cannot open envelope - malformed platform entry"
+          platform = file.content[0]
+          if platform != PLATFORM-ESP32 and platform != PLATFORM-HOST:
+            throw "cannot open envelope - unknown platform $platform"
         else:
           entries[file.name] = file.content
+    if not version: throw "cannot open envelope - missing info entry"
+    if platform == -1: throw "cannot open envelope - missing platform entry"
     version_ = version
 
-  constructor.create .entries --.sdk-version:
+  constructor.create .entries --.sdk-version --.platform:
     version_ = ENVELOPE-FORMAT-VERSION
+
+  word-size -> int:
+    if platform == PLATFORM-ESP32: return WORD-SIZE-ESP32
+    // TODO(florian): don't assume 64-bit platform for host.
+    return 8
 
   store path/string -> none:
     write-file path: | writer/io.Writer |
@@ -1089,8 +1311,9 @@ class Envelope:
       info := ByteArray INFO-ENTRY-SIZE
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-MARKER-OFFSET MARKER
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
-      ar.add INFO-ENTRY-NAME info
+      ar.add AR-ENTRY-INFO info
       ar.add AR-ENTRY-SDK-VERSION sdk-version
+      ar.add AR-ENTRY-PLATFORM #[platform]
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
@@ -1119,14 +1342,20 @@ class ImageHeader:
   static ID-OFFSET_            ::= 8
   static METADATA-OFFSET_      ::= 24
   static UUID-OFFSET_          ::= 32
-  static SNAPSHOT-UUID-OFFSET_ ::= 48 + 7 * 2 * 4  // 7 tables and lists.
-  static HEADER-SIZE_          ::= SNAPSHOT-UUID-OFFSET_ + uuid.SIZE
 
   static MARKER_ ::= 0xdeadface
 
   header_/ByteArray
-  constructor image/ByteArray:
-    header_ = validate image
+  word-size/int
+
+  constructor image/ByteArray --.word-size:
+    header_ = validate image --word-size=word-size
+
+  static snapshot-uuid-offset_ word-size/int -> int:
+    return 48 + 7 * 2 * word-size  // 7 tables and lists.
+
+  static header-size_ word-size/int -> int:
+    return (snapshot-uuid-offset_ word-size) + uuid.SIZE
 
   flags -> int:
     return header_[METADATA-OFFSET_]
@@ -1138,7 +1367,7 @@ class ImageHeader:
     return read-uuid_ ID-OFFSET_
 
   snapshot-uuid -> uuid.Uuid:
-    return read-uuid_ SNAPSHOT-UUID-OFFSET_
+    return read-uuid_ (snapshot-uuid-offset_ word-size)
 
   system-uuid -> uuid.Uuid:
     return read-uuid_ UUID-OFFSET_
@@ -1152,11 +1381,11 @@ class ImageHeader:
   write-uuid_ offset/int value/uuid.Uuid -> none:
     header_.replace offset value.to-byte-array
 
-  static validate image/ByteArray -> ByteArray:
-    if image.size < HEADER-SIZE_: throw "image too small"
+  static validate image/ByteArray --word-size/int -> ByteArray:
+    if image.size < (header-size_ word-size): throw "image too small"
     marker := LITTLE-ENDIAN.uint32 image MARKER-OFFSET_
     if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
-    return image[0..HEADER-SIZE_]
+    return image[0..(header-size_ word-size)]
 
 /*
 The image format is as follows:
@@ -1216,7 +1445,6 @@ class Esp32S3AddressMap implements AddressMap:
   irom-map-end   ::= 0x44000000
   drom-map-start ::= 0x3c000000
   drom-map-end   ::= 0x3d000000
-
 
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
@@ -1334,7 +1562,7 @@ class Esp32Binary:
     drom := find-last-drom-segment_
     if not drom: throw "cannot append to non-existing DROM segment"
     transform-drom-segment_ drom: | segment/ByteArray |
-      patch-details segment system-uuid table-address
+      patch-details-esp32 segment system-uuid table-address
       segment + bits
 
   remove-drom-extension bits/ByteArray -> none:
@@ -1345,7 +1573,7 @@ class Esp32Binary:
     transform-drom-segment_ drom: it[..extension-size[0]]
 
   static compute-drom-extension-size_ drom/Esp32BinarySegment -> List:
-    details-offset := find-details-offset drom.bits
+    details-offset := find-details-offset-esp32 drom.bits
     unextended-end-address := LITTLE-ENDIAN.uint32 drom.bits details-offset
     if unextended-end-address == 0: return [drom.size, 0, 0]
     unextended-size := unextended-end-address - drom.address
@@ -1443,13 +1671,13 @@ IMAGE-DETAILS-SIZE ::= 4 + uuid.SIZE
 IMAGE-DATA-MAGIC-2 ::= 0x00c09f19
 
 // The DROM segment contains a section where we patch in the image details.
-patch-details bits/ByteArray unique-id/uuid.Uuid table-address/int -> none:
+patch-details-esp32 bits/ByteArray unique-id/uuid.Uuid table-address/int -> none:
   // Patch the binary at the offset we compute by searching for
   // the magic markers. We store the programs table address and
   // the uuid.
   bundled-programs-table-address := ByteArray 4
   LITTLE-ENDIAN.put-uint32 bundled-programs-table-address 0 table-address
-  offset := find-details-offset bits
+  offset := find-details-offset-esp32 bits
   bits.replace (offset + 0) bundled-programs-table-address
   bits.replace (offset + 4) unique-id.to-byte-array
 
@@ -1457,12 +1685,12 @@ patch-details bits/ByteArray unique-id/uuid.Uuid table-address/int -> none:
 // This is the area in the image that is patched with the details.
 // The exact location of this area can depend on a future SDK version
 // so we don't know it exactly.
-find-details-offset bits/ByteArray -> int:
+find-details-offset-esp32 bits/ByteArray -> int:
   limit := bits.size - IMAGE-DETAILS-SIZE
-  for offset := 0; offset < limit; offset += WORD-SIZE:
+  for offset := 0; offset < limit; offset += WORD-SIZE-ESP32:
     word-1 := LITTLE-ENDIAN.uint32 bits offset
     if word-1 != IMAGE-DATA-MAGIC-1: continue
-    candidate := offset + WORD-SIZE
+    candidate := offset + WORD-SIZE-ESP32
     word-2 := LITTLE-ENDIAN.uint32 bits candidate + IMAGE-DETAILS-SIZE
     if word-2 == IMAGE-DATA-MAGIC-2: return candidate
   // No magic numbers were found so the image is from a legacy SDK that has the

@@ -13,10 +13,13 @@ dependencies:
     version: ^0.1.0
   fs:
     url: github.com/toitlang/pkg-fs
-    version: ^2.2.0
+    version: ^2.3.1
   host:
     url: github.com/toitlang/pkg-host
     version: ^1.15.1
+  partition-table:
+    url: github.com/toitware/toit-partition-table-esp32
+    version: ^1.2.0
   tar:
     url: github.com/toitlang/pkg-tar
-    version: ^1.1.0
+    version: ^1.2.0

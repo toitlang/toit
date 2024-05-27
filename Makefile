@@ -117,6 +117,7 @@ sysroot: check-env
 endif
 
 BIN_DIR = $(abspath $(BUILD)/$(HOST)/sdk/bin)
+TOIT_BIN = $(BIN_DIR)/toit$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
@@ -128,7 +129,7 @@ download-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt tools
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
-	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
+	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DHOST_TOIT=$(TOIT_BIN) -DHOST_TOITC=$(TOITC_BIN) -DHOST_TOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
 .PHONY: sync
 sync: sync-packages
@@ -178,7 +179,7 @@ version-file: $(BUILD)/$(TARGET)/CMakeCache.txt
 .PHONY: pi
 pi: raspbian
 
-TOITLANG_SYSROOTS := armv7 aarch64 riscv64 raspbian arm-linux-gnueabi
+TOITLANG_SYSROOTS := armv7 aarch64 raspbian arm-linux-gnueabi
 ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
 SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.3.0/sysroot-$(TARGET).tar.gz
 

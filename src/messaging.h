@@ -297,7 +297,7 @@ class MessageDecoder {
   void remove_disposing_finalizers();
 
   Object* decode() { ASSERT(!decoding_tison()); return decode_any(); }
-  bool decode_byte_array_external(void** data, word* length);
+  bool decode_external_data(void** data, word* length);
   bool decode_rpc_request_external(int* id, int* name, void** data, word* length);
 
   // Encoded messages may contain pointers to external areas allocated using

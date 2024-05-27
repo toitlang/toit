@@ -179,14 +179,26 @@ bool MessageEncoder::encode_any(Object* object) {
       if (!is_smi(size)) return false;
       return encode_list(instance, 0, Smi::value(size));
     } else if (class_id == program->list_slice_class_id()) {
-      Object* list = instance->at(Instance::LIST_SLICE_LIST_INDEX);
       Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
       Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
       if (!is_smi(from_object) || !is_smi(to_object)) return false;
       word from = Smi::value(from_object);
       word to = Smi::value(to_object);
-      if (is_array(list)) return encode_array(Array::cast(list), from, to);
-      return encode_list(Instance::cast(list), from, to);
+      Object* backing_object = instance->at(Instance::LIST_SLICE_LIST_INDEX);
+      if (is_array(backing_object)) {
+        Array* backing = Array::cast(backing_object);
+        return encode_array(backing, from, to);
+      } else if (is_instance(backing_object)) {
+        Instance* backing = Instance::cast(backing_object);
+        Smi* backing_class_id = backing->class_id();
+        if (backing_class_id != program->list_class_id()) {
+          problematic_class_id_ = Smi::value(backing_class_id);
+          return false;
+        }
+        return encode_list(backing, from, to);
+      } else {
+        return false;
+      }
     } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
     } else if (class_id == program->byte_array_cow_class_id()) {
@@ -697,7 +709,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   return result;
 }
 
-bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
+bool MessageDecoder::decode_external_data(void** data, word* length) {
   if (decoding_tison()) return false;
   int tag = read_uint8();
   if (tag == TAG_BYTE_ARRAY) {
@@ -715,6 +727,22 @@ bool MessageDecoder::decode_byte_array_external(void** data, word* length) {
       return false;
     }
     memcpy(copy, &buffer_[cursor_], encoded_length);
+    *data = copy;
+    return true;
+  } else if (tag == TAG_STRING) {
+    *length = read_cardinal();
+    *data = read_pointer();
+    return true;
+  } else if (tag == TAG_STRING_INLINE) {
+    int encoded_length = *length = read_cardinal();
+    char* copy = unvoid_cast<char*>(malloc(encoded_length + 1));
+    if (copy == null) {
+      mark_allocation_failed();
+      return false;
+    }
+    memcpy(copy, &buffer_[cursor_], encoded_length);
+    copy[encoded_length] = '\0';
+    *length = encoded_length;  // Exclude the '\0'.
     *data = copy;
     return true;
   }
@@ -737,7 +765,7 @@ bool MessageDecoder::decode_rpc_request_external(int* id, int* name, void** data
   if (tag != TAG_POSITIVE_SMI) return false;
   *name = read_cardinal();
   if (overflown()) return false;
-  return decode_byte_array_external(data, length);
+  return decode_external_data(data, length);
 }
 
 Object* MessageDecoder::decode_double() {
@@ -914,7 +942,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       if (type == SYSTEM_RPC_REQUEST && supports_rpc_requests()) {
         success = decoder.decode_rpc_request_external(&id, &name, &data, &length);
       } else {
-        success = decoder.decode_byte_array_external(&data, &length);
+        success = decoder.decode_external_data(&data, &length);
       }
       if (success && length > INT_MAX) {
         abort();
@@ -986,7 +1014,7 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
   void on_message(int pid, int type, void* data, int length) override {
     if (callbacks_.on_message == null) return;
     if (type != SYSTEM_EXTERNAL_NOTIFICATION) return;
-    callbacks_.on_message(user_context_, pid, data, length);
+    callbacks_.on_message(user_context_, pid, unvoid_cast<uint8_t*>(data), length);
   }
 
   message_err_t send_with_err(int pid, int type, void* data, word length, bool free_on_failure) {
@@ -1002,7 +1030,7 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
       .request_handle = id,
       .context = as_msg_context()
     };
-    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, data, length);
+    callbacks_.on_rpc_request(user_context_, sender, name, rpc_handle, unvoid_cast<uint8_t*>(data), length);
   }
 
   toit_msg_context_t* as_msg_context() {
@@ -1088,18 +1116,18 @@ extern "C" {
 // Functions that are exported through Toit's C API.
 
 toit_err_t toit_msg_add_handler(const char* id,
-                                             void* user_context,
-                                             toit_msg_cbs_t cbs) {
+                                void* user_context,
+                                toit_msg_cbs_t cbs) {
   auto old = toit::registered_message_handlers;
   auto list = toit::unvoid_cast<toit::RegisteredExternalMessageHandlerList*>(
       malloc(sizeof(toit::RegisteredExternalMessageHandlerList)));
-  if (list == null) FATAL("[OOM during external process setup]");
+  if (list == null) return TOIT_ERR_OOM;
   list->next = old;
   list->registered_handler.id = id;
   list->registered_handler.user_context = user_context;
   list->registered_handler.callbacks = cbs;
   toit::registered_message_handlers = list;
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
 }
 
 toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
@@ -1110,7 +1138,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
       auto handler = entry.handler;
       toit::id_handler_entry_mapping[i].handler = null;
       delete handler;
-      return TOIT_ERR_SUCCESS;
+      return TOIT_OK;
     }
   }
   return TOIT_ERR_NOT_FOUND;
@@ -1118,7 +1146,7 @@ toit_err_t toit_msg_remove_handler(toit_msg_context_t* context) {
 
 static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
   switch (err) {
-    case toit::MESSAGE_OK: return TOIT_ERR_SUCCESS;
+    case toit::MESSAGE_OK: return TOIT_OK;
     case toit::MESSAGE_OOM: return TOIT_ERR_OOM;
     case toit::MESSAGE_NO_SUCH_RECEIVER: return TOIT_ERR_NO_SUCH_RECEIVER;
   }
@@ -1127,30 +1155,65 @@ static toit_err_t message_err_to_toit_err(toit::message_err_t err) {
 
 toit_err_t toit_msg_notify(toit_msg_context_t* context,
                            int target_pid,
-                           void* data, int length,
+                           uint8_t* data, int length,
                            bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(context);
   auto type = toit::SYSTEM_EXTERNAL_NOTIFICATION;
-  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, free_on_failure);
+  toit::message_err_t err = handler->send_with_err(target_pid, type, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->send_with_err(target_pid, type, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
 toit_err_t toit_msg_request_fail(toit_msg_request_handle_t rpc_handle, const char* error) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
   toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, true, error, null, 0, false);
+  }
   return message_err_to_toit_err(err);
 }
 
-toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, void* data, int length, bool free_on_failure) {
+toit_err_t toit_msg_request_reply(toit_msg_request_handle_t rpc_handle, uint8_t* data, int length, bool free_on_failure) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(rpc_handle.context);
-  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, free_on_failure);
+  toit::message_err_t err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  if (err == toit::MESSAGE_OOM) {
+    toit_gc();
+    err = handler->reply_rpc(rpc_handle.sender, rpc_handle.request_handle, false, null, data, length, false);
+  }
+  if (free_on_failure && err != toit::MESSAGE_OK) free(data);
   return message_err_to_toit_err(err);
 }
 
 // TODO(florian): this isn't really a messaging function. It should probably be somewhere else.
 toit_err_t toit_gc() {
   toit::VM::current()->scheduler()->gc(NULL, true, true);
-  return TOIT_ERR_SUCCESS;
+  return TOIT_OK;
+}
+
+void* toit_malloc(size_t size) {
+  void* ptr = malloc(size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return malloc(size);
+}
+
+void* toit_calloc(size_t nmemb, size_t size) {
+  void* ptr = calloc(nmemb, size);
+  if (ptr != NULL) return ptr;
+  toit_gc();
+  return calloc(nmemb, size);
+}
+
+void* toit_realloc(void* ptr, size_t size) {
+  void* new_ptr = realloc(ptr, size);
+  if (new_ptr != NULL) return new_ptr;
+  toit_gc();
+  return realloc(ptr, size);
 }
 
 } // Extern C.

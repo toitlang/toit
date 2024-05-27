@@ -6,6 +6,7 @@ prefixes:
   font_x11_adobe: pkg-font-x11-adobe
   fs: pkg-fs
   host: pkg-host
+  partition-table: toit-partition-table-esp32
   tar: pkg-tar
 packages:
   pkg-ar:
@@ -29,8 +30,8 @@ packages:
   pkg-fs:
     url: github.com/toitlang/pkg-fs
     name: fs
-    version: 2.2.0
-    hash: 863280c5c62ac259d16d0d3b24df21209b461b14
+    version: 2.3.1
+    hash: 60836d4500317af2093d59d50c117d612c33f1fa
     prefixes:
       host: pkg-host
   pkg-host:
@@ -41,10 +42,15 @@ packages:
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
-    version: 1.1.0
-    hash: c5d75bdb3b301099b7037bdf86d424177770ba58
+    version: 1.2.0
+    hash: fa4667de1073976a343f5816ddcea291e4cbf4ff
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate_roots
     version: 1.6.1
     hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
+  toit-partition-table-esp32:
+    url: github.com/toitware/toit-partition-table-esp32
+    name: partition-table
+    version: 1.2.0
+    hash: 839d191d419caf43df86ce67c3c596e92f350bda

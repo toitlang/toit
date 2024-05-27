@@ -20,6 +20,7 @@ import host.pipe
 import system
 
 import .toitp as toitp
+import .firmware as firmware
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -447,6 +448,7 @@ main args/List:
   root-command.add tool-command
 
   tool-command.add toitp.build-command
+  tool-command.add firmware.build-command
 
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
   tool-lsp-command := cli.Command "lsp"
@@ -473,7 +475,9 @@ tool-path sdk-dir/string? tool/string -> string:
 
 run sdk-dir/string? tool/string args/List:
   args = [tool-path sdk-dir tool] + args
-  pipe.run-program args
+  exit-code := pipe.run-program args
+  if exit-code != 0:
+    throw "Failed to run $tool"
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   args := []

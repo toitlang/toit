@@ -76,22 +76,19 @@ func categoryForLibrary(segments []string) Category {
 	case
 		"core",
 		"crypto",
+		"io",
 		"log",
 		"math",
-		"monitor":
+		"monitor",
+		"system":
 		return CategoryFundamental
 	case
-		"binary",
-		"bytes",
 		"expect",
 		"device",
 		"gpio",
 		"i2c",
-		"metrics",
-		"pubsub",
 		"serial",
-		"reader",
-		"writer":
+		"uuid":
 		return CategoryJustThere
 	default:
 		return CategoryMisc

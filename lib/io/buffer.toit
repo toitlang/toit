@@ -366,3 +366,68 @@ class EndianBuffer extends EndianWriter:
     byte-order_.put-float64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
+  /**
+  Returns the signed 8-bit value at the given position $at.
+  */
+  int8 --at/int -> int:
+    return byte-order_.int8 buffer_.buffer_ at
+
+  /**
+  Returns the unsigned 8-bit value at the given position $at.
+  */
+  uint8 --at/int -> int:
+    return byte-order_.uint8 buffer_.buffer_ at
+
+  /**
+  Returns the signed 16-bit value at the given position $at.
+  */
+  int16 --at/int -> int:
+    return byte-order_.int16 buffer_.buffer_ at
+
+  /**
+  Returns the unsigned 16-bit value at the given position $at.
+  */
+  uint16 --at/int -> int:
+    return byte-order_.uint16 buffer_.buffer_ at
+
+  /**
+  Returns the signed 24-bit value at the given position $at.
+  */
+  int24 --at/int -> int:
+    return byte-order_.int24 buffer_.buffer_ at
+
+  /**
+  Returns the unsigned 24-bit value at the given position $at.
+  */
+  uint24 --at/int -> int:
+    return byte-order_.uint24 buffer_.buffer_ at
+
+  /**
+  Returns the signed 32-bit value at the given position $at.
+  */
+  int32 --at/int -> int:
+    return byte-order_.int32 buffer_.buffer_ at
+
+  /**
+  Returns the unsigned 32-bit value at the given position $at.
+  */
+  uint32 --at/int -> int:
+    return byte-order_.uint32 buffer_.buffer_ at
+
+  /**
+  Returns the signed 64-bit value at the given position $at.
+  */
+  int64 --at/int -> int:
+    return byte-order_.int64 buffer_.buffer_ at
+
+  /**
+  Returns the 32-bit float (single-precision) value at the given position $at.
+  */
+  float32 --at/int -> float:
+    return byte-order_.float32 buffer_.buffer_ at
+
+  /**
+  Returns the 64-bit float (double-precision) value at the given position $at.
+  */
+  float64 --at/int -> float:
+    return byte-order_.float64 buffer_.buffer_ at

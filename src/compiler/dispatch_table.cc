@@ -534,7 +534,8 @@ void DispatchTableBuilder::print_table() {
            selector.shape().arity(),
            selector.shape().total_block_count(),
            selector.shape().named_block_count());
-    for (auto name : selector.shape().names()) {
+    auto names = selector.shape().names();
+    for (auto name : names) {
       printf(", %s", name.c_str());
     }
     auto id = selector_offsets().at(selector);

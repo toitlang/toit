@@ -18,9 +18,6 @@ file(GLOB INPUT RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-input.toit")
 
 set(S2I_TEST_DIR ${CMAKE_BINARY_DIR}/snapshot_to_image_test)
 
-add_custom_target(build_toit_run_image DEPENDS $<TARGET_FILE:toit_run_image>)
-add_dependencies(build_tools build_toit_run_image)
-
 include(fail.cmake)
 
 foreach(input ${INPUT})
@@ -54,7 +51,6 @@ foreach(input ${INPUT})
     COMMAND "${CMAKE_COMMAND}"
         "-DSNAP=${snap}"
         "-DTOITVM=$<TARGET_FILE:toit.run>"
-        "-DTOITC=$<TARGET_FILE:toit.compile>"
         "-DSNAPSHOT_TO_IMAGE=${TOIT_SDK_SOURCE_DIR}/tools/snapshot_to_image.toit"
         "-DASM=${CMAKE_ASM_COMPILER}"
         "-DRUN_IMAGE=$<TARGET_FILE:toit_run_image>"
