@@ -780,12 +780,14 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
 
   assert: format == "tar"
 
+  EXECUTABLE-PERMISSIONS := 0b111_101_000
+
   // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
   tar-writer := tar.Tar tar-bytes
-  tar-writer.add "boot.sh" BOOT-SH
+  tar-writer.add "boot.sh" BOOT-SH --permissions=EXECUTABLE-PERMISSIONS
   tar-writer.add "ota0/validated" ""
-  tar-writer.add "ota0/run-image" run-image --permissions=0b111_000_000
+  tar-writer.add "ota0/run-image" run-image --permissions=EXECUTABLE-PERMISSIONS
   tar-writer.add "ota0/bits.bin" bits.bytes
   tar-writer.add "ota0/config.ubjson" encoded-ubjson
   startup-images.do: | uuid/string image/ByteArray |
