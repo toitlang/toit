@@ -36,7 +36,7 @@ import host.pipe
 import partition-table show *
 import tar
 
-import .firmware-boot-sh
+import .run-image-boot-sh
 import .image
 import .snapshot
 import .snapshot-to-image

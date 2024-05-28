@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import .run-image-exit-codes
+
 // The produced file has an MIT license.
 BOOT-SH ::= """
 #!/usr/bin/env bash
@@ -99,7 +101,7 @@ for (( ; ; )); do
   (cd \$PREFIX/\$current; ./run-image \$PREFIX/\$current \$PREFIX/scratch)
   exit_code=\$?
 
-  if [ \$exit_code -eq 17 ]; then
+  if [ \$exit_code -eq $EXIT-CODE-UPGRADE ]; then
     # Move scratch into the place of the inactive ota and switch current.
     echo
     echo
@@ -120,7 +122,7 @@ for (( ; ; )); do
     tmp=\$next
     next=\$current
     current=\$tmp
-  elif [ \$exit_code -eq 19 ]; then
+  elif [ \$exit_code -eq $EXIT-CODE-STOP ]; then
     # Stop the script.
     echo "****************************************"
     echo "*** Stopping the boot script"
@@ -139,7 +141,7 @@ for (( ; ; )); do
         echo "****************************************"
       fi
     else
-      if [ \$exit_code -eq 18 ]; then
+      if [ \$exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
         echo "****************************************"
         echo "*** Rollback requested"
         echo "****************************************"

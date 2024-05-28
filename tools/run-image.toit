@@ -27,10 +27,12 @@ import encoding.hex
 import encoding.ubjson
 import uuid
 
+import .run-image-exit-codes
 import ..system.boot
 import ..system.containers
 import ..system.flash.registry
 import ..system.initialize
+import ..system.storage
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -86,12 +88,12 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     if file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_":
       throw "Can't rollback after validation"
     // By exiting without validating the outer script will automatically rollback.
-    exit 18
+    exit EXIT-CODE-ROLLBACK-REQUESTED
 
   upgrade -> none:
     if not ota-dir-inactive_: throw "No OTA directory"
     // Exit and tell the outer script that an update is available.
-    exit 17
+    exit EXIT-CODE-UPGRADE
 
   config-ubjson -> ByteArray:
     // We have to copy this for now, because we don't want to
@@ -235,8 +237,10 @@ main arguments:
       exit 1
 
   registry ::= FlashRegistry.scan
+  storage := StorageServiceProvider registry
   container-manager ::= initialize-system registry [
-    FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive
+    FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive,
+    storage,
   ]
   container-manager.register-system-image (SystemImage container-manager)
 

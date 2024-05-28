@@ -6,12 +6,14 @@ import system.firmware
 import host.file
 import host.os
 
+import .exit-codes
+
 main:
   new-firmware-path := os.env["TOIT_FIRMWARE_TEST_PATH"]
   if not file.is-file new-firmware-path:
     print "no firmware file found at $new-firmware-path"
     print "looks like a successful rollback"
-    exit 19
+    exit EXIT-CODE-STOP
 
   print "updating firmware with $new-firmware-path"
   firmware-bytes := file.read-content new-firmware-path

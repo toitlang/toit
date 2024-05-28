@@ -19,7 +19,7 @@ test-success args/List:
       test.install --name="update" --source-path="./boot-upgrade-source.toit"
       test.extract-to-dir --dir-path=test.tmp-dir
 
-      output := test.boot test.tmp-dir --env={
+      output := test.boot-backticks test.tmp-dir --env={
         "TOIT_FIRMWARE_TEST_PATH": update-bits-path,
         "BOOT_TEST_DIR": test.tmp-dir,
         "BOOT-EXIT-CODE": "$exit-code",
@@ -52,7 +52,7 @@ test-rollback args/List:
       test.install --name="update" --source-path="./boot-upgrade-source.toit"
       test.extract-to-dir --dir-path=test.tmp-dir
 
-      output := test.boot test.tmp-dir --env={
+      output := test.boot-backticks test.tmp-dir --env={
         "TOIT_FIRMWARE_TEST_PATH": update-bits-path,
       }
       expected-snippets := [
