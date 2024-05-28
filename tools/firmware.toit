@@ -704,13 +704,13 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     entry-assets := entries.get "+$name"
     container := extract-container name flags content --assets=entry-assets --word-size=word-size
     uuid := container.id.to-string
-    cooked := container.cook
-        --relocation-base=0 // Must be 0, since we add the relaction information back.
+    relocated := container.relocate
+        --relocation-base=0 // Must be 0, since we add the relocation information back.
         --system-uuid=system-uuid
         --attach-assets
     // The image needs to be padded to page-size.
-    cooked = pad cooked (1 << 12)
-    relocatable := container.relocation-information.make-relocatable cooked
+    relocated = pad relocated (1 << 12)
+    relocatable := container.relocation-information.apply-to relocated
     if container.flags & IMAGE-FLAG-RUN-BOOT != 0 or container.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
       startup-images[name] = relocatable
     else:
@@ -1361,27 +1361,37 @@ class RelocationInformation:
     for i := 0; i < chunk-count; i++:
       relocation-bytes.replace (i * word-size) relocatable[i * chunk-size..i * chunk-size + word-size]
 
-  make-relocatable image/ByteArray -> ByteArray:
+  /**
+  Applies the relocation information to the given relocated $image.
+
+  The provided $image may be bigger than the original relocatable image from which
+    the relocation information was extracted. In that case the extra bytes are
+    assumed not to contain pointers.
+  */
+  apply-to image/ByteArray -> ByteArray:
     relocatable-chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
     relocated-chunk-size := get-relocated-chunk-byte-size --word-size=word-size
     result := ByteArray (ceil_ image.size relocated-chunk-size) * relocatable-chunk-size
 
-    image-i := 0
-    result-i := 0
-    relocation-i := 0
-    while image-i < image.size:
-      relocation-info := relocation-i < relocation-bytes.size
-          ? relocation-bytes[relocation-i..relocation-i + word-size]
-          : ByteArray word-size  // We want to be able to attach assets to the image.
-      relocation-i += word-size
+    image-offset := 0
+    result-offset := 0
+    relocation-offset := 0
+    // We are attaching assets to the image, so for some parts of the image we
+    // don't always have relocation information. Just use a zero-filled word.
+    no-relocation-bytes := ByteArray word-size
+    List.chunk-up 0 image.size relocated-chunk-size: | from/int to/int chunk-size/int |
+      chunk := image[from..to]
+      image-offset += chunk-size
 
-      chunk := image[image-i..min image.size (image-i + relocated-chunk-size)]
-      image-i += chunk.size
+      relocation-info := relocation-offset < relocation-bytes.size
+          ? relocation-bytes[relocation-offset..relocation-offset + word-size]
+          : no-relocation-bytes
+      relocation-offset += word-size
 
-      result.replace result-i relocation-info
-      result-i += relocation-info.size
-      result.replace result-i chunk
-      result-i += chunk.size
+      result.replace result-offset relocation-info
+      result-offset += relocation-info.size
+      result.replace result-offset chunk
+      result-offset += chunk-size
 
     return result
 
@@ -1418,7 +1428,14 @@ class ContainerEntry:
   relocated-size -> int:
     return relocatable.size - (RelocationInformation.relocated-size relocatable.size --word-size=word-size)
 
-  cook --relocation-base/int --attach-assets/bool --system-uuid/uuid.Uuid -> ByteArray:
+  /**
+  Relocates the container to the given $relocation-base and updates the header.
+
+  Also attaches the container's assets if $attach-assets is true.
+
+  The header is updated with the given $system-uuid and the container's $flags.
+  */
+  relocate --relocation-base/int --attach-assets/bool --system-uuid/uuid.Uuid -> ByteArray:
     out := io.Buffer
     output := BinaryRelocatedOutput out relocation-base --word-size=word-size
     output.write relocatable
