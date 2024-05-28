@@ -749,7 +749,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     ar-writer.add uuid image
   parts.add { "type": "bundled-images", "from": part-start, "to": bits.size }
 
-  // Update the header with the parts offsets.
+  // Update the header with the parts offsets before computing the checksum.
   bits-le := bits.little-endian
   header-offset := 0
   parts.do: | part |
@@ -758,8 +758,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   if header-offset != header-size:
     throw "header size mismatch"
 
+  part-start = bits.size
   checksum := crypto.sha256 bits.bytes
   bits.write checksum
+  parts.add { "type": "checksum", "from": part-start, "to": bits.size }
 
   bits.close
 
