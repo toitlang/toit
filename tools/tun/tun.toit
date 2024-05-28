@@ -1,6 +1,7 @@
 import io
 import io.byte-order show BIG-ENDIAN
 import net.modules.tun show *
+import net.ip-address show IpAddress
 
 import ordered-collections show *
 
@@ -188,6 +189,112 @@ class TunSocket:
   ensure-state_:
     if state_: return state_
     throw "NOT_CONNECTED"
+
+class TunHost:
+  interfaces_/List := []
+  tun-socket_/TunSocket
+
+  constructor .tun-socket_:
+
+  /**
+  Sets the local port of a UDP socket.
+  If the $port is zero then a free port is picked.
+  If the address is null then the socket is bound on the first interface.
+  */
+  udp-bind socket/TunUdpSocket --port/int=0 --address/IpAddress?=null:
+    if interfaces_.size == 0:
+      throw "No interfaces"
+    inter-face := null
+    if not address:
+      inter-face = interfaces_[0]
+    else:
+      interfaces_.do:
+        if it.address == address:
+          inter-face = it
+    if not inter-face:
+      throw "No interface with address $address"
+    inter-face.udp-bind socket port
+
+class TunInterface:
+  address/IpAddress
+  mask/IpAddress
+
+  constructor .address --mask/IpAddress?=null --mask-bits/int?=null:
+    if mask:
+      if mask-bits:
+        throw "Cannot specify both mask and mask-bits"
+      this.mask = mask
+    if mask-bits:
+      if not 1 <= mask-bits <= 32:
+        throw "Invalid mask-bits"
+      bits := (0xffff_ffff_0000_0000 >> mask-bits) & 0xffff_ffff
+      this.mask = IpAddress #[
+          bits >> 24,
+          (bits >> 16) & 0xff,
+          (bits >> 8) & 0xff,
+          bits & 0xff
+      ]
+    else:
+      first := address.raw[0]
+      if first == 192:
+        this.mask = IpAddress #[255, 255, 255, 0]
+      else if first == 10:
+        this.mask = IpAddress #[255, 0, 0, 0]
+      else if first == 172:
+        this.mask = IpAddress #[255, 240, 0, 0]
+      else:
+        throw "No mask given"
+
+  // Sets the local port of a UDP socket.
+  // If the $port is zero then a free port is picked.
+  udp-bind socket/TunUdpSocket --port/int --address/IpAddress?=null:
+    if port == 0:
+      start := (random 16384) + 49152
+      16384.repeat:
+        possible-port := 49152 + ((start + it) & 16383)
+        // Other socket may be null due to weakness.
+        other-socket := unconnected-udp-sockets_.get possible-port
+        if not other-socket:
+          unconnected-udp-sockets_[possible-port] = socket
+          socket.port = possible-port
+          return
+      throw "No more free dynamic ports"
+    // An entry may be null due to weakness.
+    if unconnected-udp-sockets_.get port:
+      throw "Port already bound"
+    unconnected-udp-sockets_[port] = socket
+    socket.port = port
+
+  // A map from the local port number to the socket.
+  // It is weak so that if the socket is lost, then it is removed from the map.
+  unconnected-udp-sockets_/Map := Map.weak
+  // A map from triples (local port, remote address, remote port) to the
+  // sockets.
+  connected-udp-sockets_/Set := {}
+
+class TunUdpSocket:
+  // Can be in several states:
+  // Unbound:
+  //   The initial state, before bind or write is called.
+  // Bound (Unconnected):
+  //   The socket is bound (has local IP and port), but not connected
+  //   (no remote IP and port).  It can receive any packets sent to the
+  //   local address.  It can send to any address using send-to.
+  //   Two different unconnected sockets cannot be bound to the same port.
+  // Connected:
+  //   The socket is bound and connected so it has the full 4-tuple of IP and
+  //   ports. It can only receive from the remove server and it sends by
+  //   default (with write) to the remote server.  Connecting an unbound socket
+  //   will cause it to be bound as a side effect.
+
+  // The local port.  If the socket is unbound then this is zero.
+  port/int := 0
+
+  // The remote port.  If the socket is not connected then this is zero.
+  remote-port/int := 0
+
+  // The remote address.  If the socket is not connected then this is null.
+  remote-address/IpAddress? := null
 
 // Lazily-initialized resource group reference.
 tun-resource-group_ ::= tun-init_
