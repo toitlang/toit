@@ -178,6 +178,13 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${BOOT_SNAPSHOT_CC}
     ${run_SRC}
     )
+  # Add the external programs as dependencies, so we can start using the 'toit'
+  # executable once it's built.
+  # This doesn't include toit.pkg, though.
+  add_dependencies(toit
+      toit.run
+      toit.compile
+  )
 
   add_dependencies(build_tools toit)
 

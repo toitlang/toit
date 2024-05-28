@@ -46,10 +46,18 @@ class EnvelopeTest:
 
     run-program_ [toit-bin, "compile", "--snapshot", "--output", path, source-path]
 
-  install --name/string --snapshot-path/string --boot/bool=true -> none:
+  install --name/string --snapshot-path/string --boot/bool=true --assets/Map?=null -> none:
     cmd := [toit-bin, "tool", "firmware", "-e", envelope, "container", "install", name, snapshot-path]
     if boot:
       cmd.add-all ["--trigger", "boot"]
+    if assets:
+      tmp-assets-path := "$tmp-dir/__tmp__.assets"
+      run-program_ [toit-bin, "tool", "assets", "create", "--assets", tmp-assets-path]
+      assets.do: | name value |
+        tmp-asset-path := "$tmp-dir/$(name).asset"
+        file.write-content --path=tmp-asset-path value
+        run-program_ [toit-bin, "tool", "assets", "add", "--assets", tmp-assets-path, name, tmp-asset-path]
+      cmd.add-all ["--assets", tmp-assets-path]
     run-program_ cmd
 
   install --name/string --source/string --boot/bool=true -> none:
@@ -57,10 +65,10 @@ class EnvelopeTest:
     file.write-content --path=tmp-source-path source
     install --name=name --source-path=tmp-source-path --boot=boot
 
-  install --name/string --source-path/string --boot/bool=true -> none:
+  install --name/string --source-path/string --boot/bool=true --assets/Map?=null -> none:
     tmp-snapshot-path := "$tmp-dir/__tmp__.snapshot"
     compile --path=tmp-snapshot-path --source-path=source-path
-    install --name=name --snapshot-path=tmp-snapshot-path --boot=boot
+    install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --assets=assets
 
   extract --path/string --format/string="binary" -> none:
     run-program_ [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
