@@ -167,34 +167,30 @@ PRIMITIVE(send)  {
   ARGS(ByteArray, proxy, IntResource, connection_resource, MutableBlob, data);
   USE(proxy);
   int fd = connection_resource->id();
-  printf("Fd = %d\n", fd);
 
-  int available = 1500;
-
-  if (data.length() == 0) FAIL(OUT_OF_BOUNDS);
+  if (data.length() < 2) FAIL(OUT_OF_BOUNDS);
+  int version = data.address()[0] >> 4;
   word header_size = (data.address()[0] & 0x0F) << 2;
   if (header_size > data.length()) FAIL(OUT_OF_BOUNDS);
+  if (data.length() < 20) FAIL(INVALID_ARGUMENT);
 
-  data.address()[10] = 0;
-  data.address()[11] = 0;
-  uint16 checksum = (toit::checksum(data.address(), header_size)) ^ 0xFFFF;
-  data.address()[10] = checksum >> 8;
-  data.address()[11] = checksum & 0xFF;
+  if (version == 4) {
+    // Calculate IPv4 checksum.
+    data.address()[10] = 0;
+    data.address()[11] = 0;
+    uint16 checksum = (toit::checksum(data.address(), header_size)) ^ 0xFFFF;
+    data.address()[10] = checksum >> 8;
+    data.address()[11] = checksum & 0xFF;
+  }
 
-  // Check for ICMP packet.
   if (data.length() >= 24 && (data.address()[0] >> 4) == 4 && data.address()[9] == 1) {
+    // Calculate ICMP checksum.
     data.address()[22] = 0;
     data.address()[23] = 0;
-    uint16 checksum = (toit::checksum(data.address() + 20, header_size - 20)) ^ 0xFFFF;
+    uint16 checksum = (toit::checksum(data.address() + 20, data.length() - 20)) ^ 0xFFFF;
     data.address()[22] = checksum >> 8;
     data.address()[23] = checksum & 0xFF;
   }
-
-  if (inverted_checksum(data.address(), header_size) != 0xffff) {
-    FAIL(INVALID_ARGUMENT);
-  }
-  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
-  if (array == null) FAIL(ALLOCATION_FAILED);
 
   word sent = ::write(fd, data.address(), data.length());
 

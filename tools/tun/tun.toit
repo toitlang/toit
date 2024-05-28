@@ -8,18 +8,28 @@ TOIT-TUN-READ_    ::= 1 << 0
 TOIT-TUN-WRITE_   ::= 1 << 1
 TOIT-TUN-ERROR_   ::= 1 << 2
 
+IPV4-VERSION_ ::= 4
+IPV6-VERSION_ ::= 6
+
+// IPv4 protocol numbers.
+ICMP-PROTOCOL_ ::= 1
+TCP-PROTOCOL_  ::= 6
+UDP-PROTOCOL_  ::= 17
+
+// ICMP types.
+ICMP-ECHO-RESPONSE_ ::= 0  // Ping response.
+ICMP-DESTINATION-UNREACHABLE_ ::= 3
+ICMP-ECHO-REQUEST_  ::= 8  // Ping request.
+
 abstract class IpPacket:
   backing/ByteArray
 
   constructor.from-subclass .backing:
 
-  constructor backing/ByteArray:
-    if (backing[0] >> 4) == 4:
-      return IpV4Packet backing
-    unreachable
-
-  protocol -> int:
-    return backing[9]
+  static create backing/ByteArray -> IpPacket?:
+    if (backing[0] >> 4) == IPV4-VERSION_:
+      return IpV4Packet.create backing
+    return null
 
   handle socket -> none:
     print backing.size
@@ -37,15 +47,16 @@ abstract class IpPacket:
     print "Destination IP: $(backing[16]).$(backing[17]).$(backing[18]).$(backing[19])"
 
 abstract class IpV4Packet extends IpPacket:
-  constructor backing/ByteArray:
+  static create backing/ByteArray -> IpV4Packet?:
     assert: backing[0] >> 4 == 4
-    if backing[9] == 1:
-      return IcmpPacket backing
-    if backing[9] == 6:
+    protocol := backing[9]
+    if protocol == ICMP-PROTOCOL_:
+      return IcmpPacket.create backing
+    if protocol == TCP-PROTOCOL_:
       return TcpPacket backing
-    if backing[9] == 17:
+    if protocol == UDP-PROTOCOL_:
       return UdpPacket backing
-    throw "Unsupported protocol"
+    return null
 
   constructor.from-subclass backing/ByteArray:
     super.from-subclass backing
@@ -57,9 +68,14 @@ abstract class IpV4Packet extends IpPacket:
     return backing[16..20]
 
 class IcmpPacket extends IpV4Packet:
-  constructor backing/ByteArray:
+  static create backing/ByteArray -> IcmpPacket?:
     if backing[20] == 8:
       return PingRequestPacket backing
+    if backing[20] == 0:
+      return PingResponsePacket backing
+    if backing[20] == 3:
+      return DestinationUnreachablePacket backing
+    print "backing[20] = $backing[20]"
     unreachable
 
   constructor.from-subclass backing/ByteArray:
@@ -79,20 +95,30 @@ class PingRequestPacket extends IcmpPacket:
     // Decrement the TTL.
     ttl := BIG-ENDIAN.uint16 backing 8
     if ttl == 0: return null
-    BIG-ENDIAN.put-uint16 response-backing 8 (ttl - 1)
+    response-backing[8] = ttl - 1
     // Calculate the checksum.
-    print "Got $backing"
-    print "Put $response-backing"
     return PingResponsePacket response-backing
 
   handle socket:
     response := response
-    if not response: return
-    socket.send response.backing
+    if response:
+      socket.send response.backing
 
 class PingResponsePacket extends IcmpPacket:
   constructor backing/ByteArray:
     super.from-subclass backing
+
+  handle socket:
+    s := source-ip
+    print "Got ping response from $(s[0]).$(s[1]).$(s[2]).$(s[3])"
+
+class DestinationUnreachablePacket extends IcmpPacket:
+  constructor backing/ByteArray:
+    super.from-subclass backing
+
+  handle socket:
+    s := source-ip
+    print "Got destination unreachable from $(s[0]).$(s[1]).$(s[2]).$(s[3])"
 
 class UdpPacket extends IpV4Packet:
   constructor backing/ByteArray:
@@ -106,12 +132,12 @@ main:
   socket := TunSocket
 
   while true:
-    print "Getting packet"
     raw := socket.receive
     if not raw: exit 0
     if raw.size == 0: continue
-    packet := IpPacket raw
-    packet.handle socket
+    packet := IpPacket.create raw
+    if packet:
+      packet.handle socket
 
 class TunSocket:
   state_/ResourceState_? := ?
