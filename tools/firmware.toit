@@ -1129,7 +1129,7 @@ extract-binary-content -> ByteArray
         relocation-base
     LITTLE-ENDIAN.put-uint32 image-table index * 8 + 4
         image-size
-    image-bits := container.cook
+    image-bits := container.relocate
         --relocation-base=relocation-base
         --system-uuid=system-uuid
         --attach-assets
