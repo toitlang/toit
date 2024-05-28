@@ -248,6 +248,8 @@ class TunInterface:
   // Sets the local port of a UDP socket.
   // If the $port is zero then a free port is picked.
   udp-bind socket/TunUdpSocket --port/int --address/IpAddress?=null:
+    if socket.port != 0:
+      throw "Socket already bound"
     if port == 0:
       start := (random 16384) + 49152
       16384.repeat:
@@ -265,12 +267,44 @@ class TunInterface:
     unconnected-udp-sockets_[port] = socket
     socket.port = port
 
+  udp-connect socket/TunUdpSocket --port/int?=0 --remote-address/IpAddress --remote-port/int:
+    if port == 0:
+      port = socket.port.
+    if port == 0:
+      udp-bind socket
+    triple := Triple_ port remote-address remote-port
+    other-socket = connected-udp-sockets_.get triple
+    if other-socket:
+      throw "A connected socket already has this address and port"
+    connected-udp-sockets_[triple] = socket
+    socket.remote-port = remote-port
+
+
+  // These maps are weak so that if the socket is lost it is removed from the
+  // maps.
   // A map from the local port number to the socket.
-  // It is weak so that if the socket is lost, then it is removed from the map.
   unconnected-udp-sockets_/Map := Map.weak
   // A map from triples (local port, remote address, remote port) to the
   // sockets.
-  connected-udp-sockets_/Set := {}
+  connected-udp-sockets_/Map := Map.weak
+
+// A triple of (local port, remote address, remote port).
+class Triple_:
+  local-port/int
+  remote-address/IpAddress
+  remote-port/int
+
+  constructor .local-port --remote-address --remote-port:
+
+  hash-code -> int:
+    return local-port * 13 + remote-address.raw[3] * 247 + remote-port
+
+  operator == other:
+    if other is not Triple: return false
+    if other.local-port != local-port: return false
+    if other.remote-address != remote-address: return false
+    if other.remote-port != remote-port: return false
+    return true
 
 class TunUdpSocket:
   // Can be in several states:
