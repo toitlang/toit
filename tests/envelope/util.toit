@@ -70,13 +70,18 @@ class EnvelopeTest:
     compile --path=tmp-snapshot-path --source-path=source-path
     install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --assets=assets
 
-  extract --path/string --format/string="binary" -> none:
-    run-program_ [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
+  extract --path/string --format/string="binary" --config/ByteArray?=null -> none:
+    cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
+    if config:
+      tmp-config-path := "$tmp-dir/__tmp__.config"
+      file.write-content --path=tmp-config-path config
+      cmd.add_all ["--config", tmp-config-path]
+    run-program_ cmd
 
-  extract-to-dir --dir-path/string -> none:
+  extract-to-dir --dir-path/string --config/ByteArray?=null -> none:
     directory.mkdir --recursive dir-path
     tmp-extracted := "$tmp-dir/__extracted__"
-    extract --path=tmp-extracted --format="tar"
+    extract --path=tmp-extracted --format="tar" --config=config
     run-program_ ["tar", "x", "-f", tmp-extracted, "-C", dir-path]
 
   build-ota --name/string --source/string --output/string -> none:
