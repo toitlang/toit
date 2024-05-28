@@ -104,17 +104,23 @@ interface Collection:
   */
   reduce --initial [block]
 
-abstract class CollectionBase implements Collection:
-  /// See $Collection.do.
-  abstract do [block] -> none
+
+abstract class CollectionBase extends Object with CollectionMixin implements Collection:
   /// See $Collection.size.
   abstract size -> int
-  /// See $Collection.==.
-  abstract operator == other/Collection -> bool
+
+  abstract add value -> none
 
   /// See $Collection.is-empty.
   is-empty -> bool:
     return size == 0
+
+  add-all collection/Collection -> none:
+    collection.do: add it
+
+abstract mixin CollectionMixin:
+  /// See $Collection.do.
+  abstract do [block] -> none
 
   /// See $Collection.every.
   every [predicate] -> bool:
@@ -132,12 +138,12 @@ abstract class CollectionBase implements Collection:
 
   /// See $Collection.reduce.
   reduce [block]:
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /// See $Collection.reduce.
@@ -146,7 +152,6 @@ abstract class CollectionBase implements Collection:
     do:
       result = block.call result it
     return result
-
 
 /**
 A linear collection of objects.
@@ -2406,8 +2411,12 @@ Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
 See also https://docs.toit.io/language/listsetmap.
 */
-class Set extends HashedInsertionOrderedCollection_ implements Collection:
+class Set extends HashedInsertionOrderedCollection_ with CollectionMixin implements Collection:
   static STEP_ ::= 1
+
+  /// See $Collection.is-empty.
+  is-empty -> bool:
+    return size == 0
 
   /**
   Removes the given $key from this instance.
@@ -2536,12 +2545,6 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
       if not contains it: return false
     return true
 
-  /** See $Collection.every. */
-  // TODO(florian): should be inherited from CollectionBase.
-  every [predicate] -> bool:
-    do: if not predicate.call it: return false
-    return true
-
   /**
   Copies the set.
 
@@ -2550,31 +2553,6 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   */
   copy -> Set:
     return map: it
-
-  /** See $Collection.any. */
-  // TODO(florian): should be inherited from CollectionBase.
-  any [predicate] -> bool:
-    do: if predicate.call it: return true
-    return false
-
-  /** See $(Collection.reduce [block]). */
-  // TODO(florian): should be inherited from CollectionBase.
-  reduce [block]:
-    if is-empty: throw "Not enough elements"
-    result := null
-    is-first := true
-    do:
-      if is-first: result = it; is-first = false
-      else: result = block.call result it
-    return result
-
-  /** See $(Collection.reduce --initial [block]). */
-  // TODO(florian): should be inherited from CollectionBase.
-  reduce --initial [block]:
-    result := initial
-    do:
-      result = block.call result it
-    return result
 
   /**
   Invokes the given $block on each element and returns a new set with the results.
@@ -2702,7 +2680,7 @@ Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
 See also https://docs.toit.io/language/listsetmap.
 */
-class Map extends HashedInsertionOrderedCollection_:
+class Map extends HashedInsertionOrderedCollection_ with MapMixin:
   static STEP_ ::= 2
 
   /**
@@ -2960,6 +2938,80 @@ class Map extends HashedInsertionOrderedCollection_:
         i = skip-backwards_ key i -STEP_
 
   /**
+  Returns the keys of this instance as a list.
+  This operation instantiates a fresh list and is thus in O(n).
+  When possible use $(do --keys [block]) instead.
+  */
+  keys -> List:
+    result := List size_
+    i := 0
+    do: |key value| result[i++] = key
+    return result
+
+  /**
+  Returns the values of this instance as a list.
+  This operation instantiates a fresh list and is thus in O(n).
+  When possible use $(do --values [block]) instead.
+  */
+  values -> List:
+    result := List size_
+    i := 0
+    do: |key value| result[i++] = value
+    return result
+
+  /**
+  Maps the values of this instance.
+
+  The flag $in-place must be true.
+
+  Invokes the given $block on each key/value pair and replaces the old value with
+    the result of the call.
+
+  */
+  map --in-place/bool [block] -> none:
+    if in-place != true: throw "Bad Argument"
+    limit := backing_ ? backing_.size : 0
+    for i := 0; i < limit; i += STEP_:
+      key := backing_[i]
+      if key is not Tombstone_:
+        new-value := block.call key backing_[i + 1]
+        backing_[i + 1] = new-value
+
+  /**
+  Filters this instance using the given $predicate.
+
+  Returns a new map if $in-place is false. Returns this instance otherwise.
+
+  The result contains all the elements of this instance for which the $predicate returns
+    true.
+
+  Users must not otherwise modify this instance during the operation.
+  */
+  filter --in-place/bool=false [predicate] -> Map:
+    if not in-place:
+      result := Map
+      do: | key value | if predicate.call key value: result[key] = value
+      return result
+    limit := backing_ ? backing_.size : 0
+    for i := 0; i < limit; i += STEP_:
+      key := backing_[i]
+      value := backing_[i + 1]
+      if key is not Tombstone_ and not predicate.call key value:
+        backing_[i] = SMALL-TOMBSTONE_
+        backing_[i + 1] = SMALL-TOMBSTONE_
+        size_--
+    shrink-if-needed_
+    return this
+
+  stringify -> string:
+    if is-empty: return "{:}"
+    return stringify_ (MapStringify_ this) "{" "}"
+
+abstract mixin MapMixin:
+  abstract do [block] -> none
+  abstract do --reversed [block] -> none
+
+  /**
   Invokes the given $block on each key of this instance.
   Users must not modify this instance while iterating over it.
 
@@ -2986,39 +3038,17 @@ class Map extends HashedInsertionOrderedCollection_:
       do: | key value | block.call value
 
   /**
-  Returns the keys of this instance as a list.
-  This operation instantiates a fresh list and is thus in O(n).
-  When possible use $(do --keys [block]) instead.
-  */
-  keys -> List:
-    result := List size_
-    i := 0
-    do: |key value| result[i++] = key
-    return result
-
-  /**
-  Returns the values of this instance as a list.
-  This operation instantiates a fresh list and is thus in O(n).
-  When possible use $(do --values [block]) instead.
-  */
-  values -> List:
-    result := List size_
-    i := 0
-    do: |key value| result[i++] = value
-    return result
-
-  /**
   Reduces the values of the map into a single value.
   See $(Collection.reduce [block]).
   */
   reduce --values/bool [block]:
     if values != true: throw "Bad Argument"
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do --values:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /**
@@ -3038,12 +3068,12 @@ class Map extends HashedInsertionOrderedCollection_:
   */
   reduce --keys/bool [block]:
     if keys != true: throw "Bad Argument"
-    if is-empty: throw "Not enough elements"
     result := null
     is-first := true
     do --keys:
       if is-first: result = it; is-first = false
       else: result = block.call result it
+    if is-first: throw "Not enough elements"
     return result
 
   /**
@@ -3146,54 +3176,6 @@ class Map extends HashedInsertionOrderedCollection_:
     result := Map
     do: | key value | result[key] = block.call key value
     return result
-
-  /**
-  Maps the values of this instance.
-
-  The flag $in-place must be true.
-
-  Invokes the given $block on each key/value pair and replaces the old value with
-    the result of the call.
-
-  */
-  map --in-place/bool [block] -> none:
-    if in-place != true: throw "Bad Argument"
-    limit := backing_ ? backing_.size : 0
-    for i := 0; i < limit; i += STEP_:
-      key := backing_[i]
-      if key is not Tombstone_:
-        new-value := block.call key backing_[i + 1]
-        backing_[i + 1] = new-value
-
-  /**
-  Filters this instance using the given $predicate.
-
-  Returns a new map if $in-place is false. Returns this instance otherwise.
-
-  The result contains all the elements of this instance for which the $predicate returns
-    true.
-
-  Users must not otherwise modify this instance during the operation.
-  */
-  filter --in-place/bool=false [predicate] -> Map:
-    if not in-place:
-      result := Map
-      do: | key value | if predicate.call key value: result[key] = value
-      return result
-    limit := backing_ ? backing_.size : 0
-    for i := 0; i < limit; i += STEP_:
-      key := backing_[i]
-      value := backing_[i + 1]
-      if key is not Tombstone_ and not predicate.call key value:
-        backing_[i] = SMALL-TOMBSTONE_
-        backing_[i + 1] = SMALL-TOMBSTONE_
-        size_--
-    shrink-if-needed_
-    return this
-
-  stringify -> string:
-    if is-empty: return "{:}"
-    return stringify_ (MapStringify_ this) "{" "}"
 
   /**
   The first key of the map by insertion order.

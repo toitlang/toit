@@ -294,6 +294,7 @@ namespace toit {
 #define MODULE_TUN(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(receive, 2)                      \
+  PRIMITIVE(send, 3)                         \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(open, 1)                         \
 

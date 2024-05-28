@@ -112,6 +112,14 @@ static word inverted_checksum(const uint8* data, word length) {
   return (sum & 0xFFFF) + (sum >> 16);
 }
 
+static word checksum(const uint8* data, word length) {
+  uint32 sum = 0;
+  for (word i = 0; i < length; i += 2) {
+    sum += (data[i] << 8) + data[i + 1];
+  }
+  return (sum & 0xFFFF) + (sum >> 16);
+}
+
 PRIMITIVE(receive)  {
   ARGS(ByteArray, proxy, IntResource, connection_resource);
   USE(proxy);
@@ -122,7 +130,7 @@ PRIMITIVE(receive)  {
   ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
   if (array == null) FAIL(ALLOCATION_FAILED);
 
-  int read = ::read(fd, ByteArray::Bytes(array).address(), available);
+  word read = ::read(fd, ByteArray::Bytes(array).address(), available);
 
   if (read < 0) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
@@ -153,6 +161,49 @@ PRIMITIVE(receive)  {
   }
 
   return array;
+}
+
+PRIMITIVE(send)  {
+  ARGS(ByteArray, proxy, IntResource, connection_resource, MutableBlob, data);
+  USE(proxy);
+  int fd = connection_resource->id();
+  printf("Fd = %d\n", fd);
+
+  int available = 1500;
+
+  if (data.length() == 0) FAIL(OUT_OF_BOUNDS);
+  word header_size = (data.address()[0] & 0x0F) << 2;
+  if (header_size > data.length()) FAIL(OUT_OF_BOUNDS);
+
+  data.address()[10] = 0;
+  data.address()[11] = 0;
+  uint16 checksum = (toit::checksum(data.address(), header_size)) ^ 0xFFFF;
+  data.address()[10] = checksum >> 8;
+  data.address()[11] = checksum & 0xFF;
+
+  // Check for ICMP packet.
+  if (data.length() >= 24 && (data.address()[0] >> 4) == 4 && data.address()[9] == 1) {
+    data.address()[22] = 0;
+    data.address()[23] = 0;
+    uint16 checksum = (toit::checksum(data.address() + 20, header_size - 20)) ^ 0xFFFF;
+    data.address()[22] = checksum >> 8;
+    data.address()[23] = checksum & 0xFF;
+  }
+
+  if (inverted_checksum(data.address(), header_size) != 0xffff) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
+  if (array == null) FAIL(ALLOCATION_FAILED);
+
+  word sent = ::write(fd, data.address(), data.length());
+
+  if (sent < 0) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
+    return Primitive::os_error(errno, process);
+  }
+
+  return Primitive::integer(sent, process);
 }
 
 PRIMITIVE(close) {

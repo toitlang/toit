@@ -23,6 +23,7 @@ MODULE_TYPES(tun, MODULE_TUN)
 TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(receive)
 TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_ANY(send)
 TYPE_PRIMITIVE_ANY(open)
 
 }  // namespace toit::compiler
