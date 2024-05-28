@@ -59,13 +59,18 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 class FirmwareServiceProvider extends FirmwareServiceProviderBase:
+  config_/Map ::= {:}
+  config-ubjson_/ByteArray ::= #[]
   ota-dir-active_/string?
   ota-dir-inactive_/string?
 
   constructor --ota-dir-active/string? --ota-dir-inactive/string?:
+    catch:
+      config-ubjson_ = file.read-content "$ota-dir-active/$CONFIG-FILE-NAME_"
+      config_ = ubjson.decode config-ubjson_
     ota-dir-active_ = ota-dir-active
     ota-dir-inactive_ = ota-dir-inactive
-    super "system/firmware" --major=0 --minor=1
+    super "system/firmware/host" --major=0 --minor=1
 
   is-validation-pending -> bool:
     return not file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_"
@@ -89,10 +94,12 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     exit 17
 
   config-ubjson -> ByteArray:
-    return file.read-content "$ota-dir-active_/$CONFIG-FILE-NAME_"
+    // We have to copy this for now, because we don't want to
+    // risk getting our version of it neutered.
+    return config-ubjson_.copy
 
   config-entry key/string -> any:
-    return (ubjson.decode config-ubjson)[key]
+    return config_.get key
 
   content -> ByteArray:
     if not ota-dir-active_: throw "No OTA directory"
