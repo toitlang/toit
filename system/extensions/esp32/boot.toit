@@ -17,12 +17,12 @@ import uuid
 import system.containers
 
 import .firmware
+import .storage show StorageServiceProviderEsp32
 import .wifi
 
 import ...boot
 import ...initialize
 import ...containers
-import ...storage
 import ...flash.registry
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
@@ -47,7 +47,7 @@ main:
   registry ::= FlashRegistry.scan
   container-manager ::= initialize-system registry [
       FirmwareServiceProvider,
-      StorageServiceProvider registry,
+      StorageServiceProviderEsp32 registry,
       WifiServiceProvider,
   ]
   container-manager.register-system-image

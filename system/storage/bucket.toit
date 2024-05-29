@@ -48,21 +48,6 @@ abstract class BucketResource extends ServiceResource:
       // to the first 9 bytes of the 16 uuid bytes.
       encoded[..12]
 
-class FlashBucketResource extends BucketResource:
-  static group ::= flash-kv-init_ "nvs" "toit" false
-  root/string
-  constructor provider/StorageServiceProvider client/int .root:
-    super provider client
-
-  get key/string -> ByteArray?:
-    return flash-kv-read-bytes_ group (compute-id_ key)
-
-  set key/string value/ByteArray -> none:
-    flash-kv-write-bytes_ group (compute-id_ key) value
-
-  remove key/string -> none:
-    flash-kv-delete_ group (compute-id_ key)
-
 class RamBucketResource extends BucketResource:
   static memory ::= RtcMemory
   root/string
@@ -104,18 +89,6 @@ class RtcMemory:
     bytes_.replace 0 encoded
 
 // --------------------------------------------------------------------------
-
-flash-kv-init_ partition/string volume/string read-only/bool:
-  #primitive.flash-kv.init
-
-flash-kv-read-bytes_ group key/string:
-  #primitive.flash-kv.read-bytes
-
-flash-kv-write-bytes_ group key/string value/ByteArray:
-  #primitive.flash-kv.write-bytes
-
-flash-kv-delete_ group key/string:
-  #primitive.flash-kv.delete
 
 rtc-memory_ -> ByteArray:
   #primitive.core.rtc-user-bytes
