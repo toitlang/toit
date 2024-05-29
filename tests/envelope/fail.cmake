@@ -20,7 +20,7 @@ set(TOIT_SKIP_TESTS
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
-  list(APPEND TOIT_FAILING_TESTS
+  list(APPEND TOIT_SKIP_TESTS
     # Windows doesn't support permanent flash yet.
     tests/envelope/boot-flash-test.toit
   )
