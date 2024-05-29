@@ -27,14 +27,20 @@ abstract class IpPacket:
 
   constructor.from-subclass .backing:
 
+  version -> int:
+    return version backing
+
+  static version backing/ByteArray -> int:
+    return backing[0] >> 4
+
   static create backing/ByteArray -> IpPacket?:
-    if (backing[0] >> 4) == IPV4-VERSION_:
+    if (version backing) == IPV4-VERSION_:
       return IpV4Packet.create backing
     return null
 
   handle socket -> none:
     print backing.size
-    print "Version: $(backing[0] >> 4)"
+    print "Version: $version"
     print "Header length: $(backing[0] & 0x0F)"
     print "TOS: $(backing[1])"
     print "Total length: $(backing[2] << 8 | backing[3])"
@@ -48,9 +54,15 @@ abstract class IpPacket:
     print "Destination IP: $(backing[16]).$(backing[17]).$(backing[18]).$(backing[19])"
 
 abstract class IpV4Packet extends IpPacket:
+  protocol -> int:
+    return protocol backing
+
+  static protocol backing/ByteArray -> int:
+    return backing[9]
+
   static create backing/ByteArray -> IpV4Packet?:
-    assert: backing[0] >> 4 == 4
-    protocol := backing[9]
+    assert: (IpPacket.version backing) == IPV4-VERSION_
+    protocol := protocol backing
     if protocol == ICMP-PROTOCOL_:
       return IcmpPacket.create backing
     if protocol == TCP-PROTOCOL_:
@@ -62,11 +74,11 @@ abstract class IpV4Packet extends IpPacket:
   constructor.from-subclass backing/ByteArray:
     super.from-subclass backing
 
-  source-ip -> ByteArray:
-    return backing[12..16]
+  source-ip -> IpAddress:
+    return IpAddress backing[12..16]
 
-  destination-ip -> ByteArray:
-    return backing[16..20]
+  destination-ip -> IpAddress:
+    return IpAddress backing[16..20]
 
 class IcmpPacket extends IpV4Packet:
   static create backing/ByteArray -> IcmpPacket?:
@@ -110,16 +122,14 @@ class PingResponsePacket extends IcmpPacket:
     super.from-subclass backing
 
   handle socket:
-    s := source-ip
-    print "Got ping response from $(s[0]).$(s[1]).$(s[2]).$(s[3])"
+    print "Got ping response from $source-ip"
 
 class DestinationUnreachablePacket extends IcmpPacket:
   constructor backing/ByteArray:
     super.from-subclass backing
 
   handle socket:
-    s := source-ip
-    print "Got destination unreachable from $(s[0]).$(s[1]).$(s[2]).$(s[3])"
+    print "Got destination unreachable from $source-ip"
 
 class UdpPacket extends IpV4Packet:
   constructor backing/ByteArray:
@@ -269,11 +279,11 @@ class TunInterface:
 
   udp-connect socket/TunUdpSocket --port/int?=0 --remote-address/IpAddress --remote-port/int:
     if port == 0:
-      port = socket.port.
+      port = socket.port
     if port == 0:
-      udp-bind socket
-    triple := Triple_ port remote-address remote-port
-    other-socket = connected-udp-sockets_.get triple
+      udp-bind socket --port=port
+    triple := Triple_ port remote-address --remote-port=remote-port
+    other-socket := connected-udp-sockets_.get triple
     if other-socket:
       throw "A connected socket already has this address and port"
     connected-udp-sockets_[triple] = socket
@@ -294,13 +304,13 @@ class Triple_:
   remote-address/IpAddress
   remote-port/int
 
-  constructor .local-port --remote-address --remote-port:
+  constructor .local-port .remote-address --.remote-port:
 
   hash-code -> int:
     return local-port * 13 + remote-address.raw[3] * 247 + remote-port
 
   operator == other:
-    if other is not Triple: return false
+    if other is not Triple_: return false
     if other.local-port != local-port: return false
     if other.remote-address != remote-address: return false
     if other.remote-port != remote-port: return false
