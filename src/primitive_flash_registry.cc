@@ -124,6 +124,39 @@ PRIMITIVE(get_header_page) {
   return proxy;
 }
 
+PRIMITIVE(get_all_pages) {
+  PRIVILEGED;
+  ARGS(word, offset);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  // Not normally possible, may indicate a bug or a worn flash chip.
+  if (!allocation) FAIL(FILE_NOT_FOUND);
+  // TODO(kasper): Add support invalidation of proxy. The proxy is read-only and backed by flash.
+  uint8* memory = reinterpret_cast<uint8*>(const_cast<FlashAllocation*>(allocation));
+  proxy->set_external_address(allocation->size(), memory);
+  return proxy;
+}
+
+PRIMITIVE(write_non_header_pages) {
+  PRIVILEGED;
+  ARGS(word, offset, Blob, content);
+  for (auto reservation : reservations) {
+    int reserved_offset = reservation->left();
+    if (reserved_offset < offset) continue;
+    if (reserved_offset > offset) break;
+    ASSERT(reserved_offset == offset);
+
+    int length = Utils::min(reservation->size() - FLASH_PAGE_SIZE, content.length());
+    if (!FlashRegistry::write_chunk(content.address(), offset + FLASH_PAGE_SIZE, length)) {
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+
+  }
+  FAIL(OUT_OF_BOUNDS);
+}
+
 PRIMITIVE(reserve_hole) {
   PRIVILEGED;
   ARGS(word, offset, word, size);
