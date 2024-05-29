@@ -184,7 +184,9 @@ class Firmware:
     return part_ PART-RUN-IMAGE_
 
   config -> ByteArray:
-    return part_ PART-CONFIG_
+    config-part := part_ PART-CONFIG_
+    // Skip the size header.
+    return config-part[4..]
 
   name-to-uuid-mapping -> Map:
     return ubjson.decode (part_ PART-NAME-TO-UUID-MAPPING_)
@@ -204,9 +206,11 @@ class Firmware:
     return result
 
   write-into --dir/string:
+    bits-path := "$dir/$BITS-FILE-NAME_"
+    file.write-content --path=bits-path bits_
     run-image-path := "$dir/$RUN-IMAGE-FILE-NAME_"
     file.write-content --path=run-image-path run-image
-    file.chmod run-image-path 0b111_000_000  // Make the program executable.
+    file.chmod run-image-path 0b111_101_000  // Make the program executable.
     file.write-content --path="$dir/$CONFIG-FILE-NAME_" config
     startup-dir := "$dir/$STARTUP-DIR-NAME"
     directory.mkdir --recursive startup-dir
