@@ -730,6 +730,8 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   parts.add { "type": "run-image", "from": part-start, "to": bits.size }
 
   part-start = bits.size
+  // Add the size to have a similar layout to the ESP32 binary.
+  bits.little-endian.write-uint32 config-encoded.size
   bits.write config-encoded
   parts.add { "type": "config", "from": part-start, "to": bits.size }
 
