@@ -13,5 +13,3 @@ main args:
     test.extract-to-dir --dir-path=test.tmp-dir --config=CONFIG
     written-config := "$test.tmp-dir/ota0/config.ubjson"
     expect-equals CONFIG (file.read-content written-config)
-
-
