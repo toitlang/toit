@@ -112,7 +112,16 @@ class EnvelopeTest:
     exe := "$ota-active/run-image"
     return run-program_ [exe, ota-active, ota-inactive] --env=env --allow-fail=allow-fail
 
-  boot dir/string --env/Map?=null -> string:
+  boot-backticks dir/string --env/Map?=null -> string:
+    boot_ dir --env=env: | args env |
+      return backticks_ args --env=env
+    unreachable
+
+  boot-run dir/string --env/Map?=null -> none:
+    boot_ dir --env=env: | args env |
+      run-program_ args --env=env
+
+  boot_ dir/string --env/Map?=null [run] -> none:
     bash := "bash"
     path := "$dir/boot.sh"
     if system.platform == system.PLATFORM-WINDOWS:
@@ -128,7 +137,7 @@ class EnvelopeTest:
         // This is brittle, as Windows localizes the name of the folder.
         program-files-path = "C:/Program Files"
       bash = "$program-files-path/Git/usr/bin/bash.exe"
-    return backticks_ --env=env [bash, path]
+    run.call [bash, path] env
 
   run-program_ args/List --env/Map?=null --allow-fail/bool=false -> int:
     exit-code := pipe.run-program args --environment=env

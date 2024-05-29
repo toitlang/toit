@@ -8,11 +8,7 @@ import .util show EnvelopeTest with-test
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="hello" --source="""
-      main:
-        print "hello world"
-        exit $EXIT-CODE-STOP
-      """
+    test.install --name="hello" --source-path="./boot-flash-source.toit"
     test.extract-to-dir --dir-path=test.tmp-dir
     output := test.boot-backticks test.tmp-dir
-    expect (output.contains "hello world")
+    expect (output.contains "Test succeeded")
