@@ -52,7 +52,7 @@ AR-ENTRY-PROPERTIES ::= "\$properties"
 
 META-SDK-VERSION ::= "sdk-version"
 META-WORD-SIZE   ::= "word-size"
-META-PLATFORM    ::= "platform"
+META-KIND        ::= "kind"
 
 // ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
@@ -174,7 +174,7 @@ create-cmd -> cli.Command:
         --required=(key == "firmware.bin")
   cmd := cli.Command "create"
       --help="""
-        Create a firmware envelope for the specificed platform.
+        Create a firmware envelope of the specified kind.
         """
   cmd.add (create-esp32-cmd --name="esp32")
   cmd.add create-host-cmd
@@ -227,7 +227,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
-      --platform=Envelope.PLATFORM-ESP32
+      --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
   envelope.store output-path
 
@@ -262,7 +262,7 @@ create-envelope-host parsed/cli.Parsed -> none:
   // run-image has the same version.
   envelope := Envelope.create entries
       --sdk-version=system.app-sdk-version
-      --platform=Envelope.PLATFORM-HOST
+      --kind=Envelope.KIND-HOST
       --word-size=word-size
   envelope.store output-path
 
@@ -643,19 +643,19 @@ extract parsed/cli.Parsed -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  if envelope.platform == Envelope.PLATFORM-ESP32:
+  if envelope.kind == Envelope.KIND-ESP32:
     extract-esp32 parsed envelope --config-encoded=config-encoded
-  else if envelope.platform == Envelope.PLATFORM-HOST:
+  else if envelope.kind == Envelope.KIND-HOST:
     extract-host parsed envelope --config-encoded=config-encoded
   else:
-    throw "unsupported platform: $(envelope.platform)"
+    throw "unsupported kind: $(envelope.kind)"
 
 extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> none:
   output-path := parsed[OPTION-OUTPUT]
 
   format := parsed["format"]
   if format == "tar":
-    throw "unsupported format for ESP32 platform: '$format'"
+    throw "unsupported format for ESP32 envelope: '$format'"
 
   if format == "elf":
     if not config-encoded.is-empty:
@@ -691,7 +691,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
 
   format := parsed["format"]
   if format != "tar" and format != "binary" and format != "ubjson":
-    throw "unsupported format for host platform: '$format'"
+    throw "unsupported format for host envelope: '$format'"
 
   entries := envelope.entries
   flags := get-flags envelope
@@ -1113,7 +1113,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
 
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
-      --platform=existing.platform
+      --kind=existing.kind
       --word-size=existing.word-size
   envelope.store output-path
 
@@ -1202,10 +1202,12 @@ show parsed/cli.Parsed -> none:
 
   envelope := Envelope.load input-path
   entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
-  platform-string := envelope.platform == Envelope.PLATFORM-ESP32 ? "ESP32" : "host"
+  kind-string := envelope.kind == Envelope.KIND-ESP32
+      ? Envelope.KIND-STRING-ESP32
+      : Envelope.KIND-STRING-HOST
   result := {
     "envelope-format-version": envelope.version_,
-    "platform": platform-string,
+    "kind": kind-string,
     "sdk-version": envelope.sdk-version,
     "containers": entries-json["containers"],
   }
@@ -1274,8 +1276,11 @@ json-to-human o/any --indentation/int=0 --skip-indentation/bool=false --chain/Li
 class Envelope:
   static MARKER ::= 0x0abeca70
 
-  static PLATFORM-ESP32 ::= 0
-  static PLATFORM-HOST  ::= 1
+  static KIND-ESP32 ::= 0
+  static KIND-HOST  ::= 1
+
+  static KIND-STRING-ESP32 ::= "esp32"
+  static KIND-STRING-HOST  ::= "host"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1285,14 +1290,14 @@ class Envelope:
 
   path/string? ::= null
   sdk-version/string
-  platform/int
+  kind/int
   word-size/int
   entries/Map ::= {:}
 
   constructor.load .path/string:
     version_ = -1
     sdk-version = ""
-    platform = -1
+    kind = -1
     word-size = -1
     read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
@@ -1302,20 +1307,20 @@ class Envelope:
         else if file.name == AR-ENTRY-METADATA:
           metadata := json.decode file.content
           sdk-version = metadata[META-SDK-VERSION]
-          platform-string := metadata[META-PLATFORM]
-          if platform-string == "esp32":
-            platform = PLATFORM-ESP32
-          else if platform-string == "host":
-            platform = PLATFORM-HOST
+          kind-string := metadata[META-KIND]
+          if kind-string == KIND-STRING-ESP32:
+            kind = KIND-ESP32
+          else if kind-string == KIND-STRING-HOST:
+            kind = KIND-HOST
           else:
-            throw "unsupported platform: $platform-string"
+            throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
         else:
           entries[file.name] = file.content
     if version_ == -1: throw "cannot open envelope - missing info entry"
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
-  constructor.create .entries --.sdk-version --.platform --.word-size:
+  constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = ENVELOPE-FORMAT-VERSION
 
   store path/string -> none:
@@ -1328,17 +1333,17 @@ class Envelope:
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
       ar.add AR-ENTRY-INFO info
 
-      platform-string := ""
-      if platform == PLATFORM-ESP32:
-        platform-string = "esp32"
-      else if platform == PLATFORM-HOST:
-        platform-string = "host"
+      kind-string := ""
+      if kind == KIND-ESP32:
+        kind-string = KIND-STRING-ESP32
+      else if kind == KIND-HOST:
+        kind-string = KIND-STRING-HOST
       else:
-        throw "unsupported platform: $(platform)"
+        throw "unsupported kind: $(kind)"
 
       metadata := json.encode {
         META-SDK-VERSION: sdk-version,
-        META-PLATFORM: platform-string,
+        META-KIND: kind-string,
         META-WORD-SIZE: word-size,
       }
       ar.add AR-ENTRY-METADATA metadata
