@@ -11,6 +11,8 @@ main:
   test-bucket-ram-large-payload
   test-bucket-ram-overflow
   test-bucket-flash
+  test-bucket-flash-multi
+  test-bucket-flash-large
 
   test-region-flash-open
   test-region-flash-double-open
@@ -138,6 +140,32 @@ test-bucket-flash:
   expect-equals 2345 bucket[long]
   bucket.remove long
   expect-throw "key not found": bucket[long]
+
+test-bucket-flash-multi:
+  b1 := storage.Bucket.open --flash "gris"
+  b2 := storage.Bucket.open --flash "gris"
+  b1["fisk"] = 1234
+  b1["hest"] = 2345
+  expect-equals 1234 b2["fisk"]
+  b2.remove "fisk"
+  expect-null (b1.get "fisk")
+  b1.close
+  expect-equals 2345 b2["hest"]
+
+test-bucket-flash-large:
+  bucket := storage.Bucket.open --flash "hund"
+  content := List 32:
+    ByteArray 512 + (random 512): random 0x100
+  content.size.repeat: bucket["entry$it"] = content[it]
+  content.size.repeat: expect-bytes-equal content[it] bucket["entry$it"]
+  // Make sure that writes do not invalidate previously written
+  // entries because of weird cache neutering issues.
+  bucket["42"] = 87
+  bucket.close
+  // Re-open the bucket to force this to be read from flash again.
+  bucket = storage.Bucket.open --flash "hund"
+  content.size.repeat: expect-bytes-equal content[it] bucket["entry$it"]
+  bucket.close
 
 test-region-flash-open:
   storage.Region.delete --flash "region-0"
