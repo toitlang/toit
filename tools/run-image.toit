@@ -211,7 +211,7 @@ class Firmware:
       file.write-content --path="$startup-dir/$uuid" content
     bundled-dir := "$dir/$BUNDLED-DIR-NAME"
     directory.mkdir --recursive bundled-dir
-    bundled-images.do: | name string content/ByteArray |
+    bundled-images.do: | name/string content/ByteArray |
       uuid := mapping[name]
       file.write-content --path="$bundled-dir/$uuid" content
 
