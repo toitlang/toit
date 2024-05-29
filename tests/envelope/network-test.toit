@@ -11,7 +11,6 @@ main args:
   network := net.open
 
   server := network.tcp-listen 0
-  server.local-address
   task::
     connection := server.accept
     data := #[]
@@ -21,6 +20,10 @@ main args:
         break
     expect-equals "hello".to-byte-array data
 
-  client := network.tcp-connect server.local-address
+  // On Windows, the server.local-address doesn't have a valid IP address,
+  // so we just hard-code it to 127.0.0.1.
+  ip-address := net.IpAddress.parse "127.0.0.1"
+  address := net.SocketAddress ip-address server.local-address.port
+  client := network.tcp-connect address
   client.out.write "hello"
   client.out.close
