@@ -18,15 +18,15 @@ import system.services show ServiceHandler ServiceProvider
 import system.api.storage show StorageService
 
 import ..flash.registry show FlashRegistry
-import .bucket show BucketResource FlashBucketResource RamBucketResource
+import .bucket show BucketResource RamBucketResource
 import .region show FlashRegionResource PartitionRegionResource
 
-class StorageServiceProvider extends ServiceProvider
+abstract class StorageServiceProvider extends ServiceProvider
     implements StorageService ServiceHandler:
   registry/FlashRegistry
 
-  constructor .registry:
-    super "system/storage" --major=0 --minor=2
+  constructor name/string .registry:
+    super name --major=0 --minor=2
     provides StorageService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -53,12 +53,7 @@ class StorageServiceProvider extends ServiceProvider
       return region-list --scheme=arguments
     unreachable
 
-  bucket-open client/int --scheme/string --path/string -> BucketResource:
-    if scheme == Bucket.SCHEME-RAM:
-      return RamBucketResource this client path
-    else if scheme == Bucket.SCHEME-FLASH:
-      return FlashBucketResource this client path
-    throw "Unsupported '$scheme:' scheme"
+  abstract bucket-open client/int --scheme/string --path/string -> BucketResource
 
   region-open client/int --scheme/string --path/string --capacity/int? --writable/bool -> List:
     if scheme == Region.SCHEME-FLASH:

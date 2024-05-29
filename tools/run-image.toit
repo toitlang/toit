@@ -30,9 +30,9 @@ import uuid
 import .run-image-exit-codes
 import ..system.boot
 import ..system.containers
+import ..system.extensions.host.storage
 import ..system.flash.registry
 import ..system.initialize
-import ..system.storage
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -237,7 +237,7 @@ main arguments:
       exit 1
 
   registry ::= FlashRegistry.scan
-  storage := StorageServiceProvider registry
+  storage := StorageServiceProviderHost registry
   container-manager ::= initialize-system registry [
     FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive,
     storage,
