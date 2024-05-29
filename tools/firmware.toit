@@ -789,7 +789,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   tar-writer.add "ota0/validated" ""
   tar-writer.add "ota0/run-image" run-image --permissions=EXECUTABLE-PERMISSIONS
   tar-writer.add "ota0/bits.bin" bits.bytes
-  tar-writer.add "ota0/config.ubjson" encoded-ubjson
+  tar-writer.add "ota0/config.ubjson" config-encoded
   startup-images.do: | uuid/string image/ByteArray |
     tar-writer.add "ota0/startup-images/$uuid" image
   bundled-images.do: | uuid/string image/ByteArray |
