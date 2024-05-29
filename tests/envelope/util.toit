@@ -47,9 +47,13 @@ class EnvelopeTest:
     run-program_ [toit-bin, "compile", "--snapshot", "--output", path, source-path]
 
   install --name/string --snapshot-path/string --boot/bool=true --assets/Map?=null -> none:
-    cmd := [toit-bin, "tool", "firmware", "-e", envelope, "container", "install", name, snapshot-path]
-    if boot:
-      cmd.add-all ["--trigger", "boot"]
+    trigger := boot ? "boot" : "none"
+    cmd := [
+      toit-bin, "tool", "firmware",
+      "-e", envelope,
+      "container", "install", name, snapshot-path,
+      "--trigger", trigger,
+    ]
     if assets:
       tmp-assets-path := "$tmp-dir/__tmp__.assets"
       run-program_ [toit-bin, "tool", "assets", "create", "--assets", tmp-assets-path]
