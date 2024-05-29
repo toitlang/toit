@@ -792,9 +792,11 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   tar-writer.add "ota0/run-image" run-image --permissions=EXECUTABLE-PERMISSIONS
   tar-writer.add "ota0/bits.bin" bits.bytes
   tar-writer.add "ota0/config.ubjson" config-encoded
-  startup-images.do: | uuid/string image/ByteArray |
+  startup-images.do: | name/string image/ByteArray |
+    uuid := name-to-uuid-mapping[name]
     tar-writer.add "ota0/startup-images/$uuid" image
-  bundled-images.do: | uuid/string image/ByteArray |
+  bundled-images.do: | name/string image/ByteArray |
+    uuid := name-to-uuid-mapping[name]
     tar-writer.add "ota0/bundled-images/$uuid" image
   tar-writer.close --close-writer
 

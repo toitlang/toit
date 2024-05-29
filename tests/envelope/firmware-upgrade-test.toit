@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import crypto.sha256
 import expect show *
 import host.file
 import .util show EnvelopeTest with-test
