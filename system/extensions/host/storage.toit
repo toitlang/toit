@@ -81,8 +81,8 @@ class FlashBucket:
       pages := flash-get-all-pages_ allocation.offset
       entries := assets.decode pages[FLASH-ALLOCATION-HEADER-SIZE..]
       // The found entry values point into the flash. To avoid issues,
-      // when we free the currently cached allocation, we move them to
-      // RAM by copying them.
+      // when we free the currently cached allocation, we copy them to
+      // RAM.
       cache_entries_ = entries.map: | key value | value.copy
 
   constructor root/string --registry/FlashRegistry:
