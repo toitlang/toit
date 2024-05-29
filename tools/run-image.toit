@@ -33,6 +33,8 @@ import ..system.containers
 import ..system.flash.registry
 import ..system.initialize
 import ..system.storage
+// TODO(florian) we should make this network-provider implementation more widely available.
+import ..system.extensions.host.network show NetworkServiceProvider
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -238,9 +240,11 @@ main arguments:
 
   registry ::= FlashRegistry.scan
   storage := StorageServiceProvider registry
+  network := NetworkServiceProvider
   container-manager ::= initialize-system registry [
     FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive,
     storage,
+    network,
   ]
   container-manager.register-system-image (SystemImage container-manager)
 
