@@ -27,10 +27,15 @@ import encoding.hex
 import encoding.ubjson
 import uuid
 
+import .run-image-exit-codes
 import ..system.boot
 import ..system.containers
+// TODO(florian) we should make this network-provider implementation more widely available.
+import ..system.extensions.host.network show NetworkServiceProvider
+import ..system.extensions.host.storage
 import ..system.flash.registry
 import ..system.initialize
+import ..system.storage
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -38,6 +43,7 @@ BITS-FILE-NAME_ ::= "bits.bin"
 STARTUP-DIR-NAME ::= "startup-images"
 BUNDLED-DIR-NAME ::= "bundled-images"
 INSTALLED-DIR-NAME ::= "installed-images"
+VALIDATED-FILE-NAME_ ::= "validated"
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -58,36 +64,47 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 class FirmwareServiceProvider extends FirmwareServiceProviderBase:
+  config_/Map ::= {:}
+  config-ubjson_/ByteArray ::= #[]
   ota-dir-active_/string?
   ota-dir-inactive_/string?
 
   constructor --ota-dir-active/string? --ota-dir-inactive/string?:
+    catch:
+      config-ubjson_ = file.read-content "$ota-dir-active/$CONFIG-FILE-NAME_"
+      config_ = ubjson.decode config-ubjson_
     ota-dir-active_ = ota-dir-active
     ota-dir-inactive_ = ota-dir-inactive
-    super "system/firmware" --major=0 --minor=1
+    super "system/firmware/host" --major=0 --minor=1
 
   is-validation-pending -> bool:
-    return false
+    return not file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_"
 
   is-rollback-possible -> bool:
-    return false
+    return is-validation-pending
 
   validate -> bool:
-    throw "UNIMPLEMENTED"
+    file.write-content --path="$ota-dir-active_/$VALIDATED-FILE-NAME_" #[]
+    return true
 
   rollback -> none:
-    throw "UNIMPLEMENTED"
+    if file.is-file "$ota-dir-active_/$VALIDATED-FILE-NAME_":
+      throw "Can't rollback after validation"
+    // By exiting without validating the outer script will automatically rollback.
+    exit EXIT-CODE-ROLLBACK-REQUESTED
 
   upgrade -> none:
     if not ota-dir-inactive_: throw "No OTA directory"
     // Exit and tell the outer script that an update is available.
-    exit 17
+    exit EXIT-CODE-UPGRADE
 
   config-ubjson -> ByteArray:
-    return file.read-content "$ota-dir-active_/$CONFIG-FILE-NAME_"
+    // We have to copy this for now, because we don't want to
+    // risk getting our version of it neutered.
+    return config-ubjson_.copy
 
   config-entry key/string -> any:
-    return (ubjson.decode config-ubjson)[key]
+    return config_.get key
 
   content -> ByteArray:
     if not ota-dir-active_: throw "No OTA directory"
@@ -199,7 +216,7 @@ class Firmware:
       file.write-content --path="$startup-dir/$uuid" content
     bundled-dir := "$dir/$BUNDLED-DIR-NAME"
     directory.mkdir --recursive bundled-dir
-    bundled-images.do: | name string content/ByteArray |
+    bundled-images.do: | name/string content/ByteArray |
       uuid := mapping[name]
       file.write-content --path="$bundled-dir/$uuid" content
 
@@ -223,8 +240,12 @@ main arguments:
       exit 1
 
   registry ::= FlashRegistry.scan
+  storage := StorageServiceProviderHost registry
+  network := NetworkServiceProvider
   container-manager ::= initialize-system registry [
-    FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive
+    FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive,
+    storage,
+    network,
   ]
   container-manager.register-system-image (SystemImage container-manager)
 

@@ -36,19 +36,23 @@ import host.pipe
 import partition-table show *
 import tar
 
+import .run-image-boot-sh
 import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 7
+ENVELOPE-FORMAT-VERSION ::= 8
 
 WORD-SIZE-ESP32 ::= 4
 
 // Shared AR entries.
-AR-ENTRY-INFO        ::= "\$envelope"
-AR-ENTRY-SDK-VERSION ::= "\$sdk-version"
-AR-ENTRY-PLATFORM    ::= "\$platform"
-AR-ENTRY-PROPERTIES     ::= "\$properties"
+AR-ENTRY-INFO       ::= "\$envelope"
+AR-ENTRY-METADATA   ::= "\$metadata"
+AR-ENTRY-PROPERTIES ::= "\$properties"
+
+META-SDK-VERSION ::= "sdk-version"
+META-WORD-SIZE   ::= "word-size"
+META-PLATFORM    ::= "platform"
 
 // ESP32 AR entries.
 AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
@@ -224,6 +228,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
       --platform=Envelope.PLATFORM-ESP32
+      --word-size=WORD-SIZE-ESP32
   envelope.store output-path
 
 create-host-cmd -> cli.Command:
@@ -236,12 +241,15 @@ create-host-cmd -> cli.Command:
             --help="Path to the run-image executable."
             --type="file"
             --required,
+        cli.OptionInt "word-size"
+            --required,
       ]
       --run=:: create-envelope-host it
 
 create-envelope-host parsed/cli.Parsed -> none:
   output-path := parsed[OPTION-ENVELOPE]
 
+  word-size := parsed["word-size"]
   run-image-path := parsed["run-image"]
   run-image-bytes := read-file run-image-path
 
@@ -255,6 +263,7 @@ create-envelope-host parsed/cli.Parsed -> none:
   envelope := Envelope.create entries
       --sdk-version=system.app-sdk-version
       --platform=Envelope.PLATFORM-HOST
+      --word-size=word-size
   envelope.store output-path
 
 container-cmd -> cli.Command:
@@ -676,7 +685,9 @@ extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> 
   write-file output-path: it.write (ubjson.encode output)
 
 extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
+  word-size := envelope.word-size
   output-path := parsed[OPTION-OUTPUT]
+  system-uuid := sdk-version-uuid --sdk-version=envelope.sdk-version
 
   format := parsed["format"]
   if format != "tar" and format != "binary" and format != "ubjson":
@@ -691,13 +702,19 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   entries.do: | name/string content/ByteArray |
     if not is-container-name name: continue.do
     entry-assets := entries.get "+$name"
-    entry := extract-container name flags content --assets=entry-assets --word-size=envelope.word-size
-    uuid := entry.id.to-string
-    // TODO(florian): add the assets to the image.
-    if entry.flags & IMAGE-FLAG-RUN-BOOT != 0 or entry.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
-      startup-images[name] = entry.relocatable
+    container := extract-container name flags content --assets=entry-assets --word-size=word-size
+    uuid := container.id.to-string
+    relocated := container.relocate
+        --relocation-base=0 // Must be 0, since we add the relocation information back.
+        --system-uuid=system-uuid
+        --attach-assets
+    // The image needs to be padded to page-size.
+    relocated = pad relocated (1 << 12)
+    relocatable := container.relocation-information.apply-to relocated
+    if container.flags & IMAGE-FLAG-RUN-BOOT != 0 or container.flags & IMAGE-FLAG-RUN-CRITICAL != 0:
+      startup-images[name] = relocatable
     else:
-      bundled-images[name] = entry.relocatable
+      bundled-images[name] = relocatable
     name-to-uuid-mapping[name] = uuid
 
   parts := []
@@ -732,7 +749,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     ar-writer.add uuid image
   parts.add { "type": "bundled-images", "from": part-start, "to": bits.size }
 
-  // Update the header with the parts offsets.
+  // Update the header with the parts offsets before computing the checksum.
   bits-le := bits.little-endian
   header-offset := 0
   parts.do: | part |
@@ -741,8 +758,10 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   if header-offset != header-size:
     throw "header size mismatch"
 
+  part-start = bits.size
   checksum := crypto.sha256 bits.bytes
   bits.write checksum
+  parts.add { "type": "checksum", "from": part-start, "to": bits.size }
 
   bits.close
 
@@ -759,16 +778,22 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
     write-file output-path: it.write encoded-ubjson
     return
 
+  assert: format == "tar"
+
+  EXECUTABLE-PERMISSIONS := 0b111_101_000
+
   // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
   tar-writer := tar.Tar tar-bytes
-  tar-writer.add "run-image" run-image --permissions=0b111_000_000
-  tar-writer.add "config.ubjson" encoded-ubjson
+  tar-writer.add "boot.sh" BOOT-SH --permissions=EXECUTABLE-PERMISSIONS
+  tar-writer.add "ota0/validated" ""
+  tar-writer.add "ota0/run-image" run-image --permissions=EXECUTABLE-PERMISSIONS
+  tar-writer.add "ota0/bits.bin" bits.bytes
+  tar-writer.add "ota0/config.ubjson" config-encoded
   startup-images.do: | uuid/string image/ByteArray |
-    tar-writer.add "startup-images/$uuid" image
+    tar-writer.add "ota0/startup-images/$uuid" image
   bundled-images.do: | uuid/string image/ByteArray |
-    tar-writer.add "bundled-images/$uuid" image
-  tar-writer.add "bits.bin" bits.bytes
+    tar-writer.add "ota0/bundled-images/$uuid" image
   tar-writer.close --close-writer
 
   write-file output-path: it.write tar-bytes.bytes
@@ -1043,7 +1068,7 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
 
   system-uuid/uuid.Uuid? := null
   if properties.contains "uuid":
-    catch: system-uuid = uuid.parse properties["uuid"]
+    system-uuid = uuid.parse properties["uuid"] --on-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
   return extract-binary-content
@@ -1072,7 +1097,7 @@ extract-container -> ContainerEntry
     relocatable = content
   flag-bits := flags and flags.get name
   flag-bits = flag-bits or 0
-  return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets
+  return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets --word-size=word-size
 
 update-envelope parsed/cli.Parsed [block] -> none:
   input-path := parsed[OPTION-ENVELOPE]
@@ -1085,6 +1110,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
       --platform=existing.platform
+      --word-size=existing.word-size
   envelope.store output-path
 
 extract-binary-content -> ByteArray
@@ -1101,31 +1127,16 @@ extract-binary-content -> ByteArray
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
-    relocatable := container.relocatable
-    out := io.Buffer
-    output := BinaryRelocatedOutput out relocation-base --word-size=WORD-SIZE-ESP32
-    output.write relocatable
-    image-bits := out.bytes
-    image-size := image-bits.size
+    image-size := container.relocated-size
 
     LITTLE-ENDIAN.put-uint32 image-table index * 8
         relocation-base
     LITTLE-ENDIAN.put-uint32 image-table index * 8 + 4
         image-size
-    image-bits = pad image-bits 4
-
-    image-header ::= ImageHeader image-bits --word-size=WORD-SIZE-ESP32
-    image-header.system-uuid = system-uuid
-    image-header.flags = container.flags
-
-    if container.assets:
-      image-header.flags |= IMAGE-FLAG-HAS-ASSETS
-      assets-size := ByteArray 4
-      LITTLE-ENDIAN.put-uint32 assets-size 0 container.assets.size
-      image-bits += assets-size
-      image-bits += container.assets
-      image-bits = pad image-bits 4
-
+    image-bits := container.relocate
+        --relocation-base=relocation-base
+        --system-uuid=system-uuid
+        --attach-assets
     images.add image-bits
     relocation-base += image-bits.size
     index++
@@ -1271,49 +1282,63 @@ class Envelope:
   path/string? ::= null
   sdk-version/string
   platform/int
+  word-size/int
   entries/Map ::= {:}
 
   constructor.load .path/string:
-    version/int? := null
+    version_ = -1
     sdk-version = ""
     platform = -1
+    word-size = -1
     read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == AR-ENTRY-INFO:
-          version = validate file.content
-        else if file.name == AR-ENTRY-SDK-VERSION:
-          sdk-version = file.content.to-string-non-throwing
-        else if file.name == AR-ENTRY-PLATFORM:
-          if file.content.size != 1:
-            throw "cannot open envelope - malformed platform entry"
-          platform = file.content[0]
-          if platform != PLATFORM-ESP32 and platform != PLATFORM-HOST:
-            throw "cannot open envelope - unknown platform $platform"
+          version_ = validate file.content
+        else if file.name == AR-ENTRY-METADATA:
+          metadata := json.decode file.content
+          sdk-version = metadata[META-SDK-VERSION]
+          platform-string := metadata[META-PLATFORM]
+          if platform-string == "esp32":
+            platform = PLATFORM-ESP32
+          else if platform-string == "host":
+            platform = PLATFORM-HOST
+          else:
+            throw "unsupported platform: $platform-string"
+          word-size = metadata[META-WORD-SIZE]
         else:
           entries[file.name] = file.content
-    if not version: throw "cannot open envelope - missing info entry"
-    if platform == -1: throw "cannot open envelope - missing platform entry"
-    version_ = version
+    if version_ == -1: throw "cannot open envelope - missing info entry"
+    if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
-  constructor.create .entries --.sdk-version --.platform:
+  constructor.create .entries --.sdk-version --.platform --.word-size:
     version_ = ENVELOPE-FORMAT-VERSION
-
-  word-size -> int:
-    if platform == PLATFORM-ESP32: return WORD-SIZE-ESP32
-    // TODO(florian): don't assume 64-bit platform for host.
-    return 8
 
   store path/string -> none:
     write-file path: | writer/io.Writer |
       ar := ar.ArWriter writer
+
       // Add the envelope info entry.
       info := ByteArray INFO-ENTRY-SIZE
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-MARKER-OFFSET MARKER
       LITTLE-ENDIAN.put-uint32 info INFO-ENTRY-VERSION-OFFSET version_
       ar.add AR-ENTRY-INFO info
-      ar.add AR-ENTRY-SDK-VERSION sdk-version
-      ar.add AR-ENTRY-PLATFORM #[platform]
+
+      platform-string := ""
+      if platform == PLATFORM-ESP32:
+        platform-string = "esp32"
+      else if platform == PLATFORM-HOST:
+        platform-string = "host"
+      else:
+        throw "unsupported platform: $(platform)"
+
+      metadata := json.encode {
+        META-SDK-VERSION: sdk-version,
+        META-PLATFORM: platform-string,
+        META-WORD-SIZE: word-size,
+      }
+      ar.add AR-ENTRY-METADATA metadata
+
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
@@ -1329,13 +1354,114 @@ class Envelope:
       throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION, was $version"
     return version
 
+class RelocationInformation:
+  relocation-bytes/ByteArray
+  word-size/int  // In bytes.
+
+  constructor.from relocatable/ByteArray --.word-size:
+    chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    chunk-count := ceil_ relocatable.size chunk-size
+    relocation-bytes = ByteArray chunk-count * word-size
+    for i := 0; i < chunk-count; i++:
+      relocation-bytes.replace (i * word-size) relocatable[i * chunk-size..i * chunk-size + word-size]
+
+  /**
+  Applies the relocation information to the given relocated $image.
+
+  The provided $image may be bigger than the original relocatable image from which
+    the relocation information was extracted. In that case the extra bytes are
+    assumed not to contain pointers.
+  */
+  apply-to image/ByteArray -> ByteArray:
+    relocatable-chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    relocated-chunk-size := get-relocated-chunk-byte-size --word-size=word-size
+    result := ByteArray (ceil_ image.size relocated-chunk-size) * relocatable-chunk-size
+
+    image-offset := 0
+    result-offset := 0
+    relocation-offset := 0
+    // We are attaching assets to the image, so for some parts of the image we
+    // don't always have relocation information. Just use a zero-filled word.
+    no-relocation-bytes := ByteArray word-size
+    List.chunk-up 0 image.size relocated-chunk-size: | from/int to/int chunk-size/int |
+      chunk := image[from..to]
+      image-offset += chunk-size
+
+      relocation-info := relocation-offset < relocation-bytes.size
+          ? relocation-bytes[relocation-offset..relocation-offset + word-size]
+          : no-relocation-bytes
+      relocation-offset += word-size
+
+      result.replace result-offset relocation-info
+      result-offset += relocation-info.size
+      result.replace result-offset chunk
+      result-offset += chunk-size
+
+    return result
+
+  static relocated-size relocatable-size/int --word-size/int -> int:
+    relocatable-chunk-size := get-relocatable-chunk-byte-size --word-size=word-size
+    relocated-chunk-size := get-relocated-chunk-byte-size --word-size=word-size
+    chunk-count := ceil_ relocatable-size relocatable-chunk-size
+    // One word of every chunk is used for relocation information.
+    return chunk-count * relocated-chunk-size
+
+  static get-relocatable-chunk-byte-size --word-size/int -> int:
+    word-bit-size := word-size * 8
+    // One word for the relocation-information, followed by one word for each bit of it.
+    chunk-word-size := 1 + word-bit-size
+    return chunk-word-size * word-size
+
+  static get-relocated-chunk-byte-size --word-size/int -> int:
+    word-bit-size := word-size * 8
+    return word-size * word-bit-size
+
+ceil_ x/int y/int -> int:
+  return (x + y - 1) / y
+
 class ContainerEntry:
   id/uuid.Uuid
   name/string
   flags/int
   relocatable/ByteArray
   assets/ByteArray?
-  constructor .id .name .relocatable --.flags --.assets:
+  word-size/int
+
+  constructor .id .name .relocatable --.flags --.assets --.word-size:
+
+  relocated-size -> int:
+    return relocatable.size - (RelocationInformation.relocated-size relocatable.size --word-size=word-size)
+
+  /**
+  Relocates the container to the given $relocation-base and updates the header.
+
+  Also attaches the container's assets if $attach-assets is true.
+
+  The header is updated with the given $system-uuid and the container's $flags.
+  */
+  relocate --relocation-base/int --attach-assets/bool --system-uuid/uuid.Uuid -> ByteArray:
+    out := io.Buffer
+    output := BinaryRelocatedOutput out relocation-base --word-size=word-size
+    output.write relocatable
+    image-bits := out.bytes
+    image-bits = pad image-bits 4
+
+    image-header ::= ImageHeader image-bits --word-size=word-size
+    image-header.system-uuid = system-uuid
+    image-header.flags = flags
+
+    if attach-assets and assets:
+      image-header.flags |= IMAGE-FLAG-HAS-ASSETS
+      assets-size := ByteArray 4
+      LITTLE-ENDIAN.put-uint32 assets-size 0 assets.size
+      image-bits += assets-size
+      image-bits += assets
+      image-bits = pad image-bits 4
+
+    return image-bits
+
+  relocation-information -> RelocationInformation:
+    return RelocationInformation.from relocatable --word-size=word-size
 
 class ImageHeader:
   static MARKER-OFFSET_        ::= 0

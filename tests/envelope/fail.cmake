@@ -13,11 +13,15 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-# doesn't work on 32 bits.
+set(TOIT_FAILING_TESTS
+)
 
-if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(TOIT_FAILING_TESTS
-    tests/envelope/firmware-upgrade-test.toit
-    tests/envelope/hello-test.toit
+set(TOIT_SKIP_TESTS
+)
+
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
+  list(APPEND TOIT_SKIP_TESTS
+    # Windows doesn't support permanent flash yet.
+    tests/envelope/boot-flash-test.toit
   )
 endif()

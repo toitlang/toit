@@ -3,14 +3,12 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import .exit-codes
 import .util show EnvelopeTest with-test
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="hello" --source="""
-      main: print "hello world"
-      """
+    test.install --name="hello" --source-path="./boot-flash-source.toit"
     test.extract-to-dir --dir-path=test.tmp-dir
-    ota0 := "$test.tmp-dir/ota0"
-    output := test.backticks ota0
-    expect (output.contains "hello world")
+    output := test.boot-backticks test.tmp-dir
+    expect (output.contains "Test succeeded")

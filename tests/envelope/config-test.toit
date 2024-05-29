@@ -2,15 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.ubjson
 import expect show *
+import host.file
 import .util show EnvelopeTest with-test
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="hello" --source="""
-      main: print "hello world"
-      """
-    test.extract-to-dir --dir-path=test.tmp-dir
-    ota0 := "$test.tmp-dir/ota0"
-    output := test.backticks ota0
-    expect (output.contains "hello world")
+    CONFIG ::= ubjson.encode #[1, 2, 3]
+    test.extract-to-dir --dir-path=test.tmp-dir --config=CONFIG
+    written-config := "$test.tmp-dir/ota0/config.ubjson"
+    expect-equals CONFIG (file.read-content written-config)

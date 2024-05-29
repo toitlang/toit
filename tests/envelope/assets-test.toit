@@ -7,10 +7,12 @@ import .util show EnvelopeTest with-test
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="hello" --source="""
-      main: print "hello world"
-      """
+    test.install --name="hello" --source-path="./assets-source.toit" --assets={
+      "message": "hello",
+      "message2": "world",
+    }
     test.extract-to-dir --dir-path=test.tmp-dir
     ota0 := "$test.tmp-dir/ota0"
     output := test.backticks ota0
-    expect (output.contains "hello world")
+    expect (output.contains "hello")
+    expect (output.contains "world")

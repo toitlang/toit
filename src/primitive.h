@@ -612,6 +612,8 @@ namespace toit {
   PRIMITIVE(erase, 2)                        \
   PRIMITIVE(get_size, 1)                     \
   PRIMITIVE(get_header_page, 1)              \
+  PRIMITIVE(get_all_pages, 1)                \
+  PRIMITIVE(write_non_header_pages, 2)       \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(allocate, 6)                     \
@@ -619,7 +621,7 @@ namespace toit {
   PRIMITIVE(grant_access, 5)                 \
   PRIMITIVE(is_accessed, 2)                  \
   PRIMITIVE(revoke_access, 2)                \
-  PRIMITIVE(partition_find, 3)              \
+  PRIMITIVE(partition_find, 3)               \
   PRIMITIVE(region_open, 5)                  \
   PRIMITIVE(region_close, 1)                 \
   PRIMITIVE(region_read, 3)                  \

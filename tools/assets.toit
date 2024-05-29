@@ -34,20 +34,38 @@ option-output ::= cli.Option OPTION-OUTPUT
     --type="file"
 
 main arguments/List:
-  root-cmd := cli.Command "root"
+  root-cmd := build-command
+  root-cmd.run arguments
+
+build-command -> cli.Command:
+  cmd := cli.Command "assets"
+      --help="""
+        Manipulate assets files.
+
+        Asset files can be given to the firmware tool when installing a container.
+        They can then be decoded by the container at runtime.
+
+        Example:
+
+            import system.assets
+
+            main:
+              decoded := assets.decode
+              print decoded["my-asset"]
+        """
       --options=[
         cli.Option OPTION-ASSETS
             --short-name="e"
-            --help="Set the assets to work on."
+            --help="The assets to work on."
             --type="file"
             --required
       ]
-  root-cmd.add create-cmd
-  root-cmd.add add-cmd
-  root-cmd.add get-cmd
-  root-cmd.add remove-cmd
-  root-cmd.add list-cmd
-  root-cmd.run arguments
+  cmd.add create-cmd
+  cmd.add add-cmd
+  cmd.add get-cmd
+  cmd.add remove-cmd
+  cmd.add list-cmd
+  return cmd
 
 create-cmd -> cli.Command:
   return cli.Command "create"
@@ -59,11 +77,12 @@ create-assets parsed/cli.Parsed -> none:
 
 add-cmd -> cli.Command:
   return cli.Command "add"
+      --help="Add or update an asset with the given name."
       --options=[
         option-output,
         cli.OptionEnum "format" ["binary", "ubjson", "tison"]
             --default="binary"
-            --help="Pick the encoding format."
+            --help="The encoding format."
 
       ]
       --rest=[
@@ -73,7 +92,6 @@ add-cmd -> cli.Command:
             --type="file"
             --required
       ]
-      --help="Add or update asset with the given name."
       --run=:: add-asset it
 
 add-asset parsed/cli.Parsed -> none:
@@ -97,13 +115,14 @@ add-asset parsed/cli.Parsed -> none:
 
 get-cmd -> cli.Command:
   return cli.Command "get"
+      --help="Get the asset with the given name."
       --options=[
         cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
             --default="auto"
-            --help="Pick the encoding format.",
+            --help="The encoding format.",
         cli.Option "output"
             --short-name="o"
-            --help="Set the name of the output file."
+            --help="The name of the output file."
             --type="file"
             --required,
       ]
@@ -111,7 +130,6 @@ get-cmd -> cli.Command:
         cli.Option "name"
             --required,
       ]
-      --help="Get the asset with the given name."
       --run=:: get-asset it
 
 get-asset parsed/cli.Parsed -> none:
@@ -143,12 +161,12 @@ get-asset parsed/cli.Parsed -> none:
 
 remove-cmd -> cli.Command:
   return cli.Command "remove"
+      --help="Remove the asset with the given name."
       --options=[ option-output ]
       --rest=[
         cli.Option "name"
             --required,
       ]
-      --help="Remove asset with the given name."
       --run=:: remove-asset it
 
 remove-asset parsed/cli.Parsed -> none:
