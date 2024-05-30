@@ -33,6 +33,30 @@ abstract class IpPacket:
   static version backing/ByteArray -> int:
     return backing[0] >> 4
 
+  version= value/int -> none:
+    backing[0] = (backing[0] & 0x0F) | (value << 4)
+
+  header-length -> int:
+    return (backing[0] & 0x0F) << 2
+
+  header-length= value/int -> none:
+    if (not value <= 20 <= 60) or value & 3 != 0:
+      throw "Invalid header length"
+    backing[0] = (backing[0] & 0xF0) | (value >> 2)
+
+  length -> int:
+    return BIG-ENDIAN.uint16 backing 2
+
+  length= value/int -> none:
+    BIG-ENDIAN.put-uint16 backing 2 value
+    assert: backing.size == value
+
+  ttl -> int:
+    return backing[8]
+
+  ttl= value/int -> none:
+    backing[8] = value
+
   static create backing/ByteArray -> IpPacket?:
     if (version backing) == IPV4-VERSION_:
       return IpV4Packet.create backing
@@ -54,8 +78,17 @@ abstract class IpPacket:
     print "Destination IP: $(backing[16]).$(backing[17]).$(backing[18]).$(backing[19])"
 
 abstract class IpV4Packet extends IpPacket:
+  identification -> int:
+    return BIG-ENDIAN.uint16 backing 4
+
+  identification= value/int:
+    BIG-ENDIAN.put-uint16 backing 4 value
+
   protocol -> int:
     return backing[9]
+
+  protocol= value/int -> none:
+    backing[9] = value
 
   static protocol backing/ByteArray -> int:
     return backing[9]
@@ -77,8 +110,14 @@ abstract class IpV4Packet extends IpPacket:
   source-ip -> IpAddress:
     return IpAddress backing[12..16]
 
+  source-ip= value/IpAddress -> none:
+    backing.replace 12 value.raw
+
   destination-ip -> IpAddress:
     return IpAddress backing[16..20]
+
+  destination-ip= value/IpAddress -> none:
+    backing.replace 16 value.raw
 
 class IcmpPacket extends IpV4Packet:
   static icmp-type backing/ByteArray -> int:
@@ -143,19 +182,45 @@ class UdpPacket extends IpV4Packet:
   constructor backing/ByteArray:
     super.from-subclass backing
 
+  source-port -> int:
+    return BIG-ENDIAN.uint16 backing 20
+
+  source-port= value/int:
+    BIG-ENDIAN.put-uint16 backing 20 value
+
+  destination-port -> int:
+    return BIG-ENDIAN.uint16 backing 22
+
+  destination-port= value/int:
+    BIG-ENDIAN.put-uint16 backing 22 value
+
+  udp-length -> int:
+    return BIG-ENDIAN.uint16 backing 24
+
+  udp-length= value/int:
+    BIG-ENDIAN.put-uint16 backing 24 value
+
 class TcpPacket extends IpV4Packet:
   constructor backing/ByteArray:
     super.from-subclass backing
 
 main:
-  host := IpHost
-
   network-interface := TunInterface TunSocket
       IpAddress #[10, 0, 0, 2]
 
-  host.interfaces.add network-interface
+  IpHost.interfaces.add network-interface
 
-  network-interface.run
+  task --background:: network-interface.run
+
+  socket := TunUdpSocket
+
+  IpHost.udp-bind socket
+
+  socket.connect
+      --remote-address=IpAddress #[8, 8, 8, 8]
+      --remote-port=53
+
+  sleep --ms=10_000
 
 class TunSocket:
   state_/ResourceState_? := ?
@@ -208,33 +273,34 @@ class TunSocket:
     throw "NOT_CONNECTED"
 
 class IpHost:
-  interfaces/List := []
+  static interfaces/List := []
 
   /**
   Sets the local port of a UDP socket.
   If the $port is zero then a free port is picked.
   If the address is null then the socket is bound on the first interface.
   */
-  udp-bind socket/TunUdpSocket --port/int=0 --address/IpAddress?=null:
-    if interfaces.size == 0:
-      throw "No interfaces"
-    network-interface := null
+  static udp-bind socket/TunUdpSocket --port/int=0 --address/IpAddress?=null:
+    network-interface := find-interface_ address
+    network-interface.udp-bind socket --port=port
+
+  static find-interface_ address/IpAddress? -> NetworkInterface:
     if not address:
-      network-interface = interfaces[0]
-    else:
-      interfaces.do:
-        if it.address == address:
-          network-interface = it
-    if not network-interface:
-      throw "No interface with address $address"
-    network-interface.udp-bind socket port
+      if interfaces.size == 0:
+        throw "No interfaces"
+      return interfaces[0]
+    interfaces.do:
+      if it.address == address:
+        return it
+    throw "No interface with address $address."
 
 interface NetworkInterface:
   /// An endless loop that reads incoming packets from the network interface.
   run -> none
-  udp-bind socket/TunUdpSocket --port/int --address/IpAddress?=null
+  udp-bind socket/TunUdpSocket --port/int=0
   udp-connect socket/TunUdpSocket --port/int?=0 --remote-address/IpAddress --remote-port/int
   send packet/IpPacket
+  address -> IpAddress
 
 class TunInterface implements NetworkInterface:
   tun-socket_/TunSocket
@@ -288,7 +354,7 @@ class TunInterface implements NetworkInterface:
 
   // Sets the local port of a UDP socket.
   // If the $port is zero then a free port is picked.
-  udp-bind socket/TunUdpSocket --port/int --address/IpAddress?=null:
+  udp-bind socket/TunUdpSocket --port/int=0:
     if socket.port != 0:
       throw "Socket already bound"
     if port == 0:
@@ -300,6 +366,7 @@ class TunInterface implements NetworkInterface:
         if not other-socket:
           unconnected-udp-sockets_[possible-port] = socket
           socket.port = possible-port
+          socket.network-interface = this
           return
       throw "No more free dynamic ports"
     // An entry may be null due to weakness.
@@ -307,6 +374,7 @@ class TunInterface implements NetworkInterface:
       throw "Port already bound"
     unconnected-udp-sockets_[port] = socket
     socket.port = port
+    socket.network-interface = this
 
   udp-connect socket/TunUdpSocket --port/int?=0 --remote-address/IpAddress --remote-port/int:
     if port == 0:
@@ -362,6 +430,9 @@ class TunUdpSocket:
   //   default (with write) to the remote server.  Connecting an unbound socket
   //   will cause it to be bound as a side effect.
 
+  // The local interface.  If the socket is unbound then this is null.
+  network-interface/NetworkInterface? := null
+
   // The local port.  If the socket is unbound then this is zero.
   port/int := 0
 
@@ -370,6 +441,47 @@ class TunUdpSocket:
 
   // The remote address.  If the socket is not connected then this is null.
   remote-address/IpAddress? := null
+
+  packet-identification := random 0x10000
+
+  connect --remote-address/IpAddress --remote-port/int:
+    if not network-interface:
+      IpHost.udp-bind this
+    network-interface.udp-connect this --remote-address=remote-address --remote-port=remote-port
+
+  write data/io.Data -> none:
+    send data
+
+  send data/io.Data -> none:
+    if not network-interface:
+      IpHost.udp-bind this
+    if not remote-address:
+      throw "Not connected"
+    send-to data --address=remote-address --port=remote-port
+
+  send-to data/io.Data --address/IpAddress --port/int -> none:
+    raw := ByteArray data.byte-size + 28
+    raw.replace 28 data
+    packet := UdpPacket raw
+    packet.source-ip = network-interface.address
+    packet.destination-ip = address
+    packet.source-port = this.port
+    packet.destination-port = port
+    packet.udp-length = 8 + data.byte-size
+    packet.version = IPV4-VERSION_
+    packet.header-length = 20
+    packet.length = raw.size
+    // The identification field is supposed to be unique for the triple of
+    // protocol, remote IP, local IP.  TODO: Here we have it on the UDP socket
+    // for simplicity.  Some cell phones just set it to zero.  See also RFC
+    // 6864.
+    packet.identification = packet-identification
+    packet.ttl = 64
+    packet.protocol = UDP-PROTOCOL_
+    packet-identification = (packet-identification + 1) & 0xffff
+
+    if not network-interface: network-interface = IpHost.find-interface_ address
+    network-interface.send packet
 
 // Lazily-initialized resource group reference.
 tun-resource-group_ ::= tun-init_
