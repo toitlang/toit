@@ -295,7 +295,6 @@ class RunImageContainerManager extends ContainerManager:
     finally:
       save-to-fs_ = true
 
-
 main arguments:
   if arguments.size != 1 and arguments.size != 2:
     print_ "Usage:"
@@ -388,7 +387,7 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
       try:
         while file-name/string? := stream.next:
           path := "$dir/$file-name"
-          if file.is-file path:
-            add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
+          if not file.is-file path: continue
+          add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
       finally:
         stream.close

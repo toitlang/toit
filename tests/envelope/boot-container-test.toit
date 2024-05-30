@@ -11,7 +11,6 @@ import .exit-codes
 import .util show EnvelopeTest with-test
 import .boot-container-source as container
 
-
 main args:
   with-test args: | test/EnvelopeTest |
     test.install --name="container" --source-path="./boot-container-source.toit"
