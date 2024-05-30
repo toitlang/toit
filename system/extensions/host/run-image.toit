@@ -356,7 +356,8 @@ handle-arguments arguments/List container-manager/RunImageContainerManager -> no
 
   if arguments.size == 1:
     image-path := arguments.first
-    add-image image-path existing-uuids --run-boot --run-critical
+    container-manager.without-fs-backup-do:
+      add-image image-path existing-uuids --run-boot --run-critical
     return
 
   assert: arguments.size == 2
