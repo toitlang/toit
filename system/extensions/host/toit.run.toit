@@ -17,12 +17,11 @@ import ar show *
 import uuid
 import system.api.containers show ContainerService
 
-import ..system.boot
-import ..system.containers
-import ..system.extensions.host.initialize
-
-import .mirror as mirror
-import .snapshot show Program SnapshotBundle
+import .initialize
+import ...boot
+import ...containers
+import ....tools.mirror as mirror
+import ....tools.snapshot show Program SnapshotBundle
 
 abstract class ContainerImageFromSnapshot extends ContainerImage:
   bundle-bytes_/ByteArray ::= ?

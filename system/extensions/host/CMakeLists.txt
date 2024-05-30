@@ -15,4 +15,4 @@
 
 include(${CMAKE_SOURCE_DIR}/tools/toit.cmake)
 
-toit_project(run-image "${CMAKE_CURRENT_LIST_DIR}")
+toit_project(system-host "${CMAKE_CURRENT_LIST_DIR}")

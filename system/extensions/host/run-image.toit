@@ -28,9 +28,8 @@ import encoding.ubjson
 import uuid
 
 import .run-image-exit-codes
-// TODO(florian) we should make this network-provider implementation more widely available.
-import ..host.network show NetworkServiceProvider
-import ..host.storage
+import .network show NetworkServiceProvider
+import .storage
 import ...boot
 import ...containers
 import ...flash.registry
