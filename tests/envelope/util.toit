@@ -96,7 +96,7 @@ class EnvelopeTest:
     build-ota --name=name --source-path=tmp-source-path --output=output
 
   build-ota --name/string --source-path/string --output/string -> none:
-    with-test [toit-bin, original-envelope]: | test-other/EnvelopeTest |
+    with-test [toit-bin, original-envelope, "$word-size"]: | test-other/EnvelopeTest |
       test-other.install --name=name --source-path=source-path
       test-other.extract --path=output
 
