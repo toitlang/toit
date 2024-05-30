@@ -9,12 +9,13 @@ main:
   region := storage.Region.open --flash "toitlang.org/envelope-test-region" --capacity=100
   bucket := storage.Bucket.open --flash "toitlang.org/envelope-test-bucket"
 
-  hello-bytes := "hello world".to-byte-array
+  hello := "hello world"
+  hello-bytes := hello.to-byte-array
   existing-region := region.read --from=0 --to=hello-bytes.size
   existing-bucket := bucket.get "hello"
   if existing-region != hello-bytes or existing-bucket != "world":
     // We just assume that they haven't been written yet.
-    region.write --from=0 hello-bytes
+    region.write --at=0 hello
     bucket["hello"] = "world"
     region.close
     bucket.close

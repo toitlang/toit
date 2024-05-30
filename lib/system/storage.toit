@@ -25,7 +25,7 @@ import system.storage
 
 main:
   region := storage.Region.open --flash "my-region" --capacity=128
-  region.write --from=0 #[0x12, 0x34]
+  region.write --at=0 #[0x12, 0x34]
 ```
 */
 
@@ -372,9 +372,22 @@ class Region extends ServiceResourceProxy:
         --to=to
         --max-size=max-size
 
+  /**
+  Deprecated. Use $(write --at bytes) instead.
+  */
   write --from/int bytes/ByteArray -> none:
     if not resource_: throw "ALREADY_CLOSED"
     flash-region-write_ resource_ from bytes
+
+  /**
+  Writes the given $data into the region at the given offset $at.
+
+  If the region has already data, it is bit-anded with the
+    data to be written. Use $erase to reset areas to 1.
+  */
+  write --at/int data/io.Data -> none:
+    if not resource_: throw "ALREADY_CLOSED"
+    flash-region-write_ resource_ at data
 
   is-erased --from/int=0 --to/int=size -> bool:
     if not resource_: throw "ALREADY_CLOSED"
@@ -435,8 +448,11 @@ flash-region-close_ resource:
 flash-region-read_ resource from bytes:
   #primitive.flash.region-read
 
-flash-region-write_ resource from bytes:
-  #primitive.flash.region-write
+flash-region-write_ resource at data:
+  #primitive.flash.region-write: | error |
+    return io.primitive-redo-io-data_ error data: | bytes |
+      flash-region-write_ resource at bytes
+
 
 flash-region-is-erased_ resource from size:
   #primitive.flash.region-is-erased
