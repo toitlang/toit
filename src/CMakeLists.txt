@@ -346,7 +346,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   endforeach()
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
-  set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
+  set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run.toit)
   ADD_TOIT_SNAPSHOT(
     ${BOOT_SNAPSHOT_SOURCE}
     ${BOOT_SNAPSHOT}
@@ -362,7 +362,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ""
   )
 
-  set(RUN_IMAGE_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/system/extensions/run-image/run-image.toit)
+  set(RUN_IMAGE_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/system/extensions/host/run-image.toit)
   ADD_TOIT_SNAPSHOT(
     ${RUN_IMAGE_SNAPSHOT_SOURCE}
     ${RUN_IMAGE_SNAPSHOT}

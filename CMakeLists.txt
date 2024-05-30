@@ -175,7 +175,7 @@ add_subdirectory(src)
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_subdirectory(tools)
-  add_subdirectory(system/extensions/run-image)
+  add_subdirectory(system/extensions/host)
 
   set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
   separate_arguments(GO_ENV)
