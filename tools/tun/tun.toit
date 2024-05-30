@@ -38,7 +38,7 @@ abstract class IpPacket:
       return IpV4Packet.create backing
     return null
 
-  handle socket -> none:
+  handle network-interface/NetworkInterface -> none:
     print backing.size
     print "Version: $version"
     print "Header length: $(backing[0] & 0x0F)"
@@ -120,23 +120,23 @@ class PingRequestPacket extends IcmpPacket:
     // Calculate the checksum.
     return PingResponsePacket response-backing
 
-  handle socket:
+  handle network-interface/NetworkInterface -> none:
     response := response
     if response:
-      socket.send response.backing
+      network-interface.send response
 
 class PingResponsePacket extends IcmpPacket:
   constructor backing/ByteArray:
     super.from-subclass backing
 
-  handle socket:
+  handle network-interface/NetworkInterface -> none:
     print "Got ping response from $source-ip"
 
 class DestinationUnreachablePacket extends IcmpPacket:
   constructor backing/ByteArray:
     super.from-subclass backing
 
-  handle socket:
+  handle network-interface/NetworkInterface -> none:
     print "Got destination unreachable from $source-ip"
 
 class UdpPacket extends IpV4Packet:
@@ -148,15 +148,14 @@ class TcpPacket extends IpV4Packet:
     super.from-subclass backing
 
 main:
-  socket := TunSocket
+  host := IpHost
 
-  while true:
-    raw := socket.receive
-    if not raw: exit 0
-    if raw.size == 0: continue
-    packet := IpPacket.create raw
-    if packet:
-      packet.handle socket
+  network-interface := TunInterface TunSocket
+      IpAddress #[10, 0, 0, 2]
+
+  host.interfaces.add network-interface
+
+  network-interface.run
 
 class TunSocket:
   state_/ResourceState_? := ?
@@ -208,11 +207,8 @@ class TunSocket:
     if state_: return state_
     throw "NOT_CONNECTED"
 
-class TunHost:
-  interfaces_/List := []
-  tun-socket_/TunSocket
-
-  constructor .tun-socket_:
+class IpHost:
+  interfaces/List := []
 
   /**
   Sets the local port of a UDP socket.
@@ -220,24 +216,51 @@ class TunHost:
   If the address is null then the socket is bound on the first interface.
   */
   udp-bind socket/TunUdpSocket --port/int=0 --address/IpAddress?=null:
-    if interfaces_.size == 0:
+    if interfaces.size == 0:
       throw "No interfaces"
-    inter-face := null
+    network-interface := null
     if not address:
-      inter-face = interfaces_[0]
+      network-interface = interfaces[0]
     else:
-      interfaces_.do:
+      interfaces.do:
         if it.address == address:
-          inter-face = it
-    if not inter-face:
+          network-interface = it
+    if not network-interface:
       throw "No interface with address $address"
-    inter-face.udp-bind socket port
+    network-interface.udp-bind socket port
 
-class TunInterface:
+interface NetworkInterface:
+  /// An endless loop that reads incoming packets from the network interface.
+  run -> none
+  udp-bind socket/TunUdpSocket --port/int --address/IpAddress?=null
+  udp-connect socket/TunUdpSocket --port/int?=0 --remote-address/IpAddress --remote-port/int
+  send packet/IpPacket
+
+class TunInterface implements NetworkInterface:
+  tun-socket_/TunSocket
   address/IpAddress
   mask/IpAddress
 
-  constructor .address --mask/IpAddress?=null --mask-bits/int?=null:
+  send packet/IpPacket -> none:
+    tun-socket_.send packet.backing
+
+  /// An endless loop that takes packets from the socket and processes them.
+  run -> none:
+    while true:
+      raw := tun-socket_.receive
+      if not raw: return
+      if raw.size == 0: continue
+      packet := IpPacket.create raw
+      if packet == null or not packet is IpV4Packet:
+        print "Dropping non-IPv4 packet"
+        continue
+      ipv4-packet := packet as IpV4Packet
+      if ipv4-packet.destination-ip != address:
+        print "Dropping packet to $ipv4-packet.destination-ip"
+        continue
+      packet.handle this
+
+  constructor .tun-socket_ .address --mask/IpAddress?=null --mask-bits/int?=null:
     if mask:
       if mask-bits:
         throw "Cannot specify both mask and mask-bits"
