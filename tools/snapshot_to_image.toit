@@ -33,7 +33,6 @@ import uuid
 import host.file
 import cli
 
-BINARY-FLAG      ::= "binary"
 M32-FLAG         ::= "machine-32-bit"
 M64-FLAG         ::= "machine-64-bit"
 OUTPUT-OPTION    ::= "output"
@@ -101,31 +100,46 @@ print-usage parser/cli.Command --error/string?=null:
   print-on-stderr_ parser.usage
   exit 1
 
-main args:
-  parsed := null
-  parser := cli.Command "snapshot_to_image"
+build-command -> cli.Command:
+  cmd := cli.Command "snapshot-to-image"
+      --help="""
+        Converts a snapshot into an image.
+
+        Images are word-size specific. If built with `-m32`, the image
+        will be 32-bit, and if built with `-m64`, the image will be 64-bit.
+        When compiling to a binary (--format=binary), exactly one of these flags
+        must be provided. When compiling to UBJSON (--format=ubjson), both flags
+        may be provided, in which case the image will be compiled to both
+        word sizes.
+
+        The binary format produces a single relocatable image.
+        The UBJSON format produces a dictionary with the following entries:
+          - 'id': The image ID.
+          - 'images': A list of images, each with the following entries:
+            - 'flags': A list of flags used to build the image. Either `-m32` or `-m64`.
+            - 'bytes': The image bytes as a byte array.
+
+        If an assets file is provided, it will be included in the image.
+        """
       --rest=[cli.Option SNAPSHOT-FILE]
       --options=[
-          cli.Flag M32-FLAG --short-name="m32",
-          cli.Flag M64-FLAG --short-name="m64",
-          cli.Flag BINARY-FLAG,
-          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required,
-          cli.Option OUTPUT-OPTION --short-name="o" --required,
-          cli.Option ASSETS-OPTION,
+          cli.Flag M32-FLAG --short-name="m32" --help="Build a 32-bit image.",
+          cli.Flag M64-FLAG --short-name="m64" --help="Build a 64-bit image.",
+          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required --help="Output format.",
+          cli.Option OUTPUT-OPTION --short-name="o" --required --help="Output file.",
+          cli.Option ASSETS-OPTION --help="Path to assets file.",
         ]
-      --run=:: parsed = it
+      --run=:: snapshot-to-image it
+  return cmd
 
-  parser.run args
+main args:
+  cmd := build-command
+  cmd.run args
 
+snapshot-to-image parsed/cli.Parsed:
   output-path/string? := parsed[OUTPUT-OPTION]
 
-  format := ?
-  if parsed[BINARY-FLAG]:
-    if parsed[FORMAT-OPTION] != null:
-      print-usage parser --error="cannot use --binary with --format option"
-    format = "binary"
-  else:
-    format = parsed[FORMAT-OPTION]
+  format := parsed[FORMAT-OPTION]
 
   machine-word-sizes := []
   if parsed[M32-FLAG]:
@@ -136,7 +150,8 @@ main args:
     machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
-    print-usage parser --error="more than one machine flag provided"
+    print "More than one machine flag provided"
+    exit 1
 
   snapshot-path/string := parsed[SNAPSHOT-FILE]
   snapshot-bundle := SnapshotBundle.from-file snapshot-path
