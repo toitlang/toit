@@ -28,7 +28,7 @@ abstract class IpPacket:
   constructor.from-subclass .backing:
 
   version -> int:
-    return version backing
+    return backing[0] >> 4
 
   static version backing/ByteArray -> int:
     return backing[0] >> 4
@@ -55,7 +55,7 @@ abstract class IpPacket:
 
 abstract class IpV4Packet extends IpPacket:
   protocol -> int:
-    return protocol backing
+    return backing[9]
 
   static protocol backing/ByteArray -> int:
     return backing[9]
@@ -81,14 +81,24 @@ abstract class IpV4Packet extends IpPacket:
     return IpAddress backing[16..20]
 
 class IcmpPacket extends IpV4Packet:
+  static icmp-type backing/ByteArray -> int:
+    return backing[20]
+
+  icmp-type -> int:
+    return backing[20]
+
+  ttl -> int:
+    return backing[8]
+
   static create backing/ByteArray -> IcmpPacket?:
-    if backing[20] == 8:
+    type := icmp-type backing
+    if type == ICMP-ECHO-REQUEST_:
       return PingRequestPacket backing
-    if backing[20] == 0:
+    if type == ICMP-ECHO-RESPONSE_:
       return PingResponsePacket backing
-    if backing[20] == 3:
+    if type == ICMP-DESTINATION-UNREACHABLE_:
       return DestinationUnreachablePacket backing
-    print "backing[20] = $backing[20]"
+    print "type = $type"
     unreachable
 
   constructor.from-subclass backing/ByteArray:
@@ -100,13 +110,11 @@ class PingRequestPacket extends IcmpPacket:
 
   response -> PingResponsePacket?:
     response-backing := backing.copy
-    // Set the type to 0 (Echo Reply).
-    response-backing[20] = 0
+    response-backing[20] = ICMP-ECHO-RESPONSE_
     // Reverse the source and destination addresses.
     response-backing.replace 12 backing 16 20
     response-backing.replace 16 backing 12 16
     // Decrement the TTL.
-    ttl := BIG-ENDIAN.uint16 backing 8
     if ttl == 0: return null
     response-backing[8] = ttl - 1
     // Calculate the checksum.
