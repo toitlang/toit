@@ -32,6 +32,7 @@ foreach(file ${TESTS})
     COMMAND "$<TARGET_FILE:toit.run>" "${TOIT_SDK_SOURCE_DIR}/${file}"
         "$<TARGET_FILE:toit>"
         "${CMAKE_BINARY_DIR}/firmware.envelope"
+        ${CMAKE_SIZEOF_VOID_P}
     CONFIGURATIONS slow
     )
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 200)
