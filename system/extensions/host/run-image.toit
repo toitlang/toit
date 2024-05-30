@@ -261,17 +261,19 @@ class RunImageContainerManager extends ContainerManager:
   ota-dir-active_/string?
   save-to-fs_/bool := true
 
-  constructor --ota-dir-active/string image-registry/FlashRegistry service-manager/SystemServiceManager:
+  constructor --ota-dir-active/string? image-registry/FlashRegistry service-manager/SystemServiceManager:
     ota-dir-active_ = ota-dir-active
     super image-registry service-manager
 
   // Override the default implementation.
   create-container-image-writer_ client/int reservation/FlashReservation -> ContainerImageWriter:
-    return RunImageContainerImageWriter this client reservation
-    // return ContainerImageWriter this client reservation
+    if ota-dir-active_:
+      return RunImageContainerImageWriter this client reservation
+    return ContainerImageWriter this client reservation
 
   // Called from the image writer.
   on-committed-image_ id/uuid.Uuid image/ByteArray -> none:
+    assert: ota-dir-active_ != null
     if not save-to-fs_: return
     dir := "$ota-dir-active_/$INSTALLED-DIR-NAME"
     directory.mkdir --recursive dir
@@ -281,6 +283,7 @@ class RunImageContainerManager extends ContainerManager:
   // Override the default implementation.
   uninstall-image id/uuid.Uuid -> none:
     super id
+    if not ota-dir-active_: return
     path := "$ota-dir-active_/$INSTALLED-DIR-NAME/$id"
     if file.is-file path: file.delete path
 
