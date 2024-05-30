@@ -6,12 +6,19 @@ import system.storage
 import .exit-codes
 
 main:
-  region := storage.Region.open --flash "toitlang.org/envelope-test" --capacity=100
+  region := storage.Region.open --flash "toitlang.org/envelope-test-region" --capacity=100
+  bucket := storage.Bucket.open --flash "toitlang.org/envelope-test-bucket"
+
   hello-bytes := "hello world".to-byte-array
-  existing := region.read --from=0 --to=hello-bytes.size
-  if existing != hello-bytes:
+  existing-region := region.read --from=0 --to=hello-bytes.size
+  existing-bucket := bucket.get "hello"
+  if existing-region != hello-bytes or existing-bucket != "world":
+    // We just assume that they haven't been written yet.
     region.write --from=0 hello-bytes
+    bucket["hello"] = "world"
     region.close
+    bucket.close
+    // Exit with a non-stopping exit code, which will restart this container immediately.
     exit 0
 
   print "Test succeeded"
