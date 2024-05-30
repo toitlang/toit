@@ -34,8 +34,8 @@ import ..system.containers
 import ..system.extensions.host.network show NetworkServiceProvider
 import ..system.extensions.host.storage
 import ..system.flash.registry
-import ..system.initialize
 import ..system.storage
+import ..system.services
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -244,13 +244,19 @@ main arguments:
       exit 1
 
   registry ::= FlashRegistry.scan
-  storage := StorageServiceProviderHost registry
-  network := NetworkServiceProvider
-  container-manager ::= initialize-system registry [
-    FirmwareServiceProvider --ota-dir-active=ota-active --ota-dir-inactive=ota-inactive,
-    storage,
-    network,
-  ]
+
+  service-manager ::= SystemServiceManager
+  // Install all the providers.
+  firmware-service-provider := FirmwareServiceProvider
+      --ota-dir-active=ota-active
+      --ota-dir-inactive=ota-inactive
+  firmware-service-provider.install
+  (StorageServiceProviderHost registry).install
+  (NetworkServiceProvider).install
+
+  // Create the container manager.
+  container-manager := ContainerManager registry service-manager
+  system-image := SystemImage container-manager
   container-manager.register-system-image (SystemImage container-manager)
 
   handle-arguments arguments container-manager
