@@ -22,10 +22,12 @@ class EnvelopeTest:
   toit-bin/string
   envelope/string
   tmp-dir/string
+  word-size/int
 
   constructor arguments/List:
     toit-bin = arguments[0]
     original-envelope = arguments[1]
+    word-size = int.parse arguments[2]
 
     tmp-dir = directory.mkdtemp "/tmp/envelope-test-"
     envelope = "$tmp-dir/firmware.envelope"

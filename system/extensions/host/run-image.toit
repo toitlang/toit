@@ -32,9 +32,13 @@ import .network show NetworkServiceProvider
 import .storage
 import ...boot
 import ...containers
+import ...flash.allocation
+import ...flash.image-writer
 import ...flash.registry
+import ...flash.reservation
 import ...storage
 import ...services
+
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"
@@ -223,6 +227,75 @@ class Firmware:
       uuid := mapping[name]
       file.write-content --path="$bundled-dir/$uuid" content
 
+class RunImageContainerImageWriter extends ContainerImageWriter:
+  container-manager_/RunImageContainerManager
+  // Don't use the name "image_" as that one is used in the super class.
+  relocatable-image/ByteArray? := ?
+  offset_/int := 0
+
+  constructor provider/RunImageContainerManager client/int reservation/FlashReservation:
+    container-manager_ = provider
+    // For each word in the image we need an additional bit.
+    // It's easier to be conservative and assume we are on a 32-bit machine, than to
+    // try to figure out the actual word size.
+    // Divide by 4 to get the number of words. Then divide by 8 to get the relocation
+    // bytes. Thus divide by 32 (>> 5) and then add one for rounding.
+    relocatable-size := reservation.size + (reservation.size >> 5) + 1
+    relocatable-image = ByteArray relocatable-size
+    super provider client reservation
+
+  // Override the default implementation.
+  write data/ByteArray -> none:
+    super data
+    relocatable-image.replace offset_ data
+    offset_ += data.size
+
+  // Override the default implementation.
+  commit --flags/int --data/int -> FlashAllocation:
+    result := super --flags=flags --data=data
+    container-manager_.on-committed-image_ result.id relocatable-image[..offset_]
+    relocatable-image = null
+    return result
+
+class RunImageContainerManager extends ContainerManager:
+  ota-dir-active_/string?
+  save-to-fs_/bool := true
+
+  constructor --ota-dir-active/string image-registry/FlashRegistry service-manager/SystemServiceManager:
+    ota-dir-active_ = ota-dir-active
+    super image-registry service-manager
+
+  // Override the default implementation.
+  create-container-image-writer_ client/int reservation/FlashReservation -> ContainerImageWriter:
+    return RunImageContainerImageWriter this client reservation
+    // return ContainerImageWriter this client reservation
+
+  // Called from the image writer.
+  on-committed-image_ id/uuid.Uuid image/ByteArray -> none:
+    if not save-to-fs_: return
+    dir := "$ota-dir-active_/$INSTALLED-DIR-NAME"
+    directory.mkdir --recursive dir
+    path := "$dir/$id"
+    if not file.is-file path: file.write-content --path=path image
+
+  // Override the default implementation.
+  uninstall-image id/uuid.Uuid -> none:
+    super id
+    path := "$ota-dir-active_/$INSTALLED-DIR-NAME/$id"
+    if file.is-file path: file.delete path
+
+  /**
+  Runs the given block but ensures that no committed image is saved to the
+    file system.
+  */
+  without-fs-backup-do [block]:
+    save-to-fs_ = false
+    try:
+      block.call
+    finally:
+      save-to-fs_ = true
+
+
 main arguments:
   if arguments.size != 1 and arguments.size != 2:
     print_ "Usage:"
@@ -254,7 +327,7 @@ main arguments:
   (NetworkServiceProvider).install
 
   // Create the container manager.
-  container-manager := ContainerManager registry service-manager
+  container-manager := RunImageContainerManager --ota-dir-active=ota-active registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image (SystemImage container-manager)
 
@@ -277,7 +350,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   writer.write image-data
   writer.commit --run-boot=run-boot --run-critical
 
-handle-arguments arguments/List container-manager/ContainerManager -> none:
+handle-arguments arguments/List container-manager/RunImageContainerManager -> none:
   existing-uuids/Set := {}
   container-manager.images.do: | image/ContainerImage |
     existing-uuids.add image.id
@@ -306,15 +379,16 @@ handle-arguments arguments/List container-manager/ContainerManager -> none:
   bundled-dir := "$active-dir/$BUNDLED-DIR-NAME"
   installed-dir := "$active-dir/$INSTALLED-DIR-NAME"
 
-  [startup-dir, bundled-dir, installed-dir].do: | dir/string |
-    is-startup-dir := dir == startup-dir
-    // Directories are not required to be there.
-    if not file.is-directory dir: continue.do
-    stream := directory.DirectoryStream dir
-    try:
-      while file-name/string? := stream.next:
-        path := "$dir/$file-name"
-        if file.is-file path:
-          add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
-    finally:
-      stream.close
+  container-manager.without-fs-backup-do:
+    [startup-dir, bundled-dir, installed-dir].do: | dir/string |
+      is-startup-dir := dir == startup-dir
+      // Directories are not required to be there.
+      if not file.is-directory dir: continue.do
+      stream := directory.DirectoryStream dir
+      try:
+        while file-name/string? := stream.next:
+          path := "$dir/$file-name"
+          if file.is-file path:
+            add-image path existing-uuids --run-boot=is-startup-dir --run-critical=is-startup-dir
+      finally:
+        stream.close
