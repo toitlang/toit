@@ -362,7 +362,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ""
   )
 
-  set(RUN_IMAGE_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/run-image.toit)
+  set(RUN_IMAGE_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/system/extensions/run-image/run-image.toit)
   ADD_TOIT_SNAPSHOT(
     ${RUN_IMAGE_SNAPSHOT_SOURCE}
     ${RUN_IMAGE_SNAPSHOT}

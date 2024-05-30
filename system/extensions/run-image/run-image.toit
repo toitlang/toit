@@ -28,14 +28,14 @@ import encoding.ubjson
 import uuid
 
 import .run-image-exit-codes
-import ..system.boot
-import ..system.containers
 // TODO(florian) we should make this network-provider implementation more widely available.
-import ..system.extensions.host.network show NetworkServiceProvider
-import ..system.extensions.host.storage
-import ..system.flash.registry
-import ..system.storage
-import ..system.services
+import ..host.network show NetworkServiceProvider
+import ..host.storage
+import ...boot
+import ...containers
+import ...flash.registry
+import ...storage
+import ...services
 
 RUN-IMAGE-FILE-NAME_ ::= "run-image"
 CONFIG-FILE-NAME_ ::= "config.ubjson"

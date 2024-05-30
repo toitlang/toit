@@ -1,0 +1,15 @@
+sdk: ^2.0.0-alpha.144
+prefixes:
+  ar: pkg-ar
+  host: pkg-host
+packages:
+  pkg-ar:
+    url: github.com/toitlang/pkg-ar
+    name: ar
+    version: 1.2.0
+    hash: 250d44f65997897de4cdf1a8a40f1e2548ce80e4
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    name: host
+    version: 1.15.1
+    hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
