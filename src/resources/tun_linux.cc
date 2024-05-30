@@ -104,19 +104,15 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-static word inverted_checksum(const uint8* data, word length) {
-  uint32 sum = 0;
+static uint32 checksum_part(const uint8* data, word length, uint32 sum = 0) {
   for (word i = 0; i < length; i += 2) {
     sum += (data[i] << 8) + data[i + 1];
   }
-  return (sum & 0xFFFF) + (sum >> 16);
+  return sum;
 }
 
-static word checksum(const uint8* data, word length) {
-  uint32 sum = 0;
-  for (word i = 0; i < length; i += 2) {
-    sum += (data[i] << 8) + data[i + 1];
-  }
+static word checksum(const uint8* data, word length, uint32 sum = 0) {
+  sum = checksum_part(data, length, sum);
   return (sum & 0xFFFF) + (sum >> 16);
 }
 
@@ -155,7 +151,7 @@ PRIMITIVE(receive)  {
     return Smi::from(-1);
   }
 
-  if (inverted_checksum(bytes.address(), header_size) != 0xffff) {
+  if (checksum(bytes.address(), header_size) != 0xffff) {
     // This is hit for a couple of packets, but it's not clear why.
     return Smi::from(-1);
   }
@@ -171,8 +167,8 @@ PRIMITIVE(send)  {
   if (data.length() < 2) FAIL(OUT_OF_BOUNDS);
   int version = data.address()[0] >> 4;
   word header_size = (data.address()[0] & 0x0F) << 2;
+  if (header_size < 20) FAIL(INVALID_ARGUMENT);
   if (header_size > data.length()) FAIL(OUT_OF_BOUNDS);
-  if (data.length() < 20) FAIL(INVALID_ARGUMENT);
 
   if (version == 4) {
     // Calculate IPv4 checksum.
@@ -183,13 +179,32 @@ PRIMITIVE(send)  {
     data.address()[11] = checksum & 0xFF;
   }
 
-  if (data.length() >= 24 && (data.address()[0] >> 4) == 4 && data.address()[9] == 1) {
-    // Calculate ICMP checksum.
-    data.address()[22] = 0;
-    data.address()[23] = 0;
-    uint16 checksum = (toit::checksum(data.address() + 20, data.length() - 20)) ^ 0xFFFF;
-    data.address()[22] = checksum >> 8;
-    data.address()[23] = checksum & 0xFF;
+  if (data.length() >= header_size + 8 && version == 4) {
+    int protocol = data.address()[9];
+    if (protocol == 1) {
+      // Calculate ICMP checksum.
+      data.address()[header_size + 2] = 0;
+      data.address()[header_size + 3] = 0;
+      uint16 checksum = (toit::checksum(data.address() + 20, data.length() - 20)) ^ 0xFFFF;
+      data.address()[header_size + 2] = checksum >> 8;
+      data.address()[header_size + 3] = checksum & 0xFF;
+    } else if (protocol == 17) {
+      // Calculate UDP checksum.
+      data.address()[header_size + 6] = 0;
+      data.address()[header_size + 7] = 0;
+      // Source and destination IP addresses.
+      uint32 sum = toit::checksum_part(data.address() + 14, 8);
+      uint8 pseudo_header[4];
+      pseudo_header[0] = 0;
+      pseudo_header[1] = 17;
+      pseudo_header[2] = (data.length() - 20) >> 8;
+      pseudo_header[3] = (data.length() - 20) & 0xFF;
+      sum = toit::checksum_part(pseudo_header, 4, sum);
+      uint16 checksum = toit::checksum(data.address() + 20, data.length() - 20, sum);
+      if (checksum == 0) checksum = 0xFFFF;
+      data.address()[header_size + 6] = checksum >> 8;
+      data.address()[header_size + 7] = checksum & 0xFF;
+    }
   }
 
   word sent = ::write(fd, data.address(), data.length());

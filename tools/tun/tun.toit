@@ -1,6 +1,7 @@
 import io
 import io.byte-order show BIG-ENDIAN
 import net.modules.tun show *
+import net.modules.dns
 import net.ip-address show IpAddress
 
 import ordered-collections show *
@@ -200,6 +201,9 @@ class UdpPacket extends IpV4Packet:
   udp-length= value/int:
     BIG-ENDIAN.put-uint16 backing 24 value
 
+  stringify -> string:
+    return "UDP packet from $source-ip:$source-port to $destination-ip:$destination-port: $backing"
+
 class TcpPacket extends IpV4Packet:
   constructor backing/ByteArray:
     super.from-subclass backing
@@ -219,6 +223,11 @@ main:
   socket.connect
       --remote-address=IpAddress #[8, 8, 8, 8]
       --remote-port=53
+
+  id := random 0x10000
+  query := dns.create-query_ "www.google.com" id dns.RECORD-A
+
+  socket.send query
 
   sleep --ms=10_000
 
@@ -387,7 +396,7 @@ class TunInterface implements NetworkInterface:
       throw "A connected socket already has this address and port"
     connected-udp-sockets_[triple] = socket
     socket.remote-port = remote-port
-
+    socket.remote-address = remote-address
 
   // These maps are weak so that if the socket is lost it is removed from the
   // maps.
@@ -444,6 +453,11 @@ class TunUdpSocket:
 
   packet-identification := random 0x10000
 
+  /**
+  Connecting has two effects:
+  - You can use write or send with an implicit destination.
+  - Only packets from the remote address are received by this socket.
+  */
   connect --remote-address/IpAddress --remote-port/int:
     if not network-interface:
       IpHost.udp-bind this
@@ -481,6 +495,7 @@ class TunUdpSocket:
     packet-identification = (packet-identification + 1) & 0xffff
 
     if not network-interface: network-interface = IpHost.find-interface_ address
+    print "Sending $packet"
     network-interface.send packet
 
 // Lazily-initialized resource group reference.
