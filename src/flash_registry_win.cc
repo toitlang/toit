@@ -22,7 +22,7 @@
 
 namespace toit {
 
-static const word ALLOCATION_SIZE = 2 * MB;
+static const word ALLOCATION_SIZE = 64 * MB;
 
 // An aligned (FLASH_BASED_SIZE) view into the allocations_malloced.
 uint8* FlashRegistry::allocations_memory_ = null;
