@@ -5,6 +5,7 @@
 import system.storage
 import encoding.tison
 import expect show *
+import .io-data show FakeData
 
 main:
   test-bucket-ram
@@ -19,6 +20,7 @@ main:
   test-region-flash-erase
   test-region-flash-is-erased
   test-region-flash-write-all
+  test-region-flash-write-io-data
   test-region-flash-ignore-set
   test-region-flash-out-of-space
   test-region-flash-stream
@@ -210,19 +212,19 @@ test-region-flash-is-erased:
   expect (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=3 #[1]
+  region.write --at=3 #[1]
   expect-not (region.is-erased --from=1 --to=31)
   expect (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=29 #[2]
+  region.write --at=29 #[2]
   expect-not (region.is-erased --from=1 --to=31)
   expect-not (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=17 #[2]
+  region.write --at=17 #[2]
   expect-not (region.is-erased --from=1 --to=31)
   expect-not (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
@@ -244,7 +246,7 @@ test-region-flash-write-all:
   while written < region.size:
     snippet-size := min ((random 128) + 1) (region.size - written)
     snippets.add (ByteArray snippet-size: random 0x100)
-    region.write --from=written snippets.last
+    region.write --at=written snippets.last
     written += snippet-size
 
   read := 0
@@ -253,12 +255,25 @@ test-region-flash-write-all:
     read += snippet.size
   region.close
 
+test-region-flash-write-io-data:
+  region := storage.Region.open --flash "region-1" --capacity=1000
+
+  region.erase
+  region.write --at=0 "foo"
+  expect-equals #['f', 'o', 'o'] (region.read --from=0 --to=3)
+
+  region.erase
+  region.write --at=0 (FakeData "bar")
+  expect-equals #['b', 'a', 'r'] (region.read --from=0 --to=3)
+
+  region.close
+
 test-region-flash-ignore-set:
   region := storage.Region.open --flash "region-2" --capacity=1000
   region.erase
-  region.write --from=0 #[0b1010_1010]
+  region.write --at=0 #[0b1010_1010]
   expect-bytes-equal #[0b1010_1010] (region.read --from=0 --to=1)
-  region.write --from=0 #[0b1111_0000]
+  region.write --at=0 #[0b1111_0000]
   expect-bytes-equal #[0b1010_0000] (region.read --from=0 --to=1)
   region.close
 
@@ -289,7 +304,7 @@ test-region-flash-stream:
 test-region-flash-stream region/storage.Region max-size/int?:
   region.erase
   bytes-written := ByteArray region.size: random 0x100
-  region.write --from=0 bytes-written
+  region.write --at=0 bytes-written
 
   if max-size and max-size < 16:
     expect-throw "Bad Argument": region.stream --max-size=max-size
@@ -319,7 +334,7 @@ test-region-flash-stream region/storage.Region max-size/int?:
 test-region-flash-no-writable:
   region := storage.Region.open --flash "region-1" --capacity=1000 --no-writable
   expect-throw "PERMISSION_DENIED": region.erase
-  expect-throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  expect-throw "PERMISSION_DENIED": region.write --at=0 #[0b1010_1010]
   region.read --from=0 --to=1
   region.close
 
@@ -328,7 +343,7 @@ test-region-flash-delete:
   expect-throw "ALREADY_IN_USE": storage.Region.delete --flash "region-3"
   region.close
   expect-throw "ALREADY_CLOSED": region.read --from=0 --to=4
-  expect-throw "ALREADY_CLOSED": region.write --from=0 #[1]
+  expect-throw "ALREADY_CLOSED": region.write --at=0 #[1]
   expect-throw "ALREADY_CLOSED": region.is-erased --from=0 --to=4
   expect-throw "ALREADY_CLOSED": region.erase --from=0 --to=4096
   storage.Region.delete --flash "region-3"
@@ -349,6 +364,6 @@ test-region-partition:
 test-region-partition-no-writable:
   region := storage.Region.open --partition "partition-0" --no-writable
   expect-throw "PERMISSION_DENIED": region.erase
-  expect-throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  expect-throw "PERMISSION_DENIED": region.write --at=0 #[0b1010_1010]
   region.read --from=0 --to=1
   region.close
