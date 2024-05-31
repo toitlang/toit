@@ -155,6 +155,10 @@ host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt tools-no-cmake
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
 
+.PHONY: build-envelope
+build-envelope: tools download-packages
+	(cd $(BUILD)/$(TARGET) && ninja build_envelope)
+
 .PHONY: tools-no-cmake
 tools-no-cmake:
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
@@ -292,10 +296,6 @@ test:
 .PHONY: build-test-assets
 build-test-assets: rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja build_test_assets)
-
-.PHONY: build-envelope
-build-envelope: rebuild-cmake
-	(cd $(BUILD)/$(HOST) && ninja build_envelope)
 
 .PHONY: test-flaky
 test-flaky:

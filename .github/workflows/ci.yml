@@ -411,12 +411,56 @@ jobs:
         run: |
           sudo apt-get install mingw-w64
 
+      - name: Make envelopes
+        run: |
+          make TARGET=win64 build-envelope
+          make TARGET=raspbian build-envelope
+          make TARGET=aarch64 build-envelope
+          make TARGET=arm-linux-gnueabi build-envelope
+
+      - name: Check envelopes exist
+        run: |
+          ls build/win64/firmware.envelope
+          ls build/raspbian/firmware.envelope
+          ls build/aarch64/firmware.envelope
+          ls build/arm-linux-gnueabi/firmware.envelope
+
       - name: Make
         run: |
+          make sdk
           make TARGET=win64 sdk
           make raspbian
           make aarch64
           make arm-linux-gnueabi
+
+      - name: Build test snapshot
+        run: |
+          echo '
+          import .system.extensions.host.run-image-exit-codes
+          main:
+            print "hello world"
+            exit EXIT-CODE-STOP
+          ' > hello.toit
+
+          build/host/sdk/bin/toit compile --snapshot -o hello.snapshot hello.toit
+
+      - name: Customize and extract envelopes
+        run: |
+          for arch in raspbian aarch64; do
+            cp build/$arch/firmware.envelope $arch.envelope
+
+            build/host/sdk/bin/toit tool firmware container install \
+              hello hello.snapshot \
+              -e $arch.envelope
+
+            build/host/sdk/bin/toit tool firmware extract \
+              -e $arch.envelope \
+              --format "tar" \
+              -o build/$arch/extracted.tar
+
+            mkdir build/$arch/extracted
+            tar -xf build/$arch/extracted.tar -C build/$arch/extracted
+          done
 
       - name: Test executables 32-bit
         uses: pguyot/arm-runner-action@v2
@@ -429,6 +473,12 @@ jobs:
               build/raspbian/sdk/bin/toit.pkg version
               build/raspbian/sdk/bin/toit.run --version
               build/raspbian/sdk/tools/firmware --help
+              build/raspbian/extracted/boot.sh > raspbian_output
+
+      - name: Check that the 32-bit run-script worked
+        run: |
+          cat raspbian_output
+          grep "hello world" raspbian_output
 
       - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -441,6 +491,12 @@ jobs:
               build/aarch64/sdk/bin/toit.pkg version
               build/aarch64/sdk/bin/toit.run --version
               build/aarch64/sdk/tools/firmware --help
+              build/aarch64/extracted/boot.sh > aarch64_output
+
+      - name: Check that the 64-bit run-script worked
+        run: |
+          cat aarch64_output
+          grep "hello world" aarch64_output
 
       - name: Pack artifacts
         shell: bash

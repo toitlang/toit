@@ -1201,16 +1201,25 @@ show parsed/cli.Parsed -> none:
   show-all := parsed["all"]
 
   envelope := Envelope.load input-path
-  entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
   kind-string := envelope.kind == Envelope.KIND-ESP32
       ? Envelope.KIND-STRING-ESP32
       : Envelope.KIND-STRING-HOST
+
   result := {
     "envelope-format-version": envelope.version_,
     "kind": kind-string,
     "sdk-version": envelope.sdk-version,
-    "containers": entries-json["containers"],
   }
+
+  if envelope.kind == Envelope.KIND-ESP32:
+    firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
+    binary := Esp32Binary firmware-bin
+    result["chip"] = binary.chip-name
+
+  // Add the containers after the chip name for esthetical reasons.
+  entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
+  result["containers"] = entries-json["containers"]
+
   if show-all:
     result["entries"] = entries-json["entries"]
 
@@ -1597,12 +1606,21 @@ class Esp32Binary:
   static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
   static ESP-CHIP-ID-ESP32-H2 ::= 0x000a  // Chip ID: ESP32-H2.
 
-  static CHIP-ADDRESS-MAPS_ := {
+  static CHIP-ADDRESS-MAPS_ ::= {
       ESP-CHIP-ID-ESP32    : Esp32AddressMap,
       ESP-CHIP-ID-ESP32-C3 : Esp32C3AddressMap,
       ESP-CHIP-ID-ESP32-S2 : Esp32S2AddressMap,
       ESP-CHIP-ID-ESP32-S3 : Esp32S3AddressMap,
   }
+
+  static CHIP-NAMES_ ::= {
+      ESP-CHIP-ID-ESP32    : "esp32",
+      ESP-CHIP-ID-ESP32-C3 : "esp32c3",
+      ESP-CHIP-ID-ESP32-S2 : "esp32s2",
+      ESP-CHIP-ID-ESP32-S3 : "esp32s3",
+      ESP-CHIP-ID-ESP32-H2 : "esp32h2",
+  }
+
   header_/ByteArray
   segments_/List
   chip-id_/int
@@ -1621,6 +1639,9 @@ class Esp32Binary:
       segment := read-segment_ bits offset
       offset = segment.end
       segment
+
+  chip-name -> string:
+    return CHIP-NAMES_[chip-id_]
 
   bits -> ByteArray:
     // The total size of the resulting byte array must be
@@ -1661,7 +1682,7 @@ class Esp32Binary:
     offset := collect-part_ result "binary" --from=0 --to=(drom.offset + unextended-size)
     // The container images are stored in the beginning of the DROM segment extension.
     extension-used := extension-size[1]
-    offset =  collect-part_ result "images" --from=offset --size=extension-used
+    offset = collect-part_ result "images" --from=offset --size=extension-used
     // The config part is the free space in the DROM segment extension.
     extension-free := extension-size[2]
     offset = collect-part_ result "config" --from=offset --size=extension-free
