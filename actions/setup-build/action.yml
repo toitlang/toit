@@ -70,6 +70,7 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
+        sudo apt-get update
         sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat valgrind
         ninja --version
         cmake --version
