@@ -911,7 +911,7 @@ flash-cmd -> cli.Command:
         cli.OptionInt "baud"
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
-            --default="esp32",
+            --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
             --help="Add a custom partition to the flashed image."
@@ -925,7 +925,14 @@ flash parsed/cli.Parsed -> none:
   config-path := parsed["config"]
   port := parsed["port"]
   baud := parsed["baud"]
+  if parsed["chip"]:
+    print "Warning: The 'chip' option is deprecated and should not be used."
+
   envelope := Envelope.load input-path
+
+  if envelope.kind != Envelope.KIND-ESP32:
+    print "Only ESP32 envelopes can be flashed."
+    exit 1
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
@@ -940,6 +947,7 @@ flash parsed/cli.Parsed -> none:
 
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
   binary := Esp32Binary firmware-bin
+  chip := binary.chip-name
 
   esptool := find-esptool_
 
