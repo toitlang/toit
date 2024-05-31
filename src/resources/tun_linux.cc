@@ -139,7 +139,6 @@ PRIMITIVE(receive)  {
 
   // Minimum IP header size is 20 bytes - discard.
   if (read < 20) {
-    printf("Received packet with less than 20 bytes\n");
     return Smi::from(-1);
   }
 
@@ -147,7 +146,6 @@ PRIMITIVE(receive)  {
 
   word header_size = (bytes.address()[0] & 0x0F) << 2;
   if (header_size > read) {
-    printf("Received packet with invalid header size\n");
     return Smi::from(-1);
   }
 

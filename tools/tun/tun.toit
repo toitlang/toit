@@ -120,6 +120,21 @@ abstract class IpV4Packet extends IpPacket:
   destination-ip= value/IpAddress -> none:
     backing.replace 16 value.raw
 
+  // Doesn't fill in checksum.
+  static create-packet_ source/IpAddress destination/IpAddress --protocol/int --size/int --id/int=0 -> ByteArray:
+    result := ByteArray size
+    header-size := 20
+    result[0] = (IPV4-VERSION_ << 4) + 5
+    result[1] = 0  // DSCP and congestion notitification.
+    BIG-ENDIAN.put-uint16 result 2 size
+    BIG-ENDIAN.put-uint16 result 4 id
+    BIG-ENDIAN.put-uint16 result 6 0  // Flags and fragment offset.
+    result[8] = 64  // TTL.
+    result[9] = protocol
+    result.replace 12 source.raw
+    result.replace 16 destination.raw
+    return result
+
 class IcmpPacket extends IpV4Packet:
   static icmp-type backing/ByteArray -> int:
     return backing[20]
@@ -144,6 +159,16 @@ class IcmpPacket extends IpV4Packet:
   constructor.from-subclass backing/ByteArray:
     super.from-subclass backing
 
+  static create-packet source/IpAddress destination/IpAddress --type/int --size/int --code/int=0 -> ByteArray:
+    result := IpV4Packet.create-packet_ source destination --protocol=ICMP-PROTOCOL_ --size=size
+    // There's never a good reason to fragment ICMP messages, so we set the
+    // DF flag.  That means there's also no reason to have a non-zero IP
+    // identification number, see RFC 6864.
+    result[6] |= 0x40
+    result[20] = type
+    result[21] = code  // Code.
+    return result
+
 class PingRequestPacket extends IcmpPacket:
   constructor backing/ByteArray:
     super.from-subclass backing
@@ -164,6 +189,14 @@ class PingRequestPacket extends IcmpPacket:
     response := response
     if response:
       network-interface.send response
+
+  constructor --source/IpAddress --destination/IpAddress --sequence-number/int --payload/ByteArray=#[] --id/int=0:
+    size := 28 + payload.size
+    result := IcmpPacket.create-packet source destination --type=ICMP-ECHO-REQUEST_ --size=size
+    BIG-ENDIAN.put-uint16 result 24 id
+    BIG-ENDIAN.put-uint16 result 26 sequence-number
+    result.replace 28 payload
+    return PingRequestPacket result
 
 class PingResponsePacket extends IcmpPacket:
   constructor backing/ByteArray:
@@ -215,6 +248,8 @@ main:
   IpHost.interfaces.add network-interface
 
   task --background:: network-interface.run
+
+  task --background:: ping network-interface
 
   socket := TunUdpSocket
 
@@ -497,6 +532,21 @@ class TunUdpSocket:
     if not network-interface: network-interface = IpHost.find-interface_ address
     print "Sending $packet"
     network-interface.send packet
+
+ping network-interface/NetworkInterface:
+  source := network-interface.address
+  //destination := IpAddress #[10, 0, 0, 1]
+  destination := IpAddress #[8, 8, 8, 8]
+  payload := "Hello, World!".to-byte-array
+  1_000_000.repeat:
+    sequence-number := it & 0xffff
+    request := PingRequestPacket
+        --source=source
+        --destination=destination
+        --sequence-number=sequence-number
+        --payload=payload
+    network-interface.send request
+    sleep --ms=1000
 
 // Lazily-initialized resource group reference.
 tun-resource-group_ ::= tun-init_
