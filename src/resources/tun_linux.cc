@@ -105,15 +105,19 @@ PRIMITIVE(init) {
 }
 
 static uint32 checksum_part(const uint8* data, word length, uint32 sum = 0) {
-  for (word i = 0; i < length; i += 2) {
+  word length_even = length - (length & 1);
+  for (word i = 0; i < length_even; i += 2) {
     sum += (data[i] << 8) + data[i + 1];
+  }
+  if (length != length_even) {
+    sum += data[length_even] << 8;
   }
   return sum;
 }
 
 static word checksum(const uint8* data, word length, uint32 sum = 0) {
   sum = checksum_part(data, length, sum);
-  return (sum & 0xFFFF) + (sum >> 16);
+  return ((sum & 0xFFFF) + (sum >> 16)) ^ 0xffff;
 }
 
 PRIMITIVE(receive)  {
@@ -149,7 +153,7 @@ PRIMITIVE(receive)  {
     return Smi::from(-1);
   }
 
-  if (checksum(bytes.address(), header_size) != 0xffff) {
+  if (checksum(bytes.address(), header_size) != 0) {
     // This is hit for a couple of packets, but it's not clear why.
     return Smi::from(-1);
   }
@@ -172,7 +176,7 @@ PRIMITIVE(send)  {
     // Calculate IPv4 checksum.
     data.address()[10] = 0;
     data.address()[11] = 0;
-    uint16 checksum = (toit::checksum(data.address(), header_size)) ^ 0xFFFF;
+    uint16 checksum = toit::checksum(data.address(), header_size);
     data.address()[10] = checksum >> 8;
     data.address()[11] = checksum & 0xFF;
   }
@@ -183,7 +187,7 @@ PRIMITIVE(send)  {
       // Calculate ICMP checksum.
       data.address()[header_size + 2] = 0;
       data.address()[header_size + 3] = 0;
-      uint16 checksum = (toit::checksum(data.address() + 20, data.length() - 20)) ^ 0xFFFF;
+      uint16 checksum = toit::checksum(data.address() + 20, data.length() - 20);
       data.address()[header_size + 2] = checksum >> 8;
       data.address()[header_size + 3] = checksum & 0xFF;
     } else if (protocol == 17) {
@@ -191,14 +195,18 @@ PRIMITIVE(send)  {
       data.address()[header_size + 6] = 0;
       data.address()[header_size + 7] = 0;
       // Source and destination IP addresses.
-      uint32 sum = toit::checksum_part(data.address() + 14, 8);
+      uint32 sum = toit::checksum_part(data.address() + 12, 8);
       uint8 pseudo_header[4];
       pseudo_header[0] = 0;
       pseudo_header[1] = 17;
-      pseudo_header[2] = (data.length() - 20) >> 8;
-      pseudo_header[3] = (data.length() - 20) & 0xFF;
+      word length = data.length() - header_size;
+      pseudo_header[2] = length >> 8;
+      pseudo_header[3] = length & 0xFF;
       sum = toit::checksum_part(pseudo_header, 4, sum);
-      uint16 checksum = toit::checksum(data.address() + 20, data.length() - 20, sum);
+      uint16 checksum = toit::checksum(
+          data.address() + header_size,
+          data.length() - header_size,
+          sum);
       if (checksum == 0) checksum = 0xFFFF;
       data.address()[header_size + 6] = checksum >> 8;
       data.address()[header_size + 7] = checksum & 0xFF;

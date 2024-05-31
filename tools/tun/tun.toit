@@ -35,10 +35,10 @@ abstract class IpPacket:
     return backing[0] >> 4
 
   version= value/int -> none:
-    backing[0] = (backing[0] & 0x0F) | (value << 4)
+    backing[0] = (backing[0] & 0x0f) | (value << 4)
 
   header-length -> int:
-    return (backing[0] & 0x0F) << 2
+    return (backing[0] & 0x0f) << 2
 
   header-length= value/int -> none:
     if (not value <= 20 <= 60) or value & 3 != 0:
@@ -66,7 +66,7 @@ abstract class IpPacket:
   handle network-interface/NetworkInterface -> none:
     print backing.size
     print "Version: $version"
-    print "Header length: $(backing[0] & 0x0F)"
+    print "Header length: $(backing[0] & 0x0f)"
     print "TOS: $(backing[1])"
     print "Total length: $(backing[2] << 8 | backing[3])"
     print "Identification: $(backing[4] << 8 | backing[5])"
@@ -121,14 +121,18 @@ abstract class IpV4Packet extends IpPacket:
     backing.replace 16 value.raw
 
   // Doesn't fill in checksum.
+  // Size is without the IP header.
   static create-packet_ source/IpAddress destination/IpAddress --protocol/int --size/int --id/int=0 -> ByteArray:
-    result := ByteArray size
     header-size := 20
+    result := ByteArray size + header-size
     result[0] = (IPV4-VERSION_ << 4) + 5
     result[1] = 0  // DSCP and congestion notitification.
-    BIG-ENDIAN.put-uint16 result 2 size
+    BIG-ENDIAN.put-uint16 result 2 result.size
     BIG-ENDIAN.put-uint16 result 4 id
     BIG-ENDIAN.put-uint16 result 6 0  // Flags and fragment offset.
+    // If id is 0, set do-not-fragment flag (see RFC 6864).
+    if id == 0:
+      result[6] |= 0x40
     result[8] = 64  // TTL.
     result[9] = protocol
     result.replace 12 source.raw
@@ -159,14 +163,16 @@ class IcmpPacket extends IpV4Packet:
   constructor.from-subclass backing/ByteArray:
     super.from-subclass backing
 
-  static create-packet source/IpAddress destination/IpAddress --type/int --size/int --code/int=0 -> ByteArray:
-    result := IpV4Packet.create-packet_ source destination --protocol=ICMP-PROTOCOL_ --size=size
-    // There's never a good reason to fragment ICMP messages, so we set the
-    // DF flag.  That means there's also no reason to have a non-zero IP
-    // identification number, see RFC 6864.
-    result[6] |= 0x40
-    result[20] = type
-    result[21] = code  // Code.
+  // All ICMP packets have an 8-byte header (on top of the IPv4 header), and
+  // the size is exclusive of that.
+  static create-packet_ source/IpAddress destination/IpAddress --type/int --size/int --code/int=0 -> ByteArray:
+    // There's never a good reason to fragment ICMP messages, so we leave the
+    // identification at 0, which also sets the DF flag.  See RFC 6864.
+    result := IpV4Packet.create-packet_ source destination --protocol=ICMP-PROTOCOL_ --size=(size + 8)
+    // Fill in the common parts of the ICMP header.
+    header-size := (result[0] & 0xf) << 2
+    result[header-size] = type
+    result[header-size + 1] = code  // Code.
     return result
 
 class PingRequestPacket extends IcmpPacket:
@@ -191,11 +197,11 @@ class PingRequestPacket extends IcmpPacket:
       network-interface.send response
 
   constructor --source/IpAddress --destination/IpAddress --sequence-number/int --payload/ByteArray=#[] --id/int=0:
-    size := 28 + payload.size
-    result := IcmpPacket.create-packet source destination --type=ICMP-ECHO-REQUEST_ --size=size
-    BIG-ENDIAN.put-uint16 result 24 id
-    BIG-ENDIAN.put-uint16 result 26 sequence-number
-    result.replace 28 payload
+    result := IcmpPacket.create-packet_ source destination --type=ICMP-ECHO-REQUEST_ --size=payload.size
+    header-size := (result[0] & 0x0f) << 2
+    BIG-ENDIAN.put-uint16 result (header-size + 4) id
+    BIG-ENDIAN.put-uint16 result (header-size + 6) sequence-number
+    result.replace (header-size + 8) payload
     return PingRequestPacket result
 
 class PingResponsePacket extends IcmpPacket:
@@ -235,7 +241,21 @@ class UdpPacket extends IpV4Packet:
     BIG-ENDIAN.put-uint16 backing 24 value
 
   stringify -> string:
-    return "UDP packet from $source-ip:$source-port to $destination-ip:$destination-port: $backing"
+    result := "UDP packet from $source-ip:$source-port to $destination-ip:$destination-port:\n"
+    List.chunk-up 0 backing.size 4: | f t l |
+      result += "  $backing[f..t]"
+      if t != backing.size: result += "\n"
+    return result
+
+  constructor --source/IpAddress --destination/IpAddress --type/int --payload/ByteArray --source-port/int --destination-port/int:
+    result := IpV4Packet.create-packet_ source destination --protocol=UDP-PROTOCOL_ --size=(payload.size + 8)
+    // Fill in the UDP header.
+    header-size := (result[0] & 0x0f) << 2
+    BIG-ENDIAN.put-uint16 result header-size source-port
+    BIG-ENDIAN.put-uint16 result (header-size + 2) destination-port
+    BIG-ENDIAN.put-uint16 result (header-size + 4) (payload.size + 8)
+
+    return UdpPacket result
 
 class TcpPacket extends IpV4Packet:
   constructor backing/ByteArray:
