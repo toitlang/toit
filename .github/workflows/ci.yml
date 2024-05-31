@@ -446,7 +446,6 @@ jobs:
 
             mkdir build/$arch/extracted
             tar -xf build/$arch/extracted.tar -C build/$arch/extracted
-
           done
 
       - name: Test executables 32-bit
