@@ -32,7 +32,7 @@
 
 namespace toit {
 
-static const int ALLOCATION_SIZE = 2 * MB;
+static const int ALLOCATION_SIZE = 64 * MB;
 
 static void* allocations_mmap = null;
 static size_t allocations_mmap_size = 0;

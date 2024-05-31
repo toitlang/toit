@@ -25,6 +25,7 @@ main:
   test-region-flash-out-of-space
   test-region-flash-stream
   test-region-flash-no-writable
+  test-region-flash-large
 
   test-region-flash-delete
   test-region-flash-list
@@ -336,6 +337,22 @@ test-region-flash-no-writable:
   expect-throw "PERMISSION_DENIED": region.erase
   expect-throw "PERMISSION_DENIED": region.write --at=0 #[0b1010_1010]
   region.read --from=0 --to=1
+  region.close
+
+test-region-flash-large:
+  capacity := 60_000_000  // Roughly 60 MB.
+  region := storage.Region.open --flash "region-large" --capacity=capacity
+  region.erase
+  content := ByteArray capacity
+  1000.repeat:
+    content[random capacity] = random 0x100
+  content[0] = 42
+  content[capacity - 1] = 0x42
+  region.write --at=0 content
+  region.close
+  region = storage.Region.open --flash "region-large" --capacity=capacity
+  stored := region.read --from=0 --to=capacity
+  expect-equals content stored
   region.close
 
 test-region-flash-delete:
