@@ -411,6 +411,20 @@ jobs:
         run: |
           sudo apt-get install mingw-w64
 
+      - name: Make envelopes
+        run: |
+          make TARGET=win64 build-envelope
+          make TARGET=raspbian build-envelope
+          make TARGET=aarch64 build-envelope
+          make TARGET=arm-linux-gnueabi build-envelope
+
+      - name: Check envelopes exist
+        run: |
+          ls build/win64/firmware.envelope
+          ls build/raspbian/firmware.envelope
+          ls build/aarch64/firmware.envelope
+          ls build/arm-linux-gnueabi/firmware.envelope
+
       - name: Make
         run: |
           make TARGET=win64 sdk
