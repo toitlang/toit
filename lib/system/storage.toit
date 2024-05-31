@@ -382,8 +382,10 @@ class Region extends ServiceResourceProxy:
   /**
   Writes the given $data into the region at the given offset $at.
 
-  If the region has already data, it is bit-anded with the
-    data to be written. Use $erase to reset areas to 1.
+  If the region has already data, the new data might be combined
+    with the existing data. See $erase-value, $write-can-clear-bits,
+    and $write-can-set-bits. Use $erase to reset areas to the $erase-value
+    after which this method will write the data as given.
   */
   write --at/int data/io.Data -> none:
     if not resource_: throw "ALREADY_CLOSED"
