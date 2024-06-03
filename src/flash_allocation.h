@@ -68,10 +68,13 @@ class FlashAllocation {
   bool is_region() const { return type() == FLASH_ALLOCATION_TYPE_REGION; }
 
   // Simple accessors.
-  word size() const { return header_.size(); }
+  word size_no_assets() const { return header_.size(); }
   uint8 type() const { return header_.type(); }
   const uint8* id() const { return header_.id(); }
   const uint8* metadata() const { return header_.metadata(); }
+
+  // Get the full size of the allocation. For programs, this includes the assets.
+  word size() const;
 
   // Check if the allocation is valid.
   bool is_valid() const { return header_.is_valid(false); }

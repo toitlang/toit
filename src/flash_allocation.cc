@@ -73,6 +73,12 @@ FlashAllocation::Header::Header(const void* memory,
   checksum_ = compute_checksum(memory);
 }
 
+word FlashAllocation::size() const {
+  word size = size_no_assets();
+  if (is_program()) size += program_assets_size(null, null);
+  return size;
+}
+
 bool FlashAllocation::Header::is_valid(bool embedded) const {
   if (marker_ != FORMAT_MARKER || size_in_pages_ == 0) return false;
   if (embedded) {
@@ -100,7 +106,7 @@ bool FlashAllocation::commit(const void* memory, word size, const Header* header
 int FlashAllocation::program_assets_size(uint8** bytes, word* length) const {
   if (!program_has_assets()) return 0;
   uword allocation_address = reinterpret_cast<uword>(this);
-  uword assets_address = allocation_address + size();
+  uword assets_address = allocation_address + size_no_assets();
   int assets_length = *reinterpret_cast<uint32*>(assets_address);
   if (bytes) *bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
   if (length) *length = assets_length;

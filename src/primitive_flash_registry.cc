@@ -105,9 +105,7 @@ PRIMITIVE(get_size) {
   ARGS(word, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (allocation == null) FAIL(INVALID_ARGUMENT);
-  word size = allocation->size();
-  if (allocation->is_program()) size += allocation->program_assets_size(null, null);
-  return Smi::from(size);
+  return Smi::from(allocation->size());
 }
 
 PRIMITIVE(get_header_page) {
