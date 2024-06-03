@@ -5,6 +5,7 @@
 import system.firmware
 import host.file
 import host.os
+import .exit-codes
 
 main:
   print "hello from updated firmware!"
@@ -14,7 +15,7 @@ main:
   test-dir := os.env["BOOT_TEST_DIR"]
   if file.is-file "$test-dir/mark":
     print "exiting"
-    exit 19
+    exit EXIT-CODE-STOP
 
   print "validating"
   firmware.validate

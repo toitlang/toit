@@ -344,6 +344,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   file-uuid/uuid.Uuid? := uuid.parse last-segment --on-error=: null
 
   if file-uuid and existing-uuids.contains file-uuid:
+    print "Already in flash: $file-uuid"
     // Already in the flash.
     return
 
@@ -351,6 +352,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   writer := containers.ContainerImageWriter image-data.size
   writer.write image-data
   writer.commit --run-boot=run-boot --run-critical
+  print "Installed in flash: $file-uuid"
 
 handle-arguments arguments/List container-manager/RunImageContainerManager -> none:
   existing-uuids/Set := {}
