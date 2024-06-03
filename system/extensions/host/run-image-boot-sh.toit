@@ -85,12 +85,6 @@ for (( ; ; )); do
 
   export TOIT_CONFIG_DATA=\$(realpath \$PREFIX/\$current/config.ubjson)
 
-  if [ -e \$PREFIX/\$current/validated ]; then
-    already_validated=true
-  else
-    already_validated=false
-  fi
-
   # Clear out the scratch directory.
   rm -rf \$PREFIX/scratch
   mkdir -p \$PREFIX/scratch
@@ -129,18 +123,14 @@ for (( ; ; )); do
     echo "****************************************"
     break
   else
-    if [ ! \$exit_code -eq 0 -a ! \$exit_code -eq 18 ]; then
+    if [ ! \$exit_code -eq 0 -a ! \$exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
       echo "***********************************************"
       echo "*** Firmware crashed with code=\$exit_code"
       echo "***********************************************"
+      # Clear the flash-registry in case it was corrupted.
+      rm -f \$PREFIX/flash-registry
     fi
-    if [ -e \$PREFIX/\$current/validated ]; then
-      if [ \$already_validated == false ]; then
-        echo "****************************************"
-        echo "*** Firmware successfully validated"
-        echo "****************************************"
-      fi
-    else
+    if [ ! -e \$PREFIX/\$current/validated ]; then
       if [ \$exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
         echo "****************************************"
         echo "*** Rollback requested"

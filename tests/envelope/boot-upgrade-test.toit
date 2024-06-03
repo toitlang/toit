@@ -31,7 +31,6 @@ test-success args/List:
         "validation is pending",
         "can rollback",
         "validating",
-        "*** Firmware successfully validated", // From the boot script.
         "hello from updated",
         "validation is not pending",
         "can not rollback",
