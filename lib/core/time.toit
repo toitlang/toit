@@ -805,8 +805,8 @@ class Time implements Comparable:
   /**
   Returns a monotonically increasing microsecond value.
 
-  If $since-wakeup is false, the clock can be used across deep sleeping.
-    Otherwise, the clock is reset when waking up and starts from zero.
+  If $since-wakeup is false, the clock can be used across deep sleeps.
+    Otherwise, the clock is reset to zero when waking up.
 
   The clock is not anchored and thus has no fixed relationship to the current
     time. Changes to the system time (for example because of an NTP adjustment)
