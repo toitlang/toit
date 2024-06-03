@@ -803,15 +803,16 @@ class Time implements Comparable:
     return parse str --on-error=: throw "INVALID_ARGUMENT"
 
   /**
-  Returns a monotonic microsecond value.
-  This clock source only increments and never jumps.
-  The clock is not anchored and thus has no fixed relationship to the current
-    time.
+  Returns a monotonically increasing microsecond value.
 
-  If the system time is updated (for example because of an NTP adjustment),
-    then this function is unaffected.
+  If $since-wakeup is false, the clock can be used across deep sleeping.
+    Otherwise, the clock is reset when waking up and starts from zero.
+
+  The clock is not anchored and thus has no fixed relationship to the current
+    time. Changes to the system time (for example because of an NTP adjustment)
+    do not affect the values returned from this function.
   */
-  static monotonic-us -> int:
+  static monotonic-us --since-wakeup/bool=false -> int:
     #primitive.core.time
 
   /**

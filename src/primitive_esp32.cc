@@ -373,10 +373,6 @@ PRIMITIVE(touchpad_wakeup_status) {
 #endif
 }
 
-PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
-}
-
 PRIMITIVE(get_mac_address) {
   ByteArray* result = process->allocate_byte_array(6);
   if (result == null) FAIL(ALLOCATION_FAILED);

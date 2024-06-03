@@ -178,10 +178,6 @@ uint32 RtcMemory::out_of_memory_count() {
   return rtc.out_of_memory_count;
 }
 
-uint64 RtcMemory::accumulated_run_time_us() {
-  return esp_rtc_get_time_us();
-}
-
 uint64 RtcMemory::accumulated_deep_sleep_time_us() {
   return rtc.rtc_time_us_accumulated_deep_sleep;
 }
