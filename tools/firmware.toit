@@ -1025,7 +1025,7 @@ flash parsed/cli.Parsed -> none:
     code := pipe.run-program esptool + [
       "--port", port,
       "--baud", "$baud",
-      "--chip", parsed["chip"],
+      "--chip", chip,
       "--before", flashing["extra_esptool_args"]["before"],
       "--after",  flashing["extra_esptool_args"]["after"]
     ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
