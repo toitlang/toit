@@ -76,7 +76,7 @@ namespace toit {
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
   PRIMITIVE(write_string_on_stderr, 2)       \
-  PRIMITIVE(time, 0)                         \
+  PRIMITIVE(time, 1)                         \
   PRIMITIVE(time_info, 2)                    \
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
@@ -242,7 +242,6 @@ namespace toit {
   PRIMITIVE(set_max_heap_size, 1)            \
   PRIMITIVE(get_real_time_clock, 0)          \
   PRIMITIVE(set_real_time_clock, 2)          \
-  PRIMITIVE(get_system_time, 0)              \
   PRIMITIVE(tune_memory_use, 1)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
@@ -396,7 +395,6 @@ namespace toit {
   PRIMITIVE(ext1_wakeup_status, 1)           \
   PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
-  PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(memory_page_report, 0)           \
   PRIMITIVE(watchdog_init, 1)                \

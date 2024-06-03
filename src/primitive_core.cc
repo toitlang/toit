@@ -976,7 +976,9 @@ PRIMITIVE(raw32_to_float) {
 }
 
 PRIMITIVE(time) {
-  return Primitive::integer(OS::get_monotonic_time(), process);
+  ARGS(bool, since_wakeup);
+  int64 timestamp = since_wakeup ? OS::get_monotonic_time() : OS::get_system_time();
+  return Primitive::integer(timestamp, process);
 }
 
 #ifdef TOIT_WINDOWS
@@ -2254,10 +2256,6 @@ PRIMITIVE(set_real_time_clock) {
   if (!OS::set_real_time(&time)) FAIL(ERROR);
 #endif
   return Smi::zero();
-}
-
-PRIMITIVE(get_system_time) {
-  return Primitive::integer(OS::get_system_time(), process);
 }
 
 PRIMITIVE(tune_memory_use) {

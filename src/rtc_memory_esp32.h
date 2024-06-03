@@ -38,8 +38,7 @@ class RtcMemory {
   static uint32 boot_count();
   static uint32 out_of_memory_count();
 
-  // Time is reported in microseconds.
-  static uint64 accumulated_run_time_us();
+  // Time keeping.
   static uint64 accumulated_deep_sleep_time_us();
 
   // Deprecated: WiFi data.

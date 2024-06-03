@@ -239,7 +239,6 @@ TYPE_PRIMITIVE_SMI(process_get_priority)
 TYPE_PRIMITIVE_NULL(process_set_priority)
 TYPE_PRIMITIVE_ARRAY(get_real_time_clock)
 TYPE_PRIMITIVE_SMI(set_real_time_clock)
-TYPE_PRIMITIVE_INT(get_system_time)
 TYPE_PRIMITIVE_NULL(tune_memory_use)
 
 TYPE_PRIMITIVE(process_send) {
