@@ -13,7 +13,10 @@ import .boot-container-source as container
 
 main args:
   with-test args: | test/EnvelopeTest |
-    test.install --name="container" --source-path="./boot-container-source.toit"
+    test.install
+        --name="container"
+        --source-path="./boot-container-source.toit"
+        --assets=container.ASSETS
     test.extract-to-dir --dir-path=test.tmp-dir
 
     hello-snapshot := "$test.tmp-dir/hello.snapshot"
@@ -40,8 +43,10 @@ main args:
     print "Install"
     output := test.boot-backticks test.tmp-dir --env={
       container.INSTALL-RUN-IMAGE: hello-image,
+      container.TMP-DIR: test.tmp-dir,
     }
     expect (output.contains "hello from container")
+    expect-not (output.contains "crash");
 
     installed := installed-entries test.tmp-dir
     expect-equals 1 installed.size
@@ -51,8 +56,10 @@ main args:
     print "Install2"
     output = test.boot-backticks test.tmp-dir --env={
       container.INSTALL-RUN-IMAGE: hello-image,
+      container.TMP-DIR: test.tmp-dir,
     }
     expect (output.contains "hello from container")
+    expect-not (output.contains "crash");
 
     installed = installed-entries test.tmp-dir
     expect-equals 1 installed.size
@@ -64,6 +71,7 @@ main args:
       container.RUN-IMAGE: installed-uuid
     }
     expect (output.contains "hello from container")
+    expect-not (output.contains "crash");
 
     print "Remove"
     test.boot-run test.tmp-dir --env={
