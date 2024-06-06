@@ -92,8 +92,15 @@ for (( ; ; )); do
   # Run the image.
   export TOIT_FLASH_UUID_FILE=\$PREFIX/\$current/uuid
   export TOIT_FLASH_REGISTRY_FILE=\$PREFIX/flash-registry
-  (cd \$PREFIX/\$current; ./run-image \$PREFIX/\$current \$PREFIX/scratch)
+  pushd \$PREFIX/\$current
+  ./run-image \$PREFIX/\$current \$PREFIX/scratch &
+  popd
+  RUN_IMAGE_PID=\$!
+  # Make sure to kill the run-image process if we are killed.
+  trap "kill \$RUN_IMAGE_PID; exit" TERM
+  wait \$RUN_IMAGE_PID
   exit_code=\$?
+  trap - TERM
 
   if [ \$exit_code -eq $EXIT-CODE-UPGRADE ]; then
     # Move scratch into the place of the inactive ota and switch current.
