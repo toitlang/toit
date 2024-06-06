@@ -477,11 +477,9 @@ tool-path sdk-dir/string? tool/string -> string:
     tool = "$(tool).exe"
   return fs.join (bin-dir sdk-dir) tool
 
-run sdk-dir/string? tool/string args/List:
+run sdk-dir/string? tool/string args/List -> int:
   args = [tool-path sdk-dir tool] + args
-  exit-code := pipe.run-program args
-  if exit-code != 0:
-    throw "Failed to run $tool"
+  return pipe.run-program args
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   args := []
@@ -535,7 +533,8 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
     args.add-all parsed["arg"]
 
   exe := command == "run" ? "toit.run" : "toit.compile"
-  run parsed["sdk-dir"] exe args
+  exit-code := run parsed["sdk-dir"] exe args
+  exit exit-code
 
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
@@ -543,9 +542,11 @@ run-lsp-server parsed/cli.Parsed:
     "--toitc",
     tool-path sdk-dir "toit.compile",
   ]
-  run sdk-dir "toit.lsp" args
+  exit-code := run sdk-dir "toit.lsp" args
+  exit exit-code
 
 run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
+  sdk-dir := parsed["sdk-dir"]
   auto-sync := parsed["auto-sync"]
   project-root := parsed["project-root"]
   sdk-version := parsed["sdk-version"]
@@ -564,4 +565,5 @@ run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
       else:
         args.add parsed[it]
 
-  run parsed["sdk-dir"] "toit.pkg" args
+  exit-code := run sdk-dir "toit.pkg" args
+  exit exit-code
