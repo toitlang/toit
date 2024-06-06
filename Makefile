@@ -123,8 +123,8 @@ TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 
 .PHONY: download-packages
-download-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt tools
-	(cd $(BUILD)/$(HOST) && ninja download_packages)
+download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
+	(cd $(BUILD)/$(TARGET) && ninja download_packages)
 
 .PHONY: rebuild-cmake
 rebuild-cmake:
@@ -136,13 +136,13 @@ sync: sync-packages
 	git submodule update --init --recursive
 
 .PHONY: sync-packages
-sync-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt
-	(cd $(BUILD)/$(HOST) && ninja sync_packages)
+sync-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
+	(cd $(BUILD)/$(TARGET) && ninja sync_packages)
 
 .PHONY: disable-auto-sync
 disable-auto-sync:
 	$(MAKE) rebuild-cmake
-	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(HOST)
+	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(TARGET)
 
 .PHONY: host-tools
 host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
@@ -156,7 +156,7 @@ tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt tools-no-cmake
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
 
 .PHONY: build-envelope
-build-envelope: tools download-packages
+build-envelope: download-packages
 	(cd $(BUILD)/$(TARGET) && ninja build_envelope)
 
 .PHONY: tools-no-cmake
