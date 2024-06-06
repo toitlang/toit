@@ -21,6 +21,7 @@ import .initialize
 import ...boot
 import ...containers
 import ....tools.mirror as mirror
+import ....tools.system-message_ as system-message
 import ....tools.snapshot show Program SnapshotBundle
 
 abstract class ContainerImageFromSnapshot extends ContainerImage:
@@ -50,7 +51,8 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
 
       // Decode the stack trace.
       // Without a program we might only get the exception, but no stack trace.
-      mirror ::= mirror.decode encoded program_: return false
+      message := system-message.decode-system-message encoded --on-error=: return false
+      mirror ::= mirror.decode message.payload program_ --on-error=: return false
       mirror-string := mirror.stringify
       // If the text already ends with a newline don't add another one.
       write-on-stderr_ mirror-string (not mirror-string.ends-with "\n")

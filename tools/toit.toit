@@ -23,6 +23,7 @@ import .toitp as toitp
 import .firmware as firmware
 import .assets as assets
 import .snapshot-to-image as snapshot-to-image
+import .system-message as system-message
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -459,6 +460,8 @@ main args/List:
       --help="Start the language server."
       --run=:: run-lsp-server it
   tool-command.add tool-lsp-command
+
+  root-command.add system-message.build-command
 
   root-command.run args
 
