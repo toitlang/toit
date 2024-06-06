@@ -111,10 +111,17 @@ main args:
   command.run args
 
 compute-snapshot-dirs -> List:
-  result := []
-  result.add (fs.join xdg.state-home "toit" "snapshots")
-  result.add (fs.join xdg.cache-home "jaguar" "snapshots")
-  return result
+  return [
+    fs.join xdg.state-home "toit" "snapshots",
+    fs.join xdg.cache-home "jaguar" "snapshots",
+  ]
+
+find-snapshot id/uuid.Uuid -> string?:
+  compute-snapshot-dirs.do: | dir/string |
+    path := fs.join dir "$(id).snapshot"
+    if file.is-file path:
+      return path
+  return null
 
 decode parsed/cli.Parsed -> none:
   if not parsed: exit 1
@@ -132,13 +139,7 @@ decode parsed/cli.Parsed -> none:
   snapshot-path := parsed["snapshot"]
   if not snapshot-path:
     // Try to find the snapshot based on the UUID.
-    dirs := compute-snapshot-dirs
-    for i := 0; i < dirs.size; i++:
-      dir/string := dirs[i]
-      path := fs.join dir "$(decoded-system-message.program-uuid).snapshot"
-      if file.is-file path:
-        snapshot-path = path
-        break
+    snapshot-path = find-snapshot decoded-system-message.program-uuid
 
   snapshot-content := null
   if snapshot-path:
