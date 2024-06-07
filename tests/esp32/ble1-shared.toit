@@ -19,7 +19,9 @@ SERVICE-TEST2 ::= BleUuid "94a11d6a-fa23-4a09-aa6f-2ca0b7cdbb70"
 CHARACTERISTIC-READ-ONLY ::= BleUuid "77d0b04e-bf49-4048-a4cd-fb46be32ebd0"
 CHARACTERISTIC-READ-ONLY-CALLBACK ::= BleUuid "9e9f578c-745b-41ec-b0f6-7773157bb5a9"
 CHARACTERISTIC-NOTIFY ::= BleUuid "f9f9815f-62a5-49d5-8361-c4c309cee612"
+CHARACTERISTIC-NOTIFY2 ::= BleUuid "a2aef737-c09f-4f8f-bd6c-f80b993300ef"
 CHARACTERISTIC-INDICATE ::= BleUuid "01dc8c2f-038d-4f75-b836-b6c4245b23ad"
+CHARACTERISTIC-INDICATE2 ::= BleUuid "75ecbe49-5454-48b7-975e-21c1a07bcca9"
 CHARACTERISTIC-WRITE-ONLY ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384134606fc2"
 
@@ -50,7 +52,13 @@ main-peripheral --iteration/int:
     callback-task-done.set null
 
   notify := service1.add-notification-characteristic CHARACTERISTIC-NOTIFY
+  notify2 := service1.add-characteristic CHARACTERISTIC-NOTIFY2
+      --properties=CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-READ | CHARACTERISTIC-PROPERTY-WRITE
+      --permissions=CHARACTERISTIC-PERMISSION-READ | CHARACTERISTIC-PERMISSION-WRITE
   indicate := service2.add-indication-characteristic CHARACTERISTIC-INDICATE
+  indicate2 := service2.add-characteristic CHARACTERISTIC-INDICATE2
+      --properties=CHARACTERISTIC-PROPERTY-INDICATE | CHARACTERISTIC-PROPERTY-READ | CHARACTERISTIC-PROPERTY-WRITE
+      --permissions=CHARACTERISTIC-PERMISSION-READ | CHARACTERISTIC-PERMISSION-WRITE
   write-only := service2.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY
   write-only-with-response := service2.add-write-only-characteristic
       --requires-response
@@ -92,6 +100,16 @@ main-peripheral --iteration/int:
 
   notify.write value
   indicate.write value
+
+  task::
+    notify2.handle-write-request: | chunk/ByteArray |
+      notify2.set-value chunk
+  task::
+    indicate2.handle-write-request: | chunk/ByteArray |
+      indicate2.set-value chunk
+
+  notify2.write #[0x01, 0x02]
+  indicate2.write #[0x03, 0x04]
 
   data = write-only.read
   if iteration == 0:
@@ -170,7 +188,9 @@ main-central --iteration/int:
   read-only/RemoteCharacteristic? := null
   read-only-callback/RemoteCharacteristic? := null
   notify/RemoteCharacteristic? := null
+  notify2/RemoteCharacteristic? := null
   indicate/RemoteCharacteristic? := null
+  indicate2/RemoteCharacteristic? := null
   write-only/RemoteCharacteristic? := null
   write-only-with-response/RemoteCharacteristic? := null
 
@@ -180,7 +200,9 @@ main-central --iteration/int:
       if characteristic.uuid == CHARACTERISTIC-READ-ONLY: read-only = characteristic
       if characteristic.uuid == CHARACTERISTIC-READ-ONLY-CALLBACK: read-only-callback = characteristic
       if characteristic.uuid == CHARACTERISTIC-NOTIFY: notify = characteristic
+      if characteristic.uuid == CHARACTERISTIC-NOTIFY2: notify2 = characteristic
       if characteristic.uuid == CHARACTERISTIC-INDICATE: indicate = characteristic
+      if characteristic.uuid == CHARACTERISTIC-INDICATE2: indicate2 = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY: write-only = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE: write-only-with-response = characteristic
 
@@ -190,13 +212,21 @@ main-central --iteration/int:
   expect-equals 6 seen-handles.size
 
   notify-latch := monitor.Latch
+  notify2-latch := monitor.Latch
   indicate-latch := monitor.Latch
+  indicate2-latch := monitor.Latch
   notify.subscribe
+  notify2.subscribe
   indicate.subscribe
+  indicate2.subscribe
   task::
     notify-latch.set notify.wait-for-notification
   task::
+    notify2-latch.set notify2.wait-for-notification
+  task::
     indicate-latch.set indicate.wait-for-notification
+  task::
+    indicate2-latch.set indicate2.wait-for-notification
 
   value := iteration == 0 ? VALUE-BYTES : VALUE-STRING.to-byte-array
 
@@ -217,6 +247,19 @@ main-central --iteration/int:
   // We can also read from the notify/indicate characteristics.
   expect-equals #['F', 'O', 'O'] notify.read
   expect-equals #['B', 'A', 'R'] indicate.read
+
+  // Check that the last notification/indication value is saved and can be read.
+  expect-equals #[0x01, 0x02] notify2-latch.get
+  expect-equals #[0x03, 0x04] indicate2-latch.get
+
+  expect-equals #[0x01, 0x02] notify2.read
+  expect-equals #[0x03, 0x04] indicate2.read
+
+  notify2.write #[0x05, 0x06]
+  indicate2.write #[0x07, 0x08]
+
+  expect-equals #[0x05, 0x06] notify2.read
+  expect-equals #[0x07, 0x08] indicate2.read
 
   expect-throw "OUT_OF_RANGE":
     // Check that the MTU is enforced.

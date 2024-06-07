@@ -3499,7 +3499,7 @@ PRIMITIVE(toit_callback_init) {
 
   Locker locker(characteristic->group()->mutex());
 
-  if (timeout_ms < 0 || timeout_ms > 2500) FAIL(INVALID_ARGUMENT);
+  if (timeout_ms < 0 || timeout_ms > 10000) FAIL(INVALID_ARGUMENT);
   if (characteristic->toit_callback_is_setup(for_read)) FAIL(ALREADY_IN_USE);
   if (!characteristic->toit_callback_init(timeout_ms, for_read)) FAIL(MALLOC_FAILED);
   return process->null_object();
