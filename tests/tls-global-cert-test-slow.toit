@@ -72,6 +72,7 @@ run-tests:
     "lund.se",
     "web.whatsapp.com",
     "digimedia.com",
+    "signal.org",
     ]
   non-working := [
     "$(dns-lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
@@ -84,7 +85,6 @@ run-tests:
     "elpais.es/Starfield",                 // Relies on unknown Starfield Tech root.
     "vw.de/Starfield",                     // Relies on unknown Starfield Tech root.
     "moxie.org/Starfield",                 // Relies on unknown Starfield Tech root.
-    "signal.org/Starfield",                // Relies on unknown Starfield Tech root.
     ]
   working.do: | site |
     test-site site true
