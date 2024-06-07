@@ -89,20 +89,37 @@ for (( ; ; )); do
   rm -rf \$PREFIX/scratch
   mkdir -p \$PREFIX/scratch
 
-  # Run the image.
   export TOIT_FLASH_UUID_FILE=\$PREFIX/\$current/uuid
   export TOIT_FLASH_REGISTRY_FILE=\$PREFIX/flash-registry
-  pushd \$PREFIX/\$current
-  ./run-image \$PREFIX/\$current \$PREFIX/scratch &
-  popd
-  RUN_IMAGE_PID=\$!
-  # Make sure to kill the run-image process if we are killed.
-  trap "kill \$RUN_IMAGE_PID; exit" TERM
-  wait \$RUN_IMAGE_PID
-  exit_code=\$?
-  trap - TERM
 
-  if [ \$exit_code -eq $EXIT-CODE-UPGRADE ]; then
+  run_image_pid=
+  should_exit=false
+  # Set a trap for TERM and INT signals, so we can kill the run-image child.
+  # If the run_image_pid was already set, kill it and exit immediately.
+  # Otherwise we just set the should_exit bool, and wait to get the image_pid, before
+  # killing it and exiting.
+  trap 'if [ -n "\$run_image_pid" ]; then
+          kill \$run_image_pid;
+          exit;
+        else
+          should_exit=true;
+        fi' TERM INT
+  pushd \$PREFIX/\$current
+  # Run the image in background mode.
+  # The trap handlers are only active between commands, or when 'wait' is called.
+  ./run-image \$PREFIX/\$current \$PREFIX/scratch &
+  run_image_pid=\$!
+  popd
+  if [ \$should_exit = true ]; then
+    kill \$run_image_pid
+    exit
+  fi
+  wait \$run_image_pid
+  run_image_exit_code=\$?
+  # Unset the trap handler.
+  trap - TERM INT
+
+  if [ \$run_image_exit_code -eq $EXIT-CODE-UPGRADE ]; then
     # Move scratch into the place of the inactive ota and switch current.
     echo
     echo
@@ -123,22 +140,22 @@ for (( ; ; )); do
     tmp=\$next
     next=\$current
     current=\$tmp
-  elif [ \$exit_code -eq $EXIT-CODE-STOP ]; then
+  elif [ \$run_image_exit_code -eq $EXIT-CODE-STOP ]; then
     # Stop the script.
     echo "****************************************"
     echo "*** Stopping the boot script"
     echo "****************************************"
     break
   else
-    if [ ! \$exit_code -eq 0 -a ! \$exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
+    if [ ! \$run_image_exit_code -eq 0 -a ! \$run_image_exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
       echo "***********************************************"
-      echo "*** Firmware crashed with code=\$exit_code"
+      echo "*** Firmware crashed with code=\$run_image_exit_code"
       echo "***********************************************"
       # Clear the flash-registry in case it was corrupted.
       rm -f \$PREFIX/flash-registry
     fi
     if [ ! -e \$PREFIX/\$current/validated ]; then
-      if [ \$exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
+      if [ \$run_image_exit_code -eq $EXIT-CODE-ROLLBACK-REQUESTED ]; then
         echo "****************************************"
         echo "*** Rollback requested"
         echo "****************************************"

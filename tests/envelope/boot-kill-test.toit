@@ -15,7 +15,6 @@ import .util show EnvelopeTest with-test
 Test that we can kill the boot script and that it kills the nested Toit program
 */
 
-
 main args:
   network := net.open
 
