@@ -294,6 +294,12 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     toit_run_image
     ${TOIT_LINK_LIBS}
     )
+  # Since the run-image is stored in the envelope we would like it to be small, so
+  # that OTA updates are smaller.
+  set_target_properties(toit_run_image
+    PROPERTIES
+    LINK_FLAGS_RELEASE "-s"
+    )
 
   set(ENVELOPE "${CMAKE_BINARY_DIR}/firmware.envelope")
 
