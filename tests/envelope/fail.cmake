@@ -23,5 +23,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
   list(APPEND TOIT_SKIP_TESTS
     # Windows doesn't support permanent flash yet.
     tests/envelope/boot-flash-test.toit
+    # Windows doesn't have any way to send a "TERM" signal.
+    tests/envelope/boot-kill-test.toit
   )
 endif()

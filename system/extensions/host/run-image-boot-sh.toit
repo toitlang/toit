@@ -96,7 +96,7 @@ for (( ; ; )); do
   should_exit=false
   # Set a trap for TERM and INT signals, so we can kill the run-image child.
   # If the run_image_pid was already set, kill it and exit immediately.
-  # Otherwise we just set the should_exit bool, and wait to get the image_pid, before
+  # Otherwise we just set the should_exit bool, and wait to get the pid, before
   # killing it and exiting.
   trap 'if [ -n "\$run_image_pid" ]; then
           kill \$run_image_pid;
