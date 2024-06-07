@@ -21,7 +21,7 @@ main args:
   started-latch := monitor.Latch
   stopped-latch := monitor.Latch
   server := network.tcp-listen 0
-  task --background::
+  task::
     connection := server.accept
     while true:
       chunk := null
