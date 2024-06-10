@@ -1265,6 +1265,7 @@ PRIMITIVE(start_gatt_server) {
 
 PRIMITIVE(set_value) {
   ARGS(BleCharacteristicResource, characteristic_resource, Object, value);
+  if (object == process->null_object()) FAIL(UNIMPLEMENTED);
   Blob bytes;
   if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
