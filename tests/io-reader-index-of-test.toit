@@ -17,10 +17,9 @@ test input/string:
   expected := input.index-of "X"
   2.repeat:
     should-split := it == 1
-    string-chunks := should-split
+    chunks := should-split
         ? input.split ""
         : [input]
-    chunks := string-chunks.map: it.to-byte-array
 
     2.repeat:
       test-to := it == 1

@@ -23,13 +23,16 @@ class FakeData implements io.Data:
 
 class TestReader extends io.Reader:
   index_ := 0
-  arrays_ := ?
+  chunks_ := ?
 
-  constructor .arrays_:
+  constructor .chunks_:
 
   read_ -> ByteArray?:
-    if index_ >= arrays_.size: return null
-    return arrays_[index_++]
+    if index_ >= chunks_.size: return null
+    chunk := chunks_[index_]
+    return chunk is ByteArray
+        ? chunk
+        : chunk.to-byte-array
 
   close_:
 
