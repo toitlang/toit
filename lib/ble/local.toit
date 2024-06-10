@@ -403,6 +403,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   /**
   Handles write requests.
 
+  When new data is written to this characteristic, the given $block is called with the value.
+
   In many cases, the $read function is sufficient and easier to use. See below
     for reasons to use this function instead.
 
@@ -467,9 +469,26 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     $CHARACTERISTIC-PERMISSION-READ and similar).
   if $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.
+
+  Deprecated. Use $(add-descriptor uuid --properties --permissions --value) instead.
   */
   add-descriptor uuid/BleUuid properties/int permissions/int value/io.Data?=null -> LocalDescriptor:
-    return LocalDescriptor this uuid properties permissions value
+    return add-descriptor uuid --properties=properties --permissions=permissions --value=value
+
+  /**
+  Adds a descriptor to this characteristic.
+  $uuid is the uuid of the descriptor
+  $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
+    $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
+  $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
+    $CHARACTERISTIC-PERMISSION-READ and similar).
+  if $value is specified, it is used as the initial value for the characteristic.
+  The peripheral must not yet be deployed.
+  */
+  add-descriptor uuid/BleUuid --properties/int --permissions/int --value/io.Data?=null -> LocalDescriptor:
+    descriptor := LocalDescriptor this uuid properties permissions value
+    descriptors_.add descriptor
+    return descriptor
 
   /**
   The handle of the characteristic.
@@ -501,11 +520,30 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
     characteristic.remove-descriptor_ this
     super
 
-  write value/io.Data:
+  /**
+  Sets the value of the descriptor.
+
+  This value is returned when a client reads the descriptor.
+
+  In most cases $write is sufficient and easier to use. The main reason to use this function
+    is to set a value without sending out any notification.
+  */
+  set-value value/io.Data:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
       throw "Invalid permission"
     ble-set-value_ resource_ value
 
+  /**
+  Sets the value of this descriptor.
+
+  Deprecated. Use $set-value instead.
+  */
+  write value/io.Data:
+    set-value value
+
+  /**
+  Reads a value that is written to this descriptor.
+  */
   read -> ByteArray:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
       throw "Invalid permission"
