@@ -341,18 +341,38 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     descriptors_.remove local-descriptor
 
   /**
-  Sends a notification or an indication, based on the properties of the characteristic.
+  Sets the value of the characteristic.
+
+  This value is returned when a client reads the characteristic. The $handle-read-request
+    function takes precedence over this value.
+
+  In most cases $write is sufficient and easier to use. The main reason to use this function
+    is to set a value without sending out any notification.
+  */
+  set-value value/io.Data:
+    ble-set-value_ resource_ value
+
+  /**
+  Sets the value of this characteristic and sends a notification or indication if supported.
 
   If the characteristic supports both indications and notifications, then a notification is sent.
+
+  If $set-value is true, sets the value of the characteristic to $value. Any read requests
+    will return this value until the value is changed again. See $set-value for setting the
+    value without sending out a notification.
+
+  If the characteristic doesn't support notifications or indications and $set-value is set
+    to false, then this function does nothing.
   */
-  write value/io.Data:
+  write value/io.Data --set-value/bool=true:
     if permissions & CHARACTERISTIC-PERMISSION-READ == 0: throw "Invalid permission"
 
     if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
       clients := ble-get-subscribed-clients resource_
       clients.do:
         ble-notify-characteristics-value_ resource_ it value
-    else:
+
+    if set-value:
       ble-set-value_ resource_ value
 
   /**
@@ -375,7 +395,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   If no request-handler is active, and the characteristic has a value, then the value is
     returned. In other words, this function takes precedence over the value that was given
-    in the constructor.
+    in the constructor or by $set-value/$write.
   */
   handle-read-request [block]:
     handle-request_ block --for-read
