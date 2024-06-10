@@ -29,7 +29,7 @@ class TestReader extends io.Reader:
 
   read_ -> ByteArray?:
     if index_ >= chunks_.size: return null
-    chunk := chunks_[index_]
+    chunk := chunks_[index_++]
     return chunk is ByteArray
         ? chunk
         : chunk.to-byte-array
