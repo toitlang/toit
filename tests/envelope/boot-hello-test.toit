@@ -16,3 +16,4 @@ main args:
     test.extract-to-dir --dir-path=test.tmp-dir
     output := test.boot-backticks test.tmp-dir
     expect (output.contains "hello world")
+    expect-not (output.contains test.tmp-dir)

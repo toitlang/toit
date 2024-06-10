@@ -104,12 +104,12 @@ for (( ; ; )); do
         else
           should_exit=true;
         fi' TERM INT
-  pushd \$PREFIX/\$current
+  cd \$PREFIX/\$current
   # Run the image in background mode.
   # The trap handlers are only active between commands, or when 'wait' is called.
   ./run-image \$PREFIX/\$current \$PREFIX/scratch &
   run_image_pid=\$!
-  popd
+  cd \$PREFIX
   if [ \$should_exit = true ]; then
     kill \$run_image_pid
     exit
