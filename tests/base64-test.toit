@@ -6,7 +6,7 @@ import expect show *
 
 import encoding.base64 as base64
 
-import .io-data
+import .io-utils
 
 main:
   expect-equals "" (base64.decode (base64.encode "")).to-string

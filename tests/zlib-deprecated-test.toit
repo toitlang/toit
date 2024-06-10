@@ -9,7 +9,7 @@ import host.pipe
 import host.file
 import monitor show *
 
-import .io-data
+import .io-utils
 
 test-compress str/string expected/ByteArray --uncompressed/bool=false:
   [true, false].do: | gzip |

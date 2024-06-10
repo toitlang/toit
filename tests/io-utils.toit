@@ -20,3 +20,16 @@ class FakeData implements io.Data:
 
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
     data_.write-to-byte-array byte-array from to --at=at
+
+class TestReader extends io.Reader:
+  index_ := 0
+  arrays_ := ?
+
+  constructor .arrays_:
+
+  read_ -> ByteArray?:
+    if index_ >= arrays_.size: return null
+    return arrays_[index_++]
+
+  close_:
+

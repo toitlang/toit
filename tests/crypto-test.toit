@@ -23,7 +23,7 @@ import encoding.base64
 import io show BIG-ENDIAN
 
 import .confuse
-import .io-data
+import .io-utils
 
 expect name [code]:
   expect-equals

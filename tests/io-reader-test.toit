@@ -4,18 +4,7 @@
 
 import expect show *
 import io
-
-class TestReader extends io.Reader:
-  index_ := 0
-  arrays_ := ?
-
-  constructor .arrays_:
-
-  read_ -> ByteArray?:
-    if index_ >= arrays_.size: return null
-    return arrays_[index_++]
-
-  close_:
+import .io-utils
 
 main:
   simple

@@ -309,9 +309,13 @@ abstract class Reader implements old-reader.Reader:
         end := to ? min (start + to) it.size : it.size
         index := it.index-of byte --from=start --to=end
         if index >= 0: return offset + (index - start)
-        if to: to -= it.size - start
+        if to:
+          to -= it.size - start
+          if to <= 0: return -1
         offset += it.size - start
         start = 0
+
+    if to and to <= 0: return -1
 
     while true:
       if not more_:
@@ -319,9 +323,11 @@ abstract class Reader implements old-reader.Reader:
         return -1
       array := buffered_.last
       end := to ? min to array.size : array.size
-      index := array.index-of byte
+      index := array.index-of byte --from=0 --to=end
       if index >= 0: return offset + index
-      if to: to -= array.size
+      if to:
+        to -= array.size
+        if to <= 0: return -1
       offset += array.size
 
   /**

@@ -6,7 +6,7 @@ import expect show *
 import encoding.tison
 import encoding.ubjson
 
-import .io-data
+import .io-utils
 
 main:
   test-simple-types

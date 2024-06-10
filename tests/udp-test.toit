@@ -9,7 +9,7 @@ import net
 import net.udp as net
 import monitor
 import .dns as dns
-import .io-data
+import .io-utils
 
 BROADCAST-ADDRESS ::= net.IpAddress.parse "255.255.255.255"
 
