@@ -203,6 +203,12 @@ jobs:
           echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
           "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
 
+      - name: Strip executables
+        if: github.event_name == 'release'
+        run: |
+          strip -s build/host/sdk/bin/*
+          strip -s build/host/sdk/tools/*
+
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
