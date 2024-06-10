@@ -357,14 +357,14 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   If the characteristic supports both indications and notifications, then a notification is sent.
 
-  If $update-value is true, sets the value of the characteristic to $value. Any read requests
+  If $set-value is true, sets the value of the characteristic to $value. Any read requests
     will return this value until the value is changed again. See $set-value for setting the
     value without sending out a notification.
 
-  If the characteristic doesn't support notifications or indications and $update-value is set
+  If the characteristic doesn't support notifications or indications and $set-value is set
     to false, then this function does nothing.
   */
-  write value/io.Data --update-value/bool=true:
+  write value/io.Data --set-value/bool=true:
     if permissions & CHARACTERISTIC-PERMISSION-READ == 0: throw "Invalid permission"
 
     if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
@@ -372,7 +372,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
       clients.do:
         ble-notify-characteristics-value_ resource_ it value
 
-    if update-value:
+    if set-value:
       ble-set-value_ resource_ value
 
   /**
