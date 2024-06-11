@@ -49,7 +49,8 @@ main:
   port2.baud-rate = 115200
   expect-baud 115200 port2.baud-rate
 
-  port1.out.write "like a" --flush
+  written := port1.out.write "like a" --flush
+  expect-equals 6 written
   bytes = port2.in.read
   expect-equals "like a" bytes.to-string
 

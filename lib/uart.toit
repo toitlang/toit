@@ -360,10 +360,11 @@ class UartWriter extends io.Writer:
 
   Returns the number of bytes written.
   */
-  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> none:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
+    data-size := to - from
     while not is-closed_:
       from += try-write data from to --break-length=break-length --flush=flush
-      if from >= to: return
+      if from >= to: return data-size
       yield
     assert: is-closed_
     throw "WRITER_CLOSED"
@@ -378,13 +379,13 @@ class UartWriter extends io.Writer:
     the data is written. The duration of the break signal is bit-duration * $break-length,
     where bit-duration is the duration it takes to write one bit at the current baud rate.
   */
-  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false:
+  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
     if is-closed_: throw "WRITER_CLOSED"
     result := port_.try-write_ data from to --break-length=break-length
     if flush and (result > 0 or data.byte-size == 0): this.flush
     return result
 
-  try-write_ data/io.Data from/int to/int --break-length/int=0:
+  try-write_ data/io.Data from/int to/int --break-length/int=0 -> int:
     return port_.try-write_ data from to --break-length=break-length
 
   flush_ -> none:
