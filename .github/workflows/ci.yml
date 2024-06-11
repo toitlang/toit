@@ -109,6 +109,12 @@ jobs:
           make BUILD=build-debug BUILD_TYPE=Debug sdk
           ccache -s
 
+      - name: Strip executables - Linux/Windows
+        if: runner.os != 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
+        # Note: Go executables may not be stripped on Windows.
+        run: |
+          strip -s build/host/sdk/bin/*
+
       # Test.
       - name: Test
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
@@ -208,12 +214,6 @@ jobs:
           cd "$SDKDIR"
           echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
           "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
-
-      - name: Strip executables - Linux/Windows
-        if: runner.os != 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
-        run: |
-          strip -s build/host/sdk/bin/*
-          strip -s build/host/sdk/tools/*
 
       - name: Pack artifacts
         if: matrix.shard == 1
