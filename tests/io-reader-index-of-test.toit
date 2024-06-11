@@ -15,21 +15,32 @@ main:
 
 test input/string:
   expected := input.index-of "X"
-  2.repeat:
-    should-split := it == 1
+  [false, true].do: | should-split/bool |
     chunks := should-split
         ? input.split ""
         : [input]
 
-    2.repeat:
-      test-to := it == 1
-      reader := TestReader chunks
-      if not test-to:
-        expect-equals expected (reader.index-of 'X')
-      else:
-        (input.size + 1).repeat: | to/int |
-          pos := reader.index-of 'X' --to=to
-          if expected >= 0 and to >= (expected + 1):
-            expect-equals expected pos
+    [false, true].do: | test-to/bool |
+      [true, false].do: | test-buffered/bool |
+        if not test-to:
+          expect-equals expected ((reader chunks test-buffered).index-of 'X')
+          if expected >= 0:
+            expect-equals expected ((reader chunks test-buffered).index-of 'X' --throw-if-absent)
           else:
-            expect-equals -1 pos
+            expect-throw io.Reader.UNEXPECTED_END_OF_READER:
+              (reader chunks test-buffered).index-of 'X' --throw-if-absent
+        else:
+          (input.size + 1).repeat: | to/int |
+            pos := (reader chunks test-buffered).index-of 'X' --to=to
+            if expected >= 0 and to >= (expected + 1):
+              expect-equals expected pos
+              expect-equals expected ((reader chunks test-buffered).index-of 'X' --to=to --throw-if-absent)
+            else:
+              expect-equals -1 pos
+              expect-throw io.Reader.UNEXPECTED_END_OF_READER:
+                (reader chunks test-buffered).index-of 'X' --to=to --throw-if-absent
+
+reader chunks/List buffered/bool -> io.Reader:
+  result := TestReader chunks
+  if buffered: result.buffer-all
+  return result
