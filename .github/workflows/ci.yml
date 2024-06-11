@@ -10,6 +10,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      strip:
+        description: "Strip executables"
+        required: false
+        default: "false"
 
 env:
   ESPTOOL_VERSION: v4.6
@@ -203,11 +208,17 @@ jobs:
           echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
           "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
 
-      - name: Strip executables
-        if: github.event_name == 'release'
+      - name: Strip executables - Linux/Windows
+        if: runner.os != 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
         run: |
           strip -s build/host/sdk/bin/*
           strip -s build/host/sdk/tools/*
+
+      - name: Strip executables - macOS
+        if: runner.os == 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
+        run: |
+          strip -S -x build/host/sdk/bin/*
+          strip -S -x build/host/sdk/tools/*
 
       - name: Pack artifacts
         if: matrix.shard == 1
