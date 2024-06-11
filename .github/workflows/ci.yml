@@ -14,7 +14,8 @@ on:
       strip:
         description: "Strip executables"
         required: false
-        default: "false"
+        type: boolean
+        default: false
 
 env:
   ESPTOOL_VERSION: v4.6
