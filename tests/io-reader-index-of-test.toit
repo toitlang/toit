@@ -31,7 +31,7 @@ test input/string:
         else:
           expect-throw io.Reader.UNEXPECTED_END_OF_READER:
             reader.index-of 'X' --throw-if-absent
-
+      else:
         (input.size + 1).repeat: | to/int |
           pos := reader.index-of 'X' --to=to
           if expected >= 0 and to >= (expected + 1):
