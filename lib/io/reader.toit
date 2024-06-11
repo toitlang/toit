@@ -302,6 +302,12 @@ abstract class Reader implements old-reader.Reader:
   Returns -1 if $throw-if-absent is false and the $byte is not in the remaining data.
   */
   index-of byte/int --to/int?=null --throw-if-absent/bool=false -> int:
+    absent := :
+      if throw-if-absent: throw UNEXPECTED-END-OF-READER
+      return -1
+
+    if to and to <= 0: absent.call
+
     offset := 0
     if buffered_:
       start := first-array-position_
@@ -309,19 +315,21 @@ abstract class Reader implements old-reader.Reader:
         end := to ? min (start + to) it.size : it.size
         index := it.index-of byte --from=start --to=end
         if index >= 0: return offset + (index - start)
-        if to: to -= it.size - start
+        if to:
+          to -= it.size - start
+          if to <= 0: absent.call
         offset += it.size - start
         start = 0
 
     while true:
-      if not more_:
-        if throw-if-absent: throw UNEXPECTED-END-OF-READER
-        return -1
+      if not more_: absent.call
       array := buffered_.last
       end := to ? min to array.size : array.size
-      index := array.index-of byte
+      index := array.index-of byte --from=0 --to=end
       if index >= 0: return offset + index
-      if to: to -= array.size
+      if to:
+        to -= array.size
+        if to <= 0: absent.call
       offset += array.size
 
   /**

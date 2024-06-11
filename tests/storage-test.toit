@@ -5,7 +5,7 @@
 import system.storage
 import encoding.tison
 import expect show *
-import .io-data show FakeData
+import .io-utils show FakeData
 
 main:
   test-bucket-ram

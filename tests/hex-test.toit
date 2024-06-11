@@ -6,7 +6,7 @@ import encoding.hex as hex
 
 import expect show *
 
-import .io-data
+import .io-utils
 
 main:
   test [0, 1, 2, 255]

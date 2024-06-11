@@ -8,7 +8,7 @@ import .tcp
 import monitor show *
 import net.tcp show Socket
 
-import .io-data
+import .io-utils
 
 expect-error name [code]:
   exception := "$(catch code)"

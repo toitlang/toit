@@ -8,7 +8,7 @@ import font show *
 import bitmap show *
 import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
 
-import .io-data
+import .io-utils
 
 get-test-font byte-array:
   return Font [byte-array]

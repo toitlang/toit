@@ -5,7 +5,7 @@
 import math
 import expect show *
 
-import .io-data
+import .io-utils
 
 main:
   test-smis-and-floats

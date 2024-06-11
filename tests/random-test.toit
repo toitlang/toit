@@ -4,7 +4,7 @@
 
 import expect show *
 import io show LITTLE-ENDIAN
-import .io-data
+import .io-utils
 
 main:
   ba := ByteArray 4

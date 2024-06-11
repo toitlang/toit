@@ -4,18 +4,7 @@
 
 import expect show *
 import io
-
-class TestReader extends io.Reader:
-  index_ := 0
-  strings_ := ?
-
-  constructor .strings_:
-
-  read_:
-    if index_ >= strings_.size: return null
-    return strings_[index_++].to-byte-array
-
-  close_:
+import .io-utils
 
 test-read-lines input/List expected-with-newlines/List:
   expected-without-newlines := expected-with-newlines.map: | line/string |
