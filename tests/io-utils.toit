@@ -35,4 +35,4 @@ class TestReader extends io.Reader:
         : chunk.to-byte-array
 
   close_:
-
+    // Do nothing.
