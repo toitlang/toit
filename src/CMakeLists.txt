@@ -327,7 +327,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       ${BOOT_SNAPSHOT_CC}
       ${run_SRC}
     )
-
     target_link_libraries(
       ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
     )
@@ -335,6 +334,10 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     set_target_properties(${VESSEL_TARGET}
       PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+    )
+    set_target_properties(${VESSEL_TARGET}
+      PROPERTIES
+      LINK_FLAGS_RELEASE "-s"
     )
 
     # Unsign the vessel executables.
