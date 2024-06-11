@@ -306,9 +306,7 @@ abstract class Reader implements old-reader.Reader:
       if throw-if-absent: throw UNEXPECTED-END-OF-READER
       return -1
 
-    if to and to <= 0:
-      print "1 - $throw-if-absent"
-      absent.call
+    if to and to <= 0: absent.call
 
     offset := 0
     if buffered_:
@@ -319,25 +317,19 @@ abstract class Reader implements old-reader.Reader:
         if index >= 0: return offset + (index - start)
         if to:
           to -= it.size - start
-          if to <= 0:
-            print "2 - $throw-if-absent"
-            absent.call
+          if to <= 0: absent.call
         offset += it.size - start
         start = 0
 
     while true:
-      if not more_:
-        print "3 - $throw-if-absent"
-        absent.call
+      if not more_: absent.call
       array := buffered_.last
       end := to ? min to array.size : array.size
       index := array.index-of byte --from=0 --to=end
       if index >= 0: return offset + index
       if to:
         to -= array.size
-        if to <= 0:
-          print "4 - $throw-if-absent"
-          absent.call
+        if to <= 0: absent.call
       offset += array.size
 
   /**

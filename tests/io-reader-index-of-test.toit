@@ -42,7 +42,5 @@ test input/string:
 
 reader chunks/List buffered/bool -> io.Reader:
   result := TestReader chunks
-  // If requested, we make sure all the reader data is buffered
-  // by looking for a character that isn't there.
-  if buffered: expect-equals -1 (result.index-of ' ')
+  if buffered: result.buffer-all
   return result
