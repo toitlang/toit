@@ -41,6 +41,10 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
+      - name: Show inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "${{ toJSON(github.event.inputs) }}"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
