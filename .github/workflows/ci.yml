@@ -111,15 +111,9 @@ jobs:
 
       - name: Strip executables - Linux/Windows
         if: runner.os != 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
+        # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
-
-      - name: Strip tools - Linux
-        # Stripping Go executables on Windows breaks them.
-        if: runner.os == 'Linux' && (github.event_name == 'release' || inputs.strip == 'true')
-        run: |
-          strip -s build/host/sdk/tools/*
-
 
       # Test.
       - name: Test
