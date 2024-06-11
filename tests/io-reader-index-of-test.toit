@@ -26,10 +26,18 @@ test input/string:
       reader := TestReader chunks
       if not test-to:
         expect-equals expected (reader.index-of 'X')
-      else:
+        if expected >= 0:
+          expect-equals expected (reader.index-of 'X' --throw-if-absent)
+        else:
+          expect-throw io.Reader.UNEXPECTED_END_OF_READER:
+            reader.index-of 'X' --throw-if-absent
+
         (input.size + 1).repeat: | to/int |
           pos := reader.index-of 'X' --to=to
           if expected >= 0 and to >= (expected + 1):
             expect-equals expected pos
+            expect-equals expected (reader.index-of 'X' --to=to --throw-if-absent)
           else:
             expect-equals -1 pos
+            expect-throw io.Reader.UNEXPECTED_END_OF_READER:
+              reader.index-of 'X' --to=to --throw-if-absent
