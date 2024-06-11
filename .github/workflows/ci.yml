@@ -113,8 +113,8 @@ jobs:
           make BUILD=build-debug BUILD_TYPE=Debug sdk
           ccache -s
 
-      - name: Strip executables - Linux/Windows
-        if: runner.os != 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
+      - name: Strip executables - Linux
+        if: runner.os == 'Linux' && (github.event_name == 'release' || inputs.strip == 'true')
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
