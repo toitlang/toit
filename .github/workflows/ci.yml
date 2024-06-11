@@ -215,12 +215,6 @@ jobs:
           strip -s build/host/sdk/bin/*
           strip -s build/host/sdk/tools/*
 
-      - name: Strip executables - macOS
-        if: runner.os == 'macOS' && (github.event_name == 'release' || inputs.strip == 'true')
-        run: |
-          strip -S -x build/host/sdk/bin/*
-          strip -S -x build/host/sdk/tools/*
-
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
