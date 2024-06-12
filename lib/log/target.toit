@@ -8,11 +8,11 @@ import system.api.log show LogService LogServiceClient
 import .level
 
 interface Target:
-  log level/int message/string names/List? keys/List? values/List? -> none
+  log level/int message/string names/List? keys/List? values/List? timestamp/bool -> none
 
 class DefaultTarget implements Target:
-  log level/int message/string names/List? keys/List? values/List? -> none:
-    service_.log level message names keys values
+  log level/int message/string names/List? keys/List? values/List? timestamp/bool -> none:
+    service_.log level message names keys values timestamp
 
 /**
 Log service used by $DefaultTarget.
@@ -27,8 +27,13 @@ Standard log service used when the system log service cannot
 class StandardLogService_ implements LogService:
   buffer_/io.Buffer ::= io.Buffer.with-capacity 64
 
-  log level/int message/string names/List? keys/List? values/List? -> none:
+  log level/int message/string names/List? keys/List? values/List? timestamp/bool -> none:
     buffer ::= buffer_
+
+    if timestamp:
+      buffer.write "$(Time.monotonic-us / 1000)"
+      buffer.write " "
+
     if names and names.size > 0:
       buffer.write "["
       names.size.repeat:
