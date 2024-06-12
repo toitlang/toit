@@ -1175,6 +1175,15 @@ extract-binary-content -> ByteArray
   extension += config-size
   extension += config-encoded
 
+  // If the encoded config is small, we make sure to reserve
+  // more space so the config area is guaranteed to be useful
+  // for slightly larger configs without changing the free
+  // size in the header. Usually, the padding we do after this
+  // is more than enough, but we want a guarantee to have some
+  // space available.
+  reserved := 1024 - config-encoded.size
+  if reserved > 0: extension += ByteArray reserved
+
   // This is a pretty serious padding up. We do it to guarantee
   // that segments that follow this one do not change their
   // alignment within the individual flash pages, which seems
