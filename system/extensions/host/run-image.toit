@@ -188,7 +188,7 @@ class Firmware:
 
   config -> ByteArray:
     config-part := part_ PART-CONFIG_
-    config-size := io.LITTLE-ENDIAN.int32 config-part 0
+    config-size := io.LITTLE-ENDIAN.uint32 config-part 0
     return config-part[4 .. 4 + config-size]
 
   name-to-uuid-mapping -> Map:
