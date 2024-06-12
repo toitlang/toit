@@ -736,8 +736,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   config-buffer.write config-encoded
   // Pad the config to 4 KB. This makes it less likely that the header (which includes
   // the config-part size) changes for different configurations.
-  // We use 'N', since that's a NOP in UBJSON.
-  config-buffer.pad --alignment=(4 * 1024) --value='N'
+  config-buffer.pad --alignment=(4 * 1024)
   bits.write config-buffer.bytes
   parts.add { "type": "config", "from": part-start, "to": bits.size }
 
