@@ -74,13 +74,14 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
 
   constructor --ota-dir-active/string? --ota-dir-inactive/string?:
     catch:
-      config-ubjson_ = file.read-content "$ota-dir-active/$CONFIG-FILE-NAME_"
+      content := file.read-content "$ota-dir-active/$CONFIG-FILE-NAME_"
       // TODO(kasper): We use an explicit Decoder to avoid barfing
       // on any padding that follows the encoded ubjson. This is
       // necessary for now, because for a while we didn't correctly
       // strip such padding before writing the config file to disk.
-      decoder := ubjson.Decoder config-ubjson_
+      decoder := ubjson.Decoder content
       config_ = decoder.decode
+      config-ubjson_ = content[..decoder.offset_]
     ota-dir-active_ = ota-dir-active
     ota-dir-inactive_ = ota-dir-inactive
     super "system/firmware/host" --major=0 --minor=1
