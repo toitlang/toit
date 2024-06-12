@@ -866,7 +866,7 @@ abstract class Array_ extends List:
     super.from-subclass
 
   do [block] -> none:
-    return do_ this.size block
+    do_ this.size block
 
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
