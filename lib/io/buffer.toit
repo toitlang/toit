@@ -123,6 +123,9 @@ class Buffer extends CloseableWriter:
 
   /**
   Changes the size of the buffer to the given $new-size.
+
+  If $new-size is smaller than the current size, then the buffer is truncated.
+  If $new-size is bigger than the current size, then the buffer is padded with zeros.
   */
   resize new-size/int -> none:
     ensure_ new-size
@@ -134,13 +137,31 @@ class Buffer extends CloseableWriter:
   /**
   Grows the buffer by the given $amount.
 
-  The new bytes are initialized to 0.
+  The new bytes are initialized to $value.
   */
-  grow-by amount/int -> none:
+  grow-by amount/int --value/int=0 -> none:
     ensure_ amount
-    // Be sure to clear the data.
-    buffer_.fill --from=offset_ --to=(offset_ + amount) 0
+    buffer_.fill --from=offset_ --to=(offset_ + amount) value
     offset_ += amount
+
+  /**
+  Pads the buffer to the given $size.
+
+  If the buffer is already bigger than $size, then this method does nothing.
+  Fills the new bytes with the given $value.
+  */
+  pad-to --size/int --value/int=0 -> none:
+    if size <= offset_: return
+    grow-by size - offset_ --value=value
+
+  /**
+  Pads the buffer to the given $alignment.
+
+  If the buffer is already aligned, then this method does nothing.
+  Fills the new bytes with the given $value.
+  */
+  pad --alignment/int --value/int=0 -> none:
+    pad-to --size=(round-up offset_ alignment) --value=value
 
   /**
   Closes this instance.
