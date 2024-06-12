@@ -188,8 +188,8 @@ class Firmware:
 
   config -> ByteArray:
     config-part := part_ PART-CONFIG_
-    // Skip the size header.
-    return config-part[4..]
+    config-size := io.LITTLE-ENDIAN.uint32 config-part 0
+    return config-part[4 .. 4 + config-size]
 
   name-to-uuid-mapping -> Map:
     return ubjson.decode (part_ PART-NAME-TO-UUID-MAPPING_)
