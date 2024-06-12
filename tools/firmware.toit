@@ -730,9 +730,15 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   parts.add { "type": "run-image", "from": part-start, "to": bits.size }
 
   part-start = bits.size
+  config-buffer := io.Buffer
   // Add the size to have a similar layout to the ESP32 binary.
-  bits.little-endian.write-uint32 config-encoded.size
-  bits.write config-encoded
+  config-buffer.little-endian.write-uint32 config-encoded.size
+  config-buffer.write config-encoded
+  // Pad the config to 4 KB. This makes it less likely that the header (which includes
+  // the config-part size) changes for different configurations.
+  // We use 'N', since that's a NOP in UBJSON.
+  config-buffer.pad --alignment=(4 * 1024) --value='N'
+  bits.write config-buffer.bytes
   parts.add { "type": "config", "from": part-start, "to": bits.size }
 
   part-start = bits.size
