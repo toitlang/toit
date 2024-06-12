@@ -450,7 +450,7 @@ abstract class List extends CollectionBase:
     return equals other --element-equals=: |a b| a == b
 
   /** See $super. */
-  do [block]:
+  do [block] -> none:
     this-size := size
     this-size.repeat: block.call this[it]
     // It is not allowed to change the size of the list while iterating over it.
@@ -865,8 +865,8 @@ abstract class Array_ extends List:
   constructor.from-subclass_:
     super.from-subclass
 
-  do [block]:
-    return do_ this.size block
+  do [block] -> none:
+    do_ this.size block
 
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
@@ -1168,7 +1168,7 @@ interface ByteArray extends io.Data:
   /**
   The number of bytes in this instance.
   */
-  size
+  size -> int
 
   /**
   Whether this instance is empty.
@@ -1190,7 +1190,7 @@ interface ByteArray extends io.Data:
   /**
   Invokes the given $block on each byte of this instance.
   */
-  do [block]
+  do [block] -> none
 
   /**
   Iterates over all bytes in reverse order and invokes the given $block on each of them.
