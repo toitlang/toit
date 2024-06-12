@@ -1168,7 +1168,7 @@ interface ByteArray extends io.Data:
   /**
   The number of bytes in this instance.
   */
-  size
+  size -> int
 
   /**
   Whether this instance is empty.
