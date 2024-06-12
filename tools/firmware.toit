@@ -92,10 +92,10 @@ is-snapshot-bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is-bundle-content bits
   return false
 
-pad bits/ByteArray alignment/int --pad-value/int=0 -> ByteArray:
+pad bits/ByteArray alignment/int -> ByteArray:
   size := bits.size
   padded-size := round-up size alignment
-  return bits + (ByteArray padded-size - size --filler=pad-value)
+  return bits + (ByteArray padded-size - size)
 
 read-file path/string -> ByteArray:
   exception := catch:
@@ -730,13 +730,15 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   parts.add { "type": "run-image", "from": part-start, "to": bits.size }
 
   part-start = bits.size
+  config-buffer := io.Buffer
   // Add the size to have a similar layout to the ESP32 binary.
-  bits.little-endian.write-uint32 config-encoded.size
+  config-buffer.little-endian.write-uint32 config-encoded.size
+  config-buffer.write config-encoded
   // Pad the config to 4 KB. This makes it less likely that the header (which includes
   // the config-part size) changes for different configurations.
   // We use 'N', since that's a NOP in UBJSON.
-  padded := pad config-encoded (4 * 1024) --pad-value='N'
-  bits.write padded
+  config-buffer.pad --alignment=(4 * 1024) --value='N'
+  bits.write config-buffer.bytes
   parts.add { "type": "config", "from": part-start, "to": bits.size }
 
   part-start = bits.size
