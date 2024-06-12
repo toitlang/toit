@@ -736,7 +736,7 @@ extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
   // the config-part size) changes for different configurations.
   // We use 'N', since that's a NOP in UBJSON.
   padded := pad config-encoded (4 * 1024) --pad-value='N'
-  bits.write config-encoded
+  bits.write padded
   parts.add { "type": "config", "from": part-start, "to": bits.size }
 
   part-start = bits.size
