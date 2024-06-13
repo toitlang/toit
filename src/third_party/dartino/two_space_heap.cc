@@ -437,6 +437,45 @@ class EverythingIsAlive : public LivenessOracle {
   bool is_alive(HeapObject* object) override { return true; }
 };
 
+#ifdef JONKERS
+
+void TwoSpaceHeap::compact_heap() {
+  SemiSpace* semi_space = new_space();
+
+  old_space()->set_compacting(true);
+
+  old_space()->clear_free_list();
+
+  old_space()->zap_object_starts();
+
+  FixPointersVisitor fix;
+  Jonkers1Visitor compacting_visitor(program_, old_space(), &fix);
+  old_space()->iterate_objects(&compacting_visitor);
+  uword used_after = compacting_visitor.used();
+  old_space()->set_used(used_after);
+  old_space()->set_used_after_last_gc(used_after);
+
+  HeapObjectPointerVisitor new_space_visitor(program_, &fix);
+  // When iterating the semi-space, use the old_space to determine liveness.
+  // This works because it checks the mark bits, which are all valid at this
+  // point, even in the semi-space.  This means we don't fix pointers in dead
+  // objects - although it's probably harmless to fix such pointers this seems
+  // cleaner and might avoid a crash if an allocation failure in a primtive
+  // left partially initialized objects in the semi-space.
+  semi_space->iterate_objects(&new_space_visitor, old_space());
+
+  process_heap_->iterate_roots(&fix);
+  // At this point dead objects have been cleared out of the finalizer lists.
+  EverythingIsAlive yes;
+  process_heap_->process_registered_finalizers(&fix, &yes);
+  process_heap_->process_registered_vm_finalizers(&fix, &yes);
+
+  semi_space->clear_mark_bits();
+  old_space()->clear_mark_bits();
+  old_space()->mark_chunk_ends_free();
+}
+#else
+
 void TwoSpaceHeap::compact_heap() {
   SemiSpace* semi_space = new_space();
 
@@ -472,6 +511,8 @@ void TwoSpaceHeap::compact_heap() {
   old_space()->clear_mark_bits();
   old_space()->mark_chunk_ends_free();
 }
+
+#endif // not JONKERS.
 
 #ifdef TOIT_DEBUG
 void TwoSpaceHeap::find(uword word) {

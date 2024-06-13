@@ -492,6 +492,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
 
 // Sweep method that mostly looks at the mark bits.  For speed it doesn't touch
 // the live objects, but writes freelist structures in the gaps between them.
+// Does not clear the mark bits.
 uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
@@ -597,7 +598,6 @@ uword OldSpace::sweep() {
 #ifdef TOIT_DEBUG
     validate_sweep(chunk);
 #endif
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
     return false;  // Keep chunk in space.
   });
   return used << WORD_SIZE_LOG_2;
