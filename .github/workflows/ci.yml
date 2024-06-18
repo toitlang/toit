@@ -29,7 +29,7 @@ jobs:
         run: |
           # ubuntu-20.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
-          if [[ "${{ github.ref }} == 'refs/heads/master' ]]; then
+          if [[ "${{ github.ref }}" == 'refs/heads/master' ]]; then
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           else
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
