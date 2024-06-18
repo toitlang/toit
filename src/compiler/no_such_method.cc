@@ -88,9 +88,10 @@ static void report_no_such_method(List<ir::Node*> candidates,
 
   std::string helpful_note = "";
   Set<Symbol> seen_names;
-  // At the function site we made sure that duplicated names got fresh names.
-  // This is now working against us, since we can't rely on object identity
-  // anymore.
+  // During resolution we made sure that duplicated names in parameters (at the
+  // function site) each had their own fresh symbol. This is now working against
+  // us, since we can't rely on object identity anymore. We thus use std::strings
+  // instead.
   Set<std::string> reported_duplicates;
 
   int index = 0;
