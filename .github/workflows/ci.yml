@@ -21,13 +21,30 @@ env:
   ESPTOOL_VERSION: v4.6
 
 jobs:
+  prereqs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set strategy variables
+        id: vars
+        run: |
+          # ubuntu-20.04 so that we don't depend on a recent glibc.
+          # macos-13, since it's still intel based.
+          if [[ "${{ github.ref }}" == 'refs/heads/master' ]]; then
+            echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
+          else
+            echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
+          fi
+
+    outputs:
+      CONTAINERS: ${{ steps.vars.outputs.CONTAINERS }}
+
   build:
+    needs: prereqs
+
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # ubuntu-20.04 so that we don't depend on a recent glibc.
-        # macos-13, since it's still intel based.
-        container: [ ubuntu-20.04, macos-13, windows-latest ]
+        container: ${{ fromJson(needs.prereqs.outputs.CONTAINERS) }}
         shard: [1, 2, 3, 4, 5]
 
         include:
@@ -65,8 +82,11 @@ jobs:
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=8" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "macOS" ]; then
+          elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "X64" ]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=5" >> $GITHUB_OUTPUT
+          elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "ARM64" ]; then
+            echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=5" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
