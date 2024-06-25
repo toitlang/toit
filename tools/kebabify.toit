@@ -26,21 +26,32 @@ import system show platform
 REQUIRED-SDK-VERSION ::= "2.0.0-alpha.95"
 
 main args:
-  cmd := cli.Command "root"
+  cmd := build-command
+  cmd.run args
+
+build-command --toitc-from-args/Lambda?=null -> cli.Command:
+  cmd := cli.Command "kebabify"
       --help="""
         Migrates a project from snake-case to kebab-case.
         """
 
+  jag-paragraph := ""
+  toitc-options := []
+  if not toitc-from-args:
+    jag-paragraph = """
+
+        By default uses the Toit SDK that is available through `jag`.
+        """
+    toitc-options = [
+      cli.Option "toitc"
+          --help="The path to the toit.compile binary.",
+    ]
   code-command := cli.Command "code"
       --help="""
         Migrates the given source files from snake-case ("foo_bar") to
         kebab-case ("foo-bar").
-
-        By default uses the Toit SDK that is available through `jag`.
-        """
-      --options=[
-        cli.Option "toitc"
-            --help="The path to the toit.compile binary.",
+        $jag-paragraph"""
+      --options=toitc-options + [
         cli.Flag "abort-on-error"
             --help="Abort the migration if a file has errors."
             --default=false
@@ -51,7 +62,7 @@ main args:
             --required
             --multi
       ]
-      --run=:: migrate it
+      --run=:: migrate it (toitc-from-args ? toitc-from-args.call it : it["toitc"])
   cmd.add code-command
 
   files-command := cli.Command "files"
@@ -83,10 +94,9 @@ main args:
       --run=:: rename-files it
   cmd.add files-command
 
-  cmd.run args
+  return cmd
 
-migrate parsed/cli.Parsed:
-  toitc := parsed["toitc"]
+migrate parsed/cli.Parsed toitc/string?:
   sources := parsed["source"]
   abort-on-error := parsed["abort-on-error"]
 
