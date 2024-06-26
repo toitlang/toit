@@ -40,7 +40,7 @@ build-command --toitc-from-args/Lambda?=null -> cli.Command:
   if not toitc-from-args:
     jag-paragraph = """
 
-        By default uses the Toit SDK that is available through `jag`.
+        Uses the Toit SDK that is available through `jag` by default.
         """
     toitc-options = [
       cli.Option "toitc"
