@@ -78,7 +78,7 @@ class Central extends Resource_:
           AdvertisementData
             --name=next[2]
             --service-classes=service-classes
-            --manufacturer-data=(next[4]?next[4]:#[])
+            --manufacturer-data=(next[4] ? next[4] : #[])
             --flags=next[5]
             --connectable=next[6]
             --check-size=false

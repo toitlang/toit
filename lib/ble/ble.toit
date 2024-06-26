@@ -118,7 +118,7 @@ class AdvertisementData:
   /**
   Advertised manufacturer-specific data.
   */
-  manufacturer-data/io.Data
+  manufacturer-data_/io.Data
 
   /**
   Whether connections are allowed.
@@ -131,14 +131,20 @@ class AdvertisementData:
   */
   flags/int
 
-  constructor --.name=null --.service-classes=[] --.manufacturer-data=#[]
+  constructor --.name=null --.service-classes=[] --manufacturer-data/io.Data=#[]
               --.connectable=false --.flags=0 --check-size=true:
+    manufacturer-data_ = manufacturer-data
     size := 0
     if name: size += 2 + name.size
     service-classes.do: | uuid/BleUuid |
       size += 2 + uuid.to-byte-array.size
     if manufacturer-data.byte-size > 0: size += 2 + manufacturer-data.byte-size
     if size > 31 and check-size: throw "PACKET_SIZE_EXCEEDED"
+
+  manufacturer-data -> ByteArray:
+    if manufacturer-data_ is ByteArray:
+      return manufacturer-data_ as ByteArray
+    return ByteArray.from manufacturer-data_
 
 
 CHARACTERISTIC-PROPERTY-BROADCAST                    ::= 0x0001

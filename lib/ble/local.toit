@@ -72,7 +72,7 @@ class Peripheral extends Resource_:
         resource_
         data.name or ""
         raw-service-classes
-        data.manufacturer-data
+        data.manufacturer-data_
         interval.in-us
         connection-mode
         data.flags
