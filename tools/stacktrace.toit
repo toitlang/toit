@@ -18,36 +18,39 @@ import host.file
 import host.pipe
 import io
 
-USAGE ::= """
-    Decodes an esp-idf backtrace message from the UART console.
-    Example use:
-    echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
-    or
-    toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf
-    """
-
-usage:
-  print "USAGE"
-  exit 1
-
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
 ELF-FILE ::= "elf-file"
 
 main args/List:
-  parsed := null
-  parser := cli.Command "stacktrace"
-      --help=USAGE
+  cmd := build-command
+  cmd.run args
+
+build-command -> cli.Command:
+  cmd := cli.Command "stacktrace"
+      --help="Decode an esp-idf backtrace message from the UART console."
       --rest=[cli.Option --required ELF-FILE --type="path"]
       --options=[
           cli.Flag "disassemble" --short-name="d",
           cli.Option "objdump" --default=OBJDUMP,
           cli.Option "backtrace" --default="-"
           ]
-      --run=:: parsed = it
-  parser.run args
-  if not parsed: exit 0
+      --run=:: decode-stacktrace it
+      --examples=[
+        cli.Example """
+          Read a stacktrace from the standard input and decode it using the default objdump and
+          the 'build/esp32/toit.elf' file.
+          The command could be prefixed with something like
+          'echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 |'
+          """
+          --arguments="build/esp32/toit.elf",
+        cli.Example """
+          Decode the given stacktrace the default objdump and the 'build/esp32s3/toit.elf' file:"""
+          --arguments="--backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" build/esp32s3/toit.elf"
+      ]
+  return cmd
 
+decode-stacktrace parsed/cli.Parsed:
   disassemble := parsed["disassemble"]
   objdump-exe := parsed["objdump"]
   objdump / io.Reader? := null
@@ -95,8 +98,7 @@ main args/List:
       with-timeout --ms=2000:
         backtrace = (io.Reader.adapt pipe.stdin).read-line
     if error == "DEADLINE_EXCEEDED":
-      print "Timed out waiting for stdin"
-      usage
+      throw "Timed out waiting for stdin"
     if error:
       throw error
   else:
@@ -152,7 +154,9 @@ main args/List:
     if disassemble: print ""
 
 backtrace-do backtrace/string symbols/List [block]:
-  if not backtrace.starts-with "Backtrace:": usage
+  if not backtrace.starts-with "Backtrace:":
+    print "Invalid backtrace: $backtrace. Doesn't start with 'Backtrace:'"
+    throw "INVALID_BACKTRACE"
   backtrace[10..].split " ": | pair |
     if pair.contains ":":
       if not pair.starts-with "0x":

@@ -22,9 +22,10 @@ import system
 import .toitp as toitp
 import .firmware as firmware
 import .assets as assets
-import .snapshot-to-image as snapshot-to-image
-import .system-message as system-message
 import .kebabify as kebabify
+import .snapshot-to-image as snapshot-to-image
+import .stacktrace as stacktrace
+import .system-message as system-message
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -465,6 +466,12 @@ main args/List:
       --help="Start the language server."
       --run=:: run-lsp-server it
   tool-command.add tool-lsp-command
+
+  esp-command := cli.Command "esp"
+      --help="ESP-IDF related commands."
+  tool-command.add esp-command
+
+  esp-command.add stacktrace.build-command
 
   root-command.add system-message.build-command
 
