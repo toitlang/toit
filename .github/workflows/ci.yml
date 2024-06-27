@@ -16,6 +16,21 @@ on:
         required: false
         type: boolean
         default: false
+      sign-macos:
+        description: "Sign macOS executables"
+        required: false
+        type: boolean
+        default: false
+      build-arm-macos:
+        description: "Build ARM macOS executables"
+        required: false
+        type: boolean
+        default: false
+      run-tests:
+        description: "Run tests"
+        required: false
+        type: boolean
+        default: true
 
 env:
   ESPTOOL_VERSION: v4.6
@@ -29,7 +44,7 @@ jobs:
         run: |
           # ubuntu-20.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
-          if [[ "${{ github.ref }}" == 'refs/heads/master' ]]; then
+          if [[ "${{ github.ref }}" == 'refs/heads/master' || "${{ inputs.build-arm-macos }}" == "true" || "${{ inputs.sign-macos }}" == "true" ]]; then
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           else
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
@@ -134,19 +149,21 @@ jobs:
           ccache -s
 
       - name: Strip executables - Linux
-        if: runner.os == 'Linux' && (github.event_name == 'release' || inputs.strip == 'true')
+        if: ${{ runner.os == 'Linux' && (github.event_name == 'release' || inputs.strip) }}
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
 
       # Test.
       - name: Test
+        if: ${{ inputs.run-tests != false }}
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
           make test
           make test-health
 
       - name: Test flaky
+        if: ${{ inputs.run-tests != false }}
         continue-on-error: true
         shell: bash # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
@@ -157,12 +174,12 @@ jobs:
           echo success > ${{ steps.constants.outputs.flaky_result }}
 
       - name: Test type propagator
-        if: runner.os == 'Linux'
+        if: ${{ runner.os == 'Linux' && inputs.run-tests != false }}
         run: |
           make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 test
 
       - name: Test 32-bit debug
-        if: runner.os == 'Linux'
+        if: ${{ runner.os == 'Linux' && inputs.run-tests != false }}
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
 
@@ -181,6 +198,7 @@ jobs:
 
       # Test external code.
       - name: Test external
+        if: ${{ inputs.run-tests != false }}
         # External tests are allowed to fail, but we record them and
         # fail a non-required job if they do.
         continue-on-error: true
@@ -324,8 +342,15 @@ jobs:
           name: ${{ runner.os }}-build-unsigned
           path: build/${{ steps.constants.outputs.artifact }}
 
-      - name: Upload artifacts - Linux/macOS
-        if: runner.os != 'Windows' && matrix.shard == 1
+      - name: Upload unsigned artifacts - macOS
+        if: runner.os == 'macOS' && matrix.shard == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }}-build-unsigned
+          path: build/${{ steps.constants.outputs.artifact }}
+
+      - name: Upload artifacts - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
         uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
@@ -566,11 +591,24 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
-          name: macOS-build
+          name: macOS-build-unsigned
+
+      - name: Set up macOS ARM environment
+        run: |
+          if [[ "${{ inputs.build-arm-macos }}" == 'true' || "${{ github.ref }}" == 'refs/heads/master' ]]; then
+            echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "MACOS_TARS<<$EOF" >> $GITHUB_ENV;
+            echo "toit-macos.tar.gz" >> $GITHUB_ENV;
+            echo "toit-macos-arm.tar.gz" >> $GITHUB_ENV;
+            echo "$EOF" >> $GITHUB_ENV;
+          else
+            echo "MACOS_TARS=toit-macos.tar.gz" >> $GITHUB_ENV;
+          fi
 
       - name: Unpack SDKs
         run: |
-          for os in windows linux macos rpi aarch64; do
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             mkdir -p $os
             tar x -zf toit-$os.tar.gz -C $os
           done
@@ -579,7 +617,7 @@ jobs:
         run: |
           mkdir -p vessels
 
-          for source in windows linux macos rpi aarch64; do
+          for source in windows linux macos rpi aarch64 $MACOS_ARM; do
             # Use same values as Go.
             if [ "$source" == "windows" ]; then
               CROSS_OS=windows
@@ -590,6 +628,9 @@ jobs:
             elif [ "$source" == "macos" ]; then
               CROSS_OS=darwin
               CROSS_ARCH=amd64
+            elif [ "$source" == "macos-arm" ]; then
+              CROSS_OS=darwin
+              CROSS_ARCH=aarch64
             elif [ "$source" == "rpi" ]; then
               CROSS_OS=linux
               CROSS_ARCH=arm
@@ -637,11 +678,16 @@ jobs:
             fi
             cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
             chmod +x $TARGET/toit/tools/esptool$EXTENSION
+            # At the moment there isn't a prebuilt macos-arm executable, and we use the x64 one instead.
+            if [[ "$arch" = "macos" && "$MACOS_ARM" != "" ]]; then
+              cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION macos-arm/toit/tools/esptool$EXTENSION
+              chmod +x macos-arm/toit/tools/esptool$EXTENSION
+            fi
           done
 
       - name: Compress SDKs
         run: |
-          for os in windows linux macos rpi aarch64; do
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
@@ -657,6 +703,12 @@ jobs:
           name: Windows-build-unsigned
           path: toit-windows.tar.gz
 
+      - name: Upload macOS unsigned
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS-build-unsigned
+          path: ${{ env.MACOS_TARS }}
+
       - name: Upload Linux
         uses: actions/upload-artifact@v3
         with:
@@ -665,12 +717,6 @@ jobs:
             toit-linux.tar.gz
             toit-rpi.tar.gz
             toit-aarch64.tar.gz
-
-      - name: Upload macOS
-        uses: actions/upload-artifact@v3
-        with:
-          name: macOS-build
-          path: toit-macos.tar.gz
 
       - name: Upload release vessels
         if: |
@@ -691,17 +737,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-linux.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release macOS
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos.tar.gz
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
@@ -813,6 +848,83 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows-x64-installer.exe
+          tag: ${{ github.event.release.tag_name }}
+          overwrite: true
+
+  sign_macos:
+    runs-on: macos-latest  # An arm64 runner.
+    needs: [combine]
+    if: ${{ github.event_name == 'release' || inputs.sign-macos == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: macOS-build-unsigned
+
+      - name: Decompress
+        run: |
+          tar x -zf toit-macos.tar.gz
+          mv toit toit-x64
+          tar x -zf toit-macos-arm.tar.gz
+          mv toit toit-arm
+
+      - name: List executables
+        id: list-executables
+        run: |
+          find .
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "result<<$EOF" >> $GITHUB_OUTPUT
+          # Don't sign the esptool which isn't from us.
+          find toit-x64/bin toit-x64/tools toit-arm/bin toit-arm/tools \
+             -type f \
+             ! -regex '.*/esptool' \
+             >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
+      - name: Sign macOS executables
+        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: 33DS2ZRDST
+          app-path: ${{ steps.list-executables.outputs.result }}
+
+      - name: Compress
+        run: |
+          mv toit-x64 toit
+          tar c -zf toit-macos.tar.gz toit
+          mv toit toit-x64
+          mv toit-arm toit
+          tar c -zf toit-macos-arm.tar.gz toit
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS-build
+          path: |
+            toit-macos.tar.gz
+            toit-macos-arm.tar.gz
+
+      - name: Upload release artifacts x64
+        if: github.event_name == 'release' &&
+            github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-macos.tar.gz
+          tag: ${{ github.event.release.tag_name }}
+          overwrite: true
+
+      - name: Upload release artifacts arm
+        if: github.event_name == 'release' &&
+            github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-macos-arm.tar.gz
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
