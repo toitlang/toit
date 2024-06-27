@@ -593,7 +593,7 @@ jobs:
         with:
           name: macOS-build-unsigned
 
-      - name: macOS arm environment
+      - name: Set up macOS ARM environment
         run: |
           if [[ "${{ inputs.build-arm-macos }}" == 'true' || "${{ github.ref }}" == 'refs/heads/master' ]]; then
             echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
@@ -882,7 +882,7 @@ jobs:
              >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
-      - name: Sign macOS binaries
+      - name: Sign macOS executables
         uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
         with:
           certificate: ${{ secrets.MACOS_CERTIFICATE }}
