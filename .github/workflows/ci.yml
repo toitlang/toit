@@ -297,13 +297,6 @@ jobs:
           retention-days: 5
           if-no-files-found: ignore
 
-      - name: Upload toitdoc - Linux
-        if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
-        with:
-          name: toitdoc
-          path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
-
       - name: Authenticate to Google cloud - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
@@ -345,6 +338,25 @@ jobs:
 
           gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
           gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
+
+      - name: Upload toitdoc - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: toitdoc
+          path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+
+      - name: Upload toitdoc release artifact - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+          tag: ${{ github.event.release.tag_name }}
+          overwrite: true
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
