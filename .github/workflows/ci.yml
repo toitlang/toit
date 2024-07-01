@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      dispatch-toitdocs:
+        description: "Dispatch toitdoc rebuild"
+        required: false
+        type: boolean
+        default: false
       run-tests:
         description: "Run tests"
         required: false
@@ -358,6 +363,26 @@ jobs:
           asset_name: toitdoc.json
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
+
+      - name: Dispatch toitdoc rebuild - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          ((github.event_name == 'release' && github.repository_owner == 'toitlang') ||
+           github.event.inputs.dispatch-toitdocs == 'true')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'true',
+                'toitdoc-version': '${{ github.event.release.tag_name }}'
+              },
+            });
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
