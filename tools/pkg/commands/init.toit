@@ -56,7 +56,7 @@ class InitCommand:
                   --default="my-package",
               cli.Option DESCRIPTION
                   --help="The description of the project."
-                  --default="My description."
+                  --default=""
           ]
           --run=:: (InitCommand it).execute
 
