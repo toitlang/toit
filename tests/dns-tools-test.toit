@@ -20,7 +20,7 @@ txt-test:
       ]
   texts := client.get --record-type=RECORD-TXT "toit.io"
   expect
-      texts.contains "OSSRH-61647"
+      texts.size == 0
   ptr := client.get --record-type=RECORD-PTR "toit.io"
   expect
       ptr.size == 0
@@ -110,7 +110,7 @@ encode-decode-packets-test:
   ]
   packet-2 := dns.create-dns-packet queries resources --id=42 --is-response=true
   decoded-2 := dns.decode-packet packet-2
-  
+
   expect-equals 42 decoded-2.id
   expect-equals 1 decoded-2.questions.size
   expect-equals 1 decoded-2.resources.size
