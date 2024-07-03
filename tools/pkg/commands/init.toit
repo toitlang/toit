@@ -23,6 +23,9 @@ import ..project.package
 import .utils_
 
 class InitCommand:
+  static NAME ::= "name"
+  static DESCRIPTION ::= "description"
+
   project/Project
 
   constructor parsed/cli.Parsed:
@@ -32,6 +35,8 @@ class InitCommand:
       error "Directory already contains a project"
 
     project = Project config --empty-lock-file
+    project.package-file.name = parsed[NAME]
+    project.package-file.description = parsed[DESCRIPTION]
 
   execute:
     project.save
@@ -45,5 +50,13 @@ class InitCommand:
 
               If the --project-root flag is used, initializes that directory instead.
               """
+          --options=[
+              cli.Option NAME
+                  --help="The name of the project."
+                  --default="my-package",
+              cli.Option DESCRIPTION
+                  --help="The description of the project."
+                  --default="My description."
+          ]
           --run=:: (InitCommand it).execute
 
