@@ -56,7 +56,7 @@ ipv6-dns-test:
 
   // A domain that has no IPv6 address, but that's the only thing we will
   // accept.
-  error := catch: dns-lookup "toitlang.org" --accept-ipv6 --no-accept-ipv4
+  error := catch: dns-lookup "v4.ipv6test.app" --accept-ipv6 --no-accept-ipv4
   print "IPv6: $error"
   expect
       error is DnsException
