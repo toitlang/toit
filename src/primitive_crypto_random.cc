@@ -50,8 +50,6 @@ PRIMITIVE(random) {
   // The std::random_device is mapped to /dev/urandom on Linux/macOS and to
   // a cryptographic API on Windows.
   std::random_device rd;
-  // If the random-device knows that it isn't good enough, don't use it.
-  if (rd.entropy() == 0.0) FAIL(UNIMPLEMENTED);
   std::uniform_int_distribution<> dis(0, 255);
   auto address = bytes.address();
   for (int i = 0; i < size; i++) {
