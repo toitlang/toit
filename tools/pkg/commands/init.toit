@@ -30,13 +30,15 @@ class InitCommand:
 
   constructor parsed/cli.Parsed:
     config := project-configuration-from-cli parsed
+    name := parsed[NAME]
+    description := parsed[DESCRIPTION]
 
     if config.package-file-exists or config.lock-file-exists:
       error "Directory already contains a project"
 
     project = Project config --empty-lock-file
-    project.package-file.name = parsed[NAME]
-    project.package-file.description = parsed[DESCRIPTION]
+    if name: project.package-file.name = name
+    if description: project.package-file.description = description
 
   execute:
     project.save
@@ -52,11 +54,9 @@ class InitCommand:
               """
           --options=[
               cli.Option NAME
-                  --help="The name of the project."
-                  --default="my-package",
+                  --help="The name of the project.",
               cli.Option DESCRIPTION
-                  --help="The description of the project."
-                  --default=""
+                  --help="The description of the project.",
           ]
           --run=:: (InitCommand it).execute
 
