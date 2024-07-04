@@ -103,6 +103,9 @@ func (r *summaryReader) readModule() (*toit.Module, error) {
 	res := &toit.Module{
 		URI: moduleURI,
 	}
+	if res.IsDeprecated, err = r.readDeprecation(); err != nil {
+		return nil, err
+	}
 	if res.Dependencies, err = r.readURIs(); err != nil {
 		return nil, err
 	}
@@ -183,6 +186,10 @@ func (r *summaryReader) readClass() (*toit.Class, error) {
 	}
 	res.IsAbstract = isAbstract == "abstract"
 
+	if res.IsDeprecated, err = r.readDeprecation(); err != nil {
+		return nil, err
+	}
+
 	if res.SuperClass, err = r.readTopLevelReference(); err != nil {
 		return nil, err
 	}
@@ -250,6 +257,9 @@ func (r *summaryReader) readField() (*toit.Field, error) {
 		return nil, err
 	}
 	res.IsFinal = final == "final"
+	if res.IsDeprecated, err = r.readDeprecation(); err != nil {
+		return nil, err
+	}
 	if res.Type, err = r.readType(); err != nil {
 		return nil, err
 	}
@@ -366,6 +376,9 @@ func (r *summaryReader) readMethod() (*toit.Method, error) {
 		return nil, fmt.Errorf("unknown method kind: %s", kind)
 	}
 
+	if res.IsDeprecated, err = r.readDeprecation(); err != nil {
+		return nil, err
+	}
 	if res.Parameters, err = r.readParameters(); err != nil {
 		return nil, err
 	}
@@ -803,6 +816,14 @@ func (r *summaryReader) readTopLevelReference() (*toit.TopLevelReference, error)
 		return nil, nil
 	}
 	return r.topLevelReferenceFromGlobalID(id)
+}
+
+func (r *summaryReader) readDeprecation() (bool, error) {
+	line, err := r.readLine()
+	if err != nil {
+		return false, err
+	}
+	return line == "deprecated", nil
 }
 
 func (r *summaryReader) readURIs() ([]lsp.DocumentURI, error) {

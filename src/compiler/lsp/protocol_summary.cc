@@ -318,6 +318,7 @@ void Writer::print_field(ir::Field* field) {
   print_range(field->range());
 
   this->printf("%s\n", field->is_final() ? "final" : "mutable");
+  this->printf("%s\n", field->is_deprecated() ? "deprecated" : "not deprecated");
   print_type(field->type());
   print_toitdoc(field);
 }
@@ -359,6 +360,7 @@ void Writer::print_method(ir::Method* method) {
     case ir::Method::FACTORY: this->printf("factory\n"); break;
     case ir::Method::FIELD_INITIALIZER: UNREACHABLE();
   }
+  this->printf("%s\n", method->is_deprecated() ? "deprecated" : "not deprecated");
   auto shape = method->resolution_shape();
   int max_unnamed = shape.max_unnamed_non_block() + shape.unnamed_block_count();
   bool has_implicit_this = method->is_instance() || method->is_constructor();
@@ -413,6 +415,7 @@ void Writer::print_class(ir::Class* klass) {
   }
   this->printf("%s\n", kind);
   this->printf("%s\n", klass->is_abstract() ? "abstract" : "non-abstract");
+  this->printf("%s\n", klass->is_deprecated() ? "deprecated" : "not deprecated");
   if (klass->super() == null) {
     this->printf("-1\n");
   } else {
@@ -507,6 +510,8 @@ void Writer::print_modules() {
 
     // For simplicity repeat the module path and the class count.
     this->printf("%s\n", current_source_->absolute_path());
+
+    this->printf("%s\n", module->is_deprecated() ? "deprecated" : "not deprecated");
 
     print_dependencies(module);
 
