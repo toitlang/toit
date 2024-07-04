@@ -232,14 +232,14 @@ This builds the Toit VM, the compiler, the language server and the package manag
 You should then be able to execute a toit file:
 
 ``` sh
-build/host/sdk/bin/toit.run examples/hello.toit
+build/host/sdk/bin/toit examples/hello.toit
 ```
 
 The package manager is found at `build/host/sdk/bin/toit.pkg`:
 
 ``` sh
-build/host/sdk/bin/toit.pkg init --project-root=<some-directory>
-build/host/sdk/bin/toit.pkg install --project-root=<some-directory> <package-id>
+build/host/sdk/bin/toit pkg init --project-root=<some-directory>
+build/host/sdk/bin/toit pkg install --project-root=<some-directory> <package-id>
 ```
 
 ### Debugging
@@ -253,7 +253,7 @@ build it yourself from the
 [sources](https://github.com/toitware/ide-tools).
 
 In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` setting to
-`["PATH_TO_SDK/bin/toit.lsp", "--toitc=PATH_TO_SDK/bin/toit.compile"]`, where
+`["PATH_TO_SDK/bin/toit", "tool", "lsp"]`, where
 `PATH_TO_SDK` is the path to your `build/host/sdk/` folder in the Toit repository.
 
 This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
@@ -313,10 +313,10 @@ By default, the image boots up but does not run any application code. You can us
 own entry point by installing it into the firmware envelope before flashing:
 
 ``` sh
-build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit compile --snapshot -o hello.snapshot examples/hello.toit
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     container install hello hello.snapshot
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
 
@@ -328,21 +328,21 @@ example below requires you to [configure the WiFi on the ESP32](#configuring-wif
 flash.
 
 ``` sh
-build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
-build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
+build/host/sdk/bin/toit compile --snapshot -o hello.snapshot examples/hello.toit
+build/host/sdk/bin/toit compile --snapshot -o ntp.snapshot examples/ntp/ntp.toit
 
 # Typically we set the output envelope the first time we change it.
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     -o custom.envelope \
     container install hello hello.snapshot
-build/host/sdk/tools/firmware -e custom.envelope \
+build/host/sdk/bin/toit tool firmware -e custom.envelope \
     container install ntp ntp.snapshot
 ```
 
 You can list the containers in a given firmware envelope:
 
 ``` sh
-build/host/sdk/tools/firmware -e custom.envelope container list
+build/host/sdk/bin/toit tool firmware -e custom.envelope container list
 ```
 
 The listing shows the containers that are installed.
@@ -390,16 +390,16 @@ To associate assets with the container, we first construct an encoded
 assets file and add this `README.md` file to it.
 
 ``` sh
-build/host/sdk/tools/assets -e encoded.assets create
-build/host/sdk/tools/assets -e encoded.assets add readme README.md
+build/host/sdk/bin/toit tool assets -e encoded.assets create
+build/host/sdk/bin/toit tool assets -e encoded.assets add readme README.md
 ```
 
 Now we can add the `encoded.assets` to the `assets` container at
 install time:
 
 ``` sh
-build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit compile --snapshot -o assets.snapshot assets.toit
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     container install assets assets.snapshot \
     --assets=encoded.assets
 ```
@@ -421,7 +421,7 @@ You'll need to reinstall the container after this by recompiling
 the `assets.toit` file to `assets.snapshot` and re-running:
 
 ``` sh
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     container install assets assets.snapshot \
     --assets=encoded.assets
 ```
@@ -433,7 +433,7 @@ when you flash:
 
 ``` sh
 echo '{ "wifi": { "wifi.ssid": "myssid", "wifi.password": "mypassword" } }' > wifi.json
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     flash --config wifi.json \
     --port /dev/ttyUSB0 --baud 921600
 ```
