@@ -35,8 +35,8 @@ add_custom_command(
   VERBATIM
 )
 
-set(ORIGINAL_BOOT_SNAPSHOT ${PROJECT_BINARY_DIR}/generated/toit.run.snapshot.cc)
-set(BOOT_SNAPSHOT ${CMAKE_CURRENT_BINARY_DIR}/toit.run.snapshot.cc)
+set(ORIGINAL_BOOT_SNAPSHOT ${PROJECT_BINARY_DIR}/generated/toit_run_snapshot.cc)
+set(BOOT_SNAPSHOT ${CMAKE_CURRENT_BINARY_DIR}/toit_run_snapshot.cc)
 
 add_custom_command(
   OUTPUT ${BOOT_SNAPSHOT}

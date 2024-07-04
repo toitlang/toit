@@ -118,8 +118,6 @@ endif
 
 BIN_DIR = $(abspath $(BUILD)/$(HOST)/sdk/bin)
 TOIT_BIN = $(BIN_DIR)/toit$(EXE_SUFFIX)
-TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 
 .PHONY: download-packages
@@ -129,7 +127,7 @@ download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
-	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DHOST_TOIT=$(TOIT_BIN) -DHOST_TOITC=$(TOITC_BIN) -DHOST_TOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
+	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DHOST_TOIT=$(TOIT_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
 .PHONY: sync
 sync: sync-packages
