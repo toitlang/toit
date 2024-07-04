@@ -289,6 +289,7 @@ class Class : public Node {
       : name_(name)
       , range_(range)
       , is_runtime_class_(false)
+      , is_deprecated_(false)
       , super_(null)
       , kind_(kind)
       , is_abstract_(is_abstract)
@@ -313,6 +314,9 @@ class Class : public Node {
   bool is_task_class() const { return is_runtime_class_ && name_ == Symbols::Task_; }
   bool is_runtime_class() const { return is_runtime_class_; }
   void mark_runtime_class() { is_runtime_class_ = true; }
+
+  bool is_deprecated() const { return is_deprecated_; }
+  void set_is_deprecated(bool value) { is_deprecated_ = value; }
 
   Class* super() const { return super_; }
   void set_super(Class* klass) {
@@ -432,6 +436,7 @@ class Class : public Node {
   const Symbol name_;
   Source::Range range_;
   bool is_runtime_class_;
+  bool is_deprecated_;
   Class* super_;
   List<Class*> interfaces_;
   List<Class*> mixins_;
@@ -518,6 +523,7 @@ class Method : public Node {
       , is_abstract_(is_abstract)
       , does_not_return_(false)
       , is_runtime_method_(false)
+      , is_deprecated_(false)
       , kind_(kind)
       , range_(range)
       , body_(null)
@@ -538,6 +544,7 @@ class Method : public Node {
       , is_abstract_(is_abstract)
       , does_not_return_(false)
       , is_runtime_method_(false)
+      , is_deprecated_(false)
       , kind_(kind)
       , range_(range)
       , body_(null)
@@ -608,6 +615,9 @@ class Method : public Node {
   bool is_runtime_method() const { return is_runtime_method_; }
   void mark_runtime_method() { is_runtime_method_ = true; }
 
+  bool is_deprecated() const { return is_deprecated_; }
+  void set_is_deprecated(bool value) { is_deprecated_ = value; }
+
   Type return_type() const { return return_type_; }
   void set_return_type(Type type) {
     ASSERT(!return_type_.is_valid());
@@ -668,6 +678,7 @@ class Method : public Node {
   const bool is_abstract_;
   bool does_not_return_;
   bool is_runtime_method_;
+  bool is_deprecated_;
   const MethodKind kind_;
   const Source::Range range_;
 
@@ -838,6 +849,7 @@ class Field : public Node {
       , holder_(holder)
       , type_(Type::invalid())
       , is_final_(is_final)
+      , is_deprecated_(false)
       , resolved_index_(-1)
       , range_(range) {}
   IMPLEMENTS(Field)
@@ -848,6 +860,9 @@ class Field : public Node {
 
   // Whether the field is marked as final.
   bool is_final() const { return is_final_; }
+
+  bool is_deprecated() const { return is_deprecated_; }
+  void set_is_deprecated(bool value) { is_deprecated_ = value; }
 
   Type type() const { return type_; }
   void set_type(Type type) {
@@ -870,6 +885,7 @@ class Field : public Node {
   Class* holder_;
   Type type_;
   bool is_final_;
+  bool is_deprecated_;
   int resolved_index_;
   Source::Range range_;
 };
