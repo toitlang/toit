@@ -863,9 +863,10 @@ find-esptool_ -> List:
     if file.is-file esptool-py:
       return ["python3$bin-extension", esptool-py]
   else if dir != "":
-    esptool := "$dir/esptool$bin-extension"
+    esptool := "$dir/../tools/esptool$bin-extension"
     if file.is-file esptool:
       return [esptool]
+
   // Try to find esptool in PATH.
   esptool := "esptool$bin-extension"
   catch:
