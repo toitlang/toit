@@ -345,7 +345,12 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
           "-DQUIET=1"
            -P "${CMAKE_SOURCE_DIR}/tools/pkg-install.cmake"
         COMMAND ${CMAKE_COMMAND} -E touch "${package_timestamp}"
-        DEPENDS "${package_lock}"
+
+        # TODO(florian): enable this line again.
+        # Currently we don't use it, as a `toit pkg install` writes the lock file, even if nothing
+        # has changed. This would lead to unnecessary rebuilds.
+        # DEPENDS "${package_lock}"
+
         # The working directory isn't really important, but we must set it to
         # something that exists, as the current bin-dir might not exist yet.
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
