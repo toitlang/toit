@@ -866,7 +866,6 @@ find-esptool_ -> List:
     esptool := "$dir/../tools/esptool$bin-extension"
     if file.is-file esptool:
       return [esptool]
-
   // Try to find esptool in PATH.
   esptool := "esptool$bin-extension"
   catch:
