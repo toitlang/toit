@@ -882,9 +882,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: |
+          set -e
+          brew install create-dmg
+          brew install zip
+
       - uses: actions/download-artifact@v3
         with:
           name: macOS-build-unsigned
+
+      - name: Create out folder
+        run: |
+          mkdir out
 
       - name: Decompress
         run: |
@@ -918,19 +928,36 @@ jobs:
 
       - name: Compress
         run: |
-          mv toit-x64 toit
-          tar c -zf toit-macos.tar.gz toit
-          mv toit toit-x64
-          mv toit-arm toit
-          tar c -zf toit-macos-arm.tar.gz toit
+          for arch in x64 arm; do
+            mv toit-$arch toit
+            tar c -zf out/toit-$arch.tar.gz toit
+            mv toit toit-$arch
+          done
+
+      - name: Create a DMG
+        run: |
+          set -e
+          ln -s sdk/bin/toit toit-symlink
+          for arch in x64 arm; do
+            # Use an empty directory as source so we don't accidentally add other files than SDK.
+            mkdir empty-$arch
+            create-dmg \
+                --volname "jag" \
+                --add-file toit toit-symlink 0 0 \
+                --add-file sdk toit-$arch 200 0 \
+                out/toit-$arch.dmg \
+                empty-$arch
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: macOS-build
           path: |
-            toit-macos.tar.gz
-            toit-macos-arm.tar.gz
+            out/toit-macos.tar.gz
+            out/toit-macos-arm.tar.gz
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload release artifacts x64
         if: github.event_name == 'release' &&
@@ -938,17 +965,8 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release artifacts arm
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos-arm.tar.gz
+          file_glob: true
+          file: out/*
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
