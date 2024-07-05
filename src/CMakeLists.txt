@@ -342,7 +342,8 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
         COMMAND "${CMAKE_COMMAND}"
           "-DPACKAGE_LOCK_PATH=${package_lock}"
           "-DPACKAGES_DIR=${package_dir}"
-           -P "${CMAKE_SOURCE_DIR}/tools/pkg-install.cmake" > /dev/null
+          "-DQUIET=1"
+           -P "${CMAKE_SOURCE_DIR}/tools/pkg-install.cmake"
         COMMAND ${CMAKE_COMMAND} -E touch "${package_timestamp}"
         DEPENDS "${package_lock}"
         # The working directory isn't really important, but we must set it to
