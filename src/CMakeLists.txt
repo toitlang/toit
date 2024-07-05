@@ -345,6 +345,9 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
            -P "${CMAKE_SOURCE_DIR}/tools/pkg-install.cmake" > /dev/null
         COMMAND ${CMAKE_COMMAND} -E touch "${package_timestamp}"
         DEPENDS "${package_lock}"
+        # The working directory isn't really important, but we must set it to
+        # something that exists, as the current bin-dir might not exist yet.
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       )
     endforeach()
   endif()
