@@ -321,6 +321,9 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
       get_filename_component(embedded_program_dir "${EMBEDDED_PROGRAM_SOURCE_${embedded_program}}" DIRECTORY)
       list(APPEND embedded_program_dirs "${embedded_program_dir}")
+      # We don't use the '.packages' directory as usual, as this would lead to two different
+      # targets being able to produce the same file. We will end up downloading these packages
+      # again with the 'download_packages' target, but that's after we have built the 'toit' executable.
       set(EMBEDDED_PROGRAM_PACKAGES_DIR_${embedded_program} "${embedded_program_dir}/.packages-bootstrap")
       set(EMBEDDED_PROGRAM_PACKAGES_TIMESTAMP_${embedded_program} "${embedded_program_dir}/.packages-bootstrap/package-timestamp")
     endforeach()
@@ -329,16 +332,19 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     list(REMOVE_DUPLICATES embedded_program_dirs)
 
     foreach (embedded_program_dir ${embedded_program_dirs})
+      set(package_lock "${embedded_program_dir}/package.lock")
       set(package_dir "${embedded_program_dir}/.packages-bootstrap")
       set(package_timestamp "${package_dir}/package-timestamp")
       # The host `toit` is the same as the one we are trying to compile.
       # We can't use it to download packages or compile itself.
       add_custom_command(
         OUTPUT "${package_timestamp}"
-        COMMAND "${CMAKE_SOURCE_DIR}/tools/pkg-install.sh" "${package_dir}"
+        COMMAND "${CMAKE_COMMAND}"
+          "-DPACKAGE_LOCK_PATH=${package_lock}"
+          "-DPACKAGES_DIR=${package_dir}"
+           -P "${CMAKE_SOURCE_DIR}/tools/pkg-install.cmake" > /dev/null
         COMMAND ${CMAKE_COMMAND} -E touch "${package_timestamp}"
-        DEPENDS "${embedded_program_dir}/package.yaml" "${embedded_program_dir}/package.lock"
-        WORKING_DIRECTORY "${embedded_program_dir}"
+        DEPENDS "${package_lock}"
       )
     endforeach()
   endif()
