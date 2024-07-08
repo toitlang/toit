@@ -695,7 +695,7 @@ jobs:
             elif [[ "$os" = "aarch64" ]]; then
               ESPTOOL_ARCH=linux-aarch64
             elif [[ "$os" = "macos-arm" ]]; then
-              ESPTOOL_ARCH=macos-aaarch64
+              ESPTOOL_ARCH=macos-aarch64
             else
               echo "Unknown os: $os"
               exit 1
