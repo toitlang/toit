@@ -704,7 +704,7 @@ jobs:
             curl -O -L https://github.com/toitlang/esptool/releases/latest/download/esptool-$ESPTOOL_ARCH.zip
             unzip esptool-$ESPTOOL_ARCH.zip
             cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
-            chmod +x $TARGET/toit/tools/esptool$EXTENSION
+            chmod +x $os/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
