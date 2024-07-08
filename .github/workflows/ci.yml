@@ -42,6 +42,11 @@ on:
         required: false
         type: boolean
         default: true
+      run-esp32-flow:
+        description: "Run the ESP32 flow"
+        required: false
+        type: boolean
+        default: true
 
 env:
   ESPTOOL_VERSION: v4.6
@@ -390,6 +395,8 @@ jobs:
 
   # Really annoying that we need to duplicate so much.
   esp32:
+    if: ${{ github.event.inputs.run-esp32-flow != 'false' }}
+
     runs-on: ubuntu-latest
 
     steps:
