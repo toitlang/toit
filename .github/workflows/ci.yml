@@ -43,9 +43,6 @@ on:
         type: boolean
         default: true
 
-env:
-  ESPTOOL_VERSION: v4.6
-
 jobs:
   prereqs:
     runs-on: ubuntu-latest
@@ -684,29 +681,30 @@ jobs:
 
       - name: Download esptools
         run: |
-          for arch in arm arm64 linux-amd64 macos win64; do
-            curl -O -L https://github.com/espressif/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_VERSION-$arch.zip
-            unzip esptool-$ESPTOOL_VERSION-$arch.zip
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             EXTENSION=""
-            if [[ "$arch" = "arm" ]]; then
-              TARGET=rpi
-            elif [[ "$arch" = "arm64" ]]; then
-              TARGET=aarch64
-            elif [[ "$arch" = "linux-amd64" ]]; then
-              TARGET=linux
-            elif [[ "$arch" = "macos" ]]; then
-              TARGET=macos
-            elif [[ "$arch" = "win64" ]]; then
-              TARGET=windows
+            if [[ "$os" = "windows" ]]; then
               EXTENSION=.exe
+              ESPTOOL_ARCH=windows-x64
+            elif [[ "$os" = "linux" ]]; then
+              ESPTOOL_ARCH=linux-x64
+            elif [[ "$os" = "macos" ]]; then
+              ESPTOOL_ARCH=macos-x64
+            elif [[ "$os" = "rpi" ]]; then
+              ESPTOOL_ARCH=linux-armv7
+            elif [[ "$os" = "aarch64" ]]; then
+              ESPTOOL_ARCH=linux-aarch64
+            elif [[ "$os" = "macos-arm" ]]; then
+              ESPTOOL_ARCH=macos-aaarch64
+            else
+              echo "Unknown os: $os"
+              exit 1
             fi
-            cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
+
+            curl -O -L https://github.com/toitlang/esptool/releases/latest/download/esptool-$ESPTOOL_ARCH.zip
+            unzip esptool-$ESPTOOL_ARCH.zip
+            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
             chmod +x $TARGET/toit/tools/esptool$EXTENSION
-            # At the moment there isn't a prebuilt macos-arm executable, and we use the x64 one instead.
-            if [[ "$arch" = "macos" && "$MACOS_ARM" != "" ]]; then
-              cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION macos-arm/toit/tools/esptool$EXTENSION
-              chmod +x macos-arm/toit/tools/esptool$EXTENSION
-            fi
           done
 
       - name: Compress SDKs
@@ -910,7 +908,7 @@ jobs:
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
           # Don't sign the esptool which isn't from us.
-          find toit-x64/bin toit-x64/tools toit-arm/bin toit-arm/tools \
+          find toit-x64/bin toit-x64/tools toit-x64/vessels toit-arm/bin toit-arm/tools toit-arm/vessels \
              -type f \
              ! -regex '.*/esptool' \
              >> $GITHUB_OUTPUT
