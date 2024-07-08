@@ -95,13 +95,17 @@ class Compiler:
     file-server := PipeFileServer protocol cpp-to multiplex.compiler-to-fs
     file-server-line := file-server.run
 
+    timeout-task := null
     if timeout-ms_ > 0:
-      task:: catch --trace:
-        sleep --ms=timeout-ms_
-        if not has-terminated:
-          SIGKILL ::= 9
-          pipe.kill_ cpp-pid SIGKILL
-          was-killed-because-of-timeout = true
+      timeout-task = task:: catch --trace:
+        try:
+          sleep --ms=timeout-ms_
+          if not has-terminated:
+            SIGKILL ::= 9
+            pipe.kill_ cpp-pid SIGKILL
+            was-killed-because-of-timeout = true
+        finally:
+          timeout-task = null
 
     did-crash := false
     try:
@@ -112,6 +116,7 @@ class Compiler:
       reader := io.Reader.adapt to-parser
       read-callback.call reader
     finally:
+      if timeout-task: timeout-task.cancel
       file-server.close
       to-parser.close
       multiplex.close
