@@ -60,9 +60,23 @@ jobs:
           else
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
           fi
+          if [[ "${{ inputs.run-tests }}" != "false" ]]; then
+            echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-20.04", "shard": 6}, {"container": "ubuntu-20.04", "shard": 7}, {"container": "ubuntu-20.04", "shard": 8}]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
+            echo 'SHALD_COUNT_LINUX=8' >> $GITHUB_OUTPUT
+          else
+            echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
+          fi
 
     outputs:
       CONTAINERS: ${{ steps.vars.outputs.CONTAINERS }}
+      SHARDS: ${{ steps.vars.outputs.SHARDS }}
+      EXTRA_INCLUDES: ${{ steps.vars.outputs.EXTRA_INCLUDES }}
+      SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
+      SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
 
   build:
     needs: prereqs
@@ -71,15 +85,9 @@ jobs:
       # The matrix will run all possible combinations in parallel.
       matrix:
         container: ${{ fromJson(needs.prereqs.outputs.CONTAINERS) }}
-        shard: [1, 2, 3, 4, 5]
+        shard: ${{ fromJson(needs.prereqs.outputs.SHARDS) }}
 
-        include:
-          - container: ubuntu-20.04
-            shard: 6
-          - container: ubuntu-20.04
-            shard: 7
-          - container: ubuntu-20.04
-            shard: 8
+        include: ${{ fromJson(needs.prereqs.outputs.EXTRA_INCLUDES) }}
 
     runs-on: ${{ matrix.container }}
 
@@ -107,16 +115,16 @@ jobs:
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=8" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "X64" ]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "ARM64" ]; then
             echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -145,7 +153,7 @@ jobs:
         run: |
           ccache -s
           make sdk
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
