@@ -32,9 +32,11 @@ monitor Sleeper_:
   */
   sleep-until_ wakeup/int -> none:
     self := Task_.current
-    // Eagerly throw if we trying to sleep past the task deadline.
     deadline := self.deadline
-    if deadline and deadline < wakeup: throw DEADLINE-EXCEEDED-ERROR
+    will-exceed-deadline := false
+    if deadline and deadline < wakeup:
+      will-exceed-deadline = true
+      wakeup = deadline
     // Acquire a suitable timer. These are often reused, so this is
     // unlikely to allocate.
     timer ::= self.acquire-timer_ this
@@ -43,7 +45,9 @@ monitor Sleeper_:
       while true:
         // Check for task cancelation and timeout.
         if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
-        if Time.monotonic-us >= wakeup: return
+        if Time.monotonic-us >= wakeup:
+          if will-exceed-deadline: throw DEADLINE-EXCEEDED-ERROR
+          return
         // Arm the timer and wait until we're notified. We might be notified
         // too early (spurious wakeup), so we arm the timer on every iteration.
         timer.arm wakeup
