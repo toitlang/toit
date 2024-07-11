@@ -302,16 +302,15 @@ class Parameter:
 
 class SummaryReader:
   reader_ / io.Reader ::= ?
-  uri-path-translator_ / UriPathTranslator ::= ?
 
   module-uris_             / List ::= []
   module-toplevel-offsets_ / List ::= []
   current-module-id_ := 0
   current-toplevel-id_ := 0
 
-  constructor .reader_ .uri-path-translator_:
+  constructor .reader_:
 
-  to-uri_ path / string -> string: return uri-path-translator_.to-uri path --from-compiler
+  to-uri_ path / string -> string: return to-uri path --from-compiler
 
   read-summary -> Map/*<uri, Module>*/:
     module-count := read-int

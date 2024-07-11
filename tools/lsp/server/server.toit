@@ -40,7 +40,7 @@ import .documents
 import .file-server
 import .repro
 import .rpc
-import .uri-path-translator
+import .uri-path-translator as translator
 import .utils
 import .verbose
 
@@ -92,9 +92,8 @@ monitor Settings:
     return (get_ "reportPackageDiagnostics" --if-absent=: false) == true
 
 class LspServer:
-  documents_     /Documents         ::= ?
+  documents_     /Documents         ::= Documents
   connection_    /RpcConnection     ::= ?
-  translator_    /UriPathTranslator ::= ?
   toit-path-override_  /string?     ::= ?
   /// The root uri of the workspace.
   /// Rarely needed, as the server generally works with absolute paths.
@@ -118,11 +117,7 @@ class LspServer:
   ///   that we don't respond multiple times.
   open-requests_ /Set := {}
 
-  constructor
-      .connection_
-      .toit-path-override_
-      .translator_:
-    documents_ = Documents translator_
+  constructor .connection_ .toit-path-override_:
 
   run -> none:
     while true:
@@ -235,7 +230,7 @@ class LspServer:
 
   did-open params/DidOpenTextDocumentParams -> none:
     document := params.text-document
-    uri := translator_.canonicalize document.uri
+    uri := translator.canonicalize document.uri
     project-uri := documents_.project-uri-for --uri=uri
     // We are calling `analyze` just after updating the document.
     // The next analysis-revision is thus the one where the new content has been
@@ -246,17 +241,17 @@ class LspServer:
 
   analyze-many params -> none:
     uris := params["uris"]
-    uris = uris.map: translator_.canonicalize it
+    uris = uris.map: translator.canonicalize it
     analyze uris
 
   archive params/ArchiveParams -> string:
     non-canonicalized-uris := params.uris or [params.uri]
     // If the request doesn't specify whether it wants the sdk we include it.
     include-sdk := params.include-sdk == null ? true : params.include-sdk
-    uris := non-canonicalized-uris.map: translator_.canonicalize it
+    uris := non-canonicalized-uris.map: translator.canonicalize it
     // We assume the project-uri is from the first uri.
     project-uri := documents_.project-uri-for --uri=uris[0]
-    paths := uris.map: translator_.to-path it
+    paths := uris.map: translator.to-path it
     compiler := compiler_
     compiler.parse --paths=paths --project-uri=project-uri
     buffer := io.Buffer
@@ -272,7 +267,7 @@ class LspServer:
     return base64.encode byte-array
 
   snapshot-bundle params/SnapshotBundleParams -> Map?:
-    uri := translator_.canonicalize params.uri
+    uri := translator.canonicalize params.uri
     project-uri := documents_.project-uri-for --uri=uri
     compiler := compiler_
     bundle := compiler.snapshot-bundle --project-uri=project-uri uri
@@ -283,14 +278,14 @@ class LspServer:
     }
 
   did-close params/DidCloseTextDocumentParams -> none:
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     documents_.did-close --uri=uri
     if not settings_.should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
       // Emit an empty diagnostics for this file, in case it had diagnostics before.
       send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=[])
 
   did-save params/DidSaveTextDocumentParams -> none:
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     // No need to validate, since we should have gotten a `did_change` before
     //   any save (if the document was dirty).
     documents_.did-save --uri=uri
@@ -298,7 +293,7 @@ class LspServer:
   did-change params/DidChangeTextDocumentParams -> none:
     document := params.text-document
     changes  := params.content-changes
-    uri := translator_.canonicalize document.uri
+    uri := translator.canonicalize document.uri
     changes.do:
       assert: it.range == null  // We only support full-file updates for now.
       // We are calling `analyze` just after updating the document.
@@ -308,7 +303,7 @@ class LspServer:
     analyze [uri]
 
   completion params/CompletionParams -> any: // Either a List/*<CompletionItem>*/ or a $CompletionList.
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
       | prefix/string edit-range/Range? completions/List |
@@ -332,12 +327,12 @@ class LspServer:
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     document := analyzed-documents.get --uri=uri
@@ -350,14 +345,14 @@ class LspServer:
     if opened-document:
       content = opened-document.content
     else:
-      path := translator_.to-path uri
+      path := translator.to-path uri
       if file.is-file path:
         content = (file.read-content path).to-string
     if not content: return []
     return document.summary.to-lsp-document-symbol content
 
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
-    uri := translator_.canonicalize params.text-document.uri
+    uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     tokens := compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
@@ -436,7 +431,7 @@ class LspServer:
       // If the diagnostics without position isn't empty, and contains something for a uri, we
       // assume that there was a problem reading the file.
       uris.do: |uri|
-        entry-path := translator_.to-path uri
+        entry-path := translator.to-path uri
         probably-entry-problem := diagnostics-per-uri.is-empty and
             diagnostics-without-position.any: it.contains entry-path
         if probably-entry-problem:
@@ -632,10 +627,10 @@ class LspServer:
 
     should-write-repro := settings_.should-write-repro
 
-    protocol := FileServerProtocol.local compiler-path sdk-path documents_ translator_
+    protocol := FileServerProtocol.local compiler-path sdk-path documents_
 
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
-    compiler = Compiler compiler-path translator_ timeout-ms
+    compiler = Compiler compiler-path timeout-ms
         --protocol=protocol
         --on-error=:: |message|
           if is-rate-limited:
@@ -656,7 +651,7 @@ class LspServer:
                 --compiler-input=compiler-input
                 --info=signal
                 --protocol=protocol
-                --cwd-path=root-uri_ and (translator_.to-path root-uri_)
+                --cwd-path=root-uri_ and (translator.to-path root-uri_)
                 --include-sdk
             send-show-message "Compiler crashed. Repro created: $repro-path"
           else:
@@ -682,8 +677,6 @@ main args -> none:
 
   is-verbose = parsed["verbose"]
 
-  uri-path-translator := UriPathTranslator
-
   in-pipe  := pipe.stdin
   out-pipe := pipe.stdout
 
@@ -706,5 +699,5 @@ main args -> none:
 
   rpc-connection := RpcConnection reader writer
 
-  server := LspServer rpc-connection toit-path-override uri-path-translator
+  server := LspServer rpc-connection toit-path-override
   server.run
