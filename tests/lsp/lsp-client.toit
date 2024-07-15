@@ -68,4 +68,3 @@ run-client-test
       --pre-initialize=: null
       --use-mock=use-mock
       --spawn-process=spawn-process
-      --use-toitlsp=use-toitlsp
