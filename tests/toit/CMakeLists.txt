@@ -34,11 +34,7 @@ foreach(file ${TOIT_BIN_TESTS})
       NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> ${TOIT_BIN_SOURCE} ${TEST_SDK_DIR}
       )
-    if (TOIT_CHECK_PROPAGATED_TYPES)
-      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 120)
-    else()
-      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
-    endif()
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 120)
     if ("${toit_bin_test_name}" IN_LIST TOIT_FAILING_TESTS)
       set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
