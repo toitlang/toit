@@ -681,7 +681,6 @@ main args -> none:
           cli.Option "toit-path-override",
       ]
       --options=[
-          cli.Option "home-path",
           cli.Flag "verbose" --default=false,
       ]
       --run=:: parsed = it
@@ -690,8 +689,10 @@ main args -> none:
 
   toit-path-override := parsed["toit-path-override"]
 
-  is-verbose = parsed["verbose"]
+  is-verbose = parsed["verbose"] == true
+  main --toit-path-override=toit-path-override
 
+main --toit-path-override/string?:
   in-pipe  := pipe.stdin
   out-pipe := pipe.stdout
 
