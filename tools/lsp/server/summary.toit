@@ -28,6 +28,7 @@ safe-name_ name/string -> string:
 /** A summary of a module. */
 class Module:
   uri / string ::= ?
+  external-hash / ByteArray
   dependencies / List/*<string>*/ ::= ?
   exported-modules / List/*<string>*/ ::= ?
   exports      / List ::= ?
@@ -38,6 +39,7 @@ class Module:
 
   constructor
       --.uri
+      --.external-hash
       --.dependencies
       --.exports
       --.exported-modules
@@ -47,16 +49,7 @@ class Module:
       --.toitdoc:
 
   equals-external other/Module -> bool:
-    return other and
-        uri == other.uri and
-        // The dependencies only have an external impact if `export_all` is true. However, we
-        //    conservatively just return require that they are the same.
-        dependencies == other.dependencies and
-        exported-modules == other.exported-modules and
-        (exports.equals other.exports --element-equals=: |a b| a.equals-external b) and
-        (classes.equals other.classes --element-equals=: |a b| a.equals-external b) and
-        (functions.equals other.functions --element-equals=: |a b| a.equals-external b) and
-        (globals.equals other.globals --element-equals=: |a b| a.equals-external b)
+    return external-hash == other.external-hash
 
   to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
     lines := Lines content
@@ -90,12 +83,6 @@ class Export:
 
   constructor .name .kind .refs:
 
-  equals-external other/Export -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        refs.equals other.refs --element-equals=: |a b| a.equals-external b
-
 class Range:
   start / int ::= -1
   end / int ::= -1
@@ -115,7 +102,7 @@ class ToplevelRef:
     assert: id >= 0
 
   equals-external other/ToplevelRef -> bool:
-    return other and module-uri == other.module-uri and id == other.id
+    return module-uri == other.module-uri and id == other.id
 
 class Type:
   static ANY-KIND ::= -1
@@ -288,12 +275,6 @@ class Field implements ClassMember:
 
   constructor .name .range .is-final .type .toitdoc:
 
-  equals-external other/Field -> bool:
-    return other and
-        name == other.name and
-        is-final == other.is-final and
-        (type == other.type or (type and type.equals-external other.type))
-
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
@@ -311,13 +292,6 @@ class Parameter:
   constructor .name .original-index --.is-required --.is-named .type:
 
   is-block -> bool: return type and type.is-block
-
-  equals-external other/Parameter -> bool:
-    return other and
-        name == other.name and
-        is-required == other.is-required and
-        is-named == other.is-named and
-        (type == other.type or (type and type.equals-external other.type))
 
 class SummaryReader:
   reader_ / io.Reader ::= ?
@@ -365,9 +339,11 @@ class SummaryReader:
     classes := read-list: read-class
     functions := read-list: read-method
     globals := read-list: read-method
+    external-hash := read-bytes 20
     toitdoc := read-toitdoc
     return Module
         --uri=module-uri
+        --external-hash=external-hash
         --dependencies=dependencies
         --exported-modules=exported-modules
         --exports=exported
@@ -614,6 +590,9 @@ class SummaryReader:
 
   read-line -> string:
     return reader_.read-line
+
+  read-bytes count/int -> ByteArray:
+    return reader_.read-bytes count
 
   read-int -> int:
     return int.parse read-line
