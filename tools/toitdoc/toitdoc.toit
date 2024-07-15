@@ -20,22 +20,14 @@ import host.directory
 import host.file
 
 import .lsp-exports as lsp
+import .serve
 import .src.builder show DocsBuilder
 
-main args/List:
-  cmd := cli.Command "toitdoc"
-      --help="""
-        Generate documentation from Toit source code.
-
-        Generates a JSON file that can be served with the toitdocs web-app located
-        at https://github.com/toitware/web-toitdocs.
-        """
+build-command --toitc-from-args/Lambda -> cli.Command:
+  cmd := cli.Command "doc"
+      --aliases=["docs", "toitdoc"]
+      --help="Generate or serve documentation from Toit source code."
       --options=[
-        cli.Option "output"
-            --short-name="o"
-            --help="Output JSON file."
-            --type="file"
-            --required,
         cli.Option "pkg-name"
             --help="Name of the package.",
         cli.Option "version"
@@ -43,10 +35,6 @@ main args/List:
         cli.Option "root-path"
             --type="dir"
             --help="Root path to build paths from.",
-        cli.Option "toitc"
-            --type="file"
-            --help="Path to the Toit compiler."
-            --required,
         cli.Option "sdk"
             --type="dir"
             --help="SDK path."
@@ -61,14 +49,53 @@ main args/List:
             --help="Include private elements in the documentation."
             --default=false,
       ]
+
+  build-command := cli.Command "build"
+      --aliases=["generate"]
+      --help="""
+        Generate a JSON file.
+
+        The generated file can be served with the toitdocs web-app located
+        at https://github.com/toitware/web-toitdocs.
+        """
+      --options=[
+        cli.Option "output"
+            --short-name="o"
+            --help="Output JSON file."
+            --type="file"
+            --required,
+      ]
       --rest=[
         cli.Option "source"
             --type="file|dir"
             --required
             --multi,
       ]
-      --run=:: toitdoc it
-  cmd.run args
+      --run=:: toitdoc-build it (toitc-from-args.call it)
+  cmd.add build-command
+
+  serve-command := cli.Command "serve"
+      --help="""
+          Serve the documentation.
+
+          If the port is 0, a random port will be chosen.
+          """
+      --options=[
+        cli.OptionInt "port"
+            --short-name="p"
+            --help="Port to serve on."
+            --default=0,
+      ]
+      --rest=[
+        cli.Option "source"
+            --type="file|dir"
+            --required
+            --multi,
+      ]
+      --run=:: toitdoc-serve it (toitc-from-args.call it)
+  cmd.add serve-command
+
+  return cmd
 
 collect-files sources/List -> List:
   pending := Deque
@@ -146,12 +173,10 @@ compute-sdk-path --sdk-path/string? --toitc/string? -> string:
   if file.is-directory lib-dir: return sdk-path
   throw "Couldn't determine SDK path"
 
-toitdoc parsed/cli.Parsed:
-  output := parsed["output"]
+toitdoc parsed/cli.Parsed --toitc/string --output/string -> none:
   pkg-name := parsed["pkg-name"]
   version := parsed["version"]
   root-path := parsed["root-path"]
-  toitc := parsed["toitc"]
   sdk-path := parsed["sdk"]
   exclude-sdk := parsed["exclude-sdk"]
   exclude-pkgs := parsed["exclude-pkgs"]
@@ -161,12 +186,11 @@ toitdoc parsed/cli.Parsed:
   if not root-path:
     root-path = directory.cwd
 
-  if toitc:
-    if not file.is-file toitc:
-      print "Toit compiler not found at $toitc"
-      exit 1
-    if not fs.is-absolute toitc:
-      toitc = fs.to-absolute toitc
+  if not file.is-file toitc:
+    print "Toit compiler not found at $toitc."
+    exit 1
+  if not fs.is-absolute toitc:
+    toitc = fs.to-absolute toitc
 
   sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc
   sdk-uri := lsp.to-uri sdk-path
@@ -191,5 +215,21 @@ toitdoc parsed/cli.Parsed:
       --include-private=include-private
 
   built-toitdoc := builder.build
-
   file.write-content --path=output (json.encode built-toitdoc)
+
+toitdoc-build parsed/cli.Parsed toitc/string:
+  output := parsed["output"]
+
+  toitdoc parsed --toitc=toitc --output=output
+
+toitdoc-serve parsed/cli.Parsed toitc/string:
+  port := parsed["port"]
+
+  tmp-dir := directory.mkdtemp "/tmp/toitdoc-"
+  try:
+    output := "$tmp-dir/toitdoc.json"
+
+    toitdoc parsed --toitc=toitc --output=output
+    serve output --port=port
+  finally:
+    directory.rmdir --recursive tmp-dir

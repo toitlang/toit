@@ -26,6 +26,7 @@ import .kebabify as kebabify
 import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
 import .system-message as system-message
+import .toitdoc as toitdoc
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -48,6 +49,10 @@ main args/List:
             --type="dir"
             --hidden,
       ]
+
+  toitc-from-args := :: | parsed/cli.Parsed |
+      sdk-dir := parsed["sdk-dir"]
+      tool-path sdk-dir "toit.compile"
 
   version-command := cli.Command "version"
       --help="Print the version of the Toit SDK."
@@ -456,9 +461,7 @@ main args/List:
   tool-command.add firmware.build-command
   tool-command.add assets.build-command
   tool-command.add snapshot-to-image.build-command
-  kebabify-cmd := kebabify.build-command --toitc-from-args=:: | parsed/cli.Parsed |
-    sdk-dir := parsed["sdk-dir"]
-    tool-path sdk-dir "toit.compile"
+  kebabify-cmd := kebabify.build-command --toitc-from-args=toitc-from-args
   tool-command.add kebabify-cmd
 
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
@@ -472,6 +475,9 @@ main args/List:
   tool-command.add esp-command
 
   esp-command.add stacktrace.build-command
+
+  toitdoc-command := toitdoc.build-command --toitc-from-args=toitc-from-args
+  root-command.add toitdoc-command
 
   root-command.add system-message.build-command
 
