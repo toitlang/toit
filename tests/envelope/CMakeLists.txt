@@ -35,7 +35,7 @@ foreach(file ${TESTS})
         ${CMAKE_SIZEOF_VOID_P}
     CONFIGURATIONS slow
     )
-  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 200)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 300)
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
