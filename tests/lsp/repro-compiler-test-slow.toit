@@ -255,7 +255,6 @@ archive-test
 
 main args:
   toitc := args[0]
-  toitlsp-exe := args[3]
 
   dir := directory.mkdtemp "/tmp/test-repro-"
   repro-path := "$dir/repro.tar"
@@ -266,7 +265,6 @@ main args:
     compiler-input := create-archive repro-path toitc
     test-repro-server repro-path toitc toitlsp-exe compiler-input
     run-client-test args: archive-test archive-path snapshot-path toitc toitlsp-exe it
-    run-client-test --use-toitlsp args: archive-test archive-path snapshot-path toitc toitlsp-exe it
 
   finally:
     directory.rmdir --recursive dir
