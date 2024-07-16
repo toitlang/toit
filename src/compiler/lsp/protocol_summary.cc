@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include <functional>
+#include <algorithm>
 #include "../third_party/tiny-sha1/TinySHA1.hpp"
 #include "protocol_summary.h"
 
@@ -227,12 +228,14 @@ class Writer {
   void print_modules();
 
  private:
-  sha1::SHA1 sha1;
+  sha1::SHA1 sha1_;
   const std::vector<Module*> modules_;
   ToitdocRegistry toitdocs_;
   int core_index_;
   UnorderedMap<ir::Node*, ToitdocPath> paths_;
   UnorderedMap<ir::Node*, int> toplevel_ids_;
+  List<int> module_offsets_;
+
   LspWriter* lsp_writer_;
   Source* current_source_ = null;
 
@@ -304,7 +307,7 @@ class Writer {
     va_end(arguments);
 
     printf("%s", buffer);
-    sha1.processBytes(buffer, size);
+    sha1_.processBytes(buffer, size);
   }
 };
 
@@ -341,7 +344,22 @@ void Writer::safe_print_symbol_external(Symbol symbol) {
 }
 
 void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
-  this->printf_external("%d\n", toplevel_ids_.at(toplevel_element));
+  // Toplevel references are using an ID that is dependent on the current
+  // analysis. That is, they are not stable across different runs.
+  // As such, we can't just use the `print_external` as we do for other
+  // external elements, but need to resolve it first, and use a stable
+  // token for the external hasher.
+  auto toplevel_id = toplevel_ids_.at(toplevel_element);
+  this->printf("%d\n", toplevel_id);
+  // Find the module that contains the toplevel element.
+  // The toplevel_offets_ list contains the offset of each module in the
+  // toplevel_ids_ list.
+  auto next_higher = std::upper_bound(module_offsets_.begin(), module_offsets_.end(), toplevel_id);
+  int index = next_higher - module_offsets_.begin();
+  int module_id = index - 1;
+  auto path = modules_[module_id]->unit()->absolute_path();
+  sha1_.processBytes(path, strlen(path));
+  sha1_.processBytes(&toplevel_id, sizeof(toplevel_id));
 }
 
 void Writer::print_type(ir::Type type) {
@@ -384,9 +402,9 @@ void Writer::print_method(ir::Method* method) {
   }
   print_range(method->range());
   auto probe = toplevel_ids_.find(method);
-  // It's probably fine non to include the ID as part of the external view.
-  // However, it shouldn't hurt either.
-  this->printf_external("%d\n", probe == toplevel_ids_.end() ? -1 : probe->second);
+  // The toplevel-id changes depending on how the file was analyzed.
+  // Don't include it in the external representation.
+  this->printf("%d\n", probe == toplevel_ids_.end() ? -1 : probe->second);
   switch (method->kind()) {
     case ir::Method::INSTANCE:
       if (method->is_FieldStub()) {
@@ -446,10 +464,9 @@ void Writer::print_method(ir::Method* method) {
 void Writer::print_class(ir::Class* klass) {
   safe_print_symbol_external(klass->name());
   print_range(klass->range());
-  // The ID is probably not needed to be part of the external view, but it
-  // shouldn't hurt. It's unlikely that the ID changes without any other
-  // external part to trigger a recompute anyway.
-  this->printf_external("%d\n", toplevel_ids_.at(klass));
+  // The toplevel ID changes depending on how the program was analyzed.
+  // Don't include it in the external representation.
+  this->printf("%d\n", toplevel_ids_.at(klass));
   const char* kind = "";  // Initialize with value to silence compiler warnings.
   switch (klass->kind()) {
     case ir::Class::CLASS:
@@ -532,8 +549,11 @@ void Writer::print_modules() {
   }
   this->printf("%d\n", module_count);
   UnorderedMap<ir::Node*, int> toplevel_ids;
+  List<int> module_offsets = ListBuilder<int>::allocate(modules.size());
   int toplevel_id = 0;
+  int module_id = 0;
   for (auto module : modules) {
+    module_offsets[module_id] = toplevel_id;
     // Ignore error modules.
     if (module->is_error_module()) continue;
     this->printf("%s\n", module->unit()->absolute_path());
@@ -550,6 +570,7 @@ void Writer::print_modules() {
     }
   }
   toplevel_ids_ = toplevel_ids;
+  module_offsets_ = module_offsets;
 
   auto core_module = modules[core_index_];
 
@@ -557,7 +578,7 @@ void Writer::print_modules() {
     // Ignore error modules.
     if (module->is_error_module()) continue;
 
-    sha1 = sha1::SHA1();
+    sha1_ = sha1::SHA1();
 
     current_source_ = module->unit()->source();
 
@@ -593,7 +614,7 @@ void Writer::print_modules() {
     print_list_external(module->globals(), &Writer::print_method);
 
     sha1::SHA1::digest8_t digest;
-    sha1.getDigestBytes(digest);
+    sha1_.getDigestBytes(digest);
     lsp_writer_->write(digest, sizeof(digest));
 
     print_toitdoc(module);
