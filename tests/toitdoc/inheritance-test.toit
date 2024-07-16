@@ -34,6 +34,7 @@ main:
   mixins-simple
   mixins-multiple
   mixins-extended
+  overridden
 
 no-shadow-different-name:
   summaries := create-summaries """
@@ -511,3 +512,30 @@ mixins-extended:
   foo/inheritance.InheritedMember := inherited-A[1]
   expect-equals "foo" foo.member.name
   expect foo.member.is-method
+
+overridden:
+  // This case wasn't correctly handled by the old Go-based implementation.
+  summaries := create-summaries """
+    class A:
+      foo --x= --y=:
+
+    class B extends A:
+      foo --x= --y:
+      foo --x:
+      foo:
+    """
+
+  result := inheritance.compute summaries
+  classes := summaries[TEST-URI].classes
+  class-A/lsp.Class := classes[0]
+  class-B/lsp.Class := classes[1]
+  foo-A/lsp.Method := class-A.methods[0]
+  foo-Bs/List := class-B.methods
+  inherited-A/List := result.inherited[class-A]
+  inherited-B/List := result.inherited[class-B]
+  expect-equals 0 inherited-A.size
+  expect-equals 0 inherited-B.size
+  foo-Bs.do: | foo-B/lsp.Method |
+    overriding-foo-B/List? := result.shadowing.get (inheritance.ShadowKey class-B foo-B)
+    expect-equals 1 overriding-foo-B.size
+    expect-equals foo-A overriding-foo-B[0]
