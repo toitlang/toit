@@ -27,26 +27,64 @@ safe-name_ name/string -> string:
 
 /** A summary of a module. */
 class Module:
-  uri / string ::= ?
+  uri / string
   external-hash / ByteArray
-  dependencies / List/*<string>*/ ::= ?
-  exported-modules / List/*<string>*/ ::= ?
-  exports      / List ::= ?
-  classes      / List ::= ?
-  functions    / List ::= ?
-  globals      / List/*<Method>*/ ::= ?
-  toitdoc      / Contents? ::= ?
+  dependencies / List?/*<string>*/
+
+  /**
+  The summary bytes.
+
+  If this field is set, then the module hasn't been parsed yet.
+  It needs to go through the $SummaryReader first.
+  */
+  summary-bytes_ / ByteArray? := ?
+  toplevel-offset_ / int := ?
+  module-toplevel-offsets_ / List := ?
+  module-uris_ / List := ?
+
+  exported-modules_ / List?/*<string>*/ := null
+  exports_      / List? := null
+  classes_      / List? := null
+  functions_    / List? := null
+  globals_      / List?/*<Method>*/ := null
+  toitdoc_      / Contents? := null
 
   constructor
       --.uri
       --.external-hash
       --.dependencies
-      --.exports
-      --.exported-modules
-      --.classes
-      --.functions
-      --.globals
-      --.toitdoc:
+      --summary-bytes/ByteArray
+      --toplevel-offset/int
+      --module-toplevel-offsets/List
+      --module-uris/List:
+    summary-bytes_ = summary-bytes
+    toplevel-offset_ = toplevel-offset
+    module-toplevel-offsets_ = module-toplevel-offsets
+    module-uris_ = module-uris
+
+  exported-modules -> List/*<string>*/:
+    if summary-bytes_: parse_
+    return exported-modules_
+
+  exports -> List:
+    if summary-bytes_: parse_
+    return exports_
+
+  classes -> List/*<Class>*/:
+    if summary-bytes_: parse_
+    return classes_
+
+  functions -> List/*<Method>*/:
+    if summary-bytes_: parse_
+    return functions_
+
+  globals -> List/*<Method>*/:
+    if summary-bytes_: parse_
+    return globals_
+
+  toitdoc -> Contents?:
+    if summary-bytes_: parse_
+    return toitdoc_
 
   equals-external other/Module -> bool:
     return external-hash == other.external-hash
@@ -70,6 +108,14 @@ class Module:
     id -= functions.size
     assert: id < globals.size
     return globals[id]
+
+  parse_ -> none:
+    reader := ModuleReader summary-bytes_
+        --toplevel-offset=toplevel-offset_
+        --module-toplevel-offsets=module-toplevel-offsets_
+        --module-uris=module-uris_
+    reader.fill-module this
+
 
 class Export:
   static AMBIGUOUS ::= 0
@@ -293,15 +339,36 @@ class Parameter:
 
   is-block -> bool: return type and type.is-block
 
-class SummaryReader:
-  reader_ / io.Reader ::= ?
-
-  module-uris_             / List ::= []
-  module-toplevel-offsets_ / List ::= []
-  current-module-id_ := 0
-  current-toplevel-id_ := 0
+class ReaderBase:
+  reader_ / io.Reader
 
   constructor .reader_:
+
+  read-line -> string:
+    return reader_.read-line
+
+  read-bytes count/int -> ByteArray:
+    return reader_.read-bytes count
+
+  read-int -> int:
+    return int.parse read-line
+
+  read-list [block] -> List:
+    count := read-int
+    // TODO(1268, florian): remove this work-around and use the commented code instead.
+    // return List count block
+    result := List count
+    for i := 0; i < count; i++:
+      result[i] = block.call i
+    return result
+
+class SummaryReader extends ReaderBase:
+  module-uris_             / List ::= []
+  module-toplevel-offsets_ / List ::= []
+  current-module-id_ / int := 0
+
+  constructor reader/io.Reader:
+    super reader
 
   to-uri_ path / string -> string: return to-uri path --from-compiler
 
@@ -325,13 +392,44 @@ class SummaryReader:
     return result
 
   read-module -> Module:
-    current-toplevel-id_ = 0;
     module-offset := module-toplevel-offsets_[current-module-id_]
     module-path := read-line
     module-uri := to-uri_ module-path
     assert: module-uri == module-uris_[current-module-id_]
 
     dependencies := read-list: to-uri_ read-line
+
+    hash := read-bytes 20
+    module-bytes-size := read-int
+    module-bytes := read-bytes module-bytes-size
+
+    return Module
+        --uri=module-uri
+        --dependencies=dependencies
+        --external-hash=hash
+        --summary-bytes=module-bytes
+        --toplevel-offset=module-offset
+        --module-toplevel-offsets=module-toplevel-offsets_
+        --module-uris=module-uris_
+
+class ModuleReader extends ReaderBase:
+  current-toplevel-id_ / int := 0
+  toplevel-offset_ / int
+  module-toplevel-offsets_ / List
+  module-uris_ / List
+
+  constructor bytes/ByteArray
+      --toplevel-offset/int
+      --module-toplevel-offsets/List
+      --module-uris/List:
+    toplevel-offset_ = toplevel-offset
+    module-toplevel-offsets_ = module-toplevel-offsets
+    module-uris_ = module-uris
+    super (io.Reader bytes)
+
+  to-uri_ path / string -> string: return to-uri path --from-compiler
+
+  fill-module module/Module -> none:
     exported-modules := read-list: to-uri_ read-line
     exported := read-list: read-export
     // The order also defines the toplevel-ids.
@@ -339,18 +437,13 @@ class SummaryReader:
     classes := read-list: read-class
     functions := read-list: read-method
     globals := read-list: read-method
-    external-hash := read-bytes 20
     toitdoc := read-toitdoc
-    return Module
-        --uri=module-uri
-        --external-hash=external-hash
-        --dependencies=dependencies
-        --exported-modules=exported-modules
-        --exports=exported
-        --classes=classes
-        --functions=functions
-        --globals=globals
-        --toitdoc=toitdoc
+    module.exported-modules_ = exported-modules
+    module.exports_ = exported
+    module.classes_ = classes
+    module.functions_ = functions
+    module.globals_ = globals
+    module.toitdoc_ = toitdoc
 
   read-export -> Export:
     name := read-line
@@ -363,7 +456,7 @@ class SummaryReader:
     name := read-line
     range := read-range
     global-id := read-int
-    assert: global-id == toplevel-id + module-toplevel-offsets_[current-module-id_]
+    assert: global-id == toplevel-id + toplevel-offset_
     kind := read-line
     assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
     is-abstract := read-line == "abstract"
@@ -396,7 +489,7 @@ class SummaryReader:
     name := read-line
     range := read-range
     global-id := read-int  // Might be -1
-    toplevel-id := (global-id == -1) ? -1 : global-id - module-toplevel-offsets_[current-module-id_]
+    toplevel-id := (global-id == -1) ? -1 : global-id - toplevel-offset_
     kind-string := read-line
     kind := -1
     is-abstract := false
@@ -578,24 +671,6 @@ class SummaryReader:
 
   read-range -> Range:
     return Range read-int read-int
-
-  read-list [block] -> List:
-    count := read-int
-    // TODO(1268, florian): remove this work-around and use the commented code instead.
-    // return List count block
-    result := List count
-    for i := 0; i < count; i++:
-      result[i] = block.call i
-    return result
-
-  read-line -> string:
-    return reader_.read-line
-
-  read-bytes count/int -> ByteArray:
-    return reader_.read-bytes count
-
-  read-int -> int:
-    return int.parse read-line
 
 class Lines:
   offsets_ ::= []
