@@ -97,9 +97,9 @@ jobs:
         shell: bash
         run: |
           echo "flaky_result=flaky-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
+          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
+          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
