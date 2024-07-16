@@ -612,10 +612,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: Linux-build*
+          merge-multiple: true
 
       - uses: actions/download-artifact@v4
         with:
-          name: macOS-build-unsigned
+          pattern: macOS-build-unsigned*
+          merge-multiple: true
 
       - name: Set up macOS ARM environment
         run: |
@@ -972,12 +974,14 @@ jobs:
         with:
           pattern: ${{ steps.constants.outputs.flaky_result_name }}*
           path: flaky-result
+          merge-multiple: true
 
       - name: Retrieve
         uses: actions/download-artifact@v4
         with:
           pattern: ${{ steps.constants.outputs.external_result_name }}*
           path: external-result
+          merge-multiple: true
 
       - name: List downloaded files
         # This is mostly for debugging purposes.
