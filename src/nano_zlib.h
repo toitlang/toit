@@ -26,9 +26,9 @@ class Adler32 : public SimpleResource {
   TAG(Adler32);
   Adler32(SimpleResourceGroup* group) : SimpleResource(group), s1(1), s2(0), count(0) {}
 
-  inline void add(const uint8* contents, intptr_t extra) {
+  inline void add(const uint8* content, intptr_t extra) {
     for (intptr_t i = 0; i < extra; i++) {
-      uint8 b = contents[i];
+      uint8 b = content[i];
       s1 += b;
       if (s1 >= 65521) s1 -= 65521;
       s2 += s1;
@@ -41,9 +41,9 @@ class Adler32 : public SimpleResource {
   // bytes from the start of the data stream, ie calculate what
   // the checksum would have been if those initial bytes had not
   // been present.
-  inline void unadd(const uint8* contents, intptr_t extra) {
+  inline void unadd(const uint8* content, intptr_t extra) {
     for (intptr_t i = 0; i < extra; i++) {
-      uint8 b = contents[i];
+      uint8 b = content[i];
       s1 -= b;
       if (s1 < 0 ) s1 += 65521;
       // We need to subtract count * b from s2, since it has been
@@ -86,7 +86,7 @@ class ZlibRle : public SimpleResource {
   word get_output_index();
   // Returns the number of bytes read.  Use get_output_index to find the
   // number of bytes written.
-  word add(const uint8* contents, intptr_t extra);
+  word add(const uint8* content, intptr_t extra);
   void finish();
 
  protected:

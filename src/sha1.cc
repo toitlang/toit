@@ -26,13 +26,13 @@ Sha1::Sha1(SimpleResourceGroup* group) : SimpleResource(group), data_(), block_p
   h_[4] = 0xC3D2E1F0;
 }
 
-void Sha1::add(const uint8* contents, intptr_t extra) {
+void Sha1::add(const uint8* content, intptr_t extra) {
   length_ += extra;
   while (extra) {
     intptr_t end = Utils::min<intptr_t>(BLOCK_SIZE, block_posn_ + extra);
     intptr_t size = end - block_posn_;
-    memcpy(data_ + block_posn_, contents, size);
-    contents += size;
+    memcpy(data_ + block_posn_, content, size);
+    content += size;
     extra -= size;
     block_posn_ = end;
     if (block_posn_ == BLOCK_SIZE) {

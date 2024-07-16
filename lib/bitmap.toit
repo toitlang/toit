@@ -318,8 +318,8 @@ bytemap-rectangle x/int y/int color/int w/int h/int byte-array/ByteArray byte-ar
 /**
 Paints a framed window $frame on top of a background that has already been
   rendered.  The $frame can be partially transparent and so can the window
-  contents.  The $frame is painted on top of the background, then window
-  contents are painted on top.
+  content.  The $frame is painted on top of the background, then window
+  content are painted on top.
 */
 composit-bytes dest/ByteArray frame-opacity/ByteArray frame/ByteArray?
     painting-opacity/ByteArray painting/ByteArray bits-not-bytes/bool:
