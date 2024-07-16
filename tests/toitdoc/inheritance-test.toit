@@ -35,6 +35,8 @@ main:
   mixins-multiple
   mixins-extended
   overridden
+  mixins-extended-deep
+  mixins-many
 
 no-shadow-different-name:
   summaries := create-summaries """
@@ -506,15 +508,14 @@ mixins-extended:
   expect-equals 0 inherited-B.size
   expect-equals 2 inherited-A.size
   // Note: the order of the inherited members isn't guaranteed.
-  bar/inheritance.InheritedMember := inherited-A[0]
-  expect-equals "bar" bar.member.name
-  expect bar.member.is-method
-  foo/inheritance.InheritedMember := inherited-A[1]
+  foo/inheritance.InheritedMember := inherited-A[0]
   expect-equals "foo" foo.member.name
   expect foo.member.is-method
+  bar/inheritance.InheritedMember := inherited-A[1]
+  expect-equals "bar" bar.member.name
+  expect bar.member.is-method
 
 overridden:
-  // This case wasn't correctly handled by the old Go-based implementation.
   summaries := create-summaries """
     class A:
       foo --x= --y=:
@@ -539,3 +540,150 @@ overridden:
     overriding-foo-B/List? := result.shadowing.get (inheritance.ShadowKey class-B foo-B)
     expect-equals 1 overriding-foo-B.size
     expect-equals foo-A overriding-foo-B[0]
+
+mixins-extended-deep:
+  summaries := create-summaries """
+    mixin M1:
+
+    mixin M2 extends M1:
+      foo:
+      bar --x:
+
+    class A:
+      foo --x=:
+      bar --x=:
+
+    class B extends A:
+
+    class C extends B:
+      foo:
+      bar --x:
+
+    // The depth of M1.foo and M2.bar can not be used once the
+    // mixin is in the class chain.
+    class D extends C with M2:
+
+    class E extends D:
+      foo:
+      bar --x:
+    """
+
+  result := inheritance.compute summaries
+  classes := summaries[TEST-URI].classes
+  class-M1/lsp.Class := classes[0]
+  class-M2/lsp.Class := classes[1]
+  class-A/lsp.Class := classes[2]
+  class-B/lsp.Class := classes[3]
+  class-C/lsp.Class := classes[4]
+  class-D/lsp.Class := classes[5]
+  class-E/lsp.Class := classes[6]
+  inherited-M1/List := result.inherited[class-M1]
+  inherited-M2/List := result.inherited[class-M2]
+  inherited-A/List := result.inherited[class-A]
+  inherited-B/List := result.inherited[class-B]
+  inherited-C/List := result.inherited[class-C]
+  inherited-D/List := result.inherited[class-D]
+  inherited-E/List := result.inherited[class-E]
+  expect-equals 0 inherited-M1.size
+  expect-equals 0 inherited-M2.size
+  expect-equals 0 inherited-A.size
+  expect-equals 2 inherited-B.size
+  expect-equals 2 inherited-C.size
+  expect-equals 4 inherited-D.size
+  expect-equals 2 inherited-E.size
+  foo-M2/lsp.Method := class-M2.methods[0]
+  bar-M2/lsp.Method := class-M2.methods[1]
+  foo-A/lsp.Method := class-A.methods[0]
+  bar-A/lsp.Method := class-A.methods[1]
+  foo-C/lsp.Method := class-C.methods[0]
+  bar-C/lsp.Method := class-C.methods[1]
+  foo-E/lsp.Method := class-E.methods[0]
+  bar-E/lsp.Method := class-E.methods[1]
+  expect-equals "foo" foo-M2.name
+  expect-equals "foo" foo-A.name
+  expect-equals "foo" foo-C.name
+  expect-equals "foo" foo-E.name
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == foo-A)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == foo-M2)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-A)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-M2)
+  overriding-foo-e/List? := result.shadowing.get (inheritance.ShadowKey class-E foo-E)
+  overriding-bar-e/List? := result.shadowing.get (inheritance.ShadowKey class-E bar-E)
+  expect-equals 2 overriding-foo-e.size
+  expect (overriding-foo-e.contains foo-A)
+  expect (overriding-foo-e.contains foo-M2)
+  expect-equals 2 overriding-bar-e.size
+  expect (overriding-bar-e.contains bar-A)
+  expect (overriding-bar-e.contains bar-M2)
+
+mixins-many:
+  summaries := create-summaries """
+    mixin M1:
+
+    mixin M2 extends M1:
+      foo:
+
+    mixin M3:
+      bar:
+
+    mixin M4:
+      baz --x=:
+
+    class A:
+
+    class B extends A:
+      foo:
+
+    class C extends B:
+      bar --x=:
+
+    class D extends C with M2 M3 M4:
+
+    class E extends D:
+      baz:
+    """
+
+  result := inheritance.compute summaries
+  classes := summaries[TEST-URI].classes
+  class-M1/lsp.Class := classes[0]
+  class-M2/lsp.Class := classes[1]
+  class-M3/lsp.Class := classes[2]
+  class-M4/lsp.Class := classes[3]
+  class-A/lsp.Class := classes[4]
+  class-B/lsp.Class := classes[5]
+  class-C/lsp.Class := classes[6]
+  class-D/lsp.Class := classes[7]
+  class-E/lsp.Class := classes[8]
+  inherited-M1/List := result.inherited[class-M1]
+  inherited-M2/List := result.inherited[class-M2]
+  inherited-M3/List := result.inherited[class-M3]
+  inherited-M4/List := result.inherited[class-M4]
+  inherited-A/List := result.inherited[class-A]
+  inherited-B/List := result.inherited[class-B]
+  inherited-C/List := result.inherited[class-C]
+  inherited-D/List := result.inherited[class-D]
+  inherited-E/List := result.inherited[class-E]
+  expect-equals 0 inherited-M1.size
+  expect-equals 0 inherited-M2.size
+  expect-equals 0 inherited-M3.size
+  expect-equals 0 inherited-M4.size
+  expect-equals 0 inherited-A.size
+  expect-equals 0 inherited-B.size
+  expect-equals 1 inherited-C.size
+  expect-equals 4 inherited-D.size
+  expect-equals 4 inherited-E.size
+  foo-M2/lsp.Method := class-M2.methods[0]
+  bar-M3/lsp.Method := class-M3.methods[0]
+  baz-M4/lsp.Method := class-M4.methods[0]
+  foo-B/lsp.Method := class-B.methods[0]
+  bar-C/lsp.Method := class-C.methods[0]
+  baz-E/lsp.Method := class-E.methods[0]
+  expect-equals foo-B (inherited-C.first as inheritance.InheritedMember).member.target
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == foo-M2)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-M3)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == baz-M4)
+  expect (inherited-D.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-C)
+  expect (inherited-E.any: | inherited/inheritance.InheritedMember | inherited.member.target == foo-M2)
+  expect (inherited-E.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-M3)
+  expect (inherited-E.any: | inherited/inheritance.InheritedMember | inherited.member.target == baz-M4)
+  expect (inherited-E.any: | inherited/inheritance.InheritedMember | inherited.member.target == bar-C)
