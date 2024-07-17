@@ -98,6 +98,15 @@ class DocsBuilder implements lsp.ToitdocVisitor:
               --category=category
         parent-libraries = library.libraries
 
+      if not library:
+        library = Library
+            --name=module-name
+            --path=segments
+            --libraries={:}
+            --modules={:}
+            --category=module-category
+        libraries[module-name] = library
+
       split := build-classes-interfaces-and-mixins module.classes
       classes := split[0]
       interfaces := split[1]
@@ -492,13 +501,15 @@ class DocsBuilder implements lsp.ToitdocVisitor:
   module-path-segments uri/string? -> List?:
     if not uri: return null
     path := lsp.to-path uri
-    path = path.trim --left root-path
+    inside-root-path := path.starts-with root-path
+    if inside-root-path:
+      path = path.trim --left root-path
     path = path.trim --left fs.SEPARATOR
     result := fs.split path
-    // TODO(florian): remove this check if things go well.
-    // Original code had it, but didn't use `fs.split`.
-    if result.size > 0 and result.first == "":
-      throw "FIX CODE. ADD CHECK."
+    if not inside-root-path:
+      result = ["@"] + result
+    if result.size > 0 and pkg-name and result.first == "src":
+      result[0] = pkg-name
     return result
 
 /**

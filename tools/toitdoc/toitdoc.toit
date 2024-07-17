@@ -15,6 +15,7 @@
 
 import cli
 import encoding.json
+import encoding.yaml
 import fs
 import host.directory
 import host.file
@@ -23,22 +24,29 @@ import .lsp-exports as lsp
 import .serve
 import .src.builder show DocsBuilder
 
-build-command --toitc-from-args/Lambda -> cli.Command:
+build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Command:
+  shared-help := """
+    If --package is true, then extracts the package name from the
+    package.yaml and only includes the 'src' folder. It then also adds
+    "To use this library ..." headers to the documentation.
+
+    If --sdk is true, then the documentation for the current SDK is generated.
+    No source files are needed in this case.
+
+    The --version option may be used to specify the version of a package or
+    application.
+    """
+
   cmd := cli.Command "doc"
       --aliases=["docs", "toitdoc"]
       --help="Generate or serve documentation from Toit source code."
       --options=[
-        cli.Option "pkg-name"
-            --help="Name of the package.",
+        cli.Flag "package"
+            --help="Whether the documentation is for a package.",
+        cli.Flag "sdk"
+            --help="Whether the documentation is for the SDK.",
         cli.Option "version"
             --help="Version of the package, or application.",
-        cli.Option "root-path"
-            --type="dir"
-            --help="Root path to build paths from.",
-        cli.Option "sdk"
-            --type="dir"
-            --help="SDK path."
-            --hidden,
         cli.Flag "exclude-sdk"
             --help="Exclude SDK libraries from the documentation."
             --default=false,
@@ -55,6 +63,8 @@ build-command --toitc-from-args/Lambda -> cli.Command:
       --help="""
         Generate a JSON file.
 
+        $shared-help
+
         The generated file can be served with the toitdocs web-app located
         at https://github.com/toitware/web-toitdocs.
         """
@@ -68,17 +78,21 @@ build-command --toitc-from-args/Lambda -> cli.Command:
       --rest=[
         cli.Option "source"
             --type="file|dir"
-            --required
-            --multi,
+            --help="Source directory or file. Defaults to the current directory.",
       ]
-      --run=:: toitdoc-build it (toitc-from-args.call it)
+      --run=::
+        toitdoc-build it
+            --toitc=(toitc-from-args.call it)
+            --sdk-path=(sdk-path-from-args.call it)
   cmd.add build-command
 
   serve-command := cli.Command "serve"
       --help="""
           Serve the documentation.
 
-          If the port is 0, a random port will be chosen.
+          If the port is 0, a random port is chosen.
+
+          $shared-help
           """
       --options=[
         cli.OptionInt "port"
@@ -89,17 +103,19 @@ build-command --toitc-from-args/Lambda -> cli.Command:
       --rest=[
         cli.Option "source"
             --type="file|dir"
-            --required
-            --multi,
+            --help="Source directory or file. Defaults to the current directory.",
       ]
-      --run=:: toitdoc-serve it (toitc-from-args.call it)
+      --run=::
+        toitdoc-serve it
+            --toitc=(toitc-from-args.call it)
+            --sdk-path=(sdk-path-from-args.call it)
   cmd.add serve-command
 
   return cmd
 
-collect-files sources/List -> List:
+collect-files root/string -> List:
   pending := Deque
-  pending.add-all sources
+  pending.add root
 
   result := []
   while not pending.is-empty:
@@ -107,7 +123,8 @@ collect-files sources/List -> List:
     if file.is-directory source:
       stream := directory.DirectoryStream source
       while file-name := stream.next:
-        pending.add "$source/$file-name"
+        if file-name != ".packages":
+          pending.add "$source/$file-name"
     else if file.is-file source and source.ends-with ".toit":
       result.add source
   return result
@@ -173,18 +190,52 @@ compute-sdk-path --sdk-path/string? --toitc/string? -> string:
   if file.is-directory lib-dir: return sdk-path
   throw "Couldn't determine SDK path"
 
-toitdoc parsed/cli.Parsed --toitc/string --output/string -> none:
-  pkg-name := parsed["pkg-name"]
+toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> none:
+  for-package := parsed["package"] == true
+  for-sdk := parsed["sdk"] == true
   version := parsed["version"]
-  root-path := parsed["root-path"]
-  sdk-path := parsed["sdk"]
   exclude-sdk := parsed["exclude-sdk"]
   exclude-pkgs := parsed["exclude-pkgs"]
   include-private := parsed["include-private"]
-  sources := parsed["source"]
+  source := parsed["source"]
 
-  if not root-path:
-    root-path = directory.cwd
+  if for-sdk and exclude-sdk:
+    print "Can't exclude the SDK when generating the SDK documentation."
+    exit 1
+
+  if for-sdk and for-package:
+    print "The flags --sdk and --package can't be used together."
+    exit 1
+
+  if source and for-sdk:
+    print "No source files are allowed when generating the SDK documentation."
+    exit 1
+
+  if for-sdk:
+    source = "$sdk-path/lib"
+  else if not source:
+    source = directory.cwd
+
+  root-path/string := ?
+  if file.is-directory source:
+    root-path = source
+  else:
+    root-path = fs.dirname source
+
+  pkg-name/string? := null
+  if for-package:
+    package-yaml-path := fs.join source "package.yaml"
+    if not file.is-file package-yaml-path:
+      print "No package.yaml found at $package-yaml-path."
+      exit 1
+    content := yaml.decode (file.read-content package-yaml-path)
+    if not content.contains "name":
+      print "No 'name' field found in package.yaml."
+      exit 1
+    pkg-name = content["name"]
+
+    // Only include the 'src' folder.
+    source = fs.join source "src"
 
   if not file.is-file toitc:
     print "Toit compiler not found at $toitc."
@@ -196,7 +247,7 @@ toitdoc parsed/cli.Parsed --toitc/string --output/string -> none:
   sdk-uri := lsp.to-uri sdk-path
   if not sdk-uri.ends-with "/": sdk-uri = "$sdk-uri/"
 
-  paths := collect-files sources
+  paths := collect-files source
   uris := paths.map: lsp.to-uri (fs.to-absolute it)
 
   documents := lsp.compute-summaries --uris=uris --toitc=toitc --sdk-path=sdk-path
@@ -215,21 +266,27 @@ toitdoc parsed/cli.Parsed --toitc/string --output/string -> none:
       --include-private=include-private
 
   built-toitdoc := builder.build
+
+  if not exclude-pkgs: built-toitdoc["contains_pkgs"] = true
+  if not exclude-sdk: built-toitdoc["contains_sdk"] = true
+  if for-package: built-toitdoc["mode"] = "package"
+  if for-sdk: built-toitdoc["mode"] = "sdk"
+
   file.write-content --path=output (json.encode built-toitdoc)
 
-toitdoc-build parsed/cli.Parsed toitc/string:
+toitdoc-build parsed/cli.Parsed --toitc/string --sdk-path/string?:
   output := parsed["output"]
 
-  toitdoc parsed --toitc=toitc --output=output
+  toitdoc parsed --toitc=toitc --sdk-path=sdk-path --output=output
 
-toitdoc-serve parsed/cli.Parsed toitc/string:
+toitdoc-serve parsed/cli.Parsed --toitc/string --sdk-path/string?:
   port := parsed["port"]
 
   tmp-dir := directory.mkdtemp "/tmp/toitdoc-"
   try:
     output := "$tmp-dir/toitdoc.json"
 
-    toitdoc parsed --toitc=toitc --output=output
+    toitdoc parsed --toitc=toitc --sdk-path=sdk-path --output=output
     serve output --port=port
   finally:
     directory.rmdir --recursive tmp-dir
