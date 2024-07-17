@@ -624,8 +624,14 @@ class ModuleReader extends ReaderBase:
     kind := read-line
     if kind == "TEXT": return Text read-toitdoc-symbol
     if kind == "CODE": return Code read-toitdoc-symbol
-    assert: kind == "REF"
-    return read-toitdoc-ref
+    if kind == "LINK": return read-link
+    if kind == "REF": return read-toitdoc-ref
+    throw "Unknown kind $kind"
+
+  read-link -> Link:
+    text := read-toitdoc-symbol
+    uri := read-toitdoc-symbol
+    return Link text uri
 
   read-toitdoc-ref -> ToitdocRef:
     text := read-toitdoc-symbol

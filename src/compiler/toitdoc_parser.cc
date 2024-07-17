@@ -199,6 +199,7 @@ class ToitdocParser {
                          bool keep_delimiters_and_escapes,
                          const char* error_message);
   toitdoc::Ref* parse_ref();
+  toitdoc::Link* parse_link();
   void skip_comment(bool should_report_error = true);
 
  private:  // Scanning related.
@@ -603,6 +604,11 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
             (is_operator_start(look_ahead()) && !is_comment_start(look_ahead(1), look_ahead(2)));
         break;
 
+      case 'h':
+        // We want to allow http:// or https:// in the text.
+        is_special_char = matches("http://") || matches("https://");
+        break;
+
       case '"':
         is_special_char = true;
         break;
@@ -661,6 +667,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
       case '`': expressions.add(parse_code()); break;
       case '"': expressions.add(parse_string()); break;
       case '$': expressions.add(parse_ref()); break;
+      case 'h': expressions.add(parse_link()); break;
       case '/':
         // We know that '/' is a special char, and therefore that the next character must be
         // a '*'.
@@ -787,6 +794,49 @@ toitdoc::Ref* ToitdocParser::parse_ref() {
     if (look_ahead(-1) == ')') end--;
   }
   return _new toitdoc::Ref(id, make_symbol(begin, end));
+}
+
+static bool is_legal_link_char(int c) {
+  if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9')) {
+    return true;
+  }
+  switch (c) {
+    case '.':
+    case '-':
+    case '@':
+    case ':':
+    case '_':
+    case '+':
+    case '~':
+    case '#':
+    case '=':
+    case '?':
+    case '&':
+    case '/':
+      return true;
+    default:
+      return false;
+  }
+}
+
+toitdoc::Link* ToitdocParser::parse_link() {
+  ASSERT(peek() == 'h');
+  int begin = index_;
+  advance(4); // Skip over 'http'
+  if (peek() == 's') advance();
+  advance("://");
+  while (true) {
+    int c = peek();
+    if (c == '.') {
+      // We don't allow trailing '.' in the link.
+      if (!is_legal_link_char(look_ahead())) break;
+    }
+    if (!is_legal_link_char(c)) break;
+    advance();
+  }
+  int text_end = index_;
+  auto symbol = make_symbol(begin, text_end);
+  return _new toitdoc::Link(symbol, symbol);
 }
 
 void ToitdocParser::skip_comment(bool should_report_error) {

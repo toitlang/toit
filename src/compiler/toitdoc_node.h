@@ -27,8 +27,8 @@ namespace toitdoc {
 
 class Node;
 
-#define TOITDOC_NODES(V)                \
-  V(Content)                   \
+#define TOITDOC_NODES(V)        \
+  V(Content)                    \
   V(Section)                    \
   V(Statement)                  \
   V(CodeSection)                \
@@ -38,6 +38,7 @@ class Node;
   V(Expression)                 \
   V(Text)                       \
   V(Code)                       \
+  V(Link)                       \
   V(Ref)                        \
 
 #define DECLARE(name) class name;
@@ -194,6 +195,21 @@ class Ref : public Expression {
  private:
   int id_;
   Symbol text_;
+};
+
+class Link : public Expression {
+ public:
+  Link(Symbol text, Symbol url)
+      : text_(text)
+      , url_(url) {}
+  IMPLEMENTS(Link);
+
+  Symbol text() const { return text_; }
+  Symbol url() const { return url_; }
+
+ private:
+  Symbol text_;
+  Symbol url_;
 };
 
 #undef IMPLEMENTS

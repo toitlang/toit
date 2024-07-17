@@ -457,6 +457,9 @@ class DocsBuilder implements lsp.ToitdocVisitor:
         --name=name
         --shape=build-doc-shape ref.shape
 
+  visit-Link link/lsp.Link -> DocLink:
+    return DocLink --text=link.text --url=link.url
+
   build-doc-shape shape/lsp.Shape? -> Shape?:
     if not shape: return null
     return Shape
@@ -967,6 +970,21 @@ class DocCode extends DocExpression:
     return {
       "object_type": TYPE,
       "text": text,
+    }
+
+class DocLink extends DocExpression:
+  static TYPE ::= "expression_link"
+
+  text/string
+  url/string
+
+  constructor --.text --.url:
+
+  to-json -> Map:
+    return {
+      "object_type": TYPE,
+      "text": text,
+      "url": url,
     }
 
 class DocToitdocRef extends DocExpression:

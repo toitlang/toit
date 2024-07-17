@@ -65,7 +65,11 @@ expect-statement-equal expected/Statement actual/Statement:
       else if expected-expression is Code:
         expect actual-expression is Code
         expect-equals expected-expression.text actual-expression.text
-      else:
+      else if expected-expression is Link:
+        expect actual-expression is Link
+        expect-equals expected-expression.text actual-expression.text
+        expect-equals expected-expression.url actual-expression.url
+      else if expected-expression is ToitdocRef:
         expect actual-expression is ToitdocRef
         expect-equals expected-expression.text actual-expression.text
         expect-equals expected-expression.kind actual-expression.kind
@@ -82,6 +86,8 @@ expect-statement-equal expected/Statement actual/Statement:
           expect-list-equals expected-shape.names actual-shape.names
         else:
           expect-null actual-expression.shape
+      else:
+        unreachable
 
 
 test-toitdoc client/LspClient str/string expected / Content:
@@ -603,6 +609,31 @@ test client/LspClient:
             ],
             Paragraph [
               Text "done"
+            ],
+          ],
+      ]
+
+  test-toitdoc
+      client
+      """
+        /**
+        https://example.com
+
+        - http://example.com
+        */
+      """
+      Content [
+        Section null
+          [
+            Paragraph [
+              Link "https://example.com" "https://example.com"
+            ],
+            Itemized [
+              Item [
+                Paragraph [
+                  Link "http://example.com" "http://example.com"
+                ]
+              ],
             ],
           ],
       ]
