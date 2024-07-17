@@ -107,6 +107,7 @@ parse-module source/string --uri/string -> lsp.Module:
   return lsp.Module
       --uri=uri
       --classes=classes
+      --external-hash=#[]
       --dependencies=[]
       --exported-modules=[]
       --exports=[]
