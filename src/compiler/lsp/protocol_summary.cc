@@ -44,6 +44,7 @@ struct ToitdocPath {
     FACTORY = 6,
     METHOD = 7,
     FIELD = 8,
+    PARAMETER = 9,
   };
 
   Kind kind;
@@ -121,8 +122,8 @@ class ToitdocWriter : public toitdoc::Visitor {
     if (resolved == null) {
       this->printf("-1\n");
     } else if (resolved->is_Parameter()) {
-      // TODO(florian): handle parameters.
-      this->printf("-2\n");
+      // For now just print the kind_id.
+      this->printf("%d\n", static_cast<int>(ToitdocPath::Kind::PARAMETER));
     } else {
       auto path = paths_.at(resolved);
       int kind_id = static_cast<int>(path.kind);
@@ -161,6 +162,11 @@ class ToitdocWriter : public toitdoc::Visitor {
         case ToitdocPath::Kind::FIELD:
           holder_name = path.klass->name();
           name = resolved->as_Field()->name();
+          break;
+
+        case ToitdocPath::Kind::PARAMETER:
+          UNREACHABLE();
+          // Nothing to do.
           break;
       }
       this->printf("%d\n", kind_id);
