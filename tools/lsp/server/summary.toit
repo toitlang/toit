@@ -136,6 +136,7 @@ class Module:
         --module-toplevel-offsets=module-toplevel-offsets_
         --module-uris=module-uris_
     reader.fill-module this
+    summary-bytes_ = null
 
 
 class Export:
