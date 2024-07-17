@@ -126,7 +126,7 @@ collect-files root/string -> List:
         if file-name != ".packages":
           pending.add "$source/$file-name"
     else if file.is-file source and source.ends-with ".toit":
-      result.add source
+      result.add (fs.to-absolute source)
   return result
 
 /**
@@ -221,6 +221,7 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
     root-path = source
   else:
     root-path = fs.dirname source
+  root-path = fs.to-absolute root-path
 
   pkg-name/string? := null
   if for-package:
