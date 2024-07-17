@@ -62,6 +62,27 @@ class Module:
     module-toplevel-offsets_ = module-toplevel-offsets
     module-uris_ = module-uris
 
+  constructor
+      --.uri
+      --.external-hash
+      --.dependencies
+      --exports/List
+      --exported-modules/List
+      --classes/List
+      --functions/List
+      --globals/List
+      --toitdoc/Contents?:
+    summary-bytes_ = null
+    toplevel-offset_ = -1
+    module-toplevel-offsets_ = []
+    module-uris_ = []
+    exported-modules_ = exported-modules
+    exports_ = exports
+    classes_ = classes
+    functions_ = functions
+    globals_ = globals
+    toitdoc_ = toitdoc
+
   exported-modules -> List/*<string>*/:
     if summary-bytes_: parse_
     return exported-modules_
