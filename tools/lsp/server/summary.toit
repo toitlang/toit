@@ -71,7 +71,7 @@ class Module:
       --classes/List
       --functions/List
       --globals/List
-      --toitdoc/Contents?:
+      --toitdoc/Content?:
     summary-bytes_ = null
     toplevel-offset_ = -1
     module-toplevel-offsets_ = []
