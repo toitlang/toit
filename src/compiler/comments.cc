@@ -46,11 +46,7 @@ int CommentsManager::find_closest_before(ast::Node* node) {
   return -1;
 }
 
-/// When [allow_modifiers] is true, allows modifiers on the line of the
-///   [next] range.
-bool CommentsManager::is_attached(Source::Range previous,
-                                  Source::Range next,
-                                  bool allow_modifiers) {
+bool CommentsManager::is_attached(Source::Range previous, Source::Range next) {
   // Check that there is one newline, and otherwise only whitespace.
   int start_offset = source_->offset_in_source(previous.to());
   int end_offset = source_->offset_in_source(next.from());
@@ -63,15 +59,8 @@ bool CommentsManager::is_attached(Source::Range previous,
   if (text[i++] != '\n') return false;
   while (i < end_offset and text[i] == ' ') i++;
   if (i == end_offset) return true;
-  if (!allow_modifiers) return false;
-  for (; i < end_offset; i++) {
-    if (text[i] == '\n') return false;
-    if (text[i] == '\r') return false;
-    if (text[i] == ':') return false;
-  }
-  return true;
+  return false;
 }
-
 
 bool CommentsManager::is_sorted(List<Scanner::Comment> comments) {
   for (int i = 1; i < comments.length(); i++) {
