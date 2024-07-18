@@ -122,7 +122,7 @@ test client/LspClient:
       */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Simple"
@@ -139,7 +139,7 @@ test client/LspClient:
       */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Simple multiline"
@@ -155,7 +155,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented"
@@ -172,7 +172,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented multiline"
@@ -190,7 +190,7 @@ test client/LspClient:
         ref:
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented ",
@@ -209,7 +209,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented ",
@@ -232,7 +232,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -255,7 +255,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -280,11 +280,11 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [ Text "unnamed section" ],
           ],
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -312,7 +312,7 @@ test client/LspClient:
         ref:
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "unnamed section ",
@@ -324,7 +324,7 @@ test client/LspClient:
               Text " followed by an indentation",
             ],
           ],
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -343,7 +343,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "A",
@@ -372,7 +372,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [ Paragraph [Text "1"] ],
@@ -402,7 +402,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -435,7 +435,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -470,7 +470,7 @@ test client/LspClient:
       if-absent:
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Updates the value of the given ",
@@ -513,7 +513,7 @@ test client/LspClient:
       if-absent:
       """
       Content [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -558,7 +558,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "quotes escape characters: '\$', '\"', '`'."
@@ -602,7 +602,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "foobar"
@@ -623,7 +623,7 @@ test client/LspClient:
         */
       """
       Content [
-        Section null
+        Section null 1
           [
             Paragraph [
               Link "https://example.com" "https://example.com"
@@ -653,7 +653,7 @@ test client/LspClient:
       */
       """
       Content [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -692,4 +692,20 @@ test client/LspClient:
               Text "[foo]"
             ],
           ],
+      ]
+
+
+  test-toitdoc
+      client
+      """
+      /**
+      # 1
+      ## 2
+      ### 3
+      */
+      """
+      Content [
+        Section "1" 1 [],
+        Section "2" 2 [],
+        Section "3" 3 [],
       ]
