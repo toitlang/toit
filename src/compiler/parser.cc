@@ -71,6 +71,13 @@ static inline T add_range(std::pair<int, int> range, Source* source, T node) {
   return node;
 }
 
+template<typename T>
+static inline T add_ranges(Source::Range range, Source::Range end_range, Source* source, T node) {
+  node->set_range(range);
+  node->set_end_range(end_range);
+  return node;
+}
+
 class ParserPeeker {
  public:
   ParserPeeker(Parser* parser) : parser_(parser) {}
@@ -91,6 +98,9 @@ class ParserPeeker {
 
 #define NEW_NODE(constructor, range) \
   add_range(range, source_, _new constructor)
+
+#define NEW_NODE2(constructor, range, end_range) \
+  add_ranges(range, end_range, source_, _new constructor)
 
 void Parser::report_error(Source::Range range, const char* format, ...) {
   va_list arguments;
@@ -1857,7 +1867,9 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
   start_delimited(IndentationStack::DELIMITED, Token::LBRACK, Token::RBRACK);
   if (current_token_if_delimiter() == Token::RBRACK) {
     report_error("Missing argument for indexing operator");
-    result = NEW_NODE(Index(head, List<ast::Expression*>(), current_range_if_delimiter()), range);
+    result = NEW_NODE2(Index(head, List<ast::Expression*>()),
+                       range,
+                       current_range_if_delimiter());
   } else {
     Expression* first_argument = null;
     if (current_token() != Token::SLICE) {
@@ -1869,7 +1881,9 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
       if (current_token_if_delimiter() != Token::RBRACK) {
         second_argument = parse_expression(true);
       }
-      result = NEW_NODE(IndexSlice(head, first_argument, second_argument, current_range_if_delimiter()), range);
+      result = NEW_NODE2(IndexSlice(head, first_argument, second_argument),
+                         range,
+                         current_range_if_delimiter());
     } else {
       ListBuilder<Expression*> arguments;
       arguments.add(first_argument);
@@ -1877,7 +1891,9 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
         if (current_token_if_delimiter() == Token::RBRACK) break;
         arguments.add(parse_expression(true));
       }
-      result = NEW_NODE(Index(head, arguments.build(), current_range_if_delimiter()), range);
+      result = NEW_NODE2(Index(head, arguments.build()),
+                         range,
+                         current_range_if_delimiter());
     }
   }
   *encountered_error = end_delimited(IndentationStack::DELIMITED, Token::RBRACK);
@@ -2027,7 +2043,7 @@ Expression* Parser::parse_primary(bool allow_colon) {
     Expression* expression = parse_expression(true);
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::DELIMITED, Token::RPAREN);
-    return NEW_NODE(Parenthesis(expression, end_range), range);
+    return NEW_NODE2(Parenthesis(expression), range, end_range);
   } else if (current_token() == Token::IDENTIFIER) {
     return parse_identifier();
   } else if (current_token() == Token::INTEGER) {
@@ -2275,8 +2291,9 @@ ToitdocReference* Parser::parse_toitdoc_signature_reference(int* end_offset) {
   if (target == null || encountered_error) {
     target = NEW_NODE(Error(), current_range());
   }
-  return NEW_NODE(ToitdocReference(target, is_target_setter, parameters.build(), current_range()),
-                  open_range);
+  return NEW_NODE2(ToitdocReference(target, is_target_setter, parameters.build()),
+                  open_range,
+                  current_range());
 }
 
 Expression* Parser::parse_list() {
@@ -2289,7 +2306,7 @@ Expression* Parser::parse_list() {
   } while (optional_delimiter(Token::COMMA));
   auto end_range = current_range_if_delimiter();
   end_delimited(IndentationStack::LITERAL, Token::RBRACK);
-  return NEW_NODE(LiteralList(elements.build(), end_range), range);
+  return NEW_NODE2(LiteralList(elements.build()), range, end_range);
 }
 
 Expression* Parser::parse_byte_array() {
@@ -2316,7 +2333,7 @@ Expression* Parser::parse_byte_array() {
   } while (optional_delimiter(Token::COMMA));
   auto end_range = current_range_if_delimiter();
   end_delimited(IndentationStack::LITERAL, Token::RBRACK);
-  return NEW_NODE(LiteralByteArray(elements.build(), end_range), range);
+  return NEW_NODE2(LiteralByteArray(elements.build()), range, end_range);
 }
 
 void Parser::discard_buffered_scanner_states() {
@@ -2446,11 +2463,11 @@ Expression* Parser::parse_map_or_set() {
   if (optional_delimiter(Token::COLON)) {
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE(LiteralMap(List<Expression*>(), List<Expression*>(), end_range), range);
+    return NEW_NODE2(LiteralMap(List<Expression*>(), List<Expression*>()), range, end_range);
   } else if (current_token_if_delimiter() == Token::RBRACE) {
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE(LiteralSet(List<Expression*>(), end_range), range);
+    return NEW_NODE2(LiteralSet(List<Expression*>()), range, end_range);
   }
 
   Expression* first = parse_expression(false);
@@ -2480,7 +2497,7 @@ Expression* Parser::parse_map_or_set() {
     }
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE(LiteralMap(keys.build(), values.build(), end_range), range);
+    return NEW_NODE2(LiteralMap(keys.build(), values.build()), range, end_range);
   } else {
     ListBuilder<Expression*> elements;
     elements.add(first);
@@ -2491,7 +2508,7 @@ Expression* Parser::parse_map_or_set() {
     }
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE(LiteralSet(elements.build(), end_range), range);
+    return NEW_NODE2(LiteralSet(elements.build()), range, end_range);
   }
 }
 
@@ -2786,6 +2803,7 @@ Source::Range Parser::peek_range() {
     }
     return source_->range(state.scanner_state.from, shortened_to);
   }
+  return current_range();
 }
 
 Source::Range Parser::current_range_safe() {
