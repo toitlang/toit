@@ -169,9 +169,6 @@ class ToplevelRef:
   constructor .module-uri .id:
     assert: id >= 0
 
-  equals-external other/ToplevelRef -> bool:
-    return module-uri == other.module-uri and id == other.id
-
 class Type:
   static ANY-KIND ::= -1
   static NONE-KIND ::= -2
@@ -191,9 +188,6 @@ class Type:
   is-block -> bool: return kind == BLOCK-KIND
   is-any -> bool: return kind == ANY-KIND
   is-none -> bool: return kind == NONE-KIND
-
-  equals-external other/Type -> bool:
-    return other and kind == other.kind and class-ref.equals-external other.class-ref
 
 hash-code-counter_ := 0
 
@@ -236,20 +230,6 @@ class Class implements ToplevelElement:
   is-class -> bool: return kind == KIND-CLASS
   is-interface -> bool: return kind == KIND-INTERFACE
   is-mixin -> bool: return kind == KIND-MIXIN
-
-  equals-external other/Class -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
-        (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
-        (mixins.equals other.mixins --element-equals=: |a b| a.equals-external b) and
-        (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
-        (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
-        (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and
-        (fields.equals other.fields --element-equals=: |a b| a.equals-external b) and
-        (methods.equals other.methods --element-equals=: |a b| a.equals-external b)
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     children := []
@@ -296,14 +276,6 @@ class Method implements ClassMember ToplevelElement:
   toitdoc / Contents? ::= ?
 
   constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
-
-  equals-external other/Method -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        (parameters.equals other.parameters --element-equals=: |a b| a.equals-external b) and
-        (return-type == other.return-type or (return-type and return-type.equals-external other.return-type))
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
