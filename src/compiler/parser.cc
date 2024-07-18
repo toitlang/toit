@@ -1026,8 +1026,6 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
 
   start_multiline_construct(IndentationStack::CLASS);   // Classes/monitors go over multiple lines.
 
-  auto keywords_range = is_abstract ? abstract_range : Source::Range::invalid();
-
   ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
     const char* kind_string;
@@ -1046,15 +1044,17 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
       report_error("%s can't be abstract", kind_string);
       is_abstract = false;
     }
-    keywords_range = keywords_range.is_valid()
-        ? keywords_range.extend(current_range())
-        : current_range();
-    consume();
   } else {
     ASSERT(current_token() == Token::CLASS);
     kind = ast::Class::CLASS;
-    consume();
   }
+
+  auto kind_range = current_range();
+  auto keywords_range = is_abstract
+      ? abstract_range.extend(kind_range)
+      : kind_range;
+  consume();
+
 
   int member_indentation = -1;
 
