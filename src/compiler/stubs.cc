@@ -84,6 +84,8 @@ void add_stub_methods_and_switch_to_plain_shapes(ir::Program* program) {
                                                   call_shape.is_block(i),
                                                   i,
                                                   false,  // Whether it has a default value is updated below.
+                                                  // At this point we don't keep track of default-value ranges anymore.
+                                                  Source::Range::invalid(),
                                                   range);
         }
         CallBuilder builder(range);
@@ -189,6 +191,7 @@ static ir::IsInterfaceOrMixinStub* create_stub(ir::Class* holder,
                                             false,
                                             0,
                                             false,
+                                            Source::Range::invalid(),
                                             stub->range());
   auto parameters = ListBuilder<ir::Parameter*>::build(this_parameter);
   stub->set_parameters(parameters);

@@ -1340,21 +1340,29 @@ class Parameter : public Local {
             bool is_block,
             int index,
             bool has_default_value,
+            Source::Range default_value_range,
             Source::Range range)
-      : Parameter(name, type, is_block, index, -1, has_default_value, range) {}
+      : Parameter(name, type, is_block, index, -1, has_default_value, default_value_range, range) {}
   Parameter(Symbol name,
             Type type,
             bool is_block,
             int index,
             int original_index,
             bool has_default_value,
+            Source::Range default_value_range,
             Source::Range range)
       : Local(name, false, is_block, type, range)  // By default parameters are not final.
       , has_default_value_(has_default_value)
+      , default_value_range_(default_value_range)
       , original_index_(original_index) {
     index_ = index;
   }
   IMPLEMENTS(Parameter)
+
+  /// The range of the default value (if one exists).
+  /// This range is used for toitdoc generation and is not maintained during transformations.
+  /// Once the summaries have been generated, this value shouldn't be used anymore.
+  Source::Range default_value_range() const { return default_value_range_; }
 
   bool has_default_value() const { return has_default_value_; }
   void set_has_default_value(bool new_value) { has_default_value_ = new_value; }
@@ -1366,6 +1374,7 @@ class Parameter : public Local {
 
  private:
   bool has_default_value_;
+  Source::Range default_value_range_;
   int original_index_;
 };
 
@@ -1379,6 +1388,7 @@ class CapturedLocal : public Parameter {
                   false,       // Unused, since we forward to the captured local.
                   index,
                   false,
+                  Source::Range::invalid(),
                   range)
       , captured_(captured) {}
   IMPLEMENTS(CapturedLocal)

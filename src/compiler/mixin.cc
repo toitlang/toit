@@ -143,6 +143,7 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
                                      is_block=true,
                                      block_index=1,
                                      default_value=false,
+                                     Source::Range::invalid(),
                                      node->range());
     auto new_parameters = ListBuilder<ir::Parameter*>::allocate(2);
     new_parameters[0] = this_;
@@ -250,6 +251,7 @@ static List<ir::Parameter*> duplicate_parameters(List<ir::Parameter*> parameters
                                    parameter->is_block(),
                                    parameter->index(),
                                    parameter->has_default_value(),
+                                   parameter->default_value_range(),
                                    parameter->range());
   }
   return result;
@@ -472,6 +474,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
                                           // Parameter index 0 is reserved for the implicit block parameter.
                                           parameter_index=1,
                                           has_default_value=false,
+                                          Source::Range::invalid(),
                                           range);
       this_params[i] = this_param;
     }
@@ -500,6 +503,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
                                             is_block=false,
                                             parameter_index++,
                                             has_default_value=false,
+                                            Source::Range::invalid(),
                                             range);
         parameters[j + 1] = parameter;
         // The body has a field-store for each parameter.

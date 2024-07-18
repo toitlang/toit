@@ -517,6 +517,15 @@ void Writer::print_method(ir::Method* method) {
       this->printf_external("required named\n");
       is_block = i >= shape.max_arity() - shape.named_block_count();
     }
+    if (parameter->has_default_value()) {
+      // The default value is not included in the external representation.
+      int length = parameter->default_value_range().length();
+      auto pos = parameter->default_value_range().from();
+      this->printf("%d\n", length);
+      this->lsp_writer_->write(current_source_->text_at(pos), length);
+    } else {
+      this->printf("0\n");
+    }
     if (is_block) {
       this->printf_external("[block]\n");
     } else {
