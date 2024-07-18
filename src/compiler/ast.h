@@ -70,7 +70,6 @@ class Node;
   V(LiteralString)              \
   V(LiteralStringInterpolation) \
   V(LiteralFloat)               \
-  V(LiteralArray)               \
   V(LiteralList)                \
   V(LiteralByteArray)           \
   V(LiteralSet)                 \
@@ -1182,22 +1181,6 @@ class LiteralFloat : public Expression {
  private:
   const Symbol data_;
   bool is_negated_ = false;
-};
-
-class LiteralArray : public Expression {
- public:
-  explicit LiteralArray(List<Expression*> elements, Source::Range closing_bracket)
-      : elements_(elements)
-      , closing_bracket_(closing_bracket) {}
-  IMPLEMENTS(LiteralArray)
-
-  List<Expression*> elements() const { return elements_; }
-
-  Source::Range full_range() const override {
-  }
-
- private:
-  List<Expression*> elements_;
 };
 
 class LiteralList : public Expression {
