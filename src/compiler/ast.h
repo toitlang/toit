@@ -180,19 +180,7 @@ class Unit : public Node {
     toitdoc_ = toitdoc;
   }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!imports_.is_empty()) {
-      result = result.extend(imports_.last()->full_range());
-    }
-    if (!exports_.is_empty()) {
-      result = result.extend(exports_.last()->full_range());
-    }
-    if (!declarations_.is_empty()) {
-      result = result.extend(declarations_.last()->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   bool is_error_unit_;
@@ -247,19 +235,7 @@ class Import : public Node {
   Unit* unit() const { return unit_; }
   void set_unit(Unit* unit) { unit_ = unit; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!segments_.is_empty()) {
-      result = result.extend(segments_.last()->full_range());
-    }
-    if (prefix_ != null) {
-      result = result.extend(prefix_->full_range());
-    }
-    if (!show_identifiers_.is_empty()) {
-      result = result.extend(show_identifiers_.last()->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   bool is_relative_;
@@ -282,16 +258,7 @@ class Export : public Node {
   List<Identifier*> identifiers() const { return identifiers_; }
   bool export_all() const { return export_all_range_.is_valid(); }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!identifiers_.is_empty()) {
-      result = result.extend(identifiers_.last()->full_range());
-    }
-    if (export_all_range_.is_valid()) {
-      result = result.extend(export_all_range_);
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   List<Identifier*> identifiers_;
@@ -316,7 +283,7 @@ class Class : public Node {
         List<Declaration*> members,
         Kind kind,
         bool has_abstract_modifier,
-        Source::Range modifier_range)
+        Source::Range keywords_range)
       : name_(name)
       , super_(super)
       , interfaces_(interfaces)
@@ -324,7 +291,7 @@ class Class : public Node {
       , members_(members)
       , kind_(kind)
       , has_abstract_modifier_(has_abstract_modifier)
-      , modifier_range_(modifier_range) {}
+      , keywords_range_(keywords_range) {}
   IMPLEMENTS(Class)
 
   bool has_super() const { return super_ != null; }
@@ -351,26 +318,7 @@ class Class : public Node {
   }
   Toitdoc<ast::Node*> toitdoc() const { return toitdoc_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (modifier_range_.is_valid()) {
-      result = result.extend(modifier_range_);
-    }
-    result = result.extend(name_->full_range());
-    if (super_ != null) {
-      result = result.extend(super_->full_range());
-    }
-    if (!interfaces_.is_empty()) {
-      result = result.extend(interfaces_.last()->full_range());
-    }
-    if (!mixins_.is_empty()) {
-      result = result.extend(mixins_.last()->full_range());
-    }
-    if (!members_.is_empty()) {
-      result = result.extend(members_.last()->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Identifier* name_;
@@ -381,7 +329,7 @@ class Class : public Node {
   Kind kind_;
   bool has_abstract_modifier_;
   Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
-  Source::Range modifier_range_;
+  Source::Range keywords_range_;
 };
 
 class Expression : public Node {
@@ -409,14 +357,7 @@ class NamedArgument : public Expression {
   // Whether the named argument was prefixed with a `no-`.
   bool inverted() const { return inverted_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(name_->full_range());
-    if (expression_ != null) {
-      result = result.extend(expression_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Identifier* name_;
@@ -505,20 +446,7 @@ class Field : public Declaration {
   bool is_abstract() const { return is_abstract_; }
   bool is_final() const { return is_final_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (modifier_range_.is_valid()) {
-      result = result.extend(modifier_range_);
-    }
-    result = result.extend(name()->full_range());
-    if (type_ != null) {
-      result = result.extend(type_->full_range());
-    }
-    if (initializer_ != null) {
-      result = result.extend(initializer_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* type_;
@@ -573,23 +501,7 @@ class Method : public Declaration {
     return name_or_dot()->as_Identifier();
   }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (modifier_range_.is_valid()) {
-      result = result.extend(modifier_range_);
-    }
-    result = result.extend(name_or_dot()->full_range());
-    if (return_type_ != null) {
-      result = result.extend(return_type_->full_range());
-    }
-    if (!parameters_.is_empty()) {
-      result = result.extend(parameters_.last()->full_range());
-    }
-    if (body_ != null) {
-      result = result.extend(body_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* return_type_;
@@ -617,16 +529,7 @@ class BreakContinue : public Expression {
   Expression* value() const { return value_; }
   Identifier* label() const { return label_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (value_ != null) {
-      result = result.extend(value_->full_range());
-    }
-    if (label_ != null) {
-      result = result.extend(label_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   bool is_break_;
@@ -663,14 +566,7 @@ class Block : public Expression {
 
   List<Parameter*> parameters() const { return parameters_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!parameters_.is_empty()) {
-      result = result.extend(parameters_.last()->full_range());
-    }
-    result = result.extend(body_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Sequence* body_;
@@ -688,14 +584,7 @@ class Lambda : public Expression {
 
   List<Parameter*> parameters() const { return parameters_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!parameters_.is_empty()) {
-      result = result.extend(parameters_.last()->full_range());
-    }
-    result = result.extend(body_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Sequence* body_;
@@ -710,13 +599,7 @@ class Sequence : public Expression {
 
   List<Expression*> expressions() const { return expressions_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (!expressions_.is_empty()) {
-      result = result.extend(expressions_.last()->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   List<Expression*> expressions_;
@@ -736,18 +619,7 @@ class DeclarationLocal : public Expression {
   Expression* type() const { return type_; }
   Expression* value() const { return value_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(name_->full_range());
-    if (type_ != null) {
-      result = result.extend(type_->full_range());
-    }
-    if (value_ != null) {
-      result = result.extend(value_->full_range());
-    }
-    return result;
-  }
-
+  Source::Range full_range() const override;
  private:
   Token::Kind kind_;
   Identifier* name_;
@@ -772,15 +644,7 @@ class If : public Expression {
     no_ = no;
   }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(expression_->full_range());
-    result = result.extend(yes_->full_range());
-    if (no_ != null) {
-      result = result.extend(no_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* expression_;
@@ -798,14 +662,7 @@ class While : public Expression {
   Expression* condition() const { return condition_; }
   Expression* body() const { return body_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(condition_->full_range());
-    if (body_ != null) {
-      result = result.extend(body_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* condition_;
@@ -826,22 +683,7 @@ class For : public Expression {
   Expression* update() const { return update_; }
   Expression* body() const { return body_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (initializer_ != null) {
-      result = result.extend(initializer_->full_range());
-    }
-    if (condition_ != null) {
-      result = result.extend(condition_->full_range());
-    }
-    if (update_ != null) {
-      result = result.extend(update_->full_range());
-    }
-    if (body_ != null) {
-      result = result.extend(body_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* initializer_;
@@ -863,15 +705,7 @@ class TryFinally : public Expression {
   List<Parameter*> handler_parameters() const { return handler_parameters_; }
   Sequence* handler() const { return handler_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(body_->full_range());
-    if (!handler_parameters_.is_empty()) {
-      result = result.extend(handler_parameters_.last()->full_range());
-    }
-    result = result.extend(handler_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Sequence* body_;
@@ -886,13 +720,7 @@ class Return : public Expression {
 
   Expression* value() const { return value_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    if (value_ != null) {
-      result = result.extend(value_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* value_;
@@ -910,11 +738,7 @@ class Unary : public Expression {
   bool prefix() const { return prefix_; }
   Expression* expression() const { return expression_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(expression_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Token::Kind kind_;
@@ -934,12 +758,7 @@ class Binary : public Expression {
   Expression* left() const { return left_; }
   Expression* right() const { return right_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(left_->full_range());
-    result = result.extend(right_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Token::Kind kind_;
@@ -957,12 +776,7 @@ class Dot : public Expression {
   Expression* receiver() const { return receiver_; }
   Identifier* name() const { return name_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(receiver_->full_range());
-    result = result.extend(name_->full_range());
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* receiver_;
@@ -1028,14 +842,7 @@ class Call : public Expression {
   List<Expression*> arguments() const { return arguments_; }
   bool is_call_primitive() const { return is_call_primitive_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(target_->full_range());
-    if (!arguments_.is_empty()) {
-      result = result.extend(arguments_.last()->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
   Expression* target_;
@@ -1066,17 +873,7 @@ class Parameter : public Expression {
   bool is_field_storing() const { return is_field_storing_; }
   bool is_block() const { return is_block_; }
 
-  Source::Range full_range() const override {
-    auto result = selection_range();
-    result = result.extend(name_->full_range());
-    if (type_ != null) {
-      result = result.extend(type_->full_range());
-    }
-    if (default_value_ != null) {
-      result = result.extend(default_value_->full_range());
-    }
-    return result;
-  }
+  Source::Range full_range() const override;
 
  private:
    Identifier* name_;
@@ -1163,6 +960,8 @@ class LiteralStringInterpolation : public Expression {
   List<LiteralString*> formats() const { return formats_; }
   List<Expression*> expressions() const { return expressions_; }
 
+  Source::Range full_range() const override;
+
  private:
   List<LiteralString*> parts_;
   List<LiteralString*> formats_;
@@ -1185,50 +984,77 @@ class LiteralFloat : public Expression {
 
 class LiteralList : public Expression {
  public:
-  explicit LiteralList(List<Expression*> elements) : elements_(elements) {}
+  explicit LiteralList(List<Expression*> elements, Source::Range closing_bracket)
+      : elements_(elements)
+      , closing_bracket_(closing_bracket) {}
   IMPLEMENTS(LiteralList)
 
   List<Expression*> elements() const { return elements_; }
 
+  Source::Range full_range() const override {
+    return selection_range().extend(closing_bracket_);
+  }
+
  private:
   List<Expression*> elements_;
+  Source::Range closing_bracket_;
 };
 
 class LiteralByteArray : public Expression {
  public:
-  explicit LiteralByteArray(List<Expression*> elements) : elements_(elements) {}
+  explicit LiteralByteArray(List<Expression*> elements, Source::Range closing_bracket)
+      : elements_(elements)
+      , closing_bracket_(closing_bracket) {}
   IMPLEMENTS(LiteralByteArray)
 
   List<Expression*> elements() const { return elements_; }
 
+  Source::Range full_range() const override {
+    return selection_range().extend(closing_bracket_);
+  }
+
  private:
   List<Expression*> elements_;
+  Source::Range closing_bracket_;
 };
 
 class LiteralSet : public Expression {
   public:
-  explicit LiteralSet(List<Expression*> elements) : elements_(elements) {}
+  explicit LiteralSet(List<Expression*> elements, Source::Range closing_curly)
+      : elements_(elements)
+      , closing_curly_(closing_curly) {}
   IMPLEMENTS(LiteralSet)
 
   List<Expression*> elements() const { return elements_; }
 
+  Source::Range full_range() const override {
+    return selection_range().extend(closing_curly_);
+  }
+
  private:
   List<Expression*> elements_;
+  Source::Range closing_curly_;
 };
 
 class LiteralMap : public Expression {
  public:
-  LiteralMap(List<Expression*> keys, List<Expression*> values)
+  LiteralMap(List<Expression*> keys, List<Expression*> values, Source::Range closing_curly)
       : keys_(keys)
-      , values_(values) {}
+      , values_(values)
+      , closing_curly_(closing_curly) {}
   IMPLEMENTS(LiteralMap)
 
   List<Expression*> keys() const { return keys_; }
   List<Expression*> values() const { return values_; }
 
+  Source::Range full_range() const override {
+    return selection_range().extend(closing_curly_);
+  }
+
  private:
   List<Expression*> keys_;
   List<Expression*> values_;
+  Source::Range closing_curly_;
 };
 
 class ToitdocReference : public Node {
@@ -1236,13 +1062,15 @@ class ToitdocReference : public Node {
   ToitdocReference(Expression* target, bool is_setter)
       : is_signature_reference_(false)
       , target_(target)
-      , is_setter_(is_setter) {}
+      , is_setter_(is_setter)
+      , closing_paren_(Source::Range::invalid()) {}
 
-  ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters)
+  ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters, Source::Range closing_paren)
       : is_signature_reference_(true)
       , target_(target)
       , is_setter_(target_is_setter)
-      , parameters_(parameters) {}
+      , parameters_(parameters)
+      , closing_paren_(closing_paren) {}
   IMPLEMENTS(ToitdocReference);
 
   bool is_error() const {
@@ -1266,11 +1094,14 @@ class ToitdocReference : public Node {
 
   List<Parameter*> parameters() const { return parameters_; }
 
+  Source::Range full_range() const override;
+
  private:
   bool is_signature_reference_;
   Expression* target_;
   bool is_setter_;
   List<Parameter*> parameters_;
+  Source::Range closing_paren_;
 };
 
 #undef IMPLEMENTS
