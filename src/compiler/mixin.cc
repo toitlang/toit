@@ -271,7 +271,8 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
       auto new_field = _new ir::Field(field->name(),
                                       klass,
                                       field->is_final(),
-                                      field->range());
+                                      field->range(),
+                                      field->outline_range());
       new_field->set_type(field->type());
       field_map[field] = new_field;
     }

@@ -205,7 +205,8 @@ class Class implements ToplevelElement:
 
   name  / string ::= ?
   range / Range  ::= ?
-  toplevel-id / int ::= ?
+  outline-range / Range ::= ?
+  toplevel-id   / int   ::= ?
 
   kind         / string ::= ?
   is-abstract  / bool ::= false
@@ -223,7 +224,7 @@ class Class implements ToplevelElement:
 
   toitdoc / Content? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
+  constructor --.name --.range --.outline-range --.toplevel-id --.kind --.is-abstract
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
@@ -246,7 +247,7 @@ class Class implements ToplevelElement:
     return lsp.DocumentSymbol
         --name=safe-name_ name
         --kind= kind == KIND-INTERFACE ? lsp.SymbolKind.INTERFACE : lsp.SymbolKind.CLASS  // Mixins count as class.
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
         --children=children
 
@@ -265,7 +266,8 @@ class Method implements ClassMember ToplevelElement:
 
   name        / string ::= ?
   range       / Range  ::= ?
-  toplevel-id / int    ::= ?
+  outline-range / Range ::= ?
+  toplevel-id   / int   ::= ?
   kind / int ::= 0
   parameters  / List  ::= ?
   return-type / Type? ::= ?
@@ -275,7 +277,8 @@ class Method implements ClassMember ToplevelElement:
 
   toitdoc / Content? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
+  constructor --.name --.range --.outline-range --.toplevel-id --.kind --.parameters
+      --.return-type --.is-abstract --.is-synthetic --.toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
@@ -300,7 +303,7 @@ class Method implements ClassMember ToplevelElement:
         --name=safe-name_ name
         --detail=details
         --kind=lsp-kind
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
 
 class Field implements ClassMember:
@@ -308,18 +311,19 @@ class Field implements ClassMember:
 
   name / string ::= ?
   range / Range ::= ?
+  outline-range / Range ::= ?
   is-final / bool ::= false
   type / Type? ::= ?
 
   toitdoc / Content? ::= ?
 
-  constructor .name .range .is-final .type .toitdoc:
+  constructor --.name --.range --.outline-range --.is-final --.type --.toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
         --kind=lsp.SymbolKind.FIELD
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
 
 class Parameter:
@@ -449,6 +453,7 @@ class ModuleReader extends ReaderBase:
     toplevel-id := current-toplevel-id_++
     name := read-line
     range := read-range
+    outline-range := read-range
     global-id := read-int
     assert: global-id == toplevel-id + toplevel-offset_
     kind := read-line
@@ -466,6 +471,7 @@ class ModuleReader extends ReaderBase:
     return Class
         --name=name
         --range=range
+        --outline-range=outline-range
         --toplevel-id=toplevel-id
         --kind=kind
         --is-abstract=is-abstract
@@ -482,6 +488,7 @@ class ModuleReader extends ReaderBase:
   read-method -> Method:
     name := read-line
     range := read-range
+    outline-range := read-range
     global-id := read-int  // Might be -1
     toplevel-id := (global-id == -1) ? -1 : global-id - toplevel-offset_
     kind-string := read-line
@@ -529,6 +536,7 @@ class ModuleReader extends ReaderBase:
     return Method
         --name=name
         --range=range
+        --outline-range=outline-range
         --toplevel-id=toplevel-id
         --kind=kind
         --parameters=parameters
@@ -550,10 +558,17 @@ class ModuleReader extends ReaderBase:
   read-field -> Field:
     name := read-line
     range := read-range
+    outline-range := read-range
     is-final := read-line == "final"
     type := read-type
     toitdoc := read-toitdoc
-    return Field name range is-final type toitdoc
+    return Field
+        --name=name
+        --range=range
+        --outline-range=outline-range
+        --is-final=is-final
+        --type=type
+        --toitdoc=toitdoc
 
   read-toitdoc -> Content?:
     sections := read-list: read-section

@@ -27,6 +27,9 @@ namespace ast {
 class Unit;
 }
 
+/// Sets the outline ranges of all declarations in the unit.
+/// An outline range is the full range of the node, plus the range of its
+/// comments. This is used to show the outline of the file an editors.
 void set_outline_ranges(ast::Unit* unit, List<Scanner::Comment> comments);
 
 } // namespace toit::compiler

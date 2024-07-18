@@ -21,25 +21,38 @@
 namespace toit {
 namespace compiler {
 
+static Source::Range compute_outline_range(ast::Node* node, CommentsManager& manager) {
+  int earliest_comment = manager.find_closest_before(node);
+  auto full_range = node->full_range();
+  if (earliest_comment == -1 || !manager.is_attached(earliest_comment, full_range)) {
+    return full_range;
+  }
+  // Walk up the comments as long as they are attached. This handles "//"
+  // comments and multiple /**/ comments, like a Toitdoc followed by
+  // another comment.
+  while (earliest_comment > 1 &&
+          manager.is_attached(earliest_comment - 1, earliest_comment)) {
+    earliest_comment--;
+  }
+  auto earliest_range = manager.comment_range(earliest_comment);
+  return earliest_range.extend(full_range);
+}
+
 void set_outline_ranges(ast::Unit* unit, List<Scanner::Comment> comments) {
   CommentsManager manager(comments, unit->source());
 
   for (auto declaration : unit->declarations()) {
+    auto outline_range = compute_outline_range(declaration, manager);
     if (declaration->is_Declaration()) {
-      int closest = manager.find_closest_before(declaration);
-      if (closest == -1) continue;
-      if (!manager.is_attached(closest, closest + 1)) continue;
-      auto toitdoc = comments_manager.find_for(declaration);
-      declaration->as_Declaration()->set_toitdoc(toitdoc);
-    } else {
-      ASSERT(declaration->is_Class());
+      declaration->as_Declaration()->set_outline_range(outline_range);
+    } else if (declaration->is_Class()) {
       auto klass = declaration->as_Class();
-      auto toitdoc = comments_manager.find_for(klass);
-      klass->set_toitdoc(toitdoc);
+      klass->set_outline_range(outline_range);
       for (auto member : klass->members()) {
-        auto member_toitdoc = comments_manager.find_for(member);
-        member->set_toitdoc(member_toitdoc);
+        member->set_outline_range(compute_outline_range(member, manager));
       }
+    } else {
+      UNREACHABLE();
     }
   }
 }

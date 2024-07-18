@@ -320,6 +320,11 @@ class Class : public Node {
 
   Source::Range full_range() const override;
 
+  void set_outline_range(Source::Range outline_range) {
+    outline_range_ = outline_range;
+  }
+  Source::Range outline_range() const { return outline_range_; }
+
  private:
   Identifier* name_;
   Expression* super_;
@@ -330,6 +335,7 @@ class Class : public Node {
   bool has_abstract_modifier_;
   Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
   Source::Range keywords_range_;
+  Source::Range outline_range_ = Source::Range::invalid();
 };
 
 class Expression : public Node {
@@ -417,9 +423,16 @@ class Declaration : public Node {
     return selection_range().extend(name_or_dot_->full_range());
   }
 
+  void set_outline_range(Source::Range outline_range) {
+    ASSERT(outline_range.contains(selection_range()));
+    outline_range_ = outline_range;
+  }
+  Source::Range outline_range() const { return outline_range_; }
+
 private:
   Expression* name_or_dot_;
   Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
+  Source::Range outline_range_ = Source::Range::invalid();
 };
 
 class Field : public Declaration {
