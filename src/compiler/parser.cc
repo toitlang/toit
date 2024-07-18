@@ -16,6 +16,7 @@
 #include "parser.h"
 
 #include "diagnostic.h"
+#include "outline_ranges.h"
 #include "symbol_canonicalizer.h"
 #include "toitdoc_parser.h"
 #include "../flags.h"
@@ -165,6 +166,9 @@ Unit* Parser::parse_unit(Source* override_source) {
                  source_,
                  scanner()->symbol_canonicalizer(),
                  diagnostics());
+
+  set_outline_ranges(result, scanner()->comments());
+
   if (!check_tree_height(result)) {
     // Clear the declarations to avoid follow-up stack-overflows.
     result->set_declarations(List<Node*>());
