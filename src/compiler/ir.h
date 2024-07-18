@@ -298,7 +298,9 @@ class Class : public Node {
       , id_(-1)
       , start_id_(-1)
       , end_id_(-1)
-      , total_field_count_(-1) {}
+      , total_field_count_(-1) {
+    ASSERT(outline_range.contains(range));
+  }
   IMPLEMENTS(Class)
 
   Symbol name() const { return name_; }
@@ -746,22 +748,27 @@ class MonitorMethod : public MethodInstance {
 
 class AdapterStub : public MethodInstance {
  public:
-  AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range, Source::Range::invalid()) {}
+  AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(AdapterStub)
 };
 
 class MixinStub : public MethodInstance {
  public:
-  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range, Source::Range::invalid()) {}
+  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(MixinStub)
 };
 
 class IsInterfaceOrMixinStub : public MethodInstance {
  public:
-  IsInterfaceOrMixinStub(Symbol name, Class* holder, const PlainShape& shape, Class* interface_or_mixin, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range, Source::Range::invalid())
+  IsInterfaceOrMixinStub(Symbol name,
+                         Class* holder,
+                         const PlainShape& shape,
+                         Class* interface_or_mixin,
+                         Source::Range range,
+                         Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range)
       , interface_or_mixin_(interface_or_mixin) {}
 
   IMPLEMENTS(IsInterfaceOrMixinStub);
@@ -917,13 +924,13 @@ class Field : public Node {
 
 class FieldStub : public MethodInstance {
  public:
-  FieldStub(Field* field, Class* holder, bool is_getter, Source::Range range)
+  FieldStub(Field* field, Class* holder, bool is_getter, Source::Range range, Source::Range outline_range)
       : MethodInstance(field->name(),
                        holder,
                        ResolutionShape::for_instance_field_accessor(is_getter),
                        false,
                        range,
-                       Source::Range::invalid())
+                       outline_range)
       , field_(field)
       , checked_type_(Type::invalid()) {}
   IMPLEMENTS(FieldStub)

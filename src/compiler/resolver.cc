@@ -1804,6 +1804,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           Symbol member_name = name_or_dot->as_Identifier()->data();
           auto ast_field = member->as_Field();
           auto position = ast_field->selection_range();
+          auto outline_range = ast_field->outline_range();
           check_field(ast_field, ir_class);
           if (ast_field->is_static()) {
             auto ir_global = _new ir::Global(member_name,
@@ -1821,8 +1822,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                                            ast_field->outline_range());
             ir_to_ast_map_[ir_field] = member;
             fields.add(ir_field);
-            auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position);
-            auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position);
+            auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position, outline_range);
+            auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position, outline_range);
             methods.add(ir_getter);
             methods.add(ir_setter);
             ir_to_ast_map_[ir_getter] = member;

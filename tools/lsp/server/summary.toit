@@ -162,6 +162,9 @@ class Range:
         lines.lsp-position-for-offset start
         lines.lsp-position-for-offset end
 
+  stringify -> string:
+    return "$start-$end"
+
 class ToplevelRef:
   module-uri / string ::= ?
   id / int ::= 0
@@ -693,7 +696,6 @@ class ModuleReader extends ReaderBase:
 
 class Lines:
   offsets_ ::= []
-  size_ ::= 0
   last-hit_ := 0
 
   constructor text/string:
@@ -704,7 +706,9 @@ class Lines:
     offsets_.add text.size
 
   lsp-position-for-offset offset/int -> lsp.Position:
-    if offset == -1 or offset >= offsets_.last:
+    if offsets_.is-empty: return lsp.Position 0 0
+
+    if offset == -1 or offset > offsets_.last:
       // No position given or file has changed in size.
       return lsp.Position 0 0
 
