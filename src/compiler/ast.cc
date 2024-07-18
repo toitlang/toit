@@ -224,12 +224,6 @@ void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolat
 void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) {
 }
 
-void TraversingVisitor::visit_LiteralArray(LiteralArray* node) {
-  for (int i = 0; i < node->elements().length(); i++) {
-    node->elements()[i]->accept(this);
-  }
-}
-
 void TraversingVisitor::visit_LiteralList(LiteralList* node) {
   for (int i = 0; i < node->elements().length(); i++) {
     node->elements()[i]->accept(this);
@@ -571,15 +565,6 @@ class AstPrinter : public Visitor {
 
   void visit_LiteralFloat(LiteralFloat* node) {
     printf("%s", node->data().c_str());
-  }
-
-  void visit_LiteralArray(LiteralArray* node) {
-    printf("<array>[");
-    for (int i = 0; i < node->elements().length(); i++) {
-      if (i != 0) printf(", ");
-      node->elements()[i]->accept(this);
-    }
-    printf("]");
   }
 
   void visit_LiteralList(LiteralList* node) {

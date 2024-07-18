@@ -3461,8 +3461,7 @@ ir::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
     ir_assignment = _assign_index(node, create_temp, store_old);
   } else {
     ir::Expression* ir_left = null;
-    if (node->left()->is_LiteralArray() ||
-        node->left()->is_LiteralBoolean() ||
+    if (node->left()->is_LiteralBoolean() ||
         node->left()->is_LiteralCharacter() ||
         node->left()->is_LiteralFloat() ||
         node->left()->is_LiteralInteger() ||

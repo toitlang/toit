@@ -70,7 +70,6 @@ class Node;
   V(LiteralString)              \
   V(LiteralStringInterpolation) \
   V(LiteralFloat)               \
-  V(LiteralArray)               \
   V(LiteralList)                \
   V(LiteralByteArray)           \
   V(LiteralSet)                 \
@@ -885,17 +884,6 @@ class LiteralFloat : public Expression {
  private:
   const Symbol data_;
   bool is_negated_ = false;
-};
-
-class LiteralArray : public Expression {
- public:
-  explicit LiteralArray(List<Expression*> elements) : elements_(elements) {}
-  IMPLEMENTS(LiteralArray)
-
-  List<Expression*> elements() const { return elements_; }
-
- private:
-  List<Expression*> elements_;
 };
 
 class LiteralList : public Expression {
