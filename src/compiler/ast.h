@@ -539,12 +539,15 @@ class BreakContinue : public Expression {
 
 class Parenthesis : public Expression {
  public:
-  explicit Parenthesis(Expression* expression, Source::Range closing_range)
-      : expression_(expression)
-      , closing_range_(closing_range) {}
+  explicit Parenthesis(Expression* expression)
+      : expression_(expression) {}
   IMPLEMENTS(Parenthesis)
 
   Expression* expression() const { return expression_; }
+
+  void set_end_range(Source::Range closing_range) {
+    closing_range_ = closing_range;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_range_);
@@ -552,7 +555,7 @@ class Parenthesis : public Expression {
 
  private:
   Expression* expression_;
-  Source::Range closing_range_;
+  Source::Range closing_range_ = Source::Range::invalid();
 };
 
 class Block : public Expression {
@@ -620,6 +623,7 @@ class DeclarationLocal : public Expression {
   Expression* value() const { return value_; }
 
   Source::Range full_range() const override;
+
  private:
   Token::Kind kind_;
   Identifier* name_;
@@ -785,14 +789,17 @@ class Dot : public Expression {
 
 class Index : public Expression {
  public:
-  Index(Expression* receiver, List<Expression*> arguments, Source::Range closing_range)
+  Index(Expression* receiver, List<Expression*> arguments)
       : receiver_(receiver)
-      , arguments_(arguments)
-      , closing_range_(closing_range) {}
+      , arguments_(arguments) {}
   IMPLEMENTS(Index)
 
   Expression* receiver() const { return receiver_; }
   List<Expression*> arguments() const { return arguments_; }
+
+  void set_end_range(Source::Range closing_range) {
+    closing_range_ = closing_range;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_range_);
@@ -801,16 +808,15 @@ class Index : public Expression {
  private:
   Expression* receiver_;
   List<Expression*> arguments_;
-  Source::Range closing_range_;
+  Source::Range closing_range_ = Source::Range::invalid();
 };
 
 class IndexSlice : public Expression {
  public:
-  IndexSlice(Expression* receiver, Expression* from, Expression* to, Source::Range closing_range)
+  IndexSlice(Expression* receiver, Expression* from, Expression* to)
       : receiver_(receiver)
       , from_(from)
-      , to_(to)
-      , closing_range_(closing_range) {}
+      , to_(to) {}
   IMPLEMENTS(IndexSlice)
 
   Expression* receiver() const { return receiver_; }
@@ -818,6 +824,10 @@ class IndexSlice : public Expression {
   Expression* from() const { return from_; }
   // May be null if none was given.
   Expression* to() const { return to_; }
+
+  void set_end_range(Source::Range closing_range) {
+    closing_range_ = closing_range;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_range_);
@@ -827,7 +837,7 @@ class IndexSlice : public Expression {
   Expression* receiver_;
   Expression* from_;
   Expression* to_;
-  Source::Range closing_range_;
+  Source::Range closing_range_ = Source::Range::invalid();
 };
 
 class Call : public Expression {
@@ -984,30 +994,34 @@ class LiteralFloat : public Expression {
 
 class LiteralList : public Expression {
  public:
-  explicit LiteralList(List<Expression*> elements, Source::Range closing_bracket)
-      : elements_(elements)
-      , closing_bracket_(closing_bracket) {}
+  explicit LiteralList(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralList)
 
   List<Expression*> elements() const { return elements_; }
 
+  void set_end_range(Source::Range closing_bracket) {
+    closing_bracket_ = closing_bracket;
+  }
+
   Source::Range full_range() const override {
     return selection_range().extend(closing_bracket_);
   }
 
  private:
   List<Expression*> elements_;
-  Source::Range closing_bracket_;
+  Source::Range closing_bracket_ = Source::Range::invalid();
 };
 
 class LiteralByteArray : public Expression {
  public:
-  explicit LiteralByteArray(List<Expression*> elements, Source::Range closing_bracket)
-      : elements_(elements)
-      , closing_bracket_(closing_bracket) {}
+  explicit LiteralByteArray(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralByteArray)
 
   List<Expression*> elements() const { return elements_; }
+
+  void set_end_range(Source::Range closing_bracket) {
+    closing_bracket_ = closing_bracket;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_bracket_);
@@ -1015,17 +1029,19 @@ class LiteralByteArray : public Expression {
 
  private:
   List<Expression*> elements_;
-  Source::Range closing_bracket_;
+  Source::Range closing_bracket_ = Source::Range::invalid();
 };
 
 class LiteralSet : public Expression {
   public:
-  explicit LiteralSet(List<Expression*> elements, Source::Range closing_curly)
-      : elements_(elements)
-      , closing_curly_(closing_curly) {}
+  explicit LiteralSet(List<Expression*> elements)  : elements_(elements) {}
   IMPLEMENTS(LiteralSet)
 
   List<Expression*> elements() const { return elements_; }
+
+  void set_end_range(Source::Range closing_curly) {
+    closing_curly_ = closing_curly;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_curly_);
@@ -1033,19 +1049,22 @@ class LiteralSet : public Expression {
 
  private:
   List<Expression*> elements_;
-  Source::Range closing_curly_;
+  Source::Range closing_curly_ = Source::Range::invalid();
 };
 
 class LiteralMap : public Expression {
  public:
-  LiteralMap(List<Expression*> keys, List<Expression*> values, Source::Range closing_curly)
+  LiteralMap(List<Expression*> keys, List<Expression*> values)
       : keys_(keys)
-      , values_(values)
-      , closing_curly_(closing_curly) {}
+      , values_(values) {}
   IMPLEMENTS(LiteralMap)
 
   List<Expression*> keys() const { return keys_; }
   List<Expression*> values() const { return values_; }
+
+  void set_end_range(Source::Range closing_curly) {
+    closing_curly_ = closing_curly;
+  }
 
   Source::Range full_range() const override {
     return selection_range().extend(closing_curly_);
@@ -1054,7 +1073,7 @@ class LiteralMap : public Expression {
  private:
   List<Expression*> keys_;
   List<Expression*> values_;
-  Source::Range closing_curly_;
+  Source::Range closing_curly_ = Source::Range::invalid();
 };
 
 class ToitdocReference : public Node {
@@ -1065,12 +1084,11 @@ class ToitdocReference : public Node {
       , is_setter_(is_setter)
       , closing_paren_(Source::Range::invalid()) {}
 
-  ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters, Source::Range closing_paren)
+  ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters)
       : is_signature_reference_(true)
       , target_(target)
       , is_setter_(target_is_setter)
-      , parameters_(parameters)
-      , closing_paren_(closing_paren) {}
+      , parameters_(parameters) {}
   IMPLEMENTS(ToitdocReference);
 
   bool is_error() const {
@@ -1094,6 +1112,10 @@ class ToitdocReference : public Node {
 
   List<Parameter*> parameters() const { return parameters_; }
 
+  void set_end_range(Source::Range closing_paren) {
+    closing_paren_ = closing_paren;
+  }
+
   Source::Range full_range() const override;
 
  private:
@@ -1101,7 +1123,7 @@ class ToitdocReference : public Node {
   Expression* target_;
   bool is_setter_;
   List<Parameter*> parameters_;
-  Source::Range closing_paren_;
+  Source::Range closing_paren_ = Source::Range::invalid();
 };
 
 #undef IMPLEMENTS
