@@ -23,6 +23,7 @@ namespace compiler {
 
 int CommentsManager::find_closest_before(ast::Node* node) {
   auto node_range = node->full_range();
+  if (comments_.is_empty()) return -1;
   if (node_range.is_before(comments_[0].range())) return -1;
   if (comments_.last().range().is_before(node_range)) return comments_.length() - 1;
 
