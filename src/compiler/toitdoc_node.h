@@ -88,16 +88,20 @@ class Content : public Node {
 class Section : public Node {
  public:
   /// The title may be invalid, if it's the first section of a comment.
-  Section(Symbol title, List<Statement*> statements)
+  Section(Symbol title, int level, List<Statement*> statements)
       : title_(title)
+      , level_(level)
       , statements_(statements) {}
   IMPLEMENTS(Section)
 
   Symbol title() const { return title_; }
+  // The level (how many '#') of the section. Always 1 or more.
+  int level() const { return level_; }
   List<Statement*> statements() const { return statements_; }
 
  private:
   Symbol title_;
+  int level_;
   List<Statement*> statements_;
 };
 
