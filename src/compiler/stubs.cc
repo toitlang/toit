@@ -113,7 +113,11 @@ void add_stub_methods_and_switch_to_plain_shapes(ir::Program* program) {
           stub_parameter->set_has_default_value(target_parameters[i]->has_default_value());
         }
 
-        auto stub = _new ir::AdapterStub(method->name(), method->holder(), call_shape.to_plain_shape(), range);
+        auto stub = _new ir::AdapterStub(method->name(),
+                                         method->holder(),
+                                         call_shape.to_plain_shape(),
+                                         range,
+                                         method->outline_range());
         stub->set_parameters(stub_parameters);
         stub->set_body(_new ir::Return(forward_call, false, range));
         stub->set_return_type(method->return_type());
@@ -185,6 +189,7 @@ static ir::IsInterfaceOrMixinStub* create_stub(ir::Class* holder,
                                               holder,
                                               selector.shape().to_plain_shape(),
                                               interface_or_mixin,
+                                              holder->range(),
                                               holder->range());
   auto this_parameter = _new ir::Parameter(Symbols::this_,
                                             ir::Type::any(),

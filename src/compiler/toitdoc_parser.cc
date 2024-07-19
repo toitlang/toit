@@ -1135,7 +1135,7 @@ Toitdoc<ast::Node*> ToitdocCommentsManager::find_for(ast::Node* node) {
   auto not_found = Toitdoc<ast::Node*>::invalid();
   int closest = find_closest_before(node);
   if (closest == -1) return not_found;
-  if (!is_attached(comments_[closest].range(), node->full_range(), true)) return not_found;
+  if (!is_attached(comments_[closest].range(), node->full_range())) return not_found;
   int closest_toit = closest;
   // Walk backward to find the closest toitdoc.
   // Usually it's the first attached comment, but we allow non-toitdocs:

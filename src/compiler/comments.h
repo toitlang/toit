@@ -38,11 +38,17 @@ class CommentsManager {
 
   int find_closest_before(ast::Node* node);
   bool is_attached(int index1, int index2) {
-    return is_attached(comments_[index1].range(), comments_[index2].range(), false);
+    return is_attached(comments_[index1].range(), comments_[index2].range());
   }
-  bool is_attached(Source::Range previous,
-                   Source::Range next,
-                   bool allow_modifiers);
+  bool is_attached(Source::Range previous, Source::Range next);
+
+  bool is_attached(int index, Source::Range next) {
+    return is_attached(comments_[index].range(), next);
+  }
+
+  Source::Range comment_range(int index) {
+    return comments_[index].range();
+  }
 
  protected:
   List<Scanner::Comment> comments_;
