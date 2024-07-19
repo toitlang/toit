@@ -3,7 +3,7 @@ tests/negative/block9-test.toit:7:11: error: Unresolved identifier: 'unresolved'
           ^~~~~~~~~~
 tests/negative/block9-test.toit:7:4: error: Can't invoke a block with a block argument
   b.call: unresolved it
-   ^
+   ^~~~~
 tests/negative/block9-test.toit:8:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
