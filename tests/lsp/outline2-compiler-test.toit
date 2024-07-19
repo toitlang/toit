@@ -19,6 +19,7 @@ test-ranges client/LspClient outline-path/string:
 
   content := file.read-content outline-path
   lines := content.to-string.split "\n"
+  lines.map --in-place: it.replace --all "\r" ""
 
   expected-ranges := {:}
   start-line := -1
