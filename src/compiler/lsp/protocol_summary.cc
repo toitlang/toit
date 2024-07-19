@@ -23,6 +23,7 @@
 #include "../ir.h"
 #include "../map.h"
 #include "../resolver_scope.h"
+#include "../scanner.h"  // For "is_identifier_start"
 #include "../sources.h"
 #include "../toitdoc.h"
 #include "../toitdoc_node.h"
@@ -456,10 +457,17 @@ void Writer::print_field(ir::Field* field) {
   print_toitdoc(field);
 }
 
+static bool is_operator_name(const char* name) {
+  return !IdentifierValidator::is_identifier_start(name[0]);
+}
+
 void Writer::print_method(ir::Method* method) {
   if (method->name().is_valid()) {
+    const char* name = method->name().c_str();
     if (method->is_setter()) {
-      this->printf_external("%s=\n", method->name().c_str());
+      this->printf_external("%s=\n", name);
+    } else if (is_operator_name(name)) {
+      this->printf_external("operator %s\n", name);
     } else {
       this->printf_external("%s\n", method->name().c_str());
     }
