@@ -183,8 +183,8 @@ For each pixel reads a single byte from the source, puts it through the lookup
   table, rolls it $shift bits to the right, 'ands' it with the $mask, then applies
   it to the destination, using $operation.
 $operation is one of $OVERWRITE, $OR, $AND, $XOR, $ADD, or $ADD-16-LE.  The first
-  five perform the operation dest_byte = new_byte, dest_byte |= new_byte,
-  dest_byte &= new_byte, dest_byte ^= new_byte, and dest_byte += new_byte
+  five perform the operation `dest-byte = new-byte`, `dest-byte |= new-byte`,
+  `dest-byte &= new-byte`, `dest-byte ^= new-byte`, and `dest-byte += new-byte`
   respectively, where the addition is saturating and unsigned 8 bit, clamped to
   0xff.  $ADD-16-LE treats the destination and the subsequent byte as a
   little-endian 16 bit integer, and does a saturating 16 bit addition, clamped
@@ -207,7 +207,7 @@ For both the source and destination we can define how many bytes to skip per
 
 # Examples
 ```
-  // Byte-swap the 16 bit values in byte_array from little-endian
+  // Byte-swap the 16 bit values in byte-array from little-endian
   // to big-endian (or vice versa).
   tmp := ByteArray byte-array.size
   blit byte-array tmp[1..] byte-array.size / 2 --source-pixel-stride=2 --destination-pixel-stride=2
