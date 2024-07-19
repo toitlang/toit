@@ -43,7 +43,8 @@ parse-module source/string --uri/string -> lsp.Module:
   current-mixins := []
   current-methods := []
 
-  finish-class := :
+  // TODO(2439): Change this back to a lambda.
+  finish-class := ::
     if current-class-name:
       id := classes.size
       class-ids[current-class-name] = id
