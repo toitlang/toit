@@ -58,6 +58,10 @@ template<typename T> static int length_of(const std::vector<T>& v) { return stat
 template<typename T> static int length_of(const Set<T>& v) { return v.size(); }
 template<typename T> static int length_of(const List<T>& v) { return v.length(); }
 
+static bool is_operator_name(const char* name) {
+  return !IdentifierValidator::is_identifier_start(name[0]);
+}
+
 class ToitdocWriter : public toitdoc::Visitor {
  public:
   ToitdocWriter(Toitdoc<ir::Node*> toitdoc,
@@ -174,7 +178,11 @@ class ToitdocWriter : public toitdoc::Visitor {
       this->printf("%d\n", kind_id);
       this->printf("%s\n", path.module->unit()->absolute_path());
       if (holder_name.is_valid()) print_symbol(holder_name);
-      print_symbol(name);
+      if (name.is_valid() && is_operator_name(name.c_str())) {
+        print_symbol(name, "operator ");
+      } else {
+        print_symbol(name);
+      }
       if (shape.is_valid()) {
         print_shape(shape);
       }
@@ -196,12 +204,13 @@ class ToitdocWriter : public toitdoc::Visitor {
     for (auto element : elements) { (this->*callback)(element); }
   }
 
-  void print_symbol(Symbol symbol) {
+  void print_symbol(Symbol symbol, const char* prefix = "") {
     if (!symbol.is_valid()) {
       this->printf("0\n\n");
     } else {
       const char* str = symbol.c_str();
-      this->printf("%zd\n%s\n", strlen(str), str);
+      size_t length = strlen(prefix) + strlen(str);
+      this->printf("%zd\n%s%s\n", length, prefix, str);
     }
   }
 
@@ -455,10 +464,6 @@ void Writer::print_field(ir::Field* field) {
   this->printf_external("%s\n", field->is_final() ? "final" : "mutable");
   print_type(field->type());
   print_toitdoc(field);
-}
-
-static bool is_operator_name(const char* name) {
-  return !IdentifierValidator::is_identifier_start(name[0]);
 }
 
 void Writer::print_method(ir::Method* method) {
