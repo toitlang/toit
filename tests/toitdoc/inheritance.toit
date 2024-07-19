@@ -61,6 +61,7 @@ parse-module source/string --uri/string -> lsp.Module:
           --statics=[]
           --is-abstract=false
           --range=lsp.Range 0 0
+          --outline-range=lsp.Range 0 0
           --toitdoc=null
           --toplevel-id=id
       classes.add new-class
