@@ -263,7 +263,7 @@ jobs:
         run: |
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
-          "$TOIT_BIN" doc build "--sdk=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
 
       - name: Pack artifacts
         if: matrix.shard == 1
