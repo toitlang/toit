@@ -1299,7 +1299,7 @@ void MethodResolver::_resolve_parameters(
     int index = final_positions.at(parameter);
     auto default_value_range = parameter->default_value() == null
         ? Source::Range::invalid()
-        : parameter->default_value()->range();
+        : parameter->default_value()->full_range();
     auto ir_parameter = _new ir::Parameter(name,
                                            type,
                                            is_block,
