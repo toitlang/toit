@@ -55,11 +55,10 @@ class DocsBuilder implements lsp.ToitdocVisitor:
     // to figure out which package a file is in.
     package-uri := "$(lsp.to-uri root-path)/.packages/"
 
-    pkg-sdk-path/List? := null
+    sdk-path/List := module-path-segments sdk-uri
     pkg-packages-path/List? := null
     pkg-names/Map? := null
     if pkg-name:
-      pkg-sdk-path = module-path-segments sdk-uri
       pkg-packages-path = module-path-segments package-uri
       pkg-names = load-package-names project-uri
 
@@ -146,7 +145,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
         --sdk-version=system.app-sdk-version
         --version=version
         --pkg-name=pkg-name
-        --sdk-path=pkg-sdk-path
+        --sdk-path=sdk-path
         --packages-path=pkg-packages-path
         --package-names=pkg-names
         --libraries=libraries
@@ -520,7 +519,7 @@ A compiled version of the Toitdocs.
 */
 class Doc:
   sdk-version/string
-  sdk-path/List?
+  sdk-path/List
   version/string?
   pkg-name/string?
   packages-path/List?
@@ -539,10 +538,10 @@ class Doc:
   to-json -> any:
     result := {
       "sdk_version": sdk-version,
+      "sdk_path": sdk-path,
       "libraries": libraries.map: | _ library/Library | library.to-json,
     }
 
-    if sdk-path: result["sdk_path"] =sdk-path
     if version: result["version"] = version
     if pkg-name: result["pkg_name"] = pkg-name
     if packages-path: result["packages_path"] = packages-path
