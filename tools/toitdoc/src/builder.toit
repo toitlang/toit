@@ -484,7 +484,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
     return include-element klass.name
 
   include-method method/lsp.Method -> bool:
-    return include-element method.name
+    return not method.is-synthetic and include-element method.name
 
   include-element name/string -> bool:
     return include-private or not is-private name
