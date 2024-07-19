@@ -21,7 +21,7 @@
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 toit-cert-roots/tests/tls_global_cert_test_slow.toit:112:23: warning: Class 'Writer' is deprecated
       writer := writer.Writer socket
-                      ^
+                      ^~~~~~~
 toit-cert-roots/tests/tls_global_cert_test_slow.toit:116:28: warning: Deprecated 'Socket.read'
       while data := socket.read:
                            ^~~~
