@@ -12,6 +12,7 @@ See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 
 import crypto.sha1 as crypto
+import io
 
 /** Bytesize of a UUID. */
 // TODO(4193): should the name of the constant be less ambiguous?
@@ -64,18 +65,13 @@ parse str/string -> Uuid:
 
 /**
 Builds a version 5 UUID from the given $namespace and $data.
-Both $namespace and $data can be either strings or byte arrays.
 
 The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
   thus also known as "Leach-Salz" UUID.
 */
-// TODO(4197): should be typed.
-uuid5 namespace data -> Uuid:
+uuid5 namespace/io.Data data/io.Data -> Uuid:
   hash := crypto.Sha1
-  // TODO(4197): why do we need to call `to-byte-array` here.
-  //   Is the documentation wrong and we want to accept more than
-  //   just strings and byte arrays?
-  hash.add namespace.to-byte-array
+  hash.add namespace
   hash.add data
   uuid := hash.get
 
@@ -97,8 +93,7 @@ UUIDs are equivalent to a 128-bit number. Through the use of
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 class Uuid:
-  // TODO(4196): the field should be types as `ByteArray`.
-  bytes_ ::= ?
+  bytes_/io.Data ::= ?
   hash_ := null
 
   /**
@@ -107,7 +102,7 @@ class Uuid:
   The given parameter must be a byte array of size 16.
   */
   constructor .bytes_:
-    if bytes_.size != SIZE: throw "INVALID_UUID"
+    if bytes_.byte-size != SIZE: throw "INVALID_UUID"
 
   /**
   Converts this instance to a string.
@@ -132,7 +127,7 @@ class Uuid:
     for i := 0; i < SIZE; i++:
       if index == 8 or index == 13 or index == 18 or index == 23:
         buffer[index++] = '-'
-      c := bytes_[i]
+      c := bytes_.byte-at i
       buffer[index++] = to-lower-case-hex c >> 4
       buffer[index++] = to-lower-case-hex c & 0xf
     return buffer.to-string
@@ -145,14 +140,14 @@ class Uuid:
   The returned byte array is a valid input for the UUID constructor.
   */
   to-byte-array -> ByteArray:
-    return bytes_
+    return ByteArray.from bytes_
 
   /** Whether this instance has the same 128 bits as $other. */
   operator == other -> bool:
     if other is not Uuid: return false
     other-bytes := other.bytes_
     for i := 0; i < SIZE; i++:
-      if bytes_[i] != other-bytes[i]: return false
+      if (bytes_.byte-at i) != (other-bytes.byte-at i): return false
     return true
 
   /** A hash code for this instance. */
@@ -162,7 +157,10 @@ class Uuid:
   hash-code -> int:
     hash := hash_
     if hash: return hash
-    else: return hash_ = bytes_[0] | bytes_[1] << 8 | bytes_[2] << 16
+    else: return hash_ = (bytes_.byte-at 0) | (bytes_.byte-at 1) << 8 | (bytes_.byte-at 2) << 16
 
   /** Whether this instance is equal to the nil UUID $NIL. */
-  is-nil -> bool: return not bytes_.any: it != 0
+  is-nil -> bool:
+    SIZE.repeat: | i/int |
+      if (bytes_.byte-at i) != 0: return false
+    return true
