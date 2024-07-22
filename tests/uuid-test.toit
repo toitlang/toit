@@ -17,6 +17,7 @@ main:
   test-uuid5
   test-equality
   test-hash-code
+  test-is-valid
 
 test-equality:
   u0 := Uuid.parse "9c20dadc1abe5520b92c85b948daf44a"
@@ -89,3 +90,11 @@ test-uuid5:
   expect-equals
     "ee9554d1-1db3-5e8f-9bf6-1b2bdce05788"
     "$uuid"
+
+test-is-valid:
+  expect (Uuid.is-valid "9c20dadc-1abe-5520-b92c-85b948daf44a")
+  expect (Uuid.is-valid "9c20dadc1abe5520b92c85b948daf44a")
+  expect (Uuid.is-valid "9c-20-da-dc-1a-be-55-20-b9-2c-85-b9-48-da-f4-4a")
+  expect-not (Uuid.is-valid "")
+  expect-not (Uuid.is-valid "9c20dadc-1abe-5520-b92c-85b948daf44")
+  expect-not (Uuid.is-valid "9c20dadc-1abe-5520-b92c-85b948daf44aa")
