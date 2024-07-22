@@ -13,16 +13,16 @@ main:
 test-url-encode:
   expect-equals "foo" (url.encode "foo")
   expect-equals "-_.~abcABC012" (url.encode "-_.~abcABC012")
-  expect-equals "%20" (url.encode " ").to-string
-  expect-equals "%25" (url.encode "%").to-string
-  expect-equals "%2B" (url.encode "+").to-string
-  expect-equals "%26" (url.encode "&").to-string
-  expect-equals "%3D" (url.encode "=").to-string
-  expect-equals "%00%01%02%03%04" (url.encode (ByteArray 5: it)).to-string
-  expect-equals "%F0%F1%F2%F3%F4" (url.encode (ByteArray 5: 0xf0 + it)).to-string
-  expect-equals "%F1sh" (url.encode #[0xf1, 's', 'h']).to-string
-  expect-equals "-%E2%98%83-" (url.encode "-☃-").to-string
-  expect-equals "%E2%82%AC25%2C-" (url.encode "€25,-").to-string
+  expect-equals "%20" (url.encode " ")
+  expect-equals "%25" (url.encode "%")
+  expect-equals "%2B" (url.encode "+")
+  expect-equals "%26" (url.encode "&")
+  expect-equals "%3D" (url.encode "=")
+  expect-equals "%00%01%02%03%04" (url.encode (ByteArray 5: it))
+  expect-equals "%F0%F1%F2%F3%F4" (url.encode (ByteArray 5: 0xf0 + it))
+  expect-equals "%F1sh" (url.encode #[0xf1, 's', 'h'])
+  expect-equals "-%E2%98%83-" (url.encode "-☃-")
+  expect-equals "%E2%82%AC25%2C-" (url.encode "€25,-")
 
 test-url-decode:
   expect-equals "foo" (url.decode "foo")
@@ -36,14 +36,13 @@ test-url-decode:
   expect-equals "+" (url.decode "%2B").to-string
   expect-equals "&" (url.decode "%26").to-string
   expect-equals "=" (url.decode "%3D").to-string
-  expect-equals #[0, 1, 2, 3, 4] (url.decode (ByteArray 5: it))
-  expect-equals #[0, 1, 2, 3, 4] (url.decode "%00%01%02%03%04")
-  expect-equals #[0xf0, 0xf1, 0xf2] (url.decode (ByteArray 3: 0xf0 + it))
-  expect-equals #[0xf0, 0xf1, 0xf2] (url.decode "%F0%F1%F2")
-  expect-equals #[0xf0, 0xf1, 0xf2] (url.decode "%f0%f1%f2")  // Lower case.
-  expect-equals "%F1sh" (url.encode #[0xf1, 's', 'h']).to-string
-  expect-equals "-☃-" (url.decode "-%E2%98%83-").to-string
-  expect-equals "€25,-" (url.decode "%E2%82%AC25%2C-").to-string
+  expect-equals #[0, 1, 2, 3, 4] (url.decode-binary (ByteArray 5: it).to-string)
+  expect-equals #[0, 1, 2, 3, 4] (url.decode-binary "%00%01%02%03%04")
+  expect-equals #[0xf0, 0xf1, 0xf2] (url.decode-binary "%F0%F1%F2")
+  expect-equals #[0xf0, 0xf1, 0xf2] (url.decode-binary "%f0%f1%f2")  // Lower case.
+  expect-equals #[0xf1, 's', 'h'] (url.decode-binary "%F1sh")
+  expect-equals "-☃-" (url.decode "-%E2%98%83-")
+  expect-equals "€25,-" (url.decode "%E2%82%AC25%2C-")
 
 test-query-string:
   qs := url.QueryString.parse "/foo?x"
