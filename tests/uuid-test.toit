@@ -85,7 +85,7 @@ test-uuid5:
   ns := UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44a"
   data := ByteArray 100: it
 
-  uuid := UUID.uuid5 ns data
+  uuid := UUID.uuid5 ns.to-byte-array data
   expect-equals
     "ee9554d1-1db3-5e8f-9bf6-1b2bdce05788"
     "$uuid"
