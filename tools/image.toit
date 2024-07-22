@@ -15,7 +15,7 @@
 
 import .snapshot as snapshot
 import io show LITTLE-ENDIAN ByteOrder
-import uuid
+import uuid show *
 import crypto.sha256
 
 abstract class Memory:
@@ -217,7 +217,7 @@ class Image:
   static PAGE-BYTE-SIZE-32 ::= 1 << 12
   static PAGE-BYTE-SIZE-64 ::= 1 << 15
 
-  id      /uuid.Uuid
+  id      /Uuid
   offheap /Offheap
   heap    /Heap
 
@@ -450,7 +450,7 @@ class ToitObject:
 class ToitObjectType extends ToitObject:
 
 class ToitHeader extends ToitObjectType:
-  static ID-SIZE ::= uuid.SIZE
+  static ID-SIZE ::= Uuid.SIZE
   static METADATA-SIZE ::= 5
 
   static LAYOUT /ObjectType ::= ObjectType --packed {
@@ -460,19 +460,19 @@ class ToitHeader extends ToitObjectType:
     "metadata_": PrimitiveType (LayoutSize 0 METADATA-SIZE),
     "type_": PrimitiveType.UINT8,
     "pages_in_flash_": PrimitiveType.UINT16,
-    "uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
+    "uuid_": PrimitiveType (LayoutSize 0 Uuid.SIZE),
   }
 
   static MARKER_ ::= 0xDEADFACE
   static FLASH-ALLOCATION-TYPE-PROGRAM_ ::= 0
 
-  fill-into image/Image --at/int --system-uuid/uuid.Uuid --id/uuid.Uuid:
+  fill-into image/Image --at/int --system-uuid/Uuid --id/Uuid:
     memory := image.offheap
     anchored := LAYOUT.anchor --at=at memory
     assert: at % memory.word-size == 0
     assert: anchored["uuid_"] % memory.word-size == 0
     assert: id.to-byte-array.size == ID-SIZE
-    assert: system-uuid.to-byte-array.size == uuid.SIZE
+    assert: system-uuid.to-byte-array.size == Uuid.SIZE
 
     anchored.put-uint32 "marker_" MARKER_
     anchored.put-uint32 "checksum_" 0  // Overwritten on device at install time.
@@ -549,7 +549,7 @@ class ToitProgram extends ToitObjectType:
       "interface_check_offsets": ToitList.LAYOUT,
       "class_bits": ToitList.LAYOUT,
       "bytecodes": ToitList.LAYOUT,
-      "snapshot_uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
+      "snapshot_uuid_": PrimitiveType (LayoutSize 0 Uuid.SIZE),
       "global_max_stack_height": PrimitiveType.WORD,
       "_invoke_bytecode_offsets": PrimitiveType.INT * INVOKE-BYTECODE-COUNT,
       "_heap": ToitRawHeap.LAYOUT,
@@ -564,8 +564,8 @@ class ToitProgram extends ToitObjectType:
   constructor .snapshot-program:
 
   write-to image/Image -> int
-      --system-uuid/uuid.Uuid
-      --snapshot-uuid/uuid.Uuid:
+      --system-uuid/Uuid
+      --snapshot-uuid/Uuid:
     word-size := image.word-size
     offheap := image.offheap
 
@@ -1164,8 +1164,8 @@ class ToitInteger extends ToitHeapObject:
     return to-encoded-address address
 
 build-image snapshot/snapshot.Program word-size/int -> Image
-    --system-uuid/uuid.Uuid
-    --snapshot-uuid/uuid.Uuid
+    --system-uuid/Uuid
+    --snapshot-uuid/Uuid
     --assets/ByteArray?:
   id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
   return build-image snapshot word-size
@@ -1174,9 +1174,9 @@ build-image snapshot/snapshot.Program word-size/int -> Image
       --id=id
 
 build-image snapshot/snapshot.Program word-size/int -> Image
-    --system-uuid/uuid.Uuid
-    --snapshot-uuid/uuid.Uuid
-    --id/uuid.Uuid:
+    --system-uuid/Uuid
+    --snapshot-uuid/Uuid
+    --id/Uuid:
   ToitProgram.init-constants snapshot
   image := Image snapshot word-size --id=id
   program := ToitProgram snapshot
@@ -1185,11 +1185,11 @@ build-image snapshot/snapshot.Program word-size/int -> Image
       --snapshot-uuid=snapshot-uuid
   return image
 
-image-id --snapshot-uuid/uuid.Uuid --assets/ByteArray? -> uuid.Uuid:
+image-id --snapshot-uuid/Uuid --assets/ByteArray? -> Uuid:
   // Compute a stable id for the program based on the snapshot
   // and the assets. This way, the word size doesn't impact the
   // generated id.
   sha := sha256.Sha256
   sha.add snapshot-uuid.to-byte-array
   if assets: sha.add assets
-  return uuid.Uuid sha.get[..uuid.SIZE]
+  return Uuid sha.get[..Uuid.SIZE]

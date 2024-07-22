@@ -18,7 +18,7 @@ import .storage show StorageServiceProvider
 import encoding.base64
 import system.assets
 import system.services show ServiceResource
-import uuid
+import uuid show *
 
 abstract class BucketResource extends ServiceResource:
   // We keep a cache of computed ids around. The ids encode
@@ -41,7 +41,7 @@ abstract class BucketResource extends ServiceResource:
 
   compute-id_ key/string -> string:
     return ids_.get key --init=:
-      id := uuid.uuid5 root key
+      id := Uuid.uuid5 root key
       encoded := base64.encode id.to-byte-array
       // Keys used in nvs must be 15 bytes or less, so we
       // pick the first 12 encoded bytes which correspond

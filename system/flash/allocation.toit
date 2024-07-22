@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import uuid
+import uuid show *
 
 import .region
 import .registry
@@ -23,11 +23,11 @@ FLASH-ALLOCATION-TYPE-REGION  ::= 1
 
 FLASH-ALLOCATION-HEADER-MARKER-SIZE   ::= 4
 FLASH-ALLOCATION-HEADER-ME-SIZE       ::= 4
-FLASH-ALLOCATION-HEADER-ID-SIZE       ::= uuid.SIZE
+FLASH-ALLOCATION-HEADER-ID-SIZE       ::= Uuid.SIZE
 FLASH-ALLOCATION-HEADER-METADATA-SIZE ::= 5
 FLASH-ALLOCATION-HEADER-TYPE-SIZE     ::= 1
 FLASH-ALLOCATION-HEADER-SIZE-SIZE     ::= 2
-FLASH-ALLOCATION-HEADER-UUID-SIZE     ::= uuid.SIZE
+FLASH-ALLOCATION-HEADER-UUID-SIZE     ::= Uuid.SIZE
 
 FLASH-ALLOCATION-HEADER-MARKER-OFFSET ::=
     0
@@ -48,7 +48,7 @@ FLASH-ALLOCATION-HEADER-SIZE ::=
 
 class FlashAllocation implements FlashRegion:
   header-page_ ::= ?
-  id/uuid.Uuid ::= ?
+  id/Uuid ::= ?
   offset/int ::= ?
   size_/int := ?
 
@@ -56,7 +56,7 @@ class FlashAllocation implements FlashRegion:
     header-page_ = flash-registry-get-header-page_ offset
     from := FLASH-ALLOCATION-HEADER-ID-OFFSET
     to := from + FLASH-ALLOCATION-HEADER-ID-SIZE
-    id = uuid.Uuid header-page_[from..to]
+    id = Uuid header-page_[from..to]
 
   size -> int:
     if size_ == -1: size_ = flash-registry-get-size_ offset

@@ -15,7 +15,7 @@
 
 import system.assets
 import system.storage show Bucket
-import uuid
+import uuid show *
 
 import ...flash.allocation show
     FlashAllocation
@@ -65,7 +65,7 @@ The $FlashBucket represents a single bucket in flash. It is shared
 class FlashBucket:
   static NAMESPACE ::= "flash:bucket"
 
-  id/uuid.Uuid
+  id/Uuid
   registry/FlashRegistry
 
   cache-allocation_/FlashAllocation? := null
@@ -87,7 +87,7 @@ class FlashBucket:
 
   constructor root/string --registry/FlashRegistry:
     instance := instances_.get root --init=:
-      id := uuid.uuid5 NAMESPACE root
+      id := Uuid.uuid5 NAMESPACE root
       FlashBucket.internal_ --id=id --registry=registry
     return instance.use
 
@@ -141,7 +141,7 @@ class FlashBucket:
           --content=encoded[..cutoff]
     if existing: registry.free existing
 
-  static find-allocation_ --id/uuid.Uuid --registry/FlashRegistry -> FlashAllocation?:
+  static find-allocation_ --id/Uuid --registry/FlashRegistry -> FlashAllocation?:
     registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-REGION: continue.do
       // Buckets and regions have different ids, because they use
