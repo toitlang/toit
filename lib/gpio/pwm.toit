@@ -23,13 +23,13 @@ main:
   // By default the duty factor is 0.
   channel := generator.start led
 
-  duty_percent := 0
+  duty-percent := 0
   step := 1
   while true:
     // Update the duty factor.
-    channel.set_duty_factor duty_percent/100.0
-    duty_percent += step
-    if duty_percent == 0 or duty_percent == 100:
+    channel.set-duty-factor duty-percent/100.0
+    duty-percent += step
+    if duty-percent == 0 or duty-percent == 100:
       step = -step
     sleep --ms=10
 ```
@@ -54,12 +54,12 @@ main:
 
   // Max angle.
   print "max"
-  channel.set_duty_factor 0.125
+  channel.set-duty-factor 0.125
   sleep --ms=1500
 
   // Min angle.
   print "min"
-  channel.set_duty_factor 0.025
+  channel.set-duty-factor 0.025
   sleep --ms=1500
 ```
 */
