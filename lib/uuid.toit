@@ -112,6 +112,13 @@ class Uuid:
     return Uuid
       uuid.copy 0 SIZE
 
+  /**
+  Generates a random UUID.
+  */
+  static random -> Uuid:
+    return Uuid
+      crypto.random --size=SIZE
+
   bytes_/io.Data ::= ?
   hash_ := null
 

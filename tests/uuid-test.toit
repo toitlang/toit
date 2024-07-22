@@ -17,6 +17,7 @@ main:
   test-uuid5
   test-equality
   test-hash-code
+  test-random
 
 test-equality:
   u0 := Uuid.parse "9c20dadc1abe5520b92c85b948daf44a"
@@ -89,3 +90,10 @@ test-uuid5:
   expect-equals
     "ee9554d1-1db3-5e8f-9bf6-1b2bdce05788"
     "$uuid"
+
+test-random:
+  u0 := Uuid.random
+  u1 := Uuid.random
+  expect-not-equals u0 u1
+  expect-equals 16 u0.to-byte-array.size
+  expect-equals 16 u1.to-byte-array.size
