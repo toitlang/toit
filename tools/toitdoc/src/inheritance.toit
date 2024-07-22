@@ -39,13 +39,16 @@ class InheritedMember:
   member/Member
   partially-shadowed-by/List
 
+  /** See $Member.inheritance-order. */
+  inheritance-order/int
+
   is-field -> bool: return member.is-field
   is-method -> bool: return member.is-method
 
   as-field -> lsp.Field: return member.as-field
   as-method -> lsp.Method: return member.as-method
 
-  constructor .member --.partially-shadowed-by:
+  constructor .member --.partially-shadowed-by --.inheritance-order:
 
 /**
 A member of a class.
@@ -53,18 +56,19 @@ Either a $lsp.Field, a $lsp.Method, or an $InheritedMember.
 */
 class Member:
   hash-code/int ::= hash-code-counter_++
-  target/any
+  target/any  // Either an lsp.ClassMember or an InheritedMember.
   shape_/Shape? := null
   name_/string? := null
+  /**
+  A number that allows us to sort the members in the order they are inherited.
+  The value is not equivalent to the class depth due to mixins.
 
-  constructor.field field/lsp.Field:
-    target = field
+  Any member that could potentially override another member is given a higher
+    value than the member it could override.
+  */
+  inheritance-order/int := ?
 
-  constructor.method method/lsp.Method:
-    target = method
-
-  constructor.inherited inherited/InheritedMember:
-    target = inherited
+  constructor .target --.inheritance-order:
 
   shape -> Shape:
     if not shape_: shape_ = compute-shape_
@@ -186,10 +190,6 @@ class ShapedMap:
       it.add member
       it
 
-  add-method method/lsp.Method: add (Member.method method)
-  add-field field/lsp.Field: add (Member.field field)
-  add-inherited inherited/InheritedMember: add (Member.inherited inherited)
-
   operator[] name/string -> List: return map_[name]
 
   get name/string [--if-absent] -> List:
@@ -216,16 +216,12 @@ class ShadowKey:
 class InheritanceBuilder:
   summaries_/Map
   done-classes_ ::= {}
-  holders_ ::= {:}
-  class-depths_ ::= {:}
   inherited ::= {:}
   shadowed ::= {:}
 
   constructor .summaries_:
 
   build -> Result:
-    hack-class-depths = class-depths_
-    hack-holders = holders_
     summaries_.do: | uri/string module/lsp.Module |
       module.classes.do: do-class it
     return Result --inherited=inherited --shadowing=shadowed
@@ -234,81 +230,131 @@ class InheritanceBuilder:
     if done-classes_.contains klass: return
     done-classes_.add klass
 
-    klass.methods.do: | method/lsp.Method | holders_[method] = klass
-    klass.fields.do:  | field/lsp.Field |   holders_[field] = field
-
     if not klass.superclass:
-      class-depths_[klass] = 1
+      assert: klass.mixins.is-empty
+      // The depth of the Object class (or root class for mixins/interfaces)
+      // must be strictly positive.
+      // The shadow-computation relies on this.
       inherited[klass] = []
       return
 
-    class-shaped := ShapedMap
-    klass.methods.do: class-shaped.add-method it
-    klass.fields.do: class-shaped.add-field it
+    superclass := resolve-ref klass.superclass
+    do-class superclass
 
-    class-inherited := []
-
-    // Note that we run to <= size. The last iteration is for the super.
+    // A list of additional members the (synthetic) superclass has inherited.
+    // For each mixin we compute two inherited sets:
+    // - the one that is inherited as part of the mixin hierarchy.
+    // - the one that the synthetic class would inherit from its super (taking into
+    //   account all members of the mixin).
+    mixin-inherited := []
     for i := 0; i <= klass.mixins.size; i++:
-      is-superclass := i == klass.mixins.size
-      current-class-ref/lsp.ToplevelRef? := is-superclass
-          ? klass.superclass
-          : klass.mixins[i]
-      if not current-class-ref: continue  // Object and Mixin-top.
-      current-class := resolve-ref current-class-ref
-      do-class current-class
-      if is-superclass: class-depths_[klass] = class-depths_[current-class] + 1
+      is-mixin := i < klass.mixins.size
+      super-is-mixin := i > 0
+      current-class/lsp.Class := is-mixin
+          ? resolve-ref klass.mixins[i]
+          : klass
 
-      current-shaped := ShapedMap
-      current-class.methods.do: current-shaped.add-method it
-      current-class.fields.do: current-shaped.add-field it
-      inherited[current-class].do: current-shaped.add-inherited it
+      if is-mixin: do-class current-class
 
-      // Compute the newly inherited members for 'klass'.
-      current-inherited := []
-      current-shaped.do: | name/string current-members/List |
-        class-members := class-shaped.get name --if-absent=(: [])
-        if class-members.is-empty:
-          // All current members are inherited.
-          current-members.do: | current-member/Member |
-            if current-member.is-inherited:
-              current-inherited.add current-member.as-inherited
-            else:
-              inherited-member := InheritedMember current-member --partially-shadowed-by=[]
-              current-inherited.add inherited-member
-          continue.do
+      super-inherited/List := ?
+      if super-is-mixin:
+        super-inherited = inherited[superclass] + mixin-inherited
+      else:
+        super-inherited = inherited[superclass]
 
-        current-members.do: | current-member/Member |
-          partial-overriders := []
-          if current-member.is-inherited:
-            inherited-member := current-member.as-inherited
-            partial-overriders = inherited-member.partially-shadowed-by
-            current-member = inherited-member.member
+      current-inherited := compute-inherited-for current-class
+          --superclass=superclass
+          --super-inherited=super-inherited
 
-          overridden-by := {}  // A set of Member.
-          fully-overridden := compute-and-fill-override current-member
-              --old-overriders=partial-overriders
-              --class-members=class-members
-              --overridden-by=overridden-by
+      if is-mixin:
+        mixin-inherited = current-inherited
+      else:
+        inherited[klass] = current-inherited
 
-          overridden-by-list := overridden-by.to-list
+      superclass = current-class
 
-          if not fully-overridden:
-            inherited-member := InheritedMember current-member
-                --partially-shadowed-by=overridden-by-list
-            current-inherited.add inherited-member
+  /**
+  Computes the inherited members for the given $klass.
+  The $klass can be a Mixin, in which case we are computing the members that
+    would be inherited by the superclass + the mixin. In that case, the klass
+    might already have inherited members.
 
-          mark-overriding klass current-member overridden-by-list
+  The $super-inherited contains the full list of elements the superclass inherited.
+  For mixins this includes the inherited members through the mixin hierarchy *and*
+    the members the synthetic class inherited from the super class.
+  */
+  compute-inherited-for klass/lsp.Class --superclass/lsp.Class --super-inherited/List -> List:
+    class-shaped := ShapedMap
 
-      // Add all newly inherited mumbers to the class shape, so we can use it
-      // for the next mixin/super.
-      current-inherited.do: | inherited-member/InheritedMember |
-        class-shaped.add-inherited inherited-member
+    (klass.methods + klass.fields).do: | entry/lsp.ClassMember |
+      // We initialize the inheritance order to a high value, so that it is
+      // always higher than the inheritance order of the super class or mixins.
+      // The current class members are discarded at the end of the function, so
+      // don't need any fixing up.
+      member := Member entry --inheritance-order=10000000
+      class-shaped.add member
 
-      // Add the current inherited members to the inherited members of the class.
-      class-inherited.add-all current-inherited
+    // Reset the max.
+    max-inheritance-order := 0
 
-    inherited[klass] = class-inherited
+    super-shaped := ShapedMap
+    super-inherited.do: | inherited/InheritedMember |
+      member-order := inherited.inheritance-order
+      member := Member inherited --inheritance-order=member-order
+      max-inheritance-order = max max-inheritance-order member-order
+      super-shaped.add member
+
+    max-inheritance-order++
+    (superclass.methods + superclass.fields).do: | entry/lsp.ClassMember |
+      // All direct members share the same inheritance order.
+      member-order := max-inheritance-order
+      member := Member entry --inheritance-order=member-order
+      super-shaped.add member
+
+    // Compute the newly inherited members for 'klass'.
+    // We go through each super-member (which includes the members that class inherited) and
+    // see if they are still visible. If they are fully overridden, we can drop them.
+    result := []
+    super-shaped.do: | name/string super-members/List |
+      class-members := class-shaped.get name --if-absent=(: [])
+      if class-members.is-empty:
+        // All current members are inherited.
+        super-members.do: | super-member/Member |
+          if super-member.is-inherited:
+            result.add super-member.as-inherited
+          else:
+            inherited-member := InheritedMember super-member
+                --partially-shadowed-by=[]
+                --inheritance-order=super-member.inheritance-order
+            result.add inherited-member
+        continue.do
+
+      // Some members may be shadowed by the class members.
+      super-members.do: | super-member/Member |
+        partial-overriders := []
+        current-order := super-member.inheritance-order
+        if super-member.is-inherited:
+          inherited-member := super-member.as-inherited
+          partial-overriders = inherited-member.partially-shadowed-by
+          super-member = inherited-member.member
+
+        overridden-by := {}  // A set of Member.
+        fully-overridden := compute-and-fill-override super-member
+            --old-overriders=partial-overriders
+            --class-members=class-members
+            --overridden-by=overridden-by
+
+        overridden-by-list := overridden-by.to-list
+
+        if not fully-overridden:
+          inherited-member := InheritedMember super-member
+              --partially-shadowed-by=overridden-by-list
+              --inheritance-order=current-order
+          result.add inherited-member
+
+        mark-overriding klass super-member overridden-by-list
+
+    return result
 
   mark-overriding klass/lsp.Class super-member/Member overridden-by/List:
     overridden := super-member.as-toit-member
