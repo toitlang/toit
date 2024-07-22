@@ -52,7 +52,7 @@ class Font:
   /**
   The pixel width of the given string $str in this font.
   Note that when you actually draw the text it may go a few pixels to the left
-    of the origin or to the right of x origin + pixel_width.  See text_extent.
+    of the origin or to the right of x origin + pixel-width.  See text_extent.
   */
   pixel-width str/string from/int=0 to/int=str.size -> int:
     return font-get-text-size_ str[from..to] proxy_ (Array_ 0)

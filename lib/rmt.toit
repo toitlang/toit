@@ -541,7 +541,7 @@ class Channel:
     if not is-output: throw "INVALID_STATE"
 
     // Start sending the data.
-    // We receive a write_buffer with external memory that we need to keep alive
+    // We receive a write-buffer with external memory that we need to keep alive
     // until the sending is done. This buffer may be the $signals.bytes_ buffer
     // if that one is external.
     buffer := rmt-transmit_ resource_ signals.bytes_

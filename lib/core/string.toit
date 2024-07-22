@@ -69,10 +69,10 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  str1 := string.from_rune 'a'  // -> "a"
-  str2 := string.from_rune 0x41 // -> "A"
-  str3 := string.from_rune 42   // -> "*"
-  str4 := string.from_rune 7931 // -> "☃"
+  str1 := string.from-rune 'a'  // -> "a"
+  str2 := string.from-rune 0x41 // -> "A"
+  str3 := string.from-rune 42   // -> "*"
+  str4 := string.from-rune 7931 // -> "☃"
   ```
   */
   constructor.from-rune rune/int:
@@ -89,10 +89,10 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  str1 := string.from_runes ['a', 'b', 42]  // -> "ab*"
-  str2 := string.from_runes [0x41]          // -> "A"
-  str3 := string.from_runes [42]            // -> "*"
-  str4 := string.from_runes [7931, 0x20ac]  // -> "☃€"
+  str1 := string.from-runes ['a', 'b', 42]  // -> "ab*"
+  str2 := string.from-runes [0x41]          // -> "A"
+  str3 := string.from-runes [42]            // -> "*"
+  str4 := string.from-runes [7931, 0x20ac]  // -> "☃€"
   ```
   */
   constructor.from-runes runes/List:
@@ -263,16 +263,16 @@ abstract class string implements Comparable io.Data:
     is handled like the above actions, but this is only done for one level -
     lists of lists are not flattened in this way.
   To get a list or byte array as the return value instead of a string, use
-    `str.to_byte_array.map` instead.
+    `str.to-byte-array.map` instead.
   # Examples.
   ```
-  heavy_metalize str/string -> string:
+  heavy-metalize str/string -> string:
     return str.flat_map: | c |
       {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if-absent=: c
   ```
   ```
-  lower_case str/string -> string:
-    return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+  lower-case str/string -> string:
+    return str.flat-map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
   ```
   */
   flat-map [block] -> string:
@@ -542,13 +542,13 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  "a".compare_to "b"    // => -1
-  "a".compare_to "a"    // => 0
-  "b".compare_to "a"    // => 1
-  "ab".compare_to "abc" // => -1
-  "abc".compare_to "ab" // => 1
-  "Amélie".compare_to "Amelie"  // => 1
-  "Amélie".compare_to "Amzlie"  // => 1
+  "a".compare-to "b"    // => -1
+  "a".compare-to "a"    // => 0
+  "b".compare-to "a"    // => 1
+  "ab".compare-to "abc" // => -1
+  "abc".compare-to "ab" // => 1
+  "Amélie".compare-to "Amelie"  // => 1
+  "Amélie".compare-to "Amzlie"  // => 1
   ```
   */
   compare-to other/string -> int:
@@ -564,12 +564,12 @@ abstract class string implements Comparable io.Data:
     the call to this method).
 
   # Examples
-  The $if-equal block allows easy chaining of `compare_to` calls.
+  The $if-equal block allows easy chaining of `compare-to` calls.
   ```
-  // In class A with fields str_field1 and str_field2:
-  compare_to other/A -> int:
-    return str_field1.compare_to other.str_field1 --if-equal=:
-      str_field2.compare_to other.str_field2
+  // In class A with fields str-field1 and str-field2:
+  compare-to other/A -> int:
+    return str-field1.compare-to other.str-field1 --if-equal=:
+      str-field2.compare-to other.str-field2
   ```
   */
   compare-to other/string [--if-equal] -> int:
@@ -763,32 +763,32 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  "foobar".index_of "foo"  // => 0
-  "foobar".index_of "bar"  // => 3
-  "foo".index_of "bar"     // => -1
+  "foobar".index-of "foo"  // => 0
+  "foobar".index-of "bar"  // => 3
+  "foo".index-of "bar"     // => -1
 
-  "foobarfoo".index_of "foo"           // => 0
-  "foobarfoo".index_of "foo" 1         // => 6
-  "foobarfoo".index_of "foo" 1 8       // => -1
+  "foobarfoo".index-of "foo"           // => 0
+  "foobarfoo".index-of "foo" 1         // => 6
+  "foobarfoo".index-of "foo" 1 8       // => -1
 
   // Invalid ranges:
-  "foobarfoo".index_of "foo" -1 999    // Throws.
-  "foobarfoo".index_of "foo" 1 999     // Throws.
+  "foobarfoo".index-of "foo" -1 999    // Throws.
+  "foobarfoo".index-of "foo" 1 999     // Throws.
 
-  "".index_of "" 0 0   // => 0
-  "".index_of "" -3 -3 // => Throws
-  "".index_of "" 2 2   // => Throws
+  "".index-of "" 0 0   // => 0
+  "".index-of "" -3 -3 // => Throws
+  "".index-of "" 2 2   // => Throws
 
   // Last:
-  "foobarfoo".index_of --last "foo"           // => 6
-  "foobarfoo".index_of --last "foo" 1         // => 6
-  "foobarfoo".index_of --last "foo" 1 6       // => 0
-  "foobarfoo".index_of --last "foo" 0 1       // => 0
-  "foobarfoo".index_of --last "foo" 0 8       // => 0
+  "foobarfoo".index-of --last "foo"           // => 6
+  "foobarfoo".index-of --last "foo" 1         // => 6
+  "foobarfoo".index-of --last "foo" 1 6       // => 0
+  "foobarfoo".index-of --last "foo" 0 1       // => 0
+  "foobarfoo".index-of --last "foo" 0 8       // => 0
 
-  "foobarfoo".index_of --last "gee"           // => -1
-  "foobarfoo".index_of --last "foo" 1 5       // => -1
-  "foobarfoo".index_of --last "foo" 0 8       // => 0
+  "foobarfoo".index-of --last "gee"           // => -1
+  "foobarfoo".index-of --last "foo" 1 5       // => -1
+  "foobarfoo".index-of --last "foo" 0 8       // => 0
   ```
   */
   index-of --last/bool=false needle/string from/int=0 to/int=size -> int:
