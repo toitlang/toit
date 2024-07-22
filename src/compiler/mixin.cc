@@ -271,7 +271,8 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
       auto new_field = _new ir::Field(field->name(),
                                       klass,
                                       field->is_final(),
-                                      field->range());
+                                      field->range(),
+                                      field->outline_range());
       new_field->set_type(field->type());
       field_map[field] = new_field;
     }
@@ -321,7 +322,8 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
         ir::FieldStub* new_field_stub = _new ir::FieldStub(new_field,
                                                            klass,
                                                            field_stub->is_getter(),
-                                                           range);
+                                                           range,
+                                                           method->outline_range());
         new_field_stub->set_plain_shape(shape);
         auto this_ref = _new ir::ReferenceLocal(stub_parameters[0], 0, range);
         if (field_stub->is_getter()) {
@@ -358,7 +360,8 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                klass,
                                                shape,
                                                is_stub->interface_or_mixin(),
-                                               method->range());
+                                               method->range(),
+                                               method->outline_range());
 
         body = _new ir::Return(_new ir::LiteralBoolean(true, range), false, range);
       } else {
@@ -374,7 +377,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                 range);
         forward_call->mark_tail_call();
 
-        stub = _new ir::MixinStub(method_name, klass, shape, method->range());
+        stub = _new ir::MixinStub(method_name, klass, shape, method->range(), method->outline_range());
         body = _new ir::Return(forward_call, false, range);
       }
       stub->set_parameters(stub_parameters);

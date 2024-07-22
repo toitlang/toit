@@ -87,6 +87,13 @@ class Source {
     }
     [[nodiscard]] Range extend(Position to) const { return extend(Range(to, to)); }
 
+    /// Whether this range contains the [other] range (inclusive).
+    bool contains(Range other) const {
+      if (other.from().is_before(from())) return false;
+      if (to().is_before(other.to())) return false;
+      return true;
+    }
+
     bool is_valid() const { return from_.is_valid(); }
 
     /// Whether this range is before the [other] range.
