@@ -421,7 +421,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
 
   visit-Section section/lsp.Section -> DocSection:
     statements := section.statements.map: visit-doc it
-    return DocSection --title=section.title --statements=statements
+    return DocSection --title=section.title --level=section.level --statements=statements
 
   visit-CodeSection code/lsp.CodeSection -> DocCodeSection:
     return DocCodeSection --text=code.text
@@ -877,13 +877,15 @@ class Toitdoc:
 class DocSection:
   static TYPE ::= "section"
   title/string?
+  level/int
   statements/List // Of DocStatement.
 
-  constructor --.title --.statements:
+  constructor --.title --.level --.statements:
 
   to-json -> Map:
     result := {
       "object_type": TYPE,
+      "level": level,
       "statements": statements.map: it.to-json,
     }
     if title: result["title"] = title

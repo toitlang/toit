@@ -482,9 +482,14 @@ toitdoc::Section* ToitdocParser::parse_section() {
   ListBuilder<toitdoc::Statement*> statements;
 
   auto title = Symbol::invalid();
+  int level = 1;
   if (peek() == '#') {
     ConstructScope scope(this, SECTION_TITLE);
     advance();
+    while (peek() == '#') {
+      advance();
+      level++;
+    }
     // Skip over leading whitespace.
     while (peek() == ' ') advance();
     int begin = index_;
@@ -497,7 +502,7 @@ toitdoc::Section* ToitdocParser::parse_section() {
     if (statement != null) statements.add(statement);
     skip_whitespace();
   }
-  return _new toitdoc::Section(title, statements.build());
+  return _new toitdoc::Section(title, level, statements.build());
 }
 
 toitdoc::Statement* ToitdocParser::parse_statement() {
