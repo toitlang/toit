@@ -16,7 +16,7 @@
 import fs
 import host.file
 import system
-import .uri-path-translator
+import .uri-path-translator as translator
 
 /**
 Computes the project URI for a given path.
@@ -28,7 +28,7 @@ The project URI is the path that contains a `package.{yaml|lock}` file.
 However, it must not be inside a '.packages' folder. In that case we assume that
 there is a `package.{yaml|lock}` file in the parent folder.
 */
-compute-project-uri --uri/string --translator/UriPathTranslator -> string:
+compute-project-uri --uri/string -> string:
   path := translator.to-path uri
   if not fs.is-absolute path:
     return translator.to-uri "/"

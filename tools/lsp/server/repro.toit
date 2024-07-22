@@ -21,7 +21,7 @@ import encoding.json as json
 import .compiler
 import .documents
 import .file-server
-import .uri-path-translator
+import .uri-path-translator as translator
 import .server show DEFAULT-TIMEOUT-MS
 import .tar-utils
 import .utils
@@ -140,11 +140,10 @@ write-repro
 create-archive project-uri/string? compiler-path/string entry-path/string out-path/string:
   cwd := directory.cwd
   if not entry-path.starts-with "/": entry-path = "$cwd/$entry-path"
-  translator := UriPathTranslator
-  documents := Documents translator
+  documents := Documents
   sdk-path := sdk-path-from-compiler compiler-path
-  protocol := FileServerProtocol.local compiler-path sdk-path documents translator
-  compiler := Compiler compiler-path translator DEFAULT-TIMEOUT-MS
+  protocol := FileServerProtocol.local compiler-path sdk-path documents
+  compiler := Compiler compiler-path DEFAULT-TIMEOUT-MS
       --protocol=protocol
   entry-uri := translator.to-uri entry-path
   compiler.analyze [entry-uri] --project-uri=project-uri
