@@ -31,10 +31,10 @@ class Object:
       return number == other.number
   ```
   A class doesn't have to follow the above format, but it must keep the
-    operator in sync with any `hash_code` method. That is, if a class
-    has a `hash_code` member, then the equality and `hash_code`
+    operator in sync with any `hash-code` method. That is, if a class
+    has a `hash-code` member, then the equality and `hash-code`
     must agree. If two instances are equal (`a == b`), then their hash
-    codes must also be equal (`a.hash_code == b.hash_code`).
+    codes must also be equal (`a.hash-code == b.hash-code`).
   */
   operator == other:
     return identical this other
