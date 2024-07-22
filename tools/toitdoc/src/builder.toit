@@ -63,7 +63,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       pkg-packages-path = module-path-segments package-uri
       pkg-names = load-package-names project-uri
 
-    libraries := {:}  // From string to Library. TODO(florian): which string?
+    libraries := {:}  // From module-name (last segment) to Library
 
     summaries.do: | uri/string module/lsp.Module |
       if exclude-sdk and uri.starts-with sdk-uri: continue.do
