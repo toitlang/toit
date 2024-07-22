@@ -94,7 +94,7 @@ create-archive path toitc -> string:
 /**
 Runs the compiler using the repro archive.
 */
-test-repro-server archive-path toitc toitlsp compiler-input:
+test-repro-server archive-path toitc compiler-input:
   cpp-pipes := pipe.fork
       true                // use_path
       pipe.PIPE-CREATED   // stdin
@@ -112,23 +112,13 @@ test-repro-server archive-path toitc toitlsp compiler-input:
   // Start the repro server and extract the port from its output.
   // We use the `--json` flag to make that easier.
   port/int := ?
-  toitlsp-pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-CREATED   // stdin
-      pipe.PIPE-CREATED   // stdout
-      pipe.PIPE-INHERITED // stderr
-      toitlsp
-      [toitlsp, "repro", "serve", "--json", archive-path]
-  toitlsp-to := toitlsp-pipes[0]
-  toitlsp-from := toitlsp-pipes[1]
-  toitlsp-pid := toitlsp-pipes[3]
-  r := io.Reader.adapt toitlsp-from
-  while true:
-    if line := r.read-line:
-      result := json.parse line
-      port = result["port"]
-      toitlsp-from.close
-      break
+  latch := monitor.Latch
+  serve-task := task::
+    server := create-repro-server archive-path
+    server-port-line := server.run --port=0
+    latch.set (int.parse server-port-line)
+    server.wait-for-done
+  port = latch.get
 
   try:
     writer := io.Writer.adapt cpp-to
@@ -147,14 +137,10 @@ test-repro-server archive-path toitc toitlsp compiler-input:
     expect-equals 0
         pipe.exit-code exit-value
 
-  pipe.kill_ toitlsp-pid 9
-  pipe.wait-for toitlsp-pid
-
 archive-test
     archive-path/string
     snapshot-path/string
     toitc/string
-    toitlsp/string
     client/LspClient:
   untitled-uri := "untitled:Untitled1"
   untitled-path := translator.to-path untitled-uri
@@ -167,7 +153,7 @@ archive-test
   writer.close
 
   compiler-input := create-compiler-input --path=untitled-path
-  test-repro-server archive-path toitc toitlsp compiler-input
+  test-repro-server archive-path toitc compiler-input
 
   client.send-did-change --uri=untitled-uri HELLO-WORLD-TEXT_
   tar-string = client.send-request "toit/archive" {"uri": untitled-uri}
@@ -255,7 +241,6 @@ archive-test
 
 main args:
   toitc := args[0]
-  toitlsp-exe := args[3]
 
   dir := directory.mkdtemp "/tmp/test-repro-"
   repro-path := "$dir/repro.tar"
@@ -264,9 +249,9 @@ main args:
   snapshot-path := "$dir/repro.snap"
   try:
     compiler-input := create-archive repro-path toitc
-    test-repro-server repro-path toitc toitlsp-exe compiler-input
-    run-client-test args: archive-test archive-path snapshot-path toitc toitlsp-exe it
-    run-client-test --use-toitlsp args: archive-test archive-path snapshot-path toitc toitlsp-exe it
+    test-repro-server repro-path toitc compiler-input
+    run-client-test args: archive-test archive-path snapshot-path toitc it
+    run-client-test --use-toitlsp args: archive-test archive-path snapshot-path toitc it
 
   finally:
     directory.rmdir --recursive dir

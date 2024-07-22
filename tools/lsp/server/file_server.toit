@@ -177,7 +177,7 @@ class TcpFileServer implements FileServer:
 
   Returns the port at which the server can be reached as a string.
   */
-  run --port=0 -> string:
+  run --port/int=0 -> string:
     network := net.open
     server_ = network.tcp-listen port
     local-port := server_.local-address.port
