@@ -477,6 +477,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
     if kind == lsp.ToitdocRef.FACTORY: return DocToitdocRef.KIND-FACTORY
     if kind == lsp.ToitdocRef.METHOD: return DocToitdocRef.KIND-METHOD
     if kind == lsp.ToitdocRef.FIELD: return DocToitdocRef.KIND-FIELD
+    if kind == lsp.ToitdocRef.PARAMETER: return DocToitdocRef.KIND-PARAMETER
     if kind == lsp.ToitdocRef.OTHER: return DocToitdocRef.KIND-OTHER
     throw "Unknown kind: $kind"
 
@@ -999,6 +1000,7 @@ class DocToitdocRef extends DocExpression:
   static KIND-FACTORY ::= "factory"
   static KIND-METHOD ::= "method"
   static KIND-FIELD ::= "field"
+  static KIND-PARAMETER ::= "parameter"
 
   kind/string
   text/string

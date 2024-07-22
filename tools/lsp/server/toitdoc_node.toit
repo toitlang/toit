@@ -111,6 +111,7 @@ class ToitdocRef extends Expression:
   static FACTORY ::= 6
   static METHOD ::= 7
   static FIELD ::= 8
+  static PARAMETER ::= 9
 
   text       / string  ::= ?
   kind       / int     ::= ?
@@ -121,6 +122,9 @@ class ToitdocRef extends Expression:
 
   constructor.other .text:
     kind = OTHER
+
+  constructor.parameter .text:
+    kind = PARAMETER
 
   constructor
       --.text
