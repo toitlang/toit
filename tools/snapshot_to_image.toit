@@ -28,7 +28,7 @@ import encoding.ubjson
 import io
 import io show LITTLE-ENDIAN ByteOrder
 import system
-import uuid
+import uuid show *
 
 import host.file
 import cli
@@ -197,7 +197,7 @@ snapshot-to-image parsed/cli.Parsed:
     writer.write (ubjson.encode output)
   out.close
 
-sdk-version-uuid --sdk-version/string -> uuid.Uuid:
+sdk-version-uuid --sdk-version/string -> Uuid:
   return sdk-version.is-empty
-      ? uuid.uuid5 "$random" "$Time.now-$Time.monotonic-us"
-      : uuid.uuid5 "toit:sdk-version" sdk-version
+      ? Uuid.uuid5 "$random" "$Time.now-$Time.monotonic-us"
+      : Uuid.uuid5 "toit:sdk-version" sdk-version
