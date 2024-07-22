@@ -381,6 +381,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
         --is-block=parameter.is-block
         --is-named=parameter.is-named
         --is-required=parameter.is-required
+        --default-value=parameter.default-value
         --type=build-type parameter.type
 
   build-shape method/lsp.Method -> Shape:
@@ -829,11 +830,12 @@ class Parameter:
   is-named/bool
   is-required/bool
   type/Type
+  default-value/string?
 
-  constructor --.name --.is-block --.is-named --.is-required --.type:
+  constructor --.name --.is-block --.is-named --.is-required --.type --.default-value:
 
   to-json -> Map:
-    return {
+    result := {
       "object_type": TYPE,
       "name": name,
       "is_block": is-block,
@@ -841,6 +843,8 @@ class Parameter:
       "is_required": is-required,
       "type": type.to-json,
     }
+    if default-value: result["default_value"] = default-value
+    return result
 
 class Shape:
   static TYPE ::= "shape"

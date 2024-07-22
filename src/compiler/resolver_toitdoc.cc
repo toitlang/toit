@@ -332,11 +332,12 @@ ir::Node* resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
     // Create the fake values we pass to the builder.
     ir::LiteralNull literal_null(ast_ref->selection_range());  // For non-block args.
     ir::Parameter fake_block_parameter(Symbol::synthetic("<fake-param>"),
-                                        ir::Type::any(),
-                                        true,  // Is block.
-                                        0,
-                                        false,
-                                        ast_ref->selection_range());
+                                       ir::Type::any(),
+                                       true,  // Is block.
+                                       0,
+                                       false,
+                                       Source::Range::invalid(),
+                                       ast_ref->selection_range());
     ir::ReferenceLocal fake_block(&fake_block_parameter, 0, ast_ref->selection_range());
 
     for (auto parameter : ast_ref->parameters()) {

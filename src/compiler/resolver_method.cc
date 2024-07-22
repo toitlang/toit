@@ -477,6 +477,7 @@ void MethodResolver::resolve_fill_field_stub() {
                                            false,  // Not a block.
                                            parameter_index++,
                                            false,
+                                           Source::Range::invalid(),
                                            Source::Range::invalid());
   ir_parameters.add(this_parameter);
 
@@ -495,6 +496,7 @@ void MethodResolver::resolve_fill_field_stub() {
                                                   false,  // Not a block.
                                                   parameter_index++,
                                                   false,
+                                                  Source::Range::invalid(),
                                                   Source::Range::invalid());
     ir_parameters.add(new_value_parameter);
 
@@ -589,6 +591,7 @@ void MethodResolver::resolve_fill_constructor() {
                                            false,  // Not a block.
                                            0,
                                            false,
+                                           Source::Range::invalid(),
                                            Source::Range::invalid());
 
     method_->set_parameters(ListBuilder<ir::Parameter*>::build(ir_parameter));
@@ -1226,6 +1229,7 @@ void MethodResolver::_resolve_parameters(
                                             false,  // Not a block
                                             0,
                                             false,
+                                            Source::Range::invalid(),
                                             Source::Range::invalid());
     default_value_scope.add(implicit_this->name(),
                             ResolutionEntry(implicit_this));
@@ -1293,12 +1297,16 @@ void MethodResolver::_resolve_parameters(
 
     // Create the ir-parameter.
     int index = final_positions.at(parameter);
+    auto default_value_range = parameter->default_value() == null
+        ? Source::Range::invalid()
+        : parameter->default_value()->full_range();
     auto ir_parameter = _new ir::Parameter(name,
                                            type,
                                            is_block,
                                            index + id_offset,
                                            i,
                                            parameter->default_value() != null,
+                                           default_value_range,
                                            parameter->selection_range());
 
     (*ir_parameters)[index] = ir_parameter;
@@ -1955,6 +1963,7 @@ ir::Code* MethodResolver::_create_code(
                                            false,  // Not a block.
                                            id_offset,
                                            false,
+                                           Source::Range::invalid(),
                                            node->selection_range());
     it_scope.set_it(ir_parameter);
     scope_ = &it_scope;
