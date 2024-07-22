@@ -75,6 +75,121 @@ class Duration implements Comparable:
   /** The number of seconds per hour. */
   static SECONDS-PER-HOUR /int   ::= 3600
 
+  /**
+  Parses a duration from the given string.
+
+  Accepts string of the form '-?(\d+([.]\d+)?(h|m|ms|us|ns)][ ]?)+'.
+  Only seconds, ms, and us may have a fractional part.
+  Spaces are not allowed inside units (like 'u s') but otherwise all spaces are ignored.
+  Units may only be used once.
+
+  # Examples
+  ```
+  print (Duration.parse "1h2m3s")          // >> 1h2m3s
+  print (Duration.parse "1h2m3.4s")        // >> 1h2m3.4s
+  print (Duration.parse "1h2m3.4s5ms")     // >> 1h2m3.4s5ms
+  print (Duration.parse "1h2m3.4s5ms6us")  // >> 1h2m3.4s5ms6us
+  print (Duration.parse "66m")             // >> 1h6m
+  print (Duration.parse "-1h")             // >> -1h
+  ```
+  */
+  static parse str/string -> Duration:
+    return parse str --on-error=: throw it
+
+  /**
+  Variant of $(parse str) that calls $on-error if $str is not a valid duration.
+  */
+  static parse str/string [--on-error] -> Duration?:
+    // Simplifies the handling of '-'.
+    str = str.trim
+
+    if str == "" or str == "-": return on-error.call "MISSING_VALUE"
+
+    used-h := false
+    used-m := false
+    used-s := false
+    used-ms := false
+    used-us := false
+    used-ns := false
+
+    ns := 0
+    current-number := 0
+    current-unit/int := -1
+    current-power/int := 1
+    has-seen-decimal-point := false
+    has-seen-value := false
+    for i := str.size - 1; i >= -1; i--:
+      c := i == -1 ? '*' : str[i]
+      if c == ' ': continue
+      if '0' <= c <= '9':
+        current-number += (c - '0') * current-power
+        current-power *= 10
+        continue
+      if c == '.':
+        if has-seen-decimal-point: return on-error.call "INVALID_NUMBER"
+        has-seen-decimal-point = true
+        if current-number == -1: return on-error.call "MISSING_VALUE"
+        if current-unit != NANOSECONDS-PER-SECOND and
+            current-unit != NANOSECONDS-PER-MILLISECOND and
+            current-unit != NANOSECONDS-PER-MICROSECOND:
+          return on-error.call "INVALID_FRACTION"
+        ns += current-number * current-unit / current-power
+        current-number = 0
+        current-power = 1
+        continue
+
+      if current-power == 1 and i != str.size - 1:
+        return on-error.call "MISSING_VALUE"
+
+      ns += current-number * current-unit
+      current-number = 0
+      current-power = 1
+      has-seen-decimal-point = false
+      current-unit = -1
+
+      if c == '-' and i == 0:
+        ns = -ns
+        break
+      if c == '*' and i == -1: break
+      if c == 'h':
+        if used-h: return on-error.call "DUPLICATE_UNIT"
+        used-h = true
+        current-unit = NANOSECONDS-PER-HOUR
+      else if c == 'm':
+        if used-m: return on-error.call "DUPLICATE_UNIT"
+        used-m = true
+        current-unit = NANOSECONDS-PER-MINUTE
+      else if c == 's':
+        if i > 0:
+          if str[i - 1] == 'm':
+            if used-ms: return on-error.call "DUPLICATE_UNIT"
+            used-ms = true
+            current-unit = NANOSECONDS-PER-MILLISECOND
+            i--
+          else if str[i - 1] == 'u':
+            if used-us: return on-error.call "DUPLICATE_UNIT"
+            used-us = true
+            current-unit = NANOSECONDS-PER-MICROSECOND
+            i--
+          else if str[i - 1] == 'n':
+            if used-ns: return on-error.call "DUPLICATE_UNIT"
+            used-ns = true
+            current-unit = 1
+            i--
+          else:
+            if used-s: return on-error.call "DUPLICATE_UNIT"
+            used-s = true
+            current-unit = NANOSECONDS-PER-SECOND
+        else:
+          if used-s: return on-error.call "DUPLICATE_UNIT"
+          used-s = true
+          // Will lead to an error since the number is missing.
+          current-unit = NANOSECONDS-PER-SECOND
+      else:
+        return on-error.call "INVALID_CHARACTER"
+    return Duration ns
+
+
   ns_ /int
 
   /**
