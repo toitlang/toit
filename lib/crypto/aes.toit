@@ -174,8 +174,8 @@ class AesGcm extends Aead_:
   Initialize a AesGcm AEAD class for encryption.
   The $key must be 16, 24, or 32 bytes of AES key.
   The $initialization-vector must be 12 bytes of data.  It is extremely
-    important that the initialization_vector is not reused with the same key.
-    The initialization_vector must be known to the decrypting counterparty.
+    important that the $initialization-vector is not reused with the same key.
+  The $initialization-vector must be known to the decrypting counterparty.
   */
   constructor.encryptor key/ByteArray initialization-vector/ByteArray:
     super.encryptor key initialization-vector --algorithm=ALGORITHM-AES-GCM
@@ -261,7 +261,7 @@ class Aead_:
   Decrypts the given $ciphertext.
   The $verification-tag, 16 bytes, is checked and an exception is thrown if it
     fails.
-  If the verification_tag is not provided, it is assumed to be appended to the
+  If the $verification-tag is not provided, it is assumed to be appended to the
     $ciphertext.
   This method is equivalent to calling $start, $add, and $verify, and
     therefore it closes this instance.
@@ -388,7 +388,7 @@ aead-finish_ aead -> ByteArray:
   #primitive.crypto.aead-finish
 
 /**
-The rest_of_decrypted_data should be at least the size of the added data %
+The $rest-of-decrypted-data should be at least the size of the added data %
   BLOCK_SIZE_.
 */
 aead-verify_ aead verification-tag/ByteArray rest-of-decrypted-data/ByteArray -> int:
