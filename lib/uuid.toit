@@ -112,6 +112,13 @@ class Uuid:
     return Uuid
       uuid.copy 0 SIZE
 
+  /**
+  Validates that the given $str is a valid UUID.
+  */
+  static is-valid str/string -> bool:
+    parse str --on-error=: return false
+    return true
+
   bytes_/io.Data ::= ?
   hash_ := null
 
