@@ -9,7 +9,6 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 // Make sure that the `abstract` keyword is correctly handled.
 test client/LspClient:

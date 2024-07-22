@@ -28,15 +28,10 @@ run-client-test
     --use-mock=false
     --exit=true
     --spawn-process=true
-    --use-toitlsp=false
     [--pre-initialize]:
   toitc := args[0]
   lsp-server := args[1]
   mock-compiler := args[2]
-
-  toitlsp-exe := null
-  if use-toitlsp:
-    toitlsp-exe = args[3]
 
   compiler-exe := use-mock ? mock-compiler : toitc
 
@@ -46,7 +41,6 @@ run-client-test
         --toitc=toitc
         --lsp-server=lsp-server
         --compiler-exe=compiler-exe
-        --toitlsp-exe=toitlsp-exe
         --supports-config=supports-config
         --needs-server-args=needs-server-args
         --spawn-process=spawn-process
@@ -74,4 +68,3 @@ run-client-test
       --pre-initialize=: null
       --use-mock=use-mock
       --spawn-process=spawn-process
-      --use-toitlsp=use-toitlsp

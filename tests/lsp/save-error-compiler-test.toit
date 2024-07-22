@@ -10,7 +10,6 @@ import io
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 save-to-file path content:
   stream := file.Stream.for-write path

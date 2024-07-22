@@ -27,6 +27,7 @@ import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
 import .system-message as system-message
 import .toitdoc as toitdoc
+import .lsp.server.server as lsp
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -559,12 +560,10 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
-  args := [
-    "--toitc",
-    tool-path sdk-dir "toit.compile",
-  ]
-  exit-code := run sdk-dir "toit.lsp" args
-  exit exit-code
+  toitc-cmd := [tool-path sdk-dir "toit.compile"]
+  if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
+  print-on-stderr_ "Using $toitc-cmd.first"
+  lsp.main --toit-path-override=toitc-cmd.first
 
 run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]

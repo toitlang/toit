@@ -22,8 +22,6 @@ main args:
 
   run-client-test args --pre-initialize=pre-initializer:
     test it foo-entry
-  run-client-test --use-toitlsp args --pre-initialize=pre-initializer:
-    test it foo-entry
 
 test client/LspClient foo-path/string:
   // The foo-path has no errors, but only because it's using the package.lock

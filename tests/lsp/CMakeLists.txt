@@ -22,7 +22,6 @@ set(ALL_TESTS ${TOIT_COMPLETION_TESTS} ${TOIT_GOTO_DEFINITION_TESTS} ${TOIT_COMP
 
 set(MOCK_COMPILER_DIR ${CMAKE_BINARY_DIR}/lsp_test)
 
-set(TOIT_LSP_BIN ${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp)
 set(TOIT_LSP_SERVER_DIR ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server)
 
 # TODO(florian): set timeout to DEFAULT_TIMEOUT once we have removed the Toit version of the LSP server.
@@ -58,7 +57,7 @@ foreach(file ${ALL_TESTS})
   if ("${file}" IN_LIST TOIT_COMPLETION_TESTS)
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler>
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )
@@ -66,7 +65,7 @@ foreach(file ${ALL_TESTS})
   elseif ("${file}" IN_LIST TOIT_GOTO_DEFINITION_TESTS)
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto-definition-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto-definition-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler>
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )
@@ -74,7 +73,7 @@ foreach(file ${ALL_TESTS})
   elseif ("${file}" IN_LIST TOIT_COMPILER_TESTS)
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler>
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       CONFIGURATIONS slow
       )
@@ -82,7 +81,7 @@ foreach(file ${ALL_TESTS})
   elseif ("${file}" IN_LIST TOIT_SLOW_COMPILER_TESTS)
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler>
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       CONFIGURATIONS slow
       )

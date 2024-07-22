@@ -22,8 +22,6 @@ main args:
         item-defaults.add "editRange"
     run-client-test args --pre-initialize=pre-initialize:
       test it --supports-default-range=supports-default-range
-    run-client-test --use-toitlsp args --pre-initialize=pre-initialize:
-      test it --supports-default-range=supports-default-range
 
 test client/LspClient --supports-default-range/bool:
   // The path doesn't really need to be non-existing, as we provide content for it

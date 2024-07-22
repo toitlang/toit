@@ -251,7 +251,6 @@ main args:
     compiler-input := create-archive repro-path toitc
     test-repro-server repro-path toitc compiler-input
     run-client-test args: archive-test archive-path snapshot-path toitc it
-    run-client-test --use-toitlsp args: archive-test archive-path snapshot-path toitc it
 
   finally:
     directory.rmdir --recursive dir

@@ -28,7 +28,6 @@ abstract class LocationCompilerTestRunner:
     locations := extract-locations test-path
 
     run-client-test args: test it test-path locations
-    run-client-test --use-toitlsp args: test it test-path locations
 
   test client/LspClient test-path/string locations/Map:
     content := (file.read-content test-path).to-string

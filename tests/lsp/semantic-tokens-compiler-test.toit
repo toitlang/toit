@@ -9,7 +9,6 @@ import host.file
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 class TestCase:
   line ::= ?

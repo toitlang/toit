@@ -14,9 +14,6 @@ main args:
   run-client-test args
     --pre-initialize=: it.configuration["timeoutMs"] = -1:  // No timeout
     test it
-  run-client-test --use-toitlsp args
-    --pre-initialize=: it.configuration["timeoutMs"] = -1:  // No timeout
-    test it
 
 test client/LspClient:
   RUN-TIME ::= 15_000_000

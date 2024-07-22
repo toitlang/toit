@@ -10,10 +10,6 @@ main args:
   run-client-test args
       --pre-initialize=: it.configuration["timeoutMs"] = 0:
     test it
-  run-client-test args
-      --use-toitlsp
-      --pre-initialize=: it.configuration["timeoutMs"] = 0:
-    test it
 
 LINES ::= 10000
 

@@ -45,7 +45,6 @@ with-lsp-client [block]
 with-lsp-client [block]
     --toitc/string
     --lsp-server/string?  // Can be null if not spawning.
-    --toitlsp-exe/string?=null
     --compiler-exe/string = toitc
     --supports-config=true
     --needs-server-args=(not supports-config)
@@ -54,15 +53,8 @@ with-lsp-client [block]
   server-args := [lsp-server]
   if needs-server-args: server-args.add compiler-exe
 
-  server-cmd/string := ?
-  if toitlsp-exe:
-    server-cmd = toitlsp-exe
-    server-args = ["--toitc", compiler-exe, "--sdk", (sdk-path-from-compiler toitc)]
-  else:
-    server-cmd = toitc
-
   client := LspClient.start
-      server-cmd
+      toitc
       server-args
       --supports-config=supports-config
       --compiler-exe=compiler-exe

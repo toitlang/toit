@@ -10,7 +10,6 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""

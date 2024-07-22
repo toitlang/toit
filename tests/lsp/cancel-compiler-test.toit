@@ -9,7 +9,6 @@ import monitor
 
 main args:
   run-client-test args --use-mock: test it
-  run-client-test --use-toitlsp args --use-mock: test it
 
 test client/LspClient:
   // We want to cancel the request before it has finished, so we

@@ -22,7 +22,6 @@ binary-contains-string byte-array/ByteArray needle/string -> bool:
 
 main args:
   run-client-test args --use-mock: test it
-  run-client-test args --use-toitlsp --use-mock: test it
 
 test client/LspClient:
   mock-compiler := MockCompiler client

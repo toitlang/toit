@@ -10,8 +10,7 @@ import system
 import system show platform
 
 main args:
-  run-client-test --use-toitlsp args: test it
- // run_client_test args: test it
+  run_client_test args: test it
 
 test client/LspClient:
   space-foo := "$(directory.cwd)/with space/foo.toit"

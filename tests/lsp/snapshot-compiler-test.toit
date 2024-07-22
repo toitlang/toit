@@ -39,4 +39,3 @@ test client/LspClient toitc:
 
 main args:
   run-client-test args: test it args[0]
-  run-client-test --use-toitlsp args: test it args[0]

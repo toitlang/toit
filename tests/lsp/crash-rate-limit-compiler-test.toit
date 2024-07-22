@@ -18,11 +18,6 @@ main args:
       --no-spawn-process:
     test-rate-limiting it --with-server-process
 
-  run-client-test args
-      --use-mock
-      --use-toitlsp:
-    test-rate-limiting it
-
   print "All done"
 
   // Since we didn't ask the servers to exit, they are still running, waiting

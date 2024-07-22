@@ -8,12 +8,7 @@ import expect show *
 
 main args:
   run-client-test args --use-mock: test it --error-handler-path="window/showMessage"
-  run-client-test --use-toitlsp args --use-mock: test it --error-handler-path="window/showMessage"
   run-client-test args
-      --use-mock
-      --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
-    test it --error-handler-path="window/logMessage"
-  run-client-test --use-toitlsp args
       --use-mock
       --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
     test it --error-handler-path="window/logMessage"
