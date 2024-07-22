@@ -202,7 +202,7 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   ```
   for position := 0; position < data.byte-size; null:
-    position += my_uart.write (data.byte-slice position data.byte-size)
+    position += my-uart.write (data.byte-slice position data.byte-size)
   ```
 
   If $wait is true, the method blocks until all bytes that were written have been emitted to the
@@ -351,7 +351,7 @@ class UartWriter extends io.Writer:
 
   ```
   for position := 0; position < data.byte-size; null:
-    position += my_uart.write (data.byte-slice position data.byte-size)
+    position += my-uart.write (data.byte-slice position data.byte-size)
   ```
 
   If $flush is true, the method blocks until all bytes that were written have been emitted to the

@@ -271,8 +271,8 @@ class Buffer extends CloseableWriter:
   */
   little-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != LITTLE_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=LITTLE_ENDIAN
+    if not result or result.byte-order_ != LITTLE-ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=LITTLE-ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 
@@ -300,8 +300,8 @@ class Buffer extends CloseableWriter:
   */
   big-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != BIG_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=BIG_ENDIAN
+    if not result or result.byte-order_ != BIG-ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=BIG-ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 

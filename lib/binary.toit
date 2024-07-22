@@ -46,7 +46,7 @@ UINT32-MAX ::= 4_294_967_295
 
 /** Deprecated. Use $io.LITTLE-ENDIAN instead. */
 LITTLE-ENDIAN/LittleEndian ::= io.LITTLE-ENDIAN
-/** Deprecated. Use $io.BIG_ENDIAN instead. */
+/** Deprecated. Use $io.BIG-ENDIAN instead. */
 BIG-ENDIAN/BigEndian ::= io.BIG-ENDIAN
 
 /**

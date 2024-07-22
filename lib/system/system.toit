@@ -115,12 +115,12 @@ The "reserved memory" is the size of the heap.
 
 By passing the optional $list argument to be filled in, you can avoid causing
   an allocation, which may interfere with the tracking of allocations.  But note
-  that at some point the bytes_allocated number becomes so large that it needs
+  that at some point the bytes-allocated number becomes so large that it needs
   a small allocation of its own.
 
 # Examples
 ```
-print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
+print "There have been $(process-stats[STATS-INDEX-GC-COUNT]) GCs for this process"
 ```
 */
 process-stats --gc/bool=false list/List=(List STATS-LIST-SIZE_) -> List:

@@ -168,7 +168,7 @@ class Pin:
     ($config) maintains the pull-up/pull-down configuration of the pin. However, $configure
     resets that configuration.
   */
-  // When removing this function, it's safe to remove `pull_down_` and `pull_up_` as well.
+  // When removing this function, it's safe to remove `pull-down_` and `pull-up_` as well.
   config --input/bool=false --output/bool=false --open-drain/bool=false:
     if open-drain and not output: throw "INVALID_ARGUMENT"
     gpio-config_ num (input and pull-up_) (input and pull-down_) input output open-drain

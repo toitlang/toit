@@ -355,7 +355,7 @@ class DnsClient:
     // and the recursion available bit, which we do not care about.
     // The recursion desired bit seems to vary randomly, so we ignore
     // that too.
-    if decoded.status_bits & ~0x580 != 0x8000:
+    if decoded.status-bits & ~0x580 != 0x8000:
       protocol-error_  // Unexpected response flags.
 
     id := query.base-id

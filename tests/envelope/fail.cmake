@@ -18,6 +18,12 @@ set(TOIT_FAILING_TESTS
 
 set(TOIT_SKIP_TESTS
 )
+if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
+  list(APPEND TOIT_SKIP_TESTS
+    # This test takes too long.
+    tests/envelope/boot-upgrade-test.toit
+  )
+endif()
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_SKIP_TESTS

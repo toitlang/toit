@@ -258,7 +258,7 @@ jobs:
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
           TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
-          SDKDIR: ${{ github.workspace }}/
+          SDKDIR: ${{ github.workspace }}/build/host/sdk
         shell: bash
         run: |
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json

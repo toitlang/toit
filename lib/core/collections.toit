@@ -633,7 +633,7 @@ abstract class List extends CollectionBase:
     in the range, and returns the result of the call.
   */
   // TODO(florian): once we have labeled breaks, we could require the
-  //   block to return an int, and let users write `break.index_of other_type`.
+  //   block to return an int, and let users write `break.index-of other-type`.
   index-of --last/bool=false needle from/int=0 to/int=size [--if-absent]:
     if not 0 <= from <= size: throw "BAD ARGUMENTS"
     if not last:
@@ -786,8 +786,8 @@ abstract class List extends CollectionBase:
   /**
   Calls the given $block with indexes splitting the $from-$to range into chunks
     of the $available size.  The block is called with three arguments:
-    `chunk_from`, `chunk_to`, and `chunk_size`, where `chunk_size`
-    is always equal to `chunk_to - chunk_from`.  The first invocation
+    `chunk-from`, `chunk-to`, and `chunk-size`, where `chunk-size`
+    is always equal to `chunk-to - chunk-from`.  The first invocation
     receives indexes for at most $available elements. Subsequent
     invocations switch to $max-available elements (which by default is
     the same as $available).  Returns $to - $from.
@@ -955,7 +955,8 @@ class SmallArray_ extends Array_:
 An array for a larger number of elements.
 
 LargeArray_ is used for arrays that cannot be allocated in one page of memory.
-The implementation segments the payload into chunks of at most ARRAYLET_SIZE elements.
+The implementation segments the payload into chunks of at most $ARRAYLET-SIZE
+  elements.
 */
 class LargeArray_ extends Array_:
 
@@ -1001,7 +1002,7 @@ class LargeArray_ extends Array_:
     number-of-arraylets := ((new-size - 1) / ARRAYLET-SIZE) + 1
     if number-of-arraylets == 1:
       return vector_[0].resize-for-list_ copy-size new-size filler
-    new-vector := Array_ number-of-arraylets  // new_vector may be a LargeArray_!
+    new-vector := Array_ number-of-arraylets  // new-vector may be a LargeArray_!
     remaining := new-size
     pos := 0
     number-of-arraylets.repeat:
@@ -2061,7 +2062,7 @@ A lookup starts with the hash code, which tells us where to start searching
 
 We use triangle numbers to advance to the next slot when searching the
   index, searching at offsets 1, 3, 6, 10... from the initial guess.  This
-  helps to avoid 'hot spots' of hash collisions caused by bad hash_code
+  helps to avoid 'hot spots' of hash collisions caused by bad hash-code
   implementations, eg the java.lang.Integer hashCode() which returns the
   integer.  We tried stepping forwards at offsets 1, 2, 3, 4, ...  from the
   initial guess, using 'Fibonacci hashing' to make hot-spots less likely.  This
@@ -2085,7 +2086,7 @@ Certain access patterns, including repeated removal of the first element,
   skip number, indicating that the next n positions are also deleted.
 */
 abstract class HashedInsertionOrderedCollection_:
-  // The offsets of these four fields are used by the hash_find intrinsic in
+  // The offsets of these four fields are used by the hash-find intrinsic in
   // the interpreter, so we can't move them.
   size_ := 0
   index-spaces-left_ := 0
@@ -2187,7 +2188,7 @@ abstract class HashedInsertionOrderedCollection_:
   // Returns the new index size.
   pick-new-index-size_ old-size --allow-shrink/bool -> int:
     minimum := allow-shrink ? 2 : index_.size * 2
-    enough := 1 + old-size + (old-size >> 3)  // old_size * 1.125.
+    enough := 1 + old-size + (old-size >> 3)  // old-size * 1.125.
     new-index-size := max
       minimum
       1 << (64 - enough.count-leading-zeros)
@@ -2216,7 +2217,7 @@ abstract class HashedInsertionOrderedCollection_:
     append-position := null  // Use null/non-null to avoid calling block twice.
 
     // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
-    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
+    //               (0x1351d * (hash-code_ key)) & 0x3fffffff
     //             that doesn't allocate large integers.
     // Call this early so we can't get away with single-entry sets/maps
     // that have incompatible keys.
@@ -2256,11 +2257,11 @@ abstract class HashedInsertionOrderedCollection_:
   // other than the parameters, which are modified - in this case we can reuse the
   // START state.
   // State vars:
-  // * state (START, NOT_FOUND, REBUILD, or AFTER_COMPARE).
-  // * old_size (used in REBUILD to call the rebuild block).
-  // * deleted_slot (used in NOT_FOUND and AFTER_COMPARE reset in START).
-  // * slot (used in NOT_FOUND and AFTER_COMPARE)
-  // * position, slot_step, and starting_slot (used in AFTER_COMPARE).
+  // * state (START, NOT-FOUND, REBUILD, or AFTER-COMPARE).
+  // * old-size (used in REBUILD to call the rebuild block).
+  // * deleted-slot (used in NOT-FOUND and AFTER-COMPARE reset in START).
+  // * slot (used in NOT-FOUND and AFTER-COMPARE)
+  // * position, slot-step, and starting-slot (used in AFTER-COMPARE).
   find-body_ key hash append-position [not-found] [rebuild] [compare]:
     #primitive.intrinsics.hash-find:
       // State START.
@@ -2281,7 +2282,7 @@ abstract class HashedInsertionOrderedCollection_:
             old-size := size_
             // Found free slot.
             if not append-position: append-position = not-found.call  // May not return.
-            // State NOT_FOUND.
+            // State NOT-FOUND.
             if index-spaces-left_ == 0:
               // State REBUILD.
               rebuild.call old-size
@@ -2303,7 +2304,7 @@ abstract class HashedInsertionOrderedCollection_:
           if hash-and-position & HASH-MASK_ == hash & HASH-MASK_:
             // Found hash match.
             if k is not Tombstone_ and (compare.call key k):
-              // State AFTER_COMPARE where block returns true.
+              // State AFTER-COMPARE where block returns true.
               // It's not obvious why we have to return APPEND_ here, after all,
               // we already found the entry in the index.  The reason is that the
               // not_found call can add an entry to the backing, then we find the
@@ -2311,7 +2312,7 @@ abstract class HashedInsertionOrderedCollection_:
               // backing entry in the index, and so we find it when we do another
               // iteration of the outer loop here.
               return append-position ? APPEND_ : position
-          // State AFTER_COMPARE where block returns false.
+          // State AFTER-COMPARE where block returns false.
           slot = (slot + slot-step) & index-mask
           slot-step++
           if slot == starting-slot:  // Index is full and we didn't find the entry.
@@ -2346,11 +2347,11 @@ abstract class HashedInsertionOrderedCollection_:
     index-mask := new-index-size - 1
     if not index_ or index-mask > HASH-MASK_ or rebuild-backing:
       // Rebuild the index using the backing array.
-      // By using resize_for_list_ we reuse the arraylets when growing large
+      // By using resize-for-list_ we reuse the arraylets when growing large
       // arrays.  This reduces GC churn and, more importantly, peak memory
       // usage.
       if index_:
-        index_ = index_.resize-for-list_ /*copy_size=*/0 new-index-size /*filler=*/0
+        index_ = index_.resize-for-list_ /*copy-size=*/0 new-index-size /*filler=*/0
         index_.fill 0
       else:
         index_ = Array_ new-index-size 0
@@ -2367,14 +2368,14 @@ abstract class HashedInsertionOrderedCollection_:
         key := backing_[i]
         if key is not Tombstone_:
           action := find-body_ key (hash-code_ key) null
-            (: i)  // not_found block, returns the position of where to add the new entry.
+            (: i)  // not-found block, returns the position of where to add the new entry.
             throw-block
             false-block
           assert: action == APPEND_
     else:
       // We can do an simple index rebuild from the old index.  There are
       // enough hash bits in the index slots to tell us where the slot goes in
-      // the new index, so we don't need to call hash_code or equality for the
+      // the new index, so we don't need to call hash-code or equality for the
       // entries in the backing.
       old-index := index_
       index_ = Array_ new-index-size 0
@@ -2396,9 +2397,9 @@ simple-rebuild-hash-index_ old-index index_ -> none:
 
 /**
 A set of keys.
-The objects used as keys must have a hash_code method that returns
+The objects used as keys must have a `hash-code` method that returns
   an integer that does not change while the object is in the set.
-The == operator should be compatible with the hash_code method so
+The == operator should be compatible with the hash-code method so
   that objects that test equal also have the same hash code.
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
@@ -2679,7 +2680,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
 /**
 A set that uses object identity instead of the == operator to test equality
-  of elements. This set still uses the hash_code method on elements (see $Set). There is
+  of elements. This set still uses the hash-code method on elements (see $Set). There is
   no identity hash code operation on arbitrary classes in Toit.
 */
 class IdentitySet extends Set:
@@ -2692,9 +2693,9 @@ class IdentitySet extends Set:
 
 /**
 A map from key objects to values.
-The objects used as keys must have a hash_code method that returns
+The objects used as keys must have a hash-code method that returns
   an integer that does not change while the object is in the map.
-The == operator should be compatible with the hash_code method so
+The == operator should be compatible with the hash-code method so
   that objects that test equal also have the same hash code.
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
@@ -3214,7 +3215,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
 /**
 A map that uses object identity instead of the == operator to test equality
-  of keys. This map still uses the hash_code method on keys (see $Map). There is no
+  of keys. This map still uses the hash-code method on keys (see $Map). There is no
   identity hash code operation on arbitrary classes in Toit.
 */
 class IdentityMap extends Map:
@@ -3326,12 +3327,12 @@ class Deque extends List implements Collection:
     first := first_
     if first == 0:
       padding-size := (backing_.size >> 1) + 1
-      new_size := backing_.size + padding-size
+      new-size := backing_.size + padding-size
       // Pad both ends so we are not inefficient in the case where the next
       // operation adds to the end.
-      new_backing := List_.private_ (new_size + padding-size) new_size
-      new_backing.replace padding-size backing_
-      backing_ = new_backing
+      new-backing := List_.private_ (new-size + padding-size) new-size
+      new-backing.replace padding-size backing_
+      backing_ = new-backing
       first = padding-size
     first--
     backing_[first] = element

@@ -154,7 +154,7 @@ class FixedPoint implements Comparable:
   /**
   Returns a FixedPoint.  Eg. 3.14 % 2 == 1.14.
     This means it is not a counterpart of the / operator, but rather
-    a counterpart of (x / y).to_int.
+    a counterpart of (x / y).to-int.
   */
   operator % other/int -> FixedPoint:
     if other is int:

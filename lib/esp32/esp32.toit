@@ -36,13 +36,13 @@ deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
 
 /**
-Returns one of the ESP_RST_* enum values that indicate why the ESP32 was reset.
+Returns one of the ESP-RST-* enum values (such as $ESP-RST-POWERON) that indicate why the ESP32 was reset.
 */
 reset-reason -> int:
   #primitive.esp32.reset-reason
 
 /**
-Returns one of the WAKEUP_* enum values (such as $WAKEUP-TIMER) that indicate why the ESP32 was woken up.
+Returns one of the WAKEUP-* enum values (such as $WAKEUP-TIMER) that indicate why the ESP32 was woken up.
 */
 wakeup-cause -> int:
   #primitive.esp32.wakeup-cause

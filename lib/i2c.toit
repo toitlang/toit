@@ -245,7 +245,7 @@ class Device implements serial.Device:
   Reads $size bytes from the given $address.
 
   # Advanced
-  The read_address operation is executed by sending:
+  This operation is executed by sending:
   - a 'start',
   - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
     shifting the I2C address by one and clearing the least-significant bit. The device must ack.

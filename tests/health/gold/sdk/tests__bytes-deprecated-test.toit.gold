@@ -1,27 +1,27 @@
 tests/bytes-deprecated-test.toit:14:18: warning: Class 'Buffer' is deprecated
   buffer := bytes.Buffer
-                 ^
+                 ^~~~~~~
 tests/bytes-deprecated-test.toit:50:13: warning: Class 'Writer' is deprecated
   writer := Writer buffer
             ^~~~~~
 tests/bytes-deprecated-test.toit:63:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer ONE
-         ^
+         ^~~~~~~~~~~~~~~~~~
 tests/bytes-deprecated-test.toit:65:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer TWO
-         ^
+         ^~~~~~~~~~~~~~~~~~
 tests/bytes-deprecated-test.toit:73:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer ONE 3
-         ^
+         ^~~~~~~~~~~~~~~~~~
 tests/bytes-deprecated-test.toit:75:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer TWO 5
-         ^
+         ^~~~~~~~~~~~~~~~~~
 tests/bytes-deprecated-test.toit:83:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer ONE 3 8
-         ^
+         ^~~~~~~~~~~~~~~~~~
 tests/bytes-deprecated-test.toit:85:10: warning: Class 'ByteArrayProducer' is deprecated
     bytes.ByteArrayProducer TWO 5 10
-         ^
+         ^~~~~~~~~~~~~~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~

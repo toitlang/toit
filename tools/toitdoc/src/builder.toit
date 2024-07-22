@@ -33,6 +33,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
   exclude-sdk/bool
   exclude-pkgs/bool
   include-private/bool
+  is-sdk-doc/bool
 
   inheritance_/inheritance.Result
 
@@ -42,14 +43,13 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       --.sdk-uri
       --.pkg-name
       --.version
+      --.is-sdk-doc
       --.exclude-sdk
       --.exclude-pkgs
       --.include-private:
     inheritance_ = inheritance.compute summaries
 
   build -> Map:
-    is-sdk-doc := pkg-name == null
-
     // TODO(florian): don't rely on hardcoded ".packages" path.
     // Ideally, we should get a lock-file mapping in and use that
     // to figure out which package a file is in.
@@ -62,7 +62,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       pkg-packages-path = module-path-segments package-uri
       pkg-names = load-package-names project-uri
 
-    libraries := {:}  // From string to Library. TODO(florian): which string?
+    libraries := {:}  // From module-name (last segment) to Library
 
     summaries.do: | uri/string module/lsp.Module |
       if exclude-sdk and uri.starts-with sdk-uri: continue.do
@@ -141,9 +141,10 @@ class DocsBuilder implements lsp.ToitdocVisitor:
           --toitdoc=toitdoc
           --category=module-category
 
+    sdk-version := is-sdk-doc and version ? version : system.app-sdk-version
     result := Doc
-        --sdk-version=system.app-sdk-version
-        --version=version
+        --sdk-version=sdk-version
+        --version=is-sdk-doc ? null : version
         --pkg-name=pkg-name
         --sdk-path=sdk-path
         --packages-path=pkg-packages-path

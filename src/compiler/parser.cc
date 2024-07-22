@@ -1922,7 +1922,7 @@ Expression* Parser::parse_postfix_rest(Expression* head) {
     } else {
       name = parse_identifier();
     }
-    return NEW_NODE(Dot(head, name), range);
+    return NEW_NODE(Dot(head, name), range.extend(name->selection_range()));
   } else if (kind == Token::LBRACK) {
     bool had_errors;  // Ignored.
     return parse_postfix_index(head, &had_errors);

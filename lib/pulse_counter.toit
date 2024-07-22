@@ -12,13 +12,13 @@ Channels on the same unit share a counter, but can be configured independently o
 
 # Example
 ```
-import pulse_counter
+import pulse-counter
 import gpio
 
 main:
   pin := gpio.Pin 18
-  unit := pulse_counter.Unit
-  channel := unit.add_channel pin
+  unit := pulse-counter.Unit
+  channel := unit.add-channel pin
   while true:
     print unit.value
     sleep --ms=500
@@ -117,7 +117,7 @@ class Unit:
 
   # Advanced
   The $glitch-filter-ns are converted to APB clock cycles. Usually the APB clock runs at 80MHz,
-    which means that the shortest glitch_filter_ns that makes sense is 1/80MHz = 12.5ns (-> 13).
+    which means that the shortest $glitch-filter-ns that makes sense is 1/80MHz = 12.5ns (-> 13).
 
   The glitch filter is limited to 10 bits, and the highest value is thus 1023 ticks, or 12_787ns
     (12.5 * 1023 = 12_787.5).

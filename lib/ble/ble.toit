@@ -126,7 +126,7 @@ class AdvertisementData:
   connectable/bool
 
   /**
-  Advertise flags. This must be a bitwise 'or' of the BLE_ADVERTISE_FLAG_* constants
+  Advertise flags. This must be a bitwise 'or' of the BLE-ADVERTISE-FLAG_* constants
     (see $BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY and similar).
   */
   flags/int

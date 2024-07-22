@@ -24,13 +24,13 @@ Too few arguments provided
     ^~~
 tests/lsp/bad-definition-test.toit:78:4: error: Class 'A' does not have any static member or constructor with name 'fo'
   A.fo
-   ^
+   ^~~
 tests/lsp/bad-definition-test.toit:83:4: error: Class 'A' does not have any static member or constructor with name 'name'
   A.name
-   ^
+   ^~~~~
 tests/lsp/bad-definition-test.toit:109:4: error: Class 'C' does not have any static member or constructor with name 'foo'
   C.foo
-   ^
+   ^~~~
 tests/lsp/bad-definition-test.toit:88:7: error: Class 'A' does not have any method 'fo'
   (A).fo
       ^~

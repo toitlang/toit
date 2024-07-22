@@ -49,13 +49,13 @@ abstract class EncoderBase_:
   put-unicode-escape_ code-point/int:
     writer := writer_
     writer.write-byte 'u'
-    writer.write_byte
+    writer.write-byte
       to-lower-case-hex (code-point >> 12) & 0xf
-    writer.write_byte
+    writer.write-byte
       to-lower-case-hex (code-point >> 8) & 0xf
-    writer.write_byte
+    writer.write-byte
       to-lower-case-hex (code-point >> 4) & 0xf
-    writer.write_byte
+    writer.write-byte
       to-lower-case-hex code-point & 0xf
 
   to-string -> string:

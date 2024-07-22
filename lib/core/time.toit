@@ -27,11 +27,11 @@ main:
   print now.local   // >> 2021-04-21T17:30:35.
   print now.local.h // >> 17.
 
-  summing_duration := Duration.of:
+  summing-duration := Duration.of:
     sum := 0
     1000.repeat: sum += it
     print sum  // >> 499500.
-  print summing_duration // Prints the duration. For example: 1.118ms.
+  print summing-duration // Prints the duration. For example: 1.118ms.
 ```
 */
 
@@ -111,7 +111,7 @@ class Duration implements Comparable:
 
   For times in the past ($time < $Time.now), this constructs a positive duration.
 
-  This operation is equivalent to `time.to_now` which is preferred, unless
+  This operation is equivalent to $Time.to-now which is preferred, unless
     the developer wants to emphasize the $Duration type.
   */
   constructor.since time/Time:
@@ -928,10 +928,10 @@ class Time implements Comparable:
   main:
     // In this example, we assume the time is 2021-04-21 15:30:35 UTC.
     time := Time.utc --year=2021 --month=04 --day=21 --h=12 --m=30 --s=35
-    print time.to_now  // >> 3h0m0s
+    print time.to-now  // >> 3h0m0s
 
     time = Time.utc --year=2021 --month=04 --day=21 --h=18 --m=30 --s=35
-    print time.to_now  // >> --3h0m0s
+    print time.to-now  // >> --3h0m0s
   ```
   */
   to-now -> Duration:
