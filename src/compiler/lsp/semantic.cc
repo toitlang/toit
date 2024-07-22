@@ -62,10 +62,10 @@ class TokenVisitor : public TraversingVisitor {
     auto prefix = import->prefix();
     if (prefix != null) {
       int modifiers = DEFINITION_BIT;
-      emit_token(prefix->range(), TokenType::NAMESPACE, modifiers);
+      emit_token(prefix->selection_range(), TokenType::NAMESPACE, modifiers);
     }
     for (auto segment : import->segments()) {
-      emit_token(segment->range(), TokenType::NAMESPACE);
+      emit_token(segment->selection_range(), TokenType::NAMESPACE);
     }
     for (auto show : import->show_identifiers()) {
       UnorderedSet<ModuleScope*> already_visited;
@@ -75,12 +75,12 @@ class TokenVisitor : public TraversingVisitor {
         case ResolutionEntry::Kind::NODES:
         case ResolutionEntry::Kind::AMBIGUOUS:
           // Just take the first node.
-          emit_token(show->range(), entry.nodes().first());
+          emit_token(show->selection_range(), entry.nodes().first());
           break;
 
         case ResolutionEntry::Kind::PREFIX:
           // This is an error, but we might as well mark it as namespace.
-          emit_token(show->range(), TokenType::NAMESPACE);
+          emit_token(show->selection_range(), TokenType::NAMESPACE);
           break;
       }
     }

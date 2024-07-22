@@ -1152,7 +1152,7 @@ void ToitdocParser::report_error(Source::Range range, const char* message) {
 }
 
 int CommentsManager::find_closest_before(ast::Node* node) {
-  auto node_range = node->range();
+  auto node_range = node->selection_range();
   if (node_range.is_before(comments_[0].range())) return -1;
   if (comments_.last().range().is_before(node_range)) return comments_.length() - 1;
 
@@ -1211,7 +1211,7 @@ Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
   auto not_found = Toitdoc<ast::Node*>::invalid();
   int closest = find_closest_before(node);
   if (closest == -1) return not_found;
-  if (!is_attached(comments_[closest].range(), node->range(), true)) return not_found;
+  if (!is_attached(comments_[closest].range(), node->selection_range(), true)) return not_found;
   int closest_toit = closest;
   // Walk backward to find the closest toitdoc.
   // Usually it's the first attached comment, but we allow non-toitdocs:
@@ -1276,7 +1276,7 @@ void attach_toitdoc(ast::Unit* unit,
   ast::Node* earliest_declaration = null;
   for (auto declaration : unit->declarations()) {
     if (earliest_declaration == null ||
-        declaration->range().is_before(earliest_declaration->range())) {
+        declaration->selection_range().is_before(earliest_declaration->selection_range())) {
       earliest_declaration = declaration;
     }
 
@@ -1304,7 +1304,7 @@ void attach_toitdoc(ast::Unit* unit,
     bool is_module_comment = false;
     if (earliest_declaration == null) {
       is_module_comment = true;
-    } else if (earliest_declaration->range().is_before(comment.range())) {
+    } else if (earliest_declaration->selection_range().is_before(comment.range())) {
       // Comment is after the first declaration and thus not a module comment.
       is_module_comment =false;
     } else {

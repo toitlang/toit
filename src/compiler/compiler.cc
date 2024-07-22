@@ -1305,7 +1305,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       lsp_is_first_segment = true;
     }
     import_package = package_lock.resolve_prefix(unit_package, prefix);
-    auto error_range = module_segment->range();
+    auto error_range = module_segment->selection_range();
     switch (import_package.error_state()) {
       case Package::STATE_OK:
         // All good.
@@ -1449,7 +1449,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     if (load_result.status == SourceManager::LoadResult::OK) {
       result = load_result.source;
     } else {
-      load_result.report_error(import->range(), diagnostics());
+      load_result.report_error(import->selection_range(), diagnostics());
       // Don't return just yet, but give the lsp handler an opportunity to run.
       goto done;
     }
