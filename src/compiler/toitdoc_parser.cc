@@ -199,7 +199,6 @@ class ToitdocParser {
                          bool keep_delimiters_and_escapes,
                          const char* error_message);
   toitdoc::Ref* parse_ref();
-  void skip_comment(bool should_report_error = true);
 
  private:  // Scanning related.
   enum Construct {
@@ -210,7 +209,6 @@ class ToitdocParser {
     ITEM,
     PARAGRAPH,
     CODE_SECTION,
-    COMMENT,
   };
 
   class ConstructScope {
@@ -607,10 +605,6 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
         is_special_char = true;
         break;
 
-      case '/':
-        is_special_char = look_ahead(1) == '*';
-        break;
-
       case '\\':
         // Ignore the escape if it is at the end of a line.
         if (is_eol(look_ahead(1))) break;
@@ -661,12 +655,6 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
       case '`': expressions.add(parse_code()); break;
       case '"': expressions.add(parse_string()); break;
       case '$': expressions.add(parse_ref()); break;
-      case '/':
-        // We know that '/' is a special char, and therefore that the next character must be
-        // a '*'.
-        ASSERT(look_ahead(1) == '*');
-        skip_comment();
-        break;
       default: UNREACHABLE();
     }
 
@@ -789,34 +777,6 @@ toitdoc::Ref* ToitdocParser::parse_ref() {
   return _new toitdoc::Ref(id, make_symbol(begin, end));
 }
 
-void ToitdocParser::skip_comment(bool should_report_error) {
-  ConstructScope scope(this, COMMENT);
-  ASSERT(look_ahead(0) == '/' && look_ahead(1) == '*');
-  int begin = index_;
-  advance(2);
-  int c;
-  do {
-    c = peek();
-    if (c == '\0') {
-      break;
-    } else if (c == '\\') {
-      if (look_ahead(1) != '\0') {
-        advance(2);
-      } else {
-        advance();
-      }
-    } else if (c == '*' && look_ahead(1) == '/') {
-      advance(2);
-      return;
-    } else {
-      advance();
-    }
-  } while (true);
-  if (should_report_error) {
-    report_error(begin, index_, "Unterminated comment");
-  }
-}
-
 void ToitdocParser::push_construct(Construct construct, int indentation) {
   indentation_stack_.push_back(indentation);
   construct_stack_.push_back(construct);
@@ -848,7 +808,6 @@ std::string ToitdocParser::make_string(int from, int to) {
       replace_newlines_with_space = false;
       break;
 
-    case COMMENT:
     case ITEMIZED:
     case ITEM_START:
     case ITEM:
@@ -947,9 +906,6 @@ int ToitdocParser::peek() {
       allows_empty_line = false;
       must_be_indented = true;
       break;
-
-    case COMMENT:
-      return toitdoc_source_->text()[index_];
   }
 
   if (is_at_dedent_) return '\0';

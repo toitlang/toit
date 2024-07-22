@@ -1557,24 +1557,24 @@ class ImageHeader:
 The image format is as follows:
 
   typedef struct {
-    uint8_t magic;              /*!< Magic word ESP_IMAGE_HEADER_MAGIC */
-    uint8_t segment_count;      /*!< Count of memory segments */
-    uint8_t spi_mode;           /*!< flash read mode (esp_image_spi_mode_t as uint8_t) */
-    uint8_t spi_speed: 4;       /*!< flash frequency (esp_image_spi_freq_t as uint8_t) */
-    uint8_t spi_size: 4;        /*!< flash chip size (esp_image_flash_size_t as uint8_t) */
-    uint32_t entry_addr;        /*!< Entry address */
-    uint8_t wp_pin;             /*!< WP pin when SPI pins set via efuse (read by ROM bootloader,
-                                * the IDF bootloader uses software to configure the WP
-                                * pin and sets this field to 0xEE=disabled) */
-    uint8_t spi_pin_drv[3];     /*!< Drive settings for the SPI flash pins (read by ROM bootloader) */
-    esp_chip_id_t chip_id;      /*!< Chip identification number */
-    uint8_t min_chip_rev;       /*!< Minimum chip revision supported by image */
-    uint8_t reserved[8];        /*!< Reserved bytes in additional header space, currently unused */
-    uint8_t hash_appended;      /*!< If 1, a SHA256 digest "simple hash" (of the entire image) is appended after the checksum.
-                                * Included in image length. This digest
-                                * is separate to secure boot and only used for detecting corruption.
-                                * For secure boot signed images, the signature
-                                * is appended after this (and the simple hash is included in the signed data). */
+    uint8_t magic;              // !< Magic word ESP_IMAGE_HEADER_MAGIC
+    uint8_t segment_count;      // !< Count of memory segments
+    uint8_t spi_mode;           // !< flash read mode (esp_image_spi_mode_t as uint8_t)
+    uint8_t spi_speed: 4;       // !< flash frequency (esp_image_spi_freq_t as uint8_t)
+    uint8_t spi_size: 4;        // !< flash chip size (esp_image_flash_size_t as uint8_t)
+    uint32_t entry_addr;        // !< Entry address
+    uint8_t wp_pin;             // !< WP pin when SPI pins set via efuse (read by ROM bootloader,
+                                //  the IDF bootloader uses software to configure the WP
+                                //  pin and sets this field to 0xEE=disabled)
+    uint8_t spi_pin_drv[3];     // !< Drive settings for the SPI flash pins (read by ROM bootloader)
+    esp_chip_id_t chip_id;      // !< Chip identification number
+    uint8_t min_chip_rev;       // !< Minimum chip revision supported by image
+    uint8_t reserved[8];        // !< Reserved bytes in additional header space, currently unused
+    uint8_t hash_appended;      // !< If 1, a SHA256 digest "simple hash" (of the entire image) is appended after the checksum
+                                //  Included in image length. This digest
+                                //  is separate to secure boot and only used for detecting corruption.
+                                //  For secure boot signed images, the signature
+                                //  is appended after this (and the simple hash is included in the signed data).
   } __attribute__((packed)) esp_image_header_t;
 
 See https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/app_image_format.html

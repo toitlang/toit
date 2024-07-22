@@ -7,7 +7,6 @@ import system.api.print show PrintService PrintServiceClient
 /**
 Prints the $message.
 
-/* TODO(florian): the following sentence will probably get stale soon. */
 The resulting message is stringified using $Object.stringify.
 */
 print message/any:

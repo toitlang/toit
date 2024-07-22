@@ -418,7 +418,6 @@ test client/LspClient:
         - 1
           - nest1
           - nest2
-         /* weird indentation follows. also a test with comments. */
          ```
          code section
          ```
@@ -576,33 +575,6 @@ test client/LspClient:
             ],
             Paragraph [
               Text """string with escape: "foo\\" bar\""""
-            ],
-          ],
-      ]
-
-  test-toitdoc
-      client
-      """
-        /**
-        foo/*:  '\$', '"', '`'.*/bar
-        /*
-        dollar needs to be followed by id: \$5.4 \$, 5\$
-        strings, too: "'", "\$", "`", "```"
-        */
-        /*"`'*/
-        /*\\*/still in comment*/
-        /*\\\\*/
-        done
-        */
-      """
-      Contents [
-        Section null
-          [
-            Paragraph [
-              Text "foobar"
-            ],
-            Paragraph [
-              Text "done"
             ],
           ],
       ]
