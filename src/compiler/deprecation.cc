@@ -62,6 +62,7 @@ class DeprecationFinder : public toitdoc::Visitor {
   void visit_Text(toitdoc::Text* node) { UNREACHABLE(); }
   void visit_Code(toitdoc::Code* node) { UNREACHABLE(); }
   void visit_Ref(toitdoc::Ref* node) { UNREACHABLE(); }
+  void visit_Link(toitdoc::Link* node) { UNREACHABLE(); }
 
   bool found_deprecation = false;
 };
