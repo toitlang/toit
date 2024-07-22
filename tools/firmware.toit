@@ -1563,7 +1563,7 @@ The image format is as follows:
     uint8_t spi_speed: 4;       // !< flash frequency (esp_image_spi_freq_t as uint8_t)
     uint8_t spi_size: 4;        // !< flash chip size (esp_image_flash_size_t as uint8_t)
     uint32_t entry_addr;        // !< Entry address
-    uint8_t wp_pin;             // !< WP pin when SPI pins set via efuse (read by ROM bootload
+    uint8_t wp_pin;             // !< WP pin when SPI pins set via efuse (read by ROM bootloader,
                                 //  the IDF bootloader uses software to configure the WP
                                 //  pin and sets this field to 0xEE=disabled)
     uint8_t spi_pin_drv[3];     // !< Drive settings for the SPI flash pins (read by ROM bootloader)
