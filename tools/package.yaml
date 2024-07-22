@@ -2,6 +2,9 @@ dependencies:
   ar:
     url: github.com/toitlang/pkg-ar
     version: ^1.2.0
+  certificate_roots:
+    url: github.com/toitware/toit-cert-roots
+    version: ^1.6.1
   cli:
     url: github.com/toitlang/pkg-cli
     version: ^1.8.0
@@ -11,6 +14,9 @@ dependencies:
   host:
     url: github.com/toitlang/pkg-host
     version: ^1.15.1
+  http:
+    url: github.com/toitlang/pkg-http
+    version: ^2.7.2
   partition-table:
     url: github.com/toitware/toit-partition-table-esp32
     version: ^1.2.0
