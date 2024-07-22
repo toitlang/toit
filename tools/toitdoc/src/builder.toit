@@ -33,6 +33,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
   exclude-sdk/bool
   exclude-pkgs/bool
   include-private/bool
+  is-sdk-doc/bool
 
   inheritance_/inheritance.Result
 
@@ -42,24 +43,22 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       --.sdk-uri
       --.pkg-name
       --.version
+      --.is-sdk-doc
       --.exclude-sdk
       --.exclude-pkgs
       --.include-private:
     inheritance_ = inheritance.compute summaries
 
   build -> Map:
-    is-sdk-doc := pkg-name == null
-
     // TODO(florian): don't rely on hardcoded ".packages" path.
     // Ideally, we should get a lock-file mapping in and use that
     // to figure out which package a file is in.
     package-uri := "$(lsp.to-uri root-path)/.packages/"
 
-    pkg-sdk-path/List? := null
+    sdk-path/List := module-path-segments sdk-uri
     pkg-packages-path/List? := null
     pkg-names/Map? := null
     if pkg-name:
-      pkg-sdk-path = module-path-segments sdk-uri
       pkg-packages-path = module-path-segments package-uri
       pkg-names = load-package-names project-uri
 
@@ -98,6 +97,15 @@ class DocsBuilder implements lsp.ToitdocVisitor:
               --category=category
         parent-libraries = library.libraries
 
+      if not library:
+        library = Library
+            --name=module-name
+            --path=segments
+            --libraries={:}
+            --modules={:}
+            --category=module-category
+        libraries[module-name] = library
+
       split := build-classes-interfaces-and-mixins module.classes
       classes := split[0]
       interfaces := split[1]
@@ -133,11 +141,12 @@ class DocsBuilder implements lsp.ToitdocVisitor:
           --toitdoc=toitdoc
           --category=module-category
 
+    sdk-version := is-sdk-doc and version ? version : system.app-sdk-version
     result := Doc
-        --sdk-version=system.app-sdk-version
-        --version=version
+        --sdk-version=sdk-version
+        --version=is-sdk-doc ? null : version
         --pkg-name=pkg-name
-        --sdk-path=pkg-sdk-path
+        --sdk-path=sdk-path
         --packages-path=pkg-packages-path
         --package-names=pkg-names
         --libraries=libraries
@@ -492,13 +501,15 @@ class DocsBuilder implements lsp.ToitdocVisitor:
   module-path-segments uri/string? -> List?:
     if not uri: return null
     path := lsp.to-path uri
-    path = path.trim --left root-path
+    inside-root-path := path.starts-with root-path
+    if inside-root-path:
+      path = path.trim --left root-path
     path = path.trim --left fs.SEPARATOR
     result := fs.split path
-    // TODO(florian): remove this check if things go well.
-    // Original code had it, but didn't use `fs.split`.
-    if result.size > 0 and result.first == "":
-      throw "FIX CODE. ADD CHECK."
+    if not inside-root-path:
+      result = ["@"] + result
+    if result.size > 0 and pkg-name and result.first == "src":
+      result[0] = pkg-name
     return result
 
 /**
@@ -506,7 +517,7 @@ A compiled version of the Toitdocs.
 */
 class Doc:
   sdk-version/string
-  sdk-path/List?
+  sdk-path/List
   version/string?
   pkg-name/string?
   packages-path/List?
@@ -525,10 +536,10 @@ class Doc:
   to-json -> any:
     result := {
       "sdk_version": sdk-version,
+      "sdk_path": sdk-path,
       "libraries": libraries.map: | _ library/Library | library.to-json,
     }
 
-    if sdk-path: result["sdk_path"] =sdk-path
     if version: result["version"] = version
     if pkg-name: result["pkg_name"] = pkg-name
     if packages-path: result["packages_path"] = packages-path

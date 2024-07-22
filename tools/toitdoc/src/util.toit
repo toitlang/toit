@@ -46,6 +46,9 @@ load-package-names project-uri/string? -> Map?:
   decoded := yaml.decode data
 
   result := {:}
+  if not decoded or not decoded.contains "packages":
+    // This can happen for empty package.lock files.
+    return result
   packages := decoded["packages"]
   packages.do: | prefix/string entry/Map |
     map := entry as Map

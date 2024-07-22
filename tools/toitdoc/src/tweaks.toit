@@ -24,18 +24,12 @@ LIBRARIES-HIDDEN ::= [
 ]
 
 category-for-sdk-library segments/List -> string:
-  if segments.size == 1:
-    // Not really a sub category, but currently we have this
-    // 'lib' segment/library that shouldn't be there.
-    return Library.CATEGORY-SUB
-
-  // Segments start with "lib".
-  first := segments[1]
+  first := segments[0]
   if LIBRARIES-FUNDAMENTAL.contains first: return Library.CATEGORY-FUNDAMENTAL
   if LIBRARIES-JUST-THERE.contains first: return Library.CATEGORY-JUST-THERE
   return Library.CATEGORY-MISC
 
 is-sdk-library-hidden segments/List -> bool:
-  first := segments[1]
+  first := segments[0]
   if first == "encoding" and segments.size == 3 and segments[2] == "tpack": return true
   return LIBRARIES-HIDDEN.contains first
