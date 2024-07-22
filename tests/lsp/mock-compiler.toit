@@ -108,15 +108,16 @@ class MockCompiler:
       data := mock-information_.get it
       chunks.add it
       build-deps_ data --chunks=chunks
+      // The external hash is 20 bytes, but we join all chunks with a "\n" above.
+      // As such we only add 19 bytes here and let the 20th byte be a '\n'.
+      chunks.add ("a" * 19)
       // For now, just provide empty summaries.
+      chunks.add 6 * 2  // The following 6 entries take one byte for the number and one for the '\n'.
       chunks.add 0 // No transitive exports.
       chunks.add 0 // Exported identifiers.
       chunks.add 0 // Classes
       chunks.add 0 // Methods
       chunks.add 0 // Globals
-      // The external hash is 20 bytes, but we join all chunks with a "\n" above.
-      // As such we only add 19 bytes here and let the 20th byte be a '\n'.
-      chunks.add ("a" * 19)
       chunks.add 0 // Toitdoc
 
   build-diagnostics_ entry-path/string -> string:
