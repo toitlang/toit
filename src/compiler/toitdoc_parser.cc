@@ -24,6 +24,10 @@ namespace compiler {
 
 namespace {  // anonymous
 
+static bool needs_escaping(int c) {
+  return c == '\\' || c == '`' || c == '\'' || c == '$' || c == '"' || c == '[';
+}
+
 /// Wraps an existing diagnostics and modifies all errors to be warnings instead.
 class ToitdocDiagnostics : public Diagnostics {
  public:
@@ -196,7 +200,7 @@ class ToitdocParser {
   toitdoc::Code* parse_code();
   toitdoc::Text* parse_string();
   Symbol parse_delimited(int delimiter,
-                         bool keep_delimiters_and_escapes,
+                         bool keep_delimiters,
                          const char* error_message);
   toitdoc::Ref* parse_ref();
   toitdoc::Link* parse_link();
@@ -251,6 +255,31 @@ class ToitdocParser {
   void pop_construct(Construct construct);
 
   Symbol make_symbol(int from, int to) { return Symbol::synthetic(make_string(from, to)); }
+
+  Symbol make_escaped_symbol(int from, int to) {
+    // See whether the string contains any escapes.
+    bool contains_escapes = false;
+    for (int i = from; i < to - 1; i++) {
+      if (toitdoc_source_->text()[i] == '\\') {
+        if (needs_escaping(toitdoc_source_->text()[i + 1])) {
+          contains_escapes = true;
+          break;
+        }
+      }
+    }
+    if (!contains_escapes) return make_symbol(from, to);
+    // If it does, we need to unescape it.
+    std::string buffer;
+    for (int i = from; i < to; i++) {
+      if (toitdoc_source_->text()[i] == '\\') {
+        if (i < to - 1 && needs_escaping(toitdoc_source_->text()[i + 1])) {
+          i++;
+        }
+      }
+      buffer += toitdoc_source_->text()[i];
+    }
+    return Symbol::synthetic(buffer);
+  }
   std::string make_string(int from, int to);
 
   bool matches(const char* str);
@@ -657,7 +686,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
 
     // Extract all the text so far, so we can handle the special char.
     if (text_start != index_) {
-      expressions.add(_new toitdoc::Text(make_symbol(text_start, index_)));
+      expressions.add(_new toitdoc::Text(make_escaped_symbol(text_start, index_)));
     }
 
     if (c == '\0') break;
@@ -733,29 +762,24 @@ toitdoc::Text* ToitdocParser::parse_string() {
 }
 
 Symbol ToitdocParser::parse_delimited(int delimiter,
-                                      bool keep_delimiters_and_escapes,
+                                      bool keep_delimiters,
                                       const char* error_message) {
   ASSERT(peek() == delimiter);
   int delimited_begin = index_;
-  int chunk_start = keep_delimiters_and_escapes ? index_ : index_ + 1;
+  int chunk_start = keep_delimiters ? index_ : index_ + 1;
   int c;
   std::string buffer;
   do {
     advance();
     c = peek();
-    if (c == '\\' &&
-        ((look_ahead() == '\\' || look_ahead() == delimiter))) {
-      if (keep_delimiters_and_escapes) {
-        // Skip over the escape character, but not the escaped
-        // character. That happens at the top of the loop.
-        advance();
-      } else {
-        buffer += make_string(chunk_start, index_);
-        // Skip over the escape character, but not the escaped
-        // character. That happens at the top of the loop.
-        advance();
-        chunk_start = index_;
-      }
+    // We also allow to escape `*` as this might be necessary to avoid opening or
+    // closing the toitdoc.
+    if (c == '\\' && needs_escaping(look_ahead())) {
+      buffer += make_string(chunk_start, index_);
+      // Skip over the escape character, but not the escaped
+      // character. That happens at the top of the loop.
+      advance();
+      chunk_start = index_;
     }
   } while (c != delimiter && c != '\0');
   ASSERT(c == delimiter || c == '\0');
@@ -765,7 +789,7 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
     report_error(delimited_begin, index_, error_message);
     end_offset = index_;
   } else {
-    end_offset = keep_delimiters_and_escapes ? index_ + 1 : index_;
+    end_offset = keep_delimiters ? index_ + 1 : index_;
     advance();
   }
   buffer += make_string(chunk_start, end_offset);
