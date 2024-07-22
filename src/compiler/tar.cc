@@ -47,7 +47,7 @@ UntarCode untar(FILE* file,
                                           int size)>& callback) {
   static const int HEADER_SIZE = 512;
   // In GNU Tar, files that have long names use two file-entries:
-  // - the first one gives the name (as contents), and
+  // - the first one gives the name (as content), and
   // - the second contains the actual content of the file.
   const char* long_name = null;
   bool encountered_zero_header = false;

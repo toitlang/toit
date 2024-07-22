@@ -29,7 +29,7 @@ namespace {  // anonymous.
 
 class DeprecationFinder : public toitdoc::Visitor {
  public:
-  void visit_Contents(toitdoc::Contents* node) {
+  void visit_Content(toitdoc::Content* node) {
     for (auto section : node->sections()) {
       if (found_deprecation) return;
       visit_Section(section);
@@ -74,7 +74,7 @@ class DeprecationCollector : public toitdoc::Visitor {
     auto toitdoc = registry_->toitdoc_for(node);
     if (!toitdoc.is_valid()) return;
     DeprecationFinder finder;
-    finder.visit(toitdoc.contents());
+    finder.visit(toitdoc.content());
     if (finder.found_deprecation) {
       deprecated_nodes_.insert(node);
     }

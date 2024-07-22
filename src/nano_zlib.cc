@@ -34,7 +34,7 @@ void ZlibRle::set_output_buffer(uint8* buffer, word index, word limit) {
 
 word ZlibRle::get_output_index() { return output_index_; }
 
-word ZlibRle::add(const uint8* contents, intptr_t extra) {
+word ZlibRle::add(const uint8* content, intptr_t extra) {
   if (!initialized_) {
     partial_ = 0b011;    // 1 = last block, 01 = fixed huffman block.
     partial_bits_ = 3;   // 3 bits in output buffer.
@@ -45,7 +45,7 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
     if (output_limit_ - output_index_ < 16) {
       return i;
     }
-    uint8 b = contents[i];
+    uint8 b = content[i];
     if (mode_ == LITERAL) {
       // We need at least 4 bytes of lookahead to make compression decisions.
       if (unemitted_bytes_valid_ < 4) {

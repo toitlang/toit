@@ -24,7 +24,7 @@ class Blake2s : public SimpleResource {
   TAG(Blake2s);
   Blake2s(SimpleResourceGroup* group, int key_bytes, int hash_bytes);
 
-  void add(const uint8* contents, intptr_t extra);
+  void add(const uint8* content, intptr_t extra);
   void get_hash(uint8* hash);
 
   void clone(Blake2s* child) {

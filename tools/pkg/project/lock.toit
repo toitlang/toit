@@ -217,17 +217,17 @@ class LockFile:
   constructor .package-file:
 
   constructor.load .package-file:
-    contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) or {:}
-    yaml-sdk-version/string? := contents.get SDK-KEY_
+    content/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) or {:}
+    yaml-sdk-version/string? := content.get SDK-KEY_
     if yaml-sdk-version:
       if not yaml-sdk-version.starts-with "^":
         throw "The sdk version ($yaml-sdk-version) specified in the lock file is not valid. It should start with a ^"
-      sdk-version = SemanticVersion contents[SDK-KEY_][1..]
+      sdk-version = SemanticVersion content[SDK-KEY_][1..]
 
-    if contents.contains PREFIXES-KEY_:
-      prefixes = contents[PREFIXES-KEY_]
+    if content.contains PREFIXES-KEY_:
+      prefixes = content[PREFIXES-KEY_]
 
-    yaml-packages/Map := contents.get PACKAGES-KEY_ --if-absent=: {:}
+    yaml-packages/Map := content.get PACKAGES-KEY_ --if-absent=: {:}
     yaml-packages.do: | name/string map/Map |
       packages.add (Package.from-map name map package-file)
 

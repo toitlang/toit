@@ -27,7 +27,7 @@ class Siphash : public SimpleResource {
   Siphash(SimpleResourceGroup* group, const uint8* key, int output_length, int c_rounds, int d_rounds);
   Siphash(const Siphash* parent);
 
-  void add(const uint8* contents, intptr_t extra);
+  void add(const uint8* content, intptr_t extra);
   void get_hash(uint8* hash);
   int output_length() { return output_length_; }
 

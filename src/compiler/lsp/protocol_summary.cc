@@ -66,10 +66,10 @@ class ToitdocWriter : public toitdoc::Visitor {
       , lsp_writer_(lsp_writer) {}
 
   void write() {
-    visit(toitdoc_.contents());
+    visit(toitdoc_.content());
   }
 
-  void visit_Contents(toitdoc::Contents* node) {
+  void visit_Content(toitdoc::Content* node) {
     print_list(node->sections(), &ToitdocWriter::visit_Section);
   }
 

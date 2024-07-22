@@ -29,7 +29,7 @@ namespace toit {
 namespace compiler {
 
 namespace toitdoc {
-class Contents;
+class Content;
 }
 
 // Forward declaration.
@@ -38,19 +38,19 @@ class Module;
 template<typename RefNode>
 class Toitdoc {
  public:
-  Toitdoc(toitdoc::Contents* contents,
+  Toitdoc(toitdoc::Content* content,
           List<RefNode> refs,
           Source::Range range)
-      : contents_(contents)
+      : content_(content)
       , refs_(refs)
       , range_(range) {}
 
   Toitdoc()  // Needed, so it can be used as a map value.
-      : contents_(null)
+      : content_(null)
       , range_(Source::Range::invalid()) {}
 
-  bool is_valid() const { return contents_ != null; }
-  toitdoc::Contents* contents() const { return contents_; }
+  bool is_valid() const { return content_ != null; }
+  toitdoc::Content* content() const { return content_; }
   List<RefNode> refs() const { return refs_; }
 
   Source::Range range() const { return range_; }
@@ -60,7 +60,7 @@ class Toitdoc {
   }
 
  private:
-  toitdoc::Contents* contents_;
+  toitdoc::Content* content_;
   List<RefNode> refs_;
   Source::Range range_;
 };

@@ -80,12 +80,12 @@ void Siphash::round() {
   v_[0] = v0;
 }
 
-void Siphash::add(const uint8* contents, intptr_t extra) {
+void Siphash::add(const uint8* content, intptr_t extra) {
   length_ += extra;
   while (extra) {
     intptr_t size = Utils::min<intptr_t>(BLOCK_SIZE - block_posn_, extra);
-    memcpy(data_ + block_posn_, contents, size);
-    contents += size;
+    memcpy(data_ + block_posn_, content, size);
+    content += size;
     extra -= size;
     block_posn_ += size;
     if (block_posn_ == BLOCK_SIZE) {

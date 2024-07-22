@@ -1080,11 +1080,11 @@ abstract class string implements Comparable io.Data:
   "".split "": print it                        // Doesn't print.
 
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
-  gadsby.split "e": print it // prints the contents of gadsby
+  gadsby.split "e": print it // prints the content of gadsby
 
   "Toad the Wet Sprocket".split --at-first "e": print it  // prints "Toad th", " Wet Sprocket"
   " the dust ".split            --at-first " ": print it  // prints "", "the dust "
-  gadsby.split                  --at-first "e": print it  // prints the contents of gadsby
+  gadsby.split                  --at-first "e": print it  // prints the content of gadsby
 
   "abc".split  --at-first "":    print it     // prints "a" and "bc"
   "foo".split  --at-first "foo": print it     // prints "" and ""
@@ -1272,7 +1272,7 @@ abstract class string implements Comparable io.Data:
     delimited text (including delimiters).
   If the block returns null then no change is performed at that
     point.  In this case the returned string will contain the delimiters, the
-    contents and any white space.
+    content and any white space.
   Returns the string with the substitutions performed.
   # Examples
   ```
