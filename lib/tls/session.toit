@@ -145,7 +145,7 @@ class Session:
   static SESSION-PROVIDED_    ::= 2
 
   /**
-  Returns one of the SESSION_MODE_* constants.
+  Returns one of the SESSION-MODE-* constants, such as $SESSION-MODE-TOIT.
   */
   mode -> int:
     if tls_:
@@ -279,7 +279,7 @@ class Session:
     finally: | is-exception exception |
       // If the task that is doing the handshake gets canceled,
       // we have to be careful and clean up anyway.
-      critical_do:
+      critical-do:
         if token-state: token-state.dispose
         if tls-state: tls-state.dispose
         if is-exception: reader_ = null
@@ -333,7 +333,7 @@ class Session:
         with-timeout handshake-timeout:
           read-handshake-message_
       else if state == TOIT-TLS-WANT-WRITE_:
-        // This is already handled above with flush_outgoing_
+        // This is already handled above with flush-outgoing_
       else:
         tls-error_ tls_ state
 
@@ -440,7 +440,7 @@ class Session:
     if tls_:
       tls-close_ tls_
       tls_ = null
-    if tls_group_:
+    if tls-group_:
       tls-group_.unuse
       tls-group_ = null
       remove-finalizer this  // Added when tls-group_ is set.
@@ -456,13 +456,13 @@ class Session:
   ensure-handshaken_:
     // TODO(kasper): It is a bit unfortunate that the $tls_ field
     // is set while we're doing the handshaking. Because of that
-    // we have to check that $handshake_in_progress_ is null
+    // we have to check that $handshake-in-progress_ is null
     // before we can conclude that we're already handshaken.
     if symmetric-session_ or (tls_ and not handshake-in-progress_): return
     handshake
 
   // This takes any data that the MbedTLS callback has deposited in the
-  // outgoing_buffer_ byte array and writes it to the underlying socket.
+  // outgoing-buffer_ byte array and writes it to the underlying socket.
   // During handshakes we also want to keep track of the record boundaries
   // so that we can switch to a Toit-level symmetric session when
   // handshaking is complete.  For this we need to know how many handshake
@@ -531,7 +531,7 @@ class Session:
   //
   // MbedTLS can't reassemble handshake messages that span more than one
   // TLS record.  Once handshaking is done it does not have a problem with
-  // reassembling the messages, which are all of the APPLICATION_DATA_ type.
+  // reassembling the messages, which are all of the APPLICATION-DATA_ type.
   //
   // During handshake we may therefore need to create synthetic records
   // that contain only complete messages.
@@ -696,7 +696,7 @@ class ToitHandshake_:
   ]
 
   static CHANGE-CIPHER-SPEC-TEMPLATE_ ::= #[
-      20,          // Record type: CHANGE_CIPHER_SPEC_
+      20,          // Record type: CHANGE-CIPHER-SPEC_
       3, 3,        // TLS 1.2.
       0, 1,        // One byte of payload.
       1,           // 1 means change cipher spec.

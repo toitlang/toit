@@ -5,10 +5,14 @@
 // Whether the wall clock time is set.
 // After power booting an embedded device, this is often not set.
 is-epoch-set -> bool:
-  return Time.now.s-since-epoch >= 1_577_750_400 // (Time --year=2020).s_since_epoch
+  return Time.now.s-since-epoch >= 1_577_750_400 // (Time --year=2020).s-since-epoch
 
-// Convert seconds to UTC time info as:
-//  Array_[seconds/int, minutes/int, hours/int, day/int, month/int, year/int, weekday/int, is_dst/bool].
+/**
+Converts seconds to UTC time info.
+
+Returns an array with the following elements:
+  [seconds/int, minutes/int, hours/int, day/int, month/int, year/int, weekday/int, is-dst/bool].
+*/
 time-info_ seconds/int is-utc/bool:
   #primitive.core.time-info
 
@@ -29,9 +33,12 @@ seconds-since-epoch-local_ year/int month/int day/int hour/int min/int sec/int i
 // The following code is ported from GO to Toit (Thanks GO team).
 // https://golang.org/src/time/time.go (BSD-style license)
 
-// DAYS_BEFORE[m] counts the number of days in a non-leap year
-// before month m begins. There is an entry for m=12, counting
-// the number of days before January of next year (365).
+/**
+Counts the number of days in a non-leap year before month m begins.
+
+There is an entry for m=12, counting the number of days before January of
+  next year (365).
+*/
 DAYS-BEFORE ::= [
   0,
   31,
