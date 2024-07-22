@@ -265,6 +265,7 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
       --exclude-sdk=exclude-sdk
       --exclude-pkgs=exclude-pkgs
       --include-private=include-private
+      --is-sdk-doc=for-sdk
 
   built-toitdoc := builder.build
 
