@@ -44,7 +44,7 @@ class Adc:
     tune the attenuation of the underlying ADC unit. If no $max-voltage is
     provided, the ADC uses the maximum voltage range of the pin.
 
-  If $allow-restricted is provided, allows pins that are restricted.
+  If $allow-restricted is true, allows pins that are restricted.
     See the ESP32 section below.
 
   # ESP32

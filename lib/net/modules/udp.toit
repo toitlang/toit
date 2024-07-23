@@ -29,12 +29,17 @@ class Socket implements net.Socket:
   constructor:
     return Socket "0.0.0.0" 0
 
-  // The hostname is the local address to bind to.  For client sockets, pass
-  // 0.0.0.0.  For server sockets pass 0.0.0.0 to listen on all interfaces, or
-  // the address of a particular interface in order to listen on that
-  // particular one.  The port can be zero, in which case the system picks a
-  // free port.
-  constructor hostname port:
+  /**
+  Constructs a new UDP socket bound to the given $hostname and $port.
+
+  The $hostname is the local address to bind to.  For client sockets, pass
+    0.0.0.0.  For server sockets pass 0.0.0.0 to listen on all interfaces, or
+    the address of a particular interface in order to listen on that
+    particular one.
+
+  The port can be zero, in which case the system picks a free port.
+  */
+  constructor hostname/string port/int:
     group := udp-resource-group_
     id := udp-bind_ group (dns-lookup hostname).raw port
     state_ = ResourceState_ group id
