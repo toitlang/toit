@@ -143,7 +143,7 @@ abstract class num implements Comparable:
   float.INFINITY < float.NAN  // => false
   ```
   */
-  abstract operator <  other/num -> bool
+  abstract operator < other/num -> bool
 
   /**
   Whether this number is less than or equal to the $other.
@@ -211,7 +211,7 @@ abstract class num implements Comparable:
   float.INFINITY > float.NAN  // => false
   ```
   */
-  abstract operator >  other/num -> bool
+  abstract operator > other/num -> bool
 
   /**
   Whether this number is greater than or equal to the $other.
@@ -276,7 +276,7 @@ abstract class num implements Comparable:
   float.INFINITY + -float.INFINITY    // => float.NAN
   ```
   */
-  abstract operator +  other/num
+  abstract operator + other/num
 
   /**
   Subtracts this number from the $other.
@@ -305,7 +305,7 @@ abstract class num implements Comparable:
   float.INFINITY - float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator -  other/num
+  abstract operator - other/num
 
   /**
   Multiplies this number with the $other.
@@ -340,7 +340,7 @@ abstract class num implements Comparable:
   float.INFINITY * -float.INFINITY  // => -float.INFINITY
   ```
   */
-  abstract operator *  other/num
+  abstract operator * other/num
 
   /**
   Divides this number by the $other.
@@ -381,7 +381,7 @@ abstract class num implements Comparable:
   float.INFINITY / float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator /  other/num
+  abstract operator / other/num
 
   /**
   Takes this number modulo the $other.
@@ -416,7 +416,7 @@ abstract class num implements Comparable:
   float.NAN % float.NAN  // => float.NAN
   ```
   */
-  abstract operator %  other/num
+  abstract operator % other/num
 
   /**
   Compares this number to the $other.
