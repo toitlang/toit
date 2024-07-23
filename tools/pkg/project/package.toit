@@ -158,7 +158,7 @@ abstract class PackageFile:
   sdk-version -> Constraint?:
     if environment_ := environment:
       if environment_.contains SDK-KEY_:
-        return Constraint environment_[SDK-KEY_]
+        return Constraint.parse environment_[SDK-KEY_]
     return null
 
   has-package package-name/string:
@@ -196,7 +196,7 @@ class PackageDependency:
   constraint/Constraint
 
   constructor .url .constraint_:
-    constraint = Constraint constraint_
+    constraint = Constraint.parse constraint_
 
   filter versions/List -> List:
     return constraint.filter versions

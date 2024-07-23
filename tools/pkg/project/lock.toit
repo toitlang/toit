@@ -90,7 +90,7 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
 
   constructor.from-map name prefixes project-package-file/ProjectPackageFile map/Map:
     url = map["url"]
-    version = SemanticVersion map["version"]
+    version = SemanticVersion.parse map["version"]
     ref-hash = map["hash"]
     super name prefixes project-package-file
 
@@ -222,7 +222,7 @@ class LockFile:
     if yaml-sdk-version:
       if not yaml-sdk-version.starts-with "^":
         throw "The sdk version ($yaml-sdk-version) specified in the lock file is not valid. It should start with a ^"
-      sdk-version = SemanticVersion contents[SDK-KEY_][1..]
+      sdk-version = SemanticVersion.parse contents[SDK-KEY_][1..]
 
     if contents.contains PREFIXES-KEY_:
       prefixes = contents[PREFIXES-KEY_]
@@ -466,7 +466,7 @@ class LockFileBuilder:
         if not sdk-version.source.starts-with "^":
           throw "Unexpected sdk-version constraint: $sdk-version"
 
-        version := SemanticVersion sdk-version.source[1..]
+        version := SemanticVersion.parse sdk-version.source[1..]
 
         if not min-sdk-version:
           min-sdk-version = version

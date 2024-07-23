@@ -25,7 +25,7 @@ class SemanticVersionParseResult:
 
 class TripleParseResult:
   triple/List
-  constructor major/int minor/int patch/int:
+  constructor major/int minor/int? patch/int?:
     triple = [major, minor, patch]
 
 /*
@@ -52,7 +52,9 @@ letter := [a-zA-Z]
 */
 
 class SemanticVersionParser extends parser.PegParserBase_:
-  constructor source/string:
+  allow-missing-minor/bool
+
+  constructor source/string --.allow-missing-minor/bool=false:
     super source.to-byte-array
 
   expect-match_ char/int -> int:
@@ -75,10 +77,18 @@ class SemanticVersionParser extends parser.PegParserBase_:
 
   version-core -> TripleParseResult:
     major := expect-numeric
-    expect-match_ '.'
-    minor := expect-numeric
-    expect-match_ '.'
-    patch := expect-numeric
+    minor/int? := null
+    patch/int? := null
+    if allow-missing-minor:
+      if match-char '.':
+        minor = expect-numeric
+        if match-char '.':
+          patch = expect-numeric
+    else:
+      minor = expect-match_ '.'
+      minor = expect-numeric
+      patch = expect-match_ '.'
+      patch = expect-numeric
     return TripleParseResult major minor patch
 
   pre-releases -> List:

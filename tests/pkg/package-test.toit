@@ -30,7 +30,7 @@ main:
     config := ProjectConfiguration
       --project-root=PROJECT-DIR
       --cwd=directory.cwd
-      --sdk-version=(SemanticVersion system.vm-sdk-version)
+      --sdk-version=(SemanticVersion.parse system.vm-sdk-version)
       --auto-sync=false
 
     project := Project config --empty-lock-file
