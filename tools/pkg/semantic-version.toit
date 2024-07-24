@@ -65,13 +65,16 @@ class SemanticVersion:
   operator > other/SemanticVersion -> bool:
     return not this <= other
 
-  stringify -> string:
+  to-string -> string:
     str := "$major.$minor.$patch"
     if not pre-releases.is-empty:
       str += "-$(pre-releases.join ".")"
     if not build-numbers.is-empty:
       str += "+$(build-numbers.join ".")"
     return str
+
+  stringify -> string:
+    return to-string
 
   hash-code:
     return major + 1000 * minor + 1000000 * patch

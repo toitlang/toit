@@ -70,6 +70,8 @@ class Registries:
       else:
         error "Registry $name has an unknown type '$type'"
 
+  constructor.filled .registries/Map --.error-reporter/Lambda=(:: error it) --.outputter/Lambda=(:: print it):
+
   search --registry-name/string?=null search-string/string -> Description:
     search-results := search_ registry-name search-string
     if search-results.size == 1:
@@ -142,11 +144,10 @@ class Registries:
   */
   retrieve-versions url/string -> List:
     all-versions := {}
-    registries.do --values:
-      if registry-versions := it.retrieve-versions url:
+    registries.do --values: | registry/Registry |
+      if registry-versions := registry.retrieve-versions url:
         all-versions.add-all registry-versions
-    if all-versions.is-empty:
-      error-reporter.call "Not able to find package $url in any registry."
+    if all-versions.is-empty: return []
 
     semantic-versions := List.from all-versions
     // Sort.
@@ -209,6 +210,9 @@ abstract class Registry:
   description-cache_/DescriptionUrlCache? := null
 
   constructor .name:
+
+  constructor.filled .name descriptions/List:
+    description-cache_ = DescriptionUrlCache.filled descriptions
 
   abstract type -> string
   abstract content -> FileSystemView
