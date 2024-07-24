@@ -175,23 +175,18 @@ class PartialSolution:
     unsolved-package/PartialPackageSolution := partial-packages[unsolved-dependency]
 
     package-versions/List := unsolved-package.versions
-    print "Unsolved package: $unsolved-dependency, versions: $package-versions"
 
     // Go through all versions of the unresolved-package.
     // Make a copy of the current partial solution and then fix the package to
     // the version we are currently trying. Then recursively try to refine the rest, thus
     // assigning version to the remaining packages.
     package-versions.do: | next-version/SemanticVersion |
-      print "Trying $unsolved-dependency.url@$next-version"
       description := solver.registries.retrieve-description unsolved-dependency.url next-version
       if description.satisfies-sdk-version solver.sdk-version:
         copy := PartialSolution.copy this
         if copy.load-dependencies description unsolved-dependency next-version:
           if refined := copy.refine: return refined
         // Otherwise backtrack and try the next version.
-        print "satisfied, but no dep match ($unsolved-dependency.url)@$next-version"
-      else:
-        print "$next-version doesn't satisfy SDK version: $solver.sdk-version $description.sdk-version"
 
     return null
 
@@ -259,12 +254,10 @@ class PartialSolution:
         // We will later refine it (potentially trying all the versions that are possible).
         all-versions := solver.registries.retrieve-versions dependency.url
         if all-versions.is-empty: return false
-        print "All-versions: $dependency.url: $all-versions"
         versions := dependency.filter all-versions
         if versions.is-empty:
           report-no-version-package.call dependency.url dependency.constraint
           return false
-        print "PPS2 $dependency.url: $versions"
         add-partial-package-solution dependency package (PartialPackageSolution dependency.url versions)
     return true
 
@@ -334,4 +327,3 @@ make-copy-of-dependency-to-solution-map_ input/Map translator/IdentityMap=Identi
       copy := PartialPackageSolution.copy v translator
       translator[v] = copy
     translator[v]
-
