@@ -48,6 +48,10 @@ class DescriptionUrlCache:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.all-versions
 
+  get-descriptions url/string -> List?:
+    version-cache/DescriptionVersionCache? := cache_.get url
+    return version-cache and version-cache.all-descriptions
+
   /**
   Returns a map, mapping urls to lists of descriptions.
   */
