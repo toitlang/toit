@@ -24,9 +24,8 @@ The solution of the solver.
 */
 class Solution:
   packages/Map  // From URL to a list of SemanticVersion instances.
-  sdk-version/SemanticVersion?  // The minimum SDK version required.
 
-  constructor .packages --.sdk-version:
+  constructor .packages:
 
 /**
 Backtracking information.
@@ -51,14 +50,7 @@ class UndoInformation:
   */
   url-major/string? := null
 
-  /**
-  The minimum SDK version that was set before this candidate was tried.
-
-  When backtracking this version has to set again.
-  */
-  min-sdk-version/SemanticVersion?
-
-  constructor --.working-queue-size --.min-sdk-version:
+  constructor --.working-queue-size:
 
 class UndoStack:
   stack_/List ::= []  // Of UndoInformation.
@@ -93,13 +85,6 @@ class SolverState:
   From url-major to the precise version.
   */
   packages/Map ::= {:}
-
-  /**
-  The minimum SDK version required for this partial solution.
-
-  May be null if no SDK version has been found yet.
-  */
-  min-sdk-version/SemanticVersion? := null
 
   /**
   The dependencies we are trying to satisfy.
@@ -140,7 +125,7 @@ class SolverState:
       url := url-major[..dash-index]
       (package-versions.get url --init=: []).add version
 
-    return Solution package-versions --sdk-version=min-sdk-version
+    return Solution package-versions
 
   /**
   Returns the continuation for the given index.
@@ -183,9 +168,12 @@ class SolverDb:
     return entries_.get url --init=:
       registry-entries := registries_.retrieve-descriptions url
       solver-packages := registry-entries.map: | entry/Description |
+          min-sdk-version := entry.sdk-version
+              ? entry.sdk-version.to-min-version
+              : null
           SolverPackage
               --version=entry.version
-              --min-sdk-version=entry.sdk-version.to-min-version
+              --min-sdk-version=min-sdk-version
               --dependencies=entry.dependencies
       solver-packages
 
@@ -238,8 +226,6 @@ class Solver:
       if sdk-version and sdk-version < min-sdk-version:
         warn_ "SDK version '$sdk-version' does not satisfy the minimal SDK requirement '^$min-sdk-version'"
         return null
-
-      state_.min-sdk-version = min-sdk-version
 
     state_.add-dependencies dependencies
     working-index := 0
@@ -311,14 +297,10 @@ class Solver:
         continue
 
       undo := UndoInformation
-          --min-sdk-version=state_.min-sdk-version
           --working-queue-size=state_.working-queue.size
 
       if not existing:
         // First time we set a concrete version for this URL-major.
-        if (not state_.min-sdk-version) or
-            (candidate.min-sdk-version and candidate.min-sdk-version > state_.min-sdk-version):
-          state_.min-sdk-version = candidate.min-sdk-version
         state_.packages[url-major] = candidate.version
         state_.add-dependencies candidate.dependencies
         // If we undo this entry, we have to remove it from the partial solution.
@@ -341,8 +323,6 @@ class Solver:
 
     if undo.url-major:
       state_.packages.remove undo.url-major
-
-    state_.min-sdk-version = undo.min-sdk-version
 
   warn_ msg/string:
     if printed-errors_.contains msg: return

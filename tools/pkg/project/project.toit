@@ -146,8 +146,13 @@ class Project:
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:
       throw "Unable to resolve dependencies"
-    builder := LockFileBuilder package-file solution
+    ensure-downloaded_ --solution=solution
+    builder := LockFileBuilder --solution=solution --project=this
     lock-file = builder.build
+
+  ensure-downloaded_ --solution/Solution:
+    solution.packages.do: | url/string versions/List |
+      versions.do: ensure-downloaded url it
 
   cached-repository-dir_ url/string version/SemanticVersion -> string:
     return "$packages-cache-dir/$url/$version"
@@ -163,9 +168,13 @@ class Project:
     pack.expand cached-repository-dir
     file.write_content description.ref-hash --path=repo-toit-git-path
 
-  load-package-package-file url/string version/SemanticVersion:
+  load-package-package-file url/string version/SemanticVersion -> ExternalPackageFile:
     cached-repository-dir := cached-repository-dir_ url version
-    return ExternalPackageFile (fs.to-absolute cached-repository-dir)
+    return ExternalPackageFile --dir=(fs.to-absolute cached-repository-dir)
 
   load-local-package-file path/string -> ExternalPackageFile:
-    return ExternalPackageFile (fs.to-absolute "$root/$path")
+    return ExternalPackageFile --dir=(fs.to-absolute "$root/$path")
+
+  hash-for --url/string --version/SemanticVersion -> string:
+    description := registries.retrieve-description url version
+    return description.ref-hash

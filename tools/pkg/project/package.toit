@@ -84,22 +84,22 @@ class ProjectPackageFile extends PackageFile:
     the local dependency was declared in the package file. It may be
     relative or absolute.
   The $block is only called once for each local dependency.
-  The $block is called with null as path for this project package file.
+  The $block is called with "." as path for this project package file.
   */
   visit-local-package-files [block]:
     entry-dir := fs.dirname (fs.to-absolute file-name)
     already-visited := {}
     relative-paths := {:}
-    block.call null entry-dir this
+    block.call "." entry-dir this
     already-visited.add entry-dir
     visit-local-dependencies_ this
-        --package-path=null
+        --package-path="."
         --already-visited=already-visited
         --entry-dir=entry-dir
         block
 
   static visit-local-dependencies_ package-file/PackageFile
-      --package-path/string?
+      --package-path/string
       --already-visited/Set
       --entry-dir/string
       [block]:
@@ -126,7 +126,7 @@ class ProjectPackageFile extends PackageFile:
       dep-package-file-path/string := fs.join absolute-path PackageFile.FILE_NAME
       // Local packages are allowed not to have a package file.
       if file.is-file dep-package-file-path:
-        dep-package-file := ExternalPackageFile absolute-path
+        dep-package-file := ExternalPackageFile --dir=absolute-path
         block.call human-path absolute-path dep-package-file
         // Recursively visit the dependencies of the local package.
         visit-local-dependencies_
@@ -145,8 +145,9 @@ class ProjectPackageFile extends PackageFile:
   */
   collect-registry-dependencies -> List:
     result := []
-    visit-local-package-files: | _ _ dep-package-file/PackageFile |
-      result.add-all dep-package-file.registry-dependencies.values
+    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
+      if dep-package-file:
+        result.add-all dep-package-file.registry-dependencies.values
     return result
 
   /**
@@ -157,8 +158,8 @@ class ProjectPackageFile extends PackageFile:
   */
   compute-min-sdk-version -> SemanticVersion?:
     min-sdk := sdk-version and sdk-version.to-min-version
-    visit-local-package-files: | _ _ dep-package-file/PackageFile |
-      if dep-package-file.sdk-version:
+    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
+      if dep-package-file and dep-package-file.sdk-version:
         dep-sdk-version := dep-package-file.sdk-version.to-min-version
         if not min-sdk or dep-sdk-version > min-sdk:
           min-sdk = dep-sdk-version
@@ -166,18 +167,19 @@ class ProjectPackageFile extends PackageFile:
 
 
 /**
-An external "path" package file.
-External package files are read-only.
+An external package file.
+
+External package files are the same as the entry package file, but they are read-only.
 */
 class ExternalPackageFile extends PackageFile:
-  path/string
+  dir/string
 
-  constructor .path/string:
-    if not fs.is-absolute path: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read_content "$path/$PackageFile.FILE_NAME")) or {:})
+  constructor --.dir:
+    if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
+    super ((yaml.decode (file.read_content "$dir/$PackageFile.FILE_NAME")) or {:})
 
   root-dir -> string:
-    return path
+    return dir
 
 
 /**

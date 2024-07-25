@@ -77,6 +77,12 @@ class Constraint:
   filter versions/List -> List:
     return versions.filter: satisfies it
 
+  first-satisfying versions/List -> SemanticVersion?:
+    versions.do: | version/SemanticVersion |
+      if satisfies version:
+        return version
+    return null
+
   stringify -> string:
     return source
 

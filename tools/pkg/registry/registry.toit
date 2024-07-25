@@ -23,8 +23,6 @@ import .git
 import .description
 import ..file-system-view
 import ..error
-import ..solver.registry-solver
-import ..solver.local-solver
 import ..semantic-version
 import ..project.package
 import ..constraints

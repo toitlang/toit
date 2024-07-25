@@ -85,8 +85,11 @@ find-solution solve-for/Description registries/reg.Registries -> Solution?
   solve-for-constraint := Constraint
       --simple-constraints=[SimpleConstraint "=" solve-for.version]
       --source="=$solve-for.version"
-  return solver.solve --min-sdk-constraint=solve-for.sdk-version [
-    SolverDependency solve-for.url --constraint=solve-for-constraint
+  min-sdk-version := solve-for.sdk-version
+      ? solve-for.sdk-version.to-min-version
+      : null
+  return solver.solve --min-sdk-version=min-sdk-version [
+    PackageDependency solve-for.url --constraint=solve-for-constraint
   ]
 
 check-solution solution/Solution expected/List:
@@ -250,7 +253,6 @@ test-min-sdk:
   registries := make-registries [a170, b140, b180, b200, c100]
   solution := find-solution a170 registries
   check-solution solution [a170, b140, b200, c100]
-  expect-equals v120 solution.sdk-version
 
 test-sdk-version:
   v110 := SemanticVersion.parse "1.1.0"
@@ -264,11 +266,9 @@ test-sdk-version:
   registries := make-registries [a170, b140, b160, b180]
   solution := find-solution a170 registries
   check-solution solution [a170, b180]
-  expect-equals v130 solution.sdk-version
 
   solution = find-solution a170 registries --sdk-version=v115
   check-solution solution [a170, b140]
-  expect-equals v110 solution.sdk-version
 
 test-fail-sdk-version:
   v105 := SemanticVersion.parse "1.0.5"
