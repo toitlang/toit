@@ -29,15 +29,6 @@ class Solution:
   constructor .packages --.sdk-version:
 
 /**
-A dependency that needs to be solved.
-*/
-class SolverDependency:
-  url/string
-  constraint/Constraint
-
-  constructor .url --.constraint:
-
-/**
 Backtracking information.
 
 An instance of this class is created when a candidate is tried, and then
@@ -116,7 +107,7 @@ class SolverState:
   Dependencies on the same package may appear multiple times. In that case
     a later entry will take into account which version was chose earlier.
   */
-  working-queue/List ::= []  // Of SolverDependency.
+  working-queue/List ::= []  // Of PackageDependency.
 
   /**
   Information necessary to continue exploring all possible packages for
@@ -168,19 +159,10 @@ A package that is available for solving.
 */
 class SolverPackage:
   version/SemanticVersion
-  deps/List  // Of SolverDependency.
+  dependencies/List  // Of PackageDependency.
   min-sdk-version/SemanticVersion?
 
-  constructor --.version --.deps --.min-sdk-version:
-
-convert-constraint-to-version_ constraint/Constraint? -> SemanticVersion?:
-  if not constraint: return null
-  if constraint.simple-constraints.size != 2 or
-      (constraint.simple-constraints[0] as SimpleConstraint).comparator != ">=" or
-      (constraint.simple-constraints[1] as SimpleConstraint).comparator != "<":
-    throw "Unexpected SDK constraint"
-  simple/SimpleConstraint := constraint.simple-constraints[0]
-  return simple.constraint-version
+  constructor --.version --.dependencies --.min-sdk-version:
 
 /**
 A (lazy) database of packages that are available.
@@ -201,12 +183,10 @@ class SolverDb:
     return entries_.get url --init=:
       registry-entries := registries_.retrieve-descriptions url
       solver-packages := registry-entries.map: | entry/Description |
-          deps := entry.dependencies.map: | dep/PackageDependency |
-              SolverDependency dep.url --constraint=dep.constraint
           SolverPackage
               --version=entry.version
-              --min-sdk-version=convert-constraint-to-version_ entry.sdk-version
-              --deps=deps
+              --min-sdk-version=entry.sdk-version.to-min-version
+              --dependencies=entry.dependencies
       solver-packages
 
 /**
@@ -243,19 +223,18 @@ class Solver:
   /**
   Solves the given dependencies.
 
-  The $min-sdk-constraint specifies a constraint on the SDK version of the result.
+  The $min-sdk-version specifies a constraint on the SDK version of the result.
     It typically comes from the main package.yaml file.
 
   Returns null if no solution was found.
 
   After this call the solver can not be reused.
   */
-  solve dependencies/List --min-sdk-constraint/Constraint?=null -> Solution?:
+  solve dependencies/List --min-sdk-version/SemanticVersion?=null -> Solution?:
     if state_: throw "Solver can only be used once"
     state_ = SolverState
 
-    if min-sdk-constraint:
-      min-sdk-version := convert-constraint-to-version_ min-sdk-constraint
+    if min-sdk-version:
       if sdk-version and sdk-version < min-sdk-version:
         warn_ "SDK version '$sdk-version' does not satisfy the minimal SDK requirement '^$min-sdk-version'"
         return null
@@ -299,7 +278,7 @@ class Solver:
               undo := state_.undos.pop
               apply-undo_ undo
 
-  solve-dependency_ dependency/SolverDependency index/int  [--on-success] [--on-failure]:
+  solve-dependency_ dependency/PackageDependency index/int  [--on-success] [--on-failure]:
     url := dependency.url
     available/List := db_.get-solver-packages url
     if available.is-empty:
@@ -341,7 +320,7 @@ class Solver:
             (candidate.min-sdk-version and candidate.min-sdk-version > state_.min-sdk-version):
           state_.min-sdk-version = candidate.min-sdk-version
         state_.packages[url-major] = candidate.version
-        state_.add-dependencies candidate.deps
+        state_.add-dependencies candidate.dependencies
         // If we undo this entry, we have to remove it from the partial solution.
         undo.url-major = url-major
 

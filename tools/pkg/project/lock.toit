@@ -21,8 +21,8 @@ import ..solver.registry-solver
 import ..semantic-version
 import ..constraints
 
-import .project
 import .package
+import .project
 
 interface Package:
   prefixes -> Map

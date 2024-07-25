@@ -96,6 +96,19 @@ class Constraint:
       hash-code_ = hash
     return hash-code_
 
+  /**
+  Returns the minimum version that satisfies the constraint.
+
+  This constraint must be of the form `">=x.y.z,<a.b.c"` in which case
+    it returns `x.y.z`.
+  */
+  to-min-version -> SemanticVersion:
+    if simple-constraints.size != 2 or
+        (simple-constraints[0] as SimpleConstraint).comparator != ">=" or
+        (simple-constraints[1] as SimpleConstraint).comparator != "<":
+      throw "Unexpected SDK constraint"
+    simple/SimpleConstraint := simple-constraints[0]
+    return simple.constraint-version
 
 class SimpleConstraint:
   comparator/string

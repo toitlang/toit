@@ -27,6 +27,7 @@ import ..error
 import ..pkg
 import ..git
 import ..semantic-version
+import ..solver
 
 import .package
 import .lock
@@ -131,8 +132,22 @@ class Project:
   packages-cache-dir:
     return "$config.root/$PACKAGES-CACHE"
 
+  /*
+  solve -> LockFile:
+    solver := LocalSolver registries this
+    return (LockFileBuilder this solver.solve).build
+    */
+
+
   solve_ :
-    lock-file = package-file.solve
+    dependencies := package-file.collect-registry-dependencies
+    min-sdk := package-file.compute-min-sdk-version
+    solver := Solver registries --sdk-version=sdk-version --outputter=(:: print it)
+    solution := solver.solve dependencies --min-sdk-version=min-sdk
+    if not solution:
+      throw "Unable to resolve dependencies"
+    builder := LockFileBuilder package-file solution
+    lock-file = builder.build
 
   cached-repository-dir_ url/string version/SemanticVersion -> string:
     return "$packages-cache-dir/$url/$version"
