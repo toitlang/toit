@@ -74,12 +74,12 @@ abstract class PackageBase implements Package:
   cached-repository-dir url/string version/SemanticVersion:
     return project-package-file.project.cached-repository-dir_ url version
 
-  abstract enrich-map map/Map project-package-file/ProjectPackageFile
+  abstract enrich-map map/Map
 
-  add-to-map packages/Map project-package-file/ProjectPackageFile:
+  add-to-map packages/Map:
     sub := {:}
     if not prefixes.is-empty: sub["prefixes"] = prefixes
-    enrich-map sub project-package-file
+    enrich-map sub
     return packages[name] = sub
 
 
@@ -94,7 +94,7 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
     ref-hash = map["hash"]
     super name prefixes project-package-file
 
-  enrich-map map/Map project-package-file/ProjectPackageFile:
+  enrich-map map/Map:
     map["url"] = url
     map["version"] = version.stringify
     map["hash"] = ref-hash
@@ -115,7 +115,7 @@ class LoadedLocalPackage extends PackageBase implements LocalPackage:
     path = map["path"]
     super name prefixes project-package-file
 
-  enrich-map map/Map project-package-file/ProjectPackageFile:
+  enrich-map map/Map:
     map["path"] = path
 
   package-file -> PackageFile:
@@ -152,7 +152,7 @@ class BuiltRepositoryPackage extends BuiltPackageBase implements RepositoryPacka
   ref-hash -> string:
     return resolved-package_.ref-hash
 
-  enrich-map map/Map project-package-file/ProjectPackageFile:
+  enrich-map map/Map:
     map["url"] = url
     map["name"] = name
     map["version"] = version.stringify
@@ -182,7 +182,7 @@ class BuiltLocalPackage extends BuiltPackageBase implements LocalPackage:
   constructor project-package-file/ProjectPackageFile .local-package_:
     super project-package-file
 
-  enrich-map map/Map project-package-file/ProjectPackageFile:
+  enrich-map map/Map:
     map["path"] = path
 
   path -> string:
@@ -244,7 +244,7 @@ class LockFile:
       map[LockFile.PREFIXES-KEY_] = prefixes
     if not packages.is-empty:
       packages-map := {:}
-      packages.do: | package/PackageBase | package.add-to-map packages-map package-file
+      packages.do: | package/PackageBase | package.add-to-map packages-map
       map[LockFile.PACKAGES-KEY_] = packages-map
     return map
 
