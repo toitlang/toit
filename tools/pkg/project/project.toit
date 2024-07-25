@@ -132,14 +132,7 @@ class Project:
   packages-cache-dir:
     return "$config.root/$PACKAGES-CACHE"
 
-  /*
-  solve -> LockFile:
-    solver := LocalSolver registries this
-    return (LockFileBuilder this solver.solve).build
-    */
-
-
-  solve_ :
+  solve_:
     dependencies := package-file.collect-registry-dependencies
     min-sdk := package-file.compute-min-sdk-version
     solver := Solver registries --sdk-version=sdk-version --outputter=(:: print it)
