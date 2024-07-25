@@ -15,20 +15,20 @@ import ...tools.pkg.project
 import ...tools.pkg.semantic-version
 import ...tools.pkg.registry
 
-PROJECT-DIR ::= ".project-test-root"
+project-dir/string := ?
 
 verify-ref package ref:
-  lock := yaml.decode (file.read-content "$PROJECT-DIR/package.lock")
+  lock := yaml.decode (file.read-content "$project-dir/package.lock")
   expect-equals ref lock["packages"][package]["hash"]
 
 main:
-  with-test-registry:
-    if file.is-directory PROJECT-DIR:
-      directory.rmdir --recursive PROJECT-DIR
+  with-test-registry: | tmp-dir |
+    project-dir = "$tmp-dir/project-test-root"
 
-    directory.mkdir PROJECT-DIR
+    directory.mkdir project-dir
+
     config := ProjectConfiguration
-      --project-root=PROJECT-DIR
+      --project-root=project-dir
       --cwd=directory.cwd
       --sdk-version=(SemanticVersion.parse system.vm-sdk-version)
       --auto-sync=false
