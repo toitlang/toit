@@ -341,7 +341,9 @@ class LockFileBuilder:
       dep/PackageDependency := deps[prefix]
       available-versions := solution_.packages.get dep.url
       if not available-versions:
-        throw "Missing version for $dep.url"
+        print "Missing version for $dep.url in solution."
+        print "This can happen when the specification and description are out of sync."
+        throw "DESCRIPTION-SPECIFICATION-MISMATCH"
       if available-versions.size > 0:
         // We prefer to use higher versions.
         available-versions.sort: | a b | -(a.compare-to b)
