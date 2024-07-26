@@ -18,7 +18,6 @@ import host.file
 
 import ..error
 import ..project
-import ..project.package
 
 import .utils_
 
@@ -28,7 +27,7 @@ class InitCommand:
   constructor parsed/cli.Parsed:
     config := project-configuration-from-cli parsed
 
-    if config.package-file-exists or config.lock-file-exists:
+    if config.specification-file-exists or config.lock-file-exists:
       error "Directory already contains a project"
 
     project = Project config --empty-lock-file

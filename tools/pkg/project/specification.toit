@@ -31,34 +31,34 @@ import .lock
 /**
 The 'package.yaml' file of the project.
 
-Contrary to an $ExternalPackageFile or a $RepositoryPackageFile, project package files
+Contrary to an $ExternalSpecification or a $RepositorySpecification, project package files
   are mutable. In addition, they can be solved and saved.
 */
-class ProjectPackageFile extends PackageFile:
+class ProjectSpecification extends Specification:
   project/Project
 
   constructor.private_ .project  content/Map:
     super content
 
   constructor.empty project/Project:
-    return ProjectPackageFile.private_ project {:}
+    return ProjectSpecification.private_ project {:}
 
   constructor.load project/Project:
-    file-content := (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME")) or {:}
-    return ProjectPackageFile.private_ project file-content
+    file-content := (yaml.decode (file.read_content "$project.root/$Specification.FILE_NAME")) or {:}
+    return ProjectSpecification.private_ project file-content
 
   root-dir -> string:
     return project.root
 
   add-remote-dependency --prefix/string --url/string --constraint/string:
     dependencies[prefix] = {
-      PackageFile.URL-KEY_: url,
-      PackageFile.VERSION-KEY_: constraint
+      Specification.URL-KEY_: url,
+      Specification.VERSION-KEY_: constraint
     }
 
   add-local-dependency prefix/string path/string:
     dependencies[prefix] = {
-      PackageFile.PATH-KEY_: path
+      Specification.PATH-KEY_: path
     }
 
   remove-dependency prefix/string:
@@ -79,14 +79,14 @@ class ProjectPackageFile extends PackageFile:
   The given $block is called for each local dependency with three arguments:
   - the path to the package.
   - an absolute path to the package.
-  - the $PackageFile, if one exists.
+  - the $Specification, if one exists.
   The path to the package is how the package was found and depends on how
     the local dependency was declared in the package file. It may be
     relative or absolute.
   The $block is only called once for each local dependency.
   The $block is called with "." as path for this project package file.
   */
-  visit-local-package-files [block]:
+  visit-local-specifications [block]:
     entry-dir := fs.dirname (fs.to-absolute file-name)
     already-visited := {}
     relative-paths := {:}
@@ -98,15 +98,15 @@ class ProjectPackageFile extends PackageFile:
         --entry-dir=entry-dir
         block
 
-  static visit-local-dependencies_ package-file/PackageFile
+  static visit-local-dependencies_ specification/Specification
       --package-path/string
       --already-visited/Set
       --entry-dir/string
       [block]:
-    package-file.dependencies.do: | prefix/string content/Map |
-      if not content.contains PackageFile.PATH-KEY_: continue.do
-      path := content[PackageFile.PATH-KEY_]
-      absolute-path/string := fs.clean (package-file.absolute-path-for-dependency path)
+    specification.dependencies.do: | prefix/string content/Map |
+      if not content.contains Specification.PATH-KEY_: continue.do
+      path := content[Specification.PATH-KEY_]
+      absolute-path/string := fs.clean (specification.absolute-path-for-dependency path)
       if already-visited.contains absolute-path: continue.do
       already-visited.add absolute-path
 
@@ -123,14 +123,14 @@ class ProjectPackageFile extends PackageFile:
         // in a folder 'foo'. It should just be "bar".
         human-path = fs.to-relative --base=entry-dir human-path
 
-      dep-package-file-path/string := fs.join absolute-path PackageFile.FILE_NAME
+      dep-specification-path/string := fs.join absolute-path Specification.FILE_NAME
       // Local packages are allowed not to have a package file.
-      if file.is-file dep-package-file-path:
-        dep-package-file := ExternalPackageFile --dir=absolute-path
-        block.call human-path absolute-path dep-package-file
+      if file.is-file dep-specification-path:
+        dep-specification := ExternalSpecification --dir=absolute-path
+        block.call human-path absolute-path dep-specification
         // Recursively visit the dependencies of the local package.
         visit-local-dependencies_
-            dep-package-file
+            dep-specification
             --package-path=human-path
             --already-visited=already-visited
             --entry-dir=entry-dir
@@ -145,9 +145,9 @@ class ProjectPackageFile extends PackageFile:
   */
   collect-registry-dependencies -> List:
     result := []
-    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
-      if dep-package-file:
-        result.add-all dep-package-file.registry-dependencies.values
+    visit-local-specifications: | _ _ dep-specification/Specification? |
+      if dep-specification:
+        result.add-all dep-specification.registry-dependencies.values
     return result
 
   /**
@@ -158,9 +158,9 @@ class ProjectPackageFile extends PackageFile:
   */
   compute-min-sdk-version -> SemanticVersion?:
     min-sdk := sdk-version and sdk-version.to-min-version
-    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
-      if dep-package-file and dep-package-file.sdk-version:
-        dep-sdk-version := dep-package-file.sdk-version.to-min-version
+    visit-local-specifications: | _ _ dep-specification/Specification? |
+      if dep-specification and dep-specification.sdk-version:
+        dep-sdk-version := dep-specification.sdk-version.to-min-version
         if not min-sdk or dep-sdk-version > min-sdk:
           min-sdk = dep-sdk-version
     return min-sdk
@@ -171,12 +171,12 @@ An external package file.
 
 External package files are the same as the entry package file, but they are read-only.
 */
-class ExternalPackageFile extends PackageFile:
+class ExternalSpecification extends Specification:
   dir/string
 
   constructor --.dir:
     if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read_content "$dir/$PackageFile.FILE_NAME")) or {:})
+    super ((yaml.decode (file.read_content "$dir/$Specification.FILE_NAME")) or {:})
 
   root-dir -> string:
     return dir
@@ -186,14 +186,14 @@ class ExternalPackageFile extends PackageFile:
 A package file from a published package.
 Repository package files are read-only.
 */
-class RepositoryPackageFile extends PackageFile:
+class RepositorySpecification extends Specification:
   constructor content/ByteArray:
     super (yaml.decode content)
 
   root-dir -> string:
     throw "Not possible to get root dir of a repository package file"
 
-abstract class PackageFile:
+abstract class Specification:
   static DEPENDENCIES-KEY_ ::= "dependencies"
   static NAME-KEY_         ::= "name"
   static URL-KEY_          ::= "url"
@@ -219,7 +219,7 @@ abstract class PackageFile:
   file-name -> string:
     return file-name root-dir
 
-  relative-path-to project-package/ProjectPackageFile -> string:
+  relative-path-to project-package/ProjectSpecification -> string:
     my-dir := root-dir
     other-dir := directory.realpath project-package.root-dir
     if other-dir == my-dir: error "Reference to self in $project-package.file-name"

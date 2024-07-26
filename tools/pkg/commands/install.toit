@@ -19,7 +19,7 @@ import fs
 
 import ..error
 import ..project
-import ..project.package
+import ..project.specification
 import ..registry
 
 import .utils_
@@ -69,22 +69,22 @@ class InstallCommand:
     remote-package := registries.search package
     if not prefix: prefix = remote-package.name
 
-    if project.package-file.has-package prefix:
+    if project.specification.has-package prefix:
       error "Project already has a package with name '$prefix'."
 
     project.install-remote prefix remote-package
 
   execute-local:
-    package-file-name := "$package/$PackageFile.FILE_NAME"
+    specification-name := "$package/$Specification.FILE_NAME"
     src-directory := "$package/src"
-    if not file.is-file package-file-name:
-      error "Path supplied in package argument is an invalid local package, missing $package-file-name."
+    if not file.is-file specification-name:
+      error "Path supplied in package argument is an invalid local package, missing $specification-name."
 
     if not file.is-directory src-directory:
       error "Path supplied in package argument is an invalid local package, missing $src-directory."
 
-    package-file := ExternalPackageFile --dir=(fs.to-absolute package)
-    if not prefix: prefix = package-file.name
+    specification := ExternalSpecification --dir=(fs.to-absolute package)
+    if not prefix: prefix = specification.name
 
     project.install-local prefix package
 
