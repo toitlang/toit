@@ -169,9 +169,16 @@ class Project:
     directory.mkdir --recursive cached-repository-dir
     description := registries.retrieve-description url version
     repository := Repository url
-    pack := repository.clone description.ref-hash
+    hash := description.ref-hash
+    if not hash:
+      // Use the version instead.
+      version-tag := "refs/tags/v$version"
+      hash = repository.refs.get "refs/tags/v$version"
+      if not hash:
+        throw "Tag v$version not found for package '$url'"
+    pack := repository.clone hash
     pack.expand cached-repository-dir
-    file.write_content description.ref-hash --path=repo-toit-git-path
+    file.write_content hash --path=repo-toit-git-path
 
   load-package-specification url/string version/SemanticVersion -> ExternalSpecification:
     cached-repository-dir := cached-repository-dir_ url version
@@ -180,6 +187,13 @@ class Project:
   load-local-specification path/string -> ExternalSpecification:
     return ExternalSpecification --dir=(fs.to-absolute "$root/$path")
 
-  hash-for --url/string --version/SemanticVersion -> string:
+  hash-for --url/string --version/SemanticVersion -> string?:
     description := registries.retrieve-description url version
-    return description.ref-hash
+    result := description.ref-hash
+    if not result:
+      // Use the entry we wrote into the cache-directory.
+      toit-git-path := "$(cached-repository-dir_ url version)/.toit-git"
+      if not file.is_file toit-git-path:
+        throw "No hash found for package '$url' version '$version'"
+      result = (file.read_content toit-git-path).to-string
+    return result

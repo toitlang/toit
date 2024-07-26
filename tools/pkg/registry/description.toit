@@ -66,7 +66,7 @@ class Description:
 
   name -> string: return content[NAME-KEY_]
 
-  ref-hash -> string: return content[HASH-KEY_]
+  ref-hash -> string?: return content.get HASH-KEY_
 
   description -> string: return content[DESCRIPTION-KEY_]
 
