@@ -192,9 +192,8 @@ class Db_:
         break
     if found-at == -1: return
     entry := entries[found-at]
-    // Move the found version to the front by moving all other higher
-    // versions one step back.
-    entries.replace 1 entries 0 (found-at + 1)
+    // Shift the preceding versions one step down.
+    entries.replace 1 entries 0 found-at
     entries[0] = entry
 
 /**
