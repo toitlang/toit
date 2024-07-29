@@ -40,16 +40,18 @@ foreach(file ${TOIT_PKG_TESTS})
     )
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
-  string(REPLACE "/" "_" update_name "${file}")
-  string(REPLACE "\\" "_" update_name "${update_name}")
-  set(update_name "${update_name}-update-gold")
-  add_custom_target(
-    "${update_name}"
-    COMMAND ${CMAKE_COMMAND} -E env "UPDATE_GOLD=1"
-      $<TARGET_FILE:toit> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit>
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  )
-  add_dependencies(update_pkg_gold "${update_name}")
+  if ("${file}" IN_LIST TOIT_PKG_GOLD_TESTS)
+    string(REPLACE "/" "_" update_name "${file}")
+    string(REPLACE "\\" "_" update_name "${update_name}")
+    set(update_name "${update_name}-update-gold")
+    add_custom_target(
+      "${update_name}"
+      COMMAND ${CMAKE_COMMAND} -E env "UPDATE_GOLD=1"
+        $<TARGET_FILE:toit> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit>
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_dependencies(update_pkg_gold "${update_name}")
+  endif()
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
