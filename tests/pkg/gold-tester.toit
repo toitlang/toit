@@ -39,7 +39,7 @@ class RunResult_:
       result += "\nSTDERR---\n" + stderr
       if not stderr.ends-with "\n":
         result += "\n <Missing newline at end of stderr> \n"
-    result += "Exit Code: $exit-code"
+    result += "Exit Code: $exit-code\n"
     return result
 
 class GoldTester:
@@ -127,7 +127,7 @@ with-gold-tester args/List [block]:
   toit-exe := args[0]
   source-location := system.program-path
   source-dir := fs.dirname source-location
-  source-name := (fs.basename source-location).trim --right "-test.toit"
+  source-name := (fs.basename source-location).trim --right "-gold-test.toit"
   assets-dir := fs.join source-dir "assets" source-name
   gold-dir := fs.join assets-dir "gold" source-name
 
