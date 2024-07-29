@@ -14,18 +14,18 @@ import ...tools.pkg.semantic-version
 import ...tools.pkg.solver.registry-solver
 
 main:
-  // test-transitive
-  // test-correct-version
-  // test-highest-version
-  // test-multiple-versions
-  // test-cycle
-  // test-fail-missing-pkg
-  // test-fail-version
-  // test-backtrack
-  // test-2-versions
-  // test-backtrack-2-versions
-  // test-uniq-error-message
-  // test-min-sdk
+  test-transitive
+  test-correct-version
+  test-highest-version
+  test-multiple-versions
+  test-cycle
+  test-fail-missing-pkg
+  test-fail-version
+  test-backtrack
+  test-2-versions
+  test-backtrack-2-versions
+  test-uniq-error-message
+  test-min-sdk
   test-sdk-version
   test-fail-sdk-version
 
