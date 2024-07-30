@@ -13,6 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import encoding.url
+import fs
+
 flatten_list input/List -> List:
   list := List
   input.do:
@@ -41,3 +44,28 @@ If the $key is not in $map, create a new entry for $key as a size one $Set with 
 add-to-set-value map/Map key value:
   set := map.get key --init=:{}
   set.add value
+
+DANGEROUS-PATHS_ ::= {
+  "",
+  "CON", "PRN", "AUX", "NUL",
+  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
+
+/** A platform-independent version of a path that is recognized by the compiler. */
+to-uri-path path/string -> string:
+  segments := fs.split path
+  segments.map --in-place: | segment/string |
+    segment = url.encode segment
+    if DANGEROUS-PATHS_.contains segment.to-ascii-upper:
+      // Escape the segment by adding a '%' at the end.
+      // This ensures that the segment is a valid file name.
+      // It's not a valid URL anymore, as the '%' is not a correct escape. However,
+      // this also guarantees that we don't accidentally clash with any other
+      // segment.
+      segment = segment + "%"
+    if segment.ends-with ".":
+      segment = segment + "%"
+    segment
+
+  return segments.join "/"

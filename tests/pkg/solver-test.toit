@@ -11,7 +11,7 @@ import ...tools.pkg.registry as reg
 import ...tools.pkg.registry.local as reg
 import ...tools.pkg.registry.description
 import ...tools.pkg.semantic-version
-import ...tools.pkg.solver.registry-solver
+import ...tools.pkg.solver
 
 main:
   test-transitive
@@ -78,24 +78,25 @@ make-registries pkgs/List -> reg.Registries:
       --error-reporter=error-reporter
       --outputter=outputter
 
-find-solution solve-for/Description registries/reg.Registries -> Resolved
+find-solution solve-for/Description registries/reg.Registries -> Solution?
     --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0"):
-  solver := Solver registries sdk-version
-      --error-reporter=error-reporter
+  solver := Solver registries --sdk-version=sdk-version
       --outputter=outputter
   solve-for-constraint := Constraint
       --simple-constraints=[SimpleConstraint "=" solve-for.version]
       --source="=$solve-for.version"
-  return solver.solve [
+  min-sdk-version := solve-for.sdk-version
+      ? solve-for.sdk-version.to-min-version
+      : null
+  return solver.solve --min-sdk-version=min-sdk-version [
     PackageDependency solve-for.url --constraint=solve-for-constraint
   ]
 
-check-solution solution/Resolved expected/List:
+check-solution solution/Solution expected/List:
   // Our tests are small enough that we can just do a quadratic check.
-  expect-equals solution.packages.size expected.size
-  solution.packages.do: | dep/PackageDependency resolved/ResolvedPackage |
+  solution.packages.do: | url/string resolved-versions/List |
     found := expected.any: | desc/Description |
-      desc.url == resolved.url and desc.version == resolved.version
+      desc.url == url and resolved-versions.any: it == desc.version
     expect found
 
 test-transitive:
@@ -145,14 +146,17 @@ test-fail-missing-pkg:
   return
   a1 := make-pkg "a-1.7.0" ["b ^1.0.0"]
   registries := make-registries [a1]
-  expect-throw "ERROR": find-solution a1 registries
-  expect-equals "Not able to find package b in any registry." error
+  solution := find-solution a1 registries
+  expect-null solution
+  expect-equals 1 output.size
+  expect-equals "Warning: Package 'b' not found" output[0]
 
 test-fail-version:
   a1 := make-pkg "a-1.7.0" ["b ^1.0.0"]
   b234 := make-pkg "b-2.3.4"
   registries := make-registries [a1, b234]
-  expect-throw "Unable to resolve dependencies": find-solution a1 registries
+  solution := find-solution a1 registries
+  expect-null solution
 
 // TODO(florian): handle/test preferred packages.
 /*
@@ -253,7 +257,6 @@ test-min-sdk:
   registries := make-registries [a170, b140, b180, b200, c100]
   solution := find-solution a170 registries
   check-solution solution [a170, b140, b200, c100]
-  expect-equals v120 solution.sdk-version
 
 test-sdk-version:
   v110 := SemanticVersion.parse "1.1.0"
@@ -267,15 +270,11 @@ test-sdk-version:
   registries := make-registries [a170, b140, b160, b180]
   solution := find-solution a170 registries
   check-solution solution [a170, b180]
-  expect-equals v130 solution.sdk-version
 
   solution = find-solution a170 registries --sdk-version=v115
   check-solution solution [a170, b140]
-  expect-equals v110 solution.sdk-version
 
 test-fail-sdk-version:
-  // TODO(florian): fix this test.
-  return
   v105 := SemanticVersion.parse "1.0.5"
   v110 := SemanticVersion.parse "1.1.0"
   v120 := SemanticVersion.parse "1.2.0"
@@ -286,14 +285,14 @@ test-fail-sdk-version:
   b180 := make-pkg "b-1.8.0" --min-sdk=v130
   registries := make-registries [a170, b140, b160, b180]
 
-  expect-throw "Unable to resolve dependencies":
-    solution := find-solution a170 registries --sdk-version=v105
+  solution := find-solution a170 registries --sdk-version=v105
+  expect-null solution
   expect-equals 1 output.size
-  expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version 1.0.5" output[0]
+  expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version '1.0.5'" output[0]
 
   a170 = make-pkg "a-1.7.0" ["b ^1.0.0"] --min-sdk=v110
   registries = make-registries [a170, b140, b160, b180]
-  expect-throw "Unable to resolve dependencies":
-    solution := find-solution a170 registries --sdk-version=v105
+  solution = find-solution a170 registries --sdk-version=v105
+  expect-null solution
   expect-equals 1 output.size
   expect-equals "Warning: SDK version '1.0.5' does not satisfy the minimal SDK requirement '^1.1.0'" output[0]

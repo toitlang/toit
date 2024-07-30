@@ -23,8 +23,6 @@ import .git
 import .description
 import ..file-system-view
 import ..error
-import ..solver.registry-solver
-import ..solver.local-solver
 import ..semantic-version
 import ..project.package
 import ..constraints
@@ -139,6 +137,27 @@ class Registries:
     unreachable
 
   /**
+  Returns all descriptions for the given url.
+
+  The descriptions are sorted by version in descending order.
+  */
+  retrieve-descriptions url/string -> List:
+    seen-versions := {}
+    result := []
+    registries.do --values: | registry/Registry |
+      descriptions := registry.retrieve-descriptions url
+      if descriptions:
+        descriptions.do: | description/Description |
+          if seen-versions.contains description.version: continue.do
+          seen-versions.add description.version
+          result.add description
+
+    // Sort.
+    result.sort --in-place: | a/Description b/Description |
+      -(a.version.compare-to b.version)
+    return result
+
+  /**
   Returns the versions in the registry for the given url.
   The versions are sorted in descending order.
   */
@@ -237,6 +256,14 @@ abstract class Registry:
   */
   retrieve-versions url/string -> List?:
     return description-cache.get-versions url
+
+  /**
+  Returns all descriptions for the given $url.
+
+  The result is *not* sorted.
+  */
+  retrieve-descriptions url/string -> List?:
+    return description-cache.get-descriptions url
 
   search search-string/string -> List:
     search-version-constraint/Constraint? := null

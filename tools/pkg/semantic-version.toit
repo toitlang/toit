@@ -65,6 +65,11 @@ class SemanticVersion:
   operator > other/SemanticVersion -> bool:
     return not this <= other
 
+  compare-to other/SemanticVersion -> int:
+    if this < other: return -1
+    if this == other: return 0
+    return 1
+
   to-string -> string:
     str := "$major.$minor.$patch"
     if not pre-releases.is-empty:

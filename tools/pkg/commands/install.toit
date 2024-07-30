@@ -83,7 +83,7 @@ class InstallCommand:
     if not file.is-directory src-directory:
       error "Path supplied in package argument is an invalid local package, missing $src-directory."
 
-    package-file := ExternalPackageFile (fs.to-absolute package)
+    package-file := ExternalPackageFile --dir=(fs.to-absolute package)
     if not prefix: prefix = package-file.name
 
     project.install-local prefix package
