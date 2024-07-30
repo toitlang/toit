@@ -293,6 +293,8 @@ class AssetsBuilder:
     directory.mkdir --recursive working-dir
     directory.chdir working-dir
     git-run ["init"]
+    git-run ["config", "user.email", "test@example.com"]
+    git-run ["config", "user.name", "Test User"]
     stream := directory.DirectoryStream source-dir
     while version-name := stream.next:
       // Start by deleting the current version.
@@ -304,7 +306,7 @@ class AssetsBuilder:
       // Copy over the new version.
       copy-path --source="$source-dir/$version-name" --target=working-dir
       git-run ["add", "."]
-      git-run ["commit", "--message", "Add $version-name", "--author", "Test <test@example.com>"]
+      git-run ["commit", "--message", "Add $version-name"]
       git-run ["tag", version-name]
     git-run ["update-server-info"]
     file.write-content --path="$working-dir/.git/hooks/post-update" """
