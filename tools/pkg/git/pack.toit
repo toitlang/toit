@@ -68,7 +68,7 @@ class Pack:
         if not stats: // TODO: Implement overwrite, including a chmod in host.file.
           file.write_content value --path="$path/$name"
       else:
-        expand_ "$path/name" value
+        expand_ "$path/$name" value
 
   static TYPE_COMMIT_ ::= 1
   static TYPE_TREE_ ::= 2
