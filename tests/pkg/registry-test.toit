@@ -3,9 +3,11 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import fs
 import host.os
 import host.directory
 import host.file
+import system
 
 import encoding.yaml
 
@@ -178,6 +180,10 @@ test-registries:
   expect-throw "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
 
 main:
+  source-location := system.program-path
+  source-dir := fs.dirname source-location
+  directory.chdir source-dir
+
   with-test-registry:
     test-git
     test-local
