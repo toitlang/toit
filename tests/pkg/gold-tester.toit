@@ -303,7 +303,7 @@ class AssetsBuilder:
       // Copy over the new version.
       copy-path --source="$source-dir/$version-name" --target=working-dir
       git-run ["add", "."]
-      git-run ["commit", "--message", "Add $version-name"]
+      git-run ["commit", "--message", "Add $version-name", "--author", "Test <test@example.com>"]
       git-run ["tag", version-name]
     git-run ["update-server-info"]
     file.write-content --path="$working-dir/.git/hooks/post-update" """
