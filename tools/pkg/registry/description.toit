@@ -48,14 +48,14 @@ class Description:
 
   version -> SemanticVersion:
     if not cached_version_:
-      cached_version_ = SemanticVersion content[VERSION-KEY_]
+      cached_version_ = SemanticVersion.parse content[VERSION-KEY_]
     return cached_version_
 
   sdk-version -> Constraint?:
     if cached-sdk-version_.is-empty:
       if environment := content.get ENVIRONMENT-KEY_:
         if sdk-constraint := environment.get SDK-KEY_:
-          cached-sdk-version_.add (Constraint sdk-constraint)
+          cached-sdk-version_.add (Constraint.parse sdk-constraint)
           return cached-sdk-version_[0]
       cached-sdk-version_.add null
     return cached-sdk-version_[0]

@@ -26,11 +26,11 @@ class SemanticVersion:
   pre-releases/List
   build-numbers/List
 
-  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:
-
-  constructor version/string:
+  static parse version/string -> SemanticVersion:
     parsed := (SemanticVersionParser version).semantic-version --consume-all
     return SemanticVersion.from-parse-result parsed
+
+  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:
 
   constructor.from-parse-result parsed/SemanticVersionParseResult:
     major = parsed.triple.triple[0]
