@@ -91,12 +91,12 @@ class Project:
 
   install-remote prefix/string remote/Description:
     package-file.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
-    solve_
+    solve_ --no-update-everything
     save
 
   install-local prefix/string path/string:
     package-file.add-local-dependency prefix path
-    solve_
+    solve_ --no-update-everything
     save
 
   uninstall prefix/string:
@@ -105,7 +105,7 @@ class Project:
     save
 
   update:
-    solve_
+    solve_ --update-everything
     save
 
   install:
@@ -132,10 +132,22 @@ class Project:
   packages-cache-dir:
     return "$config.root/$PACKAGES-CACHE"
 
-  solve_:
+  /**
+  Solves the dependencies of the project.
+
+  If $update-everything is true, doesn't take the lock-file into account, and
+    updates all dependencies. Otherwise, uses the lock-file to avoid unnecessary
+    changes.
+  */
+  solve_ --update-everything/bool:
     dependencies := package-file.collect-registry-dependencies
     min-sdk := package-file.compute-min-sdk-version
     solver := Solver registries --sdk-version=sdk-version --outputter=(:: print it)
+    if not update-everything and lock-file:
+      lock-file.packages.do: | package/Package |
+        if package is RepositoryPackage:
+          repository-package := package as RepositoryPackage
+          solver.set-preferred repository-package.url repository-package.version
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:
       throw "Unable to resolve dependencies"
