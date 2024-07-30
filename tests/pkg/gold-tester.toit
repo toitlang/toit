@@ -113,6 +113,7 @@ class GoldTester:
       file.write-content --path=gold-file actual
     else:
       expected-content := (file.read-content gold-file).to-string
+        expected-content = expected-content.replace --all "\r" ""
       expect-equals expected-content actual
 
   analyze args -> RunResult_:
