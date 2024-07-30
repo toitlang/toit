@@ -1,0 +1,6 @@
+name: pkg1
+description: git-package 1
+dependencies:
+  pkg2:
+    url: http://localhost:<[*PORT*]>/pkg/pkg2
+    version: ^2.1.3

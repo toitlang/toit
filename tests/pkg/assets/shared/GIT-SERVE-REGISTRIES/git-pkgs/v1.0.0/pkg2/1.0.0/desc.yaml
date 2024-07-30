@@ -1,0 +1,4 @@
+name: pkg2
+description: git-package 2
+url: http://localhost:<[*PORT*]>/pkg/pkg2
+version: 1.0.0
