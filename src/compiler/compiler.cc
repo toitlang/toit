@@ -131,10 +131,6 @@ class Pipeline {
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
 
-  // Gives the Pipeline the opportunity to change the program once it was
-  // resolved.
-  virtual void patch(ir::Program* program);
-
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
 
@@ -167,27 +163,6 @@ class Pipeline {
   void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
-class DebugCompilationPipeline : public Pipeline {
- public:
-  // Forward constructor arguments to super class.
-  using Pipeline::Pipeline;
-
- protected:
-  void patch(ir::Program* program);
-  List<const char*> adjust_source_paths(List<const char*> source_paths);
-  PackageLock load_package_lock(List<const char*> source_paths);
-
- public:
-  static constexpr const char* const DEBUG_ENTRY_PATH = "///<debug>";
-  static constexpr const char* const DEBUG_ENTRY_CONTENT = R"""(
-// We are avoiding types to make the patching easier.
-dispatch_debug_string location_token obj nested -> any:
-  // Calls to the static dispatch methods will be patched in here.
-  throw "Unknown location token"
-
-main args:
-  throw "Unimplemented")""";
-};
 
 class LanguageServerPipeline : public Pipeline {
  public:
@@ -404,15 +379,10 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     if (path_count < 1) {
       FATAL("LANGUAGE SERVER ERROR - parse must have at least one source");
     }
-    auto source_paths = ListBuilder<const char*>::allocate(path_count + 1);
+    auto source_paths = ListBuilder<const char*>::allocate(path_count);
     for (int i = 0; i < path_count; i++) {
       source_paths[i] = strdup(reader.next("path"));
     }
-    // Add the debug-content which would be needed for a real compilation.
-    fs->register_intercepted(DebugCompilationPipeline::DEBUG_ENTRY_PATH,
-                             unsigned_cast(DebugCompilationPipeline::DEBUG_ENTRY_CONTENT),
-                             strlen(DebugCompilationPipeline::DEBUG_ENTRY_CONTENT));
-    source_paths[path_count] = DebugCompilationPipeline::DEBUG_ENTRY_PATH;
 
     NullDiagnostics diagnostics(&source_manager);
     configuration.diagnostics = &diagnostics;
@@ -714,18 +684,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
                                  const PipelineConfiguration& configuration) {
   PipelineConfiguration main_configuration = configuration;
 
-  NullDiagnostics null_diagnostics(configuration.source_manager);
-  PipelineConfiguration debug_configuration = main_configuration;
-  debug_configuration.diagnostics = &null_diagnostics;
-  // TODO(florian): the dep-file needs to keep track of both compilations.
-  debug_configuration.dep_file = null;
-  debug_configuration.dep_format = DepFormat::none;
-  debug_configuration.werror = false;
-
   auto source_paths = ListBuilder<const char*>::build(source_path);
 
   auto pipeline_main_result = Pipeline::Result::invalid();
-  auto pipeline_debug_result = Pipeline::Result::invalid();
 
   if (Flags::no_fork) {
     if (Flags::compiler_sandbox) {
@@ -734,10 +695,6 @@ SnapshotBundle Compiler::compile(const char* source_path,
     }
     Pipeline main_pipeline(main_configuration);
     pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
-    if (pipeline_main_result.is_valid()) {
-      DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths, false);
-    }
   } else {
 #ifdef TOIT_POSIX
     int pipefd[2];
@@ -756,45 +713,28 @@ SnapshotBundle Compiler::compile(const char* source_path,
       Pipeline pipeline(main_configuration);
       auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
       send_pipeline_result(write_fd, pipeline_result);
-      if (pipeline_result.is_valid()) {
-        DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths, false);
-        send_pipeline_result(write_fd, pipeline_result);
-      }
       close(write_fd);
       exit(0);
     }
     close(write_fd);  // Not needing that direction.
     pipeline_main_result = receive_pipeline_result(read_fd);
-    if (pipeline_main_result.is_valid()) {
-      pipeline_debug_result = receive_pipeline_result(read_fd);
-    }
     close(read_fd);
     wait_for_child(cpid, main_configuration.diagnostics);
 #else
     FATAL("fork not supported");
 #endif
   }
-  if (!pipeline_main_result.is_valid() || !pipeline_debug_result.is_valid()) {
-    // We don't create the debug-result if the main-result failed, and
-    // the debug-compilation should never fail. The following frees should thus
-    // not be necessary. However, they can't hurt either.
+  if (!pipeline_main_result.is_valid()) {
     pipeline_main_result.free_all();
-    pipeline_debug_result.free_all();
     return SnapshotBundle::invalid();
   }
   SnapshotBundle result(List<uint8>(pipeline_main_result.snapshot,
                                     pipeline_main_result.snapshot_size),
                         List<uint8>(pipeline_main_result.source_map_data,
-                                    pipeline_main_result.source_map_size),
-                        List<uint8>(pipeline_debug_result.snapshot,
-                                    pipeline_debug_result.snapshot_size),
-                        List<uint8>(pipeline_debug_result.source_map_data,
-                                    pipeline_debug_result.source_map_size));
+                                    pipeline_main_result.source_map_size));
   // The snapshot bundle copies all given data. It's thus safe to free
   //   the pipeline data.
   pipeline_main_result.free_all();
-  pipeline_debug_result.free_all();
   return result;
 }
 
@@ -865,70 +805,6 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   return result;
 }
 
-void Pipeline::patch(ir::Program* program) {}
-
-void DebugCompilationPipeline::patch(ir::Program* program) {
-  // Patches the dispatch_debug_string method that was given in the DEBUG_ENTRY_PATH.
-  // The method receives 3 parameters:
-  //   - the location_token
-  //   - a JSON object
-  //   - a lambda for nested deserialization
-  // The method should dispatch to the `debug_string` method of the class that
-  // corresponds to the location_token.
-  // We therefore find all static `Class.debug_string` methods, and add an `if`
-  //   that checks whether the `location_token` is the same as the `Class`' token.
-  //   If yes, we call that method, passing the JSON object and the lambda.
-  ir::Method* dispatch_method = null;
-  for (auto method : program->methods()) {
-    if (method->name() == Symbols::dispatch_debug_string) {
-      auto location = source_manager()->compute_location(method->range().from());
-      if (strcmp(location.source->absolute_path(), DEBUG_ENTRY_PATH) == 0) {
-        dispatch_method = method;
-        break;
-      }
-    }
-  }
-  ASSERT(dispatch_method != null);
-  auto range = dispatch_method->range();
-  ir::Parameter* location_token_param = dispatch_method->parameters()[0];
-  ir::Parameter* obj_param = dispatch_method->parameters()[1];
-  ir::Parameter* nested_callback_param = dispatch_method->parameters()[2];
-  ListBuilder<ir::Expression*> dispatch_statements;
-  CallShape call_shape(2, 0);
-  for (auto method : program->methods()) {
-    auto klass = method->holder();
-    if (klass == null) continue;
-    if (method->name() != Symbols::debug_string) continue;
-    if (!method->is_global_fun()) continue;  // Exclude constructors and factories.
-    auto shape = method->resolution_shape();
-    if (!shape.accepts(call_shape)) continue;
-    // We now have a static `Class.debug_string` method with the right shape.
-    // Add the following `if` to the body:
-    // ```
-    // if <Class-location-token> == location_token: return <Class.debug_string> object nested
-    // ```
-    CallBuilder builder(range);  // The `<Class.debug-string> object nested` call.
-    builder.add_argument(_new ir::ReferenceLocal(obj_param, 0, range),
-                              Symbol::invalid());
-    builder.add_argument(_new ir::ReferenceLocal(nested_callback_param, 0, range),
-                              Symbol::invalid());
-    auto call = builder.call_static(_new ir::ReferenceMethod(method, range));
-    CallBuilder comparison_builder(range);  // `<Class-location-token> == location_token`.
-    comparison_builder.add_argument(_new ir::ReferenceLocal(location_token_param, 0, range),
-                                    Symbol::invalid());
-    int class_location_token = klass->range().from().token();
-    auto dot = _new ir::Dot(_new ir::LiteralInteger(class_location_token, range),
-                            Token::symbol(Token::EQ));
-    auto comparison_call = comparison_builder.call_instance(dot);
-    dispatch_statements.add(_new ir::If(comparison_call,
-                                        _new ir::Return(call, 0, range),
-                                        _new ir::LiteralNull(range),
-                                        range));
-  }
-  dispatch_statements.add(dispatch_method->body());
-  dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
-}
-
 void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
@@ -944,18 +820,6 @@ List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) 
   return source_paths;
 }
 
-List<const char*> DebugCompilationPipeline::adjust_source_paths(List<const char*> source_paths) {
-  source_paths = Pipeline::adjust_source_paths(source_paths);
-  ASSERT(source_paths.length() == 1);
-  // We should use the SourceManager's VIRTUAL_FILE_PREFIX, but hard-coding it is
-  // much simpler, and we do have an ASSERT to make sure we update if the prefix
-  // ever changes.
-  ASSERT(SourceManager::is_virtual_file(DEBUG_ENTRY_PATH));
-  filesystem()->register_intercepted(DEBUG_ENTRY_PATH, unsigned_cast(DEBUG_ENTRY_CONTENT), strlen(DEBUG_ENTRY_CONTENT));
-  source_paths = ListBuilder<const char*>::build(DEBUG_ENTRY_PATH, source_paths[0]);
-  return source_paths;
-}
-
 PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   auto entry_path = source_paths.first();
   std::string lock_file;
@@ -964,20 +828,6 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
-  return PackageLock::read(lock_file,
-                           entry_path,
-                           source_manager(),
-                           filesystem(),
-                           diagnostics());
-}
-
-PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> source_paths) {
-  // When doing the debug-compilation, the actual entry file has been pushed back (and the
-  //   synthetic main has been inserted in front). The lock file should still be found
-  //   relative to the original path.
-  ASSERT(source_paths.length() == 2);
-  auto entry_path = source_paths[1];
-  auto lock_file = find_lock_file(entry_path, filesystem());
   return PackageLock::read(lock_file,
                            entry_path,
                            source_manager(),
@@ -1845,7 +1695,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (Flags::print_ir_tree) ir_program->print(true);
 
-  patch(ir_program);
   check_types_and_deprecations(ir_program);
   check_definite_assignments_returns(ir_program, diagnostics());
 
@@ -1886,7 +1735,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
     sort_classes(ir_program->classes());
-    patch(ir_program);
     // We check the types again, because the compiler computes types as
     // a side-effect of this and the types are necessary for the
     // optimizations. This feels a little bit unfortunate, but it is
