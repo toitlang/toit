@@ -1747,7 +1747,6 @@ class Esp32Binary:
     drom := find-last-drom-segment_
     if not drom: return
     extension-size := compute-drom-extension-size_ drom
-    if not extension-size: return
     transform-drom-segment_ drom: it[..extension-size[0]]
 
   static compute-drom-extension-size_ drom/Esp32BinarySegment -> List:
