@@ -42,23 +42,16 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
   done.down
   if not gzip:
     // Test output against expected compressed data.
-    if not zlib-expected:
-      fd := file.Stream.for-write (gzip ? "out.gz" : "out.z")
+    fail := accumulator.size != zlib-expected.size
+    if fail:
+      print "Expected $zlib-expected.size, got $accumulator.size"
+    zlib-expected.size.repeat: if accumulator.backing-array[it] != zlib-expected[it]: fail = true
+    if fail:
+      print_ accumulator.bytes.stringify
+      fd := file.Stream.for-write "out.z"
       fd.out.write accumulator.backing-array 0 accumulator.size
       fd.close
-      print accumulator.bytes
-      exit 1
-    else:
-      fail := accumulator.size != zlib-expected.size
-      if fail:
-        print "Expected $zlib-expected.size, got $accumulator.size"
-      zlib-expected.size.repeat: if accumulator.backing-array[it] != zlib-expected[it]: fail = true
-      if fail:
-        print_ accumulator.bytes.stringify
-        fd := file.Stream.for-write "out.z"
-        fd.out.write accumulator.backing-array 0 accumulator.size
-        fd.close
-      expect (not fail)
+    expect (not fail)
   else:
     // Test round trip with zcat.
     subprocess := pipe.fork true pipe.PIPE-CREATED pipe.PIPE-CREATED pipe.PIPE-INHERITED "zcat" ["zcat"]
