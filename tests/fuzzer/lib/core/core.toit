@@ -25,13 +25,13 @@ class StringSlice_:
 class StringByteSlice_:
 class float:
 class LargeInteger_:
-class False_:
+class False:
 class Null_:
 class Object:
   stringify:
 class SmallInteger_:
 class Task_:
-class True_:
+class True:
 class LazyInitializer_:
 class Tombstone_:
 class Map:

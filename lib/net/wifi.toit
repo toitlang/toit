@@ -187,11 +187,8 @@ configure config/Map -> none:
 /**
 Reset the stored WiFi configuration and go back to using
   the WiFi credentials embedded in the firmware image.
-
-The argument $reset must be true.
 */
-configure --reset/bool -> none:
-  if reset != true: throw "Argument Error"
+configure --reset/True -> none:
   service := service_
   if not service: throw "WiFi unavailable"
   service.configure null

@@ -368,8 +368,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --all/bool needle -> none:
-    if all != true: throw "Argument Error"
+  remove --all/True needle -> none:
     target-index := 0
     size.repeat:
       entry := this[it]
@@ -385,8 +384,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --last/bool needle -> none:
-    if last != true: throw "Argument Error"
+  remove --last/True needle -> none:
     for i := size - 1; i >= 0; i--:
       entry := this[i]
       if entry == needle:
@@ -458,11 +456,8 @@ abstract class List extends CollectionBase:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -650,9 +645,8 @@ abstract class List extends CollectionBase:
   The given range must be sorted.
   Searches for $needle in the sorted range $from (inclusive) - $to (exclusive).
   Uses binary search with `<`, `>` and `==` to find the $needle.
-  The $binary flag must be true.
   */
-  index-of --binary/bool needle from/int=0 to/int=size -> int:
+  index-of --binary/True needle from/int=0 to/int=size -> int:
     return index-of --binary needle from to --if-absent=: -1
 
   /**
@@ -663,7 +657,7 @@ abstract class List extends CollectionBase:
     the needle) calls $if-absent with $to (where $to was adjusted
     according to the rules in $(index-of --last needle from to)).
   */
-  index-of --binary/bool needle from/int=0 to/int=size [--if-absent]:
+  index-of --binary/True needle from/int=0 to/int=size [--if-absent]:
     comp := : | a b |
       if a < b:      -1
       else if a == b: 0
@@ -1195,10 +1189,8 @@ interface ByteArray extends io.Data:
 
   /**
   Iterates over all bytes in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none
+  do --reversed/True [block] -> none
 
   /**
   Whether all bytes satisfy the given $predicate.
@@ -1411,11 +1403,8 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -2514,10 +2503,8 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   /**
   Variant of $(Collection.do [block]).
   Iterates over the elements of this collection in reverse order.
-  The flag $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2945,11 +2932,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Variant of $(do [block]).
   Iterates over all key/value pairs in reverse order.
-  The flag $reversed must be true.
   Users must not modify this instance while iterating over it.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2964,11 +2949,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each key of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $keys must be true.
   */
-  do --keys/bool --reversed/bool=false [block] -> none:
-    if keys != true: throw "Bad Argument"
+  do --keys/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call key
     else:
@@ -2977,11 +2959,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each value of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $values must be true.
   */
-  do --values/bool --reversed/bool=false [block] -> none:
-    if values != true: throw "Bad Argument"
+  do --values/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call value
     else:
@@ -3013,8 +2992,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --values/bool [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3027,8 +3005,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --values/bool --initial [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True --initial [block]:
     result := initial
     do --values:
       result = block.call result it
@@ -3038,8 +3015,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --keys/bool [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3052,8 +3028,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --keys/bool --initial [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True --initial [block]:
     result := initial
     do --keys:
       result = block.call result it
@@ -3075,21 +3050,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether at least one key in the map satisfies the given $predicate.
-  The flag $keys must be true.
   Returns false, if the map is empty.
   */
-  any --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  any --keys/True [predicate] -> bool:
     do --keys: if predicate.call it: return true
     return false
 
   /**
   Whether at least one value in the map satisfies the given $predicate.
-  The flag $values must be true.
   Returns false, if the map is empty.
   */
-  any --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  any --values/True [predicate] -> bool:
     do --values: if predicate.call it: return true
     return false
 
@@ -3104,21 +3075,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether all keys in the map satisfy the given $predicate.
-  The flag $keys must be true.
   Returns true, if the map is empty.
   */
-  every --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  every --keys/True [predicate] -> bool:
     do --keys: if not predicate.call it: return false
     return true
 
   /**
   Whether all values in the map satisfy the given $predicate.
-  The flag $values must be true.
   Returns true, if the map is empty.
   */
-  every --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  every --values/True [predicate] -> bool:
     do --values: if not predicate.call it: return false
     return true
 
@@ -3152,14 +3119,11 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Maps the values of this instance.
 
-  The flag $in-place must be true.
-
   Invokes the given $block on each key/value pair and replaces the old value with
     the result of the call.
 
   */
-  map --in-place/bool [block] -> none:
-    if in-place != true: throw "Bad Argument"
+  map --in-place/True [block] -> none:
     limit := backing_ ? backing_.size : 0
     for i := 0; i < limit; i += STEP_:
       key := backing_[i]

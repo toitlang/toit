@@ -37,13 +37,13 @@ namespace compiler {
   T(string_byte_slice, StringByteSlice_)  \
   T(double, float_)                       \
   T(large_integer, LargeInteger_)         \
-  T(false, False_)                        \
+  T(false, False)                         \
   T(null, Null_)                          \
   T(object, Object)                       \
   T(smi, SmallInteger_)                   \
   T(task, Task_)                          \
   T(large_array, LargeArray_)             \
-  T(true, True_)                          \
+  T(true, True)                           \
   T(lazy_initializer, LazyInitializer_)   \
   T(stack, Stack_)                        \
   T(exception, Exception_)                \
