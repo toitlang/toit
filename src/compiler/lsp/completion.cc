@@ -322,6 +322,19 @@ void CompletionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope
   terminate();
 }
 
+void CompletionHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  UnorderedSet<ModuleScope*> already_visited;
+  UnorderedSet<Symbol> locals;
+  scope->for_each_module([&](Symbol name, const ResolutionEntry& entry) {
+    locals.insert(name);
+  });
+  scope->non_prefixed_imported()->for_each([&](Symbol name, const ResolutionEntry& entry) {
+    if (locals.contains(name)) return;
+    complete_entry(name, entry);
+  }, &already_visited);
+  terminate();
+}
+
 void CompletionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
   for (int i = labels.size() - 1; i >= 0; i--) {
     auto label = labels[i].first;

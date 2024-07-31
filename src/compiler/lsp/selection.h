@@ -133,6 +133,9 @@ class LspSelectionHandler {
   // The module scope may be null, if the import couldn't be resolved.
   virtual void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) = 0;
 
+  // The scope is the module the 'export' is from.
+  virtual void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) = 0;
+
   virtual void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) = 0;
 
   virtual void toitdoc_ref(ast::Node* node,
