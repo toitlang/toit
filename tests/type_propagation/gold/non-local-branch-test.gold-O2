@@ -43,7 +43,7 @@ test-continue tests/type_propagation/non-local-branch-test.toit
   1[020] - load literal hest
   3[006] - store outer S1
   5[041] - pop 1
-  6[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True_|False_}
+  6[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
   9[083] - branch if false T19
  12[016] - load local 2
  13[093] - non-local branch {test-continue:14}
@@ -85,7 +85,7 @@ pick tests/type_propagation/non-local-branch-test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   8[089] - return S1 0
 
 invoke tests/type_propagation/non-local-branch-test.toit

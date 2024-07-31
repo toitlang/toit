@@ -9,7 +9,7 @@ main tests/type_propagation/finally-test.toit
  15[090] - return null S1 0
 
 test-is-exception tests/type_propagation/finally-test.toit
-  0[053] - invoke static return-is-exception tests/type_propagation/finally-test.toit // {True_|False_}
+  0[053] - invoke static return-is-exception tests/type_propagation/finally-test.toit // {True|False}
   3[041] - pop 1
   4[022] - load null
   5[029] - load method [block] in test-is-exception tests/type_propagation/finally-test.toit
@@ -20,7 +20,7 @@ test-is-exception tests/type_propagation/finally-test.toit
  17[096] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
- 22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
  23[022] - load null
  24[015] - load local 1
  25[083] - branch if false T30
@@ -30,7 +30,7 @@ test-is-exception tests/type_propagation/finally-test.toit
  33[040] - pop 2
  35[097] - unwind
  36[002] - pop, load local S0
- 38[053] - invoke static id tests/type_propagation/finally-test.toit // [{True_|False_}] -> {True_|False_}
+ 38[053] - invoke static id tests/type_propagation/finally-test.toit // [{True|False}] -> {True|False}
  41[090] - return null S2 0
 
 [block] in test-is-exception tests/type_propagation/finally-test.toit
@@ -47,7 +47,7 @@ return-is-exception tests/type_propagation/finally-test.toit
  12[096] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
  18[022] - load null
  19[015] - load local 1
  20[083] - branch if false T25
@@ -74,7 +74,7 @@ test-exception tests/type_propagation/finally-test.toit
  17[096] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
- 22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
  23[022] - load null
  24[015] - load local 1
  25[083] - branch if false T30
@@ -101,7 +101,7 @@ return-exception tests/type_propagation/finally-test.toit
  12[096] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
  18[022] - load null
  19[015] - load local 1
  20[083] - branch if false T25
@@ -117,7 +117,7 @@ return-exception tests/type_propagation/finally-test.toit
   1[089] - return S1 1
 
 test-catchy tests/type_propagation/finally-test.toit
-  0[053] - invoke static catchy tests/type_propagation/finally-test.toit // {Null_|True_|False_}
+  0[053] - invoke static catchy tests/type_propagation/finally-test.toit // {Null_|True|False}
   3[090] - return null S1 0
 
 catchy tests/type_propagation/finally-test.toit
@@ -129,7 +129,7 @@ catchy tests/type_propagation/finally-test.toit
  12[096] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
  18[022] - load null
  19[015] - load local 1
  20[083] - branch if false T25
@@ -171,7 +171,7 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
  18[020] - load literal hest
  20[006] - store outer S1
  22[041] - pop 1
- 23[053] - invoke static pick tests/type_propagation/finally-test.toit // {True_|False_}
+ 23[053] - invoke static pick tests/type_propagation/finally-test.toit // {True|False}
  26[083] - branch if false T41
  29[029] - load method [block] in [block] in test-nlb-out-of-try tests/type_propagation/finally-test.toit
  34[038] - load block 0
@@ -197,7 +197,7 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
   6[089] - return S1 1
 
 id tests/type_propagation/finally-test.toit
- - argument 0: {String_|Null_|True_|False_|SmallInteger_|Exception_}
+ - argument 0: {String_|Null_|True|False|SmallInteger_|Exception_}
   0[016] - load local 2
   1[089] - return S1 1
 
@@ -205,7 +205,7 @@ pick tests/type_propagation/finally-test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   8[089] - return S1 0
 
 invoke tests/type_propagation/finally-test.toit

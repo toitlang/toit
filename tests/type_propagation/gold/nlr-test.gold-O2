@@ -13,7 +13,7 @@ test-simple tests/type_propagation/nlr-test.toit
 test-try tests/type_propagation/nlr-test.toit
   0[053] - invoke static stop-unwinding tests/type_propagation/nlr-test.toit // {String_|float|SmallInteger_}
   3[041] - pop 1
-  4[053] - invoke static stop-unwinding-alternative tests/type_propagation/nlr-test.toit // {String_|True_|float|SmallInteger_}
+  4[053] - invoke static stop-unwinding-alternative tests/type_propagation/nlr-test.toit // {String_|True|float|SmallInteger_}
   7[090] - return null S1 0
 
 always-return tests/type_propagation/nlr-test.toit
@@ -40,7 +40,7 @@ maybe-return tests/type_propagation/nlr-test.toit
 [block] in maybe-return tests/type_propagation/nlr-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[053] - invoke static pick tests/type_propagation/nlr-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/nlr-test.toit // {True|False}
   4[083] - branch if false T13
   7[041] - pop 1
   8[026] - load smi 42
@@ -89,7 +89,7 @@ stop-unwinding-alternative tests/type_propagation/nlr-test.toit
   2[029] - load method [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit
   7[095] - link try 0
   9[038] - load block 4
- 11[055] - invoke block S1 // [[block]] -> {True_}
+ 11[055] - invoke block S1 // [[block]] -> {True}
  13[041] - pop 1
  14[096] - unlink try 0
  16[018] - load local 4
@@ -115,7 +115,7 @@ stop-unwinding-alternative tests/type_propagation/nlr-test.toit
 [block] in [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[053] - invoke static pick tests/type_propagation/nlr-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/nlr-test.toit // {True|False}
   4[083] - branch if false T15
   7[041] - pop 1
   8[020] - load literal hest
@@ -128,7 +128,7 @@ pick tests/type_propagation/nlr-test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   8[089] - return S1 0
 
 invoke tests/type_propagation/nlr-test.toit

@@ -5,7 +5,7 @@ main tests/type_propagation/loop-list-test.toit
   7[014] - load local 0
   8[080] - invoke size size // [{List_}] -> {LargeInteger_|SmallInteger_}
  11[026] - load smi 100
- 13[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 13[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  14[083] - branch if false T38
  17[014] - load local 0
  18[015] - load local 1
@@ -19,7 +19,7 @@ main tests/type_propagation/loop-list-test.toit
  38[027] - load smi 4950
  41[015] - load local 1
  42[058] - invoke virtual last // [{List_}] -> {*}
- 46[062] - invoke eq // [{SmallInteger_}, {*}] -> {True_|False_}
+ 46[062] - invoke eq // [{SmallInteger_}, {*}] -> {True|False}
  47[082] - branch if true T56
  50[020] - load literal Bad computation
  52[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
