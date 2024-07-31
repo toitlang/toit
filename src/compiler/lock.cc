@@ -1088,7 +1088,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
         }
       }
 
-      if (i == -1) {
+      if (is_path_package) {
         ASSERT(!entry.path.empty());
         diagnostics->report_error(entry.range,
                                   "Package '%s' not found at '%s'",
