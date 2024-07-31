@@ -603,11 +603,9 @@ abstract class Reader implements old-reader.Reader:
   /**
   Calls the given $block for each remaining line.
 
-  The $lines argument must be true.
   See $read-line.
   */
-  do --lines/bool --keep-newlines/bool=false [block] -> none:
-    if not lines: throw "INVALID_ARGUMENT"
+  do --lines/True --keep-newlines/bool=false [block] -> none:
     while line := read-line --keep-newline=keep-newlines:
       block.call line
 

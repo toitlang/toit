@@ -209,14 +209,8 @@ test1:
 
   empty-map := {:}
 
-  expect-error "Bad Argument":
-    map.reduce --values=false: | x y | x + y
-
   expect-error "Not enough elements":
     empty-map.reduce --values: | x y | x + y
-
-  expect-error "Bad Argument":
-    map.reduce --keys=false: | x y | x + y
 
   expect-error "Not enough elements":
     empty-map.reduce --keys: | x y | x + y
