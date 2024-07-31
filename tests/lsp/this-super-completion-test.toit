@@ -52,10 +52,10 @@ class Subclass extends SomeClass:
   - *
 */
 
- constructor.other2:
-// In theory we would like to only see 'z', but at the moment we also
-// suggest namest that are already used.
-// When fixed, remove the "x, y, " belowe.
+  constructor.other2:
+  // In theory we would like to only see 'z', but at the moment we also
+  // suggest namest that are already used.
+  // When fixed, remove the "x, y, " below.
     super.named-arg --x=3 --y=5 --z=3
 /*                                ^~~
 + x=, y=, z=
