@@ -1,0 +1,3 @@
+toit-partition-table-esp32/bin/partitions.toit:139:8: warning: Condition always evaluates to false
+    if not path-var:
+       ^~~

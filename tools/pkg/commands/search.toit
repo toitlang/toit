@@ -36,7 +36,7 @@ class SearchCommand:
     url-to-description/Map := {:}
     search-result.do: | description/Description |
       version := description.version
-      old/Description := url-to-description.get description.url
+      old/Description? := url-to-description.get description.url
       if not old:
         url-to-description[description.url] = description
       else:

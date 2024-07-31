@@ -272,7 +272,6 @@ class DnsClient:
       --record-type/int
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
     list := get_ name --record-types={record-type} --timeout=timeout
-    if not list: throw (DnsException "No record found" --name=name)
     return list
 
   /**

@@ -124,8 +124,6 @@ find-snapshot id/uuid.Uuid -> string?:
   return null
 
 decode parsed/cli.Parsed -> none:
-  if not parsed: exit 1
-
   if parsed["uuid"]:
     pipe.print-to-stdout "The --uuid flag is deprecated and will be removed in a future release."
 
