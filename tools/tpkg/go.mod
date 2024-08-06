@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
-	github.com/toitlang/tpkg v0.0.0-20230928125532-1be02ac647ae
+	github.com/toitlang/tpkg v0.0.0-20240806094622-9637186e3a28
 )
 
 require (
@@ -26,7 +26,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/imdario/mergo v0.3.14 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
