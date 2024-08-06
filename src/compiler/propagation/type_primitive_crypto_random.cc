@@ -20,7 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(crypto_random, MODULE_CRYPTO_RANDOM)
 
-TYPE_PRIMITIVE_ANY(random)
+TYPE_PRIMITIVE_BYTE_ARRAY(random)
 
 }  // namespace toit::compiler
 }  // namespace toit

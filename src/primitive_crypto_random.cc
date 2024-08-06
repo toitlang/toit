@@ -49,11 +49,11 @@ PRIMITIVE(random) {
 #else
   // The std::random_device is mapped to /dev/urandom on Linux/macOS and to
   // a cryptographic API on Windows.
-  std::random_device rd;
-  std::uniform_int_distribution<> dis(0, 255);
+  std::random_device device;
+  std::uniform_int_distribution<> distribution(0, 255);
   auto address = bytes.address();
   for (int i = 0; i < size; i++) {
-    address[i] = dis(rd);
+    address[i] = distribution(device);
   }
 #endif
 
