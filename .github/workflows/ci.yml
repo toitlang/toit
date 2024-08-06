@@ -932,7 +932,7 @@ jobs:
             mv toit toit-$arch
           done
 
-      - name: Create a DMG
+      - name: Create DMGs
         run: |
           set -e
           ln -s sdk/bin/toit toit-symlink
