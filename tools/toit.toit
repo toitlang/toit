@@ -526,7 +526,7 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
         enable-asserts = true
       else:
         enable-asserts = false
-    args.add "-X$(enable-asserts ? "enable-asserts" : "no-enable-asserts")"
+    args.add "-Xenable-asserts=$enable-asserts"
 
     if parsed["force"]: args.add "--force"
 
