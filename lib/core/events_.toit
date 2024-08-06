@@ -35,8 +35,10 @@ monitor ResourceState_:
       callback_ = null
       remove-finalizer this
 
-  // Called on timeouts and when the state changes because of the call
-  // to [register_object_notifier] in the constructor.
+  /**
+  Called on timeouts and when the state changes because of the call
+    to $register-monitor-notifier_ in the constructor.
+  */
   notify_:
     resource := resource_
     if resource:

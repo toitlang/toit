@@ -60,12 +60,13 @@ Decodes the given $data using URL-encoding, also known as percent encoding.
 The function is liberal, accepting unencoded characters that should be
   encoded, with the exception of '%'.
 Takes a string or a byte array, and may return a string or a ByteArray.
-  (Both string and ByteArray have a to_string method.)
-Does not check for malformed UTF-8, but calling to_string on the return
+  (Both string and ByteArray have a to-string method.)
+Does not check for malformed UTF-8, but calling to-string on the return
   value will throw on malformed UTF-8.
 Plus signs (+) are not decoded to spaces.
+
 # Example
-  (url.decode "foo%20b%C3%A5r").to_string  // Returns "foo bår"
+  (url.decode "foo%20b%C3%A5r").to-string  // Returns "foo bår".
 */
 decode data -> any:
   if data is string:
