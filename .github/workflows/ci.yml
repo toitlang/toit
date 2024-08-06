@@ -48,9 +48,6 @@ on:
         type: boolean
         default: true
 
-env:
-  ESPTOOL_VERSION: v4.6
-
 jobs:
   prereqs:
     runs-on: ubuntu-latest
@@ -652,7 +649,7 @@ jobs:
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi aarch64; do
+            for target in windows linux macos rpi aarch64 $MACOS_ARM; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
@@ -667,29 +664,30 @@ jobs:
 
       - name: Download esptools
         run: |
-          for arch in arm arm64 linux-amd64 macos win64; do
-            curl -O -L https://github.com/espressif/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_VERSION-$arch.zip
-            unzip esptool-$ESPTOOL_VERSION-$arch.zip
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             EXTENSION=""
-            if [[ "$arch" = "arm" ]]; then
-              TARGET=rpi
-            elif [[ "$arch" = "arm64" ]]; then
-              TARGET=aarch64
-            elif [[ "$arch" = "linux-amd64" ]]; then
-              TARGET=linux
-            elif [[ "$arch" = "macos" ]]; then
-              TARGET=macos
-            elif [[ "$arch" = "win64" ]]; then
-              TARGET=windows
+            if [[ "$os" = "windows" ]]; then
               EXTENSION=.exe
+              ESPTOOL_ARCH=windows-x64
+            elif [[ "$os" = "linux" ]]; then
+              ESPTOOL_ARCH=linux-x64
+            elif [[ "$os" = "macos" ]]; then
+              ESPTOOL_ARCH=macos-x64
+            elif [[ "$os" = "rpi" ]]; then
+              ESPTOOL_ARCH=linux-armv7
+            elif [[ "$os" = "aarch64" ]]; then
+              ESPTOOL_ARCH=linux-aarch64
+            elif [[ "$os" = "macos-arm" ]]; then
+              ESPTOOL_ARCH=macos-aarch64
+            else
+              echo "Unknown os: $os"
+              exit 1
             fi
-            cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
-            chmod +x $TARGET/toit/tools/esptool$EXTENSION
-            # At the moment there isn't a prebuilt macos-arm executable, and we use the x64 one instead.
-            if [[ "$arch" = "macos" && "$MACOS_ARM" != "" ]]; then
-              cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION macos-arm/toit/tools/esptool$EXTENSION
-              chmod +x macos-arm/toit/tools/esptool$EXTENSION
-            fi
+
+            curl -O -L https://github.com/toitlang/esptool/releases/latest/download/esptool-$ESPTOOL_ARCH.zip
+            unzip esptool-$ESPTOOL_ARCH.zip
+            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
+            chmod +x $os/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
@@ -865,9 +863,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: |
+          set -e
+          brew install create-dmg
+          brew install zip
+
       - uses: actions/download-artifact@v3
         with:
           name: macOS-build-unsigned
+
+      - name: Create out folder
+        run: |
+          mkdir out
 
       - name: Decompress
         run: |
@@ -879,11 +887,11 @@ jobs:
       - name: List executables
         id: list-executables
         run: |
-          find .
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
           # Don't sign the esptool which isn't from us.
-          find toit-x64/bin toit-x64/tools toit-arm/bin toit-arm/tools \
+          find toit-x64/bin toit-x64/tools toit-x64/vessels/vessel* toit-x64/vessels/darwin \
+               toit-arm/bin toit-arm/tools toit-arm/vessels/vessel* toit-arm/vessels/darwin \
              -type f \
              ! -regex '.*/esptool' \
              >> $GITHUB_OUTPUT
@@ -901,19 +909,48 @@ jobs:
 
       - name: Compress
         run: |
-          mv toit-x64 toit
-          tar c -zf toit-macos.tar.gz toit
-          mv toit toit-x64
-          mv toit-arm toit
-          tar c -zf toit-macos-arm.tar.gz toit
+          for arch in x64 arm; do
+            mv toit-$arch toit
+            tar c -zf out/toit-$arch.tar.gz toit
+            mv toit toit-$arch
+          done
+
+      - name: Create DMGs
+        run: |
+          set -e
+          ln -s sdk/bin/toit toit-symlink
+          for arch in x64 arm; do
+            # Use an empty directory as source so we don't accidentally add other files than SDK.
+            mkdir empty-$arch
+            create-dmg \
+                --volname "jag" \
+                --add-file toit toit-symlink 0 0 \
+                --add-file sdk toit-$arch 200 0 \
+                out/toit-$arch.dmg \
+                empty-$arch
+          done
+
+      - name: Sign DMGs
+        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: 33DS2ZRDST
+          app-path: |
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: macOS-build
           path: |
-            toit-macos.tar.gz
-            toit-macos-arm.tar.gz
+            out/toit-macos.tar.gz
+            out/toit-macos-arm.tar.gz
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload release artifacts x64
         if: github.event_name == 'release' &&
@@ -921,17 +958,8 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release artifacts arm
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos-arm.tar.gz
+          file_glob: true
+          file: out/*
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
