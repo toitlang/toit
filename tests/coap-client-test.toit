@@ -85,10 +85,12 @@ monitor TestTransport implements coap.Transport:
   error_ := null
   response_ := null
 
-  instruct .expect_ .return_:
+  instruct expect return-value:
+    expect_ = expect
+    return_ = return-value
 
-  set-response .response_:
-  set-error .error_:
+  set-response response: response_ = response
+  set-error error: error_ = error
 
   write msg/coap.Message:
 

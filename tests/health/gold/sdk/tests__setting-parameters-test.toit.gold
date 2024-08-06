@@ -1,0 +1,18 @@
+tests/setting-parameters-test.toit:51:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo this.x this.y:
+      ^~~~~~
+tests/setting-parameters-test.toit:51:14: warning: Field-storing parameters in non-constructors are deprecated
+  foo this.x this.y:
+             ^~~~~~
+tests/setting-parameters-test.toit:53:9: warning: Field-storing parameters in non-constructors are deprecated
+  bar x this.y:  // The this.y is not visible as parameter in the body.
+        ^~~~~~
+tests/setting-parameters-test.toit:68:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x .y:
+      ^~
+tests/setting-parameters-test.toit:68:10: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x .y:
+         ^~
+tests/setting-parameters-test.toit:70:9: warning: Field-storing parameters in non-constructors are deprecated
+  bar x .y:  // The this.y is not visible as parameter in the body.
+        ^~

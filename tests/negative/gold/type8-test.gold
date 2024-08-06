@@ -10,12 +10,18 @@ tests/negative/type8-test.toit:16:12: error: Lambda parameters can't have defaul
 tests/negative/type8-test.toit:16:21: error: Unresolved identifier: 'unresolved'
   run 0:: |x/int=0| unresolved x
                     ^~~~~~~~~~
+tests/negative/type8-test.toit:17:12: warning: Field-storing parameters in non-constructors are deprecated
+  run 0 : |.x| unresolved x
+           ^~
 tests/negative/type8-test.toit:17:12: error: Block can't have field-storing parameters
   run 0 : |.x| unresolved x
            ^~
 tests/negative/type8-test.toit:17:16: error: Unresolved identifier: 'unresolved'
   run 0 : |.x| unresolved x
                ^~~~~~~~~~
+tests/negative/type8-test.toit:18:12: warning: Field-storing parameters in non-constructors are deprecated
+  run 0:: |.x| unresolved x
+           ^~
 tests/negative/type8-test.toit:18:12: error: Lambda can't have field-storing parameters
   run 0:: |.x| unresolved x
            ^~

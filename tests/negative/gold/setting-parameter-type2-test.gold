@@ -1,3 +1,6 @@
+tests/negative/setting-parameter-type2-test.toit:8:7: warning: Field-storing parameters in non-constructors are deprecated
+  bar .foo/any:
+      ^~~~
 As check failed: an int (499) is not a string.
   0: A.bar                     tests/negative/setting-parameter-type2-test.toit:8:7
   1: main                      tests/negative/setting-parameter-type2-test.toit:11:7
