@@ -28,7 +28,8 @@ safe-name_ name/string -> string:
 /** A summary of a module. */
 class Module:
   uri / string ::= ?
-  dependencies / List/*<string>*/ ::= ?
+  is-deprecated / bool ::= ?
+  dependencies  / List/*<string>*/ ::= ?
   exported-modules / List/*<string>*/ ::= ?
   exports      / List ::= ?
   classes      / List ::= ?
@@ -38,6 +39,7 @@ class Module:
 
   constructor
       --.uri
+      --.is-deprecated
       --.dependencies
       --.exports
       --.exported-modules
@@ -49,6 +51,7 @@ class Module:
   equals-external other/Module -> bool:
     return other and
         uri == other.uri and
+        is-deprecated == other.is-deprecated and
         // The dependencies only have an external impact if `export_all` is true. However, we
         //    conservatively just return require that they are the same.
         dependencies == other.dependencies and
@@ -149,8 +152,9 @@ class Class:
   range / Range  ::= ?
   toplevel-id / int ::= ?
 
-  kind         / string ::= ?
-  is_abstract  / bool ::= false
+  kind          / string ::= ?
+  is-abstract   / bool ::= ?
+  is-deprecated / bool ::= ?
 
   superclass   / ToplevelRef? ::= ?
   interfaces   / List ::= ?
@@ -165,7 +169,7 @@ class Class:
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
+  constructor --.name --.range --.toplevel-id --.kind --.is-abstract --.is-deprecated
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
@@ -174,6 +178,7 @@ class Class:
         name == other.name and
         kind == other.kind and
         is-abstract == other.is-abstract and
+        is-deprecated == other.is-deprecated and
         (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
         (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
         (mixins.equals other.mixins --element-equals=: |a b| a.equals-external b) and
@@ -218,18 +223,21 @@ class Method:
   parameters  / List  ::= ?
   return-type / Type? ::= ?
 
-  is-abstract  / bool ::= false
-  is-synthetic / bool ::= false
+  is-abstract   / bool ::= ?
+  is-synthetic  / bool ::= ?
+  is-deprecated / bool ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
+  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type
+      --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
   equals-external other/Method -> bool:
     return other and
         name == other.name and
         kind == other.kind and
         is-abstract == other.is-abstract and
+        is-deprecated == other.is-deprecated and
         (parameters.equals other.parameters --element-equals=: |a b| a.equals-external b) and
         (return-type == other.return-type or (return-type and return-type.equals-external other.return-type))
 
@@ -262,17 +270,19 @@ class Method:
 class Field:
   name / string ::= ?
   range / Range ::= ?
-  is-final / bool ::= false
+  is-final / bool ::= ?
+  is-deprecated / bool ::= ?
   type / Type? ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor .name .range .is-final .type .toitdoc:
+  constructor .name .range .is-final .is-deprecated .type .toitdoc:
 
   equals-external other/Field -> bool:
     return other and
         name == other.name and
         is-final == other.is-final and
+        is-deprecated == other.is-deprecated and
         (type == other.type or (type and type.equals-external other.type))
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
@@ -339,6 +349,7 @@ class SummaryReader:
     module-uri := to-uri_ module-path
     assert: module-uri == module-uris_[current-module-id_]
 
+    is-deprecated := read-line == "deprecated"
     dependencies := read-list: to-uri_ read-line
     exported-modules := read-list: to-uri_ read-line
     exported := read-list: read-export
@@ -350,6 +361,7 @@ class SummaryReader:
     toitdoc := read-toitdoc
     return Module
         --uri=module-uri
+        --is-deprecated=is-deprecated
         --dependencies=dependencies
         --exported-modules=exported-modules
         --exports=exported
@@ -373,6 +385,7 @@ class SummaryReader:
     kind := read-line
     assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
     is-abstract := read-line == "abstract"
+    is-deprecated := read-line == "deprecated"
     superclass := read-toplevel-ref
     interfaces := read-list: read-toplevel-ref
     mixins := read-list: read-toplevel-ref
@@ -388,6 +401,7 @@ class SummaryReader:
         --toplevel-id=toplevel-id
         --kind=kind
         --is-abstract=is-abstract
+        --is-deprecated=is-deprecated
         --superclass=superclass
         --interfaces=interfaces
         --mixins=mixins
@@ -442,6 +456,7 @@ class SummaryReader:
       assert: global-id == -1
     else:
       throw "Unknown kind"
+    is-deprecated := read-line == "deprecated"
     parameters := read-list: read-parameter
     return-type := read-type
     toitdoc := read-toitdoc
@@ -454,6 +469,7 @@ class SummaryReader:
         --return-type=return-type
         --is-abstract=is-abstract
         --is-synthetic=is-synthetic
+        --is-deprecated=is-deprecated
         --toitdoc=toitdoc
 
   read-parameter -> Parameter:
@@ -470,9 +486,10 @@ class SummaryReader:
     name := read-line
     range := read-range
     is-final := read-line == "final"
+    is-deprecated := read-line == "deprecated"
     type := read-type
     toitdoc := read-toitdoc
-    return Field name range is-final type toitdoc
+    return Field name range is-final is-deprecated type toitdoc
 
   read-toitdoc -> Contents?:
     sections := read-list: read-section
