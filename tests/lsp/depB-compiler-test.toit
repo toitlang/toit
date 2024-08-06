@@ -9,9 +9,9 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  // run-client-test --use-toitlsp args: test it
+  run-client-test --use-toitlsp args: test it
 
-// Make sure that the `abstract` keyword is correctly handled.
+// Make sure that deprecation is correctly handled.
 test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
