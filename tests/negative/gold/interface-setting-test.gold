@@ -1,7 +1,13 @@
 tests/negative/interface-setting-test.toit:6:3: error: Interfaces can't have fields
   field := 499
   ^~~~~
+tests/negative/interface-setting-test.toit:7:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .field
+      ^~~~~~
 tests/negative/interface-setting-test.toit:7:7: error: Field-storing parameter not allowed in interface methods
+  foo .field
+      ^~~~~~
+tests/negative/interface-setting-test.toit:10:7: warning: Field-storing parameters in non-constructors are deprecated
   foo .field
       ^~~~~~
 tests/negative/interface-setting-test.toit:10:7: error: Field-storing parameter not allowed in interface methods

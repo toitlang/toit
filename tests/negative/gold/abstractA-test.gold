@@ -1,3 +1,6 @@
+tests/negative/abstractA-test.toit:6:16: warning: Field-storing parameters in non-constructors are deprecated
+  abstract foo .x
+               ^~
 tests/negative/abstractA-test.toit:6:16: error: Field-storing parameter not allowed in abstract methods
   abstract foo .x
                ^~

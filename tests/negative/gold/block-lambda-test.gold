@@ -4,15 +4,27 @@ tests/negative/block-lambda-test.toit:6:12: error: Block parameters can't be blo
 tests/negative/block-lambda-test.toit:7:13: error: Lambda parameters can't be blocks
   l := (:: |[x]| x.call)
             ^~
+tests/negative/block-lambda-test.toit:8:13: warning: Field-storing parameters in non-constructors are deprecated
+  b2 := (: |this.x| x)
+            ^~~~~~
 tests/negative/block-lambda-test.toit:8:13: error: Block can't have field-storing parameters
   b2 := (: |this.x| x)
             ^~~~~~
+tests/negative/block-lambda-test.toit:9:14: warning: Field-storing parameters in non-constructors are deprecated
+  l2 := (:: |this.x| x)
+             ^~~~~~
 tests/negative/block-lambda-test.toit:9:14: error: Lambda can't have field-storing parameters
   l2 := (:: |this.x| x)
              ^~~~~~
+tests/negative/block-lambda-test.toit:10:13: warning: Field-storing parameters in non-constructors are deprecated
+  b3 := (: |.x| x)
+            ^~
 tests/negative/block-lambda-test.toit:10:13: error: Block can't have field-storing parameters
   b3 := (: |.x| x)
             ^~
+tests/negative/block-lambda-test.toit:11:14: warning: Field-storing parameters in non-constructors are deprecated
+  l3 := (:: |.x| x)
+             ^~
 tests/negative/block-lambda-test.toit:11:14: error: Lambda can't have field-storing parameters
   l3 := (:: |.x| x)
              ^~

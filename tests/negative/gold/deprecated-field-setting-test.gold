@@ -1,0 +1,7 @@
+tests/negative/deprecated-field-setting-test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/deprecated-field-setting-test.toit:8:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x:
+      ^~
+Compilation failed

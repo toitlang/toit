@@ -599,7 +599,7 @@ void MethodResolver::resolve_fill_constructor() {
     if (ast_method->return_type() != null) {
       report_error(ast_method->return_type(), "Constructors may not have return types");
     }
-    _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions);
+    _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions, true);
   }
   ASSERT(method_->return_type().is_valid());
 
@@ -878,7 +878,7 @@ void MethodResolver::resolve_fill_method() {
 
   Set<ir::Parameter*> field_storing_parameters;
   std::vector<ir::Expression*> parameter_expressions;
-  _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions);
+  _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions, false);
 
   if (method_->is_factory() && ast_node->return_type() != null) {
     report_error(ast_node->return_type(), "Factories may not have return types");
@@ -1127,7 +1127,8 @@ class ReturnCollector : public ast::TraversingVisitor {
 
 void MethodResolver::_resolve_fill_parameters_return_type(
     Set<ir::Parameter*>* field_storing_parameters,
-    std::vector<ir::Expression*>* parameter_expressions) {
+    std::vector<ir::Expression*>* parameter_expressions,
+    bool is_constructor) {
   _resolve_fill_return_type();
 
   auto ast_method = ir_to_ast_map_->at(method_)->as_Method();
@@ -1141,7 +1142,8 @@ void MethodResolver::_resolve_fill_parameters_return_type(
                       has_implicit_this,
                       &ir_parameters,
                       field_storing_parameters,
-                      parameter_expressions);
+                      parameter_expressions,
+                      is_constructor);
   method_->set_parameters(ir_parameters);
 }
 
@@ -1199,6 +1201,7 @@ void MethodResolver::_resolve_parameters(
     List<ir::Parameter*>* ir_parameters,
     Set<ir::Parameter*>* field_storing_parameters,
     std::vector<ir::Expression*>* parameter_expressions,
+    bool is_constructor,
     int id_offset) {
   ASSERT(parameter_expressions != null);
 
@@ -1303,6 +1306,11 @@ void MethodResolver::_resolve_parameters(
                                            parameter->range());
 
     (*ir_parameters)[index] = ir_parameter;
+
+    if (parameter->is_field_storing() && !is_constructor) {
+      diagnostics()->report_warning(parameter,
+                                    "Field-storing parameters in non-constructors are deprecated");
+    }
 
     if (parameter->is_field_storing() && parameter->name()->is_LspSelection()) {
       List<ir::Field*> fields;
@@ -1967,6 +1975,7 @@ ir::Code* MethodResolver::_create_code(
                         &ir_parameters,
                         &field_storing_parameters,
                         &parameter_expressions,
+                        false,
                         id_offset);
 
     for (auto field_storing : field_storing_parameters) {

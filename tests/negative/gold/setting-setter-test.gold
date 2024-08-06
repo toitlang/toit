@@ -1,3 +1,6 @@
+tests/negative/setting-setter-test.toit:7:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .setter:
+      ^~~~~~~
 tests/negative/setting-setter-test.toit:7:7: error: Field-storing parameters may not call setters
   foo .setter:
       ^~~~~~~
