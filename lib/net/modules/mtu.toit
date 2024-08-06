@@ -4,7 +4,7 @@
 
 // IMPORTANT
 // =========
-// On the ESP32, the TOIT_MTU_TCP should match CONFIG_TCP_MSS and CONFIG_LWIP_TCP_MSS
+// On the ESP32, the $TOIT-MTU-TCP should match CONFIG_TCP_MSS and CONFIG_LWIP_TCP_MSS
 // from the sdkconfig files.
 //
 

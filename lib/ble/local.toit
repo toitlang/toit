@@ -49,7 +49,7 @@ class Peripheral extends Resource_:
   The data is advertised once every $interval.
 
   The advertise includes the given $connection-mode, which must be one
-    of the BLE_CONNECT_MODE_* constants (see $BLE-CONNECT-MODE-NONE and similar).
+    of the BLE-CONNECT-MODE-* constants (see $BLE-CONNECT-MODE-NONE and similar).
 
   Throws, If the adapter does not support parts of the advertise content.
   For example, on MacOS manufacturing data can not be specified.
@@ -192,9 +192,9 @@ class LocalService extends Resource_ implements Attribute:
   Adds a characteristic to this service with the given parameters.
 
   The $uuid is the uuid of the characteristic
-  The $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
+  The $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
-  $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
+  $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
 
   If $value is specified and the characteristic supports reads, it is used as the initial
@@ -495,9 +495,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   /**
   Adds a descriptor to this characteristic.
   $uuid is the uuid of the descriptor
-  $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
+  $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
-  $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
+  $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
   if $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.
@@ -510,9 +510,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   /**
   Adds a descriptor to this characteristic.
   $uuid is the uuid of the descriptor
-  $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
+  $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
-  $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
+  $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
   if $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.

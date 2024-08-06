@@ -19,6 +19,7 @@
 #include <stdarg.h>
 
 #include "cycle_detector.h"
+#include "deprecation.h"
 #include "diagnostic.h"
 #include "lsp/lsp.h"
 #include "map.h"
@@ -2276,6 +2277,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                      ir_to_ast_map_,
                                      diagnostics());
       toitdocs_.set_toitdoc(method, toitdoc);
+      method->set_is_deprecated(contains_deprecation_warning(toitdoc));
     }
   }
 }
@@ -2306,6 +2308,7 @@ void Resolver::resolve_field(ir::Field* field,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(field, toitdoc);
+    field->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
 }
 
@@ -2406,6 +2409,7 @@ void Resolver::resolve_fill_module(Module* module,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(module, toitdoc);
+    module->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
   resolve_fill_classes(module, entry_module, core_module);
@@ -2492,6 +2496,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(klass, toitdoc);
+    klass->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
 
   for (auto field : klass->fields()) {

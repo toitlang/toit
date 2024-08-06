@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      dispatch-toitdocs:
+        description: "Dispatch toitdoc rebuild"
+        required: false
+        type: boolean
+        default: false
       run-tests:
         description: "Run tests"
         required: false
@@ -297,48 +302,6 @@ jobs:
           retention-days: 5
           if-no-files-found: ignore
 
-      - name: Authenticate to Google cloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
-          service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: infrastructure-220307
-
-      - name: Upload toitdoc to gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          JSON_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
-          echo -n $TOIT_VERSION > LATEST.tmp
-          gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
-
-      - name: Update RELEASE in gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          echo -n $TOIT_VERSION > LATEST.tmp
-
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
-
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
         uses: actions/upload-artifact@v3
@@ -358,6 +321,26 @@ jobs:
           asset_name: toitdoc.json
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
+
+      - name: Dispatch toitdoc rebuild - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          ((github.event_name == 'release' && github.repository_owner == 'toitlang') ||
+           github.event.inputs.dispatch-toitdocs == 'true')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'true',
+                'toitdoc-version': '${{ github.event.release.tag_name }}'
+              },
+            });
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
