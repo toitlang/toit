@@ -571,7 +571,7 @@ run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
   if project-root: args.add "--project-root=$project-root"
   if sdk-version: args.add "--sdk-version=$sdk-version"
   arg-names.do:
-    if parsed[it] != null: args.add-all ["--$it", parsed[it]]
+    if parsed[it] != null: args.add-all ["--$it=$parsed[it]"]
   rest-args.do:
     if parsed[it] != null:
       rest-arg := parsed[it]
