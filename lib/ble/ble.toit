@@ -479,7 +479,7 @@ ble-clear-error_ characteristic is-oom:
 ble-platform-requires-uuid-as-byte-array_:
   return system.platform == system.PLATFORM-FREERTOS
 
-ble-callback-init_ resource read-timeout-ms for-read:
+ble-callback-init_ resource timeout-ms for-read:
   #primitive.ble.toit-callback-init
 
 ble-callback-deinit_ resource for-read:
