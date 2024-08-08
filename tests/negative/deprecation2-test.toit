@@ -2,15 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .deprecation-lib
-import .deprecation-lib show foo
+import .deprecation2-lib
+import .deprecation2-lib show foo
 
-/// Deprecated. Do something else instead.
+/// Deprecated.
 class Deprecated:
   constructor:
 
-  /// Deprecated. Use the other constructor
-  ///     instead.
+  /// Deprecated.
   constructor.named:
 
   method:
@@ -20,8 +19,7 @@ class A:
   Some documentation.
 
   # Deprecation
-  Deprecated. With `code` in
-    it.
+  Deprecated.
 
   For some reasons we don't want this constructor anymore.
   */
@@ -32,7 +30,7 @@ class A:
   /**
   Does something.
 
-  Deprecated. Used $method2 instead.
+  Deprecated.
   */
   method1:
 
@@ -45,28 +43,25 @@ class A:
 
   /**
   A field.
-  Deprecated. Use something
-    else.
+  Deprecated.
   */
   some-field := 499
 
   /// A static field.
-  /// Deprecated. Just don't.
+  /// Deprecated.
   static some-static-field := 42
 
 /**
 Globals too can be deprecated.
 
-Deprecated. Find something
-  else.
+Deprecated.
 */
 global := 42
 
 /**
 Some global fun.
 
-Deprecated. Use $bar
-  instead.
+Deprecated.
 */
 fun:
 

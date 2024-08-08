@@ -16,6 +16,7 @@
 #pragma once
 
 #include "set.h"
+#include "symbol.h"
 
 namespace toit {
 namespace compiler {
@@ -26,7 +27,7 @@ class Node;
 
 template<typename RefNode> class Toitdoc;
 
-bool contains_deprecation_warning(const Toitdoc<ir::Node*>& toitdoc);
+Symbol extract_deprecation_message(const Toitdoc<ir::Node*>& toitdoc);
 
 } // namespace toit::compiler
 } // namespace toit

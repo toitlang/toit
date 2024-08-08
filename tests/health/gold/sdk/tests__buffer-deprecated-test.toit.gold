@@ -1,7 +1,7 @@
-tests/buffer-deprecated-test.toit:10:13: warning: Class 'Buffer' is deprecated
+tests/buffer-deprecated-test.toit:10:13: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
   buffer := Buffer
             ^~~~~~
-tests/buffer-deprecated-test.toit:17:12: warning: Class 'Buffer' is deprecated
+tests/buffer-deprecated-test.toit:17:12: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
   buffer = Buffer
            ^~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
