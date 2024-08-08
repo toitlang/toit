@@ -98,3 +98,18 @@ add_custom_target(
   )
 
 add_dependencies(toit.compile generate-lib-symlink)
+
+set(TOIT_DEFAULT_PROJECT_DIR "${CMAKE_BINARY_DIR}/sdk/default")
+
+add_custom_command(
+  OUTPUT ${TOIT_DEFAULT_PROJECT_DIR}
+  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/default-packages ${TOIT_DEFAULT_PROJECT_DIR}
+  VERBATIM
+)
+
+add_custom_target(
+  generate-default-project-symlink
+  DEPENDS ${TOIT_DEFAULT_PROJECT_DIR}
+  )
+
+add_dependencies(toit.compile generate-default-project-symlink)

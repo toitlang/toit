@@ -177,6 +177,9 @@ add_custom_target(
 set(EXTERNAL_TOIT_LIBS)
 include(tools/external.cmake)
 
+# Mention the default packages so they are downloaded.
+toit_project(default_packages "${CMAKE_CURRENT_LIST_DIR}/default-packages")
+
 add_subdirectory(src)
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
