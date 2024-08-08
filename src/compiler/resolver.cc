@@ -140,10 +140,11 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     Module* module = i == -1 ? entry_module : modules[i];
     for (auto imported : module->imported_modules()) {
       if (imported.module->is_deprecated()) {
+        Symbol deprecation_message = imported.module->get_deprecation_message();
         auto import_node = imported.import;
         if (import_node) {
           auto range = import_node->range().extend(import_node->segments().last()->range());
-          diagnostics()->report_warning(range, "Deprecated library");
+          diagnostics()->report_warning(range, "Deprecated library%s", deprecation_message.c_str());
         }
       }
     }
@@ -2294,7 +2295,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                      ir_to_ast_map_,
                                      diagnostics());
       toitdocs_.set_toitdoc(method, toitdoc);
-      method->set_is_deprecated(contains_deprecation_warning(toitdoc));
+      method->set_deprecation(extract_deprecation_message(toitdoc));
     }
   }
 }
@@ -2325,7 +2326,7 @@ void Resolver::resolve_field(ir::Field* field,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(field, toitdoc);
-    field->set_is_deprecated(contains_deprecation_warning(toitdoc));
+    field->set_deprecation(extract_deprecation_message(toitdoc));
   }
 }
 
@@ -2426,7 +2427,7 @@ void Resolver::resolve_fill_module(Module* module,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(module, toitdoc);
-    module->set_is_deprecated(contains_deprecation_warning(toitdoc));
+    module->set_deprecation(extract_deprecation_message(toitdoc));
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
   resolve_fill_classes(module, entry_module, core_module);
@@ -2513,7 +2514,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(klass, toitdoc);
-    klass->set_is_deprecated(contains_deprecation_warning(toitdoc));
+    klass->set_deprecation(extract_deprecation_message(toitdoc));
   }
 
   for (auto field : klass->fields()) {

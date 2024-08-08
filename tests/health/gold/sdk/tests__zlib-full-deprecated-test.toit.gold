@@ -1,64 +1,64 @@
-tests/zlib-full-deprecated-test.toit:37:14: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:37:14: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
   compressor.write INPUT
              ^~~~~
-tests/zlib-full-deprecated-test.toit:38:14: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:38:14: warning: Deprecated 'Coder_.close'. Use out.close instead
   compressor.close
              ^~~~~
-tests/zlib-full-deprecated-test.toit:39:24: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:39:24: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   reader := compressor.reader
                        ^~~~~~
-tests/zlib-full-deprecated-test.toit:46:16: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:46:16: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
   decompressor.write compressed
                ^~~~~
-tests/zlib-full-deprecated-test.toit:47:16: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:47:16: warning: Deprecated 'Coder_.close'. Use out.close instead
   decompressor.close
                ^~~~~
-tests/zlib-full-deprecated-test.toit:48:26: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:48:26: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   reader := decompressor.reader
                          ^~~~~~
-tests/zlib-full-deprecated-test.toit:56:57: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:56:57: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
       for pos := 0; pos < INPUT.size; pos += compressor.write --wait=false INPUT[pos..]:
                                                         ^~~~~
-tests/zlib-full-deprecated-test.toit:58:16: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:58:16: warning: Deprecated 'Coder_.close'. Use out.close instead
     compressor.close
                ^~~~~
-tests/zlib-full-deprecated-test.toit:60:24: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:60:24: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   reader := compressor.reader
                        ^~~~~~
-tests/zlib-full-deprecated-test.toit:74:18: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:74:18: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
       compressor.write INPUT
                  ^~~~~
-tests/zlib-full-deprecated-test.toit:75:16: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:75:16: warning: Deprecated 'Coder_.close'. Use out.close instead
     compressor.close
                ^~~~~
-tests/zlib-full-deprecated-test.toit:77:24: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:77:24: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   reader := compressor.reader
                        ^~~~~~
-tests/zlib-full-deprecated-test.toit:95:18: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:95:18: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
     decompressor.write squashed
                  ^~~~~
-tests/zlib-full-deprecated-test.toit:96:18: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:96:18: warning: Deprecated 'Coder_.close'. Use out.close instead
     decompressor.close
                  ^~~~~
-tests/zlib-full-deprecated-test.toit:99:30: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:99:30: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   while data := decompressor.reader.read:
                              ^~~~~~
-tests/zlib-full-deprecated-test.toit:114:13: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:114:13: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
     encoder.write str
             ^~~~~
-tests/zlib-full-deprecated-test.toit:115:13: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:115:13: warning: Deprecated 'Coder_.close'. Use out.close instead
     encoder.close
             ^~~~~
-tests/zlib-full-deprecated-test.toit:118:25: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:118:25: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   while data := encoder.reader.read:
                         ^~~~~~
-tests/zlib-full-deprecated-test.toit:123:13: warning: Deprecated 'Coder_.write'
+tests/zlib-full-deprecated-test.toit:123:13: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
     decoder.write encoded
             ^~~~~
-tests/zlib-full-deprecated-test.toit:124:13: warning: Deprecated 'Coder_.close'
+tests/zlib-full-deprecated-test.toit:124:13: warning: Deprecated 'Coder_.close'. Use out.close instead
     decoder.close
             ^~~~~
-tests/zlib-full-deprecated-test.toit:127:25: warning: Deprecated 'Coder_.reader'
+tests/zlib-full-deprecated-test.toit:127:25: warning: Deprecated 'Coder_.reader'. Use 'in' instead
   while data := decoder.reader.read:
                         ^~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
