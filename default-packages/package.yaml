@@ -1,0 +1,7 @@
+dependencies:
+  host:
+    url: github.com/toitlang/pkg-host
+    version: ^1.15.1
+  http:
+    url: github.com/toitlang/pkg-http
+    version: ^2.7.2
