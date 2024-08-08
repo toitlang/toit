@@ -2,6 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .deprecation-lib
+import .deprecation-lib show foo
+
 /// Deprecated. Do something else instead.
 class Deprecated:
   constructor:
