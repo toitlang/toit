@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <string>
 #include <vector>
 #include "ast.h"
 #include "list.h"
@@ -53,19 +54,27 @@ class DepWriter {
 
 class PlainDepWriter : public DepWriter {
  protected:
-  void generate_header(const char* out_path);
-  void generate_footer();
-  void generate_dependency_entry(const char* source, List<const char*> dependencies);
+  void generate_header(const char* out_path) override;
+  void generate_footer() override;
+  void generate_dependency_entry(const char* source, List<const char*> dependencies) override;
 };
 
 class NinjaDepWriter : public DepWriter {
  protected:
-  void generate_header(const char* out_path);
-  void generate_footer();
-  void generate_dependency_entry(const char* source, List<const char*> dependencies);
+  void generate_header(const char* out_path) override;
+  void generate_footer() override;
+  void generate_dependency_entry(const char* source, List<const char*> dependencies) override;
 
  private:
   void write_escaped(const char* path);
+};
+
+/// A dependency writer that lists all sources, but doesn't emit inter-dependencies.
+class ListDepWriter : public DepWriter {
+ protected:
+  void generate_header(const char* out_path) override;
+  void generate_footer() override;
+  void generate_dependency_entry(const char* source, List<const char*> dependencies) override;
 };
 
 } // namespace toit::compiler
