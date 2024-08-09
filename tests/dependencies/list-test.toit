@@ -18,4 +18,3 @@ main args:
   lines := out.split "\n"
   expect (lines.contains my-path)
   expect (lines.any: it.contains "list-other.toit")
-
