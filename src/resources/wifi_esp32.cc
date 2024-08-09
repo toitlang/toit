@@ -45,6 +45,7 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
+class WifiEvents;
 
 class WifiResourceGroup : public ResourceGroup {
  public:
@@ -73,16 +74,26 @@ class WifiResourceGroup : public ResourceGroup {
   }
   void get_dns();
 
-  esp_err_t connect(const char* ssid, const char* password);
+  esp_err_t connect(WifiEvents* wifi, const char* ssid, const char* password);
 
-  esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel);
+  esp_err_t establish(WifiEvents* wifi, const char* ssid, const char* password, bool broadcast, int channel);
 
-  esp_err_t init_scan(void);
+  esp_err_t init_scan(WifiEvents* wifi);
 
   esp_err_t start_scan(bool passive, int channel, uint32_t period_ms);
 
   ~WifiResourceGroup() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+    esp_err_t err = ESP_OK;
+    for (int i = 0; i < DEINIT_ATTEMPTS; i++) {
+      // Similar to the disconnect and stop, we might get an error from the
+      // esp-idf if a previous operation is still in process.
+      // We will try to deinit the WiFi a few times before giving up.
+      esp_err_t err = esp_wifi_stop();
+      if (err == ESP_OK) break;
+      // We couldn't stop. Wait a bit and try again.
+      vTaskDelay(DEINIT_DELAY_MS / portTICK_PERIOD_MS);
+    }
+    FATAL_IF_NOT_ESP_OK(err);
     esp_netif_destroy_default_wifi(netif_);
     wifi_espnow_pool.put(id_);
   }
@@ -110,14 +121,21 @@ class WifiResourceGroup : public ResourceGroup {
 
     RtcMemory::set_wifi_channel(primary_channel);
   }
+
+  static const int DEINIT_ATTEMPTS = 3;
+  static const int DEINIT_DELAY_MS = 20;
 };
 
 class WifiEvents : public SystemResource {
  public:
   enum State {
+    // The order of the states is important as we use numerical comparisons
+    // to determine actions.
     STOPPED,
+    STARTING,
     STARTED,
-    CONNECTED
+    CONNECTING,
+    CONNECTED,
   };
 
   TAG(WifiEvents);
@@ -127,13 +145,36 @@ class WifiEvents : public SystemResource {
       , state_(STOPPED) {}
 
   ~WifiEvents() {
+    // At this point we have been unregistered from the event source. The
+    // state we have, is the last state that we received. It could be that
+    // the device is in a different state now.
+    // For example, if we asked to disconnect or stop, we might not yet have
+    // received the success-event.
     State state = this->state();
-    if (state >= CONNECTED) {
-      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
+    esp_err_t err = ESP_OK;
+    if (state >= CONNECTING) {
+      for (int i = 0; i < DISCONNECT_ATTEMPTS; i++) {
+        err = esp_wifi_disconnect();
+        if (err == ESP_OK) break;
+        // We couldn't disconnect. Wait a bit and try again.
+        // We really don't like doing this, as we are blocking the interpreter, but
+        // we are likely in a shutdown, so there isn't much choice.
+        vTaskDelay(DISCONNECT_DELAY_MS / portTICK_PERIOD_MS);
+      }
     }
-    if (state >= STARTED) {
-      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+    FATAL_IF_NOT_ESP_OK(err);
+    if (state >= STARTING) {
+      for (int i = 0; i < STOP_ATTEMPTS; i++) {
+        // Similar to the disconnect, we might get an error from the esp-idf
+        // if a previous operation is still in process.
+        // We will try to stop the WiFi a few times before giving up.
+        err = esp_wifi_stop();
+        if (err == ESP_OK) break;
+        // We couldn't stop. Wait a bit and try again.
+        vTaskDelay(STOP_DELAY_MS / portTICK_PERIOD_MS);
+      }
     }
+    FATAL_IF_NOT_ESP_OK(err);
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
@@ -146,6 +187,12 @@ class WifiEvents : public SystemResource {
   friend class WifiResourceGroup;
   uint8 disconnect_reason_;
   State state_;
+
+  static const int DISCONNECT_ATTEMPTS = 3;
+  static const int DISCONNECT_DELAY_MS = 20;
+
+  static const int STOP_ATTEMPTS = 3;
+  static const int STOP_DELAY_MS = 20;
 };
 
 class WifiIpEvents : public SystemResource {
@@ -195,6 +242,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       bool reconnecting = false;
       if (reconnect && reconnects_remaining_ > 0) {
         reconnects_remaining_--;
+        events->set_state(WifiEvents::CONNECTING);
         reconnecting = esp_wifi_connect() == ESP_OK;
       }
 
@@ -214,9 +262,12 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // because something is seriously wrong. We let the
       // higher level code know that we're disconnected and
       // clean up from there.
-      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
-        reconnects_remaining_ = 0;
-        state |= WIFI_DISCONNECTED;
+      if (reconnects_remaining_ > 0) {
+        events->set_state(WifiEvents::CONNECTING);
+        if (esp_wifi_connect() != ESP_OK) {
+          reconnects_remaining_ = 0;
+          state |= WIFI_DISCONNECTED;
+        }
       }
       break;
     }
@@ -326,7 +377,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
   return state;
 }
 
-esp_err_t WifiResourceGroup::connect(const char* ssid, const char* password) {
+esp_err_t WifiResourceGroup::connect(WifiEvents* events, const char* ssid, const char* password) {
   // Configure the WiFi to _start_ the channel scan from the last connected channel.
   // If there has been no previous connection, then the channel is 0 which causes a normal scan.
   uint8 channel = RtcMemory::wifi_channel();
@@ -358,10 +409,16 @@ esp_err_t WifiResourceGroup::connect(const char* ssid, const char* password) {
 
   // Request to start the WiFi stack. We will try to connect to
   // the network when we get the WIFI_EVENT_STA_START callback.
+  events->set_state(WifiEvents::STARTING);
   return esp_wifi_start();
 }
 
-esp_err_t WifiResourceGroup::establish(const char* ssid, const char* password, bool broadcast, int channel) {
+
+esp_err_t WifiResourceGroup::establish(WifiEvents* events,
+                                       const char* ssid,
+                                       const char* password,
+                                       bool broadcast,
+                                       int channel) {
   esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
   if (err != ESP_OK) return err;
 
@@ -379,14 +436,16 @@ esp_err_t WifiResourceGroup::establish(const char* ssid, const char* password, b
   if (err != ESP_OK) return err;
 
   reconnects_remaining_ = 0;
+  events->set_state(WifiEvents::STARTING);
   return esp_wifi_start();
 }
 
-esp_err_t WifiResourceGroup::init_scan(void) {
+esp_err_t WifiResourceGroup::init_scan(WifiEvents* events) {
   esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
   if (err != ESP_OK) return err;
 
   reconnects_remaining_ = 0;
+  events->set_state(WifiEvents::STARTING);
   return esp_wifi_start();
 }
 
@@ -529,7 +588,7 @@ PRIMITIVE(connect) {
 
   group->register_resource(wifi);
 
-  esp_err_t err = group->connect(ssid, password);
+  esp_err_t err = group->connect(wifi, ssid, password);
   if (err != ESP_OK) {
     group->unregister_resource(wifi);
     return Primitive::os_error(err, process);
@@ -555,7 +614,7 @@ PRIMITIVE(establish) {
 
   group->register_resource(wifi);
 
-  esp_err_t err = group->establish(ssid, password, broadcast, channel);
+  esp_err_t err = group->establish(wifi, ssid, password, broadcast, channel);
   if (err != ESP_OK) {
     group->unregister_resource(wifi);
     return Primitive::os_error(err, process);
@@ -639,7 +698,7 @@ PRIMITIVE(init_scan) {
 
   group->register_resource(wifi);
 
-  esp_err_t ret = group->init_scan();
+  esp_err_t ret = group->init_scan(wifi);
   if (ret != ESP_OK) {
     group->unregister_resource(wifi);
     return Primitive::os_error(ret, process);
