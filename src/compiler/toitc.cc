@@ -45,6 +45,7 @@ static void print_usage(int exit_code) {
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
   printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
   printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
+  printf("    --dependencies <toitfiles>...          // List dependencies.\n");
   printf("  }\n");
   exit(exit_code);
 }
@@ -102,6 +103,7 @@ int main(int argc, char **argv) {
   auto dep_format = compiler::Compiler::DepFormat::none;
   bool for_language_server = false;
   bool for_analysis = false;
+  bool for_dependencies = false;
   const char* vessels_root = null;
   const char* cross_os = null;
   const char* cross_arch = null;
@@ -242,6 +244,10 @@ int main(int argc, char **argv) {
       for_analysis = strcmp(argv[processed_args], "--analyze") == 0;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--dependencies") == 0) {
+      for_dependencies = true;
+      processed_args++;
+      ways_to_run++;
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
@@ -252,7 +258,7 @@ int main(int argc, char **argv) {
     } else {
       if (strcmp(argv[processed_args], "--") == 0) processed_args++;
       if (ways_to_run == 0) {
-        ASSERT(!for_analysis);  // Otherwise ways_to_run would be 1.
+        ASSERT(!for_analysis && !for_dependencies);  // Otherwise ways_to_run would be 1.
         if (processed_args == argc) {
           fprintf(stderr, "Missing toit-file, snapshot, or string-expression\n");
           print_usage(1);
@@ -269,7 +275,7 @@ int main(int argc, char **argv) {
   // We break after the first argument that isn't a flag.
   // This means that there is always at most one source-file.
   if (ways_to_run != 1) {
-    if (for_analysis) {
+    if (for_analysis || for_dependencies) {
       ASSERT(direct_script != null);
       fprintf(stderr, "Can't analyze string expressions\n");
     } else {
@@ -298,7 +304,7 @@ int main(int argc, char **argv) {
 
   args = &argv[processed_args];
 
-  if (for_language_server || for_analysis) {
+  if (for_language_server || for_analysis || for_dependencies) {
     if (bundle_filename != null) {
       fprintf(stderr, "Can't have snapshot-name with '--analyze' or '--lsp'\n");
       print_usage(1);
@@ -310,10 +316,12 @@ int main(int argc, char **argv) {
       }
     } else {
       if (args[0] == NULL) {
-        fprintf(stderr, "Missing toit-files to '--analyze'\n");
+        fprintf(stderr,
+                "Missing toit-files to '%s'\n",
+                for_analysis ? "--analyze" : "--dependencies");
         print_usage(1);
       }
-      // Add all remaining arguments to the `--analyze` as source paths.
+      // Add all remaining arguments to the `--analyze`|`--dependencies` as source paths.
       source_paths = const_cast<const char**>(args);
       source_path_count = argc - processed_args;
       // We are not using the `args` local anymore, but it feels cleaner to set it
@@ -349,10 +357,11 @@ int main(int argc, char **argv) {
   if (for_language_server) {
     compiler::Compiler compiler;
     compiler.language_server(compiler_config);
-  } else if (for_analysis) {
+  } else if (for_analysis || for_dependencies) {
     compiler::Compiler compiler;
     compiler.analyze(List<const char*>(source_paths, source_path_count),
-                      compiler_config);
+                     compiler_config,
+                     for_dependencies);
   } else if (bundle_filename != null || exe_filename != null) {
     auto compiled = SnapshotBundle::invalid();
     compiler::Compiler compiler;

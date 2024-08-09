@@ -374,7 +374,8 @@ int main(int argc, char **argv) {
     } else if (for_analysis) {
       compiler::Compiler compiler;
       compiler.analyze(List<const char*>(source_paths, source_path_count),
-                       compiler_config);
+                       compiler_config,
+                       false);  // Not for dependencies.
     } else {
       auto compiled = SnapshotBundle::invalid();
       { compiler::Compiler compiler;  // Scope the compiler, so we destroy it before running the interpreter.

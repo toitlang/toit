@@ -48,6 +48,7 @@ class Compiler {
     none,
     plain,
     ninja,
+    list,
   };
 
   struct Configuration {
@@ -89,7 +90,8 @@ class Compiler {
   /// This mode does not run the program or generates any snapshots. It simply
   /// prints out all found errors.
   void analyze(List<const char*> source_paths,
-               const Configuration& config);
+               const Configuration& config,
+               bool for_dependencies);
 
   /// Compiles the given program.
   ///
