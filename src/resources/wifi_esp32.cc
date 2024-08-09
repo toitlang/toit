@@ -73,84 +73,13 @@ class WifiResourceGroup : public ResourceGroup {
   }
   void get_dns();
 
-  esp_err_t connect(const char* ssid, const char* password) {
-    // Configure the WiFi to _start_ the channel scan from the last connected channel.
-    // If there has been no previous connection, then the channel is 0 which causes a normal scan.
-    uint8 channel = RtcMemory::wifi_channel();
-    if (channel > 13) {
-      channel = 0;
-      RtcMemory::set_wifi_channel(0);
-    }
+  esp_err_t connect(const char* ssid, const char* password);
 
-    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
-    if (err != ESP_OK) return err;
+  esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel);
 
-    wifi_config_t config;
-    memset(&config, 0, sizeof(config));
-    strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
-    strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
-    config.sta.channel = channel;
-    config.sta.scan_method = (channel == 0)
-        ? WIFI_ALL_CHANNEL_SCAN
-        : WIFI_FAST_SCAN;
-    err = esp_wifi_set_config(WIFI_IF_STA, &config);
-    if (err != ESP_OK) return err;
+  esp_err_t init_scan(void);
 
-    // When connecting to Android mobile hotspot APs, we
-    // quite often get WIFI_REASON_AUTH_FAIL followed by
-    // WIFI_REASON_CONNECTION_FAIL. The next connect still
-    // has a good chance of succeeding, so we allow two
-    // reconnect attempts.
-    reconnects_remaining_ = 2;
-
-    // Request to start the WiFi stack. We will try to connect to
-    // the network when we get the WIFI_EVENT_STA_START callback.
-    return esp_wifi_start();
-  }
-
-  esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
-    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
-    if (err != ESP_OK) return err;
-
-    wifi_config_t config;
-    memset(&config, 0, sizeof(config));
-    strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid) - 1);
-    strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password) - 1);
-    config.ap.channel = channel;
-    config.ap.authmode = WIFI_AUTH_WPA2_PSK;
-    config.ap.ssid_hidden = broadcast ? 0 : 1;
-    config.ap.max_connection = 4;
-    config.ap.beacon_interval = 100;
-    config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
-    err = esp_wifi_set_config(WIFI_IF_AP, &config);
-    if (err != ESP_OK) return err;
-
-    reconnects_remaining_ = 0;
-    return esp_wifi_start();
-  }
-
-  esp_err_t init_scan(void) {
-    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
-    if (err != ESP_OK) return err;
-
-    reconnects_remaining_ = 0;
-    return esp_wifi_start();
-  }
-
-  esp_err_t start_scan(bool passive, int channel, uint32_t period_ms) {
-    wifi_scan_config_t config{};
-
-    config.channel = channel;
-    if (passive) {
-      config.scan_type = WIFI_SCAN_TYPE_PASSIVE;
-      config.scan_time.passive = period_ms;
-    } else {
-      config.scan_time.active.max = period_ms;
-      config.scan_time.active.min = period_ms;
-    }
-
-    return esp_wifi_scan_start(&config, false);
-  }
+  esp_err_t start_scan(bool passive, int channel, uint32_t period_ms);
 
   ~WifiResourceGroup() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
@@ -396,6 +325,86 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 
   return state;
 }
+
+esp_err_t WifiResourceGroup::connect(const char* ssid, const char* password) {
+  // Configure the WiFi to _start_ the channel scan from the last connected channel.
+  // If there has been no previous connection, then the channel is 0 which causes a normal scan.
+  uint8 channel = RtcMemory::wifi_channel();
+  if (channel > 13) {
+    channel = 0;
+    RtcMemory::set_wifi_channel(0);
+  }
+
+  esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+  if (err != ESP_OK) return err;
+
+  wifi_config_t config;
+  memset(&config, 0, sizeof(config));
+  strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
+  strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
+  config.sta.channel = channel;
+  config.sta.scan_method = (channel == 0)
+      ? WIFI_ALL_CHANNEL_SCAN
+      : WIFI_FAST_SCAN;
+  err = esp_wifi_set_config(WIFI_IF_STA, &config);
+  if (err != ESP_OK) return err;
+
+  // When connecting to Android mobile hotspot APs, we
+  // quite often get WIFI_REASON_AUTH_FAIL followed by
+  // WIFI_REASON_CONNECTION_FAIL. The next connect still
+  // has a good chance of succeeding, so we allow two
+  // reconnect attempts.
+  reconnects_remaining_ = 2;
+
+  // Request to start the WiFi stack. We will try to connect to
+  // the network when we get the WIFI_EVENT_STA_START callback.
+  return esp_wifi_start();
+}
+
+esp_err_t WifiResourceGroup::establish(const char* ssid, const char* password, bool broadcast, int channel) {
+  esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
+  if (err != ESP_OK) return err;
+
+  wifi_config_t config;
+  memset(&config, 0, sizeof(config));
+  strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid) - 1);
+  strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password) - 1);
+  config.ap.channel = channel;
+  config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  config.ap.ssid_hidden = broadcast ? 0 : 1;
+  config.ap.max_connection = 4;
+  config.ap.beacon_interval = 100;
+  config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
+  err = esp_wifi_set_config(WIFI_IF_AP, &config);
+  if (err != ESP_OK) return err;
+
+  reconnects_remaining_ = 0;
+  return esp_wifi_start();
+}
+
+esp_err_t WifiResourceGroup::init_scan(void) {
+  esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+  if (err != ESP_OK) return err;
+
+  reconnects_remaining_ = 0;
+  return esp_wifi_start();
+}
+
+esp_err_t WifiResourceGroup::start_scan(bool passive, int channel, uint32_t period_ms) {
+  wifi_scan_config_t config{};
+
+  config.channel = channel;
+  if (passive) {
+    config.scan_type = WIFI_SCAN_TYPE_PASSIVE;
+    config.scan_time.passive = period_ms;
+  } else {
+    config.scan_time.active.max = period_ms;
+    config.scan_time.active.min = period_ms;
+  }
+
+  return esp_wifi_scan_start(&config, false);
+}
+
 
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
