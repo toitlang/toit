@@ -24,19 +24,20 @@ TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
 
 
 class Socket implements net.Socket:
+  network_/net.Client
   state_/ResourceState_? := ?
 
-  constructor:
-    return Socket "0.0.0.0" 0
+  constructor network/net.Client:
+    return Socket network "0.0.0.0" 0
 
   // The hostname is the local address to bind to.  For client sockets, pass
   // 0.0.0.0.  For server sockets pass 0.0.0.0 to listen on all interfaces, or
   // the address of a particular interface in order to listen on that
   // particular one.  The port can be zero, in which case the system picks a
   // free port.
-  constructor hostname port:
+  constructor .network_ hostname port:
     group := udp-resource-group_
-    id := udp-bind_ group (dns-lookup hostname).raw port
+    id := udp-bind_ group (dns-lookup hostname --network=network_).raw port
     state_ = ResourceState_ group id
     add-finalizer this::
       this.close

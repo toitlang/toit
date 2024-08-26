@@ -30,7 +30,10 @@ TOIT-TCP-OPTION-SEND-BUFFER_   ::= 8
 // classes. It provides basic support for managing the underlying resource
 // state and for closing.
 class TcpSocket_:
+  network_/net.Client
   state_ := null
+
+  constructor .network_:
 
   local-address -> net.SocketAddress:
     return net.SocketAddress
@@ -93,8 +96,11 @@ class TcpSocket_:
 class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
   backlog_ := 0
 
-  constructor: return TcpServerSocket 10
-  constructor .backlog_:
+  constructor network/net.Client:
+    return TcpServerSocket network 10
+
+  constructor network/net.Client .backlog_:
+    super network
 
   listen address port:
     open_ (tcp-listen_ tcp-resource-group_ address port backlog_)
@@ -109,7 +115,7 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
       state_.clear-state TOIT-TCP-READ_
       return null
     // Create a new client socket and return it.
-    socket := TcpSocket
+    socket := TcpSocket network_
     socket.open_ id
     return socket
 
@@ -117,8 +123,11 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
 class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
   window-size_ := 0
 
-  constructor: return TcpSocket 0
-  constructor .window-size_:
+  constructor network/net.Client:
+    return TcpSocket network 0
+
+  constructor network/net.Client .window-size_:
+    super network
 
   peer-address -> net.SocketAddress:
     return net.SocketAddress
@@ -139,7 +148,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
     return connect hostname port: throw it
 
   connect hostname port [failure]:
-    address := dns-lookup hostname
+    address := dns-lookup hostname --network=network_
     open_ (tcp-connect_ tcp-resource-group_ address.raw port window-size_)
     error := catch:
       ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=failure
