@@ -5,7 +5,8 @@
 import io
 import monitor show ResourceState_
 import net
-import net.tcp as net
+import net.tcp
+import net.udp
 import reader show Reader
 
 import .dns
@@ -30,7 +31,7 @@ TOIT-TCP-OPTION-SEND-BUFFER_   ::= 8
 // classes. It provides basic support for managing the underlying resource
 // state and for closing.
 class TcpSocket_:
-  network_/net.Client
+  network_/udp.Interface
   state_ := null
 
   constructor .network_:
@@ -93,13 +94,13 @@ class TcpSocket_:
     return tcp-set-option_ state.group state.resource option value
 
 
-class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
+class TcpServerSocket extends TcpSocket_ implements tcp.ServerSocket:
   backlog_ := 0
 
-  constructor network/net.Client:
+  constructor network/udp.Interface:
     return TcpServerSocket network 10
 
-  constructor network/net.Client .backlog_:
+  constructor network/udp.Interface .backlog_:
     super network
 
   listen address port:
@@ -120,13 +121,13 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements tcp.Socket Reader:
   window-size_ := 0
 
-  constructor network/net.Client:
+  constructor network/udp.Interface:
     return TcpSocket network 0
 
-  constructor network/net.Client .window-size_:
+  constructor network/udp.Interface .window-size_:
     super network
 
   peer-address -> net.SocketAddress:

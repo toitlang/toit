@@ -5,7 +5,7 @@
 import io
 import monitor show ResourceState_
 import net
-import net.udp as net
+import net.udp
 
 import .dns
 import .mtu
@@ -23,8 +23,8 @@ TOIT-UDP-OPTION-MULTICAST-LOOPBACK   ::= 5
 TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
 
 
-class Socket implements net.Socket:
-  network_/net.Client
+class Socket implements udp.Socket:
+  network_/udp.Interface
   state_/ResourceState_? := ?
 
   constructor network/net.Client:
@@ -69,11 +69,11 @@ class Socket implements net.Socket:
   receive:
     array := receive_ (Array_ 3)
     if not array: return null
-    return net.Datagram
-      array[0]
-      net.SocketAddress
-        net.IpAddress array[1]
-        array[2]
+    return udp.Datagram
+        array[0]
+        net.SocketAddress
+            net.IpAddress array[1]
+            array[2]
 
   write data/io.Data from/int=0 to/int=data.byte-size:
     send_ data from to null 0

@@ -33,7 +33,7 @@ See $dns-lookup-multi.
 */
 dns-lookup -> net.IpAddress
     host/string
-    --network/net.Client
+    --network/udp.Interface
     --server/string?=null
     --client/DnsClient?=null
     --timeout/Duration=DNS-DEFAULT-TIMEOUT
@@ -65,7 +65,7 @@ If there are multiple servers then they are tried in rotation until one
 */
 dns-lookup-multi -> List
     host/string
-    --network/net.Client
+    --network/udp.Interface
     --server/string?=null
     --client/DnsClient?=null
     --timeout/Duration=DNS-DEFAULT-TIMEOUT
@@ -229,7 +229,7 @@ class DnsClient:
 
   static DNS-UDP-PORT ::= 53
 
-  fetch_ query/DnsQuery_ server-ip/net.IpAddress --network/net.Client -> List:
+  fetch_ query/DnsQuery_ server-ip/net.IpAddress --network/udp.Interface -> List:
     socket/udp.Socket? := null
     retry-timeout := DNS-RETRY-TIMEOUT
     attempt-counter := 1
@@ -276,7 +276,7 @@ class DnsClient:
   */
   get name -> List
       --record-type/int
-      --network/net.Client
+      --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
     list := get_ name
         --record-types={record-type}
@@ -292,7 +292,7 @@ class DnsClient:
     the numbers without a network round trip.
   */
   get name -> net.IpAddress
-      --network/net.Client
+      --network/udp.Interface
       --accept-ipv4/bool=true
       --accept-ipv6/bool=false
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
@@ -304,7 +304,7 @@ class DnsClient:
 
   get_ name -> List
       --record-types/Set
-      --network/net.Client
+      --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
     if net.IpAddress.is-valid name
