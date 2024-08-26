@@ -96,7 +96,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       resource := NetworkResource this client state_ --notifiable
       return [
         resource.serialize-for-rpc,
-        NetworkService.PROXY-ADDRESS,
+        NetworkService.PROXY-ADDRESS | NetworkService.PROXY-RESOLVE,
         "wifi:sta"
       ]
     finally: | is-exception exception |
@@ -132,7 +132,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       resource := NetworkResource this client state_ --notifiable
       return [
         resource.serialize-for-rpc,
-        NetworkService.PROXY-ADDRESS,
+        NetworkService.PROXY-ADDRESS | NetworkService.PROXY-RESOLVE,
         "wifi:ap"
       ]
     finally: | is-exception exception |
@@ -143,6 +143,9 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to-byte-array
+
+  resolve resource/ServiceResource host/string -> List:
+    return (dns-module.dns-lookup-multi host).map: it.raw
 
   ap-info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap-info
