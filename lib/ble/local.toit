@@ -24,6 +24,7 @@ class Peripheral extends Resource_:
   constructor .adapter bonding/bool secure-connections/bool:
     resource := ble-create-peripheral-manager_ adapter.resource_ bonding secure-connections
     super resource
+    resource-state_.wait-for-state STARTED-EVENT_
 
   /**
   Closes the peripheral manager and all its services.
