@@ -117,40 +117,6 @@ void OS::close(int fd) {
   // Do nothing.
 }
 
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level)
-    , sem_(xSemaphoreCreateMutex()) {
-    if (!sem_) FATAL("Failed allocating mutex semaphore")
-  }
-
-  ~Mutex() {
-    vSemaphoreDelete(sem_);
-  }
-
-  void lock() {
-    if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
-      FATAL("Mutex lock failed");
-    }
-  }
-
-  void unlock() {
-    if (xSemaphoreGive(sem_) != pdTRUE) {
-      FATAL("Mutex unlock failed");
-    }
-  }
-
-  bool is_locked() {
-    return xSemaphoreGetMutexHolder(sem_) != null;
-  }
-
-  int level() const { return level_; }
-
-  int level_;
-  SemaphoreHandle_t sem_;
-};
-
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
   // Task to wait on.
