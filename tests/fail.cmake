@@ -31,6 +31,7 @@ list(APPEND TOIT_FLAKY_TESTS
   tests/tls-ubuntu-test.toit
   tests/tls-global-cert-simple-test.toit
   tests/tls-simple-cert.toit
+  tests/tls-resume-session-test.toit
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
