@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "top.h"
+#include "mutex.h"
 
 namespace toit {
 

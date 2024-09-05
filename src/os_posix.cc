@@ -44,43 +44,6 @@ int64 OS::get_system_time() {
   return us;
 }
 
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level) {
-    pthread_mutex_init(&mutex_, null);
-  }
-
-  ~Mutex() {
-    pthread_mutex_destroy(&mutex_);
-  }
-
-  void lock() {
-    int error = pthread_mutex_lock(&mutex_);
-    if (error != 0) FATAL("mutex lock failed with error %d", error);
-  }
-
-  void unlock() {
-    int error = pthread_mutex_unlock(&mutex_);
-    if (error != 0) FATAL("mutex unlock failed with error %d", error);
-  }
-
-  bool is_locked() {
-    int error = pthread_mutex_trylock(&mutex_);
-    if (error == 0) {
-      unlock();
-      return false;
-    }
-    if (error != EBUSY) FATAL("mutex trylock failed with error %d", error);
-    return true;
-  }
-
-  int level() const { return level_; }
-
-  int level_;
-  pthread_mutex_t mutex_;
-};
-
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
