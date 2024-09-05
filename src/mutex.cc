@@ -21,27 +21,47 @@ namespace toit {
 void Locker::leave() {
   Thread* thread = Thread::current();
   if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
+  thread->locker_ = previous();
+  // Perform the actual unlock unless it was a reentrant locking.
+  bool unlock = !reentrant_;
+  reentrant_ = false;
+  if (unlock) mutex_->unlock();
+}
+
+static bool is_reentrant(Locker* locker, Mutex* mutex) {
+  // Search the chain of lockers, looking for a previous
+  // locking of the mutex at hand.
+  while (locker->mutex() != mutex) {
+    locker = locker->previous();
+    if (!locker) return false;
+  }
+  return true;
 }
 
 void Locker::enter() {
+  ASSERT(!reentrant_);
   Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
+  Mutex* mutex = this->mutex();
+  int level = mutex->level();
+
+  bool reentrant = false;
+  Locker* previous = thread->locker_;
+  if (previous != null) {
+    // Skip any reentrant lockers. There will be at least one
+    // non-reentrant locker.
+    while (previous->reentrant_) previous = previous->previous();
+    int previous_level = previous->mutex()->level();
     if (level <= previous_level) {
-      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)",
-          level, mutex_->name(), previous_level, previous_locker->mutex_->name());
+      reentrant = is_reentrant(previous, mutex);
+      if (!reentrant) {
+        FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)",
+            level, mutex->name(), previous_level, previous->mutex()->name());
+      }
+      reentrant_ = true;
     }
   }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
+
+  if (!reentrant) mutex->lock();
   previous_ = thread->locker_;
   thread->locker_ = this;
 }
