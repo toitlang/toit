@@ -18,6 +18,7 @@
 #include "top.h"
 
 #ifdef TOIT_FREERTOS
+#include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #else
 #include <errno.h>
