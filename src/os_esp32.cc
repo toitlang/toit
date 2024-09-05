@@ -200,33 +200,6 @@ class ConditionVariable {
   static const uint32 SIGNAL_ALL = 1 << 1;
 };
 
-void Locker::leave() {
-  Thread* thread = Thread::current();
-  if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
-}
-
-void Locker::enter() {
-  Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
-    if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
-    }
-  }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
-  previous_ = thread->locker_;
-  thread->locker_ = this;
-}
-
 const int DEFAULT_STACK_SIZE = 2 * KB;
 
 // Use C++x11 thread local variables for thread pointer.
