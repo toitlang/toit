@@ -104,7 +104,7 @@ class Mutex {
 //  }
 class Locker {
  public:
-  explicit Locker(Mutex* mutex)  : mutex_(mutex), previous_(null) {
+  explicit Locker(Mutex* mutex) : mutex_(mutex) {
     enter();
   }
 
@@ -120,8 +120,8 @@ class Locker {
   // Enter a locker after leaving it.
   void enter();
 
-  Mutex* mutex_;
-  Locker* previous_;
+  Mutex* const mutex_;
+  Locker* previous_ = null;
 
   friend class Unlocker;
 };
