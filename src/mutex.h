@@ -97,4 +97,52 @@ class Mutex {
   friend class ConditionVariable;
 };
 
+// Stack alloated block structured operation for locking and unlocking a mutex.
+// Usage:
+//  { Locker l(mutex);
+//    .. mutex is locked until end of scope ...
+//  }
+class Locker {
+ public:
+  explicit Locker(Mutex* mutex)  : mutex_(mutex), previous_(null) {
+    enter();
+  }
+
+  ~Locker() {
+    leave();
+  }
+
+ private:
+  // Explicitly leave the locker, while in the scope. Must be re-entered by
+  // calling `enter`.
+  void leave();
+
+  // Enter a locker after leaving it.
+  void enter();
+
+  Mutex* mutex_;
+  Locker* previous_;
+
+  friend class Unlocker;
+};
+
+// Block structured operation for temporarily unlocking a mutex inside a Locker.
+// Usage:
+//  { Unlocker u(locker);
+//    .. mutex is unlocked until end of scope ...
+//  }
+class Unlocker {
+ public:
+  explicit Unlocker(Locker& locker) : locker_(locker) {
+    locker_.leave();
+  }
+
+  ~Unlocker() {
+    locker_.enter();
+  }
+
+ private:
+  Locker& locker_;
+};
+
 }  // namespace toit
