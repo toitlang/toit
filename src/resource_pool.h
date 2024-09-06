@@ -20,18 +20,20 @@
 
 namespace toit {
 
-// Resource pool of a static amount of resources. When used, the global system
-// VM lock will be taken.
+// Resource pool of a static set of resources. When manipulated, the global
+// system lock will be taken.
 template<typename T, T Invalid>
 class ResourcePool {
  public:
-  ResourcePool() : values_(null) {}
-
-  // TODO: Single allocation?
   template<typename... Ts>
-  ResourcePool(T value, Ts... rest)
-      : ResourcePool(rest...) {
-    values_ = _new Value({value, values_});
+  ResourcePool(Ts... rest) : size_(count(rest...)) {
+    values_ = static_cast<Value*>(malloc(sizeof(Value) * size_));
+    if (!values_) FATAL("cannot allocate resource pool");
+    fill(values_, 0, rest...);
+  }
+
+  ~ResourcePool() {
+    free(values_);
   }
 
   // Get any resource from the pool. Returns Invalid if none is available.
@@ -58,49 +60,68 @@ class ResourcePool {
   }
 
   // Put a resource back in the pool.
-  void put(T value) {
+  void put(T t) {
     Locker locker(OS::global_mutex());
-    values_ = _new Value({value, values_});
+    for (int i = 0; i < size_; i++) {
+      Value* value = &values_[i];
+      if (value->t == t) {
+        ASSERT(value->used);
+        value->used = false;
+        return;
+      }
+    }
+    FATAL("cannot add unknown resource");
   }
 
  private:
   struct Value {
     T t;
-    Value* next;
+    bool used;
   };
 
+  static int count() {
+    return 0;
+  }
+
+  template<typename... Ts>
+  static int count(T value, Ts... rest) {
+    return 1 + count(rest...);
+  }
+
+  static void fill(Value* values, int index) {
+    return;
+  }
+
+  template<typename... Ts>
+  static void fill(Value* values, int index, T value, Ts... rest) {
+    values[index] = { value, false };
+    fill(values, index + 1, rest...);
+  }
+
   bool take(Locker& locker, T t) {
-    Value* p = null;
-    for (Value* c = values_; c != null; c = c->next) {
-      if (c->t == t) {
-        if (p != null) {
-          p->next = c->next;
-        } else {
-          values_ = c->next;
-        }
-        delete c;
+    for (int i = 0; i < size_; i++) {
+      Value* value = &values_[i];
+      if (value->t == t) {
+        if (value->used) return false;
+        value->used = true;
         return true;
       }
-      p = c;
     }
-
     return false;
   }
 
   T any(Locker& locker) {
-    Value* value = values_;
-    if (value == null) {
-      return Invalid;
+    for (int i = 0; i < size_; i++) {
+      Value* value = &values_[i];
+      if (!value->used) {
+        value->used = true;
+        return value->t;
+      }
     }
-
-    T t = value->t;
-    values_ = value->next;
-
-    delete value;
-
-    return t;
+    return Invalid;
   }
 
+  const int size_;
   Value* values_;
 };
 
