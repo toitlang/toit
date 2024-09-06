@@ -27,13 +27,13 @@ class ResourcePool {
  public:
   template<typename... Ts>
   ResourcePool(Ts... rest) : size_(count(rest...)) {
-    values_ = static_cast<Value*>(malloc(sizeof(Value) * size_));
-    if (!values_) FATAL("cannot allocate resource pool");
-    fill(values_, 0, rest...);
+    elements_ = static_cast<Element*>(malloc(sizeof(Element) * size_));
+    if (!elements_) FATAL("cannot allocate resource pool");
+    fill(elements_, 0, rest...);
   }
 
   ~ResourcePool() {
-    free(values_);
+    free(elements_);
   }
 
   // Get any resource from the pool. Returns Invalid if none is available.
@@ -43,30 +43,25 @@ class ResourcePool {
   }
 
   // Take a given resource from the pool. Returns false if it's not available.
-  bool take(T t) {
+  bool take(T value) {
     Locker locker(OS::global_mutex());
-    return take(locker, t);
+    return take(locker, value);
   }
 
   // Take a given resource from the pool if available, otherwise take any.
-  T preferred(T t) {
+  T preferred(T value) {
     Locker locker(OS::global_mutex());
-
-    if (take(locker, t)) {
-      return t;
-    }
-
-    return any(locker);
+    return take(locker, value) ? value : any(locker);
   }
 
   // Put a resource back in the pool.
-  void put(T t) {
+  void put(T value) {
     Locker locker(OS::global_mutex());
     for (int i = 0; i < size_; i++) {
-      Value* value = &values_[i];
-      if (value->t == t) {
-        ASSERT(value->used);
-        value->used = false;
+      Element* element = &elements_[i];
+      if (element->value == value) {
+        ASSERT(element->taken);
+        element->taken = false;
         return;
       }
     }
@@ -74,9 +69,9 @@ class ResourcePool {
   }
 
  private:
-  struct Value {
-    T t;
-    bool used;
+  struct Element {
+    T value;
+    bool taken;
   };
 
   static int count() {
@@ -88,22 +83,22 @@ class ResourcePool {
     return 1 + count(rest...);
   }
 
-  static void fill(Value* values, int index) {
+  static void fill(Element* elements, int index) {
     return;
   }
 
   template<typename... Ts>
-  static void fill(Value* values, int index, T value, Ts... rest) {
-    values[index] = { value, false };
-    fill(values, index + 1, rest...);
+  static void fill(Element* elements, int index, T value, Ts... rest) {
+    elements[index] = { .value = value, .taken = false };
+    fill(elements, index + 1, rest...);
   }
 
-  bool take(Locker& locker, T t) {
+  bool take(Locker& locker, T value) {
     for (int i = 0; i < size_; i++) {
-      Value* value = &values_[i];
-      if (value->t == t) {
-        if (value->used) return false;
-        value->used = true;
+      Element* element = &elements_[i];
+      if (element->value == value) {
+        if (element->taken) return false;
+        element->taken = true;
         return true;
       }
     }
@@ -112,17 +107,17 @@ class ResourcePool {
 
   T any(Locker& locker) {
     for (int i = 0; i < size_; i++) {
-      Value* value = &values_[i];
-      if (!value->used) {
-        value->used = true;
-        return value->t;
+      Element* element = &elements_[i];
+      if (!element->taken) {
+        element->taken = true;
+        return element->value;
       }
     }
     return Invalid;
   }
 
   const int size_;
-  Value* values_;
+  Element* elements_;
 };
 
 } // namespace toit
