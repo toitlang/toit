@@ -112,6 +112,9 @@ class Locker {
     leave();
   }
 
+  Mutex* mutex() const { return mutex_; }
+  Locker* previous() const { return previous_; }
+
  private:
   // Explicitly leave the locker, while in the scope. Must be re-entered by
   // calling `enter`.
@@ -122,6 +125,7 @@ class Locker {
 
   Mutex* const mutex_;
   Locker* previous_ = null;
+  bool reentrant_ = false;
 
   friend class Unlocker;
 };
