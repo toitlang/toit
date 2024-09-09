@@ -264,7 +264,7 @@ SMALL-PACKET-LIMIT_ ::= 96  // We ignore packets smaller than this, since they a
 // technique is to look for deltas between two numbers, where the lower 5 bits
 // of the delta match some delta in the pseudo-random pattern.
 class OffsetListener:
-  offset-weights_ := List INDEXES_ 0
+  offset-weights_ := List INDEXES_ --initial=0
   state-budget_ := List STATES_
   prev_ := 0
   prev-prev_ := 0
@@ -278,7 +278,7 @@ class OffsetListener:
   constructor:
     sum_ = sha256 NOISE-KEY_
     sum_.size.repeat: sum_[it] &= INDEX-MASK_
-    state-budget_.size.repeat: state-budget_[it] = List INDEXES_ 0
+    state-budget_.size.repeat: state-budget_[it] = List INDEXES_ --initial=0
 
   correspondance a b c d:
     return ((a - b) & INDEX-MASK_) == ((c - d) & INDEX-MASK_)
@@ -324,10 +324,10 @@ MINIMAL-GOODNESS ::= 30
 
 abstract class DataListener:
   // A list of how likely it is that we are in a given state.
-  states_ := List STATES_ 1
-  next-states_ := List STATES_ 1
-  data_ := List STATES_ 0
-  data-weights_ := List STATES_ 0
+  states_ := List STATES_ --initial=1
+  next-states_ := List STATES_ --initial=1
+  data_ := List STATES_ --initial=0
+  data-weights_ := List STATES_ --initial=0
   wrote-from-start_ := false
   hash_ := ?
   old-best-index_ := STATES_ - 1

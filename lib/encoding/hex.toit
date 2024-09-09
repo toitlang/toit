@@ -42,7 +42,7 @@ encode data/io.Data -> string:
 DECODING-MAP_ ::= create-decoding-map_
 
 create-decoding-map_ -> ByteArray:
-  result := ByteArray 0x100 --filler=0x10
+  result := ByteArray 0x100 --initial=0x10
   10.repeat:
     result['0' + it] = it
   6.repeat:

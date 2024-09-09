@@ -172,7 +172,7 @@ class Crc extends Checksum:
   calculate-table-little-endian_ width/int polynomial/int -> any:
     result := ?
     if width <= 8:
-      result = ByteArray 256 --filler=0
+      result = ByteArray 256 --initial=0
     else:
       result = List 256: 0
     crc := 1
@@ -188,7 +188,7 @@ class Crc extends Checksum:
   calculate-table-big-endian_ width/int polynomial/int -> any:
     result := ?
     if width <= 8:
-      result = ByteArray 256 --filler=0
+      result = ByteArray 256 --initial=0
     else:
       result = List 256: 0
     hi-bit := 1 << (width - 1)
