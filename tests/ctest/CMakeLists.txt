@@ -108,6 +108,10 @@ foreach(MODE positive negative)
 
     add_dependencies(build_test_assets ${exe})
 
+    if (NOT ${file} IN_LIST C_TESTS AND NOT ${file} IN_LIST CC_TESTS)
+      continue()
+    endif()
+
     file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
 
     if(${IS_NEGATIVE_TEST})
