@@ -20,9 +20,8 @@ exit_code=$?
 
 # Check the exit code of the executable.
 if [ $exit_code -eq 0 ]; then
-  echo "Executable did not fail as expected!"
-  exit 1  # Fail if the program didn't fail
+  exit 0
 else
-  echo "Program failed as expected. Exit code: $exit_code"
-  exit 0  # Success, since the program failed.
+  # Convert any non-zero exit code to 1.
+  exit 1
 fi
