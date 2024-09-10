@@ -124,10 +124,14 @@ foreach(MODE positive negative)
     endif()
 
     set(WRAPPER)
-    if (IS_NEGATIVE_TEST AND NOT WIN32)
+    if (IS_NEGATIVE_TEST)
       # Ctest only supports negative exit codes, but not aborts, segfaults, ...
       # Wrap the test in a script that converts aborts to exit code 1.
-      set(WRAPPER "${CMAKE_CURRENT_SOURCE_DIR}/abort-wrapper.sh")
+      if (WIN32)
+        set(WRAPPER powershell -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/abort-wrapper.ps1")
+      else()
+        set(WRAPPER "${CMAKE_CURRENT_SOURCE_DIR}/abort-wrapper.sh")
+      endif()
     endif()
 
     string(REGEX REPLACE "-test.cc?$" "-input.toit" test_input ${file})
