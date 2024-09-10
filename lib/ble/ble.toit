@@ -61,7 +61,7 @@ class BleUuid:
   /**
   Returns a string representation of this UUID.
 
-  If a deterministic UUID string representation is needed, prefer to use $to-string.
+  If a deterministic UUID string representation is needed, prefer using $to-string.
   */
   stringify -> string:
     return to-string
