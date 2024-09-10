@@ -1695,6 +1695,7 @@ class Typecheck : public Expression {
     AS_CHECK,
     PARAMETER_AS_CHECK,
     LOCAL_AS_CHECK,
+    GLOBAL_AS_CHECK,
     RETURN_AS_CHECK,
     FIELD_INITIALIZER_AS_CHECK,
     FIELD_AS_CHECK,
@@ -1720,6 +1721,7 @@ class Typecheck : public Expression {
       case AS_CHECK:
       case PARAMETER_AS_CHECK:
       case LOCAL_AS_CHECK:
+      case GLOBAL_AS_CHECK:
       case RETURN_AS_CHECK:
       case FIELD_INITIALIZER_AS_CHECK:
       case FIELD_AS_CHECK:

@@ -493,6 +493,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         return node->type();
       case Typecheck::PARAMETER_AS_CHECK:
       case Typecheck::LOCAL_AS_CHECK:
+      case Typecheck::GLOBAL_AS_CHECK:
       case Typecheck::RETURN_AS_CHECK:
       case Typecheck::FIELD_INITIALIZER_AS_CHECK:
       case Typecheck::FIELD_AS_CHECK:
