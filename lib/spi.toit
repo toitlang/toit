@@ -12,7 +12,7 @@ SPI is a serial communication bus able to address multiple devices along a main 
 To set up a SPI BUS:
 ```
 import gpio
-import serial.protocols.spi as spi
+import spi
 
 main:
   bus := spi.Bus
@@ -29,6 +29,20 @@ In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/B
   device := bus.device
     --cs=gpio.Pin 15
     --frequency=10_000_000
+```
+
+# Linux
+On Linux, devices can be created directly using their path. There is no need to create
+  a bus first.
+
+Example:
+```
+import spi
+
+main:
+  device := spi.Device --path="/dev/spidev0.0" --frequency=10_000_000
+  device.write #[0x01, 0x02, 0x03, 0x04]
+  device.close
 ```
 */
 
@@ -109,6 +123,21 @@ class Bus:
 A device connected with SPI.
 */
 interface Device extends serial.Device:
+  /**
+  Constructs a device from the given $path.
+
+  This function is only available on Linux.
+
+  The $mode parameter configures the clock polarity and phase (CPOL and CPHA) for this device.
+  The possible configurations are:
+  - 0 (0b00): CPOL=0, CPHA=0
+  - 1 (0b01): CPOL=0, CPHA=1
+  - 2 (0b10): CPOL=1, CPHA=0
+  - 3 (0b11): CPOL=1, CPHA=1
+  */
+  constructor --path/string --frequency/int --mode/int=0:
+    return DevicePath_ --path=path --frequency=frequency --mode=mode
+
   /** See $serial.Device.registers. */
   registers -> Registers
 
@@ -153,18 +182,8 @@ interface Device extends serial.Device:
   /** Closes this SPI device and releases resources associated with it. */
   close
 
-/** Device connected to an SPI bus. */
-class Device_ implements Device:
-  spi_/Bus := ?
-  device_ := ?
-  owning-bus_/bool := false
-
+abstract class DeviceBase_ implements Device:
   registers_/Registers? := null
-
-  /** Deprecated. Use $Bus.device. */
-  constructor .spi_ .device_:
-
-  constructor.init_ .spi_ .device_:
 
   /**
   See $Device.registers.
@@ -184,6 +203,34 @@ class Device_ implements Device:
   /** See $serial.Device.write. */
   write bytes/ByteArray:
     transfer bytes
+
+  abstract close
+
+  abstract transfer
+      data/ByteArray
+      --from/int=0
+      --to/int=data.size
+      --read/bool=false
+      --dc/int=0
+      --command/int=0
+      --address/int=0
+      --keep-cs-active/bool=false
+
+  abstract with-reserved-bus [block]
+
+
+/** Device connected to an SPI bus. */
+class Device_ extends DeviceBase_:
+  spi_/Bus := ?
+  device_ := ?
+  owning-bus_/bool := false
+
+  registers_/Registers? := null
+
+  /** Deprecated. Use $Bus.device. */
+  constructor .spi_ .device_:
+
+  constructor.init_ .spi_ .device_:
 
   /** See $Device.close. */
   close:
@@ -214,6 +261,36 @@ class Device_ implements Device:
       finally:
         owning-bus_ = false
         spi-release-bus_ device_
+
+class DevicePath_ extends DeviceBase_:
+  fd_/int := -1
+
+  constructor --path/string --frequency/int --mode/int:
+    fd_ = spi-linux-open_ path frequency mode
+    add-finalizer this:: close
+
+  close:
+    if fd_ != -1:
+      spi-linux-close_ fd_
+      fd_ = -1
+
+  transfer
+      data/ByteArray
+      --from/int=0
+      --to/int=data.size
+      --read/bool=false
+      --dc/int=0
+      --command/int=0
+      --address/int=0
+      --keep-cs-active/bool=false:
+    if read: throw "Not supported"
+    length := to - from
+    tx-buffer := read ? null : data
+    rx-buffer := read ? data : null
+    return spi-linux-transfer_ fd_ length tx-buffer from rx-buffer from 0 true
+
+  with-reserved-bus [block]:
+    throw "UNIMPLEMENTED"
 
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
@@ -295,3 +372,12 @@ spi-acquire-bus_ device:
 
 spi-release-bus_ device:
   #primitive.spi.release-bus
+
+spi-linux-open_ path/string frequency/int mode/int:
+  #primitive.spi_linux.open
+
+spi-linux-transfer_ fd/int length/int tx/ByteArray? from_tx/int rx/ByteArray? from_rx/int delay_usecs/int cs-change/bool:
+  #primitive.spi_linux.transfer
+
+spi-linux-close_ fd/int:
+  #primitive.file.close
