@@ -118,7 +118,6 @@ Expression* optimize_virtual_call(CallVirtual* node,
     if (!field->is_final()) {
       Expression* value = node->arguments()[0];
       if (field_stub->checked_type().is_valid()) {
-        // TODO: optimize the typecheck. We might not actually need it.
         value = _new Typecheck(Typecheck::FIELD_AS_CHECK,
                                value,
                                field_stub->checked_type(),

@@ -58,6 +58,7 @@ class Resolver {
   Diagnostics* diagnostics_;
   UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
   ToitdocRegistry toitdocs_;
+  std::vector<ir::AssignmentGlobal*> global_assignments_;
 
   Lsp* lsp_;
 
@@ -132,6 +133,8 @@ class Resolver {
                                               ir::Class* holder,
                                               bool needs_class,
                                               bool needs_mixin);
+
+  void add_global_assignment_typechecks();
 };
 
 } // namespace toit::compiler

@@ -132,6 +132,8 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     lsp_->emit_summary(modules, core_index, toitdocs_);
   }
 
+  add_global_assignment_typechecks();
+
   ListBuilder<ir::Class*> all_classes;
   ListBuilder<ir::Method*> all_methods;
   ListBuilder<ir::Global*> all_globals;
@@ -2262,6 +2264,10 @@ void Resolver::resolve_fill_method(ir::Method* method,
   MethodResolver resolver(method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
                           lsp_, source_manager_, diagnostics_);
   resolver.resolve_fill();
+  auto& new_assignments = resolver.global_assignments();
+  global_assignments_.insert(global_assignments_.end(),
+                             new_assignments.begin(),
+                             new_assignments.end());
 
   if (!method->is_synthetic()) {
     auto ast_node = ir_to_ast_map_.at(method)->as_Declaration();
@@ -2516,6 +2522,22 @@ void Resolver::resolve_fill_class(ir::Class* klass,
   }
   for (auto method : klass->methods()) {
     resolve_fill_method(method, klass, &class_scope, entry_module, core_module);
+  }
+}
+
+void Resolver::add_global_assignment_typechecks() {
+  for (auto assignment : global_assignments_) {
+    auto global = assignment->global();
+    if (!global->has_explicit_type()) continue;
+    auto type = global->return_type();
+    if (!type.is_class()) continue;
+    auto value = assignment->right();
+    value = _new ir::Typecheck(ir::Typecheck::GLOBAL_AS_CHECK,
+                               value,
+                               type,
+                               type.klass()->name(),
+                               value->range());
+    assignment->replace_right(value);
   }
 }
 
