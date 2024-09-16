@@ -868,6 +868,17 @@ PRIMITIVE(create) {
   uart_toit_hal_set_txfifo_empty_thr(init.hal, 10);
   uart_toit_hal_set_rx_timeout(init.hal, 10);
 
+  if (GPIO_IS_VALID_GPIO(rx)) {
+    // On some chips (specifically the S3) we have received up to a byte of
+    // 1-bits when the UART is enabled.
+    // To avoid this, we wait for the time of one byte at the baud rate, and
+    // then clear the RX FIFO.
+    // The stop-bits value is too large for STOP-BITS-1_5 and STOP-BITS-2, but
+    // waiting longer is OK.
+    int wait_time = 1 + (1000 * (data_bits + stop_bits) / baud_rate);
+    usleep(wait_time * 1000);
+  }
+
   init.uart->initialize();
 
   struct {
