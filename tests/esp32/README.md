@@ -7,6 +7,8 @@ Ideally they should eventually run automatically, but for now they should still
 be useful for making sure that all of the functionality has been run at least
 once. It should make refactoring easier too.
 
+All tests should be run once after a reboot, and then again without a reboot.
+
 ## Setup
 
 The testing needs two boards and several resistors.
