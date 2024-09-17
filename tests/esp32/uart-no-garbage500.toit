@@ -7,27 +7,19 @@ import gpio
 import uart
 
 /**
-Tests that the UART buffer doesn't start with garbage in it when
-  initialized as rs485 half-duplex.
+Tests that the UART buffer doesn't start with garbage in it.
 
 Setup:
-  Uses pin 16 and 23. They should stay unconnected or connected to
+  Uses pin 16. The pin should stay unconnected or connected to
   a high-impedance pin.
 */
 
 main:
   rx := gpio.Pin 16
-  rts := gpio.Pin 23
-  port := uart.Port
-      --rx=rx
-      --tx=null
-      --rts=rts
-      --baud-rate=9600
-      --mode=uart.Port.MODE-RS485-HALF-DUPLEX
+  port := uart.Port --rx=rx --tx=null --baud-rate=500
   expect-throw DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=200:
       data := port.in.read
       print "Got garbage: $data"
   port.close
-  rts.close
   rx.close

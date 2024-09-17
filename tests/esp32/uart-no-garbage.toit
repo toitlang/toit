@@ -10,13 +10,12 @@ import uart
 Tests that the UART buffer doesn't start with garbage in it.
 
 Setup:
-  IO16 must stay unconnected.
-
-Run this test after a reboot, and then run the test twice without rebooting.
+  Uses pin 16. The pin should stay unconnected or connected to
+  a high-impedance pin.
 */
 
 main:
-  rx := gpio.Pin 22
+  rx := gpio.Pin 16
   port := uart.Port --rx=rx --tx=null --baud-rate=9600
   expect-throw DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=200:
