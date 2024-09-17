@@ -178,6 +178,7 @@ public:
   UART_ISR_INLINE void enable_tx_interrupts(bool begin);
   UART_ISR_INLINE void disable_tx_interrupts(bool done);
 
+  UART_ISR_INLINE bool has_flushed_tx_fifo();
   UART_ISR_INLINE bool drain_tx_fifo();
   UART_ISR_INLINE void write_tx_break(uint8 length);
   UART_ISR_INLINE uint32 write_tx_fifo(const uint8* data, uint32 length);
@@ -461,10 +462,14 @@ UART_ISR_INLINE void UartResource::disable_tx_interrupts(bool done) {
   }
 }
 
+UART_ISR_INLINE bool UartResource::has_flushed_tx_fifo() {
+  return get_tx_fifo_free() == SOC_UART_FIFO_LEN && uart_toit_hal_is_tx_idle(hal_);
+}
+
 UART_ISR_INLINE bool UartResource::drain_tx_fifo() {
-  if (get_tx_fifo_free() == SOC_UART_FIFO_LEN) return true;
+  if (has_flushed_tx_fifo()) return true;
   int64 start = esp_timer_get_time();
-  while (get_tx_fifo_free() < SOC_UART_FIFO_LEN) {
+  while (!has_flushed_tx_fifo()) {
     int64 now = esp_timer_get_time();
     if (now - start > 1000) return false;  // One ms.
   }
