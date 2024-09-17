@@ -811,15 +811,15 @@ PRIMITIVE(create) {
   }
 
   periph_module_enable(uart_periph_signal[port].module);
-    // Workaround for ESP32C3: enable core reset
-    // before enabling uart module clock
-    // to prevent uart from outputting garbage value.
+  // Workaround for ESP32C3: enable core reset
+  // before enabling uart module clock
+  // to prevent uart from outputting garbage value.
 #if SOC_UART_REQUIRE_CORE_RESET
-    uart_toit_hal_set_reset_core(init.hal, true);
-    periph_module_reset(uart_periph_signal[port].module);
-    uart_toit_hal_set_reset_core(init.hal, false);
+  uart_toit_hal_set_reset_core(init.hal, true);
+  periph_module_reset(uart_periph_signal[port].module);
+  uart_toit_hal_set_reset_core(init.hal, false);
 #else
-    periph_module_reset(uart_periph_signal[port].module);
+  periph_module_reset(uart_periph_signal[port].module);
 #endif
   init.hardware_initialized = true;
 
@@ -875,8 +875,8 @@ PRIMITIVE(create) {
     // then clear the RX FIFO.
     // The stop-bits value is too large for STOP-BITS-1_5 and STOP-BITS-2, but
     // waiting longer is OK.
-    int wait_time = 1 + (1000 * (data_bits + stop_bits) / baud_rate);
-    usleep(wait_time * 1000);
+    int wait_us = 1 + (1000000 * (data_bits + stop_bits) - 1) / baud_rate;
+    usleep(wait_us);
   }
 
   init.uart->initialize();
