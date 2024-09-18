@@ -408,14 +408,14 @@ class DocsBuilder implements lsp.ToitdocVisitor:
         --named-block-count=named-block-count
         --names=non-block-names + block-names
 
-  build-toitdoc doc/lsp.Content? -> Toitdoc?:
+  build-toitdoc doc/lsp.Contents? -> Toitdoc?:
     if not doc: return null
     return doc.accept this
 
   visit-doc node/lsp.Node -> any:
     return node.accept this
 
-  visit-Content doc/lsp.Content -> Toitdoc:
+  visit-Contents doc/lsp.Contents -> Toitdoc:
     sections := doc.sections.map: visit-doc it
     return Toitdoc --sections=sections
 

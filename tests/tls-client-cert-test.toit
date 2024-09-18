@@ -5,11 +5,14 @@
 import expect show *
 
 import certificate-roots
-import tls
-import .tcp as tcp
+import net
+import net.modules.tcp
 import net.x509 as net
 import system
 import system show platform
+import tls
+
+network := net.open
 
 monitor LimitLoad:
   current := 0
@@ -74,7 +77,7 @@ working-site host port cert key expected-cert-name:
     load-limiter.dec
 
 connect-to-site host port cert key expected-cert-name:
-  raw := tcp.TcpSocket
+  raw := tcp.TcpSocket network
   raw.connect host port
   ROOTS ::= [
       certificate-roots.DIGICERT-HIGH-ASSURANCE-EV-ROOT-CA,

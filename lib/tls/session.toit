@@ -1109,7 +1109,7 @@ byte-array-join_ arrays/List -> ByteArray:
     position += it.size
   return result
 
-/// Compares byte arrays, without revealing the content to timing attacks.
+/// Compares byte arrays, without revealing the contents to timing attacks.
 compare-byte-arrays_ a b -> bool:
   if a is not ByteArray or b is not ByteArray or a.size != b.size: return false
   accumulator := 0
