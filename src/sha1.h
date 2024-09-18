@@ -24,7 +24,7 @@ class Sha1 : public SimpleResource {
   TAG(Sha1);
   Sha1(SimpleResourceGroup* group);
 
-  void add(const uint8* content, intptr_t extra);
+  void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);
 
   void clone(Sha1* child) {

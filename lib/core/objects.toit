@@ -19,7 +19,7 @@ class Object:
 
   # Inheritance
   Classes overwrite this operator to get an equality specific to their needs.
-    Equality operators often compare the type and field content. For example:
+    Equality operators often compare the type and field contents. For example:
   ```
   class Pin:
     number/int

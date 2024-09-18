@@ -2,15 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .dns
 import expect show *
-import tls
-import .tcp as tcp
+import net
+import net.modules.dns
+import net.modules.tcp
 import net.x509 as net
 import system
 import system show platform
+import tls
 
 import .tls-global-common
+
+network := net.open
 
 expect-error name [code]:
   error := catch code
@@ -61,7 +64,9 @@ run-tests:
     "amazon.com",
     "adafruit.com",
     // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
-    "$(dns-lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
+
+    // Connect to the IP address at the TCP level, but verify the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)/amazon.com",
 
     "dkhostmaster.dk",
     "dmi.dk",
@@ -75,7 +80,9 @@ run-tests:
     "signal.org",
     ]
   non-working := [
-    "$(dns-lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
+    // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)",
+
     "wrong.host.badssl.com/CN_MISMATCH|unknown root cert",
     "self-signed.badssl.com/NOT_TRUSTED",
     "untrusted-root.badssl.com/NOT_TRUSTED",
@@ -153,7 +160,7 @@ connect-to-site host port expected-certificate-name:
   bytes := 0
   connection := null
 
-  raw := tcp.TcpSocket
+  raw := tcp.TcpSocket network
   try:
     raw.connect host port
 
