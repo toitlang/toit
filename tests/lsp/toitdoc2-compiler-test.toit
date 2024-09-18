@@ -622,7 +622,7 @@ test client/LspClient:
         - http://example.com
         */
       """
-      Content [
+      Contents [
         Section null 1
           [
             Paragraph [
@@ -652,7 +652,7 @@ test client/LspClient:
       \\[foo]
       */
       """
-      Content [
+      Contents [
         Section null 1
           [
             Itemized [
@@ -704,7 +704,7 @@ test client/LspClient:
       ### 3
       */
       """
-      Content [
+      Contents [
         Section "1" 1 [],
         Section "2" 2 [],
         Section "3" 3 [],
