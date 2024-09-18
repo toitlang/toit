@@ -31,17 +31,21 @@ main args:
       bar:
         print "do something meaningful2"
 
+    literal-virtual:
+      "literal-type".to-ascii-upper
+
     main:
       (A).foo
       (B).foo
       (B).foo2
       A.namedA
       B.namedB
+      literal-virtual
     """
   }
 
   program := snap.decode
-  methods := extract-methods program ["A.foo", "B.foo2", "A", "A.namedA", "B", "B.namedB"]
+  methods := extract-methods program ["A.foo", "B.foo2", "A", "A.namedA", "B", "B.namedB", "literal-virtual"]
   expectations := {
     "A.foo": [true, false],
     "A": [true, false],
@@ -49,6 +53,7 @@ main args:
     "B.foo2": [false, true],
     "B": [false, true],
     "B.namedB": [false, true],
+    "literal-virtual": [false, true],
   }
   expectations.do: |method-name expectation|
     method := methods[method-name]
