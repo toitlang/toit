@@ -5,22 +5,23 @@
 import expect show *
 import io
 import monitor show *
+import net
+import net.modules.tcp
 import net.tcp show Socket
-
-import .tcp
 
 PACKET-SIZE := 1024
 PACKAGES := 128
 
 main:
-  run-test
+  network := net.open
+  run-test network
 
-run-test:
+run-test network/net.Client:
   print "RUN"
 
-  server := TcpServerSocket
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
-  task:: run-client server.local-address.port
+  task:: run-client network server.local-address.port
   socket := server.accept
 
   done := Channel 1
@@ -32,8 +33,8 @@ run-test:
   done.receive
   socket.close
 
-run-client port:
-  socket := TcpSocket
+run-client network/net.Client port:
+  socket := tcp.TcpSocket network
   socket.connect "127.0.0.1" port
 
   done := Channel 1

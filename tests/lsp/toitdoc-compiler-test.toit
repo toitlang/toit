@@ -150,7 +150,7 @@ class TemplateFiller:
     map := prefixed.get prefix --if-absent=:{:}
     return check-toitdoc (map.get field.name) field.toitdoc
 
-  check-toitdoc expected-string/string? actual/Content? -> int:
+  check-toitdoc expected-string/string? actual/Contents? -> int:
     if not expected-string:
       expect-null actual
       return 0

@@ -4088,7 +4088,11 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       return _new ir::ReferenceGlobal(ir_getter_node->as_Global(), true, ast_left->selection_range());
     };
     create_set = [&](ir::Expression* value) {
-      return _new ir::AssignmentGlobal(ir_getter_node->as_Global(), value, range);
+      // At this point the type of the global might not be set yet.
+      // If necessary, a typecheck will be inserted later.
+      auto assignment = _new ir::AssignmentGlobal(ir_getter_node->as_Global(), value, range);
+      global_assignments_.push_back(assignment);
+      return assignment;
     };
   } else if (ir_setter_node->is_Local()) {
     // Don't use locals here, as the closures in this block capture by reference.

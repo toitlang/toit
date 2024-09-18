@@ -61,11 +61,11 @@ Sha::~Sha() {
   }
 }
 
-void Sha::add(const uint8* content, intptr_t extra) {
+void Sha::add(const uint8* contents, intptr_t extra) {
   if (bits_ <= 256) {
-    mbedtls_sha256_update_ret(&context_, content, extra);
+    mbedtls_sha256_update_ret(&context_, contents, extra);
   } else {
-    mbedtls_sha512_update_ret(&context_512_, content, extra);
+    mbedtls_sha512_update_ret(&context_512_, contents, extra);
   }
 }
 

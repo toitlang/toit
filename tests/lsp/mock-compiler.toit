@@ -107,6 +107,7 @@ class MockCompiler:
     all-uris.do:
       data := mock-information_.get it
       chunks.add it
+      chunks.add "not deprecated"
       build-deps_ data --chunks=chunks
       // The external hash is 20 bytes, but we join all chunks with a "\n" above.
       // As such we only add 19 bytes here and let the 20th byte be a '\n'.

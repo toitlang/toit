@@ -481,7 +481,7 @@ Toitdoc<ir::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
     auto ast_ref = ast_node->as_ToitdocReference();
     resolved[i] = resolve_toitdoc_ref(ast_ref, holder, scope, lsp, ir_to_ast_map, diagnostics);
   }
-  return Toitdoc<ir::Node*>(ast_toitdoc.content(), resolved, ast_toitdoc.range());
+  return Toitdoc<ir::Node*>(ast_toitdoc.contents(), resolved, ast_toitdoc.range());
 }
 
 } // namespace toit::compiler
