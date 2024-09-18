@@ -4,15 +4,17 @@
 
 import expect show *
 
-import .tcp
+import net
+import net.modules.tcp
 import monitor show *
 
 main:
-  test-keep-alive
+  network := net.open
+  test-keep-alive network
 
-test-keep-alive:
-  with-server: | port |
-    socket := TcpSocket
+test-keep-alive network/net.Client:
+  with-server network: | port |
+    socket := tcp.TcpSocket network
     socket.connect "localhost" port
 
     expect-equals false socket.keep-alive
@@ -25,14 +27,14 @@ test-keep-alive:
 
     socket.close
 
-with-server [code]:
+with-server network/net.Client [code]:
   ready := Channel 1
-  task:: simple-server ready
+  task:: simple-server network ready
   port := ready.receive
   code.call port
 
-simple-server ready:
-  server := TcpServerSocket
+simple-server network/net.Client ready:
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
   ready.send server.local-address.port
   socket := server.accept

@@ -24,6 +24,7 @@ import (
 
 type Module struct {
 	URI             lsp.DocumentURI
+	IsDeprecated    bool
 	Dependencies    []lsp.DocumentURI
 	ExportedModules []lsp.DocumentURI
 	Exports         []*Export
@@ -152,6 +153,7 @@ func (m *Module) EqualsExternal(other *Module) bool {
 
 	return other != nil &&
 		m.URI == other.URI &&
+		m.IsDeprecated == other.IsDeprecated &&
 		equalDocumentURIs(m.Dependencies, other.Dependencies) &&
 		equalDocumentURIs(m.ExportedModules, other.ExportedModules) &&
 		equalsExports(m.Exports, other.Exports) &&
@@ -278,6 +280,7 @@ type Class struct {
 	TopLevelID   ID
 	Kind         ClassKind
 	IsAbstract   bool
+	IsDeprecated bool
 	SuperClass   *TopLevelReference
 	Interfaces   []*TopLevelReference
 	Mixins       []*TopLevelReference
@@ -309,6 +312,7 @@ func (c *Class) EqualsExternal(other *Class) bool {
 		c.Name == other.Name &&
 		c.Kind == other.Kind &&
 		c.IsAbstract == other.IsAbstract &&
+		c.IsDeprecated == other.IsDeprecated &&
 		c.SuperClass.EqualsExternal(other.SuperClass) &&
 		equalTopLevelReferences(c.Interfaces, other.Interfaces) &&
 		equalTopLevelReferences(c.Mixins, other.Mixins) &&
@@ -389,9 +393,10 @@ type Method struct {
 	Parameters []*Parameter
 	ReturnType *Type
 
-	IsSynthetic bool
-	IsAbstract  bool
-	Toitdoc     *DocContents
+	IsSynthetic  bool
+	IsAbstract   bool
+	IsDeprecated bool
+	Toitdoc      *DocContents
 }
 
 func (m *Method) EqualsExternal(other *Method) bool {
@@ -402,6 +407,7 @@ func (m *Method) EqualsExternal(other *Method) bool {
 		m.Name == other.Name &&
 		m.Kind == other.Kind &&
 		m.IsAbstract == other.IsAbstract &&
+		m.IsDeprecated == other.IsDeprecated &&
 		equalParameters(m.Parameters, other.Parameters) &&
 		m.ReturnType.EqualsExternal(other.ReturnType)
 }
@@ -453,11 +459,12 @@ func (f *TopLevelFunction) GetID() ID {
 }
 
 type Field struct {
-	Name    string
-	Range   *Range
-	IsFinal bool
-	Type    *Type
-	Toitdoc *DocContents
+	Name         string
+	Range        *Range
+	IsFinal      bool
+	IsDeprecated bool
+	Type         *Type
+	Toitdoc      *DocContents
 }
 
 func (f *Field) EqualsExternal(other *Field) bool {
@@ -468,6 +475,7 @@ func (f *Field) EqualsExternal(other *Field) bool {
 	return other != nil &&
 		f.Name == other.Name &&
 		f.IsFinal == other.IsFinal &&
+		f.IsDeprecated == other.IsDeprecated &&
 		f.Type.EqualsExternal(other.Type)
 }
 
