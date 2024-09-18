@@ -2,11 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import tls
-import .tcp as tcp
+import net
+import net.modules.tcp
 import net.x509 as net
 import system
 import system show platform
+import tls
+
+network := net.open
 
 monitor LimitLoad:
   current := 0
@@ -156,7 +159,7 @@ connect-to-site-with-retry host port expected-certificate-name:
     if not error: return
 
 connect-to-site host port add-root:
-  raw := tcp.TcpSocket
+  raw := tcp.TcpSocket network
   raw.connect host port
   socket := tls.Socket.client raw
     // Install the roots needed.

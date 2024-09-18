@@ -2331,8 +2331,8 @@ static __attribute__((noinline)) uword get_heap_dump_size(const char* descriptio
   return size_discovery.size();
 }
 
-static __attribute__((noinline)) word heap_dump_to_byte_array(const char* reason, uint8* content, uword size) {
-  ByteArrayHeapFragmentationDumper dumper(reason, content, size);
+static __attribute__((noinline)) word heap_dump_to_byte_array(const char* reason, uint8* contents, uword size) {
+  ByteArrayHeapFragmentationDumper dumper(reason, contents, size);
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
   int caps = OS::toit_heap_caps_flags_for_heap();
   heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags, caps);
@@ -2367,9 +2367,9 @@ PRIMITIVE(dump_heap) {
   ByteArray* result = process->allocate_byte_array(size + padding);
   if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
-  uint8* content = bytes.address();
+  uint8* contents = bytes.address();
 
-  word actual_size = heap_dump_to_byte_array(description, content, size + padding);
+  word actual_size = heap_dump_to_byte_array(description, contents, size + padding);
   if (actual_size < 0) {
     // Due to other threads allocating and freeing we may not succeed in creating
     // a heap layout dump, in which case we return null.
@@ -2377,7 +2377,7 @@ PRIMITIVE(dump_heap) {
   }
 
   // Fill up with ubjson no-ops.
-  memset(content + actual_size, 'N', size + padding - actual_size);
+  memset(contents + actual_size, 'N', size + padding - actual_size);
 
   return result;
 #else

@@ -109,7 +109,7 @@ MessageEncoder::~MessageEncoder() {
 uint8* MessageEncoder::take_buffer() {
   for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
-    // Neuter the byte array. The content of the array is now linked to from
+    // Neuter the byte array. The contents of the array is now linked to from
     // an enqueued SystemMessage and will be used to construct a new external
     // byte array in the receiving process.
     array->neuter(process_);

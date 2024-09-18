@@ -64,7 +64,7 @@ serve docs-path/string --port/int:
         response.body.drain
         client.close
 
-      // TODO(florian): Implement tar.gz extraction in Toit.
+      // TODO(florian): implement tar.gz extraction in Toit.
       pipe.run-program "tar" "-xzf" local-path "-C" dir
       file.delete local-path
 
