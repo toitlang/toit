@@ -208,7 +208,7 @@ class ToitdocParser {
 
  private:  // Scanning related.
   enum Construct {
-    CONTENT,
+    CONTENTS,
     SECTION_TITLE,
     ITEMIZED,
     ITEM_START,
@@ -465,14 +465,14 @@ static ToitdocSource* extract_singleline_comment_text(Source* source, int from, 
 }
 
 Toitdoc<ast::Node*> ToitdocParser::parse() {
-  ConstructScope scope(this, CONTENT, -1);
+  ConstructScope scope(this, CONTENTS, -1);
   ListBuilder<toitdoc::Section*> sections;
   skip_initial_whitespace(); // Skips the whitespace and updates the indentation.
   while (peek() != '\0') {
     sections.add(parse_section());
   }
-  auto content = _new toitdoc::Content(sections.build());
-  return Toitdoc<ast::Node*>(content,
+  auto contents = _new toitdoc::Contents(sections.build());
+  return Toitdoc<ast::Node*>(contents,
                              ListBuilder<ast::Node*>::build_from_vector(reference_asts_),
                              toitdoc_source_->range(0, toitdoc_source_->size()));
 }
@@ -915,7 +915,7 @@ std::string ToitdocParser::make_string(int from, int to) {
   bool squash_spaces = false;
   bool replace_newlines_with_space = false;
   switch (construct_stack_.back()) {
-    case CONTENT:
+    case CONTENTS:
     case SECTION_TITLE:
     case PARAGRAPH:
       squash_spaces = true;
@@ -999,11 +999,11 @@ int ToitdocParser::peek() {
       must_be_indented = false;  // Implied by `is_delimited`.
       break;
 
-    case CONTENT:
+    case CONTENTS:
       is_single_line = false;
       is_delimited = false;
       allows_empty_line = true;
-      must_be_indented = false;  // Doesn't matter, because content-indentation is -1.
+      must_be_indented = false;  // Doesn't matter, because contents-indentation is -1.
       break;
 
     case ITEMIZED:
