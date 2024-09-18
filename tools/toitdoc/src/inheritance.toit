@@ -291,7 +291,7 @@ class InheritanceBuilder:
       // always higher than the inheritance order of the super class or mixins.
       // The current class members are discarded at the end of the function, so
       // don't need any fixing up.
-      member := Member entry --inheritance-order=10000000
+      member := Member entry --inheritance-order=10_000_000
       class-shaped.add member
 
     // Reset the max.
