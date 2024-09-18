@@ -3,9 +3,10 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .dns
+import net
+import net.modules.dns
 
 main:
+  network := net.open
   task:: exit 0
-  dns-lookup "localhost"
+  dns.dns-lookup "localhost" --network=network

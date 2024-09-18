@@ -21,6 +21,8 @@ main args:
     class A implements I3:
     class B extends A with M4:
 
+    global/int := 499
+
     foo:
       b := B
       b as I1
@@ -30,6 +32,7 @@ main args:
       b as M2
       b as M3
       b as M4
+      global = 42
 
     main:
       foo

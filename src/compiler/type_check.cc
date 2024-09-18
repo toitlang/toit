@@ -46,12 +46,10 @@ class TypeChecker : public ReturningVisitor<Type> {
   TypeChecker(List<Type> literal_types,
               List<ir::Class*> classes,
               const UnorderedMap<ir::Class*, QueryableClass>* queryables,
-              const Set<ir::Node*>* deprecated,
               Lsp* lsp,
               Diagnostics* diagnostics)
       : classes_(classes)
       , queryables_(queryables)
-      , deprecated_(deprecated)
       , lsp_(lsp)
       , diagnostics_(diagnostics)
       , method_(null)
@@ -495,6 +493,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         return node->type();
       case Typecheck::PARAMETER_AS_CHECK:
       case Typecheck::LOCAL_AS_CHECK:
+      case Typecheck::GLOBAL_AS_CHECK:
       case Typecheck::RETURN_AS_CHECK:
       case Typecheck::FIELD_INITIALIZER_AS_CHECK:
       case Typecheck::FIELD_AS_CHECK:
@@ -606,7 +605,6 @@ class TypeChecker : public ReturningVisitor<Type> {
  private:
   List<ir::Class*> classes_;
   const UnorderedMap<ir::Class*, QueryableClass>* queryables_;
-  const Set<ir::Node*>* deprecated_;
   Lsp* lsp_;
   Diagnostics* diagnostics_;
 
@@ -662,14 +660,15 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (node->is_FieldStub()) {
       node = node->as_FieldStub()->field();
     }
-    bool is_deprecated = deprecated_->contains(node);
+    bool is_deprecated = false;
     if (node->is_Method()) {
       auto method = node->as_Method();
+      is_deprecated = method->is_deprecated();
       name = method->name();
       holder = method->holder();
       bool holder_is_deprecated = false;
       if (holder != null) {
-        holder_is_deprecated = deprecated_->contains(holder);
+        holder_is_deprecated = holder->is_deprecated();
         holder_name = holder->name();
       }
       if (method->is_constructor() || method->is_factory()) {
@@ -688,6 +687,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     } else {
       ASSERT(node->is_Field());
       auto field = node->as_Field();
+      is_deprecated = field->is_deprecated();
       name = field->name();
       holder = field->holder();
       if (holder != null) {
@@ -780,10 +780,9 @@ void check_types_and_deprecations(ir::Program* program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
-  auto deprecated = collect_deprecated_elements(program, toitdocs);
   bool include_abstracts;
   auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
-  TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
+  TypeChecker checker(program->literal_types(), program->classes(), &queryables, lsp, diagnostics);
   program->accept(&checker);
 }
 

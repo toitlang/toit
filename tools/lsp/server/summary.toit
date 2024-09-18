@@ -29,7 +29,8 @@ safe-name_ name/string -> string:
 class Module:
   uri / string ::= ?
   external-hash / ByteArray
-  dependencies / List/*<string>*/ ::= ?
+  is-deprecated / bool ::= ?
+  dependencies  / List/*<string>*/ ::= ?
   exported-modules / List/*<string>*/ ::= ?
   exports      / List ::= ?
   classes      / List ::= ?
@@ -40,6 +41,7 @@ class Module:
   constructor
       --.uri
       --.external-hash
+      --.is-deprecated
       --.dependencies
       --.exports
       --.exported-modules
@@ -50,6 +52,7 @@ class Module:
 
   equals-external other/Module -> bool:
     return external-hash == other.external-hash
+        is-deprecated == other.is-deprecated and
 
   to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
     lines := Lines content
@@ -139,8 +142,9 @@ class Class implements ToplevelElement:
   range / Range  ::= ?
   toplevel-id / int ::= ?
 
-  kind         / string ::= ?
-  is-abstract  / bool ::= false
+  kind          / string ::= ?
+  is-abstract   / bool ::= ?
+  is-deprecated / bool ::= ?
 
   superclass   / ToplevelRef? ::= ?
   interfaces   / List ::= ?
@@ -155,7 +159,7 @@ class Class implements ToplevelElement:
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
+  constructor --.name --.range --.toplevel-id --.kind --.is-abstract --.is-deprecated
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
@@ -163,6 +167,7 @@ class Class implements ToplevelElement:
   is-interface -> bool: return kind == KIND-INTERFACE
   is-mixin -> bool: return kind == KIND-MIXIN
 
+        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     children := []
 
@@ -202,13 +207,16 @@ class Method implements ClassMember ToplevelElement:
   parameters  / List  ::= ?
   return-type / Type? ::= ?
 
-  is-abstract  / bool ::= false
-  is-synthetic / bool ::= false
+  is-abstract   / bool ::= ?
+  is-synthetic  / bool ::= ?
+  is-deprecated / bool ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
+  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type
+      --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
+        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
     if kind == INSTANCE-KIND:         lsp-kind = lsp.SymbolKind.METHOD
@@ -240,13 +248,15 @@ class Field implements ClassMember:
 
   name / string ::= ?
   range / Range ::= ?
-  is-final / bool ::= false
+  is-final / bool ::= ?
+  is-deprecated / bool ::= ?
   type / Type? ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor .name .range .is-final .type .toitdoc:
+  constructor .name .range .is-final .is-deprecated .type .toitdoc:
 
+        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
@@ -303,6 +313,7 @@ class SummaryReader:
     module-uri := to-uri_ module-path
     assert: module-uri == module-uris_[current-module-id_]
 
+    is-deprecated := read-line == "deprecated"
     dependencies := read-list: to-uri_ read-line
     exported-modules := read-list: to-uri_ read-line
     exported := read-list: read-export
@@ -316,6 +327,7 @@ class SummaryReader:
     return Module
         --uri=module-uri
         --external-hash=external-hash
+        --is-deprecated=is-deprecated
         --dependencies=dependencies
         --exported-modules=exported-modules
         --exports=exported
@@ -339,6 +351,7 @@ class SummaryReader:
     kind := read-line
     assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
     is-abstract := read-line == "abstract"
+    is-deprecated := read-line == "deprecated"
     superclass := read-toplevel-ref
     interfaces := read-list: read-toplevel-ref
     mixins := read-list: read-toplevel-ref
@@ -354,6 +367,7 @@ class SummaryReader:
         --toplevel-id=toplevel-id
         --kind=kind
         --is-abstract=is-abstract
+        --is-deprecated=is-deprecated
         --superclass=superclass
         --interfaces=interfaces
         --mixins=mixins
@@ -408,6 +422,7 @@ class SummaryReader:
       assert: global-id == -1
     else:
       throw "Unknown kind"
+    is-deprecated := read-line == "deprecated"
     parameters := read-list: read-parameter
     return-type := read-type
     toitdoc := read-toitdoc
@@ -420,6 +435,7 @@ class SummaryReader:
         --return-type=return-type
         --is-abstract=is-abstract
         --is-synthetic=is-synthetic
+        --is-deprecated=is-deprecated
         --toitdoc=toitdoc
 
   read-parameter -> Parameter:
@@ -436,9 +452,10 @@ class SummaryReader:
     name := read-line
     range := read-range
     is-final := read-line == "final"
+    is-deprecated := read-line == "deprecated"
     type := read-type
     toitdoc := read-toitdoc
-    return Field name range is-final type toitdoc
+    return Field name range is-final is-deprecated type toitdoc
 
   read-toitdoc -> Contents?:
     sections := read-list: read-section
