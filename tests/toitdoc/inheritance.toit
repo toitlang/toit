@@ -116,7 +116,6 @@ parse-module source/string --uri/string -> lsp.Module:
       --functions=[]
       --globals=[]
       --toitdoc=null
-      --is-deprecated=false
 
 parse-method str/string -> lsp.Method:
   parts := str.trim.split " "
