@@ -18,6 +18,8 @@ import monitor
 import log
 
 import net.modules.dns as dns-module
+import net.modules.udp as udp-module
+import net.udp
 import net.wifi
 
 import encoding.tison
@@ -42,7 +44,7 @@ BACKUP-DNS-ADDRESS-INDEX_ ::= 2
 // we keep it around forever.
 bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/wifi"
 
-class WifiServiceProvider extends NetworkServiceProviderBase:
+class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Interface:
   static WIFI-CONFIG-STORE-KEY ::= "system/wifi"
   state_/NetworkState ::= NetworkState
 
@@ -145,7 +147,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).address.to-byte-array
 
   resolve resource/ServiceResource host/string -> List:
-    return (dns-module.dns-lookup-multi host).map: it.raw
+    return (dns-module.dns-lookup-multi host --network=this).map: it.raw
 
   ap-info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap-info
@@ -178,6 +180,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       resources-do: | resource/NetworkResource |
         if not resource.is-closed:
           resource.notify_ NetworkService.NOTIFY-CLOSED --close
+
+  // This method comes from the udp.Interface definition. It is necessary
+  // to allow the DNS client to use the WiFi when sending out requests.
+  udp-open --port/int?=null -> udp.Socket:
+    return udp-module.Socket this "0.0.0.0" (port ? port : 0)
 
 class WifiModule implements NetworkModule:
   static WIFI-CONNECTED    ::= 1 << 0
