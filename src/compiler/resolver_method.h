@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <vector>
 #include <functional>
 
 #include "ast.h"
@@ -82,6 +83,8 @@ class MethodResolver : public ast::Visitor {
 
   static Symbol this_identifier() { return Symbols::this_; }
 
+  std::vector<ir::AssignmentGlobal*>& global_assignments() { return global_assignments_; }
+
  private:
   ir::Type resolve_type(ast::Expression* node, bool is_return_type);
   void resolve_fill_field_stub();
@@ -136,6 +139,8 @@ class MethodResolver : public ast::Visitor {
   int loop_block_depth_;
   bool has_primitive_invocation_ = false;
   std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
+
+  std::vector<ir::AssignmentGlobal*> global_assignments_;
 
   SourceManager* source_manager() const { return source_manager_; }
   Diagnostics* diagnostics() const { return diagnostics_; }

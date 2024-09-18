@@ -43,7 +43,7 @@ parse-module source/string --uri/string -> lsp.Module:
   current-mixins := []
   current-methods := []
 
-  // TODO(2439): Change this back to a lambda.
+  // TODO(2439): Change this back to a block.
   finish-class := ::
     if current-class-name:
       id := classes.size
@@ -64,6 +64,7 @@ parse-module source/string --uri/string -> lsp.Module:
           --outline-range=lsp.Range 0 0
           --toitdoc=null
           --toplevel-id=id
+          --is-deprecated=false
       classes.add new-class
 
     current-class-name = null
@@ -154,3 +155,4 @@ parse-method str/string -> lsp.Method:
       --return-type=null
       --toitdoc=null
       --toplevel-id=-1
+      --is-deprecated=false

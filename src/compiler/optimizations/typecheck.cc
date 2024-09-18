@@ -21,12 +21,12 @@ namespace compiler {
 
 using namespace ir;
 
-Expression* optimize_typecheck(Typecheck* node, Class* holder, Method* method) {
+Expression* optimize_typecheck(Typecheck* node, Class* holder, Method* method, List<Type> literal_types) {
   // Currently we don't know anything about incoming parameter types.
   if (node->kind() == Typecheck::PARAMETER_AS_CHECK) return node;
   auto expression = node->expression();
   ASSERT(!node->type().is_none());
-  auto expression_type = compute_guaranteed_type(expression, holder, method);
+  auto expression_type = compute_guaranteed_type(expression, holder, method, literal_types);
   if (!expression_type.is_valid()) return node;
 
   auto checked_type = node->type();

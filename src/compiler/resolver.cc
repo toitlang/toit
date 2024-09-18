@@ -19,6 +19,7 @@
 #include <stdarg.h>
 
 #include "cycle_detector.h"
+#include "deprecation.h"
 #include "diagnostic.h"
 #include "lsp/lsp.h"
 #include "map.h"
@@ -130,6 +131,8 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   if (lsp_ != null && lsp_->needs_summary()) {
     lsp_->emit_summary(modules, core_index, toitdocs_);
   }
+
+  add_global_assignment_typechecks();
 
   ListBuilder<ir::Class*> all_classes;
   ListBuilder<ir::Method*> all_methods;
@@ -2279,6 +2282,10 @@ void Resolver::resolve_fill_method(ir::Method* method,
   MethodResolver resolver(method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
                           lsp_, source_manager_, diagnostics_);
   resolver.resolve_fill();
+  auto& new_assignments = resolver.global_assignments();
+  global_assignments_.insert(global_assignments_.end(),
+                             new_assignments.begin(),
+                             new_assignments.end());
 
   if (!method->is_synthetic()) {
     auto ast_node = ir_to_ast_map_.at(method)->as_Declaration();
@@ -2294,6 +2301,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                      ir_to_ast_map_,
                                      diagnostics());
       toitdocs_.set_toitdoc(method, toitdoc);
+      method->set_is_deprecated(contains_deprecation_warning(toitdoc));
     }
   }
 }
@@ -2325,6 +2333,7 @@ void Resolver::resolve_field(ir::Field* field,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(field, toitdoc);
+    field->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
 }
 
@@ -2425,6 +2434,7 @@ void Resolver::resolve_fill_module(Module* module,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(module, toitdoc);
+    module->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
   resolve_fill_classes(module, entry_module, core_module);
@@ -2511,6 +2521,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                    ir_to_ast_map_,
                                    diagnostics());
     toitdocs_.set_toitdoc(klass, toitdoc);
+    klass->set_is_deprecated(contains_deprecation_warning(toitdoc));
   }
 
   for (auto field : klass->fields()) {
@@ -2530,6 +2541,22 @@ void Resolver::resolve_fill_class(ir::Class* klass,
   }
   for (auto method : klass->methods()) {
     resolve_fill_method(method, klass, &class_scope, entry_module, core_module);
+  }
+}
+
+void Resolver::add_global_assignment_typechecks() {
+  for (auto assignment : global_assignments_) {
+    auto global = assignment->global();
+    if (!global->has_explicit_type()) continue;
+    auto type = global->return_type();
+    if (!type.is_class()) continue;
+    auto value = assignment->right();
+    value = _new ir::Typecheck(ir::Typecheck::GLOBAL_AS_CHECK,
+                               value,
+                               type,
+                               type.klass()->name(),
+                               value->range());
+    assignment->replace_right(value);
   }
 }
 
