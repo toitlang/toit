@@ -52,7 +52,6 @@ class Module:
 
   equals-external other/Module -> bool:
     return external-hash == other.external-hash
-        is-deprecated == other.is-deprecated and
 
   to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
     lines := Lines content
@@ -167,7 +166,6 @@ class Class implements ToplevelElement:
   is-interface -> bool: return kind == KIND-INTERFACE
   is-mixin -> bool: return kind == KIND-MIXIN
 
-        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     children := []
 
@@ -216,7 +214,6 @@ class Method implements ClassMember ToplevelElement:
   constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type
       --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
-        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
     if kind == INSTANCE-KIND:         lsp-kind = lsp.SymbolKind.METHOD
@@ -256,7 +253,6 @@ class Field implements ClassMember:
 
   constructor .name .range .is-final .is-deprecated .type .toitdoc:
 
-        is-deprecated == other.is-deprecated and
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
