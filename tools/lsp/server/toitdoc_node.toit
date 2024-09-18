@@ -18,13 +18,13 @@ import .summary
 abstract class Node:
   abstract accept visitor / ToitdocVisitor
 
-class Content extends Node:
+class Contents extends Node:
   sections / List ::= ?
 
   constructor .sections:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit-Content this
+    return visitor.visit-Contents this
 
 class Section extends Node:
   title / string? ::= ?
@@ -143,7 +143,7 @@ class Link extends Expression:
     return visitor.visit-Link this
 
 interface ToitdocVisitor:
-  visit-Content    node / Content
+  visit-Contents    node / Contents
   visit-Section     node / Section
   visit-CodeSection node / CodeSection
   visit-Itemized    node / Itemized

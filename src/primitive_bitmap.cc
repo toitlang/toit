@@ -167,7 +167,7 @@ struct DrawData {
   int orientation;
   int byte_array_width;
   int byte_array_height;
-  uint8* content;
+  uint8* contents;
 
   DrawData(int x, int y, int c, int o, int w, int h, uint8* content)
     : x_base(x)
@@ -176,7 +176,7 @@ struct DrawData {
     , orientation(o)
     , byte_array_width(w)
     , byte_array_height(h)
-    , content(content) {}
+    , contents(content) {}
 };
 
 // Draws from a bit-oriented source to a bit- or byte-oriented destination.
@@ -187,7 +187,7 @@ static void draw_orientation_0_180_helper(BitmapDecompresser& decompresser, cons
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
   if (bytewise_output) return;
 #endif
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int width = sign * bit_box.box_width();
   int height = sign * bit_box.box_height();
   int xoffset = sign * bit_box.box_xoffset();
@@ -221,12 +221,12 @@ static void draw_orientation_0_180_helper(BitmapDecompresser& decompresser, cons
           ASSERT(0 <= index && index < capture.byte_array_height * capture.byte_array_width / (bytewise_output ? 1 : 8));
           if ((*uncompressed & x_mask) != 0) {
             if (bytewise_output) {
-              content[index] = capture.color;
+              contents[index] = capture.color;
             } else {
               if (capture.color) {
-                content[index] |= mask;
+                contents[index] |= mask;
               } else {
-                content[index] &= ~mask;
+                contents[index] &= ~mask;
               }
             }
           }
@@ -241,7 +241,7 @@ static void draw_orientation_0_180_helper(BitmapDecompresser& decompresser, cons
   }
 }
 
-static void SOMETIMES_UNUSED draw_text_orientation_0_180(int x_base, int y_base, int color, int orientation, Blob string, Font* font, uint8* content, int byte_array_width, int byte_array_height, const bool bytewise_output) {
+static void SOMETIMES_UNUSED draw_text_orientation_0_180(int x_base, int y_base, int color, int orientation, Blob string, Font* font, uint8* contents, int byte_array_width, int byte_array_height, const bool bytewise_output) {
 #ifndef CONFIG_TOIT_BIT_DISPLAY
   if (!bytewise_output) return;
 #endif
@@ -255,7 +255,7 @@ static void SOMETIMES_UNUSED draw_text_orientation_0_180(int x_base, int y_base,
     y_base--;
   }
   // If you capture too many variables, then the functor does heap allocations.
-  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, content);
+  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, contents);
   iterate_font_characters(string, font, [&](const FontCharacter* c) {
     int sign = capture.orientation == 0 ? 1 : -1;
     if (c->box_height_ != 0) {
@@ -269,7 +269,7 @@ static void SOMETIMES_UNUSED draw_text_orientation_0_180(int x_base, int y_base,
 
 // Draws from a byte-oriented source to a byte-oriented destination.
 static void draw_orientation_0_180_byte_helper(BytemapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture, int sign) {
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int width = sign * bit_box.box_width();
   int height = sign * bit_box.box_height();
   int xoffset = sign * bit_box.box_xoffset();
@@ -302,9 +302,9 @@ static void draw_orientation_0_180_byte_helper(BytemapDecompresser& decompresser
           ASSERT(0 <= index && index < capture.byte_array_height * capture.byte_array_width);
           int opaque = *opacity;
           if (opaque == 0xff) {
-            content[index] = *uncompressed;
+            contents[index] = *uncompressed;
           } else if (opaque != 0) {
-            content[index] = (opaque * *uncompressed + (255 - opaque) * content[index]) >> 8;
+            contents[index] = (opaque * *uncompressed + (255 - opaque) * contents[index]) >> 8;
           }
         }
         uncompressed++;
@@ -316,7 +316,7 @@ static void draw_orientation_0_180_byte_helper(BytemapDecompresser& decompresser
 
 // Draws from a bit-oriented source to a byte-oriented destination.
 static void byte_draw_orientation_90_270_helper(BitmapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture, int sign) {
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int width = sign * bit_box.box_width();
   int height = sign * bit_box.box_height();
   int xoffset = sign * bit_box.box_xoffset();
@@ -352,7 +352,7 @@ static void byte_draw_orientation_90_270_helper(BitmapDecompresser& decompresser
       for (int x = left; x != right; x += sign) {
         if (0 <= x && x < capture.byte_array_height) {
           if ((*uncompressed & x_mask) != 0) {
-            content[idx] = capture.color;
+            contents[idx] = capture.color;
           }
         }
         x_mask >>= 1;
@@ -368,7 +368,7 @@ static void byte_draw_orientation_90_270_helper(BitmapDecompresser& decompresser
 
 // Draws from a byte-oriented source to a byte-oriented destination.
 static void byte_draw_orientation_90_270_byte_helper(BytemapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture, int sign) {
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int width = sign * bit_box.box_width();
   int height = sign * bit_box.box_height();
   int xoffset = sign * bit_box.box_xoffset();
@@ -405,9 +405,9 @@ static void byte_draw_orientation_90_270_byte_helper(BytemapDecompresser& decomp
         if (0 <= x && x < capture.byte_array_height) {
           int opaque = *opacity;
           if (opaque == 0xff) {
-            content[idx] = *uncompressed;
+            contents[idx] = *uncompressed;
           } else if (opaque != 0) {
-            content[idx] = (opaque * *uncompressed + (255 - opaque) * content[idx]) >> 8;
+            contents[idx] = (opaque * *uncompressed + (255 - opaque) * contents[idx]) >> 8;
           }
         }
         uncompressed++;
@@ -419,7 +419,7 @@ static void byte_draw_orientation_90_270_byte_helper(BytemapDecompresser& decomp
 }
 
 // Orientation 90 (bottom to top) and 270 (top to bottom).
-static void SOMETIMES_UNUSED byte_draw_text_orientation_90_270(int x_base, int y_base, int color, int orientation, Blob string, Font* font, uint8* content, int byte_array_width, int byte_array_height) {
+static void SOMETIMES_UNUSED byte_draw_text_orientation_90_270(int x_base, int y_base, int color, int orientation, Blob string, Font* font, uint8* contents, int byte_array_width, int byte_array_height) {
   // When stepping backwards the exclusive/inclusive bounds are swapped, so
   // adjust by one.
   if (orientation == 90) {
@@ -427,7 +427,7 @@ static void SOMETIMES_UNUSED byte_draw_text_orientation_90_270(int x_base, int y
   } else {
     x_base--;
   }
-  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, content);
+  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, contents);
   iterate_font_characters(string, font, [&](const FontCharacter* c) {
     FontDecompresser decompresser(c->box_width_, c->box_height_, c->bitmap());
     FontCharacterPixelBox bit_box(c);
@@ -439,7 +439,7 @@ static void SOMETIMES_UNUSED byte_draw_text_orientation_90_270(int x_base, int y
 
 // Draws from a bit-oriented source to a byte-oriented destination.
 static void draw_orientation_90_helper(BitmapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture) {
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int bottom = capture.x_base - bit_box.box_yoffset();
   bottom = Utils::min(capture.byte_array_width, bottom);
   int top = capture.x_base - bit_box.box_yoffset() - bit_box.box_height();
@@ -460,18 +460,18 @@ static void draw_orientation_90_helper(BitmapDecompresser& decompresser, const P
           if (x < capture.byte_array_height) {
             uint8 b = uncompressed[i] >> (7 - low);
             if (capture.color) {
-              content[index] |= b;
+              contents[index] |= b;
             } else {
-              content[index] &= ~b;
+              contents[index] &= ~b;
             }
           }
           // Draw right-most pixel (and others in that byte of frame buffer.
           if (low != 7 && x >= 8) {
             uint8 b = uncompressed[i] << (1 + low);
             if (capture.color) {
-              content[index - capture.byte_array_width] |= b;
+              contents[index - capture.byte_array_width] |= b;
             } else {
-              content[index - capture.byte_array_width] &= ~b;
+              contents[index - capture.byte_array_width] &= ~b;
             }
           }
         }
@@ -481,13 +481,13 @@ static void draw_orientation_90_helper(BitmapDecompresser& decompresser, const P
   }
 }
 
-static void SOMETIMES_UNUSED draw_text_orientation_90(int x_base, int y_base, int color, Blob string, Font* font, uint8* content, int byte_array_width, int byte_array_height) {
+static void SOMETIMES_UNUSED draw_text_orientation_90(int x_base, int y_base, int color, Blob string, Font* font, uint8* contents, int byte_array_width, int byte_array_height) {
   // x and y are still relative to the string, not the screen.
   // When stepping backwards the exclusive/inclusive bounds are swapped, so
   // adjust by one.
   y_base--;
   int orientation = 90;
-  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, content);
+  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, contents);
   iterate_font_characters(string, font, [&](const FontCharacter* c) {
     if (c->box_height_ != 0) {
       FontDecompresser decompresser(c->box_width_, c->box_height_, c->bitmap());
@@ -500,7 +500,7 @@ static void SOMETIMES_UNUSED draw_text_orientation_90(int x_base, int y_base, in
 
 // Draws from a bit-oriented source to a byte-oriented destination.
 static void SOMETIMES_UNUSED draw_orientation_270_helper(BitmapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture) {
-  uint8* content = capture.content;
+  uint8* contents = capture.contents;
   int bottom = capture.x_base + bit_box.box_yoffset();
   bottom = Utils::max(-1, bottom);
   int top = capture.x_base + bit_box.box_yoffset() + bit_box.box_height();
@@ -524,9 +524,9 @@ static void SOMETIMES_UNUSED draw_orientation_270_helper(BitmapDecompresser& dec
             ASSERT(index >= 0 && index < (capture.byte_array_height * capture.byte_array_width / 8));
             uint8 b = d << low;
             if (capture.color) {
-              content[index] |= b;
+              contents[index] |= b;
             } else {
-              content[index] &= ~b;
+              contents[index] &= ~b;
             }
           }
           // Draw right-most pixel (and others in that byte of frame buffer.
@@ -534,9 +534,9 @@ static void SOMETIMES_UNUSED draw_orientation_270_helper(BitmapDecompresser& dec
             ASSERT(index + capture.byte_array_width >= 0 && index + capture.byte_array_width < (capture.byte_array_height * capture.byte_array_width / 8));
             uint8 b = d >> (8 - low);
             if (capture.color) {
-              content[index + capture.byte_array_width] |= b;
+              contents[index + capture.byte_array_width] |= b;
             } else {
-              content[index + capture.byte_array_width] &= ~b;
+              contents[index + capture.byte_array_width] &= ~b;
             }
           }
         }
@@ -546,13 +546,13 @@ static void SOMETIMES_UNUSED draw_orientation_270_helper(BitmapDecompresser& dec
   }
 }
 
-static void SOMETIMES_UNUSED draw_text_orientation_270(int x_base, int y_base, int color, Blob string, Font* font, uint8* content, int byte_array_width, int byte_array_height) {
+static void SOMETIMES_UNUSED draw_text_orientation_270(int x_base, int y_base, int color, Blob string, Font* font, uint8* contents, int byte_array_width, int byte_array_height) {
   // x and y are still relative to the string, not the screen.
   // When stepping backwards the exclusive/inclusive bounds are swapped, so
   // adjust by one.
   x_base--;
   int orientation = 270;
-  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, content);
+  DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, contents);
   iterate_font_characters(string, font, [&](const FontCharacter* c) {
     if (c->box_height_ != 0) {
       FontDecompresser decompresser(c->box_width_, c->box_height_, c->bitmap());
@@ -578,18 +578,18 @@ PRIMITIVE(draw_text) {
   byte_array_height <<= 3;  // Height in pixels, not bytes.
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
-  uint8* content = bytes.address();
+  uint8* contents = bytes.address();
 
   switch (orientation) {
     case 0:
     case 2:
-      draw_text_orientation_0_180(x_base, y_base, color, orientation * 90, string, font, content, byte_array_width, byte_array_height, false);
+      draw_text_orientation_0_180(x_base, y_base, color, orientation * 90, string, font, contents, byte_array_width, byte_array_height, false);
       break;
     case 1:
-      draw_text_orientation_90(x_base, y_base, color, string, font, content, byte_array_width, byte_array_height);
+      draw_text_orientation_90(x_base, y_base, color, string, font, contents, byte_array_width, byte_array_height);
       break;
     case 3:
-      draw_text_orientation_270(x_base, y_base, color, string, font, content, byte_array_width, byte_array_height);
+      draw_text_orientation_270(x_base, y_base, color, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
   return process->null_object();
@@ -725,7 +725,7 @@ PRIMITIVE(draw_bitmap) {
     byte_array_height <<= 3;  // Height in pixels, not bytes.
   }
 
-  uint8* output_content = bytes.address();
+  uint8* output_contents = bytes.address();
 
   int bytes_per_line = (bitmap_width + 7) >> 3;
   if (bitmap_offset < 0) FAIL(OUT_OF_BOUNDS);
@@ -735,10 +735,10 @@ PRIMITIVE(draw_bitmap) {
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
-  const uint8* input_content = in_bytes.address() + bitmap_offset;
+  const uint8* input_contents = in_bytes.address() + bitmap_offset;
 
-  DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_content);
-  BitmapSource bitmap_source(input_content, bitmap_stride);
+  DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
+  BitmapSource bitmap_source(input_contents, bitmap_stride);
   BitmapPixelBox bit_box(bitmap_width, bitmap_height);
 
   switch (orientation) {
@@ -794,7 +794,7 @@ PRIMITIVE(draw_bytemap) {
   word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
 
-  uint8* output_content = bytes.address();
+  uint8* output_contents = bytes.address();
 
   if (pixels_per_line < 1) FAIL(OUT_OF_BOUNDS);
   if (source_line_stride < pixels_per_line) FAIL(OUT_OF_BOUNDS);
@@ -821,7 +821,7 @@ PRIMITIVE(draw_bytemap) {
     alpha_length = alpha.length();
   }
 
-  DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_content);
+  DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
   IndexedBytemapSource bytemap_source(in_bytes.address(), pixels_per_line, source_line_stride, palette.address(), palette.length(), alpha_map, alpha_length);
   if (bytemap_source.out_of_memory()) FAIL(MALLOC_FAILED);
 
@@ -879,16 +879,16 @@ PRIMITIVE(byte_draw_text) {
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
-  uint8* content = bytes.address();
+  uint8* contents = bytes.address();
 
   switch (orientation) {
     case 0:
     case 2:
-      draw_text_orientation_0_180(x_base, y_base, color, orientation * 90, string, font, content, byte_array_width, byte_array_height, true);
+      draw_text_orientation_0_180(x_base, y_base, color, orientation * 90, string, font, contents, byte_array_width, byte_array_height, true);
       break;
     case 1:
     case 3:
-      byte_draw_text_orientation_90_270(x_base, y_base, color, orientation * 90, string, font, content, byte_array_width, byte_array_height);
+      byte_draw_text_orientation_90_270(x_base, y_base, color, orientation * 90, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
   return process->null_object();
@@ -926,7 +926,7 @@ PRIMITIVE(rectangle) {
   if (y_base + height  > byte_array_height) {
     height = byte_array_height - y_base;
   }
-  uint8* content = bytes.address();
+  uint8* contents = bytes.address();
   while (height > 0) {
     int page = y_base >> 3;
     int end_page = (y_base + height - 1) >> 3;
@@ -934,14 +934,14 @@ PRIMITIVE(rectangle) {
     if (page == end_page) {
       mask &= 0xff >> (7 - ((y_base + height - 1) & 7));
     }
-    uint8* end = content + (page * byte_array_width) + x_base + width;
+    uint8* end = contents + (page * byte_array_width) + x_base + width;
     if (color) {
-      for (uint8* p = content + (page * byte_array_width) + x_base; p < end; p++) {
+      for (uint8* p = contents + (page * byte_array_width) + x_base; p < end; p++) {
         *p |= mask;
       }
     } else {
       mask = ~mask;
-      for (uint8* p = content + (page * byte_array_width) + x_base; p < end; p++) {
+      for (uint8* p = contents + (page * byte_array_width) + x_base; p < end; p++) {
         *p &= mask;
       }
     }
@@ -987,12 +987,12 @@ PRIMITIVE(byte_rectangle) {
   if (y_base + height  > byte_array_height) {
     height = byte_array_height - y_base;
   }
-  uint8* content = bytes.address() + x_base + y_base * byte_array_width;
+  uint8* contents = bytes.address() + x_base + y_base * byte_array_width;
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      content[x] = color;
+      contents[x] = color;
     }
-    content += byte_array_width;
+    contents += byte_array_width;
   }
   return process->true_object();
 #endif  // CONFIG_TOIT_BYTE_DISPLAY
@@ -1099,8 +1099,8 @@ PRIMITIVE(bytemap_blur) {
 
 // Paints a framed window on top of a background that has already been
 // rendered.  The frame can be partially transparent and so can the window
-// content.  The frame is painted on top of the background, then window
-// content are painted on top.
+// contents.  The frame is painted on top of the background, then window
+// contents are painted on top.
 PRIMITIVE(composit) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
   FAIL(UNIMPLEMENTED);
@@ -1154,7 +1154,7 @@ PRIMITIVE(composit) {
 
   const uint8* painting_pixels = painting.address();
   word painting_length = painting.length();
-  // The painting (window content) must always be in the form of pixels.
+  // The painting (window contents) must always be in the form of pixels.
   if (painting_length != dest_length) FAIL(OUT_OF_BOUNDS);
 
   if (bit) {

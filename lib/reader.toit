@@ -603,7 +603,7 @@ class BufferedReader implements Reader:
   The bytes in $value are prepended to the BufferedReader.
   These will be the first bytes to be read in subsequent read
     operations.  This takes ownership of $value so it is kept
-    alive and its content should not be modified after being
+    alive and its contents should not be modified after being
     given to the BufferedReader.
   This causes the $consumed count to go backwards.
   */

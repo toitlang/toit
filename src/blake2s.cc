@@ -32,7 +32,7 @@ Blake2s::Blake2s(SimpleResourceGroup* group, int key_bytes, int hash_bytes) :
   h_[7] = 0x5BE0CD19;
 }
 
-void Blake2s::add(const uint8* content, intptr_t extra) {
+void Blake2s::add(const uint8* contents, intptr_t extra) {
   while (extra) {
     if (block_posn_ == BLOCK_SIZE) {
       length_ += BLOCK_SIZE;
@@ -41,8 +41,8 @@ void Blake2s::add(const uint8* content, intptr_t extra) {
     }
     intptr_t end = Utils::min<intptr_t>(BLOCK_SIZE, block_posn_ + extra);
     intptr_t size = end - block_posn_;
-    memcpy(data_ + block_posn_, content, size);
-    content += size;
+    memcpy(data_ + block_posn_, contents, size);
+    contents += size;
     extra -= size;
     block_posn_ = end;
   }

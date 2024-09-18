@@ -2352,6 +2352,9 @@ PRIMITIVE(create_central_manager) {
   group->register_resource(central_manager);
   proxy->set_external_address(central_manager);
 
+  // On the ESP32 the central manager is immediately available.
+  BleEventSource::instance()->on_event(central_manager, kBleStarted);
+
   return proxy;
 }
 
@@ -2397,6 +2400,9 @@ PRIMITIVE(create_peripheral_manager) {
   proxy->set_external_address(peripheral_manager);
 
   ble_gatts_reset();
+
+  // On the ESP32 the peripheral manager is immediately available.
+  BleEventSource::instance()->on_event(peripheral_manager, kBleStarted);
 
   return proxy;
 }

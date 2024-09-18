@@ -90,7 +90,7 @@ expect-statement-equal expected/Statement actual/Statement:
         unreachable
 
 
-test-toitdoc client/LspClient str/string expected / Content:
+test-toitdoc client/LspClient str/string expected / Contents:
   client.send-did-change --uri=FILE-URI str
   (client.diagnostics-for --uri=FILE-URI).do: print it
   expect (client.diagnostics-for --uri=FILE-URI).is-empty
@@ -121,7 +121,7 @@ test client/LspClient:
       Simple
       */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -138,7 +138,7 @@ test client/LspClient:
         multiline
       */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -154,7 +154,7 @@ test client/LspClient:
         Indented
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -171,7 +171,7 @@ test client/LspClient:
           multiline
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -189,7 +189,7 @@ test client/LspClient:
 
         ref:
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -208,7 +208,7 @@ test client/LspClient:
         Indented `code`
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -231,7 +231,7 @@ test client/LspClient:
         another paragraph
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [ Text "Indented" ],
@@ -254,7 +254,7 @@ test client/LspClient:
         another paragraph
         */
       """
-      Content [
+      Contents [
         Section "Section1"
           [
             Paragraph [ Text "Indented" ],
@@ -279,7 +279,7 @@ test client/LspClient:
         another paragraph
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [ Text "unnamed section" ],
@@ -311,7 +311,7 @@ test client/LspClient:
 
         ref:
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -342,7 +342,7 @@ test client/LspClient:
           C
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -371,7 +371,7 @@ test client/LspClient:
         * 3
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Itemized [
@@ -401,7 +401,7 @@ test client/LspClient:
         - 2
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Itemized [
@@ -434,7 +434,7 @@ test client/LspClient:
         - 2
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Itemized [
@@ -469,7 +469,7 @@ test client/LspClient:
       updater:
       if-absent:
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -512,7 +512,7 @@ test client/LspClient:
       updater:
       if-absent:
       """
-      Content [
+      Contents [
         Section null
           [
             Itemized [
@@ -557,7 +557,7 @@ test client/LspClient:
         string with escape: "foo\\" bar"
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
@@ -601,7 +601,7 @@ test client/LspClient:
         done
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
