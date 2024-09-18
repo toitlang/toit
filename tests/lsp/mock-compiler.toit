@@ -107,6 +107,7 @@ class MockCompiler:
     all-uris.do:
       data := mock-information_.get it
       chunks.add it
+      chunks.add "not deprecated"
       build-deps_ data --chunks=chunks
       // For now, just provide empty summaries.
       if class-count-only:

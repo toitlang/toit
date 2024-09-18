@@ -735,8 +735,7 @@ compute-summaries --uris/List --toitc/string --sdk-path -> Documents:
   server.initialized
   server.set-sdk-path sdk-path
   server.set-toitc toitc
-  // TODO(florian): enable this line. Needs https://github.com/toitlang/toit/pull/2428 to land.
-  // server.set-timeout-ms 0  // No timeout.
+  server.set-timeout-ms 0  // No timeout.
 
   server.analyze-many { "uris": uris }
 
