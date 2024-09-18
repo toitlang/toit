@@ -344,7 +344,7 @@ class Writer {
     va_list arguments;
     va_start(arguments, format);
 
-    // Calculate the size of the buffer required
+    // Calculate the size of the buffer required.
     va_list args_copy;
     va_copy(args_copy, arguments);
     int size = vsnprintf(NULL, 0, format, args_copy);
@@ -352,15 +352,16 @@ class Writer {
 
     if (size < 0) FATAL("Failure to convert argument to string");
 
-    // Allocate a buffer of the required size
-    char* buffer = (char*)malloc(size + 1);
+    // Allocate a buffer of the required size.
+    char* buffer = unvoid_cast<char*>(malloc(size + 1));
 
-    // Print to the buffer
+    // Print to the buffer.
     vsnprintf(buffer, size + 1, format, arguments);
     va_end(arguments);
 
     printf("%s", buffer);
     sha1_.processBytes(buffer, size);
+    free(buffer);
   }
 };
 
@@ -438,6 +439,7 @@ void Writer::print_field(ir::Field* field) {
   print_range(field->range());
 
   this->printf_external("%s\n", field->is_final() ? "final" : "mutable");
+  this->printf_external("%s\n", field->is_deprecated() ? "deprecated" : "-");
   print_type(field->type());
   print_toitdoc(field);
 }
@@ -481,6 +483,7 @@ void Writer::print_method(ir::Method* method) {
     case ir::Method::FACTORY: this->printf_external("factory\n"); break;
     case ir::Method::FIELD_INITIALIZER: UNREACHABLE();
   }
+  this->printf_external("%s\n", method->is_deprecated() ? "deprecated" : "-");
   auto shape = method->resolution_shape();
   int max_unnamed = shape.max_unnamed_non_block() + shape.unnamed_block_count();
   bool has_implicit_this = method->is_instance() || method->is_constructor();
@@ -536,7 +539,8 @@ void Writer::print_class(ir::Class* klass) {
       break;
   }
   this->printf_external("%s\n", kind);
-  this->printf_external("%s\n", klass->is_abstract() ? "abstract" : "non-abstract");
+  this->printf_external("%s\n", klass->is_abstract() ? "abstract" : "-");
+  this->printf_external("%s\n", klass->is_deprecated() ? "deprecated" : "-");
   if (klass->super() == null) {
     this->printf_external("-1\n");
   } else {
@@ -641,6 +645,8 @@ void Writer::print_module(Module* module, Module* core_module) {
 
   // For simplicity repeat the module path and the class count.
   this->printf_external("%s\n", current_source_->absolute_path());
+
+    this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
   print_dependencies(module);
 
   BufferedWriter buffered;

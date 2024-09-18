@@ -38,6 +38,7 @@ class Module:
   It needs to go through the $SummaryReader first.
   */
   summary-bytes_ / ByteArray? := ?
+  is-deprecated / bool ::= ?
   toplevel-offset_ / int := ?
   module-toplevel-offsets_ / List := ?
   module-uris_ / List := ?
@@ -52,6 +53,7 @@ class Module:
   constructor
       --.uri
       --.external-hash
+      --.is-deprecated
       --.dependencies
       --summary-bytes/ByteArray
       --toplevel-offset/int
@@ -207,8 +209,9 @@ class Class implements ToplevelElement:
   range / Range  ::= ?
   toplevel-id / int ::= ?
 
-  kind         / string ::= ?
-  is-abstract  / bool ::= false
+  kind          / string ::= ?
+  is-abstract   / bool ::= ?
+  is-deprecated / bool ::= ?
 
   superclass   / ToplevelRef? ::= ?
   interfaces   / List ::= ?
@@ -223,7 +226,7 @@ class Class implements ToplevelElement:
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
+  constructor --.name --.range --.toplevel-id --.kind --.is-abstract --.is-deprecated
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
@@ -270,12 +273,14 @@ class Method implements ClassMember ToplevelElement:
   parameters  / List  ::= ?
   return-type / Type? ::= ?
 
-  is-abstract  / bool ::= false
-  is-synthetic / bool ::= false
+  is-abstract   / bool ::= ?
+  is-synthetic  / bool ::= ?
+  is-deprecated / bool ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
+  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type
+      --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
@@ -308,12 +313,13 @@ class Field implements ClassMember:
 
   name / string ::= ?
   range / Range ::= ?
-  is-final / bool ::= false
+  is-final / bool ::= ?
+  is-deprecated / bool ::= ?
   type / Type? ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor .name .range .is-final .type .toitdoc:
+  constructor .name .range .is-final .is-deprecated .type .toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
@@ -424,6 +430,7 @@ class ModuleReader extends ReaderBase:
   to-uri_ path / string -> string: return to-uri path --from-compiler
 
   fill-module module/Module -> none:
+    is-deprecated := read-line == "deprecated"
     exported-modules := read-list: to-uri_ read-line
     exported := read-list: read-export
     // The order also defines the toplevel-ids.
@@ -432,6 +439,7 @@ class ModuleReader extends ReaderBase:
     functions := read-list: read-method
     globals := read-list: read-method
     toitdoc := read-toitdoc
+    module.is-deprecated_ = is-deprecated
     module.exported-modules_ = exported-modules
     module.exports_ = exported
     module.classes_ = classes
@@ -454,6 +462,7 @@ class ModuleReader extends ReaderBase:
     kind := read-line
     assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
     is-abstract := read-line == "abstract"
+    is-deprecated := read-line == "deprecated"
     superclass := read-toplevel-ref
     interfaces := read-list: read-toplevel-ref
     mixins := read-list: read-toplevel-ref
@@ -469,6 +478,7 @@ class ModuleReader extends ReaderBase:
         --toplevel-id=toplevel-id
         --kind=kind
         --is-abstract=is-abstract
+        --is-deprecated=is-deprecated
         --superclass=superclass
         --interfaces=interfaces
         --mixins=mixins
@@ -523,6 +533,7 @@ class ModuleReader extends ReaderBase:
       assert: global-id == -1
     else:
       throw "Unknown kind"
+    is-deprecated := read-line == "deprecated"
     parameters := read-list: read-parameter
     return-type := read-type
     toitdoc := read-toitdoc
@@ -535,6 +546,7 @@ class ModuleReader extends ReaderBase:
         --return-type=return-type
         --is-abstract=is-abstract
         --is-synthetic=is-synthetic
+        --is-deprecated=is-deprecated
         --toitdoc=toitdoc
 
   read-parameter -> Parameter:
@@ -551,9 +563,10 @@ class ModuleReader extends ReaderBase:
     name := read-line
     range := read-range
     is-final := read-line == "final"
+    is-deprecated := read-line == "deprecated"
     type := read-type
     toitdoc := read-toitdoc
-    return Field name range is-final type toitdoc
+    return Field name range is-final is-deprecated type toitdoc
 
   read-toitdoc -> Contents?:
     sections := read-list: read-section
