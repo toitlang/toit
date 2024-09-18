@@ -24,12 +24,12 @@ LIBRARIES-HIDDEN ::= [
 ]
 
 category-for-sdk-library segments/List -> string:
-  first := segments[0]
+  first := segments.first
   if LIBRARIES-FUNDAMENTAL.contains first: return Library.CATEGORY-FUNDAMENTAL
   if LIBRARIES-JUST-THERE.contains first: return Library.CATEGORY-JUST-THERE
   return Library.CATEGORY-MISC
 
 is-sdk-library-hidden segments/List -> bool:
-  first := segments[0]
+  first := segments.first
   if first == "encoding" and segments.size == 3 and segments[2] == "tpack": return true
   return LIBRARIES-HIDDEN.contains first
