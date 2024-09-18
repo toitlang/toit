@@ -622,7 +622,7 @@ test client/LspClient:
         - http://example.com
         */
       """
-      Content [
+      Contents [
         Section null
           [
             Paragraph [
