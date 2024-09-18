@@ -214,7 +214,7 @@ class ToitdocWriter : public toitdoc::Visitor {
 
 class BufferedWriter : public LspWriter {
  public:
-  BufferedWriter() : buffer_(reinterpret_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
+  BufferedWriter() : buffer_(unvoid_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
   ~BufferedWriter() { free(buffer_); }
 
   void printf(const char* format, va_list& arguments) override {
@@ -256,7 +256,7 @@ class BufferedWriter : public LspWriter {
       new_capacity *= 2;
     }
 
-    uint8* new_buffer = reinterpret_cast<uint8*>(malloc(new_capacity));
+    uint8* new_buffer = unvoid_cast<uint8*>(malloc(new_capacity));
     memcpy(new_buffer, buffer_, length_);
     free(buffer_);
     buffer_ = new_buffer;
@@ -646,7 +646,6 @@ void Writer::print_module(Module* module, Module* core_module) {
   // For simplicity repeat the module path and the class count.
   this->printf_external("%s\n", current_source_->absolute_path());
 
-    this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
   print_dependencies(module);
 
   BufferedWriter buffered;
@@ -654,6 +653,7 @@ void Writer::print_module(Module* module, Module* core_module) {
   lsp_writer_ = &buffered;
   sha1_ = sha1::SHA1();
 
+  this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
   List<const char*> exported_modules;
   if (module->export_all()) {
     ListBuilder<const char*> builder;

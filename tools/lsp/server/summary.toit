@@ -38,12 +38,12 @@ class Module:
   It needs to go through the $SummaryReader first.
   */
   summary-bytes_ / ByteArray? := ?
-  is-deprecated / bool ::= ?
   toplevel-offset_ / int := ?
   module-toplevel-offsets_ / List := ?
   module-uris_ / List := ?
 
   exported-modules_ / List?/*<string>*/ := null
+  is-deprecated_ / bool? := null
   exports_      / List? := null
   classes_      / List? := null
   functions_    / List? := null
@@ -53,7 +53,6 @@ class Module:
   constructor
       --.uri
       --.external-hash
-      --.is-deprecated
       --.dependencies
       --summary-bytes/ByteArray
       --toplevel-offset/int
@@ -84,6 +83,10 @@ class Module:
     functions_ = functions
     globals_ = globals
     toitdoc_ = toitdoc
+
+  is-deprecated -> bool:
+    if summary-bytes_: parse_
+    return is-deprecated_
 
   exported-modules -> List/*<string>*/:
     if summary-bytes_: parse_
@@ -139,7 +142,6 @@ class Module:
         --module-uris=module-uris_
     reader.fill-module this
     summary-bytes_ = null
-
 
 class Export:
   static AMBIGUOUS ::= 0
