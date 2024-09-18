@@ -28,7 +28,7 @@ namespace toitdoc {
 class Node;
 
 #define TOITDOC_NODES(V)        \
-  V(Content)                    \
+  V(Contents)                   \
   V(Section)                    \
   V(Statement)                  \
   V(CodeSection)                \
