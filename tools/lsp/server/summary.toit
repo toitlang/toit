@@ -47,7 +47,7 @@ class Module:
   classes_      / List? := null
   functions_    / List? := null
   globals_      / List?/*<Method>*/ := null
-  toitdoc_      / Content? := null
+  toitdoc_      / Contents? := null
 
   constructor
       --.uri
@@ -71,7 +71,7 @@ class Module:
       --classes/List
       --functions/List
       --globals/List
-      --toitdoc/Content?:
+      --toitdoc/Contents?:
     summary-bytes_ = null
     toplevel-offset_ = -1
     module-toplevel-offsets_ = []
@@ -103,7 +103,7 @@ class Module:
     if summary-bytes_: parse_
     return globals_
 
-  toitdoc -> Content?:
+  toitdoc -> Contents?:
     if summary-bytes_: parse_
     return toitdoc_
 
@@ -221,7 +221,7 @@ class Class implements ToplevelElement:
   fields  / List ::= ?
   methods / List ::= ?
 
-  toitdoc / Content? ::= ?
+  toitdoc / Contents? ::= ?
 
   constructor --.name --.range --.toplevel-id --.kind --.is-abstract
       --.superclass --.interfaces --.mixins
@@ -273,7 +273,7 @@ class Method implements ClassMember ToplevelElement:
   is-abstract  / bool ::= false
   is-synthetic / bool ::= false
 
-  toitdoc / Content? ::= ?
+  toitdoc / Contents? ::= ?
 
   constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
 
@@ -311,7 +311,7 @@ class Field implements ClassMember:
   is-final / bool ::= false
   type / Type? ::= ?
 
-  toitdoc / Content? ::= ?
+  toitdoc / Contents? ::= ?
 
   constructor .name .range .is-final .type .toitdoc:
 
@@ -555,10 +555,10 @@ class ModuleReader extends ReaderBase:
     toitdoc := read-toitdoc
     return Field name range is-final type toitdoc
 
-  read-toitdoc -> Content?:
+  read-toitdoc -> Contents?:
     sections := read-list: read-section
     if sections.is-empty: return null
-    return Content sections
+    return Contents sections
 
   read-section -> Section:
     title := null

@@ -28,7 +28,7 @@ namespace toitdoc {
 class Node;
 
 #define TOITDOC_NODES(V)                \
-  V(Content)                   \
+  V(Contents)                   \
   V(Section)                    \
   V(Statement)                  \
   V(CodeSection)                \
@@ -72,11 +72,11 @@ TOITDOC_NODES(DECLARE)
   virtual name* as_##name() { return this; }                             \
   virtual const char* node_type() const { return #name; }
 
-class Content : public Node {
+class Contents : public Node {
  public:
-  explicit Content(List<Section*> sections)
+  explicit Contents(List<Section*> sections)
       : sections_(sections) {}
-  IMPLEMENTS(Content)
+  IMPLEMENTS(Contents)
 
   List<Section*> sections() const { return sections_; }
 

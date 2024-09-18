@@ -647,7 +647,7 @@ abstract class Reader implements old-reader.Reader:
     operations.
 
   If $hand-over is true, then this instance takes ownership of $value.
-    In this case, its content should not be modified after being
+    In this case, its contents should not be modified after being
     given to this method.
   */
   unget value/ByteArray --hand-over/bool=false -> none:
