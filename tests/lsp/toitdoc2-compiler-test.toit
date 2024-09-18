@@ -652,7 +652,7 @@ test client/LspClient:
       \\[foo]
       */
       """
-      Content [
+      Contents [
         Section null
           [
             Itemized [
