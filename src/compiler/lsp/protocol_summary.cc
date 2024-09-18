@@ -291,7 +291,7 @@ class Writer {
     va_list arguments;
     va_start(arguments, format);
 
-    // Calculate the size of the buffer required
+    // Calculate the size of the buffer required.
     va_list args_copy;
     va_copy(args_copy, arguments);
     int size = vsnprintf(NULL, 0, format, args_copy);
@@ -299,15 +299,16 @@ class Writer {
 
     if (size < 0) FATAL("Failure to convert argument to string");
 
-    // Allocate a buffer of the required size
-    char* buffer = (char*)malloc(size + 1);
+    // Allocate a buffer of the required size.
+    char* buffer = unvoid_cast<char*>(malloc(size + 1));
 
-    // Print to the buffer
+    // Print to the buffer.
     vsnprintf(buffer, size + 1, format, arguments);
     va_end(arguments);
 
     printf("%s", buffer);
     sha1_.processBytes(buffer, size);
+    free(buffer);
   }
 };
 
