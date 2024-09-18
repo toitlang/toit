@@ -67,10 +67,10 @@ class ToitdocWriter : public toitdoc::Visitor {
       , lsp_writer_(lsp_writer) {}
 
   void write() {
-    visit(toitdoc_.content());
+    visit(toitdoc_.contents());
   }
 
-  void visit_Content(toitdoc::Content* node) {
+  void visit_Contents(toitdoc::Contents* node) {
     print_list(node->sections(), &ToitdocWriter::visit_Section);
   }
 
@@ -227,7 +227,7 @@ class ToitdocWriter : public toitdoc::Visitor {
 
 class BufferedWriter : public LspWriter {
  public:
-  BufferedWriter() : buffer_(reinterpret_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
+  BufferedWriter() : buffer_(unvoid_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
   ~BufferedWriter() { free(buffer_); }
 
   void printf(const char* format, va_list& arguments) override {
@@ -269,7 +269,7 @@ class BufferedWriter : public LspWriter {
       new_capacity *= 2;
     }
 
-    uint8* new_buffer = reinterpret_cast<uint8*>(malloc(new_capacity));
+    uint8* new_buffer = unvoid_cast<uint8*>(malloc(new_capacity));
     memcpy(new_buffer, buffer_, length_);
     free(buffer_);
     buffer_ = new_buffer;
@@ -357,7 +357,7 @@ class Writer {
     va_list arguments;
     va_start(arguments, format);
 
-    // Calculate the size of the buffer required
+    // Calculate the size of the buffer required.
     va_list args_copy;
     va_copy(args_copy, arguments);
     int size = vsnprintf(NULL, 0, format, args_copy);
@@ -365,15 +365,16 @@ class Writer {
 
     if (size < 0) FATAL("Failure to convert argument to string");
 
-    // Allocate a buffer of the required size
-    char* buffer = (char*)malloc(size + 1);
+    // Allocate a buffer of the required size.
+    char* buffer = unvoid_cast<char*>(malloc(size + 1));
 
-    // Print to the buffer
+    // Print to the buffer.
     vsnprintf(buffer, size + 1, format, arguments);
     va_end(arguments);
 
     printf("%s", buffer);
     sha1_.processBytes(buffer, size);
+    free(buffer);
   }
 };
 
@@ -451,6 +452,7 @@ void Writer::print_field(ir::Field* field) {
   print_range(field->range());
 
   this->printf_external("%s\n", field->is_final() ? "final" : "mutable");
+  this->printf_external("%s\n", field->is_deprecated() ? "deprecated" : "-");
   print_type(field->type());
   print_toitdoc(field);
 }
@@ -494,6 +496,7 @@ void Writer::print_method(ir::Method* method) {
     case ir::Method::FACTORY: this->printf_external("factory\n"); break;
     case ir::Method::FIELD_INITIALIZER: UNREACHABLE();
   }
+  this->printf_external("%s\n", method->is_deprecated() ? "deprecated" : "-");
   auto shape = method->resolution_shape();
   int max_unnamed = shape.max_unnamed_non_block() + shape.unnamed_block_count();
   bool has_implicit_this = method->is_instance() || method->is_constructor();
@@ -549,7 +552,8 @@ void Writer::print_class(ir::Class* klass) {
       break;
   }
   this->printf_external("%s\n", kind);
-  this->printf_external("%s\n", klass->is_abstract() ? "abstract" : "non-abstract");
+  this->printf_external("%s\n", klass->is_abstract() ? "abstract" : "-");
+  this->printf_external("%s\n", klass->is_deprecated() ? "deprecated" : "-");
   if (klass->super() == null) {
     this->printf_external("-1\n");
   } else {
@@ -654,6 +658,7 @@ void Writer::print_module(Module* module, Module* core_module) {
 
   // For simplicity repeat the module path and the class count.
   this->printf_external("%s\n", current_source_->absolute_path());
+
   print_dependencies(module);
 
   BufferedWriter buffered;
@@ -661,6 +666,7 @@ void Writer::print_module(Module* module, Module* core_module) {
   lsp_writer_ = &buffered;
   sha1_ = sha1::SHA1();
 
+  this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
   List<const char*> exported_modules;
   if (module->export_all()) {
     ListBuilder<const char*> builder;

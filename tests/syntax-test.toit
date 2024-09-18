@@ -2,18 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ..tests.syntax
-import .syntax show show-foo2
+import ..tests.syntax-companion
+import .syntax-companion show show-foo2
 import io
 
-import ..tests.syntax show global-x global-y
-import .syntax show global-x global-y
+import ..tests.syntax-companion show global-x global-y
+import .syntax-companion show global-x global-y
 import io show Buffer
 
-import ..tests.syntax show
+import ..tests.syntax-companion show
   global-x
   global-y
-import .syntax
+import .syntax-companion
   show
     global-x
     global-y
@@ -23,12 +23,12 @@ import
   Buffer
   InMixin
 
-import ..tests.syntax show *
-import .syntax show *
+import ..tests.syntax-companion show *
+import .syntax-companion show *
 import bytes show *
 
-import ..tests.syntax as imp1
-import .syntax as imp2
+import ..tests.syntax-companion as imp1
+import .syntax-companion as imp2
 import bytes as imp3
 
 import core as core
@@ -37,7 +37,7 @@ export global-x
 export global-x global-y
 export *
 
-import .syntax as as-prefix
+import .syntax-companion as as-prefix
 
 import-foo:
 show-foo:
