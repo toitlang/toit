@@ -3,11 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .udp as udp
 import net
-import net.udp as net
 
 main:
   net.IpAddress.parse
-    net.open.address.stringify
+      net.open.address.stringify

@@ -1,0 +1,6 @@
+<sdk>/uart.toit:243:15: warning: Deprecated 'Port.errors'
+        errors++
+              ^~
+<sdk>/uart.toit:243:15: warning: Deprecated 'Port.errors'
+        errors++
+              ^~

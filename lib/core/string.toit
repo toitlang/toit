@@ -124,11 +124,8 @@ abstract class string implements Comparable io.Data:
   Returns the number of runes (Unicode "code points") in this string.
 
   This operation takes linear time to complete as it runs through the whole string.
-
-  The flag $runes must be true.
   */
-  size --runes/bool -> int:
-    if runes != true: throw "Bad Argument"
+  size --runes/True -> int:
     return rune-size_
 
   rune-size_ -> int:
@@ -200,11 +197,8 @@ abstract class string implements Comparable io.Data:
     of this string.
 
   Contrary to $at this method never returns null.
-
-  The flag $raw must be true
   */
-  at --raw/bool i/int -> int:
-    if raw != true: throw "Bad Argument"
+  at --raw/True i/int -> int:
     return raw-at_ i
 
   /**
@@ -233,15 +227,12 @@ abstract class string implements Comparable io.Data:
   Contrary to $do, only invokes $block with valid integer values. For every multi-byte sequences
     there is only one call to $block.
 
-  The flag $runes must be true.
-
   # Examples
   ```
   "Amélie".do --runes: print "$(%c it)" // A, m, é, l, i, e
   ```
   */
-  do --runes/bool [block] -> none:
-    if runes != true: throw "Bad Argument"
+  do --runes/True [block] -> none:
     for i := 0; i < size; i++:
       rune := this[i]
       if rune: block.call rune
@@ -585,8 +576,6 @@ abstract class string implements Comparable io.Data:
 
   Returns this instance directly if this instance is longer than $amount.
 
-  The flag $left must be true.
-
   # Examples
   ```
   str := "foo"
@@ -603,16 +592,13 @@ abstract class string implements Comparable io.Data:
   str.pad 1     // => "foo"
   ```
   */
-  pad --left/bool=true amount/int char/int=' ' -> string:
-    if left != true: throw "Bad Argument"
+  pad --left/True=true amount/int char/int=' ' -> string:
     return pad_ (amount - size) 0 char
 
   /**
   Pads this instance with $char on the right, until the total size of the string is $amount.
 
   Returns this instance directly if this instance is longer than $amount.
-
-  The flag $right must be true.
 
   # Examples
   ```
@@ -624,8 +610,7 @@ abstract class string implements Comparable io.Data:
   str.pad --right 1     // => "foo"
   ```
   */
-  pad --right/bool  amount/int char/int=' ' -> string:
-    if right != true: throw "Bad Argument"
+  pad --right/True  amount/int char/int=' ' -> string:
     return pad_ 0 (amount - size) char
 
   /**
@@ -635,8 +620,6 @@ abstract class string implements Comparable io.Data:
     padding to the right.
 
   Returns this instance directly if this instance is longer than $amount.
-
-  The flag $center must be true.
 
   # Examples
   ```
@@ -651,8 +634,7 @@ abstract class string implements Comparable io.Data:
   str.pad --center 1     // => "foo"
   ```
   */
-  pad --center/bool amount/int char/int=' ' -> string:
-    if center != true: throw "Bad Argument"
+  pad --center/True amount/int char/int=' ' -> string:
     padding := amount - size
     left := padding / 2
     right := padding - left
@@ -879,8 +861,7 @@ abstract class string implements Comparable io.Data:
   Removes leading whitespace.
   Variant of $(trim).
   */
-  trim --left/bool -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True -> string:
     size.repeat:
       c := this[it]
       if c != null and not is-unicode-whitespace_ c:
@@ -891,8 +872,7 @@ abstract class string implements Comparable io.Data:
   Removes trailing whitespace.
   Variant of $(trim).
   */
-  trim --right/bool -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True -> string:
     size.repeat:
       c := this[size - 1 - it]
       if c != null and not is-unicode-whitespace_ c:
@@ -917,8 +897,7 @@ abstract class string implements Comparable io.Data:
   str.trim --left "gee"  // => "foobar"
   ```
   */
-  trim --left/bool prefix/string -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True prefix/string -> string:
     return trim --left prefix --if-absent=: it
 
   /**
@@ -937,8 +916,7 @@ abstract class string implements Comparable io.Data:
   str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
-  trim --left/bool prefix/string [--if-absent] -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True prefix/string [--if-absent] -> string:
     if not starts-with prefix: return if-absent.call this
     return this[prefix.size..]
 
@@ -956,8 +934,7 @@ abstract class string implements Comparable io.Data:
   str.trim --right "gee"  // => "foobar"
   ```
   */
-  trim --right/bool suffix/string -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True suffix/string -> string:
     return trim --right suffix --if-absent=: it
 
   /**
@@ -975,8 +952,7 @@ abstract class string implements Comparable io.Data:
   str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
-  trim --right/bool suffix/string [--if-absent] -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True suffix/string [--if-absent] -> string:
     if not ends-with suffix: return if-absent.call this
     return this[..size - suffix.size]
 

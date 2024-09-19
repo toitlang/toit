@@ -37,14 +37,21 @@ on:
         required: false
         type: boolean
         default: false
+      dispatch-toitdocs:
+        description: "Dispatch toitdoc rebuild"
+        required: false
+        type: boolean
+        default: false
       run-tests:
         description: "Run tests"
         required: false
         type: boolean
         default: true
-
-env:
-  ESPTOOL_VERSION: v4.6
+      run-esp32-flow:
+        description: "Run the ESP32 flow"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   prereqs:
@@ -60,9 +67,23 @@ jobs:
           else
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
           fi
+          if [[ "${{ inputs.run-tests }}" != "false" ]]; then
+            echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-20.04", "shard": 6}, {"container": "ubuntu-20.04", "shard": 7}, {"container": "ubuntu-20.04", "shard": 8}]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT_LINUX=8' >> $GITHUB_OUTPUT
+          else
+            echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
+          fi
 
     outputs:
       CONTAINERS: ${{ steps.vars.outputs.CONTAINERS }}
+      SHARDS: ${{ steps.vars.outputs.SHARDS }}
+      EXTRA_INCLUDES: ${{ steps.vars.outputs.EXTRA_INCLUDES }}
+      SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
+      SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
 
   build:
     needs: prereqs
@@ -71,15 +92,9 @@ jobs:
       # The matrix will run all possible combinations in parallel.
       matrix:
         container: ${{ fromJson(needs.prereqs.outputs.CONTAINERS) }}
-        shard: [1, 2, 3, 4, 5]
+        shard: ${{ fromJson(needs.prereqs.outputs.SHARDS) }}
 
-        include:
-          - container: ubuntu-20.04
-            shard: 6
-          - container: ubuntu-20.04
-            shard: 7
-          - container: ubuntu-20.04
-            shard: 8
+        include: ${{ fromJson(needs.prereqs.outputs.EXTRA_INCLUDES) }}
 
     runs-on: ${{ matrix.container }}
 
@@ -107,16 +122,16 @@ jobs:
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=8" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "X64" ]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "ARM64" ]; then
             echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -145,7 +160,7 @@ jobs:
         run: |
           ccache -s
           make sdk
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
@@ -257,16 +272,13 @@ jobs:
         if: runner.os == 'Linux' && matrix.shard == 1
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
-          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
-          SDKDIR: ${{ github.workspace }}/
+          TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
+          SDKDIR: ${{ github.workspace }}/build/host/sdk
         shell: bash
         run: |
-          CPU_CORES=$(nproc)
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
-          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
-          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -297,48 +309,6 @@ jobs:
           retention-days: 5
           if-no-files-found: ignore
 
-      - name: Authenticate to Google cloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
-          service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: infrastructure-220307
-
-      - name: Upload toitdoc to gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          JSON_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
-          echo -n $TOIT_VERSION > LATEST.tmp
-          gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
-
-      - name: Update RELEASE in gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          echo -n $TOIT_VERSION > LATEST.tmp
-
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
-
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
         uses: actions/upload-artifact@v3
@@ -358,6 +328,26 @@ jobs:
           asset_name: toitdoc.json
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
+
+      - name: Dispatch toitdoc rebuild - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          ((github.event_name == 'release' && github.repository_owner == 'toitlang') ||
+           github.event.inputs.dispatch-toitdocs == 'true')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'true',
+                'toitdoc-version': '${{ github.event.release.tag_name }}'
+              },
+            });
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
@@ -382,6 +372,8 @@ jobs:
 
   # Really annoying that we need to duplicate so much.
   esp32:
+    if: ${{ github.event.inputs.run-esp32-flow != 'false' }}
+
     runs-on: ubuntu-latest
 
     steps:
@@ -669,7 +661,7 @@ jobs:
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi aarch64; do
+            for target in windows linux macos rpi aarch64 $MACOS_ARM; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
@@ -684,29 +676,30 @@ jobs:
 
       - name: Download esptools
         run: |
-          for arch in arm arm64 linux-amd64 macos win64; do
-            curl -O -L https://github.com/espressif/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_VERSION-$arch.zip
-            unzip esptool-$ESPTOOL_VERSION-$arch.zip
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             EXTENSION=""
-            if [[ "$arch" = "arm" ]]; then
-              TARGET=rpi
-            elif [[ "$arch" = "arm64" ]]; then
-              TARGET=aarch64
-            elif [[ "$arch" = "linux-amd64" ]]; then
-              TARGET=linux
-            elif [[ "$arch" = "macos" ]]; then
-              TARGET=macos
-            elif [[ "$arch" = "win64" ]]; then
-              TARGET=windows
+            if [[ "$os" = "windows" ]]; then
               EXTENSION=.exe
+              ESPTOOL_ARCH=windows-x64
+            elif [[ "$os" = "linux" ]]; then
+              ESPTOOL_ARCH=linux-x64
+            elif [[ "$os" = "macos" ]]; then
+              ESPTOOL_ARCH=macos-x64
+            elif [[ "$os" = "rpi" ]]; then
+              ESPTOOL_ARCH=linux-armv7
+            elif [[ "$os" = "aarch64" ]]; then
+              ESPTOOL_ARCH=linux-aarch64
+            elif [[ "$os" = "macos-arm" ]]; then
+              ESPTOOL_ARCH=macos-aarch64
+            else
+              echo "Unknown os: $os"
+              exit 1
             fi
-            cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
-            chmod +x $TARGET/toit/tools/esptool$EXTENSION
-            # At the moment there isn't a prebuilt macos-arm executable, and we use the x64 one instead.
-            if [[ "$arch" = "macos" && "$MACOS_ARM" != "" ]]; then
-              cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION macos-arm/toit/tools/esptool$EXTENSION
-              chmod +x macos-arm/toit/tools/esptool$EXTENSION
-            fi
+
+            curl -O -L https://github.com/toitlang/esptool/releases/latest/download/esptool-$ESPTOOL_ARCH.zip
+            unzip esptool-$ESPTOOL_ARCH.zip
+            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
+            chmod +x $os/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
@@ -882,9 +875,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: |
+          set -e
+          brew install create-dmg
+          brew install zip
+
       - uses: actions/download-artifact@v3
         with:
           name: macOS-build-unsigned
+
+      - name: Create out folder
+        run: |
+          mkdir out
 
       - name: Decompress
         run: |
@@ -896,11 +899,11 @@ jobs:
       - name: List executables
         id: list-executables
         run: |
-          find .
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
           # Don't sign the esptool which isn't from us.
-          find toit-x64/bin toit-x64/tools toit-arm/bin toit-arm/tools \
+          find toit-x64/bin toit-x64/tools toit-x64/vessels/vessel* toit-x64/vessels/darwin \
+               toit-arm/bin toit-arm/tools toit-arm/vessels/vessel* toit-arm/vessels/darwin \
              -type f \
              ! -regex '.*/esptool' \
              >> $GITHUB_OUTPUT
@@ -918,19 +921,48 @@ jobs:
 
       - name: Compress
         run: |
-          mv toit-x64 toit
-          tar c -zf toit-macos.tar.gz toit
-          mv toit toit-x64
-          mv toit-arm toit
-          tar c -zf toit-macos-arm.tar.gz toit
+          for arch in x64 arm; do
+            mv toit-$arch toit
+            tar c -zf out/toit-$arch.tar.gz toit
+            mv toit toit-$arch
+          done
+
+      - name: Create DMGs
+        run: |
+          set -e
+          ln -s sdk/bin/toit toit-symlink
+          for arch in x64 arm; do
+            # Use an empty directory as source so we don't accidentally add other files than SDK.
+            mkdir empty-$arch
+            create-dmg \
+                --volname "jag" \
+                --add-file toit toit-symlink 0 0 \
+                --add-file sdk toit-$arch 200 0 \
+                out/toit-$arch.dmg \
+                empty-$arch
+          done
+
+      - name: Sign DMGs
+        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: 33DS2ZRDST
+          app-path: |
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: macOS-build
           path: |
-            toit-macos.tar.gz
-            toit-macos-arm.tar.gz
+            out/toit-macos.tar.gz
+            out/toit-macos-arm.tar.gz
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload release artifacts x64
         if: github.event_name == 'release' &&
@@ -938,17 +970,8 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release artifacts arm
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos-arm.tar.gz
+          file_glob: true
+          file: out/*
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
