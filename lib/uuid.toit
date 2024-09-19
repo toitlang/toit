@@ -93,7 +93,7 @@ UUIDs are equivalent to a 128-bit number. Through the use of
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 class Uuid:
-  bytes_/ByteArray ::= ?
+  bytes_/ByteArray
   hash_ := null
 
   /**
