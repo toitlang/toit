@@ -63,7 +63,7 @@ monitor Settings:
 
   // While the new values are fetched, all other requests to the settings are blocked.
   replace [b] -> none:
-    replacement-map := b.call
+    replacement-map := b.call map_
     // The client is allowed to return `null` if it doesn't have
     // any configuration for the settings we requested.
     if replacement-map: map_ = replacement-map
@@ -170,6 +170,24 @@ class LspServer:
     return ResponseError
         --code=ErrorCodes.method-not-found
         --message="Unknown or unimplemented method $method"
+
+  set-sdk-path sdk-path/string -> none:
+    settings_.replace: | old/Map |
+      new := old.copy
+      new["sdkPath"] = sdk-path
+      new
+
+  set-toitc toitc-path/string -> none:
+    settings_.replace: | old/Map |
+      new := old.copy
+      new["toitPath"] = toitc-path
+      new
+
+  set-timeout-ms timeout-ms/int -> none:
+    settings_.replace: | old/Map |
+      new := old.copy
+      new["timeoutMs"] = timeout-ms
+      new
 
   /**
   Initializes the server with the client-information and responds with
@@ -602,10 +620,7 @@ class LspServer:
   reset-crash-rate-limit: last-crash-report-time_ = null
 
   compiler-path_ -> string:
-    compiler-path := toit-path-override_
-    if compiler-path != null:
-      return compiler-path
-    return settings_.toit-compiler-path
+    return toit-path-override_ or settings_.toit-compiler-path
 
   sdk-path_ -> string:
     // We can't access a setting while reading settings (the Setting class is a
@@ -701,3 +716,30 @@ main args -> none:
 
   server := LspServer rpc-connection toit-path-override
   server.run
+
+compute-summaries --uris/List --toitc/string --sdk-path -> Documents:
+  sdk-uri := translator.to-uri sdk-path
+
+  in-pipe := FakePipe
+  out-pipe := FakePipe
+  drain-task := task --background::
+    // We are not interested in whatever the server tries to send.
+    out-pipe.in.drain
+  rpc-connection := RpcConnection in-pipe.in out-pipe.out
+
+  server := LspServer rpc-connection toitc
+
+  root-uri/string? := translator.to-uri directory.cwd
+  initialize-params := InitializeParams --root-uri=root-uri --capabilities=(ClientCapabilities)
+  server.initialize initialize-params
+  server.initialized
+  server.set-sdk-path sdk-path
+  server.set-toitc toitc
+  server.set-timeout-ms 0  // No timeout.
+
+  server.analyze-many { "uris": uris }
+
+  server.shutdown
+  drain-task.cancel
+
+  return server.documents_

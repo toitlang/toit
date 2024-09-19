@@ -91,6 +91,9 @@ class Documents:
   analyzed-documents-for --project-uri/string -> AnalyzedDocuments:
     return analyzed-documents_.get project-uri --init=: (AnalyzedDocuments --error-reporter=error-reporter_)
 
+  all-project-uris -> List:
+    return analyzed-documents_.keys
+
   did-open --uri/string content/string? revision/int -> none:
     document/OpenedDocument? := opened-documents_.get uri
     if document:
@@ -240,6 +243,14 @@ class AnalyzedDocuments:
 
   get --uri/string -> AnalyzedDocument?: return documents_.get uri
   get --path/string -> AnalyzedDocument?: return get --uri=(translator.to-uri path)
+
+  /**
+  Extracts the summaries of the documents.
+  Returns a map from document URI to the summary (of type $Module).
+  */
+  summaries -> Map:
+    return documents_.map: | _ document/AnalyzedDocument|
+      document.summary
 
 /**
 A document that is opened in the editor and thus has content that isn't

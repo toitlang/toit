@@ -73,7 +73,7 @@ class Module:
   Finds the toplevel element with the given $id.
   Returns either a class or a method.
   */
-  toplevel-element-with-id id/int -> any:
+  toplevel-element-with-id id/int -> ToplevelElement:
     if id < classes.size: return classes[id]
     id -= classes.size
     if id < functions.size: return functions[id]
@@ -84,6 +84,8 @@ class Module:
 class Export:
   static AMBIGUOUS ::= 0
   static NODES ::= 1
+
+  hash-code / int ::= hash-code-counter_++
 
   name / string ::= ?
   kind / int ::= ?
@@ -143,10 +145,17 @@ class Type:
 
 hash-code-counter_ := 0
 
-class Class:
+interface ToplevelElement:
+  hash-code -> int
+  name -> string
+  toplevel-id -> int
+
+class Class implements ToplevelElement:
   static KIND_CLASS ::= "class"
   static KIND_INTERFACE ::= "interface"
   static KIND_MIXIN ::= "mixin"
+
+  hash-code / int ::= hash-code-counter_++
 
   name  / string ::= ?
   range / Range  ::= ?
@@ -172,6 +181,10 @@ class Class:
   constructor --.name --.range --.toplevel-id --.kind --.is-abstract --.is-deprecated
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
+
+  is-class -> bool: return kind == KIND_CLASS
+  is-interface -> bool: return kind == KIND_INTERFACE
+  is-mixin -> bool: return kind == KIND_MIXIN
 
   equals-external other/Class -> bool:
     return other and
@@ -207,7 +220,11 @@ class Class:
         --selection-range=range.to-lsp-range lines
         --children=children
 
-class Method:
+interface ClassMember:
+  hash-code -> int
+  name -> string
+
+class Method implements ClassMember ToplevelElement:
   static INSTANCE-KIND ::= 0
   static GLOBAL-FUN-KIND ::= 1
   static GLOBAL-KIND ::= 2
@@ -267,7 +284,9 @@ class Method:
         --range=range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
 
-class Field:
+class Field implements ClassMember:
+  hash-code / int ::= hash-code-counter_++
+
   name / string ::= ?
   range / Range ::= ?
   is-final / bool ::= ?
