@@ -258,7 +258,8 @@ class MethodResolver : public ast::Visitor {
                                          CallBuilder& call_builder);
   void _visit_potential_call_super(ast::Node* ast_target,
                                    CallBuilder& call_builder,
-                                   bool is_constructor_super_call);
+                                   bool is_constructor_super_call,
+                                   ast::LspSelection* named_lsp_selection);
   void _visit_potential_call(ast::Expression* potential_call,
                              ast::Node* ast_target,
                              List<ast::Expression*> ast_arguments = List<ast::Expression*>());

@@ -2791,7 +2791,8 @@ void MethodResolver::_visit_potential_call_index_slice(ast::Node* ast_target,
 
 void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
                                                  CallBuilder& call_builder,
-                                                 bool is_constructor_super_call) {
+                                                 bool is_constructor_super_call,
+                                                 ast::LspSelection* named_lsp_selection) {
   // This doesn't include a potential `this` argument, if the resolved target
   // is a member method of this instance.
   auto shape_without_implicit_this = call_builder.shape();
@@ -2801,14 +2802,21 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
       ASSERT(is_literal_super(ast_target));
       // We are getting the static resolution of the call target.
       auto ir_target = _resolve_call_target(ast_target, shape_without_implicit_this);
-      if (ast_target->is_LspSelection()) {
+      if (ast_target->is_LspSelection() || named_lsp_selection != null) {
         auto candidates = _compute_target_candidates(ast_target, scope());
-        lsp_->selection_handler()->call_static(ast_target,
-                                               ir_target,
-                                               null,
-                                               candidates.nodes,
-                                               scope(),
-                                               method_);
+        if (ast_target->is_LspSelection()) {
+          lsp_->selection_handler()->call_static(ast_target,
+                                                ir_target,
+                                                null,
+                                                candidates.nodes,
+                                                scope(),
+                                                method_);
+        } else {
+          ASSERT(named_lsp_selection != null);
+          lsp_->selection_handler()->call_static_named(named_lsp_selection,
+                                                      ir_target,
+                                                      candidates.nodes);
+        }
       }
       if (ir_target->is_Error()) {
         ir_target->as_Error()->set_nested(call_builder.arguments());
@@ -2862,7 +2870,7 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
                                                    &filtered);
         } else if (ast_target->is_Dot() && ast_target->as_Dot()->receiver()->is_LspSelection()) {
           // We don't provide any target for goto-definition. (The only good option would be the actual target,
-          //   but that's already handled by goto-definition of the actual 'name'.
+          //   but that's already handled by goto-definition of the actual 'name').
           // For completion we just provide all current static targets.
           lsp_->selection_handler()->call_static(ast_target->as_Dot()->receiver(),
                                                  null,
@@ -2870,6 +2878,11 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
                                                  List<ir::Node*>(),
                                                  scope(),
                                                  method_);
+        } else if (named_lsp_selection != null) {
+          auto candidates = _compute_constructor_super_candidates(ast_target);
+          lsp_->selection_handler()->call_static_named(named_lsp_selection,
+                                                       ir_target,
+                                                       candidates);
         }
         if (ir_target->is_ReferenceMethod()) {
           // 1. we need to add `this` in front.
@@ -3064,7 +3077,10 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     } else if (is_literal_super(ast_target) ||
               (ast_target->is_Dot() && is_constructor_super_call)) {
       // 'super' or 'super.constructor_name'.
-      _visit_potential_call_super(ast_target, call_builder, is_constructor_super_call);
+      _visit_potential_call_super(ast_target,
+                                  call_builder,
+                                  is_constructor_super_call,
+                                  named_lsp_selection);
     } else {
       report_error(ast_target, "Can't call result of evaluating expression");
       ListBuilder<ir::Expression*> all_ir_nodes;
