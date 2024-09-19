@@ -4,6 +4,7 @@
 
 import expect show *
 
+import core
 import crypto show *
 import crypto.adler32 show *
 import crypto.aes show *
@@ -221,8 +222,8 @@ hamming-test:
             hamming.fix-16-11 correct ^ (1 << bit-flip-1) ^ (1 << bit-flip-2)
 
 aead-simple-test:
-  key := ByteArray 16: random 256
-  initialization-vector := ByteArray 12: random 256
+  key := ByteArray 16: core.random 256
+  initialization-vector := ByteArray 12: core.random 256
 
   encrypted := (AesGcm.encryptor key initialization-vector).encrypt DREAM
 

@@ -28,9 +28,10 @@ class Contents extends Node:
 
 class Section extends Node:
   title / string? ::= ?
+  level / int ::= ?
   statements / List ::= ?
 
-  constructor .title .statements:
+  constructor .title .level .statements:
 
   accept visitor / ToitdocVisitor:
     return visitor.visit-Section this
@@ -111,6 +112,7 @@ class ToitdocRef extends Expression:
   static FACTORY ::= 6
   static METHOD ::= 7
   static FIELD ::= 8
+  static PARAMETER ::= 9
 
   text       / string  ::= ?
   kind       / int     ::= ?
@@ -121,6 +123,9 @@ class ToitdocRef extends Expression:
 
   constructor.other .text:
     kind = OTHER
+
+  constructor.parameter .text:
+    kind = PARAMETER
 
   constructor
       --.text
@@ -133,6 +138,15 @@ class ToitdocRef extends Expression:
   accept visitor / ToitdocVisitor:
     return visitor.visit-ToitdocRef this
 
+class Link extends Expression:
+  text / string ::= ?
+  url  / string ::= ?
+
+  constructor .text .url:
+
+  accept visitor / ToitdocVisitor:
+    return visitor.visit-Link this
+
 interface ToitdocVisitor:
   visit-Contents    node / Contents
   visit-Section     node / Section
@@ -142,4 +156,5 @@ interface ToitdocVisitor:
   visit-Paragraph   node / Paragraph
   visit-Text        node / Text
   visit-Code        node / Code
+  visit-Link        node / Link
   visit-ToitdocRef  node / ToitdocRef
