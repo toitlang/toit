@@ -33,14 +33,14 @@ class Diagnostic extends MapWrapper:
   Creates a diagnostic object.
 
   Parameters:
-  - [range]: the range at which the message applies.
-  - [message]: the diagnostic's message.
-  - [severity]: the diagnostic's severity. Can be omitted. If omitted it is up to the
+  - $range: the range at which the message applies.
+  - $message: the diagnostic's message.
+  - $severity: the diagnostic's severity. Can be omitted. If omitted it is up to the
                 client to interpret diagnostics as error, warning, info or hint.
-  - [code]: the diagnostic's code, which might appear in the user interface.
-  - [source]: a human-readable string describing the source of this diagnostic,
+  - $code: the diagnostic's code, which might appear in the user interface.
+  - $source: a human-readable string describing the source of this diagnostic,
               e.g. 'typescript' or 'super lint'.
-  - [related_information]: an array of related diagnostic information, e.g. when
+  - $related_information: an array of related diagnostic information, e.g. when
           symbol-names within a scope collide all definitions can be marked via this property.
   */
   constructor
@@ -68,8 +68,8 @@ class DiagnosticRelatedInformation extends MapWrapper:
   Creates a related-information-diagnostic object.
 
   Parameters:
-  - [location]: the location of this related diagnostic information.
-  - [message]: the message of this related diagnostic information.
+  - $location: the location of this related diagnostic information.
+  - $message: the message of this related diagnostic information.
   */
   constructor
       --location /Location
@@ -84,8 +84,8 @@ class PushDiagnosticsParams extends MapWrapper:
   Creates a push-diagnostic object, ready to be sent to the client.
 
   Parameters:
-  - [uri]: the URI for which diagnostic information is reported.
-  - [diagnostics]: an array of diagnostic information items.
+  - $uri: the URI for which diagnostic information is reported.
+  - $diagnostics: an array of diagnostic information items.
   */
   constructor
       --uri         /string // A DocumentUri.
