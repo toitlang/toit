@@ -16,14 +16,6 @@ main args:
       --pre-initialize=: it.configuration = null:
     test it --no-supports-config
 
-  run-client-test
-      --use-toitlsp
-      args
-      --supports-config
-      --needs-server-args
-      --pre-initialize=: it.configuration = null:
-    test it --no-supports-config
-
 test client/LspClient --supports-config/bool:
   uri := "untitled:Untitled0"
   client.send-did-open --uri=uri --text="""

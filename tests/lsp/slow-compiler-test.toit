@@ -9,7 +9,6 @@ import monitor
 
 main args:
   run-client-test args --use-mock: test it
-  run-client-test args --use-toitlsp --use-mock: test it
 
 test client/LspClient:
   // We want to send multiple requests overlapping each other, so we

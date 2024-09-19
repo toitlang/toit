@@ -1,0 +1,57 @@
+<<<<<<< HEAD
+<pkg:pkg-cli>/cli.toit:693:16: warning: Deprecated 'parse'
+    return uuid.parse str --on-error=:
+               ^
+=======
+<pkg:toit-cert-roots>/certificate_roots.toit:10750:29: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
+  "Cybertrust Global Root": CYBERTRUST_GLOBAL_ROOT,
+                            ^~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10755:21: warning: Deprecated 'DST-ROOT-CA-X3'
+  "DST Root CA X3": DST_ROOT_CA_X3,
+                    ^~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10766:13: warning: Deprecated 'EC-ACC'
+  "EC-ACC": EC_ACC,
+            ^~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10781:30: warning: Deprecated 'GLOBALSIGN-ROOT-CA-R2'
+  "GlobalSign Root CA - R2": GLOBALSIGN_ROOT_CA_R2,
+                             ^~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10791:62: warning: Deprecated 'HELLENIC-ACADEMIC-AND-RESEARCH-INSTITUTIONS-ROOTCA-2011'
+  "Hellenic Academic and Research Institutions RootCA 2011": HELLENIC_ACADEMIC_AND_RESEARCH_INSTITUTIONS_ROOTCA_2011,
+                                                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10805:46: warning: Deprecated 'NETWORK-SOLUTIONS-CERTIFICATE-AUTHORITY'
+  "Network Solutions Certificate Authority": NETWORK_SOLUTIONS_CERTIFICATE_AUTHORITY,
+                                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
+  "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
+                                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+>>>>>>> floitsch/uuid-lib.10.types
+<sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
+class BufferSizeCounter extends BufferConsumer:
+      ^~~~~~~~~~~~~~~~~
+<sdk>/bytes.toit:333:3: warning: Class 'BufferConsumer' is deprecated
+  constructor:
+  ^~~~~~~~~~~
+<sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
+  constructor.with-initial-size .init-size_/int:
+  ^~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
+  CYBERTRUST_GLOBAL_ROOT.install
+  ^~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11098:3: warning: Deprecated 'DST-ROOT-CA-X3'
+  DST_ROOT_CA_X3.install
+  ^~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11109:3: warning: Deprecated 'EC-ACC'
+  EC_ACC.install
+  ^~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11124:3: warning: Deprecated 'GLOBALSIGN-ROOT-CA-R2'
+  GLOBALSIGN_ROOT_CA_R2.install
+  ^~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11134:3: warning: Deprecated 'HELLENIC-ACADEMIC-AND-RESEARCH-INSTITUTIONS-ROOTCA-2011'
+  HELLENIC_ACADEMIC_AND_RESEARCH_INSTITUTIONS_ROOTCA_2011.install
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11148:3: warning: Deprecated 'NETWORK-SOLUTIONS-CERTIFICATE-AUTHORITY'
+  NETWORK_SOLUTIONS_CERTIFICATE_AUTHORITY.install
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:toit-cert-roots>/certificate_roots.toit:11172:3: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
+  STAAT_DER_NEDERLANDEN_EV_ROOT_CA.install
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

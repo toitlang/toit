@@ -1,6 +1,6 @@
-<sdk>/ble/ble.toit:61:19: warning: Deprecated 'parse'
+<sdk>/ble/ble.toit:72:19: warning: Deprecated 'parse'
       return (uuid.parse data_).to-byte-array
-                  ^
+                  ^~~~~~
 <sdk>/ble/ble.toit:41:13: warning: Deprecated 'parse'
         uuid.parse data_ // This throws an exception if the format is incorrect.
-            ^
+            ^~~~~~

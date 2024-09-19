@@ -3,8 +3,8 @@ tests/negative/named-constructor-test.toit:12:8: error: Class 'A' only has named
        ^
 tests/negative/named-constructor-test.toit:13:9: error: Class 'A' does not have any static member or constructor with name 'some-non-existing-static'
   b := A.some-non-existing-static
-        ^
+        ^~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/named-constructor-test.toit:14:14: error: Class 'A' does not have any static member or constructor with name 'some-non-existing-static'
   c := self.A.some-non-existing-static
-             ^
+             ^~~~~~~~~~~~~~~~~~~~~~~~~
 Compilation failed

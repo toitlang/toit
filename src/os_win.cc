@@ -108,44 +108,6 @@ int64 OS::get_system_time() {
   return us;
 }
 
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level), name_(name) {
-    pthread_mutex_init(&mutex_, null);
-  }
-
-  ~Mutex() {
-    pthread_mutex_destroy(&mutex_);
-  }
-
-  void lock() {
-    int error = pthread_mutex_lock(&mutex_);
-    if (error != 0) FATAL("mutex lock failed with error %d", error);
-  }
-
-  void unlock() {
-    int error = pthread_mutex_unlock(&mutex_);
-    if (error != 0) FATAL("mutex unlock failed with error %d", error);
-  }
-
-  bool is_locked() {
-    int error = pthread_mutex_trylock(&mutex_);
-    if (error == 0) {
-      unlock();
-      return false;
-    }
-    if (error != EBUSY) FATAL("mutex trylock failed with error %d", error);
-    return true;
-  }
-
-  int level() const { return level_; }
-  const char* name() const { return name_?name_:""; }
-  int level_;
-  pthread_mutex_t mutex_;
-  const char* name_;
-};
-
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
@@ -204,33 +166,6 @@ class ConditionVariable {
   Mutex* mutex_;
   pthread_cond_t cond_;
 };
-
-void Locker::leave() {
-  Thread* thread = Thread::current();
-  if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
-}
-
-void Locker::enter() {
-  Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
-    if (level <= previous_level) {
-      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, mutex_->name(), previous_level, previous_locker->mutex_->name());
-    }
-  }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
-  previous_ = thread->locker_;
-  thread->locker_ = this;
-}
 
 static pthread_key_t thread_key;
 
