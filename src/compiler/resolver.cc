@@ -691,6 +691,7 @@ static void report_cyclic_export(std::vector<Module*> cyclic_modules,
 /// For every module resolve the shown identifiers and add it to the dictionaries.
 /// For every export resolve it and check that there aren't any issues.
 void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
+  bool is_lsp_show = true;
   ast::Identifier* lsp_node = null;
   Symbol lsp_name = Symbol::invalid();
   Module* lsp_module = null;
@@ -715,6 +716,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
           lsp_node = ast_identifier;
           lsp_name = name;
           lsp_module = module;
+          is_lsp_show = true;
         }
 
         auto identifier_probe = identifier_map.find(name);
@@ -760,6 +762,19 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
           }
           diagnostics()->end_group();
           continue;
+        }
+      }
+    }
+    if (lsp_ != null) {
+      // Run through the export nodes to find any LSP selection.
+      for (auto ast_export : module->unit()->exports()) {
+        for (auto ast_identifier : ast_export->identifiers()) {
+          if (ast_identifier->is_LspSelection()) {
+            lsp_node = ast_identifier;
+            lsp_name = ast_identifier->data();
+            lsp_module = module;
+            is_lsp_show = false;
+          }
         }
       }
     }
@@ -940,7 +955,13 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
         if (probe == exported_identifiers_map.end()) {
           // No explicit 'show' with that name, so we need to find it in all imports.
           ASSERT(cycle_detector.in_progress_size() == 0);
-          exported_identifiers_map[exported] = resolve_identifier(module, exported);
+          auto resolved = resolve_identifier(module, exported);
+          exported_identifiers_map[exported] = resolved;
+          if (module == lsp_module && exported == lsp_name) {
+            // We could invoke the lsp-handler here, but we need to handle the case where
+            // the entry isn't resolved anyway.
+            lsp_resolution_entry = resolved;
+          }
         }
       }
     }
@@ -975,7 +996,11 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
   }
 
   if (lsp_node != null) {
-    lsp_->selection_handler()->show(lsp_node, lsp_resolution_entry, lsp_scope);
+    if (is_lsp_show) {
+      lsp_->selection_handler()->show(lsp_node, lsp_resolution_entry, lsp_scope);
+    } else {
+      lsp_->selection_handler()->expord(lsp_node, lsp_resolution_entry, lsp_module->scope());
+    }
   }
 }
 
