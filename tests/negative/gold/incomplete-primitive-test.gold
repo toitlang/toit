@@ -9,17 +9,17 @@ tests/negative/incomplete-primitive-test.toit:9:13: error: Missing primitive nam
             ^
 tests/negative/incomplete-primitive-test.toit:12:13: error: Missing primitive name
   #primitive.module
-            ^
+            ^~~~~~~
 tests/negative/incomplete-primitive-test.toit:12:14: error: Unknown primitive library 'module'
 
   #primitive.module
              ^~~~~~
 tests/negative/incomplete-primitive-test.toit:15:13: error: Missing primitive name
   #primitive.core
-            ^
+            ^~~~~
 tests/negative/incomplete-primitive-test.toit:18:13: error: Missing primitive name
   #primitive.intrinsics
-            ^
+            ^~~~~~~~~~~
 tests/negative/incomplete-primitive-test.toit:21:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
