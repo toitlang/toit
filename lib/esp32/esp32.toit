@@ -48,13 +48,13 @@ deep-sleep duration/Duration -> none:
 
 /**
 One of the ESP-RST-* enum values (such as $ESP-RST-POWERON) that
-  indicate why the ESP32 was reset.
+  indicates why the ESP32 was reset.
 */
 reset-reason -> int:
   #primitive.esp32.reset-reason
 
 /**
-One of the WAKEUP-* enum values (such as $WAKEUP-TIMER) that indicate why
+One of the WAKEUP-* enum values (such as $WAKEUP-TIMER) that indicates why
   the ESP32 was woken up from deep sleep.
 */
 wakeup-cause -> int:
