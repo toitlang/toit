@@ -45,8 +45,6 @@ main args:
 
   run-client-test args:
     test it p1-path p2-path p3-good-path p3-bad-path
-  run-client-test --use-toitlsp args:
-    test it p1-path p2-path p3-good-path p3-bad-path
 
 test client/LspClient p1-path/string p2-path/string p3-good-path/string p3-bad-path/string:
   client.send-did-open --path=p1-path

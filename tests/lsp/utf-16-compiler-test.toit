@@ -7,7 +7,6 @@ import expect show *
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   // Test that locations are correctly transformed to UTF-16 offsets.

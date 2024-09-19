@@ -9,7 +9,6 @@ import expect show *
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   path := "$(directory.cwd)/null-char.toit"

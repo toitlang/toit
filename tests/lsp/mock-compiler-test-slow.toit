@@ -9,10 +9,8 @@ import .mock-compiler
 import host.directory
 import expect show *
 
-// TODO(jesper): Remove slow tag once toit lsp implementation is gone.
 main args:
   run-client-test args --use-mock: test it
-  run-client-test args --use-toitlsp --use-mock: test it
 
 test client/LspClient:
   mock-compiler := MockCompiler client
