@@ -151,9 +151,9 @@ interface ToplevelElement:
   toplevel-id -> int
 
 class Class implements ToplevelElement:
-  static KIND_CLASS ::= "class"
-  static KIND_INTERFACE ::= "interface"
-  static KIND_MIXIN ::= "mixin"
+  static KIND-CLASS ::= "class"
+  static KIND-INTERFACE ::= "interface"
+  static KIND-MIXIN ::= "mixin"
 
   hash-code / int ::= hash-code-counter_++
 
@@ -182,9 +182,9 @@ class Class implements ToplevelElement:
       --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
-  is-class -> bool: return kind == KIND_CLASS
-  is-interface -> bool: return kind == KIND_INTERFACE
-  is-mixin -> bool: return kind == KIND_MIXIN
+  is-class -> bool: return kind == KIND-CLASS
+  is-interface -> bool: return kind == KIND-INTERFACE
+  is-mixin -> bool: return kind == KIND-MIXIN
 
   equals-external other/Class -> bool:
     return other and
