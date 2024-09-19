@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// NEGATIVE-TEST
+
 #include "../../src/top.h"
 
 #include "../../src/os.h"
@@ -46,6 +48,10 @@ void reentrant_locking() {
     Locker inbetween(m3);
     { Locker inner(m1);
       // Trying to lock m2 here is illegal.
+      USE(m2);
+#ifdef NEGATIVE_TEST
+      Locker inner2(m2);
+#endif
     }
   }
   { Locker outer(m1);
