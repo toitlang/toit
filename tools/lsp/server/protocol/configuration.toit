@@ -21,7 +21,7 @@ class ConfigurationParams extends MapWrapper:
   Creates the parameters for a configuration request.
 
   Parameters:
-  - [items]: the requested configurations.
+  - $items: the requested configurations.
   */
   constructor
       --items /List/*<ConfigurationItem>*/:
@@ -33,8 +33,8 @@ class ConfigurationItem extends MapWrapper:
   Creates an item for a configuration request.
 
   Parameters:
-  - [scope_uri]: the scope to get the configuration section for.
-  - [section]: the configuration section asked for.
+  - $scope_uri: the scope to get the configuration section for.
+  - $section: the configuration section asked for.
   */
   constructor
       --scope-uri /string? = null

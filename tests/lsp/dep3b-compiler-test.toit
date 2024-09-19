@@ -8,8 +8,7 @@ import system
 import system show platform
 
 main args:
-  // run_client_test args: test it
-  run-client-test --use-toitlsp args: test it
+  run_client_test args: test it
 
 test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it

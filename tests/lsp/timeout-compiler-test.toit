@@ -16,13 +16,6 @@ main args:
       // Decrease the timeout a bit to make the test terminate faster.
       --pre-initialize=: it.configuration["timeoutMs"] = 500:
     test it
-  run-client-test
-      args
-      --use-toitlsp
-      --use-mock
-      // Decrease the timeout a bit to make the test terminate faster.
-      --pre-initialize=: it.configuration["timeoutMs"] = 500:
-    test it
 
 test client/LspClient:
   mock-compiler := MockCompiler client

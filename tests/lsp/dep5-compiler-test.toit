@@ -9,7 +9,6 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 PATH0-CODE ::= """
   // Modules that use monitors.

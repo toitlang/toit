@@ -3,15 +3,18 @@
 // be found in the tests/LICENSE file.
 
 import certificate-roots
-import .dns
 import tls
-import .tcp as tcp
+import net
+import net.modules.dns
+import net.modules.tcp
 import net.x509 as net
 import system
 import system show platform
 
 BIG-MEMORY ::= platform != system.PLATFORM-FREERTOS
 CHECK-CERTS-EXPIRE ::= platform != system.PLATFORM-FREERTOS
+
+network := net.open
 
 monitor LimitLoad:
   current := 0
@@ -46,7 +49,9 @@ run-tests:
     "amazon.com",
     "adafruit.com",
     // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
-    "$(dns-lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
+
+    // Connect to the IP address at the TCP level, but verify the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)/amazon.com",
 
     "dkhostmaster.dk",
     "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
@@ -71,7 +76,9 @@ run-tests:
     "sha512.badssl.com",
   ]
   non-working := [
-    "$(dns-lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
+    // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)",
+
     "wrong.host.badssl.com/CN_MISMATCH|nknown root cert",
     "self-signed.badssl.com/Certificate verification failed|nknown root cert",
     "untrusted-root.badssl.com/Certificate verification failed|nknown root cert",
@@ -164,7 +171,7 @@ connect-to-site host port expected-certificate-name:
   bytes := 0
   connection := null
 
-  raw := tcp.TcpSocket
+  raw := tcp.TcpSocket network
   try:
     raw.connect host port
 

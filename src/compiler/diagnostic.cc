@@ -60,7 +60,7 @@ void Diagnostics::report_error(Source::Range range, const char* format, ...) {
 }
 
 void Diagnostics::report_error(const ast::Node* position_node, const char* format, ...) {
-  auto range = position_node->range();
+  auto range = position_node->selection_range();
   va_list arguments;
   va_start(arguments, format);
   report_error(range, format, arguments);
@@ -92,12 +92,12 @@ void Diagnostics::report_warning(Source::Range range, const char* format, ...) {
 void Diagnostics::report_warning(const ast::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  report_warning(position_node->range(), format, arguments);
+  report_warning(position_node->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Diagnostics::report_note(const ast::Node* position_node, const char* format, ...) {
-  auto range = position_node->range();
+  auto range = position_node->selection_range();
   va_list arguments;
   va_start(arguments, format);
   report_note(range, format, arguments);

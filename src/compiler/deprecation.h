@@ -21,16 +21,12 @@ namespace toit {
 namespace compiler {
 
 namespace ir {
-class Program;
 class Node;
 }
 
-namespace toitdoc {
-class Paragraph;
-}
-class ToitdocRegistry;
+template<typename RefNode> class Toitdoc;
 
-Set<ir::Node*> collect_deprecated_elements(ir::Program* program, const ToitdocRegistry* registry);
+bool contains_deprecation_warning(const Toitdoc<ir::Node*>& toitdoc);
 
 } // namespace toit::compiler
 } // namespace toit

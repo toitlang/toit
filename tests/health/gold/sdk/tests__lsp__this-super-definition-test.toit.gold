@@ -3,7 +3,7 @@ tests/lsp/this-super-definition-test.toit:42:5: error: Can't access 'this' in st
     ^~~~
 tests/lsp/this-super-definition-test.toit:61:10: error: Couldn't find matching constructor in superclass 'SomeClass'
     super.named2
-         ^
+         ^~~~~~~
 tests/lsp/this-super-definition-test.toit:90:5: error: Argument mismatch for 'bar'
 Too few arguments provided
     super
