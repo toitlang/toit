@@ -29,6 +29,7 @@ class QueryableClass;
 ir::Expression* optimize_virtual_call(ir::CallVirtual* call,
                                       ir::Class* holder,
                                       ir::Method* method,
+                                      List<ir::Type> literal_types,
                                       UnorderedSet<Symbol>& field_names,
                                       UnorderedMap<ir::Class*, QueryableClass>& queryables);
 

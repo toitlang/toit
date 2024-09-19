@@ -178,6 +178,8 @@ public:
   UART_ISR_INLINE void enable_tx_interrupts(bool begin);
   UART_ISR_INLINE void disable_tx_interrupts(bool done);
 
+  /// Whether the tx fifo is empty and the last byte has been emitted.
+  UART_ISR_INLINE bool is_empty_tx_fifo();
   UART_ISR_INLINE bool drain_tx_fifo();
   UART_ISR_INLINE void write_tx_break(uint8 length);
   UART_ISR_INLINE uint32 write_tx_fifo(const uint8* data, uint32 length);
@@ -461,10 +463,17 @@ UART_ISR_INLINE void UartResource::disable_tx_interrupts(bool done) {
   }
 }
 
+UART_ISR_INLINE bool UartResource::is_empty_tx_fifo() {
+  // Once the fifo is empty, one last byte is still being transmitted.
+  // The check for is_tx_idle is necessary to ensure that this last byte is
+  // completely transmitted.
+  return get_tx_fifo_free() == SOC_UART_FIFO_LEN && uart_toit_hal_is_tx_idle(hal_);
+}
+
 UART_ISR_INLINE bool UartResource::drain_tx_fifo() {
-  if (get_tx_fifo_free() == SOC_UART_FIFO_LEN) return true;
+  if (is_empty_tx_fifo()) return true;
   int64 start = esp_timer_get_time();
-  while (get_tx_fifo_free() < SOC_UART_FIFO_LEN) {
+  while (!is_empty_tx_fifo()) {
     int64 now = esp_timer_get_time();
     if (now - start > 1000) return false;  // One ms.
   }
@@ -811,15 +820,15 @@ PRIMITIVE(create) {
   }
 
   periph_module_enable(uart_periph_signal[port].module);
-    // Workaround for ESP32C3: enable core reset
-    // before enabling uart module clock
-    // to prevent uart from outputting garbage value.
+  // Workaround for ESP32C3: enable core reset
+  // before enabling uart module clock
+  // to prevent uart from outputting garbage value.
 #if SOC_UART_REQUIRE_CORE_RESET
-    uart_toit_hal_set_reset_core(init.hal, true);
-    periph_module_reset(uart_periph_signal[port].module);
-    uart_toit_hal_set_reset_core(init.hal, false);
+  uart_toit_hal_set_reset_core(init.hal, true);
+  periph_module_reset(uart_periph_signal[port].module);
+  uart_toit_hal_set_reset_core(init.hal, false);
 #else
-    periph_module_reset(uart_periph_signal[port].module);
+  periph_module_reset(uart_periph_signal[port].module);
 #endif
   init.hardware_initialized = true;
 
@@ -867,6 +876,17 @@ PRIMITIVE(create) {
   uart_toit_hal_set_rxfifo_full_thr(init.hal, full_interrupt_threshold);
   uart_toit_hal_set_txfifo_empty_thr(init.hal, 10);
   uart_toit_hal_set_rx_timeout(init.hal, 10);
+
+  if (GPIO_IS_VALID_GPIO(rx)) {
+    // On some chips (specifically the S3) we have received up to a byte of
+    // 1-bits when the UART is enabled.
+    // To avoid this, we wait for the time of one byte at the baud rate, and
+    // then clear the RX FIFO.
+    // The stop-bits value is too large for STOP-BITS-1_5 and STOP-BITS-2, but
+    // waiting longer is OK.
+    int wait_us = 1 + (1000000 * (data_bits + stop_bits) - 1) / baud_rate;
+    usleep(wait_us);
+  }
 
   init.uart->initialize();
 

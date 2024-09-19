@@ -50,7 +50,7 @@ main arguments/List:
       ]
       --options=[
           cli.Flag OPTION-AUTO-SYNC
-              --help="Automatically synchronize registries (default true)"
+              --help="Automatically synchronize registries."
               --default=true,
 
           cli.Option OPTION-PROJECT-ROOT

@@ -7,7 +7,7 @@
 #include "../../src/os.h"
 
 namespace toit {
-   
+
 OS::HeapMemoryRange range;
 
 static void single_page() {
@@ -35,11 +35,29 @@ static void many_pages() {
   }
 }
 
+void reentrant_locking() {
+  Mutex* m1 = OS::allocate_mutex(1, "m1");
+  Mutex* m2 = OS::allocate_mutex(2, "m2");
+  Mutex* m3 = OS::allocate_mutex(3, "m3");
+
+  { Locker outer(m1);
+    { Locker inner(m1);
+    }
+    Locker inbetween(m3);
+    { Locker inner(m1);
+      // Trying to lock m2 here is illegal.
+    }
+  }
+  { Locker outer(m1);
+  }
+}
+
 int main(int argc, char **argv) {
   OS::set_up();
   range = OS::get_heap_memory_range();
   single_page();
   many_pages();
+  reentrant_locking();
 
   OS::tear_down();
   return 0;

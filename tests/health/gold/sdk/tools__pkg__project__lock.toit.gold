@@ -21,7 +21,7 @@
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 <pkg:pkg-cli>/cli.toit:693:16: warning: Deprecated 'parse'
     return uuid.parse str --on-error=:
-               ^
+               ^~~~~~
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~
