@@ -852,6 +852,37 @@ void Scanner::capture_multi_line_comment(int peek) {
   int begin = index_ - 2;
 
   bool is_toitdoc = peek == '*' && look_ahead(1) != '/';
+  if (is_toitdoc) {
+    // Skip the '*'.
+    peek = advance();
+  }
+  if (peek == ' ') {
+    // Skip the space after the '*'.
+    peek = advance();
+  }
+
+  bool is_heredoc = peek == '<' && look_ahead(1) == '<';
+  int heredoc_begin = -1;
+  int heredoc_length = -1;
+  if (is_heredoc) {
+    // Skip the '<<'.
+    advance();
+    peek = advance();
+    while (peek == ' ') {
+      peek = advance();
+    }
+    if (is_newline(peek)) {
+      diagnostics_->report_warning(source_->range(begin, index_),
+                                   "Heredoc comment without a delimiter");
+      is_heredoc = false;
+    } else {
+      heredoc_begin = index_;
+      while (!at_eos() && !is_newline(peek)) {
+        peek = advance();
+      }
+      heredoc_length = index_ - heredoc_begin;
+    }
+  }
 
   int nesting_count = 1;
   while (!at_eos()) {
@@ -859,13 +890,37 @@ void Scanner::capture_multi_line_comment(int peek) {
       peek = advance();
       if (peek == '/') {
         peek = advance();
-        nesting_count--;
-        if (nesting_count == 0) break;
+        if (is_heredoc) {
+          // Check whether the heredoc delimiter is present.
+          int offset = 2;
+          if (input_[index_ - 3] == ' ') {
+            // Allow a space before the delimiter.
+            offset = 3;
+          }
+          bool has_match = true;
+          for (int i = 0; i < heredoc_length; i++) {
+            if (input_[heredoc_begin + i] != input_[index_ - offset - heredoc_length + i]) {
+              has_match = false;
+              break;
+            }
+          }
+          if (has_match) {
+            nesting_count--;
+            break;
+          }
+        } else {
+          nesting_count--;
+          if (nesting_count == 0) {
+            break;
+          }
+        }
       }
-    } else if (peek == '/') {
+    } else if (!is_heredoc && peek == '/') {
       peek = advance();
       if (peek == '*') {
         peek = advance();
+        diagnostics_->report_warning(source_->range(index_ - 2, index_),
+                                     "Nested multi-line comments are deprecated. Use heredocs instead.");
         nesting_count++;
       }
     } else if (peek == '\\') {

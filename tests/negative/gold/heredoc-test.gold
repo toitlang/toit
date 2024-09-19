@@ -1,0 +1,7 @@
+tests/negative/heredoc-test.toit:6:3: warning: Heredoc comment without a delimiter
+  /*<<
+  ^~~~
+tests/negative/heredoc-test.toit:8:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed

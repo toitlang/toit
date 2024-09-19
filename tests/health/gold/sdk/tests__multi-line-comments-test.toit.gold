@@ -1,0 +1,24 @@
+tests/multi-line-comments-test.toit:26:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/*x/ */
+^~
+tests/multi-line-comments-test.toit:31:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/**/*
+^~
+tests/multi-line-comments-test.toit:37:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/*\*/foo*/
+^~
+tests/multi-line-comments-test.toit:38:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/**\/bar*/
+^~
+tests/multi-line-comments-test.toit:39:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/*\\*/
+^~
+tests/multi-line-comments-test.toit:52:5: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+    /* deeper
+    ^~
+tests/multi-line-comments-test.toit:54:7: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+      /* and deeper */  ::::  // Some bad code that would trigger syntax errors if parsed.
+      ^~
+tests/multi-line-comments-test.toit:56:7: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+      /* deep again, closing with trailing * */*
+      ^~

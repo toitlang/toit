@@ -1,3 +1,12 @@
+tests/syntax-test.toit:47:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/* nested multiline */
+^~
+tests/syntax-test.toit:63:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/* with nested comment */
+^~
+tests/syntax-test.toit:69:1: warning: Nested multi-line comments are deprecated. Use heredocs instead.
+/**
+^~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~
