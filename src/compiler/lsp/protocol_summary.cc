@@ -76,6 +76,7 @@ class ToitdocWriter : public toitdoc::Visitor {
 
   void visit_Section(toitdoc::Section* node) {
     print_symbol(node->title());
+    this->printf("%d\n", node->level());
     print_list(node->statements(), &ToitdocWriter::visit_Statement);
   }
 

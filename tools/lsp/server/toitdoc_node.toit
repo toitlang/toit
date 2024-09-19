@@ -28,9 +28,10 @@ class Contents extends Node:
 
 class Section extends Node:
   title / string? ::= ?
+  level / int ::= ?
   statements / List ::= ?
 
-  constructor .title .statements:
+  constructor .title .level .statements:
 
   accept visitor / ToitdocVisitor:
     return visitor.visit-Section this

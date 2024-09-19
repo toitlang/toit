@@ -576,11 +576,12 @@ class ModuleReader extends ReaderBase:
     return Contents sections
 
   read-section -> Section:
-    title := null
-    title = read-toitdoc-symbol
+    title/string? := read-toitdoc-symbol
     if title == "": title = null
+    level := read-int
     return Section
       title
+      level
       read-list: read-statement
 
   read-statement -> Statement:
