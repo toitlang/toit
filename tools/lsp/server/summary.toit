@@ -342,8 +342,9 @@ class Parameter:
   is-required / bool ::= ?
   is-named / bool ::= ?
   type / Type? ::= ?
+  default-value / string? ::= ?
 
-  constructor .name .original-index --.is-required --.is-named .type:
+  constructor .name .original-index .type --.is-required --.is-named --.default-value:
 
   is-block -> bool: return type and type.is-block
 
@@ -567,9 +568,16 @@ class ModuleReader extends ReaderBase:
     kind := read-line
     is-required := kind == "required" or kind == "required named"
     is-named := kind == "required named" or kind == "optional named"
+    default-value-length := read-int
+    default-value-string := default-value-length > 0
+        ? reader_.read-string default-value-length
+        : null
     type := read-type
     is-block := type.is-block
-    return Parameter name original-index --is-required=is-required --is-named=is-named type
+    return Parameter name original-index type
+        --is-required=is-required
+        --is-named=is-named
+        --default-value=default-value-string
 
   read-field -> Field:
     name := read-line

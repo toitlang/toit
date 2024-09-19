@@ -142,6 +142,7 @@ parse-method str/string -> lsp.Method:
     parameter := lsp.Parameter param-name (i - 1) param-type
         --is-named=is-named
         --is-required=not is-optional
+        --default-value=is-optional ? "null" : null
     params.add parameter
 
   return lsp.Method
