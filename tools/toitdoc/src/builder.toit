@@ -528,11 +528,11 @@ class Doc:
       "libraries": libraries.map: | _ library/Library | library.to-json,
     }
 
-    if sdk-path: result["sdk-path"] =sdk-path
+    if sdk-path: result["sdk_path"] =sdk-path
     if version: result["version"] = version
-    if pkg-name: result["pkg-name"] = pkg-name
-    if packages-path: result["packages-path"] = packages-path
-    if package-names: result["package-names"] = package-names
+    if pkg-name: result["pkg_name"] = pkg-name
+    if packages-path: result["packages_path"] = packages-path
+    if package-names: result["package_names"] = package-names
 
     return result
 
