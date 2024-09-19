@@ -477,7 +477,9 @@ main args/List:
 
   esp-command.add stacktrace.build-command
 
-  toitdoc-command := toitdoc.build-command --toitc-from-args=toitc-from-args
+  toitdoc-command := toitdoc.build-command
+      --toitc-from-args=toitc-from-args
+      --sdk-path-from-args=:: | parsed/cli.Parsed | parsed["sdk-dir"]
   root-command.add toitdoc-command
 
   root-command.add system-message.build-command
