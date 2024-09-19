@@ -44,7 +44,7 @@ class Sha : public SimpleResource {
 
   int hash_length() const { return bits_ >> 3; }
 
-  void add(const uint8* content, intptr_t extra);
+  void add(const uint8* contents, intptr_t extra);
   void get(uint8* hash);
 
  private:

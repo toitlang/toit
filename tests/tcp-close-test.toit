@@ -3,28 +3,30 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import .tcp
 import monitor show *
+import net
+import net.modules.tcp
 
 main:
-  test --timeout=false
-  test --timeout=true
+  network := net.open
+  test network --no-timeout
+  test network --timeout
 
 // Check we can call close in a finally clause even when our task is
 // being cancelled.
-test --timeout/bool -> none:
+test network/net.Client --timeout/bool -> none:
   server-ready := Latch
   connected := Latch
 
   task::
-    server := TcpServerSocket
+    server := tcp.TcpServerSocket network
     server.listen "127.0.0.1" 0
     server-ready.set server.local-address.port
     socket := server.accept
 
   client := task::
     port := server-ready.get
-    socket := TcpSocket
+    socket := tcp.TcpSocket network
     socket.connect "127.0.0.1" port
     connected.set socket
     if timeout:
@@ -55,7 +57,7 @@ test --timeout/bool -> none:
   // Check we slept long enough for the other task to close.
   expect
       state.resource == null
-  
+
   // Of course the socket is not null, this is just there to ensure we don't GC
   // the socket until now, which might trigger a finalizer-based close instead
   // of the finally-based close we are trying to test.

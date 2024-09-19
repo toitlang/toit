@@ -51,6 +51,8 @@ no-shadow-different-name:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   inherited-A/List := result.inherited[class-A]
   inherited-B/List := result.inherited[class-B]
   expect-equals 0 inherited-A.size
@@ -123,6 +125,8 @@ no-shadow-same-name:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   inherited-A/List := result.inherited[class-A]
   inherited-B/List := result.inherited[class-B]
   expect-equals 0 inherited-A.size
@@ -147,6 +151,8 @@ full-override:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   inherited-A/List := result.inherited[class-A]
   inherited-B/List := result.inherited[class-B]
   expect-equals 0 inherited-A.size
@@ -174,6 +180,8 @@ partial-override:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-B/lsp.Method := class-B.methods[0]
   inherited-A/List := result.inherited[class-A]
@@ -209,6 +217,10 @@ partial-override-multiple:
   class-B/lsp.Class := classes[1]
   class-C/lsp.Class := classes[2]
   class-D/lsp.Class := classes[3]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
+  expect-equals "C" class-C.name
+  expect-equals "D" class-D.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-B/lsp.Method := class-B.methods[0]
   foo-C/lsp.Method := class-C.methods[0]
@@ -262,6 +274,10 @@ partial-override-twice:
   class-B/lsp.Class := classes[1]
   class-C/lsp.Class := classes[2]
   class-D/lsp.Class := classes[3]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
+  expect-equals "C" class-C.name
+  expect-equals "D" class-D.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-B/lsp.Method := class-B.methods[0]
   foo-C/lsp.Method := class-C.methods[0]
@@ -318,6 +334,9 @@ named:
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
   class-C/lsp.Class := classes[2]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
+  expect-equals "C" class-C.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-Bs/List := class-B.methods
   foo-C/lsp.Method := class-C.methods[0]
@@ -367,6 +386,9 @@ named2:
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
   class-C/lsp.Class := classes[2]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
+  expect-equals "C" class-C.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-Bs/List := class-B.methods
   foo-C/lsp.Method := class-C.methods[0]
@@ -406,6 +428,8 @@ named-skipping-optional:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-B/lsp.Method := class-B.methods[0]
   inherited-A/List := result.inherited[class-A]
@@ -435,6 +459,9 @@ mixins-simple:
   class-M1/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
   class-A/lsp.Class := classes[2]
+  expect-equals "M1" class-M1.name
+  expect-equals "B" class-B.name
+  expect-equals "A" class-A.name
   inherited-M1/List := result.inherited[class-M1]
   inherited-B/List := result.inherited[class-B]
   inherited-A/List := result.inherited[class-A]
@@ -464,6 +491,10 @@ mixins-multiple:
   class-M2/lsp.Class := classes[1]
   class-B/lsp.Class := classes[2]
   class-A/lsp.Class := classes[3]
+  expect-equals "M1" class-M1.name
+  expect-equals "M2" class-M2.name
+  expect-equals "B" class-B.name
+  expect-equals "A" class-A.name
   inherited-M1/List := result.inherited[class-M1]
   inherited-M2/List := result.inherited[class-M2]
   inherited-B/List := result.inherited[class-B]
@@ -499,6 +530,10 @@ mixins-extended:
   class-M2/lsp.Class := classes[1]
   class-B/lsp.Class := classes[2]
   class-A/lsp.Class := classes[3]
+  expect-equals "M1" class-M1.name
+  expect-equals "M2" class-M2.name
+  expect-equals "B" class-B.name
+  expect-equals "A" class-A.name
   inherited-M1/List := result.inherited[class-M1]
   inherited-M2/List := result.inherited[class-M2]
   inherited-B/List := result.inherited[class-B]
@@ -530,6 +565,8 @@ overridden:
   classes := summaries[TEST-URI].classes
   class-A/lsp.Class := classes[0]
   class-B/lsp.Class := classes[1]
+  expect-equals "A" class-A.name
+  expect-equals "B" class-B.name
   foo-A/lsp.Method := class-A.methods[0]
   foo-Bs/List := class-B.methods
   inherited-A/List := result.inherited[class-A]
