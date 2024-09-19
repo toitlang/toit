@@ -18,6 +18,7 @@ main:
   test-equality
   test-hash-code
   test-is-valid
+  test-random
 
 test-equality:
   u0 := Uuid.parse "9c20dadc1abe5520b92c85b948daf44a"
@@ -98,3 +99,10 @@ test-is-valid:
   expect-not (Uuid.is-valid "")
   expect-not (Uuid.is-valid "9c20dadc-1abe-5520-b92c-85b948daf44")
   expect-not (Uuid.is-valid "9c20dadc-1abe-5520-b92c-85b948daf44aa")
+
+test-random:
+  u0 := Uuid.random
+  u1 := Uuid.random
+  expect-not-equals u0 u1
+  expect-equals 16 u0.to-byte-array.size
+  expect-equals 16 u1.to-byte-array.size
