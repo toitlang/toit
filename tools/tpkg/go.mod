@@ -5,11 +5,12 @@ go 1.20
 require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
-	github.com/toitlang/tpkg v0.0.0-20240806094622-9637186e3a28
+	github.com/toitlang/tpkg v0.0.0-20240919112017-273e738f33d0
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230717121422-5aa5874ade95 // indirect
 	github.com/acomagu/bufpipe v1.0.4 // indirect
