@@ -108,6 +108,12 @@ class ToitdocWriter : public toitdoc::Visitor {
     print_symbol(node->text());
   }
 
+  void visit_Link(toitdoc::Link* node) {
+    this->printf("LINK\n");
+    print_symbol(node->text());
+    print_symbol(node->url());
+  }
+
   void visit_Ref(toitdoc::Ref* node) {
     this->printf("REF\n");
     print_symbol(node->text());

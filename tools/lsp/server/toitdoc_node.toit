@@ -133,6 +133,15 @@ class ToitdocRef extends Expression:
   accept visitor / ToitdocVisitor:
     return visitor.visit-ToitdocRef this
 
+class Link extends Expression:
+  text / string ::= ?
+  url  / string ::= ?
+
+  constructor .text .url:
+
+  accept visitor / ToitdocVisitor:
+    return visitor.visit-Link this
+
 interface ToitdocVisitor:
   visit-Contents    node / Contents
   visit-Section     node / Section
@@ -142,4 +151,5 @@ interface ToitdocVisitor:
   visit-Paragraph   node / Paragraph
   visit-Text        node / Text
   visit-Code        node / Code
+  visit-Link        node / Link
   visit-ToitdocRef  node / ToitdocRef
