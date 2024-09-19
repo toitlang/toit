@@ -65,7 +65,11 @@ expect-statement-equal expected/Statement actual/Statement:
       else if expected-expression is Code:
         expect actual-expression is Code
         expect-equals expected-expression.text actual-expression.text
-      else:
+      else if expected-expression is Link:
+        expect actual-expression is Link
+        expect-equals expected-expression.text actual-expression.text
+        expect-equals expected-expression.url actual-expression.url
+      else if expected-expression is ToitdocRef:
         expect actual-expression is ToitdocRef
         expect-equals expected-expression.text actual-expression.text
         expect-equals expected-expression.kind actual-expression.kind
@@ -82,6 +86,8 @@ expect-statement-equal expected/Statement actual/Statement:
           expect-list-equals expected-shape.names actual-shape.names
         else:
           expect-null actual-expression.shape
+      else:
+        unreachable
 
 
 test-toitdoc client/LspClient str/string expected / Contents:
@@ -116,7 +122,7 @@ test client/LspClient:
       */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Simple"
@@ -133,7 +139,7 @@ test client/LspClient:
       */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Simple multiline"
@@ -149,7 +155,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented"
@@ -166,7 +172,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented multiline"
@@ -184,7 +190,7 @@ test client/LspClient:
         ref:
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented ",
@@ -203,7 +209,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Indented ",
@@ -226,7 +232,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -249,7 +255,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -274,11 +280,11 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [ Text "unnamed section" ],
           ],
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -306,7 +312,7 @@ test client/LspClient:
         ref:
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "unnamed section ",
@@ -318,7 +324,7 @@ test client/LspClient:
               Text " followed by an indentation",
             ],
           ],
-        Section "Section1"
+        Section "Section1" 1
           [
             Paragraph [ Text "Indented" ],
             CodeSection "\nCode section\n",
@@ -337,7 +343,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "A",
@@ -366,7 +372,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [ Paragraph [Text "1"] ],
@@ -396,7 +402,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -429,7 +435,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -464,7 +470,7 @@ test client/LspClient:
       if-absent:
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "Updates the value of the given ",
@@ -507,7 +513,7 @@ test client/LspClient:
       if-absent:
       """
       Contents [
-        Section null
+        Section null 1
           [
             Itemized [
               Item [
@@ -552,7 +558,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "quotes escape characters: '\$', '\"', '`'."
@@ -561,21 +567,21 @@ test client/LspClient:
               Text "dollar needs to be followed by id: \$5.4 \$, 5\$"
             ],
             Paragraph [
-              Text """strings, too: "'", "\$", "`", "```\""""
+              Text """strings, too: "'", "\$", "`", "```""""
             ],
             Paragraph [
               Text "multiline code: ",
               Code "foo bar"
             ],
             Paragraph [
-              Text """multiline string: "foo bar\""""
+              Text """multiline string: "foo bar""""
             ],
             Paragraph [
               Text "code with escape: ",
               Code "foo ` \\bar"
             ],
             Paragraph [
-              Text """string with escape: "foo\\" bar\""""
+              Text """string with escape: "foo" bar""""
             ],
           ],
       ]
@@ -596,7 +602,7 @@ test client/LspClient:
         */
       """
       Contents [
-        Section null
+        Section null 1
           [
             Paragraph [
               Text "foobar"
@@ -605,4 +611,101 @@ test client/LspClient:
               Text "done"
             ],
           ],
+      ]
+
+  test-toitdoc
+      client
+      """
+        /**
+        https://example.com
+
+        - http://example.com
+        */
+      """
+      Contents [
+        Section null 1
+          [
+            Paragraph [
+              Link "https://example.com" "https://example.com"
+            ],
+            Itemized [
+              Item [
+                Paragraph [
+                  Link "http://example.com" "http://example.com"
+                ]
+              ],
+            ],
+          ],
+      ]
+
+  test-toitdoc
+      client
+      """
+      /**
+      - \\\$foo
+      - `\$`
+      - `\\``
+      - \\`
+      - `\\``
+      \\
+      "\\\\\\\\.\\\\"
+      \\[foo]
+      */
+      """
+      Contents [
+        Section null 1
+          [
+            Itemized [
+              Item [
+                Paragraph [
+                  Text "\$foo"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "\$"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "`"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Text "`"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "`"
+                ]
+              ],
+            ],
+            Paragraph [
+              Text "\\"
+            ],
+            Paragraph [
+              Text """"\\\\.\\""""
+            ],
+            Paragraph [
+              Text "[foo]"
+            ],
+          ],
+      ]
+
+
+  test-toitdoc
+      client
+      """
+      /**
+      # 1
+      ## 2
+      ### 3
+      */
+      """
+      Contents [
+        Section "1" 1 [],
+        Section "2" 2 [],
+        Section "3" 3 [],
       ]

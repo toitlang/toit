@@ -598,6 +598,14 @@ class TextDocumentClientCapabilities extends MapWrapper:
 class ClientCapabilities extends MapWrapper:
   constructor json-map/Map: super json-map
 
+  constructor
+      --workspace / WorkspaceClientCapabilities? = null
+      --text-document / TextDocumentClientCapabilities? = null
+      --experimental / Experimental? = null:
+    if workspace: map_["workspace"] = workspace.map_
+    if text-document: map_["textDocument"] = text-document.map_
+    if experimental: map_["experimental"] = experimental.map_
+
   /**
   Workspace specific client capabilities.
   */
@@ -618,6 +626,21 @@ class ClientCapabilities extends MapWrapper:
 
 class InitializeParams extends MapWrapper:
   constructor json-map/Map: super json-map
+
+  constructor
+      --process-id / int? = null
+      --root-uri / string? = null
+      --initialization-options / any = null
+      --capabilities / ClientCapabilities
+      --trace / string? = null
+      --workspace-folders / List?/*<WorkspaceFolder>*/ = null:
+    if process-id: map_["processId"] = process-id
+    if root-uri: map_["rootUri"] = root-uri
+    if initialization-options != null: map_["initializationOptions"] = initialization-options
+    map_["capabilities"] = capabilities.map_
+    if trace: map_["trace"] = trace
+    if workspace-folders: map_["workspaceFolders"] = workspace-folders
+
 
   /**
   The process Id of the parent process that started the server.

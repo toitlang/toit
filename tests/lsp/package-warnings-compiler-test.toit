@@ -21,8 +21,6 @@ main args:
 
     run-client-test args --pre-initialize=pre-initializer:
       test it foo-path pkg1-path --should-report=should-report
-    run-client-test --use-toitlsp args --pre-initialize=pre-initializer:
-      test it foo-path pkg1-path --should-report=should-report
 
 test client/LspClient foo-path/string pkg1-path/string --should-report/bool:
   client.send-did-open --path=foo-path

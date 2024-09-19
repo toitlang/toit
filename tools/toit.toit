@@ -26,6 +26,8 @@ import .kebabify as kebabify
 import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
 import .system-message as system-message
+import .toitdoc as toitdoc
+import .lsp.server.server as lsp
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -48,6 +50,10 @@ main args/List:
             --type="dir"
             --hidden,
       ]
+
+  toitc-from-args := :: | parsed/cli.Parsed |
+      sdk-dir := parsed["sdk-dir"]
+      tool-path sdk-dir "toit.compile"
 
   version-command := cli.Command "version"
       --help="Print the version of the Toit SDK."
@@ -456,9 +462,7 @@ main args/List:
   tool-command.add firmware.build-command
   tool-command.add assets.build-command
   tool-command.add snapshot-to-image.build-command
-  kebabify-cmd := kebabify.build-command --toitc-from-args=:: | parsed/cli.Parsed |
-    sdk-dir := parsed["sdk-dir"]
-    tool-path sdk-dir "toit.compile"
+  kebabify-cmd := kebabify.build-command --toitc-from-args=toitc-from-args
   tool-command.add kebabify-cmd
 
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
@@ -472,6 +476,11 @@ main args/List:
   tool-command.add esp-command
 
   esp-command.add stacktrace.build-command
+
+  toitdoc-command := toitdoc.build-command
+      --toitc-from-args=toitc-from-args
+      --sdk-path-from-args=:: | parsed/cli.Parsed | parsed["sdk-dir"]
+  root-command.add toitdoc-command
 
   root-command.add system-message.build-command
 
@@ -553,12 +562,10 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
-  args := [
-    "--toitc",
-    tool-path sdk-dir "toit.compile",
-  ]
-  exit-code := run sdk-dir "toit.lsp" args
-  exit exit-code
+  toitc-cmd := [tool-path sdk-dir "toit.compile"]
+  if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
+  print-on-stderr_ "Using $toitc-cmd.first"
+  lsp.main --toit-path-override=toitc-cmd.first
 
 run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
@@ -571,7 +578,7 @@ run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
   if project-root: args.add "--project-root=$project-root"
   if sdk-version: args.add "--sdk-version=$sdk-version"
   arg-names.do:
-    if parsed[it] != null: args.add-all ["--$it", parsed[it]]
+    if parsed[it] != null: args.add-all ["--$it=$parsed[it]"]
   rest-args.do:
     if parsed[it] != null:
       rest-arg := parsed[it]
