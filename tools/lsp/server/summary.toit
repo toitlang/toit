@@ -28,6 +28,7 @@ safe-name_ name/string -> string:
 /** A summary of a module. */
 class Module:
   uri / string ::= ?
+  external-hash / ByteArray
   is-deprecated / bool ::= ?
   dependencies  / List/*<string>*/ ::= ?
   exported-modules / List/*<string>*/ ::= ?
@@ -39,6 +40,7 @@ class Module:
 
   constructor
       --.uri
+      --.external-hash
       --.is-deprecated
       --.dependencies
       --.exports
@@ -49,17 +51,7 @@ class Module:
       --.toitdoc:
 
   equals-external other/Module -> bool:
-    return other and
-        uri == other.uri and
-        is-deprecated == other.is-deprecated and
-        // The dependencies only have an external impact if `export_all` is true. However, we
-        //    conservatively just return require that they are the same.
-        dependencies == other.dependencies and
-        exported-modules == other.exported-modules and
-        (exports.equals other.exports --element-equals=: |a b| a.equals-external b) and
-        (classes.equals other.classes --element-equals=: |a b| a.equals-external b) and
-        (functions.equals other.functions --element-equals=: |a b| a.equals-external b) and
-        (globals.equals other.globals --element-equals=: |a b| a.equals-external b)
+    return external-hash == other.external-hash
 
   to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
     lines := Lines content
@@ -93,12 +85,6 @@ class Export:
 
   constructor .name .kind .refs:
 
-  equals-external other/Export -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        refs.equals other.refs --element-equals=: |a b| a.equals-external b
-
 class Range:
   start / int ::= -1
   end / int ::= -1
@@ -116,9 +102,6 @@ class ToplevelRef:
 
   constructor .module-uri .id:
     assert: id >= 0
-
-  equals-external other/ToplevelRef -> bool:
-    return other and module-uri == other.module-uri and id == other.id
 
 class Type:
   static ANY-KIND ::= -1
@@ -139,9 +122,6 @@ class Type:
   is-block -> bool: return kind == BLOCK-KIND
   is-any -> bool: return kind == ANY-KIND
   is-none -> bool: return kind == NONE-KIND
-
-  equals-external other/Type -> bool:
-    return other and kind == other.kind and class-ref.equals-external other.class-ref
 
 hash-code-counter_ := 0
 
@@ -185,21 +165,6 @@ class Class implements ToplevelElement:
   is-class -> bool: return kind == KIND-CLASS
   is-interface -> bool: return kind == KIND-INTERFACE
   is-mixin -> bool: return kind == KIND-MIXIN
-
-  equals-external other/Class -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        is-deprecated == other.is-deprecated and
-        (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
-        (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
-        (mixins.equals other.mixins --element-equals=: |a b| a.equals-external b) and
-        (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
-        (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
-        (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and
-        (fields.equals other.fields --element-equals=: |a b| a.equals-external b) and
-        (methods.equals other.methods --element-equals=: |a b| a.equals-external b)
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     children := []
@@ -249,15 +214,6 @@ class Method implements ClassMember ToplevelElement:
   constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type
       --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
-  equals-external other/Method -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        is-deprecated == other.is-deprecated and
-        (parameters.equals other.parameters --element-equals=: |a b| a.equals-external b) and
-        (return-type == other.return-type or (return-type and return-type.equals-external other.return-type))
-
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
     if kind == INSTANCE-KIND:         lsp-kind = lsp.SymbolKind.METHOD
@@ -297,13 +253,6 @@ class Field implements ClassMember:
 
   constructor .name .range .is-final .is-deprecated .type .toitdoc:
 
-  equals-external other/Field -> bool:
-    return other and
-        name == other.name and
-        is-final == other.is-final and
-        is-deprecated == other.is-deprecated and
-        (type == other.type or (type and type.equals-external other.type))
-
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
@@ -321,13 +270,6 @@ class Parameter:
   constructor .name .original-index --.is-required --.is-named .type:
 
   is-block -> bool: return type and type.is-block
-
-  equals-external other/Parameter -> bool:
-    return other and
-        name == other.name and
-        is-required == other.is-required and
-        is-named == other.is-named and
-        (type == other.type or (type and type.equals-external other.type))
 
 class SummaryReader:
   reader_ / io.Reader ::= ?
@@ -376,9 +318,11 @@ class SummaryReader:
     classes := read-list: read-class
     functions := read-list: read-method
     globals := read-list: read-method
+    external-hash := read-bytes 20
     toitdoc := read-toitdoc
     return Module
         --uri=module-uri
+        --external-hash=external-hash
         --is-deprecated=is-deprecated
         --dependencies=dependencies
         --exported-modules=exported-modules
@@ -631,6 +575,9 @@ class SummaryReader:
 
   read-line -> string:
     return reader_.read-line
+
+  read-bytes count/int -> ByteArray:
+    return reader_.read-bytes count
 
   read-int -> int:
     return int.parse read-line
