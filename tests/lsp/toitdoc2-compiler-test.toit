@@ -567,21 +567,21 @@ test client/LspClient:
               Text "dollar needs to be followed by id: \$5.4 \$, 5\$"
             ],
             Paragraph [
-              Text """strings, too: "'", "\$", "`", "```\""""
+              Text """strings, too: "'", "\$", "`", "```""""
             ],
             Paragraph [
               Text "multiline code: ",
               Code "foo bar"
             ],
             Paragraph [
-              Text """multiline string: "foo bar\""""
+              Text """multiline string: "foo bar""""
             ],
             Paragraph [
               Text "code with escape: ",
               Code "foo ` \\bar"
             ],
             Paragraph [
-              Text """string with escape: "foo\\" bar\""""
+              Text """string with escape: "foo" bar""""
             ],
           ],
       ]
@@ -634,6 +634,62 @@ test client/LspClient:
                   Link "http://example.com" "http://example.com"
                 ]
               ],
+            ],
+          ],
+      ]
+
+  test-toitdoc
+      client
+      """
+      /**
+      - \\\$foo
+      - `\$`
+      - `\\``
+      - \\`
+      - `\\``
+      \\
+      "\\\\\\\\.\\\\"
+      \\[foo]
+      */
+      """
+      Contents [
+        Section null
+          [
+            Itemized [
+              Item [
+                Paragraph [
+                  Text "\$foo"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "\$"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "`"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Text "`"
+                ]
+              ],
+              Item [
+                Paragraph [
+                  Code "`"
+                ]
+              ],
+            ],
+            Paragraph [
+              Text "\\"
+            ],
+            Paragraph [
+              Text """"\\\\.\\""""
+            ],
+            Paragraph [
+              Text "[foo]"
             ],
           ],
       ]
