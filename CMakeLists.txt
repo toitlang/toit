@@ -34,7 +34,6 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
-set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 
 if (NOT ${TOIT_IS_CROSS})
@@ -187,13 +186,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   separate_arguments(GO_ENV)
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
-
-  add_custom_command(
-    OUTPUT "${TOITLSP_BIN}"
-    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
-  )
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
   add_custom_command(
     OUTPUT "${TOITPKG_BIN}"
@@ -203,7 +196,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   add_custom_target(
     build_go_tools
-    DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+    DEPENDS "${TOITPKG_BIN}"
   )
   add_dependencies(build_tools build_go_tools)
 

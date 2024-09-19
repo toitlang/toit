@@ -280,7 +280,7 @@ void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const
   if (label_index != -1) {
     // We don't want the whole range of the black/lambda, as VSCode wouldn't jump
     //   to the beginning. Just take the from position.
-    auto from = labels[label_index].second->range().from();
+    auto from = labels[label_index].second->selection_range().from();
     _print_range(Source::Range(from, from));
   }
   terminate();

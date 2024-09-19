@@ -415,6 +415,9 @@ class Parser {
   /// The range of the current token.
   Source::Range current_range();
 
+  /// The range of the next token.
+  Source::Range peek_range();
+
   /// The range of the current token.
   /// If the current static is not valid, does *not* invoke the scanner to
   ///   get the next token.
@@ -457,6 +460,15 @@ class Parser {
     return kind;
   }
 
+  Source::Range current_range_if_delimiter() {
+    auto kind = current_token();
+    if (kind == Token::DEDENT &&
+        current_indentation() == indentation_stack_.top_indentation()) {
+      return peek_range();
+    }
+    return current_range();
+  }
+
   bool at_newline() { return current_state().at_newline; }
 
   /// Whether the current token is directly attached to the previous token.
@@ -497,6 +509,7 @@ class Parser {
   }
 
   bool optional(Token::Kind kind);
+  bool optional(Token::Kind kind, Source::Range* range);
   bool optional_delimiter(Token::Kind kind);
 
   /// Requests the scanner to continue scanning for an interpolated expression in
@@ -521,14 +534,14 @@ class Parser {
   ast::Import* parse_import();
   ast::Export* parse_export();
   // Callers are free to consume any `abstract` keyword, but they aren't required to.
-  ast::Declaration* parse_declaration(bool is_abstract);
+  ast::Declaration* parse_declaration(bool is_abstract, Source::Range range);
 
   // Whether the peeker is currently looking at a type. This function must be
   // optimistic (can allow more), but must be reasonable from a user's point of
   // view.
   bool peek_type(ParserPeeker* peeker);
   ast::Expression* parse_type(bool is_type_annotation);
-  ast::Class* parse_class_interface_monitor_or_mixin(bool is_abstract);
+  ast::Class* parse_class_interface_monitor_or_mixin(bool is_abstract, Source::Range abstract_range);
 
   ast::Sequence* parse_sequence();
   ast::Expression* parse_block_or_lambda(int indentation);
