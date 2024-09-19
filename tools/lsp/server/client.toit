@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import .rpc show RpcConnection
-import .uri-path-translator
+import .uri-path-translator as translator
 
 import .utils show FakePipe
 import .server show LspServer
@@ -45,7 +45,6 @@ with-lsp-client [block]
 with-lsp-client [block]
     --toitc/string
     --lsp-server/string?  // Can be null if not spawning.
-    --toitlsp-exe/string?=null
     --compiler-exe/string = toitc
     --supports-config=true
     --needs-server-args=(not supports-config)
@@ -54,15 +53,8 @@ with-lsp-client [block]
   server-args := [lsp-server]
   if needs-server-args: server-args.add compiler-exe
 
-  server-cmd/string := ?
-  if toitlsp-exe:
-    server-cmd = toitlsp-exe
-    server-args = ["--toitc", compiler-exe, "--sdk", (sdk-path-from-compiler toitc)]
-  else:
-    server-cmd = toitc
-
   client := LspClient.start
-      server-cmd
+      toitc
       server-args
       --supports-config=supports-config
       --compiler-exe=compiler-exe
@@ -83,8 +75,6 @@ class LspClient:
   handlers_ /Map ::= {:}
 
   version-map_ /Map ::= {:}
-
-  translator_ /UriPathTranslator ::= UriPathTranslator
 
   diagnostics_ /Map ::= {:}
 
@@ -135,7 +125,7 @@ class LspClient:
       server-from := FakePipe
       server-to   := FakePipe
       server-rpc-connection := RpcConnection server-to.in server-from.out
-      server := LspServer server-rpc-connection compiler-exe UriPathTranslator
+      server := LspServer server-rpc-connection compiler-exe
       task::
         server.run
       return [server-to.out, server-from.in, server, null]
@@ -159,8 +149,8 @@ class LspClient:
     client.run_
     return client
 
-  to-uri path/string -> string: return translator_.to-uri path
-  to-path uri/string -> string: return translator_.to-path uri
+  to-uri path/string -> string: return translator.to-uri path
+  to-path uri/string -> string: return translator.to-path uri
 
   run_:
     task::
@@ -254,7 +244,7 @@ class LspClient:
     if message.contains "crashed":
       exit 1
 
-  diagnostics-for --path/string -> List?: return diagnostics-for --uri=(translator_.to-uri path)
+  diagnostics-for --path/string -> List?: return diagnostics-for --uri=(translator.to-uri path)
   diagnostics-for --uri/string -> List?:
     return diagnostics_.get uri
 

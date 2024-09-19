@@ -2,14 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .tcp
 import expect show *
+import net
+import net.modules.tcp
 
 main:
-  server := TcpServerSocket
+  network := net.open
+  server := tcp.TcpServerSocket network
   server.listen "localhost" 0
 
-  socket := TcpSocket
+  socket := tcp.TcpSocket network
   socket.connect "localhost" server.local-address.port
 
   before := Time.monotonic-us

@@ -7,6 +7,8 @@ Ideally they should eventually run automatically, but for now they should still
 be useful for making sure that all of the functionality has been run at least
 once. It should make refactoring easier too.
 
+All tests should be run once after a reboot, and then again without a reboot.
+
 ## Setup
 
 The testing needs two boards and several resistors.
@@ -22,12 +24,16 @@ On board 1 connect as follows:
 8. IO26 - IO33
 9. IO21 - IO19 with 330Ohm
 
-IO16 must stay unconnected.
+IO2, IO4, and IO16 must stay unconnected.
 
 Connect board 1 to board 2 as follows:
 1. GND - GND
 2. IO22 - IO23
 3. IO23 - IO22
+
+On board2:
+1. IO19 -> HC-SR04 Echo
+2. IO18 -> HC-SR04 Trig
 
 IO16 must stay unconnected.
 

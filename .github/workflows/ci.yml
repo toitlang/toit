@@ -272,16 +272,13 @@ jobs:
         if: runner.os == 'Linux' && matrix.shard == 1
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
-          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
-          SDKDIR: ${{ github.workspace }}/
+          TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
+          SDKDIR: ${{ github.workspace }}/build/host/sdk
         shell: bash
         run: |
-          CPU_CORES=$(nproc)
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
-          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
-          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
 
       - name: Pack artifacts
         if: matrix.shard == 1

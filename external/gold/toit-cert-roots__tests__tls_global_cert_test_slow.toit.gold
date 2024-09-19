@@ -19,15 +19,6 @@
 <pkg:..>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-toit-cert-roots/tests/tls_global_cert_test_slow.toit:112:23: warning: Class 'Writer' is deprecated
-      writer := writer.Writer socket
-                      ^
-toit-cert-roots/tests/tls_global_cert_test_slow.toit:116:28: warning: Deprecated 'Socket.read'
-      while data := socket.read:
-                           ^~~~
-toit-cert-roots/tests/tls_global_cert_test_slow.toit:21:28: warning: Deprecated 'platform'
-  concurrent_processes ::= platform == "FreeRTOS" ? 1 : 4
-                           ^~~~~~~~
 <pkg:..>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~
