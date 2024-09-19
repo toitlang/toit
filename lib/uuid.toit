@@ -113,7 +113,7 @@ class Uuid:
       uuid.copy 0 SIZE
 
   /**
-  Validates that the given $str is a valid UUID.
+  Returns whether the given $str is a valid UUID.
   */
   static is-valid str/string -> bool:
     parse str --on-error=: return false
