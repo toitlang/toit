@@ -435,7 +435,7 @@ PRIMITIVE(aead_init) {
     group->unregister_resource(aead_context);
     return tls_error(null, process, err);
   }
-  
+
   proxy->set_external_address(aead_context);
   return proxy;
 }
