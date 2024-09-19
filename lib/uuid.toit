@@ -11,6 +11,7 @@ This library contains the UUID class ($Uuid), and supports the
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 
+import crypto
 import crypto.sha1 as crypto
 import io
 
