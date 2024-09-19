@@ -40,28 +40,28 @@ namespace compiler {
 void Resolver::report_error(const ast::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_error(position_node->range(), format, arguments);
+  diagnostics()->report_error(position_node->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Resolver::report_error(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_error(ir_to_ast_map_.at(position_node)->range(), format, arguments);
+  diagnostics()->report_error(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Resolver::report_note(const ast::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_note(position_node->range(), format, arguments);
+  diagnostics()->report_note(position_node->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Resolver::report_note(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_note(ir_to_ast_map_.at(position_node)->range(), format, arguments);
+  diagnostics()->report_note(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
   va_end(arguments);
 }
 
@@ -75,14 +75,14 @@ void Resolver::report_error(const char* format, ...) {
 void Resolver::report_warning(const ast::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_warning(position_node->range(), format, arguments);
+  diagnostics()->report_warning(position_node->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Resolver::report_warning(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_warning(ir_to_ast_map_.at(position_node)->range(), format, arguments);
+  diagnostics()->report_warning(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
   va_end(arguments);
 }
 
@@ -216,20 +216,20 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                null,
                                                shape,
                                                kind,
-                                               method->range());
+                                               method->selection_range());
         ir_to_ast_map_[ir] = method;
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
         auto ir = _new ir::Global(global->name()->data(),
                                   global->is_final(),
-                                  global->range());
+                                  global->selection_range());
         ir_to_ast_map_[ir] = global;
         globals.add(ir);
       } else if (auto klass = declaration->as_Class()) {
         check_class(klass);
         Symbol name = klass->name()->data();
-        auto position = klass->range();
+        auto position = klass->selection_range();
         ir::Class::Kind kind = ir::Class::CLASS;  // Initialized with value to silence compiler warnings.
         switch (klass->kind()) {
           case ast::Class::CLASS: kind = ir::Class::CLASS; break;
@@ -517,8 +517,8 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
     std::vector<ir::Method*> methods;
     for (const auto& declaration : declarations) {
       auto ast_node = ir_to_ast_map_.at(declaration);
-      if (!earliest_range.is_valid() || ast_node->range().is_before(earliest_range)) {
-        earliest_range = ast_node->range();
+      if (!earliest_range.is_valid() || ast_node->selection_range().is_before(earliest_range)) {
+        earliest_range = ast_node->selection_range();
         earliest_node = declaration;
       }
       if (declaration->is_Class()) classes.push_back(declaration->as_Class());
@@ -720,7 +720,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
             identifier_probe->second.module != imported_module.module) {
           for (auto other_ast_identifier : identifier_probe->second.show_identifiers) {
             if (other_ast_identifier->data() == ast_identifier->data()) {
-              auto earlier = ast_identifier->range().is_before(other_ast_identifier->range())
+              auto earlier = ast_identifier->selection_range().is_before(other_ast_identifier->selection_range())
                 ? ast_identifier
                 : other_ast_identifier;
               auto later = ast_identifier == earlier ? other_ast_identifier : ast_identifier;
@@ -1331,7 +1331,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         auto next = cycle_nodes[(i + 1) % cycle_nodes.size()];
         auto error_range = Source::Range::invalid();
         if (next == current->super()) {
-          error_range = ast_current->super()->range();
+          error_range = ast_current->super()->selection_range();
         } else {
           List<ir::Class*> ir_nodes;
           List<ast::Expression*> ast_nodes;
@@ -1350,7 +1350,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           if (ir_nodes.length() < ast_nodes.length()) {
             auto first = ast_nodes[0];
             auto last = ast_nodes.last();
-            error_range = first->range().extend(last->range());
+            error_range = first->selection_range().extend(last->selection_range());
           } else {
             ast::Node* ast_position_node = null;
             for (int j = 0; j < ir_nodes.length(); j++) {
@@ -1360,7 +1360,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
               }
             }
             ASSERT(ast_position_node != null);
-            error_range = ast_position_node->range();
+            error_range = ast_position_node->selection_range();
           }
         }
         diagnostics()->report_error(error_range, "This clause contributes to the cycle");
@@ -1589,7 +1589,7 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
       (name->is_valid() && *name == class_name) ||
       (name->is_valid() && *name == Symbols::constructor)) {
     if (*name == class_name) {
-      diagnostics()->report_warning(name_or_dot->range(),
+      diagnostics()->report_warning(name_or_dot->selection_range(),
                                     "Class-name constructors are deprecated");
     }
     bool is_valid = true;
@@ -1598,7 +1598,7 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
     } else if (is_named_constructor_or_factory) {
       auto receiver_name = name_or_dot->as_Dot()->receiver()->as_Identifier()->data();
       if (receiver_name == class_name) {
-        diagnostics()->report_warning(name_or_dot->range(),
+        diagnostics()->report_warning(name_or_dot->selection_range(),
                                       "Class-name constructors are deprecated");
       }
       is_valid = receiver_name == Symbols::constructor || receiver_name == class_name;
@@ -1728,7 +1728,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                             _new ast::LiteralNull(),
                             false,   // Not static.
                             false,   // Not abstract.
-                            false);  // Not final.
+                            false,   // Not final.
+                            Source::Range::invalid());
       }
       for (auto member : ast_class->members()) {
         auto name_or_dot = member->name_or_dot();
@@ -1742,7 +1743,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           bool allow_future_reserved;
           check_method(method, ir_class, &member_name, &kind, allow_future_reserved = false);
 
-          auto position = method->range();
+          auto position = method->selection_range();
           ir::Method* ir_method = null;
           switch (kind) {
             case ir::Method::CONSTRUCTOR: {
@@ -1798,14 +1799,17 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           ASSERT(name_or_dot->is_Identifier());
           Symbol member_name = name_or_dot->as_Identifier()->data();
           auto ast_field = member->as_Field();
-          auto position = ast_field->range();
+          auto position = ast_field->selection_range();
           check_field(ast_field, ir_class);
           if (ast_field->is_static()) {
             auto ir_global = _new ir::Global(member_name, ir_class, ast_field->is_final(), position);
             ir_to_ast_map_[ir_global] = member;
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
-            auto ir_field = _new ir::Field(member_name, ir_class, ast_field->is_final(), ast_field->range());
+            auto ir_field = _new ir::Field(member_name,
+                                           ir_class,
+                                           ast_field->is_final(),
+                                           ast_field->selection_range());
             ir_to_ast_map_[ir_field] = member;
             fields.add(ir_field);
             auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position);
@@ -1827,7 +1831,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
         }
       } else if (!class_is_interface && !class_has_constructors) {
         // Create default-constructor place-holder (which takes `this` as argument).
-        auto position = ast_class->range();
+        auto position = ast_class->selection_range();
         ir::Constructor* constructor =
             _new ir::Constructor(Symbols::constructor, ir_class, position);
         constructors.add(constructor);
