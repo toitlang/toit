@@ -8,4 +8,8 @@ main:
   while not i: null
   if i: null
   if not i: null
+  while true: null  // No warning.
+  while false: null  // No warning.
+  while not true: null  // No warning.
+  while not false: null  // No warning.
   unresolved

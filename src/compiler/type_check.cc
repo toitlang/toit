@@ -240,7 +240,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto result = visit(node);
     if (result.is_none()) {
       report_error(node->range(), "Condition can't be 'none'");
-    } else if (is_non_nullable(result)) {
+    } else if (!is_a_bool(result) && is_non_nullable(result)) {
       report_warning(node->range(), "Condition always evaluates to true");
     }
     return result;
@@ -261,7 +261,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto value_type = visit(node->value());
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
-    } else if (warn_if_always_false && is_non_nullable(value_type)) {
+    } else if (warn_if_always_false && !is_a_bool(value_type) && is_non_nullable(value_type)) {
       report_warning(node->range(), "Condition always evaluates to false");
     }
     return boolean_type_;
