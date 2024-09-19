@@ -239,6 +239,7 @@ abstract class string implements Comparable io.Data:
 
   /**
   Calls the given $block for every unicode character in the string.
+
   The argument to the block is an integer in the Unicode range of 0-0x10ffff,
     inclusive.
   The return value is assembled from the return values of the block.
@@ -255,6 +256,7 @@ abstract class string implements Comparable io.Data:
     lists of lists are not flattened in this way.
   To get a list or byte array as the return value instead of a string, use
     `str.to-byte-array.map` instead.
+
   # Examples.
   ```
   heavy-metalize str/string -> string:
@@ -320,8 +322,11 @@ abstract class string implements Comparable io.Data:
   Copies the string between $from (inclusive) and $to (exclusive).
 
   If $force-valid is true, adjusts $from and $to so that they are valid substring indexes.
-    If $from (resp. $to) points to the middle of a multi-byte sequence decreases the index
-    until it points to the beginning of the sequence. Also see $rune-index.
+
+  If $from (resp. $to) points to the middle of a multi-byte sequence decreases the index
+    until it points to the beginning of the sequence.
+
+  Also see $rune-index.
   */
   copy from/int to/int=size --force-valid/bool -> string:
     if force-valid:
@@ -1183,8 +1188,8 @@ abstract class string implements Comparable io.Data:
   If $all is true, replaces all occurrences of $needle. For each found occurrence calls the
     $replacement-callback with the matched string as argument.
 
-  If $all is false, only replaces the first occurrence with the result of calling $replacement-callback
-    with the matched string.
+  If $all is false (the default), only replaces the first occurrence with the result
+    of calling $replacement-callback with the matched string.
 
   Does nothing, if this instance doesn't contain the $needle.
 

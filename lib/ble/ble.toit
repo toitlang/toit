@@ -251,7 +251,7 @@ class Adapter extends Resource_:
     case the information of the pairing process may be stored on the device to make
     reconnects more efficient.
 
-  If $secure-connections the peripheral is enabling secure connections.
+  If $secure-connections is true then the peripheral is enabling secure connections.
   */
   peripheral --bonding/bool=false --secure-connections/bool=false -> Peripheral:
     if not adapter-metadata.supports-peripheral-role: throw "NOT_SUPPORTED"

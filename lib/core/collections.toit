@@ -482,9 +482,11 @@ abstract class List extends CollectionBase:
     return map_ [] block
 
   /**
-  Invokes the given $block on each element and stores the result in this list if
-    $in-place is true.
-  If $in-place is false, then this function is equivalent to $(map [block]).
+  Invokes the given $block on each element.
+
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the mapped elements.
+  Returns a new list if $in-place is false (the default).
   */
   // We have a second function here, since the `block` has implicitly a different
   // type. It needs to have T->T.
@@ -503,7 +505,9 @@ abstract class List extends CollectionBase:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the filtered elements.
+  Returns a new list if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -577,11 +581,11 @@ abstract class List extends CollectionBase:
   static TEMPORARY-BUFFER-MINIMUM_ ::= 16
 
   /**
-  Sorts the range [$from..$to[ using the given $compare block. The sort is stable,
-    meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Variant of $(sort from to).
 
-  The $compare block should take two arguments `a` and `b` and should return:
+  Sorts the range [$from..$to[ using the given $compare block.
+
+  The $compare block must take two arguments `a` and `b` and should return:
   - -1 if `a < b`,
   -  0 if `a == b`, and
   -  1 if `a > b`.
@@ -602,15 +606,19 @@ abstract class List extends CollectionBase:
     return result
 
   /**
-  Sorts the range [$from..$to[ using the the < and > operators.  The sort is
-    stable, meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Sorts the range [$from..$to[ using the the < and > operators.
+
+  The sort is  stable, meaning that equal elements do not change their relative order.
+
+  Returns this instance if $in-place is true.
+  Returns a new list if $in-place is false (the default).
   */
   sort --in-place/bool=false from/int = 0 to/int = size -> List:
     return sort --in-place=in-place from to: | a b | compare_ a b
 
   /**
   Searches for $needle in the range $from (inclusive) - $to (exclusive).
+
   If $last is false (the default) returns the index of the first occurrence
     of $needle in the given range $from - $to. Otherwise returns the last
     occurrence.
@@ -624,6 +632,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Calls $if-absent without argument if the $needle is not contained
     in the range, and returns the result of the call.
   */
@@ -641,6 +650,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Uses binary search, with `<`, `>` and `==`, to find the element.
   The given range must be sorted.
   Searches for $needle in the sorted range $from (inclusive) - $to (exclusive).
@@ -651,6 +661,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to).
+
   If not found, calls $if-absent with the smallest index at which the
     element is greater than $needle. If no such index exists (either because
     this instance is empty, or because the first element is greater than
@@ -666,6 +677,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -675,6 +687,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to [--if-absent]).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -712,7 +725,7 @@ abstract class List extends CollectionBase:
   is-sorted:
     return is-sorted: | a b | compare_ a b
 
-  swap i j:
+  swap i/int j/int:
     t := this[i]
     this[i] = this[j]
     this[j] = t
@@ -779,12 +792,16 @@ abstract class List extends CollectionBase:
 
   /**
   Calls the given $block with indexes splitting the $from-$to range into chunks
-    of the $available size.  The block is called with three arguments:
+    of the $available size.
+
+  The block is called with three arguments:
     `chunk-from`, `chunk-to`, and `chunk-size`, where `chunk-size`
     is always equal to `chunk-to - chunk-from`.  The first invocation
     receives indexes for at most $available elements. Subsequent
     invocations switch to $max-available elements (which by default is
-    the same as $available).  Returns $to - $from.
+    the same as $available).
+
+  Returns $to - $from.
   */
   static chunk-up from/int to/int available/int max-available/int=available [block] -> int:
     result := to - from
@@ -895,6 +912,7 @@ abstract class Array_ extends List:
     collection.do: result[index++] = it
     return result
 
+  /** See $super. */
   copy from/int=0 to/int=size -> Array_:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result-size := to - from
@@ -1153,6 +1171,9 @@ interface ByteArray extends io.Data:
     size.repeat: result[it] = initializer.call it
     return result
 
+  /**
+  Creates a new byte array from the given $bytes.
+  */
   constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
     if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
     size := to - from
@@ -3134,7 +3155,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new map if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case removes the elements
+    that don't match the $predicate.
+  Returns a new map if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -3226,57 +3249,101 @@ class Deque extends List implements Collection:
     backing_ = List.from collection
     super.from-subclass
 
+  /// See $Collection.size.
   size -> int:
     return backing_.size - first_
 
+  /// See $Collection.is-empty.
   is-empty -> bool:
     return backing_.size == first_
 
+  /**
+  Adds the given $element to the end of this instance.
+  */
   add element -> none:
     backing_.add element
 
+  /**
+  Adds all elements of the given $collection to this instance.
+  */
   add-all collection/Collection -> none:
     backing_.add-all collection
 
+  /// See $Collection.do.
   do [block]:
     backing_[first_..].do block
 
+  /**
+  Variant of $(Collection.do [block]).
+
+  Iterates over the elements of this collection in reverse order.
+  */
   do --reversed/bool [block] -> none:
     backing_[first_..].do --reversed block
 
+  /// See $Collection.any.
   any [predicate] -> bool:
     return backing_[first_..].any predicate
 
+  /// See $Collection.every.
   every [predicate] -> bool:
     return backing_[first_..].every predicate
 
+  /// See $(Collection.reduce [block]).
   reduce [block]:
     return backing_[first_..].reduce block
 
+  /// See $(Collection.reduce --initial [block]).
   reduce --initial [block]:
     return backing_[first_..].reduce --initial=initial block
 
+  /// See $Collection.contains.
   contains element -> bool:
     return backing_[first_..].contains element
 
+  /**
+  Removes all elements.
+  */
   clear -> none:
     backing_.clear
     first_ = 0
 
+  /**
+  The first element of the deque.
+
+  The deque must not be empty.
+  */
   first -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_[first_]
 
+  /**
+  The last element of the deque.
+
+  The deque must not be empty.
+  */
   last -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_.last
 
+  /**
+  Removes the last element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-last -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     result := backing_.remove-last
     shrink-if-needed_
     return result
 
+  /**
+  Removes the first element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-first -> any:
     backing := backing_
     first := first_
@@ -3287,6 +3354,9 @@ class Deque extends List implements Collection:
     shrink-if-needed_
     return result
 
+  /**
+  Inserts the given $element at the beginning of this instance.
+  */
   add-first element -> none:
     first := first_
     if first == 0:
@@ -3302,10 +3372,18 @@ class Deque extends List implements Collection:
     backing_[first] = element
     first_ = first
 
+  /**
+  Returns the element at the given $index.
+  */
   operator [] index/int:
     if index < 0: throw "OUT_OF_BOUNDS"
     return backing_[first_ + index]
 
+  /**
+  Sets the element at the given $index to the given $value.
+
+  The index must be in the range [0, size).
+  */
   operator []= index/int value:
     if index < 0: throw "OUT_OF_BOUNDS"
     backing_[first_ + index] = value
@@ -3318,7 +3396,8 @@ class Deque extends List implements Collection:
     return Deque.from backing_[first_ + from .. first_ + to]
 
   /**
-  Inserts the given $value at the given index.
+  Inserts the given $value at the given index $at.
+
   It is valid to insert at the $size position, in which case this is
     equivalent to $add.  It is also valid to add at the zero position,
     in which case this is equivalent to $add-first.
@@ -3341,7 +3420,8 @@ class Deque extends List implements Collection:
         backing_[at] = value
 
   /**
-  Removes the value at the given index.
+  Removes the value at the given index $at.
+
   It is valid to remove at the $size - 1 position, in which case this is
     equivalent to $remove-last.  It is also valid to remove at the zero
     position, in which case this is equivalent to $remove-first.
@@ -3365,9 +3445,24 @@ class Deque extends List implements Collection:
     backing_[first] = removed
     return result
 
+  /**
+  Resizes the backing store of this instance to the given $new-size.
+
+  Deprecated. Use $reserve instead.
+  */
   resize new-size/int:
     if new-size < 0: throw "OUT_OF_BOUNDS"
     backing_.resize first_ + new-size
+
+  /**
+  Reserves $amount additional space in the backing store of this instance.
+
+  This operation is useful when you know that you will add $amount elements
+    to the deque, and you want to avoid reallocations.
+  */
+  reserve amount/int:
+    if amount < 0: throw "OUT_OF_BOUNDS"
+    backing_.resize (backing_.size + amount)
 
   shrink-if-needed_ -> none:
     backing := backing_
