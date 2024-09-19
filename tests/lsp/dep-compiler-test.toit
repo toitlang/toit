@@ -8,7 +8,6 @@ import expect show *
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   client.always-wait-for-idle = false

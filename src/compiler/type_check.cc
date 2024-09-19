@@ -46,16 +46,16 @@ class TypeChecker : public ReturningVisitor<Type> {
   TypeChecker(List<Type> literal_types,
               List<ir::Class*> classes,
               const UnorderedMap<ir::Class*, QueryableClass>* queryables,
-              const Set<ir::Node*>* deprecated,
               Lsp* lsp,
               Diagnostics* diagnostics)
       : classes_(classes)
       , queryables_(queryables)
-      , deprecated_(deprecated)
       , lsp_(lsp)
       , diagnostics_(diagnostics)
       , method_(null)
       , boolean_type_(Type::invalid())
+      , true_type_(Type::invalid())
+      , false_type_(Type::invalid())
       , integer_type_(Type::invalid())
       , float_type_(Type::invalid())
       , string_type_(Type::invalid())
@@ -70,6 +70,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     };
 
     boolean_type_ = find_type(Symbols::bool_);
+    true_type_ = find_type(Symbols::True);
+    false_type_ = find_type(Symbols::False);
     integer_type_ = find_type(Symbols::int_);
     float_type_ = find_type(Symbols::float_);
     string_type_ = find_type(Symbols::string);
@@ -156,6 +158,8 @@ class TypeChecker : public ReturningVisitor<Type> {
       node->set_return_type(Type::any());
     } else if (ret->value()->is_LiteralNull()) {
       node->set_return_type(Type::any());
+    } else if (value_type == true_type_ || value_type == false_type_) {
+      node->set_return_type(boolean_type_);
     } else {
       node->set_return_type(value_type);
     }
@@ -500,6 +504,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         return node->type();
       case Typecheck::PARAMETER_AS_CHECK:
       case Typecheck::LOCAL_AS_CHECK:
+      case Typecheck::GLOBAL_AS_CHECK:
       case Typecheck::RETURN_AS_CHECK:
       case Typecheck::FIELD_INITIALIZER_AS_CHECK:
       case Typecheck::FIELD_AS_CHECK:
@@ -544,6 +549,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     } else if (right_type.is_none()) {
       report_error(node->right()->range(), "Variable can't be initialized with 'none'");
       local->set_type(Type::any());
+    } else if (right_type == true_type_ || right_type == false_type_) {
+      local->set_type(boolean_type_);
     } else {
       if (node->right()->is_LiteralNull()) {
         local->set_type(Type::any());
@@ -598,7 +605,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return string_type_;
   }
   Type visit_LiteralBoolean(LiteralBoolean* node) {
-    return boolean_type_;
+    return node->value() ? true_type_ : false_type_;
   }
   Type visit_LiteralByteArray(LiteralByteArray* node) {
     return Type::any();
@@ -611,7 +618,6 @@ class TypeChecker : public ReturningVisitor<Type> {
  private:
   List<ir::Class*> classes_;
   const UnorderedMap<ir::Class*, QueryableClass>* queryables_;
-  const Set<ir::Node*>* deprecated_;
   Lsp* lsp_;
   Diagnostics* diagnostics_;
 
@@ -625,6 +631,8 @@ class TypeChecker : public ReturningVisitor<Type> {
   Method* method_;
 
   Type boolean_type_;
+  Type true_type_;
+  Type false_type_;
   Type integer_type_;
   Type float_type_;
   Type string_type_;
@@ -673,14 +681,15 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (node->is_FieldStub()) {
       node = node->as_FieldStub()->field();
     }
-    bool is_deprecated = deprecated_->contains(node);
+    bool is_deprecated = false;
     if (node->is_Method()) {
       auto method = node->as_Method();
+      is_deprecated = method->is_deprecated();
       name = method->name();
       holder = method->holder();
       bool holder_is_deprecated = false;
       if (holder != null) {
-        holder_is_deprecated = deprecated_->contains(holder);
+        holder_is_deprecated = holder->is_deprecated();
         holder_name = holder->name();
       }
       if (method->is_constructor() || method->is_factory()) {
@@ -699,6 +708,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     } else {
       ASSERT(node->is_Field());
       auto field = node->as_Field();
+      is_deprecated = field->is_deprecated();
       name = field->name();
       holder = field->holder();
       if (holder != null) {
@@ -743,6 +753,18 @@ class TypeChecker : public ReturningVisitor<Type> {
       }
       return;
     }
+    if (receiver_type == true_type_ && value_type == false_type_) {
+      report_error(range, "Can't cast 'false' to 'True'");
+      return;
+    }
+    if (receiver_type == false_type_ && value_type == true_type_) {
+      report_error(range, "Can't cast 'true' to 'False'");
+      return;
+    }
+    if (value_type == boolean_type_ && is_a_bool(receiver_type)) {
+      // We allow implicit downcasts of booleans.
+      return;
+    }
     ASSERT(receiver_type.is_class() && value_type.is_class());
     for (Class* current = value_class; current != null; current = current->super()) {
       if (current == receiver_class) return;
@@ -785,16 +807,19 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (type1 == type2) return type1;
     return Type::any();
   }
+
+  bool is_a_bool(Type type) {
+    return type == boolean_type_ || type == true_type_ || type == false_type_;
+  }
 };
 
 void check_types_and_deprecations(ir::Program* program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
-  auto deprecated = collect_deprecated_elements(program, toitdocs);
   bool include_abstracts;
   auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
-  TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
+  TypeChecker checker(program->literal_types(), program->classes(), &queryables, lsp, diagnostics);
   program->accept(&checker);
 }
 

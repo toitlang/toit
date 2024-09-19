@@ -50,58 +50,113 @@ add_custom_target(
     DEPENDS ${CTEST_DIR}/lib
     )
 
+set(NEGATIVE_TESTS)
+
 foreach(file ${CC_FILES};${C_FILES})
-  get_filename_component(exe ${file} NAME_WE)
-  if (${file} MATCHES "toit-run-test.c")
-    add_executable(
-      ${exe}
-      ${CMAKE_SOURCE_DIR}/src/toit_run.cc
-      ${CMAKE_SOURCE_DIR}/src/run.cc
-      ${BOOT_SNAPSHOT}
-      ${file}
-    )
-  else()
-    add_executable(
-      ${exe}
-      ${file}
-    )
-  endif()
+  file(READ ${file} content)
+  string(FIND "${content}" "// NEGATIVE-TEST" FOUND_POSITION)
 
-  set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_DIR})
-  add_dependencies(${exe} generate-ctest-lib-symlink)
-
-  target_link_libraries(
-    ${exe}
-    ${TOIT_LINK_LIBS}
-  )
-
-  add_dependencies(build_test_assets ${exe})
-endforeach()
-
-foreach(file ${CC_TESTS};${C_TESTS})
-  file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
-
-  if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+  if (FOUND_POSITION EQUAL -1)
     continue()
   endif()
 
-  set(TEST_EXPECTATION_NAME "${test_name}")
-  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
-  endif()
+  list(APPEND NEGATIVE_TESTS ${file})
+endforeach()
 
-  get_filename_component(exe ${file} NAME_WE)
-  string(REGEX REPLACE "-test.cc?$" "-input.toit" test_input ${file})
-  add_test(
-    NAME ${TEST_EXPECTATION_NAME}
-    COMMAND ${CTEST_DIR}/${exe} ${test_input}
-  )
-  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
-  add_dependencies(build_test_assets ${exe})
+foreach(MODE positive negative)
+  foreach(file ${CC_FILES};${C_FILES})
 
-  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
-  endif()
+    set(IS_NEGATIVE_TEST FALSE)
+    if(${MODE} STREQUAL "negative")
+      if (NOT ${file} IN_LIST NEGATIVE_TESTS)
+        continue()
+      endif()
+      set(IS_NEGATIVE_TEST TRUE)
+    endif()
+
+    get_filename_component(exe ${file} NAME_WE)
+    if (${IS_NEGATIVE_TEST})
+      set(exe ${exe}-negative)
+    endif()
+
+    if (${file} MATCHES "toit-run-test.c")
+      add_executable(
+        ${exe}
+        ${CMAKE_SOURCE_DIR}/src/toit_run.cc
+        ${CMAKE_SOURCE_DIR}/src/run.cc
+        ${BOOT_SNAPSHOT}
+        ${file}
+      )
+    else()
+      add_executable(
+        ${exe}
+        ${file}
+      )
+    endif()
+
+    if (IS_NEGATIVE_TEST)
+      target_compile_definitions(${exe} PRIVATE NEGATIVE_TEST)
+    endif()
+
+    set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_DIR})
+    add_dependencies(${exe} generate-ctest-lib-symlink)
+
+    target_link_libraries(
+      ${exe}
+      ${TOIT_LINK_LIBS}
+    )
+
+    add_dependencies(build_test_assets ${exe})
+
+    if (NOT ${file} IN_LIST C_TESTS AND NOT ${file} IN_LIST CC_TESTS)
+      continue()
+    endif()
+
+    file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+
+    if(${IS_NEGATIVE_TEST})
+      set(test_name "${test_name}-negative")
+    endif()
+
+    if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+      continue()
+    endif()
+
+    set(TEST_EXPECTATION_NAME "${test_name}")
+    if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+    endif()
+
+    set(WRAPPER)
+    if (IS_NEGATIVE_TEST)
+      # Ctest only supports negative exit codes, but not aborts, segfaults, ...
+      # Wrap the test in a script that converts aborts to exit code 1.
+      if (WIN32)
+        set(WRAPPER powershell -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/abort-wrapper.ps1")
+      else()
+        set(WRAPPER "${CMAKE_CURRENT_SOURCE_DIR}/abort-wrapper.sh")
+      endif()
+    endif()
+
+    string(REGEX REPLACE "-test.cc?$" "-input.toit" test_input ${file})
+    add_test(
+      NAME ${TEST_EXPECTATION_NAME}
+      COMMAND ${WRAPPER} ${CTEST_DIR}/${exe} ${test_input}
+    )
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+    if (IS_NEGATIVE_TEST)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
+    endif()
+    add_dependencies(build_test_assets ${exe})
+
+    if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+      if (IS_NEGATIVE_TEST)
+        set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL FALSE)
+      else()
+        set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
+      endif()
+    endif()
+  endforeach()
 endforeach()
 
 foreach(file ${TOIT_TESTS})

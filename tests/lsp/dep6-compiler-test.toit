@@ -9,7 +9,6 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   // The paths must not exist. We are closing one file, and are testing

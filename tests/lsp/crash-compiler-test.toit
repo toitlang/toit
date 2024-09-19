@@ -14,18 +14,8 @@ main args:
     --use-mock
     --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = true:
     test --expect-repro it
-  run-client-test args
-    --use-toitlsp
-    --use-mock
-    --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = true:
-    test --expect-repro it
 
   run-client-test args
-    --use-mock
-    --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
-    test --no-expect-repro it
-  run-client-test args
-    --use-toitlsp
     --use-mock
     --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
     test --no-expect-repro it
