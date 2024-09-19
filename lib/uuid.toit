@@ -102,7 +102,7 @@ class Uuid:
   The given parameter must be a byte array of size 16.
   */
   constructor .bytes_:
-    if bytes_.byte-size != SIZE: throw "INVALID_UUID"
+    if bytes_.size != SIZE: throw "INVALID_UUID"
 
   /**
   Converts this instance to a string.
@@ -127,7 +127,7 @@ class Uuid:
     for i := 0; i < SIZE; i++:
       if index == 8 or index == 13 or index == 18 or index == 23:
         buffer[index++] = '-'
-      c := bytes_.byte-at i
+      c := bytes_[i]
       buffer[index++] = to-lower-case-hex c >> 4
       buffer[index++] = to-lower-case-hex c & 0xf
     return buffer.to-string
@@ -140,14 +140,14 @@ class Uuid:
   The returned byte array is a valid input for the UUID constructor.
   */
   to-byte-array -> ByteArray:
-    return ByteArray.from bytes_
+    return bytes_.copy
 
   /** Whether this instance has the same 128 bits as $other. */
   operator == other -> bool:
     if other is not Uuid: return false
     other-bytes := other.bytes_
     for i := 0; i < SIZE; i++:
-      if (bytes_.byte-at i) != (other-bytes.byte-at i): return false
+      if bytes_[i] != other-bytes[i]: return false
     return true
 
   /** A hash code for this instance. */
@@ -157,10 +157,7 @@ class Uuid:
   hash-code -> int:
     hash := hash_
     if hash: return hash
-    else: return hash_ = (bytes_.byte-at 0) | (bytes_.byte-at 1) << 8 | (bytes_.byte-at 2) << 16
+    else: return hash_ = bytes_[0] | bytes_[1] << 8 | bytes_[2] << 16
 
   /** Whether this instance is equal to the nil UUID $NIL. */
-  is-nil -> bool:
-    SIZE.repeat: | i/int |
-      if (bytes_.byte-at i) != 0: return false
-    return true
+  is-nil -> bool: return not bytes_.any: it != 0
