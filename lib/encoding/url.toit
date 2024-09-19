@@ -59,9 +59,6 @@ Decodes the given $data using URL-encoding, also known as percent encoding.
 The function is liberal, accepting unencoded characters that should be
   encoded, with the exception of '%'.
 
-Returns a string if the input is a string and no decoding is needed.
-Returns a byte array otherwise.
-
 Plus signs (+) are not decoded to spaces.
 
 # Example
