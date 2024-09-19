@@ -932,6 +932,11 @@ std::string ToitdocParser::make_string(int from, int to) {
       if (i >= to) break;
     }
     int c = text[i];
+    if (c == '\r' && i < to - 1 && text[i + 1] == '\n') {
+      // Skip over the '\r' in '\r\n'.
+      i++;
+      c = '\n';
+    }
     if (c == '\n' && replace_newlines_with_space) c = ' ';
     if (c == ' ' && last_was_space && squash_spaces) continue;
 

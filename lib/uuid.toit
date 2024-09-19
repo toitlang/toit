@@ -126,6 +126,13 @@ class Uuid:
     parse str --on-error=: return false
     return true
 
+  /**
+  Returns whether the given $str is a valid UUID.
+  */
+  static is-valid str/string -> bool:
+    parse str --on-error=: return false
+    return true
+
   bytes_/ByteArray
   hash_ := null
 

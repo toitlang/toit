@@ -2430,6 +2430,8 @@ ENTRY_POINTS(E)
 List<ir::Type> Resolver::find_literal_types(Module* core_module) {
   static Symbol literal_type_symbols[] = {
     Symbols::bool_,
+    Symbols::True,
+    Symbols::False,
     Symbols::int_,
     Symbols::float_,
     Symbols::string,
