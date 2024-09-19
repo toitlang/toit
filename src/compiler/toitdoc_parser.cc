@@ -324,11 +324,10 @@ class CommentsManager {
   int find_closest_before(ast::Node* node);
   Toitdoc<ast::Node*> find_for(ast::Node* node);
   bool is_attached(int index1, int index2) {
-    return is_attached(comments_[index1].range(), comments_[index2].range(), false);
+    return is_attached(comments_[index1].range(), comments_[index2].range());
   }
   bool is_attached(Source::Range previous,
-                   Source::Range next,
-                   bool allow_modifiers);
+                   Source::Range next);
   Toitdoc<ast::Node*> make_ast_toitdoc(int index);
 
  private:
@@ -1176,15 +1175,7 @@ int CommentsManager::find_closest_before(ast::Node* node) {
   return -1;
 }
 
-/// When [allow_modifiers] is true, allows modifiers on the line of the
-///   [next] range.
-/// For simplicity we allow any string as long as it doesn't contain a `:` which
-///   would indicate a different declaration: `class A: foo:`
-// TODO(florian, 1218): Remove the hack. The declaration range should be correct and
-//    include modifiers.
-bool CommentsManager::is_attached(Source::Range previous,
-                                  Source::Range next,
-                                  bool allow_modifiers) {
+bool CommentsManager::is_attached(Source::Range previous, Source::Range next) {
   // Check that there is one newline, and otherwise only whitespace.
   int start_offset = source_->offset_in_source(previous.to());
   int end_offset = source_->offset_in_source(next.from());
@@ -1197,13 +1188,7 @@ bool CommentsManager::is_attached(Source::Range previous,
   if (text[i++] != '\n') return false;
   while (i < end_offset and text[i] == ' ') i++;
   if (i == end_offset) return true;
-  if (!allow_modifiers) return false;
-  for (; i < end_offset; i++) {
-    if (text[i] == '\n') return false;
-    if (text[i] == '\r') return false;
-    if (text[i] == ':') return false;
-  }
-  return true;
+  return false;
 }
 
 
@@ -1211,7 +1196,7 @@ Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
   auto not_found = Toitdoc<ast::Node*>::invalid();
   int closest = find_closest_before(node);
   if (closest == -1) return not_found;
-  if (!is_attached(comments_[closest].range(), node->selection_range(), true)) return not_found;
+  if (!is_attached(comments_[closest].range(), node->full_range())) return not_found;
   int closest_toit = closest;
   // Walk backward to find the closest toitdoc.
   // Usually it's the first attached comment, but we allow non-toitdocs:
