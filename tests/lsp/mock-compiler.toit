@@ -112,7 +112,8 @@ class MockCompiler:
       // As such we only add 19 bytes here and let the 20th byte be a '\n'.
       chunks.add ("a" * 19)
       // For now, just provide empty summaries.
-      chunks.add 6 * 2  // The following 6 entries take one byte for the number and one for the '\n'.
+      chunks.add 7 * 2  // The following 6 entries take one byte for the number/'-' and one for the '\n'.
+      chunks.add "-"
       chunks.add 0 // No transitive exports.
       chunks.add 0 // Exported identifiers.
       chunks.add 0 // Classes
