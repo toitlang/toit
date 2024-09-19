@@ -627,6 +627,9 @@ class ModuleReader extends ReaderBase:
       // Either bad reference, or not yet supported.
       return ToitdocRef.other text
 
+    if kind == ToitdocRef.PARAMETER:
+      return ToitdocRef.parameter text
+
     assert: ToitdocRef.CLASS <= kind <= ToitdocRef.FIELD
     module-uri := to-uri_ read-line
     holder := null
