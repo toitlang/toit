@@ -212,6 +212,58 @@ class ToitdocWriter : public toitdoc::Visitor {
   }
 };
 
+class BufferedWriter : public LspWriter {
+ public:
+  BufferedWriter() : buffer_(unvoid_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
+  ~BufferedWriter() { free(buffer_); }
+
+  void printf(const char* format, va_list& arguments) override {
+    va_list args_copy;
+    va_copy(args_copy, arguments);
+    int size = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    if (size < 0) FATAL("Failure to convert argument to string");
+
+    if (length_ + size >= capacity_) {
+      grow(size);
+    }
+
+    vsnprintf(reinterpret_cast<char*>(buffer_ + length_), size + 1, format, arguments);
+    length_ += size;
+  }
+
+  void write(const uint8* data, int size) override {
+    if (length_ + size >= capacity_) {
+      grow(size);
+    }
+
+    memcpy(buffer_ + length_, data, size);
+    length_ += size;
+  }
+
+  int length() const { return length_; }
+  uint8* data() { return buffer_; }
+
+ private:
+  uint8* buffer_;
+  int capacity_;
+  int length_;
+
+  void grow(int size) {
+    int new_capacity = capacity_ * 2;
+    while (length_ + size >= new_capacity) {
+      new_capacity *= 2;
+    }
+
+    uint8* new_buffer = unvoid_cast<uint8*>(malloc(new_capacity));
+    memcpy(new_buffer, buffer_, length_);
+    free(buffer_);
+    buffer_ = new_buffer;
+    capacity_ = new_capacity;
+  }
+};
+
 class Writer {
  public:
   explicit Writer(const std::vector<Module*>& modules,
@@ -250,6 +302,7 @@ class Writer {
   void print_field(ir::Field* field);
   void print_export(Symbol id, const ResolutionEntry& entry);
   void print_dependencies(Module* module);
+  void print_module(Module* module, Module* core_module);
 
 
   template<typename T, typename T2>
@@ -582,49 +635,61 @@ void Writer::print_modules() {
     // Ignore error modules.
     if (module->is_error_module()) continue;
 
-    sha1_ = sha1::SHA1();
-
-    current_source_ = module->unit()->source();
-
-    // For simplicity repeat the module path and the class count.
-    this->printf_external("%s\n", current_source_->absolute_path());
-
-    this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
-
-    print_dependencies(module);
-
-    List<const char*> exported_modules;
-    if (module->export_all()) {
-      ListBuilder<const char*> builder;
-      for (int i = 0; i < module->imported_modules().length(); i++) {
-        auto import = module->imported_modules()[i];
-        // The implicitly imported core module is always first. We discard those.
-        // Other (explicit) imports of the core module are not discarded.
-        if (i == 0 && import.module == core_module) continue;
-        // Imports with shown identifiers are handled differently.
-        if (!import.show_identifiers.is_empty()) continue;
-        // Prefixed imports don't transitively export.
-        if (import.prefix != null) continue;
-        builder.add(import.module->unit()->absolute_path());
-      }
-      exported_modules = builder.build();
-    }
-    print_list_external(exported_modules, [&](const char* path) { printf_external("%s\n", path); });
-    auto exported_identifiers_map = module->scope()->exported_identifiers_map();
-    this->printf_external("%d\n", exported_identifiers_map.size());
-    exported_identifiers_map.for_each([&](Symbol exported_id, ResolutionEntry entry) {
-      print_export(exported_id, entry);
-    });
-    print_list_external(module->classes(), &Writer::print_class);
-    print_list_external(module->methods(), &Writer::print_method);
-    print_list_external(module->globals(), &Writer::print_method);
-
-    sha1::SHA1::digest8_t digest;
-    sha1_.getDigestBytes(digest);
-    lsp_writer_->write(digest, sizeof(digest));
-
-    print_toitdoc(module);
+    print_module(module, core_module);
   }
+}
+
+void Writer::print_module(Module* module, Module* core_module) {
+
+  current_source_ = module->unit()->source();
+
+  // For simplicity repeat the module path and the class count.
+  this->printf_external("%s\n", current_source_->absolute_path());
+
+  print_dependencies(module);
+
+  BufferedWriter buffered;
+  auto old_writer = lsp_writer_;
+  lsp_writer_ = &buffered;
+  sha1_ = sha1::SHA1();
+
+  this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
+  List<const char*> exported_modules;
+  if (module->export_all()) {
+    ListBuilder<const char*> builder;
+    for (int i = 0; i < module->imported_modules().length(); i++) {
+      auto import = module->imported_modules()[i];
+      // The implicitly imported core module is always first. We discard those.
+      // Other (explicit) imports of the core module are not discarded.
+      if (i == 0 && import.module == core_module) continue;
+      // Imports with shown identifiers are handled differently.
+      if (!import.show_identifiers.is_empty()) continue;
+      // Prefixed imports don't transitively export.
+      if (import.prefix != null) continue;
+      builder.add(import.module->unit()->absolute_path());
+    }
+    exported_modules = builder.build();
+  }
+  print_list_external(exported_modules, [&](const char* path) { printf_external("%s\n", path); });
+  auto exported_identifiers_map = module->scope()->exported_identifiers_map();
+  this->printf_external("%d\n", exported_identifiers_map.size());
+  exported_identifiers_map.for_each([&](Symbol exported_id, ResolutionEntry entry) {
+    print_export(exported_id, entry);
+  });
+  print_list_external(module->classes(), &Writer::print_class);
+  print_list_external(module->methods(), &Writer::print_method);
+  print_list_external(module->globals(), &Writer::print_method);
+
+  print_toitdoc(module);
+
+  lsp_writer_ = old_writer;
+
+  sha1::SHA1::digest8_t digest;
+  sha1_.getDigestBytes(digest);
+  lsp_writer_->write(digest, sizeof(digest));
+  int length = buffered.length();
+  this->printf("%d\n", length);
+  lsp_writer_->write(buffered.data(), buffered.length());
 }
 
 class ToitdocPathMappingCreator {
