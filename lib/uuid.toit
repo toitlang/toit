@@ -125,7 +125,7 @@ class Uuid:
     parse str --on-error=: return false
     return true
 
-  bytes_/ByteArray ::= ?
+  bytes_/ByteArray
   hash_ := null
 
   /**
