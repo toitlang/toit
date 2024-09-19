@@ -111,7 +111,7 @@ class Uuid:
     return Uuid
       uuid.copy 0 SIZE
 
-  bytes_/ByteArray ::= ?
+  bytes_/ByteArray
   hash_ := null
 
   /**
