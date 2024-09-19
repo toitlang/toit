@@ -216,14 +216,16 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                null,
                                                shape,
                                                kind,
-                                               method->selection_range());
+                                               method->selection_range(),
+                                               method->outline_range());
         ir_to_ast_map_[ir] = method;
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
         auto ir = _new ir::Global(global->name()->data(),
                                   global->is_final(),
-                                  global->selection_range());
+                                  global->selection_range(),
+                                  global->outline_range());
         ir_to_ast_map_[ir] = global;
         globals.add(ir);
       } else if (auto klass = declaration->as_Class()) {
@@ -238,7 +240,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
           case ast::Class::MIXIN: kind = ir::Class::MIXIN; break;
         }
         bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
-        ir::Class* ir = _new ir::Class(name, kind, is_abstract, position);
+        ir::Class* ir = _new ir::Class(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
         classes.add(ir);
       } else {
@@ -1719,7 +1721,11 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
 
       if (ir_class->is_task_class()) {
         // Add the implicit stack field.
-        auto stack_field = _new ir::Field(Symbols::stack_, ir_class, false, ir_class->range());
+        auto stack_field = _new ir::Field(Symbols::stack_,
+                                          ir_class,
+                                          false,
+                                          ir_class->range(),
+                                          ir_class->range());
         fields.add(stack_field);
         // TODO(florian): find field type for `stack_` field.
         ir_to_ast_map_[stack_field] =
@@ -1744,11 +1750,12 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           check_method(method, ir_class, &member_name, &kind, allow_future_reserved = false);
 
           auto position = method->selection_range();
+          auto outline_range = method->outline_range();
           ir::Method* ir_method = null;
           switch (kind) {
             case ir::Method::CONSTRUCTOR: {
               auto shape = ResolutionShape::for_instance_method(method);
-              ir_method = _new ir::Constructor(member_name, ir_class, shape, position);
+              ir_method = _new ir::Constructor(member_name, ir_class, shape, position, outline_range);
               class_has_constructors = true;
               if (method->name_or_dot()->is_Identifier()) {
                 ASSERT(member_name == class_name || member_name == Symbols::constructor);
@@ -1760,7 +1767,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
             }
             case ir::Method::FACTORY: {
               auto shape = ResolutionShape::for_static_method(method);
-              ir_method = _new ir::MethodStatic(member_name, ir_class, shape, kind, position);
+              ir_method = _new ir::MethodStatic(member_name, ir_class, shape, kind, position, outline_range);
               class_has_factories = true;
               if (method->name_or_dot()->is_Identifier()) {
                 ASSERT(member_name == class_name || member_name == Symbols::constructor);
@@ -1772,7 +1779,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
             }
             case ir::Method::GLOBAL_FUN: {
               auto shape = ResolutionShape::for_static_method(method);
-              ir_method = _new ir::MethodStatic(member_name, ir_class, shape, kind, position);
+              ir_method = _new ir::MethodStatic(member_name, ir_class, shape, kind, position, outline_range);
               statics_scope_filler.add(member_name, ir_method);
               break;
             }
@@ -1781,11 +1788,11 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
               //       Or if we do, it should be documented.
               if (ast_class->is_monitor() && !member_name.is_private_identifier()) {
                 auto shape = ResolutionShape::for_instance_method(method);
-                ir_method = _new ir::MonitorMethod(member_name, ir_class, shape, position);
+                ir_method = _new ir::MonitorMethod(member_name, ir_class, shape, position, outline_range);
                 methods.add(ir_method->as_MethodInstance());
               } else {
                 auto shape = ResolutionShape::for_instance_method(method);
-                ir_method = _new ir::MethodInstance(member_name, ir_class, shape, method_is_abstract, position);
+                ir_method = _new ir::MethodInstance(member_name, ir_class, shape, method_is_abstract, position, outline_range);
                 methods.add(ir_method->as_MethodInstance());
               }
               break;
@@ -1800,20 +1807,26 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           Symbol member_name = name_or_dot->as_Identifier()->data();
           auto ast_field = member->as_Field();
           auto position = ast_field->selection_range();
+          auto outline_range = ast_field->outline_range();
           check_field(ast_field, ir_class);
           if (ast_field->is_static()) {
-            auto ir_global = _new ir::Global(member_name, ir_class, ast_field->is_final(), position);
+            auto ir_global = _new ir::Global(member_name,
+                                             ir_class,
+                                             ast_field->is_final(),
+                                             position,
+                                             ast_field->outline_range());
             ir_to_ast_map_[ir_global] = member;
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
             auto ir_field = _new ir::Field(member_name,
                                            ir_class,
                                            ast_field->is_final(),
-                                           ast_field->selection_range());
+                                           ast_field->selection_range(),
+                                           ast_field->outline_range());
             ir_to_ast_map_[ir_field] = member;
             fields.add(ir_field);
-            auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position);
-            auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position);
+            auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position, outline_range);
+            auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position, outline_range);
             methods.add(ir_getter);
             methods.add(ir_setter);
             ir_to_ast_map_[ir_getter] = member;
@@ -1832,8 +1845,9 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
       } else if (!class_is_interface && !class_has_constructors) {
         // Create default-constructor place-holder (which takes `this` as argument).
         auto position = ast_class->selection_range();
+        auto outline_range = ast_class->outline_range();
         ir::Constructor* constructor =
-            _new ir::Constructor(Symbols::constructor, ir_class, position);
+            _new ir::Constructor(Symbols::constructor, ir_class, position, outline_range);
         constructors.add(constructor);
       }
 
@@ -2304,7 +2318,8 @@ void Resolver::resolve_field(ir::Field* field,
                                  holder,
                                  fake_shape,
                                  false,
-                                 field->range());
+                                 field->range(),
+                                 field->outline_range());
   MethodResolver resolver(&fake_method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
                           lsp_, source_manager_, diagnostics_);
   resolver.resolve_field(field);

@@ -450,6 +450,7 @@ void Writer::print_type(ir::Type type) {
 void Writer::print_field(ir::Field* field) {
   safe_print_symbol_external(field->name());
   print_range(field->range());
+  print_range(field->outline_range());
 
   this->printf_external("%s\n", field->is_final() ? "final" : "mutable");
   this->printf_external("%s\n", field->is_deprecated() ? "deprecated" : "-");
@@ -469,6 +470,7 @@ void Writer::print_method(ir::Method* method) {
     safe_print_symbol_external(method->name());
   }
   print_range(method->range());
+  print_range(method->outline_range());
   auto probe = toplevel_ids_.find(method);
   // The toplevel-id changes depending on how the file was analyzed.
   // Don't include it in the external representation.
@@ -533,6 +535,7 @@ void Writer::print_method(ir::Method* method) {
 void Writer::print_class(ir::Class* klass) {
   safe_print_symbol_external(klass->name());
   print_range(klass->range());
+  print_range(klass->outline_range());
   // The toplevel ID changes depending on how the program was analyzed.
   // Don't include it in the external representation.
   this->printf("%d\n", toplevel_ids_.at(klass));

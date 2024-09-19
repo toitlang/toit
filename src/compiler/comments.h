@@ -42,6 +42,14 @@ class CommentsManager {
   }
   bool is_attached(Source::Range previous, Source::Range next);
 
+  bool is_attached(int index, Source::Range next) {
+    return is_attached(comments_[index].range(), next);
+  }
+
+  Source::Range comment_range(int index) {
+    return comments_[index].range();
+  }
+
  protected:
   List<Scanner::Comment> comments_;
   Source* source_;

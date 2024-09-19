@@ -61,6 +61,7 @@ parse-module source/string --uri/string -> lsp.Module:
           --statics=[]
           --is-abstract=false
           --range=lsp.Range 0 0
+          --outline-range=lsp.Range 0 0
           --toitdoc=null
           --toplevel-id=id
           --is-deprecated=false
@@ -150,6 +151,7 @@ parse-method str/string -> lsp.Method:
       --is-synthetic=false
       --kind=lsp.Method.INSTANCE-KIND
       --range=lsp.Range 0 0
+      --outline-range=lsp.Range 0 0
       --return-type=null
       --toitdoc=null
       --toplevel-id=-1
