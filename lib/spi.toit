@@ -116,7 +116,7 @@ interface Device extends serial.Device:
   Transfers the given $data to the device.
 
   If $read is true, then the transfer is full-duplex, and the read data
-    replaces the content of $data.
+    replaces the contents of $data.
   If the device has a dc (data/command) pin, then that pin is set to the
     value of $dc.
   If a commands and/or address sections was defined, use $command and

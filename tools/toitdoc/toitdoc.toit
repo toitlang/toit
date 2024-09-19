@@ -212,6 +212,8 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
     print "No source files are allowed when generating the SDK documentation."
     exit 1
 
+  sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc
+
   if for-sdk:
     source = "$sdk-path/lib"
   else if not source:
@@ -245,7 +247,6 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
   if not fs.is-absolute toitc:
     toitc = fs.to-absolute toitc
 
-  sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc
   sdk-uri := lsp.to-uri sdk-path
   if not sdk-uri.ends-with "/": sdk-uri = "$sdk-uri/"
 

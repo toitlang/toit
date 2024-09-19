@@ -436,10 +436,10 @@ compute-override-phase-positional super-iter/NamedIterator -> bool
       if arities[i] <= 0:
         // Either another old overrider, or not overridden yet.
         // Note that we use the negative of the inheritance order as discussed above.
-        inheritance-order := -old-member.inheritance-order
-        if inheritance-order < arities[i]:
+        negated-inheritance-order := -old-member.inheritance-order
+        if negated-inheritance-order < arities[i]:
           // This method shadows the previous one (if there was one).
-          arities[i] = inheritance-order
+          arities[i] = negated-inheritance-order
           if not added-as-overrider:
             overridden-by.add old-member
             added-as-overrider = true
