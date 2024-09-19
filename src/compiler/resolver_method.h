@@ -179,7 +179,8 @@ class MethodResolver : public ast::Visitor {
 
   void _add_parameters_to_scope(LocalScope* scope, List<ir::Parameter*> parameters);
   void _resolve_fill_parameters_return_type(Set<ir::Parameter*>* field_storing_parameters,
-                                            std::vector<ir::Expression*>* parameter_expressions);
+                                            std::vector<ir::Expression*>* parameter_expressions,
+                                            bool is_constructor);
   void _resolve_fill_return_type();
   void _resolve_parameters(List<ast::Parameter*> ast_parameters,
                            bool has_implicit_this,
@@ -187,6 +188,7 @@ class MethodResolver : public ast::Visitor {
                            List<ir::Parameter*>* ir_parameters,
                            Set<ir::Parameter*>* field_storing_parameters,
                            std::vector<ir::Expression*>* parameter_expressions,
+                           bool is_constructor,
                            int id_offset = 0);
 
   bool _parameter_has_explicit_type(ir::Parameter* ir_parameter) const {
