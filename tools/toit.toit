@@ -221,8 +221,18 @@ main args/List:
 
           If the '--project-root' option is used, initialize the given directory as
           the root of the project instead.
+
+          Packages need to have a name and a description. These can be set during
+          initialization (with the '--name' and '--description' options), or later
+          by editing the 'package.yaml' file.
           """
-      --run=:: run-pkg-command ["init"] [] [] it
+      --options=[
+        cli.Option "name"
+            --help="The name of the package.",
+        cli.Option "description"
+            --help="The description of the package.",
+      ]
+      --run=:: run-pkg-command ["init"] ["name", "description"] [] it
   pkg-command.add pkg-init-command
 
   pkg-install-command := cli.Command "install"

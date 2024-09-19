@@ -81,6 +81,8 @@ class GotoDefinitionHandler : public LspSelectionHandler {
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope);
 
+  void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope);
+
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels);
 
   void toitdoc_ref(ast::Node* node,
