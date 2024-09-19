@@ -21,8 +21,7 @@ main:
   y := false
   expect-throw "AS_CHECK_FAILED": foo y
   expect-throw "AS_CHECK_FAILED": bar x
-  // TODO(florian): the following two tests currently fail.
-  // expect-throw "AS_CHECK_FAILED": global1 = y
-  // expect-throw "AS_CHECK_FAILED": global2 = x
+  expect-throw "AS_CHECK_FAILED": global1 = y
+  expect-throw "AS_CHECK_FAILED": global2 = x
   expect-throw "AS_CHECK_FAILED": gee1
   expect-throw "AS_CHECK_FAILED": gee2
