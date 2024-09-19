@@ -51,8 +51,7 @@ class Uuid:
   The Nil UUID.
   This UUID is composed of all bits set to zero.
   */
-  static NIL ::= Uuid
-    ByteArray SIZE
+  static NIL ::= Uuid (ByteArray SIZE)
 
   /**
   Parses the given $str as a UUID.
