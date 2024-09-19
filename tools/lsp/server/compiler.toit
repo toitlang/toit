@@ -23,7 +23,7 @@ import .protocol.document
 import .protocol.diagnostic
 import .file-server
 import .summary show SummaryReader
-import .uri-path-translator
+import .uri-path-translator as translator
 import .utils
 import .verbose
 import .multiplex
@@ -37,7 +37,6 @@ class AnalysisResult:
 
 class Compiler:
   compiler-path_       /string             ::= ?
-  uri-path-translator_ /UriPathTranslator  ::= ?
   on-crash_            /Lambda?     ::= ?
   on-error_            /Lambda?     ::= ?
   timeout-ms_          /int         ::= ?
@@ -45,7 +44,6 @@ class Compiler:
 
   constructor
       .compiler-path_
-      .uri-path-translator_
       .timeout-ms_
       --.protocol
       --on-error/Lambda?=null
@@ -57,7 +55,7 @@ class Compiler:
   Builds the flags that are passed to the compiler.
   */
   build-run-flags --project-uri/string? -> List:
-    project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
+    project-path-compiler := translator.to-path project-uri --to-compiler
     args := [
       "--lsp",
       "--project-root", project-path-compiler,
@@ -141,10 +139,10 @@ class Compiler:
     latch := monitor.Latch
     task:: catch --trace:
       paths := uris.map: | uri |
-        path := uri-path-translator_.to-path uri --to-compiler
+        path := translator.to-path uri --to-compiler
         // There are multiple ways to encode URIs. Check that the uri is already
         // canonicalized.
-        assert: uri == (uri-path-translator_.to-uri path --from-compiler)
+        assert: uri == (translator.to-uri path --from-compiler)
         path
       result := null
 
@@ -189,7 +187,7 @@ class Compiler:
             range := null
             if with-position:
               error-path = reader.read-line
-              error-uri = uri-path-translator_.to-uri error-path --from-compiler
+              error-uri = translator.to-uri error-path --from-compiler
               range = read-range reader
             msg-lines := []
             while true:
@@ -251,7 +249,7 @@ class Compiler:
       line-number/int
       column-number/int
       [block]:
-    path := uri-path-translator_.to-path uri --to-compiler
+    path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
     run --project-uri=project-uri
@@ -275,7 +273,7 @@ class Compiler:
     unreachable
 
   goto-definition --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
-    path := uri-path-translator_.to-path uri --to-compiler
+    path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send the definitions we got.
     run --project-uri=project-uri
@@ -287,7 +285,7 @@ class Compiler:
         line := reader.read-line
         if line == null: break
         location := Location
-          --uri= uri-path-translator_.to-uri line --from-compiler
+          --uri= translator.to-uri line --from-compiler
           --range= read-range reader
         definitions.add location
 
@@ -306,7 +304,7 @@ class Compiler:
         if not data: break
 
   snapshot-bundle --project-uri/string? uri/string -> ByteArray?:
-    path := uri-path-translator_.to-path uri --to-compiler
+    path := translator.to-path uri --to-compiler
     run --project-uri=project-uri
         --compiler-input="SNAPSHOT BUNDLE\n$path\n":
       |reader /io.Reader|
@@ -337,7 +335,7 @@ class Compiler:
   ]
 
   semantic-tokens --project-uri/string? uri/string -> List:
-    path := uri-path-translator_.to-path uri --to-compiler
+    path := translator.to-path uri --to-compiler
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
       |reader /io.Reader|
@@ -359,14 +357,14 @@ class Compiler:
     entry-count := int.parse reader.read-line
     result := {:}
     entry-count.repeat:
-      source-uri := uri-path-translator_.to-uri reader.read-line --from-compiler
+      source-uri := translator.to-uri reader.read-line --from-compiler
       direct-deps-count := int.parse reader.read-line
       direct-deps := {}
       direct-deps-count.repeat:
-        direct-deps.add (uri-path-translator_.to-uri reader.read-line --from-compiler)
+        direct-deps.add (translator.to-uri reader.read-line --from-compiler)
       result[source-uri] = direct-deps
 
     return result
 
   read-summary reader/io.Reader -> Map/*<path, Module>*/:
-    return (SummaryReader reader uri-path-translator_).read-summary
+    return (SummaryReader reader).read-summary

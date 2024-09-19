@@ -16,7 +16,7 @@ import .lsp-client show LspClient run-client-test
 import .utils
 
 import ...tools.lsp.server.compiler
-import ...tools.lsp.server.uri-path-translator
+import ...tools.lsp.server.uri-path-translator as translator
 import ...tools.lsp.server.documents
 import ...tools.lsp.server.file-server
 import ...tools.lsp.server.repro
@@ -58,30 +58,29 @@ Returns a `compiler-input`. When running the repro with that input, it should
   yield a result that checks successfully $check-compiler-output.
 */
 create-archive path toitc -> string:
-  uri-translator := UriPathTranslator
-  documents := Documents uri-translator
+  documents := Documents
 
   untitled-uri := "untitled:Untitled1"
-  untitled-path := uri-translator.to-path untitled-uri
+  untitled-path := translator.to-path untitled-uri
 
   documents.did-open --uri=untitled-uri UNTITLED-TEXT_ 1
   timeout-ms := -1  // No timeout.
 
   repro-filesystem := FilesystemLocal (sdk-path-from-compiler toitc)
-  protocol := FileServerProtocol documents repro-filesystem uri-translator
-  compiler := Compiler toitc uri-translator timeout-ms
+  protocol := FileServerProtocol documents repro-filesystem
+  compiler := Compiler toitc timeout-ms
       --protocol=protocol
 
   compiler-input := create-compiler-input --path=untitled-path
 
   suggestions := null
   compiler.run --compiler-input=compiler-input
-      --project-uri=uri-translator.to-uri directory.cwd:
+      --project-uri=translator.to-uri directory.cwd:
     check-compiler-output it
 
   write-repro
       --repro-path=path
-      --compiler-flags=compiler.build-run-flags --project-uri=(uri-translator.to-uri directory.cwd)
+      --compiler-flags=compiler.build-run-flags --project-uri=(translator.to-uri directory.cwd)
       --compiler-input=compiler-input
       --info="Test"
       --protocol=protocol
@@ -157,9 +156,8 @@ archive-test
     toitc/string
     toitlsp/string
     client/LspClient:
-  uri-translator := UriPathTranslator
   untitled-uri := "untitled:Untitled1"
-  untitled-path := uri-translator.to-path untitled-uri
+  untitled-path := translator.to-path untitled-uri
 
   client.send-did-open --uri=untitled-uri --text=UNTITLED-TEXT_
   tar-string := client.send-request "toit/archive" {"uri": untitled-uri}
@@ -190,7 +188,7 @@ archive-test
 
   // Test archives with multiple entry points.
   untitled-uri2 := "untitled:Untitled2"
-  untitled-path2 := uri-translator.to-path untitled-uri2
+  untitled-path2 := translator.to-path untitled-uri2
   client.send-did-open --uri=untitled-uri2 --text=GOOD-BYE-WORLD-TEXT_
   tar-string = client.send-request "toit/archive" {"uris": [untitled-uri, untitled-uri2]}
   content = base64.decode tar-string
@@ -229,7 +227,7 @@ archive-test
 
   // Test that we can create archives without the SDK.
   untitled-uri3 := "untitled:Untitled3"
-  untitled-path3 := uri-translator.to-path untitled-uri3
+  untitled-path3 := translator.to-path untitled-uri3
   client.send-did-open --uri=untitled-uri3 --text=HELLO-WORLD-TEXT_
   tar-string = client.send-request "toit/archive" {
     "uris": [untitled-uri3],
