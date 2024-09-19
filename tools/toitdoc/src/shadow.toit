@@ -15,11 +15,6 @@
 
 import .inheritance
 
-// TODO(florian): store this information in the members.
-// The class-depth of 'Object' must be 1.
-hack-class-depths/Map := ?
-hack-holders/Map := ?
-
 class NamedIterator:
   member/Member
   index/int := 0
@@ -417,7 +412,8 @@ compute-override-phase-positional super-iter/NamedIterator -> bool
   // A list where we mark which arities are handled by the overriding methods.
   // We use 1 for being overridden by a new overrider.
   // We use negative numbers when the arity is overridden by an old overrider.
-  // -1 is for the Object class, and -2 for the next deeper class, etc...
+  // The inheritance order of each member ensures that members of subclasses
+  // have a higher order than members of superclasses.
   arities := List (super-max - super-min + 1): 0
 
   new-iterators.do: | new-iter/NamedIterator |
@@ -439,10 +435,11 @@ compute-override-phase-positional super-iter/NamedIterator -> bool
     for i := from; i <= to; i++:
       if arities[i] <= 0:
         // Either another old overrider, or not overridden yet.
-        class-depth := -hack-class-depths[hack-holders[old-member.as-toit-member]]
-        if class-depth < arities[i]:
+        // Note that we use the negative of the inheritance order as discussed above.
+        negated-inheritance-order := -old-member.inheritance-order
+        if negated-inheritance-order < arities[i]:
           // This method shadows the previous one (if there was one).
-          arities[i] = class-depth
+          arities[i] = negated-inheritance-order
           if not added-as-overrider:
             overridden-by.add old-member
             added-as-overrider = true
