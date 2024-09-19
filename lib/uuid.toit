@@ -120,13 +120,6 @@ class Uuid:
       crypto.random --size=SIZE
 
   /**
-  Validates that the given $str is a valid UUID.
-  */
-  static is-valid str/string -> bool:
-    parse str --on-error=: return false
-    return true
-
-  /**
   Returns whether the given $str is a valid UUID.
   */
   static is-valid str/string -> bool:
