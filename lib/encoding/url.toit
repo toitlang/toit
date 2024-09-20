@@ -78,12 +78,12 @@ The encoded $data may contain characters that are not valid UTF-8.
 */
 decode-binary data/string -> ByteArray:
   count := 0
-  for i := 0; i < data.byte-size; i++:
+  data.size.repeat: | i/int |
     if (data.at --raw i) == '%': count++
 
   if count == 0: return data.to-byte-array
 
-  result := ByteArray data.byte-size - count * 2
+  result := ByteArray (data.size - count * 2)
 
   j := 0
   for i := 0; i < data.size; i++:
