@@ -41,10 +41,21 @@ class Bus:
 
   /**
   Constructs an I2C bus on the $sda (data) and the $scl (clock) pins using
-    the given $frequency. Uses $DEFAULT-FREQUENCY by default.
+    the given $frequency.
+
+  Uses $DEFAULT-FREQUENCY by default.
+
+  If the $sda-pullup is true, the SDA pin is pulled up.
+  If the $scl-pullup is true, the SCL pin is pulled up.
+  Many i2c modules have built-in pull-up resistors, so this is typically not necessary.
   */
-  constructor --sda/gpio.Pin --scl/gpio.Pin --frequency=DEFAULT-FREQUENCY:
-    i2c_ = i2c-init_ frequency sda.num scl.num
+  constructor
+      --sda/gpio.Pin
+      --scl/gpio.Pin
+      --frequency=DEFAULT-FREQUENCY
+      --sda-pullup/bool=false
+      --scl-pullup/bool=false:
+    i2c_ = i2c-init_ frequency sda.num scl.num sda-pullup scl-pullup
 
   /**
   Scans all valid addresses.
@@ -53,6 +64,14 @@ class Bus:
 
   Some addresses are reserved and are not scanned. See
     https://www.i2c-bus.org/addressing/.
+
+  This process can be very slow if the bus is not behaving correctly. If a
+    call to this method takes more than a few milliseconds, check your hardware.
+    Make sure that you use the correct SDA/SCL pins, that the bus is pulled up,
+    and that nothing is pulling the bus down. Pull-up resistors are typically
+    included in I2C modules, but you may need to add them (either using the
+    constructor's `--sda-pullup`/`--scl-pullup` or external resistors) if you
+    are using separate components.
   */
   scan -> Set:
     result := {}
@@ -245,7 +264,7 @@ class Device implements serial.Device:
   Reads $size bytes from the given $address.
 
   # Advanced
-  The read_address operation is executed by sending:
+  This operation is executed by sending:
   - a 'start',
   - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
     shifting the I2C address by one and clearing the least-significant bit. The device must ack.
@@ -301,7 +320,7 @@ class Registers extends serial.Registers:
     data.replace 1 bytes
     device_.write data
 
-i2c-init_ frequency sda scl:
+i2c-init_ frequency sda scl sda-pullup scl-pullup:
   #primitive.i2c.init
 
 i2c-close_ i2c:

@@ -201,10 +201,10 @@ class ServiceClient:
         result := find-service_ discovered
         if result: return result
 
-      if timeout: 
+      if timeout:
         // We got back a proxy for a resource, which will notify us when the
         // service we want has started up.
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+        catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
           with-timeout timeout:
             while true:
               discovered = channel.receive
@@ -701,7 +701,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     handlers-by-client_.remove client
     // Only unregister the client from the clients set
     // for the pid if we haven't already done so as part
-    // of a call to $close_all.
+    // of a call to $close-all.
     clients/Set? ::= clients-by-pid_.get pid
     if clients:
       clients.remove client

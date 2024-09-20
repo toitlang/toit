@@ -65,14 +65,14 @@ class DocumentSymbol extends MapWrapper:
   Creates a document-symbol object.
 
   Parameters:
-  - [name]: the name of the symbol. Must not be empty or consist of only whitespace.
-  - [detail]: more information for that symbol. For example, the signature of a method.
-  - [kind]: the kind of the symbol.
-  - [deprecated]: optional, whether the symbol is deprecated.
-  - [range]: the range enclosing this symbol, excluding whitespaces, but including comments. The
+  - $name: the name of the symbol. Must not be empty or consist of only whitespace.
+  - $detail: more information for that symbol. For example, the signature of a method.
+  - $kind: the kind of the symbol.
+  - $deprecated: optional, whether the symbol is deprecated.
+  - $range: the range enclosing this symbol, excluding whitespaces, but including comments. The
             range should allow the client to highlight the "active" symbol.
-  - [selection_range]: the range to select when the user picks the symbol.
-  - [children]: optional, a list of children.
+  - $selection_range: the range to select when the user picks the symbol.
+  - $children: optional, a list of children.
   */
   constructor
       --name / string

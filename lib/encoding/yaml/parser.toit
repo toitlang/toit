@@ -9,8 +9,8 @@ Follows the grammar of the YAML 1.2.2 draft: https://yaml.org/spec/1.2.2/
 */
 
 B-LINE-FEED_        ::= '\n'
-B-CARRIAGE_RETURN_  ::= '\r'
-B-LINE-TERMINATORS_ ::= { B-LINE-FEED_, B-CARRIAGE_RETURN_ }
+B-CARRIAGE-RETURN_  ::= '\r'
+B-LINE-TERMINATORS_ ::= { B-LINE-FEED_, B-CARRIAGE-RETURN_ }
 
 S-SPACE_            ::= ' '
 S-TAB_              ::= '\t'
@@ -77,11 +77,11 @@ keys-as-set_ map/Map -> Set:
    map.do --keys: set.add it
    return set
 
-STANDARD_STR_TAG_   ::= "!!str"
-STANDARD_FLOAT_TAG_ ::= "!!float"
-STANDARD_MAP_TAG_   ::= "!!map"
-STANDARD_SEQ_TAG_  ::= "!!seq"
-STANDARD_INT_TAG_   ::= "!!int"
+STANDARD-STR-TAG_   ::= "!!str"
+STANDARD-FLOAT-TAG_ ::= "!!float"
+STANDARD-MAP-TAG_   ::= "!!map"
+STANDARD-SEQ-TAG_  ::= "!!seq"
+STANDARD-INT-TAG_   ::= "!!int"
 class ValueNode_:
   tag/string? := null
   value/any
@@ -101,10 +101,10 @@ class ValueNode_:
   // Either use the supplied tag to construct a toit object representing the value or use
   // the core schema tag resolution
   resolve -> any:
-    if tag and tag == STANDARD_STR_TAG_ and value is string: return value
+    if tag and tag == STANDARD-STR-TAG_ and value is string: return value
     model-value := canonical-value
     if tag:
-      if tag == STANDARD_FLOAT_TAG_ and model-value is int:
+      if tag == STANDARD-FLOAT-TAG_ and model-value is int:
         return model-value.to-float
       // All other tags and conditions are intentionally ignored.
     return model-value
@@ -265,7 +265,7 @@ abstract class PegParserBase_:
       else if c >= 0xe0:
         bytes = 3
 
-      if can_read bytes:
+      if can-read bytes:
          // TODO(florian): Add a static function to ByteArray to return a rune at a given position.
         buf/ByteArray := peek-slice bytes
         if buf.is-valid-string-content:
@@ -278,7 +278,7 @@ abstract class PegParserBase_:
     return bytes_[offset_..offset_ + n]
 
   string-since mark -> string:
-    return bytes_[mark..offset_].to_string
+    return bytes_[mark..offset_].to-string
 
   /**
   Returns the amount of bytes since the given $mark.
@@ -743,7 +743,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   c-l-block-map-explicit-key n/int -> ValueNode_?:
-    return try-parse: match-char C-MAPPING_KEY_ and s-l-plus-block-indented n BLOCK-OUT_
+    return try-parse: match-char C-MAPPING-KEY_ and s-l-plus-block-indented n BLOCK-OUT_
 
   l-block-map-explicit-value n/int -> ValueNode_?:
     return try-parse: s-indent n and match-char C-MAPPING-VALUE_ and s-l-plus-block-indented n BLOCK-OUT_
@@ -987,13 +987,13 @@ class Parser_ extends PegParserBase_:
     repeat: (repeat: match-chars S-WHITESPACE_) and ns-plain-char c
     return string-since mark
 
-  static NS-PLAIN-SEMI_SAFE_ ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
+  static NS-PLAIN-SEMI-SAFE_ ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
   ns-plain-first c:
     try-parse:
       if rune := ns-char:
         if not C-INDICATOR_.contains rune: return true
     try-parse:
-      if (match-chars NS-PLAIN-SEMI_SAFE_ and
+      if (match-chars NS-PLAIN-SEMI-SAFE_ and
           lookahead: ns-plain-safe c): return true
     return false
 
@@ -1158,7 +1158,7 @@ class Parser_ extends PegParserBase_:
   l-keep-empty n/int -> List:
     empty-lines := repeat: l-empty n BLOCK-IN_
     optional: l-trail-comments n
-    return List empty-lines.size "\n"
+    return List empty-lines.size --initial="\n"
 
   l-strip-empty n/int -> List:
     repeat: s-indent-less-or-equals n and (b-non-content or l-eof)
@@ -1171,7 +1171,7 @@ class Parser_ extends PegParserBase_:
       if s-indent n:
         mark := mark
         if (repeat --at-least-one: nb-char):
-          prefix := string.from-runes (List empty-lines.size '\n')
+          prefix := string.from-runes (List empty-lines.size --initial='\n')
           return "$prefix$(string-since mark)"
     return null
 
@@ -1197,7 +1197,7 @@ class Parser_ extends PegParserBase_:
     try-parse:
       empty-lines := repeat: l-empty n BLOCK-IN_
       if lines := l-nb-folded-lines n or l-nb-spaced-lines n:
-        return flatten-list_ [List empty-lines.size "\n", lines]
+        return flatten-list_ [List empty-lines.size --initial="\n", lines]
     return null
 
   l-nb-folded-lines n/int -> List?:
@@ -1221,7 +1221,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   b-l-folded n/int c/int -> string?:
-    if breaks := b-l-trimmed n c: return string.from-runes (List breaks '\n')
+    if breaks := b-l-trimmed n c: return string.from-runes (List breaks --initial='\n')
     if b-as-space: return " "
     return null
 
@@ -1249,7 +1249,7 @@ class Parser_ extends PegParserBase_:
     try-parse:
       if b-as-line-feed:
         empty-lines := (repeat: l-empty n BLOCK-IN_)
-        return string.from-runes (List empty-lines.size + 1 '\n')
+        return string.from-runes (List (empty-lines.size + 1) --initial='\n')
     return null
 
   b-l-trimmed n/int c/int -> int?:
@@ -1497,8 +1497,8 @@ class Parser_ extends PegParserBase_:
     return eof or forbidden-mark != null and (bytes-since-mark forbidden-mark) >= 0
 
   b-break-helper -> bool:
-    return as-bool (match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_] or
-                    match-char B-CARRIAGE_RETURN_ or
+    return as-bool (match-buffer #[B-CARRIAGE-RETURN_, B-LINE-FEED_] or
+                    match-char B-CARRIAGE-RETURN_ or
                     match-char B-LINE-FEED_)
 
   b-break -> bool:
@@ -1598,9 +1598,9 @@ class Parser_ extends PegParserBase_:
     return null
 
   is-break rune -> bool:
-    return rune == B-LINE-FEED_ or rune == B-CARRIAGE_RETURN_
+    return rune == B-LINE-FEED_ or rune == B-CARRIAGE-RETURN_
 
-  c-special-printable ::= { S-TAB_, B-CARRIAGE_RETURN_, B-LINE-FEED_, 0x85}
+  c-special-printable ::= { S-TAB_, B-CARRIAGE-RETURN_, B-LINE-FEED_, 0x85}
   c-printable -> int?:
     try-parse:
       if rune := consume-rune:

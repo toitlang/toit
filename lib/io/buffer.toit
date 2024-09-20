@@ -57,8 +57,8 @@ class Buffer extends CloseableWriter:
   /**
   Constructs a new buffer with the given initial $size.
 
-  If $growable is true, then the backing array might be replaced with a bigger one
-    if needed.
+  If $growable is true (the default), then the backing array might be replaced
+    with a bigger one if needed.
 
   The current backing array can be accessed with $backing-array.
   A view, only containing the data that has been written so far, can be accessed
@@ -271,8 +271,8 @@ class Buffer extends CloseableWriter:
   */
   little-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != LITTLE_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=LITTLE_ENDIAN
+    if not result or result.byte-order_ != LITTLE-ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=LITTLE-ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 
@@ -300,8 +300,8 @@ class Buffer extends CloseableWriter:
   */
   big-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != BIG_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=BIG_ENDIAN
+    if not result or result.byte-order_ != BIG-ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=BIG-ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 

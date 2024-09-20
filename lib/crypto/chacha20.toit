@@ -22,8 +22,8 @@ class ChaCha20Poly1305 extends Aead_:
   Initialize a ChaCha20-Poly1305 AEAD class for encryption.
   The $key must be a 32 bytes ChaCha20 key.
   The $initialization-vector must be 12 bytes of data.  It is extremely
-    important that the initialization_vector is not reused with the same key.
-    The initialization_vector must be known to the decrypting counterparty.
+    important that the $initialization-vector is not reused with the same key.
+  The $initialization-vector must be known to the decrypting counterparty.
   */
   constructor.encryptor key/ByteArray initialization-vector/ByteArray:
     super.encryptor key initialization-vector --algorithm=ALGORITHM-CHACHA20-POLY1305

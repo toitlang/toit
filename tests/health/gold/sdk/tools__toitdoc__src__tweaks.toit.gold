@@ -1,0 +1,3 @@
+<pkg:pkg-cli>/cli.toit:693:16: warning: Deprecated 'parse'
+    return uuid.parse str --on-error=:
+               ^~~~~~

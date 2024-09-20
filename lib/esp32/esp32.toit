@@ -5,6 +5,10 @@
 import system.trace show send-trace-message
 import system.storage  // For toitdoc.
 
+/**
+ESP32 related functionality.
+*/
+
 ESP-RST-UNKNOWN   ::= 0 // Reset reason can not be determined.
 ESP-RST-POWERON   ::= 1 // Reset due to power-on event.
 ESP-RST-EXT       ::= 2 // Reset by external pin (not applicable for ESP32).
@@ -31,18 +35,27 @@ WAKEUP-UART      ::= 8 // Wakeup caused by UART (light sleep only).
 /**
 Enters deep sleep for the specified duration (up to 24h) and does not return.
 Exiting deep sleep causes the ESP32 to start over from main.
+
+If you need to deep sleep for longer than 24h, you can chain multiple
+  deep sleeps.
+
+If the ESP32 wakes up due to the $duration expiring, then
+  $reset-reason is set to $ESP-RST-DEEPSLEEP and the
+  $wakeup-cause is set to $WAKEUP-TIMER.
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
 
 /**
-Returns one of the ESP_RST_* enum values that indicate why the ESP32 was reset.
+One of the ESP-RST-* enum values (such as $ESP-RST-POWERON) that
+  indicates why the ESP32 was reset.
 */
 reset-reason -> int:
   #primitive.esp32.reset-reason
 
 /**
-Returns one of the WAKEUP_* enum values (such as $WAKEUP-TIMER) that indicate why the ESP32 was woken up.
+One of the WAKEUP-* enum values (such as $WAKEUP-TIMER) that indicates why
+  the ESP32 was woken up from deep sleep.
 */
 wakeup-cause -> int:
   #primitive.esp32.wakeup-cause
@@ -62,6 +75,9 @@ total-deep-sleep-time -> int:
 /**
 Sets the ESP32 to wake up from deep sleep if the GPIO pins in $pin-mask
   matches the mode.
+
+If the ESP32 wakes up due to the GPIO pins, then $reset-reason is set to
+  $ESP-RST-DEEPSLEEP and $wakeup-cause is set to $WAKEUP-EXT1.
 
 If $on-any-high is true, the ESP32 will wake up if any pin in the mask is high.
 If $on-any-high is false, then the behavior depends on the chip. An ESP32 will
@@ -85,6 +101,9 @@ ext1-wakeup-status pin-mask/int -> int:
 Enables waking up from touchpad triggers.
 The ESP32 wakes up if any configured pin has its value drop below their threshold.
 Use $touchpad-wakeup-status to find which pin has triggered the wakeup.
+
+If the ESP32 wakes up due to the touchpad, then $reset-reason is set to
+  $ESP-RST-DEEPSLEEP and $wakeup-cause is set to $WAKEUP-TOUCHPAD.
 */
 enable-touchpad-wakeup -> none:
   #primitive.esp32.enable-touchpad-wakeup

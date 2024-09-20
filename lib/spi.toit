@@ -243,7 +243,7 @@ class Registers extends serial.Registers:
   /**
   See $super.
 
-  If `msb_write` is set (see $set-msb-write) modifies the register
+  If `msb-write` is set (see $set-msb-write) modifies the register
     value so it has a low most-significant bit.
   */
   read-bytes register/int count/int:
@@ -260,7 +260,7 @@ class Registers extends serial.Registers:
   /**
   See $super.
 
-  If `msb_write` is set (see $set-msb-write) modifies the register
+  If `msb-write` is set (see $set-msb-write) modifies the register
     value so it has a high most-significant bit.
   */
   write-bytes reg bytes:

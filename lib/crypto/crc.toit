@@ -57,7 +57,7 @@ class Crc extends Checksum:
   # Example
   ```
   // The CRC-32 used in PNG.
-  crc := Crc.little_endian 32 --polynomial=0xEDB88320 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
+  crc := Crc.little-endian 32 --polynomial=0xEDB88320 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
   ```
   */
   constructor.little-endian .width/int --.polynomial/int --initial-state/int=0 --.xor-result/int=0:
@@ -79,7 +79,7 @@ class Crc extends Checksum:
   # Example
   ```
   // The CRC-32 used in PNG.
-  crc := Crc.little_endian 32 --normal-polynomial=0x04C11DB7 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
+  crc := Crc.little-endian 32 --normal-polynomial=0x04C11DB7 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
   ```
   */
   constructor.little-endian .width/int --normal-polynomial/int --initial-state/int=0 --.xor-result/int=0:
@@ -107,12 +107,12 @@ class Crc extends Checksum:
   ```
   // The CRC-32 used in PNG.
   // x³² + x²⁶ + x²³ + x²² + x¹⁶ + x¹² + x¹¹ + x¹⁰ + x⁸ + x⁷ + x⁵ + x⁴ + x² + x + 1.
-  crc := Crc.little_endian 32
+  crc := Crc.little-endian 32
       --powers=[26, 23, 22, 16, 12, 11, 10, 8, 7, 5, 4, 2, 1, 0]
       --initial-state=0xffff_ffff
       --xor-result=0xffff_ffff
   // Equivalently:
-  crc := Crc.little_endian 32
+  crc := Crc.little-endian 32
       --powers=[32, 26, 23, 22, 16, 12, 11, 10, 8, 7, 5, 4, 2, 1, 0]
       --initial-state=0xffff_ffff
       --xor-result=0xffff_ffff
@@ -135,7 +135,7 @@ class Crc extends Checksum:
   # Example
   ```
   // The CRC-16 used in Xmodem.
-  crc := Crc.big_endian 16 --polynomial=0x1021
+  crc := Crc.big-endian 16 --polynomial=0x1021
   ```
   */
   constructor.big-endian .width/int --.polynomial/int --initial-state/int=0 --.xor-result/int=0:
@@ -157,9 +157,9 @@ class Crc extends Checksum:
   # Example
   ```
   // The popular CRC-16 used in Xmodem.
-  crc := Crc.big_endian 16 --powers=[12, 5, 0]
+  crc := Crc.big-endian 16 --powers=[12, 5, 0]
   // Equivalently:
-  crc := Crc.big_endian 16 --powers=[16, 12, 5, 0]
+  crc := Crc.big-endian 16 --powers=[16, 12, 5, 0]
   ```
   */
   constructor.big-endian width/int --powers/List --initial-state/int=0 --xor-result/int=0:
@@ -172,7 +172,7 @@ class Crc extends Checksum:
   calculate-table-little-endian_ width/int polynomial/int -> any:
     result := ?
     if width <= 8:
-      result = ByteArray 256 --filler=0
+      result = ByteArray 256 --initial=0
     else:
       result = List 256: 0
     crc := 1
@@ -188,7 +188,7 @@ class Crc extends Checksum:
   calculate-table-big-endian_ width/int polynomial/int -> any:
     result := ?
     if width <= 8:
-      result = ByteArray 256 --filler=0
+      result = ByteArray 256 --initial=0
     else:
       result = List 256: 0
     hi-bit := 1 << (width - 1)

@@ -107,7 +107,7 @@ Due to the operations that take an offset (like $put-int16-big-endian),
 
 Deprecated.
 */
-// TODO(4201): missing function `write_from`.
+// TODO(4201): missing function `write-from`.
 abstract class BufferConsumer:
   /**
   The size of the consumed data.
@@ -362,7 +362,7 @@ class Buffer extends BufferConsumer:
 
   /**
   Converts the consumed data to a string.
-  This operation is equivalent to `take.to_string`.
+  This operation is equivalent to `take.to-string`.
   */
   to-string -> string:
     return buffer_.to-string 0 offset_

@@ -33,7 +33,7 @@ main:
 
   // Before using touch, we need to calibrate it. This also applies to
   // the 'wakeup' which will trigger on any unclosed touch pins after
-  // calling $esp32.enable_touchpad_wakeup when going into deep sleep.
+  // calling $esp32.enable-touchpad-wakeup when going into deep sleep.
   touch := gpio.Touch (gpio.Pin TOUCH-PIN)
   calibrate touch
 

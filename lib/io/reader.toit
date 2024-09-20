@@ -185,8 +185,8 @@ abstract class Reader implements old-reader.Reader:
 
   If $to is given, then the search is limited to the given range.
   If $throw-if-absent is true and the $delimiter is not in the remaining data, throws.
-  If $throw-if-absent is false and the $delimiter is not in the remaining data, skips
-    all remaining data.
+  If $throw-if-absent is false (the default) and the $delimiter is not in the
+    remaining data, skips all remaining data.
   */
   skip-up-to delimiter/int --to/int?=null --throw-if-absent/bool=false -> int:
     skipped := 0
@@ -299,7 +299,8 @@ abstract class Reader implements old-reader.Reader:
 
   Returns the index of the first occurrence of the $byte.
   If $throw-if-absent is true and $byte is not in the remaining data throws.
-  Returns -1 if $throw-if-absent is false and the $byte is not in the remaining data.
+  Returns -1 if $throw-if-absent is false (the default) and the $byte is not
+    in the remaining data.
   */
   index-of byte/int --to/int?=null --throw-if-absent/bool=false -> int:
     absent := :
@@ -389,14 +390,14 @@ abstract class Reader implements old-reader.Reader:
   # Examples
   ```
   class MyReader implements Reader:
-    read -> ByteArray?: return "hellø".to_byte_array
+    read -> ByteArray?: return "hellø".to-byte-array
 
   main:
     reader := BufferedReader MyReader
     print
-      reader.read_string 6  // >> Hellø
+      reader.read-string 6  // >> Hellø
     print
-      reader.read_string 5  // >> Error!
+      reader.read-string 5  // >> Error!
   ```
   */
   read-string n/int -> string:
@@ -416,8 +417,8 @@ abstract class Reader implements old-reader.Reader:
 
   The read bytes are consumed.
 
-  Note that this method is different from $read followed by to_string as it
-    ensures that the data is split into valid UTF-8 chunks.
+  Note that this method is different from $read followed by $ByteArray.to-string
+    as it ensures that the data is split into valid UTF-8 chunks.
 
   If $max-size is specified the returned string will never be larger than
     that size (in bytes), but it may be smaller, even if there is more data
@@ -513,11 +514,11 @@ abstract class Reader implements old-reader.Reader:
     available bytes otherwise, use the following code:
 
   ```
-  read_exactly_or_drain reader/BufferedReader n/int -> ByteArray?:
-    if can_ensure n: return reader.read_bytes n
-    reader.buffer_all
+  read-exactly-or-drain reader/BufferedReader n/int -> ByteArray?:
+    if can-ensure n: return reader.read-bytes n
+    reader.buffer-all
     if reader.buffered == 0: return null
-    return reader.read_bytes reader.buffered
+    return reader.read-bytes reader.buffered
   ```
   */
   read-bytes n/int -> ByteArray:
@@ -537,14 +538,14 @@ abstract class Reader implements old-reader.Reader:
   # Examples
   ```
   class MyReader implements Reader:
-    read -> ByteArray?: return "hellø".to_byte_array
+    read -> ByteArray?: return "hellø".to-byte-array
 
   main:
     reader := BufferedReader MyReader
     print
-      reader.peek_string 6  // >> Hellø
+      reader.peek-string 6  // >> Hellø
     print
-      reader.peek_string 5  // >> Error!
+      reader.peek-string 5  // >> Error!
   ```
   */
   peek-string n/int -> string:
@@ -562,9 +563,9 @@ abstract class Reader implements old-reader.Reader:
   Reads a line as a string.
 
   If $keep-newline is true, the returned string includes the newline character.
-  If $keep-newline is false, trims the trailing '\r\n' or '\n'. This method
-    removes a '\r' even if the platform is not Windows. If the '\r' needs to be
-    preserved, set $keep-newline to true and remove the trailing '\n' manually.
+  If $keep-newline is false (the default), trims the trailing '\r\n' or '\n'. This
+    method removes a '\r' even if the platform is not Windows. If the '\r' needs to
+    be preserved, set $keep-newline to true and remove the trailing '\n' manually.
   If the input ends with a newline, then all further reads return null.
   If the input ends without a newline, then the last line is returned without any
     newline character (even if $keep-newline) is true, and all further reads
@@ -603,11 +604,9 @@ abstract class Reader implements old-reader.Reader:
   /**
   Calls the given $block for each remaining line.
 
-  The $lines argument must be true.
   See $read-line.
   */
-  do --lines/bool --keep-newlines/bool=false [block] -> none:
-    if not lines: throw "INVALID_ARGUMENT"
+  do --lines/True --keep-newlines/bool=false [block] -> none:
     while line := read-line --keep-newline=keep-newlines:
       block.call line
 
@@ -647,7 +646,7 @@ abstract class Reader implements old-reader.Reader:
     operations.
 
   If $hand-over is true, then this instance takes ownership of $value.
-    In this case, its contents should not be modified after being
+    In this case, its content must not be modified after being
     given to this method.
   */
   unget value/ByteArray --hand-over/bool=false -> none:
@@ -685,8 +684,8 @@ abstract class Reader implements old-reader.Reader:
   */
   little-endian -> EndianReader:
     result := endian_
-    if not result or result.byte-order_ != LITTLE_ENDIAN:
-      result = EndianReader --reader=this --byte-order=LITTLE_ENDIAN
+    if not result or result.byte-order_ != LITTLE-ENDIAN:
+      result = EndianReader --reader=this --byte-order=LITTLE-ENDIAN
       endian_ = result
     return result
 
@@ -711,8 +710,8 @@ abstract class Reader implements old-reader.Reader:
   */
   big-endian -> EndianReader:
     result := endian_
-    if not result or result.byte-order_ != BIG_ENDIAN:
-      result = EndianReader --reader=this --byte-order=BIG_ENDIAN
+    if not result or result.byte-order_ != BIG-ENDIAN:
+      result = EndianReader --reader=this --byte-order=BIG-ENDIAN
       endian_ = result
     return result
 

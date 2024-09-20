@@ -77,7 +77,7 @@ class Pin:
 
   Some pins should usually not be used. For example, the ESP32 uses pins
     6-11 to communicate with flash and PSRAM. These pins can not be
-    instantiated unless the $allow-restricted flag is set to `true`.
+    instantiated unless the $allow-restricted flag is set to true.
 
   # ESP32
   The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
@@ -168,7 +168,7 @@ class Pin:
     ($config) maintains the pull-up/pull-down configuration of the pin. However, $configure
     resets that configuration.
   */
-  // When removing this function, it's safe to remove `pull_down_` and `pull_up_` as well.
+  // When removing this function, it's safe to remove `pull-down_` and `pull-up_` as well.
   config --input/bool=false --output/bool=false --open-drain/bool=false:
     if open-drain and not output: throw "INVALID_ARGUMENT"
     gpio-config_ num (input and pull-up_) (input and pull-down_) input output open-drain

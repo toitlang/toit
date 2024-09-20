@@ -69,10 +69,10 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  str1 := string.from_rune 'a'  // -> "a"
-  str2 := string.from_rune 0x41 // -> "A"
-  str3 := string.from_rune 42   // -> "*"
-  str4 := string.from_rune 7931 // -> "☃"
+  str1 := string.from-rune 'a'  // -> "a"
+  str2 := string.from-rune 0x41 // -> "A"
+  str3 := string.from-rune 42   // -> "*"
+  str4 := string.from-rune 7931 // -> "☃"
   ```
   */
   constructor.from-rune rune/int:
@@ -89,10 +89,10 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  str1 := string.from_runes ['a', 'b', 42]  // -> "ab*"
-  str2 := string.from_runes [0x41]          // -> "A"
-  str3 := string.from_runes [42]            // -> "*"
-  str4 := string.from_runes [7931, 0x20ac]  // -> "☃€"
+  str1 := string.from-runes ['a', 'b', 42]  // -> "ab*"
+  str2 := string.from-runes [0x41]          // -> "A"
+  str3 := string.from-runes [42]            // -> "*"
+  str4 := string.from-runes [7931, 0x20ac]  // -> "☃€"
   ```
   */
   constructor.from-runes runes/List:
@@ -124,11 +124,8 @@ abstract class string implements Comparable io.Data:
   Returns the number of runes (Unicode "code points") in this string.
 
   This operation takes linear time to complete as it runs through the whole string.
-
-  The flag $runes must be true.
   */
-  size --runes/bool -> int:
-    if runes != true: throw "Bad Argument"
+  size --runes/True -> int:
     return rune-size_
 
   rune-size_ -> int:
@@ -200,11 +197,8 @@ abstract class string implements Comparable io.Data:
     of this string.
 
   Contrary to $at this method never returns null.
-
-  The flag $raw must be true
   */
-  at --raw/bool i/int -> int:
-    if raw != true: throw "Bad Argument"
+  at --raw/True i/int -> int:
     return raw-at_ i
 
   /**
@@ -233,21 +227,19 @@ abstract class string implements Comparable io.Data:
   Contrary to $do, only invokes $block with valid integer values. For every multi-byte sequences
     there is only one call to $block.
 
-  The flag $runes must be true.
-
   # Examples
   ```
   "Amélie".do --runes: print "$(%c it)" // A, m, é, l, i, e
   ```
   */
-  do --runes/bool [block] -> none:
-    if runes != true: throw "Bad Argument"
+  do --runes/True [block] -> none:
     for i := 0; i < size; i++:
       rune := this[i]
       if rune: block.call rune
 
   /**
   Calls the given $block for every unicode character in the string.
+
   The argument to the block is an integer in the Unicode range of 0-0x10ffff,
     inclusive.
   The return value is assembled from the return values of the block.
@@ -263,16 +255,17 @@ abstract class string implements Comparable io.Data:
     is handled like the above actions, but this is only done for one level -
     lists of lists are not flattened in this way.
   To get a list or byte array as the return value instead of a string, use
-    `str.to_byte_array.map` instead.
+    `str.to-byte-array.map` instead.
+
   # Examples.
   ```
-  heavy_metalize str/string -> string:
+  heavy-metalize str/string -> string:
     return str.flat_map: | c |
       {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if-absent=: c
   ```
   ```
-  lower_case str/string -> string:
-    return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+  lower-case str/string -> string:
+    return str.flat-map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
   ```
   */
   flat-map [block] -> string:
@@ -329,8 +322,11 @@ abstract class string implements Comparable io.Data:
   Copies the string between $from (inclusive) and $to (exclusive).
 
   If $force-valid is true, adjusts $from and $to so that they are valid substring indexes.
-    If $from (resp. $to) points to the middle of a multi-byte sequence decreases the index
-    until it points to the beginning of the sequence. Also see $rune-index.
+
+  If $from (resp. $to) points to the middle of a multi-byte sequence decreases the index
+    until it points to the beginning of the sequence.
+
+  Also see $rune-index.
   */
   copy from/int to/int=size --force-valid/bool -> string:
     if force-valid:
@@ -542,13 +538,13 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  "a".compare_to "b"    // => -1
-  "a".compare_to "a"    // => 0
-  "b".compare_to "a"    // => 1
-  "ab".compare_to "abc" // => -1
-  "abc".compare_to "ab" // => 1
-  "Amélie".compare_to "Amelie"  // => 1
-  "Amélie".compare_to "Amzlie"  // => 1
+  "a".compare-to "b"    // => -1
+  "a".compare-to "a"    // => 0
+  "b".compare-to "a"    // => 1
+  "ab".compare-to "abc" // => -1
+  "abc".compare-to "ab" // => 1
+  "Amélie".compare-to "Amelie"  // => 1
+  "Amélie".compare-to "Amzlie"  // => 1
   ```
   */
   compare-to other/string -> int:
@@ -564,12 +560,12 @@ abstract class string implements Comparable io.Data:
     the call to this method).
 
   # Examples
-  The $if-equal block allows easy chaining of `compare_to` calls.
+  The $if-equal block allows easy chaining of `compare-to` calls.
   ```
-  // In class A with fields str_field1 and str_field2:
-  compare_to other/A -> int:
-    return str_field1.compare_to other.str_field1 --if-equal=:
-      str_field2.compare_to other.str_field2
+  // In class A with fields str-field1 and str-field2:
+  compare-to other/A -> int:
+    return str-field1.compare-to other.str-field1 --if-equal=:
+      str-field2.compare-to other.str-field2
   ```
   */
   compare-to other/string [--if-equal] -> int:
@@ -584,8 +580,6 @@ abstract class string implements Comparable io.Data:
   Pads this instance with char on the left, until the total size of the string is $amount.
 
   Returns this instance directly if this instance is longer than $amount.
-
-  The flag $left must be true.
 
   # Examples
   ```
@@ -603,16 +597,13 @@ abstract class string implements Comparable io.Data:
   str.pad 1     // => "foo"
   ```
   */
-  pad --left/bool=true amount/int char/int=' ' -> string:
-    if left != true: throw "Bad Argument"
+  pad --left/True=true amount/int char/int=' ' -> string:
     return pad_ (amount - size) 0 char
 
   /**
   Pads this instance with $char on the right, until the total size of the string is $amount.
 
   Returns this instance directly if this instance is longer than $amount.
-
-  The flag $right must be true.
 
   # Examples
   ```
@@ -624,8 +615,7 @@ abstract class string implements Comparable io.Data:
   str.pad --right 1     // => "foo"
   ```
   */
-  pad --right/bool  amount/int char/int=' ' -> string:
-    if right != true: throw "Bad Argument"
+  pad --right/True  amount/int char/int=' ' -> string:
     return pad_ 0 (amount - size) char
 
   /**
@@ -635,8 +625,6 @@ abstract class string implements Comparable io.Data:
     padding to the right.
 
   Returns this instance directly if this instance is longer than $amount.
-
-  The flag $center must be true.
 
   # Examples
   ```
@@ -651,8 +639,7 @@ abstract class string implements Comparable io.Data:
   str.pad --center 1     // => "foo"
   ```
   */
-  pad --center/bool amount/int char/int=' ' -> string:
-    if center != true: throw "Bad Argument"
+  pad --center/True amount/int char/int=' ' -> string:
     padding := amount - size
     left := padding / 2
     right := padding - left
@@ -763,32 +750,32 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  "foobar".index_of "foo"  // => 0
-  "foobar".index_of "bar"  // => 3
-  "foo".index_of "bar"     // => -1
+  "foobar".index-of "foo"  // => 0
+  "foobar".index-of "bar"  // => 3
+  "foo".index-of "bar"     // => -1
 
-  "foobarfoo".index_of "foo"           // => 0
-  "foobarfoo".index_of "foo" 1         // => 6
-  "foobarfoo".index_of "foo" 1 8       // => -1
+  "foobarfoo".index-of "foo"           // => 0
+  "foobarfoo".index-of "foo" 1         // => 6
+  "foobarfoo".index-of "foo" 1 8       // => -1
 
   // Invalid ranges:
-  "foobarfoo".index_of "foo" -1 999    // Throws.
-  "foobarfoo".index_of "foo" 1 999     // Throws.
+  "foobarfoo".index-of "foo" -1 999    // Throws.
+  "foobarfoo".index-of "foo" 1 999     // Throws.
 
-  "".index_of "" 0 0   // => 0
-  "".index_of "" -3 -3 // => Throws
-  "".index_of "" 2 2   // => Throws
+  "".index-of "" 0 0   // => 0
+  "".index-of "" -3 -3 // => Throws
+  "".index-of "" 2 2   // => Throws
 
   // Last:
-  "foobarfoo".index_of --last "foo"           // => 6
-  "foobarfoo".index_of --last "foo" 1         // => 6
-  "foobarfoo".index_of --last "foo" 1 6       // => 0
-  "foobarfoo".index_of --last "foo" 0 1       // => 0
-  "foobarfoo".index_of --last "foo" 0 8       // => 0
+  "foobarfoo".index-of --last "foo"           // => 6
+  "foobarfoo".index-of --last "foo" 1         // => 6
+  "foobarfoo".index-of --last "foo" 1 6       // => 0
+  "foobarfoo".index-of --last "foo" 0 1       // => 0
+  "foobarfoo".index-of --last "foo" 0 8       // => 0
 
-  "foobarfoo".index_of --last "gee"           // => -1
-  "foobarfoo".index_of --last "foo" 1 5       // => -1
-  "foobarfoo".index_of --last "foo" 0 8       // => 0
+  "foobarfoo".index-of --last "gee"           // => -1
+  "foobarfoo".index-of --last "foo" 1 5       // => -1
+  "foobarfoo".index-of --last "foo" 0 8       // => 0
   ```
   */
   index-of --last/bool=false needle/string from/int=0 to/int=size -> int:
@@ -879,8 +866,7 @@ abstract class string implements Comparable io.Data:
   Removes leading whitespace.
   Variant of $(trim).
   */
-  trim --left/bool -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True -> string:
     size.repeat:
       c := this[it]
       if c != null and not is-unicode-whitespace_ c:
@@ -891,8 +877,7 @@ abstract class string implements Comparable io.Data:
   Removes trailing whitespace.
   Variant of $(trim).
   */
-  trim --right/bool -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True -> string:
     size.repeat:
       c := this[size - 1 - it]
       if c != null and not is-unicode-whitespace_ c:
@@ -917,8 +902,7 @@ abstract class string implements Comparable io.Data:
   str.trim --left "gee"  // => "foobar"
   ```
   */
-  trim --left/bool prefix/string -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True prefix/string -> string:
     return trim --left prefix --if-absent=: it
 
   /**
@@ -937,8 +921,7 @@ abstract class string implements Comparable io.Data:
   str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
-  trim --left/bool prefix/string [--if-absent] -> string:
-    if left != true: throw "Bad Argument"
+  trim --left/True prefix/string [--if-absent] -> string:
     if not starts-with prefix: return if-absent.call this
     return this[prefix.size..]
 
@@ -956,8 +939,7 @@ abstract class string implements Comparable io.Data:
   str.trim --right "gee"  // => "foobar"
   ```
   */
-  trim --right/bool suffix/string -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True suffix/string -> string:
     return trim --right suffix --if-absent=: it
 
   /**
@@ -975,8 +957,7 @@ abstract class string implements Comparable io.Data:
   str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
-  trim --right/bool suffix/string [--if-absent] -> string:
-    if right != true: throw "Bad Argument"
+  trim --right/True suffix/string [--if-absent] -> string:
     if not ends-with suffix: return if-absent.call this
     return this[..size - suffix.size]
 
@@ -1207,8 +1188,8 @@ abstract class string implements Comparable io.Data:
   If $all is true, replaces all occurrences of $needle. For each found occurrence calls the
     $replacement-callback with the matched string as argument.
 
-  If $all is false, only replaces the first occurrence with the result of calling $replacement-callback
-    with the matched string.
+  If $all is false (the default), only replaces the first occurrence with the result
+    of calling $replacement-callback with the matched string.
 
   Does nothing, if this instance doesn't contain the $needle.
 

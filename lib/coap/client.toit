@@ -147,7 +147,7 @@ class Client:
   on-read-write-error_ error:
     // Always close the CoAP client, but allow timeout errors
     // to pass through to the caller. All other errors are
-    // mapped to CLOSED_ERROR.
+    // mapped to CLOSED-ERROR.
     close
     if error == DEADLINE-EXCEEDED-ERROR:
       return true  // Continue unwinding with original error.
@@ -180,7 +180,7 @@ class Client:
   send_ msg/Message:
     if closed_: throw CLOSED-ERROR
     if msg.code-class != CODE-CLASS-REQUEST: throw "FORMAT_ERROR"
-    // Always use max_progress_delay for writing to transport.
+    // Always use max-progress-delay for writing to transport.
     catch --unwind=(: on-read-write-error_ it):
       with-timeout max-progress-delay:
         write-lock_.do: transport_.write msg

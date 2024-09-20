@@ -23,14 +23,14 @@ abstract class num implements Comparable:
 
   # Examples
   ```
-  42.to_int  // => 42
+  42.to-int  // => 42
 
-  (100.0).to_int   // => 100
-  (-1.123).to_int  // => -1
+  (100.0).to-int   // => 100
+  (-1.123).to-int  // => -1
 
-  float.MAX_FINITE.to_int  // Error.
-  float.INFINITY.to_int    // Error.
-  float.NAN.to_int         // Error.
+  float.MAX-FINITE.to-int  // Error.
+  float.INFINITY.to-int    // Error.
+  float.NAN.to-int         // Error.
   ```
   */
   abstract to-int -> int
@@ -138,12 +138,12 @@ abstract class num implements Comparable:
   1 < float.NAN          // => false
   float.NAN < 1.0        // => false
 
-  float.MAX_FINITE < float.INFINITY  // => true
+  float.MAX-FINITE < float.INFINITY  // => true
   float.NAN < float.INFINITY  // => false
   float.INFINITY < float.NAN  // => false
   ```
   */
-  abstract operator <  other/num -> bool
+  abstract operator < other/num -> bool
 
   /**
   Whether this number is less than or equal to the $other.
@@ -172,7 +172,7 @@ abstract class num implements Comparable:
   1 <= float.NAN          // => false
   float.NAN <= 1.0        // => false
 
-  float.MAX_FINITE <= float.INFINITY  // => true
+  float.MAX-FINITE <= float.INFINITY  // => true
   float.NAN <= float.INFINITY  // => false
   float.INFINITY <= float.NAN  // => false
   ```
@@ -206,12 +206,12 @@ abstract class num implements Comparable:
   1 > float.NAN          // => false
   float.NAN > 1.0        // => false
 
-  float.MAX_FINITE > float.INFINITY  // => false
+  float.MAX-FINITE > float.INFINITY  // => false
   float.NAN > float.INFINITY  // => false
   float.INFINITY > float.NAN  // => false
   ```
   */
-  abstract operator >  other/num -> bool
+  abstract operator > other/num -> bool
 
   /**
   Whether this number is greater than or equal to the $other.
@@ -240,7 +240,7 @@ abstract class num implements Comparable:
   1 >= float.NAN          // => false
   float.NAN >= 1.0        // => false
 
-  float.MAX_FINITE >= float.INFINITY  // => false
+  float.MAX-FINITE >= float.INFINITY  // => false
   float.NAN >= float.INFINITY  // => false
   float.INFINITY >= float.NAN  // => false
   ```
@@ -276,7 +276,7 @@ abstract class num implements Comparable:
   float.INFINITY + -float.INFINITY    // => float.NAN
   ```
   */
-  abstract operator +  other/num
+  abstract operator + other/num
 
   /**
   Subtracts this number from the $other.
@@ -305,7 +305,7 @@ abstract class num implements Comparable:
   float.INFINITY - float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator -  other/num
+  abstract operator - other/num
 
   /**
   Multiplies this number with the $other.
@@ -340,7 +340,7 @@ abstract class num implements Comparable:
   float.INFINITY * -float.INFINITY  // => -float.INFINITY
   ```
   */
-  abstract operator *  other/num
+  abstract operator * other/num
 
   /**
   Divides this number by the $other.
@@ -381,7 +381,7 @@ abstract class num implements Comparable:
   float.INFINITY / float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator /  other/num
+  abstract operator / other/num
 
   /**
   Takes this number modulo the $other.
@@ -416,7 +416,7 @@ abstract class num implements Comparable:
   float.NAN % float.NAN  // => float.NAN
   ```
   */
-  abstract operator %  other/num
+  abstract operator % other/num
 
   /**
   Compares this number to the $other.
@@ -435,21 +435,21 @@ abstract class num implements Comparable:
 
 
   Contrary to `<` this comparison handles `0.0` and `-0.0`, such that
-    `0.0.compare_to -0.0` returns 1.
+    `0.0.compare-to -0.0` returns 1.
 
   # Examples
   ```
-  2.compare_to 1  // => 1
-  1.compare_to 1  // => 0
-  1.compare_to 2  // => -1
+  2.compare-to 1  // => 1
+  1.compare-to 1  // => 0
+  1.compare-to 2  // => -1
 
-  (-0.0).compare_to 0.0 // => -1
+  (-0.0).compare-to 0.0 // => -1
 
-  2.compare_to float.NAN // => -1
+  2.compare-to float.NAN // => -1
 
-  float.INFINITY.compare_to 3               // => 1
-  float.INFINITY.compare_to float.INFINITY  // => 0
-  3.compare_to float.INFINITY               // => -1
+  float.INFINITY.compare-to 3               // => 1
+  float.INFINITY.compare-to float.INFINITY  // => 0
+  3.compare-to float.INFINITY               // => -1
   ```
   */
   compare-to other/num -> int:
@@ -484,10 +484,10 @@ abstract class num implements Comparable:
 
   # Examples
   ```
-  2.to_float   // => 2.0
-  2.1.to_float // => 2.1
+  2.to-float   // => 2.0
+  2.1.to-float // => 2.1
 
-  9223372036854775807.to_float  // => 9223372036854775808.0
+  9223372036854775807.to-float  // => 9223372036854775808.0
 
   ```
   */
@@ -510,9 +510,9 @@ abstract class num implements Comparable:
 
     constructor .seconds .nanoseconds:
 
-    compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if-equal=:
-        nanoseconds.compare_to other.nanoseconds
+    compare-to other/MyTime -> int:
+      return seconds.compare-to other.seconds --if-equal=:
+        nanoseconds.compare-to other.nanoseconds
   ```
   */
   compare-to other/num [--if-equal] -> int:
@@ -919,9 +919,9 @@ abstract class int extends num:
 
   # Examples
   ```
-  255.sign_extend --bits=8  // => -1
-  128.sign_extend --bits=8  // => -128
-  127.sign_extend --bits=8  // => 127
+  255.sign-extend --bits=8  // => -1
+  128.sign-extend --bits=8  // => -128
+  127.sign-extend --bits=8  // => 127
   ```
   */
   sign-extend --bits/int -> int:
@@ -951,15 +951,15 @@ abstract class int extends num:
 
   # Examples
   ```
-  1.is_power_of_two     // => true
-  2.is_power_of_two     // => true
-  4.is_power_of_two     // => true
-  1096.is_power_of_two  // => true
+  1.is-power-of-two     // => true
+  2.is-power-of-two     // => true
+  4.is-power-of-two     // => true
+  1096.is-power-of-two  // => true
 
-  0.is_power_of_two     // => false
-  (-2).is_power_of_two  // => false
-  1.is_power_of_two     // => false
-  14.is_power_of_two    // => false
+  0.is-power-of-two     // => false
+  (-2).is-power-of-two  // => false
+  1.is-power-of-two     // => false
+  14.is-power-of-two    // => false
   ```
   */
   is-power-of-two -> bool:
@@ -972,15 +972,15 @@ abstract class int extends num:
 
   # Examples
   ```
-  8.is_aligned 2         // => true
-  4.is_aligned 4         // => true
-  16384.is_aligned 4096  // => true
-  0.is_aligned 4096      // => true
+  8.is-aligned 2         // => true
+  4.is-aligned 4         // => true
+  16384.is-aligned 4096  // => true
+  0.is-aligned 4096      // => true
 
-  2.is_aligned 1024  // => false
-  3.is_aligned 2     // => false.
+  2.is-aligned 1024  // => false
+  3.is-aligned 2     // => false.
 
-  2.is_aligned 3     // Error.
+  2.is-aligned 3     // Error.
     ```
   */
   is-aligned n/int -> bool:
@@ -1018,11 +1018,11 @@ abstract class int extends num:
     it returns 0 if called on a negative integer.
   # Examples
   ```
-  (0x00FF).count_leading_zeros  // => 56
-  (0x0025).count_leading_zeros  // => 58
-  (0).count_leading_zeros       // => 64
-  int.MIN.count_leading_zeros   // => 0
-  int.MAX.count_leading_zeros   // => 1
+  (0x00FF).count-leading-zeros  // => 56
+  (0x0025).count-leading-zeros  // => 58
+  (0).count-leading-zeros       // => 64
+  int.MIN.count-leading-zeros   // => 0
+  int.MAX.count-leading-zeros   // => 1
   ```
   */
   count-leading-zeros -> int:
@@ -1035,13 +1035,13 @@ abstract class int extends num:
     Thus it returns 1 if called on -2.
   # Examples
   ```
-  (0b101000).count_trailing_zeros   // => 3
-  (0b101100).count_trailing_zeros   // => 2
-  (0b101010).count_trailing_zeros   // => 1
-  (0b101101).count_trailing_zeros   // => 0
-  (0).count_trailing_zeros          // => 64
-  int.MIN.count_trailing_zeros      // => 63
-  int.MAX.count_trailing_zeros      // => 0
+  (0b101000).count-trailing-zeros   // => 3
+  (0b101100).count-trailing-zeros   // => 2
+  (0b101010).count-trailing-zeros   // => 1
+  (0b101101).count-trailing-zeros   // => 0
+  (0).count-trailing-zeros          // => 64
+  int.MIN.count-trailing-zeros      // => 63
+  int.MAX.count-trailing-zeros      // => 0
   ```
   */
   count-trailing-zeros -> int:
@@ -1055,14 +1055,14 @@ abstract class int extends num:
     Thus it returns 64 if called on -1.
   # Examples
   ```
-  (0b101101).population_count  // => 2
-  (0b101100).population_count  // => 3
-  (0b101110).population_count  // => 4
-  (0b101111).population_count  // => 5
-  (0).population_count         // => 0
-  (-1).population_count        // => 64
-  int.MIN.population_count     // => 1
-  int.MAX.population_count     // => 63
+  (0b101101).population-count  // => 2
+  (0b101100).population-count  // => 3
+  (0b101110).population-count  // => 4
+  (0b101111).population-count  // => 5
+  (0).population-count         // => 0
+  (-1).population-count        // => 64
+  int.MIN.population-count     // => 1
+  int.MAX.population-count     // => 63
   ```
   */
   population-count -> int:
@@ -1403,11 +1403,11 @@ class float extends num:
   There are multiple representations of not-a-number. For example, the
   following produces another not-a-number representation:
   ```
-  float.from_bits (float.NAN.bits + 1)
+  float.from-bits (float.NAN.bits + 1)
   ```
   Comparing the above representation with this constant will result in false:
   ```
-  float.NAN == float.from_bits (float.NAN.bits + 1)  // => false
+  float.NAN == float.from-bits (float.NAN.bits + 1)  // => false
   ```
   It is therefore important to use $is-nan to check for not-a-number.
   */
@@ -1607,15 +1607,15 @@ class float extends num:
 
   # Examples
   ```
-  float.NAN.is_nan                               // => true
-  (-1).sqrt.is_nan                               // => true
-  (float.from_bits (float.NAN.bits + 1)).is_nan  // => true
+  float.NAN.is-nan                               // => true
+  (-1).sqrt.is-nan                               // => true
+  (float.from-bits (float.NAN.bits + 1)).is-nan  // => true
 
-  2.0.is_nan                 // => false
-  2.sqrt.is_nan              // => false
-  float.INFINITY.is_nan      // => false
-  float.MAX_FINITE.is_nan    // => false
-  float.MIN_POSITIVE.is_nan  // => false
+  2.0.is-nan                 // => false
+  2.sqrt.is-nan              // => false
+  float.INFINITY.is-nan      // => false
+  float.MAX-FINITE.is-nan    // => false
+  float.MIN_POSITIVE.is-nan  // => false
   ```
   */
   is-nan -> bool:
@@ -1626,15 +1626,15 @@ class float extends num:
 
   # Examples
   ```
-  2.0.is_finite                 // => true
-  (-9001.0).is_finite           // => true
-  2.sqrt.is_finite              // => true
-  float.MAX_FINITE.is_finite    // => true
-  float.MIN_POSITIVE.is_finite  // => true
+  2.0.is-finite                 // => true
+  (-9001.0).is-finite           // => true
+  2.sqrt.is-finite              // => true
+  float.MAX-FINITE.is-finite    // => true
+  float.MIN_POSITIVE.is-finite  // => true
 
-  float.NAN.is_finite       // => false
-  (-1).sqrt.is_finite       // => false
-  float.INFINITY.is_finite  // => false
+  float.NAN.is-finite       // => false
+  (-1).sqrt.is-finite       // => false
+  float.INFINITY.is-finite  // => false
   ```
   */
   is-finite -> bool:

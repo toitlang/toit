@@ -33,7 +33,7 @@ The default logger can be set with $set-default. For example:
 import log
 
 main:
-  log.set_default (log.default.with_level log.INFO_LEVEL)
+  log.set-default (log.default.with-level log.INFO_LEVEL)
 ```
 
 It is common to create a logger for parts of a program. In that case,
@@ -46,7 +46,7 @@ import log
 class Connectivity:
   logger_/log.Logger
 
-  constructor --logger/log.Logger=(log.default.with_name "connectivity"):
+  constructor --logger/log.Logger=(log.default.with-name "connectivity"):
     logger_ = logger
 ```
 */

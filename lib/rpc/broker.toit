@@ -38,9 +38,9 @@ class RpcBroker implements SystemMessageHandler_:
   /**
   Registers a procedure to handle a message.  The arguments to the
     handler will be:
-  arguments/List
-  group_id/int
-  process_id/int
+  - arguments/List
+  - group-id/int
+  - process-id/int
   */
   register-procedure name/int action/Lambda -> none:
     procedures_[name] = action

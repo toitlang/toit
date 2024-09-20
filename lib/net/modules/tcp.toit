@@ -5,7 +5,8 @@
 import io
 import monitor show ResourceState_
 import net
-import net.tcp as net
+import net.tcp
+import net.udp
 import reader show Reader
 
 import .dns
@@ -30,7 +31,10 @@ TOIT-TCP-OPTION-SEND-BUFFER_   ::= 8
 // classes. It provides basic support for managing the underlying resource
 // state and for closing.
 class TcpSocket_:
+  network_/udp.Interface
   state_ := null
+
+  constructor .network_:
 
   local-address -> net.SocketAddress:
     return net.SocketAddress
@@ -90,11 +94,14 @@ class TcpSocket_:
     return tcp-set-option_ state.group state.resource option value
 
 
-class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
+class TcpServerSocket extends TcpSocket_ implements tcp.ServerSocket:
   backlog_ := 0
 
-  constructor: return TcpServerSocket 10
-  constructor .backlog_:
+  constructor network/udp.Interface:
+    return TcpServerSocket network 10
+
+  constructor network/udp.Interface .backlog_:
+    super network
 
   listen address port:
     open_ (tcp-listen_ tcp-resource-group_ address port backlog_)
@@ -109,16 +116,19 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
       state_.clear-state TOIT-TCP-READ_
       return null
     // Create a new client socket and return it.
-    socket := TcpSocket
+    socket := TcpSocket network_
     socket.open_ id
     return socket
 
 
-class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements tcp.Socket Reader:
   window-size_ := 0
 
-  constructor: return TcpSocket 0
-  constructor .window-size_:
+  constructor network/udp.Interface:
+    return TcpSocket network 0
+
+  constructor network/udp.Interface .window-size_:
+    super network
 
   peer-address -> net.SocketAddress:
     return net.SocketAddress
@@ -139,7 +149,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
     return connect hostname port: throw it
 
   connect hostname port [failure]:
-    address := dns-lookup hostname
+    address := dns-lookup hostname --network=network_
     open_ (tcp-connect_ tcp-resource-group_ address.raw port window-size_)
     error := catch:
       ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=failure

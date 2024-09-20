@@ -31,9 +31,9 @@ interface Comparable:
 
     constructor .seconds .nanoseconds:
 
-    compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if-equal=:
-        nanoseconds.compare_to other.nanoseconds
+    compare-to other/MyTime -> int:
+      return seconds.compare-to other.seconds --if-equal=:
+        nanoseconds.compare-to other.nanoseconds
   ```
   */
   compare-to other/Comparable [--if-equal]

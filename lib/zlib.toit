@@ -8,7 +8,7 @@ import crypto.adler32
 import crypto.crc as crc-algorithms
 import expect show *
 import .io as io
-import .io show LITTLE_ENDIAN
+import .io show LITTLE-ENDIAN
 
 SMALL-BUFFER-DEFLATE-HEADER_ ::= #[8, 0x1d]
 MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
@@ -663,7 +663,7 @@ class InflaterBackend implements Backend_:
         n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
         adler32 := n-bits_ 32
         if adler32 < 0: return NEED-MORE-DATA_
-        calculated := LITTLE_ENDIAN.uint32 adler_.get 0
+        calculated := LITTLE-ENDIAN.uint32 adler_.get 0
         adler_ = null  // Only read the checksum once.
         if calculated != adler32: throw "Checksum mismatch"
         state_ = INITIAL_
