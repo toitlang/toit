@@ -85,7 +85,7 @@ main args:
     server-from-reader = server-from.in
     server-to-writer = server-to-pipe.out
     server-rpc-connection := RpcConnection server-to-pipe.in server-from.out
-    server := LspServer server-rpc-connection null UriPathTranslator
+    server := LspServer server-rpc-connection null
     task:: catch --trace: server.run
 
   debug-file := parsed["debug-file"]

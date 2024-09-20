@@ -17,6 +17,9 @@ class SomeClass:
   constructor.named1 x:
   constructor.named2 x:
 
+  constructor.named-arg --x --y:
+  constructor.named-arg --x --y --z:
+
   member:
     this-local := 499
     this.member
@@ -38,6 +41,23 @@ class Subclass extends SomeClass:
   constructor:
     super.named1 0
 /*        ^~~~~~~~
-  + named1, named2
+  + named1, named2, named-arg
   - *
+*/
+
+  constructor.other:
+    super.named-arg --x=3 --y=4
+/*                    ^~~~~~~~~
+  + x=, y=, z=
+  - *
+*/
+
+  constructor.other2:
+  // In theory we would like to only see 'z', but at the moment we also
+  // suggest namest that are already used.
+  // When fixed, remove the "x, y, " below.
+    super.named-arg --x=3 --y=5 --z=3
+/*                                ^~~
++ x=, y=, z=
+- *
 */

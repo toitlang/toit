@@ -6,7 +6,7 @@ tests/negative/deprecation-test.toit:71:17: warning: Class 'Deprecated' is depre
                 ^~~~~~~~~~
 tests/negative/deprecation-test.toit:72:28: warning: Class 'Deprecated' is deprecated
   deprecated2 := Deprecated.named
-                           ^
+                           ^~~~~~
 tests/negative/deprecation-test.toit:76:8: warning: Deprecated constructor of 'A'
   a := A
        ^
@@ -18,7 +18,7 @@ tests/negative/deprecation-test.toit:82:5: warning: Deprecated 'A.some-field'
     ^~~~~~~~~~
 tests/negative/deprecation-test.toit:84:4: warning: Deprecated 'A.some-static-field'
   A.some-static-field
-   ^
+   ^~~~~~~~~~~~~~~~~~
 tests/negative/deprecation-test.toit:86:3: warning: Deprecated 'global'
   global
   ^~~~~~

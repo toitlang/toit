@@ -149,3 +149,4 @@ is-inside-dot-packages --uri/string -> bool:
   return uri.contains "/.packages/" or
       uri.contains "%5C.packages%5C" or
       uri.contains "%5c.packages%5c"
+

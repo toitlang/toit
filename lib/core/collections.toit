@@ -368,8 +368,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --all/bool needle -> none:
-    if all != true: throw "Argument Error"
+  remove --all/True needle -> none:
     target-index := 0
     size.repeat:
       entry := this[it]
@@ -385,8 +384,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --last/bool needle -> none:
-    if last != true: throw "Argument Error"
+  remove --last/True needle -> none:
     for i := size - 1; i >= 0; i--:
       entry := this[i]
       if entry == needle:
@@ -458,11 +456,8 @@ abstract class List extends CollectionBase:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -487,9 +482,11 @@ abstract class List extends CollectionBase:
     return map_ [] block
 
   /**
-  Invokes the given $block on each element and stores the result in this list if
-    $in-place is true.
-  If $in-place is false, then this function is equivalent to $(map [block]).
+  Invokes the given $block on each element.
+
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the mapped elements.
+  Returns a new list if $in-place is false (the default).
   */
   // We have a second function here, since the `block` has implicitly a different
   // type. It needs to have T->T.
@@ -508,7 +505,9 @@ abstract class List extends CollectionBase:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the filtered elements.
+  Returns a new list if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -582,11 +581,11 @@ abstract class List extends CollectionBase:
   static TEMPORARY-BUFFER-MINIMUM_ ::= 16
 
   /**
-  Sorts the range [$from..$to[ using the given $compare block. The sort is stable,
-    meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Variant of $(sort from to).
 
-  The $compare block should take two arguments `a` and `b` and should return:
+  Sorts the range [$from..$to[ using the given $compare block.
+
+  The $compare block must take two arguments `a` and `b` and should return:
   - -1 if `a < b`,
   -  0 if `a == b`, and
   -  1 if `a > b`.
@@ -607,15 +606,19 @@ abstract class List extends CollectionBase:
     return result
 
   /**
-  Sorts the range [$from..$to[ using the the < and > operators.  The sort is
-    stable, meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Sorts the range [$from..$to[ using the the < and > operators.
+
+  The sort is  stable, meaning that equal elements do not change their relative order.
+
+  Returns this instance if $in-place is true.
+  Returns a new list if $in-place is false (the default).
   */
   sort --in-place/bool=false from/int = 0 to/int = size -> List:
     return sort --in-place=in-place from to: | a b | compare_ a b
 
   /**
   Searches for $needle in the range $from (inclusive) - $to (exclusive).
+
   If $last is false (the default) returns the index of the first occurrence
     of $needle in the given range $from - $to. Otherwise returns the last
     occurrence.
@@ -629,6 +632,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Calls $if-absent without argument if the $needle is not contained
     in the range, and returns the result of the call.
   */
@@ -646,24 +650,25 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Uses binary search, with `<`, `>` and `==`, to find the element.
   The given range must be sorted.
   Searches for $needle in the sorted range $from (inclusive) - $to (exclusive).
   Uses binary search with `<`, `>` and `==` to find the $needle.
-  The $binary flag must be true.
   */
-  index-of --binary/bool needle from/int=0 to/int=size -> int:
+  index-of --binary/True needle from/int=0 to/int=size -> int:
     return index-of --binary needle from to --if-absent=: -1
 
   /**
   Variant of $(index-of --binary needle from to).
+
   If not found, calls $if-absent with the smallest index at which the
     element is greater than $needle. If no such index exists (either because
     this instance is empty, or because the first element is greater than
     the needle) calls $if-absent with $to (where $to was adjusted
     according to the rules in $(index-of --last needle from to)).
   */
-  index-of --binary/bool needle from/int=0 to/int=size [--if-absent]:
+  index-of --binary/True needle from/int=0 to/int=size [--if-absent]:
     comp := : | a b |
       if a < b:      -1
       else if a == b: 0
@@ -672,6 +677,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -681,6 +687,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to [--if-absent]).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -718,7 +725,7 @@ abstract class List extends CollectionBase:
   is-sorted:
     return is-sorted: | a b | compare_ a b
 
-  swap i j:
+  swap i/int j/int:
     t := this[i]
     this[i] = this[j]
     this[j] = t
@@ -785,12 +792,16 @@ abstract class List extends CollectionBase:
 
   /**
   Calls the given $block with indexes splitting the $from-$to range into chunks
-    of the $available size.  The block is called with three arguments:
+    of the $available size.
+
+  The block is called with three arguments:
     `chunk-from`, `chunk-to`, and `chunk-size`, where `chunk-size`
     is always equal to `chunk-to - chunk-from`.  The first invocation
     receives indexes for at most $available elements. Subsequent
     invocations switch to $max-available elements (which by default is
-    the same as $available).  Returns $to - $from.
+    the same as $available).
+
+  Returns $to - $from.
   */
   static chunk-up from/int to/int available/int max-available/int=available [block] -> int:
     result := to - from
@@ -901,6 +912,7 @@ abstract class Array_ extends List:
     collection.do: result[index++] = it
     return result
 
+  /** See $super. */
   copy from/int=0 to/int=size -> Array_:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result-size := to - from
@@ -1159,6 +1171,9 @@ interface ByteArray extends io.Data:
     size.repeat: result[it] = initializer.call it
     return result
 
+  /**
+  Creates a new byte array from the given $bytes.
+  */
   constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
     if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
     size := to - from
@@ -1195,10 +1210,8 @@ interface ByteArray extends io.Data:
 
   /**
   Iterates over all bytes in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none
+  do --reversed/True [block] -> none
 
   /**
   Whether all bytes satisfy the given $predicate.
@@ -1411,11 +1424,8 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -2514,10 +2524,8 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   /**
   Variant of $(Collection.do [block]).
   Iterates over the elements of this collection in reverse order.
-  The flag $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2945,11 +2953,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Variant of $(do [block]).
   Iterates over all key/value pairs in reverse order.
-  The flag $reversed must be true.
   Users must not modify this instance while iterating over it.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2964,11 +2970,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each key of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $keys must be true.
   */
-  do --keys/bool --reversed/bool=false [block] -> none:
-    if keys != true: throw "Bad Argument"
+  do --keys/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call key
     else:
@@ -2977,11 +2980,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each value of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $values must be true.
   */
-  do --values/bool --reversed/bool=false [block] -> none:
-    if values != true: throw "Bad Argument"
+  do --values/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call value
     else:
@@ -3013,8 +3013,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --values/bool [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3027,8 +3026,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --values/bool --initial [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True --initial [block]:
     result := initial
     do --values:
       result = block.call result it
@@ -3038,8 +3036,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --keys/bool [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3052,8 +3049,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --keys/bool --initial [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True --initial [block]:
     result := initial
     do --keys:
       result = block.call result it
@@ -3075,21 +3071,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether at least one key in the map satisfies the given $predicate.
-  The flag $keys must be true.
   Returns false, if the map is empty.
   */
-  any --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  any --keys/True [predicate] -> bool:
     do --keys: if predicate.call it: return true
     return false
 
   /**
   Whether at least one value in the map satisfies the given $predicate.
-  The flag $values must be true.
   Returns false, if the map is empty.
   */
-  any --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  any --values/True [predicate] -> bool:
     do --values: if predicate.call it: return true
     return false
 
@@ -3104,21 +3096,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether all keys in the map satisfy the given $predicate.
-  The flag $keys must be true.
   Returns true, if the map is empty.
   */
-  every --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  every --keys/True [predicate] -> bool:
     do --keys: if not predicate.call it: return false
     return true
 
   /**
   Whether all values in the map satisfy the given $predicate.
-  The flag $values must be true.
   Returns true, if the map is empty.
   */
-  every --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  every --values/True [predicate] -> bool:
     do --values: if not predicate.call it: return false
     return true
 
@@ -3152,14 +3140,11 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Maps the values of this instance.
 
-  The flag $in-place must be true.
-
   Invokes the given $block on each key/value pair and replaces the old value with
     the result of the call.
 
   */
-  map --in-place/bool [block] -> none:
-    if in-place != true: throw "Bad Argument"
+  map --in-place/True [block] -> none:
     limit := backing_ ? backing_.size : 0
     for i := 0; i < limit; i += STEP_:
       key := backing_[i]
@@ -3170,7 +3155,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new map if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case removes the elements
+    that don't match the $predicate.
+  Returns a new map if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -3262,57 +3249,101 @@ class Deque extends List implements Collection:
     backing_ = List.from collection
     super.from-subclass
 
+  /// See $Collection.size.
   size -> int:
     return backing_.size - first_
 
+  /// See $Collection.is-empty.
   is-empty -> bool:
     return backing_.size == first_
 
+  /**
+  Adds the given $element to the end of this instance.
+  */
   add element -> none:
     backing_.add element
 
+  /**
+  Adds all elements of the given $collection to this instance.
+  */
   add-all collection/Collection -> none:
     backing_.add-all collection
 
+  /// See $Collection.do.
   do [block]:
     backing_[first_..].do block
 
+  /**
+  Variant of $(Collection.do [block]).
+
+  Iterates over the elements of this collection in reverse order.
+  */
   do --reversed/bool [block] -> none:
     backing_[first_..].do --reversed block
 
+  /// See $Collection.any.
   any [predicate] -> bool:
     return backing_[first_..].any predicate
 
+  /// See $Collection.every.
   every [predicate] -> bool:
     return backing_[first_..].every predicate
 
+  /// See $(Collection.reduce [block]).
   reduce [block]:
     return backing_[first_..].reduce block
 
+  /// See $(Collection.reduce --initial [block]).
   reduce --initial [block]:
     return backing_[first_..].reduce --initial=initial block
 
+  /// See $Collection.contains.
   contains element -> bool:
     return backing_[first_..].contains element
 
+  /**
+  Removes all elements.
+  */
   clear -> none:
     backing_.clear
     first_ = 0
 
+  /**
+  The first element of the deque.
+
+  The deque must not be empty.
+  */
   first -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_[first_]
 
+  /**
+  The last element of the deque.
+
+  The deque must not be empty.
+  */
   last -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_.last
 
+  /**
+  Removes the last element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-last -> any:
     if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     result := backing_.remove-last
     shrink-if-needed_
     return result
 
+  /**
+  Removes the first element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-first -> any:
     backing := backing_
     first := first_
@@ -3323,6 +3354,9 @@ class Deque extends List implements Collection:
     shrink-if-needed_
     return result
 
+  /**
+  Inserts the given $element at the beginning of this instance.
+  */
   add-first element -> none:
     first := first_
     if first == 0:
@@ -3338,10 +3372,18 @@ class Deque extends List implements Collection:
     backing_[first] = element
     first_ = first
 
+  /**
+  Returns the element at the given $index.
+  */
   operator [] index/int:
     if index < 0: throw "OUT_OF_BOUNDS"
     return backing_[first_ + index]
 
+  /**
+  Sets the element at the given $index to the given $value.
+
+  The index must be in the range [0, size).
+  */
   operator []= index/int value:
     if index < 0: throw "OUT_OF_BOUNDS"
     backing_[first_ + index] = value
@@ -3354,7 +3396,8 @@ class Deque extends List implements Collection:
     return Deque.from backing_[first_ + from .. first_ + to]
 
   /**
-  Inserts the given $value at the given index.
+  Inserts the given $value at the given index $at.
+
   It is valid to insert at the $size position, in which case this is
     equivalent to $add.  It is also valid to add at the zero position,
     in which case this is equivalent to $add-first.
@@ -3377,7 +3420,8 @@ class Deque extends List implements Collection:
         backing_[at] = value
 
   /**
-  Removes the value at the given index.
+  Removes the value at the given index $at.
+
   It is valid to remove at the $size - 1 position, in which case this is
     equivalent to $remove-last.  It is also valid to remove at the zero
     position, in which case this is equivalent to $remove-first.
@@ -3401,9 +3445,24 @@ class Deque extends List implements Collection:
     backing_[first] = removed
     return result
 
+  /**
+  Resizes the backing store of this instance to the given $new-size.
+
+  Deprecated. Use $reserve instead.
+  */
   resize new-size/int:
     if new-size < 0: throw "OUT_OF_BOUNDS"
     backing_.resize first_ + new-size
+
+  /**
+  Reserves $amount additional space in the backing store of this instance.
+
+  This operation is useful when you know that you will add $amount elements
+    to the deque, and you want to avoid reallocations.
+  */
+  reserve amount/int:
+    if amount < 0: throw "OUT_OF_BOUNDS"
+    backing_.resize (backing_.size + amount)
 
   shrink-if-needed_ -> none:
     backing := backing_

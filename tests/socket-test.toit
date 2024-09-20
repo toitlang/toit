@@ -3,9 +3,9 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .tcp
 import monitor show *
+import net
+import net.modules.tcp
 import net.tcp show Socket
 
 import .io-utils
@@ -20,31 +20,32 @@ expect-error name [code]:
 // Expectations for this test:
 // * Networking can be started using -D<SSID> and -D<PASSWORD> if necessary.
 main:
-  connect-error-test
-  blocking-send-test
-  already-in-use-test
-  io-data-test
+  network := net.open
+  connect-error-test network
+  blocking-send-test network
+  already-in-use-test network
+  io-data-test network
   print "done"
 
-connect-error-test:
+connect-error-test network/net.Client:
   // Port 47 is reserved/unassigned.
-  socket := TcpSocket
+  socket := tcp.TcpSocket network
   expect-error "onnect": socket.connect "127.0.0.1" 47  // Gives "Connection refused" or "Not connected"
   // This gives EPERM instead on some Linux desktops for some reason.
   // expect "Host name lookup failure": socket.connect "invalid." 8000  // RFC 6761 says this is always an invalid name
 
-already-in-use-test:
+already-in-use-test network/net.Client:
   ready-to-close := Semaphore
   ready := Channel 1
-  task:: listen-on-port ready ready-to-close
+  task:: listen-on-port network ready ready-to-close
   // Wait until the other side is listening.
   port := ready.receive
-  server := TcpServerSocket
+  server := tcp.TcpServerSocket network
   expect-error " in use": server.listen "" port
   ready-to-close.up // Terminate listener. No need to close the server since it isn't connected.
 
-listen-on-port ready ready-to-close:
-  server := TcpServerSocket
+listen-on-port network/net.Client ready ready-to-close:
+  server := tcp.TcpServerSocket network
   server.listen "" 0
   // Tell the other side that we're listening on port.
   ready.send server.local-address.port
@@ -52,10 +53,10 @@ listen-on-port ready ready-to-close:
   ready-to-close.down
   server.close
 
-blocking-send-test:
-  server := TcpServerSocket
+blocking-send-test network/net.Client:
+  server := tcp.TcpServerSocket network
   server.listen "" 0
-  task:: sleepy-reader server.local-address.port
+  task:: sleepy-reader network server.local-address.port
   socket/Socket := server.accept
   writer := socket.out
   100.repeat:
@@ -66,12 +67,12 @@ blocking-send-test:
   socket.close
   server.close
 
-io-data-test:
+io-data-test network/net.Client:
   ITERATIONS ::= 500
   2.repeat: | iteration |
-    server := TcpServerSocket
+    server := tcp.TcpServerSocket network
     server.listen "" 0
-    task:: sleepy-reader server.local-address.port --iterations=ITERATIONS
+    task:: sleepy-reader network server.local-address.port --iterations=ITERATIONS
     socket/Socket := server.accept
     writer := socket.out
     if iteration == 0:
@@ -88,8 +89,8 @@ io-data-test:
     socket.close
     server.close
 
-sleepy-reader port --iterations/int=100:
-  socket := TcpSocket
+sleepy-reader network/net.Client port --iterations/int=100:
+  socket := tcp.TcpSocket network
   socket.connect "localhost" port
   done := false
   index := 0
