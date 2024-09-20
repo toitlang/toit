@@ -1,15 +1,24 @@
+tests/negative/setting-parameter-statics-test.toit:6:5: warning: Field-storing parameters in non-constructors are deprecated
+foo .x:
+    ^~
 tests/negative/setting-parameter-statics-test.toit:6:5: error: Field-storing parameter not allowed in static functions
 foo .x:
     ^~
 tests/negative/setting-parameter-statics-test.toit:7:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
+tests/negative/setting-parameter-statics-test.toit:13:14: warning: Field-storing parameters in non-constructors are deprecated
+  static bar .y:
+             ^~
 tests/negative/setting-parameter-statics-test.toit:13:14: error: Field-storing parameter not allowed in static functions
   static bar .y:
              ^~
 tests/negative/setting-parameter-statics-test.toit:14:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
+tests/negative/setting-parameter-statics-test.toit:16:14: warning: Field-storing parameters in non-constructors are deprecated
+  static gee .z:
+             ^~
 tests/negative/setting-parameter-statics-test.toit:16:14: error: Field-storing parameter not allowed in static functions
   static gee .z:
              ^~

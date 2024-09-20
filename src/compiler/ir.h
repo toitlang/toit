@@ -285,9 +285,10 @@ class Class : public Node {
     MIXIN,
   };
 
-  Class(Symbol name, Kind kind, bool is_abstract, Source::Range range)
+  Class(Symbol name, Kind kind, bool is_abstract, Source::Range range, Source::Range outline_range)
       : name_(name)
       , range_(range)
+      , outline_range_(outline_range)
       , is_runtime_class_(false)
       , is_deprecated_(false)
       , super_(null)
@@ -298,7 +299,9 @@ class Class : public Node {
       , id_(-1)
       , start_id_(-1)
       , end_id_(-1)
-      , total_field_count_(-1) {}
+      , total_field_count_(-1) {
+    ASSERT(outline_range.contains(range));
+  }
   IMPLEMENTS(Class)
 
   Symbol name() const { return name_; }
@@ -413,6 +416,7 @@ class Class : public Node {
   bool is_mixin() const { return kind_ == MIXIN; }
 
   Source::Range range() const { return range_; }
+  Source::Range outline_range() const { return outline_range_; }
 
   /// These functions are set by the tree-shaker.
   bool is_instantiated() const { return is_instantiated_; }
@@ -435,6 +439,7 @@ class Class : public Node {
  private:
   const Symbol name_;
   Source::Range range_;
+  Source::Range outline_range_;
   bool is_runtime_class_;
   bool is_deprecated_;
   Class* super_;
@@ -513,7 +518,8 @@ class Method : public Node {
                   const ResolutionShape& shape,
                   bool is_abstract,
                   MethodKind kind,
-                  Source::Range range)
+                  Source::Range range,
+                  Source::Range outline_range)
       : name_(name)
       , holder_(holder)
       , return_type_(Type::invalid())
@@ -526,6 +532,7 @@ class Method : public Node {
       , is_deprecated_(false)
       , kind_(kind)
       , range_(range)
+      , outline_range_(outline_range)
       , body_(null)
       , index_(-1) {}
 
@@ -534,7 +541,8 @@ class Method : public Node {
                   const PlainShape& shape,
                   bool is_abstract,
                   MethodKind kind,
-                  Source::Range range)
+                  Source::Range range,
+                  Source::Range outline_range)
       : name_(name)
       , holder_(holder)
       , return_type_(Type::invalid())
@@ -547,6 +555,7 @@ class Method : public Node {
       , is_deprecated_(false)
       , kind_(kind)
       , range_(range)
+      , outline_range_(outline_range)
       , body_(null)
       , index_(-1) {}
 
@@ -651,6 +660,7 @@ class Method : public Node {
   Class* holder() const { return holder_; }
 
   Source::Range range() const { return range_; }
+  Source::Range outline_range() const { return outline_range_; }
 
   virtual bool is_synthetic() const {
     return kind_ == FIELD_INITIALIZER;
@@ -681,6 +691,7 @@ class Method : public Node {
   bool is_deprecated_;
   const MethodKind kind_;
   const Source::Range range_;
+  const Source::Range outline_range_;
 
   List<Parameter*> parameters_;
   Expression* body_;
@@ -710,40 +721,65 @@ class Method : public Node {
 
 class MethodInstance : public Method {
  public:
-  MethodInstance(Symbol name, Class* holder, const ResolutionShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, INSTANCE, range) {}
-  MethodInstance(Symbol name, Class* holder, const PlainShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, INSTANCE, range) {}
-  MethodInstance(Method::MethodKind kind, Symbol name, Class* holder, const ResolutionShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, kind, range) {}
+  MethodInstance(Symbol name,
+                 Class* holder,
+                 const ResolutionShape& shape,
+                 bool is_abstract,
+                 Source::Range range,
+                 Source::Range outline_range)
+      : Method(name, holder, shape, is_abstract, INSTANCE, range, outline_range) {}
+  MethodInstance(Symbol name,
+                 Class* holder,
+                 const PlainShape& shape,
+                 bool is_abstract,
+                 Source::Range range,
+                 Source::Range outline_range)
+      : Method(name, holder, shape, is_abstract, INSTANCE, range, outline_range) {}
+  MethodInstance(Method::MethodKind kind,
+                 Symbol name,
+                 Class* holder,
+                 const ResolutionShape& shape,
+                 bool is_abstract,
+                 Source::Range range,
+                 Source::Range outline_range)
+      : Method(name, holder, shape, is_abstract, kind, range, outline_range) {}
   IMPLEMENTS(MethodInstance)
 };
 
 class MonitorMethod : public MethodInstance {
  public:
-  MonitorMethod(Symbol name, Class* holder, const ResolutionShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) {}
+  MonitorMethod(Symbol name,
+                Class* holder,
+                const ResolutionShape& shape,
+                Source::Range range,
+                Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(MonitorMethod)
 };
 
 class AdapterStub : public MethodInstance {
  public:
-  AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) {}
+  AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(AdapterStub)
 };
 
 class MixinStub : public MethodInstance {
  public:
-  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) {}
+  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(MixinStub)
 };
 
 class IsInterfaceOrMixinStub : public MethodInstance {
  public:
-  IsInterfaceOrMixinStub(Symbol name, Class* holder, const PlainShape& shape, Class* interface_or_mixin, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range)
+  IsInterfaceOrMixinStub(Symbol name,
+                         Class* holder,
+                         const PlainShape& shape,
+                         Class* interface_or_mixin,
+                         Source::Range range,
+                         Source::Range outline_range)
+      : MethodInstance(name, holder, shape, false, range, outline_range)
       , interface_or_mixin_(interface_or_mixin) {}
 
   IMPLEMENTS(IsInterfaceOrMixinStub);
@@ -758,19 +794,28 @@ class IsInterfaceOrMixinStub : public MethodInstance {
 // "MethodStatic". Not completely consistent.
 class MethodStatic : public Method {
  public:
-  MethodStatic(Symbol name, Class* holder, const ResolutionShape& shape, MethodKind kind, Source::Range range)
-      : Method(name, holder, shape, false, kind, range) {}
+  MethodStatic(Symbol name,
+               Class* holder,
+               const ResolutionShape& shape,
+               MethodKind kind,
+               Source::Range range,
+               Source::Range outline_range)
+      : Method(name, holder, shape, false, kind, range, outline_range) {}
   IMPLEMENTS(MethodStatic)
 };
 
 class Constructor : public Method {
  public:
-  Constructor(Symbol name, Class* klass, const ResolutionShape& shape, Source::Range range)
-      : Method(name, klass, shape, false, CONSTRUCTOR, range) {}
+  Constructor(Symbol name,
+              Class* klass,
+              const ResolutionShape& shape,
+              Source::Range range,
+              Source::Range outline_range)
+      : Method(name, klass, shape, false, CONSTRUCTOR, range, outline_range) {}
 
   // Synthetic default constructor.
-  Constructor(Symbol name, Class* klass, Source::Range range)
-      : Method(name, klass, ResolutionShape(0).with_implicit_this(), false, CONSTRUCTOR, range)
+  Constructor(Symbol name, Class* klass, Source::Range range, Source::Range outline_range)
+      : Method(name, klass, ResolutionShape(0).with_implicit_this(), false, CONSTRUCTOR, range, outline_range)
       , is_synthetic_(true) {}
   IMPLEMENTS(Constructor)
 
@@ -783,13 +828,13 @@ class Constructor : public Method {
 
 class Global : public Method {
  public:
-  Global(Symbol name, bool is_final, Source::Range range)
-      : Method(name, null, ResolutionShape(0), false, GLOBAL_INITIALIZER, range)
+  Global(Symbol name, bool is_final, Source::Range range, Source::Range outline_range)
+      : Method(name, null, ResolutionShape(0), false, GLOBAL_INITIALIZER, range, outline_range)
       , is_final_(is_final)
       , is_lazy_(true)
       , global_id_(-1) {}
-  Global(Symbol name, Class* holder, bool is_final, Source::Range range)
-      : Method(name, holder, ResolutionShape(0), false, GLOBAL_INITIALIZER, range)
+  Global(Symbol name, Class* holder, bool is_final, Source::Range range, Source::Range outline_range)
+      : Method(name, holder, ResolutionShape(0), false, GLOBAL_INITIALIZER, range, outline_range)
       , is_final_(is_final)
       , is_lazy_(true)
       , global_id_(-1) {}
@@ -844,14 +889,15 @@ class Global : public Method {
 
 class Field : public Node {
  public:
-  Field(Symbol name, Class* holder, bool is_final, Source::Range range)
+  Field(Symbol name, Class* holder, bool is_final, Source::Range range, Source::Range outline_range)
       : name_(name)
       , holder_(holder)
       , type_(Type::invalid())
       , is_final_(is_final)
       , is_deprecated_(false)
       , resolved_index_(-1)
-      , range_(range) {}
+      , range_(range)
+      , outline_range_(outline_range) {}
   IMPLEMENTS(Field)
 
   Symbol name() const { return name_; }
@@ -871,6 +917,7 @@ class Field : public Node {
   }
 
   Source::Range range() const { return range_; }
+  Source::Range outline_range() const { return outline_range_; }
 
  public:
   // Reserved for compiler/bytegen.
@@ -888,16 +935,18 @@ class Field : public Node {
   bool is_deprecated_;
   int resolved_index_;
   Source::Range range_;
+  Source::Range outline_range_;
 };
 
 class FieldStub : public MethodInstance {
  public:
-  FieldStub(Field* field, Class* holder, bool is_getter, Source::Range range)
+  FieldStub(Field* field, Class* holder, bool is_getter, Source::Range range, Source::Range outline_range)
       : MethodInstance(field->name(),
                        holder,
                        ResolutionShape::for_instance_field_accessor(is_getter),
                        false,
-                       range)
+                       range,
+                       outline_range)
       , field_(field)
       , checked_type_(Type::invalid()) {}
   IMPLEMENTS(FieldStub)
@@ -1356,21 +1405,29 @@ class Parameter : public Local {
             bool is_block,
             int index,
             bool has_default_value,
+            Source::Range default_value_range,
             Source::Range range)
-      : Parameter(name, type, is_block, index, -1, has_default_value, range) {}
+      : Parameter(name, type, is_block, index, -1, has_default_value, default_value_range, range) {}
   Parameter(Symbol name,
             Type type,
             bool is_block,
             int index,
             int original_index,
             bool has_default_value,
+            Source::Range default_value_range,
             Source::Range range)
       : Local(name, false, is_block, type, range)  // By default parameters are not final.
       , has_default_value_(has_default_value)
+      , default_value_range_(default_value_range)
       , original_index_(original_index) {
     index_ = index;
   }
   IMPLEMENTS(Parameter)
+
+  /// The range of the default value (if one exists).
+  /// This range is used for toitdoc generation and is not maintained during transformations.
+  /// Once the summaries have been generated, this value shouldn't be used anymore.
+  Source::Range default_value_range() const { return default_value_range_; }
 
   bool has_default_value() const { return has_default_value_; }
   void set_has_default_value(bool new_value) { has_default_value_ = new_value; }
@@ -1382,6 +1439,7 @@ class Parameter : public Local {
 
  private:
   bool has_default_value_;
+  Source::Range default_value_range_;
   int original_index_;
 };
 
@@ -1395,6 +1453,7 @@ class CapturedLocal : public Parameter {
                   false,       // Unused, since we forward to the captured local.
                   index,
                   false,
+                  Source::Range::invalid(),
                   range)
       , captured_(captured) {}
   IMPLEMENTS(CapturedLocal)
@@ -1695,6 +1754,7 @@ class Typecheck : public Expression {
     AS_CHECK,
     PARAMETER_AS_CHECK,
     LOCAL_AS_CHECK,
+    GLOBAL_AS_CHECK,
     RETURN_AS_CHECK,
     FIELD_INITIALIZER_AS_CHECK,
     FIELD_AS_CHECK,
@@ -1720,6 +1780,7 @@ class Typecheck : public Expression {
       case AS_CHECK:
       case PARAMETER_AS_CHECK:
       case LOCAL_AS_CHECK:
+      case GLOBAL_AS_CHECK:
       case RETURN_AS_CHECK:
       case FIELD_INITIALIZER_AS_CHECK:
       case FIELD_AS_CHECK:

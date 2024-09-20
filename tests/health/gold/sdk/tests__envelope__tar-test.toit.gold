@@ -1,0 +1,3 @@
+tests/envelope/tar-test.toit:27:11: warning: Deprecated 'parse'
+      uuid.parse file-name
+          ^~~~~~
