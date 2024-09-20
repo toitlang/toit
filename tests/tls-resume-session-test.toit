@@ -5,10 +5,13 @@
 import certificate_roots
 import encoding.tison
 import expect show *
-import tls
+import net
 import net.modules.dns
-import .tcp as tcp
+import net.modules.tcp
 import net.x509 as net
+import tls
+
+network := net.open
 
 main:
   certificate-roots.install-common-trusted-roots
@@ -40,7 +43,7 @@ test-site host/string --read-data/bool=true -> none:
       // too fast the session hasn't reached the store and resume fails.
       sleep --ms=200
 
-    raw := tcp.TcpSocket
+    raw := tcp.TcpSocket network
     raw.connect host port
     socket/tls.Socket := tls.Socket.client raw
       // Install the roots needed.

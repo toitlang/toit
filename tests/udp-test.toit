@@ -3,44 +3,45 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .udp as udp
-import net
-import net.udp as net
 import monitor
-import .dns as dns
+import net
+import net.modules.dns
+import net.modules.udp
+import net.udp as net
+
 import .io-utils
 
 BROADCAST-ADDRESS ::= net.IpAddress.parse "255.255.255.255"
 
 main:
-  ping-ping-test
-  ping-ping-timeout-test
-  io-data-test
-  broadcast-test
-  close-test
+  network := net.open
+  ping-ping-test network
+  ping-ping-timeout-test network
+  io-data-test network
+  broadcast-test network
+  close-test network
 
-ping-ping-test:
+ping-ping-test network/net.Client:
   times := 10
 
   ready := monitor.Channel 1
-  task:: echo-responder times ready
+  task:: echo-responder network times ready
   port := ready.receive
 
-  socket := udp.Socket "127.0.0.1" 0
+  socket := udp.Socket network "127.0.0.1" 0
 
   socket.connect
-    net.SocketAddress
-      net.IpAddress.parse "127.0.0.1"
-      port
+      net.SocketAddress
+          net.IpAddress.parse "127.0.0.1"
+          port
 
   for i := 0; i < times; i++:
     socket.write "testing"
     expect-equals "testing" socket.read.to-string
   socket.close
 
-echo-responder times ready:
-  socket := udp.Socket "127.0.0.1" 0
+echo-responder network/net.Client times ready:
+  socket := udp.Socket network "127.0.0.1" 0
   ready.send socket.local-address.port
 
   for i := 0; i < times; i++:
@@ -60,19 +61,19 @@ class Timer:
     resent = true
     return this
 
-ping-ping-timeout-test:
+ping-ping-timeout-test network/net.Client:
   times := 10
 
   ready := monitor.Channel 1
-  task:: echo-resend-responder times ready
+  task:: echo-resend-responder network times ready
   port := ready.receive
 
-  socket := udp.Socket "127.0.0.1" 0
+  socket := udp.Socket network "127.0.0.1" 0
 
   socket.connect
-    net.SocketAddress
-      net.IpAddress.parse "127.0.0.1"
-      port
+      net.SocketAddress
+          net.IpAddress.parse "127.0.0.1"
+          port
 
   for i := 0; i < times; i++:
     timer := Timer "testing" socket
@@ -87,20 +88,20 @@ ping-ping-timeout-test:
     else:
       expect e != null
 
-io-data-test:
+io-data-test network/net.Client:
   times := 10
 
   ready := monitor.Channel 1
   // Also echo the large message after the loop.
-  task:: echo-responder (times + 1) ready
+  task:: echo-responder network (times + 1) ready
   port := ready.receive
 
-  socket := udp.Socket "127.0.0.1" 0
+  socket := udp.Socket network "127.0.0.1" 0
 
   socket.connect
-    net.SocketAddress
-      net.IpAddress.parse "127.0.0.1"
-      port
+      net.SocketAddress
+          net.IpAddress.parse "127.0.0.1"
+          port
 
   for i := 0; i < times; i++:
     socket.write (FakeData "testing")
@@ -112,8 +113,8 @@ io-data-test:
 
   socket.close
 
-echo-resend-responder times ready:
-  socket := udp.Socket "127.0.0.1" 0
+echo-resend-responder network/net.Client times ready:
+  socket := udp.Socket network "127.0.0.1" 0
   ready.send socket.local-address.port
 
   for i := 0; i < times; i++:
@@ -123,14 +124,14 @@ echo-resend-responder times ready:
 
   socket.close
 
-broadcast-test:
+broadcast-test network/net.Client:
   times := 10
 
   ready := monitor.Channel 1
-  task:: broadcast-receiver ready
+  task:: broadcast-receiver network ready
   port := ready.receive
 
-  socket := udp.Socket "0.0.0.0" 0
+  socket := udp.Socket network "0.0.0.0" 0
 
   socket.broadcast = true
 
@@ -145,8 +146,8 @@ broadcast-test:
 
   socket.close
 
-broadcast-receiver ready:
-  socket := udp.Socket "0.0.0.0" 0
+broadcast-receiver network/net.Client ready:
+  socket := udp.Socket network "0.0.0.0" 0
   socket.broadcast = true
 
   ready.send socket.local-address.port
@@ -157,11 +158,10 @@ broadcast-receiver ready:
 
   socket.close
 
-
-close-test:
+close-test network/net.Client:
   ready := monitor.Channel 1
 
-  socket := udp.Socket "0.0.0.0" 0
+  socket := udp.Socket network "0.0.0.0" 0
 
   task::
     packet := socket.receive
@@ -172,10 +172,10 @@ close-test:
     expect-equals null packet
 
   socket.send
-    net.Datagram #['f', 'o', 'o']
-      net.SocketAddress
-        net.IpAddress.parse "127.0.0.1"
-        socket.local-address.port
+      net.Datagram #['f', 'o', 'o']
+          net.SocketAddress
+              net.IpAddress.parse "127.0.0.1"
+              socket.local-address.port
 
   ready.receive
   sleep --ms=100

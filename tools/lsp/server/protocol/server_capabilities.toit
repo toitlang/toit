@@ -15,6 +15,8 @@
 
 import ..rpc
 
+import .code-action  // For Toitdocs.
+import .initialization  // For Toitdocs.
 import .experimental
 
 class InitializationResult extends MapWrapper:
@@ -22,7 +24,7 @@ class InitializationResult extends MapWrapper:
   Creates a response object for initialization.
 
   Parameters:
-  - [capabilities]: the capabilities of the server.
+  - $capabilities: the capabilities of the server.
   */
   constructor
       capabilities /ServerCapabilities:
@@ -58,9 +60,9 @@ class CompletionOptions extends MapWrapper:
   Creates a response object for completion options.
 
   Parameters:
-  - [resolve_provider]: whether the server provides support to resolve
+  - $resolve_provider: whether the server provides support to resolve
     additional information for a completion item.
-  - [trigger_characters]: the characters that trigger completion automatically.
+  - $trigger_characters: the characters that trigger completion automatically.
   */
   constructor
       --resolve-provider   /bool?             = null
@@ -77,7 +79,7 @@ class SignatureHelpOptions extends MapWrapper:
   Creates a response object for signature-help options.
 
   Parameters:
-  - [trigger_characters]: the characters that trigger signature help automatically.
+  - $trigger_characters: the characters that trigger signature help automatically.
   */
   constructor
       trigger-characters /List?/*<string>*/ = null:
@@ -91,8 +93,8 @@ class CodeActionOptions extends MapWrapper:
   Creates a response object for code-action options.
 
   Parameters:
-  - [code_action_kinds]: The [CodeActionKinds] that this server may return.
-    The list of kinds may be generic, such as `CodeActionKind.Refactor`, or the server
+  - $code_action_kinds: The $CodeActionKind s that this server may return.
+    The list of kinds may be generic, such as $CodeActionKind.refactor, or the server
       may list out every specific kind they provide.
   */
   constructor
@@ -108,7 +110,7 @@ class CodeLensOptions extends MapWrapper:
   Creates a response object for code-lens options.
 
   Parameters:
-  - [resolve_provider]: Whether code lens has a resolve provider as well.
+  - $resolve_provider: Whether code lens has a resolve provider as well.
   */
   constructor
       resolve-provider /bool? = null:
@@ -122,9 +124,9 @@ class DocumentOnTypeFormattingOptions extends MapWrapper:
   Creates a response object for document-on-type-formatting options.
 
   Parameters:
-  - [first_trigger_character]: a character on which formatting should be
+  - $first_trigger_character: a character on which formatting should be
     triggered, like `}`.
-  - [more_trigger_characters]: more trigger characters.
+  - $more_trigger_characters: more trigger characters.
   */
   constructor
       first-trigger-character /string            = null
@@ -140,7 +142,7 @@ class RenameOptions extends MapWrapper:
   Creates a response object for rename options.
 
   Parameters:
-  - [prepare_provider]: whether renames should be checked and tested before being executed.
+  - $prepare_provider: whether renames should be checked and tested before being executed.
   */
   constructor
       prepare-provider /bool? = null:
@@ -154,7 +156,7 @@ class DocumentLinkOptions extends MapWrapper:
   Creates a response object for document-link options.
 
   Parameters:
-  - [resolve_provider]: whether document links have a resolve provider as well.
+  - $resolve_provider: whether document links have a resolve provider as well.
   */
   constructor
       resolve-provider /bool? = null:
@@ -168,7 +170,7 @@ class ExecuteCommandOptions extends MapWrapper:
   Creates a response object for execute-command options.
 
   Parameters:
-  - [commands]: the commands to be executed on the server
+  - $commands: the commands to be executed on the server
   */
   constructor
       commands /List/*<string>*/ = null:
@@ -182,7 +184,7 @@ class SaveOptions extends MapWrapper:
   Creates a response object for save options.
 
   Parameters:
-  - [include_text]: whether the client is supposed to include the content on save.
+  - $include_text: whether the client is supposed to include the content on save.
   */
   constructor
       --include-text /bool? = null:
@@ -203,12 +205,12 @@ class TextDocumentSyncOptions extends MapWrapper:
   Creates a response object for text-document-sync options.
 
   Parameters:
-  - [open_close]: whether open and close notifications are sent to the server.
-  - [change]: Which change notifications (a [TextDocumentSyncKind]) are sent to the server.
-    If omitted it defaults to [TextDocumentSyncKind.none].
-  - [will_save]: whether will-save notifications are sent to the server.
-  - [will_save_wait_until]: whether will-save-wait-until requests are sent to the server.
-  - [save]: the save notifications that are sent to the server.
+  - $open_close: whether open and close notifications are sent to the server.
+  - $change: Which change notifications (a $TextDocumentSyncKind) are sent to the server.
+    If omitted it defaults to $TextDocumentSyncKind.none.
+  - $will_save: whether will-save notifications are sent to the server.
+  - $will_save_wait_until: whether will-save-wait-until requests are sent to the server.
+  - $save: the save notifications that are sent to the server.
   */
   constructor
       --open-close           /bool?        = null
@@ -231,8 +233,8 @@ class StaticRegistrationOptions extends MapWrapper:
   Creates a response object for static-registration options.
 
   Parameters:
-  - [id]: the id used to register the request. The id can be used to deregister
-    the request again. See also [Registration.id].
+  - $id: the id used to register the request. The id can be used to deregister
+    the request again.
   */
   constructor
       id /string? = null:
@@ -251,14 +253,6 @@ class SemanticTokensLegend extends MapWrapper:
 class SemanticTokensOptions extends MapWrapper:
   /**
   Creates a response object for semantic-tokens options.
-
-  Parameters:
-  - [open_close]: whether open and close notifications are sent to the server.
-  - [change]: Which change notifications (a [TextDocumentSyncKind]) are sent to the server.
-    If omitted it defaults to [TextDocumentSyncKind.none].
-  - [will_save]: whether will-save notifications are sent to the server.
-  - [will_save_wait_until]: whether will-save-wait-until requests are sent to the server.
-  - [save]: the save notifications that are sent to the server.
   */
   constructor
       --legend /SemanticTokensLegend
@@ -275,8 +269,8 @@ class WorkspaceFoldersServerCapabilities extends MapWrapper:
   Creates a response object for workspace server-capabilities.
 
   Parameters:
-  - [supported]: whether the server has support for workspace folders.
-  - [change_notifications]: whether the server wants to receive workspace folder
+  - $supported: whether the server has support for workspace folders.
+  - $change_notifications: whether the server wants to receive workspace folder
     change notifications.
     If a strings is provided the string is treated as a ID
       under which the notification is registered on the client
@@ -297,7 +291,7 @@ class WorkspaceServerCapabilities extends MapWrapper:
   Creates a response object for workspace server-capabilities.
 
   Parameters:
-  - [workspace_folders]: The workspace-folder support.
+  - $workspace_folders: The workspace-folder support.
   */
   constructor
       workspace-folders /WorkspaceFoldersServerCapabilities? = null:
@@ -310,40 +304,39 @@ class ServerCapabilities extends MapWrapper:
   Creates a response object for server capabilities.
 
   Parameters:
-  - [text_document_sync]: defines how text documents are synced.
+  - $text_document_sync: defines how text documents are synced.
     If omitted it defaults to no synchronization.
-  - [hover_provider]: whether the server provides hover support.
-  - [completion_provider]: the completion support the server provides.
-  - [signature_help_provider]: the signature-help support the server provides.
-  - [definition_provider]: whether the server provides definition support.
-  - [type_definition_provider]: whether the server provides goto-type-definition support.
+  - $hover_provider: whether the server provides hover support.
+  - $completion_provider: the completion support the server provides.
+  - $signature_help_provider: the signature-help support the server provides.
+  - $definition_provider: whether the server provides definition support.
+  - $type_definition_provider: whether the server provides goto-type-definition support.
     TODO(florian): this can be either a boolean or a class that implements both
       TextDocumentRegistrationOptions & StaticRegistrationOptions. For this to work we
       need to have interfaces (and then figure out how to type it.)
-  - [implementation_provider]: whether the server provides goto-implementation support.
-    TODO(florian): Same as for [type_definition_provider].
-  - [references_provider]: whether the server provides find-references support.
-  - [document_highlight_provider]: whether the server provides document-highlight support.
-  - [document_symbol_provider]: whether the server provides document-symbol support.
-  - [workspace_symbol_provider]: whether the server provides workspace-symbol support.
-  - [code_action_provider]: the code-action support the server provides. The
-      `CodeActionOptions` return type is only valid if the client signals code action
-      literal support via the property
-      [CodeActionLiteralSupportCapabilities.code_action_literal_support].
-  - [code_lens_provider]: the code-lens support the server provides.
-  - [document_formatting_provider]: whether the server provides document formatting.
-  - [document_range_formatting_provider]: whether the server provides document range formatting.
-  - [document_on_type_formatting_provider]: the document-on-type-formatting options the
+  - $implementation_provider: whether the server provides goto-implementation support.
+    TODO(florian): Same as for $type_definition_provider.
+  - $references_provider: whether the server provides find-references support.
+  - $document_highlight_provider: whether the server provides document-highlight support.
+  - $document_symbol_provider: whether the server provides document-symbol support.
+  - $workspace_symbol_provider: whether the server provides workspace-symbol support.
+  - $code_action_provider: the code-action support the server provides. The
+      $CodeActionOptions return type is only valid if the client signals code action
+      literal support via the property $CodeActionCapabilities.code_action_literal_support.
+  - $code_lens_provider: the code-lens support the server provides.
+  - $document_formatting_provider: whether the server provides document formatting.
+  - $document_range_formatting_provider: whether the server provides document range formatting.
+  - $document_on_type_formatting_provider: the document-on-type-formatting options the
     server supports.
-  - [rename_provider]: the renaming support the server provides.
+  - $rename_provider: the renaming support the server provides.
     RenameOptions may only be specified if the client states that it supports
-    [RenameCapabilities.prepare_support] in its initial `initialize` request.
-  - [document_link_provider]: the document-link support the server provides.
-  - [color_provider]: the color support the server provides.
-  - [folding_range_provider]: the folding-provider the server supports.
-  - [execute_command_provider]: the execute-command support the server supports.
-  - [workspace]: the workspace-specific server capabilities.
-  - [experimental]: experimental server capabilities.
+    $RenameCapabilities.prepare_support in its initial `initialize` request.
+  - $document_link_provider: the document-link support the server provides.
+  - $color_provider: the color support the server provides.
+  - $folding_range_provider: the folding-provider the server supports.
+  - $execute_command_provider: the execute-command support the server supports.
+  - $workspace: the workspace-specific server capabilities.
+  - $experimental: experimental server capabilities.
   */
   constructor
       --text-document-sync       /any                   = null /* TextDocumentSyncOptions | int | Null */

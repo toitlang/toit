@@ -18,7 +18,7 @@ import tar show *
 
 import .project-uri
 import .summary
-import .uri-path-translator
+import .uri-path-translator as translator
 import .utils
 
 /**
@@ -51,10 +51,9 @@ class Documents:
   */
   analyzed-documents_ /Map/*<string, AnalyzedDocuments>*/ ::= {:}
 
-  translator_ /UriPathTranslator ::= ?
   error-reporter_ / Lambda ::= ?
 
-  constructor .translator_ --error-reporter/Lambda=(:: /* do nothing */):
+  constructor --error-reporter/Lambda=(:: /* do nothing */):
     error-reporter_ = error-reporter
 
   /**
@@ -66,14 +65,14 @@ class Documents:
   project-uri-for --uri/string --recompute/bool=false -> string:
     project-uri := project-uris_.get uri
     if project-uri and not recompute: return project-uri
-    computed := compute-project-uri --uri=uri --translator=translator_
+    computed := compute-project-uri --uri=uri
     project-uris_[uri] = computed
     if not project-uri: return computed
     // Recompute the project-uri for all documents that are in the same project.
     // A user might have added or removed a package.{yaml|lock} file.
     project-uris_.map --in-place: | document-uri/string document-project-uri/string |
       if document-project-uri == project-uri:
-        compute-project-uri --uri=document-uri --translator=translator_
+        compute-project-uri --uri=document-uri
       else:
         document-project-uri
     return computed
@@ -90,7 +89,10 @@ class Documents:
   If the object doesn't exist yet, it is created.
   */
   analyzed-documents-for --project-uri/string -> AnalyzedDocuments:
-    return analyzed-documents_.get project-uri --init=: (AnalyzedDocuments translator_ --error-reporter=error-reporter_)
+    return analyzed-documents_.get project-uri --init=: (AnalyzedDocuments --error-reporter=error-reporter_)
+
+  all-project-uris -> List:
+    return analyzed-documents_.keys
 
   did-open --uri/string content/string? revision/int -> none:
     document/OpenedDocument? := opened-documents_.get uri
@@ -126,7 +128,7 @@ class Documents:
     return opened-documents_.get uri
 
   get-opened --path/string -> OpenedDocument?:
-    return get-opened --uri=(translator_.to-uri path)
+    return get-opened --uri=(translator.to-uri path)
 
   do-opened [block] -> none:
     opened-documents_.do: |uri doc| block.call doc
@@ -141,7 +143,7 @@ class Documents:
   write-as-tar writer -> none:
     tar := Tar writer
     opened-documents_.do: |uri entry/OpenedDocument|
-      tar.add (translator_.to-path entry.uri) entry.content
+      tar.add (translator.to-path entry.uri) entry.content
     tar.close --no-close-writer
 
 /**
@@ -152,10 +154,9 @@ class AnalyzedDocuments:
   // Note that URIs might be in more than one project and thus $AnalyzedDocuments object.
   documents_ /Map/*<Map<string, AnalyzedDocument>>*/ ::= {:}
 
-  translator_ /UriPathTranslator ::= ?
   error-reporter_ / Lambda ::= ?
 
-  constructor .translator_ --error-reporter/Lambda:
+  constructor --error-reporter/Lambda:
     error-reporter_ = error-reporter
 
   /**
@@ -241,7 +242,15 @@ class AnalyzedDocuments:
     return result
 
   get --uri/string -> AnalyzedDocument?: return documents_.get uri
-  get --path/string -> AnalyzedDocument?: return get --uri=(translator_.to-uri path)
+  get --path/string -> AnalyzedDocument?: return get --uri=(translator.to-uri path)
+
+  /**
+  Extracts the summaries of the documents.
+  Returns a map from document URI to the summary (of type $Module).
+  */
+  summaries -> Map:
+    return documents_.map: | _ document/AnalyzedDocument|
+      document.summary
 
 /**
 A document that is opened in the editor and thus has content that isn't

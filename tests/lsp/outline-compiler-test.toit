@@ -11,9 +11,7 @@ import expect show *
 
 main args:
   run-client-test args: test it "$(directory.cwd)/outline.toit"
-  run-client-test --use-toitlsp args: test it "$(directory.cwd)/outline.toit"
   run-client-test args: test it "$(directory.cwd)/error-outline.toit"
-  run-client-test --use-toitlsp args: test it "$(directory.cwd)/error-outline.toit"
 
 class ExpectedSymbol:
   static hash-code-counter := 0

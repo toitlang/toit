@@ -301,8 +301,8 @@ monitor Channel:
 
   /**
   Receives a message from the channel.
-  If no message is ready, and $blocking is true, blocks until another tasks
-    sends a message through $send.
+  If no message is ready, and $blocking is true (the default), blocks until
+    another tasks sends a message through $send.
   If no message is ready, and $blocking is false, returns null.
   If multiple tasks are blocked waiting for a new value, then a $send call only
     unblocks one waiting task.
