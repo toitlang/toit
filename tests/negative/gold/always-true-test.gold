@@ -1,4 +1,4 @@
-tests/negative/always-true-test.toit:11:3: error: Unresolved identifier: 'unresolved'
+tests/negative/always-true-test.toit:15:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 tests/negative/always-true-test.toit:7:9: warning: Condition always evaluates to true
