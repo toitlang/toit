@@ -1,0 +1,9 @@
+jaguar/src/jaguar.toit:164:16: warning: Deprecated 'parse'
+      id = uuid.parse arguments[1]
+               ^~~~~~
+jaguar/src/jaguar.toit:166:47: warning: Deprecated 'parse'
+      id = config.get "id" --if-present=: uuid.parse it
+                                              ^~~~~~
+jaguar/src/jaguar.toit:181:24: warning: Deprecated 'NIL'
+        --id=id or uuid.NIL
+                       ^~~~
