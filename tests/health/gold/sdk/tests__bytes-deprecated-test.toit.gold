@@ -1,7 +1,7 @@
-tests/bytes-deprecated-test.toit:14:18: warning: Class 'Buffer' is deprecated
+tests/bytes-deprecated-test.toit:14:18: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
   buffer := bytes.Buffer
                  ^~~~~~~
-tests/bytes-deprecated-test.toit:50:13: warning: Class 'Writer' is deprecated
+tests/bytes-deprecated-test.toit:50:13: warning: Class 'Writer' is deprecated. Use 'io.Writer' instead
   writer := Writer buffer
             ^~~~~~
 tests/bytes-deprecated-test.toit:63:10: warning: Class 'ByteArrayProducer' is deprecated
