@@ -311,7 +311,7 @@ jobs:
 
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: toitdoc
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
