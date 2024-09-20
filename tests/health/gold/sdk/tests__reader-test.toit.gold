@@ -1,24 +1,24 @@
 tests/reader-test.toit:25:14: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   r := reader.BufferedReader (TestReader ["H".to-byte-array, "ost: ".to-byte-array])
-             ^
+             ^~~~~~~~~~~~~~~
 tests/reader-test.toit:29:13: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   r = reader.BufferedReader (TestReader ["H".to-byte-array, "ost: toitware.com".to-byte-array])
-            ^
+            ^~~~~~~~~~~~~~~
 tests/reader-test.toit:38:14: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   r := reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])
-             ^
+             ^~~~~~~~~~~~~~~
 tests/reader-test.toit:52:13: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   r = reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])
-            ^
+            ^~~~~~~~~~~~~~~
 tests/reader-test.toit:68:14: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   r := reader.BufferedReader (TestReader [ba[..split-point], ba[split-point..]])
-             ^
+             ^~~~~~~~~~~~~~~
 tests/reader-test.toit:130:15: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   br := reader.BufferedReader MultiByteArrayReader
-              ^
+              ^~~~~~~~~~~~~~~
 tests/reader-test.toit:136:16: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   br2 := reader.BufferedReader MultiByteArrayReader
-               ^
+               ^~~~~~~~~~~~~~~
 tests/reader-test.toit:150:16: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
   br3 := reader.BufferedReader MultiByteArrayReader
-               ^
+               ^~~~~~~~~~~~~~~

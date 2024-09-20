@@ -216,12 +216,13 @@ test-entry-timeouts:
   mutex := Mutex
   ready := Semaphore
   done := Semaphore
+  test-done := Semaphore
   value := 0
   // Create a task that owns the mutex for a while.
   task::
     mutex.do:
       ready.up
-      sleep --ms=300
+      test-done.down
   // Try to get hold of the mutex. Make sure it times
   // out as expected.
   ready.down
@@ -241,6 +242,7 @@ test-entry-timeouts:
         unreachable
   // Make sure nobody messed with the proctected value.
   expect-equals 0 value
+  test-done.up
 
 test-channel:
   channel := Channel 5

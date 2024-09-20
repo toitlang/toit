@@ -1,10 +1,10 @@
 tests/negative/deprecation-test.toit:99:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/deprecation-test.toit:5:1: warning: Deprecated library. For testing
+tests/negative/deprecation-test.toit:5:1: warning: Importing deprecated library
 import .deprecation-lib
 ^~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/deprecation-test.toit:6:1: warning: Deprecated library. For testing
+tests/negative/deprecation-test.toit:6:1: warning: Importing deprecated library
 import .deprecation-lib show foo
 ^~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/deprecation-test.toit:79:17: warning: Class 'Deprecated' is deprecated. Do something else instead
@@ -12,7 +12,7 @@ tests/negative/deprecation-test.toit:79:17: warning: Class 'Deprecated' is depre
                 ^~~~~~~~~~
 tests/negative/deprecation-test.toit:80:28: warning: Class 'Deprecated' is deprecated. Do something else instead
   deprecated2 := Deprecated.named
-                           ^
+                           ^~~~~~
 tests/negative/deprecation-test.toit:84:8: warning: Deprecated constructor of 'A'. With `code` in it
   a := A
        ^
@@ -24,7 +24,7 @@ tests/negative/deprecation-test.toit:90:5: warning: Deprecated 'A.some-field'. U
     ^~~~~~~~~~
 tests/negative/deprecation-test.toit:92:4: warning: Deprecated 'A.some-static-field'. Just don't
   A.some-static-field
-   ^
+   ^~~~~~~~~~~~~~~~~~
 tests/negative/deprecation-test.toit:94:3: warning: Deprecated 'global'. Find something else
   global
   ^~~~~~

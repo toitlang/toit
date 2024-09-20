@@ -104,7 +104,7 @@ run-richards tests/type_propagation/richards-test.toit
   1[005] - load outer S2 // {Scheduler}
   3[007] - load field 0 // [{Scheduler}] -> {Null_|LargeInteger_|SmallInteger_}
   5[027] - load smi 23246
-  8[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  8[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   9[089] - return S1 1
 
 [block] in run-richards tests/type_propagation/richards-test.toit
@@ -113,7 +113,7 @@ run-richards tests/type_propagation/richards-test.toit
   1[005] - load outer S2 // {Scheduler}
   3[007] - load field 1 // [{Scheduler}] -> {Null_|LargeInteger_|SmallInteger_}
   5[027] - load smi 9297
-  8[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  8[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   9[089] - return S1 1
 
 Scheduler tests/type_propagation/richards-test.toit
@@ -245,7 +245,7 @@ Scheduler.schedule tests/type_propagation/richards-test.toit
   5[009] - load field local 66 // [{Scheduler}] -> {*}
   7[083] - branch if false T52
  10[009] - load field local 66 // [{Scheduler}] -> {*}
- 12[058] - invoke virtual is-held-or-suspended // [{*}] -> {True_|False_}
+ 12[058] - invoke virtual is-held-or-suspended // [{*}] -> {True|False}
  16[083] - branch if false T30
  19[016] - load local 2
  20[009] - load field local 67 // [{Scheduler}] -> {*}
@@ -300,7 +300,7 @@ Scheduler.release tests/type_propagation/richards-test.toit
  19[060] - invoke virtual get priority // [{*}] -> {Null_|SmallInteger_}
  22[009] - load field local 69 // [{Scheduler}] -> {*}
  24[060] - invoke virtual get priority // [{*}] -> {Null_|SmallInteger_}
- 27[064] - invoke gt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True_|False_}
+ 27[064] - invoke gt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True|False}
  28[083] - branch if false T38
  31[014] - load local 0
  32[089] - return S2 2
@@ -311,7 +311,7 @@ Scheduler.release tests/type_propagation/richards-test.toit
 Scheduler.queue tests/type_propagation/richards-test.toit
  - argument 0: {Scheduler}
  - argument 1: {Null_|Packet}
-  0[052] - load local, as class, pop 2 - Packet(40 - 41) // {True_|False_}
+  0[052] - load local, as class, pop 2 - Packet(40 - 41) // {True|False}
   2[009] - load field local 35 // [{Scheduler}] -> {Null_|List_}
   4[009] - load field local 19 // [{Packet}] -> {Null_|LargeInteger_|SmallInteger_}
   6[078] - invoke at // [{Null_|List_}, {Null_|LargeInteger_|SmallInteger_}] -> {*}
@@ -330,7 +330,7 @@ Scheduler.queue tests/type_propagation/richards-test.toit
  26[013] - store field, pop 0
  28[017] - load local 3
  29[009] - load field local 85 // [{Scheduler}] -> {Null_|LargeInteger_|SmallInteger_|ByteArray_}
- 31[048] - as class LargeInteger_(22 - 24) // {True_|False_}
+ 31[048] - as class LargeInteger_(22 - 24) // {True|False}
  33[013] - store field, pop 1
  35[014] - load local 0
  36[009] - load field local 69 // [{Scheduler}] -> {*}
@@ -367,7 +367,7 @@ TaskControlBlock tests/type_propagation/richards-test.toit
  - argument 5: {HandlerTask|WorkerTask|DeviceTask|IdleTask}
   0[000] - load local S7
   2[000] - load local S7
-  4[048] - as class TaskControlBlock?(45 - 46) // {True_|False_}
+  4[048] - as class TaskControlBlock?(45 - 46) // {True|False}
   6[013] - store field, pop 0
   8[000] - load local S7
  10[000] - load local S6
@@ -425,7 +425,7 @@ TaskControlBlock.is-held-or-suspended tests/type_propagation/richards-test.toit
   2[026] - load smi 4
   4[069] - invoke bit and // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[023] - load smi 0
-  6[062] - invoke eq // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  6[062] - invoke eq // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   7[082] - branch if true T15
  10[020] - load literal true
  12[081] - branch T17
@@ -434,7 +434,7 @@ TaskControlBlock.is-held-or-suspended tests/type_propagation/richards-test.toit
  18[082] - branch if true T26
  21[010] - pop, load field local 82 // [{TaskControlBlock}] -> {Null_|LargeInteger_|SmallInteger_}
  23[026] - load smi 2
- 25[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 25[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  26[089] - return S1 1
 
 TaskControlBlock.mark-as-suspended tests/type_propagation/richards-test.toit
@@ -460,7 +460,7 @@ TaskControlBlock.run tests/type_propagation/richards-test.toit
   0[022] - load null
   1[009] - load field local 83 // [{TaskControlBlock}] -> {Null_|LargeInteger_|SmallInteger_}
   3[026] - load smi 3
-  5[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  5[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   6[083] - branch if false T31
   9[009] - load field local 51 // [{TaskControlBlock}] -> {Null_|Packet}
  11[004] - store local, pop S1
@@ -494,7 +494,7 @@ TaskControlBlock.check-priority-add tests/type_propagation/richards-test.toit
  13[010] - pop, load field local 36 // [{TaskControlBlock}] -> {Null_|SmallInteger_}
  15[018] - load local 4
  16[060] - invoke virtual get priority // [{*}] -> {Null_|SmallInteger_}
- 19[064] - invoke gt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True_|False_}
+ 19[064] - invoke gt // [{Null_|SmallInteger_}, {Null_|SmallInteger_}] -> {True|False}
  20[083] - branch if false T27
  23[018] - load local 4
  24[089] - return S1 3
@@ -535,7 +535,7 @@ IdleTask.run tests/type_propagation/richards-test.toit
   6[013] - store field, pop 2
   8[010] - pop, load field local 35 // [{IdleTask}] -> {Null_|LargeInteger_|SmallInteger_}
  10[023] - load smi 0
- 11[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 11[062] - invoke eq // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  12[083] - branch if false T23
  15[009] - load field local 3 // [{IdleTask}] -> {Null_|Scheduler}
  17[053] - invoke static Scheduler.hold-current tests/type_propagation/richards-test.toit // [{Null_|Scheduler}] -> {Null_|Packet|TaskControlBlock}
@@ -544,7 +544,7 @@ IdleTask.run tests/type_propagation/richards-test.toit
  25[025] - load smi 1
  26[069] - invoke bit and // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
  27[023] - load smi 0
- 28[062] - invoke eq // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 28[062] - invoke eq // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  29[083] - branch if false T52
  32[017] - load local 3
  33[009] - load field local 20 // [{IdleTask}] -> {Null_|LargeInteger_|SmallInteger_}
@@ -632,7 +632,7 @@ WorkerTask.run tests/type_propagation/richards-test.toit
  13[026] - load smi 2
  15[009] - load field local 21 // [{WorkerTask}] -> {Null_|SmallInteger_}
  17[026] - load smi 2
- 19[062] - invoke eq // [{Null_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 19[062] - invoke eq // [{Null_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  20[083] - branch if false T26
  23[041] - pop 1
  24[026] - load smi 3
@@ -647,7 +647,7 @@ WorkerTask.run tests/type_propagation/richards-test.toit
  41[023] - load smi 0
  42[014] - load local 0
  43[026] - load smi 4
- 45[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 45[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  46[083] - branch if false T87
  49[018] - load local 4
  50[009] - load field local 37 // [{WorkerTask}] -> {Null_|LargeInteger_|SmallInteger_}
@@ -655,7 +655,7 @@ WorkerTask.run tests/type_propagation/richards-test.toit
  53[073] - invoke add // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
  54[011] - store field 2
  56[026] - load smi 26
- 58[064] - invoke gt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+ 58[064] - invoke gt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  59[083] - branch if false T66
  62[018] - load local 4
  63[025] - load smi 1
@@ -695,7 +695,7 @@ HandlerTask.run tests/type_propagation/richards-test.toit
   4[016] - load local 2
   5[060] - invoke virtual get kind // [{Null_|Packet}] -> {Null_|SmallInteger_}
   8[025] - load smi 1
-  9[062] - invoke eq // [{Null_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  9[062] - invoke eq // [{Null_|SmallInteger_}, {SmallInteger_}] -> {True|False}
  10[083] - branch if false T26
  13[017] - load local 3
  14[017] - load local 3
@@ -714,7 +714,7 @@ HandlerTask.run tests/type_propagation/richards-test.toit
  43[060] - invoke virtual get a1 // [{Null_|Packet}] -> {*}
  46[014] - load local 0
  47[026] - load smi 4
- 49[063] - invoke lt // [{*}, {SmallInteger_}] -> {True_|False_}
+ 49[063] - invoke lt // [{*}, {SmallInteger_}] -> {True|False}
  50[083] - branch if false T99
  53[009] - load field local 36 // [{HandlerTask}] -> {Null_|Packet}
  55[083] - branch if false T96
@@ -799,7 +799,7 @@ Packet.id tests/type_propagation/richards-test.toit
 Packet.id= tests/type_propagation/richards-test.toit
  - argument 0: {Packet}
  - argument 1: {Null_|SmallInteger_}
-  0[052] - load local, as class, pop 2 - LargeInteger_(22 - 24) // {True_|False_}
+  0[052] - load local, as class, pop 2 - LargeInteger_(22 - 24) // {True|False}
   2[017] - load local 3
   3[017] - load local 3
   4[011] - store field 1

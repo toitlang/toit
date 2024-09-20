@@ -579,6 +579,11 @@ class ModuleScope : public Scope {
     non_prefixed_imported_->for_each(callback, &already_visited);
   }
 
+  /// Invokes callback for each declaration inside this module.
+  void for_each_module(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
+    module_declarations_.for_each(callback);
+  }
+
   /// Only searches in the non-transitive identifiers of the module.
   /// This does not include prefixes.
   ResolutionEntry lookup_module(Symbol name) {

@@ -21,13 +21,13 @@
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 toit-cert-roots/tests/parse_x509_test.toit:9:27: warning: Deprecated 'DST-ROOT-CA-X3'. This certificate has expired. Usually the replacement is 'ISRG_ROOT_X1'
   dst := certificate_roots.DST_ROOT_CA_X3
-                          ^
+                          ^~~~~~~~~~~~~~~
 toit-cert-roots/tests/parse_x509_test.toit:10:29: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'. This certificate has expired
   cyber := certificate_roots.CYBERTRUST_GLOBAL_ROOT
-                            ^
+                            ^~~~~~~~~~~~~~~~~~~~~~~
 toit-cert-roots/tests/parse_x509_test.toit:11:34: warning: Deprecated 'GLOBALSIGN-ROOT-CA-R2'. This certificate has expired
   globalsign := certificate_roots.GLOBALSIGN_ROOT_CA_R2
-                                 ^
+                                 ^~~~~~~~~~~~~~~~~~~~~~
 <pkg:..>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'. This certificate has expired
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~

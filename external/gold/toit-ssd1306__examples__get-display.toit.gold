@@ -1,6 +1,6 @@
 <pkg:..>/ssd1306.toit:69:10: warning: Class 'SSD1306' is deprecated. Use 'Ssd1306' instead
     super.from-subclass_ --reset=reset --height=height --flip=flip --inverse=inverse --layout=layout
-         ^
+         ^~~~~~~~~~~~~~~
 <pkg:..>/ssd1306.toit:88:10: warning: Class 'SSD1306' is deprecated. Use 'Ssd1306' instead
     super.from-subclass_ --reset=reset --height=height --flip=flip --inverse=inverse --layout=layout
-         ^
+         ^~~~~~~~~~~~~~~

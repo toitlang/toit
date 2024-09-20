@@ -27,7 +27,7 @@ namespace toitdoc {
 
 class Node;
 
-#define TOITDOC_NODES(V)                \
+#define TOITDOC_NODES(V)        \
   V(Contents)                   \
   V(Section)                    \
   V(Statement)                  \
@@ -38,6 +38,7 @@ class Node;
   V(Expression)                 \
   V(Text)                       \
   V(Code)                       \
+  V(Link)                       \
   V(Ref)                        \
 
 #define DECLARE(name) class name;
@@ -87,16 +88,20 @@ class Contents : public Node {
 class Section : public Node {
  public:
   /// The title may be invalid, if it's the first section of a comment.
-  Section(Symbol title, List<Statement*> statements)
+  Section(Symbol title, int level, List<Statement*> statements)
       : title_(title)
+      , level_(level)
       , statements_(statements) {}
   IMPLEMENTS(Section)
 
   Symbol title() const { return title_; }
+  // The level (how many '#') of the section. Always 1 or more.
+  int level() const { return level_; }
   List<Statement*> statements() const { return statements_; }
 
  private:
   Symbol title_;
+  int level_;
   List<Statement*> statements_;
 };
 
@@ -198,6 +203,25 @@ class Ref : public Expression {
  private:
   int id_;
   Symbol text_;
+};
+
+class Link : public Expression {
+ public:
+  Link(Symbol text, Symbol url)
+      : text_(text)
+      , url_(url) {}
+  IMPLEMENTS(Link);
+
+  Symbol text() const override { return text_; }
+  Symbol url() const { return url_; }
+
+  std::string to_warning_string() const override {
+    return std::string("'") + std::string(text_.c_str()) + std::string("'");
+  }
+
+ private:
+  Symbol text_;
+  Symbol url_;
 };
 
 class Paragraph : public Statement {
