@@ -1,10 +1,10 @@
 tests/negative/deprecation-test.toit:99:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/deprecation-test.toit:5:1: warning: Importing deprecated library
+tests/negative/deprecation-test.toit:5:1: warning: Importing deprecated library. For testing
 import .deprecation-lib
 ^~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/deprecation-test.toit:6:1: warning: Importing deprecated library
+tests/negative/deprecation-test.toit:6:1: warning: Importing deprecated library. For testing
 import .deprecation-lib show foo
 ^~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/deprecation-test.toit:79:17: warning: Class 'Deprecated' is deprecated. Do something else instead
