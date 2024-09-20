@@ -359,7 +359,7 @@ class LspServer:
       document = analyzed-documents.get-existing --uri=uri
       if not document.summary: return []
     opened-document := documents_.get-opened --uri=uri
-    content := ""
+    content/string? := null
     if opened-document:
       content = opened-document.content
     else:

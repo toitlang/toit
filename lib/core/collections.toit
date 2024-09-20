@@ -169,9 +169,18 @@ abstract class List extends CollectionBase:
   /**
   Creates a new List of the given $size where every slot is filled with the
     given $filler.
+
+  Will be deprecated. Use $(constructor size --initial) instead.
   */
-  constructor size/int filler=null:
+  constructor size/int filler:
     return List_.from-array_ (Array_ size filler)
+
+  /**
+  Creates a new List of the given $size where every slot is filled with the
+    given $initial value.
+  */
+  constructor size/int --initial=null:
+    return List_.from-array_ (Array_ size initial)
 
   /** Creates a List and initializes each element with the result of invoking the block. */
   constructor size/int [block]:
@@ -1157,8 +1166,18 @@ interface ByteArray extends io.Data:
   Creates a new byte array of the given $size.
 
   All elements are initialized to the $filler, which defaults to 0.
+
+  Deprecated. Use $(constructor size --initial) instead.
   */
-  constructor size/int --filler/int=0:
+  constructor size/int --filler/int:
+    #primitive.core.byte-array-new
+
+  /**
+  Creates a new byte array of the given $size.
+
+  All elements are initialized to the $initial value, which defaults to 0.
+  */
+  constructor size/int --initial/int=0:
     #primitive.core.byte-array-new
 
   /**

@@ -70,10 +70,10 @@ tests/negative/bad-loop-variable-test.toit:23:11: error: Unresolved identifier: 
 tests/negative/bad-loop-variable-test.toit:24:7: error: Left-hand side of definition must be an identifier
   for 42 ::= 499; true; true: print 1
       ^~
-tests/negative/bad-loop-variable-test.toit:8:3: warning: Condition always evaluates to true
+tests/negative/bad-loop-variable-test.toit:8:14: warning: Condition always evaluates to true
   while this := 499: print 1
-  ^~~~~
-tests/negative/bad-loop-variable-test.toit:12:3: warning: Condition always evaluates to true
+             ^~
+tests/negative/bad-loop-variable-test.toit:12:14: warning: Condition always evaluates to true
   while this ::= 499: print 1
-  ^~~~~
+             ^~~
 Compilation failed

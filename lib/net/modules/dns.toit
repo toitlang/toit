@@ -282,7 +282,6 @@ class DnsClient:
         --record-types={record-type}
         --network=network
         --timeout=timeout
-    if not list: throw (DnsException "No record found" --name=name)
     return list
 
   /**

@@ -233,37 +233,42 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::any();
   }
 
-  Type visit_If(If* node) {
-    auto condition_type = visit(node->condition());
-    if (condition_type.is_none()) {
-      report_error(node->condition()->range(), "Condition can't be 'none'");
-    } else if (!is_a_bool(condition_type) &&
-               condition_type.is_class() &&
-               !condition_type.is_nullable()) {
+  Type visit_condition(Expression* node) {
+    if (node->is_Not()) {
+      return visit_Not(node->as_Not(), true);
+    }
+    auto result = visit(node);
+    if (result.is_none()) {
+      report_error(node->range(), "Condition can't be 'none'");
+    } else if (!is_a_bool(result) && is_non_nullable(result)) {
       report_warning(node->range(), "Condition always evaluates to true");
     }
+    return result;
+  }
+
+  Type visit_If(If* node) {
+    visit_condition(node->condition());
     auto yes_type = visit(node->yes());
     auto no_type = visit(node->no());
     return merge_types(yes_type, no_type);
   }
 
   Type visit_Not(Not* node) {
+    return visit_Not(node, false);
+  }
+
+  Type visit_Not(Not* node, bool warn_if_always_false) {
     auto value_type = visit(node->value());
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
+    } else if (warn_if_always_false && !is_a_bool(value_type) && is_non_nullable(value_type)) {
+      report_warning(node->range(), "Condition always evaluates to false");
     }
     return boolean_type_;
   }
 
   Type visit_While(While* node) {
-    auto condition_type = visit(node->condition());
-    if (condition_type.is_none()) {
-      report_error(node->condition()->range(), "Condition can't be 'none'");
-    } else if (!is_a_bool(condition_type) &&
-               condition_type.is_class() &&
-               !condition_type.is_nullable()) {
-      report_warning(node->range(), "Condition always evaluates to true");
-    }
+    visit_condition(node->condition());
     auto result_type = visit(node->body());
     visit(node->update());
     return result_type;
@@ -634,6 +639,12 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type null_type_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
+
+  bool is_non_nullable(Type type) {
+     return type != boolean_type_ &&
+            type.is_class() &&
+            !type.is_nullable();
+  }
 
   void report_error(Source::Range range, const char* format, ...) {
     va_list arguments;

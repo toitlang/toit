@@ -85,10 +85,12 @@ main args/List:
     cli.OptionInt "optimization-level" --short-name="O"
         --help="""
             Set the optimization level.
-            0 is no optimization,
-            1 is some optimization,
-            2 is more optimization."""
+            0: no optimizations,
+            1: some optimizations,
+            2: more optimizations."""
         --default=1,
+    cli.Flag "enable-asserts"
+        --help="Enable assertions. Enabled by default for -O0 and -O1.",
     cli.Flag "force" --short-name="f"
         --help="Force compilation even if there were errors (if possible).",
   ]
@@ -529,10 +531,19 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   if command == "analyze":
     args.add "--analyze"
   else:
-    if parsed["optimization-level"]:
-      optimization/int := parsed["optimization-level"]
-      if not 0 <= optimization <= 2: error "Invalid optimization level"
-      args.add "-O$optimization"
+    optimization/int := parsed["optimization-level"]
+    if not 0 <= optimization <= 2: error "Invalid optimization level"
+
+    args.add "-O$optimization"
+
+    enable-asserts := optimization < 2
+    if parsed.was-provided "enable-asserts":
+      // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
+      if parsed["enable-asserts"]:
+        enable-asserts = true
+      else:
+        enable-asserts = false
+    args.add "-Xenable-asserts=$enable-asserts"
 
     if parsed["force"]: args.add "--force"
 
