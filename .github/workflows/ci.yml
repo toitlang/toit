@@ -329,6 +329,27 @@ jobs:
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
+      - name: Dispatch toitdoc-dev rebuild - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.ref == 'refs/heads/master' &&
+          github.repository_owner == 'toitlang'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'false',
+                'toit-version': '',
+                'toitlang-run-id': '${{ github.run_id }}',
+              },
+            });
+
       - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
@@ -345,7 +366,7 @@ jobs:
               ref: 'master',
               inputs: {
                 'deploy': 'true',
-                'toitdoc-version': '${{ github.event.release.tag_name }}'
+                'toit-version': '${{ github.event.release.tag_name }}'
               },
             });
 
