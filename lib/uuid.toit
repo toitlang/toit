@@ -11,6 +11,7 @@ This library contains the UUID class ($Uuid), and supports the
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 
+import crypto
 import crypto.sha1 as crypto
 import io
 
@@ -110,6 +111,20 @@ class Uuid:
 
     return Uuid
       uuid.copy 0 SIZE
+
+  /**
+  Generates a random UUID.
+  */
+  static random -> Uuid:
+    return Uuid
+      crypto.random --size=SIZE
+
+  /**
+  Returns whether the given $str is a valid UUID.
+  */
+  static is-valid str/string -> bool:
+    parse str --on-error=: return false
+    return true
 
   bytes_/ByteArray
   hash_ := null
