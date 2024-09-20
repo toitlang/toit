@@ -142,8 +142,8 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
       if (imported.module->is_deprecated()) {
         auto import_node = imported.import;
         if (import_node) {
-          auto range = import_node->range().extend(import_node->segments().last()->range());
-          diagnostics()->report_warning(range, "Deprecated library");
+          auto range = import_node->selection_range().extend(import_node->segments().last()->selection_range());
+          diagnostics()->report_warning(range, "Importing deprecated library");
         }
       }
     }
