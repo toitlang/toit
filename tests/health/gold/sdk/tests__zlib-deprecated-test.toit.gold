@@ -1,6 +1,9 @@
 tests/zlib-deprecated-test.toit:26:23: warning: Class 'Buffer' is deprecated
   accumulator := bytes.Buffer
                       ^~~~~~~
+tests/zlib-deprecated-test.toit:45:8: warning: Condition always evaluates to false
+    if not zlib-expected:
+       ^~~
 tests/zlib-deprecated-test.toit:47:10: warning: Deprecated 'Stream.write'
       fd.write accumulator.buffer 0 accumulator.size
          ^~~~~
