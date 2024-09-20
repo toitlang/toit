@@ -519,7 +519,7 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 
     enable-asserts := optimization < 2
     if parsed.was-provided "enable-asserts":
-      // An explicit --assert, or --no-assert, overrides the default.
+      // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
       if parsed["enable-asserts"]:
         enable-asserts = true
       else:
