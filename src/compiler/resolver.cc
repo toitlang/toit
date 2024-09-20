@@ -132,6 +132,23 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     lsp_->emit_summary(modules, core_index, toitdocs_);
   }
 
+  // Run through the modules again, and report deprecation warnings for imports.
+  // We can't do this together with the other deprecation warnings, as we are
+  // losing import information.
+  for (int i = -1; i < static_cast<int>(modules.size()); i++) {
+    if (i == entry_index) continue;
+    Module* module = i == -1 ? entry_module : modules[i];
+    for (auto imported : module->imported_modules()) {
+      if (imported.module->is_deprecated()) {
+        auto import_node = imported.import;
+        if (import_node) {
+          auto range = import_node->selection_range().extend(import_node->segments().last()->selection_range());
+          diagnostics()->report_warning(range, "Importing deprecated library");
+        }
+      }
+    }
+  }
+
   add_global_assignment_typechecks();
 
   ListBuilder<ir::Class*> all_classes;
