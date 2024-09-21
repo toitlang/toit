@@ -1,3 +1,3 @@
-cellular/src/base/xmodem_1k.toit:87:15: warning: Deprecated constructor of 'ByteArray'
+cellular/src/base/xmodem_1k.toit:87:15: warning: Deprecated constructor of 'ByteArray'. Use 'constructor size --initial' instead
   eot: return ByteArray 1 --filler=EOT_
               ^~~~~~~~~
