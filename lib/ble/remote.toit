@@ -16,6 +16,7 @@ class Central extends Resource_:
 
   constructor .adapter:
     super (ble-create-central-manager_ adapter.resource_)
+    resource-state_.wait-for-state STARTED-EVENT_
 
   close:
     remotes := remotes-devices_

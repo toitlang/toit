@@ -7,7 +7,6 @@ import host.directory
 import expect show *
 
 main args:
-  run-client-test --use-toitlsp args: test it
   run-client-test args: test it
 
 test client/LspClient:

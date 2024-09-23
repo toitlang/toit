@@ -57,8 +57,8 @@ class Buffer extends CloseableWriter:
   /**
   Constructs a new buffer with the given initial $size.
 
-  If $growable is true, then the backing array might be replaced with a bigger one
-    if needed.
+  If $growable is true (the default), then the backing array might be replaced
+    with a bigger one if needed.
 
   The current backing array can be accessed with $backing-array.
   A view, only containing the data that has been written so far, can be accessed

@@ -192,7 +192,7 @@ test-conversion-from-byte-array:
   check-illegal-utf-8 [244, 65, 48] "\uFFFDA0"           // Low continuation bytes.
   check-illegal-utf-8 [244, 244, 48] "\uFFFD0"           // High continuation bytes.
   check-illegal-utf-8 [48, 244] "0\uFFFD"                // Missing continuation bytes.
-  continuations := List 10 0xbf
+  continuations := List 10 --initial=0xbf
   continuations[0] = 0x80
   check-illegal-utf-8 continuations "\uFFFD"             // Unexpected continuation byte.
   continuations[0] = 0xf8
