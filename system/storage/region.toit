@@ -19,7 +19,7 @@ import encoding.tison
 import io show LITTLE-ENDIAN
 import system.services show ServiceResource
 import system.storage show Region
-import uuid
+import uuid show *
 
 import ..flash.allocation
 import ..flash.registry
@@ -56,7 +56,7 @@ class FlashRegionResource extends RegionResource:
       --capacity/int?
       --writable/bool:
     registry := provider.registry
-    id := uuid.uuid5 NAMESPACE path
+    id := Uuid.uuid5 NAMESPACE path
     allocation := find-allocation_ registry --id=id --if-absent=:
       if not capacity: throw "FILE_NOT_FOUND"
       // Allocate enough space for the requested capacity. We need
@@ -77,7 +77,7 @@ class FlashRegionResource extends RegionResource:
 
   static delete registry/FlashRegistry -> none
       --path/string:
-    id := uuid.uuid5 NAMESPACE path
+    id := Uuid.uuid5 NAMESPACE path
     allocation := find-allocation_ registry --id=id --if-absent=: return
     offset := allocation.offset + FLASH-REGISTRY-PAGE-SIZE
     size := allocation.size - FLASH-REGISTRY-PAGE-SIZE
@@ -95,14 +95,14 @@ class FlashRegionResource extends RegionResource:
     return result
 
   static find-allocation_ registry/FlashRegistry [--if-absent] -> FlashAllocation
-      --id/uuid.Uuid:
+      --id/Uuid:
     registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-REGION: continue.do
       if allocation.id == id: return allocation
     return if-absent.call
 
   static new-allocation_ registry/FlashRegistry -> FlashAllocation
-      --id/uuid.Uuid
+      --id/Uuid
       --path/string
       --size/int:
     properties := tison.encode { "path": "flash:$path" }

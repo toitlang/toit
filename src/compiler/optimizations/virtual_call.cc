@@ -60,6 +60,7 @@ static Opcode opcode_for(Selector<CallShape> selector) {
 Expression* optimize_virtual_call(CallVirtual* node,
                                   Class* holder,
                                   Method* method,
+                                  List<Type> literal_types,
                                   UnorderedSet<Symbol>& field_names,
                                   UnorderedMap<Class*, QueryableClass>& direct_queryables) {
   auto dot = node->target();
@@ -77,7 +78,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
     auto queryable = direct_queryables.at(holder);
     direct_method = queryable.lookup(selector);
   } else {
-    Type guaranteed_type = compute_guaranteed_type(receiver, holder, method);
+    Type guaranteed_type = compute_guaranteed_type(receiver, holder, method, literal_types);
     if (guaranteed_type.is_valid()
         && !guaranteed_type.is_nullable()
         && !guaranteed_type.klass()->is_interface()
@@ -118,7 +119,6 @@ Expression* optimize_virtual_call(CallVirtual* node,
     if (!field->is_final()) {
       Expression* value = node->arguments()[0];
       if (field_stub->checked_type().is_valid()) {
-        // TODO: optimize the typecheck. We might not actually need it.
         value = _new Typecheck(Typecheck::FIELD_AS_CHECK,
                                value,
                                field_stub->checked_type(),
@@ -126,7 +126,8 @@ Expression* optimize_virtual_call(CallVirtual* node,
                                node->range());
         value = optimize_typecheck(value->as_Typecheck(),
                                    holder,
-                                   method);
+                                   method,
+                                   literal_types);
       }
       return _new FieldStore(receiver, field, value, node->range());
     }

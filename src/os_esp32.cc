@@ -117,40 +117,6 @@ void OS::close(int fd) {
   // Do nothing.
 }
 
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level)
-    , sem_(xSemaphoreCreateMutex()) {
-    if (!sem_) FATAL("Failed allocating mutex semaphore")
-  }
-
-  ~Mutex() {
-    vSemaphoreDelete(sem_);
-  }
-
-  void lock() {
-    if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
-      FATAL("Mutex lock failed");
-    }
-  }
-
-  void unlock() {
-    if (xSemaphoreGive(sem_) != pdTRUE) {
-      FATAL("Mutex unlock failed");
-    }
-  }
-
-  bool is_locked() {
-    return xSemaphoreGetMutexHolder(sem_) != null;
-  }
-
-  int level() const { return level_; }
-
-  int level_;
-  SemaphoreHandle_t sem_;
-};
-
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
   // Task to wait on.
@@ -233,33 +199,6 @@ class ConditionVariable {
   static const uint32 SIGNAL_ONE = 1 << 0;
   static const uint32 SIGNAL_ALL = 1 << 1;
 };
-
-void Locker::leave() {
-  Thread* thread = Thread::current();
-  if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
-}
-
-void Locker::enter() {
-  Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
-    if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
-    }
-  }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
-  previous_ = thread->locker_;
-  thread->locker_ = this;
-}
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
 

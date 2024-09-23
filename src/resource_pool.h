@@ -20,18 +20,20 @@
 
 namespace toit {
 
-// Resource pool of a static amount of resources. When used, the global system
-// VM lock will be taken.
+// Resource pool of a static set of resources. When manipulated, the global
+// system lock will be taken.
 template<typename T, T Invalid>
 class ResourcePool {
  public:
-  ResourcePool() : values_(null) {}
-
-  // TODO: Single allocation?
   template<typename... Ts>
-  ResourcePool(T value, Ts... rest)
-      : ResourcePool(rest...) {
-    values_ = _new Value({value, values_});
+  ResourcePool(Ts... rest) : size_(count(rest...)) {
+    elements_ = static_cast<Element*>(malloc(sizeof(Element) * size_));
+    if (!elements_) FATAL("cannot allocate resource pool");
+    fill(elements_, 0, rest...);
+  }
+
+  ~ResourcePool() {
+    free(elements_);
   }
 
   // Get any resource from the pool. Returns Invalid if none is available.
@@ -41,67 +43,81 @@ class ResourcePool {
   }
 
   // Take a given resource from the pool. Returns false if it's not available.
-  bool take(T t) {
+  bool take(T value) {
     Locker locker(OS::global_mutex());
-    return take(locker, t);
+    return take(locker, value);
   }
 
   // Take a given resource from the pool if available, otherwise take any.
-  T preferred(T t) {
+  T preferred(T value) {
     Locker locker(OS::global_mutex());
-
-    if (take(locker, t)) {
-      return t;
-    }
-
-    return any(locker);
+    return take(locker, value) ? value : any(locker);
   }
 
   // Put a resource back in the pool.
   void put(T value) {
     Locker locker(OS::global_mutex());
-    values_ = _new Value({value, values_});
+    for (int i = 0; i < size_; i++) {
+      Element* element = &elements_[i];
+      if (element->value == value) {
+        ASSERT(element->taken);
+        element->taken = false;
+        return;
+      }
+    }
+    FATAL("cannot add unknown resource");
   }
 
  private:
-  struct Value {
-    T t;
-    Value* next;
+  struct Element {
+    T value;
+    bool taken;
   };
 
-  bool take(Locker& locker, T t) {
-    Value* p = null;
-    for (Value* c = values_; c != null; c = c->next) {
-      if (c->t == t) {
-        if (p != null) {
-          p->next = c->next;
-        } else {
-          values_ = c->next;
-        }
-        delete c;
+  static int count() {
+    return 0;
+  }
+
+  template<typename... Ts>
+  static int count(T value, Ts... rest) {
+    return 1 + count(rest...);
+  }
+
+  static void fill(Element* elements, int index) {
+    return;
+  }
+
+  template<typename... Ts>
+  static void fill(Element* elements, int index, T value, Ts... rest) {
+    elements[index] = { .value = value, .taken = false };
+    fill(elements, index + 1, rest...);
+  }
+
+  bool take(Locker& locker, T value) {
+    for (int i = 0; i < size_; i++) {
+      Element* element = &elements_[i];
+      if (element->value == value) {
+        if (element->taken) return false;
+        element->taken = true;
         return true;
       }
-      p = c;
     }
-
     return false;
   }
 
   T any(Locker& locker) {
-    Value* value = values_;
-    if (value == null) {
-      return Invalid;
+    for (int i = 0; i < size_; i++) {
+      Element* element = &elements_[i];
+      if (!element->taken) {
+        element->taken = true;
+        return element->value;
+      }
     }
-
-    T t = value->t;
-    values_ = value->next;
-
-    delete value;
-
-    return t;
+    return Invalid;
   }
 
-  Value* values_;
+  const int size_;
+  Element* elements_;
 };
 
 } // namespace toit

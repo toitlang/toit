@@ -276,11 +276,19 @@ void GotoDefinitionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleS
   terminate();
 }
 
+void GotoDefinitionHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  for (auto node : entry.nodes()) {
+    if (node->is_Class()) _print_range(node->as_Class()->range());
+    if (node->is_Method()) _print_range(node->as_Method()->range());
+  }
+  terminate();
+}
+
 void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
   if (label_index != -1) {
     // We don't want the whole range of the black/lambda, as VSCode wouldn't jump
     //   to the beginning. Just take the from position.
-    auto from = labels[label_index].second->range().from();
+    auto from = labels[label_index].second->selection_range().from();
     _print_range(Source::Range(from, from));
   }
   terminate();

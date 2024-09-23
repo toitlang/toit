@@ -25,7 +25,7 @@ import system show platform
 
 import .documents
 import .rpc
-import .uri-path-translator
+import .uri-path-translator as translator
 import .utils
 import .verbose
 
@@ -63,16 +63,15 @@ class File:
 class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
-  translator_ / UriPathTranslator ::= ?
 
   file-cache_ / Map ::= {:}
   directory-cache_ / Map ::= {:}
   sdk-path_ / string? := null
   package-cache-paths_ / List? := null
 
-  constructor .documents_ .filesystem .translator_:
+  constructor .documents_ .filesystem:
 
-  constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
+  constructor.local compiler-path/string sdk-path/string .documents_:
     filesystem = FilesystemLocal sdk-path
 
   handle reader/io.Reader writer/io.Writer:
@@ -81,7 +80,7 @@ class FileServerProtocol:
         if line == null: break
         if line == "SDK PATH":
           if not sdk-path_:
-            sdk-path_ = translator_.local-path-to-compiler-path filesystem.sdk-path
+            sdk-path_ = translator.local-path-to-compiler-path filesystem.sdk-path
           writer.write "$sdk-path_\n"
         else if line == "PACKAGE CACHE PATHS":
           if not package-cache-paths_: package-cache-paths_ = filesystem.package-cache-paths
@@ -90,7 +89,7 @@ class FileServerProtocol:
         else if line == "LIST DIRECTORY":
           compiler-path := reader.read-line
           entries := directory-cache_.get compiler-path --init=:
-            local-path := translator_.compiler-path-to-local-path compiler-path
+            local-path := translator.compiler-path-to-local-path compiler-path
             entries-for-path/List := []
             exception := catch:  // The path might not exist.
               entries-for-path = filesystem.directory-entries local-path
@@ -117,14 +116,14 @@ class FileServerProtocol:
     is-regular := false
     is-directory := false
     content := null
-    document := documents_.get-opened --uri=(translator_.to-uri compiler-path --from-compiler)
+    document := documents_.get-opened --uri=(translator.to-uri compiler-path --from-compiler)
     if document:
       exists = true
       is-regular = true
       is-directory = false
       content = document.content.to-byte-array
       return File exists is-regular is-directory content
-    local-path := translator_.compiler-path-to-local-path compiler-path
+    local-path := translator.compiler-path-to-local-path compiler-path
     return filesystem.create-file-entry local-path
 
   served-files -> Map: return file-cache_
@@ -178,7 +177,7 @@ class TcpFileServer implements FileServer:
 
   Returns the port at which the server can be reached as a string.
   */
-  run --port=0 -> string:
+  run --port/int=0 -> string:
     network := net.open
     server_ = network.tcp-listen port
     local-port := server_.local-address.port

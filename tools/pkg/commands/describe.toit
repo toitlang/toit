@@ -120,7 +120,7 @@ class DescribeCommand:
     src := "$url-path/src"
     description := build-description
       --check-src-dir=: file.is_directory src
-      --load-package-file=: file.is_file (PackageFile.file-name url-path) and  ExternalPackageFile --dir=url-path
+      --load-package-file=: file.is_file (PackageFile.file-name url-path) and ExternalPackageFile --dir=url-path
       --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
