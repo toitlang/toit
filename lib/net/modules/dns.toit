@@ -3,8 +3,8 @@
 // found in the lib/LICENSE file.
 
 import io
-import net.modules.udp as udp-module
 import net
+import net.udp
 import system
 import system show platform
 
@@ -33,6 +33,7 @@ See $dns-lookup-multi.
 */
 dns-lookup -> net.IpAddress
     host/string
+    --network/udp.Interface
     --server/string?=null
     --client/DnsClient?=null
     --timeout/Duration=DNS-DEFAULT-TIMEOUT
@@ -41,6 +42,7 @@ dns-lookup -> net.IpAddress
 
   return select-random-ip_ host
       dns-lookup-multi host
+          --network=network
           --server=server
           --client=client
           --timeout=timeout
@@ -63,6 +65,7 @@ If there are multiple servers then they are tried in rotation until one
 */
 dns-lookup-multi -> List
     host/string
+    --network/udp.Interface
     --server/string?=null
     --client/DnsClient?=null
     --timeout/Duration=DNS-DEFAULT-TIMEOUT
@@ -78,7 +81,10 @@ dns-lookup-multi -> List
   types := {}
   if accept-ipv4: types.add RECORD-A
   if accept-ipv6: types.add RECORD-AAAA
-  return client.get_ host --record-types=types --timeout=timeout
+  return client.get_ host
+      --record-types=types
+      --network=network
+      --timeout=timeout
 
 DEFAULT-CLIENT ::= DnsClient [
     "8.8.8.8",  // Google.
@@ -99,7 +105,7 @@ RESOLV-CONF_ ::= "/etc/resolv.conf"
 On Unix systems the default client is one that keeps an eye on changes in
   /etc/resolv.conf.
 On FreeRTOS systems the default client is set by DHCP.
-On Windows we currently default to using Google and Cloudflare DNS servers.
+On Windows defaults to using Google and Cloudflare DNS servers.
 On all platforms you can set a custom default client with the
   $(default-client= client) setter.
 */
@@ -223,15 +229,15 @@ class DnsClient:
 
   static DNS-UDP-PORT ::= 53
 
-  fetch_ query/DnsQuery_ server-ip/net.IpAddress -> List:
-    socket/udp-module.Socket? := null
+  fetch_ query/DnsQuery_ server-ip/net.IpAddress --network/udp.Interface -> List:
+    socket/udp.Socket? := null
     retry-timeout := DNS-RETRY-TIMEOUT
     attempt-counter := 1
     try:
-      socket = udp-module.Socket
+      socket = network.udp-open
 
       socket.connect
-        net.SocketAddress server-ip DNS-UDP-PORT
+          net.SocketAddress server-ip DNS-UDP-PORT
 
       // If we don't get an answer resend the query with exponential backoff
       // until the outer timeout expires or we have tried too many times.
@@ -270,9 +276,12 @@ class DnsClient:
   */
   get name -> List
       --record-type/int
+      --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
-    list := get_ name --record-types={record-type} --timeout=timeout
-    if not list: throw (DnsException "No record found" --name=name)
+    list := get_ name
+        --record-types={record-type}
+        --network=network
+        --timeout=timeout
     return list
 
   /**
@@ -282,6 +291,7 @@ class DnsClient:
     the numbers without a network round trip.
   */
   get name -> net.IpAddress
+      --network/udp.Interface
       --accept-ipv4/bool=true
       --accept-ipv6/bool=false
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
@@ -289,10 +299,11 @@ class DnsClient:
     if accept-ipv4: types.add RECORD-A
     if accept-ipv6: types.add RECORD-AAAA
     return select-random-ip_ name
-        get_ name --record-types=types --timeout=timeout
+        get_ name --record-types=types --network=network --timeout=timeout
 
   get_ name -> List
       --record-types/Set
+      --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
     if net.IpAddress.is-valid name
@@ -323,7 +334,7 @@ class DnsClient:
 
         trace := null
         catch --unwind=unwind-block:
-          return fetch_ query current-server-ip
+          return fetch_ query current-server-ip --network=network
 
         // The current server didn't respond after about 3 seconds. Move to the next.
         current-server-index_ = (current-server-index_ + 1) % servers_.size
