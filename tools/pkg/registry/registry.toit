@@ -23,8 +23,6 @@ import .git
 import .description
 import ..file-system-view
 import ..error
-import ..solver.registry-solver
-import ..solver.local-solver
 import ..semantic-version
 import ..project.package
 import ..constraints
@@ -70,6 +68,8 @@ class Registries:
       else:
         error "Registry $name has an unknown type '$type'"
 
+  constructor.filled .registries/Map --.error-reporter/Lambda=(:: error it) --.outputter/Lambda=(:: print it):
+
   search --registry-name/string?=null search-string/string -> Description:
     search-results := search_ registry-name search-string
     if search-results.size == 1:
@@ -87,7 +87,7 @@ class Registries:
       error-reporter.call "Package '$search-string' not found $registry-info"
     else:
       if not registry-name:
-        // Test for the same package appearing in multiple registreis.
+        // Test for the same package appearing in multiple registries.
         urls := {}
         search-results.do:
           urls.add it[1].url
@@ -137,16 +137,36 @@ class Registries:
     unreachable
 
   /**
+  Returns all descriptions for the given url.
+
+  The descriptions are sorted by version in descending order.
+  */
+  retrieve-descriptions url/string -> List:
+    seen-versions := {}
+    result := []
+    registries.do --values: | registry/Registry |
+      descriptions := registry.retrieve-descriptions url
+      if descriptions:
+        descriptions.do: | description/Description |
+          if seen-versions.contains description.version: continue.do
+          seen-versions.add description.version
+          result.add description
+
+    // Sort.
+    result.sort --in-place: | a/Description b/Description |
+      -(a.version.compare-to b.version)
+    return result
+
+  /**
   Returns the versions in the registry for the given url.
   The versions are sorted in descending order.
   */
   retrieve-versions url/string -> List:
     all-versions := {}
-    registries.do --values:
-      if registry-versions := it.retrieve-versions url:
+    registries.do --values: | registry/Registry |
+      if registry-versions := registry.retrieve-versions url:
         all-versions.add-all registry-versions
-    if all-versions.is-empty:
-      error-reporter.call "Not able to find package $url in any registry."
+    if all-versions.is-empty: return []
 
     semantic-versions := List.from all-versions
     // Sort.
@@ -210,6 +230,9 @@ abstract class Registry:
 
   constructor .name:
 
+  constructor.filled .name descriptions/List:
+    description-cache_ = DescriptionUrlCache.filled descriptions
+
   abstract type -> string
   abstract content -> FileSystemView
   abstract to-map -> Map
@@ -234,15 +257,24 @@ abstract class Registry:
   retrieve-versions url/string -> List?:
     return description-cache.get-versions url
 
+  /**
+  Returns all descriptions for the given $url.
+
+  The result is *not* sorted.
+  */
+  retrieve-descriptions url/string -> List?:
+    return description-cache.get-descriptions url
+
   search search-string/string -> List:
-    search-version := null
+    search-version-constraint/Constraint? := null
     if search-string.contains "@":
       split := search-string.split "@"
       search-string = split[0]
-      search-version = split[1]
+      search-version-str := split[1]
+      search-version-constraint = Constraint.parse-range search-version-str
 
     // Initially maps urls to list of descriptions.
-    search-result := description-cache.search search-string search-version
+    search-result := description-cache.search search-string search-version-constraint
 
     // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
