@@ -182,6 +182,7 @@ jobs:
       - name: Create ccache debug file
         if: runner.os == 'Linux' && matrix.shard == 1
         # Create the preprocessed file for the primitive_events.cc file.
+        # This file was chose arbitrarily.
         run: |
           mkdir ccache-debug
           cd build/host
