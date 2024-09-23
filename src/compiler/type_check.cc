@@ -682,25 +682,42 @@ class TypeChecker : public ReturningVisitor<Type> {
       node = node->as_FieldStub()->field();
     }
     bool is_deprecated = false;
+    auto deprecation_message = Symbol::invalid();
+    // Modules have already reported deprecation warnings.
+    // They don't exist at this stage anymore, so import warnings were
+    // reported during resolution.
     if (node->is_Method()) {
       auto method = node->as_Method();
       is_deprecated = method->is_deprecated();
+      deprecation_message = method->get_deprecation_message();
       name = method->name();
       holder = method->holder();
       bool holder_is_deprecated = false;
+      auto holder_deprecation_message = Symbol::invalid();
       if (holder != null) {
         holder_is_deprecated = holder->is_deprecated();
+        holder_deprecation_message = holder->get_deprecation_message();
         holder_name = holder->name();
       }
       if (method->is_constructor() || method->is_factory()) {
         if (holder_is_deprecated) {
           ASSERT(name.is_valid());
-          report_warning(range, "Class '%s' is deprecated", holder_name.c_str());
+          report_warning(range,
+                         "Class '%s' is deprecated%s",
+                         holder_name.c_str(),
+                         holder_deprecation_message.c_str());
         } else if (is_deprecated) {
           if (name == Symbols::constructor) {
-            report_warning(range, "Deprecated constructor of '%s'", holder_name.c_str());
+            report_warning(range,
+                           "Deprecated constructor of '%s'%s",
+                           holder_name.c_str(),
+                           deprecation_message.c_str());
           } else {
-            report_warning(range, "Deprecated constructor '%s.%s'", holder_name.c_str(), name.c_str());
+            report_warning(range,
+                           "Deprecated constructor '%s.%s'%s",
+                           holder_name.c_str(),
+                           name.c_str(),
+                           deprecation_message.c_str());
           }
         }
         return;
@@ -709,6 +726,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       ASSERT(node->is_Field());
       auto field = node->as_Field();
       is_deprecated = field->is_deprecated();
+      deprecation_message = field->get_deprecation_message();
       name = field->name();
       holder = field->holder();
       if (holder != null) {
@@ -717,9 +735,16 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
     if (is_deprecated) {
       if (holder_name.is_valid()) {
-        report_warning(range, "Deprecated '%s.%s'", holder_name.c_str(), name.c_str());
+        report_warning(range,
+                       "Deprecated '%s.%s'%s",
+                       holder_name.c_str(),
+                       name.c_str(),
+                       deprecation_message.c_str());
       } else {
-        report_warning(range, "Deprecated '%s'", name.c_str());
+        report_warning(range,
+                       "Deprecated '%s'%s",
+                       name.c_str(),
+                       deprecation_message.c_str());
       }
     }
   }

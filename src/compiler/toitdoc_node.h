@@ -68,10 +68,10 @@ TOITDOC_NODES(DECLARE)
 };
 
 #define IMPLEMENTS(name)                                                 \
-  virtual void accept(Visitor* visitor) { visitor->visit_##name(this); } \
-  virtual bool is_##name() const { return true; }                        \
-  virtual name* as_##name() { return this; }                             \
-  virtual const char* node_type() const { return #name; }
+  virtual void accept(Visitor* visitor) override { visitor->visit_##name(this); } \
+  virtual bool is_##name() const override { return true; }                        \
+  virtual name* as_##name() override { return this; }                             \
+  virtual const char* node_type() const override { return #name; }
 
 class Contents : public Node {
  public:
@@ -146,20 +146,13 @@ class Item : public Statement {
   List<Statement*> statements_;
 };
 
-class Paragraph : public Statement {
- public:
-  explicit Paragraph(List<Expression*> expressions)
-      : expressions_(expressions) {}
-  IMPLEMENTS(Paragraph);
-
-  List<Expression*> expressions() const { return expressions_; }
- private:
-  List<Expression*> expressions_;
-};
-
 class Expression : public Node {
  public:
   IMPLEMENTS(Expression);
+
+  virtual Symbol text() const = 0;
+  virtual std::string to_warning_string() const = 0;
+
 };
 
 class Text : public Expression {
@@ -168,7 +161,9 @@ class Text : public Expression {
       : text_(text) {}
   IMPLEMENTS(Text);
 
-  Symbol text() const { return text_; }
+  Symbol text() const override { return text_; }
+
+  std::string to_warning_string() const override { return std::string(text_.c_str()); }
 
  private:
   Symbol text_;
@@ -180,7 +175,11 @@ class Code : public Expression {
       : text_(text) {}
   IMPLEMENTS(Code);
 
-  Symbol text() const { return text_; }
+  Symbol text() const override { return text_; }
+
+  std::string to_warning_string() const override {
+    return std::string("`") + std::string(text_.c_str()) + std::string("`");
+  }
 
  private:
   Symbol text_;
@@ -194,7 +193,12 @@ class Ref : public Expression {
   IMPLEMENTS(Ref);
 
   int id() const { return id_; }
-  Symbol text() const { return text_; }
+
+  Symbol text() const override { return text_; }
+
+  std::string to_warning_string() const override {
+    return std::string("'") + std::string(text_.c_str()) + std::string("'");
+  }
 
  private:
   int id_;
@@ -208,12 +212,36 @@ class Link : public Expression {
       , url_(url) {}
   IMPLEMENTS(Link);
 
-  Symbol text() const { return text_; }
+  Symbol text() const override { return text_; }
   Symbol url() const { return url_; }
+
+  std::string to_warning_string() const override {
+    return std::string("'") + std::string(text_.c_str()) + std::string("'");
+  }
 
  private:
   Symbol text_;
   Symbol url_;
+};
+
+class Paragraph : public Statement {
+ public:
+  explicit Paragraph(List<Expression*> expressions)
+      : expressions_(expressions) {}
+  IMPLEMENTS(Paragraph);
+
+  List<Expression*> expressions() const { return expressions_; }
+
+  std::string to_warning_string() const {
+    auto result = std::string("");
+    for (auto expression : expressions_) {
+      result += expression->to_warning_string();
+    }
+    return result;
+  }
+
+ private:
+  List<Expression*> expressions_;
 };
 
 #undef IMPLEMENTS
