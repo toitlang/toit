@@ -10,7 +10,7 @@ import encoding.yaml
 TOIT-REGISTRY-MAP := {
     "url": "github.com/toitware/registry",
     "type": "git",
-    "ref-hash": "1f76f33242ddcb7e71ff72be57c541d969aabfb2",
+    "ref-hash": "c566e03d79f65b71104a1cb1b680284f6a5ac179",
 }
 
 with-test-registry [block]:

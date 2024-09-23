@@ -19,12 +19,11 @@ import fs
 
 import encoding.yaml
 
-import ..solver.registry-solver
-import ..solver.local-solver
 import ..error
 import ..registry
 import ..constraints
 import ..semantic-version
+import ..solver
 
 import .project
 import .lock
@@ -73,24 +72,114 @@ class ProjectPackageFile extends PackageFile:
       file.write_content --path=file-name
           yaml.encode content
 
-  solve -> LockFile:
-    solver := LocalSolver registries this
-    return (LockFileBuilder this solver.solve).build
+  /**
+  Transitively visits all local packages that are reachable from
+    this project package file.
+
+  The given $block is called for each local dependency with three arguments:
+  - the path to the package.
+  - an absolute path to the package.
+  - the $PackageFile, if one exists.
+  The path to the package is how the package was found and depends on how
+    the local dependency was declared in the package file. It may be
+    relative or absolute.
+  The $block is only called once for each local dependency.
+  The $block is called with "." as path for this project package file.
+  */
+  visit-local-package-files [block]:
+    entry-dir := fs.dirname (fs.to-absolute file-name)
+    already-visited := {}
+    relative-paths := {:}
+    block.call "." entry-dir this
+    already-visited.add entry-dir
+    visit-local-dependencies_ this
+        --package-path="."
+        --already-visited=already-visited
+        --entry-dir=entry-dir
+        block
+
+  static visit-local-dependencies_ package-file/PackageFile
+      --package-path/string
+      --already-visited/Set
+      --entry-dir/string
+      [block]:
+    package-file.dependencies.do: | prefix/string content/Map |
+      if not content.contains PackageFile.PATH-KEY_: continue.do
+      path := content[PackageFile.PATH-KEY_]
+      absolute-path/string := fs.clean (package-file.absolute-path-for-dependency path)
+      if already-visited.contains absolute-path: continue.do
+      already-visited.add absolute-path
+
+      // The "human" path is how the package was found relative to the entry package file.
+      human-path/string := path
+      if fs.is-relative human-path and package-path:
+        // Needs to be relative to the entry package file.
+        human-path = fs.join package-path human-path
+
+      // At this point, the human-path is either absolute or relative to $this package file.
+
+      if fs.is-relative human-path:
+        // Clean the relative path, so we don't have unnecessary '../foo/bar' if we are
+        // in a folder 'foo'. It should just be "bar".
+        human-path = fs.to-relative --base=entry-dir human-path
+
+      dep-package-file-path/string := fs.join absolute-path PackageFile.FILE_NAME
+      // Local packages are allowed not to have a package file.
+      if file.is-file dep-package-file-path:
+        dep-package-file := ExternalPackageFile --dir=absolute-path
+        block.call human-path absolute-path dep-package-file
+        // Recursively visit the dependencies of the local package.
+        visit-local-dependencies_
+            dep-package-file
+            --package-path=human-path
+            --already-visited=already-visited
+            --entry-dir=entry-dir
+            block
+      else:
+        block.call human-path absolute-path null
+
+  /**
+  Collects all registry dependencies of this project package file.
+
+  This includes dependencies that are transitively added due to local dependencies.
+  */
+  collect-registry-dependencies -> List:
+    result := []
+    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
+      if dep-package-file:
+        result.add-all dep-package-file.registry-dependencies.values
+    return result
+
+  /**
+  Computes the minimum SDK version required by this project package file.
+  That's the maximum of the SDK versions of this package file and all its dependencies.
+
+  Takes transitive local dependencies into account.
+  */
+  compute-min-sdk-version -> SemanticVersion?:
+    min-sdk := sdk-version and sdk-version.to-min-version
+    visit-local-package-files: | _ _ dep-package-file/PackageFile? |
+      if dep-package-file and dep-package-file.sdk-version:
+        dep-sdk-version := dep-package-file.sdk-version.to-min-version
+        if not min-sdk or dep-sdk-version > min-sdk:
+          min-sdk = dep-sdk-version
+    return min-sdk
 
 
 /**
-An external "path" package file.
-External package files are read-only.
+An external package file.
+
+External package files are the same as the entry package file, but they are read-only.
 */
 class ExternalPackageFile extends PackageFile:
-  path/string
+  dir/string
 
-  constructor .path/string:
-    if not fs.is-absolute path: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read_content "$path/$PackageFile.FILE_NAME")) or {:})
+  constructor --.dir:
+    if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
+    super ((yaml.decode (file.read_content "$dir/$PackageFile.FILE_NAME")) or {:})
 
   root-dir -> string:
-    return path
+    return dir
 
 
 /**
@@ -141,11 +230,6 @@ abstract class PackageFile:
     if fs.is-absolute path: return path
     if fs.is-rooted path: return fs.to-absolute path
     return fs.to-absolute (fs.join root-dir path)
-
-  relative-path-for-dependency path/string:
-    if directory.is_absolute_ path: return path
-    if fs.is-rooted path: return fs.to-absolute path
-    return fs.join root-dir path
 
   dependencies -> Map:
     if not content.contains DEPENDENCIES-KEY_:
@@ -212,12 +296,6 @@ class PackageDependency:
 
   satisfies version/SemanticVersion -> bool:
     return constraint.satisfies version
-
-  find-satisfied-package packages/Set -> PartialPackageSolution?:
-    packages.do: | package/PartialPackageSolution |
-      if package.satisfies this:
-        return package
-    return null
 
   hash-code -> int:
     if not hash-code_:
