@@ -252,7 +252,7 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (!allow_restricted && is_restricted_pin(num)) {
-    FAIL(PERMISSION_DENIED)
+    FAIL(PERMISSION_DENIED);
   }
 
   if (!gpio_pins.take(num)) FAIL(ALREADY_IN_USE);
