@@ -1,0 +1,16 @@
+tests/negative/always-true-test.toit:15:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/always-true-test.toit:7:9: warning: Condition always evaluates to true
+  while i: null
+        ^
+tests/negative/always-true-test.toit:8:9: warning: Condition always evaluates to false
+  while not i: null
+        ^~~
+tests/negative/always-true-test.toit:9:6: warning: Condition always evaluates to true
+  if i: null
+     ^
+tests/negative/always-true-test.toit:10:6: warning: Condition always evaluates to false
+  if not i: null
+     ^~~
+Compilation failed

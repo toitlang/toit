@@ -56,6 +56,8 @@ runs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.20'
+        cache-dependency-path: |
+          tools/**/go.sum
 
     - name: Ccache cache
       if: inputs.use-ccache == 'true'
@@ -116,8 +118,10 @@ runs:
       # is no match (which should almost always be the case).
       with:
         path: /home/runner/.espressif
-        key: ${{inputs.cache-key-prefix}}-${{ runner.os }}-espressif-${{ steps.sha-hashes.outputs.espressif_sha }}
-        restore-keys: ${{inputs.cache-key-prefix}}-${{ runner.os }}-espressif-
+        # Note that we have the 'espressif' before the runner.os so we don't clash with
+        # the standard runner.os cache.
+        key: ${{inputs.cache-key-prefix}}-espressif-${{ runner.os }}-${{ steps.sha-hashes.outputs.espressif_sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-espressif-${{ runner.os }}-
 
     - name: Set up Python modules for MbedTLS
       shell: bash

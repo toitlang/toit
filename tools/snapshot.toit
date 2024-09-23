@@ -16,7 +16,7 @@
 import ar show *
 import host.file
 import io show LITTLE-ENDIAN
-import uuid show Uuid NIL
+import uuid show Uuid
 
 // Library for parsing a snapshot file into a useful structure.
 /**
@@ -133,12 +133,10 @@ class Program:
   selector-class-for location-id/int -> SelectorClass:
     return selectors_[location-id]
 
-  do --class-infos [block]:
-    if class-infos != true: throw "class_infos flag must be true"
+  do --class-infos/True [block]:
     class-table_.do block
 
-  do --method-infos [block]:
-    if method-infos != true: throw "method_infos flag must be true"
+  do --method-infos/True [block]:
     method-table_.do --values block
 
   method-from-absolute-bci absolute-bci/int -> ToitMethod:
@@ -189,7 +187,7 @@ class SnapshotBundle:
         ? SourceMap bytes source-map-offsets.from source-map-offsets.to
         : null
     uuid-offsets := extract-ar-offsets_ bytes UUID-NAME
-    uuid = uuid-offsets ? (Uuid bytes[uuid-offsets.from..uuid-offsets.to]) : NIL
+    uuid = uuid-offsets ? (Uuid bytes[uuid-offsets.from..uuid-offsets.to]) : Uuid.NIL
     sdk-version-offsets := extract-ar-offsets_ bytes SDK-VERSION-NAME
     sdk-version = sdk-version-offsets
         ? bytes[sdk-version-offsets.from..sdk-version-offsets.to].to-string-non-throwing

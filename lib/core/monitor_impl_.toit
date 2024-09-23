@@ -20,19 +20,25 @@ class __Monitor__:
   await-head_ := null
   await-tail_ := null
 
-  // Yield until a condition block returns true. This should be called from a
-  // locked method.  The condition is not allowed to change the state, only
-  // query it.
+  /**
+  Yields until the $condition block returns true.
+  This should be called from a  locked method.
+  The condition is not allowed to change the state, only query it.
+  */
   await [condition]:
     result := try-await_ Task_.current.deadline condition
     if not result: throw DEADLINE-EXCEEDED-ERROR
 
-  // Yield until a condition block returns true or until a specified deadline
-  // is reached. Returns true if the condition has been met or false if we have
-  // reached the deadline.
-  //
-  // This should be called from a locked method.  The condition is not allowed
-  // to change the state, only query it.
+  /**
+  Yields until the $condition block returns true or until the given $deadline
+    is reached.
+
+  Returns true if the condition has been met or false if we have
+    reached the deadline.
+
+  This should be called from a locked method.
+  The condition is not allowed to change the state, only query it.
+  */
   try-await --deadline/int? [condition]:
     task-deadline := Task_.current.deadline
     if task-deadline:

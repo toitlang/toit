@@ -1,6 +1,54 @@
 tests/negative/type7-test.toit:103:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
+tests/negative/type7-test.toit:32:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x:
+      ^~
+tests/negative/type7-test.toit:33:8: warning: Field-storing parameters in non-constructors are deprecated
+  foo2 .x/any:
+       ^~
+tests/negative/type7-test.toit:34:8: warning: Field-storing parameters in non-constructors are deprecated
+  foo3 .x/A:
+       ^~
+tests/negative/type7-test.toit:36:7: warning: Field-storing parameters in non-constructors are deprecated
+  bar .y:
+      ^~
+tests/negative/type7-test.toit:37:8: warning: Field-storing parameters in non-constructors are deprecated
+  bar2 .y/string:
+       ^~
+tests/negative/type7-test.toit:38:8: warning: Field-storing parameters in non-constructors are deprecated
+  bar3 .y/any:
+       ^~
+tests/negative/type7-test.toit:40:7: warning: Field-storing parameters in non-constructors are deprecated
+  gee .z:
+      ^~
+tests/negative/type7-test.toit:41:8: warning: Field-storing parameters in non-constructors are deprecated
+  gee2 .z/string:
+       ^~
+tests/negative/type7-test.toit:43:20: warning: Field-storing parameters in non-constructors are deprecated
+  foo --named/bool .x:
+                   ^~
+tests/negative/type7-test.toit:44:21: warning: Field-storing parameters in non-constructors are deprecated
+  foo2 --named/bool .x/any:
+                    ^~
+tests/negative/type7-test.toit:45:21: warning: Field-storing parameters in non-constructors are deprecated
+  foo3 --named/bool .x/A:
+                    ^~
+tests/negative/type7-test.toit:47:20: warning: Field-storing parameters in non-constructors are deprecated
+  bar --named/bool .y:
+                   ^~
+tests/negative/type7-test.toit:48:21: warning: Field-storing parameters in non-constructors are deprecated
+  bar2 --named/bool .y/string:
+                    ^~
+tests/negative/type7-test.toit:49:21: warning: Field-storing parameters in non-constructors are deprecated
+  bar3 --named/bool .y/any:
+                    ^~
+tests/negative/type7-test.toit:51:20: warning: Field-storing parameters in non-constructors are deprecated
+  gee --named/bool .z:
+                   ^~
+tests/negative/type7-test.toit:52:21: warning: Field-storing parameters in non-constructors are deprecated
+  gee2 --named/bool .z/string:
+                    ^~
 tests/negative/type7-test.toit:34:8: error: Type mismatch. Expected 'string'. Got 'A'
   foo3 .x/A:
        ^~

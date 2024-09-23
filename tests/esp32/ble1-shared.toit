@@ -101,10 +101,10 @@ main-peripheral --iteration/int:
   notify.write value
   indicate.write value
 
-  task::
+  task --background=is-background::
     notify2.handle-write-request: | chunk/ByteArray |
       notify2.set-value chunk
-  task::
+  task --background=is-background::
     indicate2.handle-write-request: | chunk/ByteArray |
       indicate2.set-value chunk
 
