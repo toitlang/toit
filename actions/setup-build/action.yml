@@ -56,6 +56,8 @@ runs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.20'
+        cache-dependency-path: |
+          tools/**/go.sum
 
     - name: Ccache cache
       if: inputs.use-ccache == 'true'
