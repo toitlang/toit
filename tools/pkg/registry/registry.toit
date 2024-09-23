@@ -87,7 +87,7 @@ class Registries:
       error-reporter.call "Package '$search-string' not found $registry-info"
     else:
       if not registry-name:
-        // Test for the same package appearing in multiple registreis.
+        // Test for the same package appearing in multiple registries.
         urls := {}
         search-results.do:
           urls.add it[1].url
@@ -235,14 +235,15 @@ abstract class Registry:
     return description-cache.get-versions url
 
   search search-string/string -> List:
-    search-version := null
+    search-version-constraint/Constraint? := null
     if search-string.contains "@":
       split := search-string.split "@"
       search-string = split[0]
-      search-version = split[1]
+      search-version-str := split[1]
+      search-version-constraint = Constraint.parse-range search-version-str
 
     // Initially maps urls to list of descriptions.
-    search-result := description-cache.search search-string search-version
+    search-result := description-cache.search search-string search-version-constraint
 
     // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty

@@ -15,19 +15,28 @@
 
 import .semantic-version
 import .parsers.constraint-parser
+import .parsers.semantic-version-parser
 
 class Constraint:
-  constraints/List
+  simple-constraints/List
   source/string
 
-  constructor .source/string:
+  constructor --.simple-constraints --.source:
+
+  static parse source/string -> Constraint:
     parsed := (ConstraintParser source).constraints --consume-all
-    constraints = []
+    constraints := []
     parsed.do: | constraint/ConstraintParseResult |
       version := SemanticVersion.from-parse-result constraint.semantic-version
       if constraint.prefix == "^":
-        constraints.add (SimpleConstraint ">=" version)
-        constraints.add (SimpleConstraint "<" (SemanticVersion --major=version.major + 1))
+        // All versions compatible with the given version.
+        if version.major != 0:
+          constraints.add (SimpleConstraint ">=" version)
+          constraints.add (SimpleConstraint "<" (SemanticVersion --major=version.major + 1))
+        else:
+          // If the major version is 0, then the minor version may not be increased.
+          constraints.add (SimpleConstraint ">=" version)
+          constraints.add (SimpleConstraint "<" (SemanticVersion --major=version.major --minor=version.minor + 1))
       else if constraint.prefix == "~" or constraint.prefix == "~>":
         constraints.add (SimpleConstraint ">=" version)
         constraints.add (SimpleConstraint "<" (SemanticVersion --major=version.major --minor=version.minor + 1))
@@ -35,9 +44,28 @@ class Constraint:
         constraints.add (SimpleConstraint "=" version)
       else:
         constraints.add (SimpleConstraint constraint.prefix version)
+    return Constraint --simple-constraints=constraints --source=source
+
+  static parse-range source/string -> Constraint:
+    parser := SemanticVersionParser source --allow-missing-minor
+    parse-result := parser.semantic-version --consume-all
+    triple := parse-result.triple.triple
+    constraints := []
+    if not triple[1]:
+      // No minor.
+      constraints.add (SimpleConstraint ">=" (SemanticVersion --major=triple[0]))
+      constraints.add (SimpleConstraint "<" (SemanticVersion --major=triple[0] + 1))
+    else if not triple[2]:
+      // No patch.
+      constraints.add (SimpleConstraint ">=" (SemanticVersion --major=triple[0] --minor=triple[1]))
+      constraints.add (SimpleConstraint "<" (SemanticVersion --major=triple[0] --minor=triple[1] + 1))
+    else:
+      constraints.add (SimpleConstraint "=" (SemanticVersion.from-parse-result parse-result))
+
+    return Constraint --simple-constraints=constraints --source=source
 
   satisfies version/SemanticVersion -> bool:
-    constraints.do:
+    simple-constraints.do:
       if not it.satisfies version:
         return false
     return true
