@@ -36,8 +36,8 @@ class InitCommand:
       error "Directory already contains a project"
 
     project = Project config --empty-lock-file
-    if name: project.package-file.name = name
-    if description: project.package-file.description = description
+    if name: project.specification.name = name
+    if description: project.specification.description = description
 
   execute:
     project.save

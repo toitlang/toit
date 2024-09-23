@@ -318,6 +318,7 @@ PRIMITIVE(write) {
   return Smi::from(current_offset - from);
 }
 
+// Note that this primitive is also called from spi-close.
 PRIMITIVE(close) {
   ARGS(int, fd);
   while (true) {

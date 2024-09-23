@@ -144,6 +144,14 @@ void NinjaDepWriter::write_escaped(const char* path) {
   write(buffer.c_str());
 }
 
+void ListDepWriter::generate_header(const char* out_path) {}
+void ListDepWriter::generate_dependency_entry(const char* source, List<const char*> dependencies) {
+  // We don't need the dependencies. We just want a list of all sources.
+  write(source);
+  write("\n");
+}
+void ListDepWriter::generate_footer() {}
+
 } // namespace toit::compiler
 } // namespace toit
 
