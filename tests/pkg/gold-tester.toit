@@ -34,7 +34,7 @@ class RunResult_:
   normalize -> string:
     result := stdout.replace --all "\r" ""
     if result != "" and not result.ends-with "\n":
-      result += "\n <Missing newline at end of output> \n"
+      result += "\n <Missing newline at end of stdout> \n"
     if stderr != "":
       result += "\nSTDERR---\n" + stderr
       if not stderr.ends-with "\n":
