@@ -22,9 +22,11 @@ test-git:
 
   expect-equals 558 registry.list-all-descriptions.size
 
-  morse-1-0-6 := registry.retrieve-description "github.com/toitware/toit-morse" (SemanticVersion "1.0.6")
+  morse-1-0-6 := registry.retrieve-description
+      "github.com/toitware/toit-morse"
+      SemanticVersion.parse "1.0.6"
   expect-equals "github.com/toitware/toit-morse" morse-1-0-6.url
-  expect-equals (SemanticVersion "1.0.6") morse-1-0-6.version
+  expect-equals (SemanticVersion.parse "1.0.6") morse-1-0-6.version
   expect-equals "morse" morse-1-0-6.name
   expect-equals "Functions for International (ITU) Morse code." morse-1-0-6.description
 
@@ -67,9 +69,11 @@ test-local:
 
   expect-equals 3 registry.list-all-descriptions.size
 
-  morse-1-0-6 := registry.retrieve-description "github.com/toitware/toit-morse-local" (SemanticVersion "1.0.6")
+  morse-1-0-6 := registry.retrieve-description
+      "github.com/toitware/toit-morse-local"
+      SemanticVersion.parse "1.0.6"
   expect-equals "github.com/toitware/toit-morse-local" morse-1-0-6.url
-  expect-equals (SemanticVersion "1.0.6") morse-1-0-6.version
+  expect-equals (SemanticVersion.parse "1.0.6") morse-1-0-6.version
   expect-equals "morse" morse-1-0-6.name
   expect-equals "Functions for International (ITU) Morse code." morse-1-0-6.description
 
@@ -157,9 +161,11 @@ test-registries:
   expect-equals 5 morse-versions.size
   expect-equals "[1.0.6, 1.0.5, 1.0.2, 1.0.1, 1.0.0]" morse-versions.stringify
 
-  morse-1-0-6 := test-registries.retrieve-description "github.com/toitware/toit-morse-local" (SemanticVersion "1.0.6")
+  morse-1-0-6 := test-registries.retrieve-description
+      "github.com/toitware/toit-morse-local"
+      SemanticVersion.parse "1.0.6"
   expect-equals "github.com/toitware/toit-morse-local" morse-1-0-6.url
-  expect-equals (SemanticVersion "1.0.6") morse-1-0-6.version
+  expect-equals (SemanticVersion.parse "1.0.6") morse-1-0-6.version
   expect-equals "morse" morse-1-0-6.name
   expect-equals "Functions for International (ITU) Morse code." morse-1-0-6.description
 

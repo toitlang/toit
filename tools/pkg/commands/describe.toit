@@ -99,8 +99,11 @@ class DescribeCommand:
     if license: description[Description.LICENSE-KEY_] = license
 
     if not package-file.registry-dependencies.is-empty:
-      dependencies := package-file.registry-dependencies.values.map: | pacakage-dependency/PackageDependency |
-        { "url": pacakage-dependency.url, "version": pacakage-dependency.constraint-string }
+      dependencies := package-file.registry-dependencies.values.map: | package-dependency/PackageDependency |
+        {
+          "url": package-dependency.url,
+          "version": package-dependency.constraint.to-string,
+        }
       description[Description.DEPENDENCIES-KEY_] = dependencies
 
     environment := package-file.environment
@@ -117,7 +120,7 @@ class DescribeCommand:
     src := "$url-path/src"
     description := build-description
       --check-src-dir=: file.is_directory src
-      --load-package-file=: file.is_file (PackageFile.file-name url-path) and  ExternalPackageFile url-path
+      --load-package-file=: file.is_file (PackageFile.file-name url-path) and ExternalPackageFile --dir=url-path
       --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
