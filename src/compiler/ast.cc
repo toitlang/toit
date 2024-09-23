@@ -224,12 +224,6 @@ void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolat
 void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) {
 }
 
-void TraversingVisitor::visit_LiteralArray(LiteralArray* node) {
-  for (int i = 0; i < node->elements().length(); i++) {
-    node->elements()[i]->accept(this);
-  }
-}
-
 void TraversingVisitor::visit_LiteralList(LiteralList* node) {
   for (int i = 0; i < node->elements().length(); i++) {
     node->elements()[i]->accept(this);
@@ -573,15 +567,6 @@ class AstPrinter : public Visitor {
     printf("%s", node->data().c_str());
   }
 
-  void visit_LiteralArray(LiteralArray* node) {
-    printf("<array>[");
-    for (int i = 0; i < node->elements().length(); i++) {
-      if (i != 0) printf(", ");
-      node->elements()[i]->accept(this);
-    }
-    printf("]");
-  }
-
   void visit_LiteralList(LiteralList* node) {
     printf("[");
     for (int i = 0; i < node->elements().length(); i++) {
@@ -634,6 +619,272 @@ class AstPrinter : public Visitor {
 void Node::print() {
   AstPrinter printer;
   this->accept(&printer);
+}
+
+Source::Range Unit::full_range() const {
+  auto result = selection_range();
+  if (!imports_.is_empty()) {
+    result = result.extend(imports_.last()->full_range());
+  }
+  if (!exports_.is_empty()) {
+    result = result.extend(exports_.last()->full_range());
+  }
+  if (!declarations_.is_empty()) {
+    result = result.extend(declarations_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range Import::full_range() const {
+  auto result = selection_range();
+  if (!segments_.is_empty()) {
+    result = result.extend(segments_.last()->full_range());
+  }
+  if (prefix_ != null) {
+    result = result.extend(prefix_->full_range());
+  }
+  if (!show_identifiers_.is_empty()) {
+    result = result.extend(show_identifiers_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range Export::full_range() const {
+  auto result = selection_range();
+  if (!identifiers_.is_empty()) {
+    result = result.extend(identifiers_.last()->full_range());
+  }
+  if (export_all_range_.is_valid()) {
+    result = result.extend(export_all_range_);
+  }
+  return result;
+}
+
+Source::Range Class::full_range() const {
+  auto result = selection_range();
+  if (keywords_range_.is_valid()) {
+    result = result.extend(keywords_range_);
+  }
+  result = result.extend(name_->full_range());
+  if (super_ != null) {
+    result = result.extend(super_->full_range());
+  }
+  if (!interfaces_.is_empty()) {
+    result = result.extend(interfaces_.last()->full_range());
+  }
+  if (!mixins_.is_empty()) {
+    result = result.extend(mixins_.last()->full_range());
+  }
+  if (!members_.is_empty()) {
+    result = result.extend(members_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range NamedArgument::full_range() const {
+  auto result = selection_range();
+  result = result.extend(name_->full_range());
+  if (expression_ != null) {
+    result = result.extend(expression_->full_range());
+  }
+  return result;
+}
+
+Source::Range Field::full_range() const {
+  auto result = selection_range();
+  if (modifier_range_.is_valid()) {
+    result = result.extend(modifier_range_);
+  }
+  result = result.extend(name()->full_range());
+  if (type_ != null) {
+    result = result.extend(type_->full_range());
+  }
+  if (initializer_ != null) {
+    result = result.extend(initializer_->full_range());
+  }
+  return result;
+}
+
+Source::Range Method::full_range() const {
+  auto result = selection_range();
+  if (modifier_range_.is_valid()) {
+    result = result.extend(modifier_range_);
+  }
+  result = result.extend(name_or_dot()->full_range());
+  if (return_type_ != null) {
+    result = result.extend(return_type_->full_range());
+  }
+  if (!parameters_.is_empty()) {
+    result = result.extend(parameters_.last()->full_range());
+  }
+  if (body_ != null) {
+    result = result.extend(body_->full_range());
+  }
+  return result;
+}
+
+Source::Range BreakContinue::full_range() const {
+  auto result = selection_range();
+  if (value_ != null) {
+    result = result.extend(value_->full_range());
+  }
+  if (label_ != null) {
+    result = result.extend(label_->full_range());
+  }
+  return result;
+}
+
+Source::Range Block::full_range() const {
+  auto result = selection_range();
+  if (!parameters_.is_empty()) {
+    result = result.extend(parameters_.last()->full_range());
+  }
+  result = result.extend(body_->full_range());
+  return result;
+}
+
+Source::Range Lambda::full_range() const {
+  auto result = selection_range();
+  if (!parameters_.is_empty()) {
+    result = result.extend(parameters_.last()->full_range());
+  }
+  result = result.extend(body_->full_range());
+  return result;
+}
+
+Source::Range Sequence::full_range() const {
+  auto result = selection_range();
+  if (!expressions_.is_empty()) {
+    result = result.extend(expressions_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range DeclarationLocal::full_range() const {
+  auto result = selection_range();
+  result = result.extend(name_->full_range());
+  if (type_ != null) {
+    result = result.extend(type_->full_range());
+  }
+  if (value_ != null) {
+    result = result.extend(value_->full_range());
+  }
+  return result;
+}
+
+Source::Range If::full_range() const {
+  auto result = selection_range();
+  result = result.extend(expression_->full_range());
+  result = result.extend(yes_->full_range());
+  if (no_ != null) {
+    result = result.extend(no_->full_range());
+  }
+  return result;
+}
+
+Source::Range While::full_range() const {
+  auto result = selection_range();
+  result = result.extend(condition_->full_range());
+  if (body_ != null) {
+    result = result.extend(body_->full_range());
+  }
+  return result;
+}
+
+Source::Range For::full_range() const {
+  auto result = selection_range();
+  if (initializer_ != null) {
+    result = result.extend(initializer_->full_range());
+  }
+  if (condition_ != null) {
+    result = result.extend(condition_->full_range());
+  }
+  if (update_ != null) {
+    result = result.extend(update_->full_range());
+  }
+  if (body_ != null) {
+    result = result.extend(body_->full_range());
+  }
+  return result;
+}
+
+Source::Range TryFinally::full_range() const {
+  auto result = selection_range();
+  result = result.extend(body_->full_range());
+  if (!handler_parameters_.is_empty()) {
+    result = result.extend(handler_parameters_.last()->full_range());
+  }
+  result = result.extend(handler_->full_range());
+  return result;
+}
+
+Source::Range Return::full_range() const {
+  auto result = selection_range();
+  if (value_ != null) {
+    result = result.extend(value_->full_range());
+  }
+  return result;
+}
+
+Source::Range Unary::full_range() const {
+  auto result = selection_range();
+  result = result.extend(expression_->full_range());
+  return result;
+}
+
+Source::Range Binary::full_range() const {
+  auto result = selection_range();
+  result = result.extend(left_->full_range());
+  result = result.extend(right_->full_range());
+  return result;
+}
+
+Source::Range Dot::full_range() const {
+  auto result = selection_range();
+  result = result.extend(receiver_->full_range());
+  result = result.extend(name_->full_range());
+  return result;
+}
+
+Source::Range Call::full_range() const {
+  auto result = selection_range();
+  result = result.extend(target_->full_range());
+  if (!arguments_.is_empty()) {
+    result = result.extend(arguments_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range Parameter::full_range() const {
+  auto result = selection_range();
+  result = result.extend(name_->full_range());
+  if (type_ != null) {
+    result = result.extend(type_->full_range());
+  }
+  if (default_value_ != null) {
+    result = result.extend(default_value_->full_range());
+  }
+  return result;
+}
+
+Source::Range LiteralStringInterpolation::full_range() const {
+  auto result = selection_range();
+  if (!parts_.is_empty()) {
+    result = result.extend(parts_.last()->full_range());
+  }
+  if (!expressions_.is_empty()) {
+    result = result.extend(expressions_.last()->full_range());
+  }
+  return result;
+}
+
+Source::Range ToitdocReference::full_range() const {
+  auto result = selection_range();
+  result = result.extend(target_->full_range());
+  if (closing_paren_.is_valid()) {
+    result = result.extend(closing_paren_);
+  }
+  return result;
 }
 
 } // namespace toit::compiler::ast
