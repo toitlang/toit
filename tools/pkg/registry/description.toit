@@ -38,6 +38,30 @@ class Description:
 
   constructor .content:
 
+  // A constructor that is primarily used for testing.
+  constructor
+      --name/string
+      --url/string
+      --description/string=""
+      --version/SemanticVersion=(SemanticVersion.parse "v1.0.0")
+      --ref-hash/string="1234567890abcdef"
+      --min-sdk/SemanticVersion?=null
+      --dependencies/List=[]:
+    map := {
+      NAME-KEY_: name,
+      URL-KEY_: url,
+      DESCRIPTION-KEY_: description,
+      VERSION-KEY_: version.to-string,
+      HASH-KEY_: ref-hash,
+      DEPENDENCIES-KEY_: dependencies.map: | dep/PackageDependency |
+          {
+            URL-KEY_: dep.url,
+            VERSION-KEY_: dep.constraint.to-string
+          }
+    }
+    if min-sdk: map[ENVIRONMENT-KEY_] = {SDK-KEY_: "^$min-sdk.to-string"}
+    return Description map
+
   url -> string: return content[URL-KEY_]
 
   name -> string: return content[NAME-KEY_]
@@ -67,7 +91,9 @@ class Description:
       else:
         cached-dependencies_ =
             content[DEPENDENCIES-KEY_].map: | dep |
-                PackageDependency dep[URL-KEY_] dep[VERSION-KEY_]
+                url := dep[URL-KEY_]
+                constraint := Constraint.parse dep[VERSION-KEY_]
+                PackageDependency url --constraint=constraint
     return cached-dependencies_
 
   satisfies-sdk-version concrete-sdk-version/SemanticVersion -> bool:

@@ -178,7 +178,9 @@ abstract class PackageFile:
     dependencies := {:}
     this.dependencies.do: | prefix/string content/Map |
       if content.contains URL-KEY_:
-        dependencies[prefix] = (PackageDependency content[URL-KEY_] content[VERSION-KEY_])
+        url := content[URL-KEY_]
+        constraint := Constraint.parse content[VERSION-KEY_]
+        dependencies[prefix] = PackageDependency url --constraint=constraint
     return dependencies
 
   /** Returns a map of prefix to strings representing the paths of the local packages */
@@ -200,11 +202,10 @@ For convenience it contains delegate methods to contraint.
 */
 class PackageDependency:
   url/string
-  constraint_/string // Keep this around for easy hash-code and ==.
   constraint/Constraint
+  hash-code_/int? := null
 
-  constructor .url .constraint_:
-    constraint = Constraint.parse constraint_
+  constructor .url --.constraint:
 
   filter versions/List -> List:
     return constraint.filter versions
@@ -219,15 +220,14 @@ class PackageDependency:
     return null
 
   hash-code -> int:
-    return url.hash-code + constraint_.hash-code
+    if not hash-code_:
+      hash-code_ = url.hash-code * 23 + constraint.hash-code
+    return hash-code_
 
   operator == other -> bool:
     if other is not PackageDependency: return false
-    return stringify == other.stringify
+    return url == other.url and hash-code == other.hash-code and constraint == other.constraint
 
-  constraint-string -> string:
-    return constraint_
-
-  stringify: return "$url:$constraint_"
+  stringify: return "$url:$constraint"
 
 

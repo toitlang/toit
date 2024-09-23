@@ -20,6 +20,7 @@ import .parsers.semantic-version-parser
 class Constraint:
   simple-constraints/List
   source/string
+  hash-code_/int? := null
 
   constructor --.simple-constraints --.source:
 
@@ -76,6 +77,23 @@ class Constraint:
   stringify -> string:
     return source
 
+  to-string -> string:
+    return (simple-constraints.map: it.to-string).join ","
+
+  operator == other -> bool:
+    if other is not Constraint: return false
+    // We simplify our life by requiring the constraints to be in the same order.
+    return simple-constraints == other.simple-constraints
+
+  hash-code -> int:
+    if not hash-code_:
+      hash := 1831
+      simple-constraints.do: | constraint/SimpleConstraint |
+        hash = hash * 31 + constraint.hash-code
+      hash-code_ = hash
+    return hash-code_
+
+
 class SimpleConstraint:
   comparator/string
   constraint-version/SemanticVersion
@@ -86,8 +104,18 @@ class SimpleConstraint:
   satisfies version/SemanticVersion -> bool:
     return check.call version constraint-version
 
-  stringify -> string:
+  to-string -> string:
     return "$comparator$constraint-version"
+
+  stringify -> string:
+    return to-string
+
+  operator == other -> bool:
+    if other is not SimpleConstraint: return false
+    return comparator == other.comparator and constraint-version == other.constraint-version
+
+  hash-code -> int:
+    return comparator.hash-code * 31 + constraint-version.hash-code
 
 CONSTRAINT-COMPARATORS_ ::= {
   ">=": :: | v c | v >= c,

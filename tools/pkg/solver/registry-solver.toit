@@ -17,7 +17,7 @@ import ..semantic-version
 import ..constraints
 import ..registry
 import ..registry.description
-import ..error
+import ..error as error-lib
 import ..utils
 import ..project.package
 import encoding.yaml
@@ -33,12 +33,26 @@ class Resolved:
   sdk-version/SemanticVersion? := null
   packages/Map := {:}  // PackageDependency -> ResolvedPackage.
 
+  static sdk-version-from-constraint_ sdk-constraint/Constraint? -> SemanticVersion?:
+    if not sdk-constraint: return null
+    if sdk-constraint.simple-constraints.size != 2 or
+       sdk-constraint.simple-constraints[0].comparator != ">=" or
+       sdk-constraint.simple-constraints[1].comparator != "<":
+      throw "Invalid SDK constraint: $sdk-constraint"
+    simple-constraint/SimpleConstraint := sdk-constraint.simple-constraints[0]
+    return simple-constraint.constraint-version
+
   constructor solution/PartialSolution:
-    packages = solution.partial-packages.map: | _ v | ResolvedPackage v
+    packages = solution.partial-packages.map: | _ v/PartialPackageSolution | ResolvedPackage v
+    solution.partial-packages.do --values: | v/PartialPackageSolution |
+      if sdk-version == null: sdk-version = sdk-version-from-constraint_ v.sdk-version
+      else if v.sdk-version:
+         package-sdk-version := sdk-version-from-constraint_ v.sdk-version
+         if package-sdk-version > sdk-version: sdk-version = package-sdk-version
 
   constructor.empty:
 
-  pps-to-map v/PartialPackageSolution: // DEBUG
+  pps-to-map_ v/PartialPackageSolution: // DEBUG
     packs := {:}
     v.dependencies.do: | k v/PartialPackageSolution | packs[k.stringify] = { "version": v.solved-version.stringify }
     return { "url": v.url, "version": v.solved-version.stringify, "hash": v.ref-hash, "packages": packs }
@@ -76,7 +90,7 @@ class ResolvedPackage:
 
 class PartialPackageSolution:
   dependencies/Map := {:}  // PackageDependency -> PartialPackageSolution.
-  versions/List? := null  // of possible SemanticVersions.
+  versions/List? := null  // Of possible SemanticVersions.
   url/string
   description/Description? := null
   /**
@@ -172,7 +186,7 @@ class PartialSolution:
         copy := PartialSolution.copy this
         if copy.load-dependencies description unsolved-dependency next-version:
           if refined := copy.refine: return refined
-        // otherwise backtrack and try the next version.
+        // Otherwise backtrack and try the next version.
 
     return null
 
@@ -181,7 +195,20 @@ class PartialSolution:
     package.description = description
     package.versions = null
 
+    report-no-version-package := : | url/string constraint/Constraint |
+      solver.warn "No version of '$url' satisfies constraint '$constraint'"
+
     description.dependencies.do: | dependency/PackageDependency |
+      // Nested block to fetch all available versions.
+      // We filter out versions that don't satisfy the dependency constraint.
+      retrieve-versions := :
+        all-versions := solver.registries.retrieve-versions dependency.url
+        if all-versions.is-empty: return false
+        dependency-versions := dependency.filter all-versions
+        if dependency-versions.is-empty:
+          report-no-version-package.call dependency.url dependency.constraint
+          return false
+
       if url-to-dependencies.contains dependency.url:
         partial-package-solutions := IdentitySet
         // Find the partial package-solutions for the dependency URL.
@@ -197,8 +224,11 @@ class PartialSolution:
           package.dependencies[dependency] = partial-package
         else:
           all-versions := solver.registries.retrieve-versions dependency.url
+          if all-versions.is-empty: return false
           dependency-versions := dependency.filter all-versions
-          if dependency-versions.is-empty: return false
+          if dependency-versions.is-empty:
+            report-no-version-package.call dependency.url dependency.constraint
+            return false
 
           existing-major-versions := {}
           // For all existing dependencies, check if the new dependency resolves a disjoint set of versions
@@ -222,8 +252,12 @@ class PartialSolution:
         // The first time we see this URL.
         // Add a new partial package with all the versions this requirement accepts.
         // We will later refine it (potentially trying all the versions that are possible).
-        versions := dependency.filter (solver.registries.retrieve-versions dependency.url)
-        if versions.is-empty: return false
+        all-versions := solver.registries.retrieve-versions dependency.url
+        if all-versions.is-empty: return false
+        versions := dependency.filter all-versions
+        if versions.is-empty:
+          report-no-version-package.call dependency.url dependency.constraint
+          return false
         add-partial-package-solution dependency package (PartialPackageSolution dependency.url versions)
     return true
 
@@ -231,8 +265,16 @@ class PartialSolution:
 class Solver:
   sdk-version/SemanticVersion
   registries/Registries
+  reported-warnings/Set := {}
+  outputter_/Lambda
+  error-reporter_/Lambda
+  versions-cache_ := {:}  // From url to list of all versions.
 
-  constructor .registries .sdk-version:
+  constructor .registries .sdk-version
+      --outputter/Lambda=(:: print it)
+      --error-reporter/Lambda=(:: error-lib.error it):
+    outputter_ = outputter
+    error-reporter_ = error-reporter
 
   solve dependencies/List -> Resolved:
     package-versions/Map := {:}  // Dependency -> list of versions.
@@ -258,6 +300,21 @@ class Solver:
     if solution := partial-solution.refine: return Resolved solution
     throw "Unable to resolve dependencies"
 
+  get-versions-for url/string --constraint/Constraint? -> List:
+    return versions-cache_.get url --init=:
+      result := registries.retrieve-versions url
+      if result.is-empty:
+        warn "Package '$url' not found"
+      result
+
+  warn msg -> none:
+    if reported-warnings.contains msg: return
+    reported-warnings.add msg
+    outputter_.call "Warning: $msg"
+
+  error msg -> none:
+    error-reporter_.call msg
+
 /**
 Makes a copy of the dependency-to-solution map $input.
 Uses the $translator map to avoid creating different copies of the same object. When
@@ -270,4 +327,3 @@ make-copy-of-dependency-to-solution-map_ input/Map translator/IdentityMap=Identi
       copy := PartialPackageSolution.copy v translator
       translator[v] = copy
     translator[v]
-

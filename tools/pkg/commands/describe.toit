@@ -99,8 +99,11 @@ class DescribeCommand:
     if license: description[Description.LICENSE-KEY_] = license
 
     if not package-file.registry-dependencies.is-empty:
-      dependencies := package-file.registry-dependencies.values.map: | pacakage-dependency/PackageDependency |
-        { "url": pacakage-dependency.url, "version": pacakage-dependency.constraint-string }
+      dependencies := package-file.registry-dependencies.values.map: | package-dependency/PackageDependency |
+        {
+          "url": package-dependency.url,
+          "version": package-dependency.constraint.to-string,
+        }
       description[Description.DEPENDENCIES-KEY_] = dependencies
 
     environment := package-file.environment

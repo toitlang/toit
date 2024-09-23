@@ -30,6 +30,10 @@ class DescriptionUrlCache:
   constructor content/FileSystemView:
     recurse_ content
 
+  constructor.filled descriptions/List:
+    descriptions.do: | description/Description |
+      add_ description
+
   all-descriptions -> List:
     result := []
     cache_.values.do: | versions/DescriptionVersionCache |
