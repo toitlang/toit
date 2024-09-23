@@ -152,7 +152,7 @@ class SolverPackage:
 /**
 A (lazy) database of packages that are available.
 */
-class Db_:
+class Database_:
   registries_/Registries
   entries_/Map ::= {:}  // From url to SolverPackage.
 
@@ -206,7 +206,7 @@ Some properties of the Toit package management system:
   packages used in a project.
 */
 class Solver:
-  db_/Db_
+  database_/Database_
   state_/SolverState? := null
   printed-errors_/Set ::= {}
   /**
@@ -224,7 +224,7 @@ class Solver:
   The solver can only be used for a single solve operation.
   */
   constructor registries/Registries --.sdk-version --outputter/Lambda:
-    db_ = Db_ registries
+    database_ = Database_ registries
     outputter_ = outputter
 
 
@@ -236,7 +236,7 @@ class Solver:
   */
   set-preferred url/string version/SemanticVersion -> none:
     if state_: throw "Solver already used"
-    db_.set-preferred url version
+    database_.set-preferred url version
 
   /**
   Solves the given dependencies.
@@ -296,7 +296,7 @@ class Solver:
 
   solve-dependency_ dependency/PackageDependency index/int  [--on-success] [--on-failure]:
     url := dependency.url
-    available/List := db_.get-solver-packages url
+    available/List := database_.get-solver-packages url
     if available.is-empty:
       warn_ "Package '$url' not found"
       on-failure.call
