@@ -1,0 +1,9 @@
+tests/envelope/boot-container-source.toit:40:14: warning: Deprecated 'parse'. Use 'Uuid.parse' instead
+    run (uuid.parse run-image)
+             ^~~~~~
+tests/envelope/boot-container-source.toit:42:31: warning: Deprecated 'parse'. Use 'Uuid.parse' instead
+    containers.uninstall (uuid.parse remove-image)
+                              ^~~~~~
+tests/envelope/boot-container-source.toit:64:27: warning: Deprecated 'parse'. Use 'Uuid.parse' instead
+    container-uuid := uuid.parse (file.read-content uuid-path).to-string
+                          ^~~~~~

@@ -1,0 +1,3 @@
+<sdk>/device.toit:19:31: warning: Deprecated 'uuid5'. Use 'Uuid.uuid5' instead
+hardware-id/uuid.Uuid ::= uuid.uuid5 "hw_id" get-mac-address_
+                              ^~~~~~

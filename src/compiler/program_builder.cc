@@ -256,8 +256,8 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::Map);
   set_built_in_class_tag_and_size(Symbols::Stack_, TypeTag::STACK_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::Object);
-  set_built_in_class_tag_and_size(Symbols::True_, TypeTag::ODDBALL_TAG);
-  set_built_in_class_tag_and_size(Symbols::False_, TypeTag::ODDBALL_TAG);
+  set_built_in_class_tag_and_size(Symbols::True, TypeTag::ODDBALL_TAG);
+  set_built_in_class_tag_and_size(Symbols::False, TypeTag::ODDBALL_TAG);
   set_built_in_class_tag_and_size(Symbols::SmallInteger_, TypeTag::INSTANCE_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::float_, TypeTag::DOUBLE_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::LargeInteger_, TypeTag::LARGE_INTEGER_TAG, 0);

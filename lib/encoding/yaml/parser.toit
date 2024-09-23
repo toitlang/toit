@@ -1158,7 +1158,7 @@ class Parser_ extends PegParserBase_:
   l-keep-empty n/int -> List:
     empty-lines := repeat: l-empty n BLOCK-IN_
     optional: l-trail-comments n
-    return List empty-lines.size "\n"
+    return List empty-lines.size --initial="\n"
 
   l-strip-empty n/int -> List:
     repeat: s-indent-less-or-equals n and (b-non-content or l-eof)
@@ -1171,7 +1171,7 @@ class Parser_ extends PegParserBase_:
       if s-indent n:
         mark := mark
         if (repeat --at-least-one: nb-char):
-          prefix := string.from-runes (List empty-lines.size '\n')
+          prefix := string.from-runes (List empty-lines.size --initial='\n')
           return "$prefix$(string-since mark)"
     return null
 
@@ -1197,7 +1197,7 @@ class Parser_ extends PegParserBase_:
     try-parse:
       empty-lines := repeat: l-empty n BLOCK-IN_
       if lines := l-nb-folded-lines n or l-nb-spaced-lines n:
-        return flatten-list_ [List empty-lines.size "\n", lines]
+        return flatten-list_ [List empty-lines.size --initial="\n", lines]
     return null
 
   l-nb-folded-lines n/int -> List?:
@@ -1221,7 +1221,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   b-l-folded n/int c/int -> string?:
-    if breaks := b-l-trimmed n c: return string.from-runes (List breaks '\n')
+    if breaks := b-l-trimmed n c: return string.from-runes (List breaks --initial='\n')
     if b-as-space: return " "
     return null
 
@@ -1249,7 +1249,7 @@ class Parser_ extends PegParserBase_:
     try-parse:
       if b-as-line-feed:
         empty-lines := (repeat: l-empty n BLOCK-IN_)
-        return string.from-runes (List empty-lines.size + 1 '\n')
+        return string.from-runes (List (empty-lines.size + 1) --initial='\n')
     return null
 
   b-l-trimmed n/int c/int -> int?:
