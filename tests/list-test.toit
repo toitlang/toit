@@ -367,7 +367,7 @@ test-fill:
 
 test-filled-list size:
   FILLER ::= 0xdead
-  list := List size FILLER
+  list := List size --initial=FILLER
   expect-equals size list.size
   size.repeat: expect-equals FILLER list[it]
   GROWING-STEPS ::= 15

@@ -185,8 +185,8 @@ abstract class Reader implements old-reader.Reader:
 
   If $to is given, then the search is limited to the given range.
   If $throw-if-absent is true and the $delimiter is not in the remaining data, throws.
-  If $throw-if-absent is false and the $delimiter is not in the remaining data, skips
-    all remaining data.
+  If $throw-if-absent is false (the default) and the $delimiter is not in the
+    remaining data, skips all remaining data.
   */
   skip-up-to delimiter/int --to/int?=null --throw-if-absent/bool=false -> int:
     skipped := 0
@@ -299,7 +299,8 @@ abstract class Reader implements old-reader.Reader:
 
   Returns the index of the first occurrence of the $byte.
   If $throw-if-absent is true and $byte is not in the remaining data throws.
-  Returns -1 if $throw-if-absent is false and the $byte is not in the remaining data.
+  Returns -1 if $throw-if-absent is false (the default) and the $byte is not
+    in the remaining data.
   */
   index-of byte/int --to/int?=null --throw-if-absent/bool=false -> int:
     absent := :
@@ -562,9 +563,9 @@ abstract class Reader implements old-reader.Reader:
   Reads a line as a string.
 
   If $keep-newline is true, the returned string includes the newline character.
-  If $keep-newline is false, trims the trailing '\r\n' or '\n'. This method
-    removes a '\r' even if the platform is not Windows. If the '\r' needs to be
-    preserved, set $keep-newline to true and remove the trailing '\n' manually.
+  If $keep-newline is false (the default), trims the trailing '\r\n' or '\n'. This
+    method removes a '\r' even if the platform is not Windows. If the '\r' needs to
+    be preserved, set $keep-newline to true and remove the trailing '\n' manually.
   If the input ends with a newline, then all further reads return null.
   If the input ends without a newline, then the last line is returned without any
     newline character (even if $keep-newline) is true, and all further reads
@@ -603,11 +604,9 @@ abstract class Reader implements old-reader.Reader:
   /**
   Calls the given $block for each remaining line.
 
-  The $lines argument must be true.
   See $read-line.
   */
-  do --lines/bool --keep-newlines/bool=false [block] -> none:
-    if not lines: throw "INVALID_ARGUMENT"
+  do --lines/True --keep-newlines/bool=false [block] -> none:
     while line := read-line --keep-newline=keep-newlines:
       block.call line
 
@@ -647,7 +646,7 @@ abstract class Reader implements old-reader.Reader:
     operations.
 
   If $hand-over is true, then this instance takes ownership of $value.
-    In this case, its contents should not be modified after being
+    In this case, its content must not be modified after being
     given to this method.
   */
   unget value/ByteArray --hand-over/bool=false -> none:

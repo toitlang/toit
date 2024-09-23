@@ -1,9 +1,11 @@
-sdk: ^2.0.0-alpha.144
+sdk: ^2.0.0-alpha.145
 prefixes:
   ar: pkg-ar
+  certificate_roots: toit-cert-roots
   cli: pkg-cli
   fs: pkg-fs
   host: pkg-host
+  http: pkg-http
   partition-table: toit-partition-table-esp32
   semver: toit-semver
   tar: pkg-tar
@@ -33,11 +35,21 @@ packages:
     name: host
     version: 1.15.1
     hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
+  pkg-http:
+    url: github.com/toitlang/pkg-http
+    name: http
+    version: 2.7.2
+    hash: 614dd0f374e70aab09f12e9466a35b779b9a8d63
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
     version: 1.2.0
     hash: fa4667de1073976a343f5816ddcea291e4cbf4ff
+  toit-cert-roots:
+    url: github.com/toitware/toit-cert-roots
+    name: certificate_roots
+    version: 1.6.1
+    hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table

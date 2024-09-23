@@ -105,7 +105,7 @@ RESOLV-CONF_ ::= "/etc/resolv.conf"
 On Unix systems the default client is one that keeps an eye on changes in
   /etc/resolv.conf.
 On FreeRTOS systems the default client is set by DHCP.
-On Windows we currently default to using Google and Cloudflare DNS servers.
+On Windows defaults to using Google and Cloudflare DNS servers.
 On all platforms you can set a custom default client with the
   $(default-client= client) setter.
 */
@@ -282,7 +282,6 @@ class DnsClient:
         --record-types={record-type}
         --network=network
         --timeout=timeout
-    if not list: throw (DnsException "No record found" --name=name)
     return list
 
   /**

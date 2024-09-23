@@ -23,6 +23,13 @@ class SomeClass:
   constructor.named2 x y:
 /*@ SomeClass.named2xy */
 
+  constructor.named-arg
+      --name1
+/*    @ SomeClass.named-arg.name1 */
+      --name2:
+/*    @ SomeClass.named-arg.name2 */
+
+
   foo:
 /*@ SomeClass.foo */
 
@@ -73,6 +80,17 @@ class Subclass extends SomeClass:
     super.named2 1
 /*     ^
   []
+*/
+
+  constructor.named:
+    super.named-arg
+        --name1
+/*          ^
+  [SomeClass.named-arg.name1]
+*/
+        --name2
+/*          ^
+  [SomeClass.named-arg.name2]
 */
 
   foo:

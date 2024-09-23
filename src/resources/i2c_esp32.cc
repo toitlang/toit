@@ -93,10 +93,16 @@ PRIMITIVE(init) {
   result = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2)
     i2c_set_timeout(port, (int)(log2(I2C_APB_CLK_FREQ / 1000.0 * kI2cTransactionTimeout)));
-#else
+#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
     i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2cTransactionTimeout);
+#else
+#FATAL "Unsupported target"
+  // Go to the i2c section of the datasheet and check whether the value is used as
+  // a power or counts the individual cycles.
+  // For example:
+  //   https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf#i2c
 #endif
   });
   if (result != ESP_OK) {
