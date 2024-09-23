@@ -38,8 +38,6 @@
 
 namespace toit {
 
-static const char* const RESTRICTED_PIN_ERROR = "RESTRICTED";
-
 enum GpioState {
   GPIO_STATE_EDGE_TRIGGERED = 1,
 };
@@ -254,7 +252,7 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (!allow_restricted && is_restricted_pin(num)) {
-    return Primitive::error(RESTRICTED_PIN_ERROR, process);
+    FAIL(PERMISSION_DENIED)
   }
 
   if (!gpio_pins.take(num)) FAIL(ALREADY_IN_USE);

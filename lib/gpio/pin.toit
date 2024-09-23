@@ -14,8 +14,6 @@ The $VirtualPin is a software pin which can be used for actual pins that have
   peripherals simulated in software.
 */
 
-RESTRICTED-PIN-ERROR_ ::= "RESTRICTED"
-
 /**
 A General Purpose Input/Output (GPIO) Pin.
 
@@ -394,7 +392,7 @@ gpio-init_:
 
 gpio-use_ resource-group num allow-restricted:
   #primitive.gpio.use:
-    if it == RESTRICTED-PIN-ERROR_:
+    if it == "PERMISSION_DENIED":
       throw "RESTRICTED_PIN"
     throw it
 
