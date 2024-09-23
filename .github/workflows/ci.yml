@@ -184,7 +184,8 @@ jobs:
         # Create the preprocessed file for the primitive_events.cc file.
         run: |
           mkdir ccache-debug
-          /usr/bin/c++ -fdebug-prefix-map=/home/runner/work/toit/toit=. -Wall -ffunction-sections -fdata-sections -fno-exceptions -Os -fno-rtti -std=gnu++11 -fdiagnostics-color=always -I../../include -I../../third_party/esp-idf/components/mbedtls/mbedtls/include -DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1 -DTOIT_DEPLOY -MD -MT src/CMakeFiles/toit_core.dir/primitive_events.cc.o -MF src/CMakeFiles/toit_core.dir/primitive_events.cc.o.d -E ../../src/primitive_events.cc > ccache-debug/primitive_events.cc.i
+          cd build/host
+          /usr/bin/c++ -fdebug-prefix-map=/home/runner/work/toit/toit=. -Wall -ffunction-sections -fdata-sections -fno-exceptions -Os -fno-rtti -std=gnu++11 -fdiagnostics-color=always -I../../include -I../../third_party/esp-idf/components/mbedtls/mbedtls/include -DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1 -DTOIT_DEPLOY -MD -MT src/CMakeFiles/toit_core.dir/primitive_events.cc.o -MF src/CMakeFiles/toit_core.dir/primitive_events.cc.o.d -E ../../src/primitive_events.cc > ../../ccache-debug/primitive_events.cc.i
 
       - name: Upload ccache debug file
         if: runner.os == 'Linux' && matrix.shard == 1
