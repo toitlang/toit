@@ -154,25 +154,30 @@ jobs:
           echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
           echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
 
+      - name: Ccache stats
+        run: ccache -s
+
       # Build using make.
       - name: Build sdk
         shell: bash
         run: |
-          ccache -s
           make sdk
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
-          ccache -s
+
+      - name: Ccache stats
+        run: ccache -s
 
       # Build 64-bit debug if we are comitting to master.
       - name: Build 64-bit debug
         if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
-          ccache -s
           make BUILD=build-debug BUILD_TYPE=Debug sdk
-          ccache -s
+
+      - name: Ccache stats
+        run: ccache -s
 
       - name: Strip executables - Linux
         if: ${{ runner.os == 'Linux' && (github.event_name == 'release' || github.event.inputs.strip == 'true') }}
@@ -407,6 +412,7 @@ jobs:
         with:
           toit-dir: .
           esp32: true
+          cache-key-prefix: esp32
 
       # Build using make.
       - name: make
