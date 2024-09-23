@@ -26,11 +26,11 @@ class SemanticVersion:
   pre-releases/List
   build-numbers/List
 
-  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:
-
-  constructor version/string:
+  static parse version/string -> SemanticVersion:
     parsed := (SemanticVersionParser version).semantic-version --consume-all
     return SemanticVersion.from-parse-result parsed
+
+  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:
 
   constructor.from-parse-result parsed/SemanticVersionParseResult:
     major = parsed.triple.triple[0]
@@ -65,13 +65,21 @@ class SemanticVersion:
   operator > other/SemanticVersion -> bool:
     return not this <= other
 
-  stringify -> string:
+  compare-to other/SemanticVersion -> int:
+    if this < other: return -1
+    if this == other: return 0
+    return 1
+
+  to-string -> string:
     str := "$major.$minor.$patch"
     if not pre-releases.is-empty:
       str += "-$(pre-releases.join ".")"
     if not build-numbers.is-empty:
       str += "+$(build-numbers.join ".")"
     return str
+
+  stringify -> string:
+    return to-string
 
   hash-code:
     return major + 1000 * minor + 1000000 * patch

@@ -19,7 +19,7 @@ import io
 import io show LITTLE-ENDIAN
 import system
 import system show platform
-import uuid
+import uuid show *
 
 import encoding.json
 import encoding.ubjson
@@ -565,7 +565,7 @@ property-set parsed/cli.Parsed -> none:
   if value.size == 1: value = value.first
   properties-update-with-key parsed: | properties/Map? key/string |
     if key == "uuid":
-      exception := catch: uuid.parse value
+      exception := catch: Uuid.parse value
       if exception: throw "cannot parse uuid: $value ($exception)"
     properties = properties or {:}
     properties[key] = value
@@ -1083,9 +1083,9 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   if not firmware-bin:
     throw "cannot find $AR-ENTRY-ESP32-FIRMWARE-BIN entry in envelope '$envelope.path'"
 
-  system-uuid/uuid.Uuid? := null
+  system-uuid/Uuid? := null
   if properties.contains "uuid":
-    system-uuid = uuid.parse properties["uuid"] --on-error=(: null)
+    system-uuid = Uuid.parse properties["uuid"] --on-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
   return extract-binary-content
@@ -1103,7 +1103,7 @@ extract-container -> ContainerEntry
     snapshot-uuid ::= snapshot-bundle.uuid
     program := snapshot-bundle.decode
     image := build-image program word-size
-        --system-uuid=uuid.NIL
+        --system-uuid=Uuid.NIL
         --snapshot-uuid=snapshot-uuid
         --assets=assets
     header = ImageHeader image.all-memory --word-size=word-size
@@ -1133,7 +1133,7 @@ update-envelope parsed/cli.Parsed [block] -> none:
 extract-binary-content -> ByteArray
     --binary-input/ByteArray
     --containers/List
-    --system-uuid/uuid.Uuid
+    --system-uuid/Uuid
     --config-encoded/ByteArray:
   binary := Esp32Binary binary-input
   image-count := containers.size
@@ -1460,7 +1460,7 @@ ceil_ x/int y/int -> int:
   return (x + y - 1) / y
 
 class ContainerEntry:
-  id/uuid.Uuid
+  id/Uuid
   name/string
   flags/int
   relocatable/ByteArray
@@ -1479,7 +1479,7 @@ class ContainerEntry:
 
   The header is updated with the given $system-uuid and the container's $flags.
   */
-  relocate --relocation-base/int --attach-assets/bool --system-uuid/uuid.Uuid -> ByteArray:
+  relocate --relocation-base/int --attach-assets/bool --system-uuid/Uuid -> ByteArray:
     out := io.Buffer
     output := BinaryRelocatedOutput out relocation-base --word-size=word-size
     output.write relocatable
@@ -1521,7 +1521,7 @@ class ImageHeader:
     return 48 + 7 * 2 * word-size  // 7 tables and lists.
 
   static header-size_ word-size/int -> int:
-    return (snapshot-uuid-offset_ word-size) + uuid.SIZE
+    return (snapshot-uuid-offset_ word-size) + Uuid.SIZE
 
   flags -> int:
     return header_[METADATA-OFFSET_]
@@ -1529,22 +1529,22 @@ class ImageHeader:
   flags= value/int -> none:
     header_[METADATA-OFFSET_] = value
 
-  id -> uuid.Uuid:
+  id -> Uuid:
     return read-uuid_ ID-OFFSET_
 
-  snapshot-uuid -> uuid.Uuid:
+  snapshot-uuid -> Uuid:
     return read-uuid_ (snapshot-uuid-offset_ word-size)
 
-  system-uuid -> uuid.Uuid:
+  system-uuid -> Uuid:
     return read-uuid_ UUID-OFFSET_
 
-  system-uuid= value/uuid.Uuid -> none:
+  system-uuid= value/Uuid -> none:
     write-uuid_ UUID-OFFSET_ value
 
-  read-uuid_ offset/int -> uuid.Uuid:
-    return uuid.Uuid header_[offset .. offset + uuid.SIZE]
+  read-uuid_ offset/int -> Uuid:
+    return Uuid header_[offset .. offset + Uuid.SIZE]
 
-  write-uuid_ offset/int value/uuid.Uuid -> none:
+  write-uuid_ offset/int value/Uuid -> none:
     header_.replace offset value.to-byte-array
 
   static validate image/ByteArray --word-size/int -> ByteArray:
@@ -1732,7 +1732,7 @@ class Esp32Binary:
     if not drom: throw "cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
-  patch-extend-drom system-uuid/uuid.Uuid table-address/int bits/ByteArray -> none:
+  patch-extend-drom system-uuid/Uuid table-address/int bits/ByteArray -> none:
     if (bits.size & 0xffff) != 0: throw "cannot extend with partial flash pages (64KB)"
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
@@ -1747,7 +1747,6 @@ class Esp32Binary:
     drom := find-last-drom-segment_
     if not drom: return
     extension-size := compute-drom-extension-size_ drom
-    if not extension-size: return
     transform-drom-segment_ drom: it[..extension-size[0]]
 
   static compute-drom-extension-size_ drom/Esp32BinarySegment -> List:
@@ -1845,11 +1844,11 @@ class Esp32BinarySegment:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
 
 IMAGE-DATA-MAGIC-1 ::= 0x7017da7a
-IMAGE-DETAILS-SIZE ::= 4 + uuid.SIZE
+IMAGE-DETAILS-SIZE ::= 4 + Uuid.SIZE
 IMAGE-DATA-MAGIC-2 ::= 0x00c09f19
 
 // The DROM segment contains a section where we patch in the image details.
-patch-details-esp32 bits/ByteArray unique-id/uuid.Uuid table-address/int -> none:
+patch-details-esp32 bits/ByteArray unique-id/Uuid table-address/int -> none:
   // Patch the binary at the offset we compute by searching for
   // the magic markers. We store the programs table address and
   // the uuid.

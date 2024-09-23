@@ -112,9 +112,9 @@ jobs:
         shell: bash
         run: |
           echo "flaky_result=flaky-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
+          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
+          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
@@ -154,25 +154,46 @@ jobs:
           echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
           echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
 
+      - name: Ccache stats
+        run: ccache -s
+
       # Build using make.
       - name: Build sdk
         shell: bash
         run: |
-          ccache -s
           make sdk
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
-          ccache -s
+
+      - name: Ccache stats
+        run: ccache -s
 
       # Build 64-bit debug if we are comitting to master.
       - name: Build 64-bit debug
         if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
-          ccache -s
           make BUILD=build-debug BUILD_TYPE=Debug sdk
-          ccache -s
+
+      - name: Ccache stats
+        run: ccache -s
+
+      - name: Create ccache debug file
+        if: runner.os == 'Linux' && matrix.shard == 1
+        # Create the preprocessed file for the primitive_events.cc file.
+        # This file was chose arbitrarily.
+        run: |
+          mkdir ccache-debug
+          cd build/host
+          /usr/bin/c++ -fdebug-prefix-map=/home/runner/work/toit/toit=. -Wall -ffunction-sections -fdata-sections -fno-exceptions -Os -fno-rtti -std=gnu++11 -fdiagnostics-color=always -I../../include -I../../third_party/esp-idf/components/mbedtls/mbedtls/include -DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1 -DTOIT_DEPLOY -MD -MT src/CMakeFiles/toit_core.dir/primitive_events.cc.o -MF src/CMakeFiles/toit_core.dir/primitive_events.cc.o.d -E ../../src/primitive_events.cc > ../../ccache-debug/primitive_events.cc.i
+
+      - name: Upload ccache debug file
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v4
+        with:
+          path: ccache-debug
+          name: ccache-debug
 
       - name: Strip executables - Linux
         if: ${{ runner.os == 'Linux' && (github.event_name == 'release' || github.event.inputs.strip == 'true') }}
@@ -257,13 +278,13 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store flaky test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.flaky_result_name }}
           path: ${{ steps.constants.outputs.flaky_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -272,16 +293,13 @@ jobs:
         if: runner.os == 'Linux' && matrix.shard == 1
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
-          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
-          SDKDIR: ${{ github.workspace }}/
+          TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
+          SDKDIR: ${{ github.workspace }}/build/host/sdk
         shell: bash
         run: |
-          CPU_CORES=$(nproc)
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
-          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
-          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -305,16 +323,16 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: debug
+          name: debug-${{ matrix.container }}-${{ matrix.shard }}
           path: ${{ steps.constants.outputs.debug_root_dir }}
           retention-days: 5
           if-no-files-found: ignore
 
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: toitdoc
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
@@ -332,6 +350,27 @@ jobs:
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
 
+      - name: Dispatch toitdoc-dev rebuild - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.ref == 'refs/heads/master' &&
+          github.repository_owner == 'toitlang'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'false',
+                'toit-version': '',
+                'toitlang-run-id': '${{ github.run_id }}',
+              },
+            });
+
       - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
@@ -348,27 +387,27 @@ jobs:
               ref: 'master',
               inputs: {
                 'deploy': 'true',
-                'toitdoc-version': '${{ github.event.release.tag_name }}'
+                'toit-version': '${{ github.event.release.tag_name }}'
               },
             });
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build-unsigned
           path: build/${{ steps.constants.outputs.artifact }}
 
       - name: Upload unsigned artifacts - macOS
         if: runner.os == 'macOS' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-build-unsigned
+          name: ${{ runner.os }}-build-unsigned-${{ matrix.container }}
           path: build/${{ steps.constants.outputs.artifact }}
 
       - name: Upload artifacts - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
@@ -389,6 +428,7 @@ jobs:
         with:
           toit-dir: .
           esp32: true
+          cache-key-prefix: esp32
 
       # Build using make.
       - name: make
@@ -413,7 +453,7 @@ jobs:
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: firmwares
           path: |
@@ -588,9 +628,9 @@ jobs:
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-build
+          name: ${{ runner.os }}-build-cross
           path: |
             build/${{ steps.constants.outputs.raspberry_pi_artifact }}
             build/toit-aarch64.tar.gz
@@ -600,17 +640,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: Windows-build-unsigned
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: Linux-build
+          pattern: Linux-build*
+          merge-multiple: true
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: macOS-build-unsigned
+          pattern: macOS-build-unsigned*
+          merge-multiple: true
 
       - name: Set up macOS ARM environment
         run: |
@@ -712,27 +754,27 @@ jobs:
           done
 
       - name: Upload vessels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vessels
           path: vessels.tar.gz
 
       - name: Upload Windows unsigned
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Windows-build-unsigned
+          name: Windows-build-unsigned-combined
           path: toit-windows.tar.gz
 
       - name: Upload macOS unsigned
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: macOS-build-unsigned
+          name: macOS-build-unsigned-combined
           path: ${{ env.MACOS_TARS }}
 
       - name: Upload Linux
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Linux-build
+          name: Linux-build-combined
           path: |
             toit-linux.tar.gz
             toit-rpi.tar.gz
@@ -789,9 +831,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: Windows-build-unsigned
+          name: Windows-build-unsigned-combined
 
       - name: Decompress
         run: |
@@ -844,9 +886,9 @@ jobs:
           path: toit-windows-x64-installer.exe
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Windows-build
+          name: Windows-build-signed
           path: |
             toit-windows.tar.gz
             toit-windows-x64-installer.exe
@@ -884,9 +926,9 @@ jobs:
           brew install create-dmg
           brew install zip
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: macOS-build-unsigned
+          name: macOS-build-unsigned-combined
 
       - name: Create out folder
         run: |
@@ -958,9 +1000,9 @@ jobs:
             out/toit-arm.dmg
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: macOS-build
+          name: macOS-build-signed
           path: |
             out/toit-macos.tar.gz
             out/toit-macos-arm.tar.gz
@@ -994,16 +1036,18 @@ jobs:
           echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
 
       - name: Retrieve
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.constants.outputs.flaky_result_name }}
+          pattern: ${{ steps.constants.outputs.flaky_result_name }}*
           path: flaky-result
+          merge-multiple: true
 
       - name: Retrieve
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.constants.outputs.external_result_name }}
+          pattern: ${{ steps.constants.outputs.external_result_name }}*
           path: external-result
+          merge-multiple: true
 
       - name: List downloaded files
         # This is mostly for debugging purposes.

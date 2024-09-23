@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-2020-12/schema",
+  "$id": "https://toitlang.org/schemas/package/v1.json",
+  "title": "Package specification",
+  "description": "A JSON schema for Toit's package.yaml files.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "const": "https://toitlang.org/schemas/package/v1.json",
+      "type": "string",
+      "description": "The JSON schema of the package.yaml file."
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of the package. Optional for applications."
+    },
+    "description": {
+      "type": "string",
+      "description": "A description of the package. Optional for applications."
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "The dependencies of the package or application.",
+      "additionalProperties": {
+        "$ref": "#/$defs/Dependency"
+      },
+      "propertyNames": {
+        "type": "string"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "propertyNames": {
+        "enum": ["sdk"]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[^]v[0-9]+\\.[0-9]+\\.[0-9]+-?"
+      }
+    }
+  },
+  "$defs": {
+    "Dependency": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/GitDependency"
+        },
+        {
+          "$ref": "#/$defs/PathDependency"
+        }
+      ]
+    },
+    "PathDependency": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The path to the dependency."
+        }
+      },
+      "required": ["path"]
+    },
+    "GitDependency": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL to the git repository. Without leading 'https://', or trailing '.git'."
+        },
+        "version": {
+          "type": "string",
+          "description": "The version of the dependency.",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-?"
+        }
+      },
+      "required": ["url", "version"]
+    }
+  }
+}
+

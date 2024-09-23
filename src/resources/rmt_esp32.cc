@@ -48,7 +48,7 @@ const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 // This is the setup on the ESP32 and ESP32S2 chips.
 static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
     RMT_CHANNEL_0, RMT_CHANNEL_1
-#if SOC_RMT_CHANNEL_PER_GROUP > 2
+#if SOC_RMT_CHANNELS_PER_GROUP > 2
     , RMT_CHANNEL_2, RMT_CHANNEL_3
 #if SOC_RMT_CHANNELS_PER_GROUP > 4
     , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7

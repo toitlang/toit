@@ -407,7 +407,7 @@ namespace toit {
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
-  PRIMITIVE(init, 3)                         \
+  PRIMITIVE(init, 5)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(write, 3)                        \
   PRIMITIVE(write_reg, 4)                    \

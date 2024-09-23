@@ -24,6 +24,7 @@ class Peripheral extends Resource_:
   constructor .adapter bonding/bool secure-connections/bool:
     resource := ble-create-peripheral-manager_ adapter.resource_ bonding secure-connections
     super resource
+    resource-state_.wait-for-state STARTED-EVENT_
 
   /**
   Closes the peripheral manager and all its services.
@@ -51,10 +52,10 @@ class Peripheral extends Resource_:
   The advertise includes the given $connection-mode, which must be one
     of the BLE-CONNECT-MODE-* constants (see $BLE-CONNECT-MODE-NONE and similar).
 
-  Throws, If the adapter does not support parts of the advertise content.
+  Throws if the adapter does not support parts of the advertise content.
   For example, on MacOS manufacturing data can not be specified.
 
-  Throws, If the adapter does not allow configuration of $interval or $connection-mode.
+  Throws if the adapter does not allow configuration of $interval or $connection-mode.
   */
   start-advertise
       data/AdvertisementData
@@ -87,8 +88,10 @@ class Peripheral extends Resource_:
     ble-advertise-stop_ resource_
 
   /**
-  Adds a new service to the peripheral identified by $uuid. The returned service should be configured with
-    the appropriate characteristics and then be deployed.
+  Adds a new service to the peripheral identified by $uuid.
+
+  The returned service should be configured with the appropriate characteristics and then
+    be deployed.
   */
   add-service uuid/BleUuid -> LocalService:
     service := LocalService this uuid
@@ -389,9 +392,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   If the characteristic supports both indications and notifications, then a notification is sent.
 
-  If $set-value is true, sets the value of the characteristic to $value. Any read requests
-    will return this value until the value is changed again. See $set-value for setting the
-    value without sending out a notification.
+  If $set-value is true (the default), sets the value of the characteristic to $value. Any
+    read requests will return this value until the value is changed again. See $set-value
+    for setting the value without sending out a notification.
 
   If the characteristic doesn't support notifications or indications and $set-value is set
     to false, then this function does nothing.
@@ -514,7 +517,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
-  if $value is specified, it is used as the initial value for the characteristic.
+  If $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.
   */
   add-descriptor uuid/BleUuid --properties/int --permissions/int --value/io.Data?=null -> LocalDescriptor:

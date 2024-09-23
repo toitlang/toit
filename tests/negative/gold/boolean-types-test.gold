@@ -1,0 +1,25 @@
+tests/negative/boolean-types-test.toit:39:11: error: Can't cast 'false' to 'True'
+  global1 = false
+          ^
+tests/negative/boolean-types-test.toit:40:11: error: Can't cast 'true' to 'False'
+  global2 = true
+          ^
+tests/negative/boolean-types-test.toit:41:7: error: Can't cast 'false' to 'True'
+  foo false
+      ^~~~~
+tests/negative/boolean-types-test.toit:42:7: error: Can't cast 'true' to 'False'
+  bar true
+      ^~~~
+tests/negative/boolean-types-test.toit:43:7: error: Can't cast 'false' to 'True'
+  foo gee2
+      ^~~~
+tests/negative/boolean-types-test.toit:44:7: error: Can't cast 'true' to 'False'
+  bar gee1
+      ^~~~
+tests/negative/boolean-types-test.toit:45:11: error: Can't cast 'false' to 'True'
+  global1 = gee2
+          ^
+tests/negative/boolean-types-test.toit:46:11: error: Can't cast 'true' to 'False'
+  global2 = gee1
+          ^
+Compilation failed

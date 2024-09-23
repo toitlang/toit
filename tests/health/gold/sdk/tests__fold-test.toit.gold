@@ -1,6 +1,6 @@
-tests/fold-test.toit:115:23: warning: Condition always evaluates to true
+tests/fold-test.toit:115:20: warning: Condition always evaluates to true
   expect-not-null ("" ? 4 : null)
-                      ^
-tests/fold-test.toit:116:3: warning: Condition always evaluates to true
+                   ^~
+tests/fold-test.toit:116:6: warning: Condition always evaluates to true
   if "":
-  ^~
+     ^~
