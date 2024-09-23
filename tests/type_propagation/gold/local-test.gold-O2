@@ -16,7 +16,7 @@ main tests/type_propagation/local-test.toit
 
 test-if tests/type_propagation/local-test.toit
   0[023] - load smi 0
-  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   4[083] - branch if false T11
   7[020] - load literal horse
   9[004] - store local, pop S1
@@ -31,14 +31,14 @@ test-if tests/type_propagation/local-test.toit
 
 test-if-else tests/type_propagation/local-test.toit
   0[023] - load smi 0
-  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   4[083] - branch if false T11
   7[020] - load literal horse
   9[004] - store local, pop S1
  11[014] - load local 0
  12[053] - invoke static id tests/type_propagation/local-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
  15[041] - pop 1
- 16[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 16[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  19[083] - branch if false T29
  22[020] - load literal horse
  24[004] - store local, pop S1
@@ -46,14 +46,14 @@ test-if-else tests/type_propagation/local-test.toit
  29[020] - load literal true
  31[004] - store local, pop S1
  33[014] - load local 0
- 34[053] - invoke static id tests/type_propagation/local-test.toit // [{String_|True_}] -> {String_|True_}
+ 34[053] - invoke static id tests/type_propagation/local-test.toit // [{String_|True}] -> {String_|True}
  37[090] - return null S2 0
 
 test-if-nested tests/type_propagation/local-test.toit
   0[022] - load null
-  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   4[083] - branch if false T32
-  7[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  7[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  10[083] - branch if false T20
  13[026] - load smi 42
  15[004] - store local, pop S1
@@ -64,7 +64,7 @@ test-if-nested tests/type_propagation/local-test.toit
  25[053] - invoke static id tests/type_propagation/local-test.toit // [{float|SmallInteger_}] -> {float|SmallInteger_}
  28[041] - pop 1
  29[081] - branch T54
- 32[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 32[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  35[083] - branch if false T45
  38[020] - load literal true
  40[004] - store local, pop S1
@@ -72,10 +72,10 @@ test-if-nested tests/type_propagation/local-test.toit
  45[020] - load literal false
  47[004] - store local, pop S1
  49[014] - load local 0
- 50[053] - invoke static id tests/type_propagation/local-test.toit // [{True_|False_}] -> {True_|False_}
+ 50[053] - invoke static id tests/type_propagation/local-test.toit // [{True|False}] -> {True|False}
  53[041] - pop 1
  54[014] - load local 0
- 55[053] - invoke static id tests/type_propagation/local-test.toit // [{True_|False_|float|SmallInteger_}] -> {True_|False_|float|SmallInteger_}
+ 55[053] - invoke static id tests/type_propagation/local-test.toit // [{True|False|float|SmallInteger_}] -> {True|False|float|SmallInteger_}
  58[090] - return null S2 0
 
 test-if-more-locals tests/type_propagation/local-test.toit
@@ -83,27 +83,27 @@ test-if-more-locals tests/type_propagation/local-test.toit
   1[020] - load literal true
   3[020] - load literal 3.1000000000000000888
   5[022] - load null
-  6[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  6[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   9[083] - branch if false T16
  12[026] - load smi 87
  14[004] - store local, pop S1
  16[017] - load local 3
  17[053] - invoke static id tests/type_propagation/local-test.toit // [{SmallInteger_}] -> {SmallInteger_}
  20[002] - pop, load local S2
- 22[053] - invoke static id tests/type_propagation/local-test.toit // [{True_}] -> {True_}
+ 22[053] - invoke static id tests/type_propagation/local-test.toit // [{True}] -> {True}
  25[002] - pop, load local S1
  27[053] - invoke static id tests/type_propagation/local-test.toit // [{float}] -> {float}
  30[002] - pop, load local S0
  32[053] - invoke static id tests/type_propagation/local-test.toit // [{Null_|SmallInteger_}] -> {Null_|SmallInteger_}
  35[041] - pop 1
- 36[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 36[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  39[083] - branch if false T46
  42[020] - load literal false
  44[004] - store local, pop S3
  46[017] - load local 3
  47[053] - invoke static id tests/type_propagation/local-test.toit // [{SmallInteger_}] -> {SmallInteger_}
  50[002] - pop, load local S2
- 52[053] - invoke static id tests/type_propagation/local-test.toit // [{True_|False_}] -> {True_|False_}
+ 52[053] - invoke static id tests/type_propagation/local-test.toit // [{True|False}] -> {True|False}
  55[002] - pop, load local S1
  57[053] - invoke static id tests/type_propagation/local-test.toit // [{float}] -> {float}
  60[002] - pop, load local S0
@@ -112,7 +112,7 @@ test-if-more-locals tests/type_propagation/local-test.toit
 
 test-loop-simple tests/type_propagation/local-test.toit
   0[022] - load null
-  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   4[083] - branch if false T21
   7[026] - load smi 2
   9[004] - store local, pop S1
@@ -128,7 +128,7 @@ test-loop-break tests/type_propagation/local-test.toit
   0[022] - load null
   1[026] - load smi 2
   3[004] - store local, pop S1
-  5[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  5[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   8[083] - branch if false T14
  11[081] - branch T19
  14[084] - branch back T1
@@ -138,10 +138,10 @@ test-loop-break tests/type_propagation/local-test.toit
  24[022] - load null
  25[020] - load literal horse
  27[004] - store local, pop S1
- 29[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 29[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  32[083] - branch if false T38
  35[081] - branch T58
- 38[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 38[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  41[083] - branch if false T48
  44[026] - load smi 42
  46[004] - store local, pop S1
@@ -157,7 +157,7 @@ test-loop-break tests/type_propagation/local-test.toit
 
 test-loop-continue tests/type_propagation/local-test.toit
   0[022] - load null
-  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+  1[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   4[083] - branch if false T19
   7[026] - load smi 2
   9[004] - store local, pop S1
@@ -167,11 +167,11 @@ test-loop-continue tests/type_propagation/local-test.toit
  20[053] - invoke static id tests/type_propagation/local-test.toit // [{Null_|SmallInteger_}] -> {Null_|SmallInteger_}
  23[041] - pop 1
  24[022] - load null
- 25[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 25[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  28[083] - branch if false T56
  31[020] - load literal horse
  33[004] - store local, pop S1
- 35[053] - invoke static pick tests/type_propagation/local-test.toit // {True_|False_}
+ 35[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
  38[083] - branch if false T47
  41[081] - branch T51
  44[081] - branch T51
@@ -185,7 +185,7 @@ test-loop-continue tests/type_propagation/local-test.toit
  65[090] - return null S3 0
 
 id tests/type_propagation/local-test.toit
- - argument 0: {String_|Null_|True_|False_|float|SmallInteger_}
+ - argument 0: {String_|Null_|True|False|float|SmallInteger_}
   0[016] - load local 2
   1[089] - return S1 1
 
@@ -193,5 +193,5 @@ pick tests/type_propagation/local-test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
   8[089] - return S1 0

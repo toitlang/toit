@@ -62,71 +62,69 @@ percent-decode_ str:
   if source-i == target-i: return str
   return decoded.to-string 0 target-i
 
-/** Converts between LSP URIs and toitc paths. */
-class UriPathTranslator:
-  to-uri path/string --from-compiler/bool=false -> string:
-    if path.starts-with VIRTUAL-FILE-MARKER_:
-      return path.trim --left VIRTUAL-FILE-MARKER_
+to-uri path/string --from-compiler/bool=false -> string:
+  if path.starts-with VIRTUAL-FILE-MARKER_:
+    return path.trim --left VIRTUAL-FILE-MARKER_
 
-    if platform == system.PLATFORM-WINDOWS and from-compiler:
-      // The compiler keeps a '/' to know whether a path is absolute or not.
-      assert: path.starts-with "/"
-      path = path.trim --left "/"
-
-    // As soon as there is a protocol/authority, the path must be absolute.
-    // Here the protocol is "file://".
-    // We would like to check that the path is absolute, but the compiler
-    // works with a '/' in front, and might walk up the directory tree to
-    // find the lock file. In that case it can remove the drive segment and
-    // thus end up with a relative path.
-
-    if platform == system.PLATFORM-WINDOWS:
-      // CMake uses forward slashes in the source-bundle. However, the protocol
-      // requires backslashes.
-      path = path.replace --all "/" "\\"
-      // RFC8089 states that a URI takes the form of 'file://host/path'.
-      // The 'host' part is optional, in which case we end up with
-      // three slashes.
-      // The 'path' is always absolute, and on Linux, we don't add the
-      // additional leading '/' for the root.
-      // However, on Windows, we have to add the leading '/' to start the
-      // path part.
-      path = "/$path"
+  if platform == system.PLATFORM-WINDOWS and from-compiler:
+    // The compiler keeps a '/' to know whether a path is absolute or not.
     assert: path.starts-with "/"
-    encoded := percent-encode_ path
-    return "file://" + encoded
+    path = path.trim --left "/"
 
-  to-path uri/string --to-compiler/bool=false -> string:
-    if uri.starts-with "file://":
-      without-uri-prefix := uri.trim --left "file://"
-      decoded := percent-decode_ without-uri-prefix
-      if platform == system.PLATFORM-WINDOWS:
-        if to-compiler:
-          decoded = decoded.replace --all "\\" "/"
-        else:
-          // This should always be the case.
-          // Remove the leading '/'.
-          decoded = decoded.trim --left "/"
-      return decoded
-    // For every other uri assume that it's stored in the source-bundle and
-    // mark it as virtual.
-    return "$VIRTUAL-FILE-MARKER_$uri"
+  // As soon as there is a protocol/authority, the path must be absolute.
+  // Here the protocol is "file://".
+  // We would like to check that the path is absolute, but the compiler
+  // works with a '/' in front, and might walk up the directory tree to
+  // find the lock file. In that case it can remove the drive segment and
+  // thus end up with a relative path.
 
-  compiler-path-to-local-path compiler-path/string -> string:
+  if platform == system.PLATFORM-WINDOWS:
+    // CMake uses forward slashes in the source-bundle. However, the protocol
+    // requires backslashes.
+    path = path.replace --all "/" "\\"
+    // RFC8089 states that a URI takes the form of 'file://host/path'.
+    // The 'host' part is optional, in which case we end up with
+    // three slashes.
+    // The 'path' is always absolute, and on Linux, we don't add the
+    // additional leading '/' for the root.
+    // However, on Windows, we have to add the leading '/' to start the
+    // path part.
+    path = "/$path"
+  assert: path.starts-with "/"
+  encoded := percent-encode_ path
+  return "file://" + encoded
+
+to-path uri/string --to-compiler/bool=false -> string:
+  if uri.starts-with "file://":
+    without-uri-prefix := uri.trim --left "file://"
+    decoded := percent-decode_ without-uri-prefix
     if platform == system.PLATFORM-WINDOWS:
-      assert: compiler-path.starts-with "/"
-      return compiler-path[1..].replace --all "/" "\\"
-    return compiler-path
+      if to-compiler:
+        decoded = decoded.replace --all "\\" "/"
+      else:
+        // This should always be the case.
+        // Remove the leading '/'.
+        decoded = decoded.trim --left "/"
+    return decoded
+  // For every other uri assume that it's stored in the source-bundle and
+  // mark it as virtual.
+  return "$VIRTUAL-FILE-MARKER_$uri"
 
-  local-path-to-compiler-path local-path/string -> string:
-    assert: fs.is-absolute local-path
-    if platform == system.PLATFORM-WINDOWS:
-      return "/$local-path"
-    return local-path
+compiler-path-to-local-path compiler-path/string -> string:
+  if platform == system.PLATFORM-WINDOWS:
+    assert: compiler-path.starts-with "/"
+    return compiler-path[1..].replace --all "/" "\\"
+  return compiler-path
 
-  /**
-  Returns a canonicalized version of the $uri.
+local-path-to-compiler-path local-path/string -> string:
+  assert: fs.is-absolute local-path
+  if platform == system.PLATFORM-WINDOWS:
+    return "/$local-path"
+  return local-path
 
-  Specifically deals with different ways of percent-encoding.
-  */
-  canonicalize uri/string -> string: return to-uri (to-path uri)
+/**
+Returns a canonicalized version of the $uri.
+
+Specifically deals with different ways of percent-encoding.
+*/
+canonicalize uri/string -> string: return to-uri (to-path uri)

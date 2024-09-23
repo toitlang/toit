@@ -25,7 +25,7 @@ import system.services
 
 import encoding.hex
 import encoding.ubjson
-import uuid
+import uuid show *
 
 import .run-image-exit-codes
 import .network show NetworkServiceProvider
@@ -278,7 +278,7 @@ class RunImageContainerManager extends ContainerManager:
     return ContainerImageWriter this client reservation
 
   // Called from the image writer.
-  on-committed-image_ id/uuid.Uuid image/ByteArray -> none:
+  on-committed-image_ id/Uuid image/ByteArray -> none:
     assert: ota-dir-active_ != null
     if not save-to-fs_: return
     dir := "$ota-dir-active_/$INSTALLED-DIR-NAME"
@@ -287,7 +287,7 @@ class RunImageContainerManager extends ContainerManager:
     if not file.is-file path: file.write-content --path=path image
 
   // Override the default implementation.
-  uninstall-image id/uuid.Uuid -> none:
+  uninstall-image id/Uuid -> none:
     super id
     if not ota-dir-active_: return
     path := "$ota-dir-active_/$INSTALLED-DIR-NAME/$id"
@@ -347,7 +347,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   path = path.replace --all "\\" "/"
   last-separator := path.index-of --last "/"
   last-segment := path[last-separator + 1..]
-  file-uuid/uuid.Uuid? := uuid.parse last-segment --on-error=: null
+  file-uuid/Uuid? := Uuid.parse last-segment --on-error=: null
 
   if file-uuid and existing-uuids.contains file-uuid:
     // Already in the flash.
