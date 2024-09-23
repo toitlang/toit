@@ -152,7 +152,7 @@ class SolverPackage:
 /**
 A (lazy) database of packages that are available.
 */
-class SolverDb:
+class Database_:
   registries_/Registries
   entries_/Map ::= {:}  // From url to SolverPackage.
 
@@ -162,7 +162,7 @@ class SolverDb:
   Returns a list of $SolverPackage instances for the given URL.
 
   The list is initially in descending order of version, but may be
-    reordered by the solver.
+    reordered by the solver by calling $set-preferred.
   */
   get-solver-packages url/string -> List:
     return entries_.get url --init=:
@@ -177,6 +177,25 @@ class SolverDb:
               --dependencies=entry.dependencies
       solver-packages
 
+  /**
+  Moves the given $version to the front of the list of tried
+    versions for the given $url.
+
+  Does nothing if no package with the given $url or $version is found.
+  */
+  set-preferred url/string version/SemanticVersion -> none:
+    entries := get-solver-packages url
+    found-at := -1
+    for i := entries.size - 1; i >= 0; i--:
+      if entries[i].version == version:
+        found-at = i
+        break
+    if found-at == -1: return
+    entry := entries[found-at]
+    // Shift the preceding versions one step down.
+    entries.replace 1 entries 0 found-at
+    entries[0] = entry
+
 /**
 A simple constraint solver for the Toit package manager.
 
@@ -187,7 +206,7 @@ Some properties of the Toit package management system:
   packages used in a project.
 */
 class Solver:
-  db_/SolverDb
+  database_/Database_
   state_/SolverState? := null
   printed-errors_/Set ::= {}
   /**
@@ -205,8 +224,19 @@ class Solver:
   The solver can only be used for a single solve operation.
   */
   constructor registries/Registries --.sdk-version --outputter/Lambda:
-    db_ = SolverDb registries
+    database_ = Database_ registries
     outputter_ = outputter
+
+
+  /**
+  Moves the given $version to the front of the list of tried
+    versions for the given $url.
+
+  Does nothing if no package with the given $url or $version is found.
+  */
+  set-preferred url/string version/SemanticVersion -> none:
+    if state_: throw "Solver already used"
+    database_.set-preferred url version
 
   /**
   Solves the given dependencies.
@@ -266,7 +296,7 @@ class Solver:
 
   solve-dependency_ dependency/PackageDependency index/int  [--on-success] [--on-failure]:
     url := dependency.url
-    available/List := db_.get-solver-packages url
+    available/List := database_.get-solver-packages url
     if available.is-empty:
       warn_ "Package '$url' not found"
       on-failure.call

@@ -21,7 +21,9 @@ main:
   test-cycle
   test-fail-missing-pkg
   test-fail-version
+  test-preferred
   test-backtrack
+  test-no-backtrack-preferred
   test-2-versions
   test-backtrack-2-versions
   test-uniq-error-message
@@ -79,9 +81,14 @@ make-registries pkgs/List -> reg.Registries:
       --outputter=outputter
 
 find-solution solve-for/Description registries/reg.Registries -> Solution?
-    --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0"):
+    --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0")
+    --preferred/List=[]:
   solver := Solver registries --sdk-version=sdk-version
       --outputter=outputter
+
+  preferred.do: | desc/Description |
+    solver.set-preferred desc.url desc.version
+
   solve-for-constraint := Constraint
       --simple-constraints=[SimpleConstraint "=" solve-for.version]
       --source="=$solve-for.version"
@@ -158,19 +165,15 @@ test-fail-version:
   solution := find-solution a1 registries
   expect-null solution
 
-// TODO(florian): handle/test preferred packages.
-/*
-	t.Run("Preferred", func(t *testing.T) {
-		a170 := mkPkg("a-1.7.0", "b ^1.0.0")
-		b110 := mkPkg("b-1.1.0")
-		b111 := mkPkg("b-1.1.1")
-		b210 := mkPkg("b-2.1.0")
-		registries := makeRegistries(a170, b110, b111, b210)
-		// Prefer "b110".
-		solution := findSolution(t, a170, registries, preferred(b110))
-		checkSolution(t, solution, a170, b110)
-	})
-*/
+test-preferred:
+  a170 := make-pkg "a-1.7.0" ["b ^1.0.0"]
+  b110 := make-pkg "b-1.1.0"
+  b111 := make-pkg "b-1.1.1"
+  b210 := make-pkg "b-2.1.0"
+  registries := make-registries [a170, b110, b111, b210]
+  // Prefer "b110".
+  solution := find-solution a170 registries --preferred=[b110]
+  check-solution solution [a170, b110]
 
 test-backtrack:
   a170 := make-pkg "a-1.7.0" ["b ^1.0.0", "c ^1.0.0"]
@@ -181,20 +184,16 @@ test-backtrack:
   solution := find-solution a170 registries
   check-solution solution [a170, b140, c100]
 
-// TODO(florian): handle/test preferred packages.
-/*
-	t.Run("Solve No Backtrack Preferred", func(t *testing.T) {
-		a170 := mkPkg("a-1.7.0", "b ^1.0.0", "c ^1.0.0")
-		b130 := mkPkg("b-1.3.0")
-		b140 := mkPkg("b-1.4.0")
-		b180 := mkPkg("b-1.8.0")
-		c100 := mkPkg("c-1.0.0", "b >=1.0.0,<1.5.0")
-		registries := makeRegistries(a170, b130, b140, b180, c100)
-		// With the preferred "b140", no backtracking is needed.
-		solution := findSolution(t, a170, registries, preferred(b130))
-		checkSolution(t, solution, a170, b130, c100)
-	})
-*/
+test-no-backtrack-preferred:
+  a170 := make-pkg "a-1.7.0" ["b ^1.0.0", "c ^1.0.0"]
+  b130 := make-pkg "b-1.3.0"
+  b140 := make-pkg "b-1.4.0"
+  b180 := make-pkg "b-1.8.0"
+  c100 := make-pkg "c-1.0.0" ["b >=1.0.0,<1.5.0"]
+  registries := make-registries [a170, b130, b140, b180, c100]
+  // With the preferred "b140", no backtracking is needed.
+  solution := find-solution a170 registries --preferred=[b130]
+  check-solution solution [a170, b130, c100]
 
 test-2-versions:
   a170 := make-pkg "a-1.7.0" ["b ^2.0.0", "c ^1.0.0"]
