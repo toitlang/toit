@@ -1,9 +1,21 @@
+tests/lsp/field-storing-completion-test.toit:60:5: warning: Field-storing parameters in non-constructors are deprecated
+foo .field-storing:
+    ^~~~~~~~~~~~~~
 tests/lsp/field-storing-completion-test.toit:60:5: error: Field-storing parameter not allowed in static functions
 foo .field-storing:
     ^~~~~~~~~~~~~~
+tests/lsp/field-storing-completion-test.toit:41:23: warning: Field-storing parameters in non-constructors are deprecated
+  constructor.factory .field-B1:
+                      ^~~~~~~~~
 tests/lsp/field-storing-completion-test.toit:41:23: error: Field-storing parameter not allowed in static functions
   constructor.factory .field-B1:
                       ^~~~~~~~~
+tests/lsp/field-storing-completion-test.toit:55:14: warning: Field-storing parameters in non-constructors are deprecated
+  static foo .field-B1:
+             ^~~~~~~~~
 tests/lsp/field-storing-completion-test.toit:55:14: error: Field-storing parameter not allowed in static functions
   static foo .field-B1:
              ^~~~~~~~~
+tests/lsp/field-storing-completion-test.toit:49:10: warning: Field-storing parameters in non-constructors are deprecated
+  member .field-B1:
+         ^~~~~~~~~

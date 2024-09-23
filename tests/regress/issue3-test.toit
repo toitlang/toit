@@ -3,12 +3,12 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import net
+import net.modules.tcp
 import system
 import system show platform
 
 // https://github.com/toitware/toit/issues/3
-
-import ..tcp
 
 expect name [code]:
   expect-equals
@@ -17,7 +17,8 @@ expect name [code]:
 
 main:
   // Port 47 is reserved/unassigned.
-  socket := TcpSocket
+  network := net.open
+  socket := tcp.TcpSocket network
   if platform == system.PLATFORM-WINDOWS:
     expect "No connection could be made because the target machine actively refused it.\r\n": socket.connect "localhost" 47
   else:

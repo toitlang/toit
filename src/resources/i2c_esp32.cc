@@ -69,7 +69,7 @@ class I2cResourceGroup : public ResourceGroup {
 MODULE_IMPLEMENTATION(i2c, MODULE_I2C);
 
 PRIMITIVE(init) {
-  ARGS(int, frequency, int, sda, int, scl);
+  ARGS(int, frequency, int, sda, int, scl, bool, sda_pullup, bool, scl_pullup);
 
   i2c_port_t port = i2c_ports.any();
   if (port == kInvalidPort) FAIL(ALREADY_IN_USE);
@@ -84,19 +84,25 @@ PRIMITIVE(init) {
   memset(&conf, 0, sizeof(conf));
   conf.mode = I2C_MODE_MASTER;
   conf.sda_io_num = (gpio_num_t)sda;
-  conf.sda_pullup_en = GPIO_PULLUP_DISABLE;
+  conf.sda_pullup_en = sda_pullup ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
   conf.scl_io_num = (gpio_num_t)scl;
-  conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
+  conf.scl_pullup_en = scl_pullup ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
   conf.master.clk_speed = frequency;
   int result = i2c_param_config(port, &conf);
   if (result != ESP_OK) FAIL(INVALID_ARGUMENT);
   result = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2)
     i2c_set_timeout(port, (int)(log2(I2C_APB_CLK_FREQ / 1000.0 * kI2cTransactionTimeout)));
-#else
+#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
     i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2cTransactionTimeout);
+#else
+#FATAL "Unsupported target"
+  // Go to the i2c section of the datasheet and check whether the value is used as
+  // a power or counts the individual cycles.
+  // For example:
+  //   https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf#i2c
 #endif
   });
   if (result != ESP_OK) {

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <vector>
 #include <functional>
 
 #include "ast.h"
@@ -82,6 +83,8 @@ class MethodResolver : public ast::Visitor {
 
   static Symbol this_identifier() { return Symbols::this_; }
 
+  std::vector<ir::AssignmentGlobal*>& global_assignments() { return global_assignments_; }
+
  private:
   ir::Type resolve_type(ast::Expression* node, bool is_return_type);
   void resolve_fill_field_stub();
@@ -137,6 +140,8 @@ class MethodResolver : public ast::Visitor {
   bool has_primitive_invocation_ = false;
   std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
 
+  std::vector<ir::AssignmentGlobal*> global_assignments_;
+
   SourceManager* source_manager() const { return source_manager_; }
   Diagnostics* diagnostics() const { return diagnostics_; }
   Scope* scope() const { return scope_; }
@@ -174,7 +179,8 @@ class MethodResolver : public ast::Visitor {
 
   void _add_parameters_to_scope(LocalScope* scope, List<ir::Parameter*> parameters);
   void _resolve_fill_parameters_return_type(Set<ir::Parameter*>* field_storing_parameters,
-                                            std::vector<ir::Expression*>* parameter_expressions);
+                                            std::vector<ir::Expression*>* parameter_expressions,
+                                            bool is_constructor);
   void _resolve_fill_return_type();
   void _resolve_parameters(List<ast::Parameter*> ast_parameters,
                            bool has_implicit_this,
@@ -182,6 +188,7 @@ class MethodResolver : public ast::Visitor {
                            List<ir::Parameter*>* ir_parameters,
                            Set<ir::Parameter*>* field_storing_parameters,
                            std::vector<ir::Expression*>* parameter_expressions,
+                           bool is_constructor,
                            int id_offset = 0);
 
   bool _parameter_has_explicit_type(ir::Parameter* ir_parameter) const {
@@ -251,7 +258,8 @@ class MethodResolver : public ast::Visitor {
                                          CallBuilder& call_builder);
   void _visit_potential_call_super(ast::Node* ast_target,
                                    CallBuilder& call_builder,
-                                   bool is_constructor_super_call);
+                                   bool is_constructor_super_call,
+                                   ast::LspSelection* named_lsp_selection);
   void _visit_potential_call(ast::Expression* potential_call,
                              ast::Node* ast_target,
                              List<ast::Expression*> ast_arguments = List<ast::Expression*>());
