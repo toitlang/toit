@@ -90,6 +90,7 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  bool is_for_dependencies;
   /// Optimization level.
   int optimization_level;
 };
@@ -358,6 +359,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
   };
 
@@ -519,7 +521,8 @@ bool read_from_pipe(int fd, void* buffer, int requested_bytes) {
 }
 
 void Compiler::analyze(List<const char*> source_paths,
-                       const Compiler::Configuration& compiler_config) {
+                       const Compiler::Configuration& compiler_config,
+                       bool for_dependencies) {
   // We accept '/' paths on Windows as well.
   // For simplicity (and consistency) switch to localized ones in the compiler.
   source_paths = FilesystemLocal::to_local_path(source_paths);
@@ -530,13 +533,19 @@ void Compiler::analyze(List<const char*> source_paths,
                                            compiler_config.show_package_warnings,
                                            compiler_config.print_diagnostics_on_stdout);
   NullDiagnostics null_diagnostics(&source_manager);
-  Diagnostics* diagnostics = Flags::migrate_dash_ids
+  Diagnostics* diagnostics = (Flags::migrate_dash_ids || for_dependencies)
       ? static_cast<Diagnostics*>(&null_diagnostics)
       : static_cast<Diagnostics*>(&analysis_diagnostics);
+  const char* dep_file = (for_dependencies && compiler_config.dep_file == null)
+      ? "-"
+      : compiler_config.dep_file;
+  DepFormat dep_format = (for_dependencies && compiler_config.dep_format == DepFormat::none)
+      ? DepFormat::list
+      : compiler_config.dep_format;
   PipelineConfiguration configuration = {
     .out_path = null,
-    .dep_file = compiler_config.dep_file,
-    .dep_format = compiler_config.dep_format,
+    .dep_file = dep_file,
+    .dep_format = dep_format,
     .project_root = compiler_config.project_root,
     .filesystem = &fs,
     .source_manager = &source_manager,
@@ -545,7 +554,8 @@ void Compiler::analyze(List<const char*> source_paths,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
-    .is_for_analysis = true,
+    .is_for_analysis = !for_dependencies,
+    .is_for_dependencies = for_dependencies,
     .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
@@ -674,6 +684,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
   };
 
@@ -1669,6 +1680,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     ASSERT(configuration_.dep_format != Compiler::DepFormat::none);
     PlainDepWriter plain_writer;
     NinjaDepWriter ninja_writer;
+    ListDepWriter list_writer;
     DepWriter* chosen_writer = null;
     switch (configuration_.dep_format) {
       case Compiler::DepFormat::plain:
@@ -1677,6 +1689,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
       case Compiler::DepFormat::ninja:
         chosen_writer = &ninja_writer;
         break;
+      case Compiler::DepFormat::list:
+        chosen_writer = &list_writer;
+        break;
       case Compiler::DepFormat::none:
         UNREACHABLE();
     }
@@ -1684,6 +1699,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
                                                    configuration_.out_path,
                                                    units,
                                                    CORE_UNIT_INDEX);
+    if (configuration_.is_for_dependencies) {
+      return Result::invalid();
+    }
   }
 
   if (configuration_.parse_only) return Result::invalid();
