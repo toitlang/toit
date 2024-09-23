@@ -9,7 +9,6 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 // Some types are implicitly exported, as they are the return type of functions.
 // Make sure that changes to that type propagate through all reverse dependencies.

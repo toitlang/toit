@@ -69,12 +69,17 @@ See also https://docs.toit.io/language/booleans.
 */
 class bool:
 
-class False_ extends bool:
+/**
+The class of `false`.
+*/
+class False extends bool:
   stringify:
     return "false"
 
-
-class True_ extends bool:
+/**
+The class of `true`.
+*/
+class True extends bool:
   stringify:
     return "true"
 

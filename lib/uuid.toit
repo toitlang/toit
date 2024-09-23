@@ -11,81 +11,27 @@ This library contains the UUID class ($Uuid), and supports the
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 
+import crypto
 import crypto.sha1 as crypto
+import io
 
-/** Bytesize of a UUID. */
-// TODO(4193): should the name of the constant be less ambiguous?
-SIZE ::= 16
+/// Deprecated. Use $Uuid.SIZE instead.
+SIZE ::= Uuid.SIZE
 
-/**
-The Nil UUID.
-This UUID is composed of all bits set to zero.
-*/
-NIL ::= Uuid
-  ByteArray SIZE
+/// Deprecated. Use $Uuid.NIL instead.
+NIL ::= Uuid.NIL
 
-/**
-Parses the given $str as a UUID.
-
-Supports the canonical textual representation, consisting of 16 bytes encoded
-  as 32 hexademical values. The hexadecimal values should be split into 5
-  groups, separated by a dash ('-'). The groups should contain respectively
-  8, 4, 4, 4, and 12 hexadecimal characters.
-
-Calls $on-error (and returns its result) if $str is not a valid UUID.
-
-# Examples
-```
-parse "123e4567-e89b-12d3-a456-426614174000"
-```
-*/
+/// Deprecated. Use $Uuid.parse instead.
 parse str/string [--on-error] -> Uuid?:
-  uuid := ByteArray SIZE
-  index := 0
-  i := 0
-  error-handler := (: return on-error.call)
-  while i < str.size and index < uuid.size:
-    if (str.at --raw i) == '-': i++
-    if i + 1 >= str.size: return on-error.call
-    v := hex-char-to-value str[i++] --on-error=error-handler
-    v <<= 4
-    v |= hex-char-to-value str[i++] --on-error=error-handler
-    uuid[index++] = v
-  if i < str.size or index != uuid.size:
-    return on-error.call
-  return Uuid uuid
+  return Uuid.parse str --on-error=on-error
 
-/**
-Variant of $(parse str [--on-error]) that throws an error if $str is not a
-  valid UUID.
-*/
+/// Deprecated. Use $Uuid.parse instead.
 parse str/string -> Uuid:
-  return parse str --on-error=(: throw "INVALID_UUID")
+  return Uuid.parse str
 
-/**
-Builds a version 5 UUID from the given $namespace and $data.
-Both $namespace and $data can be either strings or byte arrays.
-
-The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
-  thus also known as "Leach-Salz" UUID.
-*/
-// TODO(4197): should be typed.
-uuid5 namespace data -> Uuid:
-  hash := crypto.Sha1
-  // TODO(4197): why do we need to call `to-byte-array` here.
-  //   Is the documentation wrong and we want to accept more than
-  //   just strings and byte arrays?
-  hash.add namespace.to-byte-array
-  hash.add data
-  uuid := hash.get
-
-  // Version 5
-  uuid[6] = (uuid[6] & 0xf) | 0x50
-  // Variant 1
-  uuid[8] = (uuid[8] & 0x3f) | 0x80
-
-  return Uuid
-    uuid.copy 0 SIZE
+/// Deprecated. Use $Uuid.uuid5 instead.
+uuid5 namespace/io.Data data/io.Data -> Uuid:
+  return Uuid.uuid5 namespace data
 
 /**
 A universally unique identifier, UUID.
@@ -97,8 +43,90 @@ UUIDs are equivalent to a 128-bit number. Through the use of
 See https://en.wikipedia.org/wiki/Universally_unique_identifier.
 */
 class Uuid:
-  // TODO(4196): the field should be types as `ByteArray`.
-  bytes_ ::= ?
+
+  /** Bytesize of a UUID. */
+  // TODO(4193): should the name of the constant be less ambiguous?
+  static SIZE ::= 16
+
+  /**
+  The Nil UUID.
+  This UUID is composed of all bits set to zero.
+  */
+  static NIL ::= Uuid (ByteArray SIZE)
+
+  /**
+  Parses the given $str as a UUID.
+
+  Supports the canonical textual representation, consisting of 16 bytes encoded
+    as 32 hexademical values. The hexadecimal values should be split into 5
+    groups, separated by a dash ('-'). The groups should contain respectively
+    8, 4, 4, 4, and 12 hexadecimal characters.
+
+  Calls $on-error (and returns its result) if $str is not a valid UUID.
+
+  # Examples
+  ```
+  parse "123e4567-e89b-12d3-a456-426614174000"
+  ```
+  */
+  static parse str/string [--on-error] -> Uuid?:
+    uuid := ByteArray SIZE
+    index := 0
+    i := 0
+    error-handler := (: return on-error.call)
+    while i < str.size and index < uuid.size:
+      if (str.at --raw i) == '-': i++
+      if i + 1 >= str.size: return on-error.call
+      v := hex-char-to-value str[i++] --on-error=error-handler
+      v <<= 4
+      v |= hex-char-to-value str[i++] --on-error=error-handler
+      uuid[index++] = v
+    if i < str.size or index != uuid.size:
+      return on-error.call
+    return Uuid uuid
+
+  /**
+  Variant of $(parse str [--on-error]) that throws an error if $str is not a
+    valid UUID.
+  */
+  static parse str/string -> Uuid:
+    return parse str --on-error=(: throw "INVALID_UUID")
+
+  /**
+  Builds a version 5 UUID from the given $namespace and $data.
+
+  The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
+    thus also known as "Leach-Salz" UUID.
+  */
+  static uuid5 namespace/io.Data data/io.Data -> Uuid:
+    hash := crypto.Sha1
+    hash.add namespace
+    hash.add data
+    uuid := hash.get
+
+    // Version 5
+    uuid[6] = (uuid[6] & 0xf) | 0x50
+    // Variant 1
+    uuid[8] = (uuid[8] & 0x3f) | 0x80
+
+    return Uuid
+      uuid.copy 0 SIZE
+
+  /**
+  Generates a random UUID.
+  */
+  static random -> Uuid:
+    return Uuid
+      crypto.random --size=SIZE
+
+  /**
+  Returns whether the given $str is a valid UUID.
+  */
+  static is-valid str/string -> bool:
+    parse str --on-error=: return false
+    return true
+
+  bytes_/ByteArray
   hash_ := null
 
   /**
@@ -145,7 +173,7 @@ class Uuid:
   The returned byte array is a valid input for the UUID constructor.
   */
   to-byte-array -> ByteArray:
-    return bytes_
+    return bytes_.copy
 
   /** Whether this instance has the same 128 bits as $other. */
   operator == other -> bool:
