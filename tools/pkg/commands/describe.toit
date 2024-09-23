@@ -22,8 +22,8 @@ import encoding.yaml
 
 import ..pkg
 import ..error
-import ..project.package
 import ..project
+import ..project.specification
 import ..registry
 import ..registry.description
 import ..license
@@ -55,7 +55,7 @@ class DescribeCommand:
 
   build-description -> Description
       [--check-src-dir]
-      [--load-package-file]
+      [--load-specification]
       [--load-license-file]
       --hash/string
       --version/string
@@ -64,15 +64,15 @@ class DescribeCommand:
     if not check-src-dir.call:
       error "No 'src' directory in package."
 
-    package-file := load-package-file.call
-    if not package-file:
+    specification := load-specification.call
+    if not specification:
       error "Missing package.yaml file."
 
-    if not package-file.description:
+    if not specification.description:
       warning "Automatic name/description extraction from README has been removed."
       error "Missing description"
 
-    license := package-file.license
+    license := specification.license
     if license:
       if not validate-license-id license:
         warning "Unknown SDIX license-ID: '$license'"
@@ -85,12 +85,12 @@ class DescribeCommand:
         if not license:
           warning "Unknown license in 'LICENSE' file"
 
-    if not allow-local-deps and not package-file.local-dependencies.is-empty:
+    if not allow-local-deps and not specification.local-dependencies.is-empty:
       warning "Package has local dependencies."
 
     description := {
-      Description.DESCRIPTION-KEY_: package-file.description,
-      Description.NAME-KEY_: package-file.name,
+      Description.DESCRIPTION-KEY_: specification.description,
+      Description.NAME-KEY_: specification.name,
       Description.VERSION-KEY_: version,
       Description.URL-KEY_: url-path,
       Description.HASH-KEY_: hash
@@ -98,15 +98,15 @@ class DescribeCommand:
 
     if license: description[Description.LICENSE-KEY_] = license
 
-    if not package-file.registry-dependencies.is-empty:
-      dependencies := package-file.registry-dependencies.values.map: | package-dependency/PackageDependency |
+    if not specification.registry-dependencies.is-empty:
+      dependencies := specification.registry-dependencies.values.map: | package-dependency/PackageDependency |
         {
           "url": package-dependency.url,
           "version": package-dependency.constraint.to-string,
         }
       description[Description.DEPENDENCIES-KEY_] = dependencies
 
-    environment := package-file.environment
+    environment := specification.environment
     if environment: description[Description.ENVIRONMENT-KEY_] = environment
 
     return Description description
@@ -120,7 +120,7 @@ class DescribeCommand:
     src := "$url-path/src"
     description := build-description
       --check-src-dir=: file.is_directory src
-      --load-package-file=: file.is_file (PackageFile.file-name url-path) and ExternalPackageFile --dir=url-path
+      --load-specification=: file.is_file (Specification.file-name url-path) and ExternalSpecification --dir=url-path
       --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
@@ -139,9 +139,9 @@ class DescribeCommand:
     file-view/FileSystemView := pack.content
     description := build-description
       --check-src-dir=: (file-view.get "src") is FileSystemView
-      --load-package-file=:
-        package-content := file-view.get PackageFile.FILE_NAME
-        package-content and RepositoryPackageFile package-content
+      --load-specification=:
+        package-content := file-view.get Specification.FILE_NAME
+        package-content and RepositorySpecification package-content
       --load-license-file=: file-view.get "LICENSE"
       --hash=ref-hash
       --version=version

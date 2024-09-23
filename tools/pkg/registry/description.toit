@@ -15,7 +15,7 @@
 
 import ..semantic-version
 import ..constraints
-import ..project.package
+import ..project.specification show PackageDependency
 
 class Description:
   static NAME-KEY_         ::= "name"

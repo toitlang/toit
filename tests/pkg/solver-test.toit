@@ -6,7 +6,7 @@ import expect show *
 
 import ...tools.pkg.constraints
 import ...tools.pkg.file-system-view
-import ...tools.pkg.project.package show PackageDependency
+import ...tools.pkg.project.specification show PackageDependency
 import ...tools.pkg.registry as reg
 import ...tools.pkg.registry.local as reg
 import ...tools.pkg.registry.description

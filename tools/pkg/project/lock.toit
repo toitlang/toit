@@ -23,21 +23,21 @@ import ..solver as solver
 import ..semantic-version
 import ..utils
 
-import .package
 import .project
+import .specification
 
 interface Package:
   prefixes -> Map
   // TODO(florian): we should always have a name. For local packages we would extract it from the folder name.
   name -> string?
-  package-file -> PackageFile
+  specification -> Specification
 
-  constructor.from-map name/string? map/Map project-package-file/ProjectPackageFile:
+  constructor.from-map name/string? map/Map project-specification/ProjectSpecification:
     map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
     if map.contains LockFile.PATH-KEY_:
-      return LoadedLocalPackage.from-map name map-prefixes project-package-file map
+      return LoadedLocalPackage.from-map name map-prefixes project-specification map
     else:
-      return LoadedRepositoryPackage.from-map name map-prefixes project-package-file map
+      return LoadedRepositoryPackage.from-map name map-prefixes project-specification map
 
 
 interface RepositoryPackage extends Package:
@@ -54,27 +54,27 @@ interface LocalPackage extends Package:
 
 
 abstract class PackageBase implements Package:
-  project-package-file/ProjectPackageFile
+  project-specification/ProjectSpecification
   prefixes/Map := ?
   name/string? := ?
 
-  constructor .project-package-file:
+  constructor .project-specification:
     prefixes = {:}
     name = null
 
-  constructor .name .prefixes .project-package-file:
+  constructor .name .prefixes .project-specification:
 
-  abstract package-file -> PackageFile
+  abstract specification -> Specification
 
-  package-file url/string version/SemanticVersion -> PackageFile:
+  specification url/string version/SemanticVersion -> Specification:
     ensure-downloaded url version
-    return project-package-file.project.load-package-package-file url version
+    return project-specification.project.load-package-specification url version
 
   ensure-downloaded url/string version/SemanticVersion:
-    project-package-file.project.ensure-downloaded url version
+    project-specification.project.ensure-downloaded url version
 
   cached-repository-dir url/string version/SemanticVersion:
-    return project-package-file.project.cached-repository-dir_ url version
+    return project-specification.project.cached-repository-dir_ url version
 
   abstract enrich-map map/Map
 
@@ -90,19 +90,19 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
   version/SemanticVersion
   ref-hash/string
 
-  constructor.from-map name prefixes project-package-file/ProjectPackageFile map/Map:
+  constructor.from-map name prefixes project-specification/ProjectSpecification map/Map:
     url = map["url"]
     version = SemanticVersion.parse map["version"]
     ref-hash = map["hash"]
-    super name prefixes project-package-file
+    super name prefixes project-specification
 
   enrich-map map/Map:
     map["url"] = url
     map["version"] = version.stringify
     map["hash"] = ref-hash
 
-  package-file -> PackageFile:
-    return package-file url version
+  specification -> Specification:
+    return specification url version
 
   ensure-downloaded:
     ensure-downloaded url version
@@ -113,15 +113,15 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
 class LoadedLocalPackage extends PackageBase implements LocalPackage:
   path/string
 
-  constructor.from-map name prefixes project-package-file/ProjectPackageFile map/Map:
+  constructor.from-map name prefixes project-specification/ProjectSpecification map/Map:
     path = map["path"]
-    super name prefixes project-package-file
+    super name prefixes project-specification
 
   enrich-map map/Map:
     map["path"] = path
 
-  package-file -> PackageFile:
-    return project-package-file.project.load-local-package-file path
+  specification -> Specification:
+    return project-specification.project.load-local-specification path
 
 
 class LockFile:
@@ -133,18 +133,18 @@ class LockFile:
   sdk-version/SemanticVersion? := null
   prefixes/Map := {:}
   packages/List := []
-  package-file/ProjectPackageFile
+  specification/ProjectSpecification
 
   static FILE-NAME ::= "package.lock"
 
-  constructor .package-file:
+  constructor .specification:
 
 
-  constructor.load package-file/ProjectPackageFile:
-    contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) or {:}
-    return LockFile.from-map contents package-file
+  constructor.load specification/ProjectSpecification:
+    contents/Map := (yaml.decode (file.read_content (file-name specification.root-dir))) or {:}
+    return LockFile.from-map contents specification
 
-  constructor.from-map map/Map .package-file:
+  constructor.from-map map/Map .specification:
     yaml-sdk-version/string? := map.get SDK-KEY_
     if yaml-sdk-version:
       if not yaml-sdk-version.starts-with "^":
@@ -156,13 +156,13 @@ class LockFile:
 
     yaml-packages/Map := map.get PACKAGES-KEY_ --if-absent=: {:}
     yaml-packages.do: | name/string map/Map |
-      packages.add (Package.from-map name map package-file)
+      packages.add (Package.from-map name map specification)
 
   static file-name root/string -> string:
     return "$root/$FILE_NAME"
 
   file-name -> string:
-    return file-name package-file.root-dir
+    return file-name specification.root-dir
 
   to-map_ -> Map:
     map := {:}
@@ -274,16 +274,16 @@ class LockFileBuilder:
     urls.do: | url/string |
       versions := solution_.packages[url].sort
       versions.do: | version/SemanticVersion |
-        package-file := project_.load-package-package-file url version
-        update-sdk-version.call package-file.sdk-version
-        name := package-file.name
+        specification := project_.load-package-specification url version
+        update-sdk-version.call specification.sdk-version
+        name := specification.name
         hash := project_.hash-for --url=url --version=version
         id-prefix := url-id-prefixes-map_[url]
         // We simply use the url + major version as key.
         id := "$id-prefix-$version.major"
         used-ids.add id
 
-        prefixes := build-prefixes_ package-file.registry-dependencies
+        prefixes := build-prefixes_ specification.registry-dependencies
 
         packages[id] = {
           "url": url,
@@ -306,13 +306,13 @@ class LockFileBuilder:
         id
 
     // Add the local packages.
-    project_.package-file.visit-local-package-files: | human-path/string absolute-path/string package-file/PackageFile? |
+    project_.specification.visit-local-specifications: | human-path/string absolute-path/string specification/Specification? |
       local-prefixes := ?
-      if package-file:
-        update-sdk-version.call package-file.sdk-version
-        local-prefixes = build-prefixes_ package-file.registry-dependencies
+      if specification:
+        update-sdk-version.call specification.sdk-version
+        local-prefixes = build-prefixes_ specification.registry-dependencies
         // Local packages are allowed to have local dependencies.
-        package-file.local-dependencies.do: | prefix/string path/string |
+        specification.local-dependencies.do: | prefix/string path/string |
           dep-path := fs.clean (fs.join absolute-path path)
           local-prefixes[prefix] = compute-local-id.call dep-path
       else:
@@ -333,7 +333,7 @@ class LockFileBuilder:
       result[LockFile.SDK-KEY_] = "^$min-sdk"
     result[LockFile.PREFIXES-KEY_] = prefixes
     result[LockFile.PACKAGES-KEY_] = packages
-    return LockFile.from-map result project_.package-file
+    return LockFile.from-map result project_.specification
 
   build-prefixes_ deps/Map:
     result := {:}

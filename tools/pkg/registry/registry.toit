@@ -24,7 +24,6 @@ import .description
 import ..file-system-view
 import ..error
 import ..semantic-version
-import ..project.package
 import ..constraints
 import ..utils
 import .cache

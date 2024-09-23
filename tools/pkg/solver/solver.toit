@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import ..constraints
-import ..project.package
+import ..project.specification show PackageDependency
 import ..registry
 import ..registry.description
 import ..semantic-version
