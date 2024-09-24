@@ -993,7 +993,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   for (auto package_id : lock_content.packages.keys()) {
     auto entry = lock_content.packages.at(package_id);
 
-    // For simplicity we are using a loop from -1 to length, so we don't
+    // For simplicity we are using a loop from -2 to length, so we don't
     // have to duplicate the code.
     // -2 is only used when the package is of kind 'PATH'.
     // -1 is only used when we have the entry in the mapping.
