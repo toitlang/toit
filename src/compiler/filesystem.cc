@@ -68,7 +68,7 @@ const char* Filesystem::library_root() {
 const char* Filesystem::default_project_root() {
   if (default_project_root_ == null) {
     auto sdk = sdk_path();
-    const char* DEFAULT_PROJECT_SUFFIX = "default";
+    const char* DEFAULT_PROJECT_SUFFIX = "packages-default";
     PathBuilder builder(this);
     builder.join(sdk);
     int sdk_length = builder.length();

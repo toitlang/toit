@@ -284,10 +284,10 @@ install-sdk:
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
-	mkdir -p "$(DESTDIR)$(prefix)"/default
-	cp -R "$(CURDIR)"/default-packages/* "$(DESTDIR)$(prefix)"/default
-	find "$(DESTDIR)$(prefix)"/default -type f -exec chmod 644 {} \;
-	find "$(DESTDIR)$(prefix)"/default -type d -name '.git' -exec rm -rf {} \;
+	mkdir -p "$(DESTDIR)$(prefix)"/packages-default
+	cp -R "$(CURDIR)"/packages-default/* "$(DESTDIR)$(prefix)"/packages-default
+	find "$(DESTDIR)$(prefix)"/packages-default -type f -exec chmod 644 {} \;
+	find "$(DESTDIR)$(prefix)"/packages-default -type d -name '.git' -exec rm -rf {} \;
 
 install: install-sdk
 
