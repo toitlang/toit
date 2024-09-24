@@ -1,3 +1,3 @@
-tests/pi/spi.toit:52:16: error: Can't instantiate interface 'Device'
-  device := spi.Device --path="/dev/spidev0.0" --frequency=FREQUENCY
-               ^~~~~~~
+tests/pi/spi.toit:54:16: error: Type mismatch. Expected 'ByteArray'. Got 'List'
+  device.write [0x01, 0x02, 0x03]
+               ^
