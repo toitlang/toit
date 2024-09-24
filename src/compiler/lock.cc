@@ -1062,7 +1062,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       free(localized);
       auto path = builder.buffer();
 
-      auto package = locate_package(path, error_path, is_path_package);
+      package = locate_package(path, error_path, is_path_package);
       if (!package.is_valid()) {
         diagnostics->report_error(entry.range,
                                   "Package '%s' not found at '%s'",
