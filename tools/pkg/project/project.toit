@@ -27,9 +27,10 @@ import ..error
 import ..pkg
 import ..git
 import ..semantic-version
+import ..solver
 
-import .package
 import .lock
+import .specification
 
 class ProjectConfiguration:
   project-root_/string?
@@ -45,14 +46,14 @@ class ProjectConfiguration:
   root -> string:
     return fs.to-absolute (project-root_ ? project-root_ : cwd_)
 
-  package-file-exists -> bool:
-    return file.is_file (PackageFile.file-name root)
+  specification-file-exists -> bool:
+    return file.is_file (Specification.file-name root)
 
   lock-file-exists -> bool:
     return file.is_file (LockFile.file-name root)
 
   verify:
-    if not project-root_ and not package-file-exists:
+    if not project-root_ and not specification-file-exists:
       error
           """
           Command must be executed in project root.
@@ -62,21 +63,21 @@ class ProjectConfiguration:
 
 class Project:
   config/ProjectConfiguration
-  package-file/ProjectPackageFile? := null
+  specification/ProjectSpecification? := null
   lock-file/LockFile? := null
 
   static PACKAGES-CACHE ::= ".packages"
 
   constructor .config/ProjectConfiguration --empty-lock-file/bool=false:
-    if config.package-file-exists:
-      package-file = ProjectPackageFile.load this
+    if config.specification-file-exists:
+      specification = ProjectSpecification.load this
     else:
-      package-file = ProjectPackageFile.empty this
+      specification = ProjectSpecification.empty this
 
     if config.lock-file-exists:
-      lock-file = LockFile.load package-file
+      lock-file = LockFile.load specification
     else if empty-lock-file:
-      lock-file = LockFile package-file
+      lock-file = LockFile specification
 
   root -> string:
     return config.root
@@ -85,26 +86,26 @@ class Project:
     return config.sdk-version
 
   save:
-    package-file.save
+    specification.save
     lock-file.save
 
   install-remote prefix/string remote/Description:
-    package-file.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
-    solve_
+    specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
+    solve_ --no-update-everything
     save
 
   install-local prefix/string path/string:
-    package-file.add-local-dependency prefix path
-    solve_
+    specification.add-local-dependency prefix path
+    solve_ --no-update-everything
     save
 
   uninstall prefix/string:
-    package-file.remove-dependency prefix
+    specification.remove-dependency prefix
     lock-file.update --remove-prefix=prefix
     save
 
   update:
-    solve_
+    solve_ --update-everything
     save
 
   install:
@@ -131,8 +132,32 @@ class Project:
   packages-cache-dir:
     return "$config.root/$PACKAGES-CACHE"
 
-  solve_ :
-    lock-file = package-file.solve
+  /**
+  Solves the dependencies of the project.
+
+  If $update-everything is true, doesn't take the lock-file into account, and
+    updates all dependencies. Otherwise, uses the lock-file to avoid unnecessary
+    changes.
+  */
+  solve_ --update-everything/bool:
+    dependencies := specification.collect-registry-dependencies
+    min-sdk := specification.compute-min-sdk-version
+    solver := Solver registries --sdk-version=sdk-version --outputter=(:: print it)
+    if not update-everything and lock-file:
+      lock-file.packages.do: | package/Package |
+        if package is RepositoryPackage:
+          repository-package := package as RepositoryPackage
+          solver.set-preferred repository-package.url repository-package.version
+    solution := solver.solve dependencies --min-sdk-version=min-sdk
+    if not solution:
+      throw "Unable to resolve dependencies"
+    ensure-downloaded_ --solution=solution
+    builder := LockFileBuilder --solution=solution --project=this
+    lock-file = builder.build
+
+  ensure-downloaded_ --solution/Solution:
+    solution.packages.do: | url/string versions/List |
+      versions.do: ensure-downloaded url it
 
   cached-repository-dir_ url/string version/SemanticVersion -> string:
     return "$packages-cache-dir/$url/$version"
@@ -148,9 +173,13 @@ class Project:
     pack.expand cached-repository-dir
     file.write_content description.ref-hash --path=repo-toit-git-path
 
-  load-package-package-file url/string version/SemanticVersion:
+  load-package-specification url/string version/SemanticVersion -> ExternalSpecification:
     cached-repository-dir := cached-repository-dir_ url version
-    return ExternalPackageFile (fs.to-absolute cached-repository-dir)
+    return ExternalSpecification --dir=(fs.to-absolute cached-repository-dir)
 
-  load-local-package-file path/string -> ExternalPackageFile:
-    return ExternalPackageFile (fs.to-absolute "$root/$path")
+  load-local-specification path/string -> ExternalSpecification:
+    return ExternalSpecification --dir=(fs.to-absolute "$root/$path")
+
+  hash-for --url/string --version/SemanticVersion -> string:
+    description := registries.retrieve-description url version
+    return description.ref-hash

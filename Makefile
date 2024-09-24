@@ -313,6 +313,7 @@ test-fast:
 update-gold:
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja update_gold)
+	(cd $(BUILD)/$(HOST) && ninja update_pkg_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_minus_s_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_type_gold)
 

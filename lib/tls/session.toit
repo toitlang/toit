@@ -1000,10 +1000,9 @@ class SymmetricSession_:
         result := buffered-plaintext_[buffered-plaintext-index_]
         buffered-plaintext_[buffered-plaintext-index_++] = null  // Allow GC.
         return result
-      if not reader_.try-ensure-buffered 1:
+      if not reader_.try-ensure-buffered RECORD-HEADER-SIZE_:
         return null
       bytes := reader_.read-bytes RECORD-HEADER-SIZE_
-      if not bytes: return null
       record-header := RecordHeader_ bytes
       bad-content := record-header.type != expected-type and record-header.type != ALERT_
       if bad-content or record-header.major-version != 3 or record-header.minor-version != 3: throw "PROTOCOL_ERROR $record-header.bytes"
@@ -1015,8 +1014,8 @@ class SymmetricSession_:
       iv /ByteArray := read-keys.iv.copy
       sequence-number := read-keys.next-sequence-number
       if read-keys.has-explicit-iv:
+        if not reader_.try-ensure-buffered 8: return null
         explicit-iv = reader_.read-bytes 8
-        if not explicit-iv: return null
         iv.replace 4 explicit-iv
       else:
         explicit-iv = #[]
@@ -1037,8 +1036,8 @@ class SymmetricSession_:
         plaintext-length -= encrypted.size
         plain-chunk := decryptor.add encrypted
         if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
+      if not reader_.try-ensure-buffered Aead_.TAG-SIZE: return null
       received-tag := reader_.read-bytes Aead_.TAG-SIZE
-      if not received-tag: return null
       plain-chunk := decryptor.verify received-tag
       // Since we got here, the tag was successfully verified.
       if plain-chunk.size != 0: buffered-plaintext.add plain-chunk

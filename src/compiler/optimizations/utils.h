@@ -16,6 +16,7 @@
 #pragma once
 
 #include "../ir.h"
+#include "../list.h"
 #include "../map.h"
 #include "../set.h"
 
@@ -24,7 +25,10 @@ namespace compiler {
 
 bool is_This(ir::Node* node, ir::Class* holder, ir::Method* method);
 
-ir::Type compute_guaranteed_type(ir::Expression* node, ir::Class* holder, ir::Method* method);
+ir::Type compute_guaranteed_type(ir::Expression* node,
+                                 ir::Class* holder,
+                                 ir::Method* method,
+                                 List<ir::Type> literal_types);
 
 } // namespace toit::compiler
 } // namespace toit

@@ -1,9 +1,0 @@
-tools/toitlsp/cmd/assets/bug.toit:6:12: error: Incomplete expression
-  print 1 +
-           ^
-tools/toitlsp/cmd/assets/bug.toit:4:8: error: Package for prefix 'not-there' not found
-import not-there
-       ^~~~~~~~~
-tools/toitlsp/cmd/assets/bug.toit:7:3: error: Unresolved identifier: 'unresolved'
-  unresolved
-  ^~~~~~~~~~

@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import .description
+import ..constraints
 import ..file-system-view
 import ..semantic-version
 import encoding.yaml
@@ -29,6 +30,10 @@ class DescriptionUrlCache:
   constructor content/FileSystemView:
     recurse_ content
 
+  constructor.filled descriptions/List:
+    descriptions.do: | description/Description |
+      add_ description
+
   all-descriptions -> List:
     result := []
     cache_.values.do: | versions/DescriptionVersionCache |
@@ -43,17 +48,21 @@ class DescriptionUrlCache:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.all-versions
 
+  get-descriptions url/string -> List?:
+    version-cache/DescriptionVersionCache? := cache_.get url
+    return version-cache and version-cache.all-descriptions
+
   /**
   Returns a map, mapping urls to lists of descriptions.
   */
-  search url-suffix/string version-prefix/string? -> Map:
+  search url-suffix/string version-constraint/Constraint? -> Map:
     result := {:}
     cache_.do: | url/string version-cache/DescriptionVersionCache |
       if url.ends-with url-suffix:
-        if not version-prefix:
+        if not version-constraint:
           result[url] = version-cache.all-descriptions
         else:
-          result[url] = version-cache.filter version-prefix
+          result[url] = version-cache.filter version-constraint
     return result
 
   recurse_ content/FileSystemView:
@@ -95,10 +104,10 @@ class DescriptionVersionCache:
   all-versions -> List?:
     return cache_.keys
 
-  filter version-prefix/string -> List:
+  filter version-constraint/Constraint -> List:
     result := []
     cache_.do: | version/SemanticVersion description |
-      if version.stringify.starts-with version-prefix:
+      if version-constraint.satisfies version:
         result.add description
     return result
 

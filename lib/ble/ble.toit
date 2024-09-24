@@ -46,7 +46,10 @@ class BleUuid:
     else:
       throw "TYPE ERROR: data is not a string or byte array"
 
-  stringify -> string:
+  /**
+  Returns the UUID as a string of the form "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX".
+  */
+  to-string -> string:
     if data_ is ByteArray:
       if data_.size <= 4:
         return hex.encode data_
@@ -54,6 +57,14 @@ class BleUuid:
         return (uuid.Uuid data_).stringify
     else:
       return data_
+
+  /**
+  Returns a string representation of this UUID.
+
+  If a deterministic UUID string representation is needed, prefer using $to-string.
+  */
+  stringify -> string:
+    return to-string
 
   to-byte-array:
     if data_ is string:
@@ -240,7 +251,7 @@ class Adapter extends Resource_:
     case the information of the pairing process may be stored on the device to make
     reconnects more efficient.
 
-  If $secure-connections the peripheral is enabling secure connections.
+  If $secure-connections is true then the peripheral is enabling secure connections.
   */
   peripheral --bonding/bool=false --secure-connections/bool=false -> Peripheral:
     if not adapter-metadata.supports-peripheral-role: throw "NOT_SUPPORTED"
@@ -479,7 +490,7 @@ ble-clear-error_ characteristic is-oom:
 ble-platform-requires-uuid-as-byte-array_:
   return system.platform == system.PLATFORM-FREERTOS
 
-ble-callback-init_ resource read-timeout-ms for-read:
+ble-callback-init_ resource timeout-ms for-read:
   #primitive.ble.toit-callback-init
 
 ble-callback-deinit_ resource for-read:

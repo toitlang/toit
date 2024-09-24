@@ -39,7 +39,7 @@ tests/negative/primitive-test.toit:24:26: error: Failure parameter can't have a 
                          ^
 tests/negative/primitive-test.toit:28:18: error: Invalid primitive call
   #primitive.core.name.too-many: |a|
-                 ^
+                 ^~~~~
 tests/negative/primitive-test.toit:32:25: error: Unknown intrinsic 'not-existent'
 
   #primitive.intrinsics.not-existent

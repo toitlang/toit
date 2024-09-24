@@ -388,7 +388,7 @@ class UartWriter extends io.Writer:
   try-write_ data/io.Data from/int to/int --break-length/int=0 -> int:
     return port_.try-write_ data from to --break-length=break-length
 
-  flush_ -> none:
+  flush -> none:
     port_.flush_
 
 resource-group_ ::= uart-init_

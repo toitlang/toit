@@ -8,13 +8,13 @@ import ...tools.pkg.constraints
 
 check-constraint v/string c/string:
   expect --message="$v $c"
-      (Constraint c).satisfies
-          SemanticVersion v
+      (Constraint.parse c).satisfies
+          SemanticVersion.parse v
 
 check-not-constraint v/string c/string:
   expect-not --message="not $v$c"
-      (Constraint c).satisfies
-          SemanticVersion v
+      (Constraint.parse c).satisfies
+          SemanticVersion.parse v
 
 main:
   check-constraint "2.1.2" "^2.1.1"
