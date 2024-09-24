@@ -47,7 +47,6 @@ enum {
   kBleMallocFailed = 1 << 22,
   kBleDataReadRequest = 1 << 23,
   kBleDataWriteRequest = 1 << 24,
-
 };
 
 class BleResourceGroup;

@@ -2,11 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .deprecation-lib
+import .deprecation-lib show foo
+
 /// Deprecated. Do something else instead.
 class Deprecated:
   constructor:
 
-  /// Deprecated. Use the other constructor instead.
+  /// Deprecated. Use the other constructor
+  ///     instead.
   constructor.named:
 
   method:
@@ -16,7 +20,8 @@ class A:
   Some documentation.
 
   # Deprecation
-  Deprecated. Do something else.
+  Deprecated. With `code` in
+    it.
 
   For some reasons we don't want this constructor anymore.
   */
@@ -40,7 +45,8 @@ class A:
 
   /**
   A field.
-  Deprecated. Use something else.
+  Deprecated. Use something
+    else.
   */
   some-field := 499
 
@@ -51,14 +57,16 @@ class A:
 /**
 Globals too can be deprecated.
 
-Deprecated. Find something else.
+Deprecated. Find something
+  else.
 */
 global := 42
 
 /**
 Some global fun.
 
-Deprecated. Use $bar instead.
+Deprecated. Use $bar
+  instead.
 */
 fun:
 

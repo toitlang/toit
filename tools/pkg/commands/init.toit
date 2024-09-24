@@ -18,20 +18,26 @@ import host.file
 
 import ..error
 import ..project
-import ..project.package
 
 import .utils_
 
 class InitCommand:
+  static NAME ::= "name"
+  static DESCRIPTION ::= "description"
+
   project/Project
 
   constructor parsed/cli.Parsed:
     config := project-configuration-from-cli parsed
+    name := parsed[NAME]
+    description := parsed[DESCRIPTION]
 
-    if config.package-file-exists or config.lock-file-exists:
+    if config.specification-file-exists or config.lock-file-exists:
       error "Directory already contains a project"
 
     project = Project config --empty-lock-file
+    if name: project.specification.name = name
+    if description: project.specification.description = description
 
   execute:
     project.save
@@ -45,5 +51,11 @@ class InitCommand:
 
               If the --project-root flag is used, initializes that directory instead.
               """
+          --options=[
+              cli.Option NAME
+                  --help="The name of the project.",
+              cli.Option DESCRIPTION
+                  --help="The description of the project.",
+          ]
           --run=:: (InitCommand it).execute
 

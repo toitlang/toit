@@ -499,7 +499,6 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
     case CBManagerStatePoweredOff:
       break;
     case CBManagerStatePoweredOn:
-      printf("cm started\n");
       toit::HostBleEventSource::instance()->on_event(self.central_manager, toit::kBleStarted);
       break;
   }
@@ -757,6 +756,10 @@ PRIMITIVE(create_adapter) {
   BleAdapterResource* adapter_resource = _new BleAdapterResource(group);
   group->register_resource(adapter_resource);
   proxy->set_external_address(adapter_resource);
+
+  // On macOS, the adapter is immediately available.
+  HostBleEventSource::instance()->on_event(adapter_resource, kBleStarted);
+
   return proxy;
 }
 

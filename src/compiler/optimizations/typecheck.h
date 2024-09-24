@@ -26,7 +26,10 @@ namespace compiler {
 ///
 /// Removes as-checks.
 /// Replaces is-checks with a sequence of the expression followed by true/false.
-ir::Expression* optimize_typecheck(ir::Typecheck* node, ir::Class* holder, ir::Method* method);
+ir::Expression* optimize_typecheck(ir::Typecheck* node,
+                                   ir::Class* holder,
+                                   ir::Method* method,
+                                   List<ir::Type> literal_types);
 
 } // namespace toit::compiler
 } // namespace toit
