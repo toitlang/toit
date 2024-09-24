@@ -103,7 +103,7 @@ set(TOIT_DEFAULT_PROJECT_DIR "${CMAKE_BINARY_DIR}/sdk/packages-default")
 
 add_custom_command(
   OUTPUT ${TOIT_DEFAULT_PROJECT_DIR}
-  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/packages-default ${TOIT_DEFAULT_PROJECT_DIR}
+  COMMAND ${CMAKE_COMMAND} -E create_symlink ${TOIT_SDK_SOURCE_DIR}/packages-default ${TOIT_DEFAULT_PROJECT_DIR}
   VERBATIM
 )
 
