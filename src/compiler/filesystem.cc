@@ -54,7 +54,7 @@ const char* Filesystem::library_root() {
       library_root_ = builder.strdup();
     } else {
       builder.reset_to(sdk_length);
-      builder.join("..", "lib");
+      builder.join("..", LIB_SUFFIX);
       builder.canonicalize();
       // Always assign the string, without testing.
       // If the path is wrong there will be an error very soon, because the compiler can't
@@ -63,6 +63,28 @@ const char* Filesystem::library_root() {
     }
   }
   return library_root_;
+}
+
+const char* Filesystem::default_project_root() {
+  if (default_project_root_ == null) {
+    auto sdk = sdk_path();
+    const char* DEFAULT_PROJECT_SUFFIX = "packages-default";
+    PathBuilder builder(this);
+    builder.join(sdk);
+    int sdk_length = builder.length();
+    builder.join(DEFAULT_PROJECT_SUFFIX);
+    if (is_directory(builder.c_str())) {
+      default_project_root_ = builder.strdup();
+    } else {
+      builder.reset_to(sdk_length);
+      builder.join("..", DEFAULT_PROJECT_SUFFIX);
+      builder.canonicalize();
+      // Always assign the string, without testing.
+      // If the installation isn't correct, then we just won't find any default packages.
+      default_project_root_ = builder.strdup();
+    }
+  }
+  return default_project_root_;
 }
 
 const char* Filesystem::vessel_root() {
