@@ -1,0 +1,22 @@
+Package command executed. [pkg, install, pkg1]
+==================
+== package.lock
+prefixes:
+  pkg1: http_//localhost_<[*PORT*]>/pkg/pkg1-1
+packages:
+  http_//localhost_<[*PORT*]>/pkg/pkg1-1:
+    prefixes:
+      pkg2: http_//localhost_<[*PORT*]>/pkg/pkg2-2
+    url: http://localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+    hash: <[*HASH*]>
+  http_//localhost_<[*PORT*]>/pkg/pkg2-2:
+    prefixes:
+      pre: http_//localhost_<[*PORT*]>/pkg/pkg3-3
+    url: http://localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+    hash: <[*HASH*]>
+  http_//localhost_<[*PORT*]>/pkg/pkg3-3:
+    url: http://localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
+    hash: <[*HASH*]>
