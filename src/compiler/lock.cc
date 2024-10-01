@@ -17,6 +17,7 @@
 #include <limits.h>
 
 #include "third_party/libyaml/include/yaml.h"
+#include "third_party/nlohmann/json.hpp"
 #include "third_party/semver/semver.h"
 
 #include "../top.h"
@@ -32,6 +33,7 @@ namespace toit {
 namespace compiler {
 
 static const char* LOCK_FILE = "package.lock";
+static const char* CONTENTS_FILE = "contents.json";
 static const char* PACKAGE_CACHE_PATH = ".cache/toit/tpkg/";
 static const char* LOCAL_PACKAGE_DIR = ".packages";
 
@@ -798,6 +800,55 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
   };
 }
 
+static void fill_package_mappings(Map<std::string, Map<std::string, std::string>>* mappings,
+                                  List<const char*> package_dirs,
+                                  Filesystem* fs) {
+  for (auto package_dir : package_dirs) {
+    PathBuilder path_builder(fs);
+    path_builder.join(package_dir);
+    path_builder.join(CONTENTS_FILE);
+    auto mapping_path = path_builder.buffer();
+    if (fs->exists(mapping_path.c_str())) {
+      int source_size;
+      auto mapping_source = fs->read_content(mapping_path.c_str(), &source_size);
+      auto json = nlohmann::json::parse(mapping_source, mapping_source + source_size,
+                                        null,
+                                        false);  // Don't throw.
+      if (json.is_discarded() || !json.is_object()) {
+        // We couldn't parse the file.
+        // TODO(florian): report error.
+        continue;
+      }
+      for (auto& entry : json.items()) {
+        auto key = entry.key();
+        auto value = entry.value();
+        if (!value.is_object()) {
+          // We only support map values.
+          // TODO(florian): report error.
+          continue;
+        }
+
+        for (auto& version_entry : value.items()) {
+          auto version = version_entry.key();
+          auto value = version_entry.value();
+          if (!value.is_string()) {
+            // We only support string values.
+            // TODO(florian): report error.
+            continue;
+          }
+          PathBuilder package_path_builder(fs);
+          package_path_builder.join(package_dir);
+          package_path_builder.join(value.get<std::string>());
+          auto& mapping = (*mappings)[key];
+          if (mapping.find(version) == mapping.end()) {
+            mapping.set(version, package_path_builder.buffer());
+          }
+        }
+      }
+    }
+  }
+}
+
 PackageLock PackageLock::read(const std::string& lock_file_path,
                               const char* entry_path,
                               SourceManager* source_manager,
@@ -935,20 +986,24 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     package_dirs = builder.build();
   }
 
+  Map<std::string, Map<std::string, std::string>> mappings;
+  fill_package_mappings(&mappings, package_dirs, fs);
+
   Map<std::string, std::string> path_to_package;
   for (auto package_id : lock_content.packages.keys()) {
     auto entry = lock_content.packages.at(package_id);
 
-    // For simplicity we are using a loop from -1 to length, so we don't
+    // For simplicity we are using a loop from -2 to length, so we don't
     // have to duplicate the code.
-    // -1 is only used when the package is of kind 'PATH'.
-    for (int i = -1; i < package_dirs.length(); i++) {
+    // -2 is only used when the package is of kind 'PATH'.
+    // -1 is only used when we have the entry in the mapping.
+    for (int i = -2; i < package_dirs.length(); i++) {
       PathBuilder builder(fs);
 
       std::string error_path;
       bool is_path_package = !entry.path.empty();
-      if (is_path_package) {
-        ASSERT(i == -1);
+      if (i == -2) {
+        if (!is_path_package) continue;
         // The entry_path is always with slashes.
         auto entry_path = entry.path.c_str();
         char* localized = FilesystemLocal::to_local_path(entry_path);
@@ -960,8 +1015,16 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
         builder.canonicalize();
         error_path = std::string(localized);
         free(localized);
+      } else if (i == -1) {
+        auto path_probe = mappings.find(entry.url);
+        if (path_probe == mappings.end()) continue;
+        auto version_probe = path_probe->second.find(entry.version);
+        if (version_probe == path_probe->second.end()) continue;
+        fprintf(stderr, "Using contents file mapping for '%s-%s': '%s'\n", entry.url.c_str(), entry.version.c_str(), version_probe->second.c_str());
+        builder.join(version_probe->second);
+        error_path = entry.url + "-" + entry.version;
+        builder.canonicalize();
       } else {
-        if (i == -1) continue;
         if (!fs->is_absolute(package_dirs[i])) {
           // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.join(fs->cwd());
@@ -1025,7 +1088,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
         }
       }
 
-      if (i == -1) {
+      if (is_path_package) {
         ASSERT(!entry.path.empty());
         diagnostics->report_error(entry.range,
                                   "Package '%s' not found at '%s'",
