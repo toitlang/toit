@@ -23,6 +23,7 @@ import host.file
 import .lsp-exports as lsp
 import .serve
 import .src.builder show DocsBuilder
+import .src.util show kebabify
 
 build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Command:
   shared-help := """
@@ -235,7 +236,7 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
     if not content.contains "name":
       print "No 'name' field found in package.yaml."
       exit 1
-    pkg-name = content["name"]
+    pkg-name = kebabify content["name"]
 
     // Only include the 'src' folder.
     source = fs.join source "src"

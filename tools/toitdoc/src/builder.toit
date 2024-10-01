@@ -68,8 +68,8 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       if exclude-sdk and uri.starts-with sdk-uri: continue.do
       if exclude-pkgs and uri.starts-with package-uri: continue.do
 
-      segments := module-path-segments uri
-      module-name := segments.last.trim --right ".toit"
+      segments := module-path-segments uri --trim-extension
+      module-name := segments.last
       segments[segments.size - 1] = module-name
       module-category := is-sdk-doc
           ? category-for-sdk-library segments
@@ -503,7 +503,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
   /**
   Returns the path segments of the URI, relative to the root path.
   */
-  module-path-segments uri/string? -> List?:
+  module-path-segments uri/string? --trim-extension/bool=false -> List?:
     if not uri: return null
     path := lsp.to-path uri
     inside-root-path := path.starts-with root-path
@@ -515,6 +515,9 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       result = ["@"] + result
     if result.size > 0 and pkg-name and result.first == "src":
       result[0] = pkg-name
+    if trim-extension:
+      result[result.size - 1] = result.last.trim --right ".toit"
+    result.map --in-place: kebabify it
     return result
 
 /**

@@ -58,3 +58,24 @@ load-package-names project-uri/string? -> Map?:
     name := (map.get "name") or prefix
     result[url] = name
   return result
+
+kebabify name/string -> string:
+  // Convert the name to kebab-case.
+  if name.size < 2: return name
+  if not name.contains "_": return name
+  result := ByteArray name.size
+  result[0] = name[0]
+  did-change := false
+  for i := 1; i < name.size - 1; i++:
+    c := name[i]
+    if c == '_':
+      previous-was-char := (name[i - 1] != '_') and (name[i - 1] != '-')
+      next-is-char := (name[i + 1] != '_') and (name[i + 1] != '-')
+      if previous-was-char and next-is-char:
+        result[i] = '-'
+        did-change = true
+        continue
+    result[i] = c
+  result[name.size - 1] = name[name.size - 1]
+  if not did-change: return name
+  return result.to-string
