@@ -12,10 +12,12 @@ Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circ
 import gpio
 import expect show *
 
+RESTRICTED ::= 7
 PIN1 ::= 18
 PIN2 ::= 19
 
 main:
+  expect-throw "RESTRICTED_PIN": gpio.Pin RESTRICTED
   pin1 := gpio.Pin PIN1
   pin2 := gpio.Pin PIN2
 
