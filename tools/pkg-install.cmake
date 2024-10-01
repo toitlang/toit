@@ -7,6 +7,7 @@ set(QUIET FALSE CACHE BOOL "Suppress output.")
 
 if (QUIET)
   # Run this script again but with OUTPUT_QUIET set.
+  # Since this is a recursive call, we set the QUIET to false now.
   execute_process(
     COMMAND "${CMAKE_COMMAND}"
       "-DPACKAGE_LOCK_PATH=${PACKAGE_LOCK_PATH}"
