@@ -50,9 +50,6 @@ class Constraint:
   static parse-range source/string -> Constraint:
     parser := SemanticVersionParser source --allow-missing-minor
     parse-result := parser.semantic-version --consume-all
-    // triple/TripleParseResult
-    // pre-releases/List
-    // build-numbers/List
     triple := parse-result.triple.triple
     constraints := []
     if not triple[1]:

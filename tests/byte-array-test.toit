@@ -309,7 +309,7 @@ test-hash-code:
     (ba.copy 1 (ba.size - 1)).hash-code
 
 test-construction -> none:
-  ba := ByteArray 5 --filler=42
+  ba := ByteArray 5 --initial=42
   expect-equals #[42, 42, 42, 42, 42] ba
 
   ba = ByteArray 5

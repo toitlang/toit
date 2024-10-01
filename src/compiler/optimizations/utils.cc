@@ -38,7 +38,15 @@ bool is_This(Node* node, Class* holder, Method* method) {
   return target->as_Parameter()->index() == 0;
 }
 
-Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
+static Type find_literal_type(List<Type> literal_types, Symbol symbol) {
+  for (auto literal_type : literal_types) {
+    if (literal_type.klass()->name() == symbol) return literal_type;
+  }
+  FATAL("Couldn't find literal type");
+  return Type::invalid();
+};
+
+Type compute_guaranteed_type(Expression* node, Class* holder, Method* method, List<Type> literal_types) {
   if (node->is_ReferenceLocal()) {
     auto target = node->as_ReferenceLocal()->target();
     if (!target->is_effectively_final()) return Type::invalid();
@@ -62,7 +70,18 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
   } else if (node->is_Typecheck()) {
     auto check = node->as_Typecheck();
     if (check->is_as_check()) return check->type();
+  } else if (node->is_LiteralBoolean()) {
+    return find_literal_type(literal_types, Symbols::bool_);
+  } else if (node->is_LiteralInteger()) {
+    return find_literal_type(literal_types, Symbols::int_);
+  } else if (node->is_LiteralFloat()) {
+    return find_literal_type(literal_types, Symbols::float_);
+  } else if (node->is_LiteralString()) {
+    return find_literal_type(literal_types, Symbols::string);
+  } else if (node->is_LiteralNull()) {
+    return find_literal_type(literal_types, Symbols::Null_).to_nullable();
   }
+
   return Type::invalid();
 }
 

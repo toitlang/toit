@@ -24,6 +24,7 @@ class Peripheral extends Resource_:
   constructor .adapter bonding/bool secure-connections/bool:
     resource := ble-create-peripheral-manager_ adapter.resource_ bonding secure-connections
     super resource
+    resource-state_.wait-for-state STARTED-EVENT_
 
   /**
   Closes the peripheral manager and all its services.
@@ -51,10 +52,10 @@ class Peripheral extends Resource_:
   The advertise includes the given $connection-mode, which must be one
     of the BLE-CONNECT-MODE-* constants (see $BLE-CONNECT-MODE-NONE and similar).
 
-  Throws, If the adapter does not support parts of the advertise content.
+  Throws if the adapter does not support parts of the advertise content.
   For example, on MacOS manufacturing data can not be specified.
 
-  Throws, If the adapter does not allow configuration of $interval or $connection-mode.
+  Throws if the adapter does not allow configuration of $interval or $connection-mode.
   */
   start-advertise
       data/AdvertisementData
@@ -87,8 +88,10 @@ class Peripheral extends Resource_:
     ble-advertise-stop_ resource_
 
   /**
-  Adds a new service to the peripheral identified by $uuid. The returned service should be configured with
-    the appropriate characteristics and then be deployed.
+  Adds a new service to the peripheral identified by $uuid.
+
+  The returned service should be configured with the appropriate characteristics and then
+    be deployed.
   */
   add-service uuid/BleUuid -> LocalService:
     service := LocalService this uuid
@@ -120,6 +123,7 @@ Defines a BLE service with characteristics.
 */
 class LocalService extends Resource_ implements Attribute:
   static DEFAULT-READ-TIMEOUT-MS ::= 2500
+  static DEFAULT-WRITE-TIMEOUT-MS ::= 2500
 
   /**
   The UUID of the service.
@@ -154,33 +158,17 @@ class LocalService extends Resource_ implements Attribute:
   remove-characteristic_ characteristic/LocalCharacteristic -> none:
     characteristics_.remove characteristic
 
+
   /**
-  Adds a characteristic to this service with the given parameters.
-
-  The $uuid is the uuid of the characteristic
-  The $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
-    $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
-  $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
-    $CHARACTERISTIC-PERMISSION-READ and similar).
-
-  If $value is specified and the characteristic supports reads, it is used as the initial
-    value for the characteristic. If $value is null or an empty ByteArray, then the
-    characteristic supports callback reads and the client needs
-    to call $LocalCharacteristic.handle-read-request to provide the value upon request.
-  NOTE: Read callbacks are not supported in MacOS.
-  When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
-    to use.
-  The peripheral must not yet be deployed.
-
-  See $add-indication-characteristic, $add-notification-characteristic, $add-read-only-characteristic,
-    and $add-write-only-characteristic for convenience methods.
+  Deprecated. Pass the timeout to the $LocalCharacteristic.handle-read-request function instead.
   */
+  // TODO(florian): when removing this function, also remove the argument to the constructor.
   add-characteristic -> LocalCharacteristic
       uuid/BleUuid
       --properties/int
       --permissions/int
       --value/io.Data?=null
-      --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
+      --read-timeout-ms/int:
     if peripheral-manager.deployed_: throw "Service is already deployed"
     read-permission-bits := CHARACTERISTIC-PERMISSION-READ
         | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
@@ -200,6 +188,53 @@ class LocalService extends Resource_ implements Attribute:
       throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
 
     characteristic := LocalCharacteristic this uuid properties permissions value read-timeout-ms
+    characteristics_.add characteristic
+    return characteristic
+
+  /**
+  Adds a characteristic to this service with the given parameters.
+
+  The $uuid is the uuid of the characteristic
+  The $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
+    $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
+  $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
+    $CHARACTERISTIC-PERMISSION-READ and similar).
+
+  If $value is specified and the characteristic supports reads, it is used as the initial
+    value for the characteristic. If $value is null or an empty ByteArray, then the
+    characteristic supports callback reads and the client needs
+    to call $LocalCharacteristic.handle-read-request to provide the value upon request.
+  NOTE: Read callbacks are not supported in MacOS.
+
+  The peripheral must not yet be deployed.
+
+  See $add-indication-characteristic, $add-notification-characteristic, $add-read-only-characteristic,
+    and $add-write-only-characteristic for convenience methods.
+  */
+  add-characteristic -> LocalCharacteristic
+      uuid/BleUuid
+      --properties/int
+      --permissions/int
+      --value/io.Data?=null:
+    if peripheral-manager.deployed_: throw "Service is already deployed"
+    read-permission-bits := CHARACTERISTIC-PERMISSION-READ
+        | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
+    read-properties-bits := CHARACTERISTIC-PROPERTY-READ
+        | CHARACTERISTIC-PROPERTY-NOTIFY
+        | CHARACTERISTIC-PROPERTY-INDICATE
+    write-permission-bits := CHARACTERISTIC-PERMISSION-WRITE
+        | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
+    write-properties-bits := CHARACTERISTIC-PROPERTY-WRITE
+        | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE
+
+    if permissions & read-permission-bits != 0 and
+        properties & read-properties-bits == 0:
+      throw "Read permission requires read property (READ, NOTIFY or INDICATE)"
+    if permissions & write-permission-bits != 0 and
+        properties & write-properties-bits == 0:
+      throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
+
+    characteristic := LocalCharacteristic this uuid properties permissions value DEFAULT-READ-TIMEOUT-MS
     characteristics_.add characteristic
     return characteristic
 
@@ -357,9 +392,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   If the characteristic supports both indications and notifications, then a notification is sent.
 
-  If $set-value is true, sets the value of the characteristic to $value. Any read requests
-    will return this value until the value is changed again. See $set-value for setting the
-    value without sending out a notification.
+  If $set-value is true (the default), sets the value of the characteristic to $value. Any
+    read requests will return this value until the value is changed again. See $set-value
+    for setting the value without sending out a notification.
 
   If the characteristic doesn't support notifications or indications and $set-value is set
     to false, then this function does nothing.
@@ -397,8 +432,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     returned. In other words, this function takes precedence over the value that was given
     in the constructor or by $set-value/$write.
   */
-  handle-read-request [block]:
-    handle-request_ block --for-read
+  handle-read-request --timeout-ms/int=read-timeout-ms_ [block]:
+    handle-request_ --for-read --timeout-ms=timeout-ms block
 
   /**
   Handles write requests.
@@ -422,14 +457,14 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     that respond. The BLE stack will send a response only once the called $block has
     returned, thus ensuring that the data has been processed before the response is sent.
   */
-  handle-write-request [block]:
-    handle-request_ block --for-read=false
+  handle-write-request --timeout-ms/int=LocalService.DEFAULT-WRITE-TIMEOUT-MS [block]:
+    handle-request_ --for-read=false --timeout-ms=timeout-ms block
 
-  handle-request_ [block] --for-read/bool:
+  handle-request_ --for-read/bool --timeout-ms/int [block]:
     // In case of a write-handler, we also accept data-received-events, just in case
     // data was received before the handler was set.
     event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
-    ble-callback-init_ resource_ read-timeout-ms_ for-read
+    ble-callback-init_ resource_ timeout-ms for-read
     try:
       while true:
         state := resource-state_.wait-for-state event
@@ -482,7 +517,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
-  if $value is specified, it is used as the initial value for the characteristic.
+  If $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.
   */
   add-descriptor uuid/BleUuid --properties/int --permissions/int --value/io.Data?=null -> LocalDescriptor:

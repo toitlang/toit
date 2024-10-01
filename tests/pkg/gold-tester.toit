@@ -9,8 +9,8 @@ import host.directory
 import host.file
 import host.pipe
 import host.os
-import io
 import http
+import io
 import monitor
 import net
 import net.tcp
@@ -42,7 +42,7 @@ class RunResult_:
   full-output -> string:
     result := stdout.replace --all "\r" ""
     if result != "" and not result.ends-with "\n":
-      result += "\n <Missing newline at end of output> \n"
+      result += "\n <Missing newline at end of stdout> \n"
     if stderr != "":
       result += "\nSTDERR---\n" + stderr
       if not stderr.ends-with "\n":
@@ -71,7 +71,7 @@ class GoldTester:
 
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
-    // In lock files the ':' is replaced with '_'.
+    // In lock files, the ':' is replaced with '_'.
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
     return str
@@ -215,7 +215,7 @@ run-git-http-backend --prefix/string --root/string request/http.RequestIncoming 
 
       writer.write-headers 200
       while chunk := stdout.in.read:
-        // The chunk may have '0' characters, which don't work nicely
+        // The chunk may have '\0' characters, which don't work nicely
         // when trying to debug print with '.to-string-non-throwing'.
         writer.out.write chunk
 

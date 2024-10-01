@@ -62,6 +62,7 @@ class Module {
       , globals_(globals)
       , export_all_(export_all)
       , exported_identifiers_(exported_identifiers)
+      , deprecation_message_(Symbol::invalid())
       , scope_(null) {}
 
   ast::Unit* unit() const { return unit_; }
@@ -82,6 +83,10 @@ class Module {
   bool export_all() const { return export_all_; }
   Set<Symbol> exported_identifiers() const { return exported_identifiers_; }
 
+  bool is_deprecated() const { return deprecation_message_.is_valid(); }
+  void set_deprecation(Symbol message) { deprecation_message_ = message; }
+  Symbol get_deprecation_message() const { return deprecation_message_; }
+
   ModuleScope* scope() const { return scope_; }
   void set_scope(ModuleScope* scope) { scope_ = scope; }
 
@@ -96,6 +101,7 @@ class Module {
   List<PrefixedModule> imported_modules_;
   bool export_all_;
   Set<Symbol> exported_identifiers_;
+  Symbol deprecation_message_;
 
   ModuleScope* scope_;
 
@@ -571,6 +577,11 @@ class ModuleScope : public Scope {
 
     UnorderedSet<ModuleScope*> already_visited;
     non_prefixed_imported_->for_each(callback, &already_visited);
+  }
+
+  /// Invokes callback for each declaration inside this module.
+  void for_each_module(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
+    module_declarations_.for_each(callback);
   }
 
   /// Only searches in the non-transitive identifiers of the module.
