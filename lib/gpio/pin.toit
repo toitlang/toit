@@ -391,7 +391,10 @@ gpio-init_:
   #primitive.gpio.init
 
 gpio-use_ resource-group num allow-restricted:
-  #primitive.gpio.use
+  #primitive.gpio.use:
+    if it == "PERMISSION_DENIED":
+      throw "RESTRICTED_PIN"
+    throw it
 
 gpio-unuse_ resource-group num:
   #primitive.gpio.unuse
