@@ -36,16 +36,13 @@ endif()
 
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 
-if (NOT ${TOIT_IS_CROSS})
-  if (NOT DEFINED HOST_TOIT)
-    set(HOST_TOIT "$<TARGET_FILE:toit>")
-  endif()
-  if (NOT DEFINED HOST_TOITC)
-    set(HOST_TOITC "$<TARGET_FILE:toit.compile>")
-  endif()
-  if (NOT DEFINED HOST_TOITPKG)
-    set(HOST_TOITPKG "$<TARGET_FILE:toit.pkg>")
-  endif()
+set(TOIT_IS_EMBEDDED FALSE)
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  set(TOIT_IS_EMBEDDED TRUE)
+endif()
+
+if (NOT DEFINED HOST_TOIT AND (NOT ${TOIT_IS_EMBEDDED}))
+  message(FATAL_ERROR "HOST_TOIT not provided")
 endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
