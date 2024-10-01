@@ -176,7 +176,7 @@ class GitProtocol_:
         lines.add length
         continue
       if not buffer.try-ensure-buffered length:
-        throw "Premature end of input."
+        throw "Premature end of input"
       lines.add (buffer.read-bytes length - 4)
 
 

@@ -239,6 +239,15 @@ abstract class Specification:
   name -> string:
     return content.get NAME-KEY_ --if-absent=: error "Missing 'name' in $file-name."
 
+  name= name/string:
+    content[NAME-KEY_] = name
+
+  description -> string:
+    return content.get DESCRIPTION-KEY_ --if-absent=: error "Missing 'description' in $file-name."
+
+  description= description/string:
+    content[DESCRIPTION-KEY_] = description
+
   sdk-version -> Constraint?:
     if environment_ := environment:
       if environment_.contains SDK-KEY_:
@@ -266,7 +275,6 @@ abstract class Specification:
         dependencies[prefix] = content[PATH-KEY_]
     return dependencies
 
-  description -> string?: return content.get DESCRIPTION-KEY_
   license -> string?: return content.get LICENSE-KEY_
   environment -> Map?: return content.get ENVIRONMENT-KEY_
 

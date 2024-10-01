@@ -84,7 +84,7 @@ class FlashRegistry:
   scan_ -> List:
     found := {:}
     holes := []
-    offset := -1
+    offset/int? := -1
     while true:
       offset = flash-registry-next_ offset
       if not offset: break

@@ -2,46 +2,48 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .tcp
 import monitor show *
+import net
+import net.modules.tcp
 import net.tcp show Socket
 
 main:
-  close-server-socket-test
-  close-connected-socket
-  close-connected-socket-after-write
+  network := net.open
+  close-server-socket-test network
+  close-connected-socket network
+  close-connected-socket-after-write network
 
-close-server-socket-test:
-  server := TcpServerSocket
+close-server-socket-test network/net.Client:
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
   server.close
   server.close
 
-with-server [code]:
+with-server network/net.Client [code]:
   ready := Channel 1
-  task:: simple-server ready
+  task:: simple-server network ready
   port := ready.receive
   code.call port
 
-close-connected-socket:
-  with-server: | port |
-    socket := TcpSocket
+close-connected-socket network/net.Client:
+  with-server network: | port |
+    socket := tcp.TcpSocket network
     socket.connect "127.0.0.1" port
     socket.out.close
     socket.in.drain
     socket.close
 
-close-connected-socket-after-write:
-  with-server: | port |
-    socket := TcpSocket
+close-connected-socket-after-write network/net.Client:
+  with-server network: | port |
+    socket := tcp.TcpSocket network
     socket.connect "127.0.0.1" port
     socket.out.write "hammer fedt"
     socket.out.close
     socket.in.drain
     socket.close
 
-simple-server ready:
-  server := TcpServerSocket
+simple-server network/net.Client ready:
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
   ready.send server.local-address.port
   socket/Socket := server.accept

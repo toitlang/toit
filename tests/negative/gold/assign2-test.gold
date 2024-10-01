@@ -61,11 +61,11 @@ tests/negative/assign2-test.toit:27:5: error: No setter method 'foo2=' found
 tests/negative/assign2-test.toit:40:6: error: Argument mismatch for 'A.missing-getter'
 No getter available
   (A).missing-getter += unresolved
-     ^
+     ^~~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:41:6: error: Argument mismatch for 'A.missing-setter'
 No setter available
   (A).missing-setter += unresolved
-     ^
+     ^~~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:43:15: error: Can't assign to final local
   final-local = unresolved
               ^
