@@ -33,9 +33,7 @@ class SnapshotBundle {
   /// Returns a new SnapshotBundle, where the buffer is allocated with 'malloc'.
   /// The given data is not reused and can be freed.
   SnapshotBundle(List<uint8> main_snapshot,
-                 List<uint8> main_source_map_data,
-                 List<uint8> debug_snapshot,
-                 List<uint8> debug_source_map_data);
+                 List<uint8> main_source_map_data);
 
   static SnapshotBundle invalid() { return SnapshotBundle(null, 0); }
 
@@ -84,8 +82,6 @@ class SnapshotBundle {
   /// The source-maps are optional in this constructor.
   SnapshotBundle(List<uint8> main_snapshot,
                  List<uint8>* main_source_map_data,
-                 List<uint8>* debug_snapshot,
-                 List<uint8>* debug_source_map_data,
                  const char* sdk_version);
 
 

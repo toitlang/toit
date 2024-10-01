@@ -23,6 +23,7 @@ set(TOIT_REPOS
     https://github.com/kasperl/toit-qubitro
     https://github.com/kasperl/toit-zygote
     https://github.com/lask/toit-hc-sr04
+    https://github.com/nilwes/bno055
     https://github.com/nilwes/HD44780
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar

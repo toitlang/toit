@@ -44,6 +44,7 @@ namespace toit {
   M(rmt,     MODULE_RMT)                     \
   M(pcnt,    MODULE_PCNT)                    \
   M(crypto,  MODULE_CRYPTO)                  \
+  M(crypto_random,  MODULE_CRYPTO_RANDOM)    \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
   M(bitmap,  MODULE_BITMAP)                  \
@@ -406,7 +407,7 @@ namespace toit {
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
-  PRIMITIVE(init, 3)                         \
+  PRIMITIVE(init, 5)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(write, 3)                        \
   PRIMITIVE(write_reg, 4)                    \
@@ -433,7 +434,7 @@ namespace toit {
   PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
-  PRIMITIVE(open, 1)                         \
+  PRIMITIVE(open, 3)                         \
   PRIMITIVE(transfer, 8)                     \
 
 #define MODULE_UART(PRIMITIVE)               \
@@ -504,6 +505,9 @@ namespace toit {
   PRIMITIVE(aead_get_tag_size, 1)            \
   PRIMITIVE(aead_finish, 1)                  \
   PRIMITIVE(aead_verify, 3)                  \
+
+#define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
+  PRIMITIVE(random, 1)                       \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \

@@ -2,30 +2,38 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
+
 NEEDS-ENCODING_ ::= ByteArray '~' - '-' + 1:
   c := it + '-'
   (c == '-' or c == '_' or c == '.' or c == '~' or '0' <= c <= '9' or 'A' <= c <= 'Z' or 'a' <= c <= 'z') ? 0 : 1
 
 // Takes an ASCII string or a byte array.
 // Counts the number of bytes that need escaping.
-count-escapes_ data -> int:
+count-escapes_ data/io.Data -> int:
   count := 0
   table := NEEDS-ENCODING_
-  data.do: | c |
+  data.byte-size.repeat: | i/int |
+    c := data.byte-at i
     if not '-' <= c <= '~':
       count++
     else if table[c - '-'] == 1:
       count++
   return count
 
-// Takes an ASCII string or a byte array.
-url-encode_ from -> any:
+url-encode_ from/io.Data -> string:
   escaped := count-escapes_ from
-  if escaped == 0: return from
-  result := ByteArray from.size + escaped * 2
+  if escaped == 0:
+    if from is string: return from as string
+    if from is not ByteArray:
+      from = ByteArray.from from
+    return (from as ByteArray).to-string
+
+  result := ByteArray from.byte-size + escaped * 2
   pos := 0
   table := NEEDS-ENCODING_
-  from.do: | c |
+  from.byte-size.repeat: | i/int |
+    c := from.byte-at i
     if not '-' <= c <= '~' or table[c - '-'] == 1:
       result[pos] = '%'
       result[pos + 1] = to-upper-case-hex c >> 4
@@ -37,55 +45,52 @@ url-encode_ from -> any:
 
 /**
 Encodes the given $data using URL-encoding, also known as percent encoding.
-The $data must be a string or byte array.  The value returned is a string or
-  a byte array.  It can only be a byte array if the input was a byte array
-  and in this case it can be the identical byte array that was passed in.
+
 The characters 0-9, A-Z, and a-z are unchanged by the encoding, as are the
   characters '-', '_', '.', and '~'.  All other characters are encoded in
   hexadecimal, using the percent sign.  Thus a space character is encoded
   as "%20", and the Unicode snowman (☃) is encoded as "%E2%98%83".
 */
-encode data -> any:
-  if data is string:
-    // If a string is ASCII only then the sizes match.
-    if data.size != (data.size --runes):
-      // Convert to something where do will iterate over UTF-8 bytes.
-      data = data.to-byte-array
-  else if data is not ByteArray:
-    throw "WRONG_OBJECT_TYPE"
+encode data/io.Data -> string:
   return url-encode_ data
 
 /**
 Decodes the given $data using URL-encoding, also known as percent encoding.
 The function is liberal, accepting unencoded characters that should be
   encoded, with the exception of '%'.
-Takes a string or a byte array, and may return a string or a ByteArray.
-  (Both string and ByteArray have a to-string method.)
-Does not check for malformed UTF-8, but calling to-string on the return
-  value will throw on malformed UTF-8.
+
 Plus signs (+) are not decoded to spaces.
 
 # Example
-  (url.decode "foo%20b%C3%A5r").to-string  // Returns "foo bår".
+```
+  url.decode "foo%20b%C3%A5r"  // Returns "foo bår".
+```
 */
-decode data -> any:
-  if data is string:
-    if not data.contains "%": return data
-    if data.size != (data.size --runes): data = data.to-byte-array
-  else if data is ByteArray:
-    if (data.index-of '%') == -1: return data
-  else:
-    throw "WRONG_OBJECT_TYPE"
+decode data/string -> string:
+  if not data.contains "%": return data
+  return (decode-binary data).to-string
+
+/**
+Variant of $decode.
+
+Decodes the given $data using URL-encoding and returns the result as a byte array.
+The encoded $data may contain characters that are not valid UTF-8.
+*/
+decode-binary data/string -> ByteArray:
   count := 0
-  data.do: | c |
-    if c == '%': count++
-  result := ByteArray data.size - count * 2
+  data.size.repeat: | i/int |
+    if (data.at --raw i) == '%': count++
+
+  if count == 0: return data.to-byte-array
+
+  result := ByteArray (data.size - count * 2)
+
   j := 0
   for i := 0; i < data.size; i++:
-    c := data[i]
+    c := data.at --raw i
     if c == '%':
-      c = (hex-char-to-value data[i + 1]) << 4
-      c += hex-char-to-value data[i + 2]
+      c = (hex-char-to-value (data.at --raw i + 1)) << 4
+      c += hex-char-to-value (data.at --raw i + 2)
       i += 2
     result[j++] = c
   return result
@@ -169,9 +174,9 @@ class QueryString:
           parameters[key] = value
 
     return QueryString.internal_
-        --resource=(decode resource).to-string
+        --resource=decode resource
         --parameters=parameters
-        --fragment=(decode fragment).to-string
+        --fragment=decode fragment
 
   /// Decodes the application/x-www-form-urlencoded $component string.
   static decode-form-urlencoded_ component/string -> string:

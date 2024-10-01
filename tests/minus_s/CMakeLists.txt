@@ -19,7 +19,6 @@ add_custom_target(update_minus_s_gold)
 
 foreach(file ${MINUS_S_TESTS})
   get_filename_component(name ${file} NAME_WE)
-  set(lib_dir ".")
   set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
   file(RELATIVE_PATH relative_negative_path ${CMAKE_CURRENT_SOURCE_DIR} ${toit_file})
   get_filename_component(relative_negative_dir "${relative_negative_path}" DIRECTORY)

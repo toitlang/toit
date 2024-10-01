@@ -14,7 +14,8 @@
 // directory of this repository.
 
 #include <functional>
-
+#include <algorithm>
+#include "../third_party/tiny-sha1/TinySHA1.hpp"
 #include "protocol_summary.h"
 
 #include "protocol.h"
@@ -22,6 +23,7 @@
 #include "../ir.h"
 #include "../map.h"
 #include "../resolver_scope.h"
+#include "../scanner.h"  // For "is_identifier_start"
 #include "../sources.h"
 #include "../toitdoc.h"
 #include "../toitdoc_node.h"
@@ -43,6 +45,7 @@ struct ToitdocPath {
     FACTORY = 6,
     METHOD = 7,
     FIELD = 8,
+    PARAMETER = 9,
   };
 
   Kind kind;
@@ -54,6 +57,10 @@ struct ToitdocPath {
 template<typename T> static int length_of(const std::vector<T>& v) { return static_cast<int>(v.size()); }
 template<typename T> static int length_of(const Set<T>& v) { return v.size(); }
 template<typename T> static int length_of(const List<T>& v) { return v.length(); }
+
+static bool is_operator_name(const char* name) {
+  return !IdentifierValidator::is_identifier_start(name[0]);
+}
 
 class ToitdocWriter : public toitdoc::Visitor {
  public:
@@ -74,6 +81,7 @@ class ToitdocWriter : public toitdoc::Visitor {
 
   void visit_Section(toitdoc::Section* node) {
     print_symbol(node->title());
+    this->printf("%d\n", node->level());
     print_list(node->statements(), &ToitdocWriter::visit_Statement);
   }
 
@@ -107,6 +115,12 @@ class ToitdocWriter : public toitdoc::Visitor {
     print_symbol(node->text());
   }
 
+  void visit_Link(toitdoc::Link* node) {
+    this->printf("LINK\n");
+    print_symbol(node->text());
+    print_symbol(node->url());
+  }
+
   void visit_Ref(toitdoc::Ref* node) {
     this->printf("REF\n");
     print_symbol(node->text());
@@ -114,8 +128,8 @@ class ToitdocWriter : public toitdoc::Visitor {
     if (resolved == null) {
       this->printf("-1\n");
     } else if (resolved->is_Parameter()) {
-      // TODO(florian): handle parameters.
-      this->printf("-2\n");
+      // For now just print the kind_id.
+      this->printf("%d\n", static_cast<int>(ToitdocPath::Kind::PARAMETER));
     } else {
       auto path = paths_.at(resolved);
       int kind_id = static_cast<int>(path.kind);
@@ -155,11 +169,20 @@ class ToitdocWriter : public toitdoc::Visitor {
           holder_name = path.klass->name();
           name = resolved->as_Field()->name();
           break;
+
+        case ToitdocPath::Kind::PARAMETER:
+          UNREACHABLE();
+          // Nothing to do.
+          break;
       }
       this->printf("%d\n", kind_id);
       this->printf("%s\n", path.module->unit()->absolute_path());
       if (holder_name.is_valid()) print_symbol(holder_name);
-      print_symbol(name);
+      if (name.is_valid() && is_operator_name(name.c_str())) {
+        print_symbol(name, "operator ");
+      } else {
+        print_symbol(name);
+      }
       if (shape.is_valid()) {
         print_shape(shape);
       }
@@ -181,12 +204,13 @@ class ToitdocWriter : public toitdoc::Visitor {
     for (auto element : elements) { (this->*callback)(element); }
   }
 
-  void print_symbol(Symbol symbol) {
+  void print_symbol(Symbol symbol, const char* prefix = "") {
     if (!symbol.is_valid()) {
       this->printf("0\n\n");
     } else {
       const char* str = symbol.c_str();
-      this->printf("%zd\n%s\n", strlen(str), str);
+      size_t length = strlen(prefix) + strlen(str);
+      this->printf("%zd\n%s%s\n", length, prefix, str);
     }
   }
 
@@ -211,6 +235,58 @@ class ToitdocWriter : public toitdoc::Visitor {
   }
 };
 
+class BufferedWriter : public LspWriter {
+ public:
+  BufferedWriter() : buffer_(unvoid_cast<uint8*>(malloc(1024))), capacity_(1024), length_(0) {}
+  ~BufferedWriter() { free(buffer_); }
+
+  void printf(const char* format, va_list& arguments) override {
+    va_list args_copy;
+    va_copy(args_copy, arguments);
+    int size = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    if (size < 0) FATAL("Failure to convert argument to string");
+
+    if (length_ + size >= capacity_) {
+      grow(size);
+    }
+
+    vsnprintf(reinterpret_cast<char*>(buffer_ + length_), size + 1, format, arguments);
+    length_ += size;
+  }
+
+  void write(const uint8* data, int size) override {
+    if (length_ + size >= capacity_) {
+      grow(size);
+    }
+
+    memcpy(buffer_ + length_, data, size);
+    length_ += size;
+  }
+
+  int length() const { return length_; }
+  uint8* data() { return buffer_; }
+
+ private:
+  uint8* buffer_;
+  int capacity_;
+  int length_;
+
+  void grow(int size) {
+    int new_capacity = capacity_ * 2;
+    while (length_ + size >= new_capacity) {
+      new_capacity *= 2;
+    }
+
+    uint8* new_buffer = unvoid_cast<uint8*>(malloc(new_capacity));
+    memcpy(new_buffer, buffer_, length_);
+    free(buffer_);
+    buffer_ = new_buffer;
+    capacity_ = new_capacity;
+  }
+};
+
 class Writer {
  public:
   explicit Writer(const std::vector<Module*>& modules,
@@ -227,17 +303,21 @@ class Writer {
   void print_modules();
 
  private:
+  sha1::SHA1 sha1_;
   const std::vector<Module*> modules_;
   ToitdocRegistry toitdocs_;
   int core_index_;
   UnorderedMap<ir::Node*, ToitdocPath> paths_;
   UnorderedMap<ir::Node*, int> toplevel_ids_;
+  List<int> module_offsets_;
+
   LspWriter* lsp_writer_;
   Source* current_source_ = null;
 
   template<typename T> void print_toitdoc(T node);
   void print_range(const Source::Range& range);
   void safe_print_symbol(Symbol symbol);
+  void safe_print_symbol_external(Symbol symbol);
   void print_toplevel_ref(ir::Node* toplevel_element);
   void print_type(ir::Type type);
   void print_method(ir::Method* method);
@@ -245,6 +325,7 @@ class Writer {
   void print_field(ir::Field* field);
   void print_export(Symbol id, const ResolutionEntry& entry);
   void print_dependencies(Module* module);
+  void print_module(Module* module, Module* core_module);
 
 
   template<typename T, typename T2>
@@ -259,11 +340,51 @@ class Writer {
     for (auto element : elements) { callback(element); }
   }
 
+  template<typename T, typename T2>
+  void print_list_external(T elements, void (Writer::*callback)(T2)) {
+    this->printf_external("%d\n", length_of(elements));
+    for (auto element : elements) { (this->*callback)(element); }
+  }
+
+  template<typename T, typename F>
+  void print_list_external(T elements, F callback) {
+    this->printf_external("%d\n", length_of(elements));
+    for (auto element : elements) { callback(element); }
+  }
+
   void printf(const char* format, ...) {
     va_list arguments;
     va_start(arguments, format);
     lsp_writer_->printf(format, arguments);
     va_end(arguments);
+  }
+
+  /// A version of 'printf' that keeps track of the data for the external sha1.
+  /// Any data that represents a module's external representation needs to go
+  /// through the sha1 so that we know when to recompute modules that depend on
+  /// the current module.
+  void printf_external(const char* format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+
+    // Calculate the size of the buffer required.
+    va_list args_copy;
+    va_copy(args_copy, arguments);
+    int size = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    if (size < 0) FATAL("Failure to convert argument to string");
+
+    // Allocate a buffer of the required size.
+    char* buffer = unvoid_cast<char*>(malloc(size + 1));
+
+    // Print to the buffer.
+    vsnprintf(buffer, size + 1, format, arguments);
+    va_end(arguments);
+
+    printf("%s", buffer);
+    sha1_.processBytes(buffer, size);
+    free(buffer);
   }
 };
 
@@ -291,8 +412,31 @@ void Writer::safe_print_symbol(Symbol symbol) {
   }
 }
 
+void Writer::safe_print_symbol_external(Symbol symbol) {
+  if (symbol.is_valid()) {
+    this->printf_external("%s\n", symbol.c_str());
+  } else {
+    this->printf_external("\n");
+  }
+}
+
 void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
-  this->printf("%d\n", toplevel_ids_.at(toplevel_element));
+  // Toplevel references are using an ID that is dependent on the current
+  // analysis. That is, they are not stable across different runs.
+  // As such, we can't just use the `print_external` as we do for other
+  // external elements, but need to resolve it first, and use a stable
+  // token for the external hasher.
+  auto toplevel_id = toplevel_ids_.at(toplevel_element);
+  this->printf("%d\n", toplevel_id);
+  // Find the module that contains the toplevel element.
+  // The toplevel_offets_ list contains the offset of each module in the
+  // toplevel_ids_ list.
+  auto next_higher = std::upper_bound(module_offsets_.begin(), module_offsets_.end(), toplevel_id);
+  int index = next_higher - module_offsets_.begin();
+  int module_id = index - 1;
+  auto path = modules_[module_id]->unit()->absolute_path();
+  sha1_.processBytes(path, strlen(path));
+  sha1_.processBytes(&toplevel_id, sizeof(toplevel_id));
 }
 
 void Writer::print_type(ir::Type type) {
@@ -301,11 +445,11 @@ void Writer::print_type(ir::Type type) {
     // with invalid types until their types are inferred in the type-check phase.
     // This 'if' clause is thus required as long as
     // https://github.com/toitlang/toit/issues/964 isn't fixed.
-    this->printf("-1\n");
+    this->printf_external("-1\n");
   } else if (type.is_any()) {
-    this->printf("-1\n");
+    this->printf_external("-1\n");
   } else if (type.is_none()) {
-    this->printf("-2\n");
+    this->printf_external("-2\n");
   } else if (type.is_class()) {
     print_toplevel_ref(type.klass());
   } else {
@@ -314,76 +458,94 @@ void Writer::print_type(ir::Type type) {
 }
 
 void Writer::print_field(ir::Field* field) {
-  safe_print_symbol(field->name());
+  safe_print_symbol_external(field->name());
   print_range(field->range());
+  print_range(field->outline_range());
 
-  this->printf("%s\n", field->is_final() ? "final" : "mutable");
+  this->printf_external("%s\n", field->is_final() ? "final" : "mutable");
+  this->printf_external("%s\n", field->is_deprecated() ? "deprecated" : "-");
   print_type(field->type());
   print_toitdoc(field);
 }
 
 void Writer::print_method(ir::Method* method) {
   if (method->name().is_valid()) {
+    const char* name = method->name().c_str();
     if (method->is_setter()) {
-      this->printf("%s=\n", method->name().c_str());
+      this->printf_external("%s=\n", name);
+    } else if (is_operator_name(name)) {
+      this->printf_external("operator %s\n", name);
     } else {
-      this->printf("%s\n", method->name().c_str());
+      this->printf_external("%s\n", method->name().c_str());
     }
   } else {
     ASSERT(!method->is_setter());
-    safe_print_symbol(method->name());
+    safe_print_symbol_external(method->name());
   }
   print_range(method->range());
+  print_range(method->outline_range());
   auto probe = toplevel_ids_.find(method);
+  // The toplevel-id changes depending on how the file was analyzed.
+  // Don't include it in the external representation.
   this->printf("%d\n", probe == toplevel_ids_.end() ? -1 : probe->second);
   switch (method->kind()) {
     case ir::Method::INSTANCE:
       if (method->is_FieldStub()) {
         ASSERT(!method->is_abstract());
-        this->printf("field stub\n");
+        this->printf_external("field stub\n");
       } else if (method->is_abstract()) {
-        this->printf("abstract\n");
+        this->printf_external("abstract\n");
       } else {
-        this->printf("instance\n");
+        this->printf_external("instance\n");
       }
       break;
     case ir::Method::CONSTRUCTOR:
       if (method->as_Constructor()->is_synthetic()) {
-        this->printf("default constructor\n");
+        this->printf_external("default constructor\n");
       } else {
-        this->printf("constructor\n");
+        this->printf_external("constructor\n");
       }
       break;
-    case ir::Method::GLOBAL_FUN: this->printf("global fun\n"); break;
-    case ir::Method::GLOBAL_INITIALIZER: this->printf("global initializer\n"); break;
-    case ir::Method::FACTORY: this->printf("factory\n"); break;
+    case ir::Method::GLOBAL_FUN: this->printf_external("global fun\n"); break;
+    case ir::Method::GLOBAL_INITIALIZER: this->printf_external("global initializer\n"); break;
+    case ir::Method::FACTORY: this->printf_external("factory\n"); break;
     case ir::Method::FIELD_INITIALIZER: UNREACHABLE();
   }
+  this->printf_external("%s\n", method->is_deprecated() ? "deprecated" : "-");
   auto shape = method->resolution_shape();
   int max_unnamed = shape.max_unnamed_non_block() + shape.unnamed_block_count();
   bool has_implicit_this = method->is_instance() || method->is_constructor();
-  this->printf("%d\n", method->parameters().length() - (has_implicit_this ? 1 : 0));
+  this->printf_external("%d\n", method->parameters().length() - (has_implicit_this ? 1 : 0));
   for (int i = 0; i < method->parameters().length(); i++) {
     if (has_implicit_this && i == 0) continue;
     auto parameter = method->parameters()[i];
-    safe_print_symbol(parameter->name());
-    this->printf("%d\n", parameter->original_index());
+    safe_print_symbol_external(parameter->name());
+    this->printf_external("%d\n", parameter->original_index());
     bool is_block = false;
     if (i < shape.min_unnamed_non_block()) {
-      this->printf("required\n");
+      this->printf_external("required\n");
     } else if (i < shape.max_unnamed_non_block()) {
-      this->printf("optional\n");
+      this->printf_external("optional\n");
     } else if (i < shape.max_unnamed_non_block() + shape.unnamed_block_count()) {
-      this->printf("required\n");
+      this->printf_external("required\n");
       is_block = true;
     } else if (shape.optional_names()[i - max_unnamed]) {
-      this->printf("optional named\n");
+      this->printf_external("optional named\n");
     } else {
-      this->printf("required named\n");
+      this->printf_external("required named\n");
       is_block = i >= shape.max_arity() - shape.named_block_count();
     }
+    if (parameter->has_default_value()) {
+      // The default value is not included in the external representation.
+      int length = parameter->default_value_range().length();
+      auto pos = parameter->default_value_range().from();
+      this->printf("%d\n", length);
+      this->lsp_writer_->write(current_source_->text_at(pos), length);
+    } else {
+      this->printf("0\n");
+    }
     if (is_block) {
-      this->printf("[block]\n");
+      this->printf_external("[block]\n");
     } else {
       print_type(parameter->type());
     }
@@ -393,8 +555,11 @@ void Writer::print_method(ir::Method* method) {
 }
 
 void Writer::print_class(ir::Class* klass) {
-  safe_print_symbol(klass->name());
+  safe_print_symbol_external(klass->name());
   print_range(klass->range());
+  print_range(klass->outline_range());
+  // The toplevel ID changes depending on how the program was analyzed.
+  // Don't include it in the external representation.
   this->printf("%d\n", toplevel_ids_.at(klass));
   const char* kind = "";  // Initialize with value to silence compiler warnings.
   switch (klass->kind()) {
@@ -411,20 +576,21 @@ void Writer::print_class(ir::Class* klass) {
       kind = "mixin";
       break;
   }
-  this->printf("%s\n", kind);
-  this->printf("%s\n", klass->is_abstract() ? "abstract" : "non-abstract");
+  this->printf_external("%s\n", kind);
+  this->printf_external("%s\n", klass->is_abstract() ? "abstract" : "-");
+  this->printf_external("%s\n", klass->is_deprecated() ? "deprecated" : "-");
   if (klass->super() == null) {
-    this->printf("-1\n");
+    this->printf_external("-1\n");
   } else {
     this->print_toplevel_ref(klass->super());
   }
-  print_list(klass->interfaces(), &Writer::print_toplevel_ref);
-  print_list(klass->mixins(), &Writer::print_toplevel_ref);
-  print_list(klass->statics()->nodes(), &Writer::print_method);
-  print_list(klass->unnamed_constructors(), &Writer::print_method);
-  print_list(klass->factories(), &Writer::print_method);
-  print_list(klass->fields(), &Writer::print_field);
-  print_list(klass->methods(), &Writer::print_method);
+  print_list_external(klass->interfaces(), &Writer::print_toplevel_ref);
+  print_list_external(klass->mixins(), &Writer::print_toplevel_ref);
+  print_list_external(klass->statics()->nodes(), &Writer::print_method);
+  print_list_external(klass->unnamed_constructors(), &Writer::print_method);
+  print_list_external(klass->factories(), &Writer::print_method);
+  print_list_external(klass->fields(), &Writer::print_field);
+  print_list_external(klass->methods(), &Writer::print_method);
   print_toitdoc(klass);
 }
 
@@ -434,13 +600,13 @@ void Writer::print_export(Symbol exported_id, const ResolutionEntry& entry) {
     case ResolutionEntry::PREFIX:
       UNREACHABLE();
     case ResolutionEntry::AMBIGUOUS:
-      this->printf("AMBIGUOUS\n");
+      this->printf_external("AMBIGUOUS\n");
       break;
     case ResolutionEntry::NODES:
-      this->printf("NODES\n");
+      this->printf_external("NODES\n");
       break;
   }
-  print_list(entry.nodes(), [&] (ir::Node* node) {
+  print_list_external(entry.nodes(), [&] (ir::Node* node) {
     ASSERT(node->is_Class() || node->is_Method());
     print_toplevel_ref(node);
   });
@@ -459,8 +625,8 @@ void Writer::print_dependencies(Module* module) {
       deps.add(import->unit()->absolute_path());
     }
   }
-  print_list(deps.build(), [&] (const char* dep) {
-    this->printf("%s\n", dep);
+  print_list_external(deps.build(), [&] (const char* dep) {
+    this->printf_external("%s\n", dep);
   });
 }
 
@@ -478,8 +644,11 @@ void Writer::print_modules() {
   }
   this->printf("%d\n", module_count);
   UnorderedMap<ir::Node*, int> toplevel_ids;
+  List<int> module_offsets = ListBuilder<int>::allocate(modules.size());
   int toplevel_id = 0;
+  int module_id = 0;
   for (auto module : modules) {
+    module_offsets[module_id] = toplevel_id;
     // Ignore error modules.
     if (module->is_error_module()) continue;
     this->printf("%s\n", module->unit()->absolute_path());
@@ -496,6 +665,7 @@ void Writer::print_modules() {
     }
   }
   toplevel_ids_ = toplevel_ids;
+  module_offsets_ = module_offsets;
 
   auto core_module = modules[core_index_];
 
@@ -503,40 +673,61 @@ void Writer::print_modules() {
     // Ignore error modules.
     if (module->is_error_module()) continue;
 
-    current_source_ = module->unit()->source();
-
-    // For simplicity repeat the module path and the class count.
-    this->printf("%s\n", current_source_->absolute_path());
-
-    print_dependencies(module);
-
-    List<const char*> exported_modules;
-    if (module->export_all()) {
-      ListBuilder<const char*> builder;
-      for (int i = 0; i < module->imported_modules().length(); i++) {
-        auto import = module->imported_modules()[i];
-        // The implicitly imported core module is always first. We discard those.
-        // Other (explicit) imports of the core module are not discarded.
-        if (i == 0 && import.module == core_module) continue;
-        // Imports with shown identifiers are handled differently.
-        if (!import.show_identifiers.is_empty()) continue;
-        // Prefixed imports don't transitively export.
-        if (import.prefix != null) continue;
-        builder.add(import.module->unit()->absolute_path());
-      }
-      exported_modules = builder.build();
-    }
-    print_list(exported_modules, [&](const char* path) { printf("%s\n", path); });
-    auto exported_identifiers_map = module->scope()->exported_identifiers_map();
-    this->printf("%d\n", exported_identifiers_map.size());
-    exported_identifiers_map.for_each([&](Symbol exported_id, ResolutionEntry entry) {
-      print_export(exported_id, entry);
-    });
-    print_list(module->classes(), &Writer::print_class);
-    print_list(module->methods(), &Writer::print_method);
-    print_list(module->globals(), &Writer::print_method);
-    print_toitdoc(module);
+    print_module(module, core_module);
   }
+}
+
+void Writer::print_module(Module* module, Module* core_module) {
+
+  current_source_ = module->unit()->source();
+
+  // For simplicity repeat the module path and the class count.
+  this->printf_external("%s\n", current_source_->absolute_path());
+
+  print_dependencies(module);
+
+  BufferedWriter buffered;
+  auto old_writer = lsp_writer_;
+  lsp_writer_ = &buffered;
+  sha1_ = sha1::SHA1();
+
+  this->printf_external("%s\n", module->is_deprecated() ? "deprecated" : "-");
+  List<const char*> exported_modules;
+  if (module->export_all()) {
+    ListBuilder<const char*> builder;
+    for (int i = 0; i < module->imported_modules().length(); i++) {
+      auto import = module->imported_modules()[i];
+      // The implicitly imported core module is always first. We discard those.
+      // Other (explicit) imports of the core module are not discarded.
+      if (i == 0 && import.module == core_module) continue;
+      // Imports with shown identifiers are handled differently.
+      if (!import.show_identifiers.is_empty()) continue;
+      // Prefixed imports don't transitively export.
+      if (import.prefix != null) continue;
+      builder.add(import.module->unit()->absolute_path());
+    }
+    exported_modules = builder.build();
+  }
+  print_list_external(exported_modules, [&](const char* path) { printf_external("%s\n", path); });
+  auto exported_identifiers_map = module->scope()->exported_identifiers_map();
+  this->printf_external("%d\n", exported_identifiers_map.size());
+  exported_identifiers_map.for_each([&](Symbol exported_id, ResolutionEntry entry) {
+    print_export(exported_id, entry);
+  });
+  print_list_external(module->classes(), &Writer::print_class);
+  print_list_external(module->methods(), &Writer::print_method);
+  print_list_external(module->globals(), &Writer::print_method);
+
+  print_toitdoc(module);
+
+  lsp_writer_ = old_writer;
+
+  sha1::SHA1::digest8_t digest;
+  sha1_.getDigestBytes(digest);
+  lsp_writer_->write(digest, sizeof(digest));
+  int length = buffered.length();
+  this->printf("%d\n", length);
+  lsp_writer_->write(buffered.data(), buffered.length());
 }
 
 class ToitdocPathMappingCreator {

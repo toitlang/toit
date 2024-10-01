@@ -21,14 +21,14 @@ tests/negative/protected-sdk-test.toit:12:3: error: Can't access protected membe
   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/protected-sdk-test.toit:13:13: error: Can't access protected member '__' of the SDK libraries
   Protected_.__
-            ^
+            ^~~
 tests/negative/protected-sdk-test.toit:14:13: error: Can't access protected member '__named' of the SDK libraries
   Protected_.__named
-            ^
+            ^~~~~~~~
 tests/negative/protected-sdk-test.toit:16:9: error: Can't access protected member '__' of the SDK libraries
   Lambda.__ 499 1
-        ^
+        ^~~
 tests/negative/protected-sdk-test.toit:17:19: error: Can't access protected member '__' of the SDK libraries
   LazyInitializer_.__ 42
-                  ^
+                  ^~~
 Compilation failed

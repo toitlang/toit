@@ -22,6 +22,7 @@
 
 #include <fcntl.h>
 #include <errno.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/spi/spidev.h>
 
@@ -32,12 +33,34 @@ extern Object* return_open_error(Process* process, int err);
 
 MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
 
+// There is no close primitive, as the one from the file module is used.
 PRIMITIVE(open) {
-  ARGS(cstring, pathname);
+  ARGS(cstring, pathname, int, frequency, int, mode);
+  if (frequency <= 0) FAIL(INVALID_ARGUMENT);
   // We always set the close-on-exec flag otherwise we leak descriptors when we fork.
   // File descriptors that are intended for subprocesses have the flags cleared.
   int fd = open(pathname, O_CLOEXEC | O_RDWR);
   if (fd < 0) return return_open_error(process, errno);
+  int result = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &frequency);
+  if (result < 0) {
+    close(fd);
+    return Primitive::os_error(errno, process);
+  }
+  result = ioctl(fd, SPI_IOC_RD_MAX_SPEED_HZ, &frequency);
+  if (result < 0) {
+    close(fd);
+    return Primitive::os_error(errno, process);
+  }
+  result = ioctl(fd, SPI_IOC_WR_MODE, &mode);
+  if (result < 0) {
+    close(fd);
+    return Primitive::os_error(errno, process);
+  }
+  result = ioctl(fd, SPI_IOC_RD_MODE, &mode);
+  if (result < 0) {
+    close(fd);
+    return Primitive::os_error(errno, process);
+  }
   return Smi::from(fd);
 }
 
