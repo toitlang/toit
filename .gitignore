@@ -1,5 +1,6 @@
 /build/
-.packages
+.packages/
+.packages-bootstrap/
 /.cache/
 **/.vscode/
 tedi_test.go

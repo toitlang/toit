@@ -48,9 +48,9 @@ set(SKIP_PREFIXES
     # only accessible through symlinks. But on Windows the globbing would find them.
     "${CMAKE_SOURCE_DIR}/build/")
 
-# Don't go into .packages directories.
+# Don't go into .packages or .packages-bootstrap directories.
 # The packages we want to check must be added differently.
-set(DOT_PACKAGES_PATTERN "/[.]packages/")
+set(DOT_PACKAGES_PATTERN "/[.]packages(-bootstrap)?/")
 
 # Sets the RESULT variable to TRUE if STR has PREFIX as prefix.
 # Leaves the RESULT variable untouched otherwise.

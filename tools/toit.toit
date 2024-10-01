@@ -141,6 +141,9 @@ main args/List:
         cli.Option "arch"
             // TODO(florian): find valid values depending on which vessels exist.
             --help="Set the target architecture for cross compilation.",
+        cli.Option "vessels-root"
+            --help="Path to the vessels root."
+            --type="dir",
         cli.Option "output" --short-name="o"
             --help="Set the output file name."
             --required,
@@ -566,6 +569,10 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
       if parsed["arch"]:
         args.add "--arch"
         args.add parsed["arch"]
+
+      if parsed["vessels-root"]:
+        args.add "--vessels-root"
+        args.add parsed["vessels-root"]
 
       if parsed["snapshot"]:
         args.add "-w"
