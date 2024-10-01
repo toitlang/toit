@@ -1225,7 +1225,6 @@ class Primitive {
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static Object* unmark_from_error(Program* program, Object* object);
   static Object* os_error(int error, Process* process);
-  static Object* error(const char* error, Process* process);
   static Object* return_not_a_smi(Process* process, Object* value);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.

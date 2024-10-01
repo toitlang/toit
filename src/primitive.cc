@@ -80,11 +80,7 @@ Object* Primitive::os_error(int error, Process* process) {
 #else
   char* error_text = strerror(error);
 #endif
-  return Primitive::error(error_text, process);
-}
-
-Object* Primitive::error(const char* error, Process* process) {
-  String* result = process->allocate_string(error);
+  String* result = process->allocate_string(error_text);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return Error::from(result);
 }
