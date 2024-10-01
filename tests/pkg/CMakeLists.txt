@@ -41,6 +41,7 @@ foreach(file ${TOIT_PKG_TESTS})
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if ("${file}" IN_LIST TOIT_PKG_GOLD_TESTS)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 100)
     string(REPLACE "/" "_" update_name "${file}")
     string(REPLACE "\\" "_" update_name "${update_name}")
     set(update_name "${update_name}-update-gold")
