@@ -31,6 +31,7 @@ class Repository:
   capabilities/Map
 
   constructor .url:
+    if not url.contains "://": url = "https://$url"
     capabilities = protocol_.load-capabilities url
 
   clone --binary ref-hash/string -> ByteArray:
@@ -62,9 +63,10 @@ class GitProtocol_:
     host := url[0..url.index-of "/"]
     return server-capabilities-cache.get host
         --init=:
+
             capabilities-response :=
                 client.get
-                    --uri="https://$(url)/info/refs?service=git-upload-pack"
+                    --uri="$(url)/info/refs?service=git-upload-pack"
                     --headers=version-2-header
 
             if capabilities-response.status_code != 200:
@@ -84,7 +86,7 @@ class GitProtocol_:
 
   load-refs url/string -> Map:
     refs-response := client.post (pack-command_ "ls-refs" [] [])
-        --uri="https://$(url)/git-upload-pack"
+        --uri="$url/git-upload-pack"
         --headers=version-2-header
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
@@ -110,7 +112,7 @@ class GitProtocol_:
     if capabilities.contains "fetch" and capabilities["fetch"].contains "shallow": arguments.add "deepen 1"
     arguments.add "done"
     fetch-response := client.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
-        --uri="https://$url/git-upload-pack"
+        --uri="$url/git-upload-pack"
         --headers=version-2-header
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
