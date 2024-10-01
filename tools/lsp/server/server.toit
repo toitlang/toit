@@ -675,7 +675,6 @@ class LspServer:
     return compiler
 
 main args -> none:
-  parsed := null
   parser := cli.Command "server"
       --rest=[
           cli.Option "toit-path-override",
@@ -683,14 +682,11 @@ main args -> none:
       --options=[
           cli.Flag "verbose" --default=false,
       ]
-      --run=:: parsed = it
+      --run=:: | invocation/cli.Invocation |
+        toit-path-override := invocation["toit-path-override"]
+        is-verbose = invocation["verbose"]
+        main --toit-path-override=toit-path-override
   parser.run args
-  if not parsed: exit 0
-
-  toit-path-override := parsed["toit-path-override"]
-
-  is-verbose = parsed["verbose"] == true
-  main --toit-path-override=toit-path-override
 
 main --toit-path-override/string?:
   in-pipe  := pipe.stdin

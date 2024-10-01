@@ -6,8 +6,7 @@ dependencies:
     url: github.com/toitware/toit-cert-roots
     version: ^1.6.1
   cli:
-    url: github.com/toitlang/pkg-cli
-    version: ^1.8.0
+    path: ../../pkg-cli
   fs:
     url: github.com/toitlang/pkg-fs
     version: ^2.3.1

@@ -1,7 +1,6 @@
 dependencies:
   cli:
-    url: github.com/toitlang/pkg-cli
-    version: ^1.8.0
+    path: ../../../../pkg-cli
   fs:
     url: github.com/toitlang/pkg-fs
     version: ^2.3.1

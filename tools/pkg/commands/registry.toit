@@ -28,18 +28,18 @@ class RegistryCommand:
   local/bool := false
   url/string? := null
   name/string? := null
-  constructor.add parsed/cli.Parsed:
-    local = parsed[LOCAL]
-    url = parsed[LOCATION]
-    name = parsed[NAME]
+  constructor.add invocation/cli.Invocation:
+    local = invocation[LOCAL]
+    url = invocation[LOCATION]
+    name = invocation[NAME]
 
-  constructor.remove parsed/cli.Parsed:
-    name = parsed[NAME]
+  constructor.remove invocation/cli.Invocation:
+    name = invocation[NAME]
 
-  constructor.sync parsed/cli.Parsed:
-    name = parsed[NAME]
+  constructor.sync invocation/cli.Invocation:
+    name = invocation[NAME]
 
-  constructor.list parsed/cli.Parsed:
+  constructor.list invocation/cli.Invocation:
 
   add:
     if local:

@@ -123,32 +123,32 @@ find-snapshot id/uuid.Uuid -> string?:
       return path
   return null
 
-decode parsed/cli.Parsed -> none:
-  if parsed["uuid"]:
+decode invocation/cli.Invocation -> none:
+  if invocation["uuid"]:
     pipe.print-to-stdout "The --uuid flag is deprecated and will be removed in a future release."
 
   // The encoded-system-message is ubjson-encoded.
-  encoded-system-message := base64.decode parsed["message"]
+  encoded-system-message := base64.decode invocation["message"]
   // The decoded message still has its payload encoded in JSON.
   decoded-system-message := decode-system-message encoded-system-message --on-error=:
     pipe.print-to-stderr it
     exit 1
 
-  snapshot-path := parsed["snapshot"]
+  snapshot-path := invocation["snapshot"]
   if not snapshot-path:
     // Try to find the snapshot based on the UUID.
     snapshot-path = find-snapshot decoded-system-message.program-uuid
 
   snapshot-content := null
   if snapshot-path:
-    snapshot-content = file.read-content parsed["snapshot"]
+    snapshot-content = file.read-content invocation["snapshot"]
 
   if encoded-system-message.size < 1 or encoded-system-message[0] != '[':
-    pipe.print-to-stderr "\nNot a ubjson message: '$parsed["message"]'\n"
+    pipe.print-to-stderr "\nNot a ubjson message: '$invocation["message"]'\n"
     exit 1
 
   handle-system-message decoded-system-message snapshot-content
       --filename=snapshot-path
       --uuid=decoded-system-message.program-uuid
-      --force-pretty=parsed["force-pretty"]
-      --force-plain=parsed["force-plain"]
+      --force-pretty=invocation["force-pretty"]
+      --force-plain=invocation["force-plain"]

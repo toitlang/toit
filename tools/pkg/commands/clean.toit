@@ -24,8 +24,8 @@ import .utils_
 
 class CleanCommand:
   project/Project
-  constructor parsed/cli.Parsed:
-    config := project-configuration-from-cli parsed
+  constructor invocation/cli.Invocation:
+    config := project-configuration-from-cli invocation
     config.verify
     project = Project config
 

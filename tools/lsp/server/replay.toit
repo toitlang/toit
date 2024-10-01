@@ -54,7 +54,7 @@ Use:
   ```
 */
 main args:
-  parsed := null
+  parameters/cli.Parameters? := null
   parser := cli.Command "replay"
       --rest=[
           cli.Option "debug-file" --required
@@ -64,12 +64,11 @@ main args:
           cli.Flag "use-std-ports" --default=false,
           cli.Flag "log-formatted" --default=false,
       ]
-      --run=:: parsed = it
+      --run=:: parameters = it.parameters
   parser.run args
-  if not parsed: exit 0
 
-  use-std-ports := parsed["use-std-ports"]
-  log-formatted := parsed["log-formatted"]
+  use-std-ports := parameters["use-std-ports"]
+  log-formatted := parameters["log-formatted"]
   if use-std-ports and log-formatted:
     print "Can't use std ports and log formatted at same time"
     exit 1
@@ -88,7 +87,7 @@ main args:
     server := LspServer server-rpc-connection null
     task:: catch --trace: server.run
 
-  debug-file := parsed["debug-file"]
+  debug-file := parameters["debug-file"]
   replay-rpc := RpcConnection (io.Reader.adapt (file.Stream.for-read debug-file)) pipe.stderr
   std-rpc := RpcConnection server-from-reader server-to-writer
 
@@ -102,7 +101,7 @@ main args:
         // Don't send responses before they have been requested.
         while packet["id"] > current-request-id:
           channel.receive
-      if parsed["print-out"]:
+      if parameters["print-out"]:
         if log-formatted:
           log-packet --to-server packet
         else:

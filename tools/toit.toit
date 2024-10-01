@@ -51,8 +51,8 @@ main args/List:
             --hidden,
       ]
 
-  toitc-from-args := :: | parsed/cli.Parsed |
-      sdk-dir := parsed["sdk-dir"]
+  toitc-from-args := :: | invocation/cli.Invocation |
+      sdk-dir := invocation["sdk-dir"]
       tool-path sdk-dir "toit.compile"
 
   version-command := cli.Command "version"
@@ -494,7 +494,7 @@ main args/List:
 
   toitdoc-command := toitdoc.build-command
       --toitc-from-args=toitc-from-args
-      --sdk-path-from-args=:: | parsed/cli.Parsed | parsed["sdk-dir"]
+      --sdk-path-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
   root-command.add toitdoc-command
 
   root-command.add system-message.build-command
@@ -520,100 +520,100 @@ run sdk-dir/string? tool/string args/List -> int:
   args = [tool-path sdk-dir tool] + args
   return pipe.run-program args
 
-compile-or-analyze-or-run --command/string parsed/cli.Parsed:
+compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   args := []
 
-  xflags := parsed["X"]
+  xflags := invocation["X"]
   if not xflags.is-empty:
     xflags.do:
       args.add "-X$it"
 
-  if parsed["show-package-warnings"]: args.add "--show-package-warnings"
-  if parsed["Werror"]: args.add "-Werror"
+  if invocation["show-package-warnings"]: args.add "--show-package-warnings"
+  if invocation["Werror"]: args.add "-Werror"
 
   if command == "analyze":
     args.add "--analyze"
   else:
-    optimization/int := parsed["optimization-level"]
+    optimization/int := invocation["optimization-level"]
     if not 0 <= optimization <= 2: error "Invalid optimization level"
 
     args.add "-O$optimization"
 
     enable-asserts := optimization < 2
-    if parsed.was-provided "enable-asserts":
+    if invocation.parameters.was-provided "enable-asserts":
       // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
-      if parsed["enable-asserts"]:
+      if invocation["enable-asserts"]:
         enable-asserts = true
       else:
         enable-asserts = false
     args.add "-Xenable-asserts=$enable-asserts"
 
-    if parsed["force"]: args.add "--force"
+    if invocation["force"]: args.add "--force"
 
     if command == "compile":
-      if parsed["dependency-file"]:
+      if invocation["dependency-file"]:
         args.add "--dependency-file"
-        args.add parsed["dependency-file"]
-        if parsed["dependency-format"]:
+        args.add invocation["dependency-file"]
+        if invocation["dependency-format"]:
           args.add "--dependency-format"
-          args.add parsed["dependency-format"]
+          args.add invocation["dependency-format"]
         else:
           error "Missing --dependency-format"
 
-      if parsed["strip"]: args.add "--strip"
+      if invocation["strip"]: args.add "--strip"
 
-      if parsed["os"]:
+      if invocation["os"]:
         args.add "--os"
-        args.add parsed["os"]
+        args.add invocation["os"]
 
-      if parsed["arch"]:
+      if invocation["arch"]:
         args.add "--arch"
-        args.add parsed["arch"]
+        args.add invocation["arch"]
 
-      if parsed["vessels-root"]:
+      if invocation["vessels-root"]:
         args.add "--vessels-root"
-        args.add parsed["vessels-root"]
+        args.add invocation["vessels-root"]
 
-      if parsed["snapshot"]:
+      if invocation["snapshot"]:
         args.add "-w"
       else:
         args.add "-o"
-      args.add parsed["output"]
+      args.add invocation["output"]
 
-  args.add parsed["source"]
+  args.add invocation["source"]
   if command == "run":
-    args.add-all parsed["arg"]
+    args.add-all invocation["arg"]
 
   exe := command == "run" ? "toit.run" : "toit.compile"
-  exit-code := run parsed["sdk-dir"] exe args
+  exit-code := run invocation["sdk-dir"] exe args
   exit exit-code
 
-run-lsp-server parsed/cli.Parsed:
-  sdk-dir := parsed["sdk-dir"]
+run-lsp-server invocation/cli.Invocation:
+  sdk-dir := invocation["sdk-dir"]
   toitc-cmd := [tool-path sdk-dir "toit.compile"]
   if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
   print-on-stderr_ "Using $toitc-cmd.first"
   lsp.main --toit-path-override=toitc-cmd.first
 
-run-pkg-command command/List arg-names/List rest-args/List parsed/cli.Parsed:
-  sdk-dir := parsed["sdk-dir"]
-  auto-sync := parsed["auto-sync"]
-  project-root := parsed["project-root"]
-  sdk-version := parsed["sdk-version"]
+run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invocation:
+  sdk-dir := invocation["sdk-dir"]
+  auto-sync := invocation["auto-sync"]
+  project-root := invocation["project-root"]
+  sdk-version := invocation["sdk-version"]
 
   args := command.copy
   if auto-sync != null: args.add "--auto-sync=$auto-sync"
   if project-root: args.add "--project-root=$project-root"
   if sdk-version: args.add "--sdk-version=$sdk-version"
   arg-names.do:
-    if parsed[it] != null: args.add-all ["--$it=$parsed[it]"]
+    if invocation[it] != null: args.add-all ["--$it=$invocation[it]"]
   rest-args.do:
-    if parsed[it] != null:
-      rest-arg := parsed[it]
+    if invocation[it] != null:
+      rest-arg := invocation[it]
       if rest-arg is List:
         args.add-all rest-arg
       else:
-        args.add parsed[it]
+        args.add invocation[it]
 
   exit-code := run sdk-dir "toit.pkg" args
   exit exit-code

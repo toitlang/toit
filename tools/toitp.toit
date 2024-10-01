@@ -122,9 +122,9 @@ print-sizes snapshot/SnapshotBundle:
 
 filter := ""
 
-with-filtered-cli-program parsed/cli.Parsed [block]:
-  filter = parsed["filter"] or ""
-  snapshot := SnapshotBundle.from-file parsed["snapshot"]
+with-filtered-cli-program invocation/cli.Invocation [block]:
+  filter = invocation["filter"] or ""
+  snapshot := SnapshotBundle.from-file invocation["snapshot"]
   program := snapshot.decode
   block.call program
 
@@ -166,9 +166,9 @@ build-command -> cli.Command:
         cli.Example "Print the literal with id 42:"
             --arguments="foo.snapshot 42",
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
-            filter-arg := parsed["filter"]
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
+            filter-arg := invocation["filter"]
             if filter-arg and is-number-string filter-arg:
               // Ignore the filter argument if it is a number.
               print-literal program (int.parse filter-arg)
@@ -189,8 +189,8 @@ build-command -> cli.Command:
         cli.Example "Print all classes ending with 'Handler':"
             --arguments="foo.snapshot '*Handler'",
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-classes program
   snapshot-command.add classes-command
 
@@ -207,8 +207,8 @@ build-command -> cli.Command:
         cli.Example "Print the dispatch table restricted to methods containing 'bar' in their name:"
             --arguments="foo.snapshot '*bar*'"
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-dispatch-table program
   snapshot-command.add dispatch-table-command
 
@@ -225,8 +225,8 @@ build-command -> cli.Command:
         cli.Example "Print the method table for methods containing 'bar' in their name:"
             --arguments="foo.snapshot '*bar*'"
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-method-table program
   snapshot-command.add method-table-command
 
@@ -243,8 +243,8 @@ build-command -> cli.Command:
         cli.Example "Print the method sizes for methods containing 'bar' in their name:"
             --arguments="foo.snapshot '*bar*'"
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-method-sizes program
   snapshot-command.add method-sizes-command
 
@@ -261,8 +261,8 @@ build-command -> cli.Command:
         cli.Example "Print the primitive table for primitives containing 'bar' in their name:"
             --arguments="foo.snapshot '*bar*'"
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-primitive-table program
   snapshot-command.add primitive-table-command
 
@@ -284,9 +284,9 @@ build-command -> cli.Command:
         cli.Example "Print the bytecodes of all methods that call 'gee':"
             --arguments="foo.snapshot gee --bytecodes",
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
-            print-senders program parsed["bytecodes"]
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
+            print-senders program invocation["bytecodes"]
   snapshot-command.add senders-command
 
   bytecodes-command := cli.Command "bytecodes"
@@ -302,8 +302,8 @@ build-command -> cli.Command:
         cli.Example "Print the bytecodes for methods containing 'bar' in their name:"
             --arguments="foo.snapshot '*bar*'"
       ]
-      --run=:: | parsed/cli.Parsed |
-          with-filtered-cli-program parsed: | program/Program |
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
             print-bytecodes program
   snapshot-command.add bytecodes-command
 
@@ -314,15 +314,15 @@ build-command -> cli.Command:
         cli.Example "Print the UUID of snapshot 'foo.snapshot':"
             --arguments="foo.snapshot",
       ]
-      --run=:: | parsed/cli.Parsed |
-        snapshot := SnapshotBundle.from-file parsed["snapshot"]
+      --run=:: | invocation/cli.Invocation |
+        snapshot := SnapshotBundle.from-file invocation["snapshot"]
         print-uuid snapshot
   snapshot-command.add uuid-command
 
   return snapshot-command
 
 main args:
-  parsed := null
+  parameters/cli.Parameters? := null
   parser := cli.Command "toitp"
       --rest=[
           cli.Option "snapshot" --type="file" --required,
@@ -340,23 +340,23 @@ main args:
           cli.Flag "primitive_table" --short-name="p",
           cli.Flag "uuid",
       ]
-      --run=:: parsed = it
+      --run=:: parameters = it.parameters
   parser.run args
-  if not parsed: exit 0
+  if not parameters: exit 0
 
-  if parsed["filter"]: filter = parsed["filter"]
-  snapshot := SnapshotBundle.from-file parsed["snapshot"]
+  if parameters["filter"]: filter = parameters["filter"]
+  snapshot := SnapshotBundle.from-file parameters["snapshot"]
   program := snapshot.decode
 
-  if parsed["classes"]:         print-classes program; return
-  if parsed["literals"]:        print-literals program; return
-  if parsed["literal"]:         print-literal program parsed["literal"]; return
-  if parsed["dispatch_table"]:  print-dispatch-table program; return
-  if parsed["method_table"]:    print-method-table program; return
-  if parsed["method_sizes"]:    print-method-sizes program; return
-  if parsed["primitive_table"]: print-primitive-table program; return
-  if parsed["senders"]:         print-senders program parsed["bytecodes"]; return
-  if parsed["bytecodes"]:       print-bytecodes program; return
-  if parsed["uuid"]:            print-uuid snapshot; return
+  if parameters["classes"]:         print-classes program; return
+  if parameters["literals"]:        print-literals program; return
+  if parameters["literal"]:         print-literal program parameters["literal"]; return
+  if parameters["dispatch_table"]:  print-dispatch-table program; return
+  if parameters["method_table"]:    print-method-table program; return
+  if parameters["method_sizes"]:    print-method-sizes program; return
+  if parameters["primitive_table"]: print-primitive-table program; return
+  if parameters["senders"]:         print-senders program parameters["bytecodes"]; return
+  if parameters["bytecodes"]:       print-bytecodes program; return
+  if parameters["uuid"]:            print-uuid snapshot; return
   // For compatibility reasons print the sizes.
   print-sizes snapshot

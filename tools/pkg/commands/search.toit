@@ -26,9 +26,9 @@ import .list
 class SearchCommand:
   verbose/bool
   search-string/string
-  constructor parsed/cli.Parsed:
-    verbose = parsed[VERBOSE-OPTION]
-    search-string = parsed[NAME-OPTION]
+  constructor invocation/cli.Invocation:
+    verbose = invocation[VERBOSE-OPTION]
+    search-string = invocation[NAME-OPTION]
 
   execute:
     search-result := registries.search --free-text search-string

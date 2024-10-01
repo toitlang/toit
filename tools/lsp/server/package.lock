@@ -6,10 +6,7 @@ prefixes:
   tar: pkg-tar
 packages:
   pkg-cli:
-    url: github.com/toitlang/pkg-cli
-    name: cli
-    version: 1.8.0
-    hash: 73c8aabb60a6f5f304566a1e781d7b025aa17e9b
+    path: ../../../../pkg-cli
     prefixes:
       fs: pkg-fs
       host: pkg-host

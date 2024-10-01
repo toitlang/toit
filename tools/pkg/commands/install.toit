@@ -36,12 +36,12 @@ class InstallCommand:
   recompute/bool
   project/Project
 
-  constructor parsed/cli.Parsed:
-    prefix = parsed[PREFIX]
+  constructor invocation/cli.Invocation:
+    prefix = invocation[PREFIX]
 
-    package = parsed[REST]
-    local = parsed[LOCAL]
-    recompute = parsed[RECOMPUTE]
+    package = invocation[REST]
+    local = invocation[LOCAL]
+    recompute = invocation[RECOMPUTE]
 
     if not package and local:
       error "Can not specify local without a package"
@@ -52,7 +52,7 @@ class InstallCommand:
     if package and recompute:
       error "Recompute can only be specified with no other arguments."
 
-    config := project-configuration-from-cli parsed
+    config := project-configuration-from-cli invocation
     config.verify
 
     project = Project config
