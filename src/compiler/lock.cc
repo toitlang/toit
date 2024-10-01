@@ -993,7 +993,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   for (auto package_id : lock_content.packages.keys()) {
     auto entry = lock_content.packages.at(package_id);
 
-    auto locate_package = [&](std::string path, const std::string& error_path, bool is_path_package) -> Package{
+    auto locate_package = [&](std::string path, const std::string& error_path, bool is_path_package) -> Package {
       if (fs->exists(path.c_str()) && fs->is_directory(path.c_str())) {
         PathBuilder src_builder(fs);
         src_builder.join(path, PACKAGE_SOURCE_DIR);
