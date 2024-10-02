@@ -662,7 +662,10 @@ jobs:
 
       - name: Set up macOS ARM environment
         run: |
-          if [[ "${{ inputs.build-arm-macos }}" == 'true' || "${{ github.ref }}" == 'refs/heads/master' ]]; then
+          if [[ "${{ env.do_RELEASE }}" == 'true' || \
+                "${{ inputs.build-arm-macos }}" == 'true' || \
+                "${{ github.ref }}" == 'refs/heads/master' \
+              ]]; then
             echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
             EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
             echo "MACOS_TARS<<$EOF" >> $GITHUB_ENV;
@@ -897,7 +900,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload release installer
@@ -906,7 +909,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows-x64-installer.exe
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   sign_macos:
