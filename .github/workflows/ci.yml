@@ -765,6 +765,12 @@ jobs:
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
+      - name: Add tar-balls with improved naming
+        run: |
+          cp toit-linux.tar.gz toit-linux-x64.tar.gz
+          cp toit-rpi.tar.gz toit-linux-armv7.tar.gz
+          cp toit-aarch64.tar.gz toit-linux-aarch64.tar.gz
+
       - name: Upload vessels
         uses: actions/upload-artifact@v4
         with:
@@ -788,9 +794,9 @@ jobs:
         with:
           name: Linux-build-combined
           path: |
-            toit-linux.tar.gz
-            toit-rpi.tar.gz
-            toit-aarch64.tar.gz
+            toit-linux-x64.tar.gz
+            toit-linux-armv7.tar.gz
+            toit-linux-aarch64.tar.gz
 
       - name: Upload release vessels
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
@@ -801,30 +807,24 @@ jobs:
           tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
+      - name: Prepare for Linux release upload
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
+        run: |
+          mkdir -p linux-upload
+          cp toit-linux.tar.gz linux-upload
+          cp toit-rpi.tar.gz linux-upload
+          cp toit-aarch64.tar.gz linux-upload
+          cp toit-linux-x64.tar.gz linux-upload
+          cp toit-linux-armv7.tar.gz linux-upload
+          cp toit-linux-aarch64.tar.gz linux-upload
+
       - name: Upload release Linux
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-linux.tar.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload release Raspberry Pi 32-bit
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-rpi.tar.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload release aarch64
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-aarch64.tar.gz
+          file_glob: true
+          file: linux-upload/*
           tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
@@ -894,24 +894,23 @@ jobs:
         with:
           name: Windows-build-signed
           path: |
-            toit-windows.tar.gz
+            toit-windows-x64.tar.gz
             toit-windows-x64-installer.exe
+
+      - name: Prepare upload
+        run: |
+          mkdir -p windows-upload
+          cp toit-windows.tar.gz windows-upload/toit-windows.tar.gz
+          cp toit-windows.tar.gz windows-upload/toit-windows-x64.tar.gz
+          cp toit-windows-x64-installer.exe windows-upload/toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-windows.tar.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload release installer
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-windows-x64-installer.exe
+          file_glob: true
+          file: windows-upload/*
           tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
@@ -1013,13 +1012,22 @@ jobs:
             out/toit-x64.dmg
             out/toit-arm.dmg
 
+      - name: Prepare upload
+        run: |
+          mkdir -p macos-upload
+          cp out/toit-macos.tar.gz macos-upload/toit-macos.tar.gz
+          cp out/toit-macos.tar.gz macos-upload/toit-macos-x64.tar.gz
+          cp out/toit-macos-arm.tar.gz macos-upload/toit-macos-aarch64.tar.gz
+          cp out/toit-x64.dmg macos-upload/toit-macos-x64.dmg
+          cp out/toit-arm.dmg macos-upload/toit-macos-aarch64.dmg
+
       - name: Upload release artifacts x64
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file_glob: true
-          file: out/*
+          file: macos-upload/*
           tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
