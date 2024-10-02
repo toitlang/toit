@@ -135,6 +135,7 @@ jobs:
           fi
           echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
@@ -175,6 +176,8 @@ jobs:
       # Build using make.
       - name: Build sdk
         shell: bash
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
         run: |
           make sdk
           if [[ "$RUNNER_OS" == "Linux" ]]; then
