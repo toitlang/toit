@@ -818,7 +818,7 @@ jobs:
           cp toit-linux-armv7.tar.gz linux-upload
           cp toit-linux-aarch64.tar.gz linux-upload
 
-      - name: Upload release Linux
+      - name: Upload Linux release
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
