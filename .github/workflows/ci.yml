@@ -52,15 +52,15 @@ on:
         required: false
         type: boolean
         default: true
-      fix-release:
-        description: "Fix the given release"
+      do-release:
+        description: "Build release artifacts and upload to this version"
         required: false
         type: string
         default:
 
 env:
-  TOIT_VERSION: ${{ github.event.inputs.fix-release || github.event.release.tag_name || '' }}
-  IS_FIX_RELEASE: ${{ startsWith(github.event.inputs.fix-release, 'v') }}
+  TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
+  DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
 
 jobs:
   prereqs:
@@ -72,8 +72,7 @@ jobs:
           # ubuntu-20.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
           if [[ "${{ github.ref }}" == 'refs/heads/master' || \
-                "${{ github.event_name }}" == "release" || \
-                "${{ env.IS_FIX_RELEASE }}" == "true" || \
+                "${{ env.DO_RELEASE }}" == "true" || \
                 "${{ inputs.build-arm-macos }}" == "true" || \
                 "${{ inputs.sign-macos }}" == "true" \
               ]]; then
@@ -212,11 +211,7 @@ jobs:
           name: ccache-debug
 
       - name: Strip executables - Linux
-        if: ${{ runner.os == 'Linux' &&
-              (github.event_name == 'release' ||
-               env.IS_FIX_RELEASE ||
-               github.event.inputs.strip == 'true')
-            }}
+        if: (runner.os == 'Linux' && (env.DO_RELEASE || github.event.inputs.strip == 'true'))
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
@@ -360,8 +355,7 @@ jobs:
       - name: Upload toitdoc release artifact - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+          env.DO_RELEASE && github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -394,8 +388,7 @@ jobs:
       - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          (((github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-            github.repository_owner == 'toitlang') ||
+          ((env.DO_RELEASE && github.repository_owner == 'toitlang') ||
            github.event.inputs.dispatch-toitdocs == 'true')
         uses: actions/github-script@v7
         with:
@@ -484,9 +477,7 @@ jobs:
             build/firmware-esp32s3.gz
 
       - name: Upload ESP32 release firmware artifacts
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -495,9 +486,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-C3 release firmware artifacts
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -506,9 +495,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-S2 release firmware artifacts
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -517,9 +504,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-S3 release firmware artifacts
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -802,9 +787,7 @@ jobs:
             toit-aarch64.tar.gz
 
       - name: Upload release vessels
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -813,9 +796,7 @@ jobs:
           overwrite: true
 
       - name: Upload release Linux
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -824,9 +805,7 @@ jobs:
           overwrite: true
 
       - name: Upload release Raspberry Pi 32-bit
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -835,9 +814,7 @@ jobs:
           overwrite: true
 
       - name: Upload release aarch64
-        if: |
-          (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -848,7 +825,7 @@ jobs:
   sign_windows:
     runs-on: windows-latest
     needs: [combine]
-    if: (github.event_name == 'release' || startsWith(github.event.inputs.fix-release, 'v'))
+    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v'))
     steps:
       - uses: actions/checkout@v4
 
@@ -915,8 +892,7 @@ jobs:
             toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
-        if: (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -925,8 +901,7 @@ jobs:
           overwrite: true
 
       - name: Upload release installer
-        if: (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -938,7 +913,7 @@ jobs:
     runs-on: macos-latest  # An arm64 runner.
     needs: [combine]
     if: github.event_name == 'release' ||
-        startsWith(github.event.inputs.fix-release, 'v') ||
+        startsWith(github.event.inputs.do-release, 'v') ||
         github.event.inputs.sign-macos == 'true'
     steps:
       - uses: actions/checkout@v4
@@ -1033,8 +1008,7 @@ jobs:
             out/toit-arm.dmg
 
       - name: Upload release artifacts x64
-        if: (github.event_name == 'release' || env.IS_FIX_RELEASE) &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -1108,8 +1082,7 @@ jobs:
     name: Update AUR package
     runs-on: ubuntu-latest
     needs: [combine]
-    if: (github.event_name == 'release' || startsWith(github.event.inputs.fix-release, 'v')) &&
-        !github.event.release.prerelease &&
+    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
         github.repository_owner == 'toitlang'
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
