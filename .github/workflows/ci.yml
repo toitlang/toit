@@ -52,6 +52,15 @@ on:
         required: false
         type: boolean
         default: true
+      do-release:
+        description: "Build release artifacts and upload with this version"
+        required: false
+        type: string
+        default:
+
+env:
+  TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
+  DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
 
 jobs:
   prereqs:
@@ -63,10 +72,10 @@ jobs:
           # ubuntu-20.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
           if [[ "${{ github.ref }}" == 'refs/heads/master' || \
-                "${{ github.event_name }}" == "release" ]] || \
+                "${{ env.DO_RELEASE }}" == "true" || \
                 "${{ inputs.build-arm-macos }}" == "true" || \
                 "${{ inputs.sign-macos }}" == "true" \
-            ]]; then
+              ]]; then
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           else
             echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
@@ -121,7 +130,9 @@ jobs:
           echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
-          TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
           echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
@@ -200,7 +211,7 @@ jobs:
           name: ccache-debug
 
       - name: Strip executables - Linux
-        if: ${{ runner.os == 'Linux' && (github.event_name == 'release' || github.event.inputs.strip == 'true') }}
+        if: (runner.os == 'Linux' && (env.DO_RELEASE == 'true' || github.event.inputs.strip == 'true'))
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
@@ -344,14 +355,13 @@ jobs:
       - name: Upload toitdoc release artifact - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+          env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toitdoc_${{ steps.constants.outputs.toit_version }}.json
           asset_name: toitdoc.json
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Dispatch toitdoc-dev rebuild - Linux
@@ -378,7 +388,7 @@ jobs:
       - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          ((github.event_name == 'release' && github.repository_owner == 'toitlang') ||
+          ((env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang') ||
            github.event.inputs.dispatch-toitdocs == 'true')
         uses: actions/github-script@v7
         with:
@@ -391,7 +401,7 @@ jobs:
               ref: 'master',
               inputs: {
                 'deploy': 'true',
-                'toit-version': '${{ github.event.release.tag_name }}'
+                'toit-version': '${{ env.TOIT_VERSION }}'
               },
             });
 
@@ -467,47 +477,39 @@ jobs:
             build/firmware-esp32s3.gz
 
       - name: Upload ESP32 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload ESP32-C3 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32c3.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload ESP32-S2 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32s2.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload ESP32-S3 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32s3.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   # Really annoying that we need to duplicate so much.
@@ -660,7 +662,10 @@ jobs:
 
       - name: Set up macOS ARM environment
         run: |
-          if [[ "${{ inputs.build-arm-macos }}" == 'true' || "${{ github.ref }}" == 'refs/heads/master' ]]; then
+          if [[ "${{ env.DO_RELEASE }}" == 'true' || \
+                "${{ inputs.build-arm-macos }}" == 'true' || \
+                "${{ github.ref }}" == 'refs/heads/master' \
+              ]]; then
             echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
             EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
             echo "MACOS_TARS<<$EOF" >> $GITHUB_ENV;
@@ -785,53 +790,45 @@ jobs:
             toit-aarch64.tar.gz
 
       - name: Upload release vessels
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: vessels.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload release Linux
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-linux.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload release Raspberry Pi 32-bit
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-rpi.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload release aarch64
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-aarch64.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   sign_windows:
     runs-on: windows-latest
     needs: [combine]
-    if: github.event_name == 'release'
+    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v'))
     steps:
       - uses: actions/checkout@v4
 
@@ -871,7 +868,7 @@ jobs:
         id: version
         shell: powershell
         run: |
-          $versionV = "${{ github.event.release.tag_name }}"
+          $versionV = "${{ env.TOIT_VERSION }}"
           $version = $versionV.Substring(1)
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
@@ -898,29 +895,29 @@ jobs:
             toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
       - name: Upload release installer
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows-x64-installer.exe
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   sign_macos:
     runs-on: macos-latest  # An arm64 runner.
     needs: [combine]
-    if: ${{ github.event_name == 'release' || github.event.inputs.sign-macos == 'true' }}
+    if: github.event_name == 'release' ||
+        startsWith(github.event.inputs.do-release, 'v') ||
+        github.event.inputs.sign-macos == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -1014,14 +1011,13 @@ jobs:
             out/toit-arm.dmg
 
       - name: Upload release artifacts x64
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file_glob: true
           file: out/*
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   external-and-flaky:
@@ -1089,20 +1085,12 @@ jobs:
     name: Update AUR package
     runs-on: ubuntu-latest
     needs: [combine]
-    if: github.event_name == 'release' &&
-        !github.event.release.prerelease &&
+    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
         github.repository_owner == 'toitlang'
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
       - uses: actions/checkout@v4
-
-      - name: Version number
-        id: version
-        shell: bash
-        run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          echo "version=$VERSION" >> $GITHUB_ENV
 
       - name: Ssh
         env:
@@ -1144,14 +1132,14 @@ jobs:
           # which is why we run a custom 'update_hash.sh' script.
           # This is the reason we can't just use the 'archlinux-package-action'.
           pushd toit
-          sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
+          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
           sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
           ./update_hash.sh
           popd
           # The vessel PKGBUILD also needs the '_tag' replaced instead of
           # the usual 'pkgver'.
           pushd toit-vessels-bin
-          sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
+          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
           popd
 
       - name: Update .SRCINFO for toit
@@ -1176,13 +1164,13 @@ jobs:
           pushd toit
           cat PKGBUILD
           cat .SRCINFO
-          git commit -am "Update to version ${{ env.version }}"
+          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
           git push origin master
           popd
 
           pushd toit-vessels-bin
           cat PKGBUILD
           cat .SRCINFO
-          git commit -am "Update to version ${{ env.version }}"
+          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
           git push origin master
           popd
