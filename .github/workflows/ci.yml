@@ -662,7 +662,7 @@ jobs:
 
       - name: Set up macOS ARM environment
         run: |
-          if [[ "${{ env.do_RELEASE }}" == 'true' || \
+          if [[ "${{ env.DO_RELEASE }}" == 'true' || \
                 "${{ inputs.build-arm-macos }}" == 'true' || \
                 "${{ github.ref }}" == 'refs/heads/master' \
               ]]; then
