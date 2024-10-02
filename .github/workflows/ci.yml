@@ -211,7 +211,7 @@ jobs:
           name: ccache-debug
 
       - name: Strip executables - Linux
-        if: (runner.os == 'Linux' && (env.DO_RELEASE || github.event.inputs.strip == 'true'))
+        if: (runner.os == 'Linux' && (env.DO_RELEASE == 'true' || github.event.inputs.strip == 'true'))
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
@@ -355,7 +355,7 @@ jobs:
       - name: Upload toitdoc release artifact - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          env.DO_RELEASE && github.repository_owner == 'toitlang'
+          env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -388,7 +388,7 @@ jobs:
       - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          ((env.DO_RELEASE && github.repository_owner == 'toitlang') ||
+          ((env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang') ||
            github.event.inputs.dispatch-toitdocs == 'true')
         uses: actions/github-script@v7
         with:
@@ -477,7 +477,7 @@ jobs:
             build/firmware-esp32s3.gz
 
       - name: Upload ESP32 release firmware artifacts
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -486,7 +486,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-C3 release firmware artifacts
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -495,7 +495,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-S2 release firmware artifacts
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -504,7 +504,7 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-S3 release firmware artifacts
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -787,7 +787,7 @@ jobs:
             toit-aarch64.tar.gz
 
       - name: Upload release vessels
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -796,7 +796,7 @@ jobs:
           overwrite: true
 
       - name: Upload release Linux
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -805,7 +805,7 @@ jobs:
           overwrite: true
 
       - name: Upload release Raspberry Pi 32-bit
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -814,7 +814,7 @@ jobs:
           overwrite: true
 
       - name: Upload release aarch64
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -892,7 +892,7 @@ jobs:
             toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -901,7 +901,7 @@ jobs:
           overwrite: true
 
       - name: Upload release installer
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -1008,7 +1008,7 @@ jobs:
             out/toit-arm.dmg
 
       - name: Upload release artifacts x64
-        if: (env.DO_RELEASE && github.repository_owner == 'toitlang')
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
