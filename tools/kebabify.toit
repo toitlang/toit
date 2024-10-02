@@ -100,10 +100,12 @@ migrate invocation/cli.Invocation toitc/string?:
   sources := invocation["source"]
   abort-on-error := invocation["abort-on-error"]
 
-  if not toitc:
-    toitc = find-toitc-from-jag
+  ui := invocation.cli.ui
 
-  check-toitc-version toitc
+  if not toitc:
+    toitc = find-toitc-from-jag --ui=ui
+
+  check-toitc-version toitc --ui=ui
 
   migration-points := []
   sources.do: | source/string |
@@ -142,7 +144,7 @@ migrate invocation/cli.Invocation toitc/string?:
     migration-points[point-count++] = migration-points[i]
   migration-points.resize point-count
 
-  print "Migrating $point-count locations."
+  ui.emit --info "Migrating $point-count locations."
   parsed-points := json.parse "[$(migration-points.join ",")]"
 
   file-points := {:}
@@ -197,27 +199,25 @@ build-kebab-path path/string -> string:
     bytes[i] = '-'
   return "$(bytes.to-string)"
 
-find-toitc-from-jag -> string:
+find-toitc-from-jag --ui/cli.Ui -> string:
   home := ?
   if platform == system.PLATFORM-WINDOWS:
     home = os.env.get "USERPROFILE"
   else:
     home = os.env.get "HOME"
   if not home:
-    print "Could not find home directory."
-    exit 1
+    ui.abort "Could not find home directory."
   exe-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
   return "$home/.cache/jaguar/sdk/bin/toit.compile$exe-extension"
 
-check-toitc-version toitc:
+check-toitc-version toitc --ui/cli.Ui:
   version-line := pipe.backticks toitc "--version"
   if not version-line.starts-with "Toit version:":
-    print "Could not get toit.compile version."
-    exit 1
+    ui.abort "Could not get toit.compile version."
   parts := version-line.split ":"
   version-with-v := parts[1].trim
   version := version-with-v[1..]
   if ((semver.compare version REQUIRED-SDK-VERSION) < 0):
-    print "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
-    print "(Using `$toitc` to invoke toit.compile.)"
-    exit 1
+    ui.emit --error "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
+    ui.emit --error "(Using `$toitc` to invoke toit.compile.)"
+    ui.abort

@@ -69,11 +69,12 @@ build-command -> cli.Command:
 
 create-cmd -> cli.Command:
   return cli.Command "create"
+      --help="Create a new assets file."
       --run=:: create-assets it
 
 create-assets invocation/cli.Invocation -> none:
   output-path := invocation[OPTION-ASSETS]
-  store-assets output-path {:}
+  store-assets output-path {:} --ui=invocation.cli.ui
 
 add-cmd -> cli.Command:
   return cli.Command "add"
@@ -95,16 +96,17 @@ add-cmd -> cli.Command:
       --run=:: add-asset it
 
 add-asset invocation/cli.Invocation -> none:
+  cli := invocation.cli
+  ui := cli.ui
   name := invocation["name"]
   path := invocation["path"]
-  asset := read-file path
+  asset := read-file path --ui=ui
   update-assets invocation: | entries/Map |
     if invocation["format"] != "binary":
       decoded := null
       exception := catch: decoded = json.decode asset
       if not decoded:
-        print "Unable to decode '$path' as JSON. ($exception)"
-        exit 1
+        cli.ui.abort "Unable to decode '$path' as JSON. ($exception)"
       if invocation["format"] == "ubjson":
         asset = ubjson.encode decoded
       else if invocation["format"] == "tison":
@@ -133,15 +135,16 @@ get-cmd -> cli.Command:
       --run=:: get-asset it
 
 get-asset invocation/cli.Invocation -> none:
+  cli := invocation.cli
+  ui := cli.ui
   input-path := invocation[OPTION-ASSETS]
   output-path := invocation["output"]
   name := invocation["name"]
   format := invocation["format"]
-  entries := load-assets input-path
+  entries := load-assets input-path --ui=ui
   entry := entries.get name
   if not entry:
-    print "No such asset: $name"
-    exit 1
+    cli.ui.abort "No such asset: $name"
   content := entry
   exception := null
   if format == "auto":
@@ -155,9 +158,8 @@ get-asset invocation/cli.Invocation -> none:
   else if format == "ubjson":
     exception = catch: content = "$(json.stringify (ubjson.decode content))\n"
   if exception:
-    print "Failed to decode asset '$name' as $format.to-ascii-upper"
-    exit 1
-  write-file output-path: it.write content
+    cli.ui.abort "Failed to decode asset '$name' as $format.to-ascii-upper"
+  write-file output-path --ui=ui: it.write content
 
 remove-cmd -> cli.Command:
   return cli.Command "remove"
@@ -176,7 +178,7 @@ remove-asset invocation/cli.Invocation -> none:
 
 list-cmd -> cli.Command:
   return cli.Command "list"
-      --help="Print all assets in JSON."
+      --help="Print all assets."
       --run=:: list-assets it
 
 decode entry/Map content/ByteArray -> string:
@@ -193,26 +195,30 @@ decode entry/Map content/ByteArray -> string:
 
 list-assets invocation/cli.Invocation -> none:
   input-path := invocation[OPTION-ASSETS]
-  entries := load-assets input-path
+  entries := load-assets input-path --ui=invocation.cli.ui
   mapped := entries.map: | _ content/ByteArray |
     entry := { "size": content.size }
     entry["kind"] = decode entry content
     entry
-  print (json.stringify mapped)
+  invocation.cli.ui.emit-map --result
+      --title="Assets"
+      mapped
 
 update-assets invocation/cli.Invocation [block] -> none:
   input-path := invocation[OPTION-ASSETS]
   output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
 
-  existing := load-assets input-path
-  block.call existing
-  store-assets output-path existing
+  ui := invocation.cli.ui
 
-load-assets path/string -> Map:
-  bytes := read-file path
+  existing := load-assets input-path --ui=ui
+  block.call existing
+  store-assets output-path existing --ui=ui
+
+load-assets path/string --ui/cli.Ui -> Map:
+  bytes := read-file path --ui=ui
   return assets.decode bytes
 
-store-assets path/string entries/Map -> none:
+store-assets path/string entries/Map --ui/cli.Ui -> none:
   bytes := assets.encode entries
-  write-file path: it.write bytes
+  write-file path --ui=ui: it.write bytes
