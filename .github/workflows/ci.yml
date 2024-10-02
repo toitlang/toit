@@ -53,7 +53,7 @@ on:
         type: boolean
         default: true
       do-release:
-        description: "Build release artifacts and upload to this version"
+        description: "Build release artifacts and upload with this version"
         required: false
         type: string
         default:
