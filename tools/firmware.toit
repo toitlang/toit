@@ -97,43 +97,32 @@ pad bits/ByteArray alignment/int -> ByteArray:
   padded-size := round-up size alignment
   return bits + (ByteArray padded-size - size)
 
-read-file path/string -> ByteArray:
+read-file path/string --ui/cli.Ui -> ByteArray:
   exception := catch:
     return file.read-content path
-  print "Failed to open '$path' for reading ($exception)."
-  exit 1
+  ui.abort "Failed to open '$path' for reading ($exception)."
   unreachable
 
-read-file path/string [block]:
+read-file path/string --ui/cli.Ui [block]:
   stream/file.Stream? := null
   exception := catch: stream = file.Stream.for-read path
   if not stream:
-    print "Failed to open '$path' for reading ($exception)."
-    exit 1
+    ui.abort "Failed to open '$path' for reading ($exception)."
   try:
     block.call (io.Reader.adapt stream)
   finally:
     stream.close
 
-write-file path/string [block] -> none:
+write-file path/string --ui/cli.Ui [block] -> none:
   stream/file.Stream? := null
   exception := catch: stream = file.Stream.for-write path
   if not stream:
-    print "Failed to open '$path' for writing ($exception)."
-    exit 1
+    ui.abort "Failed to open '$path' for writing ($exception)."
   try:
     writer := io.Writer.adapt stream
     block.call writer
   finally:
     stream.close
-
-write-file-or-print --path/string? output/string -> none:
-  if path:
-    write-file path: | writer/io.Writer |
-      writer.write output
-      writer.write "\n"
-  else:
-    print output
 
 main arguments/List:
   firmware-cmd := build-command --create-esp32-only
@@ -203,11 +192,13 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
   output-path := invocation[OPTION-ENVELOPE]
   input-path := invocation["firmware.bin"]
 
-  firmware-bin-data := read-file input-path
+  ui := invocation.cli.ui
+
+  firmware-bin-data := read-file input-path --ui=ui
   binary := Esp32Binary firmware-bin-data
   binary.remove-drom-extension firmware-bin-data
 
-  system-snapshot-content := read-file invocation["system.snapshot"]
+  system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
   system-snapshot := SnapshotBundle system-snapshot-content
 
   entries := {
@@ -223,13 +214,13 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
   AR-ENTRY-ESP32-FILE-MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
     filename := invocation.parameters[key]
-    if filename: entries[value] = read-file filename
+    if filename: entries[value] = read-file filename --ui=ui
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
-  envelope.store output-path
+  envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
   return cli.Command "host"
@@ -251,7 +242,9 @@ create-envelope-host invocation/cli.Invocation -> none:
 
   word-size := invocation["word-size"]
   run-image-path := invocation["run-image"]
-  run-image-bytes := read-file run-image-path
+
+  ui := invocation.cli.ui
+  run-image-bytes := read-file run-image-path --ui=ui
 
   entries := {
     AR-ENTRY-HOST-RUN-IMAGE: run-image-bytes,
@@ -264,7 +257,7 @@ create-envelope-host invocation/cli.Invocation -> none:
       --sdk-version=system.app-sdk-version
       --kind=Envelope.KIND-HOST
       --word-size=word-size
-  envelope.store output-path
+  envelope.store output-path --ui=ui
 
 container-cmd -> cli.Command:
   cmd := cli.Command "container"
@@ -325,29 +318,30 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "list"
-          --help="List the containers in the envelope."
+          --help="""
+            List the containers in the envelope.
+
+            If no output file is given or the output is '-', the list is printed to stdout.
+            When printed to a file, the list is in JSON format.
+            """
           --options=[
             cli.Option "output"
                 --help="Set the output file name."
                 --short-name="o",
-            cli.OptionEnum "output-format" ["human", "json"]
-                --help="Set the output format."
-                --default="human",
           ]
           --run=:: container-list it
 
   return cmd
 
-read-assets path/string? -> ByteArray?:
+read-assets path/string? --ui/cli.Ui -> ByteArray?:
   if not path: return null
-  data := read-file path
+  data := read-file path --ui=ui
   // Try decoding the assets to verify that they
   // have the right structure.
   exception := catch:
     assets.decode data
     return data
-  print "Failed to decode the assets in '$path'."
-  exit 1
+  ui.abort "Failed to decode the assets in '$path'."
   unreachable
 
 decode-image data/ByteArray --word-size/int -> ImageHeader:
@@ -358,16 +352,14 @@ decode-image data/ByteArray --word-size/int -> ImageHeader:
   return ImageHeader decoded --word-size=word-size
 
 get-container-name invocation/cli.Invocation -> string:
+  ui := invocation.cli.ui
   name := invocation["name"]
   if name.starts-with "\$" or name.starts-with "+":
-    print "Cannot install container with a name that starts with \$ or +."
-    exit 1
+    ui.abort "Cannot install container with a name that starts with \$ or +."
   if name.size == 0:
-    print "Cannot install container with an empty name."
-    exit 1
+    ui.abort "Cannot install container with an empty name."
   if name.size > 14:
-    print "Cannot install container with a name longer than 14 characters."
-    exit 1
+    ui.abort "Cannot install container with a name longer than 14 characters."
   return name
 
 is-system-name name/string -> bool:
@@ -381,30 +373,29 @@ is-container-name name/string -> bool:
   return first != '$' and first != '+'
 
 container-install invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   name := get-container-name invocation
   image-path := invocation["image"]
   assets-path := invocation["assets"]
-  image-data := read-file image-path
-  assets-data := read-assets assets-path
+  image-data := read-file image-path --ui=ui
+  assets-data := read-assets assets-path --ui=ui
   is-snapshot := is-snapshot-bundle image-data
 
   update-envelope invocation: | envelope/Envelope |
     if is-snapshot:
       bundle := SnapshotBundle name image-data
       if bundle.sdk-version != envelope.sdk-version:
-        print "Snapshot was built by SDK $bundle.sdk-version, but envelope is for SDK $envelope.sdk-version."
-        exit 1
+        ui.abort "Snapshot was built by SDK $bundle.sdk-version, but envelope is for SDK $envelope.sdk-version."
     else:
       header := null
       catch: header = decode-image image-data --word-size=envelope.word-size
       if not header:
-        print "Input is not a valid snapshot or image ('$image-path')."
-        exit 1
+        ui.abort "Input is not a valid snapshot or image ('$image-path')."
       expected-system-uuid := sdk-version-uuid --sdk-version=envelope.sdk-version
       if header.system-uuid != expected-system-uuid:
-        print "Image cannot be verified to have been built by SDK $envelope.sdk-version."
-        print "Image is for $header.system-uuid, but envelope is $expected-system-uuid."
-        exit 1
+        ui.emit --error "Image cannot be verified to have been built by SDK $envelope.sdk-version."
+        ui.emit --error "Image is for $header.system-uuid, but envelope is $expected-system-uuid."
+        ui.abort
 
     envelope.entries[name] = image-data
     if assets-data: envelope.entries["+$name"] = assets-data
@@ -421,15 +412,15 @@ container-install invocation/cli.Invocation -> none:
 
 container-extract invocation/cli.Invocation -> none:
   input-path := invocation[OPTION-ENVELOPE]
+  ui := invocation.cli.ui
   name := get-container-name invocation
-  entries := (Envelope.load input-path).entries
+  entries := (Envelope.load input-path --ui=ui).entries
   part := invocation["part"]
   key := (part == "assets") ? "+$name" : name
   if not entries.contains key:
-    print "Container '$name' has no $part."
-    exit 1
+    invocation.cli.ui.abort "Container '$name' has no $part."
   entry := entries[key]
-  write-file invocation["output"]: it.write entry
+  write-file invocation["output"] --ui=ui: it.write entry
 
 container-uninstall invocation/cli.Invocation -> none:
   name := get-container-name invocation
@@ -443,23 +434,29 @@ container-uninstall invocation/cli.Invocation -> none:
       properties
 
 container-list invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+
   output-path := invocation[OPTION-OUTPUT]
   input-path := invocation[OPTION-ENVELOPE]
-  output-format := invocation["output-format"]
-  envelope := Envelope.load input-path
+  envelope := Envelope.load input-path --ui=ui
   entries := envelope.entries
 
   entries-json := build-entries-json entries --word-size=envelope.word-size
   output := entries-json["containers"]
 
+  if output-path:
+    file.write-content --path=output-path (json.encode output)
+    return
+
   output-string := ""
-  if output-format == "human":
+  if ui.wants-human:
     output-string = json-to-human output: | chain/List |
       chain.size != 1
+    ui.emit --result output-string
   else:
-    output-string = json.stringify output
-
-  write-file-or-print --path=output-path output-string
+    ui.emit-map --result
+        --title="Containers"
+        output
 
 build-entries-json entries/Map --word-size/int -> Map:
   properties/Map? := entries.get AR-ENTRY-PROPERTIES
@@ -533,9 +530,11 @@ property-get invocation/cli.Invocation -> none:
   input-path := invocation[OPTION-ENVELOPE]
   key := invocation["key"]
 
-  envelope := Envelope.load input-path
+  ui := invocation.cli.ui
+
+  envelope := Envelope.load input-path --ui=ui
   if key == "sdk-version":
-    print envelope.sdk-version
+    ui.emit --result envelope.sdk-version
     return
 
   entries := envelope.entries
@@ -543,12 +542,18 @@ property-get invocation/cli.Invocation -> none:
   if not entry: return
 
   properties := json.decode entry
+  result := null
   if key:
     if properties.contains key:
-      print (json.stringify (properties.get key))
+      result = properties.get key
   else:
     filtered := properties.filter: not it.starts-with "\$"
-    print (json.stringify filtered)
+    ui.emit --result (json.stringify filtered)
+  if result != null:
+    if ui.wants-structured:
+      ui.emit --result result
+    else:
+      ui.emit --result (json.stringify result)
 
 property-remove invocation/cli.Invocation -> none:
   properties-update-with-key invocation: | properties/Map? key/string |
@@ -632,14 +637,16 @@ extract-cmd -> cli.Command:
       --run=:: extract it
 
 extract invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+
   input-path := invocation[OPTION-ENVELOPE]
-  envelope := Envelope.load input-path
+  envelope := Envelope.load input-path --ui=ui
 
   config-path := invocation["config"]
 
   config-encoded := ByteArray 0
   if config-path:
-    config-encoded = read-file config-path
+    config-encoded = read-file config-path --ui=ui
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
@@ -653,24 +660,26 @@ extract invocation/cli.Invocation -> none:
 extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray -> none:
   output-path := invocation[OPTION-OUTPUT]
 
+  ui := invocation.cli.ui
+
   format := invocation["format"]
   if format == "tar":
     throw "unsupported format for ESP32 envelope: '$format'"
 
   if format == "elf":
     if not config-encoded.is-empty:
-      print "WARNING: config is ignored when extracting elf file"
-    write-file output-path: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
+      ui.emit --warning "config is ignored when extracting elf file"
+    write-file output-path --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
     return
 
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
 
   if format == "binary":
-    write-file output-path: it.write firmware-bin
+    write-file output-path --ui=ui: it.write firmware-bin
     return
 
   if format == "qemu":
-    write-qemu_ output-path firmware-bin envelope
+    write-qemu_ output-path firmware-bin envelope --ui=ui
     return
 
   if not format == "ubjson":
@@ -682,7 +691,7 @@ extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteA
     "parts"   : parts,
     "binary"  : firmware-bin,
   }
-  write-file output-path: it.write (ubjson.encode output)
+  write-file output-path --ui=ui: it.write (ubjson.encode output)
 
 extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray:
   word-size := envelope.word-size
@@ -693,6 +702,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   if format != "tar" and format != "binary" and format != "ubjson":
     throw "unsupported format for host envelope: '$format'"
 
+  ui := invocation.cli.ui
   entries := envelope.entries
   flags := get-flags envelope
   run-image := entries.get AR-ENTRY-HOST-RUN-IMAGE
@@ -773,7 +783,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   bits.close
 
   if format == "binary":
-    write-file output-path: it.write bits.bytes
+    write-file output-path --ui=ui: it.write bits.bytes
     return
 
   ubjson-data := {
@@ -782,7 +792,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   }
   encoded-ubjson := ubjson.encode ubjson-data
   if format == "ubjson":
-    write-file output-path: it.write encoded-ubjson
+    write-file output-path --ui=ui: it.write encoded-ubjson
     return
 
   assert: format == "tar"
@@ -805,9 +815,9 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
     tar-writer.add "ota0/bundled-images/$uuid" image
   tar-writer.close --close-writer
 
-  write-file output-path: it.write tar-bytes.bytes
+  write-file output-path --ui=ui: it.write tar-bytes.bytes
 
-write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope -> none:
+write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope --ui/cli.Ui -> none:
   flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot create qemu image without 'flashing.json'"
@@ -833,7 +843,7 @@ write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope -> none:
   out-image.replace
       app-partition.offset
       firmware-bin
-  write-file output-path: it.write out-image
+  write-file output-path --ui=ui: it.write out-image
 
 find-esptool_ -> List:
   bin-extension := ?
@@ -899,9 +909,17 @@ esptool-cmd -> cli.Command:
       --run=:: esptool it
 
 esptool invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   esptool := find-esptool_
-  print (esptool.join " ")
-  pipe.run-program esptool + ["version"]
+  command := esptool.join " "
+  version := pipe.backticks (esptool + ["version"])
+
+  if ui.wants-structured:
+    ui.emit --result {"command": esptool, "version": version}
+  else if ui.wants-human:
+    ui.emit --result "Command: $esptool\nVersion: $version"
+  else:
+    ui.emit --result "$command\n$version"
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
@@ -930,14 +948,16 @@ flash invocation/cli.Invocation -> none:
   config-path := invocation["config"]
   port := invocation["port"]
   baud := invocation["baud"]
-  if invocation["chip"]:
-    print "Warning: The 'chip' option is deprecated and should not be used."
 
-  envelope := Envelope.load input-path
+  ui := invocation.cli.ui
+
+  if invocation["chip"]:
+    ui.emit --warning "The 'chip' option is deprecated and should not be used."
+
+  envelope := Envelope.load input-path --ui=ui
 
   if envelope.kind != Envelope.KIND-ESP32:
-    print "Only ESP32 envelopes can be flashed."
-    exit 1
+    ui.abort "Only ESP32 envelopes can be flashed."
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
@@ -946,7 +966,7 @@ flash invocation/cli.Invocation -> none:
 
   config-encoded := ByteArray 0
   if config-path:
-    config-encoded = read-file config-path
+    config-encoded = read-file config-path --ui=ui
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
@@ -981,7 +1001,7 @@ flash invocation/cli.Invocation -> none:
     value := description[assign-index + 1..]
     partition-content/ByteArray := ?
     if is-file:
-      partition-content = read-file value
+      partition-content = read-file value --ui=ui
     else:
       size := int.parse value --on-error=:
         throw "malformed partition size '$value'"
@@ -1002,15 +1022,14 @@ flash invocation/cli.Invocation -> none:
   otadata-partition := partition-table.find-otadata
 
   if firmware-bin.size > app-partition.size:
-    print "Firmware is too big to fit in designated partition ($firmware-bin.size > $app-partition.size)"
-    exit 1
+    ui.abort "Firmware is too big to fit in designated partition ($firmware-bin.size > $app-partition.size)"
 
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    write-file "$tmp/bootloader.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN)
-    write-file "$tmp/partitions.bin": it.write encoded-partitions-bin
-    write-file "$tmp/otadata.bin": it.write (envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN)
-    write-file "$tmp/firmware.bin": it.write firmware-bin
+    write-file "$tmp/bootloader.bin" --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN)
+    write-file "$tmp/partitions.bin" --ui=ui: it.write encoded-partitions-bin
+    write-file "$tmp/otadata.bin" --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN)
+    write-file "$tmp/firmware.bin" --ui=ui: it.write firmware-bin
 
     partition-args := [
       flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
@@ -1021,9 +1040,9 @@ flash invocation/cli.Invocation -> none:
 
     partitions.do: | name/string entry/List |
       offset := (entry[0] as Partition).offset
-      content := entry[1] as ByteArray
+      contents := entry[1] as ByteArray
       path := "$tmp/partition-$offset"
-      write-file path: it.write content
+      write-file path --ui=ui: it.write contents
       partition-args.add "0x$(%x offset)"
       partition-args.add path
 
@@ -1121,14 +1140,16 @@ update-envelope invocation/cli.Invocation [block] -> none:
   output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
 
-  existing := Envelope.load input-path
+  ui := invocation.cli.ui
+
+  existing := Envelope.load input-path --ui=ui
   block.call existing
 
   envelope := Envelope.create existing.entries
       --sdk-version=existing.sdk-version
       --kind=existing.kind
       --word-size=existing.word-size
-  envelope.store output-path
+  envelope.store output-path --ui=ui
 
 extract-binary-content -> ByteArray
     --binary-input/ByteArray
@@ -1222,7 +1243,9 @@ show invocation/cli.Invocation -> none:
   output-format := invocation["output-format"]
   show-all := invocation["all"]
 
-  envelope := Envelope.load input-path
+  ui := invocation.cli.ui
+
+  envelope := Envelope.load input-path --ui=ui
   kind-string := envelope.kind == Envelope.KIND-ESP32
       ? Envelope.KIND-STRING-ESP32
       : Envelope.KIND-STRING-HOST
@@ -1245,14 +1268,17 @@ show invocation/cli.Invocation -> none:
   if show-all:
     result["entries"] = entries-json["entries"]
 
+  if output-path:
+    write-file output-path --ui=ui: it.write (json.encode result)
+    return
+
   output := ""
-  if output-format == "human":
+  if ui.wants-human:
     output = json-to-human result: | chain/List |
       chain.size != 2 or (chain[0] != "containers" and chain[0] != "entries")
+    ui.emit --result output
   else:
-    output = json.stringify result
-
-  write-file-or-print --path=output-path output
+    ui.emit-map --result result
 
 capitalize_ str/string -> string:
   if str == "": return ""
@@ -1325,12 +1351,12 @@ class Envelope:
   word-size/int
   entries/Map ::= {:}
 
-  constructor.load .path/string:
+  constructor.load .path/string --ui/cli.Ui:
     version_ = -1
     sdk-version = ""
     kind = -1
     word-size = -1
-    read-file path: | reader/io.Reader |
+    read-file path --ui=ui: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == AR-ENTRY-INFO:
@@ -1354,8 +1380,8 @@ class Envelope:
   constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = ENVELOPE-FORMAT-VERSION
 
-  store path/string -> none:
-    write-file path: | writer/io.Writer |
+  store path/string --ui/cli.Ui -> none:
+    write-file path --ui=ui: | writer/io.Writer |
       ar := ar.ArWriter writer
 
       // Add the envelope info entry.

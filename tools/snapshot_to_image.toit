@@ -95,11 +95,6 @@ class BinaryRelocatedOutput extends RelocatedOutput:
     else:
       out-le.write-int64 word
 
-print-usage parser/cli.Command --error/string?=null:
-  if error: print-on-stderr_ "Error: $error\n"
-  print-on-stderr_ parser.usage
-  exit 1
-
 build-command -> cli.Command:
   cmd := cli.Command "snapshot-to-image"
       --help="""
@@ -138,8 +133,9 @@ main args:
 
 snapshot-to-image invocation/cli.Invocation:
   output-path/string? := invocation[OUTPUT-OPTION]
-
   format := invocation[FORMAT-OPTION]
+
+  ui := invocation.cli.ui
 
   machine-word-sizes := []
   if invocation[M32-FLAG]:
@@ -150,8 +146,7 @@ snapshot-to-image invocation/cli.Invocation:
     machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
-    print "More than one machine flag provided"
-    exit 1
+    ui.abort "More than one machine flag provided"
 
   snapshot-path/string := invocation[SNAPSHOT-FILE]
   snapshot-bundle := SnapshotBundle.from-file snapshot-path

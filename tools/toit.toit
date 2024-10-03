@@ -64,7 +64,8 @@ main args/List:
         // version.
         cli.Option "output" --short-name="o" --hidden
       ]
-      --run=:: print system.app-sdk-version
+      --run=:: | invocation/cli.Invocation |
+        invocation.cli.ui.emit --result system.app-sdk-version
   root-command.add version-command
 
   compile-analyze-run-options := [
@@ -501,10 +502,6 @@ main args/List:
 
   root-command.run args
 
-error message/string:
-  print message
-  exit 1
-
 bin-dir sdk-dir/string? -> string:
   if sdk-dir:
     return fs.join sdk-dir "bin"
@@ -521,6 +518,7 @@ run sdk-dir/string? tool/string args/List -> int:
   return pipe.run-program args
 
 compile-or-analyze-or-run --command/string invocation/cli.Invocation:
+  ui := invocation.cli.ui
   args := []
 
   xflags := invocation["X"]
@@ -535,7 +533,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     args.add "--analyze"
   else:
     optimization/int := invocation["optimization-level"]
-    if not 0 <= optimization <= 2: error "Invalid optimization level"
+    if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
 
     args.add "-O$optimization"
 
@@ -558,7 +556,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
           args.add "--dependency-format"
           args.add invocation["dependency-format"]
         else:
-          error "Missing --dependency-format"
+          ui.abort "Missing --dependency-format"
 
       if invocation["strip"]: args.add "--strip"
 
@@ -592,6 +590,7 @@ run-lsp-server invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]
   toitc-cmd := [tool-path sdk-dir "toit.compile"]
   if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
+  // We are not using the cli's Ui class, as it might print on stdout.
   print-on-stderr_ "Using $toitc-cmd.first"
   lsp.main --toit-path-override=toitc-cmd.first
 
