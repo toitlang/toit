@@ -296,13 +296,15 @@ abstract class PegParserBase_:
   repeat --at-least-one/bool=false [block] -> List?:
     result := []
     while true:
-      mark := mark
-      res := block.call
-      if not res:
-        rollback mark
+      rollback-mark := mark
+      element := block.call
+      if not element:
+        rollback rollback-mark
         break
-      if at-mark mark: break // No progress, so matched empty. This should terminate the loop.
-      result.add res
+      if at-mark rollback-mark:
+        // No progress, so matched empty. This should terminate the loop.
+        break
+      result.add element
     return not at-least-one or not result.is-empty
         ? result
         : null
