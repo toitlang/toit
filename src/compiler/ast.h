@@ -134,11 +134,11 @@ NODES(DECLARE)
   Source::Range range_;
 };
 
-#define IMPLEMENTS(name)                                                 \
-  virtual void accept(Visitor* visitor) { visitor->visit_##name(this); } \
-  virtual bool is_##name() const { return true; }                        \
-  virtual name* as_##name() { return this; }                             \
-  virtual const char* node_type() const { return #name; }
+#define IMPLEMENTS(name)                                                          \
+  virtual void accept(Visitor* visitor) override { visitor->visit_##name(this); } \
+  virtual bool is_##name() const override { return true; }                        \
+  virtual name* as_##name() override { return this; }                             \
+  virtual const char* node_type() const override { return #name; }
 
 class Unit : public Node {
  public:
@@ -262,7 +262,6 @@ class Export : public Node {
 
  private:
   List<Identifier*> identifiers_;
-  bool export_all_;
   Source::Range export_all_range_;
 };
 
@@ -504,7 +503,7 @@ class Method : public Declaration {
   /// including implicit `this` arguments.
   int arity() const { return parameters_.length(); }
 
-  Identifier* name() const {
+  Identifier* name() const override {
     FATAL("don't use");
     return null;
   }
