@@ -361,6 +361,9 @@ class ParseResult_:
   documents/List
   constructor .documents:
 
+class ParseError_:
+  message/string
+  constructor .message:
 
 /**
 A YAML parser based on https://yaml.org/spec/1.2.2.
@@ -384,13 +387,9 @@ class Parser_ extends PegParserBase_:
   This mark is frequently in the "future".
   */
   forbidden-mark/int? := null
-  error/string? := null
 
   constructor bytes/ByteArray:
     super bytes
-
-  set-error error/string:
-    if not this.error: this.error = error
 
   can-read num/int -> bool:
     super-result := super num
@@ -403,9 +402,8 @@ class Parser_ extends PegParserBase_:
   static as-bool val/any -> bool:
     return not (not val)
 
-  try-parse --as-bool/True [block] -> any:
-    // Error-aware try-parse to limit unnecessary work on parse errors and
-    // supports boolean conversion.
+  // Variant of try-parse that converts to boolean.
+  try-parse --as-bool/True [block] -> bool:
     rollback-mark := mark
     result := block.call
     if not result:
@@ -415,9 +413,7 @@ class Parser_ extends PegParserBase_:
 
   check-valid-key key/ValueNode_? -> ValueNode_?:
     if not key: return null
-    if error_ := key.check-key:
-      set-error error_
-      return null
+    if error := key.check-key: throw (ParseError_ error)
     return key
 
   match-hex digits/int -> int?:
@@ -465,22 +461,21 @@ class Parser_ extends PegParserBase_:
 
   // Overall structure.
   l-yaml-stream [--on-error] -> any:
-    repeat: l-document-prefix
     documents := []
-    if document := l-any-document: documents.add document
+    error/ParseError_? := catch --unwind=(: it is not ParseError_):
+      repeat: l-document-prefix
+      if document := l-any-document: documents.add document
 
-    // Modifies the documents list with any additional documents.
-    repeat: l-yaml-stream-helper documents
+      // Modifies the documents list with any additional documents.
+      repeat: l-yaml-stream-helper documents
 
-    if not l-eof:
-      set-error "INVALID_YAML_DOCUMENT"
+      if not l-eof:
+        throw (ParseError_ "INVALID_YAML_DOCUMENT")
 
     parsed-value := documents.map: | node/ValueNode_ | node.resolve
-
-    if error:
-      return on-error.call error
-
-    return ParseResult_ parsed-value
+    return error
+        ? on-error.call error.message
+        : ParseResult_ parsed-value
 
   /**
   Parses the remaining documents and comments from the stream.
@@ -561,11 +556,8 @@ class Parser_ extends PegParserBase_:
         parts := version.split "."
         major := int.parse parts[0]
         minor := int.parse parts[1]
-        if major > 1 or minor > 2:
-          set-error "UNSUPPORTED_YAML_VERSION"
-          false
-        else:
-          true
+        if major > 1 or minor > 2: throw (ParseError_ "UNSUPPORTED_YAML_VERSION")
+        true
 
   ns-tag-directive -> bool:
    return try-parse --as-bool:
@@ -749,9 +741,7 @@ class Parser_ extends PegParserBase_:
     try-parse:
       key := ns-s-block-map-implicit-key or e-node and EMPTY-NODE_
       if val := c-l-block-map-implicit-value n:
-        if error_ := key.check-key:
-          set-error error_
-          return null
+        if error := key.check-key: throw (ParseError_ error)
         return [key, val]
     return null
 
@@ -804,8 +794,7 @@ class Parser_ extends PegParserBase_:
   c-ns-alias-node -> ValueNode_?:
     if anchor := (try-parse: match-char C-ALIAS_ and ns-anchor-name):
       if not named-nodes.contains anchor:
-        set-error "UNRESOLVED_ALIAS"
-        return null
+        throw (ParseError_ "UNRESOLVED_ALIAS")
       return named-nodes[anchor]
     return null
 
@@ -1417,10 +1406,9 @@ class Parser_ extends PegParserBase_:
               // The spec does not mention anything about surrogates, but we assume that since YAML is an
               // extension of JSON that 16-bit surrogates shoud be supported.
               if part-2 := c-ns-esc-char:
-                 if not 0xdc00 <= part-2 <= 0xdfff:
-                   set-error "INVALID_SURROGATE_PAIR"
-                   return null
-                 return 0x10000 + ((res & 0x3ff) << 10) | (part-2 & 0x3ff)
+                if not 0xdc00 <= part-2 <= 0xdfff:
+                  throw (ParseError_ "INVALID_SURROGATE_PAIR")
+                return 0x10000 + ((res & 0x3ff) << 10) | (part-2 & 0x3ff)
             else:
               return res
         if match-char 'U': if res := match-hex 8: return res
@@ -1509,13 +1497,11 @@ class Parser_ extends PegParserBase_:
       if match-buffer #[0xFE, 0xFF] or
           match-buffer #[0xFF, 0xFE] or
           match-char 0:
-        set-error "UNSUPPORTED_BYTE_ORDER"
-        return false
+        throw (ParseError_ "UNSUPPORTED_BYTE_ORDER")
       try-parse:
         match-any
         if match-char 0:
-          set-error "UNSUPPORTED_BYTE_ORDER"
-          return false
+          throw (ParseError_ "UNSUPPORTED_BYTE_ORDER")
     // Toit only supports UTF-8.
     if can-read 3 and match-buffer #[0xEF, 0xBB, 0xBF]:
       return true
