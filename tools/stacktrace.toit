@@ -50,12 +50,12 @@ build-command -> cli.Command:
       ]
   return cmd
 
-decode-stacktrace parsed/cli.Parsed:
-  disassemble := parsed["disassemble"]
-  objdump-exe := parsed["objdump"]
+decode-stacktrace invocation/cli.Invocation:
+  disassemble := invocation["disassemble"]
+  objdump-exe := invocation["objdump"]
   objdump / io.Reader? := null
   symbols-only := false
-  elf-file := parsed[ELF-FILE]
+  elf-file := invocation[ELF-FILE]
   elf-size := file.size elf-file
   exception := catch:
     flags := disassemble ? "-dC" : "-tC"
@@ -93,7 +93,7 @@ decode-stacktrace parsed/cli.Parsed:
       disassembly-lines[address] = line
 
   backtrace / string? := null
-  if parsed["backtrace"] == "-":
+  if invocation["backtrace"] == "-":
     error := catch:
       with-timeout --ms=2000:
         backtrace = (io.Reader.adapt pipe.stdin).read-line
@@ -102,7 +102,7 @@ decode-stacktrace parsed/cli.Parsed:
     if error:
       throw error
   else:
-    backtrace = parsed["backtrace"]
+    backtrace = invocation["backtrace"]
     if not (backtrace.starts-with "Backtrace:"):
       backtrace = "Backtrace:$backtrace"
 

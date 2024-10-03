@@ -44,16 +44,16 @@ main args:
         cli.Flag "show-positions" --short-name="p"
             --default=false,
       ]
-      --run=:: decode-types it command
+      --run=:: decode-types it
   command.run args
 
-decode-types parsed command -> none:
-  snapshot-content := file.read-content parsed["snapshot"]
-  types-content := file.read-content parsed["types"]
+decode-types invocation/cli.Invocation -> none:
+  snapshot-content := file.read-content invocation["snapshot"]
+  types-content := file.read-content invocation["types"]
   types := json.decode types-content
   show-types types snapshot-content
-      --sdk=parsed["sdk"]
-      --show-positions=parsed["show-positions"]
+      --sdk=invocation["sdk"]
+      --show-positions=invocation["show-positions"]
 
 show-types types/List snapshot-content/ByteArray -> none
     --sdk/bool

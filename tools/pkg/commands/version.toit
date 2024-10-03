@@ -20,7 +20,7 @@ import cli
 import ..pkg
 
 class VersionCommand:
-  constructor parsed/cli.Parsed:
+  constructor invocation/cli.Invocation:
 
   execute:
     print "Toit package manager version: $system.vm-sdk-version"

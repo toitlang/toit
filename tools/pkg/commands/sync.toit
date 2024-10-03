@@ -21,7 +21,7 @@ import ..pkg
 import ..registry
 
 class SyncCommand:
-  constructor parsed/cli.Parsed:
+  constructor invocation/cli.Invocation:
 
   execute:
     registries.sync

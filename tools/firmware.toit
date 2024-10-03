@@ -199,15 +199,15 @@ create-esp32-cmd --name/string -> cli.Command:
       ]
       --run=:: create-envelope-esp32 it
 
-create-envelope-esp32 parsed/cli.Parsed -> none:
-  output-path := parsed[OPTION-ENVELOPE]
-  input-path := parsed["firmware.bin"]
+create-envelope-esp32 invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
+  input-path := invocation["firmware.bin"]
 
   firmware-bin-data := read-file input-path
   binary := Esp32Binary firmware-bin-data
   binary.remove-drom-extension firmware-bin-data
 
-  system-snapshot-content := read-file parsed["system.snapshot"]
+  system-snapshot-content := read-file invocation["system.snapshot"]
   system-snapshot := SnapshotBundle system-snapshot-content
 
   entries := {
@@ -222,7 +222,7 @@ create-envelope-esp32 parsed/cli.Parsed -> none:
 
   AR-ENTRY-ESP32-FILE-MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
-    filename := parsed[key]
+    filename := invocation.parameters[key]
     if filename: entries[value] = read-file filename
 
   envelope := Envelope.create entries
@@ -246,11 +246,11 @@ create-host-cmd -> cli.Command:
       ]
       --run=:: create-envelope-host it
 
-create-envelope-host parsed/cli.Parsed -> none:
-  output-path := parsed[OPTION-ENVELOPE]
+create-envelope-host invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
 
-  word-size := parsed["word-size"]
-  run-image-path := parsed["run-image"]
+  word-size := invocation["word-size"]
+  run-image-path := invocation["run-image"]
   run-image-bytes := read-file run-image-path
 
   entries := {
@@ -357,8 +357,8 @@ decode-image data/ByteArray --word-size/int -> ImageHeader:
   decoded := out.bytes
   return ImageHeader decoded --word-size=word-size
 
-get-container-name parsed/cli.Parsed -> string:
-  name := parsed["name"]
+get-container-name invocation/cli.Invocation -> string:
+  name := invocation["name"]
   if name.starts-with "\$" or name.starts-with "+":
     print "Cannot install container with a name that starts with \$ or +."
     exit 1
@@ -380,15 +380,15 @@ is-container-name name/string -> bool:
   first := name[0]
   return first != '$' and first != '+'
 
-container-install parsed/cli.Parsed -> none:
-  name := get-container-name parsed
-  image-path := parsed["image"]
-  assets-path := parsed["assets"]
+container-install invocation/cli.Invocation -> none:
+  name := get-container-name invocation
+  image-path := invocation["image"]
+  assets-path := invocation["assets"]
   image-data := read-file image-path
   assets-data := read-assets assets-path
   is-snapshot := is-snapshot-bundle image-data
 
-  update-envelope parsed: | envelope/Envelope |
+  update-envelope invocation: | envelope/Envelope |
     if is-snapshot:
       bundle := SnapshotBundle name image-data
       if bundle.sdk-version != envelope.sdk-version:
@@ -411,29 +411,29 @@ container-install parsed/cli.Parsed -> none:
     else: envelope.entries.remove "+$name"
 
     flag-bits := 0
-    if parsed["trigger"] == "boot": flag-bits |= IMAGE-FLAG-RUN-BOOT
-    if parsed["critical"]: flag-bits |= IMAGE-FLAG-RUN-CRITICAL
+    if invocation["trigger"] == "boot": flag-bits |= IMAGE-FLAG-RUN-BOOT
+    if invocation["critical"]: flag-bits |= IMAGE-FLAG-RUN-CRITICAL
     properties-update envelope: | properties/Map? |
       properties = properties or {:}
       flags := properties.get PROPERTY-CONTAINER-FLAGS --init=: {:}
       flags[name] = flag-bits
       properties
 
-container-extract parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ENVELOPE]
-  name := get-container-name parsed
+container-extract invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ENVELOPE]
+  name := get-container-name invocation
   entries := (Envelope.load input-path).entries
-  part := parsed["part"]
+  part := invocation["part"]
   key := (part == "assets") ? "+$name" : name
   if not entries.contains key:
     print "Container '$name' has no $part."
     exit 1
   entry := entries[key]
-  write-file parsed["output"]: it.write entry
+  write-file invocation["output"]: it.write entry
 
-container-uninstall parsed/cli.Parsed -> none:
-  name := get-container-name parsed
-  update-envelope parsed: | envelope/Envelope |
+container-uninstall invocation/cli.Invocation -> none:
+  name := get-container-name invocation
+  update-envelope invocation: | envelope/Envelope |
     envelope.entries.remove name
     envelope.entries.remove "+$name"
 
@@ -442,10 +442,10 @@ container-uninstall parsed/cli.Parsed -> none:
       if flags: flags.remove name
       properties
 
-container-list parsed/cli.Parsed -> none:
-  output-path := parsed[OPTION-OUTPUT]
-  input-path := parsed[OPTION-ENVELOPE]
-  output-format := parsed["output-format"]
+container-list invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-OUTPUT]
+  input-path := invocation[OPTION-ENVELOPE]
+  output-format := invocation["output-format"]
   envelope := Envelope.load input-path
   entries := envelope.entries
 
@@ -529,9 +529,9 @@ property-cmd -> cli.Command:
 
   return cmd
 
-property-get parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ENVELOPE]
-  key := parsed["key"]
+property-get invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ENVELOPE]
+  key := invocation["key"]
 
   envelope := Envelope.load input-path
   if key == "sdk-version":
@@ -550,20 +550,20 @@ property-get parsed/cli.Parsed -> none:
     filtered := properties.filter: not it.starts-with "\$"
     print (json.stringify filtered)
 
-property-remove parsed/cli.Parsed -> none:
-  properties-update-with-key parsed: | properties/Map? key/string |
+property-remove invocation/cli.Invocation -> none:
+  properties-update-with-key invocation: | properties/Map? key/string |
     if properties: properties.remove key
     properties
 
-property-set parsed/cli.Parsed -> none:
-  value := parsed["value"].map:
+property-set invocation/cli.Invocation -> none:
+  value := invocation["value"].map:
     // Try to parse this as a JSON value, but treat it
     // as a string if it fails.
     element := it
     catch: element = json.parse element
     element
   if value.size == 1: value = value.first
-  properties-update-with-key parsed: | properties/Map? key/string |
+  properties-update-with-key invocation: | properties/Map? key/string |
     if key == "uuid":
       exception := catch: Uuid.parse value
       if exception: throw "cannot parse uuid: $value ($exception)"
@@ -577,11 +577,11 @@ properties-update envelope/Envelope [block] -> none:
   properties = block.call properties
   if properties: envelope.entries[AR-ENTRY-PROPERTIES] = json.encode properties
 
-properties-update-with-key parsed/cli.Parsed [block] -> none:
-  key/string := parsed["key"]
+properties-update-with-key invocation/cli.Invocation [block] -> none:
+  key/string := invocation["key"]
   if key.starts-with "\$": throw "property keys cannot start with \$"
   if key == "sdk-version": throw "cannot update sdk-version property"
-  update-envelope parsed: | envelope/Envelope |
+  update-envelope invocation: | envelope/Envelope |
     properties-update envelope: | properties/Map? |
       block.call properties key
 
@@ -631,11 +631,11 @@ extract-cmd -> cli.Command:
       ]
       --run=:: extract it
 
-extract parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ENVELOPE]
+extract invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ENVELOPE]
   envelope := Envelope.load input-path
 
-  config-path := parsed["config"]
+  config-path := invocation["config"]
 
   config-encoded := ByteArray 0
   if config-path:
@@ -644,16 +644,16 @@ extract parsed/cli.Parsed -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
-    extract-esp32 parsed envelope --config-encoded=config-encoded
+    extract-esp32 invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-HOST:
-    extract-host parsed envelope --config-encoded=config-encoded
+    extract-host invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
-extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> none:
-  output-path := parsed[OPTION-OUTPUT]
+extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray -> none:
+  output-path := invocation[OPTION-OUTPUT]
 
-  format := parsed["format"]
+  format := invocation["format"]
   if format == "tar":
     throw "unsupported format for ESP32 envelope: '$format'"
 
@@ -684,12 +684,12 @@ extract-esp32 parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray -> 
   }
   write-file output-path: it.write (ubjson.encode output)
 
-extract-host parsed/cli.Parsed envelope/Envelope --config-encoded/ByteArray:
+extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray:
   word-size := envelope.word-size
-  output-path := parsed[OPTION-OUTPUT]
+  output-path := invocation[OPTION-OUTPUT]
   system-uuid := sdk-version-uuid --sdk-version=envelope.sdk-version
 
-  format := parsed["format"]
+  format := invocation["format"]
   if format != "tar" and format != "binary" and format != "ubjson":
     throw "unsupported format for host envelope: '$format'"
 
@@ -898,7 +898,7 @@ esptool-cmd -> cli.Command:
       ]
       --run=:: esptool it
 
-esptool parsed/cli.Parsed -> none:
+esptool invocation/cli.Invocation -> none:
   esptool := find-esptool_
   print (esptool.join " ")
   pipe.run-program esptool + ["version"]
@@ -925,12 +925,12 @@ flash-cmd -> cli.Command:
       ]
       --run=:: flash it
 
-flash parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ENVELOPE]
-  config-path := parsed["config"]
-  port := parsed["port"]
-  baud := parsed["baud"]
-  if parsed["chip"]:
+flash invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ENVELOPE]
+  config-path := invocation["config"]
+  port := invocation["port"]
+  baud := invocation["baud"]
+  if invocation["chip"]:
     print "Warning: The 'chip' option is deprecated and should not be used."
 
   envelope := Envelope.load input-path
@@ -967,7 +967,7 @@ flash parsed/cli.Parsed -> none:
   // to entries in the partition table by allocating at the end
   // of the used part of the flash image.
   partitions := {:}
-  parsed-partitions := parsed["partition"]
+  parsed-partitions := invocation["partition"]
   parsed-partitions.do: | entry/Map |
     description := ?
     is-file := entry.contains "file"
@@ -1116,9 +1116,9 @@ extract-container -> ContainerEntry
   flag-bits = flag-bits or 0
   return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets --word-size=word-size
 
-update-envelope parsed/cli.Parsed [block] -> none:
-  input-path := parsed[OPTION-ENVELOPE]
-  output-path := parsed[OPTION-OUTPUT]
+update-envelope invocation/cli.Invocation [block] -> none:
+  input-path := invocation[OPTION-ENVELOPE]
+  output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
 
   existing := Envelope.load input-path
@@ -1216,11 +1216,11 @@ show-cmd -> cli.Command:
       ]
       --run=:: show it
 
-show parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ENVELOPE]
-  output-path := parsed["output"]
-  output-format := parsed["output-format"]
-  show-all := parsed["all"]
+show invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ENVELOPE]
+  output-path := invocation["output"]
+  output-format := invocation["output-format"]
+  show-all := invocation["all"]
 
   envelope := Envelope.load input-path
   kind-string := envelope.kind == Envelope.KIND-ESP32

@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.145
+sdk: ^2.0.0-alpha.161
 prefixes:
   certificate_roots: toit-cert-roots
   cli: pkg-cli
@@ -9,8 +9,8 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 1.8.0
-    hash: 73c8aabb60a6f5f304566a1e781d7b025aa17e9b
+    version: 2.0.0
+    hash: f893664723411d328ef1f8b275bc456274a1b6db
     prefixes:
       fs: pkg-fs
       host: pkg-host

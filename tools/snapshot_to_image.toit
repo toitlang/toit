@@ -136,15 +136,15 @@ main args:
   cmd := build-command
   cmd.run args
 
-snapshot-to-image parsed/cli.Parsed:
-  output-path/string? := parsed[OUTPUT-OPTION]
+snapshot-to-image invocation/cli.Invocation:
+  output-path/string? := invocation[OUTPUT-OPTION]
 
-  format := parsed[FORMAT-OPTION]
+  format := invocation[FORMAT-OPTION]
 
   machine-word-sizes := []
-  if parsed[M32-FLAG]:
+  if invocation[M32-FLAG]:
     machine-word-sizes.add 4
-  if parsed[M64-FLAG]:
+  if invocation[M64-FLAG]:
     machine-word-sizes.add 8
   if machine-word-sizes.is-empty:
     machine-word-sizes.add system.BYTES-PER-WORD
@@ -153,12 +153,12 @@ snapshot-to-image parsed/cli.Parsed:
     print "More than one machine flag provided"
     exit 1
 
-  snapshot-path/string := parsed[SNAPSHOT-FILE]
+  snapshot-path/string := invocation[SNAPSHOT-FILE]
   snapshot-bundle := SnapshotBundle.from-file snapshot-path
   snapshot-uuid ::= snapshot-bundle.uuid
   program := snapshot-bundle.decode
   system-uuid ::= sdk-version-uuid --sdk-version=snapshot-bundle.sdk-version
-  assets-path := parsed[ASSETS-OPTION]
+  assets-path := invocation[ASSETS-OPTION]
   assets := assets-path ? file.read-content assets-path : null
   id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
 

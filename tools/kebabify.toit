@@ -96,9 +96,9 @@ build-command --toitc-from-args/Lambda?=null -> cli.Command:
 
   return cmd
 
-migrate parsed/cli.Parsed toitc/string?:
-  sources := parsed["source"]
-  abort-on-error := parsed["abort-on-error"]
+migrate invocation/cli.Invocation toitc/string?:
+  sources := invocation["source"]
+  abort-on-error := invocation["abort-on-error"]
 
   if not toitc:
     toitc = find-toitc-from-jag
@@ -163,9 +163,9 @@ migrate parsed/cli.Parsed toitc/string?:
 
     file.write-content --path=path content
 
-rename-files parsed/cli.Parsed:
-  git := parsed["git"]
-  sources := parsed["source"]
+rename-files invocation/cli.Invocation:
+  git := invocation["git"]
+  sources := invocation["source"]
 
   sources.do: | path/string |
     new-path := build-kebab-path path

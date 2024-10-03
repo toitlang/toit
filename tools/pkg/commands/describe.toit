@@ -41,11 +41,11 @@ class DescribeCommand:
   out-dir/string?
   allow-local-deps/bool
 
-  constructor parsed/cli.Parsed:
-    url-path = parsed[URL-PATH-OPTION]
-    version = parsed[VERSION-OPTION]
-    out-dir = parsed[OUT-DIR-OPTION]
-    allow-local-deps = parsed[ALLOW-LOCAL_DEPS]
+  constructor invocation/cli.Invocation:
+    url-path = invocation[URL-PATH-OPTION]
+    version = invocation[VERSION-OPTION]
+    out-dir = invocation[OUT-DIR-OPTION]
+    allow-local-deps = invocation[ALLOW-LOCAL_DEPS]
 
   execute:
     if not version:

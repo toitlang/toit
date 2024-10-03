@@ -29,10 +29,10 @@ class ListCommand:
   verbose/bool
   output/string
 
-  constructor parsed/cli.Parsed:
-    name = parsed[NAME-OPTION]
-    verbose = parsed[VERBOSE-OPTION]
-    output = parsed[OUTPUT-OPTION]
+  constructor invocation/cli.Invocation:
+    name = invocation[NAME-OPTION]
+    verbose = invocation[VERBOSE-OPTION]
+    output = invocation[OUTPUT-OPTION]
 
   execute:
     registry-packages := registries.list-packages

@@ -71,8 +71,8 @@ create-cmd -> cli.Command:
   return cli.Command "create"
       --run=:: create-assets it
 
-create-assets parsed/cli.Parsed -> none:
-  output-path := parsed[OPTION-ASSETS]
+create-assets invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ASSETS]
   store-assets output-path {:}
 
 add-cmd -> cli.Command:
@@ -94,20 +94,20 @@ add-cmd -> cli.Command:
       ]
       --run=:: add-asset it
 
-add-asset parsed/cli.Parsed -> none:
-  name := parsed["name"]
-  path := parsed["path"]
+add-asset invocation/cli.Invocation -> none:
+  name := invocation["name"]
+  path := invocation["path"]
   asset := read-file path
-  update-assets parsed: | entries/Map |
-    if parsed["format"] != "binary":
+  update-assets invocation: | entries/Map |
+    if invocation["format"] != "binary":
       decoded := null
       exception := catch: decoded = json.decode asset
       if not decoded:
         print "Unable to decode '$path' as JSON. ($exception)"
         exit 1
-      if parsed["format"] == "ubjson":
+      if invocation["format"] == "ubjson":
         asset = ubjson.encode decoded
-      else if parsed["format"] == "tison":
+      else if invocation["format"] == "tison":
         asset = tison.encode decoded
       else:
         unreachable
@@ -132,11 +132,11 @@ get-cmd -> cli.Command:
       ]
       --run=:: get-asset it
 
-get-asset parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ASSETS]
-  output-path := parsed["output"]
-  name := parsed["name"]
-  format := parsed["format"]
+get-asset invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ASSETS]
+  output-path := invocation["output"]
+  name := invocation["name"]
+  format := invocation["format"]
   entries := load-assets input-path
   entry := entries.get name
   if not entry:
@@ -169,9 +169,9 @@ remove-cmd -> cli.Command:
       ]
       --run=:: remove-asset it
 
-remove-asset parsed/cli.Parsed -> none:
-  name := parsed["name"]
-  update-assets parsed: | entries/Map |
+remove-asset invocation/cli.Invocation -> none:
+  name := invocation["name"]
+  update-assets invocation: | entries/Map |
     entries.remove name
 
 list-cmd -> cli.Command:
@@ -191,8 +191,8 @@ decode entry/Map content/ByteArray -> string:
     return "json"
   return "binary"
 
-list-assets parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ASSETS]
+list-assets invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ASSETS]
   entries := load-assets input-path
   mapped := entries.map: | _ content/ByteArray |
     entry := { "size": content.size }
@@ -200,9 +200,9 @@ list-assets parsed/cli.Parsed -> none:
     entry
   print (json.stringify mapped)
 
-update-assets parsed/cli.Parsed [block] -> none:
-  input-path := parsed[OPTION-ASSETS]
-  output-path := parsed[OPTION-OUTPUT]
+update-assets invocation/cli.Invocation [block] -> none:
+  input-path := invocation[OPTION-ASSETS]
+  output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
 
   existing := load-assets input-path

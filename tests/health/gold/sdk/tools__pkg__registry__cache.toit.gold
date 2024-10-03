@@ -19,9 +19,6 @@
 <pkg:toit-cert-roots>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'. This certificate has expired
   "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-<pkg:pkg-cli>/cli.toit:693:16: warning: Deprecated 'parse'. Use 'Uuid.parse' instead
-    return uuid.parse str --on-error=:
-               ^~~~~~
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'. This certificate has expired
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~

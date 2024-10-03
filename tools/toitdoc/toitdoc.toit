@@ -191,14 +191,14 @@ compute-sdk-path --sdk-path/string? --toitc/string? -> string:
   if file.is-directory lib-dir: return sdk-path
   throw "Couldn't determine SDK path"
 
-toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> none:
-  for-package := parsed["package"] == true
-  for-sdk := parsed["sdk"] == true
-  version := parsed["version"]
-  exclude-sdk := parsed["exclude-sdk"]
-  exclude-pkgs := parsed["exclude-pkgs"]
-  include-private := parsed["include-private"]
-  source := parsed["source"]
+toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/string -> none:
+  for-package := invocation["package"] == true
+  for-sdk := invocation["sdk"] == true
+  version := invocation["version"]
+  exclude-sdk := invocation["exclude-sdk"]
+  exclude-pkgs := invocation["exclude-pkgs"]
+  include-private := invocation["include-private"]
+  source := invocation["source"]
 
   if for-sdk and exclude-sdk:
     print "Can't exclude the SDK when generating the SDK documentation."
@@ -278,19 +278,19 @@ toitdoc parsed/cli.Parsed --toitc/string --sdk-path/string? --output/string -> n
 
   file.write-content --path=output (json.encode built-toitdoc)
 
-toitdoc-build parsed/cli.Parsed --toitc/string --sdk-path/string?:
-  output := parsed["output"]
+toitdoc-build invocation/cli.Invocation --toitc/string --sdk-path/string?:
+  output := invocation["output"]
 
-  toitdoc parsed --toitc=toitc --sdk-path=sdk-path --output=output
+  toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
 
-toitdoc-serve parsed/cli.Parsed --toitc/string --sdk-path/string?:
-  port := parsed["port"]
+toitdoc-serve invocation/cli.Invocation --toitc/string --sdk-path/string?:
+  port := invocation["port"]
 
   tmp-dir := directory.mkdtemp "/tmp/toitdoc-"
   try:
     output := "$tmp-dir/toitdoc.json"
 
-    toitdoc parsed --toitc=toitc --sdk-path=sdk-path --output=output
+    toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
     serve output --port=port
   finally:
     directory.rmdir --recursive tmp-dir

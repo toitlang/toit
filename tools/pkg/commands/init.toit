@@ -27,10 +27,10 @@ class InitCommand:
 
   project/Project
 
-  constructor parsed/cli.Parsed:
-    config := project-configuration-from-cli parsed
-    name := parsed[NAME]
-    description := parsed[DESCRIPTION]
+  constructor invocation/cli.Invocation:
+    config := project-configuration-from-cli invocation
+    name := invocation[NAME]
+    description := invocation[DESCRIPTION]
 
     if config.specification-file-exists or config.lock-file-exists:
       error "Directory already contains a project"

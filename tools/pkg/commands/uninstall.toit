@@ -25,10 +25,10 @@ import .utils_
 class UninstallCommand:
   name/string
   project/Project
-  constructor parsed/cli.Parsed:
-    name = parsed[NAME]
+  constructor invocation/cli.Invocation:
+    name = invocation[NAME]
 
-    config := project-configuration-from-cli parsed
+    config := project-configuration-from-cli invocation
     config.verify
     project = Project config
 
