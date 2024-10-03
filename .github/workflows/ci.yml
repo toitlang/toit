@@ -530,6 +530,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set version
+        run: |
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
+
       - name: Set up build environment
         uses: ./actions/setup-build
         with:
@@ -555,6 +562,8 @@ jobs:
           ls build/arm-linux-gnueabi/firmware.envelope
 
       - name: Make
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
         run: |
           make sdk
           make TARGET=win64 sdk
