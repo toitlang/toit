@@ -221,8 +221,7 @@ abstract class PegParserBase_:
     null and false are considered false values, everything else is true.
   */
   lookahead [block] -> bool:
-    result/any := false
-    try-parse: result = block.call
+    result := try-parse block
     return not (not result) // Boolify the result.
 
   /**
@@ -295,18 +294,18 @@ abstract class PegParserBase_:
   Use this for *- and +-productions.
   */
   repeat --at-least-one/bool=false [block] -> List?:
-    try-parse:
-      result := []
-      while true:
-        mark := mark
-        res := block.call
-        if not res:
-          rollback mark
-          break
-        if at-mark mark: break // No progress, so matched empty. This should terminate the loop.
-        result.add res
-      if not at-least-one or not result.is-empty: return result
-    return null
+    result := []
+    while true:
+      mark := mark
+      res := block.call
+      if not res:
+        rollback mark
+        break
+      if at-mark mark: break // No progress, so matched empty. This should terminate the loop.
+      result.add res
+    return not at-least-one or not result.is-empty
+        ? result
+        : null
 
   /**
   Calls $block and returns its value if it is truthful, consuming the input.
@@ -316,10 +315,8 @@ abstract class PegParserBase_:
   Use this for ?-productions.
   */
   optional --or-null/bool=false [block] -> any:
-    try-parse:
-      if res := block.call: return res
-
-    return or-null ? null : EMPTY-NODE_
+    result := try-parse block
+    return result or (or-null ? null : EMPTY-NODE_)
 
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
@@ -401,20 +398,18 @@ class Parser_ extends PegParserBase_:
     forbidden-distance := -(bytes-since-mark forbidden-mark)
     return forbidden-distance >= num
 
-  as-bool val/any -> bool:
+  static as-bool val/any -> bool:
     return not (not val)
 
-  try-parse --as-bool/bool=false [block] -> any:
+  try-parse --as-bool/True [block] -> any:
     // Error-aware try-parse to limit unnecessary work on parse errors and
-    // supports boolean conversion
-    result := ?
-    if error:
-      result = null
-    else:
-      result = super block
-
-    if as-bool: result = this.as-bool result
-    return result
+    // supports boolean conversion.
+    rollback-mark := mark
+    result := block.call
+    if not result:
+      rollback rollback-mark
+      return false
+    return true
 
   check-valid-key key/ValueNode_? -> ValueNode_?:
     if not key: return null
