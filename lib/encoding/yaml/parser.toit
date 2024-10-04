@@ -556,7 +556,8 @@ class Parser_ extends PegParserBase_:
         parts := version.split "."
         major := int.parse parts[0]
         minor := int.parse parts[1]
-        if major > 1 or minor > 2: throw (ParseError_ "UNSUPPORTED_YAML_VERSION")
+        // Only versions 1.0, 1.1, and 1.2 are supported.
+        if major != 1 or minor > 2: throw (ParseError_ "UNSUPPORTED_YAML_VERSION")
         true
 
   ns-tag-directive -> bool:
