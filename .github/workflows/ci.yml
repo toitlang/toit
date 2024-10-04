@@ -1016,17 +1016,17 @@ jobs:
         with:
           name: macOS-build-signed
           path: |
-            out/toit-macos.tar.gz
-            out/toit-macos-arm.tar.gz
+            out/toit-x64.tar.gz
+            out/toit-arm.tar.gz
             out/toit-x64.dmg
             out/toit-arm.dmg
 
       - name: Prepare upload
         run: |
           mkdir -p macos-upload
-          cp out/toit-macos.tar.gz macos-upload/toit-macos.tar.gz
-          cp out/toit-macos.tar.gz macos-upload/toit-macos-x64.tar.gz
-          cp out/toit-macos-arm.tar.gz macos-upload/toit-macos-aarch64.tar.gz
+          cp out/toit-x64.tar.gz macos-upload/toit-macos.tar.gz
+          cp out/toit-x64.tar.gz macos-upload/toit-macos-x64.tar.gz
+          cp out/toit-arm.tar.gz macos-upload/toit-macos-aarch64.tar.gz
           cp out/toit-x64.dmg macos-upload/toit-macos-x64.dmg
           cp out/toit-arm.dmg macos-upload/toit-macos-aarch64.dmg
 
