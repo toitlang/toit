@@ -233,7 +233,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
       print "No package.yaml found at $package-yaml-path."
       exit 1
     content := yaml.decode (file.read-content package-yaml-path)
-    if not content.contains "name":
+    if content is not Map or not content.contains "name":
       print "No 'name' field found in package.yaml."
       exit 1
     pkg-name = kebabify content["name"]
