@@ -1025,9 +1025,6 @@ class DocToitdocRef extends DocExpression:
       --.holder
       --.name
       --.shape:
-    // The KIND-OTHER currently includes references to parameters
-    // which don't have a path.
-    assert: path != null or kind == KIND-OTHER
 
   to-json -> Map:
     result := {
