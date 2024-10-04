@@ -22,7 +22,7 @@ import http.server
 import net
 import system
 
-TOITDOC_WEB_VERSION ::= "v0.2.11"
+TOITDOC_WEB_VERSION ::= "v0.3.0"
 TOITDOC_WEB_URI ::= "https://github.com/toitware/web-toitdocs/releases/download/$TOITDOC_WEB_VERSION/build.tar.gz"
 
 get-content-type-from-extension path/string -> string:
@@ -80,7 +80,7 @@ serve docs-path/string --port/int:
     resource-path/string := ?
     if resource == "/":
       resource-path = "$web-dir/index.html"
-    else if resource == "/sdk/latest.json":
+    else if resource == "/toitdoc.json":
       resource-path = docs-path
     else:
       resource-path = "$web-dir$resource"
