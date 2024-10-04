@@ -1,3 +1,0 @@
-tests/pi/spi.toit:54:16: error: Type mismatch. Expected 'ByteArray'. Got 'List'
-  device.write [0x01, 0x02, 0x03]
-               ^
