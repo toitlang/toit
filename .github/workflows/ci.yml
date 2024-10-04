@@ -429,7 +429,6 @@ jobs:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
 
-  # Really annoying that we need to duplicate so much.
   esp32:
     if: ${{ github.event.inputs.run-esp32-flow != 'false' }}
 
@@ -479,43 +478,6 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
 
-      - name: Upload ESP32 release firmware artifacts
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload ESP32-C3 release firmware artifacts
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32c3.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload ESP32-S2 release firmware artifacts
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32s2.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-      - name: Upload ESP32-S3 release firmware artifacts
-        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32s3.gz
-          tag: ${{ env.TOIT_VERSION }}
-          overwrite: true
-
-  # Really annoying that we need to duplicate so much.
   cross:
     runs-on: ubuntu-latest
 
