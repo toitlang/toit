@@ -24,7 +24,7 @@ main args:
       dir-stream := directory.DirectoryStream "$ota0/$image-dir"
       file-name := dir-stream.next
       // The files should be stored with their uuids.
-      uuid.parse file-name
+      uuid.Uuid.parse file-name
       expect-null dir-stream.next
       dir-stream.close
 

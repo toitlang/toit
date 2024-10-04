@@ -38,7 +38,7 @@ class BleUuid:
     else if data_ is string:
       if data_.size != 4 and data_.size != 8 and data_.size != 36: throw "INVALID UUID"
       if data_.size == 36:
-        uuid.parse data_ // This throws an exception if the format is incorrect.
+        uuid.Uuid.parse data_ // This throws an exception if the format is incorrect.
       else:
         if (catch: hex.decode data_):
           throw "INVALID UUID $data_"
@@ -69,7 +69,7 @@ class BleUuid:
   to-byte-array:
     if data_ is string:
       if data_.size <= 4: return hex.decode data_
-      return (uuid.parse data_).to-byte-array
+      return (uuid.Uuid.parse data_).to-byte-array
     else:
       return data_
 

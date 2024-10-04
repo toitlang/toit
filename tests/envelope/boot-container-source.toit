@@ -37,9 +37,9 @@ main:
   else if install-run-image:
     install-run install-run-image
   else if run-image:
-    run (uuid.parse run-image)
+    run (uuid.Uuid.parse run-image)
   else if remove-image:
-    containers.uninstall (uuid.parse remove-image)
+    containers.uninstall (uuid.Uuid.parse remove-image)
   else:
     throw "No action specified"
   exit EXIT-CODE-STOP
@@ -61,7 +61,7 @@ install-run image-path:
     reboot
 
   if file.is-file uuid-path:
-    container-uuid := uuid.parse (file.read-content uuid-path).to-string
+    container-uuid := uuid.Uuid.parse (file.read-content uuid-path).to-string
     run container-uuid
   else:
     // Install the image.
