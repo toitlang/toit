@@ -22,7 +22,7 @@ import http.server
 import net
 import system
 
-TOITDOC_WEB_VERSION ::= "v0.3.0"
+TOITDOC_WEB_VERSION ::= "v1.0.0"
 TOITDOC_WEB_URI ::= "https://github.com/toitware/web-toitdocs/releases/download/$TOITDOC_WEB_VERSION/build.tar.gz"
 
 get-content-type-from-extension path/string -> string:
