@@ -1,13 +1,13 @@
 dependencies:
   ar:
     url: github.com/toitlang/pkg-ar
-    version: ^1.2.0
+    version: ^1.3.0
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
     version: ^1.6.1
   cli:
     url: github.com/toitlang/pkg-cli
-    version: ^2.0.0
+    version: ^2.1.0
   font_x11_adobe:
     url: github.com/toitlang/pkg-font-x11-adobe
     version: ^0.1.0
@@ -16,7 +16,7 @@ dependencies:
     version: ^2.3.1
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.15.1
+    version: ^1.15.3
   partition-table:
     url: github.com/toitware/toit-partition-table-esp32
     version: ^1.2.0
