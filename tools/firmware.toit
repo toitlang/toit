@@ -602,9 +602,9 @@ extract-cmd -> cli.Command:
         - elf: the ELF file of the executable. This is typically used
           for debugging.
         - ubjson: a UBJSON encoding of the sections of the image.
-        - full-binary: a full binary image suitable for running on QEMU,
+        - full-image: a full binary image suitable for running on QEMU,
           wokwi or for flashing the entire flash. See below.
-        - qemu: a deprecated alias for 'full-binary'.
+        - qemu: a deprecated alias for 'full-image'.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.
         - binary: the binary image of the firmware, which can be used for firmware upgrades.
