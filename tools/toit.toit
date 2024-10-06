@@ -500,6 +500,10 @@ main args/List:
 
   root-command.add system-message.build-command
 
+  assert:
+    // Only run the check in assert mode.
+    root-command.check
+    true
   root-command.run args
 
 bin-dir sdk-dir/string? -> string:
