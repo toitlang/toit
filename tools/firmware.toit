@@ -603,7 +603,7 @@ extract-cmd -> cli.Command:
           for debugging.
         - ubjson: a UBJSON encoding of the sections of the image.
         - image: a binary image suitable for running on QEMU,
-          wokwi, or for flashing the entire flash. See below.
+          Wokwi, or for flashing a device. See below.
         - qemu: a deprecated alias for 'image'.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.
@@ -695,7 +695,7 @@ extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteA
 
   if format == "qemu" or format == "image":
     if format == "qemu":
-      ui.emit --warning "qemu format is deprecated, use 'image' instead"
+      ui.emit --warning "The 'qemu' format is deprecated, use 'image' instead."
     write-image_ output-path firmware-bin envelope --ui=ui
     return
 
