@@ -14,11 +14,12 @@
 // directory of this repository.
 
 import certificate-roots
-import cli.cache as cli
+import cli show Cli DirectoryStore
 import host.file
 import host.pipe
 import http
 import http.server
+import log
 import net
 import system
 
@@ -42,19 +43,20 @@ get-content-type-from-extension path/string -> string:
   if extension == "woff": return "font/woff"
   return "application/octet-stream"
 
-serve docs-path/string --port/int:
-  cache := cli.Cache --app-name="toitdocs"
+serve docs-path/string --port/int --cli/Cli:
+  cache := cli.cache
+  ui := cli.ui
 
-  web-dir := cache.get-directory-path TOITDOC-WEB-VERSION: | store/cli.DirectoryStore |
+  web-dir := cache.get-directory-path "toitdoc/$TOITDOC-WEB-VERSION": | store/DirectoryStore |
     store.with-tmp-directory: | dir/string |
       if system.platform == system.PLATFORM-WINDOWS:
-        throw "Web-toitdocs is not supported on Windows."
+        ui.abort "Serving toitdocs is not supported on Windows."
       certificate-roots.install-all-trusted-roots
       network := net.open
       client := http.Client network
       response := client.get --uri=TOITDOC-WEB-URI
       if response.status-code != 200:
-        throw "Failed to download web-toitdocs"
+        ui.abort "Failed to download web-toitdocs"
       local-path := "$dir/build.tar.gz"
       local := file.Stream.for-write local-path
       try:
@@ -73,8 +75,11 @@ serve docs-path/string --port/int:
   network := net.open
   // Listen on a free port.
   tcp_socket := network.tcp_listen port
-  print "Serving toitdocs on http://localhost:$tcp_socket.local_address.port/"
-  server := http.Server --max-tasks=20
+  ui.emit --result
+    --text=:"Serving toitdocs on http://localhost:$tcp_socket.local_address.port/"
+    --structured=: { "url": "http://localhost:$tcp_socket.local_address.port/" }
+  // TODO(florian): we want to base the logger on the UI.
+  server := http.Server --max-tasks=20 --logger=(log.default.with-level log.WARN_LEVEL)
   server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
     resource := request.query.resource
     resource-path/string := ?
@@ -88,7 +93,7 @@ serve docs-path/string --port/int:
     if not file.is-file resource-path:
       resource-path = "$web-dir/index.html"
 
-    print "Serving $resource-path"
+    ui.emit --debug "Serving $resource-path"
     content := file.read-content resource-path
     content-type := get-content-type-from-extension resource-path
     content-size := content.size
@@ -96,5 +101,4 @@ serve docs-path/string --port/int:
     writer.headers.set "Content-Length" content-size.stringify
     writer.out.write content
     writer.close
-    print "Served $resource-path"
 
