@@ -241,9 +241,25 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
     if not file.is-file package-yaml-path:
       ui.abort "No package.yaml found at $package-yaml-path."
     content := yaml.decode (file.read-content package-yaml-path)
-    if content is not Map or not content.contains "name":
+    if content is Map:
+      if content.contains "name":
+        pkg-name = kebabify content["name"]
+    if not pkg-name:
+      // Probably an older package.
+      // Try to find the name from the README.
+      readme-path := fs.join source "README.md"
+      if file.is-file readme-path:
+        readme := (file.read-content readme-path).to-string
+        new-line-pos := readme.index-of "\n"
+        first-line/string := ?
+        if new-line-pos == -1:
+          first-line = readme
+        else:
+          first-line = readme[..new-line-pos]
+        if first-line.starts-with "#":
+          pkg-name = kebabify (first-line[1..].trim.to-ascii-lower)
+    if not pkg-name:
       ui.abort "No 'name' field found in package.yaml."
-    pkg-name = kebabify content["name"]
 
     // Only include the 'src' folder.
     source = fs.join source "src"
