@@ -56,7 +56,7 @@ serve docs-path/string --port/int --cli/Cli:
       client := http.Client network
       response := client.get --uri=TOITDOC-WEB-URI
       if response.status-code != 200:
-        ui.abort "Failed to download web-toitdocs"
+        ui.abort "Failed to download web-toitdocs."
       local-path := "$dir/build.tar.gz"
       local := file.Stream.for-write local-path
       try:
@@ -75,9 +75,13 @@ serve docs-path/string --port/int --cli/Cli:
   network := net.open
   // Listen on a free port.
   tcp_socket := network.tcp_listen port
+  url := "http://localhost:$tcp_socket.local_address.port/"
   ui.emit --result
-    --text=:"Serving toitdocs on http://localhost:$tcp_socket.local_address.port/"
-    --structured=: { "url": "http://localhost:$tcp_socket.local_address.port/" }
+    --text=:
+      ui.wants-human
+          ? "Serving toitdocs on $url."
+          : url
+    --structured=: { "url": url }
   // TODO(florian): we want to base the logger on the UI.
   server := http.Server --max-tasks=20 --logger=(log.default.with-level log.WARN_LEVEL)
   server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |

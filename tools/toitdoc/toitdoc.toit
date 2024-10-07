@@ -107,6 +107,16 @@ build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Comman
             --type="file|dir"
             --help="Source directory or file. Defaults to the current directory.",
       ]
+      --examples=[
+        cli.Example "Serve the documentation for the current directory."
+            --arguments=".",
+        cli.Example """
+            Serve the documentation for the package 'foo' located at ../foo.
+            Don't include the SDK, but include dependent packages.
+            Use 'v1.2.3' as the version.
+            """
+            --arguments="--exclude-sdk --exclude-pkgs --version=v1.2.3 ../foo",
+      ]
       --run=::
         toitdoc-serve it
             --toitc=(toitc-from-args.call it)
