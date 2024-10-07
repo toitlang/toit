@@ -17,6 +17,8 @@
 
 #ifdef TOIT_ESP32
 
+#include <unistd.h>
+
 #include "event_sources/system_esp32.h"
 #include "uart_esp32_hal.h"
 #include "driver/gpio.h"
