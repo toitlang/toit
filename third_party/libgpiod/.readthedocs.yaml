@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2022 Kent Gibson <warthog618@gmail.com>
+
+#
+# This file is part of libgpiod.
+#
+# Read the Docs configuration file
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+version: 2
+
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.11"
+  # doxygen is available by default, but just in case.
+  # others are definitely missing.
+  apt_packages:
+      - autoconf
+      - autoconf-archive
+      - libtool
+      - m4
+      - doxygen
+      - graphviz
+
+sphinx:
+   configuration: sphinx/conf.py
