@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-FileCopyrightText: 2017-2021 Bartosz Golaszewski <bartekgola@gmail.com>
+
+*.o
+*.lo
+*.la
+doc
+*.pc
+*.tar.gz
+*.patch
+*.swp
+tags
+
+# autotools stuff
+.deps/
+.libs/
+Doxyfile
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+autostuff/
+config.h
+config.h.in
+config.h.in~
+config.log
+config.status
+configure
+configure~
+libtool
+*-libtool
+m4/
+stamp-h1
+
+# profiling
+*.gcda
+*.gcno

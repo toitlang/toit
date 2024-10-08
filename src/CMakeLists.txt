@@ -172,6 +172,8 @@ endif()
 
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  target_link_libraries(toit_vm PRIVATE gpiod::gpiod)
+
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
 
   if (NOT ${TOIT_IS_CROSS})

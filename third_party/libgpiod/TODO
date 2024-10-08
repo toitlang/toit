@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: 2017-2021 Bartosz Golaszewski <bartekgola@gmail.com>
+
+TODO list for libgpiod
+
+==========
+
+This document contains the list of things I'd like to have in libgpiod before
+declaring it "mostly feature-complete". If anyone wants to help, this can
+serve as the starting point.
+
+==========
+
+* implement dbus API for controlling GPIOs
+
+A common complaint from users about gpioset is that the state of a line is not
+retained once the program exits. While this is precisely the way linux
+character devices work, it's understandable that most users will want some
+centralized way of controlling GPIOs - similar to how sysfs worked.
+
+One of the possible solutions is a DBus API. We need a daemon exposing chips
+and lines as dbus objects and allowing to control and inspect lines using
+dbus methods and monitor them using signals.
+
+As of writing of this document some of the work has already been done and the
+skeleton of the dbus daemon written in C using GLib has already been developed
+and is partially functional.
+
+----------
+
+* implement a simple daemon for controlling GPIOs in C together with a client
+  program
+
+This is by far the lowest priority task. Similarly as with the dbus daemon:
+the goal is to provide a centralized agent controlling GPIOs with a simple
+interface consisting of a command line client communicating with the server
+over unix sockets.
+
+In this case however the goal is to have as few dependencies as possible. This
+is because for some small systems dbus is overkill. Since we won't be using any
+standardized protocol, it will take much more effort to implement it correctly.
+
+----------
+
+* improve gpioset --interactive tab completion
+
+The existing tab completion uses libedit's readline emulation layer which
+has a few limitations, including not being able to correctly handle quoted
+line names and being disabled when stdin/stdout are not a tty (which makes
+testing with gpio-tools-test.bash using coproc problematic).
+
+One approach that could address both these problems is to bypass the readline
+emulation and use the libedit API (histedit.h) directly.

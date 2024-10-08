@@ -1,0 +1,302 @@
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: 2017-2023 Bartosz Golaszewski <brgl@bgdev.pl>
+
+libgpiod
+========
+
+  libgpiod - C library and tools for interacting with the linux GPIO
+             character device (gpiod stands for GPIO device)
+
+Since linux 4.8 the GPIO sysfs interface is deprecated. User space should use
+the character device instead. This library encapsulates the ioctl calls and
+data structures behind a straightforward API.
+
+RATIONALE
+---------
+
+The new character device interface guarantees all allocated resources are
+freed after closing the device file descriptor and adds several new features
+that are not present in the obsolete sysfs interface (like event polling,
+setting/reading multiple values at once or open-source and open-drain GPIOs).
+
+Unfortunately interacting with the linux device file can no longer be done
+using only standard command-line tools. This is the reason for creating a
+library encapsulating the cumbersome, ioctl-based kernel-userspace interaction
+in a set of convenient functions and opaque data structures.
+
+Additionally this project contains a set of command-line tools that should
+allow an easy conversion of user scripts to using the character device.
+
+BUILDING
+--------
+
+This is a pretty standard autotools project. The core C library does not have
+any external dependencies other than the standard C library with GNU extensions.
+
+The command-line tools optionally depend on libedit for the interactive feature.
+
+To build the project (including command-line utilities) run:
+
+    ./autogen.sh --enable-tools=yes --prefix=<install path>
+    make
+    make install
+
+The autogen script will execute ./configure and pass all the command-line
+arguments to it.
+
+If building from release tarballs, the configure script is already provided and
+there's no need to invoke autogen.sh.
+
+For all configure features, see: ./configure --help.
+
+TOOLS
+-----
+
+There are currently six command-line tools available:
+
+* gpiodetect - list all gpiochips present on the system, their names, labels
+               and number of GPIO lines
+
+* gpioinfo   - list lines, their gpiochip, offset, name, and direction, and
+               if in use then the consumer name and any other configured
+               attributes, such as active state, bias, drive, edge detection
+               and debounce period
+
+* gpioget    - read values of specified GPIO lines
+
+* gpioset    - set values of specified GPIO lines, holding the lines until the
+               process is killed or otherwise exits
+
+* gpiomon    - wait for edge events on GPIO lines, specify which edges to watch
+               for, how many events to process before exiting, or if the events
+               should be reported to the console
+
+* gpionotify - wait for changed to the info for GPIO lines, specify which
+               changes to watch for, how many events to process before exiting,
+               or if the events should be reported to the console
+
+Examples:
+
+    (using a Raspberry Pi 4B)
+
+    # Detect the available gpiochips.
+    $ gpiodetect
+    gpiochip0 [pinctrl-bcm2711] (58 lines)
+    gpiochip1 [raspberrypi-exp-gpio] (8 lines)
+
+    # Read the info for all the lines on a gpiochip.
+    $ gpioinfo -c 1
+    gpiochip1 - 8 lines:
+     line   0: "BT_ON"          output
+     line   1: "WL_ON"          output
+     line   2: "PWR_LED_OFF"    output active-low consumer="led1"
+     line   3: "GLOBAL_RESET"   output
+     line   4: "VDD_SD_IO_SEL"  output consumer="vdd-sd-io"
+     line   5: "CAM_GPIO"       output consumer="cam1_regulator"
+     line   6: "SD_PWR_ON"      output consumer="sd_vcc_reg"
+     line   7: "SD_OC_N"        input
+
+    # Read the info for particular lines.
+    $ ./gpioinfo PWR_LED_OFF STATUS_LED_G_CLK GLOBAL_RESET
+    gpiochip0 42 "STATUS_LED_G_CLK" output consumer="led0"
+    gpiochip1 2 "PWR_LED_OFF"    output active-low consumer="led1"
+    gpiochip1 3 "GLOBAL_RESET"   output
+
+    # Read the value of a single GPIO line by name.
+    $ gpioget RXD1
+    "RXD1"=active
+
+    # Read the value of a single GPIO line by chip and offset.
+    $ gpioget -c 0 15
+    "15"=active
+
+    # Read the value of a single GPIO line as a numeric value.
+    $ gpioget --numeric RXD1
+    1
+
+    # Read two values at the same time. Set the active state of the lines
+    # to low and without quoted names.
+    $ gpioget --active-low --unquoted GPIO23 GPIO24
+    GPIO23=active GPIO24=active
+
+    # Set the value of a line and hold the line until killed.
+    $ gpioset GPIO23=1
+
+    # Set values of two lines, then daemonize and hold the lines.
+    $ gpioset --daemonize GPIO23=1 GPIO24=0
+
+    # Set the value of a single line, hold it for 20ms, then exit.
+    $ gpioset --hold-period 20ms -t0 GPIO23=1
+
+    # Blink an LED on GPIO22 at 1Hz
+    $ gpioset -t500ms GPIO22=1
+
+    # Blink an LED on GPIO22 at 1Hz with a 20% duty cycle
+    $ gpioset -t200ms,800ms GPIO22=1
+
+    # Set some lines interactively (requires --enable-gpioset-interative)
+    $ gpioset --interactive --unquoted GPIO23=inactive GPIO24=active
+    gpioset> get
+    GPIO23=inactive GPIO24=active
+    gpioset> toggle
+    gpioset> get
+    GPIO23=active GPIO24=inactive
+    gpioset> set GPIO24=1
+    gpioset> get
+    GPIO23=active GPIO24=active
+    gpioset> toggle
+    gpioset> get
+    GPIO23=inactive GPIO24=inactive
+    gpioset> toggle GPIO23
+    gpioset> get
+    GPIO23=active GPIO24=inactive
+    gpioset> exit
+
+    # Wait for three rising edge events on a single GPIO line, then exit.
+    $ gpiomon --num-events=3 --edges=rising GPIO22
+    10002.907638045	rising	"GPIO22"
+    10037.132562259	rising	"GPIO22"
+    10047.179790748	rising	"GPIO22"
+
+    # Wait for three edge events on a single GPIO line, with time in local time
+    # and with unquoted line name, then exit.
+    $ gpiomon --num-events=3 --edges=both --localtime --unquoted GPIO22
+    2022-11-15T10:36:59.109615508	rising	GPIO22
+    2022-11-15T10:36:59.129681898	falling	GPIO22
+    2022-11-15T10:36:59.698971886	rising	GPIO22
+
+    # Wait for falling edge events with a custom output format.
+    $ gpiomon --format="%e %c %o %l %S" --edges=falling -c gpiochip0 22
+    2 gpiochip0 22 GPIO22 10946.693481859
+    2 gpiochip0 22 GPIO22 10947.025347604
+    2 gpiochip0 22 GPIO22 10947.283716669
+    2 gpiochip0 22 GPIO22 10947.570109430
+    ...
+
+    # Block until an edge event occurs. Don't print anything.
+    $ gpiomon --num-events=1 --quiet GPIO22
+
+    # Monitor multiple lines, exit after the first edge event.
+    $ gpiomon --quiet --num-events=1 GPIO5 GPIO6 GPIO12 GPIO17
+
+    # Monitor a line for changes to info.
+    $ gpionotify GPIO23
+    11571.816473718	requested	"GPIO23"
+    11571.816535124	released	"GPIO23"
+    11572.722894029	requested	"GPIO23"
+    11572.722932843	released	"GPIO23"
+    11573.222998598	requested	"GPIO23"
+    ...
+
+    # Monitor a line for requests, reporting UTC time and unquoted line name.
+     $ gpionotify --utc --unquoted GPIO23
+    2022-11-15T03:05:23.807090687Z	requested	GPIO23
+    2022-11-15T03:05:23.807151390Z	released	GPIO23
+    2022-11-15T03:05:24.784984280Z	requested	GPIO23
+    2022-11-15T03:05:24.785023873Z	released	GPIO23
+    ...
+
+    # Monitor multiple lines, exit after the first is requested.
+    $ gpionotify --quiet --num-events=1 --event=requested GPIO5 GPIO6 GPIO12 GPIO17
+
+    # Block until a line is released.
+    $ gpionotify --quiet --num-events=1 --event=released GPIO6
+
+BINDINGS
+--------
+
+High-level, object-oriented bindings for C++, python3 and Rust are provided.
+They can be enabled by passing --enable-bindings-cxx, --enable-bindings-python
+and --enable-bindings-rust arguments respectively to configure.
+
+C++ bindings require C++11 support and autoconf-archive collection if building
+from git.
+
+Python bindings require python3 support and libpython development files. Care
+must be taken when cross-compiling python bindings: users usually must specify
+the PYTHON_CPPFLAGS and PYTHON_LIBS variables in order to point the build
+system to the correct locations. During native builds, the configure script
+can auto-detect the location of the development files.
+
+Rust bindings require cargo support. When building the Rust bindings along the
+C library using make, they will be automatically configured to build against the
+build results of the C library.
+
+TESTING
+-------
+
+A comprehensive testing framework is included with the library and can be
+used to test both the core library code as well as the kernel-to-user-space
+interface.
+
+The minimum kernel version required to run the tests can be checked in the
+tests/gpiod-test.c source file (it's subject to change if new features are
+added to the kernel). The tests work together with the gpio-sim kernel module
+which must either be built-in or available for loading using kmod. A helper
+library - libgpiosim - is included to enable straightforward interaction with
+the module.
+
+To build the testing executable add the '--enable-tests' option when running
+the configure script. If enabled, the tests will be installed next to
+gpio-tools.
+
+As opposed to standard autotools projects, libgpiod doesn't execute any tests
+when invoking 'make check'. Instead the user must run them manually with
+superuser privileges.
+
+The testing framework uses the GLib unit testing library so development package
+for GLib must be installed.
+
+The gpio-tools programs can be tested separately using the gpio-tools-test.bash
+script. It requires shunit2[1] to run and assumes that the tested executables are
+in the same directory as the script.
+
+C++, Rust and Python bindings also include their own test-suites. All three
+reuse the libgpiosim library to avoid code duplication when interacting with
+gpio-sim.
+
+Python test-suite uses the standard unittest package. C++ tests use an external
+testing framework - Catch2 - which must be installed in the system. Rust
+bindings use the standard tests module layout and the #[test] attribute.
+
+DOCUMENTATION
+-------------
+
+All API symbols exposed by the core C API and C++ bindings are documented with
+doxygen markup blocks. Doxygen documentation can be generated by executing
+'make doc' given that the doxygen executable is available in the system.
+
+Python bindings contain help strings that can be accessed with the help
+builtin.
+
+Rust bindings use rustdoc.
+
+Man pages for command-line programs are generated automatically if gpio-tools
+were selected and help2man is available in the system.
+
+CONTRIBUTING
+------------
+
+Contributions are welcome - please send questions, patches and bug reports
+to the linux-gpio mailing list[2] by e-mailing to linux-gpio@vger.kernel.org
+(add the [libgpiod] prefix to the e-mail subject line).
+Note that the mailing list quietly drops HTML formatted e-mail, so be sure
+to send plain text[3].
+
+Code submissions should stick to the linux kernel coding style[4] and
+follow the kernel patch submission process[5] as applied to the libgpiod
+source tree.
+
+The mailing list archive[6] contains all the historical mails to the list,
+and is the place to check to ensure your e-mail has been received.
+Search for "libgpiod" to filter the list down to relevant messages.
+Those also provide examples of the expected formatting.
+Allow some time for your e-mail to propagate to the list before retrying,
+particularly if there are no e-mails in the list more recent than yours.
+
+[1] https://github.com/kward/shunit2
+[2] http://vger.kernel.org/vger-lists.html#linux-gpio
+[3] https://docs.kernel.org/process/email-clients.html
+[4] https://docs.kernel.org/process/coding-style.html
+[5] https://docs.kernel.org/process/submitting-patches.html
+[6] https://lore.kernel.org/linux-gpio/
