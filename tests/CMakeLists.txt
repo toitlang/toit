@@ -58,7 +58,7 @@ add_custom_target(
 add_custom_target(
   check_flaky
   # Run flaky tests up to 3 times.
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --repeat until-pass:3 --label-regex "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --repeat until-pass:3 --label-regex "flaky" -T test -C slow --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
