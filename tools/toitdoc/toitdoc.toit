@@ -257,7 +257,12 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
         else:
           first-line = readme[..new-line-pos]
         if first-line.starts-with "#":
-          pkg-name = kebabify (first-line[1..].trim.to-ascii-lower)
+          start := 0
+          while start < first-line.size and first-line[start] == '#':
+            start++
+          title := first-line[start..].trim.to-ascii-lower
+          if title != "":
+            pkg-name = kebabify title
     if not pkg-name:
       ui.abort "No 'name' field found in package.yaml."
 
