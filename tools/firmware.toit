@@ -602,13 +602,18 @@ extract-cmd -> cli.Command:
         - elf: the ELF file of the executable. This is typically used
           for debugging.
         - ubjson: a UBJSON encoding of the sections of the image.
-        - qemu: a full binary image suitable for running on QEMU.
+        - image: a binary image suitable for running on QEMU,
+          Wokwi, or for flashing a device. See below.
+        - qemu: a deprecated alias for 'image'.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.
         - binary: the binary image of the firmware, which can be used for firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
         # QEMU
+        It is recommended to use the `esp32-qemu` firmware, since it includes an
+        ethernet driver that is compatible with QEMU.
+
         The generated image (say 'output.bin') can be run with the
         following command:
 
@@ -621,6 +626,16 @@ extract-cmd -> cli.Command:
 
         The '-nic' option is optional. In this example, the local port 2222 is
         forwarded to port 1234 in the QEMU image.
+
+        # Wokwi
+        After extracting the binary image, open the Wokwi editor and
+        press F1. Then type "Upload firmware and start simulation".
+
+        # Flashing
+        You can flash a binary image to the ESP32 using the `esptool` tool.
+        ```
+        esptool.py write_flash 0 output.bin
+        ```
         """
       --options=[
         cli.Option OPTION-OUTPUT
@@ -630,7 +645,7 @@ extract-cmd -> cli.Command:
             --required,
         cli.Option "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu", "tar"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "image", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
       ]
@@ -678,8 +693,10 @@ extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteA
     write-file output-path --ui=ui: it.write firmware-bin
     return
 
-  if format == "qemu":
-    write-qemu_ output-path firmware-bin envelope --ui=ui
+  if format == "qemu" or format == "image":
+    if format == "qemu":
+      ui.emit --warning "The 'qemu' format is deprecated, use 'image' instead."
+    write-image_ output-path firmware-bin envelope --ui=ui
     return
 
   if not format == "ubjson":
@@ -817,10 +834,10 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
-write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope --ui/cli.Ui -> none:
+write-image_ output-path/string firmware-bin/ByteArray envelope/Envelope --ui/cli.Ui -> none:
   flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
-      --if-absent=: throw "cannot create qemu image without 'flashing.json'"
+      --if-absent=: throw "cannot create image without 'flashing.json'"
 
   bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
   partition-table := PartitionTable.decode bundled-partitions-bin

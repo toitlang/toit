@@ -164,7 +164,7 @@ warn-if-not-one-project documents/lsp.Documents --ui/Ui -> none:
 
   if project-uris.size > 1:
     paths := project-uris.map: | it | lsp.to-path it
-    ui.emit --warning "More than one project found: $(paths.join ", ")"
+    ui.emit --warning "More than one project found: $(paths.join ", ")."
 
 eval-symlinks path/string -> string:
   parts := fs.split path

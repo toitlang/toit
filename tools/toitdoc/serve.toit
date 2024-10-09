@@ -97,7 +97,7 @@ serve docs-path/string --port/int --cli/Cli:
     if not file.is-file resource-path:
       resource-path = "$web-dir/index.html"
 
-    ui.emit --debug "Serving $resource-path"
+    ui.emit --debug "Serving $resource-path."
     content := file.read-content resource-path
     content-type := get-content-type-from-extension resource-path
     content-size := content.size
