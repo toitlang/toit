@@ -59,7 +59,6 @@ namespace toit {
   FLAG_BOOL(debug,   shrink_stacks_a_lot,   false, "Shrink stacks on every GC")     \
   FLAG_BOOL(debug,   lookup,                false, "Trace lookup")                  \
   FLAG_BOOL(debug,   allocation,            false, "Trace object allocation")       \
-  FLAG_BOOL(debug,   cheap,                 false, "Trace malloc and free")         \
   FLAG_BOOL(debug,   print_nodes,           false, "Print AST nodes")               \
   FLAG_BOOL(debug,   verbose,               false, "Mooore debug output")           \
   FLAG_BOOL(debug,   compiler,              false, "Trace compilation process")     \
