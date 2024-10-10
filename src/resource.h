@@ -78,6 +78,13 @@ class IntResource : public Resource {
 
   word id() { return id_; }
 
+ protected:
+  // Ids should never be changed, but it might sometimes be convenient to
+  // allocate the resource object before the id is known.
+  // As long as the resource object is not used for anything before the id is
+  // set, this is safe.
+  void set_id(word id) { id_ = id; }
+
  private:
   word id_;
 };
