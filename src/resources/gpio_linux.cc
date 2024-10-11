@@ -60,11 +60,11 @@ class GpioChipResource : public Resource {
   gpiod_chip* chip_;
 };
 
-class GpioPinResource : public IntResource {
+class GpioPinResource : public Resource {
  public:
   TAG(GpioPinResource);
   GpioPinResource(ResourceGroup* group, int offset)
-      : IntResource(group, -1)  // The id must be set before any use of the object.
+      : Resource(group)
       , offset_(offset){}
 
   ~GpioPinResource() override;
@@ -82,12 +82,6 @@ class GpioPinResource : public IntResource {
   void set_request(gpiod_line_request* request) { request_ = request; }
 
   Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);
-
-  int fd() { return id(); }
-  void set_fd(int new_fd) {
-    if (fd() != -1) FATAL("fd already set");
-    set_id(new_fd);
-  }
 
  private:
   int offset_ = -1;
@@ -345,11 +339,8 @@ PRIMITIVE(pin_new) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  // We allocate the resource early so that we get allocation failures before we do
-  // gpiod operation. However, as long as the fd isn't set, it is unsafe to use the
-  // object in any way.
-  auto unsafe_resource = _new GpioPinResource(group, offset);
-  if (unsafe_resource == null) FAIL(ALLOCATION_FAILED);
+  auto resource = _new GpioPinResource(group, offset);
+  if (resource == null) FAIL(ALLOCATION_FAILED);
 
   // Note that the settings are stored in the resource and thus don't need to be freed here.
   auto settings = gpiod_line_settings_new();
@@ -378,11 +369,6 @@ PRIMITIVE(pin_new) {
   if (request == null) {
     return Primitive::os_error(errno, process, "request line");
   }
-
-  int fd = gpiod_line_request_get_fd(request);
-  unsafe_resource->set_fd(fd);
-  // It's now safe to use the resource.
-  auto resource = unsafe_resource;
 
   resource->replace_settings(settings);
   resource->set_request(request);
