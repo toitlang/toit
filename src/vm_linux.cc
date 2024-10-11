@@ -21,7 +21,6 @@
 #include "vm.h"
 
 #include "event_sources/epoll_linux.h"
-#include "event_sources/gpio_linux.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/subprocess.h"
 #include "event_sources/timer.h"
@@ -38,7 +37,6 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new EpollEventSource());
   event_manager()->add_event_source(_new SubprocessEventSource());
   event_manager()->add_event_source(_new TlsEventSource());
-  event_manager()->add_event_source(_new GpioEventSource());
 }
 
 } // namespace toit
