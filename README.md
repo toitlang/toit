@@ -110,13 +110,11 @@ To build Toit and its dependencies the build host requires:
 * python-is-python3: on Ubuntu machines
 * glibc-tools: optional and only available on newer Ubuntus
 
-On Linux you also need the `libgpiod-dev` package for the GPIO library.
-
 If you are using a Linux distribution with `apt` capabilities, you can
 issue the following command to install these:
 
 ``` sh
-sudo apt install build-essential cmake ninja-build golang libgpiod-dev
+sudo apt install build-essential cmake ninja-build golang
 ```
 
 You can then build Toit by running the following commands in a checkout of this repository:
