@@ -59,7 +59,7 @@ bool read_full(int fd, uint8_t* data, word length) {
   return true;
 }
 
-EpollEventSourceBase::EpollEventSourceBase(const char* name) : EventSource(name), Thread(name) {
+bool EpollEventSourceBase::start() {
   epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd_ < 0) {
     FATAL("failed allocating epoll file descriptor: %d", errno)
@@ -80,10 +80,10 @@ EpollEventSourceBase::EpollEventSourceBase(const char* name) : EventSource(name)
     FATAL("failed to register close fd: %d\n", errno);
   }
 
-  spawn();
+  return spawn();
 }
 
-EpollEventSourceBase::~EpollEventSourceBase() {
+void EpollEventSourceBase::stop() {
   close(control_write_);
   join();
   close(epoll_fd_);
@@ -179,9 +179,14 @@ EpollEventSource* EpollEventSource::instance_ = null;
 EpollEventSource::EpollEventSource() : EpollEventSourceBase("Epoll") {
   ASSERT(instance_ == null);
   instance_ = this;
+
+  if (!start()) {
+    FATAL("failed to start epoll event source");
+  }
 }
 
 EpollEventSource::~EpollEventSource() {
+  stop();
   instance_ = null;
 }
 

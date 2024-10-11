@@ -27,8 +27,8 @@ class EpollEventSourceBase : public EventSource, public Thread {
   }
 
  protected:
-  EpollEventSourceBase(const char* name);
-  virtual ~EpollEventSourceBase();
+  EpollEventSourceBase(const char* name) : EventSource(name), Thread(name){}
+  virtual ~EpollEventSourceBase(){}
 
   /// Called when the file descriptor was removed from the epoll.
   /// This happens during unregistering of the resource, and is a good
@@ -39,10 +39,13 @@ class EpollEventSourceBase : public EventSource, public Thread {
   /// Returns the file descriptor for the given resource.
   virtual int fd_for_resource(Resource* resource) = 0;
 
- private:
   virtual void on_register_resource(Locker& locker, Resource* resource) override;
   virtual void on_unregister_resource(Locker& locker, Resource* resource) override;
 
+  bool start();
+  void stop();
+
+ private:
   void entry() override;
 
   int epoll_fd_;
