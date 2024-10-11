@@ -63,6 +63,11 @@ add_test(
   DEPENDS ${BYTECODE_LIST}
   )
 
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  # Don't run toitp tests if the optimization level is overridden.
+  set(TOITP_TESTS)
+endif()
+
 foreach(file ${TOITP_TESTS})
   get_filename_component(base ${file} NAME_WE)
   string(REGEX REPLACE "-toitp-test$" "" test_name ${base})

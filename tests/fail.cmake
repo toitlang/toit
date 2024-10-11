@@ -34,6 +34,11 @@ list(APPEND TOIT_FLAKY_TESTS
   tests/tls-resume-session-test.toit
 )
 
+list(APPEND TOIT_OPTIMIZATION_SKIP_TESTS
+  # The following tests only work with standard optimizations.
+  tests/bytes-allocated-test.toit
+)
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/time-test.toit # https://github.com/toitlang/toit/issues/1369

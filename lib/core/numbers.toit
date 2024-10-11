@@ -1746,21 +1746,21 @@ class float extends num:
   // here.
 
   equals-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float == this
 
   less-than-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float < this
 
   less-than-or-equal-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float <= this
 
   greater-than-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float > this
 
   greater-than-or-equal-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float >= this

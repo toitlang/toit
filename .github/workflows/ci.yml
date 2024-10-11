@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  schedule:
+    - cron: '00 2 * * *' # 02:00 UTC
+    - cron: '30 2 * * *'
+    - cron: '00 3 * * *'
   push:
     branches-ignore:
       - "wip/**"
@@ -47,6 +51,11 @@ on:
         required: false
         type: boolean
         default: true
+      test-more:
+        description: "Run more tests"
+        required: false
+        type: boolean
+        default: false
       run-esp32-flow:
         description: "Run the ESP32 flow"
         required: false
@@ -61,6 +70,7 @@ on:
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
+  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' }}
 
 jobs:
   prereqs:
@@ -180,19 +190,25 @@ jobs:
         # compute the version from git.
         run: |
           make sdk
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            make HOST=host32 BUILD_TYPE=Debug sdk
-            make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
-          fi
 
       - name: Ccache stats
         run: ccache -s
 
-      # Build 64-bit debug if we are comitting to master.
-      - name: Build 64-bit debug
-        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - name: Build test SDKS - Linux only
+        if: env.DO_MORE_TESTS && runner.os == 'Linux'
+        run: |
+          make HOST=host32 BUILD_TYPE=Debug sdk
+          make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
+
+      - name: Build test SDKS
+        shell: bash
+        if: env.DO_MORE_TESTS
         run: |
           make BUILD=build-debug BUILD_TYPE=Debug sdk
+          # It's wasteful to rebuild the SDK just to change the optimization level and assert, but
+          # it's the easiest way to make sure all tests are run in that configuration.
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host sdk
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host sdk
 
       - name: Ccache stats
         run: ccache -s
@@ -239,19 +255,35 @@ jobs:
           echo success > ${{ steps.constants.outputs.flaky_result }}
 
       - name: Test type propagator
-        if: ${{ runner.os == 'Linux' && github.event.inputs.run-tests != 'false' }}
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
           make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 test
 
       - name: Test 32-bit debug
-        if: ${{ runner.os == 'Linux' && github.event.inputs.run-tests != 'false' }}
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
 
       - name: Test 64-bit debug
-        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        shell: bash
+        # TODO(florian): fix Windows.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
         run: |
           make BUILD=build-debug BUILD_TYPE=Debug test
+
+      - name: Test -O0 no asserts
+        shell: bash
+        # TODO(florian): Windows is currently too flaky with -O0.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host test
+
+      - name: Test -O2 with asserts
+        shell: bash
+        # TODO(florian): fix Windows.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host test
 
       - name: Test install
         if : matrix.shard == 1

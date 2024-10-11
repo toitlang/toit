@@ -80,8 +80,18 @@ endforeach()
 
 include(fail.cmake OPTIONAL)
 
+set(OPTIMIZATION_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATION_IS_OVERRIDDEN TRUE)
+endif()
+
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
+  if(OPTIMIZATION_IS_OVERRIDDEN AND "${file}" IN_LIST TOIT_OPTIMIZATION_SKIP_TESTS)
+    message("Skipping ${file} as optimization is overridden")
     continue()
   endif()
 
