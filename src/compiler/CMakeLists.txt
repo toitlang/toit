@@ -38,6 +38,17 @@ set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OP
 set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(propagation/type_stack.cc PROPERTIES COMPILE_OPTIONS "-O3")
 
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  # Use the optimization level from the environment and pass it in as define.
+  message("OVERRIDING OPTIMIZATION LEVEL")
+  target_compile_definitions(toit_compiler PRIVATE TOIT_OPTIMIZATION_OVERRIDE=$ENV{TOIT_OPTIMIZATION_OVERRIDE})
+endif()
+if (DEFINED ENV{TOIT_ASSERT_OVERRIDE})
+  # Use the optimization level from the environment and pass it in as define.
+  message("OVERRIDING ENABLE-ASSERT")
+  target_compile_definitions(toit_compiler PRIVATE TOIT_ASSERT_OVERRIDE=$ENV{TOIT_ASSERT_OVERRIDE})
+endif()
+
 if (${TOIT_IS_CROSS})
   set(TOIT_COMPILER_STATIC -static)
 endif()

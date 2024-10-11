@@ -4250,6 +4250,19 @@ ir::Expression* MethodResolver::_binary_operator(ast::Binary* node,
                                      CallShape::for_instance_call_no_named(right_args),
                                      right_args,
                                      node->selection_range());
+
+  ASSERT(INVOKE_GTE - INVOKE_EQ == 4);  // ==, <, <=, >, >=
+  // It is critical that we go through the EQ opcode, as it tests for identity and
+  // null. This must happen even if we have optimizations disabled.
+  // Similarly, we must go through the comparison opcodes, as they handle complicate
+  // corner cases that the source code doesn't.
+  for (int i = INVOKE_EQ; i <= INVOKE_GTE; i++) {
+    Opcode opcode = static_cast<Opcode>(i);
+    if (Symbol::for_invoke(opcode) == op) {
+      result->set_opcode(opcode);
+      break;
+    }
+  }
   if (inverted) return _new ir::Not(result, node->selection_range());
   return result;
 }
