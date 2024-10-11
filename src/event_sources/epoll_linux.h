@@ -37,12 +37,18 @@ class EpollEventSource : public EventSource, public Thread {
   }
 
  protected:
+  // The default implementation closes the file descriptor.
   virtual void on_removed(int fd);
+  // The default implementation uses `find_resource_by_id`, assuming that
+  // resources are `IntResource` instances.
   virtual Resource* find_resource_for_fd(Locker& locker, int fd);
+  // The default implementation assumes the resource is an `IntResource` and
+  // returns its id.
+  virtual int fd_for_resource(Resource* resource);
 
  private:
-  virtual void on_register_resource(Locker& locker, Resource* r) override;
-  virtual void on_unregister_resource(Locker& locker, Resource* r) override;
+  virtual void on_register_resource(Locker& locker, Resource* resource) override;
+  virtual void on_unregister_resource(Locker& locker, Resource* resource) override;
 
   void entry() override;
 

@@ -93,9 +93,8 @@ EpollEventSource::~EpollEventSource() {
 }
 
 
-void EpollEventSource::on_register_resource(Locker& locker, Resource* r) {
-  auto resource = static_cast<IntResource*>(r);
-  uint64_t cmd = resource->id();
+void EpollEventSource::on_register_resource(Locker& locker, Resource* resource) {
+  uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kAdd;
   if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
@@ -103,9 +102,8 @@ void EpollEventSource::on_register_resource(Locker& locker, Resource* r) {
   }
 }
 
-void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  auto resource = static_cast<IntResource*>(r);
-  uint64_t cmd = resource->id();
+void EpollEventSource::on_unregister_resource(Locker& locker, Resource* resource) {
+  uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kRemove;
   if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
@@ -119,6 +117,10 @@ void EpollEventSource::on_removed(int fd) {
 
 Resource* EpollEventSource::find_resource_for_fd(Locker& locker, int fd) {
   return find_resource_by_id(locker, fd);
+}
+
+int EpollEventSource::fd_for_resource(Resource* r) {
+  return static_cast<IntResource*>(r)->id();
 }
 
 void EpollEventSource::entry() {
