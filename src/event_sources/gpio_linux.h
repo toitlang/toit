@@ -16,9 +16,9 @@
 #pragma once
 
 #include "./epoll_linux.h"
-#include "../list.h"
-#include "../resource.h"
+#include "../linked.h"
 #include "../os.h"
+#include "../resource.h"
 
 struct gpiod_line_request;
 
@@ -26,9 +26,13 @@ namespace toit {
 
 class GpioEventSource : public EpollEventSourceBase {
  public:
-  explicit GpioEventSource() : EpollEventSourceBase("Gpio") {}
+  static GpioEventSource* instance() { return instance_; }
+
+  explicit GpioEventSource() : EpollEventSourceBase("Gpio") {
+    instance_ = this;
+  }
   ~GpioEventSource() override {
-    ASSERT(requests_list.is_empty());
+    ASSERT(unregistered_requests_list_.is_empty());
   }
 
  protected:
@@ -38,22 +42,21 @@ class GpioEventSource : public EpollEventSourceBase {
   int fd_for_resource(Resource* r) override;
 
  private:
+  static GpioEventSource* instance_;
+
   class RequestElement;
-
   typedef LinkedList<RequestElement> EventRequestList;
-
   class RequestElement : public EventRequestList::Element {
-  public:
+   public:
     RequestElement(int fd, gpiod_line_request* request)
         : fd(fd)
         , request(request) {}
 
-  private:
     int fd;
     gpiod_line_request* request;
   };
 
-  EventRequestList requests_list;
+  EventRequestList unregistered_requests_list_;
 };
 
 } // namespace toit
