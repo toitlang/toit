@@ -45,6 +45,9 @@ class GpioPinResource : public Resource {
 
   Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);
 
+  void delete_or_mark_for_deletion() override;
+  void removed_from_event_source();
+
   int fd() const {
     ASSERT(fd_ != -1);
     return fd_;
@@ -54,11 +57,32 @@ class GpioPinResource : public Resource {
     fd_ = fd;
   }
 
+  uint64 last_edge_detection_timestamp() const { return last_edge_detection_timestamp_; }
+  void set_last_edge_detection_timestamp(uint64 timestamp) {
+    last_edge_detection_timestamp_ = timestamp;
+  }
+
+  gpiod_edge_event_buffer* event_buffer() { return event_buffer_; }
+  void set_event_buffer(gpiod_edge_event_buffer* event_buffer) {
+    event_buffer_ = event_buffer;
+  }
+
  private:
+  static Mutex* mutex_;
+
+  enum TeardownState {
+    ALIVE,
+    REMOVED,
+    DELETED,
+  };
+
   int offset_ = -1;
   int fd_ = -1;
+  uint64 last_edge_detection_timestamp_ = 0;
   gpiod_line_settings* settings_ = null;
   gpiod_line_request* request_ = null;
+  gpiod_edge_event_buffer* event_buffer_ = null;
+  TeardownState teardown_state_ = ALIVE;
 };
 
 } // namespace toit

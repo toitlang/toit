@@ -36,13 +36,20 @@
 
 namespace toit {
 
+enum GpioState {
+  GPIO_STATE_EDGE_TRIGGERED = 1,
+};
+
 class GpioResourceGroup : public ResourceGroup {
  public:
   TAG(GpioResourceGroup);
   explicit GpioResourceGroup(Process* process)
     : ResourceGroup(process, GpioEventSource::instance()){}
 
-  // TODO(florian): implement event handling.
+ private:
+  virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
+    return state | GPIO_STATE_EDGE_TRIGGERED;
+  }
 };
 
 class GpioChipResource : public Resource {
@@ -121,12 +128,15 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
   gpiod_line_settings_set_output_value(settings, output_value);
 }
 
+Mutex* GpioPinResource::mutex_ = OS::allocate_mutex(30, "GpioPinResource");
+
 GpioPinResource::~GpioPinResource() {
   if (settings_ != null) {
     fill_settings(settings_, false, false, true, false, false, 0);
     apply_and_store_settings(settings_, null);
     gpiod_line_settings_free(settings_);
   }
+  if (event_buffer_ != null) gpiod_edge_event_buffer_free(event_buffer_);
   if (request_ != null) gpiod_line_request_release(request_);
 }
 
@@ -157,6 +167,24 @@ Object* GpioPinResource::apply_and_store_settings(gpiod_line_settings* settings,
   }
   replace_settings(settings);
   return null;
+}
+
+void GpioPinResource::delete_or_mark_for_deletion() {
+  Locker locker(mutex_);
+  if (teardown_state_ == REMOVED) {
+    delete this;
+  } else {
+    teardown_state_ = DELETED;
+  }
+}
+
+void GpioPinResource::removed_from_event_source() {
+  Locker locker(mutex_);
+  if (teardown_state_ == DELETED) {
+    delete this;
+  } else {
+    teardown_state_ = REMOVED;
+  }
 }
 
 MODULE_IMPLEMENTATION(gpio_linux, MODULE_GPIO_LINUX);
@@ -431,6 +459,61 @@ PRIMITIVE(pin_set_open_drain) {
 
   return process->null_object();
 }
+
+PRIMITIVE(pin_config_edge_detection) {
+  ARGS(GpioPinResource, pin, bool, enable)
+
+  auto settings = pin->settings();
+  if (settings == null) FAIL(INVALID_ARGUMENT);
+
+  gpiod_line_settings_set_edge_detection(settings, enable ? GPIOD_LINE_EDGE_BOTH : GPIOD_LINE_EDGE_NONE);
+
+  Object* error = pin->apply_and_store_settings(settings, process);
+  if (error != null) return error;
+
+  return process->null_object();
+}
+
+PRIMITIVE(pin_last_edge_trigger_timestamp) {
+  ARGS(GpioPinResource, pin)
+  return Primitive::integer(pin->last_edge_detection_timestamp(), process);
+}
+
+PRIMITIVE(pin_consume_edge_events) {
+  ARGS(GpioPinResource, pin)
+
+  if (pin->event_buffer() == null) {
+    auto event_buffer = gpiod_edge_event_buffer_new(10);
+    if (event_buffer == null) FAIL(ALLOCATION_FAILED);
+    pin->set_event_buffer(event_buffer);
+  }
+
+  auto request = pin->request();
+  auto event_buffer = pin->event_buffer();
+
+  while (true) {
+    int ret = gpiod_line_request_wait_edge_events(request, 0);
+    if (ret == -1) {
+      return Primitive::os_error(errno, process, "wait for edge events");
+    }
+    if (ret == 0) break;
+    // There is an event queued.
+    int number_events = gpiod_line_request_read_edge_events(request, event_buffer, 1);
+    if (ret == -1) {
+      return Primitive::os_error(errno, process, "read edge events");
+    }
+    for (int i = 0; i < number_events; i++) {
+      auto event = gpiod_edge_event_buffer_get_event(event_buffer, i);
+      auto timestamp = gpiod_edge_event_get_timestamp_ns(event);
+      if (timestamp > pin->last_edge_detection_timestamp()) {
+        pin->set_last_edge_detection_timestamp(timestamp);
+      }
+    }
+  }
+
+  return process->null_object();
+}
+
 
 }  // namespace toit
 

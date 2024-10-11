@@ -27,22 +27,45 @@
 
 namespace toit {
 
-void GpioEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  auto resource = static_cast<GpioPinResource*>(r);
-  auto element = _new RequestElement(resource->fd(), resource->request());
-  if (element == null) {
-    // On Linux this should never happen.
-    FATAL("Failed to allocate RequestElement");
+GpioEventSource* GpioEventSource::instance_ = null;
+
+GpioEventSource::GpioEventSource() : EpollEventSourceBase("Gpio") {
+  ASSERT(instance_ == null);
+  instance_ = this;
+}
+GpioEventSource::~GpioEventSource() {
+  ASSERT(unregistered_resources_.is_empty());
+  if (started_) stop();
+  instance_ = null;
+}
+
+void GpioEventSource::on_register_resource(Locker& locker, Resource* r) {
+  if (!started_) {
+    started_ = true;
+    if (!start()) {
+      FATAL("Failed to start GpioEventSource");
+    }
   }
-  unregistered_requests_list_.append(element);
+  EpollEventSourceBase::on_register_resource(locker, r);
+}
+
+void GpioEventSource::on_unregister_resource(Locker& locker, Resource* r) {
+  // At this point the resource is already unlinked from the event-source's
+  // resource list.
+  ASSERT(!is_linked_resource(r));
+  // Link it into the unregistered list. This way the gpio-thread can find
+  // the resource when it is removed.
+  unregistered_resources_.append(r);
   EpollEventSourceBase::on_unregister_resource(locker, r);
 }
 
 void GpioEventSource::on_removed(int fd) {
-  for (auto it : unregistered_requests_list_) {
-    if (it->fd == fd) {
-      unregistered_requests_list_.remove(it);
-      gpiod_line_request_release(it->request);
+  Locker locker(mutex());
+  for (auto it : unregistered_resources_) {
+    auto resource = static_cast<GpioPinResource*>(it);
+    if (resource->fd() == fd) {
+      unregistered_resources_.unlink(it);
+      resource->removed_from_event_source();
       return;
     }
   }
