@@ -114,7 +114,6 @@ template<typename T> static void free_array(T* array, int count) {
 }
 
 static List<char*> find_all_chips() {
-  printf("List chips\n");
   struct dirent** entries;
   int num_chips = scandir("/dev/", &entries, chip_filter, versionsort);
   if (num_chips < 0) return List<char*>();
