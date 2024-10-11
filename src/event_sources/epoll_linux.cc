@@ -59,10 +59,7 @@ bool read_full(int fd, uint8_t* data, word length) {
   return true;
 }
 
-EpollEventSource* EpollEventSource::instance_ = null;
-
-EpollEventSource::EpollEventSource() : EventSource("Epoll")
-    , Thread("Epoll") {
+EpollEventSourceBase::EpollEventSourceBase(const char* name) : EventSource(name), Thread(name) {
   epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd_ < 0) {
     FATAL("failed allocating epoll file descriptor: %d", errno)
@@ -86,14 +83,14 @@ EpollEventSource::EpollEventSource() : EventSource("Epoll")
   spawn();
 }
 
-EpollEventSource::~EpollEventSource() {
+EpollEventSourceBase::~EpollEventSourceBase() {
   close(control_write_);
   join();
   close(epoll_fd_);
 }
 
 
-void EpollEventSource::on_register_resource(Locker& locker, Resource* resource) {
+void EpollEventSourceBase::on_register_resource(Locker& locker, Resource* resource) {
   uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kAdd;
@@ -102,7 +99,7 @@ void EpollEventSource::on_register_resource(Locker& locker, Resource* resource) 
   }
 }
 
-void EpollEventSource::on_unregister_resource(Locker& locker, Resource* resource) {
+void EpollEventSourceBase::on_unregister_resource(Locker& locker, Resource* resource) {
   uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kRemove;
@@ -111,19 +108,7 @@ void EpollEventSource::on_unregister_resource(Locker& locker, Resource* resource
   }
 }
 
-void EpollEventSource::on_removed(int fd) {
-  close(fd);
-}
-
-Resource* EpollEventSource::find_resource_for_fd(Locker& locker, int fd) {
-  return find_resource_by_id(locker, fd);
-}
-
-int EpollEventSource::fd_for_resource(Resource* r) {
-  return static_cast<IntResource*>(r)->id();
-}
-
-void EpollEventSource::entry() {
+void EpollEventSourceBase::entry() {
   while (true) {
     epoll_event event;
     int ready = epoll_wait(epoll_fd_, &event, 1, -1);
@@ -187,6 +172,29 @@ void EpollEventSource::entry() {
         break;
     }
   }
+}
+
+EpollEventSource* EpollEventSource::instance_ = null;
+
+EpollEventSource::EpollEventSource() : EpollEventSourceBase("Epoll") {
+  ASSERT(instance_ == null);
+  instance_ = this;
+}
+
+EpollEventSource::~EpollEventSource() {
+  instance_ = null;
+}
+
+void EpollEventSource::on_removed(int fd) {
+  close(fd);
+}
+
+Resource* EpollEventSource::find_resource_for_fd(Locker& locker, int fd) {
+  return find_resource_by_id(locker, fd);
+}
+
+int EpollEventSource::fd_for_resource(Resource* r) {
+  return static_cast<IntResource*>(r)->id();
 }
 
 } // namespace toit

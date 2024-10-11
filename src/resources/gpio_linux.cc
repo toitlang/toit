@@ -22,6 +22,7 @@
 #include <gpiod.h>
 #include <sys/stat.h>
 
+#include "./gpio_linux.h"
 #include "../objects_inline.h"
 #include "../os.h"
 #include "../primitive.h"
@@ -31,7 +32,7 @@
 #include "../utils.h"
 #include "../vm.h"
 
-#include "../event_sources/epoll_linux.h"
+#include "../event_sources/gpio_linux.h"
 
 namespace toit {
 
@@ -39,8 +40,9 @@ class GpioResourceGroup : public ResourceGroup {
  public:
   TAG(GpioResourceGroup);
   explicit GpioResourceGroup(Process* process)
-      : ResourceGroup(process){}
-  // TODO(florian): add event handling for the pin's file descriptors.
+    : ResourceGroup(process, GpioEventSource::instance()){}
+
+  // TODO(florian): implement event handling.
 };
 
 class GpioChipResource : public Resource {
@@ -58,41 +60,6 @@ class GpioChipResource : public Resource {
 
  private:
   gpiod_chip* chip_;
-};
-
-class GpioPinResource : public IntResource {
- public:
-  TAG(GpioPinResource);
-  GpioPinResource(ResourceGroup* group, int offset)
-      : IntResource(group, -1)  // The id must be set before any use of the object.
-      , offset_(offset){}
-
-  ~GpioPinResource() override;
-
-  int offset() { return offset_; }
-
-  gpiod_line_settings* settings() { return settings_; }
-  void replace_settings(gpiod_line_settings* settings) {
-    if (settings == settings_) return;
-    if (settings_ != null) gpiod_line_settings_free(settings_);
-    settings_ = settings;
-  }
-
-  gpiod_line_request* request() { return request_; }
-  void set_request(gpiod_line_request* request) { request_ = request; }
-
-  Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);
-
-  int fd() { return id(); }
-  void set_fd(int new_fd) {
-    if (fd() != -1) FATAL("fd already set");
-    set_id(new_fd);
-  }
-
- private:
-  int offset_ = -1;
-  gpiod_line_settings* settings_ = null;
-  gpiod_line_request* request_ = null;
 };
 
 static int chip_filter(const struct dirent* entry) {
@@ -154,7 +121,6 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
   gpiod_line_settings_set_output_value(settings, output_value);
 }
 
-
 GpioPinResource::~GpioPinResource() {
   if (settings_ != null) {
     fill_settings(settings_, false, false, true, false, false, 0);
@@ -163,6 +129,12 @@ GpioPinResource::~GpioPinResource() {
   }
   if (request_ != null) gpiod_line_request_release(request_);
 }
+
+void GpioPinResource::replace_settings(gpiod_line_settings* settings) {
+    if (settings == settings_) return;
+    if (settings_ != null) gpiod_line_settings_free(settings_);
+    settings_ = settings;
+  }
 
 Object* GpioPinResource::apply_and_store_settings(gpiod_line_settings* settings, Process* process) {
   auto config = gpiod_line_config_new();
@@ -345,9 +317,9 @@ PRIMITIVE(pin_new) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  // We allocate the resource early so that we get allocation failures before we do
-  // gpiod operation. However, as long as the fd isn't set, it is unsafe to use the
-  // object in any way.
+  // We allocate the resource as early as possible, as the allocation might fail.
+  // However, at this point we don't have the file descriptor yet and the resource
+  // is not safe to use.
   auto unsafe_resource = _new GpioPinResource(group, offset);
   if (unsafe_resource == null) FAIL(ALLOCATION_FAILED);
 
@@ -379,8 +351,7 @@ PRIMITIVE(pin_new) {
     return Primitive::os_error(errno, process, "request line");
   }
 
-  int fd = gpiod_line_request_get_fd(request);
-  unsafe_resource->set_fd(fd);
+  unsafe_resource->set_fd(gpiod_line_request_get_fd(request));
   // It's now safe to use the resource.
   auto resource = unsafe_resource;
 
