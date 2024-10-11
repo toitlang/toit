@@ -22,7 +22,12 @@ namespace toit {
 
 class EpollEventSource : public EventSource, public Thread {
  public:
-  static EpollEventSource* instance() { return instance_; }
+  static EpollEventSource* instance() {
+    if (instance_ == null) {
+      instance_ = _new EpollEventSource();
+    }
+    return instance_;
+  }
 
   EpollEventSource();
   ~EpollEventSource();
@@ -30,6 +35,10 @@ class EpollEventSource : public EventSource, public Thread {
   bool is_control_fd(int fd) const {
     return fd == control_read_ || fd == control_write_;
   }
+
+ protected:
+  virtual void on_removed(int fd);
+  virtual Resource* find_resource_for_fd(Locker& locker, int fd);
 
  private:
   virtual void on_register_resource(Locker& locker, Resource* r) override;

@@ -63,9 +63,6 @@ EpollEventSource* EpollEventSource::instance_ = null;
 
 EpollEventSource::EpollEventSource() : EventSource("Epoll")
     , Thread("Epoll") {
-  ASSERT(instance_ == null);
-  instance_ = this;
-
   epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd_ < 0) {
     FATAL("failed allocating epoll file descriptor: %d", errno)
@@ -93,8 +90,6 @@ EpollEventSource::~EpollEventSource() {
   close(control_write_);
   join();
   close(epoll_fd_);
-
-  instance_ = null;
 }
 
 
@@ -116,6 +111,14 @@ void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
     FATAL("failed to send 0x%llx to epoll: %d", cmd, errno);
   }
+}
+
+void EpollEventSource::on_removed(int fd) {
+  close(fd);
+}
+
+Resource* EpollEventSource::find_resource_for_fd(Locker& locker, int fd) {
+  return find_resource_by_id(locker, fd);
 }
 
 void EpollEventSource::entry() {
@@ -151,7 +154,7 @@ void EpollEventSource::entry() {
                 if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, id, null) == -1) {
                   FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
-                close(id);
+                on_removed(id);
               }
               break;
           }
@@ -160,7 +163,7 @@ void EpollEventSource::entry() {
         }
 
         Locker locker(mutex());
-        Resource* r = find_resource_by_id(locker, event.data.fd);
+        Resource* r = find_resource_for_fd(locker, event.data.fd);
         if (r != null) dispatch(locker, r, event.events);
         break;
       }
@@ -183,8 +186,6 @@ void EpollEventSource::entry() {
     }
   }
 }
-
-
 
 } // namespace toit
 

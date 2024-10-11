@@ -78,6 +78,13 @@ class IntResource : public Resource {
 
   word id() { return id_; }
 
+ protected:
+  // Ids should never be changed, but it might sometimes be convenient to
+  // allocate the resource object before the id is known.
+  // As long as the resource object is not used for anything before the id is
+  // set, this is safe.
+  void set_id(word id) { id_ = id; }
+
  private:
   word id_;
 };
@@ -257,6 +264,8 @@ class EventSource : public EventSourceList::Element {
 
   // Only for EventSources that use the IntResource subclass.
   IntResource* find_resource_by_id(const Locker& locker, word id);
+
+  Resource* find_resource(const std::function<bool(Resource*)>& predicate);
 
  private:
   void try_notify(Resource* r, const Locker& locker, bool force = false);
