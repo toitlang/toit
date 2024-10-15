@@ -613,10 +613,12 @@ class PinLinux_ extends Pin:
     add-finalizer this:: close
 
   close -> none:
-    if resource_:
-      resource := resource_
-      resource_ = null
+    if not resource_: return
+    critical-do:
       try:
+        state_.dispose
+        resource := resource_
+        resource_ = null
         gpio-linux-pin-close_ resource
       finally:
         remove-finalizer this
