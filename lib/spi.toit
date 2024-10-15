@@ -128,12 +128,24 @@ interface Device extends serial.Device:
 
   This function is only available on Linux.
 
+  The given $frequency is only aspirational, and the actual frequency might
+    be different. For example, the Raspberry Pi only supports a frequency range of
+    3.814 kHz to 125 MHz. If the given $frequency is outside this range, it will be
+    silently clamped to the nearest valid value.
+
   The $mode parameter configures the clock polarity and phase (CPOL and CPHA) for this device.
   The possible configurations are:
   - 0 (0b00): CPOL=0, CPHA=0
   - 1 (0b01): CPOL=0, CPHA=1
   - 2 (0b10): CPOL=1, CPHA=0
   - 3 (0b11): CPOL=1, CPHA=1
+
+  # Pin numbers
+  This constructor does not take any pin numbers. The pins are
+    tied to the path, and configured outside. On the Raspberry Pi,
+    look at `/boot/overlays/README` for more information. There, you
+    can find options to move the SPI block, or to change/disable the
+    chip select pins.
   */
   constructor --path/string --frequency/int --mode/int=0:
     return DevicePath_ --path=path --frequency=frequency --mode=mode
