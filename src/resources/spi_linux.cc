@@ -197,6 +197,7 @@ PRIMITIVE(init) {
 PRIMITIVE(open) {
   ARGS(SpiResourceGroup, group, cstring, pathname, int, frequency, int, mode);
   if (frequency <= 0) FAIL(INVALID_ARGUMENT);
+  if (mode < 0 || mode > 3) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -210,13 +211,21 @@ PRIMITIVE(open) {
   // File descriptors that are intended for subprocesses have the flags cleared.
   int fd = open(pathname, O_CLOEXEC | O_RDWR);
   if (fd < 0) return return_open_error(process, errno);
-  int result = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &frequency);
-  if (result < 0) {
+  int ret = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &frequency);
+  if (ret < 0) {
     close(fd);
     return Primitive::os_error(errno, process);
   }
-  result = ioctl(fd, SPI_IOC_WR_MODE, &mode);
-  if (result < 0) {
+  uint8 mode_byte;
+  switch (mode) {
+    case 0: mode_byte = SPI_MODE_0; break;
+    case 1: mode_byte = SPI_MODE_1; break;
+    case 2: mode_byte = SPI_MODE_2; break;
+    case 3: mode_byte = SPI_MODE_3; break;
+    default: UNREACHABLE();
+  }
+  ret = ioctl(fd, SPI_IOC_WR_MODE, &mode_byte);
+  if (ret < 0) {
     close(fd);
     return Primitive::os_error(errno, process);
   }
