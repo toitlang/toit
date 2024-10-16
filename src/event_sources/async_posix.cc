@@ -38,6 +38,7 @@ void AsyncEventThread::stop() {
       cancel();
     }
     state_ = STOPPED;
+    OS::signal(queue_cond_);
   }
   join();
 }
