@@ -46,6 +46,7 @@ namespace toit {
   fn(GpioPinResource)                   \
   fn(GpioChipResource)                  \
   fn(I2sResource)                       \
+  fn(SpiResource)                       \
   fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
