@@ -145,7 +145,7 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
   // Also, the chip select line would be asserted between multiple transfers of the same message.
   // Since Toit only supports one transfer per message (`SPIO_IOC_MESSAGE(1)` below), only the
   // first part of the statement is relevant.
-  xfer->cs_change = cs_change ? 0x01 : 0x00;
+  xfer->cs_change = keep_cs_active ? 0x01 : 0x00;
 
   if (thread_ == null) {
     thread_ = _new AsyncEventThread("SPI", SpiEventSource::instance());
