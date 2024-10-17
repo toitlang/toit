@@ -178,10 +178,24 @@ interface Device extends serial.Device:
       --keep-cs-active/bool=false
 
   /**
+  Writes the $bytes to the device.
+
+  If $keep-cs-active is true, then the chip select pin is kept active
+    after the transfer. This functionality is only allowed when the
+    bus is reserved for this device. See $with-reserved-bus.
+  */
+  write bytes/ByteArray --keep-cs-active/bool=false -> none
+
+  /**
   Reserves the bus for this device while executing the given $block.
 
-  Starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
+  If the system supports it, actively reserves the bus for this device. In that case,
+    starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
     the bus before returning.
+
+  On some systems, like Linux, it is not possible to reserve the bus. In that case, the
+    programmer is responsible for managing the bus. This function then simply
+    calls the given $block.
 
   Reserving the bus can be useful in two contexts:
   1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
@@ -213,8 +227,8 @@ abstract class DeviceBase_ implements Device:
     return bytes
 
   /** See $serial.Device.write. */
-  write bytes/ByteArray:
-    transfer bytes
+  write bytes/ByteArray --keep-cs-active/bool=false:
+    transfer bytes --keep-cs-active=keep-cs-active
 
   abstract close
 
@@ -281,6 +295,9 @@ class DevicePath_ extends DeviceBase_:
 
   resource_/ByteArray? := null
   state_/monitor.ResourceState_?
+  // We can't enforce that the bus is enforced, but the `keep-cs-active` is only
+  // allowed if the bus is reserved.
+  reserved_/bool := false
 
   constructor --path/string --frequency/int --mode/int:
     resource_ = spi-linux-open_ resource-group_ path frequency mode
@@ -307,10 +324,11 @@ class DevicePath_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
+    if keep-cs-active and not reserved_: throw "INVALID_ARGUMENT"
     state_.clear-state TRANSFER-DONE_
     length := to - from
     delay_us := 0
-    done := spi-linux-transfer-start_ resource_ data from length read delay_us true
+    done := spi-linux-transfer-start_ resource_ data from length read delay_us keep-cs-active
     in/ByteArray? := null
     // There is no way to interrupt a started spi transfer. We have to wait for it to finish.
     critical-do:
@@ -325,7 +343,12 @@ class DevicePath_ extends DeviceBase_:
 
 
   with-reserved-bus [block]:
-    throw "UNIMPLEMENTED"
+    if reserved_: throw "INVALID_STATE"
+    try:
+      reserved_ = true
+      block.call
+    finally:
+      reserved_ = false
 
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
@@ -414,7 +437,7 @@ spi-linux-init_:
 spi-linux-open_ group/ByteArray path/string frequency/int mode/int:
   #primitive.spi_linux.open
 
-spi-linux-transfer-start_ resource/ByteArray data/ByteArray from/int length/int is-read/bool delay_usecs/int cs-change/bool:
+spi-linux-transfer-start_ resource/ByteArray data/ByteArray from/int length/int is-read/bool delay_usecs/int keep-cs-active/bool:
   #primitive.spi_linux.transfer-start
 
 spi-linux-transfer-finish_ resource/ByteArray was-read/bool:
