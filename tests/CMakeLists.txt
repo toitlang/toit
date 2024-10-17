@@ -22,7 +22,7 @@ file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-compiler.t
 set(ALL_TESTS ${TOIT_TESTS} ${TOIT_SLOW_TESTS} ${TOIT_FORCE_TESTS} ${TOIT_NO_BOOT_TESTS} ${TOIT_COMPILER_TESTS})
 
 toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
-toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/esp32")
+toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/hw/esp32")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
