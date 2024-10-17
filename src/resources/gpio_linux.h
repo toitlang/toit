@@ -67,6 +67,9 @@ class GpioPinResource : public Resource {
     event_buffer_ = event_buffer;
   }
 
+  int get_out_value() const { return out_value_; }
+  void set_out_value(int value) { out_value_ = value; }
+
  private:
   static Mutex* mutex_;
 
@@ -83,6 +86,7 @@ class GpioPinResource : public Resource {
   gpiod_line_request* request_ = null;
   gpiod_edge_event_buffer* event_buffer_ = null;
   TeardownState teardown_state_ = ALIVE;
+  int out_value_ = 0;
 };
 
 } // namespace toit
