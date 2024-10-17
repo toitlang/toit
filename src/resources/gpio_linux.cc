@@ -136,6 +136,7 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
                           bool input, bool output, bool open_drain, int initial_value) {
   if (pull_up) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_UP);
   if (pull_down) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_DOWN);
+  if (input && !pull_up && !pull_down) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_DISABLED);
   if (input) gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
   if (output) gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
   if (open_drain) {
