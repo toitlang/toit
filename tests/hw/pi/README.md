@@ -17,8 +17,10 @@ SPI use the first SPI interface:
 - CS0 to SPI_MEASURE_CS.
 
 - GPIO_TEST to GPIO_LEVEL with a 330 Ohm (or any other 220-500) resistor.
-- GPIO_TEST to GPIO_MEASURE.
+- GPIO_TEST to GPIO_MEASURE, optionally with a 330 Ohm resistor (to avoid short circuits).
 - GPIO_TEST to GND with 1M Ohm resistor (or something similarly high).
+- GPIO_PIN1 is an alias for GPIO_TEST.
+- GPIO_PIN2 is an alias for GPIO_MEASURE.
 
 ### Sample configurations
 
@@ -29,3 +31,5 @@ Raspberry Pi v2 (https://www.raspberrypi.com/documentation/computers/images/GPIO
 - GPIO_LEVEL: GPIO17
 - GPIO_MEASURE: GPIO27
 - GPIO_TEST: GPIO22
+- GPIO_PIN1: GPIO27
+- GPIO_PIN2: GPIO22
