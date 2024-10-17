@@ -15,6 +15,7 @@ main:
   test --cpol=0 --cpha=1
   test --cpol=1 --cpha=0
   test --cpol=1 --cpha=1
+  print "ALL TESTS PASSED"
 
 test --cpol/int --cpha/int:
   mode := cpol << 1 | cpha
