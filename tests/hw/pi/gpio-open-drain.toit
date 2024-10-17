@@ -5,25 +5,23 @@
 /**
 Tests changing the open-drain setting of gpio pins.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm (or any other 300-1K) resistor.
-Connect pin 18 to pin 34.
-Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
+Setup: see the shared file.
 */
 
 import gpio
+import host.os
 import expect show *
 
 import ..shared.gpio-open-drain
 
-TEST-PIN ::= 18
-LEVEL-PIN ::= 19
-MEASURE-PIN ::= 34
-
 main:
-  measure-pin := gpio.Pin MEASURE-PIN --input
-  test-pin := gpio.Pin TEST-PIN --output
-  level-pin := gpio.Pin LEVEL-PIN  // Will be reconfigured.
+  TEST-NAME ::= os.env.get "GPIO_TEST"
+  LEVEL-NAME ::= os.env.get "GPIO_LEVEL"
+  MEASURE-NAME ::= os.env.get "GPIO_MEASURE"
+
+  measure-pin := gpio.Pin.linux --name=MEASURE_NAME --input
+  test-pin := gpio.Pin.linux --name=TEST-NAME --output
+  level-pin := gpio.Pin.linux --name=LEVEL_NAME  // Will be reconfigured.
   try:
     test-gpio
         --test-pin=test-pin

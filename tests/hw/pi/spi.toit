@@ -21,16 +21,16 @@ test --cpol/int --cpha/int:
   mode := cpol << 1 | cpha
   device := spi.Device --path="/dev/spidev0.0" --frequency=FREQUENCY --mode=mode
 
-  PIN1-NAME ::= os.env.get "PIN1"
-  PIN2-NAME ::= os.env.get "PIN2"
-  PIN3-NAME ::= os.env.get "PIN3"
-  if not PIN1-NAME or not PIN2-NAME or not PIN3-NAME:
-    print "PIN1, PIN2, or PIN3 environment variable not set"
+  MEASURE_MOSI ::= os.env.get "SPI_MEASURE_MOSI"
+  MEASURE_SCLK ::= os.env.get "SPI_MEASURE_SCLK"
+  MEASURE_CS ::= os.env.get "SPI_MEASURE_CS"
+  if not MEASURE_MOSI or not MEASURE_SCLK or not MEASURE_CS:
+    print "SPI_MEASURE_MOSI, SPI_MEASURE_SCLK, or SPI_MEASURE_CS environment variable not set"
     exit 1
 
-  pin-mosi := gpio.Pin.linux --name=PIN1-NAME --input
-  pin-sclk := gpio.Pin.linux --name=PIN2-NAME --input
-  pin-cs := gpio.Pin.linux --name=PIN3-NAME --input
+  pin-mosi := gpio.Pin.linux --name=MEASURE_MOSI --input
+  pin-sclk := gpio.Pin.linux --name=MEASURE_SCLK --input
+  pin-cs := gpio.Pin.linux --name=MEASURE_CS --input
 
   idle-clk-level := cpol
   on-from-idle-edge := cpha == 0

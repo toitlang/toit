@@ -10,16 +10,22 @@ once. It should make refactoring easier too.
 
 ## Setup
 
-Set the environment variables PIN1, ... appropriately and connect as follows. For
+Set the environment variables SPI_MEASURE_MOSI, ... appropriately and connect as follows. For
 SPI use the first SPI interface:
-- MOSI to PIN1 via a 300 Ohm resistor.
-- PIN1 to PIN2 via a 10k resistor.
-- SCLK to PIN2 via a 330 Ohm resistor.
-- CS0 to PIN3.
+- MOSI to SPI_MEASURE_MOSI.
+- SCLK to SPI_MEASURE_SCLK.
+- CS0 to SPI_MEASURE_CS.
+
+- GPIO_TEST to GPIO_LEVEL with a 330 Ohm (or any other 220-500) resistor.
+- GPIO_TEST to GPIO_MEASURE.
+- GPIO_TEST to GND with 1M Ohm resistor (or something similarly high).
 
 ### Sample configurations
 
 Raspberry Pi v2 (https://www.raspberrypi.com/documentation/computers/images/GPIO-Pinout-Diagram-2.png):
-- PIN1: GPIO24
-- PIN2: GPIO23
-- PIN3: GPIO25
+- SPI_MEASURE_MOSI: GPIO24
+- SPI_MEASURE_SCLK: GPIO23
+- SPI_MEASURE_CS0: GPIO25
+- GPIO_LEVEL: GPIO17
+- GPIO_MEASURE: GPIO27
+- GPIO_TEST: GPIO22

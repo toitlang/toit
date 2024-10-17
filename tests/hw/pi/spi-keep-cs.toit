@@ -13,12 +13,12 @@ FREQUENCY ::= 4_000
 main:
   device := spi.Device --path="/dev/spidev0.0" --frequency=FREQUENCY
 
-  PIN3-NAME ::= os.env.get "PIN3"
-  if not PIN3-NAME:
+  MEASURE_CS ::= os.env.get "SPI_MEASURE_CS"
+  if not MEASURE_CS:
     print "PIN3 environment variable not set"
     exit 1
 
-  pin-cs := gpio.Pin.linux --name=PIN3-NAME --input
+  pin-cs := gpio.Pin.linux --name=MEASURE_CS --input
 
   expect-equals 1 pin-cs.get
 
