@@ -258,6 +258,8 @@ class EventSource : public EventSourceList::Element {
   // Only for EventSources that use the IntResource subclass.
   IntResource* find_resource_by_id(const Locker& locker, word id);
 
+  Resource* find_resource(const std::function<bool(Resource*)>& predicate);
+
  private:
   void try_notify(Resource* r, const Locker& locker, bool force = false);
 
