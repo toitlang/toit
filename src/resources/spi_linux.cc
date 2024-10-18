@@ -46,17 +46,7 @@ PRIMITIVE(open) {
     close(fd);
     return Primitive::os_error(errno, process);
   }
-  result = ioctl(fd, SPI_IOC_RD_MAX_SPEED_HZ, &frequency);
-  if (result < 0) {
-    close(fd);
-    return Primitive::os_error(errno, process);
-  }
   result = ioctl(fd, SPI_IOC_WR_MODE, &mode);
-  if (result < 0) {
-    close(fd);
-    return Primitive::os_error(errno, process);
-  }
-  result = ioctl(fd, SPI_IOC_RD_MODE, &mode);
   if (result < 0) {
     close(fd);
     return Primitive::os_error(errno, process);
