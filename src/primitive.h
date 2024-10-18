@@ -576,6 +576,9 @@ namespace toit {
   PRIMITIVE(pin_get, 1)                      \
   PRIMITIVE(pin_set, 2)                      \
   PRIMITIVE(pin_set_open_drain, 2)           \
+  PRIMITIVE(pin_config_edge_detection, 2)    \
+  PRIMITIVE(pin_consume_edge_events, 1)      \
+  PRIMITIVE(pin_last_edge_trigger_timestamp, 1) \
 
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
