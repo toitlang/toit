@@ -113,7 +113,7 @@ static List<char*> find_all_chips() {
 }
 
 static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull_down,
-                          bool input, bool output, bool open_drain, int initial_value) {
+                          bool input, bool output, bool open_drain, int value) {
   if (pull_up) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_UP);
   if (pull_down) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_DOWN);
   if (input && !pull_up && !pull_down) gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_DISABLED);
@@ -124,7 +124,7 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
   } else {
     gpiod_line_settings_set_drive(settings, GPIOD_LINE_DRIVE_PUSH_PULL);
   }
-  auto output_value = initial_value == 0 ? GPIOD_LINE_VALUE_INACTIVE : GPIOD_LINE_VALUE_ACTIVE;
+  auto output_value = value == 0 ? GPIOD_LINE_VALUE_INACTIVE : GPIOD_LINE_VALUE_ACTIVE;
   gpiod_line_settings_set_output_value(settings, output_value);
 }
 
@@ -330,7 +330,7 @@ PRIMITIVE(pin_init) {
 PRIMITIVE(pin_new) {
   ARGS(GpioResourceGroup, group, GpioChipResource, chip,
        int, offset, bool, pull_up, bool, pull_down, bool, input,
-       bool, output, bool, open_drain, int, initial_value)
+       bool, output, bool, open_drain, int, value)
   bool successful_return = false;
 
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
@@ -357,7 +357,7 @@ PRIMITIVE(pin_new) {
   if (settings == null) FAIL(ALLOCATION_FAILED);
   Defer free_settings { [&] { if (!successful_return) gpiod_line_settings_free(settings); }};
 
-  fill_settings(settings, pull_up, pull_down, input, output, open_drain, initial_value);
+  fill_settings(settings, pull_up, pull_down, input, output, open_drain, value);
 
   auto line_config = gpiod_line_config_new();
   if (line_config == null) FAIL(ALLOCATION_FAILED);
@@ -401,7 +401,7 @@ PRIMITIVE(pin_close) {
 }
 
 PRIMITIVE(pin_configure) {
-  ARGS(GpioPinResource, pin, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, initial_value)
+  ARGS(GpioPinResource, pin, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, value)
   bool successful_return = false;
 
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
@@ -413,7 +413,8 @@ PRIMITIVE(pin_configure) {
   if (settings == null) FAIL(ALLOCATION_FAILED);
   Defer free_settings { [&] { if (!successful_return) gpiod_line_settings_free(settings); }};
 
-  fill_settings(settings, pull_up, pull_down, input, output, open_drain, initial_value);
+  if (value == -1) value = pin->get_out_value();
+  fill_settings(settings, pull_up, pull_down, input, output, open_drain, value);
 
   Object* error = pin->apply_and_store_settings(settings, process);
   if (error != null) return error;

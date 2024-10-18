@@ -18,6 +18,7 @@ import ..shared.gpio as shared
 class PinFactory implements shared.PinFactory:
   pin1/gpio.Pin? := null
   pin2/gpio.Pin? := null
+  use-constructor/bool := false
 
   pin1-name/string
   pin2-name/string
@@ -26,12 +27,12 @@ class PinFactory implements shared.PinFactory:
 
   pin -> gpio.Pin
       pin-identifier/string
-      --use-constructor/bool=false
       --input/bool=false
       --output/bool=false
       --pull-down/bool=false
       --pull-up/bool=false
-      --open-drain/bool=false:
+      --open-drain/bool=false
+      --value/int?=null:
     if use-constructor:
       if pin-identifier == pin1-name:
         if pin1: pin1.close
@@ -44,6 +45,7 @@ class PinFactory implements shared.PinFactory:
           --pull-down=pull-down
           --pull-up=pull-up
           --open-drain=open-drain
+          --value=value
       if pin-identifier == pin1-name:
         pin1 = pin
       else:
@@ -57,6 +59,7 @@ class PinFactory implements shared.PinFactory:
         --pull-down=pull-down
         --pull-up=pull-up
         --open-drain=open-drain
+        --value=value
     return pin
 
   close:
@@ -66,6 +69,10 @@ class PinFactory implements shared.PinFactory:
 main:
   PIN1-NAME ::= os.env.get "GPIO_PIN1"
   PIN2-NAME ::= os.env.get "GPIO_PIN2"
+
+  if not PIN1-NAME or not PIN2-NAME:
+    print "GPIO_PIN1 or GPIO_PIN2 environment variable not set"
+    exit 1
 
   pin1 := gpio.Pin.linux --name=PIN1-NAME
   pin2 := gpio.Pin.linux --name=PIN2-NAME
