@@ -13,12 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
+import fs.xdg
 import host.file
 import host.os
 import io
 import monitor
 
-PACKAGE-CACHE-PATH := ".cache/toit/tpkg/"
+PACKAGE-CACHE-PATH := "toit/tpkg/"
 
 /// Finds the directories where to look for downloaded (cached) packages.
 find-package-cache-paths -> List:
@@ -26,14 +28,12 @@ find-package-cache-paths -> List:
   if cache-paths:
     entries := cache-paths.split ":"
     if not entries.is-empty: return entries
-  // TODO(florian): we currently require the `HOME` env variable to be set.
-  // There are other ways to find the home directory but they aren't
-  //   accessible in Toit yet.
-  home := os.env["HOME"]
-  if not home.ends-with "/": home += "/"
-  return [
-    "$home$PACKAGE-CACHE-PATH"
-  ]
+
+  catch:
+    cache-path := xdg.cache-home
+    return [fs.join cache-path PACKAGE-CACHE-PATH]
+
+  return []
 
 class FakePipeLink:
   next := null
