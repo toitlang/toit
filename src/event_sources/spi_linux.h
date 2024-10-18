@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2024 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,18 +13,32 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "type_primitive.h"
+#pragma once
 
+#include "../top.h"
+
+#if defined(TOIT_LINUX)
+
+#include "./async_posix.h"
 namespace toit {
-namespace compiler {
 
-MODULE_TYPES(spi_linux, MODULE_SPI_LINUX)
+class SpiEventSource : public AsyncEventSource {
+ public:
+  static SpiEventSource* instance() { return instance_; }
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(open)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(transfer_start)
-TYPE_PRIMITIVE_ANY(transfer_finish)
+  SpiEventSource() : AsyncEventSource("SPI") {
+    ASSERT(instance_ == null);
+    instance_ = this;
+  }
 
-}  // namespace toit::compiler
-}  // namespace toit
+  ~SpiEventSource() override {
+    instance_ = null;
+  }
+
+ protected:
+  static SpiEventSource* instance_;
+};
+
+} // namespace toit
+
+#endif // defined(TOIT_LINUX)
