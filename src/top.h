@@ -342,6 +342,7 @@ class Task;
 // These can fail on the device, and we can't catch that deep in the compiler's
 // libraries.  By bundling the captured variables in an on-stack object we
 // avoid that.
+
 #define CAPTURE3(T1, x1, T2, x2, T3, x3)       \
   struct {                                     \
     T1 x1;                                     \

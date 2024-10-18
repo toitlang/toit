@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import monitor
+import system
 
 /**
 Support for General Purpose Input/Output (GPIO) Pins.
@@ -142,9 +143,136 @@ class Pin:
       finally: | is-exception _ |
         if is-exception: close
 
+  /**
+  Opens a GPIO Pin on the chip identified by the given $path and $num (often called "offset").
 
-  constructor.virtual_:
-    num = -1
+  This constructor only works on Linux.
+
+  See $(constructor num) for more information on the remaining parameters.
+  */
+  constructor.linux num/int
+      --path/string
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --initial-value/int=0:
+    chip := Chip path
+    try:
+      return Pin.linux num
+          --chip=chip
+          --input=input
+          --output=output
+          --pull-up=pull-up
+          --pull-down=pull-down
+          --open-drain=open-drain
+          --initial-value=initial-value
+    finally:
+      chip.close
+
+  /**
+  Opens a GPIO Pin on the given $chip and $num (often called "offset").
+
+  This constructor only works on Linux.
+
+  See $(constructor num) for more information on the remaining parameters.
+  */
+  constructor.linux num/int
+      --chip/Chip
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --initial-value/int=0:
+    return PinLinux_ num
+        --chip=chip
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --initial-value=initial-value
+
+  /**
+  Opens a GPIO pin based on the given $name.
+
+  This constructor only works on Linux.
+
+  If a path to a chip is provided, finds the pin on that chip. Otherwise, searches
+    all available chips (see $Chip.list).
+  Names are not guaranteed to be unique. If multiple pins have the same name, the
+    first pin found is returned.
+
+  See $(constructor num) for more information on the remaining parameters.
+  */
+  constructor.linux
+      --name/string
+      --path/string?=null
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --initial-value/int=0:
+
+    try-chip := : | path/string |
+      chip := Chip path
+      try:
+        offset := gpio-linux-chip-offset-for-name_ chip.resource_ name
+        if offset != -1:
+          return Pin.linux offset
+              --chip=chip
+              --input=input
+              --output=output
+              --pull-up=pull-up
+              --pull-down=pull-down
+              --open-drain=open-drain
+              --initial-value=initial-value
+      finally:
+        chip.close
+
+    if path:
+      try-chip.call path
+    else:
+      Chip.list.do try-chip
+    throw "NOT_FOUND"
+
+  /**
+  Opens a GPIO pin based on the given $name on the given $chip.
+
+  This constructor only works on Linux.
+
+  If a chip is provided, finds the pin on that chip. Otherwise, searches all available
+    chips (see $Chip.list).
+  Names are not guaranteed to be unique. If multiple pins have the same name, the
+    first pin found is returned.
+
+  See $(constructor num) for more information on the remaining parameters.
+  */
+  constructor.linux
+      --name/string
+      --chip/Chip
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --initial-value/int=0:
+
+    offset := gpio-linux-chip-offset-for-name_ chip.resource_ name
+    if offset == -1: throw "NOT_FOUND"
+    return Pin.linux offset
+        --chip=chip
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --initial-value=initial-value
+
+  constructor.internal_ .num:
 
   /**
   Closes the pin and releases resources associated with it.
@@ -305,7 +433,7 @@ class VirtualPin extends Pin:
   Constructs a virtual pin with the given $set_ lambda functionality.
   */
   constructor .set_:
-    super.virtual_
+    super.internal_ -1
 
   /** Sets the $value by calling the lambda given in $Pin with the $value. */
   set value:
@@ -351,7 +479,7 @@ class InvertedPin extends Pin:
   original-pin_ /Pin
 
   constructor .original-pin_:
-    super.virtual_
+    super.internal_ -1
 
   /** Sets the physical pin to 1 if $value is 0, and vice versa. */
   set value -> none:
@@ -387,6 +515,132 @@ class InvertedPin extends Pin:
   set-open-drain value/bool:
     original-pin_.set-open-drain value
 
+/**
+A GPIO chip on Linux.
+*/
+class Chip:
+  static resource-group_ ::= gpio-linux-chip-init_
+
+  /**
+  The path to the GPIO chip.
+  */
+  path/string
+  resource_/ByteArray? := ?
+  name_/string? := null
+  label_/string? := null
+  line-count_/int? := null
+
+  constructor .path:
+    resource_ = gpio-linux-chip-new_ resource-group_ path
+    add-finalizer this:: close
+
+  /**
+  Lists all GPIO chips on the system.
+
+  The returned list contains paths to the GPIO chips.
+  */
+  static list -> List:
+    return gpio-linux-list-chips_
+
+  /** The name of the GPIO chip. */
+  name -> string:
+    if not name_: fetch-info_
+    return name_
+
+  /** The label of the GPIO chip. */
+  label -> string:
+    if not label_: fetch-info_
+    return label_
+
+  /** The number of pins on the GPIO chip. */
+  pin-count -> int:
+    if not line-count_: fetch-info_
+    return line-count_
+
+  fetch-info_ -> none:
+    info/List := gpio-linux-chip-info_ resource_
+    name_ = info[0]
+    label_ = info[1]
+    line-count_ = info[2]
+
+  pin-names -> List:
+    return List pin-count:
+      info := gpio-linux-chip-pin-info_ resource_ it
+      info[0]
+
+  /**
+  Closes the chip.
+
+  If children (like pins) are still open, the closing of the chip is delayed
+    until all children are closed.
+  */
+  close:
+    if resource_:
+      resource := resource_
+      resource_ = null
+      try:
+        gpio-linux-chip-close_ resource
+      finally:
+        remove-finalizer this
+
+class PinLinux_ extends Pin:
+  static resource-group_ ::= gpio-linux-pin-init_
+
+  constructor
+      offset/int
+      --chip/Chip
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --initial-value/int=0:
+    super.internal_ offset
+    resource_ = gpio-linux-pin-new_
+        resource-group_
+        chip.resource_
+        offset
+        pull-up
+        pull-down
+        input
+        output
+        open-drain
+        initial-value
+    add-finalizer this:: close
+
+  close -> none:
+    if resource_:
+      resource := resource_
+      resource_ = null
+      try:
+        gpio-linux-pin-close_ resource
+      finally:
+        remove-finalizer this
+
+  configure
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --value/int=0:
+    gpio-linux-pin-configure_ resource_ pull-up pull-down input output open-drain value
+
+  get -> int:
+    return gpio-linux-pin-get_ resource_
+
+  set value -> none:
+    if not 0 <= value <= 1: throw "INVALID_ARGUMENT"
+    gpio-linux-pin-set_ resource_ value
+
+  /** Waits for 1 on on the physical pin if $value is 0, and vice versa. */
+  wait-for value/int -> none:
+    throw "UNIMPLEMENTED"
+
+  set-open-drain value/bool:
+    gpio-linux-pin-set-open-drain_ resource_ value
+
+
 gpio-init_:
   #primitive.gpio.init
 
@@ -416,3 +670,45 @@ gpio-last-edge-trigger-timestamp_ resource:
 
 gpio-set-open-drain_ num value/bool:
   #primitive.gpio.set-open-drain
+
+gpio-linux-list-chips_ -> List:
+  #primitive.gpio-linux.list-chips
+
+gpio-linux-chip-init_:
+  #primitive.gpio-linux.chip-init
+
+gpio-linux-chip-new_ resource-group path:
+  #primitive.gpio-linux.chip-new
+
+gpio-linux-chip-close_ resource:
+  #primitive.gpio-linux.chip-close
+
+gpio-linux-chip-info_ resource -> List:
+  #primitive.gpio-linux.chip-info
+
+gpio-linux-chip-pin-info_ chip-resource offset -> List:
+  #primitive.gpio-linux.chip-pin-info
+
+gpio-linux-chip-offset-for-name_ chip-resource name -> int:
+  #primitive.gpio-linux.chip-pin-offset-for-name
+
+gpio-linux-pin-init_:
+  #primitive.gpio-linux.pin-init
+
+gpio-linux-pin-new_ resource-group chip offset pull-up pull-down input output open-drain initial-value:
+  #primitive.gpio-linux.pin-new
+
+gpio-linux-pin-close_ resource:
+  #primitive.gpio-linux.pin-close
+
+gpio-linux-pin-configure_ resource pull-up pull-down input output open-drain initial-value:
+  #primitive.gpio-linux.pin-configure
+
+gpio-linux-pin-get_ resource:
+  #primitive.gpio-linux.pin-get
+
+gpio-linux-pin-set_ resource value:
+  #primitive.gpio-linux.pin-set
+
+gpio-linux-pin-set-open-drain_ resource value:
+  #primitive.gpio-linux.pin-set-open-drain
