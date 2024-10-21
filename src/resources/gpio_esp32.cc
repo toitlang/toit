@@ -278,7 +278,7 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain);
+  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, value);
 
   gpio_config_t cfg = {
     .pin_bit_mask = 1ULL << num,
@@ -297,15 +297,29 @@ PRIMITIVE(config) {
     }
   } else if (output) {
     cfg.mode = open_drain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT;
+    // Set the value before switching the mode.
+    // This may be harmful if the pin switches from push-pull to open-drain.
+    // Specifically, if the pin is push-pull and set to GND, then switching to
+    // open-drain with 1 could cause a short-circuit (if another device is
+    // currently driving the line to low).
+    // We don't have an easy way to know in which state the pin currently is, so
+    // we just require users to pay attention to this.
+    if (value != -1) {
+      esp_err_t err = gpio_set_level((gpio_num_t)num, value);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+    }
+
   }
 
   esp_err_t err = gpio_config(&cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   if (input) {
     // The gpio driver enables interrupts automatically for input pins. Since this is handled more fine-grained
     // in config_interrupt we disable the interrupt.
-    gpio_intr_disable(static_cast<gpio_num_t>(num));
+    err = gpio_intr_disable(static_cast<gpio_num_t>(num));
+    if (err != ESP_OK) return Primitive::os_error(err, process);
   }
-  if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->null_object();
 }

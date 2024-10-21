@@ -22,14 +22,16 @@ class PinFactory implements shared.PinFactory:
   pin1/gpio.Pin? := null
   pin2/gpio.Pin? := null
 
+  use-constructor/bool := false
+
   pin -> gpio.Pin
       pin-identifier/int
-      --use-constructor/bool=false
       --input/bool=false
       --output/bool=false
       --pull-down/bool=false
       --pull-up/bool=false
-      --open-drain/bool=false:
+      --open-drain/bool=false
+      --value/int?=null:
     if use-constructor:
       if pin-identifier == PIN1:
         if pin1: pin1.close
@@ -41,6 +43,7 @@ class PinFactory implements shared.PinFactory:
           --pull-down=pull-down
           --pull-up=pull-up
           --open-drain=open-drain
+          --value=value
       if pin-identifier == PIN1:
         pin1 = pin
       else:
@@ -54,6 +57,7 @@ class PinFactory implements shared.PinFactory:
         --pull-down=pull-down
         --pull-up=pull-up
         --open-drain=open-drain
+        --value=value
     return pin
 
   close:
