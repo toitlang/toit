@@ -39,6 +39,7 @@ class Thread {
   bool spawn(int stack_size = 0, int core = -1);
   void run();  // Run on current thread.
 
+  void cancel();
   void join();
 
  protected:

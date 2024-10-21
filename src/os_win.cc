@@ -207,6 +207,11 @@ void Thread::run() {
   thread_start(void_cast(this));
 }
 
+void Thread::cancel() {
+  ASSERT(handle_ != null);
+  pthread_cancel(pthread_from_handle(handle_));
+}
+
 void Thread::join() {
   ASSERT(handle_ != null);
   void* return_value;
