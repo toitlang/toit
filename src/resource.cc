@@ -210,6 +210,13 @@ IntResource* EventSource::find_resource_by_id(const Locker& locker, word id) {
   return null;
 }
 
+Resource* EventSource::find_resource(const std::function<bool(Resource*)>& predicate) {
+  for (auto it : resources_) {
+    if (predicate(it)) return it;
+  }
+  return null;
+}
+
 void LazyEventSource::unregister_resource_group(ResourceGroup* resource_group) {
   unuse();
 }
