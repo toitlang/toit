@@ -170,7 +170,7 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
 void CompletionHandler::complete_static_ids(IterableScope* scope,
                                             ir::Method* surrounding) {
   bool has_access_to_this = surrounding == null || surrounding->is_instance() || surrounding->is_constructor();
-  scope->for_each([=](Symbol name, const ResolutionEntry& entry) {
+  scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     switch (entry.kind()) {
       case ResolutionEntry::Kind::PREFIX:
         complete_entry(name, entry);
