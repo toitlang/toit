@@ -333,8 +333,9 @@ PRIMITIVE(pin_new) {
        bool, output, bool, open_drain, int, initial_value)
   bool successful_return = false;
 
-  if (input && output) FAIL(INVALID_ARGUMENT);
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
+  // On Linux we can always query the value, even when just configured as output.
+  if (input && output) input = false;
 
   auto pin_info = gpiod_chip_get_line_info(chip->chip(), offset);
   if (pin_info == null) return Primitive::os_error(errno, process, "get line info");
@@ -403,8 +404,9 @@ PRIMITIVE(pin_configure) {
   ARGS(GpioPinResource, pin, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, initial_value)
   bool successful_return = false;
 
-  if (input && output) FAIL(INVALID_ARGUMENT);
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
+  // On Linux we can always query the value, even when just configured as output.
+  if (input && output) input = false;
 
   // Note that the settings are stored in the resource and thus don't need to be freed here.
   auto settings = gpiod_line_settings_new();
@@ -443,6 +445,7 @@ PRIMITIVE(pin_set) {
   if (ret != 0) {
     return Primitive::os_error(errno, process);
   }
+  pin->set_out_value(static_cast<int>(output));
   return process->null_object();
 }
 
@@ -453,6 +456,8 @@ PRIMITIVE(pin_set_open_drain) {
   if (settings == null) FAIL(INVALID_ARGUMENT);
 
   gpiod_line_settings_set_drive(settings, open_drain ? GPIOD_LINE_DRIVE_OPEN_DRAIN : GPIOD_LINE_DRIVE_PUSH_PULL);
+  // We can't just ask the line for the current value, as it might be driven from the outside.
+  gpiod_line_settings_set_output_value(settings, static_cast<gpiod_line_value>(pin->get_out_value()));
 
   Object* error = pin->apply_and_store_settings(settings, process);
   if (error != null) return error;
