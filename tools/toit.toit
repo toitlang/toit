@@ -500,6 +500,15 @@ main args/List:
 
   root-command.add system-message.build-command
 
+  assert:
+    // Run the CLI package checks.
+    // This makes sure that commands without 'run' functionality have
+    // subcommands, or that examples are valid.
+    // Otherwise, we could have exceptions when the user tries to run the command
+    // or tries to generate its help.
+    // If the check fails, it throws an exception.
+    root-command.check
+    true
   root-command.run args
 
 bin-dir sdk-dir/string? -> string:
