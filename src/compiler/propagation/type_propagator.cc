@@ -79,7 +79,9 @@ void TypePropagator::ensure_entry_main() {
   TypeStack* stack = scope.top();
   stack->push_instance(Smi::value(program()->task_class_id()));
   Method target = program()->entry_main();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_entry_main_ = true;
 }
 
@@ -89,7 +91,9 @@ void TypePropagator::ensure_entry_spawn() {
   TypeStack* stack = scope.top();
   stack->push_instance(Smi::value(program()->task_class_id()));
   Method target = program()->entry_spawn();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_entry_spawn_ = true;
 }
 
@@ -99,7 +103,9 @@ void TypePropagator::ensure_entry_task() {
   TypeStack* stack = scope.top();
   stack->push_any(program());  // TODO(kasper): Should be lambda.
   Method target = program()->entry_task();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_entry_task_ = true;
 }
 
@@ -113,7 +119,9 @@ void TypePropagator::ensure_lookup_failure() {
   // to 'lookup_failure' and pass string selectors for those.
   stack->push_smi(program());  // selector_offset
   Method target = program()->lookup_failure();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_lookup_failure_ = true;
 }
 
@@ -127,7 +135,9 @@ void TypePropagator::ensure_as_check_failure() {
   // 'as_check_failure' and pass string class names for those.
   stack->push_smi(program());  // bci
   Method target = program()->as_check_failure();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_as_check_failure_ = true;
 }
 
@@ -138,7 +148,9 @@ void TypePropagator::ensure_primitive_lookup_failure() {
   stack->push_smi(program());  // module
   stack->push_smi(program());  // index
   Method target = program()->primitive_lookup_failure();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_primitive_lookup_failure_ = true;
 }
 
@@ -151,7 +163,9 @@ void TypePropagator::ensure_code_failure() {
   stack->push_smi(program());   // provided
   stack->push_smi(program());   // bci
   Method target = program()->code_failure();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_code_failure_ = true;
 }
 
@@ -161,7 +175,9 @@ void TypePropagator::ensure_program_failure() {
   TypeStack* stack = scope.top();
   stack->push_smi(program());  // bci
   Method target = program()->program_failure();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_program_failure_ = true;
 }
 
@@ -179,7 +195,9 @@ void TypePropagator::ensure_run_global_initializer() {
   stack->push_smi(program());
   stack->push_instance(initializer_class_id);
   Method target = program()->run_global_initializer();
-  call_static(null, &scope, null, target);
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
   has_run_global_initializer_ = true;
 }
 
@@ -354,11 +372,34 @@ void TypePropagator::call_method(MethodTemplate* caller,
                                  TypeScope* scope,
                                  uint8* site,
                                  Method target,
-                                 std::vector<ConcreteType>& arguments) {
+                                 std::vector<ConcreteType>& arguments,
+                                 std::vector<Worklist*>& worklists) {
   TypeStack* stack = scope->top();
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
+    // Collect all block arguments. We cannot handle block arguments
+    // outside of ordinary methods, so if the caller isn't set, we
+    // analyzing a call to a method from an entry stub of sorts.
+    if (caller) {
+      Set<BlockTemplate*> blocks;
+      for (auto it : arguments) {
+        if (!it.is_block()) continue;
+        BlockTemplate* block = it.block();
+        bool own = block->origin()->method().header_bcp() == caller->method().header_bcp();
+        if (own) blocks.insert(block);
+      }
+      if (!blocks.empty()) {
+        bool changed = true;
+        while (changed) {
+          changed = false;
+          for (BlockTemplate* block : blocks) {
+            changed = block->propagate(scope, worklists, block->is_invoked_from_try_block()) || changed;
+          }
+        }
+      }
+    }
+
     MethodTemplate* callee = find_method(target, arguments);
     // TODO(kasper): Analyzing the callee method eagerly while still
     // in the process of analyzing the caller is an optimization. It
@@ -382,8 +423,9 @@ void TypePropagator::call_method(MethodTemplate* caller,
   // and megamorphic types that tend to blow up the analysis.
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
-    arguments.push_back(type.block()->pass_as_argument(scope));
-    call_method(caller, scope, site, target, arguments);
+    BlockTemplate* block = type.block();
+    arguments.push_back(block->pass_as_argument(scope));
+    call_method(caller, scope, site, target, arguments, worklists);
     arguments.pop_back();
   } else if (type.size(words_per_type_) > 5) {
     // If one of the arguments is megamorphic, we analyze the target
@@ -391,20 +433,24 @@ void TypePropagator::call_method(MethodTemplate* caller,
     // down on the number of separate analysis at the cost of more
     // mixing of types and worse propagated types.
     arguments.push_back(ConcreteType::any());
-    call_method(caller, scope, site, target, arguments);
+    call_method(caller, scope, site, target, arguments, worklists);
     arguments.pop_back();
   } else {
     TypeSet::Iterator it(type, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
       arguments.push_back(ConcreteType(id));
-      call_method(caller, scope, site, target, arguments);
+      call_method(caller, scope, site, target, arguments, worklists);
       arguments.pop_back();
     }
   }
 }
 
-void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target) {
+void TypePropagator::call_static(MethodTemplate* caller,
+                                 TypeScope* scope,
+                                 uint8* site,
+                                 Method target,
+                                 std::vector<Worklist*>& worklists) {
   TypeStack* stack = scope->top();
   int arity = target.arity();
   if (site) add_input(site, stack, arity);
@@ -426,7 +472,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   }
 
   if (handle_as_static) {
-    call_method(caller, scope, site, target, arguments);
+    call_method(caller, scope, site, target, arguments, worklists);
   } else {
     // We're handling this as a call to a virtual method,
     // but if the offset is negative it indirectly encodes
@@ -467,7 +513,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
         continue;
       }
       arguments.push_back(ConcreteType(id));
-      call_method(caller, scope, site, target, arguments);
+      call_method(caller, scope, site, target, arguments, worklists);
       arguments.pop_back();
     }
   }
@@ -475,7 +521,12 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   stack->drop_arguments(target.arity());
 }
 
-void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset) {
+void TypePropagator::call_virtual(MethodTemplate* caller,
+                                  TypeScope* scope,
+                                  uint8* site,
+                                  int arity,
+                                  word offset,
+                                  std::vector<Worklist*>& worklists) {
   TypeStack* stack = scope->top();
   TypeSet receiver = stack->local(arity - 1);
   if (site) add_input(site, stack, arity);
@@ -499,14 +550,19 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
       continue;
     }
     arguments.push_back(ConcreteType(id));
-    call_method(caller, scope, site, target, arguments);
+    call_method(caller, scope, site, target, arguments, worklists);
     arguments.pop_back();
   }
 
   stack->drop_arguments(arity);
 }
 
-void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
+void TypePropagator::call_block(TypeScope* scope,
+                                uint8* site,
+                                int arity,
+                                bool linked,
+                                bool own,
+                                std::vector<Worklist*>& worklists) {
   TypeStack* stack = scope->top();
   TypeSet receiver = stack->local(arity - 1);
   BlockTemplate* block = receiver.block();
@@ -524,6 +580,13 @@ void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
       // propagating types through them.
       block->argument(i)->merge(this, argument);
     }
+  }
+
+  if (arity >= block->arity() && own) {
+    // TODO(kasper): No need to merge it back here. We just want to continue with
+    // the current scope. We'll probably need to return the scope from call_block
+    // to make that happen - or overwrite in the passed in scope.
+    block->propagate(scope, worklists, linked || block->is_invoked_from_try_block());
   }
 
   // Drop the arguments from the stack.
@@ -545,20 +608,16 @@ void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
   scope->throw_maybe();
 }
 
-void TypePropagator::load_block(MethodTemplate* loader, TypeScope* scope, Method method, bool linked, std::vector<Worklist*>& worklists) {
+void TypePropagator::load_block(MethodTemplate* loader, TypeScope* scope, Method method) {
   ASSERT(method.is_block_method());
   // Finds or creates a block-template for the given block.
   // The block's parameters are marked such that a change in their type enqueues this
   // current method template.
   // Note that the method template is for a specific combination of parameter types. As
   // such we evaluate the contained blocks independently too.
-  BlockTemplate* block = find_block(loader, method, scope->level());
-  scope->top()->push_block(block);
-  // If the block might be used in a try-block, we need to know
-  // so we can correctly merge the type of outer locals. If we're
-  // not in a try-block, changes to outer locals cannot be seen
-  // when we unwind, but potentially being in a try block changes that.
-  block->propagate(scope, worklists, linked || block->is_invoked_from_try_block());
+  TypeStack* top = scope->top();
+  BlockTemplate* block = find_block(loader, method, scope->level(), top->sp() + 1);
+  top->push_block(block);
 }
 
 void TypePropagator::load_lambda(TypeScope* scope, Method method) {
@@ -723,17 +782,19 @@ MethodTemplate* TypePropagator::find_method(Method target, std::vector<ConcreteT
   return result;
 }
 
-BlockTemplate* TypePropagator::find_block(MethodTemplate* origin, Method target, int level) {
+BlockTemplate* TypePropagator::find_block(MethodTemplate* origin, Method target, int level, int sp) {
+  // TODO(kasper): Include the level in the hash?
   uint32 key = ConcreteType::hash(target, origin->arguments(), true);
   auto it = blocks_.find(key);
   BlockTemplate* head = (it != blocks_.end()) ? it->second : null;
   for (BlockTemplate* candidate = head; candidate; candidate = candidate->next()) {
-    if (candidate->matches(target, origin)) {
+    if (candidate->matches(target, level, origin)) {
+      ASSERT(candidate->sp() == sp);
       candidate->use(this, origin);
       return candidate;
     }
   }
-  BlockTemplate* result = new BlockTemplate(head, target, level, words_per_type());
+  BlockTemplate* result = new BlockTemplate(head, origin, target, level, sp, words_per_type());
   blocks_[key] = result;
   result->use(this, origin);
   return result;
@@ -889,8 +950,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(LOAD_METHOD);
     Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
     if (inner.is_block_method()) {
-      bool is_inner_linked = bcp[LOAD_METHOD_LENGTH] == LINK;
-      propagator->load_block(method, scope, inner, is_inner_linked, worklists);
+      propagator->load_block(method, scope, inner);
     } else {
       propagator->load_lambda(scope, inner);
     }
@@ -912,7 +972,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     Instance* initializer = Instance::cast(program->global_variables.at(index));
     int method_id = Smi::value(initializer->at(INITIALIZER_ID_INDEX));
     Method target(program->bytecodes, method_id);
-    propagator->call_static(method, scope, null, target);
+    propagator->call_static(method, scope, null, target, worklists);
     // Merge the initializer result into the global variable.
     TypeVariable* variable = propagator->global_variable(index);
     variable->merge(propagator, stack->local(0));
@@ -1041,14 +1101,14 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(INVOKE_STATIC);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
-    propagator->call_static(method, scope, bcp, target);
+    propagator->call_static(method, scope, bcp, target, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC_TAIL);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
-    propagator->call_static(method, scope, bcp, target);
+    propagator->call_static(method, scope, bcp, target, worklists);
     if (stack->top_is_empty()) return scope;
     if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
@@ -1063,7 +1123,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN(INVOKE_BLOCK);
     B_ARG1(index);
-    propagator->call_block(scope, bcp, index);
+    TypeSet receiver = stack->local(index - 1);
+    BlockTemplate* block = receiver.block();
+    bool own = block->origin()->method().header_bcp() == method->method().header_bcp();
+    propagator->call_block(scope, bcp, index, linked, own, worklists);
     if (stack->top_is_empty()) {
       if (!linked) return scope;
       // We've just invoked a try-block that is guaranteed
@@ -1083,26 +1146,26 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     word offset = Utils::read_unaligned_uint16(bcp + 2);
-    propagator->call_virtual(method, scope, bcp, arity + 1, offset);
+    propagator->call_virtual(method, scope, bcp, arity + 1, offset, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     word offset = Utils::read_unaligned_uint16(bcp + 1);
-    propagator->call_virtual(method, scope, bcp, 1, offset);
+    propagator->call_virtual(method, scope, bcp, 1, offset, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     word offset = Utils::read_unaligned_uint16(bcp + 1);
-    propagator->call_virtual(method, scope, bcp, 2, offset);
+    propagator->call_virtual(method, scope, bcp, 2, offset, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
     word offset = program->invoke_bytecode_offset(opcode);    \
-    propagator->call_virtual(method, scope, bcp, 2, offset);  \
+    propagator->call_virtual(method, scope, bcp, 2, offset, worklists);  \
     if (stack->top_is_empty()) return scope;                  \
   OPCODE_END();
 
@@ -1130,13 +1193,13 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN(INVOKE_AT_PUT);
     word offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
-    propagator->call_virtual(method, scope, bcp, 3, offset);
+    propagator->call_virtual(method, scope, bcp, 3, offset, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_SIZE);
     word offset = program->invoke_bytecode_offset(INVOKE_SIZE);
-    propagator->call_virtual(method, scope, bcp, 1, offset);
+    propagator->call_virtual(method, scope, bcp, 1, offset, worklists);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
@@ -1330,7 +1393,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // difference encoded in the bytecode.
     TypeScope* target_scope = scope->copy_lazy(outer);
     TypeStack* target_top = target_scope->top();
-    for (int i = 0; i < height_diff; i++) target_top->pop();
+    int delta = target_top->sp() - block.block()->sp();
+    for (int i = 0; i < height_diff + delta; i++) target_top->pop();
     // Add the copied scope to the correct outer worklist. If we
     // already have a scope registered for the branch target, we
     // will merge into it and end up with a superfluous scope.
@@ -1509,8 +1573,9 @@ int BlockTemplate::method_id(Program* program) const {
   return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
-bool BlockTemplate::matches(Method target, MethodTemplate* user) const {
+bool BlockTemplate::matches(Method target, int level, MethodTemplate* user) const {
   if (target.entry() != method_.entry()) return false;
+  if (level != level_) return false;
   return ConcreteType::equals(last_user_->arguments(), user->arguments(), true);
 }
 
@@ -1549,40 +1614,48 @@ void BlockTemplate::invoke_from_try_block() {
   }
 }
 
-void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
+bool BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
+  if (is_analyzing_) {
+    // TODO(kasper): We're calling a block while we're already analyzing it.
+    // The current scope can have different types than we have seen when
+    // entering the block, so we need to merge the types back in and make sure
+    // we re-analyze the block with the richer types when we get back to
+    // the place where we started the analysis. This way, we replace the
+    // recursive analysis with a fixed point iteration.
+    return false;
+  }
+
   // We avoid having empty types on the stack while we analyze
   // block methods by bailing out if this block hasn't been
   // invoked yet.
-  if (!is_invoked_) return;
+  if (!is_invoked_) return false;
+  is_analyzing_ = true;
 
-  // TODO(kasper): It feels wasteful to re-analyze blocks that
-  // do not depend on the outer local types that were updated
-  // by an inner block (or the blocks themselves).
-  while (true) {
-    // We create a lazy copy of the current scope, so it becomes
-    // easy to track if an inner block has modified the scope.
-    // This is very close to how we handle loops, so the lazy
-    // copy ends up corresponding to the lazy copy we create when
-    // we re-analyze from the beginning of a loop if the loop
-    // or any nested loop changes local types.
-    TypeScope* copy = scope->copy_lazy();
-    TypeScope* inner = new TypeScope(this, copy, linked);
+  // We create a lazy copy of the current scope, so it becomes
+  // easy to track if an inner block has modified the scope.
+  // This is very close to how we handle loops, so the lazy
+  // copy ends up corresponding to the lazy copy we create when
+  // we re-analyze from the beginning of a loop if the loop
+  // or any nested loop changes local types.
+  TypeScope* copy = scope->copy_lazy();
+  TypeScope* inner = new TypeScope(this, copy, linked);
 
-    ASSERT(level() == static_cast<int>(worklists.size()) - 1);
-    Worklist worklist(method_.entry(), inner, this);
-    worklists.push_back(&worklist);
+  ASSERT(level() <= static_cast<int>(worklists.size()) - 1);
+  Worklist worklist(method_.entry(), inner, this);
+  worklists.push_back(&worklist);
 
-    while (worklist.has_next()) {
-      Worklist::Item item = worklist.next();
-      TypeScope* scope = process(item.scope, item.bcp, worklists);
-      delete scope;
-    }
-
-    worklists.pop_back();
-    bool done = !scope->merge(copy, TypeScope::MERGE_LOCAL);
-    delete copy;
-    if (done) return;
+  while (worklist.has_next()) {
+    Worklist::Item item = worklist.next();
+    TypeScope* scope = process(item.scope, item.bcp, worklists);
+    delete scope;
   }
+
+  worklists.pop_back();
+  bool result = scope->merge(copy, TypeScope::MERGE_LOCAL);
+  delete copy;
+
+  is_analyzing_ = false;
+  return result;
 }
 
 } // namespace toit::compiler

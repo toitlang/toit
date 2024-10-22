@@ -51,11 +51,11 @@ class TypePropagator {
 
   void propagate(TypeDatabase* types);
 
-  void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
-  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset);
-  void call_block(TypeScope* scope, uint8* site, int arity);
+  void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<Worklist*>& worklists);
+  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset, std::vector<Worklist*>& worklists);
+  void call_block(TypeScope* scope, uint8* site, int arity, bool linked, bool own, std::vector<Worklist*>& worklists);
 
-  void load_block(MethodTemplate* loader, TypeScope* scope, Method method, bool linked, std::vector<Worklist*>& worklists);
+  void load_block(MethodTemplate* loader, TypeScope* scope, Method method);
   void load_lambda(TypeScope* scope, Method method);
 
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
@@ -98,10 +98,15 @@ class TypePropagator {
   std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments);
+  void call_method(MethodTemplate* caller,
+                   TypeScope* scope,
+                   uint8* site,
+                   Method target,
+                   std::vector<ConcreteType>& arguments,
+                   std::vector<Worklist*>& worklists);
 
   MethodTemplate* find_method(Method target, std::vector<ConcreteType> arguments);
-  BlockTemplate* find_block(MethodTemplate* origin, Method method, int level);
+  BlockTemplate* find_block(MethodTemplate* origin, Method method, int level, int sp);
 };
 
 class MethodTemplate {
@@ -164,10 +169,12 @@ class MethodTemplate {
 
 class BlockTemplate {
  public:
-  BlockTemplate(BlockTemplate* next, Method method, int level, int words_per_type)
+  BlockTemplate(BlockTemplate* next, MethodTemplate* origin, Method method, int level, int sp, int words_per_type)
       : next_(next)
+      , origin_(origin)
       , method_(method)
       , level_(level)
+      , sp_(sp)
       , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
       , result_(words_per_type) {
     // TODO(kasper): It is silly that we keep the receiver in here.
@@ -185,14 +192,17 @@ class BlockTemplate {
   }
 
   BlockTemplate* next() const { return next_; }
+  MethodTemplate* origin() const { return origin_; }
   Method method() const { return method_; }
   int method_id(Program* program) const;
   int level() const { return level_; }
+  int sp() const { return sp_; }
   int arity() const { return method_.arity(); }
   TypeVariable* argument(int index) { return arguments_[index]; }
   bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
+  bool is_analyzing() const { return is_analyzing_; }
 
-  bool matches(Method target, MethodTemplate* user) const;
+  bool matches(Method target, int level, MethodTemplate* user) const;
   void use(TypePropagator* propagator, MethodTemplate* user);
 
   ConcreteType pass_as_argument(TypeScope* scope) {
@@ -210,7 +220,7 @@ class BlockTemplate {
     stack->pop();
   }
 
-  void propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
+  bool propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
   void collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map);
 
@@ -220,13 +230,16 @@ class BlockTemplate {
   // to handle hash collisions.
   BlockTemplate* const next_;
 
+  MethodTemplate* const origin_;
   const Method method_;
   const int level_;
+  const int sp_;
   TypeVariable** const arguments_;
   TypeVariable result_;
 
   bool is_invoked_ = false;
   bool is_invoked_from_try_block_ = false;
+  bool is_analyzing_ = false;
 
   // All users of this block are various invocations of the same method.
   // These are the surrounding methods that load the block.
