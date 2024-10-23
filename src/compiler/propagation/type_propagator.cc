@@ -400,8 +400,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
   // and megamorphic types that tend to blow up the analysis.
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
-    BlockTemplate* block = type.block();
-    arguments.push_back(block->pass_as_argument(scope));
+    arguments.push_back(ConcreteType(type.block()));
     call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(words_per_type_) > 5) {
@@ -427,14 +426,22 @@ void TypePropagator::propagate_blocks(MethodTemplate* caller,
                                      TypeScope* scope,
                                      int arity,
                                      std::vector<Worklist*>& worklists) {
+  TypeStack* stack = scope->top();
+  int count = 0;
+  for (int i = 0; i < arity; i++) {
+    TypeSet type = stack->local(arity - i - 1);
+    if (!type.is_block()) continue;
+    BlockTemplate* block = type.block();
+    if (scope->is_in_try_block()) block->mark_invoked_from_try_block();
+    count++;
+  }
+
   // Propagate types through all locally-defined block arguments.
   // We cannot handle block arguments outside of ordinary methods,
   // so if the caller isn't set, we analyzing a call to a method from
   // an entry stub of sorts.
-  if (!caller) return;
-
+  if (!caller || count == 0) return;
   Set<BlockTemplate*> blocks;
-  TypeStack* stack = scope->top();
   for (int i = 0; i < arity; i++) {
     TypeSet type = stack->local(arity - i - 1);
     if (!type.is_block()) continue;
@@ -1609,19 +1616,25 @@ TypeSet BlockTemplate::invoke(TypePropagator* propagator, TypeScope* scope, uint
     for (auto it : users_) propagator->enqueue(it);
   }
   if (scope->is_in_try_block()) {
-    invoke_from_try_block();
+    mark_invoked_from_try_block();
   }
   return result_.use(propagator, scope->method(), site);
 }
 
-void BlockTemplate::invoke_from_try_block() {
+void BlockTemplate::mark_invoked_from_try_block() {
   if (is_invoked_from_try_block_) return;
+  is_invoked_from_try_block_ = true;
+
+  // If the block hasn't been invoked yet, we wait for it
+  // to be invoked before we enqueue the surrounding method
+  // for analysis again.
+  if (!is_invoked_) return;
+
   // If we find that this block may have been invoked from
   // within a try-block, we re-analyze the surrounding
   // method, so we can track stores to outer locals that
   // may be visible because of caught exceptions or
   // stopped unwinding.
-  is_invoked_from_try_block_ = true;
   for (auto it : users_) {
     it->propagator()->enqueue(it);
   }

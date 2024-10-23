@@ -209,14 +209,8 @@ class BlockTemplate {
   bool matches(Method target, int level, MethodTemplate* user) const;
   void use(TypePropagator* propagator, MethodTemplate* user);
 
-  ConcreteType pass_as_argument(TypeScope* scope) {
-    // If we pass a block as an argument inside a try-block, we
-    // conservatively assume that it is going to be invoked.
-    if (scope->is_in_try_block()) invoke_from_try_block();
-    return ConcreteType(this);
-  }
-
   TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site);
+  void mark_invoked_from_try_block();
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
@@ -254,8 +248,6 @@ class BlockTemplate {
   // using it to determine if a BlockTemplate can be reused by
   // another user in the BlockTemplate::matches function.
   MethodTemplate* last_user_ = null;
-
-  void invoke_from_try_block();
 };
 
 } // namespace toit::compiler
