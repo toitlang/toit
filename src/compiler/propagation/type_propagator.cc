@@ -381,7 +381,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
     // Collect all block arguments. We cannot handle block arguments
     // outside of ordinary methods, so if the caller isn't set, we
     // analyzing a call to a method from an entry stub of sorts.
-    if (caller) {
+    if (caller && !hacko_) {
       Set<BlockTemplate*> blocks;
       for (auto it : arguments) {
         if (!it.is_block()) continue;
@@ -398,6 +398,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
           }
         }
       }
+      hacko_ = true;
     }
 
     MethodTemplate* callee = find_method(target, arguments);
@@ -455,6 +456,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
   int arity = target.arity();
   if (site) add_input(site, stack, arity);
 
+  hacko_ = false;
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
@@ -531,6 +533,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller,
   TypeSet receiver = stack->local(arity - 1);
   if (site) add_input(site, stack, arity);
 
+  hacko_ = false;
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 

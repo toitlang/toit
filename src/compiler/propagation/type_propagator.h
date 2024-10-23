@@ -82,6 +82,8 @@ class TypePropagator {
   Program* const program_;
   int words_per_type_;
 
+  bool hacko_ = false;
+
 #define HAS_ENTRY_POINT(name, symbol, arity) \
   bool has_##name##_ = false;
   ENTRY_POINTS(HAS_ENTRY_POINT)
