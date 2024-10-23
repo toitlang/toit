@@ -11,9 +11,20 @@ main:
   if system.platform == system.PLATFORM-WINDOWS:
     expected-hostname = pipe.backticks "hostname"
   else if system.platform == system.PLATFORM-LINUX:
-    expected-hostname = pipe.backticks "hostnamectl" "hostname"
-  else:
+    // On newer versions of `hostnamectl` we could also use "hostnamectl hostname",
+    // but our buildbot doesn't support that yet.
+    output := pipe.backticks "hostnamectl" "status"
+    // Something like:
+    //  Static hostname: red
+    //        Icon name: computer-desktop
+    //          Chassis: desktop 🖥
+    // ...
+    line := (output.split "\n")[0]
+    expected-hostname = (line.split ":")[1]
+  else if system.platform == system.PLATFORM-MACOS:
     expected-hostname = pipe.backticks "hostname" "-s"
-  expected-hostname = expected-hostname.trim
+  else:
+    unreachable
 
+  expected-hostname = expected-hostname.trim
   expect-equals expected-hostname system.hostname
