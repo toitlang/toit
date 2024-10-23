@@ -377,6 +377,7 @@ namespace toit {
   PRIMITIVE(toit_callback_init, 3)           \
   PRIMITIVE(toit_callback_deinit, 2)         \
   PRIMITIVE(toit_callback_reply, 3)          \
+  PRIMITIVE(set_gap_device_name, 2)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \

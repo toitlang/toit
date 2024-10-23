@@ -252,9 +252,14 @@ class Adapter extends Resource_:
     reconnects more efficient.
 
   If $secure-connections is true then the peripheral is enabling secure connections.
+
+  If $name is provided it is used for the GAP name. The GAP name can be different from the
+    advertised name in the advertisement data. On some platforms the GAP name is stored
+    and will be used in future calls to this method (if the name is not provided).
   */
-  peripheral --bonding/bool=false --secure-connections/bool=false -> Peripheral:
+  peripheral --bonding/bool=false --secure-connections/bool=false --name/string?=null -> Peripheral:
     if not adapter-metadata.supports-peripheral-role: throw "NOT_SUPPORTED"
+    if name: ble-set-gap-device-name_ resource_ name
     if not peripheral_: peripheral_ = Peripheral this bonding secure-connections
     return peripheral_;
 
@@ -518,3 +523,6 @@ ble-run-with-quota-backoff_ [block]:
     catch --unwind=(: it != "QUOTA_EXCEEDED"): return block.call last-attempt
     sleep --ms=10
     if Time.monotonic-us - start > 2_000_000: throw DEADLINE-EXCEEDED-ERROR
+
+ble-set-gap-device-name_ resource name:
+  #primitive.ble.set-gap-device-name
