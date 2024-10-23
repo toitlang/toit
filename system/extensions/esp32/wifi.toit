@@ -23,6 +23,7 @@ import net.udp
 import net.wifi
 
 import encoding.tison
+import system
 import system.assets
 import system.firmware
 import system.storage
@@ -226,6 +227,7 @@ class WifiModule implements NetworkModule:
     return address_
 
   connect -> none:
+    wifi-set-hostname_ resource-group_ system.hostname
     with-timeout WIFI-CONNECT-TIMEOUT_: wait-for-connected_
     if ap:
       wait-for-static-ip-address_
@@ -356,6 +358,9 @@ class WifiModule implements NetworkModule:
 
 wifi-init_ ap:
   #primitive.wifi.init
+
+wifi-set-hostname_ resource-group hostname:
+  #primitive.wifi.set-hostname
 
 wifi-close_ resource-group:
   #primitive.wifi.close

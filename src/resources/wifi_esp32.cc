@@ -82,6 +82,10 @@ class WifiResourceGroup : public ResourceGroup {
 
   esp_err_t start_scan(bool passive, int channel, uint32_t period_ms);
 
+  esp_err_t set_hostname(const char* hostname) {
+    return esp_netif_set_hostname(netif_, hostname);
+  }
+
   ~WifiResourceGroup() {
     esp_err_t err = ESP_OK;
     for (int i = 0; i < DEINIT_ATTEMPTS; i++) {
@@ -464,7 +468,6 @@ esp_err_t WifiResourceGroup::start_scan(bool passive, int channel, uint32_t peri
   return esp_wifi_scan_start(&config, false);
 }
 
-
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
 PRIMITIVE(init) {
@@ -761,6 +764,17 @@ PRIMITIVE(read_scan) {
   }
 
   return ap_array;
+}
+
+PRIMITIVE(set_hostname) {
+  ARGS(WifiResourceGroup, group, cstring, hostname);
+
+  if (strlen(hostname) > 32) FAIL(INVALID_ARGUMENT);
+
+  esp_err_t err = group->set_hostname(hostname);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
 }
 
 PRIMITIVE(ap_info) {
