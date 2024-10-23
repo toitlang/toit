@@ -82,8 +82,6 @@ class TypePropagator {
   Program* const program_;
   int words_per_type_;
 
-  bool hacko_ = false;
-
 #define HAS_ENTRY_POINT(name, symbol, arity) \
   bool has_##name##_ = false;
   ENTRY_POINTS(HAS_ENTRY_POINT)
@@ -104,8 +102,12 @@ class TypePropagator {
                    TypeScope* scope,
                    uint8* site,
                    Method target,
-                   std::vector<ConcreteType>& arguments,
-                   std::vector<Worklist*>& worklists);
+                   std::vector<ConcreteType>& arguments);
+
+  void propagate_blocks(MethodTemplate* caller,
+                       TypeScope* scope,
+                       int arity,
+                       std::vector<Worklist*>& worklists);
 
   MethodTemplate* find_method(Method target, std::vector<ConcreteType> arguments);
   BlockTemplate* find_block(MethodTemplate* origin, Method method, int level, int sp);

@@ -372,35 +372,11 @@ void TypePropagator::call_method(MethodTemplate* caller,
                                  TypeScope* scope,
                                  uint8* site,
                                  Method target,
-                                 std::vector<ConcreteType>& arguments,
-                                 std::vector<Worklist*>& worklists) {
+                                 std::vector<ConcreteType>& arguments) {
   TypeStack* stack = scope->top();
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
-    // Collect all block arguments. We cannot handle block arguments
-    // outside of ordinary methods, so if the caller isn't set, we
-    // analyzing a call to a method from an entry stub of sorts.
-    if (caller && !hacko_) {
-      Set<BlockTemplate*> blocks;
-      for (auto it : arguments) {
-        if (!it.is_block()) continue;
-        BlockTemplate* block = it.block();
-        bool own = block->origin()->method().header_bcp() == caller->method().header_bcp();
-        if (own) blocks.insert(block);
-      }
-      if (!blocks.empty()) {
-        bool changed = true;
-        while (changed) {
-          changed = false;
-          for (BlockTemplate* block : blocks) {
-            changed = block->propagate(scope, worklists, block->is_invoked_from_try_block()) || changed;
-          }
-        }
-      }
-      hacko_ = true;
-    }
-
     MethodTemplate* callee = find_method(target, arguments);
     // TODO(kasper): Analyzing the callee method eagerly while still
     // in the process of analyzing the caller is an optimization. It
@@ -426,7 +402,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
   if (type.is_block()) {
     BlockTemplate* block = type.block();
     arguments.push_back(block->pass_as_argument(scope));
-    call_method(caller, scope, site, target, arguments, worklists);
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(words_per_type_) > 5) {
     // If one of the arguments is megamorphic, we analyze the target
@@ -434,15 +410,45 @@ void TypePropagator::call_method(MethodTemplate* caller,
     // down on the number of separate analysis at the cost of more
     // mixing of types and worse propagated types.
     arguments.push_back(ConcreteType::any());
-    call_method(caller, scope, site, target, arguments, worklists);
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else {
     TypeSet::Iterator it(type, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
       arguments.push_back(ConcreteType(id));
-      call_method(caller, scope, site, target, arguments, worklists);
+      call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
+    }
+  }
+}
+
+void TypePropagator::propagate_blocks(MethodTemplate* caller,
+                                     TypeScope* scope,
+                                     int arity,
+                                     std::vector<Worklist*>& worklists) {
+  // Propagate types through all locally-defined block arguments.
+  // We cannot handle block arguments outside of ordinary methods,
+  // so if the caller isn't set, we analyzing a call to a method from
+  // an entry stub of sorts.
+  if (!caller) return;
+
+  Set<BlockTemplate*> blocks;
+  TypeStack* stack = scope->top();
+  for (int i = 0; i < arity; i++) {
+    TypeSet type = stack->local(arity - i - 1);
+    if (!type.is_block()) continue;
+    BlockTemplate* block = type.block();
+    // The block is our own if it is defined inside the same method as the caller.
+    bool own = block->origin()->method().header_bcp() == caller->method().header_bcp();
+    if (own) blocks.insert(block);
+  }
+
+  bool changed = !blocks.empty();
+  while (changed) {
+    changed = false;
+    for (BlockTemplate* block : blocks) {
+      changed = block->propagate(scope, worklists, block->is_invoked_from_try_block()) || changed;
     }
   }
 }
@@ -456,7 +462,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
   int arity = target.arity();
   if (site) add_input(site, stack, arity);
 
-  hacko_ = false;
+  propagate_blocks(caller, scope, arity, worklists);
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
@@ -474,7 +480,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
   }
 
   if (handle_as_static) {
-    call_method(caller, scope, site, target, arguments, worklists);
+    call_method(caller, scope, site, target, arguments);
   } else {
     // We're handling this as a call to a virtual method,
     // but if the offset is negative it indirectly encodes
@@ -515,7 +521,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
         continue;
       }
       arguments.push_back(ConcreteType(id));
-      call_method(caller, scope, site, target, arguments, worklists);
+      call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
     }
   }
@@ -533,7 +539,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller,
   TypeSet receiver = stack->local(arity - 1);
   if (site) add_input(site, stack, arity);
 
-  hacko_ = false;
+  propagate_blocks(caller, scope, arity, worklists);
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
@@ -553,7 +559,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller,
       continue;
     }
     arguments.push_back(ConcreteType(id));
-    call_method(caller, scope, site, target, arguments, worklists);
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   }
 
@@ -1434,6 +1440,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
+    // Here we continue unwinding if an exception was thrown, so
+    // we must make this as a potential throw site to make sure
+    // any modifications to outer locals are merged back.
+    scope->throw_maybe();
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);
