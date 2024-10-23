@@ -256,6 +256,7 @@ namespace toit {
   PRIMITIVE(firmware_mapping_at, 2)          \
   PRIMITIVE(firmware_mapping_copy, 5)        \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(hostname, 0)                     \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -324,6 +325,7 @@ namespace toit {
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
+  PRIMITIVE(set_hostname, 2)                 \
   PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -334,6 +336,7 @@ namespace toit {
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(set_hostname, 2)                 \
 
 #define MODULE_BLE(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \

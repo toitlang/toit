@@ -45,6 +45,12 @@
 #include <errno.h>
 #include <sys/time.h>
 
+#ifdef TOIT_WINDOWS
+#include <windows.h>
+#include <tchar.h>
+#include "error_win.h"
+#endif
+
 #ifdef TOIT_FREERTOS
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -2570,5 +2576,37 @@ PRIMITIVE(rtc_user_bytes) {
   return result;
 }
 #endif
+
+PRIMITIVE(hostname) {
+#if defined(TOIT_ESP32)
+  return process->allocate_string_or_error(CONFIG_LWIP_LOCAL_HOSTNAME);
+#elif defined(TOIT_WINDOWS)
+  DWORD size = 0;
+  GetComputerNameExW(ComputerNameDnsHostname, null, &size);
+  wchar_t buffer[size];
+  if (!GetComputerNameExW(ComputerNameDnsHostname, buffer, &size)) {
+    return windows_error(process, GetLastError());
+  }
+  return process->allocate_string(buffer);
+#elif defined(TOIT_POSIX)
+  // The HOST_NAME_MAX variable isn't defined on all platforms, so we
+  // just hardcode a good default. On my machine HOST_NAME_MAX is set to 64.
+  // So 256 should be enough.
+  char buffer[256];
+  int result = gethostname(buffer, sizeof(buffer));
+  if (result != 0) {
+    return Primitive::os_error(errno, process);
+  }
+  buffer[sizeof(buffer) - 1] = '\0';
+  // On macos, the hostname might include the .local suffix, which we don't want.
+  // Simply truncate at the first dot.
+  char* dot = strchr(buffer, '.');
+  if (dot != null) *dot = '\0';
+  return process->allocate_string_or_error(buffer);
+#else
+#error "Unsupported platform"
+#endif
+
+}
 
 } // namespace toit
