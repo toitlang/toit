@@ -6,7 +6,21 @@ main tests/type_propagation/finally-test.toit
   8[053] - invoke static test-catchy tests/type_propagation/finally-test.toit // {Null_}
  11[041] - pop 1
  12[053] - invoke static test-nlb-out-of-try tests/type_propagation/finally-test.toit // {Null_}
- 15[090] - return null S1 0
+ 15[041] - pop 1
+ 16[053] - invoke static test-throw-update-in-finally tests/type_propagation/finally-test.toit // {Null_}
+ 19[041] - pop 1
+ 20[053] - invoke static test-break-update-in-finally tests/type_propagation/finally-test.toit // {Null_}
+ 23[041] - pop 1
+ 24[053] - invoke static test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit // {Null_}
+ 27[041] - pop 1
+ 28[053] - invoke static test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit // {Null_}
+ 31[041] - pop 1
+ 32[053] - invoke static test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit // {Null_}
+ 35[041] - pop 1
+ 36[053] - invoke static test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit // {Null_}
+ 39[041] - pop 1
+ 40[053] - invoke static test-break-update-in-finally-nested tests/type_propagation/finally-test.toit // {Null_}
+ 43[090] - return null S1 0
 
 test-is-exception tests/type_propagation/finally-test.toit
   0[053] - invoke static return-is-exception tests/type_propagation/finally-test.toit // {True|False}
@@ -196,6 +210,264 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
   4[091] - non-local return 16
   6[089] - return S1 1
 
+test-throw-update-in-finally tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[029] - load method [block] in test-throw-update-in-finally tests/type_propagation/finally-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-catch tests/type_propagation/finally-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 18[090] - return null S2 0
+
+[block] in test-throw-update-in-finally tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-throw-update-in-finally tests/type_propagation/finally-test.toit
+  5[095] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[096] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal true
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[097] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[089] - return S1 1
+
+[block] in [block] in test-throw-update-in-finally tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[020] - load literal ugh
+  2[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  5[089] - return S1 1
+
+test-break-update-in-finally tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[029] - load method [block] in test-break-update-in-finally tests/type_propagation/finally-test.toit
+  7[095] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[096] - unlink try 0
+ 16[020] - load literal true
+ 18[004] - store local, pop S5
+ 20[097] - unwind
+ 21[041] - pop 1
+ 22[084] - branch back T2
+ 27[014] - load local 0
+ 28[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 31[090] - return null S2 0
+
+[block] in test-break-update-in-finally tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[093] - non-local branch {test-break-update-in-finally:27}
+  7[089] - return S1 1
+
+test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[029] - load method [block] in test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke tests/type_propagation/finally-test.toit // [[block]] -> {}
+ 12[040] - pop 2
+ 14[084] - branch back T2
+ 19[014] - load local 0
+ 20[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 23[090] - return null S2 0
+
+[block] in test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
+  5[095] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[096] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal true
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[097] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[089] - return S1 1
+
+[block] in [block] in test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[093] - non-local branch {test-break-update-in-finally-block0:19}
+  9[089] - return S1 1
+
+test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[029] - load method [block] in test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
+  7[029] - load method [block] in test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
+ 12[095] - link try 0
+ 14[038] - load block 4
+ 16[055] - invoke block S1 // [[block]] -> {}
+ 18[041] - pop 1
+ 19[096] - unlink try 0
+ 21[020] - load literal true
+ 23[004] - store local, pop S6
+ 25[097] - unwind
+ 26[040] - pop 2
+ 28[084] - branch back T2
+ 33[014] - load local 0
+ 34[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 37[090] - return null S2 0
+
+[block] in test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[093] - non-local branch {test-break-update-in-finally-block1:33}
+  7[089] - return S1 1
+
+[block] in test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[039] - load outer block 1 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[089] - return S1 1
+
+test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+  0[022] - load null
+  1[029] - load method [block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+  6[029] - load method [block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+ 11[095] - link try 0
+ 13[038] - load block 4
+ 15[055] - invoke block S1 // [[block]] -> {}
+ 17[041] - pop 1
+ 18[096] - unlink try 0
+ 20[020] - load literal true
+ 22[004] - store local, pop S6
+ 24[029] - load method [block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+ 29[095] - link try 0
+ 31[038] - load block 4
+ 33[055] - invoke block S1 // [[block]] -> {}
+ 35[041] - pop 1
+ 36[096] - unlink try 0
+ 38[020] - load literal false
+ 40[004] - store local, pop S10
+ 42[097] - unwind
+ 43[041] - pop 1
+ 44[097] - unwind
+ 45[040] - pop 2
+ 47[084] - branch back T1
+ 52[014] - load local 0
+ 53[053] - invoke static id tests/type_propagation/finally-test.toit // [{Null_|True}] -> {Null_|True}
+ 56[090] - return null S2 0
+
+[block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[093] - non-local branch {test-break-update-in-finally-block2:52}
+  7[089] - return S1 1
+
+[block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[039] - load outer block 1 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[089] - return S1 1
+
+[block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[039] - load outer block 5 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[089] - return S1 1
+
+test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[022] - load null
+  3[029] - load method [block] in test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
+  8[029] - load method [block] in test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
+ 13[095] - link try 0
+ 15[038] - load block 4
+ 17[055] - invoke block S1 // [[block]] -> {}
+ 19[041] - pop 1
+ 20[096] - unlink try 0
+ 22[020] - load literal true
+ 24[004] - store local, pop S7
+ 26[097] - unwind
+ 27[041] - pop 1
+ 28[084] - branch back T8
+ 33[016] - load local 2
+ 34[004] - store local, pop S2
+ 36[041] - pop 1
+ 37[084] - branch back T3
+ 42[015] - load local 1
+ 43[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 46[002] - pop, load local S0
+ 48[053] - invoke static id tests/type_propagation/finally-test.toit // [{Null_|False}] -> {Null_|False}
+ 51[090] - return null S3 0
+
+[block] in test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[093] - non-local branch {test-break-update-in-finally-block3:42}
+  7[089] - return S1 1
+
+[block] in test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/finally-test.toit // {True|False}
+  3[083] - branch if false T14
+  6[016] - load local 2
+  7[039] - load outer block 1 // [block]
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[081] - branch T21
+ 14[016] - load local 2
+ 15[093] - non-local branch {test-break-update-in-finally-block3:33}
+ 21[089] - return S1 1
+
+test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
+  0[022] - load null
+  1[029] - load method [block] in test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
+  6[095] - link try 0
+  8[038] - load block 4
+ 10[055] - invoke block S1 // [[block]] -> {}
+ 12[041] - pop 1
+ 13[096] - unlink try 0
+ 15[020] - load literal horse
+ 17[004] - store local, pop S5
+ 19[097] - unwind
+ 20[041] - pop 1
+ 21[084] - branch back T1
+ 26[014] - load local 0
+ 27[053] - invoke static id tests/type_propagation/finally-test.toit // [{SmallInteger_}] -> {SmallInteger_}
+ 30[090] - return null S2 0
+
+[block] in test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
+  5[095] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[096] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal true
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[097] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[089] - return S1 1
+
+[block] in [block] in test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[023] - load smi 0
+  4[006] - store outer S1
+  6[002] - pop, load local S2
+  8[005] - load outer S3 // [block]
+ 10[093] - non-local branch {test-break-update-in-finally-nested:26}
+ 16[089] - return S1 1
+
 id tests/type_propagation/finally-test.toit
  - argument 0: {String_|Null_|True|False|SmallInteger_|Exception_}
   0[016] - load local 2
@@ -213,3 +485,22 @@ invoke tests/type_propagation/finally-test.toit
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {}
   3[090] - return null S1 1
+
+invoke-catch tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in invoke-catch tests/type_propagation/finally-test.toit
+  5[095] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[096] - unlink try 0
+ 14[090] - return null S4 1
+ 17[097] - unwind
+ 18[041] - pop 1
+
+[block] in invoke-catch tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[089] - return S1 1
