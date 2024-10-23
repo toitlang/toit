@@ -3563,6 +3563,19 @@ PRIMITIVE(get_bonded_peers) {
   return result;
 }
 
+PRIMITIVE(set_gap_device_name) {
+  ARGS(BleAdapterResource, adapter, cstring, name)
+
+  Locker locker(adapter->group()->mutex());
+
+  int err = ble_svc_gap_device_name_set(name);
+  if (err != BLE_ERR_SUCCESS) {
+    return nimble_stack_error(process, err);
+  }
+
+  return process->null_object();
+}
+
 } // namespace toit
 
 #endif // defined(TOIT_ESP32) && defined(CONFIG_BT_ENABLED)

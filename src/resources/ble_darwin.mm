@@ -1369,4 +1369,9 @@ PRIMITIVE(get_bonded_peers) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(set_gap_device_name) {
+  ARGS(BleAdapterResource, adapter, cstring, name)
+  FAIL(UNIMPLEMENTED);
+}
+
 }
