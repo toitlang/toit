@@ -69,15 +69,23 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
-  ARGS(cstring, message, bool, add_newline);
-  fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
+  ARGS(Blob, message, bool, add_newline);
+  auto bytes = message.address();
+  for (int i = 0; i < message.length(); i++) {
+    putchar(bytes[i]);
+  }
+  if (add_newline) putchar('\n');
   fflush(stdout);
   return process->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
-  ARGS(cstring, message, bool, add_newline);
-  fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
+  ARGS(Blob, message, bool, add_newline);
+  auto bytes = message.address();
+  for (int i = 0; i < message.length(); i++) {
+    putchar(bytes[i]);
+  }
+  if (add_newline) putchar('\n');
   fflush(stderr);
   return process->null_object();
 }

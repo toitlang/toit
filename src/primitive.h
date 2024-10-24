@@ -906,6 +906,9 @@ namespace toit {
   if (_raw_##name != process->null_object()) {                                   \
     Blob _blob_##name;                                                           \
     if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+    if (memchr(_blob_##name.address(), '\0', _blob_##name.length()) != null) {   \
+      FAIL(INVALID_ARGUMENT);                                                    \
+    }                                                                            \
     _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
     if (!_nonconst_##name) FAIL(MALLOC_FAILED);                                  \
     memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length());     \
