@@ -600,7 +600,8 @@ run-lsp-server invocation/cli.Invocation:
   toitc-cmd := [tool-path sdk-dir "toit.compile"]
   if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
   // We are not using the cli's Ui class, as it might print on stdout.
-  print-on-stderr_ "Using $toitc-cmd.first"
+  if invocation.cli.ui.level <= cli.Ui.VERBOSE-LEVEL:
+    print-on-stderr_ "Using $toitc-cmd.first"
   lsp.main --toit-path-override=toitc-cmd.first
 
 run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invocation:
