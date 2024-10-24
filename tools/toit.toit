@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import cli
+import cli show Ui
 import fs
 import host.file
 import host.pipe
@@ -600,7 +601,7 @@ run-lsp-server invocation/cli.Invocation:
   toitc-cmd := [tool-path sdk-dir "toit.compile"]
   if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
   // We are not using the cli's Ui class, as it might print on stdout.
-  if invocation.cli.ui.level <= cli.Ui.VERBOSE-LEVEL:
+  if invocation.cli.ui.level >= Ui.VERBOSE-LEVEL:
     print-on-stderr_ "Using $toitc-cmd.first"
   lsp.main --toit-path-override=toitc-cmd.first
 
