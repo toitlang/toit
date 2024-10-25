@@ -74,19 +74,29 @@ MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 #if defined(TOIT_WINDOWS)
 static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
-  // Get the appropriate console handle.
   HANDLE console = GetStdHandle(is_stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
   if (console == INVALID_HANDLE_VALUE) {
     return Primitive::os_error(GetLastError(), process);
   }
 
   DWORD written;
-  WriteConsoleA(console, bytes, (DWORD)length, &written, NULL);
+  DWORD mode;
 
-  if (newline) {
-    WriteConsoleA(console, "\r\n", 2, &written, NULL);
+  // Check if the handle is a console handle.
+  if (GetConsoleMode(console, &mode)) {
+    // Write to the console.
+    WriteConsoleA(console, bytes, (DWORD)length, &written, NULL);
+
+    if (newline) {
+      WriteConsoleA(console, "\r\n", 2, &written, NULL);
+    }
   } else {
-    fflush(is_stdout ? stdout : stderr);
+    // Handle redirection case.
+    WriteFile(console, bytes, (DWORD)length, &written, NULL);
+
+    if (newline) {
+      WriteFile(console, "\r\n", 2, &written, NULL);
+    }
   }
 
   return process->null_object();
