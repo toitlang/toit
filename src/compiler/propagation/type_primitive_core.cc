@@ -50,8 +50,8 @@ TYPE_PRIMITIVE(process_stats) {
 }
 
 TYPE_PRIMITIVE_ANY(string_write_to_byte_array)  // TODO(kasper): Returns an argument.
-TYPE_PRIMITIVE_NULL(write_string_on_stdout)
-TYPE_PRIMITIVE_NULL(write_string_on_stderr)
+TYPE_PRIMITIVE_NULL(write_on_stdout)
+TYPE_PRIMITIVE_NULL(write_on_stderr)
 
 TYPE_PRIMITIVE_INT(time)
 TYPE_PRIMITIVE_ARRAY(time_info)

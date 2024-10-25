@@ -68,24 +68,62 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
-static void write_to(FILE* stream, const uint8* bytes, word length) {
+#if defined(TOIT_WINDOWS)
+static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline) {
+  // Get the appropriate console handle.
+  HANDLE console = GetStdHandle(is_stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+  if (console == INVALID_HANDLE_VALUE) {
+    return Primitive::os_error(GetLastError(), process);
+  }
+
+  DWORD written;
+  WriteConsoleA(console, bytes, (DWORD)length, &written, NULL);
+
+  if (newline) {
+    WriteConsoleA(console, "\r\n", 2, &written, NULL);
+  } else {
+    fflush(stream);
+  }
+
+  return process->null_object();
+}
+#elif !defined(TOIT_FREERTOS) && (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE)
+static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
+  FILE* stream = is_stdout ? stdout : stderr;
   flockfile(stream);
-  for (word i = 0; i < length; i++) {
-    putc_unlocked(bytes[i], stream);
+  fwrite_unlocked(bytes, 1, length, stream);
+  if (newline) {
+    fputc_unlocked('\n', stream);
+  } else {
+    fflush_unlocked(stream);
   }
   funlockfile(stream);
-  fflush(stream);
+  return process->null_object();
 }
+#else
+static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
+  FILE* stream = is_stdout ? stdout : stderr;
+  fwrite(bytes, 1, length, stream);
+  if (newline) {
+    fputc('\n', stream);
+  } else {
+    fflush(stream);
+  }
+  return process->null_object();
+}
+#endif
 
-PRIMITIVE(write_string_on_stdout) {
+PRIMITIVE(write_on_stdout) {
   ARGS(Blob, message, bool, add_newline);
-  write_to(stdout, message.address(), message.length());
+  bool is_stdout;
+  write_on_std(message.address(), message.length(), is_stdout=true, add_newline, process);
   return process->null_object();
 }
 
-PRIMITIVE(write_string_on_stderr) {
+PRIMITIVE(write_on_stderr) {
   ARGS(Blob, message, bool, add_newline);
-  write_to(stderr, message.address(), message.length());
+  bool is_stdout;
+  write_on_std(message.address(), message.length(), is_stdout=false, add_newline, process);
   return process->null_object();
 }
 
