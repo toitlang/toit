@@ -916,6 +916,12 @@ namespace toit {
   const char* name = _nonconst_##name;                                           \
   AllocationManager _manager_##name(process, _nonconst_##name, 0);
 
+#define _A_T_CStringBlob(N, name)                                               \
+  Object* _raw_##name = __args[-(N)];                                           \
+  Blob name;                                                                    \
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name.address(), '\0', name.length()) != null) FAIL(INVALID_ARGUMENT);
+
 // If it's a string, then the length is calculated including the terminating
 // null.  Otherwise it's calculated without the terminating null.  MbedTLS
 // seems to like this crazy semantics.  Produces two variables, called name
@@ -968,6 +974,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   Blob name##_blob;                                                          \
   if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name##_blob.address(), '\0', name##_blob.length()) != null) {   \
+    FAIL(INVALID_ARGUMENT);                                                  \
+  }                                                                          \
   BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
 
 #define _A_T_Blob(N, name)                                                   \
