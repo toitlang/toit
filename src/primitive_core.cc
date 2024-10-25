@@ -71,10 +71,12 @@ MODULE_IMPLEMENTATION(core, MODULE_CORE)
 PRIMITIVE(write_string_on_stdout) {
   ARGS(Blob, message, bool, add_newline);
   auto bytes = message.address();
+  flockfile(stdout);
   for (int i = 0; i < message.length(); i++) {
-    putchar(bytes[i]);
+    putc_unlocked(bytes[i], stdout);
   }
-  if (add_newline) putchar('\n');
+  if (add_newline) putc_unlocked('\n', stdout);
+  funlockfile(stdout);
   fflush(stdout);
   return process->null_object();
 }
