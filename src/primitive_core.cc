@@ -50,6 +50,10 @@
 #include "freertos/task.h"
 #endif
 
+#ifdef TOIT_WINDOWS
+#include <windows.h>
+#endif
+
 #ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -69,7 +73,7 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 #if defined(TOIT_WINDOWS)
-static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline) {
+static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
   // Get the appropriate console handle.
   HANDLE console = GetStdHandle(is_stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
   if (console == INVALID_HANDLE_VALUE) {
@@ -82,7 +86,7 @@ static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout,
   if (newline) {
     WriteConsoleA(console, "\r\n", 2, &written, NULL);
   } else {
-    fflush(stream);
+    fflush(is_stdout ? stdout : stderr);
   }
 
   return process->null_object();
