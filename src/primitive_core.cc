@@ -73,6 +73,18 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 #if defined(TOIT_WINDOWS)
+#include <windows.h>
+#include <vector>
+
+static void replace_line_endings(const uint8_t* bytes, size_t length, std::vector<uint8_t>& buffer) {
+  for (size_t i = 0; i < length; ++i) {
+    if (bytes[i] == '\n' && (i == 0 || bytes[i - 1] != '\r')) {
+      buffer.push_back('\r'); // Add '\r' before '\n' if not already preceded by it.
+    }
+    buffer.push_back(bytes[i]);
+  }
+}
+
 static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
   HANDLE console = GetStdHandle(is_stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
   if (console == INVALID_HANDLE_VALUE) {
@@ -82,17 +94,21 @@ static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout,
   DWORD written;
   DWORD mode;
 
+  // Prepare buffer with replaced line endings.
+  std::vector<uint8_t> buffer;
+  replace_line_endings(bytes, length, buffer);
+
   // Check if the handle is a console handle.
   if (GetConsoleMode(console, &mode)) {
     // Write to the console.
-    WriteConsoleA(console, bytes, (DWORD)length, &written, NULL);
+    WriteConsoleA(console, buffer.data(), (DWORD)buffer.size(), &written, NULL);
 
     if (newline) {
       WriteConsoleA(console, "\r\n", 2, &written, NULL);
     }
   } else {
     // Handle redirection case.
-    WriteFile(console, bytes, (DWORD)length, &written, NULL);
+    WriteFile(console, buffer.data(), (DWORD)buffer.size(), &written, NULL);
 
     if (newline) {
       WriteFile(console, "\r\n", 2, &written, NULL);
