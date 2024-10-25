@@ -68,27 +68,24 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
+static void write_to(FILE* stream, const uint8* bytes, word length) {
+  flockfile(stream);
+  for (word i = 0; i < length; i++) {
+    putc_unlocked(bytes[i], stream);
+  }
+  funlockfile(stream);
+  fflush(stream);
+}
+
 PRIMITIVE(write_string_on_stdout) {
   ARGS(Blob, message, bool, add_newline);
-  auto bytes = message.address();
-  flockfile(stdout);
-  for (int i = 0; i < message.length(); i++) {
-    putc_unlocked(bytes[i], stdout);
-  }
-  if (add_newline) putc_unlocked('\n', stdout);
-  funlockfile(stdout);
-  fflush(stdout);
+  write_to(stdout, message.address(), message.length());
   return process->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(Blob, message, bool, add_newline);
-  auto bytes = message.address();
-  for (int i = 0; i < message.length(); i++) {
-    putchar(bytes[i]);
-  }
-  if (add_newline) putchar('\n');
-  fflush(stderr);
+  write_to(stderr, message.address(), message.length());
   return process->null_object();
 }
 
