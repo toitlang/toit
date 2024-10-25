@@ -87,7 +87,7 @@ static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout,
 
   return process->null_object();
 }
-#elif !defined(TOIT_FREERTOS) && (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE)
+#elif (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE) && defined(_POSIX_THREAD_SAFE_FUNCTIONS)
 static Object* write_on_std(const uint8_t* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
   FILE* stream = is_stdout ? stdout : stderr;
   flockfile(stream);
