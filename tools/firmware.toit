@@ -610,6 +610,9 @@ extract-cmd -> cli.Command:
         - binary: the binary image of the firmware, which can be used for firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
+        The partition-table option can only be used for ESP32 envelopes with
+        format 'image', and replaces the partition table that is in the envelope.
+
         # QEMU
         It is recommended to use the `esp32-qemu` firmware, since it includes an
         ethernet driver that is compatible with QEMU.
@@ -648,6 +651,9 @@ extract-cmd -> cli.Command:
         cli.OptionEnum "format" ["binary", "elf", "ubjson", "image", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
+        cli.Option "partition-table"
+            --help="Overwrite the partition table."
+            --type="file",
       ]
       --run=:: extract it
 
@@ -659,6 +665,13 @@ extract invocation/cli.Invocation -> none:
 
   config-path := invocation["config"]
 
+  partition-table-path := invocation["partition-table"]
+  if partition-table-path:
+    if envelope.kind != Envelope.KIND-ESP32:
+      ui.abort "The '--partition-table' option can only be used for ESP32 envelopes."
+    if invocation["format"] != "image":
+      ui.abort "The '--partition-table' option can only be used with the 'image' format."
+
   config-encoded := ByteArray 0
   if config-path:
     config-encoded = read-file config-path --ui=ui
@@ -666,13 +679,17 @@ extract invocation/cli.Invocation -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
-    extract-esp32 invocation envelope --config-encoded=config-encoded
+    extract-esp32 invocation envelope --config-encoded=config-encoded --partition-table-path=partition-table-path
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
-extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray -> none:
+extract-esp32 -> none
+    invocation/cli.Invocation
+    envelope/Envelope
+    --config-encoded/ByteArray
+    --partition-table-path/string?:
   output-path := invocation[OPTION-OUTPUT]
 
   ui := invocation.cli.ui
@@ -696,7 +713,7 @@ extract-esp32 invocation/cli.Invocation envelope/Envelope --config-encoded/ByteA
   if format == "qemu" or format == "image":
     if format == "qemu":
       ui.emit --warning "The 'qemu' format is deprecated, use 'image' instead."
-    write-image_ output-path firmware-bin envelope --ui=ui
+    write-image_ output-path firmware-bin envelope --partition-table-path=partition-table-path --ui=ui
     return
 
   if not format == "ubjson":
@@ -834,12 +851,19 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
-write-image_ output-path/string firmware-bin/ByteArray envelope/Envelope --ui/cli.Ui -> none:
+write-image_ -> none
+    output-path/string
+    firmware-bin/ByteArray
+    envelope/Envelope
+    --partition-table-path/string?
+    --ui/cli.Ui:
   flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
       --if-absent=: throw "cannot create image without 'flashing.json'"
 
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
+  bundled-partitions-bin := partition-table-path
+      ? read-file partition-table-path --ui=ui
+      : envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN
   partition-table := PartitionTable.decode bundled-partitions-bin
 
   // TODO(kasper): Allow adding more partitions.
@@ -957,6 +981,7 @@ flash-cmd -> cli.Command:
             --help="Add a custom partition to the flashed image."
             --split-commas
             --multi,
+            TODO: add partition-table option
       ]
       --run=:: flash it
 
