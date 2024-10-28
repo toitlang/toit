@@ -610,8 +610,9 @@ extract-cmd -> cli.Command:
         - binary: the binary image of the firmware, which can be used for firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
-        The partition-table option can only be used for ESP32 envelopes with
-        format 'image', and replaces the partition table that is in the envelope.
+        The '--partition-table' and '--partition' option can only be used for ESP32 envelopes with
+        format 'image'. The '--partition-table' replaces the partition table that is in the
+        envelope, and the '--partition' option adds custom partitions to the image.
 
         # QEMU
         It is recommended to use the `esp32-qemu` firmware, since it includes an
@@ -652,8 +653,13 @@ extract-cmd -> cli.Command:
             --help="Set the output format."
             --default="binary",
         cli.Option "partition-table"
-            --help="Overwrite the partition table."
+            --help="Override the partition table of the envelope."
             --type="file",
+        cli.OptionPatterns "partition"
+            ["file:<name>=<path>", "empty:<name>=<size>"]
+            --help="Add a custom partition to the image."
+            --split-commas
+            --multi,
       ]
       --run=:: extract it
 
@@ -665,12 +671,13 @@ extract invocation/cli.Invocation -> none:
 
   config-path := invocation["config"]
 
-  partition-table-path := invocation["partition-table"]
-  if partition-table-path:
+  partition-table-path/string? := invocation["partition-table"]
+  partitions-args/List := invocation["partition"]
+  if partition-table-path or not partitions-args.is-empty:
     if envelope.kind != Envelope.KIND-ESP32:
-      ui.abort "The '--partition-table' option can only be used for ESP32 envelopes."
+      ui.abort "The '--partition-table' and '--partition' options can only be used for ESP32 envelopes."
     if invocation["format"] != "image":
-      ui.abort "The '--partition-table' option can only be used with the 'image' format."
+      ui.abort "The '--partition-table' and '--partition' options can only be used with the 'image' format."
 
   config-encoded := ByteArray 0
   if config-path:
@@ -679,7 +686,7 @@ extract invocation/cli.Invocation -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
-    extract-esp32 invocation envelope --config-encoded=config-encoded --partition-table-path=partition-table-path
+    extract-esp32 invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else:
@@ -688,8 +695,7 @@ extract invocation/cli.Invocation -> none:
 extract-esp32 -> none
     invocation/cli.Invocation
     envelope/Envelope
-    --config-encoded/ByteArray
-    --partition-table-path/string?:
+    --config-encoded/ByteArray:
   output-path := invocation[OPTION-OUTPUT]
 
   ui := invocation.cli.ui
@@ -704,16 +710,19 @@ extract-esp32 -> none
     write-file output-path --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
     return
 
+  if format == "qemu" or format == "image":
+    if format == "qemu":
+      ui.emit --warning "The 'qemu' format is deprecated, use 'image' instead."
+    build-esp32-image invocation envelope
+        --config-encoded=config-encoded
+        --write=: | partitions _ flashing |
+          write-partitions_ output-path partitions --flashing=flashing --ui=ui
+    return
+
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
 
   if format == "binary":
     write-file output-path --ui=ui: it.write firmware-bin
-    return
-
-  if format == "qemu" or format == "image":
-    if format == "qemu":
-      ui.emit --warning "The 'qemu' format is deprecated, use 'image' instead."
-    write-image_ output-path firmware-bin envelope --partition-table-path=partition-table-path --ui=ui
     return
 
   if not format == "ubjson":
@@ -851,40 +860,92 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
-write-image_ -> none
-    output-path/string
-    firmware-bin/ByteArray
-    envelope/Envelope
-    --partition-table-path/string?
-    --ui/cli.Ui:
+write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
+  flash-size-string := flashing["flash_settings"]["flash_size"]
+  if not flash-size-string.ends-with "MB":
+    ui.abort "Unexpected flash size '$flash-size-string'."
+  flash-size := (int.parse flash-size-string[..flash-size-string.size - 2]) * 1024 * 1024
+
+  out-image := ByteArray flash-size
+  partitions.do: | offset/int content/ByteArray |
+    out-image.replace offset content
+  write-file output-path --ui=ui: it.write out-image
+
+build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray [--write] -> none:
+  cli := invocation.cli
+  ui := cli.ui
+
+  partition-table-path := invocation["partition-table"]
+
+  firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
+  binary := Esp32Binary firmware-bin
   flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
-      --if-absent=: throw "cannot create image without 'flashing.json'"
+      --if-absent=: ui.abort "Envelope is missing a 'flashing.json' entry"
 
-  bundled-partitions-bin := partition-table-path
+  initial-partitions-bin := partition-table-path
       ? read-file partition-table-path --ui=ui
       : envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN
-  partition-table := PartitionTable.decode bundled-partitions-bin
+  partition-table := PartitionTable.decode initial-partitions-bin
 
-  // TODO(kasper): Allow adding more partitions.
-  encoded-partitions-bin := partition-table.encode
-  app-partition ::= partition-table.find-app
+  // Map the file:<name>=<path> and empty:<name>=<size> partitions
+  // to entries in the partition table by allocating at the end
+  // of the used part of the flash image.
+  partitions := {:}
+  parsed-partitions := invocation["partition"]
+  parsed-partitions.do: | entry/Map |
+    description := ?
+    is-file := entry.contains "file"
+    if is-file: description = entry["file"]
+    else: description = entry["empty"]
+    assign-index := description.index-of "="
+    if assign-index < 0: ui.abort "Malformed partition description '$description'."
+    name := description[..assign-index]
+    if not (0 < name.size <= 15): ui.abort "Malformed partition name '$name'."
+    if partitions.contains name: ui.abort "Duplicate partition named '$name'."
+    value := description[assign-index + 1..]
+    partition-content/ByteArray := ?
+    if is-file:
+      partition-content = read-file value --ui=ui
+    else:
+      size := int.parse value --on-error=:
+        ui.abort "Malformed partition size '$value'."
+      partition-content = ByteArray size
+    partition-content = pad partition-content 4096
+    offset := partition-table.find-first-free-offset
+    partition := Partition
+        --name=name
+        --type=0x41  // TODO(kasper): Avoid hardcoding this.
+        --subtype=0
+        --offset=partition-table.find-first-free-offset
+        --size=partition-content.size
+        --flags=0
+    partitions[offset] = partition-content
+    partition-table.add partition
+
+  // The bootloader partition is not part of the partition-table.
+  bootloader-bin := envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
+  bootloader-offset := int.parse flashing["bootloader"]["offset"][2..] --radix=16
+  partitions[bootloader-offset] = bootloader-bin
+
+  // The partition-table partition is not part of the partition-table.
+  partitions-bin := partition-table.encode
+  partitions-offset := int.parse flashing["partition-table"]["offset"][2..] --radix=16
+  partitions[partitions-offset] = partitions-bin
+
   otadata-partition := partition-table.find-otadata
+  otadata-partition-offset := otadata-partition.offset
+  otadata-bin := envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN
+  partitions[otadata-partition-offset] = otadata-bin
 
-  out-image := ByteArray 4 * 1024 * 1024  // 4 MB.
-  out-image.replace
-      int.parse flashing["bootloader"]["offset"][2..] --radix=16
-      envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
-  out-image.replace
-      int.parse flashing["partition-table"]["offset"][2..] --radix=16
-      encoded-partitions-bin
-  out-image.replace
-      otadata-partition.offset
-      envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN
-  out-image.replace
-      app-partition.offset
-      firmware-bin
-  write-file output-path --ui=ui: it.write out-image
+  app-partition := partition-table.find-app  // Typically called ota_0.
+  app-partition-offset := app-partition.offset
+  if firmware-bin.size > app-partition.size:
+    ui.abort "Firmware is too big to fit in designated partition ($firmware-bin.size > $app-partition.size)"
+  partitions[app-partition-offset] = firmware-bin
+
+  chip := binary.chip-name
+  write.call partitions chip flashing
 
 find-esptool_ -> List:
   bin-extension := ?
@@ -964,7 +1025,20 @@ esptool invocation/cli.Invocation -> none:
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
-      --help="Flash a firmware envelope to a device."
+      --help="""
+          Flash a firmware envelope to a device.
+
+          The partition table is extracted from the envelope unless the
+          --partition-table option is used.
+
+          The '--partition' option can be used to add custom partitions to the
+          flashed image. These additional partitions are on top of the partitions
+          that are specified in the (potentially overridden) partition table.
+
+          Uses Espressif's esptool.py to flash the image. Use
+          'ESPTOOL_PATH' to specify the path to the esptool.py script if you don't
+          want to use the bundled version.
+          """
       --options=[
         cli.Option "config"
             --type="file",
@@ -975,13 +1049,16 @@ flash-cmd -> cli.Command:
         cli.OptionInt "baud"
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
+            --hidden
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
             --help="Add a custom partition to the flashed image."
             --split-commas
             --multi,
-            TODO: add partition-table option
+        cli.Option "partition-table"
+            --help="Override the partition table."
+            --type="file",
       ]
       --run=:: flash it
 
@@ -990,6 +1067,7 @@ flash invocation/cli.Invocation -> none:
   config-path := invocation["config"]
   port := invocation["port"]
   baud := invocation["baud"]
+  partition-table-path := invocation["partition-table"]
 
   ui := invocation.cli.ui
 
@@ -1012,92 +1090,29 @@ flash invocation/cli.Invocation -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
-  binary := Esp32Binary firmware-bin
-  chip := binary.chip-name
+  build-esp32-image invocation envelope --config-encoded=config-encoded
+      --write=: | partitions/Map chip/string flashing/Map |
+        tmp := directory.mkdtemp "/tmp/toit-flash-"
+        try:
+          partition-args := []
+          partitions.do: | offset/int contents/ByteArray |
+            tmp-file := "$tmp/partition-$offset"
+            write-file tmp-file --ui=ui: it.write contents
+            partition-args.add "0x$(%x offset)"
+            partition-args.add tmp-file
 
-  esptool := find-esptool_
+          esptool := find-esptool_
 
-  flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
-      --if-present=: json.decode it
-      --if-absent=: throw "cannot flash without 'flashing.json'"
-
-  bundled-partitions-bin := (envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN)
-  partition-table := PartitionTable.decode bundled-partitions-bin
-
-  // Map the file:<name>=<path> and empty:<name>=<size> partitions
-  // to entries in the partition table by allocating at the end
-  // of the used part of the flash image.
-  partitions := {:}
-  parsed-partitions := invocation["partition"]
-  parsed-partitions.do: | entry/Map |
-    description := ?
-    is-file := entry.contains "file"
-    if is-file: description = entry["file"]
-    else: description = entry["empty"]
-    assign-index := description.index-of "="
-    if assign-index < 0: throw "malformed partition description '$description'"
-    name := description[..assign-index]
-    if not (0 < name.size <= 15): throw "malformed partition name '$name'"
-    if partitions.contains name: throw "duplicate partition named '$name'"
-    value := description[assign-index + 1..]
-    partition-content/ByteArray := ?
-    if is-file:
-      partition-content = read-file value --ui=ui
-    else:
-      size := int.parse value --on-error=:
-        throw "malformed partition size '$value'"
-      partition-content = ByteArray size
-    partition-content = pad partition-content 4096
-    partition := Partition
-        --name=name
-        --type=0x41  // TODO(kasper): Avoid hardcoding this.
-        --subtype=0
-        --offset=partition-table.find-first-free-offset
-        --size=partition-content.size
-        --flags=0
-    partitions[name] = [partition, partition-content]
-    partition-table.add partition
-
-  encoded-partitions-bin := partition-table.encode
-  app-partition ::= partition-table.find-app
-  otadata-partition := partition-table.find-otadata
-
-  if firmware-bin.size > app-partition.size:
-    ui.abort "Firmware is too big to fit in designated partition ($firmware-bin.size > $app-partition.size)"
-
-  tmp := directory.mkdtemp "/tmp/toit-flash-"
-  try:
-    write-file "$tmp/bootloader.bin" --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN)
-    write-file "$tmp/partitions.bin" --ui=ui: it.write encoded-partitions-bin
-    write-file "$tmp/otadata.bin" --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-OTADATA-BIN)
-    write-file "$tmp/firmware.bin" --ui=ui: it.write firmware-bin
-
-    partition-args := [
-      flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
-      flashing["partition-table"]["offset"], "$tmp/partitions.bin",
-      "0x$(%x otadata-partition.offset)",    "$tmp/otadata.bin",
-      "0x$(%x app-partition.offset)",        "$tmp/firmware.bin"
-    ]
-
-    partitions.do: | name/string entry/List |
-      offset := (entry[0] as Partition).offset
-      contents := entry[1] as ByteArray
-      path := "$tmp/partition-$offset"
-      write-file path --ui=ui: it.write contents
-      partition-args.add "0x$(%x offset)"
-      partition-args.add path
-
-    code := pipe.run-program esptool + [
-      "--port", port,
-      "--baud", "$baud",
-      "--chip", chip,
-      "--before", flashing["extra_esptool_args"]["before"],
-      "--after",  flashing["extra_esptool_args"]["after"]
-    ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
-    if code != 0: exit 1
-  finally:
-    directory.rmdir --recursive tmp
+          code := pipe.run-program esptool + [
+            "--port", port,
+            "--baud", "$baud",
+            "--chip", chip,
+            "--before", flashing["extra_esptool_args"]["before"],
+            "--after",  flashing["extra_esptool_args"]["after"]
+          ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
+          if code != 0: exit 1
+        finally:
+          directory.rmdir --recursive tmp
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES
