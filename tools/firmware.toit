@@ -883,10 +883,10 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
       --if-present=: json.decode it
       --if-absent=: ui.abort "Envelope is missing a 'flashing.json' entry"
 
-  initial-partitions-bin := partition-table-path
+  partition-table-bytes := partition-table-path
       ? read-file partition-table-path --ui=ui
       : envelope.entries.get AR-ENTRY-ESP32-PARTITIONS-BIN
-  partition-table := PartitionTable.decode initial-partitions-bin
+  partition-table := PartitionTable.decode partition-table-bytes
 
   // Map the file:<name>=<path> and empty:<name>=<size> partitions
   // to entries in the partition table by allocating at the end
