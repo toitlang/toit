@@ -973,7 +973,7 @@ jobs:
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
           username: ${{ secrets.AC_USERNAME }}
           password: ${{ secrets.AC_PASSWORD }}
-          apple-team-id: 33DS2ZRDST
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
           app-path: ${{ steps.list-executables.outputs.result }}
 
       - name: Compress
@@ -1006,7 +1006,7 @@ jobs:
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
           username: ${{ secrets.AC_USERNAME }}
           password: ${{ secrets.AC_PASSWORD }}
-          apple-team-id: 33DS2ZRDST
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
           app-path: |
             out/toit-x64.dmg
             out/toit-arm.dmg
