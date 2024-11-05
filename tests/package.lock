@@ -47,10 +47,10 @@ packages:
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate_roots
-    version: 1.6.1
-    hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
+    version: 1.6.2
+    hash: cfa85ca31b136a99654674b3ada80d4c0ed9b791
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table
-    version: 1.2.0
-    hash: 839d191d419caf43df86ce67c3c596e92f350bda
+    version: 1.3.0
+    hash: 4a64a4a25bed91e105227dba138a411a90dfabcf
