@@ -607,12 +607,15 @@ extract-cmd -> cli.Command:
         - qemu: a deprecated alias for 'image'.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.
-        - binary: the binary image of the firmware, which can be used for firmware upgrades.
+        - binary: the binary image of the firmware, which can be used for
+          firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
 
-        The '--partition-table' and '--partition' option can only be used for ESP32 envelopes with
-        format 'image'. The '--partition-table' replaces the partition table that is in the
-        envelope, and the '--partition' option adds custom partitions to the image.
+        The '--partition-table' and '--partition' option can only be used
+        for ESP32 envelopes with format 'image'. The '--partition-table'
+        replaces the partition table that is in the envelope, and the
+        '--partition' option replaces partitions or adds custom partitions
+        to the image. See the 'flash' command for more details.
 
         # QEMU
         It is recommended to use the `esp32-qemu` firmware, since it includes an
@@ -657,7 +660,7 @@ extract-cmd -> cli.Command:
             --type="file",
         cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
-            --help="Add a custom partition to the image."
+            --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
       ]
@@ -912,16 +915,23 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
         ui.abort "Malformed partition size '$value'."
       partition-content = ByteArray size
     partition-content = pad partition-content 4096
-    offset := partition-table.find-first-free-offset
-    partition := Partition
-        --name=name
-        --type=0x41  // TODO(kasper): Avoid hardcoding this.
-        --subtype=0
-        --offset=partition-table.find-first-free-offset
-        --size=partition-content.size
-        --flags=0
-    partitions[offset] = partition-content
-    partition-table.add partition
+
+    existing-partition := partition-table.find --name=name
+    if existing-partition:
+      if existing-partition.size < partition-content.size:
+        ui.abort "Partition '$name' is too big to fit in designated partition ($partition-content.size > $existing-partition.size)"
+      partitions[existing-partition.offset] = partition-content
+    else:
+      offset := partition-table.find-first-free-offset
+      partition := Partition
+          --name=name
+          --type=0x41
+          --subtype=0
+          --offset=partition-table.find-first-free-offset
+          --size=partition-content.size
+          --flags=0
+      partitions[offset] = partition-content
+      partition-table.add partition
 
   // The bootloader partition is not part of the partition-table.
   bootloader-bin := envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
@@ -1031,9 +1041,12 @@ flash-cmd -> cli.Command:
           The partition table is extracted from the envelope unless the
           --partition-table option is used.
 
-          The '--partition' option can be used to add custom partitions to the
-          flashed image. These additional partitions are on top of the partitions
+          The '--partition' option can be used to replace the content of existing
+          partitions or to add custom partitions to the flashed image. If a
+          partition with the given name exists, its content is replaced with the
+          provided data. Otherwise, the partition is added on top of the partitions
           that are specified in the (potentially overridden) partition table.
+          Newly added partitions are of type 0x41, subtype 0, and have no flags.
 
           Uses Espressif's esptool.py to flash the image. Use
           'ESPTOOL_PATH' to specify the path to the esptool.py script if you don't
@@ -1053,7 +1066,7 @@ flash-cmd -> cli.Command:
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
-            --help="Add a custom partition to the flashed image."
+            --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
         cli.Option "partition-table"
