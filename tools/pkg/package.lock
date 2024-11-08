@@ -9,8 +9,8 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.1.0
-    hash: 94eee76216cb69cacf4e1f7323fb588cf3154451
+    version: 2.2.0
+    hash: ae142d3c8783939935ba37a924f9b2c2a0ad2479
     prefixes:
       fs: pkg-fs
       host: pkg-host

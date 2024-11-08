@@ -66,7 +66,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
     count++
     seen.add file.name
     expected := file-mapping[file.name]
-    expect-equals expected file.content
+    expect-equals expected file.contents
   // No file was seen twice.
   expect-equals seen.size count
   expect-equals file-mapping.size count
@@ -90,7 +90,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
   file-mapping.do: |name content|
     last-name = name
     file := ar-reader.find name
-    expect-equals content file.content
+    expect-equals content file.contents
 
   ar-reader = ArReader.from-bytes ba
   // We should find all files if we advance from top to bottom.
