@@ -61,6 +61,7 @@ on:
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
+  ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
 
 jobs:
   prereqs:
@@ -724,7 +725,7 @@ jobs:
               exit 1
             fi
 
-            curl -O -L https://github.com/toitlang/esptool/releases/latest/download/esptool-$ESPTOOL_ARCH.zip
+            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
             unzip esptool-$ESPTOOL_ARCH.zip
             cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
             chmod +x $os/toit/tools/esptool$EXTENSION
@@ -936,7 +937,7 @@ jobs:
       #     certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
       #     username: ${{ secrets.AC_USERNAME }}
       #     password: ${{ secrets.AC_PASSWORD }}
-      #     apple-team-id: 33DS2ZRDST
+      #     apple-team-id: ${{ vars.MACOS_TEAM_ID }}
       #     app-path: ${{ steps.list-executables.outputs.result }}
 
       - name: Compress
@@ -970,7 +971,7 @@ jobs:
       #     certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
       #     username: ${{ secrets.AC_USERNAME }}
       #     password: ${{ secrets.AC_PASSWORD }}
-      #     apple-team-id: 33DS2ZRDST
+      #     apple-team-id: ${{ vars.MACOS_TEAM_ID }}
       #     app-path: |
       #       out/toit-x64.dmg
       #       out/toit-arm.dmg
