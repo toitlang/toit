@@ -147,16 +147,16 @@ jobs:
           echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "X64" ]; then
+          elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "X64" ]]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "macOS" -a "$RUNNER_ARCH" == "ARM64" ]; then
+          elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "ARM64" ]]; then
             echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "Windows" ]; then
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           else
@@ -318,7 +318,7 @@ jobs:
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          if [[ "$DO_MORE_TESTS" == "true" ]] && [[ "$RUNNER_OS" == "Linux" ]]; then
             cmake -DTOIT_TEST_EXTERNAL=ON build/host32
             make HOST=host32 BUILD_TYPE=Debug rebuild-cmake
             cd build/host32
@@ -696,22 +696,22 @@ jobs:
 
           for source in windows linux macos rpi aarch64 $MACOS_ARM; do
             # Use same values as Go.
-            if [ "$source" == "windows" ]; then
+            if [[ "$source" == "windows" ]]; then
               CROSS_OS=windows
               CROSS_ARCH=amd64
-            elif [ "$source" == "linux" ]; then
+            elif [[ "$source" == "linux" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=amd64
-            elif [ "$source" == "macos" ]; then
+            elif [[ "$source" == "macos" ]]; then
               CROSS_OS=darwin
               CROSS_ARCH=amd64
-            elif [ "$source" == "macos-arm" ]; then
+            elif [[ "$source" == "macos-arm" ]]; then
               CROSS_OS=darwin
               CROSS_ARCH=aarch64
-            elif [ "$source" == "rpi" ]; then
+            elif [[ "$source" == "rpi" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=arm
-            elif [ "$source" == "aarch64" ]; then
+            elif [[ "$source" == "aarch64" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=arm64
             else
@@ -723,7 +723,7 @@ jobs:
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
             for target in windows linux macos rpi aarch64 $MACOS_ARM; do
-              if [ "$source" == "$target" ]; then
+              if [[ "$source" == "$target" ]]; then
                 continue
               fi
               mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
@@ -739,18 +739,18 @@ jobs:
         run: |
           for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             EXTENSION=""
-            if [[ "$os" = "windows" ]]; then
+            if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
               ESPTOOL_ARCH=windows-x64
-            elif [[ "$os" = "linux" ]]; then
+            elif [[ "$os" == "linux" ]]; then
               ESPTOOL_ARCH=linux-x64
-            elif [[ "$os" = "macos" ]]; then
+            elif [[ "$os" == "macos" ]]; then
               ESPTOOL_ARCH=macos-x64
-            elif [[ "$os" = "rpi" ]]; then
+            elif [[ "$os" == "rpi" ]]; then
               ESPTOOL_ARCH=linux-armv7
-            elif [[ "$os" = "aarch64" ]]; then
+            elif [[ "$os" == "aarch64" ]]; then
               ESPTOOL_ARCH=linux-aarch64
-            elif [[ "$os" = "macos-arm" ]]; then
+            elif [[ "$os" == "macos-arm" ]]; then
               ESPTOOL_ARCH=macos-aarch64
             else
               echo "Unknown os: $os"
