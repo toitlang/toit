@@ -253,8 +253,8 @@ class Adapter extends Resource_:
 
   If $secure-connections is true then the peripheral is enabling secure connections.
 
-  If $name is provided it is used for the GAP name. The GAP name can be different from the
-    advertised name in the advertisement data. On some platforms the GAP name is stored
+  If $name is provided, it is used for the GAP name. The GAP name can be different from the
+    advertised name in the advertisement data. On some platforms, the GAP name is stored
     and will be used in future calls to this method (if the name is not provided).
   */
   peripheral --bonding/bool=false --secure-connections/bool=false --name/string?=null -> Peripheral:
