@@ -2598,7 +2598,7 @@ PRIMITIVE(hostname) {
     return Primitive::os_error(errno, process);
   }
   buffer[sizeof(buffer) - 1] = '\0';
-  // On macos, the hostname might include the .local suffix, which we don't want.
+  // On macOS, the hostname might include the .local suffix, which we don't want.
   // Simply truncate at the first dot.
   char* dot = strchr(buffer, '.');
   if (dot != null) *dot = '\0';

@@ -273,7 +273,7 @@ Only new network connections will use the new hostname. Also, some
 */
 hostname= hostname/string -> none:
   if platform != PLATFORM-FREERTOS:
-    throw "Setting hostname is not supported on this platform"
+    throw "UNSUPPORTED"
   bucket_["hostname"] = hostname
 
 hostname_ -> string:

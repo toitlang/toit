@@ -27,7 +27,7 @@ TYPE_PRIMITIVE_ANY(connect)
 TYPE_PRIMITIVE_ANY(setup_ip)
 TYPE_PRIMITIVE_ANY(disconnect)
 TYPE_PRIMITIVE_ANY(get_ip)
-TYPE_PRIMITIVE_ANY(set_hostname)
+TYPE_PRIMITIVE_NULL(set_hostname)
 
 }  // namespace toit::compiler
 }  // namespace toit
