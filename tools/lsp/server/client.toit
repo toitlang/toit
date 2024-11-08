@@ -20,6 +20,7 @@ import .utils show FakePipe
 import .server show LspServer
 import .file-server show sdk-path-from-compiler
 
+import fs
 import host.file
 import host.pipe
 import io
@@ -50,6 +51,11 @@ with-lsp-client [block]
     --needs-server-args=(not supports-config)
     --spawn-process=true
     [--pre-initialize]:
+  // Clean the given paths, so we use native path separators.
+  // This increases test-coverage on Windows.
+  toitc = fs.clean toitc
+  compiler-exe = fs.clean compiler-exe
+  if lsp-server: lsp-server = fs.clean lsp-server
   server-args := [lsp-server]
   if needs-server-args: server-args.add compiler-exe
 

@@ -60,7 +60,7 @@ main:
 class Unserializable:
 
 test-throwing-process-send:
-  l := List 10: ByteArray_.external_ 100
+  l := List 10: ByteArray.external 100
   expect-throw "TOO_MANY_EXTERNALS": process-send_ 0 0 l
   expect-not (process-send_ 100000000 -10 #[])
   l = []

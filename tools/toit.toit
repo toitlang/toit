@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import cli
+import cli show Ui
 import fs
 import host.file
 import host.pipe
@@ -500,6 +501,15 @@ main args/List:
 
   root-command.add system-message.build-command
 
+  assert:
+    // Run the CLI package checks.
+    // This makes sure that commands without 'run' functionality have
+    // subcommands, or that examples are valid.
+    // Otherwise, we could have exceptions when the user tries to run the command
+    // or tries to generate its help.
+    // If the check fails, it throws an exception.
+    root-command.check
+    true
   root-command.run args
 
 bin-dir sdk-dir/string? -> string:
@@ -591,7 +601,8 @@ run-lsp-server invocation/cli.Invocation:
   toitc-cmd := [tool-path sdk-dir "toit.compile"]
   if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
   // We are not using the cli's Ui class, as it might print on stdout.
-  print-on-stderr_ "Using $toitc-cmd.first"
+  if invocation.cli.ui.level >= Ui.VERBOSE-LEVEL:
+    print-on-stderr_ "Using $toitc-cmd.first"
   lsp.main --toit-path-override=toitc-cmd.first
 
 run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invocation:

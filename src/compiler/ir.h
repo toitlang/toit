@@ -634,6 +634,10 @@ class Method : public Node {
     ASSERT(!return_type_.is_valid());
     return_type_ = type;
   }
+  void replace_return_type(Type type) {
+    return_type_ = type;
+  }
+
   Expression* body() const { return body_; }
   void set_body(Expression* body) {
     ASSERT(body_ == null);
