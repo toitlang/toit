@@ -1,4 +1,7 @@
 tests/negative/static4-test.toit:6:10: error: Operators may not be static
   static operator == other:
          ^~~~~~~~~~~
+tests/negative/static4-test.toit:7:5: error: Type mismatch. Expected 'bool'. Got 'string'
+    return "static =="
+    ^~~~~~
 Compilation failed
