@@ -90,7 +90,7 @@ void* operator new(size_t size) {
   // pointer exception when allocation fails.  Use _new which will call the
   // nothrow version instead, which skips the constructor when allocation
   // fails.
-  if (!toit::throwing_new_allowed) UNREACHABLE();
+  if (!toit::throwing_new_allowed) FATAL("Throwing new not allowed: %zu", size);
   return malloc(size);
 }
 
@@ -105,7 +105,7 @@ void* operator new[](size_t size) {
   // pointer exception when allocation fails.  Use _new which will call the
   // nothrow version instead, which skips the constructor when allocation
   // fails.
-  if (!toit::throwing_new_allowed) UNREACHABLE();
+  if (!toit::throwing_new_allowed) FATAL("Throwing new[] not allowed: %zu", size);
   return malloc(size);
 }
 
