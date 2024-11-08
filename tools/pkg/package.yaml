@@ -1,7 +1,7 @@
 dependencies:
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
-    version: ^1.6.2
+    version: ^1.7.0
   cli:
     url: github.com/toitlang/pkg-cli
     version: ^2.1.0
