@@ -1664,7 +1664,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 #endif
 #if defined(TOIT_ASSERT_OVERRIDE) && TOIT_ASSERT_OVERRIDE == 0
   Flags::enable_asserts = false;
-#elif TOIT_ASSERT_OVERRIDE == 1
+#elif TOIT_ASSERT_OVERRIDE != 0
   Flags::enable_asserts = true;
 #endif
 

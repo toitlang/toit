@@ -195,15 +195,15 @@ jobs:
       - name: Ccache stats
         run: ccache -s
 
-      - name: Build test SDKS - Linux only
-        if: env.DO_MORE_TESTS && runner.os == 'Linux'
+      - name: Build test SDKs - Linux only
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug sdk
           make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
 
-      - name: Build test SDKS
+      - name: Build test SDKs
         shell: bash
-        if: env.DO_MORE_TESTS
+        if: env.DO_MORE_TESTS == 'true'
         run: |
           make BUILD=build-debug BUILD_TYPE=Debug sdk
           # It's wasteful to rebuild the SDK just to change the optimization level and assert, but
