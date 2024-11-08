@@ -56,6 +56,10 @@
 #include "freertos/task.h"
 #endif
 
+#ifdef TOIT_WINDOWS
+#include <windows.h>
+#endif
+
 #ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -74,17 +78,94 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
-PRIMITIVE(write_string_on_stdout) {
-  ARGS(cstring, message, bool, add_newline);
-  fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
-  fflush(stdout);
+#if defined(TOIT_WINDOWS)
+
+#include <windows.h>
+#include <vector>
+
+static void replace_line_endings(const uint8* bytes, size_t length, std::vector<uint8>& buffer) {
+  for (size_t i = 0; i < length; ++i) {
+    if (bytes[i] == '\n' && (i == 0 || bytes[i - 1] != '\r')) {
+      buffer.push_back('\r'); // Add '\r' before '\n' if not already preceded by it.
+    }
+    buffer.push_back(bytes[i]);
+  }
+}
+
+static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
+  HANDLE console = GetStdHandle(is_stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+  if (console == INVALID_HANDLE_VALUE) {
+    return Primitive::os_error(GetLastError(), process);
+  }
+
+  DWORD written;
+  DWORD mode;
+
+  // Prepare buffer with replaced line endings.
+  std::vector<uint8> buffer;
+  replace_line_endings(bytes, length, buffer);
+
+  // Check if the handle is a console handle.
+  if (GetConsoleMode(console, &mode)) {
+    // Write to the console.
+    WriteConsoleA(console, buffer.data(), (DWORD)buffer.size(), &written, NULL);
+
+    if (newline) {
+      WriteConsoleA(console, "\r\n", 2, &written, NULL);
+    }
+  } else {
+    // Handle redirection case.
+    WriteFile(console, buffer.data(), (DWORD)buffer.size(), &written, NULL);
+
+    if (newline) {
+      WriteFile(console, "\r\n", 2, &written, NULL);
+    }
+  }
+
   return process->null_object();
 }
 
-PRIMITIVE(write_string_on_stderr) {
-  ARGS(cstring, message, bool, add_newline);
-  fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
-  fflush(stderr);
+#elif (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE) && defined(_POSIX_THREAD_SAFE_FUNCTIONS)
+
+static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
+  FILE* stream = is_stdout ? stdout : stderr;
+  flockfile(stream);
+  fwrite_unlocked(bytes, 1, length, stream);
+  if (newline) {
+    fputc_unlocked('\n', stream);
+  } else {
+    fflush_unlocked(stream);
+  }
+  funlockfile(stream);
+  return process->null_object();
+}
+
+#else
+
+static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
+  FILE* stream = is_stdout ? stdout : stderr;
+  fwrite(bytes, 1, length, stream);
+  if (newline) {
+    fputc('\n', stream);
+  } else {
+    fflush(stream);
+  }
+  return process->null_object();
+}
+
+#endif
+
+PRIMITIVE(write_on_stdout) {
+  ARGS(Blob, message, bool, add_newline);
+  bool is_stdout;
+  write_on_std(message.address(), message.length(), is_stdout=true, add_newline, process);
+  return process->null_object();
+}
+
+PRIMITIVE(write_on_stderr) {
+  ARGS(Blob, message, bool, add_newline);
+  bool is_stdout;
+  write_on_std(message.address(), message.length(), is_stdout=false, add_newline, process);
   return process->null_object();
 }
 
@@ -1222,8 +1303,8 @@ PRIMITIVE(size_of_json_number) {
   ARGS(Blob, bytes, word, offset);
   if (offset < 0 || offset >= bytes.length() - 1) FAIL(INVALID_ARGUMENT);
   int is_float = 0;
-  const uint8_t* p = bytes.address() + offset;
-  const uint8_t* end = bytes.address() + bytes.length();
+  const uint8* p = bytes.address() + offset;
+  const uint8* end = bytes.address() + bytes.length();
   for ( ; p < end; p++) {
     uint8 c = *p;
     //                                                               {[
