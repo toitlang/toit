@@ -290,6 +290,8 @@ TYPE_PRIMITIVE_ANY(firmware_mapping_at)
 TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
 TYPE_PRIMITIVE_BYTE_ARRAY(rtc_user_bytes)
 
+TYPE_PRIMITIVE_STRING(hostname)
+
 bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
   return module == INDEX_core && index == CoreIndexes::task_new;
 }
