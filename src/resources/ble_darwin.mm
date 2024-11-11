@@ -1118,7 +1118,8 @@ PRIMITIVE(write_value) {
   ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, allow_retry);
 
   // TODO(florian): check that the bytes fit into the MTU.
-  // TODO(florian): take 'flush' into account.
+  // TODO(florian): take 'allow_retry' into account.
+  USE(allow_retry);
 
   if (!with_response) {
     if (!characteristic->characteristic().service.peripheral.canSendWriteWithoutResponse)
@@ -1371,6 +1372,7 @@ PRIMITIVE(get_bonded_peers) {
 
 PRIMITIVE(set_gap_device_name) {
   ARGS(BleAdapterResource, adapter, cstring, name)
+  USE(name);
   FAIL(UNIMPLEMENTED);
 }
 
