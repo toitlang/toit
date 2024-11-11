@@ -62,7 +62,7 @@ class GpioPinResource : public Resource {
     last_edge_detection_timestamp_ = timestamp;
   }
 
-  gpiod_edge_event_buffer* event_buffer() { return event_buffer_; }
+  gpiod_edge_event_buffer* event_buffer() const { return event_buffer_; }
   void set_event_buffer(gpiod_edge_event_buffer* event_buffer) {
     event_buffer_ = event_buffer;
   }

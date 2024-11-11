@@ -483,7 +483,7 @@ PRIMITIVE(pin_consume_edge_events) {
 
   if (pin->event_buffer() == null) {
     auto event_buffer = gpiod_edge_event_buffer_new(10);
-    if (event_buffer == null) FAIL(ALLOCATION_FAILED);
+    if (event_buffer == null) FAIL(MALLOC_FAILED);
     pin->set_event_buffer(event_buffer);
   }
 

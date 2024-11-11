@@ -635,9 +635,8 @@ class PinLinux_ extends Pin:
     if not 0 <= value <= 1: throw "INVALID_ARGUMENT"
     gpio-linux-pin-set_ resource_ value
 
-  /** Waits for 1 on on the physical pin if $value is 0, and vice versa. */
   /**
-  Blocks until the Pin reads the value configured.
+  Blocks until the pin reads the requested $value.
 
   Use $with-timeout to automatically abort the operation after a fixed amount
     of time.
