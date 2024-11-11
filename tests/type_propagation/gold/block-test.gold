@@ -16,7 +16,9 @@ main tests/type_propagation/block-test.toit
  28[053] - invoke static test-recursion tests/type_propagation/block-test.toit // {Null_}
  31[041] - pop 1
  32[053] - invoke static test-dead tests/type_propagation/block-test.toit // {Null_}
- 35[090] - return null S1 0
+ 35[041] - pop 1
+ 36[053] - invoke static test-dependent tests/type_propagation/block-test.toit // {Null_}
+ 39[090] - return null S1 0
 
 test-simple tests/type_propagation/block-test.toit
   0[023] - load smi 0
@@ -405,6 +407,36 @@ test-dead tests/type_propagation/block-test.toit
  31[053] - invoke static ignore tests/type_propagation/block-test.toit // [[block]] -> {Null_}
  34[090] - return null S2 0
 
+test-dependent tests/type_propagation/block-test.toit
+  0[020] - load literal hest
+  2[022] - load null
+  3[029] - load method [block] in test-dependent tests/type_propagation/block-test.toit
+  8[029] - load method [block] in test-dependent tests/type_propagation/block-test.toit
+ 13[038] - load block 1
+ 15[038] - load block 1
+ 17[053] - invoke static invoke tests/type_propagation/block-test.toit // [[block], [block]] -> {Null_}
+ 20[040] - pop 3
+ 22[015] - load local 1
+ 23[053] - invoke static id tests/type_propagation/block-test.toit // [{String_|Null_|SmallInteger_}] -> {String_|Null_|SmallInteger_}
+ 26[002] - pop, load local S0
+ 28[053] - invoke static id tests/type_propagation/block-test.toit // [{Null_|SmallInteger_}] -> {Null_|SmallInteger_}
+ 31[090] - return null S3 0
+
+[block] in test-dependent tests/type_propagation/block-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[017] - load local 3
+  2[005] - load outer S1 // {Null_|SmallInteger_}
+  4[006] - store outer S2
+  6[089] - return S1 1
+
+[block] in test-dependent tests/type_propagation/block-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[026] - load smi 42
+  3[006] - store outer S2
+  5[089] - return S1 1
+
 recursive-null tests/type_propagation/block-test.toit
  - argument 0: [block]
   0[053] - invoke static pick tests/type_propagation/block-test.toit // {True|False}
@@ -506,6 +538,15 @@ invoke tests/type_propagation/block-test.toit
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {String_|Null_|True|float|SmallInteger_}
   3[089] - return S1 1
+
+invoke tests/type_propagation/block-test.toit
+ - argument 0: [block]
+ - argument 1: [block]
+  0[017] - load local 3
+  1[055] - invoke block S1 // [[block]] -> {Null_|SmallInteger_}
+  3[002] - pop, load local S2
+  5[055] - invoke block S1 // [[block]] -> {SmallInteger_}
+  7[090] - return null S1 2
 
 invoke tests/type_propagation/block-test.toit
  - argument 0: {String_|True|SmallInteger_}

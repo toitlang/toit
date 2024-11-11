@@ -14,14 +14,25 @@
 # directory of this repository.
 
 file(GLOB TOIT_BIN_TESTS "*-test.toit")
+file(GLOB ASSERT_TESTS "assert*-test.toit")
 
 include(fail.cmake OPTIONAL)
 
 set(TEST_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
 set(TOIT_BIN_SOURCE "${TOIT_SDK_SOURCE_DIR}/tools/toit.toit")
 
+set(ASSERT_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_ASSERT_OVERRIDE})
+  set(ASSERT_IS_OVERRIDDEN TRUE)
+endif()
+
 foreach(file ${TOIT_BIN_TESTS})
   get_filename_component(base ${file} NAME_WE)
+
+  if (ASSERT_IS_OVERRIDDEN AND "${file}" IN_LIST ASSERT_TESTS)
+    message("Skipping ${file} as asserts are overridden")
+    continue()
+  endif()
 
   file(RELATIVE_PATH toit_bin_test_name ${TOIT_SDK_SOURCE_DIR} ${file})
   if (NOT "${toit_bin_test_name}" IN_LIST TOIT_SKIP_TESTS)

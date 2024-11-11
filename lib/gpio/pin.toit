@@ -6,7 +6,7 @@ import monitor
 import system
 
 /**
-Support for General Purpose Input/Output (GPIO) Pins.
+Support for General Purpose Input/Output (GPIO) pins.
 
 The $Pin represents actual physical pins.
 
@@ -16,9 +16,9 @@ The $VirtualPin is a software pin which can be used for actual pins that have
 */
 
 /**
-A General Purpose Input/Output (GPIO) Pin.
+A General Purpose Input/Output (GPIO) pin.
 
-The Pin can be either in output or input mode, allowing for setting or reading
+The pin can be either in output or input mode, allowing for setting or reading
   the level.
 
 Only one $Pin instance of any given GPIO number can be open at any given point
@@ -43,9 +43,9 @@ class Pin:
   last-set_/int := 0
 
   /**
-  Opens a GPIO Pin $num in input mode.
+  Opens a GPIO pin $num in input mode.
 
-  While the Pin is in input mode, $pull-up and $pull-down resistors are applied as
+  While the pin is in input mode, $pull-up and $pull-down resistors are applied as
     configured.
 
   See $constructor for more information.
@@ -57,7 +57,7 @@ class Pin:
     return Pin num --input --pull-up=pull-up --pull-down=pull-down
 
   /**
-  Opens a GPIO Pin $num in output mode.
+  Opens a GPIO pin $num in output mode.
 
   Use $Pin.set to set the output value. The default value is 0.
 
@@ -67,9 +67,9 @@ class Pin:
     return Pin num --output
 
   /**
-  Opens a GPIO Pin on $num in a custom mode.
+  Opens a GPIO pin on $num in a custom mode.
 
-  If the Pin is to be used by another peripheral, both $input and $output can be
+  If the pin is to be used by another peripheral, both $input and $output can be
     left as `false`. The library that uses the pin should call $configure with the
     configuration it needs.
 
@@ -144,7 +144,7 @@ class Pin:
         if is-exception: close
 
   /**
-  Opens a GPIO Pin on the chip identified by the given $path and $num (often called "offset").
+  Opens a GPIO pin on the chip identified by the given $path and $num (often called "offset").
 
   This constructor only works on Linux.
 
@@ -172,7 +172,7 @@ class Pin:
       chip.close
 
   /**
-  Opens a GPIO Pin on the given $chip and $num (often called "offset").
+  Opens a GPIO pin on the given $chip and $num (often called "offset").
 
   This constructor only works on Linux.
 
@@ -262,7 +262,7 @@ class Pin:
       --initial-value/int=0:
 
     offset := gpio-linux-chip-offset-for-name_ chip.resource_ name
-    if offset == -1: throw "NOT_FOUND"
+    if offset < 0: throw "NOT_FOUND"
     return Pin.linux offset
         --chip=chip
         --input=input
@@ -353,14 +353,14 @@ class Pin:
     return gpio-get_ num
 
   /**
-  Sets the value of the output-configured Pin.
+  Sets the value of the output-configured pin.
   */
   set value/int:
     last-set_ = value
     gpio-set_ num value
 
   /**
-  Calls the given $block on each edge on the Pin.
+  Calls the given $block on each edge on the pin.
 
   An edge means a transition from high to low, or low to high.
   */
@@ -372,7 +372,7 @@ class Pin:
       expected ^= 1
 
   /**
-  Blocks until the Pin reads the value configured.
+  Blocks until the pin reads the requested $value.
 
   Use $with-timeout to automatically abort the operation after a fixed amount
     of time.
@@ -435,7 +435,7 @@ class VirtualPin extends Pin:
   constructor .set_:
     super.internal_ -1
 
-  /** Sets the $value by calling the lambda given in $Pin with the $value. */
+  /** Sets the $value by calling the lambda that was given during construction with $value. */
   set value:
     set_.call value
 
@@ -578,10 +578,8 @@ class Chip:
     if resource_:
       resource := resource_
       resource_ = null
-      try:
-        gpio-linux-chip-close_ resource
-      finally:
-        remove-finalizer this
+      remove-finalizer this
+      gpio-linux-chip-close_ resource
 
 class PinLinux_ extends Pin:
   static GPIO-STATE-EDGE-TRIGGERED_ ::= 1
@@ -615,13 +613,11 @@ class PinLinux_ extends Pin:
   close -> none:
     if not resource_: return
     critical-do:
-      try:
-        resource := resource_
-        resource_ = null
-        state_.dispose
-        gpio-linux-pin-close_ resource
-      finally:
-        remove-finalizer this
+      resource := resource_
+      resource_ = null
+      remove-finalizer this
+      state_.dispose
+      gpio-linux-pin-close_ resource
 
   configure
       --input/bool=false

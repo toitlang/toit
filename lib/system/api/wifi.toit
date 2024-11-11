@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.api.network show NetworkService NetworkServiceClient
+import system.api.network show NetworkService
+import system.base.network show NetworkServiceClientBase
 import system.services show ServiceSelector
 
 interface WifiService extends NetworkService:
@@ -26,7 +27,7 @@ interface WifiService extends NetworkService:
   configure config/Map? -> none
   static CONFIGURE-INDEX /int ::= 1004
 
-class WifiServiceClient extends NetworkServiceClient implements WifiService:
+class WifiServiceClient extends NetworkServiceClientBase implements WifiService:
   static SELECTOR ::= WifiService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR

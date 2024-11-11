@@ -15,3 +15,8 @@
 
 set(TOIT_FAILING_TESTS
 )
+
+list(APPEND TOIT_OPTIMIZATION_SKIP_TESTS
+  # The following tests only work with standard optimizations.
+  tests/negative/field-type5-test.toit
+)

@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import cli
+import cli show Ui
 import encoding.json
 import encoding.yaml
 import fs
@@ -106,6 +107,16 @@ build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Comman
             --type="file|dir"
             --help="Source directory or file. Defaults to the current directory.",
       ]
+      --examples=[
+        cli.Example "Serve the documentation for the current directory."
+            --arguments=".",
+        cli.Example """
+            Serve the documentation for the package 'foo' located at ../foo.
+            Don't include the SDK, but include dependent packages.
+            Use 'v1.2.3' as the version.
+            """
+            --arguments="--exclude-sdk --exclude-pkgs --version=v1.2.3 ../foo",
+      ]
       --run=::
         toitdoc-serve it
             --toitc=(toitc-from-args.call it)
@@ -146,14 +157,14 @@ compute-project-uri uris/List --documents/lsp.Documents -> string:
 /**
 Warn the user if the given uris are in multiple projects.
 */
-warn-if-not-one-project documents/lsp.Documents -> none:
+warn-if-not-one-project documents/lsp.Documents --ui/Ui -> none:
   project-uris := documents.all-project-uris
   if project-uris.is-empty:
     throw "No project found."
 
   if project-uris.size > 1:
     paths := project-uris.map: | it | lsp.to-path it
-    print "Warning: more than one project found: $(paths.join ", ")"
+    ui.emit --warning "More than one project found: $(paths.join ", ")."
 
 eval-symlinks path/string -> string:
   parts := fs.split path
@@ -170,11 +181,10 @@ eval-symlinks path/string -> string:
 
   return result
 
-compute-sdk-path --sdk-path/string? --toitc/string? -> string:
+compute-sdk-path --sdk-path/string? --toitc/string? --ui/Ui -> string:
   if sdk-path:
     if not file.is-directory sdk-path:
-      print "SDK not found at $sdk-path"
-      exit 1
+      ui.abort "SDK not found at $sdk-path"
     if not fs.is-absolute sdk-path:
       sdk-path = fs.to-absolute sdk-path
     return sdk-path
@@ -200,19 +210,18 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   include-private := invocation["include-private"]
   source := invocation["source"]
 
+  ui := invocation.cli.ui
+
   if for-sdk and exclude-sdk:
-    print "Can't exclude the SDK when generating the SDK documentation."
-    exit 1
+    ui.abort "Can't exclude the SDK when generating the SDK documentation."
 
   if for-sdk and for-package:
-    print "The flags --sdk and --package can't be used together."
-    exit 1
+    ui.abort "The flags --sdk and --package can't be used together."
 
   if source and for-sdk:
-    print "No source files are allowed when generating the SDK documentation."
-    exit 1
+    ui.abort "No source files are allowed when generating the SDK documentation."
 
-  sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc
+  sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc --ui=ui
 
   if for-sdk:
     source = "$sdk-path/lib"
@@ -230,20 +239,38 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   if for-package:
     package-yaml-path := fs.join source "package.yaml"
     if not file.is-file package-yaml-path:
-      print "No package.yaml found at $package-yaml-path."
-      exit 1
+      ui.abort "No package.yaml found at $package-yaml-path."
     content := yaml.decode (file.read-content package-yaml-path)
-    if content is not Map or not content.contains "name":
-      print "No 'name' field found in package.yaml."
-      exit 1
-    pkg-name = kebabify content["name"]
+    if content is Map:
+      if content.contains "name":
+        pkg-name = kebabify content["name"]
+    if not pkg-name:
+      // Probably an older package.
+      // Try to find the name from the README.
+      readme-path := fs.join source "README.md"
+      if file.is-file readme-path:
+        readme := (file.read-content readme-path).to-string
+        new-line-pos := readme.index-of "\n"
+        first-line/string := ?
+        if new-line-pos == -1:
+          first-line = readme
+        else:
+          first-line = readme[..new-line-pos]
+        if first-line.starts-with "#":
+          start := 0
+          while start < first-line.size and first-line[start] == '#':
+            start++
+          title := first-line[start..].trim.to-ascii-lower
+          if title != "":
+            pkg-name = kebabify title
+    if not pkg-name:
+      ui.abort "No 'name' field found in package.yaml."
 
     // Only include the 'src' folder.
     source = fs.join source "src"
 
   if not file.is-file toitc:
-    print "Toit compiler not found at $toitc."
-    exit 1
+    ui.abort "Toit compiler not found at $toitc."
   if not fs.is-absolute toitc:
     toitc = fs.to-absolute toitc
 
@@ -254,7 +281,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   uris := paths.map: lsp.to-uri (fs.to-absolute it)
 
   documents := lsp.compute-summaries --uris=uris --toitc=toitc --sdk-path=sdk-path
-  warn-if-not-one-project documents
+  warn-if-not-one-project documents --ui=ui
   project-uri := compute-project-uri uris --documents=documents
   summaries := (documents.analyzed-documents-for --project-uri=project-uri).summaries
 
@@ -291,6 +318,6 @@ toitdoc-serve invocation/cli.Invocation --toitc/string --sdk-path/string?:
     output := "$tmp-dir/toitdoc.json"
 
     toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
-    serve output --port=port
+    serve output --port=port --cli=invocation.cli
   finally:
     directory.rmdir --recursive tmp-dir

@@ -35,12 +35,12 @@ class GpioPinResource : public Resource {
 
   ~GpioPinResource() override;
 
-  int offset() { return offset_; }
+  int offset() const { return offset_; }
 
-  gpiod_line_settings* settings() { return settings_; }
+  gpiod_line_settings* settings() const { return settings_; }
   void replace_settings(gpiod_line_settings* settings);
 
-  gpiod_line_request* request() { return request_; }
+  gpiod_line_request* request() const { return request_; }
   void set_request(gpiod_line_request* request) { request_ = request; }
 
   Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);

@@ -1659,6 +1659,15 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     Flags::enable_asserts = true;
   }
 
+#ifdef TOIT_OPTIMIZATION_OVERRIDE
+  configuration_.optimization_level = TOIT_OPTIMIZATION_OVERRIDE;
+#endif
+#if defined(TOIT_ASSERT_OVERRIDE) && TOIT_ASSERT_OVERRIDE == 0
+  Flags::enable_asserts = false;
+#elif TOIT_ASSERT_OVERRIDE != 0
+  Flags::enable_asserts = true;
+#endif
+
   setup_lsp_selection_handler();
 
   auto fs = configuration_.filesystem;
