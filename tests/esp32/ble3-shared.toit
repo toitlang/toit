@@ -115,7 +115,7 @@ main-central:
   task::
     i := 0
     while not done:
-      ba := ByteArray_.external_ 100
+      ba := ByteArray.external 100
       keep-alive[i % keep-alive.size] = ba
       ByteArray 10
       yield

@@ -7,6 +7,7 @@ import net.udp
 import net.tcp
 
 import system.services show ServiceSelector ServiceClient
+import system.base.network show NetworkServiceClientBase
 
 // For references in documentation comments.
 import system.services show ServiceResource ServiceResourceProxy
@@ -110,65 +111,8 @@ interface NetworkService:
   socket-mtu handle/int -> int
   static SOCKET-MTU-INDEX /int ::= 306
 
-class NetworkServiceClient extends ServiceClient implements NetworkService:
+class NetworkServiceClient extends NetworkServiceClientBase:
   static SELECTOR ::= NetworkService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR
     super selector
-
-  connect -> List:
-    return invoke_ NetworkService.CONNECT-INDEX null
-
-  address handle/int -> ByteArray:
-    return invoke_ NetworkService.ADDRESS-INDEX handle
-
-  resolve handle/int host/string -> List:
-    return invoke_ NetworkService.RESOLVE-INDEX [handle, host]
-
-  quarantine name/string -> none:
-    invoke_ NetworkService.QUARANTINE-INDEX name
-
-  udp-open handle/int port/int? -> int:
-    return invoke_ NetworkService.UDP-OPEN-INDEX [handle, port]
-
-  udp-connect handle/int ip/ByteArray port/int -> none:
-    invoke_ NetworkService.UDP-CONNECT-INDEX [handle, ip, port]
-
-  udp-receive handle/int -> List:
-    return invoke_ NetworkService.UDP-RECEIVE-INDEX handle
-
-  udp-send handle/int data/ByteArray ip/ByteArray port/int -> none:
-    invoke_ NetworkService.UDP-SEND-INDEX [handle, data, ip, port]
-
-  tcp-connect handle/int ip/ByteArray port/int -> int:
-    return invoke_ NetworkService.TCP-CONNECT-INDEX [handle, ip, port]
-
-  tcp-listen handle/int port/int -> int:
-    return invoke_ NetworkService.TCP-LISTEN-INDEX [handle, port]
-
-  tcp-accept handle/int -> int:
-    return invoke_ NetworkService.TCP-ACCEPT-INDEX handle
-
-  tcp-close-write handle/int -> none:
-    invoke_ NetworkService.TCP-CLOSE-WRITE-INDEX handle
-
-  socket-get-option handle/int option/int -> any:
-    return invoke_ NetworkService.SOCKET-GET-OPTION-INDEX [handle, option]
-
-  socket-set-option handle/int option/int value/any -> none:
-    invoke_ NetworkService.SOCKET-SET-OPTION-INDEX [handle, option, value]
-
-  socket-local-address handle/int -> List:
-    return invoke_ NetworkService.SOCKET-LOCAL-ADDRESS-INDEX handle
-
-  socket-peer-address handle/int -> List:
-    return invoke_ NetworkService.SOCKET-PEER-ADDRESS-INDEX handle
-
-  socket-read handle/int -> ByteArray?:
-    return invoke_ NetworkService.SOCKET-READ-INDEX handle
-
-  socket-write handle/int data:
-    return invoke_ NetworkService.SOCKET-WRITE-INDEX [handle, data]
-
-  socket-mtu handle/int -> int:
-    return invoke_ NetworkService.SOCKET-MTU-INDEX handle
