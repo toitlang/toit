@@ -1,0 +1,3 @@
+As check failed: a string ("foo") is not a bool.
+  0: A.==                      tests/negative/comparison-type2-test.toit:10:5
+  1: main                      tests/negative/comparison-type2-test.toit:14:12

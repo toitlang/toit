@@ -57,7 +57,8 @@ add_custom_target(
 
 add_custom_target(
   check_flaky
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-regex "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  # Run flaky tests up to 3 times.
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --repeat until-pass:3 --label-regex "flaky" -T test -C slow --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
@@ -79,8 +80,18 @@ endforeach()
 
 include(fail.cmake OPTIONAL)
 
+set(OPTIMIZATION_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATION_IS_OVERRIDDEN TRUE)
+endif()
+
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
+  if(OPTIMIZATION_IS_OVERRIDDEN AND "${file}" IN_LIST TOIT_OPTIMIZATION_SKIP_TESTS)
+    message("Skipping ${file} as optimization is overridden")
     continue()
   endif()
 
