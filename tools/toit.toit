@@ -29,6 +29,7 @@ import .stacktrace as stacktrace
 import .system-message as system-message
 import .toitdoc as toitdoc
 import .lsp.server.server as lsp
+import .snapshot as snapshot-lib
 
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
@@ -529,6 +530,14 @@ run sdk-dir/string? tool/string args/List -> int:
 
 compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   ui := invocation.cli.ui
+
+  source := invocation["source"]
+  if not file.is-file source: ui.abort "Source file not found: $source"
+  source-contents := file.read-contents source
+  is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
+  if command != "run" and is-snapshot:
+    ui.abort "Cannot $command a snapshot file"
+
   args := []
 
   xflags := invocation["X"]
@@ -542,6 +551,8 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   if command == "analyze":
     args.add "--analyze"
   else:
+    if is-snapshot and invocation.parameters.was-provided "optimization-level":
+      ui.abort "Cannot set optimization level for snapshots"
     optimization/int := invocation["optimization-level"]
     if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
 
@@ -549,6 +560,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
     enable-asserts := optimization < 2
     if invocation.parameters.was-provided "enable-asserts":
+      if is-snapshot: ui.abort "Cannot set --enable-asserts for snapshots"
       // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
       if invocation["enable-asserts"]:
         enable-asserts = true
@@ -556,7 +568,9 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
         enable-asserts = false
     args.add "-Xenable-asserts=$enable-asserts"
 
-    if invocation["force"]: args.add "--force"
+    if invocation["force"]:
+      if is-snapshot: ui.abort "Cannot set --force for snapshots"
+      args.add "--force"
 
     if command == "compile":
       if invocation["dependency-file"]:
@@ -588,7 +602,12 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
         args.add "-o"
       args.add invocation["output"]
 
-  args.add invocation["source"]
+  if is-snapshot:
+    assert: args.is-empty
+    // Just in case that's not true and we are running without asserts set the args to empty.
+    args = []
+
+  args.add source
   if command == "run":
     args.add-all invocation["arg"]
 

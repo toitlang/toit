@@ -4,6 +4,7 @@
 
 import host.directory
 import host.pipe
+import monitor
 import system
 
 with-tmp-dir [block]:
@@ -12,6 +13,18 @@ with-tmp-dir [block]:
     block.call tmp-dir
   finally:
     directory.rmdir --recursive tmp-dir
+
+class ForkResult:
+  stdout/string
+  stderr/string
+  exit-signal/int?
+  exit-code/int
+
+  constructor
+      --.stdout
+      --.stderr
+      --.exit-signal
+      --.exit-code:
 
 class ToitExecutable:
   toit-run_/string
@@ -39,3 +52,56 @@ class ToitExecutable:
       full-command += ["--sdk-dir", sdk-dir_]
     full-command += args
     return pipe.run-program full-command
+
+  fork --with-test-sdk/bool=true args/List -> ForkResult:
+    full-command := [toit_run_, toit-bin-src_]
+    if with-test-sdk:
+      full-command += ["--sdk-dir", sdk-dir_]
+    full-command += args
+    fork-data := pipe.fork
+        true                // use_path
+        // We create a stdin pipe, so that qemu can't interfere with
+        // our terminal.
+        pipe.PIPE-CREATED   // stdin.
+        pipe.PIPE-CREATED   // stdout
+        pipe.PIPE-CREATED   // stderr
+        full-command.first
+        full-command
+    stdin := fork-data[0]
+    stdout := fork-data[1]
+    stderr := fork-data[2]
+    child-process := fork-data[3]
+
+    stdin.close
+
+    stdout-string-latch := monitor.Latch
+    stdout-task := task --background::
+      try:
+        bytes := #[]
+        catch --trace:
+          while chunk := stdout.read:
+            bytes += chunk
+          stdout-string-latch.set bytes.to-string
+      finally:
+        stdout.close
+
+    stderr-string-latch := monitor.Latch
+    stderr-task := task --background::
+      try:
+        bytes := #[]
+        catch --trace:
+          while chunk := stderr.read:
+            bytes += chunk
+          stderr-string-latch.set bytes.to-string
+      finally:
+        stderr.close
+
+    exit-value := pipe.wait-for child-process
+    exit-signal := pipe.exit-signal exit-value
+    exit-code := pipe.exit-code exit-value
+
+    return ForkResult
+        --stdout=stdout-string-latch.get
+        --stderr=stderr-string-latch.get
+        --exit-signal=exit-signal
+        --exit-code=exit-code

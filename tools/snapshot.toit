@@ -194,10 +194,13 @@ class SnapshotBundle:
         : ""
 
   static is-bundle-content buffer/ByteArray -> bool:
-    magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
-    if not magic-file-offsets: return false
-    magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
-    if magic-content.to-string != MAGIC-CONTENT: return false
+    e := catch:
+      // TODO(florian): check first that it's actually an AR file.
+      magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
+      if not magic-file-offsets: return false
+      magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
+      if magic-content.to-string != MAGIC-CONTENT: return false
+    if e: return false
     return true
 
   has-source-map -> bool:
