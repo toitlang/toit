@@ -650,7 +650,7 @@ PRIMITIVE(fork) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       CStringBlob, command,
        Array, args);
   USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
@@ -665,7 +665,7 @@ PRIMITIVE(fork2) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       CStringBlob, command,
        Array, args,
        Object, environment_object);
   USE(command);  // Not used on Windows.

@@ -43,8 +43,7 @@ parse-module source/string --uri/string -> lsp.Module:
   current-mixins := []
   current-methods := []
 
-  // TODO(2439): Change this back to a block.
-  finish-class := ::
+  finish-class := :
     if current-class-name:
       id := classes.size
       class-ids[current-class-name] = id

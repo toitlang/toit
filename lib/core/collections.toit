@@ -1201,6 +1201,27 @@ interface ByteArray extends io.Data:
     return result
 
   /**
+  Constructs a byte array where the data is not on the Toit heap.
+
+  The byte array's backing store is allocated using 'malloc' and is thus
+    not located on the Toit heap. This has the following consequences:
+  - The garbage collector can't move the data, which can lead to fragmentation.
+  - External byte arrays can be handed over to the system. The system would
+    then "neuter" the byte array, rendering it unusable in Toit. This can
+    be useful for performance reasons, as can sometimes avoid copying the data.
+    Only few functions neuter byte arrays and typically only on request.
+
+  External byte arrays are not automatically faster than normal byte arrays.
+    Unless you know what you are doing or have a specific use-case in mind,
+    you should use normal byte arrays.
+
+  Note: bigger byte arrays are always external, even if allocated using
+    the normal $(constructor size).
+  */
+  constructor.external size/int:
+    #primitive.core.byte-array-new-external
+
+  /**
   The number of bytes in this instance.
   */
   size -> int
@@ -1643,6 +1664,7 @@ class ByteArray_ extends ByteArrayBase_:
   constructor size/int --filler/int=0:
     #primitive.core.byte-array-new
 
+  /** Deprecated. Use $(ByteArray.external size) instead. */
   constructor.external_ size/int:
     #primitive.core.byte-array-new-external
 
