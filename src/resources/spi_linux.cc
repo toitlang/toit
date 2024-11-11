@@ -41,6 +41,7 @@ PRIMITIVE(open) {
   // File descriptors that are intended for subprocesses have the flags cleared.
   int fd = open(pathname, O_CLOEXEC | O_RDWR);
   if (fd < 0) return return_open_error(process, errno);
+  // "WR"ite the max speed and mode.
   int result = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &frequency);
   if (result < 0) {
     close(fd);
