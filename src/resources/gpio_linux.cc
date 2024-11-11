@@ -48,13 +48,13 @@ class GpioChipResource : public Resource {
   TAG(GpioChipResource);
   GpioChipResource(ResourceGroup* group, gpiod_chip* chip)
       : Resource(group)
-      , chip_(chip){}
+      , chip_(chip) {}
 
   ~GpioChipResource() override {
     gpiod_chip_close(chip_);
   }
 
-  gpiod_chip* chip() { return chip_; }
+  gpiod_chip* chip() const { return chip_; }
 
  private:
   gpiod_chip* chip_;
@@ -69,16 +69,16 @@ class GpioPinResource : public Resource {
 
   ~GpioPinResource() override;
 
-  int offset() { return offset_; }
+  int offset() const { return offset_; }
 
-  gpiod_line_settings* settings() { return settings_; }
+  gpiod_line_settings* settings() const { return settings_; }
   void replace_settings(gpiod_line_settings* settings) {
     if (settings == settings_) return;
     if (settings_ != null) gpiod_line_settings_free(settings_);
     settings_ = settings;
   }
 
-  gpiod_line_request* request() { return request_; }
+  gpiod_line_request* request() const { return request_; }
   void set_request(gpiod_line_request* request) { request_ = request; }
 
   Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);
@@ -94,12 +94,12 @@ static int chip_filter(const struct dirent* entry) {
 
   if (asprintf(&path, "/dev/%s", entry->d_name) == -1) return 0;
 
-  int result = false;
+  int result = 0;
   struct stat sb;
   if ((lstat(path, &sb) == 0) &&
       (!S_ISLNK(sb.st_mode)) &&
       gpiod_is_gpiochip_device(path)) {
-    result = true;
+    result = 1;
   }
 
   free(path);
@@ -147,7 +147,6 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
   auto output_value = initial_value == 0 ? GPIOD_LINE_VALUE_INACTIVE : GPIOD_LINE_VALUE_ACTIVE;
   gpiod_line_settings_set_output_value(settings, output_value);
 }
-
 
 GpioPinResource::~GpioPinResource() {
   if (settings_ != null) {
@@ -227,7 +226,7 @@ PRIMITIVE(chip_new) {
   auto resource = _new GpioChipResource(group, chip);
   if (resource == null) {
     gpiod_chip_close(chip);
-    FAIL(ALLOCATION_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   group->register_resource(resource);
@@ -315,7 +314,7 @@ PRIMITIVE(pin_init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto group = _new GpioResourceGroup(process);
-  if (group == null) FAIL(ALLOCATION_FAILED);
+  if (group == null) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(group);
   return proxy;
@@ -340,17 +339,17 @@ PRIMITIVE(pin_new) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource = _new GpioPinResource(group, offset);
-  if (resource == null) FAIL(ALLOCATION_FAILED);
+  if (resource == null) FAIL(MALLOC_FAILED);
 
   // Note that the settings are stored in the resource and thus don't need to be freed here.
   auto settings = gpiod_line_settings_new();
-  if (settings == null) FAIL(ALLOCATION_FAILED);
+  if (settings == null) FAIL(MALLOC_FAILED);
   Defer free_settings { [&] { if (!successful_return) gpiod_line_settings_free(settings); }};
 
   fill_settings(settings, pull_up, pull_down, input, output, open_drain, initial_value);
 
   auto line_config = gpiod_line_config_new();
-  if (line_config == null) FAIL(ALLOCATION_FAILED);
+  if (line_config == null) FAIL(MALLOC_FAILED);
   Defer free_config { [&] { gpiod_line_config_free(line_config); }};
 
   unsigned int unsigned_offset = offset;
@@ -360,7 +359,7 @@ PRIMITIVE(pin_new) {
   }
 
   auto request_config = gpiod_request_config_new();
-  if (request_config == null) FAIL(ALLOCATION_FAILED);
+  if (request_config == null) FAIL(MALLOC_FAILED);
   Defer free_request_config { [&] { gpiod_request_config_free(request_config); }};
 
   gpiod_request_config_set_consumer(request_config, "toit");
@@ -395,7 +394,7 @@ PRIMITIVE(pin_configure) {
 
   // Note that the settings are stored in the resource and thus don't need to be freed here.
   auto settings = gpiod_line_settings_new();
-  if (settings == null) FAIL(ALLOCATION_FAILED);
+  if (settings == null) FAIL(MALLOC_FAILED);
   Defer free_settings { [&] { if (!successful_return) gpiod_line_settings_free(settings); }};
 
   fill_settings(settings, pull_up, pull_down, input, output, open_drain, initial_value);
