@@ -272,7 +272,7 @@ class Pin:
         --open-drain=open-drain
         --initial-value=initial-value
 
-  constructor.internal_ .num:
+  constructor.internal_ .num .state_=null:
 
   /**
   Closes the pin and releases resources associated with it.
@@ -582,6 +582,8 @@ class Chip:
       gpio-linux-chip-close_ resource
 
 class PinLinux_ extends Pin:
+  static GPIO-STATE-EDGE-TRIGGERED_ ::= 1
+
   static resource-group_ ::= gpio-linux-pin-init_
 
   constructor
@@ -593,8 +595,7 @@ class PinLinux_ extends Pin:
       --pull-down/bool=false
       --open-drain/bool=false
       --initial-value/int=0:
-    super.internal_ offset
-    resource_ = gpio-linux-pin-new_
+    resource := gpio-linux-pin-new_
         resource-group_
         chip.resource_
         offset
@@ -604,13 +605,18 @@ class PinLinux_ extends Pin:
         output
         open-drain
         initial-value
+    state := monitor.ResourceState_ resource-group_ resource
+    super.internal_ offset state
+    resource_ = resource
     add-finalizer this:: close
 
   close -> none:
-    if resource_:
+    if not resource_: return
+    critical-do:
       resource := resource_
       resource_ = null
       remove-finalizer this
+      state_.dispose
       gpio-linux-pin-close_ resource
 
   configure
@@ -629,9 +635,47 @@ class PinLinux_ extends Pin:
     if not 0 <= value <= 1: throw "INVALID_ARGUMENT"
     gpio-linux-pin-set_ resource_ value
 
-  /** Waits for 1 on on the physical pin if $value is 0, and vice versa. */
-  wait-for value/int -> none:
-    throw "UNIMPLEMENTED"
+  /**
+  Blocks until the pin reads the requested $value.
+
+  Use $with-timeout to automatically abort the operation after a fixed amount
+    of time.
+  */
+  wait-for value -> none:
+    if get == value: return
+    state_.clear-state GPIO-STATE-EDGE-TRIGGERED_
+    config-timestamp := gpio-linux-pin-last-edge-trigger-timestamp_ resource_
+    gpio-linux-pin-config-edge-detection_ resource_ true
+    try:
+      // Make sure the pin didn't change to the expected value while we
+      // were setting up the interrupt.
+      if get == value: return
+
+      while true:
+        state_.wait-for-state GPIO-STATE-EDGE-TRIGGERED_
+        if not resource_:
+          // The pin was closed while we were waiting.
+          return
+        // We need to consume the edge events to update the last edge trigger timestamp.
+        gpio-linux-pin-consume-edge-events_ resource_
+        event-timestamp := gpio-linux-pin-last-edge-trigger-timestamp_ resource_
+        // If there was an edge transition after we configured the interrupt,
+        // we are guaranteed that we have seen the value we are waiting for.
+        // The pin's value might already be different now, but we know
+        // that it was at the correct value at least for a brief period of
+        // time when the interrupt triggered.
+        if (event-timestamp - config-timestamp).abs < 0xFF_FFFF:
+          if event-timestamp >= config-timestamp: return
+        else:
+          // Unrealistically far from each other.
+          // Assume an overflow happened (either the event or config timestamp).
+          if event-timestamp < config-timestamp: return
+        state_.clear-state GPIO-STATE-EDGE-TRIGGERED_
+        // The following test shouldn't be necessary, but doesn't hurt either.
+        if get == value: return
+    finally:
+      if resource_:
+        gpio-linux-pin-config-edge-detection_ resource_ false
 
   set-open-drain value/bool:
     gpio-linux-pin-set-open-drain_ resource_ value
@@ -708,3 +752,12 @@ gpio-linux-pin-set_ resource value:
 
 gpio-linux-pin-set-open-drain_ resource value:
   #primitive.gpio-linux.pin-set-open-drain
+
+gpio-linux-pin-config-edge-detection_ resource enabled/bool:
+  #primitive.gpio-linux.pin-config-edge-detection
+
+gpio-linux-pin-consume-edge-events_ resource:
+  #primitive.gpio-linux.pin-consume-edge-events
+
+gpio-linux-pin-last-edge-trigger-timestamp_ resource:
+  #primitive.gpio-linux.pin-last-edge-trigger-timestamp

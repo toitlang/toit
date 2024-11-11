@@ -260,6 +260,8 @@ class EventSource : public EventSourceList::Element {
 
   Resource* find_resource(const std::function<bool(Resource*)>& predicate);
 
+  bool is_linked_resource(Resource* r) { return resources_.is_linked(r); }
+
  private:
   void try_notify(Resource* r, const Locker& locker, bool force = false);
 

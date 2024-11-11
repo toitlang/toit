@@ -22,6 +22,7 @@
 #include <gpiod.h>
 #include <sys/stat.h>
 
+#include "./gpio_linux.h"
 #include "../objects_inline.h"
 #include "../os.h"
 #include "../primitive.h"
@@ -31,16 +32,24 @@
 #include "../utils.h"
 #include "../vm.h"
 
-#include "../event_sources/epoll_linux.h"
+#include "../event_sources/gpio_linux.h"
 
 namespace toit {
+
+enum GpioState {
+  GPIO_STATE_EDGE_TRIGGERED = 1,
+};
 
 class GpioResourceGroup : public ResourceGroup {
  public:
   TAG(GpioResourceGroup);
   explicit GpioResourceGroup(Process* process)
-      : ResourceGroup(process){}
-  // TODO(florian): add event handling for the pin's file descriptors.
+    : ResourceGroup(process, GpioEventSource::instance()){}
+
+ private:
+  virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
+    return state | GPIO_STATE_EDGE_TRIGGERED;
+  }
 };
 
 class GpioChipResource : public Resource {
@@ -58,35 +67,6 @@ class GpioChipResource : public Resource {
 
  private:
   gpiod_chip* chip_;
-};
-
-class GpioPinResource : public Resource {
- public:
-  TAG(GpioPinResource);
-  GpioPinResource(ResourceGroup* group, int offset)
-      : Resource(group)
-      , offset_(offset){}
-
-  ~GpioPinResource() override;
-
-  int offset() const { return offset_; }
-
-  gpiod_line_settings* settings() const { return settings_; }
-  void replace_settings(gpiod_line_settings* settings) {
-    if (settings == settings_) return;
-    if (settings_ != null) gpiod_line_settings_free(settings_);
-    settings_ = settings;
-  }
-
-  gpiod_line_request* request() const { return request_; }
-  void set_request(gpiod_line_request* request) { request_ = request; }
-
-  Object* apply_and_store_settings(gpiod_line_settings* settings, Process* process);
-
- private:
-  int offset_ = -1;
-  gpiod_line_settings* settings_ = null;
-  gpiod_line_request* request_ = null;
 };
 
 static int chip_filter(const struct dirent* entry) {
@@ -148,14 +128,22 @@ static void fill_settings(gpiod_line_settings* settings, bool pull_up, bool pull
   gpiod_line_settings_set_output_value(settings, output_value);
 }
 
+Mutex* GpioPinResource::mutex_ = OS::allocate_mutex(30, "GpioPinResource");
 GpioPinResource::~GpioPinResource() {
   if (settings_ != null) {
     fill_settings(settings_, false, false, true, false, false, 0);
     apply_and_store_settings(settings_, null);
     gpiod_line_settings_free(settings_);
   }
+  if (event_buffer_ != null) gpiod_edge_event_buffer_free(event_buffer_);
   if (request_ != null) gpiod_line_request_release(request_);
 }
+
+void GpioPinResource::replace_settings(gpiod_line_settings* settings) {
+    if (settings == settings_) return;
+    if (settings_ != null) gpiod_line_settings_free(settings_);
+    settings_ = settings;
+  }
 
 Object* GpioPinResource::apply_and_store_settings(gpiod_line_settings* settings, Process* process) {
   auto config = gpiod_line_config_new();
@@ -178,6 +166,24 @@ Object* GpioPinResource::apply_and_store_settings(gpiod_line_settings* settings,
   }
   replace_settings(settings);
   return null;
+}
+
+void GpioPinResource::delete_or_mark_for_deletion() {
+  Locker locker(mutex_);
+  if (teardown_state_ == REMOVED) {
+    delete this;
+  } else {
+    teardown_state_ = DELETED;
+  }
+}
+
+void GpioPinResource::removed_from_event_source() {
+  Locker locker(mutex_);
+  if (teardown_state_ == DELETED) {
+    delete this;
+  } else {
+    teardown_state_ = REMOVED;
+  }
 }
 
 MODULE_IMPLEMENTATION(gpio_linux, MODULE_GPIO_LINUX);
@@ -338,8 +344,11 @@ PRIMITIVE(pin_new) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto resource = _new GpioPinResource(group, offset);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  // We allocate the resource as early as possible, as the allocation might fail.
+  // However, at this point we don't have the file descriptor yet and the resource
+  // is not safe to use.
+  auto unsafe_resource = _new GpioPinResource(group, offset);
+  if (unsafe_resource == null) FAIL(MALLOC_FAILED);
 
   // Note that the settings are stored in the resource and thus don't need to be freed here.
   auto settings = gpiod_line_settings_new();
@@ -368,6 +377,10 @@ PRIMITIVE(pin_new) {
   if (request == null) {
     return Primitive::os_error(errno, process, "request line");
   }
+
+  unsafe_resource->set_fd(gpiod_line_request_get_fd(request));
+  // It's now safe to use the resource.
+  auto resource = unsafe_resource;
 
   resource->replace_settings(settings);
   resource->set_request(request);
@@ -445,6 +458,61 @@ PRIMITIVE(pin_set_open_drain) {
 
   return process->null_object();
 }
+
+PRIMITIVE(pin_config_edge_detection) {
+  ARGS(GpioPinResource, pin, bool, enable)
+
+  auto settings = pin->settings();
+  if (settings == null) FAIL(INVALID_ARGUMENT);
+
+  gpiod_line_settings_set_edge_detection(settings, enable ? GPIOD_LINE_EDGE_BOTH : GPIOD_LINE_EDGE_NONE);
+
+  Object* error = pin->apply_and_store_settings(settings, process);
+  if (error != null) return error;
+
+  return process->null_object();
+}
+
+PRIMITIVE(pin_last_edge_trigger_timestamp) {
+  ARGS(GpioPinResource, pin)
+  return Primitive::integer(pin->last_edge_detection_timestamp(), process);
+}
+
+PRIMITIVE(pin_consume_edge_events) {
+  ARGS(GpioPinResource, pin)
+
+  if (pin->event_buffer() == null) {
+    auto event_buffer = gpiod_edge_event_buffer_new(10);
+    if (event_buffer == null) FAIL(MALLOC_FAILED);
+    pin->set_event_buffer(event_buffer);
+  }
+
+  auto request = pin->request();
+  auto event_buffer = pin->event_buffer();
+
+  while (true) {
+    int ret = gpiod_line_request_wait_edge_events(request, 0);
+    if (ret == -1) {
+      return Primitive::os_error(errno, process, "wait for edge events");
+    }
+    if (ret == 0) break;
+    // There is an event queued.
+    int number_events = gpiod_line_request_read_edge_events(request, event_buffer, 1);
+    if (ret == -1) {
+      return Primitive::os_error(errno, process, "read edge events");
+    }
+    for (int i = 0; i < number_events; i++) {
+      auto event = gpiod_edge_event_buffer_get_event(event_buffer, i);
+      auto timestamp = gpiod_edge_event_get_timestamp_ns(event);
+      if (timestamp > pin->last_edge_detection_timestamp()) {
+        pin->set_last_edge_detection_timestamp(timestamp);
+      }
+    }
+  }
+
+  return process->null_object();
+}
+
 
 }  // namespace toit
 
