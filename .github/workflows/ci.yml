@@ -3,8 +3,6 @@ name: CI
 on:
   schedule:
     - cron: '00 2 * * *' # 02:00 UTC
-    - cron: '30 2 * * *'
-    - cron: '00 3 * * *'
   push:
     branches-ignore:
       - "wip/**"
