@@ -1,0 +1,398 @@
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: 2017-2021 Bartosz Golaszewski <bartekgola@gmail.com>
+# SPDX-FileCopyrightText: 2023 Bartosz Golaszewski <bartosz.golaszewski@linaro.org>
+
+libgpiod v2.1.3
+===============
+
+Bug fixes:
+- fix C++ tests with recent kernels which introduced stricter reconfigure
+  behavior
+- fix a use-after-free bug in python bindings
+- fix passing the event clock property to line requests in python bindings
+- fix a memory leak in tools
+- make sure the string buffers in line-info and chip-info are big enough to not
+  truncate the strings they hold below the size accepted by the kernel
+
+libgpiod v2.1.2
+===============
+
+Bug fixes:
+- fix C++ bindings build using slibtool
+- accept the new style automatic GPIO chip labels from gpio-sim in bash tests
+
+Misc:
+- relicense C++ bindings under LGPL-2.1-or-later
+
+libgpiod v2.1.1
+===============
+
+Bug fixes:
+- remove buggy and unnecessary flags sanitization from line-config
+- fix python bindings installation with Makefile build
+- sanitize the return values of GPIO ioctl()s which in some cases may be
+  erroneously positive
+
+libgpiod v2.1
+=============
+
+New features:
+- port tests to shunit2
+- add a sample Android build file
+- add code examples to the core library and replace existing reimplementations
+  of gpio-tools with dedicated examples in bindings
+- don't install test executables
+- add idle-timeout option to gpiomon and gpionotify
+- provide gpiod_line_request_get_chip_name() and respective wrappers in
+  bindings
+
+Improvements:
+- add more tests for various corner-cases and improve coverage
+- documentation improvements
+- drop dependencies that make it impossible to build libgpiod with bionic libc
+- remove dead code
+- use AM_V_GEN where applicable in build
+
+Bug fixes:
+- fix a segfault in the GLib wrapper around libgpiosim
+- fix a race condition in libgpiosim
+- remove an implicit dependency on ncurses in gpio-tools tests
+- make value toggling in gpio-tools tests more reliable by removing hard-coded
+  sleeps in favor of actively waiting for value changes
+- sanitize the arguments in gpiod_line_config_set_output_values()
+- make the chip file descriptor blocking in the core library so that calls to
+  gpiod_chip_read_info_event() behave as advertised in the docs
+- fix setting the event clock type in gpiomon
+- fix the regex pattern for version strings
+- fix some test cases
+- drop profiling flags from tests' Makefile
+- don't use the same chip from different threads
+
+libgpiod v2.0
+=============
+
+This is a major release that breaks compatiblity with the v1.6.x series. The
+entire data model has been overhauled in order to make using the library more
+intuitive and less cumbersome, while also making the code future-proof and
+extensible. Please refer to the documentation for details.
+
+New features:
+- rework the entire API: core C library as well as C++ and Python bindings
+- rework the command-line tools in order to make them more line-name-oriented
+- drop gpiofind as tools can now resolve line names on their own
+- add the interactive mode to gpioset
+- add Rust bindings
+- make tests work with the gpio-sim kernel module
+
+libgpiod v1.6
+=============
+
+New features:
+- add a standardized '__version__' module attribute in Python bindings
+- print the bias flags info (if set) in gpioinfo
+
+Improvements:
+- remove unnecessary indirection in free_dirs() in iterator code
+- put all ABI versions next to one another in configure.ac
+- improve std namespace resolution in C++ bindings
+- add more checks for non-standard functions in configure.ac
+- various code size improvements
+- enforce gnu89 C standard in makefiles
+- many documentation improvements
+- unduplicate signalfd() handling in tools
+- fix a forward declaration for line_event in C++ bindings
+
+Bug fixes:
+- relax is_gpiochip_cdev() for symbolic links
+- make gpiod_line_get_value_bulk() work for bulks of lines requested for
+  events, not only those requested for values
+- fix regex patterns for timestamps in gpiomon test cases
+- remove leftover asserts from tests
+- fix unit conversion in event timestamp calculation in C++ bindings
+- fix reading subset of available events in core library
+
+libgpiod v1.5
+=============
+
+New features:
+- switched to using the GLib testing framework for core library tests and BATS
+  (Bash Automated Testing System) for command-line tools
+- used Catch2 C++ testing framework to implement a proper test-suite for C++
+  bindings while also reusing the API provided by libgpiomockup
+- used Python's unittest package to implement a proper test suite for Python
+  bindings and reused libgpiockup again
+- provided line::update() and Line.update() routines for C++ and Python
+  bindings respectively allowing to update the line info from bindings as well
+- added support for bias flags which are a new functionality first available in
+  linux v5.5; subsequently the library now requires v5.5 kernel headers to
+  build; the new flags are supported in the core library, C++ and Python
+  bindings as well as the command-line tools
+- added support for the new SET_CONFIG ioctl(): this too is a new functionality
+  added in linux v5.5; both features have been implemented in the library by
+  Kent Gibson
+- added routines for reading multiple line events at once to the core library,
+  C++ and Python bindings
+
+Improvements:
+- constified function arguments where applicable in libgpiomockup
+- fixed the name of the test exeucutable displayed at build time
+- improved the function pointer casting in Python bindings to avoid warnings
+  emitted by GCC8
+- switched to using the KERNEL_VERSION() macro in tests instead of handcoded
+  version parsing
+- improved the setup ordering in tests (setup libgpiomockup before checking
+  the kernel version
+- add 'extern "c"' to the libgpiomockup header to make it usable from C++
+- add chip index validation to libgpiomockup functions
+- check if the debugfs directory used by libgpiomockup is writable before
+  using it to set the pull of dummy lines
+- add several new test cases
+- improved Python example programs (made gpiomon's output similar to the
+  original tool, make gpioset wait for an ENTER pres by default)
+- fixed the major:minor number comparison between the device and sysfs
+- deprecated the gpiod_line_needs_update() function and removed the logic
+  behind it from the library
+- shrank the Python bindings a bit by directly returning the value from
+  PyErr_SetFromErrno()
+- dropped noexcept from methods which can throw in C++ bindings
+- switched to initializing the bitset with integers instead of strings in C++
+  bindings
+- allowed gpiod_line_set_value_bulk() to accept null pointers
+- when building Python bindings: check for the existence of python-config
+- improved the readability of help text messages for command-line tools
+- reworked the .gitignore file: added libtool scripts generated during
+  cross-compilation and split the main .gitignore into several fine-grained
+  files
+- fixed several misspellings
+- other minor tweaks and improvements
+
+Bug fixes:
+- fixed memory leaks in libgpiomockup
+- fixed memory leaks in the testing framework
+- fixed a segfault in error path in tests
+- make gpioinfo show lines claimed by the kernel as used even if they have no
+  named consumer
+- fixed the test cases validating the '--active-low' switch in gpiomon and
+  the GPIOHANDLE_REQUEST_ACTIVE_LOW flag in the core library after a fix
+  for incorrect behavior was merged in linux v5.2.7
+- stopped failing at init-time of libgpiomockup if gpio-mockup is already
+  loaded
+- added a missing throw keyword in error path in C++ bindings
+- fixed a segfault in Python bindings when calling Line.request() without
+  the consumer argument
+
+libgpiod v1.4
+=============
+
+New features:
+- updated the testing framework to work with linux v5.1 in which the debugfs
+  interface of the GPIO testing module changed in a backward incompatible way
+- factored out the code controlling the GPIO testing module into a separate
+  shared library that may be reused by future testing executables for different
+  language bindings
+- removed the --enable-install-tests build option and the make check target as
+  they were redundant, subsequently tests are now installed as a normal program
+  whenever they're enabled with --enable-tests
+
+Improvements:
+- removed unnecessary std::move calls from C++ bindings
+- added the explicit keyword to bool() operators in C++ bindings
+
+Bug fixes:
+- fix out of source build of man pages
+
+libgpiod v1.3
+=============
+
+New features:
+- the gpio-tools now have automatically generated (using help2man) man pages
+  that are bundled with the release tarball
+- support a singular 'default_val' argument in Line.request() in python
+  bindings
+- the test executable can now be installed to the bindir along with the
+  gpio-tools and the testing framework will look for the binaries in standard
+  locations if it's not run from the top source directory
+- gpiomon now supports line buffered output
+
+Improvements:
+- tweaks to the C API documentation
+- treewide unification of the naming of local variables
+- extended helptest in gpioset (explanation of the way the character device
+  works aimed at reducing user confusion when a GPIO line reverts to its
+  default value after gpioset exits)
+- the source directories have been rearranged and the src/ directory was
+  dropped, lib/ and tools/ now live in the top source directory
+- minor coding style fixes in python bindings, ctxless functions and tools
+- automatically generated documentation is now removed by 'make clean'
+- all Makefiles now use top_builddir instead of relative paths
+- code shrink in configure.ac
+- add a brief section about API documentation to README
+
+Bug fixes:
+- fix a segfault causing bug in C++ bindings
+- make bitset_cmp::operator() const as this is required by C++17
+- ignore 'remove' events from udev in the testing framework
+- don't segfault on num_lines = 0 in ctxless functions
+
+libgpiod v1.2
+=============
+
+New features:
+- new contextless event monitor that should replace the previous event loop
+  which caused problems on hardware that doesn't allow to watch both rising
+  and falling edge events
+- port gpiomon to the new event monitor
+- deprecate event loop routines
+
+Improvements:
+- many minor improvements and tweaks in the python module
+- new test cases for python bindings
+- add much more detailed documentation for python bindings
+- coding style improvements in gpio-tools
+- remove unicode characters from build scripts
+- improve the help text messages in gpio-tools
+- make gpiod_chip_open() and its variants verify that we're really trying to
+  open a character device associated with a GPIO chip
+
+Bug fixes:
+- fix memory leaks in python bindings
+- fix a memory corruption bug in python bindings
+- fix the default_vals argument in line request implementation in python
+  bindings
+- fix a compilation warning in python bindings
+- fix gpiod_Chip_find_lines() for nonexistent lines (python bindings)
+- add a missing include in C++ bindings examples
+- correctly display the version string in gpio-tools
+
+libgpiod v1.1
+=============
+
+New features:
+- add object-oriented C++ bindings
+- add object-oriented Python3 bindings
+- add several new helpers to the C API
+
+Improvements:
+- start using separate versioning schemes for API and ABI
+- use SPDX license identifiers and remove LGPL boilerplate
+- check for unexpanded macros in configure.ac
+
+Bug fixes:
+- include Doxyfile in the release tarball
+- fix the implicit-fallthrough warnings
+- make tests work together with gpio-mockup post v4.16 linux kernel
+- use reference counting for line file descriptors
+- correctly handle POLLNVAL when polling for events
+- fix the copyright notice in tools
+
+libgpiod v1.0
+=============
+
+NOTE: This is a major release - it breaks the API compatibility with
+      the 0.x.y series.
+
+New features:
+- remove custom error handling in favor of errnos
+- merge the two separate interfaces for event requests and regular line
+  requests
+- redesign the simple API
+- change the prefix of the high-level API from 'simple' to 'ctxless' (for
+  contextless) which better reflects its purpose
+- redesign the iterator API
+- make use of prefixes more consistent
+- rename symbols all over the place
+- various minor tweaks
+- add support for pkg-config
+
+Improvements:
+- add a bunch of helpers for line requests
+- split the library code into multiple source files by functionality
+- re-enable a test case previously broken by a bug in the kernel
+
+Bug fixes:
+- correctly handle signal interrupts when polling in gpiod_simple_event_loop()
+- fix the linking order when building with static libraries
+- pass the correct consumer string to gpiod_simple_get_value_multiple() in
+  gpioget
+- fix a line test case: don't use open-drain or open-source flags for input
+  mode
+- fix the flags passed to ar in order to supress a build warning
+- set the last error code in gpiod_chip_open_by_label() to ENOENT if a chip
+  can't be found
+- fix checking the kernel version in the test suite
+- fix various coding style issues
+- initialize the active low variable in gpiomon
+
+libgpiod v0.3
+=============
+
+New features:
+- gpiomon can now watch multiple lines at the same time and supports custom
+  output formats which can be specified using the --format argument
+- testing framework can now test external programs: test cases for gpio-tools
+  have been added
+
+Improvements:
+- improve error messages
+- improve README examples
+- configure script improvements
+
+Bug fixes:
+- use correct UAPI flags when requesting line events
+- capitalize 'GPIO' in error messages in gpioset, gpioget & gpiomon
+- tweak the error message on invalid arguments in gpiofind
+- don't ignore superfluous arguments and fix the displayed name for falling
+  edge events in gpiomon
+
+libgpiod v0.2
+=============
+
+New features:
+- relicensed under LGPLv2.1
+- implemented a unit testing framework together with a comprehensive
+  set of test cases
+- added a non-closing variant of the gpiochip iterator and foreach
+  macro [by Clemens Gruber]
+- added gpiod_chip_open_by_label()
+
+Improvements:
+- Makefiles & build commands have been reworked [by Thierry Reding]
+- documentation updates
+- code shrinkage here and there
+- coding style fixes
+- removed all designated initializers from the header for better standards
+  compliance
+
+Bug fixes:
+- fix the return value of gpiod_simple_event_loop()
+- don't try to process docs if doxygen is not installed
+- pass the O_CLOEXEC flag to open() when opening the GPIO chip device file
+- include <poll.h> instead of <sys/poll.h> in gpioset
+- fix a formatting issue in gpioinfo for chips with >100 GPIO lines
+- fix a bug when requesting both-edges event notifications
+- fix short options in gpiomon (short opt for --silent was missing)
+- correct the kernel headers requirements in README
+- include <time.h> for struct timespec
+- include <poll.h> instead of <sys/poll.h>
+- detect the version of strerror_r()
+
+libgpiod v0.1
+=============
+
+First version of libgpiod.
+
+It's currently possible to:
+- get and set the values of multiple GPIO lines with a single function call
+- monitor a GPIO line for events
+- enumerate all GPIO chips present in the system
+- enumerate all GPIO lines exposed by a chip
+- extract information about GPIO chips (label, name, number of lines)
+- extract information about GPIO lines (name, flags, state, user)
+
+Tools provided with the library are:
+- gpioget - read values from GPIO lines
+- gpioset - set values of GPIO lines
+- gpiodetect - list GPIO chips
+- gpioinfo - print info about GPIO lines exposed by a chip
+- gpiomon - monitor a GPIO line for events
+- gpiofind - find a GPIO line by name

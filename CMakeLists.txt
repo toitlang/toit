@@ -174,6 +174,9 @@ set(EXTERNAL_TOIT_LIBS)
 include(tools/external.cmake)
 
 add_subdirectory(src)
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  add_subdirectory(third_party/libgpiod)
+endif()
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_subdirectory(tools)
