@@ -334,14 +334,14 @@ class Buffer extends BufferConsumer:
     // We copy the code of the 'with-initial-size' constructor, so we don't get
     // a deprecation warning.
     init-size_ = INITIAL-BUFFER-LENGTH_
-    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray_.external_ init-size_) : (ByteArray init-size_)
+    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray.external init-size_) : (ByteArray init-size_)
 
   /**
   Constructs a new buffer with the given $init-size_.
   If the $init-size_ isn't big enough, the buffer grows when necessary.
   */
   constructor.with-initial-size .init-size_/int:
-    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray_.external_ init-size_) : (ByteArray init-size_)
+    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray.external init-size_) : (ByteArray init-size_)
 
   /** See $BufferConsumer.size. */
   size -> int:

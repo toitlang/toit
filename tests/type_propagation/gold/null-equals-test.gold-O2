@@ -33,8 +33,8 @@ main tests/type_propagation/null-equals-test.toit
  53[053] - invoke static A tests/type_propagation/null-equals-test.toit // [{A}] -> {A}
  56[042] - allocate instance A
  58[053] - invoke static A tests/type_propagation/null-equals-test.toit // [{A}] -> {A}
- 61[062] - invoke eq // [{A}, {A}] -> {String_}
- 62[053] - invoke static id tests/type_propagation/null-equals-test.toit // [{String_}] -> {String_}
+ 61[062] - invoke eq // [{A}, {A}] -> {True}
+ 62[053] - invoke static id tests/type_propagation/null-equals-test.toit // [{True}] -> {True}
  65[041] - pop 1
  66[042] - allocate instance A
  68[053] - invoke static A tests/type_propagation/null-equals-test.toit // [{A}] -> {A}
@@ -72,10 +72,10 @@ A.== tests/type_propagation/null-equals-test.toit
  - argument 0: {A}
  - argument 1: {*}
   0[052] - load local, as class, pop 2 - A(40 - 41) // {True|False}
-  2[020] - load literal hest
+  2[020] - load literal true
   4[089] - return S1 2
 
 id tests/type_propagation/null-equals-test.toit
- - argument 0: {String_|True|False}
+ - argument 0: {True|False}
   0[016] - load local 2
   1[089] - return S1 1

@@ -24,7 +24,6 @@
 
 #include "../objects_inline.h"
 
-
 namespace toit {
 
 GpioEventSource* GpioEventSource::instance_ = null;
@@ -33,6 +32,7 @@ GpioEventSource::GpioEventSource() : EpollEventSourceBase("Gpio") {
   ASSERT(instance_ == null);
   instance_ = this;
 }
+
 GpioEventSource::~GpioEventSource() {
   ASSERT(unregistered_resources_.is_empty());
   if (started_) stop();

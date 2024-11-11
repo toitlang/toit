@@ -740,8 +740,8 @@ tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
 
 # Examples
 ```
-set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2024).
-set_timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2024).
+set-timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2024).
+set-timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2024).
 ```
 */
 set-timezone rules/string:

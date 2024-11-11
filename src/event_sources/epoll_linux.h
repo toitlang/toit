@@ -48,9 +48,9 @@ class EpollEventSourceBase : public EventSource, public Thread {
  private:
   void entry() override;
 
-  int epoll_fd_;
-  int control_read_;
-  int control_write_;
+  int epoll_fd_ = -1;
+  int control_read_ = -1;
+  int control_write_ = -1;
 };
 
 class EpollEventSource : public EpollEventSourceBase {
