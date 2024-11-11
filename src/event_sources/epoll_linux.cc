@@ -60,6 +60,9 @@ bool read_full(int fd, uint8_t* data, word length) {
 }
 
 bool EpollEventSourceBase::start() {
+  if (epoll_fd_ != -1) FATAL("already started");
+  if (control_write_ != -1) FATAL("already started");
+
   epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd_ < 0) {
     FATAL("failed allocating epoll file descriptor: %d", errno)
@@ -87,6 +90,8 @@ void EpollEventSourceBase::stop() {
   close(control_write_);
   join();
   close(epoll_fd_);
+  control_write_ = -1;
+  epoll_fd_ = -1;
 }
 
 
@@ -117,6 +122,7 @@ void EpollEventSourceBase::entry() {
         if (event.data.fd == control_read_) {
           if (event.events & EPOLLHUP) {
             close(control_read_);
+            control_read_ = -1;
             return;
           }
 
