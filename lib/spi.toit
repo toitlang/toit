@@ -291,12 +291,10 @@ class DevicePath_ extends DeviceBase_:
     resource := resource_
     if not resource: return
     critical-do:
-      try:
-        state_.dispose
-        resource_ = null
-        spi-linux-close_ resource
-      finally:
-        remove-finalizer this
+      state_.dispose
+      resource_ = null
+      remove-finalizer this
+      spi-linux-close_ resource
 
   transfer
       data/ByteArray
@@ -313,7 +311,7 @@ class DevicePath_ extends DeviceBase_:
     done := spi-linux-transfer-start_ resource_ data from length read delay_us true
     in/ByteArray? := null
     // There is no way to interrupt a started spi transfer. We have to wait for it to finish.
-    critical-do:
+    critical-do --no-respect-deadline:
       if not done:
         state_.wait-for-state TRANSFER-DONE_
         if not resource_:
