@@ -133,9 +133,9 @@ jobs:
         id: constants
         shell: bash
         run: |
-          echo "flaky_result=flaky-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "flaky_result=flaky-result/${{ matrix.container }}-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
           echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
-          echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "external_result=external-result/${{ matrix.container }}-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
           echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
@@ -251,6 +251,7 @@ jobs:
           echo fail > ${{ steps.constants.outputs.flaky_result }}
           make test-flaky
           # If we reach here, then the test-flaky target succeeded.
+          echo "SUCCESS"
           echo success > ${{ steps.constants.outputs.flaky_result }}
 
       - name: Test type propagator
@@ -324,6 +325,7 @@ jobs:
             cd ../..
           fi
           # If we reach here, all steps of this step succeeded.
+          echo "SUCCESS"
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store flaky test result
