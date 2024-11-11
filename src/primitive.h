@@ -56,6 +56,7 @@ namespace toit {
   M(snapshot,MODULE_SNAPSHOT)                \
   M(image,   MODULE_IMAGE)                   \
   M(gpio,    MODULE_GPIO)                    \
+  M(gpio_linux, MODULE_GPIO_LINUX)           \
   M(adc,     MODULE_ADC)                     \
   M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
@@ -564,6 +565,22 @@ namespace toit {
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
 
+#define MODULE_GPIO_LINUX(PRIMITIVE)         \
+  PRIMITIVE(list_chips, 0)                   \
+  PRIMITIVE(chip_init, 0)                    \
+  PRIMITIVE(chip_new, 2)                     \
+  PRIMITIVE(chip_close, 1)                   \
+  PRIMITIVE(chip_info, 1)                    \
+  PRIMITIVE(chip_pin_info, 2)                \
+  PRIMITIVE(chip_pin_offset_for_name, 2)     \
+  PRIMITIVE(pin_init, 0)                     \
+  PRIMITIVE(pin_new, 9)                      \
+  PRIMITIVE(pin_close, 1)                    \
+  PRIMITIVE(pin_configure, 7)                \
+  PRIMITIVE(pin_get, 1)                      \
+  PRIMITIVE(pin_set, 2)                      \
+  PRIMITIVE(pin_set_open_drain, 2)           \
+
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
@@ -1062,6 +1079,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_Zlib(N, name)                MAKE_UNPACKING_MACRO(Zlib, N, name)
 #define _A_T_GpioResource(N, name)        MAKE_UNPACKING_MACRO(GpioResource, N, name)
+#define _A_T_GpioPinResource(N, name)     MAKE_UNPACKING_MACRO(GpioPinResource, N, name)
+#define _A_T_GpioChipResource(N, name)    MAKE_UNPACKING_MACRO(GpioChipResource, N, name)
 #define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
 #define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
 #define _A_T_TcpSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpSocketResource, N, name)
@@ -1240,7 +1259,7 @@ class Primitive {
   static bool is_error(Object* object) { return object->is_marked(); }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static Object* unmark_from_error(Program* program, Object* object);
-  static Object* os_error(int error, Process* process);
+  static Object* os_error(int error, Process* process, const char* operation = null);
   static Object* return_not_a_smi(Process* process, Object* value);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.
