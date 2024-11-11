@@ -4,6 +4,7 @@
 
 import host.directory
 import host.pipe
+import io
 import monitor
 import system
 
@@ -59,12 +60,10 @@ class ToitExecutable:
       full-command += ["--sdk-dir", sdk-dir_]
     full-command += args
     fork-data := pipe.fork
-        true                // use_path
-        // We create a stdin pipe, so that qemu can't interfere with
-        // our terminal.
-        pipe.PIPE-CREATED   // stdin.
-        pipe.PIPE-CREATED   // stdout
-        pipe.PIPE-CREATED   // stderr
+        true                // use_path.
+        pipe.PIPE-INHERITED // stdin.
+        pipe.PIPE-CREATED   // stdout.
+        pipe.PIPE-CREATED   // stderr.
         full-command.first
         full-command
     stdin := fork-data[0]
@@ -72,27 +71,19 @@ class ToitExecutable:
     stderr := fork-data[2]
     child-process := fork-data[3]
 
-    stdin.close
-
     stdout-string-latch := monitor.Latch
     stdout-task := task --background::
       try:
-        bytes := #[]
-        catch --trace:
-          while chunk := stdout.read:
-            bytes += chunk
-          stdout-string-latch.set bytes.to-string
+        bytes := stdout.in.read-all
+        stdout-string-latch.set bytes.to-string-non-throwing
       finally:
         stdout.close
 
     stderr-string-latch := monitor.Latch
     stderr-task := task --background::
       try:
-        bytes := #[]
-        catch --trace:
-          while chunk := stderr.read:
-            bytes += chunk
-          stderr-string-latch.set bytes.to-string
+        bytes := stderr.in.read-all
+        stderr-string-latch.set bytes.to-string-non-throwing
       finally:
         stderr.close
 
