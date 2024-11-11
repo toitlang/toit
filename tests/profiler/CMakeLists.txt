@@ -17,6 +17,11 @@ file(GLOB PROFILER_TESTS "*-test.toit")
 
 include(fail.cmake)
 
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  # Don't run profiler tests if the optimization level is overridden.
+  set(PROFILER_TESTS)
+endif()
+
 foreach(profiler_test ${PROFILER_TESTS})
   get_filename_component(base ${profiler_test} NAME_WE)
   string(REGEX REPLACE "-test$" "" test_name ${base})

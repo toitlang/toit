@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.api.network show NetworkService NetworkServiceClient
+import system.api.network show NetworkService
+import system.base.network show NetworkServiceClientBase
 import system.services show ServiceSelector
 
 interface EthernetService extends NetworkService:
@@ -11,7 +12,7 @@ interface EthernetService extends NetworkService:
       --major=0
       --minor=1
 
-class EthernetServiceClient extends NetworkServiceClient implements EthernetService:
+class EthernetServiceClient extends NetworkServiceClientBase implements EthernetService:
   static SELECTOR ::= EthernetService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR

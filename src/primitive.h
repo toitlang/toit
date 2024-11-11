@@ -75,8 +75,8 @@ namespace toit {
   M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
-  PRIMITIVE(write_string_on_stdout, 2)       \
-  PRIMITIVE(write_string_on_stderr, 2)       \
+  PRIMITIVE(write_on_stdout, 2)              \
+  PRIMITIVE(write_on_stderr, 2)              \
   PRIMITIVE(time, 1)                         \
   PRIMITIVE(time_info, 2)                    \
   PRIMITIVE(seconds_since_epoch_local, 7)    \
@@ -256,6 +256,7 @@ namespace toit {
   PRIMITIVE(firmware_mapping_at, 2)          \
   PRIMITIVE(firmware_mapping_copy, 5)        \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(hostname, 0)                     \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -324,6 +325,7 @@ namespace toit {
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
+  PRIMITIVE(set_hostname, 2)                 \
   PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -334,6 +336,7 @@ namespace toit {
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(set_hostname, 2)                 \
 
 #define MODULE_BLE(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -377,6 +380,7 @@ namespace toit {
   PRIMITIVE(toit_callback_init, 3)           \
   PRIMITIVE(toit_callback_deinit, 2)         \
   PRIMITIVE(toit_callback_reply, 3)          \
+  PRIMITIVE(set_gap_device_name, 2)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -906,12 +910,21 @@ namespace toit {
   if (_raw_##name != process->null_object()) {                                   \
     Blob _blob_##name;                                                           \
     if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+    if (memchr(_blob_##name.address(), '\0', _blob_##name.length()) != null) {   \
+      FAIL(INVALID_ARGUMENT);                                                    \
+    }                                                                            \
     _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
     if (!_nonconst_##name) FAIL(MALLOC_FAILED);                                  \
     memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length());     \
   }                                                                              \
   const char* name = _nonconst_##name;                                           \
   AllocationManager _manager_##name(process, _nonconst_##name, 0);
+
+#define _A_T_CStringBlob(N, name)                                               \
+  Object* _raw_##name = __args[-(N)];                                           \
+  Blob name;                                                                    \
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name.address(), '\0', name.length()) != null) FAIL(INVALID_ARGUMENT);
 
 // If it's a string, then the length is calculated including the terminating
 // null.  Otherwise it's calculated without the terminating null.  MbedTLS
@@ -965,6 +978,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   Blob name##_blob;                                                          \
   if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name##_blob.address(), '\0', name##_blob.length()) != null) {   \
+    FAIL(INVALID_ARGUMENT);                                                  \
+  }                                                                          \
   BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
 
 #define _A_T_Blob(N, name)                                                   \

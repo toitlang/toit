@@ -736,11 +736,11 @@ test client/LspClient:
       \$([]= x y)
       */
       class A:
-        operator == other:
-        operator < other:
-        operator <= other:
-        operator >= other:
-        operator > other:
+        operator == other: return true
+        operator < other: return true
+        operator <= other: return true
+        operator >= other: return true
+        operator > other: return true
         operator + other:
         operator - other:  // Unary minus is tested elsewhere.
         operator * other:
@@ -757,11 +757,11 @@ test client/LspClient:
         operator []= i val:
 
       class B:
-        operator == other:
-        operator < other:
-        operator <= other:
-        operator >= other:
-        operator > other:
+        operator == other: return true
+        operator < other: return true
+        operator <= other: return true
+        operator >= other: return true
+        operator > other: return true
         operator + other:
         operator - other:  // Unary minus is tested elsewhere.
         operator * other:

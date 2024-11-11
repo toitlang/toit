@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
 import net
 import net.tcp
 import host.pipe show OpenPipe
@@ -30,26 +31,11 @@ import .utils
 import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
-  is-absolute/bool := ?
-  if platform == system.PLATFORM-WINDOWS:
-    compiler-path = compiler-path.replace "\\" "/"
-    if compiler-path.starts-with "/":
-      is-absolute = true
-    else if compiler-path.size >= 3 and compiler-path[1] == ':' and compiler-path[2] == '/':
-      is-absolute = true
-    else:
-      is-absolute = false
-  else:
-    is-absolute = compiler-path.starts-with "/"
-
+  compiler-path = fs.to-slash compiler-path
   index := compiler-path.index-of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
   result := compiler-path.copy 0 index
-  if not is-absolute:
-    // Make it absolute.
-    result = "$directory.cwd/$result"
-  return result
-
+  return fs.to-slash (fs.to-absolute result)
 
 class File:
   exists / bool ::= ?
@@ -83,7 +69,9 @@ class FileServerProtocol:
             sdk-path_ = translator.local-path-to-compiler-path filesystem.sdk-path
           writer.write "$sdk-path_\n"
         else if line == "PACKAGE CACHE PATHS":
-          if not package-cache-paths_: package-cache-paths_ = filesystem.package-cache-paths
+          if not package-cache-paths_:
+            paths := filesystem.package-cache-paths
+            package-cache-paths_ = paths.map: translator.local-path-to-compiler-path it
           writer.write "$package-cache-paths_.size\n"
           package-cache-paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":

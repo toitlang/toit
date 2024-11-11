@@ -14,6 +14,7 @@ import .modules.tcp as tcp-module
 import .modules.udp as udp-module
 
 import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show NetworkServiceClientBase
 import system.base.network show NetworkResourceProxy
 
 export IpAddress SocketAddress
@@ -24,7 +25,7 @@ service_/NetworkServiceClient? ::= (NetworkServiceClient).open
 /// Gets the default network interface.
 open -> Client
     --name/string?=null
-    --service/NetworkServiceClient?=service_:
+    --service/NetworkServiceClientBase?=service_:
   if not service: throw "Network unavailable"
   return Client service --name=name service.connect
 
@@ -54,13 +55,13 @@ class Client extends NetworkResourceProxy implements Interface:
   // client about the bits on connect.
   proxy-mask/int
 
-  constructor service/NetworkServiceClient --name/string? connection/List:
+  constructor service/NetworkServiceClientBase --name/string? connection/List:
     handle := connection[0]
     proxy-mask = connection[1]
     this.name = name or connection[2]
     super service handle
 
-  constructor service/NetworkServiceClient
+  constructor service/NetworkServiceClientBase
       --handle/int
       --.proxy-mask
       --.name:
@@ -89,7 +90,7 @@ class Client extends NetworkResourceProxy implements Interface:
 
   quarantine -> none:
     if (proxy-mask & NetworkService.PROXY-QUARANTINE) == 0: return
-    (client_ as NetworkServiceClient).quarantine name
+    (client_ as NetworkServiceClientBase).quarantine name
 
   udp-open --port/int?=null -> udp.Socket:
     if is-closed: throw "Network closed"
