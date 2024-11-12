@@ -279,8 +279,8 @@ class DevicePath_ extends DeviceBase_:
 
   static resource-group_ ::= spi-linux-init_
 
-  resource_/ByteArray? := null
-  state_/monitor.ResourceState_?
+  resource_/ByteArray? := ?
+  state_/monitor.ResourceState_
 
   constructor --path/string --frequency/int --mode/int:
     resource_ = spi-linux-open_ resource-group_ path frequency mode
