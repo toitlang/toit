@@ -561,7 +561,7 @@ namespace toit {
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(use, 3)                          \
   PRIMITIVE(unuse, 2)                        \
-  PRIMITIVE(config, 6)                       \
+  PRIMITIVE(config, 7)                       \
   PRIMITIVE(get, 1)                          \
   PRIMITIVE(set, 2)                          \
   PRIMITIVE(config_interrupt, 2)             \

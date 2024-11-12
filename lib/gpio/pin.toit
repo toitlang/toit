@@ -64,6 +64,9 @@ interface Pin:
     6-11 to communicate with flash and PSRAM. These pins can not be
     instantiated unless the $allow-restricted flag is set to true.
 
+  If the pin is configured as output, the initial value can be set with the
+    $value parameter.
+
   # ESP32
   The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
     be used as general-purpose pin, or be connected to a peripheral.
@@ -110,8 +113,15 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --allow-restricted/bool=false:
-    return Pin_ num --input=input --output=output --pull-up=pull-up --pull-down=pull-down --open-drain=open-drain
+      --allow-restricted/bool=false
+      --value/int=0:
+    return Pin_ num
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --value=value
 
   /**
   Opens a GPIO pin on the chip identified by the given $path and $num (often called "offset").
@@ -127,7 +137,7 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --initial-value/int=0:
+      --value/int=0:
     chip := Chip path
     try:
       return Pin.linux num
@@ -137,7 +147,7 @@ interface Pin:
           --pull-up=pull-up
           --pull-down=pull-down
           --open-drain=open-drain
-          --initial-value=initial-value
+          --value=value
     finally:
       chip.close
 
@@ -155,7 +165,7 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --initial-value/int=0:
+      --value/int=0:
     return PinLinux_ num
         --chip=chip
         --input=input
@@ -163,7 +173,7 @@ interface Pin:
         --pull-up=pull-up
         --pull-down=pull-down
         --open-drain=open-drain
-        --initial-value=initial-value
+        --value=value
 
   /**
   Opens a GPIO pin based on the given $name.
@@ -185,7 +195,7 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --initial-value/int=0:
+      --value/int=0:
 
     try-chip := : | path/string |
       chip := Chip path
@@ -199,7 +209,7 @@ interface Pin:
               --pull-up=pull-up
               --pull-down=pull-down
               --open-drain=open-drain
-              --initial-value=initial-value
+              --value=value
       finally:
         chip.close
 
@@ -229,7 +239,7 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --initial-value/int=0:
+      --value/int=0:
 
     offset := gpio-linux-chip-offset-for-name_ chip.resource_ name
     if offset < 0: throw "NOT_FOUND"
@@ -240,7 +250,7 @@ interface Pin:
         --pull-up=pull-up
         --pull-down=pull-down
         --open-drain=open-drain
-        --initial-value=initial-value
+        --value=value
 
   /**
   The number or offset of this pin.
@@ -284,6 +294,13 @@ interface Pin:
 
   If a pin is configured to be an input, it can have a $pull-up or $pull-down.
 
+  If the pin is configured as output, the value can be set with the $value parameter. The
+    new value might be written *before* the configuration is changed. If the pin is configured
+    from push-pull to open-drain care must be taken that the new value is not 1, thus
+    potentially short-circuiting the pin if another device is pulling the line low. When
+    switching from push-pull to open-drain it is thus recommended to go through a short
+    period of high-impedance (input) mode to avoid this issue.
+
   If $open-drain is set, then the pin can only pull the pin to the ground. Together, with
     a $pull-up resistor this still allows the pin to emit both 0 and 1. In this configuration,
     connected devices can also safely pull the pin to ground without damaging the microcontroller.
@@ -301,6 +318,7 @@ interface Pin:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
+      --value/int?=null
 
   /**
   Gets the value of the pin.
@@ -357,11 +375,12 @@ abstract class PinBase implements Pin:
   An implementation of $Pin.configure.
   */
   abstract configure_ -> none
-      --input/bool=false
-      --output/bool=false
-      --pull-up/bool=false
-      --pull-down/bool=false
-      --open-drain/bool=false
+      --input/bool
+      --output/bool
+      --pull-up/bool
+      --pull-down/bool
+      --open-drain/bool
+      --value/int?
 
   /**
   See $Pin.get.
@@ -389,7 +408,7 @@ abstract class PinBase implements Pin:
   // When removing this function, it's safe to remove `pull-down_` and `pull-up_` as well.
   config --input/bool=false --output/bool=false --open-drain/bool=false:
     if open-drain and not output: throw "INVALID_ARGUMENT"
-    configure_ --input=input --output=output --pull-up=pull-up_ --pull-down=pull-down_ --open-drain=open-drain
+    configure --input=input --output=output --pull-up=pull-up_ --pull-down=pull-down_ --open-drain=open-drain --value=0
 
   /**
   See $Pin.configure.
@@ -399,7 +418,8 @@ abstract class PinBase implements Pin:
       --output/bool=false
       --pull-up/bool=false
       --pull-down/bool=false
-      --open-drain/bool=false:
+      --open-drain/bool=false
+      --value/int?=null:
     if open-drain and not output: throw "INVALID_ARGUMENT"
     if pull-up and not input: throw "INVALID_ARGUMENT"
     if pull-down and not input: throw "INVALID_ARGUMENT"
@@ -408,7 +428,13 @@ abstract class PinBase implements Pin:
     if pull-down and pull-up: throw "INVALID_ARGUMENT"
     pull-down_ = pull-down
     pull-up_ = pull-up
-    configure_ --input=input --output=output --pull-down=pull-down --pull-up=pull-up --open-drain=open-drain
+    configure_
+        --input=input
+        --output=output
+        --pull-down=pull-down
+        --pull-up=pull-up
+        --open-drain=open-drain
+        --value=value
 
   /**
   See $Pin.do.
@@ -438,19 +464,21 @@ class Pin_ extends PinBase:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --allow-restricted/bool=false:
+      --allow-restricted/bool=false
+      --value/int=0:
     resource_ = gpio-use_ resource-group_ num allow-restricted
     // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
     state_ = monitor.ResourceState_ resource-group_ resource_
     super num
     if input or output:
       try:
-        configure_
+        configure
             --input=input
             --output=output
             --pull-down=pull-down
             --pull-up=pull-up
             --open-drain=open-drain
+            --value=value
       finally: | is-exception _ |
         if is-exception: close
 
@@ -468,12 +496,14 @@ class Pin_ extends PinBase:
   See $Pin.configure.
   */
   configure_ -> none
-      --input/bool=false
-      --output/bool=false
-      --pull-up/bool=false
-      --pull-down/bool=false
-      --open-drain/bool=false:
-    gpio-config_ num pull-up pull-down input output open-drain
+      --input/bool
+      --output/bool
+      --pull-up/bool
+      --pull-down/bool
+      --open-drain/bool
+      --value/int?:
+    if not value: value = -1
+    gpio-config_ num pull-up pull-down input output open-drain value
 
   /**
   See $Pin.get.
@@ -552,13 +582,15 @@ class VirtualPin extends PinBase:
   /** Closes the pin. */
   close:
 
-  /** Does nothing. */
+  /** Does nothing except for setting the $value. */
   configure_ -> none
-      --input/bool=false
-      --output/bool=false
-      --pull-up/bool=false
-      --pull-down/bool=false
-      --open-drain/bool=false:
+      --input/bool
+      --output/bool
+      --pull-up/bool
+      --pull-down/bool
+      --open-drain/bool
+      --value/int?:
+    if value: set value
 
   /** Not supported. */
   get: throw "UNSUPPORTED"
@@ -593,12 +625,19 @@ class InvertedPinSuper_ extends PinBase:
     original-pin_.close
 
   configure_ -> none
-      --input/bool=false
-      --output/bool=false
-      --pull-up/bool=false
-      --pull-down/bool=false
-      --open-drain/bool=false:
-    original-pin_.configure --input=input --output=output --pull-up=pull-up --pull-down=pull-down --open-drain=open-drain
+      --input/bool
+      --output/bool
+      --pull-up/bool
+      --pull-down/bool
+      --open-drain/bool
+      --value/int?:
+    original-pin_.configure
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --value=value ? (1 - value) : null
 
   /** Returns 1 if the physical pin is at 0, and vice versa. */
   get -> int:
@@ -693,7 +732,7 @@ class PinLinux_ extends PinBase:
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
-      --initial-value/int=0:
+      --value/int=0:
     resource_ = gpio-linux-pin-new_
         resource-group_
         chip.resource_
@@ -703,7 +742,7 @@ class PinLinux_ extends PinBase:
         input
         output
         open-drain
-        initial-value
+        value
     state_ = monitor.ResourceState_ resource-group_ resource_
     super offset
     add-finalizer this:: close
@@ -718,12 +757,13 @@ class PinLinux_ extends PinBase:
       gpio-linux-pin-close_ resource
 
   configure_ -> none
-      --input/bool=false
-      --output/bool=false
-      --pull-up/bool=false
-      --pull-down/bool=false
-      --open-drain/bool=false
-      --value/int=0:
+      --input/bool
+      --output/bool
+      --pull-up/bool
+      --pull-down/bool
+      --open-drain/bool
+      --value/int?:
+    if not value: value = -1
     gpio-linux-pin-configure_ resource_ pull-up pull-down input output open-drain value
 
   get -> int:
@@ -791,7 +831,7 @@ gpio-use_ resource-group num allow-restricted:
 gpio-unuse_ resource-group num:
   #primitive.gpio.unuse
 
-gpio-config_ num pull-up pull-down input output open-drain:
+gpio-config_ num pull-up pull-down input output open-drain value:
   #primitive.gpio.config
 
 gpio-get_ num:
@@ -833,13 +873,13 @@ gpio-linux-chip-offset-for-name_ chip-resource name -> int:
 gpio-linux-pin-init_:
   #primitive.gpio-linux.pin-init
 
-gpio-linux-pin-new_ resource-group chip offset pull-up pull-down input output open-drain initial-value:
+gpio-linux-pin-new_ resource-group chip offset pull-up pull-down input output open-drain value:
   #primitive.gpio-linux.pin-new
 
 gpio-linux-pin-close_ resource:
   #primitive.gpio-linux.pin-close
 
-gpio-linux-pin-configure_ resource pull-up pull-down input output open-drain initial-value:
+gpio-linux-pin-configure_ resource pull-up pull-down input output open-drain value:
   #primitive.gpio-linux.pin-configure
 
 gpio-linux-pin-get_ resource:
