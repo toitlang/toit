@@ -25,7 +25,7 @@ AsyncEventThread::AsyncEventThread(const char* name, AsyncEventSource* event_sou
     : Thread(name)
     , event_source_(event_source)
     , mutex_(OS::allocate_mutex(20, name))
-    , queue_cond_(OS::allocate_condition_variable(mutex_)){}
+    , queue_cond_(OS::allocate_condition_variable(mutex_)) {}
 
 void AsyncEventThread::start() {
   spawn();
@@ -56,8 +56,7 @@ void AsyncEventThread::entry() {
     auto func = element->func;
     delete element;
     state_ = RUNNING;
-    {
-      Unlocker unlocker(locker);
+    { Unlocker unlocker(locker);
       auto result = func(resource);
       event_source_->on_event(resource, result);
     }

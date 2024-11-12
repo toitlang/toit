@@ -873,6 +873,16 @@ void MethodResolver::resolve_fill_global() {
   scope_ = scope_->outer();
 }
 
+static bool is_comparison_operator(Symbol name) {
+  return name == Token::symbol(Token::EQ) ||
+         // '!=' isn't a valid name, but for simplicity we still accept it here.
+         name == Token::symbol(Token::NE) ||
+         name == Token::symbol(Token::LT) ||
+         name == Token::symbol(Token::LTE) ||
+         name == Token::symbol(Token::GT) ||
+         name == Token::symbol(Token::GTE);
+}
+
 void MethodResolver::resolve_fill_method() {
   auto ast_node = ir_to_ast_map_->at(method_)->as_Method();
 
@@ -884,6 +894,24 @@ void MethodResolver::resolve_fill_method() {
 
   if (method_->is_factory() && ast_node->return_type() != null) {
     report_error(ast_node->return_type(), "Factories may not have return types");
+  }
+
+  if (is_comparison_operator(method_->name())) {
+    auto return_type = method_->return_type();
+    bool is_bool_assignable = return_type.is_any() ||
+        return_type == bool_type_ ||
+        return_type == true_type_ ||
+        return_type == false_type_;
+    if (!is_bool_assignable) {
+      auto return_node = ast_node->return_type();
+      if (return_node != null) {
+        report_error(return_node, "Return type of comparison must be a boolean");
+      }
+    } else if (!return_type.is_any() && return_type.is_nullable()) {
+      report_error(ast_node->return_type(), "Comparison operators may not return null");
+    }
+    // Force the return type to be boolean.
+    method_->replace_return_type(bool_type_);
   }
 
   if (method_->is_setter()) {
@@ -4250,6 +4278,19 @@ ir::Expression* MethodResolver::_binary_operator(ast::Binary* node,
                                      CallShape::for_instance_call_no_named(right_args),
                                      right_args,
                                      node->selection_range());
+
+  ASSERT(INVOKE_GTE - INVOKE_EQ == 4);  // ==, <, <=, >, >=
+  // It is critical that we go through the EQ opcode, as it tests for identity and
+  // null. This must happen even if we have optimizations disabled.
+  // Similarly, we must go through the comparison opcodes, as they handle complicate
+  // corner cases that the source code doesn't.
+  for (int i = INVOKE_EQ; i <= INVOKE_GTE; i++) {
+    Opcode opcode = static_cast<Opcode>(i);
+    if (Symbol::for_invoke(opcode) == op) {
+      result->set_opcode(opcode);
+      break;
+    }
+  }
   if (inverted) return _new ir::Not(result, node->selection_range());
   return result;
 }

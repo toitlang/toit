@@ -204,6 +204,7 @@ add-global-certs -> none:
   tls.add-global-root-certificate_ ISRG-ROOT-X1-TEXT  // Needed by dkhostmaster.dk and digimedia.com.
   // Test that the cert can be a slice.
   tls.add-global-root-certificate_ DIGICERT-ROOT-TEXT[..DIGICERT-ROOT-TEXT.size - 9]
+  tls.add-global-root-certificate_ COMODO-AAA-SERVICES-ROOT-BYTES_
 
   // Test that we get a sensible error when trying to add a parsed root
   // certificate.

@@ -501,9 +501,9 @@ PRIMITIVE(chmod) {
 
 PRIMITIVE(link) {
   ARGS(WindowsPath, source, Blob, target, int, type);
-  WideCharAllocationManager allocation(process); 
+  WideCharAllocationManager allocation(process);
   wchar_t* target_relative = allocation.to_wcs(&target);
-  
+
   int result;
   if (type == 0) {
     wchar_t target_absolute[MAX_PATH];
@@ -560,7 +560,7 @@ PRIMITIVE(mkdir) {
 }
 
 PRIMITIVE(mkdtemp) {
-  ARGS(StringOrSlice, prefix_blob);
+  ARGS(CStringBlob, prefix_blob);
   DWORD ret;
 
   WideCharAllocationManager allocation(process);
@@ -630,7 +630,7 @@ PRIMITIVE(is_open_file) {
 }
 
 PRIMITIVE(realpath) {
-  ARGS(StringOrSlice, filename_blob);
+  ARGS(CStringBlob, filename_blob);
   WideCharAllocationManager allocation(process);
   wchar_t* filename = allocation.to_wcs(&filename_blob);
   DWORD result_length = GetFullPathNameW(filename, 0, NULL, NULL);

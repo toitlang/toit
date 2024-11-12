@@ -1,7 +1,7 @@
 dependencies:
   ar:
     url: github.com/toitlang/pkg-ar
-    version: ^1.3.0
+    version: ^1.3.1
   host:
     url: github.com/toitlang/pkg-host
     version: ^1.15.3

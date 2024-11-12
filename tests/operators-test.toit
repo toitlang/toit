@@ -5,43 +5,100 @@
 import expect show *
 
 class A:
-  operator == other: return "== $other"
-  operator < other: return "< $other"
-  operator <= other: return "<= $other"
-  operator >= other: return ">= $other"
-  operator > other: return "> $other"
-  operator + other: return "+ $other"
-  operator - other: return "- $other"
-  operator * other: return "* $other"
-  operator / other: return "/ $other"
-  operator % other: return "% $other"
-  operator ^ other: return "^ $other"
-  operator & other: return "& $other"
-  operator | other: return "| $other"
-  operator >> other: return ">> $other"
-  operator >>> other: return ">>> $other"
-  operator << other: return "<< $other"
+  last-operator/string? := null
 
-  operator -: return "-"
-  operator ~: return "~"
+  operator == other:
+    last-operator = "== $other"
+    return true
+  operator < other:
+    last-operator = "< $other"
+    return true
+  operator <= other:
+    last-operator = "<= $other"
+    return true
+  operator >= other:
+    last-operator = ">= $other"
+    return true
+  operator > other:
+    last-operator = "> $other"
+    return true
+  operator + other:
+    last-operator = "+ $other"
+    return true
+  operator - other:
+    last-operator = "- $other"
+    return true
+  operator * other:
+    last-operator = "* $other"
+    return true
+  operator / other:
+    last-operator = "/ $other"
+    return true
+  operator % other:
+    last-operator = "% $other"
+    return true
+  operator ^ other:
+    last-operator = "^ $other"
+    return true
+  operator & other:
+    last-operator = "& $other"
+    return true
+  operator | other:
+    last-operator = "| $other"
+    return true
+  operator >> other:
+    last-operator = ">> $other"
+    return true
+  operator >>> other:
+    last-operator = ">>> $other"
+    return true
+  operator << other:
+    last-operator = "<< $other"
+    return true
+
+  operator -:
+    last-operator = "-"
+    return true
+  operator ~:
+    last-operator = "~"
+    return true
 
 main:
-  expect-equals "== 499" A == 499
-  expect-equals "< 499" A < 499
-  expect-equals "<= 499" A <= 499
-  expect-equals ">= 499" A >= 499
-  expect-equals "> 499" A > 499
-  expect-equals "+ 499" A + 499
-  expect-equals "- 499" A - 499
-  expect-equals "* 499" A * 499
-  expect-equals "/ 499" A / 499
-  expect-equals "% 499" A % 499
-  expect-equals "^ 499" A ^ 499
-  expect-equals "& 499" A & 499
-  expect-equals "| 499" A | 499
-  expect-equals ">> 499" A >> 499
-  expect-equals ">>> 499" A >>> 499
-  expect-equals "<< 499" A << 499
+  a := A
+  a == 499
+  expect-equals "== 499" a.last-operator
+  a < 499
+  expect-equals "< 499" a.last-operator
+  a <= 499
+  expect-equals "<= 499" a.last-operator
+  a >= 499
+  expect-equals ">= 499" a.last-operator
+  a > 499
+  expect-equals "> 499" a.last-operator
+  a + 499
+  expect-equals "+ 499" a.last-operator
+  a - 499
+  expect-equals "- 499" a.last-operator
+  a * 499
+  expect-equals "* 499" a.last-operator
+  a / 499
+  expect-equals "/ 499" a.last-operator
+  a % 499
+  expect-equals "% 499" a.last-operator
+  a ^ 499
+  expect-equals "^ 499" a.last-operator
+  a & 499
+  expect-equals "& 499" a.last-operator
+  a | 499
+  expect-equals "| 499" a.last-operator
+  a >> 499
+  expect-equals ">> 499" a.last-operator
+  a >>> 499
+  expect-equals ">>> 499" a.last-operator
+  a << 499
+  expect-equals "<< 499" a.last-operator
 
-  expect-equals "~" ~A
-  expect-equals "-" -A
+  ~a
+  expect-equals "~" a.last-operator
+  -a
+  expect-equals "-" a.last-operator

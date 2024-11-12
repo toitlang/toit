@@ -54,14 +54,13 @@ class SpiResourceGroup : public ResourceGroup {
   }
 };
 
-
 class SpiResource : public Resource {
  public:
   TAG(SpiResource);
-  SpiResource(ResourceGroup* group);
+  explicit SpiResource(ResourceGroup* group);
   ~SpiResource();
 
-  int fd() { return fd_; }
+  int fd() const { return fd_; }
   void set_fd(int fd) {
     ASSERT(fd_ == -1);
     fd_ = fd;
@@ -70,7 +69,7 @@ class SpiResource : public Resource {
   int error() const { return error_; }
   void set_error(int error) { error_ = error; }
 
-  uint8* buffer() { return buffer_; }
+  uint8* buffer() const { return buffer_; }
 
   Object* transfer_start(Blob data, int from, int length,
                          bool is_read,
@@ -83,6 +82,7 @@ class SpiResource : public Resource {
  private:
   int fd_ = -1;
   int error_ = 0;
+  // The SPI operations on Linux are blocking, so we need to run them in a separate thread.
   AsyncEventThread* thread_ = null;
   int buffer_size_ = 0;
   uint8* buffer_ = null;
@@ -91,23 +91,19 @@ class SpiResource : public Resource {
 void SpiResourceGroup::on_unregister_resource(Resource* resource) {
   int fd = static_cast<SpiResource*>(resource)->fd();
   int result = EINTR;
-  while (result == EINTR) {
+  do {
     result = close(fd);
-  }
+  } while (result == EINTR);
 }
 
 SpiResource::SpiResource(ResourceGroup* group) : Resource(group) {}
 
 SpiResource::~SpiResource() {
-  if (thread_ != null) {
-    delete thread_;
-  }
+  delete thread_;
   if (fd_ >= 0) {
     close(fd_);
   }
-  if (buffer_ != null) {
-    free(buffer_);
-  }
+  free(buffer_);
 }
 
 Object* SpiResource::transfer_start(Blob data, int from, int length,
@@ -158,6 +154,7 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
   successfully_dispatched = thread_->run(this, [xfer](Resource* resource) {
     auto spi = static_cast<SpiResource*>(resource);
     int fd = spi->fd();
+    // Do the blocking SPI transfer.
     int ret = ioctl(fd, SPI_IOC_MESSAGE(1), xfer);
     spi->set_error(ret == -1 ? errno : 0);
     free(xfer);
@@ -207,6 +204,9 @@ PRIMITIVE(init) {
 
 PRIMITIVE(open) {
   ARGS(SpiResourceGroup, group, cstring, pathname, int, frequency, int, mode);
+
+  bool successful_return = false;
+
   if (frequency <= 0) FAIL(INVALID_ARGUMENT);
   if (mode < 0 || mode > 3) FAIL(INVALID_ARGUMENT);
 
@@ -217,16 +217,18 @@ PRIMITIVE(open) {
   // However, until the file descriptor is set, the resource is not safe to use.
   auto unsafe_resource = _new SpiResource(group);
   if (unsafe_resource == NULL) FAIL(MALLOC_FAILED);
+  Defer free_resource { [&] { if (!successful_return) delete unsafe_resource; } };
 
   // We always set the close-on-exec flag otherwise we leak descriptors when we fork.
   // File descriptors that are intended for subprocesses have the flags cleared.
   int fd = open(pathname, O_CLOEXEC | O_RDWR);
   if (fd < 0) return return_open_error(process, errno);
+  Defer close_fd { [&] { if (!successful_return) close(fd); } };
+
+  // "WR"ite the max speed and mode.
   int ret = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &frequency);
-  if (ret < 0) {
-    close(fd);
-    return Primitive::os_error(errno, process);
-  }
+  if (ret < 0) return Primitive::os_error(errno, process);
+
   uint8 mode_byte;
   switch (mode) {
     case 0: mode_byte = SPI_MODE_0; break;
@@ -236,10 +238,7 @@ PRIMITIVE(open) {
     default: UNREACHABLE();
   }
   ret = ioctl(fd, SPI_IOC_WR_MODE, &mode_byte);
-  if (ret < 0) {
-    close(fd);
-    return Primitive::os_error(errno, process);
-  }
+  if (ret < 0) return Primitive::os_error(errno, process);
 
   unsafe_resource->set_fd(fd);
   auto resource = unsafe_resource;
@@ -247,6 +246,7 @@ PRIMITIVE(open) {
   group->register_resource(resource);
   proxy->set_external_address(resource);
 
+  successful_return = true;
   return proxy;
 }
 
