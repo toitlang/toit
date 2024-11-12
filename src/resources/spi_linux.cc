@@ -74,7 +74,7 @@ class SpiResource : public Resource {
   Object* transfer_start(Blob data, int from, int length,
                          bool is_read,
                          int delay_usecs,
-                         bool cs_change,
+                         bool keep_cs_active,
                          Process* process);
 
   Object* transfer_finish(bool was_read, Process* process);
@@ -109,7 +109,7 @@ SpiResource::~SpiResource() {
 Object* SpiResource::transfer_start(Blob data, int from, int length,
                                     bool is_read,
                                     int delay_usecs,
-                                    bool cs_change,
+                                    bool keep_cs_active,
                                     Process* process) {
   bool successfully_dispatched = false;
   if (buffer_ != null) FAIL(INVALID_STATE);
@@ -136,9 +136,12 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
   xfer->rx_buf = reinterpret_cast<uint64>(rx_address);
   xfer->len = length;
   xfer->delay_usecs = delay_usecs;
-  // TODO(florian): this is probably inverted.
-  // See: https://github.com/beagleboard/kernel/issues/85
-  xfer->cs_change = cs_change ? 0x01 : 0x00;
+  // 'cs_change' is a misleading name.
+  // If cs_change is set to 1, then the chip select line stays active at the end of the transfer.
+  // Also, the chip select line would be asserted between multiple transfers of the same message.
+  // Since Toit only supports one transfer per message (`SPIO_IOC_MESSAGE(1)` below), only the
+  // first part of the statement is relevant.
+  xfer->cs_change = keep_cs_active ? 0x01 : 0x00;
 
   if (thread_ == null) {
     thread_ = _new AsyncEventThread("SPI", SpiEventSource::instance());
@@ -255,9 +258,9 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(transfer_start) {
-  ARGS(SpiResource, resource, Blob, data, int, from, int, length, bool, is_read, int, delay_usecs, bool, cs_change);
+  ARGS(SpiResource, resource, Blob, data, int, from, int, length, bool, is_read, int, delay_usecs, bool, keep_cs_active);
 
-  return resource->transfer_start(data, from, length, is_read, delay_usecs, cs_change, process);
+  return resource->transfer_start(data, from, length, is_read, delay_usecs, keep_cs_active, process);
 }
 
 PRIMITIVE(transfer_finish) {
