@@ -65,9 +65,12 @@ function(add_tests flags)
     string(REPLACE " " "__" generate_type_gold ${generate_type_gold})
     set(generate_gold "build_${generate_type_gold}")
     add_custom_target(${generate_type_gold})
+    # Add a dependency from the 'generate_type_gold' target to toit.compile.
+    add_dependencies(${generate_type_gold} toit.compile)
 
     add_custom_command(
       TARGET ${generate_type_gold}
+      POST_BUILD
       COMMAND ${CMAKE_COMMAND}
           -DUPDATE_GOLD=true
           -DTOIT_RUN=$<TARGET_FILE:toit.run>
@@ -81,7 +84,6 @@ function(add_tests flags)
           "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-      DEPENDS toit.compile
     )
     add_dependencies(update_type_gold ${generate_type_gold})
   endforeach()
