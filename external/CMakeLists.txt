@@ -40,6 +40,7 @@ set(TOIT_REPOS
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
     https://github.com/toitware/dbc
+    https://github.com/toitware/demo-encrypted-ota
     https://github.com/toitware/icm20948-driver
     https://github.com/toitware/max31865-driver
     https://github.com/toitware/mcp2518fd-driver
