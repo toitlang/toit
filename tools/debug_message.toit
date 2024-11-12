@@ -87,12 +87,12 @@ run-debug-snapshot snapshot-bytes json-message:
     debug-source-map := ar-reader.find "D-source-map"
     out-bytes := io.Buffer
     ar-writer := ArWriter out-bytes
-    ar-writer.add SnapshotBundle.MAGIC-NAME magic-bytes.content
-    ar-writer.add SnapshotBundle.SNAPSHOT-NAME debug-snapshot.content
-    ar-writer.add SnapshotBundle.SOURCE-MAP-NAME debug-source-map.content
+    ar-writer.add SnapshotBundle.MAGIC-NAME magic-bytes.contents
+    ar-writer.add SnapshotBundle.SNAPSHOT-NAME debug-snapshot.contents
+    ar-writer.add SnapshotBundle.SOURCE-MAP-NAME debug-source-map.contents
     // The debug snapshot and source-map also works for itself.
-    ar-writer.add "D-snapshot" debug-snapshot.content
-    ar-writer.add "D-source-map" debug-source-map.content
+    ar-writer.add "D-snapshot" debug-snapshot.contents
+    ar-writer.add "D-source-map" debug-source-map.contents
     stream := file.Stream.for-write debug-toit
     (io.Writer.adapt stream).write out-bytes.bytes
     stream.close

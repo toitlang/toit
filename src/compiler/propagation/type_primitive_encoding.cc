@@ -22,8 +22,13 @@ MODULE_TYPES(encoding, MODULE_ENCODING)
 
 TYPE_PRIMITIVE_ANY(base64_encode)
 TYPE_PRIMITIVE_ANY(base64_decode)
-TYPE_PRIMITIVE_ANY(tison_encode)
 TYPE_PRIMITIVE_ANY(tison_decode)
+
+TYPE_PRIMITIVE(tison_encode) {
+  result.add_byte_array(program);
+  failure.add_string(program);
+  failure.add_array(program);
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

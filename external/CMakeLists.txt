@@ -73,11 +73,10 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
-# TODO(kasper): Temporarily removed because the tests cannot be
-# run correctly by the external test harness.
-#   https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
+    https://github.com/toitware/toit-qwiic-joystick
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
     https://github.com/toitware/toit-rs485

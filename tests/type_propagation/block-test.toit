@@ -12,6 +12,7 @@ main:
   test-modify-outer-nested
   test-recursion
   test-dead
+  test-dependent
 
 test-simple:
   x := 0
@@ -106,6 +107,15 @@ test-dead:
   ignore: it
   ignore: | x y | 42
 
+test-dependent:
+  x := "hest"
+  y := null
+  invoke
+      (: x = y )
+      (: y = 42 )
+  id x
+  id y
+
 recursive-null [block]:
   if pick: return recursive-null: null
   return block.call
@@ -142,6 +152,10 @@ pick:
 
 invoke [block]:
   return block.call
+
+invoke [b1] [b2] -> none:
+  b1.call
+  b2.call
 
 invoke x [block]:
   return block.call x

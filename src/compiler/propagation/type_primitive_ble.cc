@@ -61,6 +61,7 @@ TYPE_PRIMITIVE_ANY(get_bonded_peers)
 TYPE_PRIMITIVE_ANY(toit_callback_init)
 TYPE_PRIMITIVE_ANY(toit_callback_deinit)
 TYPE_PRIMITIVE_ANY(toit_callback_reply)
+TYPE_PRIMITIVE_NULL(set_gap_device_name)
 
 }  // namespace toit::compiler
 }  // namespace toit
