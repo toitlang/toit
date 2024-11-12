@@ -5,6 +5,15 @@
 import system.trace show send-trace-message
 import system.storage
 
+/**
+System related functionality.
+
+This module contains functions that provide information about the currently
+  running Toit program, as well as the system itself, such as the platform and
+  architecture.  It also provides functions to collect statistics about the
+  system and the current process.
+*/
+
 // Use lazy initialization to delay opening the storage bucket
 // until we need it the first time. From that point forward,
 // we keep it around forever.
