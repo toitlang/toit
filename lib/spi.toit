@@ -295,8 +295,8 @@ class DevicePath_ extends DeviceBase_:
 
   resource_/ByteArray? := ?
   state_/monitor.ResourceState_
-  // We can't enforce that the bus is enforced, but the `keep-cs-active` is only
-  // allowed if the bus is reserved.
+  // We can't enforce that the bus is reserved, but the `keep-cs-active` is only
+  // allowed if the user requested to reserve the bus.
   reserved_/bool := false
 
   constructor --path/string --frequency/int --mode/int:
