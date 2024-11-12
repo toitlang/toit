@@ -113,18 +113,20 @@ TypeScope::~TypeScope() {
 
 TypeSet TypeScope::load_outer(TypeSet block, int index) {
   TypeStack* stack = at(block.block()->level());
-  return stack->local(index);
+  int delta = stack->sp() - block.block()->sp();
+  return stack->local(index + delta);
 }
 
 void TypeScope::store_outer(TypeSet block, int index, TypeSet value) {
   int level = block.block()->level();
   uword wrapped = wrapped_[level];
   TypeStack* stack = unwrap(wrapped);
+  int delta = stack->sp() - block.block()->sp();
   if (!is_copied(wrapped)) {
     stack = stack->copy();
     wrapped_[level] = wrap(stack, true);
   }
-  stack->set_local(index, value);
+  stack->set_local(index + delta, value);
 }
 
 void TypeScope::throw_maybe() {

@@ -28,10 +28,16 @@ main args:
     hello-snapshot := "$tmp-dir/hello.snapshot"
     toit-exe.backticks ["compile", "-o", hello-snapshot, "--snapshot", src-path]
 
+    toit-exe.backticks ["run", hello-snapshot]
+    expect (output.contains "hello world")
+
+    fork-result := toit-exe.fork ["run", "-O2", hello-snapshot]
+    expect-equals 1 fork-result.exit-code
+    // Something like "Error: Cannot set optimization level for snapshots"
+    expect (fork-result.stdout.contains "optimization level")
+
     non-existing := "$tmp-dir/non-existing.toit"
     exception := catch: toit-exe.backticks ["run", non-existing]
-    print "ERROR ABOVE IS EXPECTED"
     expect (exception.contains "exited with status 1")
     exception = catch: toit-exe.backticks ["compile", "-o", hello-executable, non-existing]
-    print "ERROR ABOVE IS EXPECTED"
     expect (exception.contains "exited with status 1")

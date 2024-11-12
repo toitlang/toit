@@ -91,6 +91,10 @@ class EthernetResourceGroup : public ResourceGroup {
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
 
+  esp_err_t set_hostname(const char* hostname) {
+    return esp_netif_set_hostname(netif_, hostname);
+  }
+
  private:
   int id_;
   esp_eth_mac_t* mac_;
@@ -449,6 +453,16 @@ PRIMITIVE(get_ip) {
   return result;
 }
 
+PRIMITIVE(set_hostname) {
+  ARGS(EthernetResourceGroup, group, cstring, hostname);
+
+  if (strlen(hostname) > 32) FAIL(INVALID_ARGUMENT);
+
+  esp_err_t err = group->set_hostname(hostname);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
+}
 
 } // namespace toit
 

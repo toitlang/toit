@@ -3,6 +3,12 @@
 // found in the lib/LICENSE file.
 
 import system.trace show send-trace-message
+import system.storage
+
+// Use lazy initialization to delay opening the storage bucket
+// until we need it the first time. From that point forward,
+// we keep it around forever.
+bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/system"
 
 /** The number of bits per byte. */
 BITS-PER-BYTE ::= 8
@@ -247,3 +253,28 @@ If the program is run as an executable, this is the fully resolved path to the
 */
 program-path -> string?:
   #primitive.core.program-path
+
+/**
+The hostname of the machine running the program.
+*/
+hostname -> string:
+  if platform == PLATFORM-FREERTOS:
+    config-name := bucket_.get "hostname"
+    if config-name: return config-name
+  return hostname_
+
+/**
+Sets the hostname of the machine running the program.
+
+This operation is not supported on all platforms.
+
+Only new network connections will use the new hostname. Also, some
+  routers may cache the old hostname for a while.
+*/
+hostname= hostname/string -> none:
+  if platform != PLATFORM-FREERTOS:
+    throw "UNSUPPORTED"
+  bucket_["hostname"] = hostname
+
+hostname_ -> string:
+  #primitive.core.hostname

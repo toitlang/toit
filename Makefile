@@ -360,3 +360,9 @@ update-external-health-gold: download-packages check-external-enabled
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_external_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_external_health_gold)
+
+.PHONY: update-pkgs
+update-pkgs:
+	for d in $$(git ls-files | grep package.yaml | grep -v tests/pkg | grep -v tests/lsp/project-root-multi); do \
+	  toit pkg update --project-root $$(dirname $$d); \
+	done

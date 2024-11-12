@@ -34,13 +34,26 @@ test1:
 
 abstract class C2-0:
   abstract operator < other
+  abstract operator > other
 
 class C2-1 extends C2-0:
+  hit-lt := false
   operator < other:
-    return 42
+    hit-lt = true
+    return true
+
+  hit-gt := false
+  operator > other:
+    hit-gt = true
+    return false
 
 test2:
-  expect-equals 42 (C2-1 < 499)
+  c2-1 := C2-1
+  expect-equals true (c2-1 < 499)
+  expect c2-1.hit-lt
+
+  expect-equals false (c2-1 > 499)
+  expect c2-1.hit-gt
 
 main:
   test0

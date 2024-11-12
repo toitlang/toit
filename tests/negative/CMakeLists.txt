@@ -15,12 +15,23 @@
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tmp")
 file(GLOB TOIT_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*-test.toit" "**/*-test.toit")
+file(GLOB ASSERT_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "assert*-test.toit")
 
 add_custom_target(update_gold)
 
 set(NORMALIZE_GOLD ${CMAKE_CURRENT_SOURCE_DIR}/../tools/normalize_gold.cmake)
 
 include(fail.cmake)
+
+set(ASSERT_IS_ENABLED TRUE)
+if ("$ENV{TOIT_ASSERT_OVERRIDE}" STREQUAL "0")
+  set(ASSERT_IS_ENABLED FALSE)
+endif()
+
+set(OPTIMIZATION_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATION_IS_OVERRIDDEN TRUE)
+endif()
 
 foreach(file ${TOIT_TESTS})
   get_filename_component(name ${file} NAME_WE)
@@ -32,32 +43,42 @@ foreach(file ${TOIT_TESTS})
   file(RELATIVE_PATH relative ${TOIT_SDK_SOURCE_DIR} ${toit_file})
   string(REPLACE " " "__" test_name ${relative})
 
-  if(NOT "${test_name}" IN_LIST TOIT_SKIP_TESTS)
-    set(TEST_EXPECTATION_NAME "${test_name}")
-    if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
-    endif()
+  if ("${file}" IN_LIST ASSERT_TESTS AND NOT ASSERT_IS_ENABLED)
+    message("Skipping ${file} as asserts are disabled")
+    continue()
+  endif()
+  if(OPTIMIZATION_IS_OVERRIDDEN AND "${test_name}" IN_LIST TOIT_OPTIMIZATION_SKIP_TESTS)
+    message("Skipping ${file} as optimization is overridden")
+    continue()
+  endif()
+  if ("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
 
-    add_test(
-      NAME ${TEST_EXPECTATION_NAME}
-      COMMAND ${CMAKE_COMMAND}
-          -DTOITVM=$<TARGET_FILE:toit.run>
-          "-DTEST=${relative}"
-          "-DGOLD=${gold_file}"
-          "-DLIB_DIR=${lib_dir}"
-          "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
-          "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
-          "-DGIT_VERSION=${TOIT_GIT_VERSION}"
-          "-DTMP=${CMAKE_BINARY_DIR}/tmp"
-          "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
-          -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
-      WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    )
-    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+  set(TEST_EXPECTATION_NAME "${test_name}")
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+  endif()
 
-    if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
-    endif()
+  add_test(
+    NAME ${TEST_EXPECTATION_NAME}
+    COMMAND ${CMAKE_COMMAND}
+        -DTOITVM=$<TARGET_FILE:toit.run>
+        "-DTEST=${relative}"
+        "-DGOLD=${gold_file}"
+        "-DLIB_DIR=${lib_dir}"
+        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
+        "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
+        "-DGIT_VERSION=${TOIT_GIT_VERSION}"
+        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+        "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+  )
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 
   file(RELATIVE_PATH relative_gold ${TOIT_SDK_SOURCE_DIR} ${gold_file})
