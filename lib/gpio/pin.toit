@@ -25,23 +25,7 @@ Only one $Pin instance of any given GPIO number can be open at any given point
   in time. This is a system wide restriction.
 To release the resources associated with the $Pin, call $Pin.close.
 */
-class Pin:
-  static GPIO-STATE-EDGE-TRIGGERED_ ::= 1
-
-  static resource-group_ ::= gpio-init_
-
-  /**
-  The numeric $Pin number.
-  */
-  num/int
-
-  // Pull up and pull down are only kept for the deprecated function $config.
-  pull-up_/bool := false
-  pull-down_/bool := false
-  resource_/ByteArray? := null
-  state_/monitor.ResourceState_? ::= null
-  last-set_/int := 0
-
+interface Pin:
   /**
   Opens a GPIO pin $num in input mode.
 
@@ -120,28 +104,14 @@ class Pin:
     should be avoided if possible.
   Pins 0-21 are RTC pins and can be used in deep-sleep.
   */
-  constructor .num
+  constructor num/int
       --input/bool=false
       --output/bool=false
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
       --allow-restricted/bool=false:
-    pull-up_ = pull-up
-    pull-down_ = pull-down
-    resource_ = gpio-use_ resource-group_ num allow-restricted
-    // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
-    state_ = monitor.ResourceState_ resource-group_ resource_
-    if input or output:
-      try:
-        configure
-            --input=input
-            --output=output
-            --pull-down=pull-down
-            --pull-up=pull-up
-            --open-drain=open-drain
-      finally: | is-exception _ |
-        if is-exception: close
+    return Pin_ num --input=input --output=output --pull-up=pull-up --pull-down=pull-down --open-drain=open-drain
 
   /**
   Opens a GPIO pin on the chip identified by the given $path and $num (often called "offset").
@@ -272,17 +242,15 @@ class Pin:
         --open-drain=open-drain
         --initial-value=initial-value
 
-  constructor.internal_ .num .state_=null:
+  /**
+  The number or offset of this pin.
+  */
+  num -> int
 
   /**
   Closes the pin and releases resources associated with it.
   */
-  close:
-    if not resource_: return
-    critical-do:
-      state_.dispose
-      gpio-unuse_ resource-group_ resource_
-      resource_ = null
+  close
 
   /**
   Changes the configuration of this pin.
@@ -296,10 +264,8 @@ class Pin:
     ($config) maintains the pull-up/pull-down configuration of the pin. However, $configure
     resets that configuration.
   */
-  // When removing this function, it's safe to remove `pull-down_` and `pull-up_` as well.
-  config --input/bool=false --output/bool=false --open-drain/bool=false:
-    if open-drain and not output: throw "INVALID_ARGUMENT"
-    gpio-config_ num (input and pull-up_) (input and pull-down_) input output open-drain
+  config --input/bool=false --output/bool=false --open-drain/bool=false
+
 
   /**
   Changes the configuration of this pin.
@@ -329,6 +295,105 @@ class Pin:
   Also note, that only one entity on an open-drain bus needs to pull the bus high. As such,
     it can be useful to set $open-drain without $pull-up.
   */
+  configure -> none
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+
+  /**
+  Gets the value of the pin.
+  It is an error to call this function when the pin is not configured to be an input.
+  */
+  get -> int
+
+  /**
+  Sets the value of the output-configured pin.
+  */
+  set value/int
+
+  /**
+  Calls the given $block on each edge on the pin.
+
+  An edge means a transition from high to low, or low to high.
+  */
+  do [block]
+
+  /**
+  Blocks until the Pin reads the value configured.
+
+  Use $with-timeout to automatically abort the operation after a fixed amount
+    of time.
+  */
+  wait-for value -> none
+
+  /**
+  Sets the open-drain property of this pin.
+
+  This is a low-level function that doesn't affect any other configuration
+    of the pin.
+  */
+  set-open-drain value/bool
+
+/**
+A base class for pins.
+
+Note that the $configure_ method is abstract and must be implemented by subclasses.
+  It is not private but protected.
+*/
+abstract class PinBase implements Pin:
+  num/int
+
+  // Pull up and pull down are only kept for the deprecated function $config.
+  pull-up_/bool := false
+  pull-down_/bool := false
+
+  constructor .num:
+
+  abstract close
+
+  /**
+  An implementation of $Pin.configure.
+  */
+  abstract configure_ -> none
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+
+  /**
+  See $Pin.get.
+  */
+  abstract get -> int
+
+  /**
+  See $Pin.set.
+  */
+  abstract set value/int
+
+  /**
+  See $Pin.wait-for.
+  */
+  abstract wait-for value -> none
+
+  /**
+  See $Pin.set-open-drain.
+  */
+  abstract set-open-drain value/bool
+
+  /**
+  See $Pin.config.
+  */
+  // When removing this function, it's safe to remove `pull-down_` and `pull-up_` as well.
+  config --input/bool=false --output/bool=false --open-drain/bool=false:
+    if open-drain and not output: throw "INVALID_ARGUMENT"
+    configure_ --input=input --output=output --pull-up=pull-up_ --pull-down=pull-down_ --open-drain=open-drain
+
+  /**
+  See $Pin.configure.
+  */
   configure
       --input/bool=false
       --output/bool=false
@@ -343,26 +408,10 @@ class Pin:
     if pull-down and pull-up: throw "INVALID_ARGUMENT"
     pull-down_ = pull-down
     pull-up_ = pull-up
-    gpio-config_ num pull-up pull-down input output open-drain
+    configure_ --input=input --output=output --pull-down=pull-down --pull-up=pull-up --open-drain=open-drain
 
   /**
-  Gets the value of the pin.
-  It is an error to call this function when the pin is not configured to be an input.
-  */
-  get -> int:
-    return gpio-get_ num
-
-  /**
-  Sets the value of the output-configured pin.
-  */
-  set value/int:
-    last-set_ = value
-    gpio-set_ num value
-
-  /**
-  Calls the given $block on each edge on the pin.
-
-  An edge means a transition from high to low, or low to high.
+  See $Pin.do.
   */
   do [block]:
     expected := get ^ 1
@@ -371,11 +420,75 @@ class Pin:
       block.call expected
       expected ^= 1
 
-  /**
-  Blocks until the pin reads the requested $value.
 
-  Use $with-timeout to automatically abort the operation after a fixed amount
-    of time.
+class Pin_ extends PinBase:
+  static GPIO-STATE-EDGE-TRIGGERED_ ::= 1
+
+  static resource-group_ ::= gpio-init_
+
+  resource_/ByteArray? := null
+  state_/monitor.ResourceState_? ::= null
+
+  /**
+  See $(Pin.constructor num).
+  */
+  constructor num/int
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --allow-restricted/bool=false:
+    resource_ = gpio-use_ resource-group_ num allow-restricted
+    // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
+    state_ = monitor.ResourceState_ resource-group_ resource_
+    super num
+    if input or output:
+      try:
+        configure_
+            --input=input
+            --output=output
+            --pull-down=pull-down
+            --pull-up=pull-up
+            --open-drain=open-drain
+      finally: | is-exception _ |
+        if is-exception: close
+
+  /**
+  See $Pin.close.
+  */
+  close:
+    if not resource_: return
+    critical-do:
+      state_.dispose
+      gpio-unuse_ resource-group_ resource_
+      resource_ = null
+
+  /**
+  See $Pin.configure.
+  */
+  configure_ -> none
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false:
+    gpio-config_ num pull-up pull-down input output open-drain
+
+  /**
+  See $Pin.get.
+  */
+  get -> int:
+    return gpio-get_ num
+
+  /**
+  See Pin.set.
+  */
+  set value/int:
+    gpio-set_ num value
+
+  /**
+  See $Pin.wait-for.
   */
   wait-for value -> none:
     if get == value: return
@@ -411,10 +524,7 @@ class Pin:
         gpio-config-interrupt_ resource_ false
 
   /**
-  Sets the open-drain property of this pin.
-
-  This is a low-level function that doesn't affect any other configuration
-    of the pin.
+  See $Pin.wait-for.
   */
   set-open-drain value/bool:
     gpio-set-open-drain_ num value
@@ -426,14 +536,14 @@ Virtual pin.
 The functionality of this pin is set in $VirtualPin. When $set is called, it
   calls the lambda given in the constructor with the argument given to $set.
 */
-class VirtualPin extends Pin:
+class VirtualPin extends PinBase:
   set_/Lambda ::= ?
 
   /**
   Constructs a virtual pin with the given $set_ lambda functionality.
   */
   constructor .set_:
-    super.internal_ -1
+    super -1
 
   /** Sets the $value by calling the lambda that was given during construction with $value. */
   set value:
@@ -442,14 +552,8 @@ class VirtualPin extends Pin:
   /** Closes the pin. */
   close:
 
-  /**
-  Does nothing.
-  Deprecated. Use $configure instead.
-  */
-  config --input/bool=false --output/bool=false --open-drain/bool=false:
-
   /** Does nothing. */
-  configure
+  configure_ -> none
       --input/bool=false
       --output/bool=false
       --pull-up/bool=false
@@ -475,11 +579,11 @@ class VirtualPin extends Pin:
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
 */
-class InvertedPin extends Pin:
+class InvertedPinSuper_ extends PinBase:
   original-pin_ /Pin
 
   constructor .original-pin_:
-    super.internal_ -1
+    super original-pin_.num
 
   /** Sets the physical pin to 1 if $value is 0, and vice versa. */
   set value -> none:
@@ -488,12 +592,7 @@ class InvertedPin extends Pin:
   close -> none:
     original-pin_.close
 
-  /** Configures the underlying pin. */
-  config --input/bool=false --output/bool=false --open-drain/bool=false -> none:
-    // Avoid warning of call to deprecated method by casting to 'any'.
-    (original-pin_ as any).config --input=input --output=output --open-drain=open-drain
-
-  configure
+  configure_ -> none
       --input/bool=false
       --output/bool=false
       --pull-up/bool=false
@@ -507,10 +606,7 @@ class InvertedPin extends Pin:
 
   /** Waits for 1 on on the physical pin if $value is 0, and vice versa. */
   wait-for value/int -> none:
-    original-pin_.wait-for 1 - value
-
-  num -> int:
-    return original-pin_.num
+    original-pin_.wait-for (1 - value)
 
   set-open-drain value/bool:
     original-pin_.set-open-drain value
@@ -581,10 +677,13 @@ class Chip:
       remove-finalizer this
       gpio-linux-chip-close_ resource
 
-class PinLinux_ extends Pin:
+class PinLinux_ extends PinBase:
   static GPIO-STATE-EDGE-TRIGGERED_ ::= 1
 
   static resource-group_ ::= gpio-linux-pin-init_
+
+  state_/monitor.ResourceState_?
+  resource_/ByteArray? := ?
 
   constructor
       offset/int
@@ -595,7 +694,7 @@ class PinLinux_ extends Pin:
       --pull-down/bool=false
       --open-drain/bool=false
       --initial-value/int=0:
-    resource := gpio-linux-pin-new_
+    resource_ = gpio-linux-pin-new_
         resource-group_
         chip.resource_
         offset
@@ -605,9 +704,8 @@ class PinLinux_ extends Pin:
         output
         open-drain
         initial-value
-    state := monitor.ResourceState_ resource-group_ resource
-    super.internal_ offset state
-    resource_ = resource
+    state_ = monitor.ResourceState_ resource-group_ resource_
+    super offset
     add-finalizer this:: close
 
   close -> none:
@@ -619,7 +717,7 @@ class PinLinux_ extends Pin:
       state_.dispose
       gpio-linux-pin-close_ resource
 
-  configure
+  configure_ -> none
       --input/bool=false
       --output/bool=false
       --pull-up/bool=false
