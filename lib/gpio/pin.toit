@@ -611,7 +611,7 @@ class VirtualPin extends PinBase:
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
 */
-class InvertedPinSuper_ extends PinBase:
+class InvertedPin extends PinBase:
   original-pin_ /Pin
 
   constructor .original-pin_:
