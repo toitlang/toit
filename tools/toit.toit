@@ -551,26 +551,29 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   if command == "analyze":
     args.add "--analyze"
   else:
-    if is-snapshot and invocation.parameters.was-provided "optimization-level":
-      ui.abort "Cannot set optimization level for snapshots"
-    optimization/int := invocation["optimization-level"]
-    if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
+    if is-snapshot:
+      if invocation.parameters.was-provided "optimization-level":
+        ui.abort "Cannot set optimization level for snapshots"
+      if invocation.parameters.was-provided "enable-asserts":
+        ui.abort "Cannot use --enable-asserts with snapshots"
+      if invocation.parameters.was-provided "force":
+        ui.abort "Cannot use --force with snapshots"
+    else:
+      optimization/int := invocation["optimization-level"]
+      if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
+      args.add "-O$optimization"
 
-    args.add "-O$optimization"
+      enable-asserts/bool := optimization < 2
+      if invocation.parameters.was-provided "enable-asserts":
+        // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
+        if invocation["enable-asserts"]:
+          enable-asserts = true
+        else:
+          enable-asserts = false
+      args.add "-Xenable-asserts=$enable-asserts"
 
-    enable-asserts := optimization < 2
-    if invocation.parameters.was-provided "enable-asserts":
-      if is-snapshot: ui.abort "Cannot set --enable-asserts for snapshots"
-      // An explicit --enable-asserts, or --no-enable-asserts, overrides the default.
-      if invocation["enable-asserts"]:
-        enable-asserts = true
-      else:
-        enable-asserts = false
-    args.add "-Xenable-asserts=$enable-asserts"
-
-    if invocation["force"]:
-      if is-snapshot: ui.abort "Cannot set --force for snapshots"
-      args.add "--force"
+      if invocation["force"]:
+        args.add "--force"
 
     if command == "compile":
       if invocation["dependency-file"]:
