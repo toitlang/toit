@@ -167,7 +167,7 @@ interface Device extends serial.Device:
     after the transfer. This functionality is only allowed when the
     bus is reserved for this device. See $with-reserved-bus.
   */
-  transfer
+  transfer -> none
       data/ByteArray
       --from/int=0
       --to/int=data.size
@@ -275,16 +275,26 @@ class Device_ extends DeviceBase_:
         spi-release-bus_ device_
 
 class DevicePath_ extends DeviceBase_:
-  fd_/int := -1
+  static TRANSFER-DONE_ ::= 1 << 0
+
+  static resource-group_ ::= spi-linux-init_
+
+  resource_/ByteArray? := ?
+  state_/monitor.ResourceState_
 
   constructor --path/string --frequency/int --mode/int:
-    fd_ = spi-linux-open_ path frequency mode
+    resource_ = spi-linux-open_ resource-group_ path frequency mode
+    state_ = monitor.ResourceState_ resource-group_ resource_
     add-finalizer this:: close
 
   close:
-    if fd_ != -1:
-      spi-linux-close_ fd_
-      fd_ = -1
+    resource := resource_
+    if not resource: return
+    critical-do:
+      state_.dispose
+      resource_ = null
+      remove-finalizer this
+      spi-linux-close_ resource
 
   transfer
       data/ByteArray
@@ -295,11 +305,22 @@ class DevicePath_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
-    if read: throw "Not supported"
+    state_.clear-state TRANSFER-DONE_
     length := to - from
-    tx-buffer := read ? null : data
-    rx-buffer := read ? data : null
-    return spi-linux-transfer_ fd_ length tx-buffer from rx-buffer from 0 true
+    delay_us := 0
+    done := spi-linux-transfer-start_ resource_ data from length read delay_us true
+    in/ByteArray? := null
+    // There is no way to interrupt a started spi transfer. We have to wait for it to finish.
+    critical-do --no-respect-deadline:
+      if not done:
+        state_.wait-for-state TRANSFER-DONE_
+        if not resource_:
+          // The device was closed while we were transfering.
+          return
+      // It is critical to call finish to release the buffer and reset the internal error state.
+      in = spi-linux-transfer-finish_ resource_ read
+    if read: data.replace from in
+
 
   with-reserved-bus [block]:
     throw "UNIMPLEMENTED"
@@ -385,11 +406,17 @@ spi-acquire-bus_ device:
 spi-release-bus_ device:
   #primitive.spi.release-bus
 
-spi-linux-open_ path/string frequency/int mode/int:
+spi-linux-init_:
+  #primitive.spi_linux.init
+
+spi-linux-open_ group/ByteArray path/string frequency/int mode/int:
   #primitive.spi_linux.open
 
-spi-linux-transfer_ fd/int length/int tx/ByteArray? from_tx/int rx/ByteArray? from_rx/int delay_usecs/int cs-change/bool:
-  #primitive.spi_linux.transfer
+spi-linux-transfer-start_ resource/ByteArray data/ByteArray from/int length/int is-read/bool delay_usecs/int cs-change/bool:
+  #primitive.spi_linux.transfer-start
 
-spi-linux-close_ fd/int:
-  #primitive.file.close
+spi-linux-transfer-finish_ resource/ByteArray was-read/bool:
+  #primitive.spi_linux.transfer-finish
+
+spi-linux-close_ resource_/ByteArray:
+  #primitive.spi_linux.close

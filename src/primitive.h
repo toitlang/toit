@@ -439,8 +439,11 @@ namespace toit {
   PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
-  PRIMITIVE(open, 3)                         \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(open, 4)                         \
+  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(transfer_start, 7)               \
+  PRIMITIVE(transfer_finish, 2)              \
 
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
@@ -1092,6 +1095,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ReadPipeResource(N, name)    MAKE_UNPACKING_MACRO(ReadPipeResource, N, name)
 #define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
 #define _A_T_I2sResource(N, name)         MAKE_UNPACKING_MACRO(I2sResource, N, name)
+#define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
