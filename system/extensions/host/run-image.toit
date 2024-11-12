@@ -211,7 +211,7 @@ class Firmware:
     if part.is-empty: return result
     reader := ar.ArReader (io.Reader part)
     while file/ar.ArFile? := reader.next:
-      result[file.name] = file.content
+      result[file.name] = file.contents
     return result
 
   write-into --dir/string:

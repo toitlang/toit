@@ -23,7 +23,7 @@ namespace toit {
 namespace ar {
 
 static const char* const AR_HEADER = "!<arch>\x0A";
-static const int AR_HEADER_SIZE = strlen(AR_HEADER);
+static const int AR_HEADER_SIZE = sizeof("!<arch>\x0A") - 1;
 
 static constexpr const char* const FILE_HEADER_ENDING_CHARS = "\x60\x0A";
 static const int FILE_NAME_OFFSET = 0;

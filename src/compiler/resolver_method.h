@@ -74,7 +74,18 @@ class MethodResolver : public ast::Visitor {
       , block_has_direct_field_access_(true)
       , current_lambda_(null)
       , loop_status_(NO_LOOP)
-      , loop_block_depth_(0) {}
+      , loop_block_depth_(0) {
+    auto core_scope = core_module->scope();
+    auto entry = core_scope->lookup(Symbols::bool_).entry;
+    if (!entry.is_class()) FATAL("MISSING BOOL TYPE");
+    bool_type_ = ir::Type(entry.klass());
+    entry = core_scope->lookup(Symbols::True).entry;
+    if (!entry.is_class()) FATAL("MISSING TRUE TYPE");
+    true_type_ = ir::Type(entry.klass());
+    entry = core_scope->lookup(Symbols::False).entry;
+    if (!entry.is_class()) FATAL("MISSING FALSE TYPE");
+    false_type_ = ir::Type(entry.klass());
+  }
 
   void resolve_fill();
 
@@ -141,6 +152,10 @@ class MethodResolver : public ast::Visitor {
   std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
 
   std::vector<ir::AssignmentGlobal*> global_assignments_;
+
+  ir::Type bool_type_ = ir::Type::invalid();
+  ir::Type true_type_ = ir::Type::invalid();
+  ir::Type false_type_ = ir::Type::invalid();
 
   SourceManager* source_manager() const { return source_manager_; }
   Diagnostics* diagnostics() const { return diagnostics_; }

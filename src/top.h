@@ -200,17 +200,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
   ((sizeof(array) / sizeof(*(array))) /                     \
   static_cast<size_t>(!(sizeof(array) % sizeof(*(array)))))
 
-// Please use _new at allocation point to ensure proper tracking of memory usage.
-// This also ensures that we call the nothrow version of new, which can handle an
-// allocation failure (returns null instead of calling the constructor).
-#ifdef TOIT_DEBUG
-#define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
-#define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
-#define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
-#else
 #define _new new (std::nothrow)
-#endif
 
 // Please use null instead of nullptr or the grand old NULL.
 constexpr std::nullptr_t null = nullptr;
@@ -221,28 +211,6 @@ extern bool throwing_new_allowed;
 
 #ifdef ASSERT
 #undef ASSERT
-#endif
-
-#ifdef TOIT_DEBUG
-void* tracing_malloc(size_t size, const char* file, int line);
-
-void* tracing_realloc(void* ptr, size_t size, const char* file, int line);
-
-void tracing_free(void* ptr, const char* file, int line);
-
-class NewMarker	{
- public:
-  NewMarker(char const* file, int line) : file(file), line(line) {}
-  char const* const file;
-  int const line;
-};
-
-void trace_new(void* p, const NewMarker& record, char const* name);
-
-template <class T> inline T* operator*(const NewMarker& mark, T* p) {
-  trace_new(p, mark, typeid(T).name());
-  return p;
-}
 #endif
 
 // TODO: Use this scope when a thread is not expected to make any allocations,
@@ -258,16 +226,16 @@ class NoAllocationScope {
 // code with an instance of this RAII class for now.
 class AllowThrowingNew {
  public:
-  AllowThrowingNew() {
-    old_throwing_new_allowed = throwing_new_allowed;
+  AllowThrowingNew() : old_throwing_new_allowed_(throwing_new_allowed) {
     throwing_new_allowed = true;
   }
 
   ~AllowThrowingNew() {
-    throwing_new_allowed = old_throwing_new_allowed;
+    throwing_new_allowed = old_throwing_new_allowed_;
   }
 
-  bool old_throwing_new_allowed;
+ private:
+  const bool old_throwing_new_allowed_;
 };
 
 #ifndef TOIT_DEPLOY

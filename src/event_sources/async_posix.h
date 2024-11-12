@@ -38,7 +38,7 @@ class AsyncEventThread : public Thread {
     OS::dispose(mutex_);
   }
 
-  /// Runs the given resource in the thread.
+  /// Runs the given function in the thread.
   /// Expects no other function to be running (or enqueued) at the same time. Returns
   /// false if this condition is not met.
   bool run(Resource* resource, const std::function<word (Resource*)>& func);
