@@ -2,23 +2,22 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import expect show *
+
 /**
 Tests changing the open-drain setting of gpio pins.
 
 Setup:
-Connect test-pin and level-pin with a 330 Ohm (or any other 300-1K) resistor.
-Connect test-pin to measure-pin.
-Connect test-pin to GND with a 1M Ohm resistor (or any other big number).
+Connect $test-pin and $level-pin with a 330 Ohm (or any other 300-1K) resistor.
+Connect $test-pin to $measure-pin.
+Connect $test-pin to GND with a 1M Ohm resistor (or any other big number).
 
-test-pin should be configured as output.
-measure-pin should be configured as input
-level-pin should be configured as not-output (input or nothing) and will be
+The $test-pin should be configured as output.
+The $measure-pin should be configured as input
+The $level-pin should be configured as not-output (input or nothing) and will be
   reconfigured as output
 */
-
-import gpio
-import expect show *
-
 test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   // The pin is in full output mode and should just win.
   expect-equals 0 measure-pin.get

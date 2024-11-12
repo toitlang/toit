@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.api.network show NetworkService NetworkServiceClient
+import system.api.network show NetworkService
+import system.base.network show NetworkServiceClientBase
 import system.services show ServiceSelector
 
 interface CellularService extends NetworkService:
@@ -14,7 +15,7 @@ interface CellularService extends NetworkService:
   connect config/Map? -> List
   static CONNECT-INDEX /int ::= 1000
 
-class CellularServiceClient extends NetworkServiceClient implements CellularService:
+class CellularServiceClient extends NetworkServiceClientBase implements CellularService:
   static SELECTOR ::= CellularService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR

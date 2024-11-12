@@ -2,12 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-/**
-Tests gpio pin configurations.
-
-Setup: connect pin1-id to pin2-id, optionally with a 330 Ohm resistor to avoid short circuits.
-*/
-
 import gpio
 import expect show *
 import monitor
@@ -27,6 +21,11 @@ interface PinFactory:
       --open-drain/bool=false
       --value/int?=null
 
+/**
+Tests gpio pin configurations.
+
+Setup: connect $pin1-id to $pin2-id, optionally with a 330 Ohm resistor to avoid short circuits.
+*/
 test-configurations pin-factory/PinFactory pin1-id pin2-id:
   2.repeat: | i |
     use-constructor := (i == 0)
