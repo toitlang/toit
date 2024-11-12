@@ -555,9 +555,9 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
       if invocation.parameters.was-provided "optimization-level":
         ui.abort "Cannot set optimization level for snapshots"
       if invocation.parameters.was-provided "enable-asserts":
-        ui.abort "Cannot set --enable-asserts for snapshots"
+        ui.abort "Cannot use --enable-asserts with snapshots"
       if invocation.parameters.was-provided "force":
-        ui.abort "Cannot set --force for snapshots"
+        ui.abort "Cannot use --force with snapshots"
     else:
       optimization/int := invocation["optimization-level"]
       if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
