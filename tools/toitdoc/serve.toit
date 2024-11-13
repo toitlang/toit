@@ -15,6 +15,7 @@
 
 import certificate-roots
 import cli show Cli DirectoryStore
+import desktop
 import host.file
 import host.pipe
 import http
@@ -43,7 +44,7 @@ get-content-type-from-extension path/string -> string:
   if extension == "woff": return "font/woff"
   return "application/octet-stream"
 
-serve docs-path/string --port/int --cli/Cli:
+serve docs-path/string --port/int --open-browser/bool --cli/Cli:
   cache := cli.cache
   ui := cli.ui
 
@@ -82,6 +83,9 @@ serve docs-path/string --port/int --cli/Cli:
           ? "Serving toitdocs on $url."
           : url
     --structured=: { "url": url }
+
+  if open-browser: desktop.open-browser url
+
   // TODO(florian): we want to base the logger on the UI.
   server := http.Server --max-tasks=20 --logger=(log.default.with-level log.WARN_LEVEL)
   server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
