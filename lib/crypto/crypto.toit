@@ -7,6 +7,10 @@ import .checksum
 export *
 
 /**
+Cryptographic functions.
+*/
+
+/**
 Generates a byte array of the given $size filled with random bytes.
 
 # Advanced
