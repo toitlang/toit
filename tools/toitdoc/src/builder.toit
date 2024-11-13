@@ -279,7 +279,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
       interfaces = interfaces.filter: | ref/lsp.ToplevelRef |
         if already-removed: continue.filter true
         resolved := resolve-class ref
-        if ref != klass: continue.filter true
+        if resolved != klass: continue.filter true
         already-removed = true
         false
 
