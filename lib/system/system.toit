@@ -10,7 +10,7 @@ System related functionality.
 
 This module contains functions that provide information about the currently
   running Toit program, as well as the system itself, such as the platform and
-  architecture.  It also provides functions to collect statistics about the
+  architecture. It also provides functions to collect statistics about the
   system and the current process.
 */
 
