@@ -101,6 +101,9 @@ build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Comman
             --short-name="p"
             --help="Port to serve on."
             --default=0,
+        cli.Flag "open-browser"
+            --help="Open the browser after starting the server."
+            --default=true,
       ]
       --rest=[
         cli.Option "source"
@@ -312,12 +315,13 @@ toitdoc-build invocation/cli.Invocation --toitc/string --sdk-path/string?:
 
 toitdoc-serve invocation/cli.Invocation --toitc/string --sdk-path/string?:
   port := invocation["port"]
+  open-browser := invocation["open-browser"]
 
   tmp-dir := directory.mkdtemp "/tmp/toitdoc-"
   try:
     output := "$tmp-dir/toitdoc.json"
 
     toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
-    serve output --port=port --cli=invocation.cli
+    serve output --port=port --open-browser=open-browser --cli=invocation.cli
   finally:
     directory.rmdir --recursive tmp-dir

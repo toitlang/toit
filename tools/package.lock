@@ -3,6 +3,7 @@ prefixes:
   ar: pkg-ar
   certificate_roots: toit-cert-roots
   cli: pkg-cli
+  desktop: pkg-desktop
   fs: pkg-fs
   host: pkg-host
   http: pkg-http
@@ -22,6 +23,13 @@ packages:
     hash: ae142d3c8783939935ba37a924f9b2c2a0ad2479
     prefixes:
       fs: pkg-fs
+      host: pkg-host
+  pkg-desktop:
+    url: github.com/toitlang/pkg-desktop
+    name: desktop
+    version: 1.0.0
+    hash: 9c36fbb2cb28706705d9a21158c2fc9345108f6c
+    prefixes:
       host: pkg-host
   pkg-fs:
     url: github.com/toitlang/pkg-fs

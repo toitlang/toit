@@ -11,6 +11,14 @@ import .writer
 export *
 
 /**
+The Toit IO library.
+
+This library provides classes and functions for manipulating binary data.
+Use $Reader and $Writer to read and write binary data, and $Buffer to
+  accumulate data.
+*/
+
+/**
 Executes the given $block on chunks of the $data if the error indicates
   that the data is not of the correct type.
 
