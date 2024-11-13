@@ -8,6 +8,9 @@ dependencies:
   cli:
     url: github.com/toitlang/pkg-cli
     version: ^2.2.0
+  desktop:
+    url: github.com/toitlang/pkg-desktop
+    version: ^1.0.0
   fs:
     url: github.com/toitlang/pkg-fs
     version: ^2.3.1
