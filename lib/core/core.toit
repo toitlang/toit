@@ -23,3 +23,9 @@ import .timer
 import .utils
 
 export *
+
+/**
+The Toit core library.
+
+This library is automatically imported into every Toit program.
+*/

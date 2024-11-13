@@ -5,6 +5,10 @@
 import encoding.tison
 
 /**
+Mathematical functions and constants.
+*/
+
+/**
 Pi.
 
 The ratio of a circle's circumference to its diameter.
