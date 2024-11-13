@@ -195,7 +195,7 @@ class SnapshotBundle:
 
   static is-bundle-content buffer/ByteArray -> bool:
     catch:
-      // TODO(florian): check first that it's actually an AR file.
+      if not has-valid-ar-header buffer: return false
       magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
       if not magic-file-offsets: return false
       magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
