@@ -137,7 +137,7 @@ namespace toit {
   PRIMITIVE(float_divide, 2)                 \
   PRIMITIVE(float_mod, 2)                    \
   PRIMITIVE(float_round, 2)                  \
-  PRIMITIVE(float_parse, 3)                  \
+  PRIMITIVE(float_parse, 4)                  \
   PRIMITIVE(float_sign, 1)                   \
   PRIMITIVE(float_is_nan, 1)                 \
   PRIMITIVE(float_is_finite, 1)              \
