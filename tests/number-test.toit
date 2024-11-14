@@ -123,6 +123,7 @@ test-parse-number:
   expect-identical 0.0 (num.parse "0.0")
 
   expect-identical int.MAX (num.parse "0b111111111111111111111111111111111111111111111111111111111111111")
+  // int.MAX + 1 can't be parsed as an integer, and is parsed as a float.
   expect-identical 9223372036854775808.0 (num.parse "9223372036854775808")
 
   expect-num-parsing-error: num.parse "foo"

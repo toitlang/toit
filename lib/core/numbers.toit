@@ -545,7 +545,7 @@ abstract class num implements Comparable:
   See $int.parse and $float.parse.
   */
   static parse data/io.Data -> num:
-    return int.parse data --on-error=: return float.parse data --on-error=: throw PARSE-ERR_
+    return parse data --on-error=: throw it
 
   /**
   Variant of $(parse data).
