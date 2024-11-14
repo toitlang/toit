@@ -27,12 +27,18 @@ toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/hw/esp32")
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
 
-IF(APPLE)
+if(APPLE)
   set(DEFAULT_TIMEOUT 80)
   set(SLOW_TIMEOUT 800)
 else()
   set(DEFAULT_TIMEOUT 40)
   set(SLOW_TIMEOUT 400)
+endif()
+
+# Double the timeouts if the optimization override is set.
+if(DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  math(EXPR DEFAULT_TIMEOUT "${DEFAULT_TIMEOUT} * 2")
+  math(EXPR SLOW_TIMEOUT "${SLOW_TIMEOUT} * 2")
 endif()
 
 # The SHARD_START end SHARD_STRIDE environment variables must be set when
