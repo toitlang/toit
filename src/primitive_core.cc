@@ -1006,7 +1006,7 @@ PRIMITIVE(int_parse) {
 }
 
 PRIMITIVE(float_parse) {
-  ARGS(Blob, input, word, from, word, to);
+  ARGS(Blob, input, word, from, word, to, int, block_arg_dont_use_this);
   if (!(0 <= from && from < to && to <= input.length())) FAIL(OUT_OF_RANGE);
   const char* from_ptr = char_cast(input.address() + from);
   // strtod removes leading whitespace, but float.parse doesn't accept it.

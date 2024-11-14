@@ -437,7 +437,7 @@ class Decoder:
     if offset_ == bytes_.size and buffered-reader_: throw "UNEXPECTED_END_OF_INPUT"
 
     data := bytes_ is StringView_ ? bytes_.str_ : bytes_
-    if o < 0: return float.parse_ data start -o
+    if o < 0: return float.parse_ data start -o --on-error=: throw it
     return int.parse_ data start o --radix=10 --on-error=: throw it
 
   decode-true_:

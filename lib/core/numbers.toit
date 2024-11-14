@@ -10,6 +10,8 @@ This is an abstract super class for $int and $float.
 See also https://docs.toit.io/language/math.
 */
 abstract class num implements Comparable:
+  static PARSE-ERR_ ::= "NUMBER_PARSING_ERROR"
+
   equals-from-float_ other/float -> bool: return false
   equals-from-small-integer_ other/int -> bool: return false
   equals-from-large-integer_ other/int -> bool: return false
@@ -535,6 +537,26 @@ abstract class num implements Comparable:
   */
   abstract sqrt -> float
 
+  /**
+  Parses the given $data as a number.
+
+  Tries to parse the $data as an integer first, and if that fails, as a float.
+
+  See $int.parse and $float.parse.
+  */
+  static parse data/io.Data -> num:
+    return parse data --on-error=: throw it
+
+  /**
+  Variant of $(parse data).
+
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  */
+  static parse data/io.Data [--on-error] -> num?:
+    return int.parse data --on-error=:
+      return float.parse data --on-error=:
+        return on-error.call PARSE-ERR_
+
 /**
 A 64 bit integer.
 Ints are always 64 bit two's complement signed values between $int.MIN and
@@ -626,35 +648,66 @@ abstract class int extends num:
   int.parse "A" --radix=16        // => 10
   ```
   */
-  static parse data/io.Data --radix=10 -> int:
+  static parse data/io.Data --radix/int?=null -> int:
     return parse_ data 0 data.byte-size --radix=radix --on-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
-  static parse data/io.Data from/int to/int=data.byte-size --radix=10 -> int:
+  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null -> int:
     return parse_ data from to --radix=radix --on-error=: throw it
 
   /**
   Variant of $(parse data from to --radix).
 
-  If the data can't be parsed correctly, returns the result of calling the $on-error
-    lambda.
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
   */
-  static parse data/io.Data --radix=10 [--on-error] -> int?:
+  static parse data/io.Data --radix/int?=null [--on-error] -> int?:
     return parse_ data 0 data.byte-size --radix=radix --on-error=on-error
 
   /**
   Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
   */
-  static parse data/io.Data from/int to/int=data.byte-size --radix=10 [--on-error] -> int?:
-    return parse_ data from to --radix=10 --on-error=on-error
+  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null [--on-error] -> int?:
+    return parse_ data from to --radix=radix --on-error=on-error
 
-  static parse_ data/io.Data from/int to/int=data.byte-size --radix [--on-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--on-error] -> int?:
+    negative := false
+    if radix == null:
+      radix = 10
+      if to - from > 2:
+        byte0 := data.byte-at from
+        byte1 := data.byte-at from + 1
+        byte2 := data.byte-at from + 2
+        if byte0 == '0' and (byte1 == 'x' or byte1 == 'X'):
+          radix = 16
+          from += 2
+          if byte2 == '-':
+            return on-error.call PARSE-ERR_
+        else if byte0 == '0' and (byte1 == 'b' or byte1 == 'B'):
+          radix = 2
+          from += 2
+          if byte2 == '-':
+            return on-error.call PARSE-ERR_
+        else if to - from > 3:
+          byte3 := data.byte-at from + 3
+          if byte0 == '-' and byte1 == '0' and (byte2 == 'x' or byte2 == 'X'):
+            negative = true
+            radix = 16
+            from += 3
+            if byte3 == '-':
+              return on-error.call PARSE-ERR_
+          else if byte0 == '-' and byte1 == '0' and (byte2 == 'b' or byte2 == 'B'):
+            negative = true
+            radix = 2
+            from += 3
+            if byte3 == '-':
+              return on-error.call PARSE-ERR_
+
     if radix == 10:
       return parse-10_ data from to --on-error=on-error
     else if radix == 16:
-      return parse-16_ data from to --on-error=on-error
+      return parse-16_ data from to --negative=negative --on-error=on-error
     else:
-      return parse-generic-radix_ radix data from to --on-error=on-error
+      return parse-generic-radix_ radix data from to --negative=negative --on-error=on-error
 
   static char-to-int_ c/int -> int:
     if '0' <= c <= '9': return c - '0'
@@ -662,7 +715,7 @@ abstract class int extends num:
     else if 'a' <= c <= 'z': return 10 + c - 'a'
     throw PARSE-ERR_
 
-  static parse-generic-radix_ radix/int data/io.Data from/int to/int [--on-error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--on-error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max-num := (min radix 10) + '0' - 1
@@ -674,7 +727,7 @@ abstract class int extends num:
     max-int64-div-radix := (to - from > 12) ? MAX / radix : MAX
     max-last-char := MAX-INT64-LAST-CHARS_[radix]
 
-    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
       value := 0
 
       if result > max-int64-div-radix or (result == max-int64-div-radix and (char-to-int_ char) > max-last-char):
@@ -703,7 +756,7 @@ abstract class int extends num:
       if it == "WRONG_BYTES_TYPE":
         return parse-10_ (ByteArray.from data) from to --on-error=on-error
       else:
-        return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+        return generic-parser_ data from to --negative=false --on-error=on-error: | char result is-last negative |
           if not '0' <= char <= '9': return on-error.call PARSE-ERR_
           // The max int64 ends with a '7' and the min int64 ends with an '8'
           if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
@@ -712,9 +765,8 @@ abstract class int extends num:
             return on-error.call RANGE-ERR_
           continue.generic-parser_ result * 10 + char - '0'
 
-  static generic-parser_ data from/int to/int [--on-error] [parse-char] -> int?:
+  static generic-parser_ data from/int to/int --negative/bool [--on-error] [parse-char] -> int?:
     result := 0
-    negative := false
     underscore := false
     size := to - from
     if size == 0: return on-error.call PARSE-ERR_
@@ -722,6 +774,7 @@ abstract class int extends num:
       char := data[from + it]
       if char == '-':
         if it != 0 or size == 1: return on-error.call PARSE-ERR_
+        if negative: return on-error.call PARSE-ERR_
         negative = true
       else if char == '_' and not underscore:
         if is-invalid-underscore_ it size negative:
@@ -739,10 +792,10 @@ abstract class int extends num:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
-  static parse-16_ data from/int to/int [--on-error] -> int?:
+  static parse-16_ data from/int to/int --negative/bool [--on-error] -> int?:
     max-int64-div-radix := MAX / 16
 
-    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
       if result > max-int64-div-radix or (result == max-int64-div-radix and char > 'f'):
         if negative and is-last and char == '0' and result == max-int64-div-radix + 1:
             return int.MIN
@@ -1446,19 +1499,27 @@ class float extends num:
   ```
   */
   static parse data/io.Data -> float:
-    return parse_ data 0 data.byte-size
+    return parse_ data 0 data.byte-size --on-error=: throw it
+
+  /**
+  Variant of $(parse data).
+
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  */
+  static parse data/io.Data [--on-error] -> float?:
+    return parse_ data 0 data.byte-size --on-error=on-error
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
   static parse data/io.Data from/int to/int=data.byte-size -> float:
-    return parse_ data from to
+    return parse_ data from to --on-error=: throw it
 
-  static parse_ data/io.Data from/int to/int -> float:
+  static parse_ data/io.Data from/int to/int [--on-error] -> float?:
     #primitive.core.float-parse:
-      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to
-      if it == "ERROR": throw "FLOAT_PARSING_ERROR"
-      throw it
+      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to --on-error=on-error
+      if it == "ERROR": return on-error.call "FLOAT_PARSING_ERROR"
+      return on-error.call it
 
   /**
   Returns the sign of this instance.
