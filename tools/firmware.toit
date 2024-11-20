@@ -917,7 +917,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
     existing-partition := partition-table.find --name=name
     if existing-partition:
       if existing-partition.size < partition-content.size:
-        ui.abort "Partition '$name' is too big to fit in designated partition ($partition-content.size > $existing-partition.size)"
+        ui.abort "Partition '$name' is too big to fit in designated partition ($partition-content.size > $existing-partition.size)."
       partitions[existing-partition.offset] = partition-content
     else:
       offset := partition-table.find-first-free-offset
