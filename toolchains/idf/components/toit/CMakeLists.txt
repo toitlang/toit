@@ -120,7 +120,6 @@ function(toit_postprocess)
                     "--firmware.bin=${EXECUTABLE_NAME}.bin"
                     "--firmware.elf=${EXECUTABLE_NAME}.elf"
                     "--partitions.bin=partition_table/partition-table.bin"
-                    "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
                     "--otadata.bin=ota_data_initial.bin"
                     "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"

@@ -22,17 +22,23 @@ file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-compiler.t
 set(ALL_TESTS ${TOIT_TESTS} ${TOIT_SLOW_TESTS} ${TOIT_FORCE_TESTS} ${TOIT_NO_BOOT_TESTS} ${TOIT_COMPILER_TESTS})
 
 toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
-toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/esp32")
+toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/hw/esp32")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
 
-IF(APPLE)
+if(APPLE)
   set(DEFAULT_TIMEOUT 80)
   set(SLOW_TIMEOUT 800)
 else()
   set(DEFAULT_TIMEOUT 40)
   set(SLOW_TIMEOUT 400)
+endif()
+
+# Double the timeouts if the optimization override is set.
+if(DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  math(EXPR DEFAULT_TIMEOUT "${DEFAULT_TIMEOUT} * 2")
+  math(EXPR SLOW_TIMEOUT "${SLOW_TIMEOUT} * 2")
 endif()
 
 # The SHARD_START end SHARD_STRIDE environment variables must be set when
@@ -80,8 +86,18 @@ endforeach()
 
 include(fail.cmake OPTIONAL)
 
+set(OPTIMIZATION_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATION_IS_OVERRIDDEN TRUE)
+endif()
+
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
+  if(OPTIMIZATION_IS_OVERRIDDEN AND "${file}" IN_LIST TOIT_OPTIMIZATION_SKIP_TESTS)
+    message("Skipping ${file} as optimization is overridden")
     continue()
   endif()
 

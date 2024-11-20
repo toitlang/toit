@@ -6,8 +6,8 @@ packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
-    version: 1.3.0
-    hash: d0f3890e5c641bee93fa337fbea0710a0a72710c
+    version: 1.4.1
+    hash: 66f0359ed405dbebbc06a0cda9864b10b2d6aa34
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host

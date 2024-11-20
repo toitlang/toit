@@ -128,12 +128,24 @@ interface Device extends serial.Device:
 
   This function is only available on Linux.
 
+  The given $frequency is only aspirational, and the actual frequency might
+    be different. For example, the Raspberry Pi only supports a frequency range of
+    3.814 kHz to 125 MHz. If the given $frequency is outside this range, it will be
+    silently clamped to the nearest valid value.
+
   The $mode parameter configures the clock polarity and phase (CPOL and CPHA) for this device.
   The possible configurations are:
   - 0 (0b00): CPOL=0, CPHA=0
   - 1 (0b01): CPOL=0, CPHA=1
   - 2 (0b10): CPOL=1, CPHA=0
   - 3 (0b11): CPOL=1, CPHA=1
+
+  # Pin numbers
+  This constructor does not take any pin numbers. The pins are
+    tied to the path, and configured outside. On the Raspberry Pi,
+    look at `/boot/overlays/README` for more information. There, you
+    can find options to move the SPI block, or to change/disable the
+    chip select pins.
   */
   constructor --path/string --frequency/int --mode/int=0:
     return DevicePath_ --path=path --frequency=frequency --mode=mode
@@ -155,7 +167,7 @@ interface Device extends serial.Device:
     after the transfer. This functionality is only allowed when the
     bus is reserved for this device. See $with-reserved-bus.
   */
-  transfer
+  transfer -> none
       data/ByteArray
       --from/int=0
       --to/int=data.size
@@ -166,10 +178,24 @@ interface Device extends serial.Device:
       --keep-cs-active/bool=false
 
   /**
+  Writes the $bytes to the device.
+
+  If $keep-cs-active is true, then the chip select pin is kept active
+    after the transfer. This functionality is only allowed when the
+    bus is reserved for this device. See $with-reserved-bus.
+  */
+  write bytes/ByteArray --keep-cs-active/bool=false -> none
+
+  /**
   Reserves the bus for this device while executing the given $block.
 
-  Starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
+  If the system supports it, actively reserves the bus for this device. In that case,
+    starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
     the bus before returning.
+
+  On some systems, like Linux, it is not possible to reserve the bus. In that case, the
+    programmer is responsible for managing the bus. This function then simply
+    calls the given $block.
 
   Reserving the bus can be useful in two contexts:
   1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
@@ -201,8 +227,8 @@ abstract class DeviceBase_ implements Device:
     return bytes
 
   /** See $serial.Device.write. */
-  write bytes/ByteArray:
-    transfer bytes
+  write bytes/ByteArray --keep-cs-active/bool=false:
+    transfer bytes --keep-cs-active=keep-cs-active
 
   abstract close
 
@@ -263,16 +289,29 @@ class Device_ extends DeviceBase_:
         spi-release-bus_ device_
 
 class DevicePath_ extends DeviceBase_:
-  fd_/int := -1
+  static TRANSFER-DONE_ ::= 1 << 0
+
+  static resource-group_ ::= spi-linux-init_
+
+  resource_/ByteArray? := ?
+  state_/monitor.ResourceState_
+  // We can't enforce that the bus is reserved, but the `keep-cs-active` is only
+  // allowed if the user requested to reserve the bus.
+  reserved_/bool := false
 
   constructor --path/string --frequency/int --mode/int:
-    fd_ = spi-linux-open_ path frequency mode
+    resource_ = spi-linux-open_ resource-group_ path frequency mode
+    state_ = monitor.ResourceState_ resource-group_ resource_
     add-finalizer this:: close
 
   close:
-    if fd_ != -1:
-      spi-linux-close_ fd_
-      fd_ = -1
+    resource := resource_
+    if not resource: return
+    critical-do:
+      state_.dispose
+      resource_ = null
+      remove-finalizer this
+      spi-linux-close_ resource
 
   transfer
       data/ByteArray
@@ -283,14 +322,31 @@ class DevicePath_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
-    if read: throw "Not supported"
+    if keep-cs-active and not reserved_: throw "INVALID_ARGUMENT"
+    state_.clear-state TRANSFER-DONE_
     length := to - from
-    tx-buffer := read ? null : data
-    rx-buffer := read ? data : null
-    return spi-linux-transfer_ fd_ length tx-buffer from rx-buffer from 0 true
+    delay_us := 0
+    done := spi-linux-transfer-start_ resource_ data from length read delay_us keep-cs-active
+    in/ByteArray? := null
+    // There is no way to interrupt a started spi transfer. We have to wait for it to finish.
+    critical-do --no-respect-deadline:
+      if not done:
+        state_.wait-for-state TRANSFER-DONE_
+        if not resource_:
+          // The device was closed while we were transfering.
+          return
+      // It is critical to call finish to release the buffer and reset the internal error state.
+      in = spi-linux-transfer-finish_ resource_ read
+    if read: data.replace from in
+
 
   with-reserved-bus [block]:
-    throw "UNIMPLEMENTED"
+    if reserved_: throw "INVALID_STATE"
+    try:
+      reserved_ = true
+      block.call
+    finally:
+      reserved_ = false
 
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
@@ -373,11 +429,17 @@ spi-acquire-bus_ device:
 spi-release-bus_ device:
   #primitive.spi.release-bus
 
-spi-linux-open_ path/string frequency/int mode/int:
+spi-linux-init_:
+  #primitive.spi_linux.init
+
+spi-linux-open_ group/ByteArray path/string frequency/int mode/int:
   #primitive.spi_linux.open
 
-spi-linux-transfer_ fd/int length/int tx/ByteArray? from_tx/int rx/ByteArray? from_rx/int delay_usecs/int cs-change/bool:
-  #primitive.spi_linux.transfer
+spi-linux-transfer-start_ resource/ByteArray data/ByteArray from/int length/int is-read/bool delay_usecs/int keep-cs-active/bool:
+  #primitive.spi_linux.transfer-start
 
-spi-linux-close_ fd/int:
-  #primitive.file.close
+spi-linux-transfer-finish_ resource/ByteArray was-read/bool:
+  #primitive.spi_linux.transfer-finish
+
+spi-linux-close_ resource_/ByteArray:
+  #primitive.spi_linux.close

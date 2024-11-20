@@ -59,7 +59,6 @@ AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
 AR-ENTRY-ESP32-FIRMWARE-ELF   ::= "\$firmware.elf"
 AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
 AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
-AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
 
@@ -68,7 +67,6 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.elf"    : AR-ENTRY-ESP32-FIRMWARE-ELF,
   "bootloader.bin"  : AR-ENTRY-ESP32-BOOTLOADER-BIN,
   "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
-  "partitions.csv"  : AR-ENTRY-ESP32-PARTITIONS-CSV,
   "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
@@ -655,7 +653,7 @@ extract-cmd -> cli.Command:
         cli.OptionEnum "format" ["binary", "elf", "ubjson", "image", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
-        cli.Option "partition-table"
+        cli.Option "partitions"
             --help="Override the partition table of the envelope."
             --type="file",
         cli.OptionPatterns "partition"
@@ -674,7 +672,7 @@ extract invocation/cli.Invocation -> none:
 
   config-path := invocation["config"]
 
-  partition-table-path/string? := invocation["partition-table"]
+  partition-table-path/string? := invocation["partitions"]
   partitions-args/List := invocation["partition"]
   if partition-table-path or not partitions-args.is-empty:
     if envelope.kind != Envelope.KIND-ESP32:
@@ -884,7 +882,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
   binary := Esp32Binary firmware-bin
   flashing := envelope.entries.get AR-ENTRY-ESP32-FLASHING-JSON
       --if-present=: json.decode it
-      --if-absent=: ui.abort "Envelope is missing a 'flashing.json' entry"
+      --if-absent=: ui.abort "Envelope is missing a 'flashing.json' entry."
 
   partition-table-bytes := partition-table-path
       ? read-file partition-table-path --ui=ui
@@ -1039,7 +1037,7 @@ flash-cmd -> cli.Command:
           Flash a firmware envelope to a device.
 
           The partition table is extracted from the envelope unless the
-          --partition-table option is used.
+          '--partitions' option is used.
 
           The '--partition' option can be used to replace the content of existing
           partitions or to add custom partitions to the flashed image. If a
@@ -1069,7 +1067,7 @@ flash-cmd -> cli.Command:
             --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
-        cli.Option "partition-table"
+        cli.Option "partitions"
             --help="Override the partition table."
             --type="file",
       ]
@@ -1080,7 +1078,7 @@ flash invocation/cli.Invocation -> none:
   config-path := invocation["config"]
   port := invocation["port"]
   baud := invocation["baud"]
-  partition-table-path := invocation["partition-table"]
+  partition-table-path := invocation["partitions"]
 
   ui := invocation.cli.ui
 

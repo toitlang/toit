@@ -61,7 +61,7 @@ If $add-newline is true adds a "\n" to the output.
 Does not yield the currently running task.
 */
 write-on-stdout_ message/string add-newline/bool -> none:
-  #primitive.core.write-string-on-stdout
+  #primitive.core.write-on-stdout
 
 /**
 Dumps the string of $object and a newline on stderr and flushes it.
@@ -78,7 +78,7 @@ If $add-newline is true adds a "\n" to the output.
 Does not yield the currently running task.
 */
 write-on-stderr_ message/string add-newline/bool -> none:
-  #primitive.core.write-string-on-stderr
+  #primitive.core.write-on-stderr
 
 /**
 Print service used by $print.

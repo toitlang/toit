@@ -17,7 +17,16 @@ file(GLOB TOIT_OPTIMIZATION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 
 include(fail.cmake)
 
+set(OPTIMIZATIONS_IS_OVERRIDEN)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATIONS_IS_OVERRIDEN TRUE)
+endif()
+
 foreach(file ${TOIT_OPTIMIZATION_TESTS})
+  if(OPTIMIZATIONS_IS_OVERRIDEN)
+    # Don't run optimization tests if the optimization level is overriden.
+    continue()
+  endif()
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()

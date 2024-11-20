@@ -19,7 +19,7 @@ obfuscate-null:
 
 class A:
   operator == other/A:
-    return "hest"
+    return true
 
 id x:
   return x

@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-FileCopyrightText: 2017-2021 Bartosz Golaszewski <bartekgola@gmail.com>
+
+# libgpiod doxygen configuration
+
+# General configuration
+PROJECT_NAME           = libgpiod
+PROJECT_NUMBER         = @VERSION_STR@
+OUTPUT_DIRECTORY       = doc
+OUTPUT_LANGUAGE        = English
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+BRIEF_MEMBER_DESC      = YES
+REPEAT_BRIEF           = YES
+ALWAYS_DETAILED_SEC    = NO
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = @top_srcdir@
+INTERNAL_DOCS          = NO
+STRIP_CODE_COMMENTS    = YES
+CASE_SENSE_NAMES       = YES
+SHORT_NAMES            = NO
+HIDE_SCOPE_NAMES       = NO
+VERBATIM_HEADERS       = YES
+SHOW_INCLUDE_FILES     = YES
+JAVADOC_AUTOBRIEF      = YES
+INHERIT_DOCS           = YES
+INLINE_INFO            = YES
+SORT_MEMBER_DOCS       = YES
+DISTRIBUTE_GROUP_DOC   = NO
+TAB_SIZE               = 8
+GENERATE_TODOLIST      = YES
+GENERATE_TESTLIST      = YES
+GENERATE_BUGLIST       = YES
+ALIASES                =
+ENABLED_SECTIONS       =
+MAX_INITIALIZER_LINES  = 30
+OPTIMIZE_OUTPUT_FOR_C  = YES
+SHOW_USED_FILES        = YES
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_FORMAT            =
+WARN_LOGFILE           =
+INPUT                  = @top_srcdir@/include/gpiod.h \
+                         @top_srcdir@/bindings/cxx/gpiod.hpp \
+                         @top_srcdir@/bindings/cxx/gpiodcxx/
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+ALPHABETICAL_INDEX     = NO
+IGNORE_PREFIX          =
+SEARCHENGINE           = NO
+ENABLE_PREPROCESSING   = YES
+
+# HTML output
+GENERATE_HTML          = YES
+HTML_OUTPUT            =
+HTML_HEADER            =
+HTML_FOOTER            =
+HTML_STYLESHEET        =
+GENERATE_HTMLHELP      = NO
+GENERATE_CHI           = NO
+BINARY_TOC             = NO
+TOC_EXPAND             = NO
+DISABLE_INDEX          = NO
+ENUM_VALUES_PER_LINE   = 4
+GENERATE_TREEVIEW      = NO
+TREEVIEW_WIDTH         = 250
+
+# LaTeX output
+GENERATE_LATEX         = NO
+LATEX_OUTPUT           =
+COMPACT_LATEX          = NO
+PAPER_TYPE             = a4
+EXTRA_PACKAGES         =
+LATEX_HEADER           =
+PDF_HYPERLINKS         = NO
+USE_PDFLATEX           = NO
+LATEX_BATCHMODE        = NO
+
+# RTF output
+GENERATE_RTF           = NO
+RTF_OUTPUT             =
+COMPACT_RTF            = NO
+RTF_HYPERLINKS         = NO
+RTF_STYLESHEET_FILE    =
+RTF_EXTENSIONS_FILE    =
+
+# Man page output
+GENERATE_MAN           = YES
+MAN_OUTPUT             = man
+MAN_EXTENSION          = .3
+MAN_LINKS              = YES
+
+# XML output
+GENERATE_XML           = YES
+
+# External references
+TAGFILES               =
+GENERATE_TAGFILE       =
+ALLEXTERNALS           = NO

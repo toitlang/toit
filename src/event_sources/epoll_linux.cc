@@ -59,12 +59,9 @@ bool read_full(int fd, uint8_t* data, word length) {
   return true;
 }
 
-EpollEventSource* EpollEventSource::instance_ = null;
-
-EpollEventSource::EpollEventSource() : EventSource("Epoll")
-    , Thread("Epoll") {
-  ASSERT(instance_ == null);
-  instance_ = this;
+bool EpollEventSourceBase::start() {
+  if (epoll_fd_ != -1) FATAL("already started");
+  if (control_write_ != -1) FATAL("already started");
 
   epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd_ < 0) {
@@ -86,21 +83,20 @@ EpollEventSource::EpollEventSource() : EventSource("Epoll")
     FATAL("failed to register close fd: %d\n", errno);
   }
 
-  spawn();
+  return spawn();
 }
 
-EpollEventSource::~EpollEventSource() {
+void EpollEventSourceBase::stop() {
   close(control_write_);
   join();
   close(epoll_fd_);
-
-  instance_ = null;
+  control_write_ = -1;
+  epoll_fd_ = -1;
 }
 
 
-void EpollEventSource::on_register_resource(Locker& locker, Resource* r) {
-  auto resource = static_cast<IntResource*>(r);
-  uint64_t cmd = resource->id();
+void EpollEventSourceBase::on_register_resource(Locker& locker, Resource* resource) {
+  uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kAdd;
   if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
@@ -108,9 +104,8 @@ void EpollEventSource::on_register_resource(Locker& locker, Resource* r) {
   }
 }
 
-void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  auto resource = static_cast<IntResource*>(r);
-  uint64_t cmd = resource->id();
+void EpollEventSourceBase::on_unregister_resource(Locker& locker, Resource* resource) {
+  uint64_t cmd = fd_for_resource(resource);
   cmd <<= 32;
   cmd |= kRemove;
   if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
@@ -118,7 +113,7 @@ void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   }
 }
 
-void EpollEventSource::entry() {
+void EpollEventSourceBase::entry() {
   while (true) {
     epoll_event event;
     int ready = epoll_wait(epoll_fd_, &event, 1, -1);
@@ -127,6 +122,7 @@ void EpollEventSource::entry() {
         if (event.data.fd == control_read_) {
           if (event.events & EPOLLHUP) {
             close(control_read_);
+            control_read_ = -1;
             return;
           }
 
@@ -151,7 +147,7 @@ void EpollEventSource::entry() {
                 if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, id, null) == -1) {
                   FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
-                close(id);
+                on_removed(id);
               }
               break;
           }
@@ -160,7 +156,7 @@ void EpollEventSource::entry() {
         }
 
         Locker locker(mutex());
-        Resource* r = find_resource_by_id(locker, event.data.fd);
+        Resource* r = find_resource_for_fd(locker, event.data.fd);
         if (r != null) dispatch(locker, r, event.events);
         break;
       }
@@ -184,7 +180,33 @@ void EpollEventSource::entry() {
   }
 }
 
+EpollEventSource* EpollEventSource::instance_ = null;
 
+EpollEventSource::EpollEventSource() : EpollEventSourceBase("Epoll") {
+  ASSERT(instance_ == null);
+  instance_ = this;
+
+  if (!start()) {
+    FATAL("failed to start epoll event source");
+  }
+}
+
+EpollEventSource::~EpollEventSource() {
+  stop();
+  instance_ = null;
+}
+
+void EpollEventSource::on_removed(int fd) {
+  close(fd);
+}
+
+Resource* EpollEventSource::find_resource_for_fd(Locker& locker, int fd) {
+  return find_resource_by_id(locker, fd);
+}
+
+int EpollEventSource::fd_for_resource(Resource* r) {
+  return static_cast<IntResource*>(r)->id();
+}
 
 } // namespace toit
 
