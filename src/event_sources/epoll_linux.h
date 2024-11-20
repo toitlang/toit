@@ -20,28 +20,56 @@
 
 namespace toit {
 
-class EpollEventSource : public EventSource, public Thread {
+class EpollEventSourceBase : public EventSource, public Thread {
  public:
-  static EpollEventSource* instance() { return instance_; }
-
-  EpollEventSource();
-  ~EpollEventSource();
-
   bool is_control_fd(int fd) const {
     return fd == control_read_ || fd == control_write_;
   }
 
- private:
-  virtual void on_register_resource(Locker& locker, Resource* r) override;
-  virtual void on_unregister_resource(Locker& locker, Resource* r) override;
+ protected:
+  EpollEventSourceBase(const char* name) : EventSource(name), Thread(name){}
+  virtual ~EpollEventSourceBase(){}
 
+  /// Called when the file descriptor was removed from the epoll.
+  /// This happens during unregistering of the resource, and is a good
+  /// time to close the file descriptor and release any associated resources.
+  virtual void on_removed(int fd) = 0;
+  /// Finds the resource object for the given file descriptor.
+  virtual Resource* find_resource_for_fd(Locker& locker, int fd) = 0;
+  /// Returns the file descriptor for the given resource.
+  virtual int fd_for_resource(Resource* resource) = 0;
+
+  virtual void on_register_resource(Locker& locker, Resource* resource) override;
+  virtual void on_unregister_resource(Locker& locker, Resource* resource) override;
+
+  bool start();
+  void stop();
+
+ private:
   void entry() override;
 
-  static EpollEventSource* instance_;
+  int epoll_fd_ = -1;
+  int control_read_ = -1;
+  int control_write_ = -1;
+};
 
-  int epoll_fd_;
-  int control_read_;
-  int control_write_;
+class EpollEventSource : public EpollEventSourceBase {
+ public:
+  static EpollEventSource* instance() { return instance_; }
+
+  EpollEventSource();
+  ~EpollEventSource() override;
+
+ protected:
+  /// Closes the file descriptor.
+  void on_removed(int fd) override;
+  /// Uses `find_resource_by_id`, assuming that resources are `IntResource` instances.
+  Resource* find_resource_for_fd(Locker& locker, int fd) override;
+  /// Returns the id of the resource. Assumes that the resource is an `IntResource`.
+  int fd_for_resource(Resource* resource) override;
+
+ private:
+  static EpollEventSource* instance_;
 };
 
 } // namespace toit

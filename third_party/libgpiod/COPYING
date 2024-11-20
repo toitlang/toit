@@ -1,0 +1,41 @@
+libgpiod is provided under:
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+
+Being under the terms of the GNU Lesser General Public License version 2.1
+or any later version according with:
+
+    LICENSES/LGPL-2.1-or-later.txt
+
+gpio-tools, test suites and examples are provided under:
+
+    SPDX-License-Identifier: GPL-2.0-or-later
+
+Being under the terms of the GNU General Public License version 2.0 or any
+later version according with:
+
+    LICENSES/GPL-2.0-or-later.txt
+
+The Linux Kernel uAPI headers are provided under:
+
+    SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note
+
+Being under the terms of the GNU General Public License version 2 only,
+according with:
+
+    LICENSES/GPL-2.0-only.txt
+
+With an explicit syscall exception, as stated at:
+
+    LICENSES/Linux-syscall-note.txt
+
+libgpiod text files are provided under:
+
+    SPDX-License-Identifier: CC-BY-SA-4.0
+
+Being under the terms of the Creative Commons Attribution-ShareAlike 4.0
+International License according with:
+
+    LICENSES/CC-BY-SA-4.0.txt
+
+All contributions to libgpiod are subject to this COPYING file.

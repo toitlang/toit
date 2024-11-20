@@ -66,6 +66,7 @@ function (add_health_test PATH)
 
   add_custom_command(
     TARGET ${generate_gold}
+    POST_BUILD
     COMMAND ${CMAKE_COMMAND}
         -DUPDATE_GOLD=true
         -DTOITC=$<TARGET_FILE:toit.compile>

@@ -56,6 +56,7 @@ namespace toit {
   M(snapshot,MODULE_SNAPSHOT)                \
   M(image,   MODULE_IMAGE)                   \
   M(gpio,    MODULE_GPIO)                    \
+  M(gpio_linux, MODULE_GPIO_LINUX)           \
   M(adc,     MODULE_ADC)                     \
   M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
@@ -75,8 +76,8 @@ namespace toit {
   M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
-  PRIMITIVE(write_string_on_stdout, 2)       \
-  PRIMITIVE(write_string_on_stderr, 2)       \
+  PRIMITIVE(write_on_stdout, 2)              \
+  PRIMITIVE(write_on_stderr, 2)              \
   PRIMITIVE(time, 1)                         \
   PRIMITIVE(time_info, 2)                    \
   PRIMITIVE(seconds_since_epoch_local, 7)    \
@@ -136,7 +137,7 @@ namespace toit {
   PRIMITIVE(float_divide, 2)                 \
   PRIMITIVE(float_mod, 2)                    \
   PRIMITIVE(float_round, 2)                  \
-  PRIMITIVE(float_parse, 3)                  \
+  PRIMITIVE(float_parse, 4)                  \
   PRIMITIVE(float_sign, 1)                   \
   PRIMITIVE(float_is_nan, 1)                 \
   PRIMITIVE(float_is_finite, 1)              \
@@ -256,6 +257,7 @@ namespace toit {
   PRIMITIVE(firmware_mapping_at, 2)          \
   PRIMITIVE(firmware_mapping_copy, 5)        \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(hostname, 0)                     \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -324,6 +326,7 @@ namespace toit {
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
+  PRIMITIVE(set_hostname, 2)                 \
   PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -334,6 +337,7 @@ namespace toit {
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(set_hostname, 2)                 \
 
 #define MODULE_BLE(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -377,6 +381,7 @@ namespace toit {
   PRIMITIVE(toit_callback_init, 3)           \
   PRIMITIVE(toit_callback_deinit, 2)         \
   PRIMITIVE(toit_callback_reply, 3)          \
+  PRIMITIVE(set_gap_device_name, 2)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -434,8 +439,11 @@ namespace toit {
   PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
-  PRIMITIVE(open, 3)                         \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(open, 4)                         \
+  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(transfer_start, 7)               \
+  PRIMITIVE(transfer_finish, 2)              \
 
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
@@ -553,12 +561,31 @@ namespace toit {
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(use, 3)                          \
   PRIMITIVE(unuse, 2)                        \
-  PRIMITIVE(config, 6)                       \
+  PRIMITIVE(config, 7)                       \
   PRIMITIVE(get, 1)                          \
   PRIMITIVE(set, 2)                          \
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
+
+#define MODULE_GPIO_LINUX(PRIMITIVE)         \
+  PRIMITIVE(list_chips, 0)                   \
+  PRIMITIVE(chip_init, 0)                    \
+  PRIMITIVE(chip_new, 2)                     \
+  PRIMITIVE(chip_close, 1)                   \
+  PRIMITIVE(chip_info, 1)                    \
+  PRIMITIVE(chip_pin_info, 2)                \
+  PRIMITIVE(chip_pin_offset_for_name, 2)     \
+  PRIMITIVE(pin_init, 0)                     \
+  PRIMITIVE(pin_new, 9)                      \
+  PRIMITIVE(pin_close, 1)                    \
+  PRIMITIVE(pin_configure, 7)                \
+  PRIMITIVE(pin_get, 1)                      \
+  PRIMITIVE(pin_set, 2)                      \
+  PRIMITIVE(pin_set_open_drain, 2)           \
+  PRIMITIVE(pin_config_edge_detection, 2)    \
+  PRIMITIVE(pin_consume_edge_events, 1)      \
+  PRIMITIVE(pin_last_edge_trigger_timestamp, 1) \
 
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
@@ -906,12 +933,21 @@ namespace toit {
   if (_raw_##name != process->null_object()) {                                   \
     Blob _blob_##name;                                                           \
     if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+    if (memchr(_blob_##name.address(), '\0', _blob_##name.length()) != null) {   \
+      FAIL(INVALID_ARGUMENT);                                                    \
+    }                                                                            \
     _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
     if (!_nonconst_##name) FAIL(MALLOC_FAILED);                                  \
     memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length());     \
   }                                                                              \
   const char* name = _nonconst_##name;                                           \
   AllocationManager _manager_##name(process, _nonconst_##name, 0);
+
+#define _A_T_CStringBlob(N, name)                                               \
+  Object* _raw_##name = __args[-(N)];                                           \
+  Blob name;                                                                    \
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name.address(), '\0', name.length()) != null) FAIL(INVALID_ARGUMENT);
 
 // If it's a string, then the length is calculated including the terminating
 // null.  Otherwise it's calculated without the terminating null.  MbedTLS
@@ -965,6 +1001,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   Blob name##_blob;                                                          \
   if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
+  if (memchr(name##_blob.address(), '\0', name##_blob.length()) != null) {   \
+    FAIL(INVALID_ARGUMENT);                                                  \
+  }                                                                          \
   BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
 
 #define _A_T_Blob(N, name)                                                   \
@@ -1046,6 +1085,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_Zlib(N, name)                MAKE_UNPACKING_MACRO(Zlib, N, name)
 #define _A_T_GpioResource(N, name)        MAKE_UNPACKING_MACRO(GpioResource, N, name)
+#define _A_T_GpioPinResource(N, name)     MAKE_UNPACKING_MACRO(GpioPinResource, N, name)
+#define _A_T_GpioChipResource(N, name)    MAKE_UNPACKING_MACRO(GpioChipResource, N, name)
 #define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
 #define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
 #define _A_T_TcpSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpSocketResource, N, name)
@@ -1054,6 +1095,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ReadPipeResource(N, name)    MAKE_UNPACKING_MACRO(ReadPipeResource, N, name)
 #define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
 #define _A_T_I2sResource(N, name)         MAKE_UNPACKING_MACRO(I2sResource, N, name)
+#define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
@@ -1224,7 +1266,7 @@ class Primitive {
   static bool is_error(Object* object) { return object->is_marked(); }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static Object* unmark_from_error(Program* program, Object* object);
-  static Object* os_error(int error, Process* process);
+  static Object* os_error(int error, Process* process, const char* operation = null);
   static Object* return_not_a_smi(Process* process, Object* value);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.

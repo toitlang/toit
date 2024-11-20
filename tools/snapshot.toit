@@ -194,11 +194,13 @@ class SnapshotBundle:
         : ""
 
   static is-bundle-content buffer/ByteArray -> bool:
-    magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
-    if not magic-file-offsets: return false
-    magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
-    if magic-content.to-string != MAGIC-CONTENT: return false
-    return true
+    catch:
+      if not has-valid-ar-header buffer: return false
+      magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
+      if not magic-file-offsets: return false
+      magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
+      return magic-content.to-string == MAGIC-CONTENT
+    return false
 
   has-source-map -> bool:
     return source-map != null
@@ -530,7 +532,10 @@ class ToitMethod:
 
   bci-from-absolute-bci absolute-bci/int -> int:
     bci := absolute-bci - id - HEADER-SIZE
-    assert: 0 <= bci < bytecodes.size
+    // For method calls the return-bci is just after the call. If a method
+    // is known not to return, then there might not be any bytecodes left and
+    // the bci is equal to the bytecode size.
+    assert: 0 <= bci <= bytecodes.size
     return bci
 
   absolute-bci-from-bci bci/int -> int:

@@ -40,6 +40,7 @@ set(TOIT_REPOS
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
     https://github.com/toitware/dbc
+    https://github.com/toitware/demo-encrypted-ota
     https://github.com/toitware/icm20948-driver
     https://github.com/toitware/max31865-driver
     https://github.com/toitware/mcp2518fd-driver
@@ -73,11 +74,10 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
-# TODO(kasper): Temporarily removed because the tests cannot be
-# run correctly by the external test harness.
-#   https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
+    https://github.com/toitware/toit-qwiic-joystick
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
     https://github.com/toitware/toit-rs485

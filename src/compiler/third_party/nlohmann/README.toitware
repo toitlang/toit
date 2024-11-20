@@ -1,9 +1,9 @@
 Name: JSON for Modern C++
 Short Name: json
 URL: https://github.com/nlohmann/json
-Version: 3.8.0
-Revision: eb7376bb131a4b19a5fc6aacfd046fd298cd0119
-Date: 2020-07-01
+Version: 3.11.3
+Revision: 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03
+Date: 2024-11-12
 License: MIT
 
 Description:

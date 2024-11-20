@@ -59,7 +59,6 @@ AR-ENTRY-ESP32-FIRMWARE-BIN   ::= "\$firmware.bin"
 AR-ENTRY-ESP32-FIRMWARE-ELF   ::= "\$firmware.elf"
 AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
 AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
-AR-ENTRY-ESP32-PARTITIONS-CSV ::= "\$partitions.csv"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
 
@@ -68,7 +67,6 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.elf"    : AR-ENTRY-ESP32-FIRMWARE-ELF,
   "bootloader.bin"  : AR-ENTRY-ESP32-BOOTLOADER-BIN,
   "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
-  "partitions.csv"  : AR-ENTRY-ESP32-PARTITIONS-CSV,
   "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
 }
