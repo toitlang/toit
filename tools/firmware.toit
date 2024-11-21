@@ -876,7 +876,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
   cli := invocation.cli
   ui := cli.ui
 
-  partition-table-path := invocation["partition-table"]
+  partition-table-path := invocation["partitions"]
 
   firmware-bin := extract-binary-esp32 envelope --config-encoded=config-encoded
   binary := Esp32Binary firmware-bin
