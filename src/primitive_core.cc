@@ -122,6 +122,9 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
     }
   }
 
+  FILE* stream = is_stdout ? stdout : stderr;
+  fflush(stream);
+
   return process->null_object();
 }
 
@@ -133,9 +136,8 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
   fwrite_unlocked(bytes, 1, length, stream);
   if (newline) {
     fputc_unlocked('\n', stream);
-  } else {
-    fflush_unlocked(stream);
   }
+  fflush_unlocked(stream);
   funlockfile(stream);
   return process->null_object();
 }
@@ -147,9 +149,8 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
   fwrite(bytes, 1, length, stream);
   if (newline) {
     fputc('\n', stream);
-  } else {
-    fflush(stream);
   }
+  fflush(stream);
   return process->null_object();
 }
 
