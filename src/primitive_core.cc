@@ -122,9 +122,6 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
     }
   }
 
-  FILE* stream = is_stdout ? stdout : stderr;
-  fflush(stream);
-
   return process->null_object();
 }
 
