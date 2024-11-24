@@ -49,7 +49,7 @@ main-peripheral:
         break
       descriptor.set-value data
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[TEST-SERVICE]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement

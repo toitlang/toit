@@ -50,23 +50,23 @@ main-peripheral:
         else:
           throw "Unexpected data: $data"
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[TEST-SERVICE]
   peripheral.start-advertise --allow-connections advertisement
   next-semaphore.down
   peripheral.stop-advertise
 
-  advertisement = AdvertisementData []
+  advertisement = Advertisement []
   peripheral.start-advertise advertisement
   next-semaphore.down
   peripheral.stop-advertise
 
   is-general-advertisement := false
   advertise := : | blocks scan-response-blocks |
-    advertisement = AdvertisementData blocks
+    advertisement = Advertisement blocks
     scan-response := scan-response-blocks
-        ? AdvertisementData scan-response-blocks
+        ? Advertisement scan-response-blocks
         : null
     peripheral.start-advertise
         advertisement
@@ -111,23 +111,26 @@ main-peripheral:
 
   print "done"
 
-scan address/ByteArray --central/Central -> RemoteScannedDevice:
+scan identifier/ByteArray --central/Central -> RemoteScannedDevice:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
-    if device.address == address:
+    if device.identifier == identifier:
       return device
   throw "Device not found"
 
 central-test-counter := 0
 
 test-data
-    address/any
+    identifier/any
     characteristic/RemoteCharacteristic
     --central/Central
     --is-connectable/bool=true
     [block]:
-  remote-scanned := scan address --central=central
+  remote-scanned := scan identifier --central=central
+  expect remote-scanned.address-bytes is ByteArray
+  expect-equals 6 (remote-scanned.address-bytes as ByteArray).size
+  expect-equals RemoteScannedDevice.ADDRESS-TYPE-PUBLIC remote-scanned.address-type
   expect-not remote-scanned.is-scan-response
-  expect-equals address remote-scanned.address
+  expect-equals identifier remote-scanned.identifier
   expect-equals is-connectable remote-scanned.is-connectable
   block.call remote-scanned.data
   characteristic.write #[central-test-counter++]
@@ -136,9 +139,9 @@ main-central:
   adapter := Adapter
   central := adapter.central
 
-  address := find-device-with-service central TEST-SERVICE
+  identifier := find-device-with-service central TEST-SERVICE
 
-  remote-device := central.connect address
+  remote-device := central.connect identifier
   all-services := remote-device.discover-services
   services := remote-device.discovered-services
 
@@ -149,22 +152,22 @@ main-central:
     characteristics.do: | found/RemoteCharacteristic |
       if found.uuid == TEST-CHARACTERISTIC: characteristic = found
 
-  test-data address characteristic --central=central: | data/AdvertisementData |
+  test-data identifier characteristic --central=central: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 2 blocks.size
     expect-equals [TEST-SERVICE] data.services
     expect-equals "Test" data.name
 
 
-  test-data address characteristic --central=central --no-is-connectable: | data/AdvertisementData |
+  test-data identifier characteristic --central=central --no-is-connectable: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 0 blocks.size
 
-  test-data address characteristic --central=central: | data/AdvertisementData |
+  test-data identifier characteristic --central=central: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 0 blocks.size
 
-  test-data address characteristic --central=central: | data/AdvertisementData |
+  test-data identifier characteristic --central=central: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 2 blocks.size
     expect-equals 0x06 data.flags
@@ -173,13 +176,13 @@ main-central:
           expect-equals MANUFACTURER-DATA data
           id)
 
-  test-data address characteristic --central=central: | data/AdvertisementData |
+  test-data identifier characteristic --central=central: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 2 blocks.size
     expect-equals "Test" data.name
     expect-equals [TEST-SERVICE] data.services
 
-  test-data address characteristic --central=central: | data/AdvertisementData |
+  test-data identifier characteristic --central=central: | data/Advertisement |
     blocks := data.data-blocks
     expect-equals 1 blocks.size
     expect-equals #[0xff, 0xff]
@@ -189,15 +192,15 @@ main-central:
 
   // Check that active/passive scanning works.
   central.scan --duration=(Duration --s=2): | device/RemoteScannedDevice |
-    if device.address == address:
+    if device.identifier == identifier:
       // Without doing an active scan we don't get a scan response.
       expect-not device.is-scan-response
 
-  advertisement/AdvertisementData? := null
-  scan-response/AdvertisementData? := null
+  advertisement/Advertisement? := null
+  scan-response/Advertisement? := null
   while true:  // Use a loop to be able to break out of the block.
     central.scan --duration=(Duration --s=3) --active: | device/RemoteScannedDevice |
-      if device.address == address:
+      if device.identifier == identifier:
         if device.is-scan-response:
           scan-response = device.data
         else:
@@ -214,11 +217,11 @@ main-central:
 
   // Test limited scanning.
   central.scan --duration=(Duration --s=1) --limited-only: | device/RemoteScannedDevice |
-    if device.address == address: unreachable
+    if device.identifier == identifier: unreachable
   // But we should find the device with general scanning.
   while true:  // Use a loop to be able to break out of the block.
     central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
-      if device.address == address: break
+      if device.identifier == identifier: break
     unreachable
 
   characteristic.write #[central-test-counter++]

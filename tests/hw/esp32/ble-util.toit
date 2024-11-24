@@ -8,6 +8,6 @@ find-device-with-service central/Central service/BleUuid -> any:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
     if device.data.contains-service service:
       print "Found device with service $service: $device"
-      return device.address
+      return device.identifier
 
   throw "No device found with service $service"
