@@ -2417,7 +2417,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(scan_start) {
-  ARGS(BleCentralManagerResource, central_manager, bool, passive, int64, duration_us)
+  ARGS(BleCentralManagerResource, central_manager, bool, passive, int64, duration_us, int, interval, int, window, bool, limited)
 
   Locker locker(central_manager->group()->mutex());
 
@@ -2443,10 +2443,10 @@ PRIMITIVE(scan_start) {
   disc_params.passive = passive ? 1 : 0;
 
   /* Use defaults for the rest of the parameters. */
-  disc_params.itvl = 0;
-  disc_params.window = 0;
+  disc_params.itvl = interval;
+  disc_params.window = window;
   disc_params.filter_policy = 0;
-  disc_params.limited = 0;
+  disc_params.limited = limited ? 1 : 0;
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
                      BleCentralManagerResource::on_discovery, central_manager->token());

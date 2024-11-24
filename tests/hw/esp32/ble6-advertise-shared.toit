@@ -62,12 +62,17 @@ main-peripheral:
   next-semaphore.down
   peripheral.stop-advertise
 
+  is-general-advertisement := false
   advertise := : | blocks scan-response-blocks |
     advertisement = AdvertisementData blocks
     scan-response := scan-response-blocks
         ? AdvertisementData scan-response-blocks
         : null
-    peripheral.start-advertise --allow-connections advertisement --scan-response=scan-response
+    peripheral.start-advertise
+        advertisement
+        --allow-connections
+        --scan-response=scan-response
+
     next-semaphore.down
     peripheral.stop-advertise
 
@@ -93,9 +98,11 @@ main-peripheral:
     [  // The scan response.
       DataBlock.services-128 [TEST-SERVICE],
     ]
-
-
-
+  advertise.call [
+      DataBlock.flags --general-discovery,
+      DataBlock.name "Test",
+    ]
+    null
 
   done = true
 
@@ -188,7 +195,7 @@ main-central:
 
   advertisement/AdvertisementData? := null
   scan-response/AdvertisementData? := null
-  while true:  // Use loop to be able to break out of the block.
+  while true:  // Use a loop to be able to break out of the block.
     central.scan --duration=(Duration --s=3) --active: | device/RemoteScannedDevice |
       if device.address == address:
         if device.is-scan-response:
@@ -202,6 +209,17 @@ main-central:
   expect-equals "Test" advertisement.name
   expect-equals 1 scan-response.data-blocks.size
   expect-equals [TEST-SERVICE] scan-response.services
+
+  characteristic.write #[central-test-counter++]
+
+  // Test limited scanning.
+  central.scan --duration=(Duration --s=1) --limited-only: | device/RemoteScannedDevice |
+    if device.address == address: unreachable
+  // But we should find the device with general scanning.
+  while true:  // Use a loop to be able to break out of the block.
+    central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
+      if device.address == address: break
+    unreachable
 
   characteristic.write #[central-test-counter++]
 
