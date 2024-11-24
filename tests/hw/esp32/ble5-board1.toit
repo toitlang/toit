@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-See 'ble5_shared.toit'
+See 'ble5-shared.toit'
 */
 
 import .ble5-shared as shared

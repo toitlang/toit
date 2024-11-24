@@ -20,6 +20,8 @@ import ble show *
 import expect show *
 import monitor
 
+import .ble-util
+
 ITERATIONS ::= 100
 
 UUIDS ::= [
@@ -92,21 +94,13 @@ main-peripheral:
 
   advertisement := AdvertisementData
       --name="Test"
-      --service-classes=[first-service.uuid]
+      --services=[first-service.uuid]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement
 
   done-characteristic.read
   print "Done"
 
   adapter.close
-
-find-device-with-service central/Central service/BleUuid -> any:
-  central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
-    if device.data.service_classes.contains service:
-      print "Found device with service $service: $device"
-      return device.address
-
-  throw "No device found with service $service"
 
 main-central:
   done := false

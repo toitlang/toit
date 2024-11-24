@@ -14,7 +14,7 @@ main:
   addresses := []
 
   central.scan --duration=SCAN-DURATION: | device/ble.RemoteScannedDevice |
-    if device.data.service-classes.contains BATTERY-SERVICE:
+    if device.data.contains-service BATTERY-SERVICE:
       addresses.add device.address
 
   print addresses

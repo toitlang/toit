@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import io
+import system
 
 import .ble
 
@@ -57,6 +58,7 @@ class Central extends Resource_:
     duration-us := duration ? (max 0 duration.in-us) : -1
     resource-state_.clear-state COMPLETED-EVENT_
     ble-scan-start_ resource_ duration-us
+    is-macos := system.platform == system.PLATFORM_MACOS
     try:
       while true:
         state := wait-for-state-with-oom_ DISCOVERY-EVENT_ | COMPLETED-EVENT_
@@ -66,23 +68,35 @@ class Central extends Resource_:
           if state & COMPLETED-EVENT_ != 0: return
           continue
 
-        service-classes := []
-        raw-service-classes := next[3]
-        if raw-service-classes:
-          raw-service-classes.size.repeat:
-            service-classes.add
-                BleUuid raw-service-classes[it]
+        discovery/RemoteScannedDevice := ?
+        if is-macos:
+          service-classes := []
+          raw-service-classes := next[3]
+          if raw-service-classes:
+            raw-service-classes.size.repeat:
+              service-classes.add
+                  BleUuid raw-service-classes[it]
 
-        discovery := RemoteScannedDevice
-          next[0]
-          next[1]
-          AdvertisementData
-            --name=next[2]
-            --service-classes=service-classes
-            --manufacturer-data=(next[4] ? next[4] : #[])
-            --flags=next[5]
-            --connectable=next[6]
-            --check-size=false
+          discovery = RemoteScannedDevice
+            next[0]
+            next[1]
+            --is-connectable=next[6]
+            --is-scan-response=false
+            AdvertisementData
+              --name=next[2]
+              --services=service-classes
+              --manufacturer-specific=(next[4] ? next[4] : #[])
+              --flags=next[5]
+              --connectable=next[6]
+              --check-size=false
+        else:
+          discovery = RemoteScannedDevice
+            next[0]
+            next[1]
+            --is-connectable=next[3]
+            --is-scan-response=next[4]
+            AdvertisementData.raw next[2] --connectable=next[3]
+
         block.call discovery
     finally:
       ble-scan-stop_ resource_
@@ -115,10 +129,21 @@ class RemoteScannedDevice:
   The advertisement data received from the remote device.
   */
   data/AdvertisementData
+
+  /**
+  Whether connections are allowed.
+  */
+  is-connectable/bool
+
+  /**
+  Whether this information was received in a scan response.
+  */
+  is-scan-response/bool
+
   /**
   Constructs a remote device with the given $address, $rssi, and $data.
   */
-  constructor .address .rssi .data:
+  constructor .address .rssi .data --.is-connectable --.is-scan-response:
 
   /**
   See $super.

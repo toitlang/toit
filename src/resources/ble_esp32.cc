@@ -2470,7 +2470,7 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
   if (!next) return process->null_object();
 
-  Array* array = process->object_heap()->allocate_array(7, process->null_object());
+  Array* array = process->object_heap()->allocate_array(5, process->null_object());
   if (!array) FAIL(ALLOCATION_FAILED);
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
@@ -2483,59 +2483,17 @@ PRIMITIVE(scan_next) {
 
   array->at_put(1, Smi::from(next->rssi()));
   if (next->data_length() > 0) {
-    ble_hs_adv_fields fields{};
-    int rc = ble_hs_adv_parse_fields(&fields, next->data(), next->data_length());
-    if (rc == 0) {
-      if (fields.name_len > 0) {
-        String* name = process->allocate_string((const char*)fields.name, fields.name_len);
-        if (!name) FAIL(ALLOCATION_FAILED);
-        array->at_put(2, name);
-      }
-
-      int uuids = fields.num_uuids16 + fields.num_uuids32 + fields.num_uuids128;
-      Array* service_classes = process->object_heap()->allocate_array(uuids, Smi::from(0));
-      if (!service_classes) FAIL(ALLOCATION_FAILED);
-
-      int index = 0;
-      for (int i = 0; i < fields.num_uuids16; i++) {
-        ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(2);
-        if (!service_class) FAIL(ALLOCATION_FAILED);
-        ByteArray::Bytes service_class_bytes(service_class);
-        *reinterpret_cast<uint16*>(service_class_bytes.address()) = __builtin_bswap16(fields.uuids16[i].value);
-        service_classes->at_put(index++, service_class);
-      }
-
-      for (int i = 0; i < fields.num_uuids32; i++) {
-        ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(4);
-        if (!service_class) FAIL(ALLOCATION_FAILED);
-        ByteArray::Bytes service_class_bytes(service_class);
-        *reinterpret_cast<uint32*>(service_class_bytes.address()) = __builtin_bswap32(fields.uuids32[i].value);
-        service_classes->at_put(index++, service_class);
-      }
-
-      for (int i = 0; i < fields.num_uuids128; i++) {
-        ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(16);
-        if (!service_class) FAIL(ALLOCATION_FAILED);
-        ByteArray::Bytes service_class_bytes(service_class);
-        memcpy_reverse(service_class_bytes.address(), fields.uuids128[i].value, 16);
-        service_classes->at_put(index++, service_class);
-      }
-      array->at_put(3, service_classes);
-
-      if (fields.mfg_data_len > 0 && fields.mfg_data) {
-        ByteArray* custom_data = process->object_heap()->allocate_internal_byte_array(fields.mfg_data_len);
-        if (!custom_data) FAIL(ALLOCATION_FAILED);
-        ByteArray::Bytes custom_data_bytes(custom_data);
-        memcpy(custom_data_bytes.address(), fields.mfg_data, fields.mfg_data_len);
-        array->at_put(4, custom_data);
-      }
-
-      array->at_put(5, Smi::from(fields.flags));
-    }
-
-    array->at_put(6, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
-                          next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND));
+    ByteArray* data = process->object_heap()->allocate_internal_byte_array(next->data_length());
+    if (!data) FAIL(ALLOCATION_FAILED);
+    ByteArray::Bytes data_bytes(data);
+    memcpy(data_bytes.address(), next->data(), next->data_length());
+    array->at_put(2, data);
   }
+  bool is_connectable = next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
+                        next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND;
+  array->at_put(3, BOOL(is_connectable));
+  bool is_scan_response = next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP;
+  array->at_put(4, BOOL(is_scan_response));
 
   central_manager->remove_discovered_peripheral();
   delete next;
@@ -2950,138 +2908,36 @@ PRIMITIVE(set_characteristic_notify) {
 }
 
 PRIMITIVE(advertise_start) {
-  ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags)
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(advertise_start_raw) {
+  ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, data, Object, scan_response, int, interval_us, int, connection_mode)
 
   Locker locker(peripheral_manager->group()->mutex());
 
   if (BlePeripheralManagerResource::is_advertising()) FAIL(ALREADY_EXISTS);
   if (!peripheral_manager->ensure_token()) FAIL(ALLOCATION_FAILED);
 
-  // The advertisement packet.
-  ble_hs_adv_fields fields{};
-  // The size of the data that was already stored in the 'fields'.
-  int advertisement_size = 0;
-  // The scan response. Only used, if the advertising packet would become too big.
-  ble_hs_adv_fields response_fields{};
-  bool uses_scan_response = false;
-
-  if (manufacturing_data.length() > 0) {
-    int additional_size = 2 + manufacturing_data.length();
-    ble_hs_adv_fields* target_fields = &fields;
-    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-      // Doesn't fit into the packet.
-      // Store it in the scan response instead.
-      target_fields = &response_fields;
-      fields.mfg_data = null;
-    } else {
-      advertisement_size += additional_size;
-    }
-    target_fields->mfg_data = manufacturing_data.address();
-    target_fields->mfg_data_len = manufacturing_data.length();
-  }
-
-  fields.flags = flags;
-  advertisement_size += flags > 0 ? (2 + 1) : 0;
-
-  ble_uuid16_t uuids_16[service_classes->length()];
-  fields.uuids16 = uuids_16;
-  fields.uuids16_is_complete = 1;
-  ble_uuid32_t uuids_32[service_classes->length()];
-  fields.uuids32 = uuids_32;
-  fields.uuids32_is_complete = 1;
-  ble_uuid128_t uuids_128[service_classes->length()];
-  fields.uuids128 = uuids_128;
-  fields.uuids128_is_complete = 1;
-  ble_uuid16_t response_uuids_16[service_classes->length()];
-  response_fields.uuids16 = response_uuids_16;
-  response_fields.uuids16_is_complete = 1;
-  ble_uuid32_t response_uuids_32[service_classes->length()];
-  response_fields.uuids32 = response_uuids_32;
-  response_fields.uuids32_is_complete = 1;
-  ble_uuid128_t response_uuids_128[service_classes->length()];
-  response_fields.uuids128 = response_uuids_128;
-  response_fields.uuids128_is_complete = 1;
-  for (int i = 0; i < service_classes->length(); i++) {
-    Object* obj = service_classes->at(i);
-    Blob blob;
-    if (!obj->byte_content(process->program(), &blob, BlobKind::STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
-
-    ble_uuid_any_t uuid = uuid_from_blob(blob);
-    if (uuid.u.type == BLE_UUID_TYPE_16) {
-      // Make sure the additional UUID fits into the packet.
-      // For the first UUID we also have to include the 2 byte header of the list.
-      int additional_size = fields.num_uuids16 == 0 ? 4 : 2;
-      ble_hs_adv_fields* target_fields = &fields;
-      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-        fields.uuids16_is_complete = 0;
-        target_fields = &response_fields;
-        uses_scan_response = true;
-      } else {
-        advertisement_size += additional_size;
-      }
-      const_cast<ble_uuid16_t*>(target_fields->uuids16)[target_fields->num_uuids16++] = uuid.u16;
-    } else if (uuid.u.type == BLE_UUID_TYPE_32) {
-      // Make sure the additional UUID fits into the packet.
-      // For the first UUID we also have to include the 2 byte header of the list.
-      int additional_size = fields.num_uuids32 == 0 ? 6 : 4;
-      ble_hs_adv_fields* target_fields = &fields;
-      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-        fields.uuids32_is_complete = 0;
-        target_fields = &response_fields;
-        uses_scan_response = true;
-      } else {
-        advertisement_size += additional_size;
-      }
-      const_cast<ble_uuid32_t*>(target_fields->uuids32)[target_fields->num_uuids32++] = uuid.u32;
-    } else {
-      // Make sure the additional UUID fits into the packet.
-      // For the first UUID we also have to include the 2 byte header of the list.
-      int additional_size = fields.num_uuids128 == 0 ? 18 : 16;
-      ble_hs_adv_fields* target_fields = &fields;
-      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-        fields.uuids128_is_complete = 0;
-        target_fields = &response_fields;
-        uses_scan_response = true;
-      } else {
-        advertisement_size += additional_size;
-      }
-       const_cast<ble_uuid128_t*>(target_fields->uuids128)[target_fields->num_uuids128++] = uuid.u128;
-    }
-  }
-
-  if (name.length() > 0) {
-    int additional_size = 2 + name.length();
-    ble_hs_adv_fields* target_fields = &fields;
-    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-      // Without any name, there is no need to change the 'name_is_complete' field.
-      // We could cut the name and send a part of it, but that's not necessary.
-      fields.name = null;
-      target_fields = &response_fields;
-      uses_scan_response = true;
-    } else {
-      advertisement_size += additional_size;
-    }
-    target_fields->name = name.address();
-    target_fields->name_len = name.length();
-    target_fields->name_is_complete = 1;
-  }
-
-  int err = ble_gap_adv_set_fields(&fields);
+  int err = ble_gap_adv_set_data(data.address(), data.length());
   if (err != BLE_ERR_SUCCESS) {
     if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
     return nimble_stack_error(process, err);
   }
 
-  if (uses_scan_response) {
-    err = ble_gap_adv_rsp_set_fields(&response_fields);
+  if (scan_response != process->null_object()) {
+    Blob scan_response_data;
+    if (!scan_response->byte_content(process->program(), &scan_response_data, STRINGS_OR_BYTE_ARRAYS)) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    err = ble_gap_adv_rsp_set_data(scan_response_data.address(), scan_response_data.length());
     if (err != BLE_ERR_SUCCESS) {
       if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
       return nimble_stack_error(process, err);
     }
   }
 
-  peripheral_manager->advertising_params().conn_mode = conn_mode;
+  peripheral_manager->advertising_params().conn_mode = connection_mode;
 
   // TODO(anders): Be able to tune this.
   peripheral_manager->advertising_params().disc_mode = BLE_GAP_DISC_MODE_GEN;
