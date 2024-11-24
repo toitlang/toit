@@ -2417,7 +2417,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(scan_start) {
-  ARGS(BleCentralManagerResource, central_manager, int64, duration_us)
+  ARGS(BleCentralManagerResource, central_manager, bool, passive, int64, duration_us)
 
   Locker locker(central_manager->group()->mutex());
 
@@ -2440,11 +2440,7 @@ PRIMITIVE(scan_start) {
   // repeated advertisements from the same device.
   // disc_params.filter_duplicates = 1;
 
-  /**
-   * Perform a passive scan.  I.e., don't send follow-up scan requests to
-   * each advertiser.
-   */
-  disc_params.passive = 1;
+  disc_params.passive = passive ? 1 : 0;
 
   /* Use defaults for the rest of the parameters. */
   disc_params.itvl = 0;
