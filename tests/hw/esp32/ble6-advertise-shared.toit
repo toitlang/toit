@@ -62,7 +62,6 @@ main-peripheral:
   next-semaphore.down
   peripheral.stop-advertise
 
-  is-general-advertisement := false
   advertise := : | blocks scan-response-blocks |
     advertisement = AdvertisementData blocks
     scan-response := scan-response-blocks
