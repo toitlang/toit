@@ -83,24 +83,24 @@ class Central extends Resource_:
                   BleUuid raw-service-classes[it]
 
           discovery = RemoteScannedDevice
-            next[0]
-            next[1]
-            --is-connectable=next[6]
-            --is-scan-response=false
-            AdvertisementData
-              --name=next[2]
-              --services=service-classes
-              --manufacturer-specific=(next[4] ? next[4] : #[])
-              --flags=next[5]
-              --connectable=next[6]
-              --check-size=false
+              next[0]
+              next[1]
+              --is-connectable=next[6]
+              --is-scan-response=false
+              AdvertisementData
+                  --name=next[2]
+                  --services=service-classes
+                  --manufacturer-specific=(next[4] ? next[4] : #[])
+                  --flags=next[5]
+                  --connectable=next[6]
+                  --check-size=false
         else:
           discovery = RemoteScannedDevice
-            next[0]
-            next[1]
-            --is-connectable=next[3]
-            --is-scan-response=next[4]
-            AdvertisementData.raw next[2] --connectable=next[3]
+              next[0]
+              next[1]
+              --is-connectable=next[3]
+              --is-scan-response=next[4]
+              AdvertisementData.raw next[2] --connectable=next[3]
 
         block.call discovery
     finally:
