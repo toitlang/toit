@@ -50,14 +50,19 @@ class Central extends Resource_:
 
   Only one scan can run at a time.
 
+  If $active is true, then we request a scan response from discovered devices.
+    Users may need to merge the advertisement data from the scan response with the
+    advertisement data from the discovery event. Use
+    $RemoteScannedDevice.is-scan-response to distinguish between the two.
+
   Connections cannot be established while a scan is ongoing.
 
   Stops the scan after the given $duration.
   */
-  scan [block] --duration/Duration?=null:
+  scan [block] --duration/Duration?=null --active/bool=false:
     duration-us := duration ? (max 0 duration.in-us) : -1
     resource-state_.clear-state COMPLETED-EVENT_
-    ble-scan-start_ resource_ duration-us
+    ble-scan-start_ resource_ (not active) duration-us
     is-macos := system.platform == system.PLATFORM_MACOS
     try:
       while true:

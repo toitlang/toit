@@ -1084,7 +1084,7 @@ ble-create-central-manager_ adapter-resource:
 ble-create-peripheral-manager_ adapter-resource bonding secure-connections:
   #primitive.ble.create-peripheral-manager
 
-ble-scan-start_ central-manager duration-us:
+ble-scan-start_ central-manager passive duration-us:
   #primitive.ble.scan-start
 
 ble-scan-next_ central-manager:

@@ -62,24 +62,40 @@ main-peripheral:
   next-semaphore.down
   peripheral.stop-advertise
 
-  advertise := : | blocks |
+  advertise := : | blocks scan-response-blocks |
     advertisement = AdvertisementData blocks
-    peripheral.start-advertise --allow-connections advertisement
+    scan-response := scan-response-blocks
+        ? AdvertisementData scan-response-blocks
+        : null
+    peripheral.start-advertise --allow-connections advertisement --scan-response=scan-response
     next-semaphore.down
     peripheral.stop-advertise
 
-  advertise.call []
+  advertise.call [] null
   advertise.call [
-    DataBlock.flags --general-discovery --bredr-supported=false,
-    DataBlock.manufacturer-specific --company-id=COMPANY-ID MANUFACTURER-DATA,
-  ]
+      DataBlock.flags --general-discovery --bredr-supported=false,
+      DataBlock.manufacturer-specific --company-id=COMPANY-ID MANUFACTURER-DATA,
+    ]
+    null
   advertise.call [
-    DataBlock.name "Test",
-    DataBlock.services-128 [TEST-SERVICE],
-  ]
+      DataBlock.name "Test",
+      DataBlock.services-128 [TEST-SERVICE],
+    ]
+    null
   advertise.call [
-    DataBlock.manufacturer-specific (ByteArray 27: it)
-  ]
+      DataBlock.manufacturer-specific (ByteArray 27: it)
+    ]
+    null
+  advertise.call
+    [
+      DataBlock.name "Test",
+    ]
+    [  // The scan response.
+      DataBlock.services-128 [TEST-SERVICE],
+    ]
+
+
+
 
   done = true
 
@@ -100,8 +116,10 @@ test-data
     address/any
     characteristic/RemoteCharacteristic
     --central/Central
-    --is-connectable/bool=true [block]:
+    --is-connectable/bool=true
+    [block]:
   remote-scanned := scan address --central=central
+  expect-not remote-scanned.is-scan-response
   expect-equals address remote-scanned.address
   expect-equals is-connectable remote-scanned.is-connectable
   block.call remote-scanned.data
@@ -160,6 +178,31 @@ main-central:
         (data.manufacturer-specific: | id data |
           expect-equals (ByteArray 27: it) data
           id)
+
+  // Check that active/passive scanning works.
+  central.scan --duration=(Duration --s=2): | device/RemoteScannedDevice |
+    if device.address == address:
+      // Without doing an active scan we don't get a scan response.
+      expect-not device.is-scan-response
+
+  advertisement/AdvertisementData? := null
+  scan-response/AdvertisementData? := null
+  while true:  // Use loop to be able to break out of the block.
+    central.scan --duration=(Duration --s=3) --active: | device/RemoteScannedDevice |
+      if device.address == address:
+        if device.is-scan-response:
+          scan-response = device.data
+        else:
+          advertisement = device.data
+        if advertisement and scan-response: break
+    break
+
+  expect-equals 1 advertisement.data-blocks.size
+  expect-equals "Test" advertisement.name
+  expect-equals 1 scan-response.data-blocks.size
+  expect-equals [TEST-SERVICE] scan-response.services
+
+  characteristic.write #[central-test-counter++]
 
   remote-device.close
   central.close

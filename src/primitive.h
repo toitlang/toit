@@ -346,7 +346,7 @@ namespace toit {
   PRIMITIVE(create_central_manager, 1)       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(release_resource, 1)             \
-  PRIMITIVE(scan_start, 2)                   \
+  PRIMITIVE(scan_start, 3)                   \
   PRIMITIVE(scan_next, 1)                    \
   PRIMITIVE(scan_stop, 1)                    \
   PRIMITIVE(connect, 3)                      \
