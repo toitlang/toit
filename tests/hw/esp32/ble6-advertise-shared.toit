@@ -62,7 +62,6 @@ main-peripheral:
   next-semaphore.down
   peripheral.stop-advertise
 
-  is-general-advertisement := false
   advertise := : | blocks scan-response-blocks |
     advertisement = Advertisement blocks
     scan-response := scan-response-blocks
@@ -157,7 +156,6 @@ main-central:
     expect-equals 2 blocks.size
     expect-equals [TEST-SERVICE] data.services
     expect-equals "Test" data.name
-
 
   test-data identifier characteristic --central=central --no-is-connectable: | data/Advertisement |
     blocks := data.data-blocks

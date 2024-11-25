@@ -51,7 +51,7 @@ class Central extends Resource_:
   Only one scan can run at a time.
 
   If $active is true, then we request a scan response from discovered devices.
-    Users might need to merge the advertisement data from the scan response with the
+    Users may need to merge the advertisement data from the scan response with the
     advertisement data from the discovery event. Use
     $RemoteScannedDevice.is-scan-response to distinguish between the two.
 
@@ -107,30 +107,30 @@ class Central extends Resource_:
           identifier := next[0]
           rssi := next[1]
           discovery = RemoteScannedDevice
-            identifier
-            rssi
-            --is-connectable=next[6]
-            --is-scan-response=false
+              identifier
+              rssi
+              --is-connectable=next[6]
+              --is-scan-response=false
             --address-bytes=null
             --address-type=null
-            AdvertisementData
-              --name=next[2]
-              --service-classes=service-classes
-              --manufacturer-data=(next[4] ? next[4] : #[])
-              --flags=next[5]
-              --connectable=next[6]
-              --check-size=false
+              AdvertisementData
+                  --name=next[2]
+                  --service-classes=service-classes
+                  --manufacturer-data=(next[4] ? next[4] : #[])
+                  --flags=next[5]
+                  --connectable=next[6]
+                  --check-size=false
         else:
           identifier := next[0]
           rssi := next[1]
           discovery = RemoteScannedDevice
-            identifier
-            rssi
-            --is-connectable=next[3]
-            --is-scan-response=next[4]
-            --address-type=identifier[0]
-            --address-bytes=identifier[1..]
-            AdvertisementData.raw_ next[2] --connectable=next[3]
+              identifier
+              rssi
+              --is-connectable=next[3]
+              --is-scan-response=next[4]
+              --address-type=identifier[0]
+              --address-bytes=identifier[1..]
+              AdvertisementData.raw_ next[2] --connectable=next[3]
 
         block.call discovery
     finally:

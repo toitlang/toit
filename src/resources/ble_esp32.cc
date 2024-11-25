@@ -2442,9 +2442,9 @@ PRIMITIVE(scan_start) {
 
   disc_params.passive = passive ? 1 : 0;
 
-  /* Use defaults for the rest of the parameters. */
   disc_params.itvl = interval;
   disc_params.window = window;
+  // Don't filter.
   disc_params.filter_policy = 0;
   disc_params.limited = limited ? 1 : 0;
 
