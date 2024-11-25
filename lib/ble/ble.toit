@@ -689,7 +689,7 @@ class AdvertisementData extends Advertisement:
       --name/string?=null
       --service-classes/List=[]
       --manufacturer-data/io.Data=#[]
-      --.connectable
+      --.connectable=false
       --flags/int=0
       --check-size/bool=true:
     super
