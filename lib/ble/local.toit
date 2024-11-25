@@ -62,8 +62,11 @@ class Peripheral extends Resource_:
       --interval/Duration=DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
     if system.platform == system.PLATFORM-MACOS:
+      if scan-response: throw "UNSUPPORTED"
+      data.data-blocks.do: | block/DataBlock |
+        if not block.is-name and not block.is-services and not block.is-flags:
+          throw "UNSUPPORTED"
       if interval != DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
-      data.manufacturer-specific: throw "INVALID_ARGUMENT"
 
       services := data.services
       raw-service-classes := Array_ services.size null

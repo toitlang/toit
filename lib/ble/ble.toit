@@ -668,7 +668,7 @@ class DataBlock:
     return at + data.size + 2
 
   /**
-  Converts this datablock to a raw byte array.
+  Converts this data block to a raw byte array.
   */
   to-raw -> ByteArray:
     result := ByteArray data.size + 2
