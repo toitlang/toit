@@ -826,8 +826,10 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(scan_start) {
-  ARGS(BleCentralManagerResource, central_manager, bool, passive, int64, duration_us);
-
+  ARGS(BleCentralManagerResource, central_manager, bool, passive, int64, duration_us, int, interval, int, window, bool, limited);
+  USE(interval);
+  USE(window);
+  USE(limited);
   Locker locker(central_manager->scan_mutex());
   bool active = [central_manager->central_manager() isScanning];
 

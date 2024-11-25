@@ -58,11 +58,33 @@ class Central extends Resource_:
   Connections cannot be established while a scan is ongoing.
 
   Stops the scan after the given $duration.
+
+  The $interval is the time between the start of two consecutive scan windows. It is
+    given in units of 0.625 ms. If it is 0, the default value of the system is used.
+
+  The $window is the time the scanner is active during a scan window. It is given in
+    units of 0.625 ms. If it is 0, the default value of the system is used. The window
+    must be less than or equal to the interval.
+
+  If $limited-only is true, only limited discoverable devices are reported. Devices
+    declare during advertising whether they are limited (advertising for a limited
+    duration) or general (continuously broadcasting). This flag filters out general
+    devices.
   */
-  scan [block] --duration/Duration?=null --active/bool=false:
+  scan -> none
+      --interval/int=0
+      --window/int=0
+      --duration/Duration?=null
+      --limited-only/bool=false
+      --active/bool=false
+      [block]:
+    if interval != 0 and not 4 <= interval <= 16384:
+      throw "Invalid interval"
+    if window != 0 and not 4 <= window <= interval:
+      throw "Invalid window"
     duration-us := duration ? (max 0 duration.in-us) : -1
     resource-state_.clear-state COMPLETED-EVENT_
-    ble-scan-start_ resource_ (not active) duration-us
+    ble-scan-start_ resource_ (not active) duration-us interval window limited-only
     is-macos := system.platform == system.PLATFORM_MACOS
     try:
       while true:
