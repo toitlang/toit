@@ -709,14 +709,12 @@ class AdvertisementData extends Advertisement:
   */
   connectable/bool
 
-
   /**
   Advertised service classes as a list of $BleUuid.
 
   Deprecated. Use $Advertisement.services instead.
   */
   service-classes -> List: return services
-
 
   /**
   Manufacturer data as a byte array.
