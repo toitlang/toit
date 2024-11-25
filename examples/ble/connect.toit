@@ -11,7 +11,7 @@ SCAN-DURATION   ::= Duration --s=3
 
 find-with-service central/ble.Central service/ble.BleUuid:
   central.scan --duration=SCAN-DURATION: | device/ble.RemoteScannedDevice |
-    if device.data.service-classes.contains service:
+    if device.data.contains-service service:
         return device.address
   throw "no device found"
 

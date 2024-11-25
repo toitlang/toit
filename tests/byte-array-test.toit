@@ -26,6 +26,7 @@ main:
   test-to-string
   test-hash-code
   test-construction
+  test-reverse
 
 test-basic:
   2.repeat:
@@ -314,3 +315,28 @@ test-construction -> none:
 
   ba = ByteArray 5
   expect-equals #[0, 0, 0, 0, 0] ba
+
+test-reverse -> none:
+  SIZES := [
+    0,
+    1,
+    2,
+    3,
+    5,
+    100,
+    101,
+    1000,
+    1001,
+    1023,
+    1024,
+    1025,
+  ]
+  SIZES.do: | size/int |
+    bytes := ByteArray size: random 256
+    reversed := bytes.reverse
+    expect-equals size reversed.size
+    size.repeat: | i |
+      expect-equals bytes[size - i - 1] reversed[i]
+    copy := bytes.copy
+    copy.reverse --in-place
+    expect-bytes-equal reversed copy

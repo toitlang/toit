@@ -1,0 +1,3 @@
+tests/ble-advertisement-test.toit:262:28: warning: Deprecated 'AdvertisementData.manufacturer-data'. Use 'manufacturer-specific' instead
+  expect-equals #[] packet.manufacturer-data
+                           ^~~~~~~~~~~~~~~~~

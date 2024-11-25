@@ -25,38 +25,57 @@ The 128-bit UUID is referred to as the vendor specific UUID. These must be used 
 
 16-bit UUIDs of the form "XXXX" are short-hands for "0000XXXX-0000-1000-8000-00805F9B34FB",
   where "00000000-0000-1000-8000-00805F9B34FB" comes from the BLE standard and is called
-  the "base UUID"
+  the "base UUID".
+Similarly, a 32-bit UUID of the form "XXXXXXXX" is a short-hand for
+  "XXXXXXXX-0000-1000-8000-00805F9B34FB".
 
-See https://btprodspecificationrefs.blob.core.windows.net/assigned-values/16-bit%20UUID%20Numbers%20Document.pdf
-  for a list of the available 16-bit UUIDs.
+See https://www.bluetooth.com/specifications/assigned-numbers/ for a list of
+  assigned UUIDs.
 */
 class BleUuid:
-  data_/any
-  constructor .data_:
-    if data_ is ByteArray:
-      if data_.size != 2 and data_.size != 4 and data_.size != 16: throw "INVALID UUID"
-    else if data_ is string:
-      if data_.size != 4 and data_.size != 8 and data_.size != 36: throw "INVALID UUID"
-      if data_.size == 36:
-        uuid.Uuid.parse data_ // This throws an exception if the format is incorrect.
-      else:
-        if (catch: hex.decode data_):
-          throw "INVALID UUID $data_"
-      data_ = data_.to-ascii-lower
-    else:
-      throw "TYPE ERROR: data is not a string or byte array"
+  data_/io.Data  // Either a ByteArray or a string.
 
   /**
-  Returns the UUID as a string of the form "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX".
+  Constructs a new UUID from a byte array or a string.
+
+  Does not check if a UUID can be shrunk by using the base UUID.
+  */
+  constructor data/io.Data:
+    if data is not ByteArray and data is not string:
+      data = ByteArray.from data
+    data_ = data
+    if data_ is ByteArray:
+      bytes := data_ as ByteArray
+      if bytes.size != 2 and bytes.size != 4 and bytes.size != 16: throw "INVALID UUID"
+    else if data_ is string:
+      str := data_ as string
+      if str.size != 4 and str.size != 8 and str.size != 36: throw "INVALID UUID"
+      if str.size == 36:
+        uuid.Uuid.parse str // This throws an exception if the format is incorrect.
+      else:
+        if (catch: hex.decode str):
+          throw "INVALID UUID $str"
+      str = str.to-ascii-lower
+
+  /**
+  Constructs a new UUID from a 16-bit UUID where the $bytes are reversed.
+  */
+  constructor.from-reversed bytes/ByteArray:
+    return BleUuid bytes.reverse
+
+  /**
+  Returns the UUID as a string of the form "XXXX" (16-bit UUID), "XXXXXXXX"
+    (32-bit UUID), or "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" (other UUIDs).
   */
   to-string -> string:
     if data_ is ByteArray:
-      if data_.size <= 4:
-        return hex.encode data_
+      bytes := data_ as ByteArray
+      if bytes.size <= 8:
+        return hex.encode bytes
       else:
-        return (uuid.Uuid data_).stringify
+        return (uuid.Uuid bytes).stringify
     else:
-      return data_
+      return data_ as string
 
   /**
   Returns a string representation of this UUID.
@@ -66,24 +85,46 @@ class BleUuid:
   stringify -> string:
     return to-string
 
-  to-byte-array:
+  /**
+  Returns the UUID as a byte array.
+
+  The result is 2 bytes long for 16-bit UUIDs, 4 bytes long for 32-bit UUIDs,
+    and 16 bytes long for 128-bit UUIDs.
+  */
+  to-byte-array --reversed/bool=false -> ByteArray:
+    result/ByteArray := ?
     if data_ is string:
-      if data_.size <= 4: return hex.decode data_
-      return (uuid.Uuid.parse data_).to-byte-array
+      str := data_ as string
+      if str.size <= 8:
+        result = hex.decode str
+      else:
+        result = (uuid.Uuid.parse str).to-byte-array
     else:
-      return data_
+      result = data_ as ByteArray
+      if reversed: result = result.copy
+    if reversed: result.reverse --in-place
+    return result
 
   encode-for-platform_:
     if ble-platform-requires-uuid-as-byte-array_:
       return to-byte-array
     else:
-      return stringify
+      return to-string
 
-  hash-code:
+  hash-code -> int:
     return to-byte-array.hash-code
 
   operator== other/BleUuid:
     return to-byte-array == other.to-byte-array
+
+  /** The size, in bytes, of the UUID. */
+  byte-size -> int:
+    if data_ is ByteArray: return (data_ as ByteArray).size
+    return to-byte-array.size
+
+  /** The size, in bits, of the UUID. */
+  bit-size -> int:
+    return byte-size * 8
 
 /**
 An attribute is the smallest data entity of GATT (Generic Attribute Profile).
@@ -99,15 +140,542 @@ Conceptually, attributes are on the server, and can be accessed (read and/or wri
 interface Attribute:
   uuid -> BleUuid
 
-BLE-CONNECT-MODE-NONE                  ::= 0
-BLE-CONNECT-MODE-DIRECTIONAL           ::= 1
+/**
+This device should not be connected to.
+
+See the core specification Section 9.3.2.
+https://www.bluetooth.com/specifications/specs/core-specification-6-0/
+*/
+BLE-CONNECT-MODE-NONE ::= 0
+
+/**
+This device accepts a connection from a known peer device.
+
+See the core specification Section 9.3.3.
+https://www.bluetooth.com/specifications/specs/core-specification-6-0/
+*/
+BLE-CONNECT-MODE-DIRECTIONAL ::= 1
+
+/**
+This device accepts connections from any device.
+
+See the core specification Section 9.3.4.
+https://www.bluetooth.com/specifications/specs/core-specification-6-0/
+*/
 BLE-CONNECT-MODE-UNDIRECTIONAL         ::= 2
 
+/**
+A device that is discoverable for a limited period of time.
+
+See the core specification Section 9.2.3.
+https://www.bluetooth.com/specifications/specs/core-specification-6-0/
+*/
 BLE-ADVERTISE-FLAGS-LIMITED-DISCOVERY  ::= 0x01
+
+/**
+A device that is discoverable for an indefinite period of time.
+
+See the core specification Section 9.2.4.
+https://www.bluetooth.com/specifications/specs/core-specification-6-0/
+*/
 BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY  ::= 0x02
+
+/**
+A device that doesn't support the Bluetooth Classic radio.
+
+Since Toit only supports BLE, this flag should always be set.
+*/
 BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED  ::= 0x04
 
 BLE-DEFAULT-PREFERRED-MTU_             ::= 23
+
+/**
+A Bluetooth data block.
+
+Data blocks are used in advertising data (AD) and scan response data (SRD) to
+  provide information about the device. They are also used in an extended
+  inquiry response (EIR), additional controller advertising data (ACAD), and
+  OOB data blocks.
+
+The possible types are listed in section 2.3 of the Bluetooth
+  "Assigned Numbers" document:
+  https://www.bluetooth.com/specifications/assigned-numbers/
+
+The core specification supplement discusses the encoding of the data:
+  https://www.bluetooth.com/specifications/specs/core-specification-supplement/
+*/
+// I found the following link helpful:
+//   https://jimmywongiot.com/2019/08/13/advertising-payload-format-on-ble/
+class DataBlock:
+  static TYPE-FLAGS ::= 0x01
+  static TYPE-SERVICE-UUIDS-16-INCOMPLETE ::= 0x02
+  static TYPE-SERVICE-UUIDS-16-COMPLETE ::= 0x03
+  static TYPE-SERVICE-UUIDS-32-INCOMPLETE ::= 0x04
+  static TYPE-SERVICE-UUIDS-32-COMPLETE ::= 0x05
+  static TYPE-SERVICE-UUIDS-128-INCOMPLETE ::= 0x06
+  static TYPE-SERVICE-UUIDS-128-COMPLETE ::= 0x07
+  static TYPE-NAME-SHORTENED ::= 0x08
+  static TYPE-NAME-COMPLETE ::= 0x09
+  static TYPE-TX-POWER-LEVEL ::= 0x0A
+  static TYPE-SERVICE-DATA-16 ::= 0x16
+  static TYPE-SERVICE-DATA-32 ::= 0x20
+  static TYPE-SERVICE-DATA-128 ::= 0x21
+  static TYPE-MANUFACTURER-SPECIFIC ::= 0xFF
+
+  /**
+  The type of the data block.
+
+  The types are defined in the Bluetooth "Assigned Numbers" document:
+    https://www.bluetooth.com/specifications/assigned-numbers/, section 2.3.
+
+  Some types have constants defined in this class: $TYPE-FLAGS, ...
+  */
+  type/int
+
+  /**
+  The data of the data block.
+  */
+  data/ByteArray
+
+  static encode-uuids_ uuids/List --uuid-byte-size/int -> ByteArray:
+    result := ByteArray uuids.size * uuid-byte-size
+    pos := 0
+    uuids.do: | uuid/BleUuid |
+      bytes := uuid.to-byte-array --reversed
+      if bytes.size != uuid-byte-size: throw "INVALID_UUID_SIZE"
+      result.replace pos bytes
+      pos += uuid-byte-size
+    return result
+
+  static decode-uuids_ bytes/ByteArray --uuid-byte-size/int -> List:
+    if bytes.size % uuid-byte-size != 0: throw "INVALID_UUID_SIZE"
+    result := []
+    (bytes.size / uuid-byte-size).repeat: | i/int |
+      uuid-bytes := bytes[i * uuid-byte-size .. (i + 1) * uuid-byte-size]
+      result.add (BleUuid.from-reversed uuid-bytes)
+    return result
+
+  static encode-service-data_ uuid/BleUuid service-data/io.Data [block] -> none:
+    uuid-bytes := uuid.to-byte-array --reversed
+    data := ByteArray uuid-bytes.size + service-data.byte-size
+    data.replace 0 uuid-bytes
+    service-data.write-to-byte-array data --at=uuid-bytes.size 0 service-data.byte-size
+    block.call uuid-bytes.size data
+
+  static decode-service-data_ bytes/ByteArray --uuid-byte-size/int [block] -> any:
+    if bytes.size < uuid-byte-size: throw "INVALID_DATA"
+    uuid := BleUuid.from-reversed bytes[0 .. uuid-byte-size]
+    service-data := bytes[uuid-byte-size ..]
+    return block.call uuid service-data
+
+  /**
+  Decodes a raw advertisement data packet into a list of data blocks.
+  */
+  static decode raw/ByteArray -> List:
+    result := []
+    pos := 0
+    while pos < raw.size:
+      if pos + 1 >= raw.size: throw "INVALID_DATA"
+      size := raw[pos]
+      if size == 0: throw "INVALID_DATA"
+      if pos + size >= raw.size: throw "INVALID_DATA"
+      type := raw[pos + 1]
+      data := raw[pos + 2 .. pos + size + 1].copy
+      result.add (DataBlock type data)
+      pos += 1 + size
+    return result
+
+  /**
+  Constructs a new advertisement data field.
+
+  No check is made to ensure that the data is valid for the given type.
+  */
+  constructor .type .data:
+
+  /**
+  Constructs a field of flags for discovery.
+
+  Each bit of the $flags value encodes a boolean.
+
+  Bit 0: LE Limited Discoverable Mode, $BLE-ADVERTISE-FLAGS-LIMITED-DISCOVERY.
+  Bit 1: LE General Discoverable Mode, $BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY.
+  Bit 2: BR/EDR Not Supported (i.e., bit 37 of LMP Feature Mask Page 0). "BR/EDR" is
+    the Bluetooth Classic radio, and not supported by Toit. $BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED.
+  Bit 3: Simultaneous LE and BR/EDR to Same Device Capable (controller).
+  Bit 4: Previously Used.
+
+  The flags field may be 0 or multiple octets long. Currently, only the first octet
+    is used.
+
+  The flags field must not be present in the scan response data; only in
+    the advertising data.
+  The flags field is optional and may only be present once.
+  */
+  constructor.flags flags/int:
+    if not 0 <= flags < 256: throw "INVALID_FLAGS"
+    type = TYPE-FLAGS
+    if flags == 0:
+      data = #[]
+    else:
+      data = #[flags]
+
+  /**
+  Variant of $DataBlock.flags.
+
+  Allows to specify some flags using named arguments.
+  */
+  constructor.flags
+      --limited-discovery/True
+      --bredr-supported/bool=false:
+    flags := BLE-ADVERTISE-FLAGS-LIMITED-DISCOVERY
+    if not bredr-supported: flags |= BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED
+    return DataBlock.flags flags
+
+  /**
+  Variant of $DataBlock.flags.
+
+  Allows to specify some flags using named arguments.
+  */
+  constructor.flags
+      --general-discovery/True
+      --bredr-supported/bool=false:
+    flags := BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY
+    if not bredr-supported: flags |= BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED
+    return DataBlock.flags flags
+
+  /**
+  Constructs a field with a list of 16-bit service UUIDs.
+
+  If $incomplete is true, then the list is incomplete.
+
+  Omitting the service UUIDs is equivalent to providing an empty
+    *incomplete* list. Provide an empty list to indicate that no service UUIDs
+    are present.
+
+  UUID service fields are optional. Only one field per size (16, 32, 128 bits)
+    may be present.
+  The specification is not clear on whether the advertising data may contain
+    an incomplete list of service UUIDs and the scan response contain the
+    complete list.
+  */
+  constructor.services-16 uuids/List --incomplete/bool=false:
+    if incomplete:
+      type = TYPE-SERVICE-UUIDS-16-INCOMPLETE
+    else:
+      type = TYPE-SERVICE-UUIDS-16-COMPLETE
+    data = encode-uuids_ uuids --uuid-byte-size=2
+
+  /**
+  Constructs a field with a list of 32-bit service UUIDs.
+
+  See $DataBlock.services-16 for more information.
+  */
+  constructor.services-32 uuids/List --incomplete/bool=false:
+    if incomplete:
+      type = TYPE-SERVICE-UUIDS-32-INCOMPLETE
+    else:
+      type = TYPE-SERVICE-UUIDS-32-COMPLETE
+    data = encode-uuids_ uuids --uuid-byte-size=4
+
+  /**
+  Constructs a field with a list of 128-bit service UUIDs.
+
+  See $DataBlock.services-16 for more information.
+  */
+  constructor.services-128 uuids/List --incomplete/bool=false:
+    if incomplete:
+      type = TYPE-SERVICE-UUIDS-128-INCOMPLETE
+    else:
+      type = TYPE-SERVICE-UUIDS-128-COMPLETE
+    data = encode-uuids_ uuids --uuid-byte-size=16
+
+  /**
+  Constructs a field with the name of the device.
+
+  If $shortened is true, then the name is not complete. The complete name may
+    be retrieved by reading the device name characteristic after the connection
+    has been established using GATT.
+  It might also be allowed to have an incomplete name in the advertising data, and
+    the complete name in the scan response. The specification isn't clear on this.
+
+  If an incomplete name is provided, it must be a prefix of the complete name.
+  The name field is optional and may only be present once.
+  */
+  constructor.name name/string --shortened/bool=false:
+    if name.size > 31: throw "NAME_TOO_LONG"
+    if shortened:
+      type = TYPE-NAME-SHORTENED
+    else:
+      type = TYPE-NAME-COMPLETE
+    data = name.to-byte-array
+
+  /**
+  Constructs a field with the transmit power level.
+
+  The transmit power level is the power level at which the packet was transmitted.
+
+  The power level may be used to calculate path loss on a received packet using
+    the following equation: path-loss = tx-power - rssi (where 'rssi' is the
+    received signal strength indicator).
+
+  For example, if the TX power level is +4 (dBm) and the RSSI on the received
+    packet is -60 (dBm) the the total path loss is +4 - (-60) = +64 dB.
+
+  The TX power level field is optional.
+  */
+  constructor.tx-power-level tx-power-level/int:
+    if not -127 <= tx-power-level <= 127: throw "INVALID_TX_POWER_LEVEL"
+    type = TYPE-TX-POWER-LEVEL
+    data = #[tx-power-level]
+
+  /**
+  Constructs a field with data for a service UUID.
+
+  This field consists of a service UUID with the data associated with that service.
+
+  This field is optional and may appear multiple times.
+  */
+  constructor.service-data uuid/BleUuid service-data/io.Data:
+    data = #[]  // Needed to make the compiler happy.
+    type = 0  // Needed to make the compiler happy.
+    encode-service-data_ uuid service-data: | uuid-byte-size encoded-data |
+      this.data = encoded-data
+      if uuid-byte-size == 2:
+        type = TYPE-SERVICE-DATA-16
+      else if uuid-byte-size == 4:
+        type = TYPE-SERVICE-DATA-32
+      else if uuid-byte-size == 16:
+        type = TYPE-SERVICE-DATA-128
+      else:
+        throw "INVALID_UUID_SIZE"
+
+  /**
+  Constructs a field with manufacturer specific data.
+
+  This field is optional and may appear multiple times.
+
+  The $company-id is a 16-bit value that is assigned by the Bluetooth SIG. The
+    value 0xFFFF is reserved for internal use.
+  */
+  constructor.manufacturer-specific manufacturer-data/io.Data --company-id/ByteArray=#[0xFF, 0xFF]:
+    if company-id.size != 2: throw "INVALID_COMPANY_ID"
+    type = TYPE-MANUFACTURER-SPECIFIC
+    bytes := ByteArray 2 + manufacturer-data.byte-size
+    bytes.replace 0 company-id
+    manufacturer-data.write-to-byte-array bytes --at=2 0 manufacturer-data.byte-size
+    data = bytes
+
+  /** Whether this data block encodes the flags field ($TYPE-FLAGS). */
+  is-flags -> bool:
+    return type == TYPE-FLAGS
+
+  /**
+  Returns the value of the flags field.
+
+  See $DataBlock.flags for more information on the bits.
+  */
+  flags -> int:
+    if not is-flags: throw "INVALID_TYPE"
+    if data.is-empty: return 0
+    return data[0]
+
+  /**
+  Whether this data block encodes a name ($TYPE-NAME-SHORTENED or $TYPE-NAME-COMPLETE).
+
+  Check the $type against $TYPE-NAME-COMPLETE to know whether the name is complete.
+  */
+  is-name -> bool:
+    return type == TYPE-NAME-SHORTENED or type == TYPE-NAME-COMPLETE
+
+  /**
+  Returns the (possibly shortened) name of the device.
+
+  If the name is incomplete, it is a prefix of the complete name.
+
+  Check the $type against $TYPE-NAME-COMPLETE to know whether the name is complete.
+  */
+  name -> string:
+    if not is-name: throw "INVALID_TYPE"
+    return data.to-string
+
+  /**
+  Whether this data block encodes service UUIDs.
+
+  Check the $type against $TYPE-SERVICE-UUIDS-16-COMPLETE to know whether
+    the list is complete.
+  */
+  is-services-16 -> bool:
+    return type == TYPE-SERVICE-UUIDS-16-INCOMPLETE or type == TYPE-SERVICE-UUIDS-16-COMPLETE
+
+  /**
+  Returns a (potentially incomplete) list of 16-bit service UUIDs.
+
+  Check the $type against $TYPE-SERVICE-UUIDS-16-COMPLETE to know whether
+    the list is complete.
+
+  See $DataBlock.services-16 for more information.
+  */
+  services-16 -> List:
+    if not is-services-16: throw "INVALID_TYPE"
+    return decode-uuids_ data --uuid-byte-size=2
+
+  /**
+  Whether this data block encodes 32-bit service UUIDs.
+
+  See $is-services-16.
+  */
+  is-services-32 -> bool:
+    return type == TYPE-SERVICE-UUIDS-32-INCOMPLETE or type == TYPE-SERVICE-UUIDS-32-COMPLETE
+
+  /**
+  Returns a (potentially incomplete) list of 32-bit service UUIDs.
+
+  See $services-16.
+  */
+  services-32 -> List:
+    if not is-services-32: throw "INVALID_TYPE"
+    return decode-uuids_ data --uuid-byte-size=4
+
+  /**
+  Whether this data block encodes 128-bit service UUIDs.
+
+  See $is-services-16.
+  */
+  is-services-128 -> bool:
+    return type == TYPE-SERVICE-UUIDS-128-INCOMPLETE or type == TYPE-SERVICE-UUIDS-128-COMPLETE
+
+  /**
+  Returns a (potentially incomplete) list of 128-bit service UUIDs.
+
+  See $services-16.
+  */
+  services-128 -> List:
+    if not is-services-128: throw "INVALID_TYPE"
+    return decode-uuids_ data --uuid-byte-size=16
+
+  /**
+  Whether this data block encodes service uuids.
+
+  This is a convenience function that checks all three types of service UUIDs.
+  See $is-services-16, $is-services-32, and $is-services-128.
+  */
+  is-services -> bool:
+    return is-services-16 or is-services-32 or is-services-128
+
+  /**
+  Returns a list of service UUIDs.
+
+  This is a convenience function that checks all three types of service UUIDs.
+  See $services-16, $services-32, and $services-128.
+  */
+  services -> List:
+    if is-services-16: return services-16
+    if is-services-32: return services-32
+    if is-services-128: return services-128
+    throw "INVALID_TYPE"
+
+  /**
+  Returns whether this data block contains the given service UUID.
+  */
+  contains-service uuid/BleUuid -> bool:
+    byte-size := uuid.byte-size
+    if byte-size == 2 and is-services-16 or
+        byte-size == 4 and is-services-32 or
+        byte-size == 16 and is-services-128:
+      bytes := uuid.to-byte-array --reversed
+      for i := 0; i < data.size; i += byte-size:
+        j := 0
+        while j < byte-size:
+          if data[i + j] != bytes[j]: break
+          j++
+        if j == byte-size: return true
+    return false
+
+  /**
+  Whether this data block encodes the transmit power level ($TYPE-TX-POWER-LEVEL).
+  */
+  is-tx-power-level -> bool:
+    return type == TYPE-TX-POWER-LEVEL
+
+  /**
+  Returns the transmit power level.
+
+  See $DataBlock.tx-power-level for more information.
+  */
+  tx-power-level -> int:
+    if not is-tx-power-level: throw "INVALID_TYPE"
+    value := data[0]
+    if value >= 128: return value - 256
+    return value
+
+  /** Whether this data block encodes data for a service UUID. */
+  is-service-data -> bool:
+    return type == TYPE-SERVICE-DATA-16 or
+        type == TYPE-SERVICE-DATA-32 or
+        type == TYPE-SERVICE-DATA-128
+
+  /** Whether this data block encodes data for the given uuid. */
+  is-service-data-for uuid/BleUuid -> bool:
+    uuid-bytes := uuid.to-byte-array --reversed
+    if uuid-bytes.size == 2:
+      return type == TYPE-SERVICE-DATA-16 and data[0 .. 1] == uuid-bytes
+    else if uuid-bytes.size == 4:
+      return type == TYPE-SERVICE-DATA-32 and data[0 .. 3] == uuid-bytes
+    else if uuid-bytes.size == 16:
+      return type == TYPE-SERVICE-DATA-128 and data[0 .. 15] == uuid-bytes
+    return false
+
+  /**
+  Calls the given block with the UUID and data of the service data block.
+
+  Returns the result of calling the block.
+
+  See $DataBlock.service-data for more information.
+  */
+  service-data [block] -> any:
+    if not is-service-data: throw "INVALID_TYPE"
+    byte-size/int := ?
+    if type == TYPE-SERVICE-DATA-16: byte-size = 2
+    else if type == TYPE-SERVICE-DATA-32: byte-size = 4
+    else if type == TYPE-SERVICE-DATA-128: byte-size = 16
+    else: unreachable
+    return decode-service-data_ data --uuid-byte-size=byte-size block
+
+  /** Whether this data block encodes manufacturer specific data. */
+  is-manufacturer-specific -> bool:
+    return type == TYPE-MANUFACTURER-SPECIFIC
+
+  /**
+  Calls the given $block with the company ID and manufacturer specific data.
+
+  Returns the result of calling the block.
+
+  See $DataBlock.manufacturer-specific for more information.
+  */
+  manufacturer-specific [block] -> any:
+    if not is-manufacturer-specific: throw "INVALID_TYPE"
+    return block.call data[0 .. 2] data[2 ..]
+
+  /**
+  Writes this field into the given $bytes at the given position $at.
+  */
+  write bytes/ByteArray --at/int [--on-error] -> int:
+    if bytes.size < at + 2:
+      return on-error.call "BUFFER_TOO_SMALL"
+    bytes[at] = data.size + 1
+    bytes[at + 1] = type
+    bytes.replace (at + 2) data
+    return at + data.size + 2
+
+  /**
+  Converts this data block to a raw byte array.
+  */
+  to-raw -> ByteArray:
+    result := ByteArray data.size + 2
+    result[0] = data.size + 1
+    result[1] = type
+    result.replace 2 data
+    return result
 
 /**
 Advertisement data as either sent by advertising or received through scanning.
@@ -116,47 +684,202 @@ The size of an advertisement packet is limited to 31 bytes. This includes the na
   and bytes that are required to structure the packet.
 */
 class AdvertisementData:
-  /**
-  The advertised name of the device.
-  */
-  name/string?
-
-  /**
-  Advertised service classes as a list of $BleUuid.
-  */
-  service-classes/List
-
-  /**
-  Advertised manufacturer-specific data.
-  */
-  manufacturer-data_/io.Data
+  /** The $DataBlock fields of this instance. */
+  data-blocks/List  // Of DataBlock.
 
   /**
   Whether connections are allowed.
+
+  Deprecated: Use $RemoteScannedDevice.is-connectable instead.
   */
   connectable/bool
 
   /**
+  Constructs an advertisement data packet with the given data blocks.
+
+  Advertisement packets are limited to 31 data bytes. If $check-size is true, then
+    the size of the data blocks is checked to ensure that the packet size does not
+    exceed 31 bytes.
+
+  The $connectable parameter is only used to set the deprecated field of the same name.
+    It is safe to ignore it if the field is not used.
+  */
+  constructor .data-blocks --.connectable/bool=false --check-size/bool=true:
+    if check-size and size > 31: throw "PACKET_SIZE_EXCEEDED"
+
+  /**
+  Constructs an advertisement data packet from the $raw data.
+
+  Advertisement packets are limited to 31 data bytes.
+
+  The $connectable parameter is only used to set the deprecated field of the same name.
+    It is safe to ignore it if the field is not used.
+  */
+  constructor.raw raw/ByteArray? --.connectable/bool=false:
+    data-blocks = raw ? DataBlock.decode raw : []
+
+  /**
+  Deprecated. Use the $(constructor --services --manufacturer-specific) instead.
+  */
+  constructor
+      --name/string?=null
+      --service-classes/List
+      --manufacturer-data/io.Data=#[]
+      --connectable/bool=false
+      --flags/int=0
+      --check-size/bool=true:
+    return AdvertisementData
+        --name=name
+        --services=service-classes
+        --manufacturer-specific=manufacturer-data.byte-size > 0 ? manufacturer-data : null
+        --connectable=connectable
+        --flags=flags
+        --check-size=check-size
+
+  /**
+  Constructs an advertisement packet.
+
+  The $connectable parameter is only used to set the deprecated field of the same name.
+    It is safe to ignore it if the field is not used.
+
+  If the $services parameter is not empty, then the list is split into 16-bit, 32-bit,
+    and 128-bit UUIDs. Each of the lists that isn't empty is then encoded into the
+    advertisement data.
+  */
+  constructor
+      --name/string?=null
+      --services/List=[]
+      --manufacturer-specific/io.Data?=null
+      --.connectable=false
+      --flags/int?=null
+      --check-size/bool=true:
+    blocks := []
+    if name: blocks.add (DataBlock.name name)
+    if not services.is-empty:
+      uuids-16 := []
+      uuids-32 := []
+      uuids-128 := []
+      services.do: | uuid/BleUuid |
+        if uuid.to-byte-array.size == 2: uuids-16.add uuid
+        else if uuid.to-byte-array.size == 4: uuids-32.add uuid
+        else: uuids-128.add uuid
+      if not uuids-16.is-empty: blocks.add (DataBlock.services-16 uuids-16)
+      if not uuids-32.is-empty: blocks.add (DataBlock.services-32 uuids-32)
+      if not uuids-128.is-empty: blocks.add (DataBlock.services-128 uuids-128)
+    if manufacturer-specific: blocks.add (DataBlock.manufacturer-specific manufacturer-specific)
+    if flags: blocks.add (DataBlock.flags flags)
+    data-blocks = blocks
+
+    if check-size:
+      size := 0
+      data-blocks.do: | block/DataBlock |
+        size += 2 + block.data.size
+      if size > 31: throw "PACKET_SIZE_EXCEEDED"
+
+  /**
+  The advertised name of the device.
+  */
+  name -> string?:
+    data-blocks.do: | block/DataBlock |
+      if block.is-name: return block.name
+    return null
+
+  /**
+  Advertised service classes as a list of $BleUuid.
+
+  Deprecated. Use $services instead.
+  */
+  service-classes -> List: return services
+
+  /**
+  Advertised services as a list of $BleUuid.
+
+  Returns the empty list if no services are present.
+  */
+  services -> List?:
+    result := []
+    data-blocks.do: | block/DataBlock |
+      if block.is-services:
+        result.add-all block.services
+    return result
+
+  /**
+  Whether this advertisement contains the given service UUID.
+  */
+  contains-service uuid/BleUuid -> bool:
+    data-blocks.do: | block/DataBlock |
+      if block.is-services and block.contains-service uuid: return true
+    return false
+
+  /**
   Advertise flags. This must be a bitwise 'or' of the BLE-ADVERTISE-FLAG_* constants
     (see $BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY and similar).
+
+  For backwards compatibility, returns 0 if no flags are present.
   */
-  flags/int
+  flags -> int:
+    data-blocks.do: | block/DataBlock |
+      if block.is-flags: return block.flags
+    return 0
 
-  constructor --.name=null --.service-classes=[] --manufacturer-data/io.Data=#[]
-              --.connectable=false --.flags=0 --check-size=true:
-    manufacturer-data_ = manufacturer-data
-    size := 0
-    if name: size += 2 + name.size
-    service-classes.do: | uuid/BleUuid |
-      size += 2 + uuid.to-byte-array.size
-    if manufacturer-data.byte-size > 0: size += 2 + manufacturer-data.byte-size
-    if size > 31 and check-size: throw "PACKET_SIZE_EXCEEDED"
+  /**
+  The transmit power level.
+  */
+  tx-power-level -> int?:
+    data-blocks.do: | block/DataBlock |
+      if block.is-tx-power-level: return block.tx-power-level
+    return null
 
+  /**
+  Manufacturer data as a byte array.
+
+  For backwards compatibility, returns an empty byte array if no manufacturer data is present.
+
+  Returns the concatenation of the manufacturer-id and the manufacturer-specific data.
+
+  Deprecated. Use $manufacturer-specific instead.
+  */
   manufacturer-data -> ByteArray:
-    if manufacturer-data_ is ByteArray:
-      return manufacturer-data_ as ByteArray
-    return ByteArray.from manufacturer-data_
+    data-blocks.do: | block/DataBlock |
+      if block.is-manufacturer-specific: return block.data.copy
+    return ByteArray 0
 
+  /**
+  Calls the given $block with the first field of manufacturer specific data.
+
+  Calls the block with the company ID and manufacturer specific data.
+  If no manufacturer specific data is present, the block is not called.
+
+  Returns the result of calling the block, or null if no manufacturer specific data is present.
+  */
+  manufacturer-specific [block] -> any:
+    data-blocks.do: | data-block/DataBlock |
+      if data-block.is-manufacturer-specific:
+        return data-block.manufacturer-specific block
+    return null
+
+  /**
+  The size of the advertisement data packet.
+
+  Returns the size of all the data blocks.
+  */
+  size -> int:
+    size := 0
+    data-blocks.do: | block/DataBlock |
+      size += 2 + block.data.size
+    return size
+
+  /**
+  Encodes the advertisement data into a byte array.
+
+  Does not check if the size of the advertisement data exceeds 31 bytes.
+  */
+  to-raw -> ByteArray:
+    result := ByteArray size
+    pos := 0
+    data-blocks.do: | block/DataBlock |
+      pos = block.write result --at=pos --on-error=: throw it
+    return result
 
 CHARACTERISTIC-PROPERTY-BROADCAST                    ::= 0x0001
 CHARACTERISTIC-PROPERTY-READ                         ::= 0x0002
@@ -418,8 +1141,11 @@ ble-handle_ resource:
 ble-set-characteristic-notify_ characteristic value:
   #primitive.ble.set-characteristic-notify
 
-ble-advertise-start_ peripheral-manager name services manufacturer-data interval connection-mode flags:
+ble-advertise-start_ peripheral-manager name services interval_us connection-mode flags:
   #primitive.ble.advertise-start
+
+ble-advertise-start-raw_ peripheral-manager advertising-packet/ByteArray scan-response/ByteArray? interval_us/int connection-mode/int:
+  #primitive.ble.advertise-start-raw
 
 ble-advertise-stop_ peripheral-manager:
   #primitive.ble.advertise-stop

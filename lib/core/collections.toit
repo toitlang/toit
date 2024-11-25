@@ -1278,6 +1278,17 @@ interface ByteArray extends io.Data:
   last -> int
 
   /**
+  Reverses the order of the bytes in this instance.
+  */
+  reverse --in-place/True -> none
+
+  /**
+  Returns a copy of this instance with the order of the bytes reversed.
+  */
+  reverse -> ByteArray
+
+
+  /**
   Returns the $n'th byte.
   */
   operator [] n/int -> int
@@ -1649,6 +1660,17 @@ abstract class ByteArrayBase_ implements ByteArray:
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     target.replace at this from to
 
+  reverse --in-place/True -> none:
+    (size >> 1).repeat: | i/int |
+      j := size - i - 1
+      tmp := this[i]
+      this[i] = this[j]
+      this[j] = tmp
+
+  reverse -> ByteArray:
+    result := ByteArray size: this[size - it - 1]
+    return result
+
 /**
 A container specialized for bytes.
 
@@ -1812,6 +1834,12 @@ class CowByteArray_ implements ByteArray:
 
   last -> int:
     return backing_.last
+
+  reverse --in-place/True -> none:
+    backing_.reverse --in-place
+
+  reverse -> ByteArray:
+    return backing_.reverse
 
   operator [] n/int -> int:
     return backing_[n]

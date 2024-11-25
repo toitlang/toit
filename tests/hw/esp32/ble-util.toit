@@ -3,16 +3,11 @@
 // be found in the tests/LICENSE file.
 
 import ble show *
-import expect show *
 
-TEST-SERVICE ::= BleUuid "c6fbc686-fa22-4252-9dd5-092ffd33432c"
-
-main:
-  adapter := Adapter
-  central := adapter.central
-
+find-device-with-service central/Central service/BleUuid -> any:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
-    if device.data.service_classes.contains TEST-SERVICE:
-      unreachable
+    if device.data.contains-service service:
+      print "Found device with service $service: $device"
+      return device.address
 
-  adapter.close
+  throw "No device found with service $service"

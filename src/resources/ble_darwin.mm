@@ -1149,14 +1149,12 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags);
+       int, interval_us, int, conn_mode, int, flags);
   USE(interval_us);
   USE(conn_mode);
   USE(flags);
 
   NSMutableDictionary* data = [NSMutableDictionary new];
-
-  if (manufacturing_data.length() > 0) FAIL(INVALID_ARGUMENT);
 
   if (name.length() > 0) {
     data[CBAdvertisementDataLocalNameKey] = ns_string_from_blob(name);
@@ -1171,6 +1169,10 @@ PRIMITIVE(advertise_start) {
   [peripheral_manager->peripheral_manager() startAdvertising:data];
 
   return process->null_object();
+}
+
+PRIMITIVE(advertise_start_raw) {
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(advertise_stop) {

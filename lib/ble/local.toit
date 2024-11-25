@@ -4,7 +4,6 @@
 
 import io
 import system
-import system show platform
 
 import .ble
 import .remote show RemoteCharacteristic  // For Toitdoc.
@@ -59,27 +58,57 @@ class Peripheral extends Resource_:
   */
   start-advertise
       data/AdvertisementData
+      --scan-response/AdvertisementData?=null
       --interval/Duration=DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
-    if platform == system.PLATFORM-MACOS:
+    if system.platform == system.PLATFORM-MACOS:
+      if scan-response: throw "UNSUPPORTED"
+      data.data-blocks.do: | block/DataBlock |
+        if not block.is-name and not block.is-services and not block.is-flags:
+          throw "UNSUPPORTED"
       if interval != DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
 
-    raw-service-classes := Array_ data.service-classes.size null
+      services := data.services
+      raw-service-classes := Array_ services.size null
 
-    data.service-classes.size.repeat:
-      id/BleUuid := data.service-classes[it]
-      raw-service-classes[it] = id.encode-for-platform_
-    ble-advertise-start_
-        resource_
-        data.name or ""
-        raw-service-classes
-        data.manufacturer-data_
-        interval.in-us
-        connection-mode
-        data.flags
+      services.size.repeat:
+        id/BleUuid := services[it]
+        raw-service-classes[it] = id.encode-for-platform_
+      ble-advertise-start_
+          resource_
+          data.name or ""
+          raw-service-classes
+          interval.in-us
+          connection-mode
+          data.flags
+    else:
+      raw := data.to-raw
+      if raw.size > 31: throw "INVALID_ARGUMENT"
+      response-raw/ByteArray? := null
+      if scan-response:
+        response-raw = scan-response.to-raw
+        if response-raw.size > 31: throw "INVALID_ARGUMENT"
+      ble-advertise-start-raw_
+          resource_
+          raw
+          response-raw
+          interval.in-us
+          connection-mode
 
     state := resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
     if state & ADVERTISE-START-FAILED-EVENT_ != 0: throw "Failed to start advertising"
+
+  /**
+  Variant of $(start-advertise data).
+
+  Sets the connection-mode to $BLE-CONNECT-MODE-UNDIRECTIONAL.
+  */
+  start-advertise
+      data/AdvertisementData
+      --scan-response/AdvertisementData?=null
+      --interval/Duration=DEFAULT-INTERVAL
+      --allow-connections/True:
+    start-advertise data --scan-response=scan-response --interval=interval --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL
 
   /**
   Stops advertising.
@@ -464,6 +493,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     // In case of a write-handler, we also accept data-received-events, just in case
     // data was received before the handler was set.
     event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
+    if not resource_: throw "ALREADY_CLOSED"
     ble-callback-init_ resource_ timeout-ms for-read
     try:
       while true:
@@ -606,6 +636,6 @@ class LocalReadWriteElement_ extends Resource_:
       resource-state_.wait-for-state DATA-RECEIVED-EVENT_
 
 ble-retrieve-adapters_:
-  if platform == system.PLATFORM-FREERTOS or platform == system.PLATFORM-MACOS:
+  if system.platform == system.PLATFORM-FREERTOS or system.platform == system.PLATFORM-MACOS:
     return [["default", #[], true, true, null]]
   throw "Unsupported platform"

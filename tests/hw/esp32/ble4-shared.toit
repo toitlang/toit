@@ -13,7 +13,9 @@ import ble show *
 import expect show *
 import monitor
 
-TEST-SERVICE ::= BleUuid "df451d2d-e899-4346-a8fd-bca9cbfebc0b"
+import .ble-util
+
+TEST-SERVICE ::= BleUuid "650a73d3-d7fd-4d08-b734-d11e25b0856d"
 
 TEST-CHARACTERISTIC ::= BleUuid "77d0b04e-bf49-4048-a4cd-fb46be32ebd0"
 TEST-CHARACTERISTIC-CALLBACK ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
@@ -49,20 +51,11 @@ main-peripheral:
 
   advertisement := AdvertisementData
       --name="Test"
-      --service-classes=[TEST-SERVICE]
+      --services=[TEST-SERVICE]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement
 
   done-latch.get
   print "done"
-
-
-find-device-with-service central/Central service/BleUuid -> any:
-  central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
-    if device.data.service_classes.contains service:
-      print "Found device with service $service: $device"
-      return device.address
-
-  throw "No device found with service $service"
 
 main-central:
   adapter := Adapter
