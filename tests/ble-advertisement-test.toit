@@ -259,7 +259,6 @@ test-advertisement-packets:
   expect packet.services.is-empty
   expect-equals 0x04 packet.flags
   packet.manufacturer-specific: unreachable
-  expect-equals #[] packet.manufacturer-data
   expect-equals [] packet.services
   expect-equals packet.to-raw (Advertisement.raw packet.to-raw).to-raw
 

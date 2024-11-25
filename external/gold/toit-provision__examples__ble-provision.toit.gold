@@ -1,4 +1,3 @@
-<pkg:..>/src_/ble.toit:55:13: error: Argument mismatch for 'AdvertisementData'
-Required named argument '--connectable' not provided
+<pkg:..>/src_/ble.toit:55:12: warning: Class 'AdvertisementData' is deprecated. Use 'Advertisement' instead
         ble.AdvertisementData
-            ^~~~~~~~~~~~~~~~~
+           ^~~~~~~~~~~~~~~~~~
