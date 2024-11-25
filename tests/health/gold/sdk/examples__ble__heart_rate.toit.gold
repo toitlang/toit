@@ -2,9 +2,9 @@ examples/ble/heart_rate.toit:38:7: error: Argument mismatch for 'AdvertisementDa
 Required named argument '--connectable' not provided
       AdvertisementData --name="Toit heart rate demo"
       ^~~~~~~~~~~~~~~~~
-<sdk>/ble/remote.toit:116:13: warning: Class 'AdvertisementData' is deprecated. Use 'Advertisement' instead
-            AdvertisementData
-            ^~~~~~~~~~~~~~~~~
-<sdk>/ble/remote.toit:133:30: warning: Class 'AdvertisementData' is deprecated. Use 'Advertisement' instead
-            AdvertisementData.raw_ next[2] --connectable=next[3]
-                             ^~~~~
+<sdk>/ble/remote.toit:116:15: warning: Class 'AdvertisementData' is deprecated. Use 'Advertisement' instead
+              AdvertisementData
+              ^~~~~~~~~~~~~~~~~
+<sdk>/ble/remote.toit:133:32: warning: Class 'AdvertisementData' is deprecated. Use 'Advertisement' instead
+              AdvertisementData.raw_ next[2] --connectable=next[3]
+                               ^~~~~

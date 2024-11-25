@@ -111,8 +111,8 @@ class Central extends Resource_:
               rssi
               --is-connectable=next[6]
               --is-scan-response=false
-            --address-bytes=null
-            --address-type=null
+              --address-bytes=null
+              --address-type=null
               AdvertisementData
                   --name=next[2]
                   --service-classes=service-classes
