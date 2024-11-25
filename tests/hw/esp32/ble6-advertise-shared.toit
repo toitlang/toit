@@ -130,7 +130,6 @@ main-central:
     expect-equals [TEST-SERVICE] data.services
     expect-equals "Test" data.name
 
-
   test-data address characteristic --central=central --no-is-connectable: | data/AdvertisementData |
     blocks := data.data-blocks
     expect-equals 0 blocks.size
