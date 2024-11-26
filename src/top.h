@@ -311,6 +311,15 @@ class Task;
 // libraries.  By bundling the captured variables in an on-stack object we
 // avoid that.
 
+#define CAPTURE2(T1, x1, T2, x2)               \
+  struct {                                     \
+    T1 x1;                                     \
+    T2 x2;                                     \
+  } capture = {                                \
+    .x1 = x1,                                  \
+    .x2 = x2,                                  \
+  }
+
 #define CAPTURE3(T1, x1, T2, x2, T3, x3)       \
   struct {                                     \
     T1 x1;                                     \
