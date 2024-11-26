@@ -32,8 +32,6 @@
 
 namespace toit {
 
-static ResourcePool<int, 0> dma_channels(1, 2);
-
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
@@ -51,18 +49,15 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #endif
 );
 
-SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device,
-                                   int dma_channel)
+SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
     : ResourceGroup(process, event_source)
-    , host_device_(host_device)
-    , dma_channel_(dma_channel) {}
+    , host_device_(host_device) {}
 
 SpiResourceGroup::~SpiResourceGroup() {
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
   });
   spi_host_devices.put(host_device_);
-  dma_channels.put(dma_channel_);
 }
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
@@ -103,12 +98,6 @@ PRIMITIVE(init) {
   host_device = spi_host_devices.preferred(host_device);
   if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
 
-  int dma_chan = dma_channels.any();
-  if (dma_chan == 0) {
-    spi_host_devices.put(host_device);
-    FAIL(ALLOCATION_FAILED);
-  }
-
   spi_bus_config_t conf = {};
   conf.mosi_io_num = mosi;
   conf.miso_io_num = miso;
@@ -118,33 +107,19 @@ PRIMITIVE(init) {
   conf.max_transfer_sz = 0;
   conf.flags = 0;
   conf.intr_flags = ESP_INTR_FLAG_IRAM;
-  struct {
-    spi_host_device_t host_device;
-    int dma_chan;
-    esp_err_t err;
-  } args {
-    .host_device = host_device,
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    .dma_chan = SPI_DMA_CH_AUTO,
-#else
-    .dma_chan = dma_chan,
-#endif
-    .err = ESP_OK,
-  };
+  CAPTURE2(spi_host_device_t, host_device, spi_bus_config_t, conf);
+  esp_err_t err = ESP_OK;
   SystemEventSource::instance()->run([&]() -> void {
-    args.err = spi_bus_initialize(args.host_device, &conf, args.dma_chan);
+    err = spi_bus_initialize(capture.host_device, &capture.conf, SPI_DMA_CH_AUTO);
   });
-  if (args.err != ESP_OK) {
+  if (err != ESP_OK) {
     spi_host_devices.put(host_device);
-    dma_channels.put(dma_chan);
-    return Primitive::os_error(args.err, process);
+    return Primitive::os_error(err, process);
   }
 
-  // TODO: Reclaim dma channel.
-  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device, dma_chan);
+  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device);
   if (!spi) {
     spi_host_devices.put(host_device);
-    dma_channels.put(dma_chan);
     FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(spi);
