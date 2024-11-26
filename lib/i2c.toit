@@ -196,7 +196,7 @@ class Device implements serial.Device:
     and then calling $(write bytes).
   */
   write-reg register/int bytes/ByteArray:
-    write bytes: throw it
+    write-reg register bytes: throw it
 
   /**
   Variant of $(write-reg register bytes).
