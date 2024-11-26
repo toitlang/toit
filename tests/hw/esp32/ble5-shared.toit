@@ -40,7 +40,7 @@ main-peripheral:
           break
         characteristic.set-value data
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[TEST-SERVICE]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement

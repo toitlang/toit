@@ -12,15 +12,15 @@ SCAN-DURATION   ::= Duration --s=3
 find-with-service central/ble.Central service/ble.BleUuid:
   central.scan --duration=SCAN-DURATION: | device/ble.RemoteScannedDevice |
     if device.data.contains-service service:
-        return device.address
+        return device.identifier
   throw "no device found"
 
 main:
   adapter := ble.Adapter
   central := adapter.central
 
-  address := find-with-service central BATTERY-SERVICE
-  remote-device := central.connect address
+  identifier := find-with-service central BATTERY-SERVICE
+  remote-device := central.connect identifier
   // Discover the battery service.
   services := remote-device.discover-services [BATTERY-SERVICE]
   battery-service/ble.RemoteService := services.first
@@ -33,4 +33,4 @@ main:
   value := battery-level-characteristic.read
   battery-level := value[0]
 
-  print "Battery level of $address: $battery-level%"
+  print "Battery level of $identifier: $battery-level%"

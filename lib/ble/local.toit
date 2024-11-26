@@ -57,8 +57,8 @@ class Peripheral extends Resource_:
   Throws if the adapter does not allow configuration of $interval or $connection-mode.
   */
   start-advertise
-      data/AdvertisementData
-      --scan-response/AdvertisementData?=null
+      data/Advertisement
+      --scan-response/Advertisement?=null
       --interval/Duration=DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
     if system.platform == system.PLATFORM-MACOS:
@@ -104,8 +104,8 @@ class Peripheral extends Resource_:
   Sets the connection-mode to $BLE-CONNECT-MODE-UNDIRECTIONAL.
   */
   start-advertise
-      data/AdvertisementData
-      --scan-response/AdvertisementData?=null
+      data/Advertisement
+      --scan-response/Advertisement?=null
       --interval/Duration=DEFAULT-INTERVAL
       --allow-connections/True:
     start-advertise data --scan-response=scan-response --interval=interval --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL

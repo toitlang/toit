@@ -250,7 +250,7 @@ test-data-blocks:
     expect-equals #[0x01, 0x02, 0x03] data
 
 test-advertisement-packets:
-  packet := AdvertisementData [DataBlock.flags BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED]
+  packet := Advertisement [DataBlock.flags BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED]
   expect-equals #[
                   0x02, 0x01, 0x04,
                 ]
@@ -259,11 +259,10 @@ test-advertisement-packets:
   expect packet.services.is-empty
   expect-equals 0x04 packet.flags
   packet.manufacturer-specific: unreachable
-  expect-equals #[] packet.manufacturer-data
   expect-equals [] packet.services
-  expect-equals packet.to-raw (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals packet.to-raw (Advertisement.raw packet.to-raw).to-raw
 
-  packet = AdvertisementData [
+  packet = Advertisement [
     DataBlock.flags --limited-discovery,
     DataBlock.name "foobar",
     DataBlock.manufacturer-specific #[0x01, 0x02, 0x03],
@@ -274,19 +273,19 @@ test-advertisement-packets:
                   0x06, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03,  // Manufacturer specific
                 ]
                 packet.to-raw
-  expect-equals packet.to-raw (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals packet.to-raw (Advertisement.raw packet.to-raw).to-raw
 
   // 27 bytes are fine.
-  packet = AdvertisementData [
+  packet = Advertisement [
     DataBlock.manufacturer-specific (ByteArray 27),
   ]
   expect-throw "PACKET_SIZE_EXCEEDED":
-    AdvertisementData [
+    Advertisement [
       DataBlock.manufacturer-specific (ByteArray 28)
     ]
 
   // We can ignore the check.
-  packet = AdvertisementData --no-check-size [
+  packet = Advertisement --no-check-size [
     DataBlock.manufacturer-specific (ByteArray 28)
   ]
 
@@ -306,7 +305,7 @@ test-real-world-examples:
     0x1b, 0xff,  // Manufacturer Specific.
   ] + company-id + manufacturer-data
 
-  packet := AdvertisementData [
+  packet := Advertisement [
     DataBlock.flags --general-discovery --bredr-supported=false,
     DataBlock.manufacturer-specific --company-id=company-id manufacturer-data
   ]
@@ -317,7 +316,7 @@ test-real-world-examples:
       data)
 
   expect-equals real packet.to-raw
-  expect-equals real (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals real (Advertisement.raw packet.to-raw).to-raw
 
 
   real = #[
@@ -326,7 +325,7 @@ test-real-world-examples:
     0x05, 0x12, 0x06, 0x00, 0x14, 0x00,  // Slave connection interval range.
   ]
 
-  packet = AdvertisementData [
+  packet = Advertisement [
     DataBlock.flags --limited-discovery --bredr-supported=false,
     DataBlock.tx-power-level -4,
     DataBlock 0x12 #[0x06, 0x00, 0x14, 0x00],
@@ -335,7 +334,7 @@ test-real-world-examples:
   expect-equals -4 packet.tx-power-level
 
   expect-equals real packet.to-raw
-  expect-equals real (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals real (Advertisement.raw packet.to-raw).to-raw
 
   expect-equals 3 packet.data-blocks.size
 
@@ -345,20 +344,20 @@ test-real-world-examples:
   ]
   uuid := BleUuid "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 
-  packet = AdvertisementData [
+  packet = Advertisement [
     DataBlock.services-128 [uuid],
   ]
   expect-equals [uuid] packet.services
 
   expect-equals real packet.to-raw
-  expect-equals real (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals real (Advertisement.raw packet.to-raw).to-raw
 
 
   real = #[
     0x11, 0x07, 0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0, 0x93, 0xf3, 0xa3, 0xb5, 0x01, 0x00, 0x40, 0x6e,  // Services.
     0x0c, 0x09, 0x4e, 0x6f, 0x72, 0x64, 0x69, 0x63, 0x5f, 0x55, 0x41, 0x52, 0x54,  // Name.
   ]
-  packet = AdvertisementData [
+  packet = Advertisement [
     DataBlock.services-128 [uuid],
     DataBlock.name "Nordic_UART",
   ]
@@ -366,4 +365,4 @@ test-real-world-examples:
   expect-equals "Nordic_UART" packet.name
 
   expect-equals real packet.to-raw
-  expect-equals real (AdvertisementData.raw packet.to-raw).to-raw
+  expect-equals real (Advertisement.raw packet.to-raw).to-raw

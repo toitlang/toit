@@ -678,14 +678,29 @@ class DataBlock:
     return result
 
 /**
-Advertisement data as either sent by advertising or received through scanning.
-
-The size of an advertisement packet is limited to 31 bytes. This includes the name
-  and bytes that are required to structure the packet.
+Deprecated. Use $Advertisement instead.
 */
-class AdvertisementData:
-  /** The $DataBlock fields of this instance. */
-  data-blocks/List  // Of DataBlock.
+class AdvertisementData extends Advertisement:
+  /**
+  Deprecated. Use the $Advertisement.constructor instead. The argument $manufacturer-data has
+    been renamed to 'manufacturer-specific', and $service-classes has been renamed to 'services'.
+  */
+  constructor
+      --name/string?=null
+      --service-classes/List=[]
+      --manufacturer-data/io.Data=#[]
+      --.connectable=false
+      --flags/int=0
+      --check-size/bool=true:
+    super
+        --name=name
+        --services=service-classes
+        --manufacturer-specific=manufacturer-data.byte-size > 0 ? manufacturer-data : null
+        --flags=flags
+        --check-size=check-size
+
+  constructor.raw_ bytes/ByteArray? --.connectable:
+    super.raw bytes
 
   /**
   Whether connections are allowed.
@@ -695,52 +710,56 @@ class AdvertisementData:
   connectable/bool
 
   /**
+  Advertised service classes as a list of $BleUuid.
+
+  Deprecated. Use $Advertisement.services instead.
+  */
+  service-classes -> List: return services
+
+  /**
+  Manufacturer data as a byte array.
+
+  For backwards compatibility, returns an empty byte array if no manufacturer data is present.
+
+  Returns the concatenation of the manufacturer-id and the manufacturer-specific data.
+
+  Deprecated. Use $Advertisement.manufacturer-specific instead.
+  */
+  manufacturer-data -> ByteArray:
+    data-blocks.do: | block/DataBlock |
+      if block.is-manufacturer-specific: return block.data.copy
+    return ByteArray 0
+
+/**
+Advertisement data as either sent by advertising or received through scanning.
+
+The size of an advertisement packet is limited to 31 bytes. This includes the name
+  and bytes that are required to structure the packet.
+*/
+class Advertisement:
+  /** The $DataBlock fields of this instance. */
+  data-blocks/List  // Of DataBlock.
+
+  /**
   Constructs an advertisement data packet with the given data blocks.
 
   Advertisement packets are limited to 31 data bytes. If $check-size is true, then
     the size of the data blocks is checked to ensure that the packet size does not
     exceed 31 bytes.
-
-  The $connectable parameter is only used to set the deprecated field of the same name.
-    It is safe to ignore it if the field is not used.
   */
-  constructor .data-blocks --.connectable/bool=false --check-size/bool=true:
+  constructor .data-blocks --check-size/bool=true:
     if check-size and size > 31: throw "PACKET_SIZE_EXCEEDED"
 
   /**
   Constructs an advertisement data packet from the $raw data.
 
   Advertisement packets are limited to 31 data bytes.
-
-  The $connectable parameter is only used to set the deprecated field of the same name.
-    It is safe to ignore it if the field is not used.
   */
-  constructor.raw raw/ByteArray? --.connectable/bool=false:
+  constructor.raw raw/ByteArray?:
     data-blocks = raw ? DataBlock.decode raw : []
 
   /**
-  Deprecated. Use the $(constructor --services --manufacturer-specific) instead.
-  */
-  constructor
-      --name/string?=null
-      --service-classes/List
-      --manufacturer-data/io.Data=#[]
-      --connectable/bool=false
-      --flags/int=0
-      --check-size/bool=true:
-    return AdvertisementData
-        --name=name
-        --services=service-classes
-        --manufacturer-specific=manufacturer-data.byte-size > 0 ? manufacturer-data : null
-        --connectable=connectable
-        --flags=flags
-        --check-size=check-size
-
-  /**
   Constructs an advertisement packet.
-
-  The $connectable parameter is only used to set the deprecated field of the same name.
-    It is safe to ignore it if the field is not used.
 
   If the $services parameter is not empty, then the list is split into 16-bit, 32-bit,
     and 128-bit UUIDs. Each of the lists that isn't empty is then encoded into the
@@ -750,7 +769,6 @@ class AdvertisementData:
       --name/string?=null
       --services/List=[]
       --manufacturer-specific/io.Data?=null
-      --.connectable=false
       --flags/int?=null
       --check-size/bool=true:
     blocks := []
@@ -783,13 +801,6 @@ class AdvertisementData:
     data-blocks.do: | block/DataBlock |
       if block.is-name: return block.name
     return null
-
-  /**
-  Advertised service classes as a list of $BleUuid.
-
-  Deprecated. Use $services instead.
-  */
-  service-classes -> List: return services
 
   /**
   Advertised services as a list of $BleUuid.
@@ -829,20 +840,6 @@ class AdvertisementData:
     data-blocks.do: | block/DataBlock |
       if block.is-tx-power-level: return block.tx-power-level
     return null
-
-  /**
-  Manufacturer data as a byte array.
-
-  For backwards compatibility, returns an empty byte array if no manufacturer data is present.
-
-  Returns the concatenation of the manufacturer-id and the manufacturer-specific data.
-
-  Deprecated. Use $manufacturer-specific instead.
-  */
-  manufacturer-data -> ByteArray:
-    data-blocks.do: | block/DataBlock |
-      if block.is-manufacturer-specific: return block.data.copy
-    return ByteArray 0
 
   /**
   Calls the given $block with the first field of manufacturer specific data.

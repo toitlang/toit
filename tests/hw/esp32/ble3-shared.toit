@@ -92,7 +92,7 @@ main-peripheral:
   peripheral.deploy
   print "Deployed $UUIDS.size services"
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[first-service.uuid]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement

@@ -41,7 +41,7 @@ main-peripheral:
 
   peripheral.deploy
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[SERVICE-TEST]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement

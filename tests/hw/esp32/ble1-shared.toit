@@ -73,7 +73,7 @@ main-peripheral --iteration/int:
   seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
   expect-equals 6 seen-handles.size
 
-  advertisement := AdvertisementData
+  advertisement := Advertisement
       --name="Test"
       --services=[SERVICE-TEST]
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement

@@ -27,15 +27,15 @@ class Central extends Resource_:
     close_
 
   /**
-  Connects to the remote device with the given $address.
+  Connects to the remote device with the given $identifier.
 
   Connections cannot be established while a scan is ongoing.
 
   If $secure is true, the connections is secured and the remote
     peer is bonded.
   */
-  connect address/any --secure/bool=false -> RemoteDevice:
-    remote-device := RemoteDevice.private_ this address secure
+  connect identifier/any --secure/bool=false -> RemoteDevice:
+    remote-device := RemoteDevice.private_ this identifier secure
     remotes-devices_.add remote-device
     return remote-device
 
@@ -104,25 +104,33 @@ class Central extends Resource_:
               service-classes.add
                   BleUuid raw-service-classes[it]
 
+          identifier := next[0]
+          rssi := next[1]
           discovery = RemoteScannedDevice
-              next[0]
-              next[1]
+              identifier
+              rssi
               --is-connectable=next[6]
               --is-scan-response=false
+              --address-bytes=null
+              --address-type=null
               AdvertisementData
                   --name=next[2]
-                  --services=service-classes
-                  --manufacturer-specific=(next[4] ? next[4] : #[])
+                  --service-classes=service-classes
+                  --manufacturer-data=(next[4] ? next[4] : #[])
                   --flags=next[5]
                   --connectable=next[6]
                   --check-size=false
         else:
+          identifier := next[0]
+          rssi := next[1]
           discovery = RemoteScannedDevice
-              next[0]
-              next[1]
+              identifier
+              rssi
               --is-connectable=next[3]
               --is-scan-response=next[4]
-              AdvertisementData.raw next[2] --connectable=next[3]
+              --address-type=identifier[0]
+              --address-bytes=identifier[1..]
+              AdvertisementData.raw_ next[2] --connectable=next[3]
 
         block.call discovery
     finally:
@@ -130,7 +138,7 @@ class Central extends Resource_:
       resource-state_.wait-for-state COMPLETED-EVENT_
 
   /**
-  Returns a list of device addresses that have been bonded. The elements
+  Returns a list of device identifiers that have been bonded. The elements
     of the list can be used as arguments to $connect.
 
   NOTE: Not implemented on MacOS.
@@ -143,9 +151,63 @@ A remote device discovered by a scanning.
 */
 class RemoteScannedDevice:
   /**
-  The BLE address of the remote device.
+  A globally fixed address that has been registered with IEEE.
   */
-  address/any
+  static ADDRESS-TYPE-PUBLIC := 0
+  /**
+  A random static address.
+
+  A random address that is not changed for the lifetime of the device.
+  */
+  static ADDRESS-TYPE-RANDOM := 1
+  /**
+  A resolvable private address.
+
+  A random address that can be resolved to a public or static
+    ($ADDRESS-TYPE-RANDOM) address using a pre-shared key.
+  */
+  static ADDRESS-TYPE-PUBLIC_IDENTITY := 2
+  /**
+  A non-resolvable private address.
+
+  An address that changes periodically and cannot be resolved to a public
+    or static address.
+  */
+  static ADDRESS-TYPE-RANDOM_IDENTITY := 3
+
+  /**
+  The BLE address of the remote device.
+
+  Deprecated: Use $identifier instead.
+  */
+  address -> any: return identifier
+
+  /**
+  The identifier of the remote device.
+
+  The identifier is platform dependent and must be used to $Central.connect to the device.
+  */
+  identifier/Object
+
+  /**
+  The address of the remote device.
+
+  Not all platforms support this field.
+  */
+  address-bytes/ByteArray?
+
+  /**
+  The type of the address.
+
+  Not all platforms support this field.
+
+  The type is one of the following:
+  - 0: Public: $ADDRESS_TYPE_PUBLIC
+  - 1: Random: $ADDRESS_TYPE_RANDOM
+  - 2: Public Identity: $ADDRESS_TYPE_PUBLIC_IDENTITY
+  - 3: Random Identity: $ADDRESS_TYPE_RANDOM_IDENTITY
+  */
+  address-type/int?
 
   /**
   The RSSI measured for the remote device.
@@ -168,15 +230,19 @@ class RemoteScannedDevice:
   is-scan-response/bool
 
   /**
-  Constructs a remote device with the given $address, $rssi, and $data.
+  Constructs a remote device.
   */
-  constructor .address .rssi .data --.is-connectable --.is-scan-response:
+  constructor .identifier .rssi .data
+      --.is-connectable
+      --.is-scan-response
+      --.address-bytes
+      --.address-type:
 
   /**
   See $super.
   */
   stringify -> string:
-    return "$address (rssi: $rssi dBm)"
+    return "$identifier (rssi: $rssi dBm)"
 
 class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   characteristic/RemoteCharacteristic
@@ -445,13 +511,22 @@ class RemoteDevice extends Resource_:
   The address of the remote device the client is connected to.
 
   The type of the address is platform dependent.
+
+  Deprecated. Use $identifier instead.
   */
-  address/any
+  address -> any: return identifier
+
+  /**
+  The identifier of the remote device the client is connected to.
+
+  The type of the identifier is platform dependent.
+  */
+  identifier/Object
 
   discovered-services_/List := []
 
-  constructor.private_ .manager .address secure/bool:
-    device-resource := ble-connect_ manager.resource_ address secure
+  constructor.private_ .manager .identifier secure/bool:
+    device-resource := ble-connect_ manager.resource_ identifier secure
     super device-resource
     state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_
     if state & CONNECT-FAILED-EVENT_ != 0:
