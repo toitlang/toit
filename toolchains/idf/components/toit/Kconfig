@@ -151,12 +151,12 @@ menu "Toit"
             depends on TOIT_ENABLE_IP
             help
                 WIFI support in the Toit binary.
-        
+
         config TOIT_ENABLE_ESPNOW
             boolean "Enable ESP-Now on ESP32"
             default "y"
             help
-                ESP-Now support in the Toit binary.       
+                ESP-Now support in the Toit binary.
 
         config TOIT_SPIRAM_HEAP
             boolean "Enable Toit heap in SPIRAM"
@@ -178,6 +178,15 @@ menu "Toit"
             default "system"
             help
                 The project root for the system source file.
+
+        config RODATA_PADDING
+            int "Add this much padding to the drom/rodata section before the MMU starts moving data around"
+            default 2097152
+            range 0 8388609
+            help
+                Adds padding to the DROM data, so that there is a gap between the end of the DROM and the start of
+                bss/data sections. This enables the DROM to be rewritten by an outside entity, as long as the DROM
+                section does not increase more than this padding.
 
     endmenu
 endmenu
