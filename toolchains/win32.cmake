@@ -27,12 +27,13 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "c flags")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32" CACHE STRING "c++ flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g" CACHE STRING "c Debug flags")
-set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")
+set(CMAKE_C_FLAGS_RELEASE "-Os -flto=auto" CACHE STRING "c Release flags")
 
 set(CMAKE_CXX_FLAGS_DEBUG "-Og -g" CACHE STRING "c++ Debug flags")
-set(CMAKE_CXX_FLAGS_RELEASE "-Os" CACHE STRING "c++ Release flags")
+set(CMAKE_CXX_FLAGS_RELEASE "-Os -flto=auto" CACHE STRING "c++ Release flags")
 
 set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto")
 
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
 

@@ -67,11 +67,13 @@ set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -fuse-ld=lld" CACHE STRING "c link
 set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -fuse-ld=lld" CACHE STRING "cxx link flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
-set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")
+set(CMAKE_C_FLAGS_RELEASE "-Os -flto=auto" CACHE STRING "c Release flags")
 set(CMAKE_C_FLAGS_ASAN "-O1 -fsanitize=address -fno-omit-frame-pointer -g" CACHE STRING "c Asan flags")
 set(CMAKE_C_FLAGS_PROF "-Os -DPROF -pg" CACHE STRING "c Prof flags")
 
 set(CMAKE_CXX_FLAGS_DEBUG "-Og -ggdb3 -rdynamic -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")
-set(CMAKE_CXX_FLAGS_RELEASE "-Os $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Release flags")
+set(CMAKE_CXX_FLAGS_RELEASE "-Os -flto=auto $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Release flags")
 set(CMAKE_CXX_FLAGS_ASAN "-O1 -fsanitize=address -fno-omit-frame-pointer -g" CACHE STRING "c++ Asan flags")
 set(CMAKE_CXX_FLAGS_PROF "-Os -DPROF -pg" CACHE STRING "c++ Prof flags")
+
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "-flto $ENV{LOCAL_LDFLAGS}" CACHE STRING "Linker flags for release builds")
