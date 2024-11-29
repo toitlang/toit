@@ -17,6 +17,7 @@
 
 #include "top.h"
 
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/aes.h>
 
 #include "resource.h"
@@ -45,16 +46,16 @@ class AesContext : public SimpleResource {
 };
 
 /*
-  AES-CBC context class. 
+  AES-CBC context class.
   In addition to the base AES context,
-  this cipher type also needs an initialization 
+  this cipher type also needs an initialization
   vector.
 */
 class AesCbcContext : public AesContext {
  public:
   TAG(AesCbcContext);
   AesCbcContext(SimpleResourceGroup* group, const Blob* key, const uint8* iv, bool encrypt);
-  
+
   uint8 iv_[AES_BLOCK_SIZE];
 };
 

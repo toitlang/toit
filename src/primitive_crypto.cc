@@ -21,6 +21,7 @@
 #define CONFIG_TOIT_CRYPTO_EXTRA 1
 #endif
 
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
 
