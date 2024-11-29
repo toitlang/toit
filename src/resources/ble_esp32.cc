@@ -28,7 +28,6 @@
 #include "../event_sources/ble_esp32.h"
 
 #include <esp_bt.h>
-#include <esp_coexist.h>
 #include <esp_log.h>
 #include <esp_nimble_hci.h>
 #include <nimble/nimble_port.h>

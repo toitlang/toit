@@ -69,6 +69,7 @@ sdk: tools toit-tools version-file
 .PHONY: sdk-no-cmake
 sdk-no-cmake: tools-no-cmake toit-tools-no-cmake
 
+.PHONY: check-env
 check-env:
 ifndef IGNORE_SUBMODULE
 	@ if git submodule status | grep '^[-+]' ; then \
@@ -95,6 +96,14 @@ endif
 ifeq ("$(wildcard ./toolchains/$(TOOLCHAIN).cmake)","")
 	$(error invalid compilation target '$(TOOLCHAIN)')
 endif
+
+.PHONY: check-mbedtls-config
+check-mbedtls-config: check-env
+	@ if ! diff -q --ignore-all-space third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h mbedtls/include/default_config.h; then \
+		echo "mbedtls/include/default_config.h is not in sync with third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h"; \
+		echo "See the mbedtls/include/README.md for instructions on how to update mbedtls/include/default_config.h"; \
+		exit 1; \
+	fi
 
 # We mark this phony because adding and removing .cc files means that
 # cmake needs to be rerun, but we don't detect that, so it might not
@@ -143,7 +152,7 @@ disable-auto-sync:
 	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(TARGET)
 
 .PHONY: host-tools
-host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
+host-tools: check-mbedtls-config check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_tools)
 
 .PHONY: tools
