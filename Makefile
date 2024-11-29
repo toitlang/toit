@@ -99,7 +99,7 @@ endif
 
 .PHONY: check-mbedtls-config
 check-mbedtls-config: check-env
-	@ if ! diff -q third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h mbedtls/include/default_config.h; then \
+	@ if ! diff -q --ignore-all-space third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h mbedtls/include/default_config.h; then \
 		echo "mbedtls/include/default_config.h is not in sync with third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h"; \
 		echo "See the mbedtls/include/README.md for instructions on how to update mbedtls/include/default_config.h"; \
 		exit 1; \
