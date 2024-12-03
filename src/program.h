@@ -63,6 +63,7 @@ namespace toit {
   ERROR_STRING(wrong_bytes_type, WRONG_BYTES_TYPE)                  \
   ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
   ERROR_STRING(invalid_state, INVALID_STATE)                        \
+  ERROR_STRING(unsupported, UNSUPPORTED)                            \
 
 #define BUILTIN_CLASS_IDS(ID)     \
   ID(string_class_id)             \

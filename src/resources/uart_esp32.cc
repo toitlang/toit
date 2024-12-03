@@ -834,7 +834,7 @@ PRIMITIVE(create) {
 #endif
   init.hardware_initialized = true;
 
-  uart_toit_hal_set_sclk(init.hal, UART_SCLK_APB);
+  uart_toit_hal_set_sclk(init.hal, UART_SCLK_DEFAULT);
   init.uart->set_baud_rate(baud_rate);
   uart_toit_hal_set_mode(init.hal, static_cast<uart_mode_t>(mode));
 

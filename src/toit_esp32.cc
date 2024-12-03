@@ -35,10 +35,6 @@
 #include <soc/soc.h>
 #include <soc/rtc.h>
 
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-  #include "soc/sens_reg.h"
-#endif
-
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 

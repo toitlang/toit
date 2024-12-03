@@ -26,7 +26,10 @@
 #include "esp_attr.h"
 #include "esp_system.h"
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#ifdef CONFIG_IDF_TARGET_ESP32
+  #include <esp32/rom/ets_sys.h>
+  #include <esp32/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
   #include <esp32c3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -35,9 +38,11 @@
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rom/ets_sys.h>
   #include <esp32s2/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C6
+  #include <esp32c6/rom/ets_sys.h>
+  #include <esp32c6/rtc.h>
 #else
-  #include <esp32/rom/ets_sys.h>
-  #include <esp32/rtc.h>
+  #error "Unsupported ESP32 target"
 #endif
 
 #ifndef CONFIG_IDF_TARGET_ESP32

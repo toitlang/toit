@@ -40,38 +40,141 @@ RATE-36M ::= 0x0D
 RATE-18M ::= 0x0E
 /** 9 Mbps. */
 RATE-9M ::= 0x0F
-/** MCS0 with long GI, 6.5 Mbps for 20MHz, 13.5 Mbps for 40MHz. */
+/**
+MCS0 with long GI.
+6.5 Mbps for 20MHz (HT20).
+13.5 Mbps for 40MHz (HT40).
+8.1 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS0-LGI ::= 0x10
-/** MCS1 with long GI, 13 Mbps for 20MHz, 27 Mbps for 40MHz. */
+/**
+MCS1 with long GI.
+13 Mbps for 20MHz.
+27 Mbps for 40MHz.
+16.3 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS1-LGI ::= 0x11
-/** MCS2 with long GI, 19.5 Mbps for 20MHz, 40.5 Mbps for 40MHz. */
+/**
+MCS2 with long GI.
+19.5 Mbps for 20MHz.
+40.5 Mbps for 40MHz.
+24.4 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS2-LGI ::= 0x12
-/** MCS3 with long GI, 26 Mbps for 20MHz, 54 Mbps for 40MHz. */
+/**
+MCS3 with long GI.
+26 Mbps for 20MHz.
+54 Mbps for 40MHz.
+32.5 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS3-LGI ::= 0x13
-/** MCS4 with long GI, 39 Mbps for 20MHz, 81 Mbps for 40MHz. */
+/**
+MCS4 with long GI.
+39 Mbps for 20MHz.
+81 Mbps for 40MHz.
+*/
 RATE-MCS4-LGI ::= 0x14
-/** MCS5 with long GI, 52 Mbps for 20MHz, 108 Mbps for 40MHz. */
+/**
+MCS5 with long GI.
+52 Mbps for 20MHz.
+108 Mbps for 40MHz.
+48.8 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS5-LGI ::= 0x15
-/** MCS6 with long GI, 58.5 Mbps for 20MHz, 121.5 Mbps for 40MHz. */
+/**
+MCS6 with long GI.
+58.5 Mbps for 20MHz.
+121.5 Mbps for 40MHz.
+65 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS6-LGI ::= 0x16
-/** MCS7 with long GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz. */
+/**
+MCS7 with long GI.
+65 Mbps for 20MHz.
+135 Mbps for 40MHz.
+81.3 Mbps for 20MHz (HE20, WiFi-6).
+*/
 RATE-MCS7-LGI ::= 0x17
-/** MCS0 with short GI, 7.2 Mbps for 20MHz, 15 Mbps for 40MHz. */
-RATE-MCS0-SGI ::= 0x18
-/** MCS1 with short GI, 14.4 Mbps for 20MHz, 30 Mbps for 40MHz. */
-RATE-MCS1-SGI ::= 0x19
-/** MCS2 with short GI, 21.7 Mbps for 20MHz, 45 Mbps for 40MHz. */
-RATE-MCS2-SGI ::= 0x1A
-/** MCS3 with short GI, 28.9 Mbps for 20MHz, 60 Mbps for 40MHz. */
-RATE-MCS3-SGI ::= 0x1B
-/** MCS4 with short GI, 43.3 Mbps for 20MHz, 90 Mbps for 40MHz. */
-RATE-MCS4-SGI ::= 0x1C
-/** MCS5 with short GI, 57.8 Mbps for 20MHz, 120 Mbps for 40MHz. */
-RATE-MCS5-SGI ::= 0x1D
-/** MCS6 with short GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz. */
-RATE-MCS6-SGI ::= 0x1E
-/** MCS7 with short GI, 72.2 Mbps for 20MHz, 150 Mbps for 40MHz. */
-RATE-MCS7-SGI ::= 0x1F
+/**
+MCS8 with long GI.
+A WiFi HE 20MHz (WiFi-6) rate, 97.5 Mbps.
+This rate might not be supported by all devices.
+*/
+RATE-MCS8-LGI ::= 0x18
+/**
+MCS9 with long GI.
+A WiFi HE 20MHz (Wi-Fi 6) rate, 108.3 Mbps.
+This rate might not be supported by all devices.
+*/
+RATE-MCS9-LGI ::= 0x19
+/**
+MCS0 with short GI.
+7.2 Mbps for 20MHz.
+15 Mbps for 40MHz.
+8.6 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS0-SGI ::= 0x1A
+/**
+MCS1 with short GI.
+14.4 Mbps for 20MHz.
+30 Mbps for 40MHz.
+17.2 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS1-SGI ::= 0x1B
+/**
+MCS2 with short GI.
+21.7 Mbps for 20MHz.
+45 Mbps for 40MHz.
+25.8 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS2-SGI ::= 0x1C
+/**
+MCS3 with short GI.
+28.9 Mbps for 20MHz.
+60 Mbps for 40MHz.
+34.4 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS3-SGI ::= 0x1D
+/**
+MCS4 with short GI.
+43.3 Mbps for 20MHz.
+90 Mbps for 40MHz.
+51.6 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS4-SGI ::= 0x1E
+/**
+MCS5 with short GI.
+57.8 Mbps for 20MHz.
+120 Mbps for 40MHz.
+68.8 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS5-SGI ::= 0x1F
+/**
+MCS6 with short GI.
+65 Mbps for 20MHz.
+135 Mbps for 40MHz.
+77.4 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS6-SGI ::= 0x20
+/**
+MCS7 with short GI.
+72.2 Mbps for 20MHz.
+150 Mbps for 40MHz.
+86 Mbps for 20MHz (HE20, WiFi-6).
+*/
+RATE-MCS7-SGI ::= 0x21
+/**
+MCS8 with short GI.
+A WiFi HE 20MHz (Wi-Fi 6) rate.
+This rate might not be supported by all devices.
+*/
+RATE-MCS8-SGI ::= 0x22
+/**
+MCS9 with short GI.
+A WiFi HE 20MHz (Wi-Fi 6) rate.
+This rate might not be supported by all devices.
+*/
+RATE-MCS9-SGI ::= 0x23
 /** 250 Kbps. */
 RATE-LORA-250K ::= 0x29
 /** 500 Kbps. */

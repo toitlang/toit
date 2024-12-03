@@ -181,7 +181,7 @@ MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 PRIMITIVE(init) {
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   return Primitive::os_error(ESP_FAIL, process);
 #else
   ByteArray* proxy = process->object_heap()->allocate_proxy();

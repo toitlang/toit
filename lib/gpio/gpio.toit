@@ -106,6 +106,19 @@ interface Pin:
   Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
     should be avoided if possible.
   Pins 0-21 are RTC pins and can be used in deep-sleep.
+
+  # ESP23C6
+  The ESP32C6 has 31 physical pins (0-30). Each pin can be used as
+    general-purpose pin, or be connected to a peripheral.
+
+  Pins 4, 5, 8, 9, and 15 are strapping pins.
+  Pins 24-30 are normally connected to flash/PSRAM, and should not be used.
+  Pins 10-11 are not led out to any chip pins.
+  Pins 12-13 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 0-6 are ADC pins of channel 1.
+  Pins 0-7 are RTC pins and can be used in deep-sleep.
+  For chip variants without an in-package flash, GPIO14 is not led out to any
+    chip pins.
   */
   constructor num/int
       --input/bool=false

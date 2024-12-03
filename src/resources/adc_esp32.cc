@@ -118,6 +118,27 @@ static int get_adc2_channel(int pin) {
   }
 }
 
+#elif CONFIG_IDF_TARGET_ESP32C6
+
+static int get_adc1_channel(int pin) {
+  switch (pin) {
+    case 0: return ADC1_CHANNEL_0;
+    case 1: return ADC1_CHANNEL_1;
+    case 2: return ADC1_CHANNEL_2;
+    case 3: return ADC1_CHANNEL_3;
+    case 4: return ADC1_CHANNEL_4;
+    case 5: return ADC1_CHANNEL_5;
+    case 6: return ADC1_CHANNEL_6;
+    default: return adc1_channel_t(-1);
+  }
+}
+
+// The ESP32-C6 has no ADC2.
+static int get_adc2_channel(int pin) {
+  return -1;
+}
+
+
 #elif CONFIG_IDF_TARGET_ESP32S3
 
 static int get_adc1_channel(int pin) {
@@ -154,12 +175,13 @@ static int get_adc2_channel(int pin) {
 
 #else
 
-static int get_adc1_channel(int pin) {
-  return adc1_channel_t(-1);
-}
-static int get_adc2_channel(int pin) {
-  return adc2_channel_t(-1);
-}
+#error "Unsupported target"
+// static int get_adc1_channel(int pin) {
+//   return -1;
+// }
+// static int get_adc2_channel(int pin) {
+//   return -1;
+// }
 
 #endif
 
@@ -178,13 +200,19 @@ class AdcResource : public SimpleResource {
 
   adc_unit_t unit;
   int chan;
+#ifndef CONFIG_IDF_TARGET_ESP32C6
   esp_adc_cal_characteristics_t calibration;
+#endif
 };
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted, double, max);
+
+#ifdef CONFIG_IDF_TARGET_ESP32C6
+  UNIMPLEMENTED();
+#else
 
   if (max < 0.0) FAIL(INVALID_ARGUMENT);
 
@@ -230,11 +258,15 @@ PRIMITIVE(init) {
   proxy->set_external_address(resource);
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(get) {
   ARGS(AdcResource, resource, int, samples);
 
+#ifdef CONFIG_IDF_TARGET_ESP32C6
+  UNIMPLEMENTED();
+#else
   if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
 
   uint32_t adc_reading = 0;
@@ -258,11 +290,15 @@ PRIMITIVE(get) {
   uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, &resource->calibration);
 
   return Primitive::allocate_double(voltage / 1000.0, process);
+#endif
 }
 
 PRIMITIVE(get_raw) {
   ARGS(AdcResource, resource);
 
+#ifdef CONFIG_IDF_TARGET_ESP32C6
+  UNIMPLEMENTED();
+#else
   int adc_reading;
   if (resource->unit == ADC_UNIT_1) {
     adc_reading = adc1_get_raw(static_cast<adc1_channel_t>(resource->chan));
@@ -273,6 +309,7 @@ PRIMITIVE(get_raw) {
   }
 
   return Smi::from(adc_reading);
+#endif
 }
 
 PRIMITIVE(close) {

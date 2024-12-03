@@ -444,6 +444,8 @@ const char* OS::get_architecture() {
   return "esp32s2";
 #elif defined(CONFIG_IDF_TARGET_ESP32)
   return "esp32";
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  return "esp32c6";
 #else
   #error "Unknown architecture"
 #endif

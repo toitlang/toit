@@ -35,17 +35,10 @@ namespace toit {
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    SPI2_HOST,
-    SPI3_HOST
-#elif CONFIG_IDF_TARGET_ESP32S2
-    SPI2_HOST,
-    SPI3_HOST
-#elif CONFIG_IDF_TARGET_ESP32C3
-    SPI2_HOST
-#else
-    HSPI_HOST,
-    VSPI_HOST
+  // SPI1_HOST is typically reserved for flash and spiram.
+  SPI2_HOST
+#if SOC_SPI_PERIPH_NUM > 2
+  , SPI3_HOST
 #endif
 );
 
@@ -71,30 +64,19 @@ PRIMITIVE(init) {
   spi_host_device_t host_device = kInvalidHostDevice;
 
   // Check if there is a preferred device.
+  // TODO(florian): match against the preferred pins for each device.
   if ((mosi == -1 || mosi == 13) &&
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI2_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S3
-    host_device = SPI2_HOST;
-#else
-    host_device = HSPI_HOST;
-#endif
   }
+#if SOC_SPI_PERIPH_NUM > 2
   if ((mosi == -1 || mosi == 23) &&
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-    host_device = SPI2_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S3
     host_device = SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S2
-    host_device = SPI3_HOST;
-#else
-    host_device = VSPI_HOST;
-#endif
   }
+#endif
   host_device = spi_host_devices.preferred(host_device);
   if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
 
