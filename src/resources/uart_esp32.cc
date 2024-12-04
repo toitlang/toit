@@ -36,12 +36,31 @@
 #define UART_ISR_INLINE inline __attribute__((always_inline))
 
 // Valid UART port numbers.
-#define UART_NUM_0             (0) /*!< UART port 0 */
-#define UART_NUM_1             (1) /*!< UART port 1 */
+#define UART_NUM_0             (static_cast<uart_port_t>(0)) /*!< UART port 0 */
+#define UART_NUM_1             (static_cast<uart_port_t>(1)) /*!< UART port 1 */
 #if SOC_UART_NUM > 2
-#define UART_NUM_2             (2) /*!< UART port 2 */
+#define UART_NUM_2             (static_cast<uart_port_t>(2)) /*!< UART port 2 */
+#endif
+#if SOC_UART_NUM > 3
+#error "SOC_UART_NUM > 3"
 #endif
 #define UART_NUM_MAX           (SOC_UART_NUM) /*!< UART port max */
+
+static periph_module_t module_from_port(uart_port_t port) {
+  switch (port) {
+    case UART_NUM_0: return PERIPH_UART0_MODULE;
+    case UART_NUM_1: return PERIPH_UART1_MODULE;
+#if SOC_UART_NUM > 2
+    case UART_NUM_2: return PERIPH_UART2_MODULE;
+#endif
+#if SOC_UART_NUM > 3
+#error "SOC_UART_NUM > 3"
+#endif
+    case UART_NUM_MAX:
+      UNREACHABLE();
+  }
+  FATAL("Invalid UART port: %d", port);
+}
 
 namespace toit {
 
@@ -418,7 +437,7 @@ UartResource::~UartResource() {
 
   uart_toit_hal_deinit(hal_);
 
-  periph_module_disable(uart_periph_signal[port_].module);
+  periph_module_disable(module_from_port(port_));
 }
 
 uint32 UartResource::baud_rate() const {
@@ -648,7 +667,7 @@ class UartInitialization {
     }
 
     if (hardware_initialized) {
-      periph_module_disable(uart_periph_signal[port].module);
+      periph_module_disable(module_from_port(port));
     }
 
     uart_ports.put(port);
@@ -663,7 +682,7 @@ class UartInitialization {
   uart_hal_handle_t hal = null;
   bool hardware_initialized = false;
   UartResource* uart = null;
-  uart_port_t port = 0;
+  uart_port_t port = UART_NUM_0;
   uint8* rx_buffer = null;
   uint8* tx_buffer = null;
   bool keep = false;
@@ -717,7 +736,7 @@ static uart_port_t determine_preferred_port(int tx, int rx, int rts, int cts) {
         (rx == -1 || rx == uart_periph_signal[uart].pins[SOC_UART_RX_PIN_IDX].default_gpio) &&
         (rts == -1 || rts == uart_periph_signal[uart].pins[SOC_UART_RTS_PIN_IDX].default_gpio) &&
         (cts == -1 || cts == uart_periph_signal[uart].pins[SOC_UART_CTS_PIN_IDX].default_gpio)) {
-      return uart;
+      return static_cast<uart_port_t>(uart);
     }
   }
   return kInvalidUartPort;
@@ -821,16 +840,17 @@ PRIMITIVE(create) {
     FAIL(MALLOC_FAILED);
   }
 
-  periph_module_enable(uart_periph_signal[port].module);
+  periph_module_enable(module_from_port(port));
+
   // Workaround for ESP32C3: enable core reset
   // before enabling uart module clock
   // to prevent uart from outputting garbage value.
 #if SOC_UART_REQUIRE_CORE_RESET
   uart_toit_hal_set_reset_core(init.hal, true);
-  periph_module_reset(uart_periph_signal[port].module);
+  periph_module_reset(module_from_port(port));
   uart_toit_hal_set_reset_core(init.hal, false);
 #else
-  periph_module_reset(uart_periph_signal[port].module);
+  periph_module_reset(module_from_port(port));
 #endif
   init.hardware_initialized = true;
 
