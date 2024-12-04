@@ -30,9 +30,9 @@
 #include <esp_bt.h>
 #include <esp_log.h>
 #include <nimble/nimble_port.h>
+#include <host/ble_hs.h>
 #undef min
 #undef max
-#include <host/ble_hs.h>
 #include <host/util/util.h>
 #include <host/ble_gap.h>
 #include <services/gap/ble_svc_gap.h>
