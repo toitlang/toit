@@ -31,6 +31,8 @@
 #include <esp_log.h>
 #include <esp_nimble_hci.h>
 #include <nimble/nimble_port.h>
+#undef min
+#undef max
 #include <host/ble_hs.h>
 #include <host/util/util.h>
 #include <host/ble_gap.h>
