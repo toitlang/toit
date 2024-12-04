@@ -310,7 +310,8 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
     }
 
     case WIFI_EVENT_AP_STACONNECTED:
-    case WIFI_EVENT_AP_STADISCONNECTED: {
+    case WIFI_EVENT_AP_STADISCONNECTED:
+    case WIFI_EVENT_HOME_CHANNEL_CHANGE: {
       break;
     }
 
