@@ -95,10 +95,6 @@ else()
   endif()
 endif()
 
-if (NOT ${ESP32_CHIP} STREQUAL "esp32c3")
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
-endif()
-
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(

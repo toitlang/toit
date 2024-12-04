@@ -55,17 +55,17 @@
 #if SOC_TOUCH_SENSOR_SUPPORTED
 #include <driver/touch_pad.h>
 #endif
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if CONFIG_IDF_TARGET_ESP32
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/rtc.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-  #include <esp32s3/rom/rtc.h>
-#elif CONFIG_IDF_TARGET_ESP32S2
-  #include <esp32s2/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rom/rtc.h>
 #else
   #error Unknown ESP32 target architecture
 #endif

@@ -69,7 +69,7 @@ interface Pin:
 
   # ESP32
   The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
-    be used as general-purpose pin, or be connected to a peripheral.
+    be used as a general-purpose pin, or be connected to a peripheral.
   Pins 0, 2, 5, 12 and 15 are strapping pins.
   Pins 6-11 are normally connected to flash/PSRAM, and should not be used.
   Pins 12-15 are JTAG pins, and should not be used if JTAG support is needed.
@@ -83,7 +83,7 @@ interface Pin:
 
   # ESP32C3
   The ESP32C3 has 22 physical pins (0-21). Each pin can be used as
-    general-purpose pin, or be connected to a peripheral.
+    a general-purpose pin, or be connected to a peripheral.
 
   Pins 2, 8, and 9 are strapping pins.
   Pins 12-17 are normally connected to flash/PSRAM, and should not be used.
@@ -93,9 +93,22 @@ interface Pin:
   Pin 5 is an ADC pin of channel 2. ADC channel 2 has restrictions and should be
     avoided if possible.
 
+  # ESP23C6
+  The ESP32C6 has 31 physical pins (0-30). Each pin can be used as
+    a general-purpose pin, or be connected to a peripheral.
+
+  Pins 4, 5, 8, 9, and 15 are strapping pins.
+  Pins 24-30 are normally connected to flash/PSRAM, and should not be used.
+  Pins 10-11 are not led out to any chip pins.
+  Pins 12-13 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 0-6 are ADC pins of channel 1.
+  Pins 0-7 are RTC pins and can be used in deep-sleep.
+  For chip variants without an in-package flash, GPIO14 is not led out to any
+    chip pins.
+
   # ESP32S3
   The ESP32S3 has 45 physical pins (0-21, 26-48). Each pin can be used as
-    general-purpose pin, or be connected to a peripheral.
+    a general-purpose pin, or be connected to a peripheral.
 
   Pins 0, 3, 45, and 46 are strapping pins.
   Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
@@ -106,19 +119,6 @@ interface Pin:
   Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
     should be avoided if possible.
   Pins 0-21 are RTC pins and can be used in deep-sleep.
-
-  # ESP23C6
-  The ESP32C6 has 31 physical pins (0-30). Each pin can be used as
-    general-purpose pin, or be connected to a peripheral.
-
-  Pins 4, 5, 8, 9, and 15 are strapping pins.
-  Pins 24-30 are normally connected to flash/PSRAM, and should not be used.
-  Pins 10-11 are not led out to any chip pins.
-  Pins 12-13 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 0-6 are ADC pins of channel 1.
-  Pins 0-7 are RTC pins and can be used in deep-sleep.
-  For chip variants without an in-package flash, GPIO14 is not led out to any
-    chip pins.
   */
   constructor num/int
       --input/bool=false

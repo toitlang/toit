@@ -1059,7 +1059,7 @@ flash-cmd -> cli.Command:
             --required,
         cli.OptionInt "baud"
             --default=921600,
-        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32s2", "esp32s3"]
             --hidden
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
@@ -1690,6 +1690,12 @@ class Esp32C3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
   drom-map-end   ::= 0x3c800000
 
+class Esp32C6AddressMap implements AddressMap:
+  // TODO(florian): the DROM map is dependent on SOC_MMU_PAGE_SIZE which
+  // can be configured through sdkconfig.
+  drom-map-start ::= 0x42000000
+  drom-map-end   ::= 0x43000000
+
 class Esp32S2AddressMap implements AddressMap:
   drom-map-start ::= 0x3f000000
   drom-map-end   ::= 0x3ff80000
@@ -1697,12 +1703,6 @@ class Esp32S2AddressMap implements AddressMap:
 class Esp32S3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
   drom-map-end   ::= 0x3d000000
-
-class Esp32C6AddressMap implements AddressMap:
-  // TODO(florian): the DROM map is dependent on SOC_MMU_PAGE_SIZE which
-  // can be configured through sdkconfig.
-  drom-map-start ::= 0x42000000
-  drom-map-end   ::= 0x43000000
 
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
@@ -1716,27 +1716,27 @@ class Esp32Binary:
 
   // Chip IDs are defined in Kconfig ('IDF_FIRMWARE_CHIP_ID').
   static ESP-CHIP-ID-ESP32    ::= 0x0000  // Chip ID: ESP32.
-  static ESP-CHIP-ID-ESP32-S2 ::= 0x0002  // Chip ID: ESP32-S2.
   static ESP-CHIP-ID-ESP32-C3 ::= 0x0005  // Chip ID: ESP32-C3.
-  static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
-  static ESP-CHIP-ID-ESP32-H2 ::= 0x000a  // Chip ID: ESP32-H2.
   static ESP-CHIP-ID-ESP32-C6 ::= 0x000d  // Chip ID: ESP32-C6.
+  static ESP-CHIP-ID-ESP32-H2 ::= 0x000a  // Chip ID: ESP32-H2.
+  static ESP-CHIP-ID-ESP32-S2 ::= 0x0002  // Chip ID: ESP32-S2.
+  static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
 
   static CHIP-ADDRESS-MAPS_ ::= {
       ESP-CHIP-ID-ESP32    : Esp32AddressMap,
       ESP-CHIP-ID-ESP32-C3 : Esp32C3AddressMap,
+      ESP-CHIP-ID-ESP32-C6 : Esp32C6AddressMap,
       ESP-CHIP-ID-ESP32-S2 : Esp32S2AddressMap,
       ESP-CHIP-ID-ESP32-S3 : Esp32S3AddressMap,
-      ESP-CHIP-ID-ESP32-C6 : Esp32C6AddressMap,
   }
 
   static CHIP-NAMES_ ::= {
       ESP-CHIP-ID-ESP32    : "esp32",
       ESP-CHIP-ID-ESP32-C3 : "esp32c3",
+      ESP-CHIP-ID-ESP32-C6 : "esp32c6",
+      ESP-CHIP-ID-ESP32-H2 : "esp32h2",
       ESP-CHIP-ID-ESP32-S2 : "esp32s2",
       ESP-CHIP-ID-ESP32-S3 : "esp32s3",
-      ESP-CHIP-ID-ESP32-H2 : "esp32h2",
-      ESP-CHIP-ID-ESP32-C6 : "esp32c6",
   }
 
   header_/ByteArray
