@@ -87,6 +87,20 @@ if (CCACHE_FOUND)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
+option(ENABLE_LTO "Enable link-time optimization" OFF)
+
+if (ENABLE_LTO AND
+    NOT ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS") AND
+    NOT ${TOIT_IS_CROSS})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto=auto")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=auto")
+  # GCC automatically performs link-time optimizations during linking if any
+  # of the object files were compiled with -flto. However, it's safe to
+  # explicitly enable LTO for the linker as well.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto")
+endif()
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
