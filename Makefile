@@ -151,6 +151,12 @@ disable-auto-sync:
 	$(MAKE) rebuild-cmake
 	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(TARGET)
 
+.PHONY: enable-lto
+enable-lto:
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DENABLE_LTO=ON $(BUILD)/$(HOST)
+
+
 .PHONY: host-tools
 host-tools: check-mbedtls-config check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_tools)
