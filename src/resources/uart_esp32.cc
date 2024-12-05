@@ -38,25 +38,25 @@
 // Valid UART port numbers.
 #define UART_NUM_0             (static_cast<uart_port_t>(0)) /*!< UART port 0 */
 #define UART_NUM_1             (static_cast<uart_port_t>(1)) /*!< UART port 1 */
-#if SOC_UART_NUM > 2
+#if SOC_UART_HP_NUM > 2
 #define UART_NUM_2             (static_cast<uart_port_t>(2)) /*!< UART port 2 */
 #endif
-#if SOC_UART_NUM > 3
-#error "SOC_UART_NUM > 3"
+#if SOC_UART_HP_NUM > 3
+#error "SOC_UART_HP_NUM > 3"
 #endif
-#define UART_NUM_MAX           (SOC_UART_NUM) /*!< UART port max */
+#define UART_NUM_MAX           (SOC_UART_HP_NUM) /*!< UART port max */
 
 static periph_module_t module_from_port(uart_port_t port) {
   switch (port) {
     case UART_NUM_0: return PERIPH_UART0_MODULE;
     case UART_NUM_1: return PERIPH_UART1_MODULE;
-#if SOC_UART_NUM > 2
+#if SOC_UART_HP_NUM > 2
     case UART_NUM_2: return PERIPH_UART2_MODULE;
 #endif
-#if SOC_UART_NUM > 3
-#error "SOC_UART_NUM > 3"
+#if SOC_UART_HP_NUM > 3
+#error "SOC_UART_HP_NUM > 3"
 #endif
-    case UART_NUM_MAX:
+    default:  // Includes LP uarts.
       UNREACHABLE();
   }
   FATAL("Invalid UART port: %d", port);
@@ -76,7 +76,7 @@ const int kWriteState = 1 << 2;
 static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
     // Uart 0 is reserved for serial communication (stdout).
     UART_NUM_1
-#if SOC_UART_NUM > 2
+#if SOC_UART_HP_NUM > 2
   , UART_NUM_2
 #endif
 );
@@ -731,7 +731,7 @@ bool UartInitialization::try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) c
 }
 
 static uart_port_t determine_preferred_port(int tx, int rx, int rts, int cts) {
-  for (int uart = UART_NUM_0; uart < SOC_UART_NUM; uart++) {
+  for (int uart = UART_NUM_0; uart < SOC_UART_HP_NUM; uart++) {
     if ((tx == -1 || tx == uart_periph_signal[uart].pins[SOC_UART_TX_PIN_IDX].default_gpio) &&
         (rx == -1 || rx == uart_periph_signal[uart].pins[SOC_UART_RX_PIN_IDX].default_gpio) &&
         (rts == -1 || rts == uart_periph_signal[uart].pins[SOC_UART_RTS_PIN_IDX].default_gpio) &&

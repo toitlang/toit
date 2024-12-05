@@ -41,7 +41,7 @@ const i2c_port_t kInvalidPort = i2c_port_t(-1);
 
 static ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
     I2C_NUM_0
-#if SOC_I2C_NUM >= 2
+#if SOC_HP_I2C_NUM >= 2
   , I2C_NUM_1
 #endif
 );
