@@ -40,41 +40,18 @@ main:
   run-tests
 
 run-tests:
-  // Microsoft and Google pages fail because we don't have their trusted root installed.
-  test-site "www.microsoft.com" false
-  test-site "google.com" false
+  // Github and Google pages fail because we don't have their trusted root installed.
+  test-site "github.com" false
+  test-site "www.google.com" false
   test-site "drive.google.com" false
   load-limiter.flush  // Sequence point so we don't install the roots until the previous test completed.
 
   // Now they should succeed.
-  test-site "www.microsoft.com" true
+  test-site "github.com" true
   test-site "www.google.com" true
   test-site "drive.google.com" true
   if load-limiter.test-failures:
     throw load-limiter.has-test-failure
-
-BALTIMORE-CYBERTRUST-ROOT ::= net.Certificate.parse """\
------BEGIN CERTIFICATE-----
-MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ
-RTESMBAGA1UEChMJQmFsdGltb3JlMRMwEQYDVQQLEwpDeWJlclRydXN0MSIwIAYD
-VQQDExlCYWx0aW1vcmUgQ3liZXJUcnVzdCBSb290MB4XDTAwMDUxMjE4NDYwMFoX
-DTI1MDUxMjIzNTkwMFowWjELMAkGA1UEBhMCSUUxEjAQBgNVBAoTCUJhbHRpbW9y
-ZTETMBEGA1UECxMKQ3liZXJUcnVzdDEiMCAGA1UEAxMZQmFsdGltb3JlIEN5YmVy
-VHJ1c3QgUm9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKMEuyKr
-mD1X6CZymrV51Cni4eiVgLGw41uOKymaZN+hXe2wCQVt2yguzmKiYv60iNoS6zjr
-IZ3AQSsBUnuId9Mcj8e6uYi1agnnc+gRQKfRzMpijS3ljwumUNKoUMMo6vWrJYeK
-mpYcqWe4PwzV9/lSEy/CG9VwcPCPwBLKBsua4dnKM3p31vjsufFoREJIE9LAwqSu
-XmD+tqYF/LTdB1kC1FkYmGP1pWPgkAx9XbIGevOF6uvUA65ehD5f/xXtabz5OTZy
-dc93Uk3zyZAsuT3lySNTPx8kmCFcB5kpvcY67Oduhjprl3RjM71oGDHweI12v/ye
-jl0qhqdNkNwnGjkCAwEAAaNFMEMwHQYDVR0OBBYEFOWdWTCCR1jMrPoIVDaGezq1
-BE3wMBIGA1UdEwEB/wQIMAYBAf8CAQMwDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3
-DQEBBQUAA4IBAQCFDF2O5G9RaEIFoN27TyclhAO992T9Ldcw46QQF+vaKSm2eT92
-9hkTI7gQCvlYpNRhcL0EYWoSihfVCr3FvDB81ukMJY2GQE/szKN+OMY3EU/t3Wgx
-jkzSswF07r51XgdIGn9w/xZchMB5hbgF/X++ZRGjD8ACtPhSNzkE1akxehi/oCr0
-Epn3o0WC4zxe9Z2etciefC7IpJ5OCBRLbf1wbWsaY71k5h+3zvDyny67G7fyUIhz
-ksLi4xaNmjICq44Y3ekQEe5+NauQrz4wlHrQMz2nZQ/1/I6eYs9HRCwBXbsdtTLS
-R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp
------END CERTIFICATE-----"""
 
 GLOBALSIGN-ROOT-CA ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----
@@ -99,29 +76,48 @@ DKqC5JlR3XC321Y9YeRq4VzW9v493kHMB65jUr9TU/Qr6cf9tveCX4XSQRjbgbME
 HMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==
 -----END CERTIFICATE-----"""
 
-DIGICERT-GLOBAL-ROOT-G2 ::= net.Certificate.parse """\
------BEGIN CERTIFICATE-----
-MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
-MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
-d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
-MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
-MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
-b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
-9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
-2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
-1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
-q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz
-tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ
-vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
-BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
-5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
-1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4
-NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG
-Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
-8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe
-pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
-MrY=
------END CERTIFICATE-----"""
+USERTRUST-ECC-CERTIFICATION-AUTHORITY ::= tls.RootCertificate --fingerprint=0xbadc5b59 USERTRUST-ECC-CERTIFICATION-AUTHORITY-BYTES_
+
+USERTRUST-ECC-CERTIFICATION-AUTHORITY-BYTES_ ::= #[
+    '0',0x82,0x2,143,'0',130,2,21,160,3,2,1,2,2,16,92,139,153,197,'Z',148,197,
+    0xd2,'q','V',222,205,137,128,204,'&','0',10,6,8,'*',134,'H',206,'=',4,3,3,
+    '0',129,136,'1',11,'0',9,6,3,'U',4,6,19,2,'U','S','1',19,'0',17,6,3,'U',4,
+    8,19,10,'N','e','w',' ','J','e','r','s','e','y','1',20,'0',18,6,3,'U',4,7,
+    19,11,'J','e','r','s','e','y',' ','C','i','t','y','1',30,'0',28,6,3,'U',4,
+    0xa,19,21,'T','h','e',' ','U','S','E','R','T','R','U','S','T',' ','N','e',
+    't','w','o','r','k','1','.','0',',',0x06,3,'U',4,3,19,'%','U','S','E','R',
+    'T','r','u','s','t',' ','E','C','C',' ','C','e','r','t','i','f','i','c',
+    'a','t','i','o','n',' ','A','u','t','h','o','r','i','t','y','0',30,23,0xd,
+    '1','0','0','2','0','1','0','0','0','0','0','0','Z',23,13,'3','8','0','1',
+    '1','8','2','3','5','9','5','9','Z','0',0x81,136,'1',11,'0',9,6,3,'U',4,6,
+    19,2,'U','S','1',19,'0',17,6,3,'U',4,8,19,0xa,'N','e','w',' ','J','e','r',
+    's','e','y','1',0x14,'0',18,6,3,'U',4,7,19,11,'J','e','r','s','e','y',' ',
+    'C','i','t','y','1',30,'0',28,6,3,'U',4,0xa,19,21,'T','h','e',' ','U','S',
+    'E','R','T','R','U','S','T',' ','N','e','t','w','o','r','k','1','.','0',
+    ',',0x06,3,'U',4,3,19,'%','U','S','E','R','T','r','u','s','t',' ','E','C',
+    'C',' ','C','e','r','t','i','f','i','c','a','t','i','o','n',' ','A','u',
+    't','h','o','r','i','t','y','0','v','0',16,6,7,'*',0x86,'H',206,'=',2,1,6,
+    0x05,'+',129,4,0,'"',3,'b',0,4,26,172,'T','Z',169,249,'h','#',231,'z',213,
+    '$','o','S',0xc6,'Z',0xd8,'K',171,198,213,182,209,230,'s','q',174,221,156,
+    214,12,'a',253,219,160,137,3,184,5,20,236,'W',206,238,']','?',226,'!',179,
+    0xce,0xf7,212,138,'y',224,163,131,'~','-',151,208,'a',196,241,153,220,'%',
+    0x91,'c',0xab,0x7f,'0',163,180,'p',226,199,161,'3',156,243,191,'.',92,'S',
+    0xb1,'_',0xb3,'}','2',0x7f,138,'4',227,'y','y',163,'B','0','@','0',29,6,3,
+    'U',29,0xe,4,22,4,20,':',225,9,134,212,207,25,194,150,'v','t','I','v',220,
+    224,'5',198,'c','c',154,'0',14,6,3,'U',29,15,1,1,255,4,4,3,2,1,6,'0',15,6,
+    3,'U',29,19,1,1,0xff,4,5,'0',3,1,1,255,'0',10,6,8,'*',134,'H',206,'=',4,3,
+    3,3,'h',0,'0','e',2,'0','6','g',161,22,8,220,228,151,0,'A',29,'N',190,225,
+    'c',0x1,207,';',170,'B',17,'d',160,157,148,'9',2,17,'y',92,'{',29,250,'d',
+    0xb9,238,22,'B',179,191,138,194,9,196,236,228,177,'M',2,'1',0,233,'*','a',
+    'G',0x8c,'R','J','K','N',0x18,'p',246,214,'D',214,'n',245,131,186,'m','X',
+    0xbd,'$',0xd9,'V','H',234,239,196,162,'F',129,136,'j',':','F',209,169,155,
+    'M',201,'a',218,209,']','W','j',24,
+]
+
+ROOTS ::= [
+  GLOBALSIGN-ROOT-CA,
+  USERTRUST-ECC-CERTIFICATION-AUTHORITY,
+]
 
 test-site url expect-ok:
   host := url
@@ -163,7 +159,7 @@ connect-to-site host port add-root:
   raw.connect host port
   socket := tls.Socket.client raw
     // Install the roots needed.
-    --root-certificates=(add-root ? [BALTIMORE-CYBERTRUST-ROOT, GLOBALSIGN-ROOT-CA, DIGICERT-GLOBAL-ROOT-G2] : [])
+    --root-certificates=(add-root ? ROOTS : [])
 
   writer := socket.out
   writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
