@@ -90,7 +90,7 @@ endif(CCACHE_FOUND)
 option(ENABLE_LTO "Enable link-time optimization" OFF)
 
 if (ENABLE_LTO AND
-    NOT ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS") AND
+    "${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND
     NOT ${TOIT_IS_CROSS})
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto=auto")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=auto")
