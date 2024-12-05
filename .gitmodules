@@ -1,5 +1,5 @@
 [submodule "third_party/esp-idf"]
 	path = third_party/esp-idf
 	url = https://github.com/toitware/esp-idf.git
-	branch = patch-head-4.3-3
+	branch = patch-head-5.3.1
 	ignore = untracked
