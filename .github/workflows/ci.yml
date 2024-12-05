@@ -64,6 +64,11 @@ on:
         required: false
         type: string
         default:
+      enable-lto:
+        description: "Enable link-time optimizations"
+        required: false
+        type: boolean
+        default: false
 
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
@@ -182,6 +187,11 @@ jobs:
       - name: Ccache stats
         run: ccache -s
 
+      - name: Enable link-time optimizations
+        if: env.DO_RELEASE == 'true' || github.event.inputs.enable-lto == 'true'
+        run: |
+          make enable-lto
+
       # Build using make.
       - name: Build sdk
         shell: bash
@@ -208,6 +218,8 @@ jobs:
           # it's the easiest way to make sure all tests are run in that configuration.
           TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host sdk
           TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host sdk
+          make HOST=host-lto TOOLCHAIN=host enable-lto
+          make HOST=host-lto TOOLCHAIN=host sdk
 
       - name: Ccache stats
         run: ccache -s
@@ -284,6 +296,12 @@ jobs:
         if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
         run: |
           TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host test
+
+      - name: Test link-time optimizations
+        shell: bash
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          make HOST=host-lto TOOLCHAIN=host test
 
       - name: Test install
         if : matrix.shard == 1
@@ -1073,6 +1091,8 @@ jobs:
           find .
 
       - name: Check external
+        # Allow to fail here. We will check for failure later.
+        continue-on-error: true
         shell: bash
         run: |
           cat external-result/*
@@ -1084,10 +1104,8 @@ jobs:
           echo "success: no failures found"
 
       - name: Check flaky
-        # Even if the external result already failed we want to know whether flaky tests failed
-        # as well.
-        # Since the two steps aren't dependent always run this step.
-        if: always()
+        # Allow to fail here. We will check for failure later.
+        continue-on-error: true
         shell: bash
         run: |
           cat flaky-result/*
@@ -1097,6 +1115,13 @@ jobs:
           # something to make it clear and avoid letting the
           # result of the action be non-zero.
           echo "success: no failures found"
+
+      - name: Check for failures
+        # We don't want to fail the action if it's a scheduled run.
+        if: failure() && ${{ github.event_name != 'schedule' }}
+        run: |
+          echo "Found failures in external or flaky tests."
+          exit 1
 
   AUR:
     name: Update AUR package
