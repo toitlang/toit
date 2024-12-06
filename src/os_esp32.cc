@@ -44,12 +44,18 @@
 #include <soc/uart_reg.h>
 #include <hal/efuse_hal.h>
 
-#if CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32
+  #include <esp32/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C6
+  #include <esp32c6/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
   #include <esp32s3/rtc.h>
 #else
-  #include <esp32/rtc.h>
+  #error "Unknown target"
 #endif
 
 #include "uuid.h"
@@ -305,14 +311,18 @@ void OS::set_up() {
   // This will normally return 100 or 300.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  const char* chip_name = "ESP32S3";
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  const char* chip_name = "ESP32S2";
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  const char* chip_name = "ESP32";
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
   const char* chip_name = "ESP32C3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  const char* chip_name = "ESP32C6";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  const char* chip_name = "ESP32S2";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  const char* chip_name = "ESP32S3";
 #else
-  const char* chip_name = "ESP32";
+  #error "Unknown target"
 #endif
   printf("[toit] INFO: running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
 }
@@ -436,14 +446,16 @@ const char* OS::get_platform() {
 }
 
 const char* OS::get_architecture() {
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  return "esp32s3";
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  return "esp32";
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
   return "esp32c3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  return "esp32c6";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   return "esp32s2";
-#elif defined(CONFIG_IDF_TARGET_ESP32)
-  return "esp32";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  return "esp32s3";
 #else
   #error "Unknown architecture"
 #endif

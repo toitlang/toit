@@ -60,13 +60,16 @@ ARCHITECTURE-X86-64 ::= "x86_64"
 ARCHITECTURE-ESP32 ::= "esp32"
 
 /** Return value from $architecture. */
+ARCHITECTURE-ESP32C3 ::= "esp32c3"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32C6 ::= "esp32c6"
+
+/** Return value from $architecture. */
 ARCHITECTURE-ESP32S2 ::= "esp32s2"
 
 /** Return value from $architecture. */
 ARCHITECTURE-ESP32S3 ::= "esp32s3"
-
-/** Return value from $architecture. */
-ARCHITECTURE-ESP32C3 ::= "esp32c3"
 
 /** Returns a string identifying the underlying architecture. */
 architecture -> string:

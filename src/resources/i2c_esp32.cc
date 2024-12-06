@@ -41,7 +41,7 @@ const i2c_port_t kInvalidPort = i2c_port_t(-1);
 
 static ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
     I2C_NUM_0
-#if SOC_I2C_NUM >= 2
+#if SOC_HP_I2C_NUM >= 2
   , I2C_NUM_1
 #endif
 );
@@ -93,12 +93,12 @@ PRIMITIVE(init) {
   result = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
-#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32S3)
     i2c_set_timeout(port, (int)(log2(APB_CLK_FREQ / 1000.0 * kI2cTransactionTimeout)));
 #elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
     i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2cTransactionTimeout);
 #else
-#FATAL "Unsupported target"
+#error "Unsupported target"
   // Go to the i2c section of the datasheet and check whether the value is used as
   // a power or counts the individual cycles.
   // For example:

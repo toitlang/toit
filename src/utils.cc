@@ -643,7 +643,7 @@ void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
 void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
   ASSERT((bytes & 3) == 0);
   ASSERT(((uintptr_t)src & 3) == 0);
-#if defined(TOIT_ESP32) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
   uint32_t tmp;
   __asm__ __volatile__(
     "srai %3, %3, 2   \n"  // Divide bytes by 4.
@@ -659,8 +659,10 @@ void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
     : "r" (dst), "r" (src), "r" (bytes)
     // Clobbers.
     : );
-#else
+#elif (!defined(TOIT_ESP32)) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32S2)
   memcpy(dst, src, bytes);
+#else
+  #error "Unknown target"
 #endif
 }
 

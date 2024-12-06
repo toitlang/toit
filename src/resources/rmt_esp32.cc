@@ -243,7 +243,7 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
   err = rmt_config(config);
   if (ESP_OK != err) return err;
 
-  err = rmt_set_source_clk(channel_num, RMT_BASECLK_APB);
+  err = rmt_set_source_clk(channel_num, RMT_BASECLK_DEFAULT);
   if (ESP_OK != err) return err;
 
   err = rmt_driver_install(channel_num, rx_buffer_size, 0);
@@ -330,7 +330,7 @@ PRIMITIVE(config_bidirectional_pin) {
   // Enable the pin. "w1ts" = "write 1 to set".
   // TODO(florian): not completely sure why this is needed, but without it
   // it won't work.
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
   if (pin >= MAX_GPIO_NUM) FAIL(INVALID_ARGUMENT);
   GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
 #else
