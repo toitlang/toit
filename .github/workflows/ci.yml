@@ -1094,7 +1094,9 @@ jobs:
         shell: bash
         id: external
         run: |
-          cat external-result/*
+          for f in external-result/*; do
+            echo "$f: $(cat $f)";
+          done
           if grep "fail" external-result/*; then
             echo "result=fail" >> $GITHUB_OUTPUT
           else
@@ -1105,7 +1107,9 @@ jobs:
         shell: bash
         id: flaky
         run: |
-          cat flaky-result/*
+          for f in flaky-result/*; do
+            echo "$f: $(cat $f)";
+          done
           if grep "fail" flaky-result/*; then
             echo "result=fail" >> $GITHUB_OUTPUT
           else
