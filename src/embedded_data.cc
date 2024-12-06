@@ -19,6 +19,10 @@
 
 namespace toit {
 
+#ifdef TOIT_ESP32
+extern "C" int _rodata_reserved_end;
+#endif
+
 const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   const uint32* header = reinterpret_cast<const uint32*>(pointer);
   if (!header) return null;
@@ -26,6 +30,11 @@ const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   uint32 checksum = 0;
   for (int i = 0; i < HEADER_WORDS; i++) checksum ^= header[i];
   if (checksum != HEADER_CHECKSUM) return null;
+#ifdef TOIT_ESP32
+  uint32 size = header[HEADER_INDEX_USED] + header[HEADER_INDEX_FREE];
+  void* end = reinterpret_cast<void*>(reinterpret_cast<uint32>(pointer) + size);
+  if (end > &_rodata_reserved_end) FATAL("rodata reservation too small");
+#endif
   return reinterpret_cast<const EmbeddedDataExtension*>(header);
 }
 

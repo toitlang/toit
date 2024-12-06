@@ -32,7 +32,6 @@ list(APPEND TOIT_FLAKY_TESTS
   tests/tls-global-cert-simple-test.toit
   tests/tls-simple-cert.toit
   tests/tls-resume-session-test.toit
-  tests/tls2-test.toit
 )
 
 list(APPEND TOIT_OPTIMIZATION_SKIP_TESTS
