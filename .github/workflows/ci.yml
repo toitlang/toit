@@ -1091,37 +1091,38 @@ jobs:
           find .
 
       - name: Check external
-        # Allow to fail here. We will check for failure later.
-        continue-on-error: true
         shell: bash
+        id: external
         run: |
           cat external-result/*
-          grep "fail" external-result/* && exit 1
-          # If we get here, we didn't find any failures but
-          # the exit code of the grep is still 1 or 2. Echo
-          # something to make it clear and avoid letting the
-          # result of the action be non-zero.
-          echo "success: no failures found"
+          if grep "fail" external-result/*; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+          else
+            echo "result=success" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check flaky
-        # Allow to fail here. We will check for failure later.
-        continue-on-error: true
         shell: bash
+        id: flaky
         run: |
           cat flaky-result/*
-          grep "fail" flaky-result/* && exit 1
-          # If we get here, we didn't find any failures but
-          # the exit code of the grep is still 1 or 2. Echo
-          # something to make it clear and avoid letting the
-          # result of the action be non-zero.
-          echo "success: no failures found"
+          if grep "fail" flaky-result/*; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+          else
+            echo "result=success" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check for failures
         # We don't want to fail the action if it's a scheduled run.
-        if: failure() && ${{ github.event_name != 'schedule' }}
+        if: github.event_name != 'schedule'
         run: |
-          echo "Found failures in external or flaky tests."
-          exit 1
+          if [[ "${{ steps.external.outputs.result }}" == "fail" || \
+                "${{ steps.flaky.outputs.result }}" == "fail" ]]; then
+            echo "Found failures in external or flaky tests."
+            echo "external: ${{ steps.external.outputs.result }}"
+            echo "flaky: ${{ steps.flaky.outputs.result }}"
+            exit 1
+          fi
 
   AUR:
     name: Update AUR package
