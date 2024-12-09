@@ -221,6 +221,12 @@ class DataBlock:
   static TYPE-SERVICE-DATA-32 ::= 0x20
   static TYPE-SERVICE-DATA-128 ::= 0x21
   static TYPE-MANUFACTURER-SPECIFIC ::= 0xFF
+  /**
+  A raw data block.
+  This block is written without the usual length and type fields, but
+    verbatim as it is.
+  */
+  static TYPE-RAW ::= -1
 
   /**
   The type of the data block.
@@ -270,15 +276,20 @@ class DataBlock:
 
   /**
   Decodes a raw advertisement data packet into a list of data blocks.
+
+  If the data is invalid, a raw data block is created with the remaining data.
   */
   static decode raw/ByteArray -> List:
     result := []
     pos := 0
     while pos < raw.size:
-      if pos + 1 >= raw.size: throw "INVALID_DATA"
+      if pos + 1 >= raw.size:
+        result.add (DataBlock.raw raw[pos ..])
+        break
       size := raw[pos]
-      if size == 0: throw "INVALID_DATA"
-      if pos + size >= raw.size: throw "INVALID_DATA"
+      if size == 0 or (pos + size >= raw.size):
+        result.add (DataBlock.raw raw[pos ..])
+        break
       type := raw[pos + 1]
       data := raw[pos + 2 .. pos + size + 1].copy
       result.add (DataBlock type data)
@@ -291,6 +302,20 @@ class DataBlock:
   No check is made to ensure that the data is valid for the given type.
   */
   constructor .type .data:
+    if data.size > 255: throw "DATA_TOO_LONG"
+
+  /**
+  Constructs a raw data block.
+
+  This block is written without the usual length and type fields, but
+    verbatim as it is.
+
+  This constructor is used as an escape hatch when a data block cannot be
+    decoded. It should not be used for normal data blocks.
+  */
+  constructor.raw data/ByteArray:
+    type = TYPE-RAW
+    this.data = data
 
   /**
   Constructs a field of flags for discovery.
@@ -657,10 +682,20 @@ class DataBlock:
     return block.call data[0 .. 2] data[2 ..]
 
   /**
+  The size of the data block in bytes.
+  */
+  size -> int:
+    if type == TYPE-RAW: return data.size
+    return 2 + data.size
+
+  /**
   Writes this field into the given $bytes at the given position $at.
   */
   write bytes/ByteArray --at/int [--on-error] -> int:
-    if bytes.size < at + 2:
+    if type == TYPE-RAW:
+      bytes.replace at data
+      return at + data.size
+    if bytes.size < at + 2 + data.size:
       return on-error.call "BUFFER_TOO_SMALL"
     bytes[at] = data.size + 1
     bytes[at + 1] = type
@@ -671,6 +706,7 @@ class DataBlock:
   Converts this data block to a raw byte array.
   */
   to-raw -> ByteArray:
+    if type == TYPE-RAW: return data
     result := ByteArray data.size + 2
     result[0] = data.size + 1
     result[1] = type
@@ -863,7 +899,7 @@ class Advertisement:
   size -> int:
     size := 0
     data-blocks.do: | block/DataBlock |
-      size += 2 + block.data.size
+      size += block.size
     return size
 
   /**
