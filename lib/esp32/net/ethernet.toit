@@ -58,7 +58,7 @@ This provider must be installed before Ethernet networking can be used
 An example of how to install the service provider in the same
   container. This example is for the Olimex ESP32-POE board.
 
-``` toit
+```
 import gpio
 import net.ethernet
 import esp32.net.ethernet as esp32
@@ -88,7 +88,7 @@ The Olimex Ethernet boards (Gateway and ESP32-POE)
 This firmware contains the following sdk-config change (enable
   `CONFIG_ETH_RMII_CLK_OUTPUT`):
 
-``` diff
+```
 --- b/toolchains/esp32/sdkconfig
 +++ a/toolchains/esp32/sdkconfig
 @@ -505,9 +505,10 @@
