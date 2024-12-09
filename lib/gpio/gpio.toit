@@ -106,6 +106,19 @@ interface Pin:
   For chip variants without an in-package flash, GPIO14 is not led out to any
     chip pins.
 
+  # ESP32S2
+  The ESP32S2 has 43 physical pins (0-21, 26-46). Each pin can be used as
+    a general-purpose pin, or be connected to a peripheral.
+
+  Pins 0, 45, and 46 are strapping pins.
+  Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
+  Pins 39-42 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 1-10 are ADC pins of channel 1.
+  Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
+    should be avoided if possible.
+  Pins 0-21 are RTC pins and can be used in deep-sleep.
+  Pin 46 is fixed to pull-down and is input only.
+
   # ESP32S3
   The ESP32S3 has 45 physical pins (0-21, 26-48). Each pin can be used as
     a general-purpose pin, or be connected to a peripheral.
