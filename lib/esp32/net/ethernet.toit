@@ -83,7 +83,7 @@ main:
 
 # Olimex Ethernet boards
 The Olimex Ethernet boards (Gateway and ESP32-POE)
-  need an envelope with an RMII clock output: `firmware-esp32-eth-clk-out17`.
+  need an envelope with an RMII clock output: `esp32-eth-clk-out17`.
 
 This firmware contains the following sdk-config change (enable
   `CONFIG_ETH_RMII_CLK_OUTPUT`):
@@ -106,6 +106,12 @@ This firmware contains the following sdk-config change (enable
  CONFIG_ETH_DMA_RX_BUFFER_NUM=10
  CONFIG_ETH_DMA_TX_BUFFER_NUM=10
 ```
+
+# Lilygo T-Internet-COM
+
+The [Lilygo T-Internet-COM](https://lilygo.cc/products/t-internet-com) is similar
+  to the Olimex board. It uses the `esp32-eth-clk-out17-spiram` envelope
+  and GPIO 4 as power pin. The rest is the same.
 */
 class EthernetServiceProvider extends EthernetServiceProviderBase_:
   state_/NetworkState ::= NetworkState
