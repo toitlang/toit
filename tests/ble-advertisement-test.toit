@@ -9,6 +9,7 @@ main:
   test-data-blocks
   test-advertisement-packets
   test-real-world-examples
+  test-bad
 
 test-data-blocks:
   uuid16-1 := BleUuid "1234"
@@ -366,3 +367,23 @@ test-real-world-examples:
 
   expect-equals real packet.to-raw
   expect-equals real (Advertisement.raw packet.to-raw).to-raw
+
+test-bad:
+  bytes := #[0x15, 0x00]
+  blocks := DataBlock.decode bytes
+  expect-equals 1 blocks.size
+  expect-equals DataBlock.TYPE-RAW blocks[0].type
+  expect-equals bytes blocks[0].data
+  expect-equals bytes blocks[0].to-raw
+
+  bytes = #[
+    0x02, 0x01, 0x01 | 0x04,  // Flags.
+    0x01,  // Invalid.
+  ]
+  blocks = DataBlock.decode bytes
+  expect-equals 2 blocks.size
+  expect-equals DataBlock.TYPE-FLAGS blocks[0].type
+  expect-equals DataBlock.TYPE-RAW blocks[1].type
+  expect-equals #[0x01] blocks[1].data
+  advertisement := Advertisement blocks
+  expect-equals bytes advertisement.to-raw
