@@ -187,6 +187,20 @@ Since Toit only supports BLE, this flag should always be set.
 */
 BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED  ::= 0x04
 
+/**
+A device that is a controller.
+
+This device is both an LE and a BR/EDR controller.
+*/
+BLE-ADVERTISE-FLAGS-LE-BREDR-CONTROLLER  ::= 0x08
+
+/**
+A device that is a host.
+
+This device is both an LE and a BR/EDR host.
+*/
+BLE-ADVERTISE-FLAGS-LE-BREDR-HOST  ::= 0x1A
+
 BLE-DEFAULT-PREFERRED-MTU_             ::= 23
 
 /**
@@ -713,6 +727,66 @@ class DataBlock:
     result.replace 2 data
     return result
 
+  hash-code -> int:
+    return type.hash-code * 31 + data.hash-code
+
+  operator== other/any:
+    if other is not DataBlock: return false
+    other-block := other as DataBlock
+    return type == other-block.type and data == other-block.data
+
+  stringify --add-prefix/bool=true -> string:
+    prefix := add-prefix ? "DataBlock: " : ""
+    if type == TYPE-RAW: return "$(prefix)raw=$data"
+    if type == TYPE-FLAGS:
+      flags-strings := []
+      if (flags & BLE-ADVERTISE-FLAGS-LIMITED-DISCOVERY) != 0:
+        flags-strings.add "LE Limited Discoverable Mode"
+      if (flags & BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY) != 0:
+        flags-strings.add "LE General Discoverable Mode"
+      if (flags & BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED) != 0:
+        flags-strings.add "BR/EDR Not Supported"
+      if (flags & BLE-ADVERTISE-FLAGS-LE-BREDR-CONTROLLER) != 0:
+        flags-strings.add "LE and BR/EDR Controller"
+      if (flags & BLE-ADVERTISE-FLAGS-LE-BREDR-HOST) != 0:
+        flags-strings.add "LE and BR/EDR Host"
+      if flags-strings.is-empty: return "$(prefix)flags=$(%x flags)"
+      return "$(prefix)flags=$(%x flags) ($(flags-strings.join ", "))"
+    if type == TYPE-SERVICE-UUIDS-16-INCOMPLETE:
+      return "$(prefix)services-16-incomplete=$services-16"
+    if type == TYPE-SERVICE-UUIDS-16-COMPLETE:
+      return "$(prefix)services-16-complete=$services-16"
+    if type == TYPE-SERVICE-UUIDS-32-INCOMPLETE:
+      return "$(prefix)services-32-incomplete=$services-32"
+    if type == TYPE-SERVICE-UUIDS-32-COMPLETE:
+      return "$(prefix)services-32-complete=$services-32"
+    if type == TYPE-SERVICE-UUIDS-128-INCOMPLETE:
+      return "$(prefix)services-128-incomplete=$services-128"
+    if type == TYPE-SERVICE-UUIDS-128-COMPLETE:
+      return "$(prefix)services-128-complete=$services-128"
+    if type == TYPE-NAME-SHORTENED:
+      return "$(prefix)name-shortened=$name"
+    if type == TYPE-NAME-COMPLETE:
+      return "$(prefix)name-complete=$name"
+    if type == TYPE-TX-POWER-LEVEL:
+      return "$(prefix)tx-power-level=$tx-power-level"
+    if type == TYPE-SERVICE-DATA-16 or type == TYPE-SERVICE-DATA-32 or type == TYPE-SERVICE-DATA-128:
+      bit-size/int := ?
+      if type == TYPE-SERVICE-DATA-16: bit-size = 16
+      else if type == TYPE-SERVICE-DATA-32: bit-size = 32
+      else if type == TYPE-SERVICE-DATA-128: bit-size = 128
+      else: unreachable
+      data-strings := []
+      service-data: | uuid/BleUuid data/io.Data |
+        data-strings.add "$uuid=$data"
+      return "$(prefix)service-data-$bit-size=($(data-strings.join ", "))"
+    if type == TYPE-MANUFACTURER-SPECIFIC:
+      manufacturer-specific: | company-id/ByteArray manufacturer-specific/io.Data |
+        company-id-string := "$(%02x company-id[1])$(%02x company-id[0])"
+        return "$(prefix)manufacturer-specific=$company-id-string-$manufacturer-specific"
+      unreachable
+    return "$(prefix)type=$type, data=$data"
+
 /**
 Deprecated. Use $Advertisement instead.
 */
@@ -913,6 +987,11 @@ class Advertisement:
     data-blocks.do: | block/DataBlock |
       pos = block.write result --at=pos --on-error=: throw it
     return result
+
+  stringify -> string:
+    block-strings := data-blocks.map: | block/DataBlock |
+      block.stringify --no-add-prefix
+    return "Advertisement: $(block-strings.join "; ")"
 
 CHARACTERISTIC-PROPERTY-BROADCAST                    ::= 0x0001
 CHARACTERISTIC-PROPERTY-READ                         ::= 0x0002
