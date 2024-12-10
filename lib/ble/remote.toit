@@ -70,6 +70,25 @@ class Central extends Resource_:
     declare during advertising whether they are limited (advertising for a limited
     duration) or general (continuously broadcasting). This flag filters out general
     devices.
+
+  # Merging advertisements
+
+  When $active is true, then there are two calls to the $block for each device. The first
+    call is for the discovery event, and the second call is for the scan response event.
+    It is up to the user to merge the advertisement data from the two calls.
+
+  A simple way to merge advertisement data is to concatenate the $DataBlock entries of
+    the advertisements.
+
+  ```
+  discovered-blocks := {:}
+  central.scan --duration=(Duration --s=2) --active: | device/RemoteScannedDevice |
+    blocks := discovered-blocks.get device.identifier --init=: {}
+    blocks.add-all device.data.data-blocks
+  // A map from identifier to the discovered advertisements.
+  discovered-advertisements := discovered-blocks.map: | _ blocks |
+    Advertisement blocks.to-list --no-check-size
+  ```
   */
   scan -> none
       --interval/int=0
@@ -186,6 +205,7 @@ class RemoteScannedDevice:
   The identifier of the remote device.
 
   The identifier is platform dependent and must be used to $Central.connect to the device.
+  The identifier is guaranteed to have a hash code and can thus be used in a $Set or $Map.
   */
   identifier/Object
 
