@@ -84,6 +84,15 @@ main args/List:
         --multi,
   ]
 
+  compile-analyze-options := [
+    cli.Option "dependency-file"
+      --help="""
+          Write a dependency file ('-' for stdout).
+          Requires the '--dependency-format' option.""",
+    cli.OptionEnum "dependency-format" ["plain", "ninja"]
+      --help="Set the format of the dependency file.",
+  ]
+
   compile-run-options := [
     cli.OptionInt "optimization-level" --short-name="O"
         --help="""
@@ -115,7 +124,7 @@ main args/List:
   analyze-command := cli.Command "analyze"
       --help="""
         Analyze the given Toit source file."""
-      --options=compile-analyze-run-options
+      --options=compile-analyze-run-options + compile-analyze-options
       --rest=[
         cli.Option "source"
           --help="The source file to analyze."
@@ -127,15 +136,9 @@ main args/List:
   compile-command := cli.Command "compile"
       --help="""
         Compile the given Toit source file to a Toit binary or a Toit snapshot."""
-      --options=compile-analyze-run-options + compile-run-options + [
+      --options=compile-analyze-run-options + compile-analyze-options + compile-run-options + [
         cli.Flag "snapshot" --short-name="s"
             --help="Compile to a snapshot instead of a binary.",
-        cli.Option "dependency-file"
-            --help="""
-                Write a dependency file ('-' for stdout).
-                Requires the '--dependency-format' option.""",
-        cli.OptionEnum "dependency-format" ["plain", "ninja"]
-            --help="Set the format of the dependency file.",
         cli.Flag "strip"
             --help="Strip the output of debug information.",
         cli.Option "os"
@@ -576,16 +579,8 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
         args.add "--force"
 
     if command == "compile":
-      if invocation["dependency-file"]:
-        args.add "--dependency-file"
-        args.add invocation["dependency-file"]
-        if invocation["dependency-format"]:
-          args.add "--dependency-format"
-          args.add invocation["dependency-format"]
-        else:
-          ui.abort "Missing --dependency-format"
-
-      if invocation["strip"]: args.add "--strip"
+      if invocation["strip"]:
+        args.add "--strip"
 
       if invocation["os"]:
         args.add "--os"
@@ -604,6 +599,18 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
       else:
         args.add "-o"
       args.add invocation["output"]
+
+  if command == "analyze" or command == "compile":
+    if invocation["dependency-file"]:
+      args.add "--dependency-file"
+      args.add invocation["dependency-file"]
+      if invocation["dependency-format"]:
+        args.add "--dependency-format"
+        args.add invocation["dependency-format"]
+      else:
+        ui.abort "Missing --dependency-format"
+    else if invocation["dependency-format"]:
+      ui.abort "Missing --dependency-file"
 
   if is-snapshot:
     assert: args.is-empty
