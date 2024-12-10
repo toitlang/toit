@@ -190,14 +190,14 @@ BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED  ::= 0x04
 /**
 A device that is a controller.
 
-This device is both a LE and a BR/EDR controller.
+This device is both an LE and a BR/EDR controller.
 */
 BLE-ADVERTISE-FLAGS-LE-BREDR-CONTROLLER  ::= 0x08
 
 /**
 A device that is a host.
 
-This device is both a LE and a BR/EDR host.
+This device is both an LE and a BR/EDR host.
 */
 BLE-ADVERTISE-FLAGS-LE-BREDR-HOST  ::= 0x1A
 

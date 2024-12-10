@@ -85,7 +85,7 @@ class Central extends Resource_:
   central.scan --duration=(Duration --s=2) --active: | device/RemoteScannedDevice |
     blocks := discovered-blocks.get device.identifier --init=: {}
     blocks.add-all device.data.data-blocks
-  // A map from identifier to the discovered advertisements.
+  // Construct a map from identifier to the discovered advertisements.
   discovered-advertisements := discovered-blocks.map: | _ blocks |
     Advertisement blocks.to-list --no-check-size
   ```
