@@ -739,20 +739,19 @@ class DataBlock:
     prefix := add-prefix ? "DataBlock: " : ""
     if type == TYPE-RAW: return "$(prefix)raw=$data"
     if type == TYPE-FLAGS:
-      flags-string := ""
+      flags-strings := []
       if (flags & BLE-ADVERTISE-FLAGS-LIMITED-DISCOVERY) != 0:
-        flags-string += "LE Limited Discoverable Mode, "
+        flags-strings.add "LE Limited Discoverable Mode"
       if (flags & BLE-ADVERTISE-FLAGS-GENERAL-DISCOVERY) != 0:
-        flags-string += "LE General Discoverable Mode, "
+        flags-strings.add "LE General Discoverable Mode"
       if (flags & BLE-ADVERTISE-FLAGS-BREDR-UNSUPPORTED) != 0:
-        flags-string += "BR/EDR Not Supported, "
+        flags-strings.add "BR/EDR Not Supported"
       if (flags & BLE-ADVERTISE-FLAGS-LE-BREDR-CONTROLLER) != 0:
-        flags-string += "LE and BR/EDR Controller, "
+        flags-strings.add "LE and BR/EDR Controller"
       if (flags & BLE-ADVERTISE-FLAGS-LE-BREDR-HOST) != 0:
-        flags-string += "LE and BR/EDR Host, "
-      if flags-string.is-empty: return "$(prefix)flags=$(%x flags)"
-      flags-string = flags-string[.. flags-string.size - 2]
-      return "$(prefix)flags=$(%x flags) ($flags-string)"
+        flags-strings.add "LE and BR/EDR Host"
+      if flags-strings.is-empty: return "$(prefix)flags=$(%x flags)"
+      return "$(prefix)flags=$(%x flags) ($(flags-strings.join ", "))"
     if type == TYPE-SERVICE-UUIDS-16-INCOMPLETE:
       return "$(prefix)services-16-incomplete=$services-16"
     if type == TYPE-SERVICE-UUIDS-16-COMPLETE:
@@ -777,18 +776,16 @@ class DataBlock:
       else if type == TYPE-SERVICE-DATA-32: bit-size = 32
       else if type == TYPE-SERVICE-DATA-128: bit-size = 128
       else: unreachable
-      data-string := ""
+      data-strings := []
       service-data: | uuid/BleUuid data/io.Data |
-        data-string += "$uuid=$data, "
-      data-string = data-string[.. data-string.size - 2]
-      return "$(prefix)service-data-$bit-size=($data-string)"
+        data-strings.add "$uuid=$data"
+      return "$(prefix)service-data-$bit-size=($(data-strings.join ", "))"
     if type == TYPE-MANUFACTURER-SPECIFIC:
       manufacturer-specific: | company-id/ByteArray manufacturer-specific/io.Data |
         company-id-string := "$(%02x company-id[1])$(%02x company-id[0])"
         return "$(prefix)manufacturer-specific=$company-id-string-$manufacturer-specific"
       unreachable
     return "$(prefix)type=$type, data=$data"
-    if type == TYPE-SERVICE-DATA-32:
 
 /**
 Deprecated. Use $Advertisement instead.
