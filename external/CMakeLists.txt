@@ -75,6 +75,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-png-tools
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
     https://github.com/toitware/toit-qwiic-joystick
@@ -134,10 +135,21 @@ if (DEFINED EXECUTING_SCRIPT)
         WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
       )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
     else()
       execute_process(
         COMMAND "${GIT_EXECUTABLE}" clone --depth 1 "${REPO}"
         WORKING_DIRECTORY "${DOWNLOADS_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      message("Downloading submodules for ${REPO}")
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
+        WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
