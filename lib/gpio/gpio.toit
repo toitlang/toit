@@ -13,6 +13,72 @@ The $Pin represents actual physical pins.
 The $VirtualPin is a software pin which can be used for actual pins that have
   different modes depending on whether they are used for input or output or
   peripherals simulated in software.
+
+# ESP32
+The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
+  be used as a general-purpose pin, or be connected to a peripheral.
+Pins 0, 2, 5, 12 and 15 are strapping pins.
+Pins 6-11 are normally connected to flash/PSRAM, and should not be used.
+Pins 12-15 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 25-26 are DAC pins.
+Pins 34-39 are input only.
+Pins 32-39 are ADC pins of channel 1.
+Pins 0, 2, 4, 12-15, 25-27 are ADC pins of channel 2. ADC channel 2 has
+  restrictions and should be avoided if possible.
+Pins 0, 2, 4, 12-16, 25-39 are RTC pins. They can be used in deep sleep. For
+  example, to wake up from deep sleep.
+
+# ESP32C3
+The ESP32C3 has 22 physical pins (0-21). Each pin can be used as
+  a general-purpose pin, or be connected to a peripheral.
+
+Pins 2, 8, and 9 are strapping pins.
+Pins 12-17 are normally connected to flash/PSRAM, and should not be used.
+Pins 18-19 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 0-5 are RTC pins and can be used in deep-sleep.
+Pins 0-4 are ADC pins of channel 1.
+Pin 5 is an ADC pin of channel 2. ADC channel 2 has restrictions and should be
+  avoided if possible.
+
+# ESP23C6
+The ESP32C6 has 31 physical pins (0-30). Each pin can be used as
+  a general-purpose pin, or be connected to a peripheral.
+
+Pins 4, 5, 8, 9, and 15 are strapping pins.
+Pins 24-30 are normally connected to flash/PSRAM, and should not be used.
+Pins 10-11 are not led out to any chip pins.
+Pins 12-13 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 0-6 are ADC pins of channel 1.
+Pins 0-7 are RTC pins and can be used in deep-sleep.
+For chip variants without an in-package flash, GPIO14 is not led out to any
+  chip pins.
+
+# ESP32S2
+The ESP32S2 has 43 physical pins (0-21, 26-46). Each pin can be used as
+  a general-purpose pin, or be connected to a peripheral.
+
+Pins 0, 45, and 46 are strapping pins.
+Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
+Pins 39-42 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 1-10 are ADC pins of channel 1.
+Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
+  should be avoided if possible.
+Pins 0-21 are RTC pins and can be used in deep-sleep.
+Pin 46 is fixed to pull-down and is input only.
+
+# ESP32S3
+The ESP32S3 has 45 physical pins (0-21, 26-48). Each pin can be used as
+  a general-purpose pin, or be connected to a peripheral.
+
+Pins 0, 3, 45, and 46 are strapping pins.
+Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
+Pins 33-37 are used when using octal flash or PSRAM. They may be available
+  depending on the configuration, but are considered restricted.
+Pins 19-20 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 1-10 are ADC pins of channel 1.
+Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
+  should be avoided if possible.
+Pins 0-21 are RTC pins and can be used in deep-sleep.
 */
 
 /**
@@ -66,72 +132,6 @@ interface Pin:
 
   If the pin is configured as output, the initial value can be set with the
     $value parameter.
-
-  # ESP32
-  The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
-    be used as a general-purpose pin, or be connected to a peripheral.
-  Pins 0, 2, 5, 12 and 15 are strapping pins.
-  Pins 6-11 are normally connected to flash/PSRAM, and should not be used.
-  Pins 12-15 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 25-26 are DAC pins.
-  Pins 34-39 are input only.
-  Pins 32-39 are ADC pins of channel 1.
-  Pins 0, 2, 4, 12-15, 25-27 are ADC pins of channel 2. ADC channel 2 has
-    restrictions and should be avoided if possible.
-  Pins 0, 2, 4, 12-16, 25-39 are RTC pins. They can be used in deep sleep. For
-    example, to wake up from deep sleep.
-
-  # ESP32C3
-  The ESP32C3 has 22 physical pins (0-21). Each pin can be used as
-    a general-purpose pin, or be connected to a peripheral.
-
-  Pins 2, 8, and 9 are strapping pins.
-  Pins 12-17 are normally connected to flash/PSRAM, and should not be used.
-  Pins 18-19 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 0-5 are RTC pins and can be used in deep-sleep.
-  Pins 0-4 are ADC pins of channel 1.
-  Pin 5 is an ADC pin of channel 2. ADC channel 2 has restrictions and should be
-    avoided if possible.
-
-  # ESP23C6
-  The ESP32C6 has 31 physical pins (0-30). Each pin can be used as
-    a general-purpose pin, or be connected to a peripheral.
-
-  Pins 4, 5, 8, 9, and 15 are strapping pins.
-  Pins 24-30 are normally connected to flash/PSRAM, and should not be used.
-  Pins 10-11 are not led out to any chip pins.
-  Pins 12-13 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 0-6 are ADC pins of channel 1.
-  Pins 0-7 are RTC pins and can be used in deep-sleep.
-  For chip variants without an in-package flash, GPIO14 is not led out to any
-    chip pins.
-
-  # ESP32S2
-  The ESP32S2 has 43 physical pins (0-21, 26-46). Each pin can be used as
-    a general-purpose pin, or be connected to a peripheral.
-
-  Pins 0, 45, and 46 are strapping pins.
-  Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
-  Pins 39-42 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 1-10 are ADC pins of channel 1.
-  Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
-    should be avoided if possible.
-  Pins 0-21 are RTC pins and can be used in deep-sleep.
-  Pin 46 is fixed to pull-down and is input only.
-
-  # ESP32S3
-  The ESP32S3 has 45 physical pins (0-21, 26-48). Each pin can be used as
-    a general-purpose pin, or be connected to a peripheral.
-
-  Pins 0, 3, 45, and 46 are strapping pins.
-  Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
-  Pins 33-37 are used when using octal flash or PSRAM. They may be available
-    depending on the configuration, but are considered restricted.
-  Pins 19-20 are JTAG pins, and should not be used if JTAG support is needed.
-  Pins 1-10 are ADC pins of channel 1.
-  Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
-    should be avoided if possible.
-  Pins 0-21 are RTC pins and can be used in deep-sleep.
   */
   constructor num/int
       --input/bool=false
