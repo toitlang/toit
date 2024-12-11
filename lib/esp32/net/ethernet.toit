@@ -86,8 +86,8 @@ The Olimex Ethernet boards (Gateway and ESP32-POE)
   need an envelope with an RMII clock output: `esp32-eth-clk-out17`
   (WROOM) or `esp32-eth-clk-out0-spiram` (WROVER).
 
-This firmware contains the sdk-config change to  enable
-  `CONFIG_ETH_RMII_CLK_OUTPUT` (here for the WROOM):
+This firmware contains the sdk-config change to enable
+  `CONFIG_ETH_RMII_CLK_OUTPUT` (here shown for the WROOM):
 
 ```
 --- b/toolchains/esp32/sdkconfig
