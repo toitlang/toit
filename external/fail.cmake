@@ -17,6 +17,8 @@ list(APPEND TOIT_SKIP_TESTS
   # Requires a setup step.
   toit-protobuf/tests/all_types_test.toit
   health-external/downloads/toit-protobuf/tests/all_types_test.toit
+  # Requires a tool to be built.
+  toit-png-tools/tests/suite_unzip_test.toit
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
