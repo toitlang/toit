@@ -146,7 +146,6 @@ if (DEFINED EXECUTING_SCRIPT)
         WORKING_DIRECTORY "${DOWNLOADS_DIR}"
         COMMAND_ERROR_IS_FATAL ANY
       )
-      message("Downloading submodules for ${REPO}")
       execute_process(
         COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
         WORKING_DIRECTORY "${REPO_PATH}"
