@@ -224,21 +224,39 @@ foreach(REPO ${TOIT_REPOS})
   add_dependencies(download_external "${TARGET_NAME}")
 endforeach()
 
-# Finds projects (folders with package.lock/yaml files) in the given repo.
-function(find_toit_projects REPO)
-  get_filename_component(REPO_NAME "${REPO}" NAME)
-  set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests" "tools" "app" "bin")
-    set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
-    if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
-      set(PROJECT_NAME "${REPO_NAME}")
-      if (NOT "${LOCATION}" STREQUAL "")
-        set(PROJECT_NAME "${PROJECT_NAME}-${LOCATION}")
-      endif()
-      # Mark it as a toit-project so we download its dependencies.
-      toit_project("${PROJECT_NAME}" "${LOCATION_PATH}")
+function(find_toit_projects directory)
+  # Helper function to process directories recursively.
+  function(process_directory current_dir project_name)
+    # Check if package.yaml or package.lock exists in the current directory.
+    if(EXISTS "${current_dir}/package.yaml" OR EXISTS "${current_dir}/package.lock")
+      toit_project("${project_name}" "${current_dir}")
     endif()
-  endforeach()
+
+    # Get the list of all files and directories in the current directory.
+    file(GLOB ALL_FILES_AND_DIRS RELATIVE "${current_dir}" "${current_dir}/*")
+
+    foreach(item IN LISTS ALL_FILES_AND_DIRS)
+      set(full_path "${current_dir}/${item}")
+
+      if(IS_DIRECTORY "${full_path}")
+        # Skip .packages directories.
+        if(NOT item MATCHES "^\.packages$")
+          # Recurse into subdirectory.
+          process_directory("${full_path}" "${project_name}-${item}")
+        endif()
+      endif()
+    endforeach()
+  endfunction()
+
+  get_filename_component(repo_name "${directory}" NAME)
+  set(repo_path "${DOWNLOADS_DIR}/${repo_name}")
+
+  # Start processing the provided directory.
+  if(EXISTS "${repo_path}")
+    process_directory("${repo_path}" "${repo_name}")
+  else()
+    message(WARNING "Directory ${repo_path} does not exist.")
+  endif()
 endfunction()
 
 include(fail.cmake OPTIONAL)
