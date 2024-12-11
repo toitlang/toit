@@ -1,0 +1,9 @@
+toit-pixel-display/tests/toit-png-tools/bin/pnginfo.toit:12:1: error: Failed to import '.version'
+import .version
+^~~~~~
+toit-pixel-display/tests/toit-png-tools/bin/pnginfo.toit:12:9: note: Missing library file. Tried 'toit-pixel-display/tests/toit-png-tools/bin/version.toit' and 'toit-pixel-display/tests/toit-png-tools/bin/version/version.toit'
+import .version
+        ^~~~~~~
+toit-pixel-display/tests/toit-png-tools/bin/pnginfo.toit:83:21: error: Unresolved identifier: 'PNGDIFF-VERSION'
+    print "pnginfo $PNGDIFF-VERSION"
+                    ^~~~~~~~~~~~~~~
