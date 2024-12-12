@@ -97,9 +97,9 @@ jobs:
           fi
           if [[ "${{ inputs.run-tests }}" != "false" ]]; then
             echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
-            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-20.04", "shard": 6}, {"container": "ubuntu-20.04", "shard": 7}, {"container": "ubuntu-20.04", "shard": 8}]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-20.04", "shard": 6}, {"container": "ubuntu-20.04", "shard": 7}]' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
-            echo 'SHARD_COUNT_LINUX=8' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT_LINUX=7' >> $GITHUB_OUTPUT
           else
             echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
