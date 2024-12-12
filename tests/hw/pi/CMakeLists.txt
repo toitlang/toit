@@ -32,4 +32,6 @@ foreach(file ${TOIT_TESTS})
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS pi
     )
+
+  set_tests_properties(${file} PROPERTIES TIMEOUT 40)
 endforeach()
