@@ -306,6 +306,17 @@ install: install-sdk
 test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
+.PHONY: test-serial
+test-serial:
+	@if [ -z "$$HW_TOIT_EXE" ]; then \
+		echo "HW_TOIT_EXE is not set. Set it to the path of the PI executable."; \
+		exit 1; \
+	fi
+	mkdir -p $(BUILD)/serial
+	(cd $(BUILD)/serial && cmake -DHW_TOIT_EXE=$$HW_TOIT_EXE -G Ninja $(CURDIR)/tests/hw)
+	$$HW_TOIT_EXE pkg install --project-root tests/hw/pi
+	(cd $(BUILD)/serial && ninja check_pi)
+
 .PHONY: build-test-assets
 build-test-assets: rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja build_test_assets)

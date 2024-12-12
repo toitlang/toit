@@ -75,6 +75,7 @@ env:
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
   DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' }}
   ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
+  TEST_PI_HW: "true"
 
 jobs:
   prereqs:
@@ -111,6 +112,7 @@ jobs:
       EXTRA_INCLUDES: ${{ steps.vars.outputs.EXTRA_INCLUDES }}
       SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
       SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
+      TEST_PI_HW: ${{ env.TEST_PI_HW }}
 
   build:
     needs: prereqs
@@ -529,6 +531,52 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
 
+  # The raspbian executable is also built on the 'cross' job, but we want to
+  # run the serial test as fast as possible and don't want to wait for the
+  # 'cross' job to finish.
+  rpi:
+    runs-on: ubuntu-latest
+    needs: prereqs
+    if: needs.prereqs.outputs.TEST_PI_HW == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set version
+        run: |
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
+
+      - name: Set up build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+          cache-key-prefix: cross-pi
+
+      - name: Make
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
+        run: |
+          make raspbian
+
+      - name: Pack artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspbian/sdk ./build/raspbian/toit
+          tar -czf build/rpi.tar.gz -C ./build/raspbian --dereference toit
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi-build
+          path: |
+            build/rpi.tar.gz
+
   cross:
     runs-on: ubuntu-latest
 
@@ -614,6 +662,7 @@ jobs:
           done
 
       - name: Test executables 32-bit
+        if: ${{ env.TEST_PI_HW != 'true' }}
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -627,6 +676,7 @@ jobs:
               build/raspbian/extracted/boot.sh > raspbian_output
 
       - name: Check that the 32-bit run-script worked
+        if: ${{ env.TEST_PI_HW != 'true' }}
         run: |
           cat raspbian_output
           grep "hello world" raspbian_output
@@ -1221,3 +1271,37 @@ jobs:
           git commit -am "Update to version ${{ env.TOIT_VERSION }}"
           git push origin master
           popd
+
+  serial:
+    needs: [prereqs, rpi]
+    if: needs.prereqs.outputs.TEST_PI_HW == 'true'
+
+    runs-on: serial
+
+    steps:
+      - name: Clean workspace
+        run: |
+          rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v4
+
+      # We need a more recent version of cmake than is installed globally.
+      - name: Add local bin to PATH
+        run: |
+          echo "$HOME/local/bin" >> $GITHUB_PATH
+
+      # Download the pi artifact.
+      - uses: actions/download-artifact@v4
+        with:
+          name: rpi-build
+
+      - name: Unpack Raspberry Pi
+        run: |
+          mkdir -p rpi
+          tar x -zf rpi.tar.gz -C rpi
+
+      - name: Test Raspberry Pi
+        run: |
+          # Get the pin configuration from the file in the runner's home.
+          source $HOME/pi-test.env
+          make HW_TOIT_EXE=${{ github.workspace }}/rpi/toit/bin/toit test-serial
