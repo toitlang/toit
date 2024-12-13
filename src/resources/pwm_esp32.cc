@@ -134,6 +134,8 @@ PRIMITIVE(init) {
                                                &src_clk_frequency);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  // The max frequency is half the source clock frequency. At that frequency there are
+  // only three duty-factors left: 0%, 50% and 100%.
   if (frequency <= 0 || frequency > max_frequency || max_frequency > (src_clk_frequency >> 1)) {
     FAIL(OUT_OF_BOUNDS);
   }
