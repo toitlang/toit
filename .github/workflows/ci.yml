@@ -1029,16 +1029,15 @@ jobs:
              >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
-      # Toitware's certificate isn't valid at the moment.
-      # - name: Sign macOS executables
-      #   uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
-      #   with:
-      #     certificate: ${{ secrets.MACOS_CERTIFICATE }}
-      #     certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-      #     username: ${{ secrets.AC_USERNAME }}
-      #     password: ${{ secrets.AC_PASSWORD }}
-      #     apple-team-id: ${{ vars.MACOS_TEAM_ID }}
-      #     app-path: ${{ steps.list-executables.outputs.result }}
+      - name: Sign macOS executables
+        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
+          app-path: ${{ steps.list-executables.outputs.result }}
 
       - name: Compress
         run: |
@@ -1063,18 +1062,17 @@ jobs:
                 empty-$arch
           done
 
-      # Toitware's certificate isn't valid at the moment.
-      # - name: Sign DMGs
-      #   uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
-      #   with:
-      #     certificate: ${{ secrets.MACOS_CERTIFICATE }}
-      #     certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
-      #     username: ${{ secrets.AC_USERNAME }}
-      #     password: ${{ secrets.AC_PASSWORD }}
-      #     apple-team-id: ${{ vars.MACOS_TEAM_ID }}
-      #     app-path: |
-      #       out/toit-x64.dmg
-      #       out/toit-arm.dmg
+      - name: Sign DMGs
+        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
+          app-path: |
+            out/toit-x64.dmg
+            out/toit-arm.dmg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
