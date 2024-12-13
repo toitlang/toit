@@ -5,14 +5,19 @@
 import gpio
 import uart
 
-import .uart-rs485-shared
 import gpio
 import uart
+
+import .test
+import .uart-rs485-shared
 
 RTS ::= 22
 TX ::= 23
 
 main:
+  run-test: test
+
+test:
   rts := gpio.Pin --input RTS --pull-down
   tx := gpio.Pin TX
 
@@ -25,5 +30,3 @@ main:
     while rts.get == 0:
     while rts.get == 1:
     port.out.write RESPONSE-MESSAGE
-
-  print "done"

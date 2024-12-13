@@ -14,6 +14,7 @@ import expect show *
 import monitor
 
 import .ble-util
+import .test
 
 SERVICE-TEST ::= BleUuid "df451d2d-e899-4346-a8fd-bca9cbfebc0b"
 SERVICE-TEST2 ::= BleUuid "94a11d6a-fa23-4a09-aa6f-2ca0b7cdbb70"
@@ -30,7 +31,13 @@ CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384
 VALUE-BYTES ::= #[0x70, 0x17]
 VALUE-STRING ::= "7017"
 
-main-peripheral --iteration/int:
+main-peripheral:
+  run-test:
+    // Run twice to make sure the `close` works correctly.
+    2.repeat:
+      run-peripheral-test --iteration=it
+
+run-peripheral-test --iteration/int:
   print "Iteration $iteration"
   adapter := Adapter
   adapter.set-preferred-mtu 527  // Maximum value.
@@ -146,7 +153,15 @@ main-peripheral --iteration/int:
     callback-task-done.get
   print "end of iteration"
 
-main-central --iteration/int:
+main-central:
+  run-test:
+    // Run twice to make sure the `close` works correctly.
+    2.repeat:
+      run-central-test --iteration=it
+      // Give the other side time to shut down.
+      if it == 0: sleep --ms=500
+
+run-central-test --iteration/int:
   print "Iteration $iteration"
   adapter := Adapter
 

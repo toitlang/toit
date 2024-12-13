@@ -5,6 +5,7 @@
 import gpio
 import uart
 
+import .test
 import .uart-rs485-shared
 
 /**
@@ -22,6 +23,9 @@ RX ::= 22
 TX ::= 16  // Unused.
 
 main:
+  run-test: test
+
+test:
   rx := gpio.Pin RX
   tx := gpio.Pin TX
   rts := gpio.Pin RTS

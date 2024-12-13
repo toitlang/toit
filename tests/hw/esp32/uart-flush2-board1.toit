@@ -16,10 +16,15 @@ Run uart-flush2-board1.toit on one ESP32 and uart-flush2-board2.toit on the othe
 import gpio
 import uart
 
+import .test
+
 RX ::= 22
 SIGNAL ::= 23
 
 main:
+  run-test: test
+
+test:
   rx := gpio.Pin RX --input --pull-up
   signal := gpio.Pin SIGNAL --input --pull-up
 

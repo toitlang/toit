@@ -14,6 +14,8 @@ import expect show *
 import gpio
 import uart
 
+import .test
+
 RX1 := 18
 TX1 := 26
 RX2 := 33
@@ -25,6 +27,9 @@ expect-baud expected/int actual/int:
   expect (expected - 5) <= actual <= (expected + 5)
 
 main:
+  run-test: test
+
+test:
   port1 := uart.Port
       --rx=gpio.Pin RX1
       --tx=gpio.Pin TX1
@@ -57,8 +62,6 @@ main:
   port2.out.write "tiger" --flush
   bytes = port1.in.read
   expect-equals "tiger" bytes.to-string
-
-  print "done"
 
   port1.close
   port2.close

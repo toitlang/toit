@@ -17,6 +17,8 @@ import gpio
 import pulse-counter
 import rmt
 
+import .test
+
 IN1 /int ::= 18
 IN2 /int ::= 33
 
@@ -24,6 +26,9 @@ OUT1 /int := 19
 OUT2 /int := 26
 
 main:
+  run-test: test
+
+test:
   in := gpio.Pin IN1
   out := gpio.Pin OUT1 --output
 
@@ -324,5 +329,3 @@ main:
   expect-equals 2 unit.value  // Up and down.
 
   unit.close
-
-  print "all tests done"

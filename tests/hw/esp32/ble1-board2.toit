@@ -9,8 +9,4 @@ See 'ble1-shared.toit'
 import .ble1-shared as shared
 
 main:
-  // Run twice to make sure the `close` works correctly.
-  2.repeat:
-    shared.main-central --iteration=it
-    // Give the other side time to shut down.
-    if it == 0: sleep --ms=500
+  shared.main-central

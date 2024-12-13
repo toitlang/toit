@@ -2,11 +2,4 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-/**
-See 'ble1-shared.toit'
-*/
-
-import .ble1-shared as shared
-
-main:
-  shared.main-peripheral
+MINI-JAG-LISTENING ::= "MINI-JAG LISTENING"

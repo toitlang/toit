@@ -14,6 +14,7 @@ import expect show *
 import monitor
 
 import .ble-util
+import .test
 
 SERVICE-TEST ::= BleUuid "a1bcf0ba-7557-4968-91f8-6b0f187af2b5"
 
@@ -27,8 +28,10 @@ TEST-BYTE-COUNT ::= 500_000
 MTU ::= 512
 PACKET-SIZE := MTU - 3
 
-
 main-peripheral:
+  run-test: test-peripheral
+
+test-peripheral:
   adapter := Adapter
   adapter.set-preferred-mtu MTU
   peripheral := adapter.peripheral
@@ -56,6 +59,9 @@ main-peripheral:
   print "all data received"
 
 main-central:
+  run-test: test-central
+
+test-central:
   adapter := Adapter
   adapter.set-preferred-mtu MTU
   central := adapter.central
@@ -84,5 +90,4 @@ main-central:
   print "awaiting response"
   write-only-with-response.write "done"
 
-  print "All done."
   adapter.close

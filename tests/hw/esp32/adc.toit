@@ -22,12 +22,17 @@ import gpio.adc as gpio
 import gpio
 import expect show *
 
+import .test
+
 ADC1-PIN ::= 32
 ADC2-PIN ::= 14
 CONTROL-PIN ::= 25
 V33-PIN ::= 12
 
 main:
+  run-test: test
+
+test:
   test-restricted := true
 
   v33-pin := gpio.Pin V33-PIN --output
@@ -89,5 +94,3 @@ main:
   // Now the voltage should be 3.3V.
   value = adc.get
   expect value > 3.0
-
-  print "done"

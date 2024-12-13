@@ -21,6 +21,7 @@ import expect show *
 import monitor
 
 import .ble-util
+import .test
 
 ITERATIONS ::= 100
 
@@ -78,6 +79,9 @@ UUIDS ::= [
 DONE-CHARACTERISTIC-UUID := "3450e50b-d1c8-4e6d-ba54-ff3ff0f17b1d"
 
 main-peripheral:
+  run-test: test-peripheral
+
+test-peripheral:
   adapter := Adapter
   peripheral := adapter.peripheral
 
@@ -98,11 +102,13 @@ main-peripheral:
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement
 
   done-characteristic.read
-  print "Done"
 
   adapter.close
 
 main-central:
+  run-test: test-central
+
+test-central:
   done := false
 
   keep-alive := List 100

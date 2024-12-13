@@ -16,15 +16,17 @@ import gpio
 import monitor
 import expect show *
 
+import .test
+
 RMT-PIN ::= 18
 LEVEL-PIN ::= 19
 MEASURE-PIN ::= 34
 
 main:
-  2.repeat:
-    test-no-pull-up --idle-level=it
-    test-pull-up --idle-level=it
-  print "All tests passed."
+  run-test:
+    2.repeat:
+      test-no-pull-up --idle-level=it
+      test-pull-up --idle-level=it
 
 test-no-pull-up --idle-level/int:
   print "Testing no pull up idle_level=$idle-level"

@@ -16,6 +16,8 @@ import gpio.dac as gpio
 import gpio.adc as gpio
 import expect show *
 
+import .test
+
 ADC-IN1 := 33
 ADC-IN2 := 32
 DAC-OUT1 := 26
@@ -45,6 +47,9 @@ test-wave data/List:
   expect 1.3 <= average <= 2.0
 
 main:
+  run-test: test
+
+test:
   dac1 := gpio.Dac (gpio.Pin DAC-OUT1)
   dac2 := gpio.Dac (gpio.Pin DAC-OUT2)
   adc1 := gpio.Adc (gpio.Pin ADC-IN1)
@@ -119,5 +124,3 @@ main:
 
   dac1.close
   dac2.close
-
-  print "done"

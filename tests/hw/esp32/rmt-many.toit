@@ -18,12 +18,17 @@ import gpio
 import monitor
 import expect show *
 
+import .test
+
 RMT-PIN-1 ::= 18
 RMT-PIN-2 ::= 19
 RMT-PIN-3 ::= 21
 RMT-PIN-4 ::= 32
 
 main:
+  run-test: test
+
+test:
   pin1 := gpio.Pin RMT-PIN-1
   pin2 := gpio.Pin RMT-PIN-2
   pin3 := gpio.Pin RMT-PIN-3

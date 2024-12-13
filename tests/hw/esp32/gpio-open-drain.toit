@@ -14,6 +14,7 @@ Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
 import gpio
 import expect show *
 
+import .test
 import ..shared.gpio-open-drain
 
 TEST-PIN ::= 18
@@ -21,6 +22,9 @@ LEVEL-PIN ::= 19
 MEASURE-PIN ::= 34
 
 main:
+  run-test: test
+
+test:
   measure-pin := gpio.Pin MEASURE-PIN --input
   test-pin := gpio.Pin TEST-PIN --output
   level-pin := gpio.Pin LEVEL-PIN  // Will be reconfigured.
@@ -33,4 +37,3 @@ main:
     measure-pin.close
     test-pin.close
     level-pin.close
-  print "All tests done"

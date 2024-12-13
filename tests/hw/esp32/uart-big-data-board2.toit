@@ -15,8 +15,12 @@ import system show platform
 import uart
 import .uart-big-data-shared
 
+import .test
 
 main:
+  run-test: test
+
+test:
   port/uart.Port := ?
   if platform == system.PLATFORM-FREERTOS:
     port = uart.Port --rx=null --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE

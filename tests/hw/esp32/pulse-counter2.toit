@@ -11,6 +11,8 @@ import expect show *
 import gpio
 import pulse-counter
 
+import .test
+
 IN1 /int ::= 18
 IN2 /int ::= 25
 
@@ -22,6 +24,9 @@ allocate-unit --close/bool=false:
     unit.close
 
 main:
+  run-test: test
+
+test:
   print "Closing correctly"
   10.repeat:
     spawn::
