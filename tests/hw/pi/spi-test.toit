@@ -18,6 +18,7 @@ main:
   print "ALL TESTS PASSED"
 
 test --cpol/int --cpha/int:
+  print "Running cpol=$cpol cpha=$cpha"
   mode := cpol << 1 | cpha
   device := spi.Device --path="/dev/spidev0.0" --frequency=FREQUENCY --mode=mode
 
