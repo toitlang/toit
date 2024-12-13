@@ -52,10 +52,6 @@ main args:
             --help="The WiFi password"
             --type="string"
             --required,
-        cli.Option "port"
-            --help="The path to the UART port"
-            --type="path"
-            --required,
       ]
       --run=:: | invocation/cli.Invocation |
         setup-tester invocation

@@ -306,16 +306,18 @@ install: install-sdk
 test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
-.PHONY: test-serial
-test-serial:
+.PHONY: test-hw
+test-hw:
 	@if [ -z "$$TOIT_EXE_HW" ]; then \
 		echo "TOIT_EXE_HW is not set."; \
 		exit 1; \
 	fi
-	mkdir -p $(BUILD)/serial
-	(cd $(BUILD)/serial && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
+	mkdir -p $(BUILD)/hw
+	(cd $(BUILD)/hw && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
-	(cd $(BUILD)/serial && ninja check_pi)
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp32
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp-tester
+	(cd $(BUILD)/hw && ninja check_hw)
 
 .PHONY: build-test-assets
 build-test-assets: rebuild-cmake

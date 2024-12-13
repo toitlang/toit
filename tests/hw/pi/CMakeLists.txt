@@ -30,7 +30,7 @@ foreach(file ${TOIT_TESTS})
     NAME ${file}
     COMMAND ${TOIT_EXE_HW} ${toit_file}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    CONFIGURATIONS pi
+    CONFIGURATIONS pi hw
     )
 
   set_tests_properties(${file} PROPERTIES TIMEOUT 40)
