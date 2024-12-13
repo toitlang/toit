@@ -5,28 +5,49 @@
 import gpio
 import uart
 
-import gpio
-import uart
-
 import .test
 import .uart-rs485-shared
 
-RTS ::= 22
-TX ::= 23
+/**
+Tests that the uart in rs485-half-duplex can receive data as soon as the
+  RTS bit is cleared.
+
+Setup:
+  Connect pin 23 of board 1 to pin 22 of board 2.
+  Connect pin 22 of board 1 to pin 23 of board 2.
+  Keep pin 16 of board 2 unconnected.
+*/
+
+RTS ::= 23
+RX ::= 22
+TX ::= 16  // Unused.
 
 main:
   run-test: test
 
 test:
-  rts := gpio.Pin --input RTS --pull-down
+  rx := gpio.Pin RX
   tx := gpio.Pin TX
+  rts := gpio.Pin RTS
 
   port := uart.Port
-      --rx=null
+      --rx=rx
       --tx=tx
+      --rts=rts
       --baud-rate=9600
+      --mode=uart.Port.MODE-RS485-HALF-DUPLEX
+
+  task --background::
+    sleep --ms=2000
+    print "Timeout"
+    print "Board1 must be started before board1"
+
+  task::
+    5.repeat:
+      data := port.in.read
+      if data != RESPONSE-MESSAGE:
+        throw "Error: $data $data.to-string-non-throwing"
 
   5.repeat:
-    while rts.get == 0:
-    while rts.get == 1:
-    port.out.write RESPONSE-MESSAGE
+    port.out.write OUT-MESSAGE
+    sleep --ms=100
