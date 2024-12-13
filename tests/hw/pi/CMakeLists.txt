@@ -28,7 +28,7 @@ foreach(file ${TOIT_TESTS})
 
   add_test(
     NAME ${file}
-    COMMAND ${HW_TOIT_EXE} ${toit_file}
+    COMMAND ${TOIT_EXE_HW} ${toit_file}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS pi
     )

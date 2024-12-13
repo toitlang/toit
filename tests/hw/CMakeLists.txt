@@ -17,10 +17,10 @@ cmake_minimum_required(VERSION 3.20.0)
 
 project(hw NONE)  # No need for compilers.
 
-set(HW_TOIT_EXE "" CACHE FILEPATH "The executable used to run hw tests")
+set(TOIT_EXE_HW "" CACHE FILEPATH "The executable used to run hardware tests")
 
-if (NOT HW_TOIT_EXE)
-  message(FATAL_ERROR "HW_TOIT_EXE not set")
+if (NOT TOIT_EXE_HW)
+  message(FATAL_ERROR "TOIT_EXE_HW not set")
 endif()
 
 enable_testing()

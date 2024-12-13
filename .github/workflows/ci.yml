@@ -1290,7 +1290,7 @@ jobs:
         run: |
           echo "$HOME/local/bin" >> $GITHUB_PATH
 
-      # Download the pi artifact.
+      # Download the Pi artifact.
       - uses: actions/download-artifact@v4
         with:
           name: rpi-build
@@ -1304,4 +1304,4 @@ jobs:
         run: |
           # Get the pin configuration from the file in the runner's home.
           source $HOME/pi-test.env
-          make HW_TOIT_EXE=${{ github.workspace }}/rpi/toit/bin/toit test-serial
+          make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-serial

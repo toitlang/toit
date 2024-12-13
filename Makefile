@@ -308,13 +308,13 @@ test:
 
 .PHONY: test-serial
 test-serial:
-	@if [ -z "$$HW_TOIT_EXE" ]; then \
-		echo "HW_TOIT_EXE is not set. Set it to the path of the PI executable."; \
+	@if [ -z "$$TOIT_EXE_HW" ]; then \
+		echo "TOIT_EXE_HW is not set."; \
 		exit 1; \
 	fi
 	mkdir -p $(BUILD)/serial
-	(cd $(BUILD)/serial && cmake -DHW_TOIT_EXE=$$HW_TOIT_EXE -G Ninja $(CURDIR)/tests/hw)
-	$$HW_TOIT_EXE pkg install --project-root tests/hw/pi
+	(cd $(BUILD)/serial && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
 	(cd $(BUILD)/serial && ninja check_pi)
 
 .PHONY: build-test-assets
