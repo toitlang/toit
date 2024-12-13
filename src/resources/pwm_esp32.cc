@@ -18,6 +18,7 @@
 #ifdef TOIT_ESP32
 
 #include <driver/ledc.h>
+#include <esp_clk_tree.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -64,8 +65,11 @@ static ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
 #endif
 );
 
-const uint32_t kMaxFrequencyBits = 26;
-const uint32_t kMaxFrequency = 40000000;  // 40MHz with duty resolution of 1 bit.
+#if CONFIG_IDF_TARGET_ESP32
+const ledc_clk_cfg_t kDefaultClk = LEDC_USE_APB_CLK;
+#else
+const ledc_clk_cfg_t kDefaultClk = LEDC_USE_RC_FAST_CLK;
+#endif
 
 class PwmResource : public Resource {
  public:
@@ -119,19 +123,25 @@ class PwmResourceGroup : public ResourceGroup {
   uint32 max_value_;
 };
 
-uint32 msb(uint32 n){
-  return 31 - Utils::clz(n);
-}
-
 MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
 
 PRIMITIVE(init) {
   ARGS(int, frequency, int, max_frequency)
 
-  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
+  uint32 src_clk_frequency = 0;
+  esp_err_t err = esp_clk_tree_src_get_freq_hz(static_cast<soc_module_clk_t>(kDefaultClk),
+                                               ESP_CLK_TREE_SRC_FREQ_PRECISION_EXACT,
+                                               &src_clk_frequency);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  uint32 bits = msb(max_frequency << 1);
-  uint32 resolution_bits = kMaxFrequencyBits - bits;
+  // The max frequency is half the source clock frequency. At that frequency there are
+  // only three duty-factors left: 0%, 50% and 100%.
+  if (frequency <= 0 || frequency > max_frequency || max_frequency > (src_clk_frequency >> 1)) {
+    FAIL(OUT_OF_BOUNDS);
+  }
+
+  auto resolution_bits = ledc_find_suitable_duty_resolution(src_clk_frequency, max_frequency);
+  if (resolution_bits == 0) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -141,14 +151,14 @@ PRIMITIVE(init) {
 
   ledc_timer_config_t config = {
     .speed_mode = SPEED_MODE,
-    .duty_resolution = (ledc_timer_bit_t)resolution_bits,
+    .duty_resolution = static_cast<ledc_timer_bit_t>(resolution_bits),
     .timer_num = timer,
     // Start with the max_frequency, so that the clocks are correctly chosen.
     .freq_hz = static_cast<uint32>(max_frequency),
-    .clk_cfg = LEDC_AUTO_CLK,
+    .clk_cfg = kDefaultClk,
   };
 
-  esp_err_t err = ledc_timer_config(&config);
+  err = ledc_timer_config(&config);
   if (err != ESP_OK) {
     ledc_timers.put(timer);
     return Primitive::os_error(err, process);
@@ -260,14 +270,13 @@ PRIMITIVE(frequency) {
   uint32 frequency = ledc_get_freq(SPEED_MODE, resource_group->timer());
   if (frequency == 0) FAIL(ERROR);
 
-  ASSERT(frequency <= kMaxFrequency);
   return Smi::from(static_cast<word>(frequency));
 }
 
 PRIMITIVE(set_frequency) {
   ARGS(PwmResourceGroup, resource_group, int, frequency);
 
-  if (frequency <= 0 || frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
+  if (frequency <= 0 || frequency > resource_group->max_value()) FAIL(OUT_OF_BOUNDS);
 
   esp_err_t err = ledc_set_freq(SPEED_MODE, resource_group->timer(), static_cast<uint32>(frequency));
   if (err != ESP_OK) {
