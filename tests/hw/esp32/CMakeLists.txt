@@ -43,7 +43,7 @@ foreach(board board1 board2)
     CONFIGURATIONS esp32 hw
     )
 
-  set_tests_properties("setup-${board}" PROPERTIES TIMEOUT 40)
+  set_tests_properties("setup-${board}" PROPERTIES TIMEOUT 80)
   set_tests_properties("setup-${board}" PROPERTIES FIXTURES_SETUP "setup-boards")
 endforeach()
 
