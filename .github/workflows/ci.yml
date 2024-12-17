@@ -1302,4 +1302,4 @@ jobs:
         run: |
           # Get the pin configuration from the file in the runner's home.
           source $HOME/pi-test.env
-          make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-serial
+          make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-hw
