@@ -40,7 +40,7 @@ test:
   task --background::
     sleep --ms=2000
     print "Timeout"
-    print "Board1 must be started before board1"
+    print "Board1 must be started before board2."
 
   task::
     5.repeat:
