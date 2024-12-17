@@ -14,6 +14,7 @@ import expect show *
 import monitor
 
 import .ble-util
+import .test
 
 TEST-SERVICE ::= BleUuid "650a73d3-d7fd-4d08-b734-d11e25b0856d"
 
@@ -23,6 +24,9 @@ TEST-CHARACTERISTIC-CALLBACK ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 TEST-DESCRIPTOR ::= BleUuid "a2aef737-c09f-4f8f-bd6c-f80b993300ef"
 
 main-peripheral:
+  run-test: test-peripheral
+
+test-peripheral:
   adapter := Adapter
   peripheral := adapter.peripheral
 
@@ -55,9 +59,11 @@ main-peripheral:
   peripheral.start-advertise --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL advertisement
 
   done-latch.get
-  print "done"
 
 main-central:
+  run-test: test-central
+
+test-central:
   adapter := Adapter
   central := adapter.central
   address := find-device-with-service central TEST-SERVICE
@@ -92,5 +98,3 @@ main-central:
   expect-equals #['b', 'a', 'r'] value
 
   characteristic-callback.write #['d', 'o', 'n', 'e']
-
-  print "done"

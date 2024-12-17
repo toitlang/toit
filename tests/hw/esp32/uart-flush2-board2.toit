@@ -9,10 +9,15 @@ See uart-flush2-board1.toit.
 import gpio
 import uart
 
+import .test
+
 TX ::= 23
 SIGNAL ::= 22
 
 main:
+  run-test: test
+
+test:
   tx := gpio.Pin TX
   port := uart.Port --tx=tx --rx=null --baud-rate=9600
 

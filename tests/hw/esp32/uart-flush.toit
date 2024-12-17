@@ -14,12 +14,17 @@ import expect show *
 import gpio
 import uart
 
+import .test
+
 RX1 := 18
 TX1 := 26
 RX2 := 33
 TX2 := 19
 
 main:
+  run-test: test
+
+test:
   succeeded := false
   pin-rx1 := gpio.Pin RX1
   pin-tx1 := gpio.Pin TX1

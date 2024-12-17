@@ -22,6 +22,8 @@ import system
 import system.firmware
 import uart
 
+import .test
+
 RX ::= 22
 TX ::= 23
 BAUD-RATE ::= 115200
@@ -48,6 +50,9 @@ class FwData implements io.Data:
     mapping.copy --into=ba (from_ + from) (from_ + to)
 
 main-board1:
+  run-test: test-board1
+
+test-board1:
   port := uart.Port --rx=(gpio.Pin RX) --tx=null --baud-rate=BAUD-RATE
   hasher := md5.Md5
 
@@ -71,9 +76,11 @@ main-board1:
   expect-equals expected-hash hash
 
   port.close
-  print "done"
 
 main-board2:
+  run-test: test-board2
+
+test-board2:
   port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE
 
   firmware.map: | mapping/firmware.FirmwareMapping |
@@ -95,4 +102,3 @@ main-board2:
   // we would otherwise lose buffered data.
   sleep --ms=500
   port.close
-  print "done"

@@ -18,6 +18,7 @@ import spi
 import gpio
 import monitor
 
+import .test
 
 CS ::= 21
 MISO ::= 12
@@ -37,6 +38,9 @@ class DebugChannel:
     channel_.send x
 
 main:
+  run-test: test
+
+test:
   bus := spi.Bus
       --clock=gpio.Pin SCK
       --miso=gpio.Pin MISO
@@ -88,5 +92,3 @@ main:
   in.close
   device.close
   bus.close
-
-  print "Test finished successfully"

@@ -13,10 +13,15 @@ import expect show *
 import gpio
 import i2c
 
+import .test
+
 SDA-PIN := 2
 SCL-PIN := 4
 
 main:
+  run-test: test
+
+test:
   bus := i2c.Bus
       --sda=gpio.Pin SDA-PIN
       --scl=gpio.Pin SCL-PIN

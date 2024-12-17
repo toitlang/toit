@@ -4,6 +4,8 @@
 
 import gpio
 
+import .test
+
 /**
 Tests the $gpio.Pin.wait-for functionality while a parallel
   task closes the pin.
@@ -15,6 +17,9 @@ Tests the $gpio.Pin.wait-for functionality while a parallel
 PIN-IN ::= 34
 
 main:
+  run-test: test
+
+test:
   pin-in := gpio.Pin PIN-IN --input
 
   task::
@@ -24,5 +29,3 @@ main:
 
   print "waiting for pin to go high"
   pin-in.wait-for 1
-
-  print "done"

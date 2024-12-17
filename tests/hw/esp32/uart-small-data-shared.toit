@@ -22,6 +22,8 @@ import system
 import system.firmware
 import uart
 
+import .test
+
 RX ::= 22
 TX ::= 23
 BAUD-RATE ::= 115200
@@ -30,6 +32,9 @@ REPETITIONS ::= 1
 ACK-BYTE ::= 99
 
 main-board1:
+  run-test: test-board1
+
+test-board1:
   rx := gpio.Pin RX
   tx := gpio.Pin TX
   REPETITIONS.repeat:
@@ -41,9 +46,11 @@ main-board1:
       received += port.in.read.size
     port.out.write-byte ACK-BYTE
     port.close
-  print "done"
 
 main-board2:
+  run-test: test-board2
+
+test-board2:
   rx := gpio.Pin RX
   tx := gpio.Pin TX
   REPETITIONS.repeat:
@@ -57,4 +64,3 @@ main-board2:
     ack := port.in.read-byte
     expect-equals 99 ACK-BYTE
     port.close
-  print "done"

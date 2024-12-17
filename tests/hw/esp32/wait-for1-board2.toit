@@ -5,6 +5,8 @@
 import expect show *
 import gpio
 import monitor
+
+import .test
 import .wait-for1-shared
 
 /**
@@ -12,6 +14,9 @@ See 'wait-for1-shared.toit'.
 */
 
 main:
+  run-test: test
+
+test:
   pin-in := gpio.Pin PIN-IN --input
   pin-out := gpio.Pin PIN-OUT --output
 
@@ -66,4 +71,3 @@ main:
   pin-out.set 1
 
   sleep --ms=100  // Give wait_for1 time to see the last 0.
-  print "done"

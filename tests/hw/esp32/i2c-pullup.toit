@@ -15,11 +15,16 @@ import expect show *
 import gpio
 import i2c
 
+import .test
+
 TEST-PIN := 18
 OTHER-PIN := 4
 MEASURE-PIN := 34
 
 main:
+  run-test: test
+
+test:
   test-pin := gpio.Pin TEST-PIN
   other-pin := gpio.Pin OTHER-PIN
   measure-pin := gpio.Pin MEASURE-PIN --input

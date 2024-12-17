@@ -18,9 +18,14 @@ Once that one is running, run `espnow1_board2.toit` on board2.
 
 import esp32.espnow
 import expect show *
+
 import .espnow1-shared
+import .test
 
 main:
+  run-test: test-espnow
+
+test-espnow:
   service ::= espnow.Service.station --key=PMK --channel=CHANNEL
 
   service.add-peer espnow.BROADCAST-ADDRESS

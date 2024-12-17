@@ -12,6 +12,7 @@ Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circ
 import gpio
 import expect show *
 
+import .test
 import ..shared.gpio as shared
 
 RESTRICTED ::= 7
@@ -65,6 +66,9 @@ class PinFactory implements shared.PinFactory:
     if pin2: pin2.close
 
 main:
+  run-test: test
+
+test:
   expect-throw "RESTRICTED_PIN": gpio.Pin RESTRICTED
   pin1 := gpio.Pin PIN1
   pin2 := gpio.Pin PIN2
@@ -80,5 +84,3 @@ main:
   shared.test-configurations pin-factory PIN1 PIN2
 
   pin-factory.close
-
-  print "ALL TESTS PASSED"

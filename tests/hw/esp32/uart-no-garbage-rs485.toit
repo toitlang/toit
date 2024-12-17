@@ -6,6 +6,8 @@ import expect show *
 import gpio
 import uart
 
+import .test
+
 /**
 Tests that the UART buffer doesn't start with garbage in it when
   initialized as rs485 half-duplex.
@@ -16,6 +18,9 @@ Setup:
 */
 
 main:
+  run-test: test
+
+test:
   rx := gpio.Pin 16
   rts := gpio.Pin 23
   port := uart.Port

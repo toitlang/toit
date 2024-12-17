@@ -5,6 +5,8 @@
 import gpio
 import monitor
 import rmt
+
+import .test
 import .wait-for1-shared
 
 /**
@@ -14,6 +16,9 @@ See 'wait-for1-shared.toit'.
 MEDIUM-PULSE-DURATION-MS ::= 5
 
 main:
+  run-test: test
+
+test:
   pin-in := gpio.Pin PIN-IN --input --pull-down
   pin-out := gpio.Pin PIN-OUT --output
 
@@ -62,5 +67,3 @@ main:
   ULTRA-SHORT-PULSE-ITERATIONS.repeat:
     sleep --ms=10
     channel.write signals
-
-  print "done"

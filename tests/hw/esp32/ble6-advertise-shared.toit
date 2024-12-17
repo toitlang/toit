@@ -16,6 +16,7 @@ import expect show *
 import monitor
 
 import .ble-util
+import .test
 
 TEST-SERVICE ::= BleUuid "eede145e-b6a6-4d61-8156-ed10d5b75903"
 TEST-CHARACTERISTIC ::= BleUuid "6b50d82f-ae33-4e0e-b161-50db92c49ad2"
@@ -24,6 +25,9 @@ COMPANY-ID ::= #[0x12, 0x34]
 MANUFACTURER-DATA ::= #[0x56, 0x78]
 
 main-peripheral:
+  run-test: test-peripheral
+
+test-peripheral:
   adapter := Adapter
   peripheral := adapter.peripheral
 
@@ -135,6 +139,9 @@ test-data
   characteristic.write #[central-test-counter++]
 
 main-central:
+  run-test: test-central
+
+test-central:
   adapter := Adapter
   central := adapter.central
 
@@ -232,5 +239,3 @@ main-central:
   remote-device.close
   central.close
   adapter.close
-
-  print "done"

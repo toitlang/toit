@@ -17,6 +17,8 @@ import gpio
 import pulse-counter
 import gpio.pwm
 
+import .test
+
 IN1 /int ::= 18
 IN2 /int ::= 33
 
@@ -24,6 +26,9 @@ OUT1 /int := 19
 OUT2 /int := 26
 
 main:
+  run-test: test
+
+test:
   // Run several times to make sure we release the resources correctly.
   10.repeat:
     in1 := gpio.Pin IN1
@@ -104,5 +109,3 @@ main:
     out2.close
     pulse-unit1.close
     pulse-unit2.close
-
-  print "all tests done"

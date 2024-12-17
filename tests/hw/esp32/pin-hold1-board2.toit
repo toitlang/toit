@@ -7,6 +7,7 @@ import esp32
 import uart
 
 import .pin-hold1-shared
+import .test
 
 /**
 See 'pin-hold1-shared.toit'.
@@ -25,6 +26,9 @@ disable-hold-deepsleep:
   #primitive.esp32.deep_sleep_pin_hold_disable
 
 main:
+  run-test --background: test
+
+test:
   port := uart.Port
       --rx=gpio.Pin PIN-IN
       --tx=gpio.Pin PIN-FREE-AND-UNUSED

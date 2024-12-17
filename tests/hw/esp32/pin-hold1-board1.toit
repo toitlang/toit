@@ -8,12 +8,16 @@ import monitor
 import uart
 
 import .pin-hold1-shared
+import .test
 
 /**
 See 'pin-hold1-shared.toit'.
 */
 
 main:
+  run-test: test
+
+test:
   port := uart.Port
       --rx=gpio.Pin PIN-FREE-AND-UNUSED
       --tx=gpio.Pin PIN-OUT
@@ -65,4 +69,3 @@ main:
   expect (duration.in-ms > 250)
 
   channel.send "DONE"
-  print "done"

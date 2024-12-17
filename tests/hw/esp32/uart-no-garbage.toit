@@ -6,6 +6,8 @@ import expect show *
 import gpio
 import uart
 
+import .test
+
 /**
 Tests that the UART buffer doesn't start with garbage in it.
 
@@ -15,6 +17,9 @@ Setup:
 */
 
 main:
+  run-test: test
+
+test:
   rx := gpio.Pin 16
   port := uart.Port --rx=rx --tx=null --baud-rate=9600
   expect-throw DEADLINE-EXCEEDED-ERROR:
