@@ -306,16 +306,28 @@ install: install-sdk
 test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
-.PHONY: test-serial
-test-serial:
+.PHONY: rebuild-cmake-hw
+rebuild-cmake-hw:
 	@if [ -z "$$TOIT_EXE_HW" ]; then \
 		echo "TOIT_EXE_HW is not set."; \
 		exit 1; \
 	fi
-	mkdir -p $(BUILD)/serial
-	(cd $(BUILD)/serial && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
+	mkdir -p $(BUILD)/hw
+	(cd $(BUILD)/hw && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
+
+.PHONY: download-packages-hw-host
+download-packages-hw-host:
+	cmake -E env TOIT_EXE_HW=$(BUILD)/$(HOST)/sdk/bin/toit $(MAKE) download-packages-hw
+
+.PHONY: download-packages-hw
+download-packages-hw:
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
-	(cd $(BUILD)/serial && ninja check_pi)
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp32
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp-tester
+
+.PHONY: test-hw
+test-hw: rebuild-cmake-hw download-packages-hw
+	(cd $(BUILD)/hw && ninja check_pi)
 
 .PHONY: build-test-assets
 build-test-assets: rebuild-cmake
@@ -338,12 +350,12 @@ update-gold:
 	(cd $(BUILD)/$(HOST) && ninja update_type_gold)
 
 .PHONY: test-health
-test-health: download-packages
+test-health: download-packages download-packages-hw-host
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_health)
 
 .PHONY: update-health-gold
-update-health-gold: download-packages
+update-health-gold: download-packages download-packages-hw-host
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_health_gold)
