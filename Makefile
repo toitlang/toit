@@ -327,7 +327,7 @@ download-packages-hw:
 
 .PHONY: test-hw
 test-hw: rebuild-cmake-hw download-packages-hw
-	(cd $(BUILD)/hw && ninja check_pi)
+	(cd $(BUILD)/hw && ninja check_hw)
 
 .PHONY: build-test-assets
 build-test-assets: rebuild-cmake

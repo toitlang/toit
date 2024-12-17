@@ -1271,7 +1271,7 @@ jobs:
           popd
 
   serial:
-    needs: [prereqs, rpi]
+    needs: [prereqs, rpi, esp32]
     if: needs.prereqs.outputs.TEST_PI_HW == 'true'
 
     runs-on: serial
@@ -1289,17 +1289,42 @@ jobs:
           echo "$HOME/local/bin" >> $GITHUB_PATH
 
       # Download the Pi artifact.
-      - uses: actions/download-artifact@v4
+      - name: Download the SDK
+        uses: actions/download-artifact@v4
         with:
           name: rpi-build
 
-      - name: Unpack Raspberry Pi
+      - name: Unpack the Toit SDK
         run: |
           mkdir -p rpi
           tar x -zf rpi.tar.gz -C rpi
 
+      - name: Download esptool
+        # The Toit SDK we got is not yet combined and thus missing the esptool.
+        run: |
+          export ESPTOOL_ARCH=linux-armv7
+          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
+          unzip esptool-$ESPTOOL_ARCH.zip
+          cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/tools/esptool$EXTENSION
+          chmod +x rpi/toit/tools/esptool$EXTENSION
+
+      - name: Download ESP32 envelopes
+        uses: actions/download-artifact@v4
+        with:
+          name: firmwares
+
+      - name: Unpack the ESP32 firmware
+        run: |
+          gunzip firmware-esp32.gz
+
       - name: Test Raspberry Pi
+        env:
+          TOIT_EXE_HW: ${{ github.workspace }}/rpi/toit/bin/toit
+          ESP32_ENVELOPE: ${{ github.workspace }}/firmware-esp32
         run: |
           # Get the pin configuration from the file in the runner's home.
           source $HOME/pi-test.env
+          # Get the esp32 port and wifi configuration from the file in the runner's home.
+          source $HOME/esp32-test.env
+
           make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-hw

@@ -17,6 +17,12 @@ cmake_minimum_required(VERSION 3.20.0)
 
 project(hw NONE)  # No need for compilers.
 
+add_custom_target(
+  check_hw
+  COMMAND ${CMAKE_CTEST_COMMAND} -j1 -T test -C hw --output-on-failure
+  USES_TERMINAL
+  )
+
 set(TOIT_EXE_HW "" CACHE FILEPATH "The executable used to run hardware tests")
 
 if (NOT TOIT_EXE_HW)
@@ -26,3 +32,4 @@ endif()
 enable_testing()
 
 add_subdirectory(pi)
+add_subdirectory(esp32)
