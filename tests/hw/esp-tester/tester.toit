@@ -14,9 +14,7 @@ import system
 import uart
 import .shared
 
-MINI-JAG-LISTENING ::= "MINI-JAG LISTENING"
-TEST-STARTED ::= "TEST STARTED"
-ALL-TEST-DONE ::= "All tests done"
+ALL-TESTS-DONE ::= "All tests done"
 JAG-DECODE ::= "jag decode"
 
 main args:
@@ -144,7 +142,7 @@ class TestDevice:
           collected-output += data.to-string-non-throwing
           if not ready-latch.has-value and collected-output.contains "\n$MINI-JAG-LISTENING":
             ready-latch.set true
-          if not all-tests-done.has-value and collected-output.contains ALL-TEST-DONE:
+          if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
             all-tests-done.set true
           if collected-output.contains JAG-DECODE:
             ui.abort "Error detected"
