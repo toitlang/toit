@@ -8,6 +8,8 @@ import net
 import system.containers
 import uuid show Uuid
 
+import .shared
+
 main:
   cause := esp32.wakeup-cause
   print "Wakeup cause: $cause"
@@ -28,7 +30,7 @@ install-new-test:
   network := net.open
   server-socket := network.tcp-listen 0
   print "$network.address:$server-socket.local-address.port"
-  print "MINI-JAG LISTENING"
+  print MINI-JAG-LISTENING
   socket := server-socket.accept
   reader := socket.in
   size := reader.little-endian.read-int32
