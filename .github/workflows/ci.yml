@@ -662,7 +662,7 @@ jobs:
           done
 
       - name: Test executables 32-bit
-        if: ${{ env.TEST_PI_HW != 'true' }}
+        if: env.DO_MORE_TESTS == 'true' || env.TEST_PI_HW != 'true'
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -676,7 +676,7 @@ jobs:
               build/raspbian/extracted/boot.sh > raspbian_output
 
       - name: Check that the 32-bit run-script worked
-        if: ${{ env.TEST_PI_HW != 'true' }}
+        if: env.DO_MORE_TESTS == 'true' || env.TEST_PI_HW != 'true'
         run: |
           cat raspbian_output
           grep "hello world" raspbian_output
