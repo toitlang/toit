@@ -52,6 +52,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
+    https://github.com/toitware/toit-dhtxx
     https://github.com/toitware/toit-ds18b20
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
@@ -254,8 +255,6 @@ function(find_toit_projects directory)
   # Start processing the provided directory.
   if(EXISTS "${repo_path}")
     process_directory("${repo_path}" "${repo_name}")
-  else()
-    message(WARNING "Directory ${repo_path} does not exist.")
   endif()
 endfunction()
 
