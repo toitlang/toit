@@ -1595,6 +1595,9 @@ ServiceContainer<T>::get_or_create_service(const BleCallbackScope* scope,
     // try to recover on OOM.
     scope->gc();
     service = _new BleServiceResource(group(), type(), uuid, start,end);
+    if (!service) {
+      ESP_LOGE("BLE", "OOM while creating service in NimBLE callback");
+    }
   }
   if (!service) return null;
   group()->register_resource(service);
@@ -1668,6 +1671,9 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic(
     // try to recover on OOM.
     scope->gc();
     characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
+    if (!characteristic) {
+      ESP_LOGE("BLE", "OOM while creating characteristic in NimBLE callback");
+    }
   }
   if (!characteristic) return null;
   group()->register_resource(characteristic);
@@ -1870,6 +1876,9 @@ BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const
     // try to recover on OOM.
     scope->gc();
     descriptor = _new BleDescriptorResource(group(), this, uuid, handle, properties);
+    if (!descriptor) {
+      ESP_LOGE("BLE", "OOM while creating descriptor in NimBLE callback");
+    }
   }
   if (!descriptor) return null;
   group()->register_resource(descriptor);
@@ -2179,7 +2188,10 @@ bool BleCharacteristicResource::update_subscription_status(const BleCallbackScop
     // try to recover on OOM.
     scope.gc();
     subscription = _new Subscription(indicate, notify, conn_handle);
-    if (!subscription) return false;
+    if (!subscription) {
+      ESP_LOGE("BLE", "OOM while creating subscription in NimBLE callback");
+      return false;
+    }
   }
 
   subscriptions_.append(subscription);
