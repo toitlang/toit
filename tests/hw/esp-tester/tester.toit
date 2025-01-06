@@ -106,20 +106,23 @@ run-test invocation/cli.Invocation:
   board1 := TestDevice --name="board1" --port-path=port-board1 --ui=ui --toit-exe=toit-exe
   board2/TestDevice? := null
 
-  board1.run-test test-path
+  try:
+    board1.run-test test-path
 
-  if port-board2:
-    board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-    board2.run-test test2-path
+    if port-board2:
+      board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
+      board2.run-test test2-path
 
-  ui.emit --verbose "Waiting for all tests to be done"
-  board1.all-tests-done.get
-  if board2: board2.all-tests-done.get
+    ui.emit --verbose "Waiting for all tests to be done"
+    board1.all-tests-done.get
+    if board2: board2.all-tests-done.get
 
-  board1.close
-  if board2: board2.close
+  finally:
+    board1.close
+    if board2: board2.close
 
 class TestDevice:
+  static SNAPSHOT-NAME ::= "test.snap"
   name/string
   port/uart.HostPort? := ?
   toit-exe/string
@@ -129,9 +132,11 @@ class TestDevice:
   ready-latch/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   ui/cli.Ui
+  tmp-dir/string
 
   constructor --.name --.toit-exe --port-path/string --.ui:
     port = uart.HostPort port-path --baud-rate=115200
+    tmp-dir = directory.mkdtemp "/tmp/esp-tester"
     read-task = task --background::
       try:
         reader := port.in
@@ -145,6 +150,16 @@ class TestDevice:
           if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
             all-tests-done.set true
           if collected-output.contains JAG-DECODE:
+            if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
+              // Otherwise it's probably an error during setup.
+              index := collected-output.index-of JAG-DECODE
+              new-line := collected-output.index-of "\n" index
+              if new-line < 0:
+                // Wait for more data.
+                continue
+              line := collected-output[index + JAG-DECODE.size..new-line].trim
+              snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
+              toit_ ["decode", "-s", snapshot-path, line]
             ui.abort "Error detected"
 
       finally:
@@ -156,6 +171,8 @@ class TestDevice:
     if port:
       port.close
       port = null
+    if file.is-directory tmp-dir:
+      directory.rmdir --recursive tmp-dir
 
   toit_ args/List:
     run-toit toit-exe args --ui=ui
@@ -179,35 +196,34 @@ class TestDevice:
     host-port-line := lines[listening-line-index - 1]
     ui.emit --info "Running test on $host-port-line"
 
-    with-tmp-dir: | dir/string |
-      snapshot-path := "$dir/test.snap"
-      toit_ [
-        "compile",
-        "--snapshot",
-        "-o", snapshot-path,
-        test-path
-      ]
+    snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
+    toit_ [
+      "compile",
+      "--snapshot",
+      "-o", snapshot-path,
+      test-path
+    ]
 
-      snapshot := file.read-contents snapshot-path
-      image-path := fs.join dir "image.envelope"
-      toit_ [
-        "tool", "snapshot-to-image",
-        "--format", "binary",
-        "-m32",
-        "-o", image-path,
-        snapshot-path
-      ]
-      image := file.read-contents image-path
+    snapshot := file.read-contents snapshot-path
+    image-path := fs.join tmp-dir "image.envelope"
+    toit_ [
+      "tool", "snapshot-to-image",
+      "--format", "binary",
+      "-m32",
+      "-o", image-path,
+      snapshot-path
+    ]
+    image := file.read-contents image-path
 
-      network := net.open
-      parts := host-port-line.split ":"
-      socket := network.tcp-connect parts[0] (int.parse parts[1])
-      socket.out.little-endian.write-int32 image.size
-      summer := crc.Crc32
-      summer.add image
-      socket.out.write summer.get
-      socket.out.write image
-      socket.close
+    network := net.open
+    parts := host-port-line.split ":"
+    socket := network.tcp-connect parts[0] (int.parse parts[1])
+    socket.out.little-endian.write-int32 image.size
+    summer := crc.Crc32
+    summer.add image
+    socket.out.write summer.get
+    socket.out.write image
+    socket.close
 
 setup-tester invocation/cli.Invocation:
   ui := invocation.cli.ui
