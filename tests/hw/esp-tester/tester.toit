@@ -171,7 +171,8 @@ class TestDevice:
     if port:
       port.close
       port = null
-    directory.rmdir --recursive tmp-dir
+    if file.is-directory tmp-dir:
+      directory.rmdir --recursive tmp-dir
 
   toit_ args/List:
     run-toit toit-exe args --ui=ui
