@@ -661,7 +661,7 @@ jobs:
             tar -xf build/$arch/extracted.tar -C build/$arch/extracted
           done
 
-      - name: Test executables 32-bit
+      - name: Test 32-bit executables
         if: env.DO_MORE_TESTS == 'true' || env.TEST_PI_HW != 'true'
         uses: pguyot/arm-runner-action@v2
         with:
