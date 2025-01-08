@@ -5,12 +5,7 @@
 /**
 Tests a simple pulse from the RMT peripheral.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
-  strictly necessary but can prevent accidental short circuiting.
-
-Similarly, connect pin 21 to pin 19 with a 330 Ohm resistor. We will
-  use that one to pull the line high.
+For the setup see the comment near $Variant.rmt-pin1.
 */
 
 import rmt
@@ -19,10 +14,16 @@ import monitor
 import expect show *
 
 import .test
+import .variants
 
+/*
 RMT-PIN-1 ::= 18
 RMT-PIN-2 ::= 19
 RMT-PIN-3 ::= 21
+*/
+RMT-PIN-1 ::= Variant.CURRENT.rmt-pin1
+RMT-PIN-2 ::= Variant.CURRENT.rmt-pin2
+RMT-PIN-3 ::= Variant.CURRENT.rmt-pin3
 
 // Because of the resistors and a weak pull-up, the reading isn't fully precise.
 // We allow 5us error.

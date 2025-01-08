@@ -14,9 +14,10 @@ import gpio
 import i2c
 
 import .test
+import .variants
 
-SDA-PIN := 2
-SCL-PIN := 4
+SDA-PIN := Variant.CURRENT.unconnected-pin1
+SCL-PIN := Variant.CURRENT.unconnected-pin2
 
 main:
   run-test: test

@@ -3,8 +3,9 @@
 // be found in the tests/LICENSE file.
 
 import esp32.espnow
+import .variants
 
-PMK ::= espnow.Key.from-string "pmk1234567890123"
+PMK ::= espnow.Key.from-string Variant.CURRENT.espnow-password
 
 END-TOKEN ::= "<END>"
 
@@ -21,4 +22,4 @@ TEST-DATA ::= [
   END-TOKEN
 ]
 
-CHANNEL ::= 1
+CHANNEL ::= Variant.CURRENT.espnow-channel

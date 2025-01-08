@@ -22,11 +22,12 @@ import monitor
 
 import .ble-util
 import .test
+import .variants
 
 ITERATIONS ::= 100
 
 UUIDS ::= [
-  "ffe21239-d8a2-4536-b751-0881a9f2e3de",
+  Variant.CURRENT.ble3-first-service,
   "9e3d1c10-9421-499e-851d-8e6bf2bd8808",
   "f626e5c8-1551-4e64-861c-25705f35f8c2",
   "417b7728-8ccf-4b78-b18b-4719326dc61b",

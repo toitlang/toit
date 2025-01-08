@@ -22,16 +22,20 @@ add_custom_target(
   )
 
 foreach(file ${TOIT_TESTS})
-  get_filename_component(name ${file} NAME_WE)
   set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-  set(test_name ${name})
+  set(test_name ${file})
 
   add_test(
-    NAME ${file}
+    NAME ${test_name}
     COMMAND ${TOIT_EXE_HW} ${toit_file}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS pi hw
     )
 
-  set_tests_properties(${file} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+  # Don't run pi tests in parallel with other tests.
+  # This can be changed as long as:
+  # - resource-locking is added.
+  # - the Raspberry Pi is replaced with a more powerful version.
+  set_tests_properties(${test_name} PROPERTIES RUN_SERIAL TRUE)
 endforeach()

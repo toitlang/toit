@@ -7,20 +7,16 @@ import uart
 
 import .test
 import .uart-rs485-shared
+import .variants
 
 /**
 Tests that the uart in rs485-half-duplex can receive data as soon as the
   RTS bit is cleared.
-
-Setup:
-  Connect pin 23 of board 1 to pin 22 of board 2.
-  Connect pin 22 of board 1 to pin 23 of board 2.
-  Keep pin 16 of board 2 unconnected.
 */
 
-RTS ::= 23
-RX ::= 22
-TX ::= 16  // Unused.
+RTS ::= Variant.CURRENT.connected-pin2
+RX ::= Variant.CURRENT.connected-pin1
+TX ::= Variant.CURRENT.unconnected-pin1
 
 main:
   run-test: test

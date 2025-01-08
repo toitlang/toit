@@ -12,22 +12,16 @@ On Jaguar use:
   `jag container install -D jag.disabled -D jag.timeout=1m adc adc.toit`
 
 
-Setup:
-Connect pin 12 to pin 14 with a 330 Ohm resistor.
-Connect pin 14 to pin 32 with a 330 Ohm resistor.
-Connect pin 32 to pin 25 with a 330 Ohm resistor.
+For the setup, see the documentation at $Variant.adc1-pin.
 */
 
 import gpio.adc as gpio
 import gpio
+import system
 import expect show *
 
 import .test
-
-ADC1-PIN ::= 32
-ADC2-PIN ::= 14
-CONTROL-PIN ::= 25
-V33-PIN ::= 12
+import .variants
 
 main:
   run-test: test
@@ -35,16 +29,34 @@ main:
 test:
   test-restricted := true
 
-  v33-pin := gpio.Pin V33-PIN --output
+  v33-pin := gpio.Pin Variant.CURRENT.adc-v33-pin --output
+  v33-pin.set 1
+  print "pin v33 set"
+  sleep --ms=2000
+  print "off"
+  v33-pin.set 0
+  sleep --ms=2000
+  print "on"
   v33-pin.set 1
 
-  adc1-pin := gpio.Pin ADC1-PIN
-  control-pin := gpio.Pin CONTROL-PIN --output
+  adc1-pin := gpio.Pin Variant.CURRENT.adc1-pin
+  control-pin := gpio.Pin Variant.CURRENT.adc-control-pin --output
 
   adc := gpio.Adc adc1-pin
   control-pin.set 0
+  print "control pin set to 0"
+  sleep --ms=1000
+  print "1"
+  control-pin.set 1
+  sleep --ms=1000
+  print "off"
+  control-pin.set 0
+
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
+  print (adc.get --raw)
+  sleep --ms=5000
+  print "ADC value: $value"
   expect 1.0 < value < 1.2
 
   raw-value := adc.get --raw
@@ -79,7 +91,7 @@ test:
   print "This only works if no WiFi is running"
   print "There are other restrictings."
 
-  adc2-pin := gpio.Pin ADC2-PIN
+  adc2-pin := gpio.Pin Variant.CURRENT.adc2-pin
 
   expect-throw "OUT_OF_RANGE":
     adc = gpio.Adc adc2-pin

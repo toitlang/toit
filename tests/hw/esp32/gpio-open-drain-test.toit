@@ -5,21 +5,19 @@
 /**
 Tests changing the open-drain setting of gpio pins.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm (or any other 300-1K) resistor.
-Connect pin 18 to pin 34.
-Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
+For the setup, see the instructions near $Variant.open-drain-test-pin.
 */
 
 import gpio
 import expect show *
 
 import .test
+import .variants
 import ..shared.gpio-open-drain
 
-TEST-PIN ::= 18
-LEVEL-PIN ::= 19
-MEASURE-PIN ::= 34
+TEST-PIN ::= Variant.CURRENT.open-drain-test-pin
+LEVEL-PIN ::= Variant.CURRENT.open-drain-level-pin
+MEASURE-PIN ::= Variant.CURRENT.open-drain-measure-pin
 
 main:
   run-test: test

@@ -5,11 +5,7 @@
 /**
 Tests the LEDC (pwm) library.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
-  strictly necessary but can prevent accidental short circuiting.
-
-Similarly, connect pin 26 to pin 33 with a 330 Ohm resistor.
+For the setup see the comment near $Variant.pwm-in1.
 */
 
 import expect show *
@@ -18,12 +14,13 @@ import pulse-counter
 import gpio.pwm
 
 import .test
+import .variants
 
-IN1 /int ::= 18
-IN2 /int ::= 33
+IN1 /int ::= Variant.CURRENT.pwm-in1
+OUT1 /int ::= Variant.CURRENT.pwm-out1
 
-OUT1 /int := 19
-OUT2 /int := 26
+IN2 /int ::= Variant.CURRENT.pwm-in2
+OUT2 /int := Variant.CURRENT.pwm-out2
 
 main:
   run-test: test

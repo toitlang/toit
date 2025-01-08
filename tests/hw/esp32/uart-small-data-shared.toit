@@ -5,11 +5,6 @@
 /**
 Tests sending small data.
 
-Setup:
-Connect GND of one ESP32 to GND of another ESP32.
-Connect pin 22 of the first ESP32 to pin 23 of the second ESP32.
-Connect pin 23 of the first ESP32 to pin 22 of the second ESP32.
-
 Run uart-small-data-board1.toit on one ESP32 and uart-small-data-board2.toit on the other.
 */
 
@@ -23,9 +18,10 @@ import system.firmware
 import uart
 
 import .test
+import .variants
 
-RX ::= 22
-TX ::= 23
+RX ::= Variant.CURRENT.connected-pin1
+TX ::= Variant.CURRENT.connected-pin2
 BAUD-RATE ::= 115200
 
 REPETITIONS ::= 1

@@ -17,8 +17,9 @@ import monitor
 
 import .ble-util
 import .test
+import .variants
 
-TEST-SERVICE ::= BleUuid "eede145e-b6a6-4d61-8156-ed10d5b75903"
+TEST-SERVICE ::= BleUuid Variant.CURRENT.ble6-service
 TEST-CHARACTERISTIC ::= BleUuid "6b50d82f-ae33-4e0e-b161-50db92c49ad2"
 
 COMPANY-ID ::= #[0x12, 0x34]

@@ -5,9 +5,7 @@
 /**
 Tests reading and writing of the UART baud rate.
 
-Setup:
-Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circuits.
-Connect pin 26 to pin 33, optionally with a resistor.
+For the setup see the comment near $Variant.uart-flush-in1.
 */
 
 import expect show *
@@ -15,11 +13,15 @@ import gpio
 import uart
 
 import .test
+import .variants
 
-RX1 := 18
-TX1 := 26
-RX2 := 33
-TX2 := 19
+// Not that RX1 goes to TX2 and TX1 goes to RX2.
+RX1 ::= Variant.CURRENT.uart-baud-rate-in2
+TX1 ::= Variant.CURRENT.uart-baud-rate-out1
+
+RX2 ::= Variant.CURRENT.uart-baud-rate-in1
+TX2 ::= Variant.CURRENT.uart-baud-rate-out2
+
 
 main:
   run-test: test

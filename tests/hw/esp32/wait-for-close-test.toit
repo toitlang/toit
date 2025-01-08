@@ -5,16 +5,16 @@
 import gpio
 
 import .test
+import .variants
 
 /**
 Tests the $gpio.Pin.wait-for functionality while a parallel
   task closes the pin.
 
-# Setup
-- Connect IO34 to GND with a 330+ Ohm resistor. 1MOhm is fine.
+For the setup see the comment near $Variant.wait-for-close-pin.
 */
 
-PIN-IN ::= 34
+PIN-IN ::= Variant.CURRENT.wait-for-close-pin
 
 main:
   run-test: test
