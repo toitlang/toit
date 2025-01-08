@@ -379,7 +379,7 @@ On board 1 connect as follows:
 - IO01 - GND with 1MOhm (or similar high number).
 - IO19 - IO21 with 330Ohm
 
-Pins 6, 7, 8 must stay unconnected. 6 and 7 are used for touch tests.
+Pins 6, 7, and 8 must stay unconnected. 6 and 7 are used for touch tests.
 
 On board2:
 - IO01 -> bme280 SCL (yello)
@@ -388,7 +388,7 @@ On board2:
 - IO14 -> HC-SR04 Trig
 - IO42 -> DS18B20 Data
 
-Pins 19, 20, and 21 must stay unconnected.
+Pins 6, 7, and 8 must stay unconnected.
 */
 class Esp32s3 extends VariantBase implements Variant:
   adc1-pin ::= 9
