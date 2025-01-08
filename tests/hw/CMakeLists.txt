@@ -19,7 +19,8 @@ project(hw NONE)  # No need for compilers.
 
 add_custom_target(
   check_hw
-  COMMAND ${CMAKE_CTEST_COMMAND} -j4 -T test -C hw --output-on-failure
+  # The current Raspberry Pi can't run more than 2 tests in parallel.
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
   USES_TERMINAL
   )
 
