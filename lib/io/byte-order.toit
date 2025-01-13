@@ -266,7 +266,7 @@ abstract class ByteOrder:
     put-uint buffer 4 offset u32
 
   /**
-  Reads a 64-bit unsigned integer from the $buffer at the $offset.
+  Reads a 64-bit signed integer from the $buffer at the $offset.
 
   The $offset must satisfy: 0 <= $offset <= buffer.size - 8, allowing to read
     8 bytes at index $offset.
