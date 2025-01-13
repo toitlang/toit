@@ -22,7 +22,6 @@ set(TOIT_SKIP_TESTS
 )
 
 set(TOIT_FAILING_TESTS
-  adc-test.toit-esp32s3
   # The anti-glitching doesn't seem to work.
   pulse-counter-test.toit-esp32s3
   # Idle level 1 doesn't seem to work.
