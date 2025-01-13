@@ -5,8 +5,6 @@
 /**
 Tests the pin-holding capability. Including with deep sleep.
 
-For the setup see the comment near $Variant.connected-pin1.
-
 Run `pin-hold-board1.toit` on board1.
 Once that one is running, run `pin-hold-board2.toit` on board2.
 
@@ -21,7 +19,7 @@ the WiFi unnecessarily:
 
 import .variants
 
-PIN-OUT ::= Variant.CURRENT.connected-pin1
-PIN-IN ::= Variant.CURRENT.connected-pin2
+PIN-OUT ::= Variant.CURRENT.board-connection-pin1
+PIN-IN ::= Variant.CURRENT.board-connection-pin2
 
 PIN-FREE-AND-UNUSED ::= Variant.CURRENT.unconnected-pin1

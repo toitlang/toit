@@ -5,8 +5,6 @@
 /**
 Tests sending bigger chunks.
 
-For the setup see the comment near $Variant.connected-pin1.
-
 Run uart-big-data-board1.toit on one ESP32 and uart-big-data-board2.toit on the other.
 
 For the host-test, use a flasher and connect GND to GND of the flasher.
@@ -21,8 +19,9 @@ import .variants
 
 TEST-ITERATIONS := 10
 
-RX ::= Variant.CURRENT.connected-pin1
-TX ::= Variant.CURRENT.connected-pin2
+RX ::= Variant.CURRENT.board-connection-pin1
+TX ::= Variant.CURRENT.board-connection-pin2
+
 UART-PATH ::= "/dev/ttyUSB1"
 BAUD-RATE ::= 115200
 

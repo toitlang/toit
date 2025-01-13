@@ -5,8 +5,6 @@
 /**
 Tests sending io.Data to the UART.
 
-For the setup see the comment near $Variant.connected-pin1.
-
 Run uart-io-data-board1.toit on one ESP32 and uart-io-data-board2.toit on the other.
 */
 
@@ -22,8 +20,8 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.connected-pin1
-TX ::= Variant.CURRENT.connected-pin2
+RX ::= Variant.CURRENT.board-connection-pin1
+TX ::= Variant.CURRENT.board-connection-pin2
 BAUD-RATE ::= 115200
 
 class FwData implements io.Data:

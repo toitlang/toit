@@ -20,8 +20,8 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.connected-pin1
-TX ::= Variant.CURRENT.connected-pin2
+RX ::= Variant.CURRENT.board-connection-pin1
+TX ::= Variant.CURRENT.board-connection-pin2
 BAUD-RATE ::= 115200
 
 REPETITIONS ::= 1

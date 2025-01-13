@@ -5,8 +5,6 @@
 /**
 Tests that the UART flush is working.
 
-For the setup see the comment near $Variant.connected-pin1.
-
 Run uart-flush2-board1.toit on one ESP32 and uart-flush2-board2.toit on the other.
 */
 
@@ -16,8 +14,8 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.connected-pin1
-SIGNAL ::= Variant.CURRENT.connected-pin2
+RX ::= Variant.CURRENT.board-connection-pin1
+SIGNAL ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

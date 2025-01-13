@@ -7,12 +7,13 @@ import gpio
 import dhtxx.dht11
 
 import .test
+import .variants
 
 main:
   run-test: test
 
 test:
-  data := gpio.Pin 14
+  data := gpio.Pin Variant.CURRENT.board2-dht11-pin
   driver := dht11.Dht11 data
 
   2.repeat:

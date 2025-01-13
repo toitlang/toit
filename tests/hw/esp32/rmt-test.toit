@@ -16,11 +16,6 @@ import expect show *
 import .test
 import .variants
 
-/*
-RMT-PIN-1 ::= 18
-RMT-PIN-2 ::= 19
-RMT-PIN-3 ::= 21
-*/
 RMT-PIN-1 ::= Variant.CURRENT.rmt-pin1
 RMT-PIN-2 ::= Variant.CURRENT.rmt-pin2
 RMT-PIN-3 ::= Variant.CURRENT.rmt-pin3
@@ -90,32 +85,38 @@ test-resource pin/gpio.Pin:
   channel.close
 
 in-parallel fun1/Lambda fun2/Lambda:
-  ready-semaphore := monitor.Semaphore
+  idle-level-semaphore := monitor.Semaphore
+  reader-ready-semaphore := monitor.Semaphore
   done-semaphore := monitor.Semaphore
   task::
     fun1.call
-        :: ready-semaphore.down
+        :: idle-level-semaphore.up
+        :: reader-ready-semaphore.down
         :: done-semaphore.up
 
-  fun2.call:: ready-semaphore.up
+  fun2.call
+      :: idle-level-semaphore.down
+      :: reader-ready-semaphore.up
   done-semaphore.down
 
 test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
   PULSE-LENGTH ::= 50
 
   in-parallel
-    :: | wait-for-ready done |
-      wait-for-ready.call
+    :: | idle-level-is-ready wait-for-reader-ready done |
       out := rmt.Channel pin-out --output --idle-level=0
+      idle-level-is-ready.call
+      wait-for-reader-ready.call
       signals := rmt.Signals 1
       signals.set 0 --level=1 --period=PULSE-LENGTH
       out.write signals
       out.close
       done.call
-    :: | ready |
+    :: | wait-for-level-ready reader-is-ready |
       in := rmt.Channel pin-in --input --idle-threshold=120
+      wait-for-level-ready.call
       in.start-reading
-      ready.call
+      reader-is-ready.call
       signals := in.read
       in.stop-reading
       in.close
@@ -130,18 +131,20 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
   SIGNAL-COUNT ::= 11
 
   in-parallel
-    :: | wait-for-ready done |
-      wait-for-ready.call
+    :: | idle-level-is-ready wait-for-reader-ready done |
       out := rmt.Channel pin-out --output --idle-level=0
+      idle-level-is-ready.call
+      wait-for-reader-ready.call
       signals := rmt.Signals.alternating SIGNAL-COUNT --first-level=1: PULSE-LENGTH
       signals.set 0 --level=1 --period=PULSE-LENGTH
       out.write signals
       out.close
       done.call
-    :: | ready |
+    :: | wait-for-level-ready reader-is-ready |
       in := rmt.Channel pin-in --input --idle-threshold=120
+      wait-for-level-ready.call
       in.start-reading
-      ready.call
+      reader-is-ready.call
       signals := in.read
       in.stop-reading
       in.close
@@ -160,15 +163,16 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
   SIGNAL-COUNT ::= 128 * 6
 
   in-parallel
-    :: | wait-for-ready done |
-      wait-for-ready.call
+    :: | idle-level-is-ready wait-for-reader-ready done |
       out := rmt.Channel pin-out --output --idle-level=0
+      idle-level-is-ready.call
+      wait-for-reader-ready.call
       signals := rmt.Signals.alternating SIGNAL-COUNT --first-level=1: PULSE-LENGTH
       signals.set 0 --level=1 --period=PULSE-LENGTH
       out.write signals
       out.close
       done.call
-    :: | ready |
+    :: | wait-for-level-ready reader-is-ready |
       // Note that we need a second memory block as the internal buffer would otherwise
       // overflow. On the serial port we would see the following message:
       // E (726) rmt: RMT RX BUFFER FULL
@@ -177,8 +181,9 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
       // 2 bytes per signal. Twice for the ring-buffer. And some extra for bookkeeping.
       buffer-size := SIGNAL-COUNT * 2 * 2 + 20
       in := rmt.Channel pin-in --input --idle-threshold=120 --memory-block-count=6 --buffer-size=buffer-size
+      wait-for-level-ready.call
       in.start-reading
-      ready.call
+      reader-is-ready.call
       signals := in.read
       in.stop-reading
       in.close
@@ -195,8 +200,9 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
   PULSE-LENGTH ::= 50
 
   in-parallel
-    :: | wait-for-ready done |
+    :: | idle-level-is-ready wait-for-ready done |
       out := rmt.Channel pin1 --output --idle-level=1
+      idle-level-is-ready.call
       in := rmt.Channel pin1 --input
       // We actually don't need the bidirectionality here, but by
       // making the channel bidirectional it switches to open drain.
@@ -215,8 +221,9 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
       out.close
       done.call
 
-    :: | ready |
+    :: | wait-for-level-ready reader-is-ready |
       out := rmt.Channel pin2 --output --idle-level=1
+      wait-for-level-ready.call
       in := rmt.Channel pin2 --input --idle-threshold=5_000 --memory-block-count=4
       rmt.Channel.make-bidirectional --in=in --out=out
 
@@ -229,7 +236,7 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
       sleep --ms=2_000
       */
       in.start-reading
-      ready.call // Overlap the signals from the other pin.
+      reader-is-ready.call // Overlap the signals from the other pin.
       out.write signals
       in-signals := in.read
       in.stop-reading
@@ -308,15 +315,15 @@ test-multiple-sequences pin-in/gpio.Pin pin-out/gpio.Pin:
   in.stop-reading
   SECOND-PULSE-PERIOD ::= 13
   in-parallel
-    :: | wait-for-ready done |
-      wait-for-ready.call
+    :: | _ wait-for-reader-ready done |
+      wait-for-reader-ready.call
       sleep --ms=200
       second-out-signals := rmt.Signals 1
       second-out-signals.set 0 --level=1 --period=SECOND-PULSE-PERIOD
       out.write second-out-signals
       done.call
-    :: | ready |
-      ready.call
+    :: | _ reader-is-ready |
+      reader-is-ready.call
       in-signals := in.read
       expect 1 <= in-signals.size <= 2
       expect-equals 1 (in-signals.level 0)
@@ -343,5 +350,3 @@ test:
 
   pin1.close
   pin2.close
-
-  print "all tests done"

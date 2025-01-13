@@ -12,8 +12,8 @@ import uart
 import .test
 import .variants
 
-TX ::= Variant.CURRENT.connected-pin2
-SIGNAL ::= Variant.CURRENT.connected-pin1
+TX ::= Variant.CURRENT.board-connection-pin1
+SIGNAL ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

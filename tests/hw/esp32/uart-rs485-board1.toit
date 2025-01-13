@@ -12,8 +12,8 @@ import .test
 import .uart-rs485-shared
 import .variants
 
-RTS ::= Variant.CURRENT.connected-pin1
-TX ::= Variant.CURRENT.connected-pin2
+RTS ::= Variant.CURRENT.board-connection-pin1
+TX ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

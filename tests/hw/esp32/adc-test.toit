@@ -31,32 +31,15 @@ test:
 
   v33-pin := gpio.Pin Variant.CURRENT.adc-v33-pin --output
   v33-pin.set 1
-  print "pin v33 set"
-  sleep --ms=2000
-  print "off"
-  v33-pin.set 0
-  sleep --ms=2000
-  print "on"
-  v33-pin.set 1
 
   adc1-pin := gpio.Pin Variant.CURRENT.adc1-pin
   control-pin := gpio.Pin Variant.CURRENT.adc-control-pin --output
 
   adc := gpio.Adc adc1-pin
   control-pin.set 0
-  print "control pin set to 0"
-  sleep --ms=1000
-  print "1"
-  control-pin.set 1
-  sleep --ms=1000
-  print "off"
-  control-pin.set 0
 
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
-  print (adc.get --raw)
-  sleep --ms=5000
-  print "ADC value: $value"
   expect 1.0 < value < 1.2
 
   raw-value := adc.get --raw
@@ -89,7 +72,7 @@ test:
   if not test-restricted: return
   print "Testing restricted ADC"
   print "This only works if no WiFi is running"
-  print "There are other restrictings."
+  print "There are other restrictions."
 
   adc2-pin := gpio.Pin Variant.CURRENT.adc2-pin
 
