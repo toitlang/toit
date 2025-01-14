@@ -30,8 +30,8 @@ install-new-test:
       containers.uninstall id
 
   network/net.Client? := null
-  for i := 0; i < NETWORK_RETRIES; i++:
-    catch --unwind=(: i == NETWORK_RETRIES - 1):
+  for i := 0; i < NETWORK-RETRIES; i++:
+    catch --unwind=(: i == NETWORK-RETRIES - 1):
       network = net.open
       break
     sleep (Duration --s=i)
