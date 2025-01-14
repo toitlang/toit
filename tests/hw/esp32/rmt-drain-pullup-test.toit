@@ -5,10 +5,7 @@
 /**
 Tests the bidirectional open-drain/pull-up functionality of the RMT peripheral.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm (or any other 300-1K) resistor.
-Connect pin 18 to pin 34.
-Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
+For the setup see the comment near $Variant.rmt-drain-pullup-test-pin.
 */
 
 import rmt
@@ -17,10 +14,11 @@ import monitor
 import expect show *
 
 import .test
+import .variants
 
-RMT-PIN ::= 18
-LEVEL-PIN ::= 19
-MEASURE-PIN ::= 34
+RMT-PIN ::= Variant.CURRENT.rmt-drain-pullup-test-pin
+LEVEL-PIN ::= Variant.CURRENT.rmt-drain-pullup-level-pin
+MEASURE-PIN ::= Variant.CURRENT.rmt-drain-pullup-measure-pin
 
 main:
   run-test:

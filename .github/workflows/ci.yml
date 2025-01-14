@@ -1316,11 +1316,13 @@ jobs:
       - name: Unpack the ESP32 firmware
         run: |
           gunzip firmware-esp32.gz
+          gunzip firmware-esp32s3.gz
 
       - name: Test Raspberry Pi
         env:
           TOIT_EXE_HW: ${{ github.workspace }}/rpi/toit/bin/toit
           ESP32_ENVELOPE: ${{ github.workspace }}/firmware-esp32
+          ESP32S3_ENVELOPE: ${{ github.workspace }}/firmware-esp32s3
         run: |
           # Get the pin configuration from the file in the runner's home.
           source $HOME/pi-test.env

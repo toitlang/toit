@@ -5,10 +5,7 @@
 /**
 Tests the i2c pull-up resistors.
 
-Setup:
-Connect pin 18 to pin 34.
-Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
-Pin 4 shoul not be connected.
+For the setup see the documentation near $Variant.i2c-pullup-test-pin.
 */
 
 import expect show *
@@ -16,10 +13,11 @@ import gpio
 import i2c
 
 import .test
+import .variants
 
-TEST-PIN := 18
-OTHER-PIN := 4
-MEASURE-PIN := 34
+TEST-PIN := Variant.CURRENT.i2c-pullup-test-pin
+OTHER-PIN := Variant.CURRENT.i2c-pullup-other-pin
+MEASURE-PIN := Variant.CURRENT.i2c-pullup-measure-pin
 
 main:
   run-test: test

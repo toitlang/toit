@@ -10,9 +10,10 @@ import uart
 
 import .test
 import .uart-rs485-shared
+import .variants
 
-RTS ::= 22
-TX ::= 23
+RTS ::= Variant.CURRENT.board-connection-pin1
+TX ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

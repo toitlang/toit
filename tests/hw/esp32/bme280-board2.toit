@@ -8,13 +8,14 @@ import gpio
 import i2c
 
 import .test
+import .variants
 
 main:
   run-test: test
 
 test:
-  scl := gpio.Pin 32
-  sda := gpio.Pin 33
+  scl := gpio.Pin Variant.CURRENT.board2-i2c-scl-pin
+  sda := gpio.Pin Variant.CURRENT.board2-i2c-sda-pin
   bus := i2c.Bus --scl=scl --sda=sda
   device := bus.device bme280.I2C-ADDRESS-ALT
   driver := bme280.Driver device

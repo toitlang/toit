@@ -5,11 +5,7 @@
 /**
 Tests the pulse_counter library.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
-  strictly necessary but can prevent accidental short circuiting.
-
-Similarly, connect pin 26 to pin 33 with a 330 Ohm resistor.
+For the setup see the comment near $Variant.pulse-counter1-in1.
 */
 
 import expect show *
@@ -18,12 +14,15 @@ import pulse-counter
 import rmt
 
 import .test
+import .variants
 
-IN1 /int ::= 18
-IN2 /int ::= 33
+IN1 /int ::= Variant.CURRENT.pulse-counter1-in1
+OUT1 /int := Variant.CURRENT.pulse-counter1-out1
 
-OUT1 /int := 19
-OUT2 /int := 26
+IN2 /int ::= Variant.CURRENT.pulse-counter1-in2
+OUT2 /int := Variant.CURRENT.pulse-counter1-out2
+
+CHANNEL-COUNT ::= Variant.CURRENT.pulse-counter-channel-count
 
 main:
   run-test: test
@@ -77,9 +76,8 @@ test:
 
   unit.close
 
-  /** ---- Use all 8 units, each with 2 channels. ---- */
-  // This requires an ESP32 with 8 units.
-  units := List 8: unit = pulse-counter.Unit
+  /** ---- Use all 4/8 units, each with 2 channels. ---- */
+  units := List CHANNEL-COUNT: unit = pulse-counter.Unit
   units.do:
     it.add-channel in
     it.add-channel in2
@@ -98,7 +96,7 @@ test:
 
   /** ---- Do it again, showing that the values a reset and that we properly release the resources. ---- */
 
-  units = List 8: unit = pulse-counter.Unit
+  units = List CHANNEL-COUNT: unit = pulse-counter.Unit
   units.do:
     it.add-channel in
     it.add-channel in2

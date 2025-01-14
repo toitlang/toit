@@ -7,20 +7,17 @@ import gpio
 import uart
 
 import .test
+import .variants
 
 /**
 Tests that the UART buffer doesn't start with garbage in it.
-
-Setup:
-  Uses pin 16. The pin should stay unconnected or connected to
-  a high-impedance pin.
 */
 
 main:
   run-test: test
 
 test:
-  rx := gpio.Pin 16
+  rx := gpio.Pin Variant.CURRENT.unconnected-pin1
   port := uart.Port --rx=rx --tx=null --baud-rate=500
   expect-throw DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=200:

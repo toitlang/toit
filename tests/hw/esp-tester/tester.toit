@@ -164,13 +164,13 @@ class TestDevice:
 
       finally:
         read-task = null
+        if port:
+          port.close
+          port = null
 
   close:
     if read-task:
       read-task.cancel
-    if port:
-      port.close
-      port = null
     if file.is-directory tmp-dir:
       directory.rmdir --recursive tmp-dir
 

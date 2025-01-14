@@ -5,11 +5,6 @@
 /**
 Tests that the UART flush is working.
 
-Setup:
-Connect GND of one ESP32 to GND of another ESP32.
-Connect pin 22 of the first ESP32 to pin 23 of the second ESP32.
-Connect pin 23 of the first ESP32 to pin 22 of the second ESP32.
-
 Run uart-flush2-board1.toit on one ESP32 and uart-flush2-board2.toit on the other.
 */
 
@@ -17,9 +12,10 @@ import gpio
 import uart
 
 import .test
+import .variants
 
-RX ::= 22
-SIGNAL ::= 23
+RX ::= Variant.CURRENT.board-connection-pin1
+SIGNAL ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

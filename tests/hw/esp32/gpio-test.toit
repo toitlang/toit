@@ -5,8 +5,7 @@
 /**
 Tests gpio pins.
 
-Setup:
-Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circuits.
+For the setup see the instructions near $Variant.gpio-pin1.
 */
 
 import gpio
@@ -14,10 +13,11 @@ import expect show *
 
 import .test
 import ..shared.gpio as shared
+import .variants
 
-RESTRICTED ::= 7
-PIN1 ::= 18
-PIN2 ::= 19
+RESTRICTED ::= Variant.CURRENT.gpio-pin-restricted
+PIN1 ::= Variant.CURRENT.gpio-pin1
+PIN2 ::= Variant.CURRENT.gpio-pin2
 
 class PinFactory implements shared.PinFactory:
   pin1/gpio.Pin? := null

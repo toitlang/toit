@@ -5,12 +5,7 @@
 /**
 Tests a simple pulse from the RMT peripheral.
 
-Setup:
-Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
-  strictly necessary but can prevent accidental short circuiting.
-
-Similarly, connect pin 21 to pin 19 with a 330 Ohm resistor. We will
-  use that one to pull the line high.
+For the setup see the comment near $Variant.rmt-many-in1.
 */
 
 import rmt
@@ -19,20 +14,22 @@ import monitor
 import expect show *
 
 import .test
+import .variants
 
-RMT-PIN-1 ::= 18
-RMT-PIN-2 ::= 19
-RMT-PIN-3 ::= 21
-RMT-PIN-4 ::= 32
+RMT-IN1 ::= Variant.CURRENT.rmt-many-in1
+RMT-OUT1 ::= Variant.CURRENT.rmt-many-out1
+
+RMT-IN2 ::= Variant.CURRENT.rmt-many-in2
+RMT-OUT2 ::= Variant.CURRENT.rmt-many-out2
 
 main:
   run-test: test
 
 test:
-  pin1 := gpio.Pin RMT-PIN-1
-  pin2 := gpio.Pin RMT-PIN-2
-  pin3 := gpio.Pin RMT-PIN-3
-  pin4 := gpio.Pin RMT-PIN-4
+  pin1 := gpio.Pin RMT-IN1
+  pin2 := gpio.Pin RMT-IN2
+  pin3 := gpio.Pin RMT-OUT1
+  pin4 := gpio.Pin RMT-OUT2
 
   // Just test that we can allocate 4 different rmt resources.
 

@@ -5,10 +5,7 @@
 /**
 Tests the DAC functionality of the ESP32.
 
-Setup:
-Connect pin 26 to pin 32.
-Connect pin 25 to pin 33.
-The connections can be done with a resistor.
+For the setup see $Variant.dac-in1-pin.
 */
 
 import gpio
@@ -17,11 +14,13 @@ import gpio.adc as gpio
 import expect show *
 
 import .test
+import .variants
 
-ADC-IN1 := 33
-ADC-IN2 := 32
-DAC-OUT1 := 26
-DAC-OUT2 := 25
+DAC-OUT1 := Variant.CURRENT.dac-out1-pin
+ADC-IN1 := Variant.CURRENT.dac-in1-pin
+
+DAC-OUT2 := Variant.CURRENT.dac-out2-pin
+ADC-IN2 := Variant.CURRENT.dac-in2-pin
 
 test-wave data/List:
   bucket1 := 0

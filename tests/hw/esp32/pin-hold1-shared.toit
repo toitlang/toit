@@ -5,12 +5,6 @@
 /**
 Tests the pin-holding capability. Including with deep sleep.
 
-# Setup
-You need two boards.
-- Connect GND of board1 to GND of board2.
-- Connect pin 22 of board1 to pin 23 of board2.
-- Connect pin 23 of board1 to pin 22 of board2.
-
 Run `pin-hold-board1.toit` on board1.
 Once that one is running, run `pin-hold-board2.toit` on board2.
 
@@ -23,7 +17,9 @@ the WiFi unnecessarily:
 `jag container install -D jag.disabled -D jag.timeout=30s hold-test pin-hold1-board2.toit`
 */
 
-PIN-OUT ::= 22
-PIN-IN ::= 23
+import .variants
 
-PIN-FREE-AND-UNUSED ::= 16
+PIN-OUT ::= Variant.CURRENT.board-connection-pin1
+PIN-IN ::= Variant.CURRENT.board-connection-pin2
+
+PIN-FREE-AND-UNUSED ::= Variant.CURRENT.unconnected-pin1

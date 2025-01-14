@@ -5,12 +5,7 @@
 /**
 Tests the '--keep-cs-active' flag of the SPI transfer.
 
-Setup:
-Connect pin 19 and 21 with a 330 Ohm resistor. The resistor isn't
-  strictly necessary but can prevent accidental short circuiting.
-
-Make sure that pins 12, 13, and 14 are not connected to anything important. They
-  are used as output.
+For the setup see the comment near $Variant.spi-keep-active-cs-pin.
 */
 
 import expect show *
@@ -19,13 +14,14 @@ import gpio
 import monitor
 
 import .test
+import .variants
 
-CS ::= 21
-MISO ::= 12
-MOSI ::= 13
-SCK ::= 14
+CS ::= Variant.CURRENT.spi-keep-active-cs-pin
+MISO ::= Variant.CURRENT.unconnected-pin1
+MOSI ::= Variant.CURRENT.unconnected-pin2
+SCK ::= Variant.CURRENT.unconnected-pin3
 
-IN-CS /int ::= 19
+IN-CS ::= Variant.CURRENT.spi-keep-active-in-cs-pin
 
 class DebugChannel:
   channel_ := monitor.Channel 1

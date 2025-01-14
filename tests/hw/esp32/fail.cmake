@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Toitware ApS.
+# Copyright (C) 2025 Toitware ApS.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -13,24 +13,19 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.20.0)
 
-project(hw NONE)  # No need for compilers.
+set(TOIT_SKIP_TESTS
+  # The S3 doesn't have a DAC.
+  dac-test.toit-esp32s3
+  # We are missing a DHT11.
+  dht11-board1.toit-esp32s3
+)
 
-add_custom_target(
-  check_hw
-  # The current Raspberry Pi can't run more than 2 tests in parallel.
-  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
-  USES_TERMINAL
-  )
-
-set(TOIT_EXE_HW "" CACHE FILEPATH "The executable used to run hardware tests")
-
-if (NOT TOIT_EXE_HW)
-  message(FATAL_ERROR "TOIT_EXE_HW not set")
-endif()
-
-enable_testing()
-
-add_subdirectory(pi)
-add_subdirectory(esp32)
+set(TOIT_FAILING_TESTS
+  # The anti-glitching doesn't seem to work.
+  pulse-counter-test.toit-esp32s3
+  # Idle level 1 doesn't seem to work.
+  rmt-drain-pullup-test.toit-esp32s3
+  # Probably just an issue with the number of RMT channels.
+  rmt-test.toit-esp32s3
+)

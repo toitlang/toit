@@ -15,8 +15,9 @@ import monitor
 
 import .ble-util
 import .test
+import .variants
 
-TEST-SERVICE ::= BleUuid "e5c245a3-1b7e-44cf-bc37-7040b719fe46"
+TEST-SERVICE ::= BleUuid Variant.CURRENT.ble5-service
 TEST-CHARACTERISTIC ::= BleUuid "77d0b04e-bf49-4048-a4cd-fb46be32ebd0"
 
 main-peripheral:

@@ -7,22 +7,19 @@ import gpio
 import uart
 
 import .test
+import .variants
 
 /**
 Tests that the UART buffer doesn't start with garbage in it when
   initialized as rs485 half-duplex.
-
-Setup:
-  Uses pin 16 and 23. They should stay unconnected or connected to
-  a high-impedance pin.
 */
 
 main:
   run-test: test
 
 test:
-  rx := gpio.Pin 16
-  rts := gpio.Pin 23
+  rx := gpio.Pin Variant.CURRENT.unconnected-pin1
+  rts := gpio.Pin Variant.CURRENT.unconnected-pin2
   port := uart.Port
       --rx=rx
       --tx=null

@@ -10,9 +10,10 @@ import gpio
 import uart
 
 import .test
+import .variants
 
-TX ::= 23
-SIGNAL ::= 22
+TX ::= Variant.CURRENT.board-connection-pin1
+SIGNAL ::= Variant.CURRENT.board-connection-pin2
 
 main:
   run-test: test

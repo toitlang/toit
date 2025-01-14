@@ -12,12 +12,12 @@ import gpio
 import pulse-counter
 
 import .test
+import .variants
 
-IN1 /int ::= 18
-IN2 /int ::= 25
+IN/int ::= Variant.CURRENT.unconnected-pin1
 
 allocate-unit --close/bool=false:
-  in := gpio.Pin IN1
+  in := gpio.Pin IN
   unit := pulse-counter.Unit
   channel := unit.add-channel in
   if close:
