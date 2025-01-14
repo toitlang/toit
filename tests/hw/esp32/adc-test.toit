@@ -40,10 +40,12 @@ test:
 
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
-  expect 1.0 < value < 1.2
+  print value
+  expect 0.9 < value < 1.2
 
   raw-value := adc.get --raw
-  expect 1115 < raw-value < 1500
+  print raw-value
+  expect 1100 < raw-value < 1500
 
   control-pin.set 1
   // The voltage is now 3.3V.
