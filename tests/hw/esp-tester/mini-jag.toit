@@ -10,6 +10,8 @@ import uuid show Uuid
 
 import .shared
 
+NETWORK-RETRIES ::= 4
+
 main:
   cause := esp32.wakeup-cause
   print "Wakeup cause: $cause"
@@ -27,7 +29,12 @@ install-new-test:
     if id != containers.current:
       containers.uninstall id
 
-  network := net.open
+  network/net.Client? := null
+  for i := 0; i < NETWORK_RETRIES; i++:
+    catch --unwind=(: i == NETWORK_RETRIES - 1):
+      network = net.open
+      break
+    sleep (Duration --s=i)
   server-socket := network.tcp-listen 0
   print "$network.address:$server-socket.local-address.port"
   print MINI-JAG-LISTENING
