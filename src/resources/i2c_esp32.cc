@@ -135,9 +135,10 @@ static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_addres
 
   const uint8* data = buffer.address();
   word length = buffer.length();
-  if (!esp_ptr_internal(data)) {
-    // Copy buffer to malloc heap, if the buffer is not in memory.
-    uint8* copy = unvoid_cast<uint8*>(malloc(length));
+  if (length > 0 && !esp_ptr_internal(data)) {
+    // Copy buffer to internal malloc heap, if the buffer is not in memory.
+    const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    uint8* copy = unvoid_cast<uint8*>(heap_caps_malloc(length, caps_flags));
     if (copy == null) FAIL(MALLOC_FAILED);
     memcpy(copy, data, length);
     data = copy;
