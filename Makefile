@@ -243,6 +243,22 @@ esp32:
 esp32-no-env: check-env check-esp32-env sdk
 	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
+.PHONY: esp32c3
+esp32c3:
+	$(MAKE) IDF_TARGET=esp32c3 ESP32_CHIP=esp32c3 esp32
+
+.PHONY: esp32c6
+esp32c6:
+	$(MAKE) IDF_TARGET=esp32c6 ESP32_CHIP=esp32c6 esp32
+
+.PHONY: esp32s2
+esp32s2:
+	$(MAKE) IDF_TARGET=esp32s2 ESP32_CHIP=esp32s2 esp32
+
+.PHONY: esp32s3
+esp32s3:
+	$(MAKE) IDF_TARGET=esp32s3 ESP32_CHIP=esp32s3 esp32
+
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
 menuconfig:
