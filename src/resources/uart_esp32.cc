@@ -971,8 +971,9 @@ PRIMITIVE(set_baud_rate) {
 }
 
 PRIMITIVE(write) {
-  ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length)
+  ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length, int, pre_preak_length)
 
+  // TODO: use pre_break_length.
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   if (break_length < 0 || break_length >= 256) FAIL(OUT_OF_RANGE);
 

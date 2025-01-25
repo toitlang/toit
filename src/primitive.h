@@ -454,7 +454,7 @@ namespace toit {
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
-  PRIMITIVE(write, 5)                        \
+  PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(wait_tx, 1)                      \
   PRIMITIVE(set_control_flags, 2)           \

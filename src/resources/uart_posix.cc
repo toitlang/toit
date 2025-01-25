@@ -357,7 +357,8 @@ PRIMITIVE(set_baud_rate) {
 
 // Writes the data to the UART.
 PRIMITIVE(write) {
-  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
+  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length, int, pre_break_length);
+  USE(pre_break_length);
   int fd = resource->id();
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);

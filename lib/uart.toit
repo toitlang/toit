@@ -213,10 +213,10 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   Deprecated. Use $out instead.
   */
-  write data/io.Data from/int=0 to/int=data.byte-size --break-length=0 --wait=false -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --pre-break-length/int=0 --wait=false -> int:
     size := to - from
     while from < to:
-      from += try-write_ data from to --break-length=break-length
+      from += try-write_ data from to --break-length=break-length --pre-break-length=pre-break-length
 
     if wait: flush_
 
@@ -263,11 +263,11 @@ class Port extends Object with io.InMixin implements reader.Reader:
       if flushed: return
       yield
 
-  try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
+  try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0 --pre-break-length=0:
     while true:
       s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
       if not uart_: throw "CLOSED"
-      written := uart-write_ uart_ data from to break-length
+      written := uart-write_ uart_ data from to break-length pre-break-length
       if written < to - from:
         // Not everything was written, clear write flag and try again.
         state_.clear-state WRITE-STATE_
@@ -360,10 +360,10 @@ class UartWriter extends io.Writer:
 
   Returns the number of bytes written.
   */
-  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --pre-break-length/int=0 --flush/bool=false -> int:
     data-size := to - from
     while not is-closed_:
-      from += try-write data from to --break-length=break-length --flush=flush
+      from += try-write data from to --break-length=break-length --pre-break-length=pre-break-length --flush=flush
       if from >= to: return data-size
       yield
     assert: is-closed_
@@ -379,14 +379,14 @@ class UartWriter extends io.Writer:
     the data is written. The duration of the break signal is bit-duration * $break-length,
     where bit-duration is the duration it takes to write one bit at the current baud rate.
   */
-  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
+  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --pre-break-length/int=0 --flush/bool=false -> int:
     if is-closed_: throw "WRITER_CLOSED"
-    result := port_.try-write_ data from to --break-length=break-length
+    result := port_.try-write_ data from to --break-length=break-length --pre-break-length=pre-break-length
     if flush and (result > 0 or data.byte-size == 0): this.flush
     return result
 
-  try-write_ data/io.Data from/int to/int --break-length/int=0 -> int:
-    return port_.try-write_ data from to --break-length=break-length
+  try-write_ data/io.Data from/int to/int --break-length/int=0 --pre-break-length/int=0 -> int:
+    return port_.try-write_ data from to --break-length=break-length --pre-break-length=pre-break-length
 
   flush -> none:
     port_.flush_
@@ -419,12 +419,12 @@ uart-close_ group uart:
 Writes the $data to the uart.
 Returns the amount of bytes that were written.
 */
-uart-write_ uart data from to break-length:
+uart-write_ uart data from to break-length pre-break-length:
   #primitive.uart.write:
     // The `uart-write_` function is allowed to consume less than the whole data slice.
     // We limit the chunk size to 1024 bytes.
     return io.primitive-redo-io-data_ it data from (min to (from + 1024)): | chunk/ByteArray |
-      uart-write_ uart chunk 0 chunk.size break-length
+      uart-write_ uart chunk 0 chunk.size break-length pre-break-length
 
 uart-wait-tx_ uart:
   #primitive.uart.wait-tx
