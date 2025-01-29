@@ -10,11 +10,10 @@ Analog-to-Digital Conversion.
 This library provides ways to read analogue voltage values from GPIO pins that
   support it.
 
-On the ESP32, there are two ADCs. ADC1 (pins 32-39) should be preferred as
-  ADC2 (pins 0, 2, 4, 12-15, 25-27) has lots of restrictions. It can't be
-  used when WiFi is active, and some of the pins are
-  strapping pins). By default, ADC2 is disabled, and users need to pass in a flag to
-  allow its use.
+On most ESP32 variants, there are two ADCs. ADC1 should be preferred as
+  ADC2 has lots of restrictions. It can't be used when WiFi is active, and some
+  of the pins are strapping pins.
+By default, ADC2 is disabled, and users need to pass in a flag to allow its use.
 
 # Examples
 ```
@@ -22,10 +21,36 @@ import gpio
 import gpio.adc show Adc
 
 main:
-  adc := Adc (gpio.Pin 34)
+  pin := gpio.Pin 34
+  adc := Adc pin
   print adc.get
   adc.close
+  pin.close
 ```
+
+# Pins
+
+## ESP32
+ADC1: Pins 32-39
+ADC2: Pins 0, 2, 4, 12-15, 25-27.
+
+## ESP32C3
+ADC1: Pins 0-4
+Pin 5 is an ADC pin of channel 2. However, the controller of ADC channel 2
+  may enter an inoperative state and was therefore disabled by Espressif.
+  An errata was published.
+
+## ESP32C6
+ADC1: Pins 0-6
+No ADC2.
+
+## ESP32S2
+ADC1: Pins 1-10
+ADC2: Pins 11-20
+
+## ESP32S3
+ADC1: Pins 1-10
+ADC2: Pins 11-20
 */
 
 /**
@@ -44,17 +69,14 @@ class Adc:
     tune the attenuation of the underlying ADC unit. If no $max-voltage is
     provided, the ADC uses the maximum voltage range of the pin.
 
-  If $allow-restricted is true, allows pins that are restricted.
-    See the ESP32 section below.
-
-  # ESP32
-  On the ESP32, there are two ADCs. ADC1 (pins 32-39) should be preferred as
-    ADC2 (pins 0, 2, 4, 12-15, 25-27) has lots of restrictions. It can't be
-    used when WiFi is active, and some of the pins are
-    strapping pins). By default, ADC2 is disabled, and users need to pass in the
+  # ESP32 and variants.
+  On most ESP32 variants, there are two ADCs. Typically, ADC1 should be
+    preferred as ADC2 has lots of restrictions. It can't be
+    used when WiFi is active, and some of the pins are strapping pins.
+  By default, ADC2 is disabled, and users need to pass in the
     $allow-restricted flag to allow its use.
   */
-  constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
+  constructor .pin --max-voltage/float?=null --allow-restricted/bool?=false:
     resource_ = adc-init_ resource-freeing-module_ pin.num allow-restricted (max-voltage ? max-voltage : 0.0)
 
   /**

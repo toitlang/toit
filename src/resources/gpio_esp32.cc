@@ -18,8 +18,6 @@
 #ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
-#include <driver/adc.h>
-#include <esp_adc_cal.h>
 #include <hal/gpio_hal.h>
 
 #include <freertos/FreeRTOS.h>
