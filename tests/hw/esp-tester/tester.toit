@@ -66,6 +66,10 @@ main args:
         cli.Option "port-board2"
             --help="The path to the UART port of board 2"
             --type="path",
+        cli.Option "arg"
+            --help="The argument to pass to the test"
+            --type="string"
+            --default="",
       ]
       --rest=[
         cli.Option "test"
@@ -102,16 +106,17 @@ run-test invocation/cli.Invocation:
   port-board2 := invocation["port-board2"]
   test-path := invocation["test"]
   test2-path := invocation["test2"]
+  arg := invocation["arg"]
 
   board1 := TestDevice --name="board1" --port-path=port-board1 --ui=ui --toit-exe=toit-exe
   board2/TestDevice? := null
 
   try:
-    board1.run-test test-path
+    board1.run-test test-path arg
 
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-      board2.run-test test2-path
+      board2.run-test test2-path arg
 
     ui.emit --verbose "Waiting for all tests to be done"
     board1.all-tests-done.get
@@ -177,7 +182,7 @@ class TestDevice:
   toit_ args/List:
     run-toit toit-exe args --ui=ui
 
-  run-test test-path:
+  run-test test-path arg/string:
     // Reset the device.
     ui.emit --verbose "Resetting $name"
     port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
@@ -218,10 +223,15 @@ class TestDevice:
     network := net.open
     parts := host-port-line.split ":"
     socket := network.tcp-connect parts[0] (int.parse parts[1])
+    socket.out.little-endian.write-int32 arg.size
+    socket.out.write arg
     socket.out.little-endian.write-int32 image.size
     summer := crc.Crc32
     summer.add image
-    socket.out.write summer.get
+    crc := summer.get
+    socket.out.write crc
+    // The image must be written last, since everything that follows
+    // the image size is just written as a container.
     socket.out.write image
     socket.close
 

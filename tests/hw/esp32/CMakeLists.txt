@@ -63,74 +63,121 @@ foreach(esp_variant ${VARIANTS})
   endforeach()
 endforeach()
 
+function(parse_args_from_file file_path result_var)
+  # Ensure the provided file exists.
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "File not found: ${file_path}")
+  endif()
+
+  # Read the file content.
+  file(READ "${file_path}" file_content)
+
+  # Initialize the result list.
+  set(result_list)
+
+  # Use a regular expression to find a line that starts with "// ARG: ".
+  string(REGEX MATCHALL "// ARG: [^\n]+" matched_lines "${file_content}")
+
+  foreach(line IN LISTS matched_lines)
+    # Extract the part after "// ARG: ".
+    string(REGEX REPLACE "^// ARG: " "" args_string "${line}")
+
+    # Split the string by spaces and append to the result list.
+    string(REGEX MATCHALL "[^ \t]+" args_list "${args_string}")
+    list(APPEND result_list ${args_list})
+  endforeach()
+
+  # If no matching line was found, set result_list to an empty string.
+  if(NOT result_list)
+    set(result_list "**NO_ARG**")
+  endif()
+
+  # Set the result variable.
+  set(${result_var} ${result_list} PARENT_SCOPE)
+endfunction()
+
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
   foreach(file ${SINGLE_TESTS})
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-    set(test_name ${file}-${esp_variant})
+    parse_args_from_file(${toit_file} args)
+    foreach(arg ${args})
+      set(test_name ${file}-${esp_variant})
+      if (NOT ${arg} STREQUAL "**NO_ARG**")
+        set(test_name "${test_name}-${arg}")
+      endif()
 
-    if ("${test_name}" IN_LIST TOIT_SKIP_TESTS)
-      continue()
-    endif()
+      if ("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+        continue()
+      endif()
 
-    set(failing FALSE)
-    if ("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set(test_name "${test_name}-failing")
-      set(failing TRUE)
-    endif()
+      set(failing FALSE)
+      if ("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+        set(test_name "${test_name}-failing")
+        set(failing TRUE)
+      endif()
 
-    add_test(
-      NAME ${test_name}
-      COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file}
-          --verbose
-          --toit-exe "${TOIT_EXE_HW}"
-          --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-      CONFIGURATIONS ${esp_variant} hw
-      )
+      add_test(
+        NAME ${test_name}
+        COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file}
+            --arg "${arg}"
+            --verbose
+            --toit-exe "${TOIT_EXE_HW}"
+            --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        CONFIGURATIONS ${esp_variant} hw
+        )
 
-    set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
-    set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-    set_tests_properties(${test_name} PROPERTIES RESOURCE_LOCK ${esp_variant})
+      set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
+      set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
+      set_tests_properties(${test_name} PROPERTIES RESOURCE_LOCK ${esp_variant})
 
-    if (${failing})
-      set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
-    endif()
+      if (${failing})
+        set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+      endif()
+    endforeach()
   endforeach()
 
   foreach(file ${MULTI_TESTS})
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-    set(test_name ${file}-${esp_variant})
+    parse_args_from_file(${toit_file} args)
+    foreach(arg ${args})
+      set(test_name ${file}-${esp_variant})
+      if (NOT ${arg} STREQUAL "**NO_ARG**")
+        set(test_name "${test_name}-${arg}")
+      endif()
 
-    if ("${test_name}" IN_LIST TOIT_SKIP_TESTS)
-      continue()
-    endif()
+      if ("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+        continue()
+      endif()
 
-    set(failing FALSE)
-    if ("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set(test_name "${test_name}-failing")
-      set(failing TRUE)
-    endif()
+      set(failing FALSE)
+      if ("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+        set(test_name "${test_name}-failing")
+        set(failing TRUE)
+      endif()
 
-    string(REPLACE "board1" "board2" toit_file_board2 ${toit_file})
+      string(REPLACE "board1" "board2" toit_file_board2 ${toit_file})
 
-    add_test(
-      NAME "${test_name}"
-      COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file} ${toit_file_board2}
-          --verbose
-          --toit-exe "${TOIT_EXE_HW}"
-          --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
-          --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-      CONFIGURATIONS ${esp_variant} hw
-      )
+      add_test(
+        NAME "${test_name}"
+        COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file} ${toit_file_board2}
+            --verbose
+            --arg "${arg}"
+            --toit-exe "${TOIT_EXE_HW}"
+            --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
+            --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        CONFIGURATIONS ${esp_variant} hw
+        )
 
-    set_tests_properties("${test_name}" PROPERTIES TIMEOUT 120)
-    set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-    set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      set_tests_properties("${test_name}" PROPERTIES TIMEOUT 120)
+      set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
+      set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
 
-    if (${failing})
-      set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
-    endif()
+      if (${failing})
+        set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
+      endif()
+    endforeach()
   endforeach()
 endforeach()

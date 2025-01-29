@@ -149,11 +149,16 @@ abstract class Variant:
   Board connections.
 
   Pins that are connected between the two boards.
-  These are crossed, so that the same pin number can be used as RX/TX on
-    both boards.
+  Pin 1 and 2 are crossed, so that the same pin number can be
+    used as RX/TX on both boards.
+
+  Pin 3 goes to the same pin on both boards.
+  Pin 4 goes to the same pin on both boards.
   */
   abstract board-connection-pin1 -> int
   abstract board-connection-pin2 -> int
+  abstract board-connection-pin3 -> int
+  abstract board-connection-pin4 -> int
 
   /*
   ADC.
@@ -310,6 +315,24 @@ abstract class Variant:
   */
   wait-for-close-pin -> int: return chain2-to-gnd-pin
 
+  /**
+  I2S pins.
+
+  Connect $i2s-data1 to $i2s-data2 with a 330Ohm resistor.
+  Connect $i2s-clk1 to $i2s-clk2 with a 330Ohm resistor.
+  Connect $i2s-ws1 to $i2s-ws2 with a 330Ohm resistor.
+    By default the $i2s-ws2 is also connected to GND by a 1MOhm resistor.
+    That shouldn't have any effect on the test.
+  */
+  i2s-data1 -> int: return connected1-pin1
+  i2s-data2 -> int: return connected1-pin2
+
+  i2s-clk1 -> int: return connected2-pin1
+  i2s-clk2 -> int: return connected2-pin2
+
+  i2s-ws1 -> int: return chain2-pin2
+  i2s-ws2 -> int: return chain2-pin3
+
 /*
 A configuration for the ESP32.
 
@@ -340,6 +363,8 @@ Connect the two boards.
 - GND (board1) - GND (board2)
 - IO22 (board1) - IO23 (board2)
 - IO23 (board1) - IO22 (board2)
+- IO16 (board1) - IO16 (board2)
+- IO17 (board1) - IO17 (board2)
 */
 class Esp32 extends Variant:
   pulse-counter-channel-count ::= 8
@@ -396,6 +421,8 @@ class Esp32 extends Variant:
 
   board-connection-pin1 ::= 22
   board-connection-pin2 ::= 23
+  board-connection-pin3 ::= 16
+  board-connection-pin4 ::= 17
 
 /**
 A configuration for the ESP32-S3.
@@ -426,6 +453,8 @@ Connect the two boards.
 - GND (board1) - GND (board2)
 - IO04 (board1) - IO05 (board2)
 - IO05 (board1) - IO04 (board2)
+- IO21 (board1) - IO21 (board2)
+- IO47 (board1) - IO47 (board2)
 */
 class Esp32s3 extends Variant:
   pulse-counter-channel-count ::= 4
@@ -483,3 +512,5 @@ class Esp32s3 extends Variant:
 
   board-connection-pin1 ::= 4
   board-connection-pin2 ::= 5
+  board-connection-pin3 ::= 21
+  board-connection-pin4 ::= 47
