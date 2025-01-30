@@ -35,6 +35,8 @@ namespace toit {
 
 #if CONFIG_IDF_TARGET_ESP32
 
+#define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT
+
 static int get_adc1_channel(int pin) {
   switch (pin) {
     case 36: return ADC_CHANNEL_0;
@@ -67,6 +69,8 @@ static int get_adc2_channel(int pin) {
 
 #elif CONFIG_IDF_TARGET_ESP32C3
 
+#define ADC_CLK_SRC_DEFAULT ADC_DIGI_CLK_SRC_DEFAULT
+
 static int get_adc1_channel(int pin) {
   switch (pin) {
     case 0: return ADC_CHANNEL_0;
@@ -87,6 +91,8 @@ static int get_adc2_channel(int pin) {
 
 #elif CONFIG_IDF_TARGET_ESP32C6
 
+#define ADC_CLK_SRC_DEFAULT ADC_DIGI_CLK_SRC_DEFAULT
+
 static int get_adc1_channel(int pin) {
   switch (pin) {
     case 0: return ADC_CHANNEL_0;
@@ -106,6 +112,9 @@ static int get_adc2_channel(int pin) {
 }
 
 #elif CONFIG_IDF_TARGET_ESP32S2
+
+#define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT
+#define ADC_HAS_NO_DEFAULT_VREF 1
 
 static int get_adc1_channel(int pin) {
   switch (pin) {
@@ -140,6 +149,8 @@ static int get_adc2_channel(int pin) {
 }
 
 #elif CONFIG_IDF_TARGET_ESP32S3
+
+#define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT
 
 static int get_adc1_channel(int pin) {
   switch (pin) {
@@ -228,7 +239,7 @@ static esp_err_t adc_use(adc_oneshot_unit_handle_t* unit_handle) {
     ASSERT(*unit_handle == null);
     adc_oneshot_unit_init_cfg_t init_config = {
       .unit_id = unit_id,
-      .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
+      .clk_src = ADC_CLK_SRC_DEFAULT,
       .ulp_mode = ADC_ULP_MODE_DISABLE,
 
     };
@@ -274,8 +285,10 @@ static esp_err_t calibration_init(adc_unit_t unit,
     .unit_id = unit,
     .atten = atten,
     .bitwidth = ADC_BITWIDTH_DEFAULT,
+#ifndef ADC_HAS_NO_DEFAULT_VREF
     // If the chip wasn't calibrated just use the default vref.
     .default_vref = 1100,
+#endif
   };
   err = adc_cali_create_scheme_line_fitting(&cali_config, handle);
 #else
