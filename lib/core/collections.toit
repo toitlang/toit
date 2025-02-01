@@ -3200,6 +3200,19 @@ class Map extends HashedInsertionOrderedCollection_:
 
   The $block is invoked with two arguments for each entry in this instance:
     the key and the value. The returned value becomes the new value for the key.
+
+  # Examples
+  ```
+  map := { "a": 1, "b": 2 }
+
+  // Double the values. (Key is not used).
+  doubled := map.map: | _ value | value * 2
+  print doubled  // => { "a": 2, "b": 4 }
+
+  // Prefix the values with the key.
+  prefixed := map.map: | key value | "$key-$value"
+  print prefixed  // => { "a": "a-1", "b": "b-2" }
+  ```
   */
   map [block] -> Map:
     result := Map
