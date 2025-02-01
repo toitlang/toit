@@ -5,7 +5,7 @@
 /**
 Tests the i2s peripheral.
 
-For the setup see the documentation near $Variant.i2s-dout.
+For the setup see the documentation near $Variant.i2s-data1.
 */
 
 import expect show *
