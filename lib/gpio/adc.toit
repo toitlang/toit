@@ -32,7 +32,7 @@ main:
 
 ## ESP32
 ADC1: Pins 32-39
-ADC2: Pins 0, 2, 4, 12-15, 25-27.
+ADC2: Pins 0, 2, 4, 12-15, 25-27
 
 ## ESP32C3
 ADC1: Pins 0-4

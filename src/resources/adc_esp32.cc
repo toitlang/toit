@@ -84,7 +84,7 @@ static int get_adc1_channel(int pin) {
 
 static int get_adc2_channel(int pin) {
   // On ESP32C3, ADC2 is no longer supported, due to its HW limitation.
-  // There was an errata on the espressif website.
+  // There was an errata on the Espressif website.
   // Pin 5 is still connected to ADC2, but we don't allow to use it.
   return -1;
 }
