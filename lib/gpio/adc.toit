@@ -76,7 +76,7 @@ class Adc:
   By default, ADC2 is disabled, and users need to pass in the
     $allow-restricted flag to allow its use.
   */
-  constructor .pin --max-voltage/float?=null --allow-restricted/bool?=false:
+  constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
     resource_ = adc-init_ resource-freeing-module_ pin.num allow-restricted (max-voltage ? max-voltage : 0.0)
 
   /**
