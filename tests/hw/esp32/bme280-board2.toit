@@ -17,6 +17,12 @@ test:
   scl := gpio.Pin Variant.CURRENT.board2-i2c-scl-pin
   sda := gpio.Pin Variant.CURRENT.board2-i2c-sda-pin
   bus := i2c.Bus --scl=scl --sda=sda
+
+  devices := bus.scan
+
+  expect-equals 1 devices.size
+  expect (devices.contains bme280.I2C-ADDRESS-ALT)
+
   device := bus.device bme280.I2C-ADDRESS-ALT
   driver := bme280.Driver device
 
