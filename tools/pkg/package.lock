@@ -34,5 +34,5 @@ packages:
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate-roots
-    version: 1.7.0
-    hash: 0f824e1e2209d9833fa23635460d30661546af4f
+    version: 1.8.0
+    hash: 369a0b36e813e37d6248990de59964020644ab50
