@@ -37,8 +37,9 @@ Pins 12-17 are normally connected to flash/PSRAM, and should not be used.
 Pins 18-19 are JTAG pins, and should not be used if JTAG support is needed.
 Pins 0-5 are RTC pins and can be used in deep-sleep.
 Pins 0-4 are ADC pins of channel 1.
-Pin 5 is an ADC pin of channel 2. ADC channel 2 has restrictions and should be
-  avoided if possible.
+Pin 5 is an ADC pin of channel 2. However, the controller of ADC channel 2
+  may enter an inoperative state and was therefore disabled by Espressif.
+  An errata was published.
 
 # ESP23C6
 The ESP32C6 has 31 physical pins (0-30). Each pin can be used as

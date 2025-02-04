@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP32
+#if 0 // def TOIT_ESP32
 
 #include <driver/i2s.h>
 
