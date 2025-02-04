@@ -84,7 +84,7 @@ static int get_adc1_channel(int pin) {
 
 static int get_adc2_channel(int pin) {
   // On ESP32C3, ADC2 is no longer supported, due to its HW limitation.
-  // There was an errata on the espressif website.
+  // There was an errata on the Espressif website.
   // Pin 5 is still connected to ADC2, but we don't allow to use it.
   return -1;
 }
@@ -318,25 +318,27 @@ class AdcResource : public SimpleResource {
   AdcResource(SimpleResourceGroup* group,
               adc_oneshot_unit_handle_t* unit,
               adc_channel_t channel,
-              adc_atten_t attenuation,
               adc_cali_handle_t calibration)
       : SimpleResource(group)
-      , unit(unit)
-      , channel(channel)
-      , attenuation(attenuation)
-      , calibration(calibration) {}
+      , unit_(unit)
+      , channel_(channel)
+      , calibration_(calibration) {}
 
   virtual ~AdcResource() {
-    adc_unuse(unit);
-    if (calibration != null) {
-      calibration_deinit(calibration);
+    adc_unuse(unit_);
+    if (calibration_ != null) {
+      calibration_deinit(calibration_);
     }
   }
 
-  adc_oneshot_unit_handle_t* unit;
-  adc_channel_t channel;
-  adc_atten_t attenuation;
-  adc_cali_handle_t calibration;
+  adc_oneshot_unit_handle_t* unit() const { return unit_; }
+  adc_channel_t channel() const { return channel_; }
+  adc_cali_handle_t calibration() const { return calibration_; }
+
+ private:
+  adc_oneshot_unit_handle_t* unit_;
+  adc_channel_t channel_;
+  adc_cali_handle_t calibration_;
 };
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
@@ -402,7 +404,6 @@ PRIMITIVE(init) {
     resource = _new AdcResource(group,
                                 unit_handle,
                                 static_cast<adc_channel_t>(channel),
-                                attenuation,
                                 calibration);
     if (!resource) FAIL(MALLOC_FAILED);
   }
@@ -418,14 +419,14 @@ PRIMITIVE(get) {
 
   if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
 
-  if (resource->calibration == null) FAIL(UNSUPPORTED);
+  if (resource->calibration() == null) FAIL(UNSUPPORTED);
 
   uint32_t adc_reading = 0;
 
   // Multisampling.
   for (int i = 0; i < samples; i++) {
     int raw;
-    esp_err_t err = adc_oneshot_read(*resource->unit, resource->channel, &raw);
+    esp_err_t err = adc_oneshot_read(*resource->unit(), resource->channel(), &raw);
     if (err != ESP_OK) return Primitive::os_error(err, process);
     adc_reading += raw;
   }
@@ -434,7 +435,7 @@ PRIMITIVE(get) {
 
   // Convert adc_reading to voltage in mV.
   int voltage;
-  esp_err_t err = adc_cali_raw_to_voltage(resource->calibration, adc_reading, &voltage);
+  esp_err_t err = adc_cali_raw_to_voltage(resource->calibration(), adc_reading, &voltage);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return Primitive::allocate_double(voltage / 1000.0, process);
@@ -443,7 +444,7 @@ PRIMITIVE(get) {
 PRIMITIVE(get_raw) {
   ARGS(AdcResource, resource);
   int raw;
-  esp_err_t err = adc_oneshot_read(*resource->unit, resource->channel, &raw);
+  esp_err_t err = adc_oneshot_read(*resource->unit(), resource->channel(), &raw);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return Smi::from(raw);

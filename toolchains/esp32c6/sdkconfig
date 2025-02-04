@@ -905,7 +905,7 @@ CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
 #
 # Common ESP-related
 #
-# CONFIG_ESP_ERR_TO_NAME_LOOKUP is not set
+CONFIG_ESP_ERR_TO_NAME_LOOKUP=y
 # end of Common ESP-related
 
 #
