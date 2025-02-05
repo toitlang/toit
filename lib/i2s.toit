@@ -655,21 +655,18 @@ class Bus:
   Returns the number of bytes written.
   */
   try-write bytes/ByteArray -> int:
-    should-yield := true
     while true:
       if not i2s_: throw "CLOSED"
 
       state_.clear-state WRITE-STATE_ | ERROR-STATE_
 
       written := i2s-write_ i2s_ bytes
-      if should-yield: yield
       if written != 0: return written
       // Try again without waiting for signals.
       written = i2s-write_ i2s_ bytes
       if written != 0: return written
 
       state := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
-      should-yield = false
 
   /**
   Read bytes from the I2S bus.
@@ -679,6 +676,9 @@ class Bus:
   read -> ByteArray?:
     result := ByteArray 496
     count := read result
+    if count < 350:
+      // Avoid wasting too much memory.
+      return result[..count].copy
     return result[..count]
 
   /**
@@ -687,14 +687,12 @@ class Bus:
   This methods blocks until data is available.
   */
   read buffer/ByteArray -> int?:
-    should-yield := true
     while true:
       if not i2s_: throw "CLOSED"
 
+      state_.clear-state READ-STATE_ | ERROR-STATE_
+
       read := i2s-read-to-buffer_ i2s_ buffer
-      if should-yield:
-        yield
-        should-yield = false
       if read > 0: return read
       state := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       state_.clear-state READ-STATE_ | ERROR-STATE_

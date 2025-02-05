@@ -62,7 +62,7 @@ install-new-test:
     throw"CRC MISMATCH"
     return
   writer.commit
-  bucket := storage.Bucket.open --flash BUCKET-NAME
+  bucket := storage.Bucket.open --ram BUCKET-NAME
   bucket["arg"] = arg.to-string
   bucket.close
   reader.close
@@ -73,7 +73,7 @@ install-new-test:
 
 run-test:
   print "RUNNING INSTALLED CONTAINER"
-  bucket := storage.Bucket.open --flash BUCKET-NAME
+  bucket := storage.Bucket.open --ram BUCKET-NAME
   arg := bucket["arg"]
   bucket.close
   containers.images.do: | image/containers.ContainerImage |
