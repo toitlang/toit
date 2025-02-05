@@ -11,7 +11,7 @@ import serial
 I2S Serial communication Bus.
 
 An I2S bus can be either in master or slave mode. In master mode, the bus
-  generates the clock and word select signals. In slave mode, the bus uses
+  generates the clock and word-select signals. In slave mode, the bus uses
   these signals as input.
 
 Optionally, the peripheral can also generate the master clock (independently
@@ -310,14 +310,14 @@ class Bus:
   /**
   Constructs an I2S channel as input.
 
-  For typical I2S setups, the $rx pin, a clock ($sck), and a word select ($ws)
+  For typical I2S setups, the $rx pin, a clock ($sck), and a word-select ($ws)
     pins are required. The master clock ($mclk) is optional.
 
   If $master is true, then I2S peripheral runs as master. As master, the
     $sck, $ws, and $mclk pins are outputs. As slave, they are inputs.
 
   The $sample-rate is the rate at which samples are written.
-  The $bits-per-sample is the width of each sample. It can be either 8, 16, 24 or 32.
+  The $bits-per-sample is the width of each sample. It can be either 8, 16, 24, or 32.
     For 8 and 24 bits see the note on the ESP32 below.
 
   If a $mclk pin is provide, then the master clock is emitted/read from that pin.
@@ -599,7 +599,7 @@ class Bus:
 
   When a bus was constructed but not started yet, then the master clock is
     running, but the other signals are not. Specifically, in master mode,
-    there is no clock, word select or data being transmitted.
+    there is no clock, word-select or data being transmitted.
 
   The bus must not already be started.
 
