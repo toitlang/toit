@@ -50,6 +50,7 @@ main-board1:
 
 test-board1:
   port := uart.Port --rx=(gpio.Pin RX) --tx=null --baud-rate=BAUD-RATE
+      --large-buffers
   hasher := md5.Md5
 
   reader := port.in
