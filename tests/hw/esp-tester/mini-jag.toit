@@ -47,7 +47,7 @@ install-new-test:
   writer := containers.ContainerImageWriter size
   written-size := 0
   while written-size < size:
-    data := reader.read
+    data := reader.read --max-size=(size - written-size)
     summer.add data
     writer.write data
     written-size += data.size
@@ -56,11 +56,16 @@ install-new-test:
     throw"CRC MISMATCH"
     return
   writer.commit
+  print "INSTALLED CONTAINER"
+  print "WAITING FOR RUN-SIGNAL"
+  run-message := reader.read-string RUN-TEST.size
+  if run-message != RUN-TEST:
+    throw "RUN-SIGNAL MISMATCH"
+    return
   reader.close
   socket.close
   server-socket.close
   network.close
-  print "INSTALLED CONTAINER"
 
 run-test:
   print "RUNNING INSTALLED CONTAINER"

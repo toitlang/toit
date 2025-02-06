@@ -3,3 +3,4 @@
 // be found in the tests/LICENSE file.
 
 MINI-JAG-LISTENING ::= "MINI-JAG LISTENING"
+RUN-TEST ::= "RUN TEST"
