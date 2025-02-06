@@ -7,9 +7,11 @@ import crypto.crc
 import fs
 import host.directory
 import host.file
+import host.os
 import host.pipe
 import monitor
 import net
+import net.tcp
 import system
 import uart
 import .shared
@@ -112,11 +114,24 @@ run-test invocation/cli.Invocation:
   board2/TestDevice? := null
 
   try:
-    board1.run-test test-path arg
+    board1-ready := monitor.Latch
+
+    task::
+      board1.connect-network
+      board1.install-test test-path arg
+      board1-ready.set true
+
+    // TODO(florian): move this to after the second board is ready.
+    board1-ready.get
 
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-      board2.run-test test2-path arg
+      board2.connect-network
+      board2.install-test test2-path arg
+
+    board1.run-test
+    if port-board2:
+      board2.run-test
 
     ui.emit --verbose "Waiting for all tests to be done"
     board1.all-tests-done.get
@@ -139,6 +154,9 @@ class TestDevice:
   ui/cli.Ui
   tmp-dir/string
 
+  network_/net.Client? := null
+  socket_/tcp.Socket? := null
+
   constructor --.name --.toit-exe --port-path/string --.ui:
     port = uart.HostPort port-path --baud-rate=115200
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
@@ -146,10 +164,19 @@ class TestDevice:
       try:
         reader := port.in
         stdout := pipe.stdout
+        at-new-line := true
         while data/ByteArray? := reader.read:
           if not is-active: continue
-          stdout.write data
-          collected-output += data.to-string-non-throwing
+          data-str := data.to-string-non-throwing
+          if at-new-line: data-str = "\n$data-str"
+          if data-str.ends-with "\n":
+            at-new-line = true
+            data-str = data-str[.. data-str.size - 1]
+          else:
+            at-new-line = false
+          std-out := data-str.replace --all "\n" "\n$name: "
+          stdout.write std-out
+          collected-output += data-str
           if not ready-latch.has-value and collected-output.contains "\n$MINI-JAG-LISTENING":
             ready-latch.set true
           if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
@@ -178,11 +205,12 @@ class TestDevice:
       read-task.cancel
     if file.is-directory tmp-dir:
       directory.rmdir --recursive tmp-dir
+    disconnect-network
 
   toit_ args/List:
     run-toit toit-exe args --ui=ui
 
-  run-test test-path arg/string:
+  connect-network:
     // Reset the device.
     ui.emit --verbose "Resetting $name"
     port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
@@ -199,8 +227,18 @@ class TestDevice:
     lines.map --in-place: it.trim
     listening-line-index := lines.index-of --last MINI-JAG-LISTENING
     host-port-line := lines[listening-line-index - 1]
-    ui.emit --info "Running test on $host-port-line"
+    parts := host-port-line.split ":"
+    network_ = net.open
+    socket_ = network_.tcp-connect parts[0] (int.parse parts[1])
+    ui.emit --info "Connected to $host-port-line"
 
+  disconnect-network:
+    if socket_: socket_.close
+    socket_ = null
+    if network_: network_.close
+    network_ = null
+
+  install-test test-path arg/string:
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
       "compile",
@@ -220,22 +258,21 @@ class TestDevice:
     ]
     image := file.read-contents image-path
 
-    network := net.open
-    parts := host-port-line.split ":"
-    socket := network.tcp-connect parts[0] (int.parse parts[1])
-    socket.out.little-endian.write-int32 arg.size
-    socket.out.write arg
-    socket.out.little-endian.write-int32 image.size
+    socket_.out.little-endian.write-int32 arg.size
+    socket_.out.write arg
+    socket_.out.little-endian.write-int32 image.size
+
     summer := crc.Crc32
     summer.add image
-    crc := summer.get
-    socket.out.write crc
-    // The image must be written last, since everything that follows
-    // the image size is just written as a container.
-    socket.out.write image
-    socket.close
+    socket_.out.write summer.get
+    socket_.out.write image
+
+  run-test -> none:
+    socket_.out.write RUN-TEST
 
 setup-tester invocation/cli.Invocation:
+  if os.env.get "TOIT_SKIP_SETUP": return
+
   ui := invocation.cli.ui
   toit-exe := invocation["toit-exe"]
   port-path := invocation["port"]

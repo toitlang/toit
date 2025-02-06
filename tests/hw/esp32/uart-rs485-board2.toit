@@ -14,8 +14,8 @@ Tests that the uart in rs485-half-duplex can receive data as soon as the
   RTS bit is cleared.
 */
 
-RTS ::= Variant.CURRENT.board-connection-pin1
-RX ::= Variant.CURRENT.board-connection-pin2
+RTS ::= Variant.CURRENT.board-connection-pin2
+RX ::= Variant.CURRENT.board-connection-pin1
 TX ::= Variant.CURRENT.unconnected-pin1
 
 main:
