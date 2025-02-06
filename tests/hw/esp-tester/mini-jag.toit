@@ -60,7 +60,7 @@ install-new-test:
   print "WAITING FOR RUN-SIGNAL"
   run-message := reader.read-string RUN-TEST.size
   if run-message != RUN-TEST:
-    throw"RUN-SIGNAL MISMATCH"
+    throw "RUN-SIGNAL MISMATCH"
     return
   reader.close
   socket.close
