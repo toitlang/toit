@@ -6,11 +6,13 @@ import crypto.crc
 import esp32
 import net
 import system.containers
+import system.storage
 import uuid show Uuid
 
 import .shared
 
 NETWORK-RETRIES ::= 4
+BUCKET-NAME ::= "toitlang.org/toit/tester"
 
 main:
   cause := esp32.wakeup-cause
@@ -40,6 +42,9 @@ install-new-test:
   print MINI-JAG-LISTENING
   socket := server-socket.accept
   reader := socket.in
+  arg-size := reader.little-endian.read-int32
+  arg := reader.read-bytes arg-size
+  print "ARGS: $arg.to-string"
   size := reader.little-endian.read-int32
   expected-crc := reader.read-bytes 4
   summer := crc.Crc32
@@ -52,10 +57,14 @@ install-new-test:
     writer.write data
     written-size += data.size
   print "WRITTEN: $written-size"
-  if summer.get != expected-crc:
+  actual-crc := summer.get
+  if actual-crc != expected-crc:
     throw"CRC MISMATCH"
     return
   writer.commit
+  bucket := storage.Bucket.open --ram BUCKET-NAME
+  bucket["arg"] = arg.to-string
+  bucket.close
   print "INSTALLED CONTAINER"
   print "WAITING FOR RUN-SIGNAL"
   run-message := reader.read-string RUN-TEST.size
@@ -69,6 +78,9 @@ install-new-test:
 
 run-test:
   print "RUNNING INSTALLED CONTAINER"
+  bucket := storage.Bucket.open --ram BUCKET-NAME
+  arg := bucket["arg"]
+  bucket.close
   containers.images.do: | image/containers.ContainerImage |
     if image.id != containers.current:
-      containers.start image.id
+      containers.start image.id [arg]

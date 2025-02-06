@@ -949,7 +949,7 @@ CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM=y
 #
 # ESP-Driver:I2S Configurations
 #
-# CONFIG_I2S_ISR_IRAM_SAFE is not set
+CONFIG_I2S_ISR_IRAM_SAFE=y
 # CONFIG_I2S_ENABLE_DEBUG_LOG is not set
 # end of ESP-Driver:I2S Configurations
 

@@ -22,10 +22,13 @@ MODULE_TYPES(i2s, MODULE_I2S)
 
 TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(create)
+TYPE_PRIMITIVE_ANY(start)
+TYPE_PRIMITIVE_ANY(stop)
+TYPE_PRIMITIVE_ANY(preload)
 TYPE_PRIMITIVE_ANY(close)
 TYPE_PRIMITIVE_ANY(write)
-TYPE_PRIMITIVE_ANY(read)
 TYPE_PRIMITIVE_ANY(read_to_buffer)
+TYPE_PRIMITIVE_ANY(errors)
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -28,4 +28,10 @@ set(TOIT_FAILING_TESTS
   rmt-drain-pullup-test.toit-esp32s3
   # Probably just an issue with the number of RMT channels.
   rmt-test.toit-esp32s3
+  # I2S is flaky and broken...
+  # https://github.com/espressif/esp-idf/issues/15275
+  i2s-board1.toit-esp32-msb16
+  i2s-board1.toit-esp32-philips32
+  i2s-board1.toit-esp32-msb32
+  i2s-board1.toit-esp32-pcm32
 )

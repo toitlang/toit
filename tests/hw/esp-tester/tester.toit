@@ -68,6 +68,10 @@ main args:
         cli.Option "port-board2"
             --help="The path to the UART port of board 2"
             --type="path",
+        cli.Option "arg"
+            --help="The argument to pass to the test"
+            --type="string"
+            --default="",
       ]
       --rest=[
         cli.Option "test"
@@ -104,6 +108,7 @@ run-test invocation/cli.Invocation:
   port-board2 := invocation["port-board2"]
   test-path := invocation["test"]
   test2-path := invocation["test2"]
+  arg := invocation["arg"]
 
   board1 := TestDevice --name="board1" --port-path=port-board1 --ui=ui --toit-exe=toit-exe
   board2/TestDevice? := null
@@ -113,7 +118,7 @@ run-test invocation/cli.Invocation:
 
     task::
       board1.connect-network
-      board1.install-test test-path
+      board1.install-test test-path arg
       board1-ready.set true
 
     // TODO(florian): move this to after the second board is ready.
@@ -122,7 +127,7 @@ run-test invocation/cli.Invocation:
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
       board2.connect-network
-      board2.install-test test2-path
+      board2.install-test test2-path arg
 
     board1.run-test
     if port-board2:
@@ -233,7 +238,7 @@ class TestDevice:
     if network_: network_.close
     network_ = null
 
-  install-test test-path:
+  install-test test-path arg/string:
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
       "compile",
@@ -253,7 +258,10 @@ class TestDevice:
     ]
     image := file.read-contents image-path
 
+    socket_.out.little-endian.write-int32 arg.size
+    socket_.out.write arg
     socket_.out.little-endian.write-int32 image.size
+
     summer := crc.Crc32
     summer.add image
     socket_.out.write summer.get
