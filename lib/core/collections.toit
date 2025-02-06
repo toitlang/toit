@@ -1343,7 +1343,7 @@ interface ByteArray extends io.Data:
   Invalid UTF-8 sequences are replaced with the Unicode replacement
     character, `\uFFFD`.
   */
-  to-string-non-throwing from=0 to=size
+  to-string-non-throwing from=0 to=size -> string
 
   /**
   Whether this instance has a valid UTF-8 string content in the range $from-$to.
@@ -1544,7 +1544,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   /// Converts the UTF-8 byte array to a string.  If we encounter invalid UTF-8
   ///   we replace sequences of invalid bytes with a Unicode replacement
   ///   character, `\uFFFD`.
-  to-string-non-throwing from=0 to=size:
+  to-string-non-throwing from=0 to=size -> string:
     if is-valid-string-content from to:
       return to-string from to
     len := 0
@@ -1863,7 +1863,7 @@ class CowByteArray_ implements ByteArray:
         : LITTLE-ENDIAN
     return byte-order.float64 backing_ from
 
-  to-string-non-throwing from=0 to=size:
+  to-string-non-throwing from=0 to=size -> string:
     return backing_.to-string-non-throwing from to
 
   is-valid-string-content from/int=0 to/int=size -> bool:
