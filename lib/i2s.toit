@@ -59,14 +59,14 @@ main:
   // "channel" instead of "bus".
   channel := i2s.Bus
       --master=false
-      --no-start
       --tx=tx
       --sck=sck
       --ws=ws
+
+  channel.configure
       --sample-rate=44100
       --bits-per-sample=16
 
-  // Since we didn't start the bus, we can preload data.
   start-index := 0
   while true:
     preloaded := channel.preload SOME-DATA[start-index..]
@@ -88,9 +88,6 @@ I2S Serial communication Bus, primarily used to emit sound but has a wide
   range of usages.
 */
 class Bus:
-  i2s_ := ?
-  state_/ResourceState_ ::= ?
-
   /**
   Philips format.
 
@@ -306,194 +303,116 @@ class Bus:
   */
   static SLOTS-MONO-RIGHT ::= 5
 
+  i2s_ := ?
+  state_/ResourceState_ ::= ?
+
+  mclk_/gpio.Pin?
+  sck_/gpio.Pin?
+  ws_/gpio.Pin?
+  tx_/gpio.Pin?
+  rx_/gpio.Pin?
+
+  invert-mclk_/bool
+  invert-sck_/bool
+  invert-ws_/bool
+
+  is-master/bool
 
   /**
-  Constructs an I2S channel as input.
+  Constructs an I2S channel.
 
-  For typical I2S setups, the $rx pin, a clock ($sck), and a word-select ($ws)
+  For typical I2S setups, the $rx/$tx pin, a clock ($sck), and a word-select ($ws)
     pins are required. The master clock ($mclk) is optional.
 
   If $master is true, then I2S peripheral runs as master. As master, the
     $sck, $ws, and $mclk pins are outputs. As slave, they are inputs.
 
-  The $sample-rate is the rate at which samples are written.
-  The $bits-per-sample is the width of each sample. It can be either 8, 16, 24, or 32.
-    For 8 and 24 bits see the note on the ESP32 below.
-
   If a $mclk pin is provide, then the master clock is emitted/read from that pin.
     Some ESP variants have restrictions on which pins can be used as output.
     Some variants don't support the master clock as input. Note that the $mclk
     can be an output, even if the bus is in slave mode.
+
+  The $invert-sck, $invert-ws, $invert-mclk flags can be used to
+    invert the signals.
+  */
+  constructor
+      --master/bool
+      --mclk/gpio.Pin?=null
+      --ws/gpio.Pin?
+      --sck/gpio.Pin?
+      --tx/gpio.Pin?=null
+      --rx/gpio.Pin?=null
+      --invert-mclk/bool=false
+      --invert-ws/bool=false
+      --invert-sck/bool=false:
+    if not tx and not rx:
+      // We could support this, but it is not clear what the use case would be.
+      throw "INVALID_ARGUMENT"
+
+    is-master = master
+
+    sck_ = sck
+    ws_ = ws
+    tx_ = tx
+    rx_ = rx
+    mclk_ = mclk
+
+    invert-mclk_ = invert-mclk
+    invert-sck_ = invert-sck
+    invert-ws_ = invert-ws
+
+    tx-pin := tx ? tx.num : -1
+    rx-pin := rx ? rx.num : -1
+    mclk-pin := mclk ? mclk.num : -1
+    sck-pin := sck ? sck.num : -1
+    ws-pin := ws ? ws.num : -1
+
+    i2s_ = i2s-create_
+        resource-group_
+        tx-pin
+        rx-pin
+        master
+    state_ = ResourceState_ resource-group_ i2s_
+
+  /**
+  Configures the channel.
+
+  A channel can only be configured when it is not running ($start).
+
+  The $sample-rate is the rate at which samples are written.
+  The $bits-per-sample is the width of each sample. It can be either 8, 16, 24, or 32.
+    For 8 and 24 bits see the note on the ESP32 below.
+
   The $mclk-multiplier is the multiplier of the $sample-rate to be used for the
     master clock. It should be one of the 128, 256, 384, 512, 576, 768, 1024,
     or 1152. If none is given, it defaults to 384 for 24 bits per sample and
     256 otherwise. If the bits-per-sample is 24 bits, then the multiplier must
     be a multiple of 3.
-  The $mclk-multiplier is mostly revelant if $mclk is provided, but can also be
-    used to allow slower sample-rates: a higher multiplier allows for a slower
-    frequency.
-  If the $mclk-external-frequency is set to a value and $mclk was provided, then
-    the master clock is read from the $mclk pin. This is only supported on some ESP32
+  The $mclk-multiplier is mostly revelant if a mclk pin was provided, but can
+    also be used to allow slower sample-rates: a higher multiplier allows for
+    a slower frequency.
+  If the $mclk-external-frequency is set to a value and a mclk pin was provided, then
+    the master clock is read from the mclk pin. This is only supported on some ESP32
     variants. The $mclk-external-frequency value must be higher than the clock
     frequency (sample-rate * bits-per-sample * 2).
 
-  If the $start flag is true (the default) then the bus is started immediately.
-    Set the flag to false if you want to $preload data before starting the bus.
-
-  The $slots must be one of $SLOTS-STEREO-BOTH, $SLOTS-MONO-LEFT, $SLOTS-MONO-RIGHT.
-    one slot
-  the bus is in stereo mode. In stereo mode,
-    the left and right slots are interleaved in the data stream. The
+  The $slots-in must be one of $SLOTS-STEREO-BOTH, $SLOTS-MONO-LEFT,
+    $SLOTS-MONO-RIGHT.
+  The $slots-out must be one of $SLOTS-STEREO-BOTH, $SLOTS-STEREO-LEFT
+    (data is stereo, but only emit the left channel),
+    $SLOTS-STEREO-RIGHT, $SLOTS-MONO-BOTH (data is mono, and should be sent to
+    left and right), $SLOTS-MONO-LEFT, or $SLOTS-MONO-RIGHT.
 
   The $format must be one of $FORMAT-MSB, $FORMAT-PHILIPS, $FORMAT-PCM-SHORT.
-
-  The $invert-sck, $invert-ws, $invert-mclk flags can be used to
-    invert the signals.
-
-  # Esp32
-  On the ESP32, the buffer needs to be padded for 8 and 24 bits samples. That
-    is, for $bits-per-sample equal to 8 each sample should be 16 bits, where
-    only the highest 8 bits are used. For 24 bits, each sample should be 32
-    bits, where only the highest 24 bits are used. The same is true when data
-    is read from the I2S bus.
   */
-  constructor
-      --master/bool
-      --rx/gpio.Pin
-      --sck/gpio.Pin?=null
-      --ws/gpio.Pin?=null
-      --mclk/gpio.Pin?=null
-      --invert-sck/bool=false
-      --invert-ws/bool=false
-      --invert-mclk/bool=false
+  configure
       --mclk-external-frequency/int?=null
-      --sample-rate/int
-      --bits-per-sample/int
       --mclk-multiplier/int?=null
-      --format/int=FORMAT-PHILIPS
-      --slots=SLOTS-STEREO-BOTH
-      --start/bool=true:
-    if slots != SLOTS-STEREO-BOTH and slots != SLOTS-MONO-LEFT and slots != SLOTS-MONO-RIGHT:
-      throw "INVALID_ARGUMENT"
-    return Bus.private_
-        --master=master
-        --rx=rx
-        --tx=null
-        --sck=sck
-        --ws=ws
-        --mclk=mclk
-        --invert-sck=invert-sck
-        --invert-ws=invert-ws
-        --invert-mclk=invert-mclk
-        --mclk-external-frequency=mclk-external-frequency
-        --sample-rate=sample-rate
-        --bits-per-sample=bits-per-sample
-        --mclk-multiplier=mclk-multiplier
-        --format=format
-        --slots=slots
-        --start=start
-
-  /**
-  Variant of $(constructor --master --rx --sample-rate --bits-per-sample)
-    that creates a bus for output.
-
-  The $slots must be one of $SLOTS-STEREO-BOTH, $SLOTS-STEREO-LEFT, $SLOTS-STEREO-RIGHT,
-    $SLOTS-MONO-BOTH, $SLOTS-MONO-LEFT, or $SLOTS-MONO-RIGHT.
-  */
-  constructor
-      --master/bool
-      --tx/gpio.Pin
-      --sck/gpio.Pin?=null
-      --ws/gpio.Pin?=null
-      --mclk/gpio.Pin?=null
-      --invert-sck/bool=false
-      --invert-ws/bool=false
-      --invert-mclk/bool=false
-      --mclk-external-frequency/int?=null
       --sample-rate/int
       --bits-per-sample/int
-      --mclk-multiplier/int?=null
       --format/int=FORMAT-PHILIPS
-      --slots/int=SLOTS-STEREO-BOTH
-      --start/bool=true:
-    return Bus.private_
-        --master=master
-        --rx=null
-        --tx=tx
-        --sck=sck
-        --ws=ws
-        --mclk=mclk
-        --invert-sck=invert-sck
-        --invert-ws=invert-ws
-        --invert-mclk=invert-mclk
-        --sample-rate=sample-rate
-        --bits-per-sample=bits-per-sample
-        --mclk-multiplier=mclk-multiplier
-        --mclk-external-frequency=mclk-external-frequency
-        --format=format
-        --slots=slots
-        --start=start
-
-  /**
-  Variant of $(constructor --master --rx --sample-rate --bits-per-sample)
-    that creates a bus for input and output.
-
-  In this configuration the $sck, $ws, and $mclk pins are shared between the
-    input and output.
-  */
-  constructor.duplex
-      --master/bool
-      --rx/gpio.Pin
-      --tx/gpio.Pin
-      --sck/gpio.Pin?=null
-      --ws/gpio.Pin?=null
-      --mclk/gpio.Pin?=null
-      --invert-sck/bool=false
-      --invert-ws/bool=false
-      --invert-mclk/bool=false
-      --mclk-external-frequency/int?=null
-      --sample-rate/int
-      --bits-per-sample/int
-      --mclk-multiplier/int?=null
-      --format/int=FORMAT-PHILIPS
-      --stereo/bool=true
-      --slots/int=SLOTS-STEREO-BOTH
-      --start/bool=true:
-    return Bus.private_
-        --master=master
-        --rx=rx
-        --tx=tx
-        --sck=sck
-        --ws=ws
-        --mclk=mclk
-        --invert-sck=invert-sck
-        --invert-ws=invert-ws
-        --invert-mclk=invert-mclk
-        --sample-rate=sample-rate
-        --bits-per-sample=bits-per-sample
-        --mclk-multiplier=mclk-multiplier
-        --mclk-external-frequency=mclk-external-frequency
-        --format=format
-        --slots=slots
-        --start=start
-
-  constructor.private_
-      --master/bool
-      --sck/gpio.Pin?
-      --ws/gpio.Pin?
-      --tx/gpio.Pin?
-      --rx/gpio.Pin?
-      --mclk/gpio.Pin?
-      --invert-sck/bool
-      --invert-ws/bool
-      --invert-mclk/bool
-      --mclk-external-frequency/int?
-      --sample-rate/int
-      --bits-per-sample/int
-      --mclk-multiplier/int?
-      --format/int
-      --slots/int
-      --start/bool:
+      --slots-in/int
+      --slots-out/int:
     if mclk-multiplier:
       if bits-per-sample == 24 and mclk-multiplier % 3 != 0: throw "INVALID_ARGUMENT"
       if mclk-multiplier != 128 and mclk-multiplier != 256 and mclk-multiplier != 384
@@ -504,51 +423,70 @@ class Bus:
       mclk-multiplier = bits-per-sample == 24 ? 384 : 256
     if bits-per-sample != 8 and bits-per-sample != 16 and bits-per-sample != 24 and bits-per-sample != 32:
       throw "INVALID_ARGUMENT"
-    if not tx and not rx:
-      // We could support this, but it is not clear what the use case would be.
+    if slots-in != SLOTS-STEREO-BOTH and slots-in != SLOTS-MONO-LEFT and slots-in != SLOTS-MONO-RIGHT:
       throw "INVALID_ARGUMENT"
-    if slots != SLOTS-STEREO-BOTH and slots != SLOTS-STEREO-LEFT and slots != SLOTS-STEREO-RIGHT
-        and slots != SLOTS-MONO-BOTH and slots != SLOTS-MONO-LEFT and slots != SLOTS-MONO-RIGHT:
+    if slots-out != SLOTS-STEREO-BOTH and slots-out != SLOTS-STEREO-LEFT and slots-out != SLOTS-STEREO-RIGHT
+        and slots-out != SLOTS-MONO-BOTH and slots-out != SLOTS-MONO-LEFT and slots-out != SLOTS-MONO-RIGHT:
       throw "INVALID_ARGUMENT"
     if format != FORMAT-PHILIPS and format != FORMAT-MSB and format != FORMAT-PCM-SHORT:
       throw "INVALID_ARGUMENT"
 
-    rx-pin := rx ? rx.num : -1
-    tx-pin := tx ? tx.num : -1
-    sck-pin := sck ? sck.num : -1
-    ws-pin := ws ? ws.num : -1
-    mclk-pin := mclk ? mclk.num : -1
-    if sck-pin != -1 and invert-sck: sck-pin |= 0x1_0000
-    if ws-pin != -1 and invert-ws: ws-pin |= 0x1_0000
-    if mclk-pin != -1 and invert-mclk: mclk-pin |= 0x1_0000
-    if mclk-pin != -1 and mclk-external-frequency:
+    tx-pin := tx_ ? tx_.num : -1
+    rx-pin := rx_ ? rx_.num : -1
+    mclk-pin := mclk_ ? mclk_.num : -1
+    sck-pin := sck_ ? sck_.num : -1
+    ws-pin := ws_ ? ws_.num : -1
+    if mclk-pin != -1 and invert-mclk_: mclk-pin |= 0x1_0000
+    if sck-pin != -1 and invert-sck_: sck-pin |= 0x1_0000
+    if ws-pin != -1 and invert-ws_: ws-pin |= 0x1_0000
+
+    if mclk-external-frequency:
       if mclk-external-frequency < sample-rate * bits-per-sample * 2:
         throw "INVALID_ARGUMENT"
-    if not mclk-external-frequency: mclk-external-frequency = -1
-    i2s_ = i2s-create_
-        resource-group_
-        sck-pin
-        ws-pin
+    else:
+      mclk-external-frequency = -1
+
+    i2s-configure_
+        i2s_
+        sample-rate
+        bits-per-sample
+        mclk-multiplier
+        mclk-external-frequency
+        format
+        slots-in
+        slots-out
         tx-pin
         rx-pin
         mclk-pin
-        sample-rate
-        bits-per-sample
-        master
-        mclk-multiplier
-        format
-        slots
-        mclk-external-frequency
-    state_ = ResourceState_ resource-group_ i2s_
+        sck-pin
+        ws-pin
 
-    if start: this.start
+  /**
+  Variant of $(configure --slots-in --slots-out --sample-rate --bits-per-sample) that
+    sets both slots to the same value.
+  */
+  configure
+      --mclk-external-frequency/int?=null
+      --mclk-multiplier/int?=null
+      --sample-rate/int
+      --bits-per-sample/int
+      --format/int=FORMAT-PHILIPS
+      --slots/int=SLOTS-STEREO-BOTH:
+    configure
+      --mclk-external-frequency=mclk-external-frequency
+      --mclk-multiplier=mclk-multiplier
+      --sample-rate=sample-rate
+      --bits-per-sample=bits-per-sample
+      --format=format
+      --slots-in=slots
+      --slots-out=slots
 
   /**
   Deprecated.
-
-  $is-master has been renamed to '--master' and is now mandatory.
-  $use-apll is no longer supported.
-  $buffer-size is no longer supported.
+    $is-master has been renamed to '--master' and is now mandatory.
+    $use-apll is no longer supported.
+    $buffer-size is no longer supported.
+    The bus must be constructed, configured, and started manually.
   */
   constructor
       --sck/gpio.Pin?=null
@@ -562,23 +500,25 @@ class Bus:
       --mclk-multiplier/int=256
       --use-apll/bool=false
       --buffer-size/int=-1:
-    return Bus.private_
+    bus := Bus
         --master=is-master
         --sck=sck
         --ws=ws
         --tx=tx
         --rx=rx
         --mclk=mclk
-        --invert-sck=false
-        --invert-ws=false
-        --invert-mclk=false
-        --mclk-external-frequency=null
-        --sample-rate=sample-rate
-        --bits-per-sample=bits-per-sample
-        --mclk-multiplier=mclk-multiplier
-        --slots=SLOTS-STEREO-BOTH
-        --format=FORMAT-PHILIPS
-        --start=true
+    needs-close := true
+    try:
+      bus.configure
+          --sample-rate=sample-rate
+          --bits-per-sample=bits-per-sample
+          --mclk-multiplier=mclk-multiplier
+          --slots=SLOTS-STEREO-BOTH
+      bus.start
+      needs-close = false
+      return bus
+    finally:
+      if needs-close: bus.close
 
   /**
   Number of encountered errors.
@@ -613,8 +553,6 @@ class Bus:
   Stops the bus.
 
   It's rare that you need to stop the bus. Usually, you just close it.
-
-  The bus must be started.
   */
   stop -> none:
     if not i2s_: throw "CLOSED"
@@ -637,6 +575,12 @@ class Bus:
   Writes bytes to the I2S bus.
 
   This method blocks until all data has been written.
+
+  # Esp32
+  On the ESP32 (but not its variants), the buffer needs to be padded for
+    8 and 24 bits samples. That is, for 8 bits, samples should be provided
+    in 16-bit blocks and only the highest 8 bits are used. For 24 bits,
+    each sample should be 32 bits, where only the highest 24 bits are used.
   */
   write bytes/ByteArray -> int:
     if not i2s_: throw "CLOSED"
@@ -653,6 +597,8 @@ class Bus:
   This method blocks until some data has been written.
 
   Returns the number of bytes written.
+
+  See $write for ESP32-specific notes.
   */
   try-write bytes/ByteArray -> int:
     while true:
@@ -669,9 +615,16 @@ class Bus:
       state := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
   /**
-  Read bytes from the I2S bus.
+  Reads bytes from the I2S bus.
 
   This methods blocks until data is available.
+
+  # Esp32
+  On the ESP32 (but not its variants), the buffer is padded for
+    8 and 24 bits samples. That is, for 8 bits, samples are provided
+    in 16-bit blocks and only the highest 8 bits are used. For 24 bits,
+    each sample is given as 32 bits, where only the highest 24 bits are
+    used.
   */
   read -> ByteArray?:
     result := ByteArray 496
@@ -682,9 +635,11 @@ class Bus:
     return result[..count]
 
   /**
-  Read bytes from the I2S bus to a buffer.
+  Reads bytes from the I2S bus to a buffer.
 
   This methods blocks until data is available.
+
+  See $read for ESP32-specific notes.
   */
   read buffer/ByteArray -> int?:
     while true:
@@ -698,7 +653,7 @@ class Bus:
       state_.clear-state READ-STATE_ | ERROR-STATE_
 
   /**
-  Close the I2S bus and releases resources associated to it.
+  Closes the I2S bus and releases resources associated to it.
   */
   close:
     if not i2s_: return
@@ -719,19 +674,26 @@ i2s-init_:
 
 i2s-create_
     resource-group
-    sck-pin
-    ws-pin
+    tx-pin
+    rx-pin
+    is-master:
+  #primitive.i2s.create
+
+i2s-configure_
+    i2s_
+    sample-rate
+    bits-per-sample
+    mclk-multiplier
+    mclk-external-frequency
+    format
+    slots-in
+    slots-out
     tx-pin
     rx-pin
     mclk-pin
-    sample-rate
-    bits-per-sample
-    is-master
-    mclk-multiplier
-    format
-    slots
-    mclk-external-frequency:
-  #primitive.i2s.create
+    sck-pin
+    ws-pin:
+  #primitive.i2s.configure
 
 i2s-start_ i2s:
   #primitive.i2s.start
