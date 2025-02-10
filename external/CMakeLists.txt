@@ -55,6 +55,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-dhtxx
     https://github.com/toitware/toit-ds18b20
     https://github.com/toitware/toit-e-paper
+    https://github.com/toitware/toit-es8388
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
     https://github.com/toitware/toit-gnss-location
