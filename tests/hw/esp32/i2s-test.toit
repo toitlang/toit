@@ -27,7 +27,7 @@ CLK2 ::= Variant.CURRENT.i2s-clk2
 WS1 ::= Variant.CURRENT.i2s-ws1
 WS2 ::= Variant.CURRENT.i2s-ws2
 
-SAMPLE_RATE ::= 1000
+SAMPLE_RATE ::= 10000
 
 main:
   run-test: test-basics
@@ -103,18 +103,18 @@ test-basics:
           --tx=data1
           --sck=clk1
           --ws=ws1
+      out.configure
           --sample-rate=SAMPLE_RATE
           --bits-per-sample=sample-size
-          --no-start
 
       in = i2s.Bus
           --master
           --rx=data2
           --sck=clk2
           --ws=ws2
+      in.configure
           --sample-rate=SAMPLE_RATE
           --bits-per-sample=sample-size
-          --no-start
 
       generator = VerifyingDataGenerator sample-size
           --needs-synchronization
@@ -135,18 +135,18 @@ test-basics:
           --tx=data1
           --sck=clk1
           --ws=ws1
+      out.configure
           --sample-rate=SAMPLE_RATE
           --bits-per-sample=sample-size
-          --no-start
 
       in = i2s.Bus
           --master
           --rx=data2
           --sck=clk2
           --ws=ws2
+      in.configure
           --sample-rate=SAMPLE_RATE
           --bits-per-sample=sample-size
-          --no-start
 
       generator = VerifyingDataGenerator sample-size
           --allow-leading-0-samples
@@ -165,22 +165,22 @@ test-basics:
 
     // Same but switch master.
     out = i2s.Bus
-        --master=true
+        --master
         --tx=data1
         --sck=clk1
         --ws=ws1
+    out.configure
         --sample-rate=SAMPLE_RATE
         --bits-per-sample=sample-size
-        --no-start
 
     in = i2s.Bus
         --master=false
         --rx=data2
         --sck=clk2
         --ws=ws2
+    in.configure
         --sample-rate=SAMPLE_RATE
         --bits-per-sample=sample-size
-        --no-start
 
     generator = VerifyingDataGenerator sample-size
         --allow-missing-first-samples
@@ -198,15 +198,15 @@ test-basics:
     in.close
 
     // Share the same controller.
-    in_out := i2s.Bus.duplex
+    in_out := i2s.Bus
         --master=true
         --tx=data1
         --rx=data2
         --sck=clk1
         --ws=ws1
+    in_out.configure
         --sample-rate=SAMPLE_RATE
         --bits-per-sample=sample-size
-        --no-start
 
     generator = VerifyingDataGenerator sample-size
         --allow-missing-first-samples
@@ -222,15 +222,33 @@ test-basics:
     in_out.close
 
     // Without preload.
-    in_out = i2s.Bus.duplex
+    in_out = i2s.Bus
         --master=true
         --tx=data1
         --rx=data2
         --sck=clk1
         --ws=ws1
+    in_out.configure
         --sample-rate=SAMPLE_RATE
         --bits-per-sample=sample-size
-        --no-start
+
+    generator = VerifyingDataGenerator sample-size
+        --needs-synchronization
+
+    test
+        --start-in-first=true
+        --in=in_out
+        --out=in_out
+        --preload=false
+        --bits-per-sample=sample-size
+        --generator=generator
+
+    in_out.stop
+
+    // Reconfigure.
+    in_out.configure
+        --sample-rate=SAMPLE-RATE * 2
+        --bits-per-sample=sample-size
 
     generator = VerifyingDataGenerator sample-size
         --needs-synchronization

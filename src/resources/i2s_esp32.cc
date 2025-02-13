@@ -58,6 +58,7 @@ class I2sResourceGroup : public ResourceGroup {
 class I2sResource: public EventQueueResource {
  public:
   enum State {
+    UNITIALIZED,
     STOPPED,
     STARTED,
   };
@@ -126,7 +127,7 @@ class I2sResource: public EventQueueResource {
   i2s_chan_handle_t rx_handle_;
   mutable spinlock_t spinlock_;
   word pending_event_ = 0;
-  State state_ = STOPPED;
+  State state_ = UNITIALIZED;
   int errors_ = 0;
 };
 
@@ -191,51 +192,11 @@ IRAM_ATTR static bool channel_error_handler(i2s_chan_handle_t handle,
 
 PRIMITIVE(create) {
   ARGS(I2sResourceGroup, group,
-       int, sck_pin,
-       int, ws_pin,
        int, tx_pin,
        int, rx_pin,
-       int, mclk_pin,
-       uint32, sample_rate,
-       int, bits_per_sample,
-       bool, is_master,
-       int, toit_mclk_multiplier,
-       int, format,
-       int, slots,
-       int, external_frequency);
+       bool, is_master);
   esp_err_t err;
   bool handed_to_resource = false;
-
-  // if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) FAIL(INVALID_ARGUMENT);
-  if (bits_per_sample != 8 && bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) FAIL(INVALID_ARGUMENT);
-
-  i2s_mclk_multiple_t mclk_multiple;
-  switch (toit_mclk_multiplier) {
-    case 128: mclk_multiple = I2S_MCLK_MULTIPLE_128; break;
-    case 256: mclk_multiple = I2S_MCLK_MULTIPLE_256; break;
-    case 384: mclk_multiple = I2S_MCLK_MULTIPLE_384; break;
-    case 512: mclk_multiple = I2S_MCLK_MULTIPLE_512; break;
-    case 576: mclk_multiple = I2S_MCLK_MULTIPLE_576; break;
-    case 768: mclk_multiple = I2S_MCLK_MULTIPLE_768; break;
-    case 1024:mclk_multiple = I2S_MCLK_MULTIPLE_1024; break;
-    case 1152:mclk_multiple = I2S_MCLK_MULTIPLE_1152; break;
-    default: FAIL(INVALID_ARGUMENT);
-  }
-
-  if (format < 0 || format > 2) FAIL(INVALID_ARGUMENT);
-  if (slots < 0 || slots > 5) FAIL(INVALID_ARGUMENT);
-
-  bool sck_inv = (sck_pin & 0x10000) != 0;
-  sck_pin &= ~0x10000;
-  bool ws_inv = (ws_pin & 0x10000) != 0;
-  ws_pin &= ~0x10000;
-  bool mclk_inv = (mclk_pin & 0x10000) != 0;
-  mclk_pin &= ~0x10000;
-  bool mclk_is_input = external_frequency > 0;
-
-#ifndef SOC_I2S_HW_VERSION_2
-  if (mclk_is_input) FAIL(INVALID_ARGUMENT);
-#endif
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -278,80 +239,6 @@ PRIMITIVE(create) {
   Defer del_tx_channel { [&] { if (!handed_to_resource && tx_handle != null) i2s_del_channel(tx_handle); } };
   Defer del_rx_channel { [&] { if (!handed_to_resource && rx_handle != null) i2s_del_channel(rx_handle); } };
 
-  i2s_data_bit_width_t bit_width;
-  switch (bits_per_sample) {
-    case 8: bit_width = I2S_DATA_BIT_WIDTH_8BIT; break;
-    case 16: bit_width = I2S_DATA_BIT_WIDTH_16BIT; break;
-    case 24: bit_width = I2S_DATA_BIT_WIDTH_24BIT; break;
-    case 32: bit_width = I2S_DATA_BIT_WIDTH_32BIT; break;
-    default: UNREACHABLE();
-  }
-
-  i2s_slot_mode_t mono_or_stereo = slots < 3 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO;
-
-  i2s_std_config_t std_cfg = {
-    .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
-    .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo),
-    .gpio_cfg = {
-      .mclk = mclk_pin >= 0 ? static_cast<gpio_num_t>(mclk_pin) : I2S_GPIO_UNUSED,
-      .bclk = sck_pin >= 0 ? static_cast<gpio_num_t>(sck_pin): I2S_GPIO_UNUSED,
-      .ws = ws_pin >= 0 ? static_cast<gpio_num_t>(ws_pin): I2S_GPIO_UNUSED,
-      .dout = tx_pin >= 0 ? static_cast<gpio_num_t>(tx_pin): I2S_GPIO_UNUSED,
-      .din = rx_pin >= 0 ? static_cast<gpio_num_t>(rx_pin): I2S_GPIO_UNUSED,
-      .invert_flags = {
-        .mclk_inv = mclk_inv,
-        .bclk_inv = sck_inv,
-        .ws_inv = ws_inv,
-      },
-    },
-  };
-
-#ifdef SOC_I2S_HW_VERSION_2
-  if (mclk_is_input) std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_EXTERNAL;
-  std_cfg.clk_cfg.ext_clk_freq_hz = static_cast<uint32>(external_frequency);
-#endif
-  std_cfg.clk_cfg.mclk_multiple = mclk_multiple;
-
-  switch (format) {
-    case 0:  // Philips.
-      // Already configured.
-      break;
-
-    case 1:  // MSB
-      std_cfg.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo);
-      break;
-
-    case 2:  // PCM-Short.
-      std_cfg.slot_cfg = I2S_STD_PCM_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo);
-      break;
-
-    default: UNREACHABLE();
-  }
-
-  switch (slots) {
-    case 0:  // Stereo both.
-    case 3:  // Mono both.
-      std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
-      break;
-    case 1:  // Stereo left.
-    case 4:  // Mono left.
-      std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
-      break;
-    case 2:  // Stereo right.
-    case 5:  // Mono right.
-      std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_RIGHT;
-      break;
-  }
-
-  if (tx_handle != null) {
-    err = i2s_channel_init_std_mode(tx_handle, &std_cfg);
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-  }
-  if (rx_handle != null) {
-    err = i2s_channel_init_std_mode(rx_handle, &std_cfg);
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-  }
-
   bool successful_return = false;
 
   I2sResource* resource = new (resource_memory) I2sResource(group, tx_handle, rx_handle, queue);
@@ -390,6 +277,143 @@ PRIMITIVE(create) {
   return proxy;
 }
 
+PRIMITIVE(configure) {
+  ARGS(I2sResource, resource,
+       uint32, sample_rate,
+       int, bits_per_sample,
+       int, toit_mclk_multiplier,
+       int, external_frequency,
+       int, format,
+       int, slots_in,
+       int, slots_out,
+       int, tx_pin,
+       int, rx_pin,
+       int, mclk_pin,
+       int, sck_pin,
+       int, ws_pin);
+  esp_err_t err;
+
+  auto state = resource->state();
+  if (state == I2sResource::STARTED) FAIL(INVALID_STATE);
+
+  if (bits_per_sample != 8 && bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) FAIL(INVALID_ARGUMENT);
+
+  i2s_mclk_multiple_t mclk_multiple;
+  switch (toit_mclk_multiplier) {
+    case 128: mclk_multiple = I2S_MCLK_MULTIPLE_128; break;
+    case 256: mclk_multiple = I2S_MCLK_MULTIPLE_256; break;
+    case 384: mclk_multiple = I2S_MCLK_MULTIPLE_384; break;
+    case 512: mclk_multiple = I2S_MCLK_MULTIPLE_512; break;
+    case 576: mclk_multiple = I2S_MCLK_MULTIPLE_576; break;
+    case 768: mclk_multiple = I2S_MCLK_MULTIPLE_768; break;
+    case 1024:mclk_multiple = I2S_MCLK_MULTIPLE_1024; break;
+    case 1152:mclk_multiple = I2S_MCLK_MULTIPLE_1152; break;
+    default: FAIL(INVALID_ARGUMENT);
+  }
+
+  if (format < 0 || format > 2) FAIL(INVALID_ARGUMENT);
+  if (slots_in != 0 && slots_in != 4 && slots_in != 5) FAIL(INVALID_ARGUMENT);
+  if (slots_out < 0 || slots_out > 5) FAIL(INVALID_ARGUMENT);
+
+  bool sck_inv = (sck_pin & 0x10000) != 0;
+  sck_pin &= ~0x10000;
+  bool ws_inv = (ws_pin & 0x10000) != 0;
+  ws_pin &= ~0x10000;
+  bool mclk_inv = (mclk_pin & 0x10000) != 0;
+  mclk_pin &= ~0x10000;
+  bool mclk_is_input = external_frequency > 0;
+#ifndef SOC_I2S_HW_VERSION_2
+  if (mclk_is_input) FAIL(INVALID_ARGUMENT);
+#endif
+
+  i2s_data_bit_width_t bit_width;
+  switch (bits_per_sample) {
+    case 8: bit_width = I2S_DATA_BIT_WIDTH_8BIT; break;
+    case 16: bit_width = I2S_DATA_BIT_WIDTH_16BIT; break;
+    case 24: bit_width = I2S_DATA_BIT_WIDTH_24BIT; break;
+    case 32: bit_width = I2S_DATA_BIT_WIDTH_32BIT; break;
+    default: UNREACHABLE();
+  }
+
+  for (int i = 0; i < 2; i++) {
+    i2s_chan_handle_t handle = i == 0 ? resource->tx_handle() : resource->rx_handle();
+    if (handle == null) continue;
+
+    int slots = i == 0 ? slots_out : slots_in;
+
+    i2s_slot_mode_t mono_or_stereo = slots < 3 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO;
+
+    i2s_std_config_t std_cfg = {
+      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
+      // The slot-cfg might be overridden later.
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo),
+      .gpio_cfg = {
+        .mclk = mclk_pin >= 0 ? static_cast<gpio_num_t>(mclk_pin) : I2S_GPIO_UNUSED,
+        .bclk = sck_pin >= 0 ? static_cast<gpio_num_t>(sck_pin): I2S_GPIO_UNUSED,
+        .ws = ws_pin >= 0 ? static_cast<gpio_num_t>(ws_pin): I2S_GPIO_UNUSED,
+        .dout = tx_pin >= 0 ? static_cast<gpio_num_t>(tx_pin): I2S_GPIO_UNUSED,
+        .din = rx_pin >= 0 ? static_cast<gpio_num_t>(rx_pin): I2S_GPIO_UNUSED,
+        .invert_flags = {
+          .mclk_inv = mclk_inv,
+          .bclk_inv = sck_inv,
+          .ws_inv = ws_inv,
+        },
+      },
+    };
+
+#ifdef SOC_I2S_HW_VERSION_2
+    if (mclk_is_input) std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_EXTERNAL;
+    std_cfg.clk_cfg.ext_clk_freq_hz = static_cast<uint32>(external_frequency);
+#endif
+    std_cfg.clk_cfg.mclk_multiple = mclk_multiple;
+
+    switch (format) {
+      case 0:  // Philips.
+        break;
+
+      case 1:  // MSB
+        std_cfg.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo);
+        break;
+
+      case 2:  // PCM-Short.
+        std_cfg.slot_cfg = I2S_STD_PCM_SLOT_DEFAULT_CONFIG(bit_width, mono_or_stereo);
+        break;
+
+      default: UNREACHABLE();
+    }
+
+    switch (slots) {
+      case 0:  // Stereo both.
+      case 3:  // Mono both.
+        std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
+        break;
+      case 1:  // Stereo left.
+      case 4:  // Mono left.
+        std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
+        break;
+      case 2:  // Stereo right.
+      case 5:  // Mono right.
+        std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_RIGHT;
+        break;
+    }
+
+    if (state == I2sResource::UNITIALIZED) {
+      err = i2s_channel_init_std_mode(handle, &std_cfg);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+    } else {
+      err = i2s_channel_reconfig_std_clock(handle, &std_cfg.clk_cfg);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+      err = i2s_channel_reconfig_std_slot(handle, &std_cfg.slot_cfg);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+      err = i2s_channel_reconfig_std_gpio(handle, &std_cfg.gpio_cfg);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+    }
+  }
+  resource->set_state(I2sResource::STOPPED);
+
+  return process->null_object();
+}
+
 PRIMITIVE(start) {
   ARGS(I2sResource, resource);
   if (resource->state() != I2sResource::STOPPED) FAIL(INVALID_STATE);
@@ -414,7 +438,9 @@ PRIMITIVE(start) {
 
 PRIMITIVE(stop) {
   ARGS(I2sResource, resource);
-  if (resource->state() != I2sResource::STARTED) FAIL(INVALID_STATE);
+  if (resource->state() != I2sResource::STARTED) {
+    return process->null_object();
+  }
 
   esp_err_t err;
   auto tx_handle = resource->tx_handle();

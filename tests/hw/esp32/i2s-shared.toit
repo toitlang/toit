@@ -147,16 +147,17 @@ test args/List
     if is-writer:
       channel = i2s.Bus
           --master=master
+          --mclk=use-mclk ? mclk : null
           --tx=data
           --sck=clk
           --ws=ws
+
+      channel.configure
           --sample-rate=sample-rate
           --bits-per-sample=data-size
           --format=format
-          --mclk=use-mclk ? mclk : null
           --mclk-multiplier=use-mclk ? mclk-multiplier : null
           --mclk-external-frequency=use-mclk ? mclk-frequency : null
-          --start=(not is-fast-test)
           --slots=stereo-out
 
       if is-fast-test:
@@ -164,7 +165,8 @@ test args/List
         while true:
           preloaded := generator.do: channel.preload it
           if preloaded == 0: break
-        channel.start
+
+      channel.start
 
       printed-done := false
       while true:
@@ -183,16 +185,20 @@ test args/List
     else:
       channel = i2s.Bus
           --master=master
+          --mclk=use-mclk ? mclk : null
           --rx=data
           --sck=clk
           --ws=ws
+
+      channel.configure
           --sample-rate=sample-rate
           --bits-per-sample=data-size
           --format=format
-          --mclk=use-mclk ? mclk : null
           --mclk-multiplier=use-mclk ? mclk-multiplier : null
           --mclk-external-frequency=use-mclk ? mclk-frequency : null
           --slots=stereo-in
+
+      channel.start
 
       required-size := is-fast-test
           ? FAST-DATA-SIZE

@@ -425,7 +425,8 @@ namespace toit {
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 13)                      \
+  PRIMITIVE(create, 4)                       \
+  PRIMITIVE(configure, 13)                   \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
   PRIMITIVE(preload, 2)                      \
