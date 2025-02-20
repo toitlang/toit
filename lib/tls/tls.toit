@@ -112,6 +112,7 @@ The $Certificate class is, for example, used when running a TLS server.
 
 Example:
 ```
+import net
 import tls
 
 SERVER-CERTIFICATE ::= x509.Certificate.parse """
@@ -127,7 +128,13 @@ SERVER-KEY ::= """
 """
 
 main:
+  network := net.open
   certificate := tls.Certificate SERVER-CERTIFICATE SERVER-KEY
-
+  socket := network.tcp-listen 443
+  while true:
+    client := socket.accept
+    tls-socket := tls.Socket.server client --certificate=certificate
+    // Handle the connection
+    tls-socket.close
 ```
 */
