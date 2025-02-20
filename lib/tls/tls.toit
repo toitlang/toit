@@ -113,12 +113,13 @@ The $Certificate class is, for example, used when running a TLS server.
 Example:
 ```
 import net
+import net.x509
 import tls
 
 SERVER-CERTIFICATE ::= x509.Certificate.parse """
---- BEGIN CERTIFICATE ---
+-----BEGIN CERTIFICATE-----
 ...
---- END CERTIFICATE ---
+-----END CERTIFICATE-----
 """
 
 SERVER-KEY ::= """
