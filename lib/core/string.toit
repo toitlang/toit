@@ -372,6 +372,8 @@ abstract class string implements Comparable io.Data:
 
   Missing relative to printf: No support for `%g` or `%p`.
 
+  The `%u` type treats integer as unsigned 64 bit integers.
+
   Like in printf the hexadecimal and octal format specifiers,
     %x and %o will treat all values as unsigned.  This also
     applies to the binary format specifier, %b.  See also
@@ -383,7 +385,7 @@ abstract class string implements Comparable io.Data:
   alignment = flags<digits>
   flags = '-' | '^' | '>'   (> is default, can't be used in the syntax)
   precision = .<digits>
-  type 'd' | 'f' | 's' | 'o' | 'x' | 'c' | 'b'
+  type 'd' | 'f' | 's' | 'o' | 'x' | 'c' | 'b' | 'u'
   ```
   */
   static format format/string object -> string:
@@ -423,6 +425,7 @@ abstract class string implements Comparable io.Data:
       d := object.to-float
       meat = precision ? (d.stringify precision) : d.stringify
     else if type == 'd': meat = object.to-int.stringify
+    else if type == 'u': meat = object.to-int.stringify --uint64
     else if type == 'b': meat = printf-style-int-stringify_ object.to-int 2
     else if type == 'o': meat = printf-style-int-stringify_ object.to-int 8
     else if type == 'x': meat = printf-style-int-stringify_ object.to-int 16
