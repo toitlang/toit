@@ -959,10 +959,10 @@ abstract class int extends num:
 
   Treats the number as an unsigned 64-bit integer.
   */
-  stringify --unsigned-64/True -> string:
-    return stringify-unsigned-64_ this
+  stringify --uint64/True -> string:
+    return stringify-uint64_ this
 
-  static stringify-unsigned-64_ number/int -> string:
+  static stringify-uint64_ number/int -> string:
     #primitive.core.uint64-to-string
 
   /** See $super. */

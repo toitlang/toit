@@ -651,14 +651,14 @@ test-float-stringify:
   expect-equals (0x1_0000_0000 == 0x7fff_ffff_ffff_ffff) false
 
 test-unsigned-stringify:
-  expect-equals "0" (0.stringify --unsigned-64)
-  expect-equals "1" (1.stringify --unsigned-64)
-  expect-equals "18446744073709551615" (-1.stringify --unsigned-64)
+  expect-equals "0" (0.stringify --uint64)
+  expect-equals "1" (1.stringify --uint64)
+  expect-equals "18446744073709551615" (-1.stringify --uint64)
   biggest-signed := 9223372036854775807
   next := biggest-signed + 1  // Wrap around.
   expect next < 0
-  expect-equals "9223372036854775807" (9223372036854775807.stringify --unsigned-64)
-  expect-equals "9223372036854775808" (next.stringify --unsigned-64)
+  expect-equals "9223372036854775807" (9223372036854775807.stringify --uint64)
+  expect-equals "9223372036854775808" (next.stringify --uint64)
 
 test-float-bin:
   expect-equals 0 (0.0).bits

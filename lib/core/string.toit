@@ -425,7 +425,7 @@ abstract class string implements Comparable io.Data:
       d := object.to-float
       meat = precision ? (d.stringify precision) : d.stringify
     else if type == 'd': meat = object.to-int.stringify
-    else if type == 'u': meat = object.to-int.stringify --unsigned-64
+    else if type == 'u': meat = object.to-int.stringify --uint64
     else if type == 'b': meat = printf-style-int-stringify_ object.to-int 2
     else if type == 'o': meat = printf-style-int-stringify_ object.to-int 8
     else if type == 'x': meat = printf-style-int-stringify_ object.to-int 16
