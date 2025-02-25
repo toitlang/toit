@@ -32,6 +32,7 @@ main:
   test-bit-fields
   test-abs-floor-ceil-truncate
   test-io-data
+  test-unsigned-stringify
 
 expect-error name [code]:
   expect-equals
@@ -648,6 +649,16 @@ test-float-stringify:
     (1.7976931348623157e+308).stringify 1
   // Ensure we can compare a >32 bit Smi with a large integer.
   expect-equals (0x1_0000_0000 == 0x7fff_ffff_ffff_ffff) false
+
+test-unsigned-stringify:
+  expect-equals "0" (0.stringify --unsigned-64)
+  expect-equals "1" (1.stringify --unsigned-64)
+  expect-equals "18446744073709551615" (-1.stringify --unsigned-64)
+  biggest-signed := 9223372036854775807
+  next := biggest-signed + 1  // Wrap around.
+  expect next < 0
+  expect-equals "9223372036854775807" (9223372036854775807.stringify --unsigned-64)
+  expect-equals "9223372036854775808" (next.stringify --unsigned-64)
 
 test-float-bin:
   expect-equals 0 (0.0).bits

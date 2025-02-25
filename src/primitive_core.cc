@@ -816,6 +816,13 @@ PRIMITIVE(int64_to_string) {
   return process->allocate_string_or_error(p);
 }
 
+PRIMITIVE(uint64_to_string) {
+  ARGS(int64, value);
+  char buffer[70];
+  snprintf(buffer, sizeof(buffer), "%" PRIu64, static_cast<uint64>(value));
+  return process->allocate_string_or_error(buffer);
+}
+
 PRIMITIVE(large_integer_add) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();

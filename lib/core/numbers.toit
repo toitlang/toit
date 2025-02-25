@@ -933,7 +933,7 @@ abstract class int extends num:
   abstract operator << number-of-bits/int -> int
 
   /**
-  Variant of $stringify.
+  Variant of $(stringify).
   Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
@@ -953,6 +953,17 @@ abstract class int extends num:
   */
   stringify radix/int -> string:
     #primitive.core.int64-to-string
+
+  /**
+  Variant of $(stringify).
+
+  Treats the number as an unsigned 64-bit integer.
+  */
+  stringify --unsigned-64/True -> string:
+    return stringify-unsigned-64_ this
+
+  static stringify-unsigned-64_ number/int -> string:
+    #primitive.core.uint64-to-string
 
   /** See $super. */
   abs -> int:

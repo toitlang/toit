@@ -105,6 +105,7 @@ namespace toit {
   PRIMITIVE(string_add, 2)                   \
   PRIMITIVE(string_slice, 3)                 \
   PRIMITIVE(int64_to_string, 2)              \
+  PRIMITIVE(uint64_to_string, 1)             \
   PRIMITIVE(printf_style_int64_to_string, 2) \
   PRIMITIVE(smi_to_string_base_10, 1)        \
   PRIMITIVE(compare_to, 2)                   \

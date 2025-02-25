@@ -92,6 +92,15 @@ main:
   validate "^6d" 12 "  12  "
   failure "^06d" 12 "ZERO_PADDING_ONLY_WITH_RIGHT_ALIGNMENT"
 
+  validate "-6u" 12 "12    "
+  failure "-06u" 12 "ZERO_PADDING_ONLY_WITH_RIGHT_ALIGNMENT"
+  validate "6u" 12 "    12"
+  validate "06u" 12 "000012"
+  validate "^6u" 12 "  12  "
+  failure "^06u" 12 "ZERO_PADDING_ONLY_WITH_RIGHT_ALIGNMENT"
+  validate "u" -1 "18446744073709551615"
+  validate "u" 4294967296 "4294967296"
+
   validate ".3f" 12.34 "12.340"
   validate ".1f" 12.34 "12.3"
   validate "5.1f" 12.34 " 12.3"
