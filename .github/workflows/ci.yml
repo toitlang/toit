@@ -949,10 +949,10 @@ jobs:
         shell: powershell
         run: |
           # If the version is empty, use 'v0.0.0' instead.
-          if (${{ env.TOIT_VERSION }} -eq '') {
+          if ([string]::IsNullOrEmpty($env:TOIT_VERSION)) {
             echo "TOIT_VERSION=v0.0.0" >> $env:GITHUB_ENV
           }
-          $versionV = "${{ env.TOIT_VERSION }}"
+          $versionV = $env:TOIT_VERSION
           $version = $versionV.Substring(1)
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
