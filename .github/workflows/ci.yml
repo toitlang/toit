@@ -927,14 +927,14 @@ jobs:
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
       - name: Sign Windows binary
-        uses: toitlang/action-sign-server@c0ddf849f5d30d53189381ea35daec08b1457e0d  # v1.0.4
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
           uri: ${{ vars.CERTUM_URI }}
           password: ${{ secrets.CERTUM_PWD }}
           path: toit/bin
 
       - name: Sign Windows tools
-        uses: toitlang/action-sign-server@c0ddf849f5d30d53189381ea35daec08b1457e0d  # v1.0.4
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
           uri: ${{ vars.CERTUM_URI }}
           password: ${{ secrets.CERTUM_PWD }}
@@ -961,7 +961,7 @@ jobs:
           & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
 
       - name: Sign Windows installer
-        uses: toitlang/action-sign-server@c0ddf849f5d30d53189381ea35daec08b1457e0d  # v1.0.4
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
           uri: ${{ vars.CERTUM_URI }}
           password: ${{ secrets.CERTUM_PWD }}
