@@ -38,6 +38,11 @@ on:
         required: false
         type: boolean
         default: false
+      sign-windows:
+        description: "Sign Windows executables"
+        required: false
+        type: boolean
+        default: false
       build-arm-macos:
         description: "Build ARM macOS executables"
         required: false
@@ -907,7 +912,9 @@ jobs:
   sign_windows:
     runs-on: windows-latest
     needs: [combine]
-    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v'))
+    if: (github.event_name == 'release' ||
+        startsWith(github.event.inputs.do-release, 'v') ||
+        github.event.inputs.sign-windows == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -920,23 +927,17 @@ jobs:
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
       - name: Sign Windows binary
-        uses: toitlang/action-code-sign@5da128f4fb4f719c1b667867815f6c31e743b111 # v1.1.0
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
-          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
-          api-key: ${{ secrets.DIGICERT_API_KEY }}
-          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
-          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
-          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
           path: toit/bin
 
       - name: Sign Windows tools
-        uses: toitlang/action-code-sign@5da128f4fb4f719c1b667867815f6c31e743b111 # v1.1.0
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
-          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
-          api-key: ${{ secrets.DIGICERT_API_KEY }}
-          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
-          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
-          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
           path: toit/tools
 
       - name: Compress
@@ -947,7 +948,11 @@ jobs:
         id: version
         shell: powershell
         run: |
-          $versionV = "${{ env.TOIT_VERSION }}"
+          # If the version is empty, use 'v0.0.0' instead.
+          if ([string]::IsNullOrEmpty($env:TOIT_VERSION)) {
+            echo "TOIT_VERSION=v0.0.0" >> $env:GITHUB_ENV
+          }
+          $versionV = $env:TOIT_VERSION
           $version = $versionV.Substring(1)
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
@@ -956,13 +961,10 @@ jobs:
           & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
 
       - name: Sign Windows installer
-        uses: toitlang/action-code-sign@5da128f4fb4f719c1b667867815f6c31e743b111 # v1.1.0
+        uses: toitlang/action-sign-server@bb64e1973f5492ace732c9a08c76d2777b102dc1  # v1.0.6
         with:
-          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
-          api-key: ${{ secrets.DIGICERT_API_KEY }}
-          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
-          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
-          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
           path: toit-windows-x64-installer.exe
 
       - name: Upload artifacts
