@@ -223,6 +223,7 @@ tcp-write_ socket-resource-group descriptor data from to:
   // might abort the write once the buffer is full and the written
   // size is not equal to the size we requested to write.
   #primitive.tcp.write: | error |
+    if error == "WRONG_OBJECT_TYPES" and not descriptor: throw "ALREADY_CLOSED"
     if error != "WRONG_BYTES_TYPE": throw error
     List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
       chunk := ByteArray.from data chunk-from chunk-to
