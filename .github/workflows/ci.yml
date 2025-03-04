@@ -93,20 +93,20 @@ jobs:
       - name: Set strategy variables
         id: vars
         run: |
-          # ubuntu-20.04 so that we don't depend on a recent glibc.
+          # ubuntu-22.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
           if [[ "${{ github.ref }}" == 'refs/heads/master' || \
                 "${{ env.DO_RELEASE }}" == "true" || \
                 "${{ inputs.build-arm-macos }}" == "true" || \
                 "${{ inputs.sign-macos }}" == "true" \
               ]]; then
-            echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
+            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           else
-            echo 'CONTAINERS=[ "ubuntu-20.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
+            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
           fi
           if [[ "${{ inputs.run-tests }}" != "false" ]]; then
             echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
-            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-20.04", "shard": 6}, {"container": "ubuntu-20.04", "shard": 7}]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-22.04", "shard": 6}, {"container": "ubuntu-22.04", "shard": 7}]' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT_LINUX=7' >> $GITHUB_OUTPUT
           else
