@@ -47,12 +47,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
   out_/UartWriter? := null
 
   /**
-  Number of encountered errors.
-  Deprecated.
-  */
-  errors := 0
-
-  /**
   Constructs a UART port using the given $tx for transmission and $rx
     for read.
 
@@ -240,7 +234,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
       if not uart_: return null
       if state-bits & ERROR-STATE_ != 0:
         state_.clear-state ERROR-STATE_
-        errors++
       else if state-bits & READ-STATE_ != 0:
         data := uart-read_ uart_
         if data and data.size > 0: return data
@@ -274,6 +267,15 @@ class Port extends Object with io.InMixin implements reader.Reader:
         if written == 0: continue
 
       return written
+
+  /**
+  Number of encountered errors.
+
+  Typically, this number is incremented if received data wasn't processed in
+    time, and the UART hardware has lost data.
+  */
+  errors -> int:
+    return uart-errors_ uart_
 
 /**
 Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
@@ -437,3 +439,6 @@ uart-set-control-flags_ uart flags:
 
 uart-get-control-flags_ uart:
   #primitive.uart.get-control-flags
+
+uart-errors_ uart:
+  #primitive.uart.errors
