@@ -3,9 +3,9 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests reading and writing of the UART baud rate.
+Tests that dropped packages lead to an error.
 
-For the setup see the comment near $Variant.uart-flush-in1.
+For the setup see the comment near $Variant.uart-error-in1.
 */
 
 import expect show *
