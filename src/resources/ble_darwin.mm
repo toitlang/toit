@@ -321,7 +321,7 @@ class BleCentralManagerResource : public  BleResource {
     }
     // Always add to the list of newly discovered peripherals. They
     // might contain new information if they are a scan response.
-    _newly_discovered_peripherals.append(discoveredPeripheral);
+    _newly_discovered_peripherals.append(discovered_peripheral);
     HostBleEventSource::instance()->on_event(this, kBleDiscovery);
   }
 
