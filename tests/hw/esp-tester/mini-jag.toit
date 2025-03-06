@@ -18,7 +18,7 @@ main:
   cause := esp32.wakeup-cause
   print "Wakeup cause: $cause"
   // It looks like resetting the chip through the UART yields RST-UNKNOWN.
-  if cause == esp32.ESP-RST-POWERON or cause == esp32.ESP-RST-UNKNOWN:
+  if cause == esp32.RESET-POWER-ON or cause == esp32.RESET-UNKNOWN:
     install-new-test
     esp32.deep-sleep Duration.ZERO
   run-test
