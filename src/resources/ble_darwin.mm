@@ -840,7 +840,7 @@ PRIMITIVE(scan_start) {
 
   AsyncThread::run_async([=]() -> void {
     LightLocker locker(central_manager->scan_mutex());
-    if (duration_us > 0) {
+    if (duration_us >= 0) {
       OS::wait_us(central_manager->stop_scan_condition(), duration_us);
     } else {
       OS::wait(central_manager->stop_scan_condition());
