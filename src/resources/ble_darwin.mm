@@ -315,14 +315,14 @@ class BleCentralManagerResource : public  BleResource {
 
   CBCentralManager* central_manager() { return _central_manager; }
   void set_central_manager(CBCentralManager* central_manager) { _central_manager = [central_manager retain]; }
-  void add_discovered_peripheral(DiscoveredPeripheral* discoveredPeripheral) {
-    if ([_peripherals objectForKey:[discoveredPeripheral->peripheral() identifier]] == nil) {
-      _peripherals[[discoveredPeripheral->peripheral() identifier]] = discoveredPeripheral->peripheral();
-      HostBleEventSource::instance()->on_event(this, kBleDiscovery);
+  void add_discovered_peripheral(DiscoveredPeripheral* discovered_peripheral) {
+    if ([_peripherals objectForKey:[discovered_peripheral->peripheral() identifier]] == nil) {
+      _peripherals[[discovered_peripheral->peripheral() identifier]] = discovered_peripheral->peripheral();
     }
     // Always add to the list of newly discovered peripherals. They
     // might contain new information if they are a scan response.
     _newly_discovered_peripherals.append(discoveredPeripheral);
+    HostBleEventSource::instance()->on_event(this, kBleDiscovery);
   }
 
   DiscoveredPeripheral* next_discovered_peripheral() {
