@@ -59,7 +59,7 @@ class ConditionVariable {
 
   void wait() {
     if (pthread_cond_wait(&cond_, &mutex_->mutex_) != 0) {
-      FATAL("pthread_cond_timedwait() error");
+      FATAL("pthread_cond_wait() error");
     }
   }
 

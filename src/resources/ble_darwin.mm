@@ -840,7 +840,11 @@ PRIMITIVE(scan_start) {
 
   AsyncThread::run_async([=]() -> void {
     LightLocker locker(central_manager->scan_mutex());
-    OS::wait_us(central_manager->stop_scan_condition(), duration_us);
+    if (duration_us > 0) {
+      OS::wait_us(central_manager->stop_scan_condition(), duration_us);
+    } else {
+      OS::wait(central_manager->stop_scan_condition());
+    }
     [central_manager->central_manager() stopScan];
     central_manager->set_scan_active(false);
     HostBleEventSource::instance()->on_event(central_manager, kBleCompleted);
