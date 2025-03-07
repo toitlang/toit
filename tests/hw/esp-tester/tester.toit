@@ -121,14 +121,12 @@ run-test invocation/cli.Invocation:
       board1.install-test test-path arg
       board1-ready.set true
 
-    // TODO(florian): move this to after the second board is ready.
-    board1-ready.get
-
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
       board2.connect-network
       board2.install-test test2-path arg
 
+    board1-ready.get
     board1.run-test
     if port-board2:
       board2.run-test
