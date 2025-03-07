@@ -163,6 +163,7 @@ class TestDevice:
   is-active/bool := false
   collected-output/string := ""
   ready-latch/monitor.Latch := monitor.Latch
+  installed-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   ui/cli.Ui
   tmp-dir/string
@@ -194,6 +195,8 @@ class TestDevice:
             ready-latch.set true
           if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
             all-tests-done.set true
+          if not installed-container.has-value and collected-output.contains "\nINSTALLED CONTAINER":
+            installed-container.set true
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.
@@ -282,6 +285,9 @@ class TestDevice:
     summer.add image
     socket_.out.write summer.get
     socket_.out.write image
+
+    log "Waiting for test to be fully installed"
+    installed-container.get
 
   run-test -> none:
     socket_.out.write RUN-TEST
