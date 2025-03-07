@@ -197,6 +197,10 @@ void BaseMbedTlsSocket::apply_certs(Process* process) {
   }
 }
 
+void BaseMbedTlsSocket::disable_certificate_verification() {
+  mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_NONE);
+}
+
 word BaseMbedTlsSocket::handshake() {
   return mbedtls_ssl_handshake(&ssl);
 }
@@ -833,9 +837,13 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
 }
 
 PRIMITIVE(init_socket) {
-  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id);
+  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id, bool, skip_certificate_verification);
   USE(transport_id);
-  socket->apply_certs(process);
+  if (skip_certificate_verification) {
+    socket->disable_certificate_verification();
+  } else {
+    socket->apply_certs(process);
+  }
   if (!socket->init()) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
