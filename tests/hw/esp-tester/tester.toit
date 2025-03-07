@@ -19,7 +19,13 @@ import .shared
 ALL-TESTS-DONE ::= "All tests done"
 JAG-DECODE ::= "jag decode"
 
+start-time/Time := ?
+
+log message/string:
+  print "--- $(%06d (Duration.since start-time).in-ms): $message"
+
 main args:
+  start-time = Time.now
   root-cmd := cli.Command "tester"
       --help="Run tests on an ESP tester"
       --options=[
@@ -117,23 +123,32 @@ run-test invocation/cli.Invocation:
     board1-ready := monitor.Latch
 
     task::
+      log "Connecting to board1"
       board1.connect-network
+      log "Installing test on board1"
       board1.install-test test-path arg
+      log "Board1 ready"
       board1-ready.set true
 
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
+      log "Connecting to board2"
       board2.connect-network
+      log "Installing test on board2"
       board2.install-test test2-path arg
+      log "Board2 ready"
 
     board1-ready.get
+    log "Running test"
     board1.run-test
     if port-board2:
       board2.run-test
 
     ui.emit --verbose "Waiting for all tests to be done"
     board1.all-tests-done.get
+    log "Board1 done"
     if board2: board2.all-tests-done.get
+    log "Board2 done"
 
   finally:
     board1.close
@@ -237,6 +252,7 @@ class TestDevice:
     network_ = null
 
   install-test test-path arg/string:
+    log "Compiling test"
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
       "compile",
@@ -245,6 +261,7 @@ class TestDevice:
       test-path
     ]
 
+    log "Converting snapshot to image"
     snapshot := file.read-contents snapshot-path
     image-path := fs.join tmp-dir "image.envelope"
     toit_ [
@@ -256,6 +273,7 @@ class TestDevice:
     ]
     image := file.read-contents image-path
 
+    log "Sending test to device"
     socket_.out.little-endian.write-int32 arg.size
     socket_.out.write arg
     socket_.out.little-endian.write-int32 image.size
