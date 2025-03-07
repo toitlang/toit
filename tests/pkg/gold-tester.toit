@@ -89,7 +89,7 @@ class GoldTester:
         command-string := command-line.join " "
         outputs.add "$command-string\n$normalized"
       else if command == "package.lock":
-        lock-content := file.read-content "$working-dir_/package.lock"
+        lock-content := file.read-contents "$working-dir_/package.lock"
         normalized := normalize lock-content.to-string
         // Replace all hash values.
         hash-index := -1
@@ -112,7 +112,7 @@ class GoldTester:
       directory.mkdir --recursive gold-dir_
       file.write-content --path=gold-file actual
     else:
-      expected-content := (file.read-content gold-file).to-string
+      expected-content := (file.read-contents gold-file).to-string
       expected-content = expected-content.replace --all "\r" ""
       expect-equals expected-content actual
 
@@ -247,7 +247,7 @@ with-http-server http-dir/string tcp-socket/tcp.ServerSocket --git-roots/Map [bl
         writer.out.write "Not found"
         writer.close
         continue.listen
-      content := file.read-content cleaned
+      content := file.read-contents cleaned
       writer.out.write content
       writer.close
 
@@ -281,7 +281,7 @@ class AssetsBuilder:
       while name := stream.next:
         copy-path --source="$source/$name" --target="$target/$name"
     else:
-      content := (file.read-content source).to-string
+      content := (file.read-contents source).to-string
       content = content.replace --all "<[*PORT*]>" "$port_"
       file.write-content --path=target content
 

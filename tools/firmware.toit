@@ -97,7 +97,7 @@ pad bits/ByteArray alignment/int -> ByteArray:
 
 read-file path/string --ui/cli.Ui -> ByteArray:
   exception := catch:
-    return file.read-content path
+    return file.read-contents path
   ui.abort "Failed to open '$path' for reading ($exception)."
   unreachable
 

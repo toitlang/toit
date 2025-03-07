@@ -216,7 +216,7 @@ abstract class FilesystemBase implements Filesystem:
     does-exist := exists path
     is-reg := does-exist and is-regular-file path
     is-dir := does-exist and not is-reg and is-directory path
-    content := is-reg ? read-content path : null
+    content := is-reg ? read-contents path : null
     return File does-exist is-reg is-dir content
 
   abstract sdk-path -> string
@@ -226,7 +226,7 @@ abstract class FilesystemBase implements Filesystem:
   /// Whether the file (or the file a symlink is pointing to) is regular.
   abstract is-regular-file path/string -> bool
   abstract is-directory path/string -> bool
-  abstract read-content path/string -> ByteArray
+  abstract read-contents path/string -> ByteArray
   abstract directory-entries path/string -> List
 
 
@@ -251,7 +251,7 @@ class FilesystemLocal extends FilesystemBase:
       package-cache-paths_ = find-package-cache-paths
     return package-cache-paths_
 
-  read-content path/string -> ByteArray: return file.read-content path
+  read-contents path/string -> ByteArray: return file.read-contents path
 
   directory-entries path/string -> List:
     entries := []

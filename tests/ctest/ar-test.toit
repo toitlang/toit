@@ -44,7 +44,7 @@ do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
     pipe.exit-signal exit-value
   expect-equals 0
     pipe.exit-code exit-value
-  return file.read-content tmp-path
+  return file.read-contents tmp-path
 
 extract archive-file contained-file -> ByteArray:
   // 'p' prints the $contained_file onto stdout.

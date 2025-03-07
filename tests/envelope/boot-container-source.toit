@@ -61,11 +61,11 @@ install-run image-path:
     reboot
 
   if file.is-file uuid-path:
-    container-uuid := uuid.Uuid.parse (file.read-content uuid-path).to-string
+    container-uuid := uuid.Uuid.parse (file.read-contents uuid-path).to-string
     run container-uuid
   else:
     // Install the image.
-    image := file.read-content image-path
+    image := file.read-contents image-path
     image-writer := containers.ContainerImageWriter image.size
     image-writer.write image
     container-uuid := image-writer.commit

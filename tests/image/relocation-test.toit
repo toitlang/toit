@@ -43,12 +43,12 @@ run-test args/List --word-size/int:
     else:
       pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-m64", "-o", img-file, snap-file]
 
-    snapshot := file.read-content snap-file
+    snapshot := file.read-contents snap-file
     snapshot-bundle := SnapshotBundle "snapshot" snapshot
     snapshot-uuid ::= snapshot-bundle.uuid
 
     buffer := io.Buffer
-    relocatable := file.read-content img-file
+    relocatable := file.read-contents img-file
     relocated-output := BinaryRelocatedOutput buffer 0x00000000 --word-size=word-size
     relocated-output.write relocatable
     relocated := buffer.bytes

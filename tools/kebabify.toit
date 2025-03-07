@@ -154,7 +154,7 @@ migrate invocation/cli.Invocation toitc/string?:
     (file-points.get file --init=: []).add it
 
   file-points.do: | path points |
-    content/ByteArray := file.read-content path
+    content/ByteArray := file.read-contents path
 
     // No need to sort as all replacements are of the same length and don't overlap.
     points.do: | point |

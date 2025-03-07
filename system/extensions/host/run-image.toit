@@ -74,7 +74,7 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
 
   constructor --ota-dir-active/string? --ota-dir-inactive/string?:
     catch:
-      content := file.read-content "$ota-dir-active/$CONFIG-FILE-NAME_"
+      content := file.read-contents "$ota-dir-active/$CONFIG-FILE-NAME_"
       // TODO(kasper): We use an explicit Decoder to avoid barfing
       // on any padding that follows the encoded ubjson. This is
       // necessary for now, because for a while we didn't correctly
@@ -117,7 +117,7 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
 
   content -> ByteArray:
     if not ota-dir-active_: throw "No OTA directory"
-    return file.read-content "$ota-dir-active_/$BITS-FILE-NAME_"
+    return file.read-contents "$ota-dir-active_/$BITS-FILE-NAME_"
 
   uri -> string?:
     return null
@@ -353,7 +353,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
     // Already in the flash.
     return
 
-  image-data := file.read-content path
+  image-data := file.read-contents path
   writer := containers.ContainerImageWriter image-data.size
   writer.write image-data
   writer.commit --run-boot=run-boot --run-critical
