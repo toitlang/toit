@@ -11,6 +11,7 @@ For the setup see the comment near $Variant.uart-io-data-in1.
 import expect show *
 import gpio
 import io
+import monitor
 import uart
 
 import .test
@@ -69,18 +70,38 @@ test:
       --baud-rate=115200
 
   out := FakeData 0 32_000
+  done-sending := false
   task::
-    port1.out.write out
+    port1.out.write out --break-length=10
+    done-sending = true
+
+  received-break := monitor.Latch
+  task::
+    port2.wait-for-break
+    // In theory there is a race condition, but since the data
+    // is also buffered on the receiving side there should be
+    // enough time for the sender to set the boolean.
+    expect done-sending
+    received-break.set true
 
   received := 0
   while true:
     data := port2.in.read
     expected := FakeData received (received + data.byte-size)
+    if data.size + received > out.byte-size:
+      // The last byte is the break signal.
+      expect-equals (out.byte-size + 1) (data.size + received)
+      expect-equals 0 data[data.size - 1]
+      print "Received break 0"
+      data = data[..data.size - 1]
+    expected = FakeData received out.byte-size
     for i := 0; i < data.byte-size; i++:
       expect_equals (expected.byte-at i) data[i]
     received += data.byte-size
     if received >= out.byte-size:
       break
+
+  received-break.get
 
   port1.close
   port2.close

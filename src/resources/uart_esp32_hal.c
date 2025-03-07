@@ -42,6 +42,7 @@ uart_hal_handle_t uart_toit_hal_init(uart_port_t port) {
   handle->interrupt_mask[UART_TOIT_INTR_TX_DONE]      = UART_INTR_TX_DONE;
   handle->interrupt_mask[UART_TOIT_ALL_INTR_MASK]     = UART_LL_INTR_MASK;
   handle->interrupt_mask[UART_TOIT_INTR_RX_TIMEOUT]   = UART_INTR_RXFIFO_TOUT;
+  handle->interrupt_mask[UART_TOIT_INTR_BRK_DET]      = UART_INTR_BRK_DET;
 
   return handle;
 }
