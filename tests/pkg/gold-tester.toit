@@ -307,7 +307,7 @@ class AssetsBuilder:
       copy-path --source="$source-dir/$version-name" --target=working-dir
       git-run ["add", "."]
       git-run ["commit", "--message", "Add $version-name"]
-      git-run ["tag", version-name]
+      git-run ["tag", version-name, "--message", "Tag $version-name"]
     git-run ["update-server-info"]
     file.write-content --path="$working-dir/.git/hooks/post-update" """
       #!/bin/sh
