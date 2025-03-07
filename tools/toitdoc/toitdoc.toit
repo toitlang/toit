@@ -306,7 +306,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   if for-package: built-toitdoc["mode"] = "package"
   if for-sdk: built-toitdoc["mode"] = "sdk"
 
-  file.write-content --path=output (json.encode built-toitdoc)
+  file.write-contents --path=output (json.encode built-toitdoc)
 
 toitdoc-build invocation/cli.Invocation --toitc/string --sdk-path/string?:
   output := invocation["output"]

@@ -38,7 +38,7 @@ class EnvelopeTest:
 
   compile --path/string --source/string -> none:
     tmp-toit-path := "$tmp-dir/__tmp__.toit"
-    file.write-content --path=tmp-toit-path source
+    file.write-contents --path=tmp-toit-path source
     compile --path=path --source-path=tmp-toit-path
 
   compile --path/string --source-path/string -> none:
@@ -61,14 +61,14 @@ class EnvelopeTest:
       run-program_ [toit-bin, "tool", "assets", "create", "--assets", tmp-assets-path]
       assets.do: | name value |
         tmp-asset-path := "$tmp-dir/$(name).asset"
-        file.write-content --path=tmp-asset-path value
+        file.write-contents --path=tmp-asset-path value
         run-program_ [toit-bin, "tool", "assets", "add", "--assets", tmp-assets-path, name, tmp-asset-path]
       cmd.add-all ["--assets", tmp-assets-path]
     run-program_ cmd
 
   install --name/string --source/string --boot/bool=true -> none:
     tmp-source-path := "$tmp-dir/__tmp__.toit"
-    file.write-content --path=tmp-source-path source
+    file.write-contents --path=tmp-source-path source
     install --name=name --source-path=tmp-source-path --boot=boot
 
   install --name/string --source-path/string --boot/bool=true --assets/Map?=null -> none:
@@ -80,7 +80,7 @@ class EnvelopeTest:
     cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
     if config:
       tmp-config-path := "$tmp-dir/__tmp__.config"
-      file.write-content --path=tmp-config-path config
+      file.write-contents --path=tmp-config-path config
       cmd.add_all ["--config", tmp-config-path]
     run-program_ cmd
 
@@ -92,7 +92,7 @@ class EnvelopeTest:
 
   build-ota --name/string --source/string --output/string -> none:
     tmp-source-path := "$tmp-dir/__tmp__.toit"
-    file.write-content --path=tmp-source-path source
+    file.write-contents --path=tmp-source-path source
     build-ota --name=name --source-path=tmp-source-path --output=output
 
   build-ota --name/string --source-path/string --output/string -> none:

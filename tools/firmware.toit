@@ -443,7 +443,7 @@ container-list invocation/cli.Invocation -> none:
   output := entries-json["containers"]
 
   if output-path:
-    file.write-content --path=output-path (json.encode output)
+    file.write-contents --path=output-path (json.encode output)
     return
 
   output-string := ""

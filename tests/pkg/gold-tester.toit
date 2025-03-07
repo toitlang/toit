@@ -110,7 +110,7 @@ class GoldTester:
     actual := outputs.join "==================\n"
     if should-update_:
       directory.mkdir --recursive gold-dir_
-      file.write-content --path=gold-file actual
+      file.write-contents --path=gold-file actual
     else:
       expected-content := (file.read-contents gold-file).to-string
       expected-content = expected-content.replace --all "\r" ""
@@ -283,7 +283,7 @@ class AssetsBuilder:
     else:
       content := (file.read-contents source).to-string
       content = content.replace --all "<[*PORT*]>" "$port_"
-      file.write-content --path=target content
+      file.write-contents --path=target content
 
   git-run args/List:
     exit-code := pipe.run-program (["git"] + args)
@@ -309,11 +309,11 @@ class AssetsBuilder:
       git-run ["commit", "--message", "Add $version-name"]
       git-run ["tag", version-name]
     git-run ["update-server-info"]
-    file.write-content --path="$working-dir/.git/hooks/post-update" """
+    file.write-contents --path="$working-dir/.git/hooks/post-update" """
       #!/bin/sh
       git update-server-info
       """
-    file.write-content --path="$working-dir/.git/git-daemon-export-ok" ""
+    file.write-contents --path="$working-dir/.git/git-daemon-export-ok" ""
 
   setup-git-pkg name/string --working-dir/string --source-dir/string -> none:
     setup-git --working-dir=working-dir --source-dir=source-dir
@@ -384,7 +384,7 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
               "ref-hash": "HEAD",
           }
       }
-    file.write-content --path=registry-cache-file registry-content
+    file.write-contents --path=registry-cache-file registry-content
     os.env["TOIT_PKG_CACHE_DIR"] = registry-cache-dir
 
     http-dir := "$tmp-dir/HTTP-SERVE"

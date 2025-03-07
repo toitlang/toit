@@ -163,7 +163,7 @@ migrate invocation/cli.Invocation toitc/string?:
       replacement/string := point[3]
       content.replace from replacement.to-byte-array
 
-    file.write-content --path=path content
+    file.write-contents --path=path content
 
 rename-files invocation/cli.Invocation:
   git := invocation["git"]

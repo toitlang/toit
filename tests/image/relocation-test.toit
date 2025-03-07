@@ -32,7 +32,7 @@ run-test args/List --word-size/int:
     snap-file := "$test-dir/test.snap"
     img-file := "$test-dir/test.img"
 
-    file.write-content --path=toit-file """
+    file.write-contents --path=toit-file """
       main:
         print "hello world"
       """

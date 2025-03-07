@@ -16,7 +16,7 @@ main args:
 
   with-tmp-dir: | tmp-dir/string |
     src-path := "$tmp-dir/hello.toit"
-    file.write-content --path=src-path """
+    file.write-contents --path=src-path """
       main: print "hello world"
       """
 

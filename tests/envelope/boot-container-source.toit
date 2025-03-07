@@ -57,7 +57,7 @@ install-run image-path:
   mark-path := "$tmp-dir/mark"
   uuid-path := "$tmp-dir/uuid"
   if not file.is-file mark-path:
-    file.write-content --path=mark-path "mark"
+    file.write-contents --path=mark-path "mark"
     reboot
 
   if file.is-file uuid-path:
@@ -69,7 +69,7 @@ install-run image-path:
     image-writer := containers.ContainerImageWriter image.size
     image-writer.write image
     container-uuid := image-writer.commit
-    file.write-content --path=uuid-path "$container-uuid"
+    file.write-contents --path=uuid-path "$container-uuid"
     // Run the image
     run container-uuid
     reboot

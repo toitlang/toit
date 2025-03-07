@@ -93,7 +93,7 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     return is-validation-pending
 
   validate -> bool:
-    file.write-content --path="$ota-dir-active_/$VALIDATED-FILE-NAME_" #[]
+    file.write-contents --path="$ota-dir-active_/$VALIDATED-FILE-NAME_" #[]
     return true
 
   rollback -> none:
@@ -216,22 +216,22 @@ class Firmware:
 
   write-into --dir/string:
     bits-path := "$dir/$BITS-FILE-NAME_"
-    file.write-content --path=bits-path bits_
+    file.write-contents --path=bits-path bits_
     run-image-path := "$dir/$RUN-IMAGE-FILE-NAME_"
-    file.write-content --path=run-image-path run-image
+    file.write-contents --path=run-image-path run-image
     file.chmod run-image-path 0b111_101_000  // Make the program executable.
-    file.write-content --path="$dir/$CONFIG-FILE-NAME_" config
+    file.write-contents --path="$dir/$CONFIG-FILE-NAME_" config
     startup-dir := "$dir/$STARTUP-DIR-NAME"
     directory.mkdir --recursive startup-dir
     mapping := name-to-uuid-mapping
     startup-images.do: | name/string content/ByteArray |
       uuid := mapping[name]
-      file.write-content --path="$startup-dir/$uuid" content
+      file.write-contents --path="$startup-dir/$uuid" content
     bundled-dir := "$dir/$BUNDLED-DIR-NAME"
     directory.mkdir --recursive bundled-dir
     bundled-images.do: | name/string content/ByteArray |
       uuid := mapping[name]
-      file.write-content --path="$bundled-dir/$uuid" content
+      file.write-contents --path="$bundled-dir/$uuid" content
 
 class RunImageContainerImageWriter extends ContainerImageWriter:
   container-manager_/RunImageContainerManager
@@ -284,7 +284,7 @@ class RunImageContainerManager extends ContainerManager:
     dir := "$ota-dir-active_/$INSTALLED-DIR-NAME"
     directory.mkdir --recursive dir
     path := "$dir/$id"
-    if not file.is-file path: file.write-content --path=path image
+    if not file.is-file path: file.write-contents --path=path image
 
   // Override the default implementation.
   uninstall-image id/Uuid -> none:
