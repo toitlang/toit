@@ -87,6 +87,7 @@ test-board1:
       sleep --ms=RETRY-WAIT
     print "Connected"
     socket := network.tcp-connect SOFTAP-ADDRESS PORT
+    print "Sending 'ok'"
     socket.out.write "ok" --flush
     socket.close
     network.close
@@ -109,6 +110,7 @@ test-board2:
     port.out.write "x" --flush  // Ready to receive.
     socket := server-socket.accept
     received := socket.in.read
+    print "received: $received"
     expect-equals #['o', 'k'] received
     socket.close
     server-socket.close
