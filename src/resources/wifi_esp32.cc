@@ -427,12 +427,18 @@ esp_err_t WifiResourceGroup::establish(WifiEvents* events,
   esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
   if (err != ESP_OK) return err;
 
+  int password_length = strlen(password);
+  wifi_auth_mode_t auth_mode = password_length == 0
+      ? WIFI_AUTH_OPEN
+      : WIFI_AUTH_WPA2_PSK;
   wifi_config_t config;
   memset(&config, 0, sizeof(config));
   strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid) - 1);
-  strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password) - 1);
+  if (auth_mode != WIFI_AUTH_OPEN) {
+    strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password) - 1);
+  }
   config.ap.channel = channel;
-  config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  config.ap.authmode = auth_mode;
   config.ap.ssid_hidden = broadcast ? 0 : 1;
   config.ap.max_connection = 4;
   config.ap.beacon_interval = 100;
