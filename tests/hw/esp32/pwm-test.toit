@@ -33,8 +33,7 @@ test:
     in2 := gpio.Pin IN2
     out2 := gpio.Pin OUT2
 
-    pulse-unit1 := pulse-counter.Unit
-    pulse-channel1 := pulse-unit1.add-channel in1
+    pulse-unit1 := pulse-counter.Unit in1
 
     expect-equals 0 pulse-unit1.value
 
@@ -73,8 +72,7 @@ test:
 
     unit-value1 = pulse-unit1.value
 
-    pulse-unit2 := pulse-counter.Unit
-    pulse-channel2 := pulse-unit2.add-channel in2
+    pulse-unit2 := pulse-counter.Unit in2
 
     expect-equals 0 pulse-unit2.value
 
