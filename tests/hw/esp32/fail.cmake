@@ -22,8 +22,6 @@ set(TOIT_SKIP_TESTS
 )
 
 set(TOIT_FAILING_TESTS
-  # The anti-glitching doesn't seem to work.
-  pulse-counter-test.toit-esp32s3
   # Idle level 1 doesn't seem to work.
   rmt-drain-pullup-test.toit-esp32s3
   # Probably just an issue with the number of RMT channels.
