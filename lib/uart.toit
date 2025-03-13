@@ -422,9 +422,9 @@ Returns the amount of bytes that were written.
 uart-write_ uart data from to break-length:
   #primitive.uart.write:
     // The `uart-write_` function is allowed to consume less than the whole data slice.
-    // We limit the chunk size to 1024 bytes.
-    return io.primitive-redo-io-data_ it data from (min to (from + 1024)): | chunk/ByteArray |
-      uart-write_ uart chunk 0 chunk.size break-length
+    // We limit the chunk size to 256 bytes.
+    return io.primitive-redo-io-data_ it data from (min to (from + 256)): | prefix/ByteArray |
+      uart-write_ uart prefix 0 prefix.size break-length
 
 uart-wait-tx_ uart:
   #primitive.uart.wait-tx

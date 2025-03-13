@@ -309,6 +309,18 @@ abstract class Variant:
   uart-flush-out2 -> int: return connected2-pin2
 
   /**
+  Uart io-data pins.
+
+  Connect $uart-io-data-in1 to $uart-io-data-out1 with a 330Ohm resistor.
+  Connect $uart-io-data-in2 to $uart-io-data-out2 with a 330Ohm resistor.
+  */
+  uart-io-data-in1 -> int: return connected1-pin1
+  uart-io-data-out1 -> int: return connected1-pin2
+
+  uart-io-data-in2 -> int: return connected2-pin1
+  uart-io-data-out2 -> int: return connected2-pin2
+
+  /**
   Wait-for-close test pins.
 
   The $wait-for-close-pin should be connected to GND with a 1MOhm resistor.
