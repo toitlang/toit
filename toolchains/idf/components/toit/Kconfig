@@ -100,6 +100,17 @@ menu "Toit"
             get access to a zlib-compatible encoder that does only run-length
             encoding. This requires the TOIT_ZLIB_RLE option to be selected.
 
+    config TOIT_REPORT_UART_DATA_LOSS
+        bool "Report when UART data is lost"
+        default "y"
+        help
+            If selected, the UART driver will report when data is lost due to
+            the UART buffer being full.
+
+            This slows down the UART driver slightly when it is already under
+            pressure and has no purpose if the device's serial part is not
+            monitored.
+
     menu "Advanced setup"
         config TOIT_INTERPRETER_IN_IRAM
             bool "Run interpreter from IRAM"
