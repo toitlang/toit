@@ -21,13 +21,15 @@ namespace compiler {
 MODULE_TYPES(i2c, MODULE_I2C)
 
 TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(write)
-TYPE_PRIMITIVE_ANY(write_reg)
-TYPE_PRIMITIVE_ANY(write_address)
-TYPE_PRIMITIVE_ANY(read)
-TYPE_PRIMITIVE_ANY(read_reg)
-TYPE_PRIMITIVE_ANY(read_address)
+TYPE_PRIMITIVE_ANY(bus_create)
+TYPE_PRIMITIVE_ANY(bus_close)
+TYPE_PRIMITIVE_ANY(bus_probe)
+TYPE_PRIMITIVE_ANY(bus_reset)
+TYPE_PRIMITIVE_ANY(device_create)
+TYPE_PRIMITIVE_ANY(device_close)
+TYPE_PRIMITIVE_ANY(device_write)
+TYPE_PRIMITIVE_ANY(device_read)
+TYPE_PRIMITIVE_ANY(device_write_read)
 
 }  // namespace toit::compiler
 }  // namespace toit

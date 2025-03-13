@@ -34,23 +34,11 @@ test:
   bus = i2c.Bus --sda=other-pin --scl=test-pin --frequency=100_000
   expect-equals 0 measure-pin.get  // The 1M resistor pulls the pin to GND.
   bus.close
-  bus = i2c.Bus --sda=test-pin --scl=other-pin --frequency=100_000 --scl-pullup
-  expect-equals 0 measure-pin.get  // The 1M resistor pulls the pin to GND.
-  bus.close
-  bus = i2c.Bus --sda=other-pin --scl=test-pin --frequency=100_000 --sda-pullup
-  expect-equals 0 measure-pin.get  // The 1M resistor pulls the pin to GND.
-  bus.close
 
   // Test the pull-up.
-  bus = i2c.Bus --sda=test-pin --scl=other-pin --frequency=100_000 --sda-pullup
+  bus = i2c.Bus --sda=test-pin --scl=other-pin --frequency=100_000 --pull-up
   expect-equals 1 measure-pin.get  // The internal pull-up wins over the 1M resistor.
   bus.close
-  bus = i2c.Bus --sda=other-pin --scl=test-pin --frequency=100_000 --scl-pullup
-  expect-equals 1 measure-pin.get  // The internal pull-up wins over the 1M resistor.
-  bus.close
-  bus = i2c.Bus --sda=test-pin --scl=other-pin --frequency=100_000 --sda-pullup --scl-pullup
-  expect-equals 1 measure-pin.get  // The internal pull-up wins over the 1M resistor.
-  bus.close
-  bus = i2c.Bus --sda=other-pin --scl=test-pin --frequency=100_000 --sda-pullup --scl-pullup
+  bus = i2c.Bus --sda=other-pin --scl=test-pin --frequency=100_000 --pull-up
   expect-equals 1 measure-pin.get  // The internal pull-up wins over the 1M resistor.
   bus.close

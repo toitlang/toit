@@ -923,7 +923,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
     int64 run_time_us = process->run_time_us(now);
     if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
-      fprintf(stderr, "Potential dead-lock detected:\n");
+      fprintf(stderr, "Potential deadlock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
       uint8* current_bcp = process->current_bcp();
       Program* program = process->program();  // External processes have null programs.

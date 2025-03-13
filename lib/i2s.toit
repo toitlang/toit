@@ -5,8 +5,6 @@
 import gpio
 import monitor show ResourceState_
 
-import serial
-
 /**
 I2S Serial communication Bus.
 

@@ -18,274 +18,270 @@
 #ifdef TOIT_ESP32
 
 #include <cmath>
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 #include <esp_memory_utils.h>
 
+#include "../linked.h"
 #include "../objects_inline.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
 #include "../utils.h"
 #include "../vm.h"
 
-#include "../event_sources/system_esp32.h"
-
 namespace toit {
 
-const int kI2cTransactionTimeout = 10;
-const i2c_port_t kInvalidPort = i2c_port_t(-1);
-
-#ifndef SOC_I2C_NUM
-#error "SOC_I2C_NUM not defined"
-#endif
-
-static ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
-    I2C_NUM_0
-#if SOC_HP_I2C_NUM >= 2
-  , I2C_NUM_1
-#endif
-);
+// Should be lower than PROCESS_MAX_RUNTIME_US of scheduler.cc.
+// Synchronous operations should never take that long anyway.
+const int TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS = 1000;
 
 class I2cResourceGroup : public ResourceGroup {
  public:
   TAG(I2cResourceGroup);
-  I2cResourceGroup(Process* process, i2c_port_t port)
-    : ResourceGroup(process)
-    , port_(port) {}
+  I2cResourceGroup(Process* process)
+    : ResourceGroup(process) {}
+};
 
-  ~I2cResourceGroup() {
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(i2c_driver_delete(port_));
-    });
-    i2c_ports.put(port_);
-  }
+class I2cBusResource;
+class I2cDeviceResource;
+typedef DoubleLinkedList<I2cDeviceResource, 99> DeviceList;
 
-  i2c_port_t port() const { return port_; }
+class I2cDeviceResource : public Resource, public DeviceList::Element {
+ public:
+  TAG(I2cDeviceResource);
+  I2cDeviceResource(I2cResourceGroup* group,
+                    I2cBusResource* bus,
+                    i2c_master_dev_handle_t handle)
+      : Resource(group)
+      , bus_(bus)
+      , handle_(handle) {}
+
+  ~I2cDeviceResource() override;
+
+  i2c_master_dev_handle_t handle() const { return handle_; }
 
  private:
-  i2c_port_t port_;
+  friend class I2cBusResource;
+  I2cBusResource* bus_;
+  i2c_master_dev_handle_t handle_;
 };
+
+class I2cBusResource : public Resource, public DeviceList {
+ public:
+  TAG(I2cBusResource);
+  I2cBusResource(I2cResourceGroup* group, i2c_master_bus_handle_t handle)
+      : Resource(group)
+      , handle_(handle) {}
+
+  ~I2cBusResource() override;
+
+  i2c_master_bus_handle_t handle() const { return handle_; }
+
+  void add_device(I2cDeviceResource* device);
+  void remove_device(I2cDeviceResource* device);
+
+  I2cResourceGroup* resource_group() const {
+    return static_cast<I2cResourceGroup*>(Resource::resource_group());
+  }
+
+ private:
+  i2c_master_bus_handle_t handle_;
+};
+
+I2cDeviceResource::~I2cDeviceResource() {
+  if (bus_ != null) {
+    bus_->remove_device(this);
+  }
+}
+
+I2cBusResource::~I2cBusResource() {
+  while (!DeviceList::is_empty()) {
+    // Removing the device doesn't delete the resource. That needs to be
+    // done separately.
+    remove_device(DeviceList::first());
+  }
+  i2c_del_master_bus(handle());
+}
+
+void I2cBusResource::add_device(I2cDeviceResource* device) {
+  DeviceList::append(device);
+}
+
+void I2cBusResource::remove_device(I2cDeviceResource* device) {
+  ASSERT(device->bus_ == this);
+  i2c_master_bus_rm_device(device->handle());
+  device->bus_ = null;
+  device->handle_ = null;
+  DeviceList::unlink(device);
+}
+
 
 MODULE_IMPLEMENTATION(i2c, MODULE_I2C);
 
 PRIMITIVE(init) {
-  ARGS(int, frequency, int, sda, int, scl, bool, sda_pullup, bool, scl_pullup);
-
-  i2c_port_t port = i2c_ports.any();
-  if (port == kInvalidPort) FAIL(ALREADY_IN_USE);
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    i2c_ports.put(port);
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  i2c_config_t conf;
-  memset(&conf, 0, sizeof(conf));
-  conf.mode = I2C_MODE_MASTER;
-  conf.sda_io_num = (gpio_num_t)sda;
-  conf.sda_pullup_en = sda_pullup ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
-  conf.scl_io_num = (gpio_num_t)scl;
-  conf.scl_pullup_en = scl_pullup ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
-  conf.master.clk_speed = frequency;
-  int result = i2c_param_config(port, &conf);
-  if (result != ESP_OK) FAIL(INVALID_ARGUMENT);
-  result = ESP_FAIL;
-  SystemEventSource::instance()->run([&]() -> void {
-    result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
-#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32S3)
-    i2c_set_timeout(port, (int)(log2(APB_CLK_FREQ / 1000.0 * kI2cTransactionTimeout)));
-#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
-    i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2cTransactionTimeout);
-#else
-#error "Unsupported target"
-  // Go to the i2c section of the datasheet and check whether the value is used as
-  // a power or counts the individual cycles.
-  // For example:
-  //   https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf#i2c
-#endif
-  });
-  if (result != ESP_OK) {
-    i2c_ports.put(port);
-    return Primitive::os_error(result, process);
-  }
-
-  I2cResourceGroup* i2c = _new I2cResourceGroup(process, port);
+  I2cResourceGroup* i2c = _new I2cResourceGroup(process);
   if (!i2c) {
-    SystemEventSource::instance()->run([&]() -> void {
-      i2c_driver_delete(port);
-    });
-    i2c_ports.put(port);
     FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2c);
+  return proxy;
+}
+
+PRIMITIVE(bus_create) {
+  ARGS(I2cResourceGroup, group, int, sda, int, scl, bool, pullup);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  bool handed_to_proxy = false;
+
+  i2c_master_bus_config_t config = {
+    .i2c_port = -1,  // Auto select.
+    .sda_io_num = static_cast<gpio_num_t>(sda),
+    .scl_io_num = static_cast<gpio_num_t>(scl),
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .glitch_ignore_cnt = 7,
+    .intr_priority = 0,
+    .trans_queue_depth = 0,
+    .flags = {
+      .enable_internal_pullup = pullup,
+    },
+  };
+  i2c_master_bus_handle_t handle;
+  esp_err_t err = i2c_new_master_bus(&config, &handle);
+  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer del_bus { [&] { if (!handed_to_proxy) i2c_del_master_bus(handle); } };
+
+  auto resource = _new I2cBusResource(group, handle);
+  if (resource == null) FAIL(MALLOC_FAILED);
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  handed_to_proxy = true;
 
   return proxy;
 }
 
-PRIMITIVE(close) {
-  ARGS(I2cResourceGroup, i2c);
-  i2c->tear_down();
-  i2c_proxy->clear_external_address();
+PRIMITIVE(bus_close) {
+  ARGS(I2cBusResource, resource);
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
   return process->null_object();
 }
 
-static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
+PRIMITIVE(bus_probe) {
+  ARGS(I2cBusResource, resource, uint16, address, int, timeout_ms);
 
-  const uint8* data = buffer.address();
-  word length = buffer.length();
-  if (length > 0 && !esp_ptr_internal(data)) {
-    // Copy buffer to internal malloc heap, if the buffer is not in memory.
-    const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-    uint8* copy = unvoid_cast<uint8*>(heap_caps_malloc(length, caps_flags));
-    if (copy == null) FAIL(MALLOC_FAILED);
-    memcpy(copy, data, length);
-    data = copy;
-  }
-  Defer release_copy { [&]() { if (data != buffer.address()) free(const_cast<uint8*>(data)); } };
+  esp_err_t err = i2c_master_probe(resource->handle(), address, timeout_ms);
+  return BOOL(err == ESP_OK);
+}
 
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  if (cmd == null) FAIL(MALLOC_FAILED);
-  Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
+PRIMITIVE(bus_reset) {
+  ARGS(I2cBusResource, resource);
 
-  // NOTE:
-  // 'i2c_master_X' functions allocate data, but return `ESP_FAIL` if that allocation
-  // fails. There is no way to differentiate the kind of error.
-
-  // Initiate the sequence by issuing a `start`. That will notify slaves to
-  // listen (if possible) and promote self to current master, in case of
-  // multi-master setup.
-  if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
-
-  // Write the i2c address with the write-bit. The device must ack.
-  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) FAIL(MALLOC_FAILED);
-
-  // First we notify the slave about the register/address we will use.
-  if (address != null) {
-    // Write the register address. Each byte must be acked.
-    if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) FAIL(MALLOC_FAILED);
-    } else {
-      for (int i = 0; i < address_length; i++) {
-        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) FAIL(MALLOC_FAILED);
-      }
-    }
-  }
-
-  // Queue up all the bytes to be written. Each byte must be acked.
-  if (buffer.length() > 0) {
-    if (i2c_master_write(cmd, data, length, true) != ESP_OK) FAIL(MALLOC_FAILED);
-  }
-
-  // Finally issue the stop. That will allow other masters to communicate.
-  if (i2c_master_stop(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
-
-  // Ship the built command.
-  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
-  if (err != ESP_OK) return Smi::from(err);
-
+  esp_err_t err = i2c_master_bus_reset(resource->handle());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->null_object();
 }
 
-static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, word length) {
-  ByteArray* array = process->allocate_byte_array(length);
-  if (array == null) FAIL(ALLOCATION_FAILED);
-  uint8* data = ByteArray::Bytes(array).address();
+PRIMITIVE(device_create) {
+  ARGS(I2cBusResource, bus,
+       int, address_bit_size,
+       uint16, address,
+       uint32, frequency_hz,
+       uint32, timeout_us,
+       bool, disable_ack_check)
 
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  if (cmd == null) FAIL(MALLOC_FAILED);
-  Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
-
-  // NOTE:
-  // 'i2c_master_X' functions allocate data, but return `ESP_FAIL` if that allocation
-  // fails. There is no way to differentiate the kind of error.
-
-  // Initiate the sequence by issuing a `start`. That will notify slaves to
-  // listen (if possible) and promote self to current master, in case of
-  // multi-master setup.
-  if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
-
-  if (address != null) {
-    // First we notify the slave about the register/address we will use.
-
-    // Write the i2c address with the write-bit. The device must ack.
-    if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) FAIL(MALLOC_FAILED);
-
-    // Write the register address. Each byte must be acked.
-    if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) FAIL(MALLOC_FAILED);
-    } else {
-      for (int i = 0; i < address_length; i++) {
-        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) FAIL(MALLOC_FAILED);
-      }
-    }
-
-    // Prepare the slave for the next command.
-    if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
+  i2c_addr_bit_len_t dev_addr_length;
+  if (address_bit_size == 7) {
+    dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  #if SOC_I2C_SUPPORT_10BIT_ADDR
+  } else if (address_bit_size == 10) {
+    dev_addr_length = I2C_ADDR_BIT_LEN_10;
+  #endif
+  } else {
+    FAIL(INVALID_ARGUMENT);
   }
 
-  // Write the address with the read-bit set. The slave must ack.
-  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, true) != ESP_OK) FAIL(MALLOC_FAILED);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  // Queue up all the bytes that must be read.
-  if (length > 0) {
-    if (i2c_master_read(cmd, data, length, I2C_MASTER_LAST_NACK) != ESP_OK) FAIL(MALLOC_FAILED);
-  }
+  bool handed_to_proxy = false;
 
-  // Finally issue the stop. That will allow other masters to communicate.
-  if (i2c_master_stop(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
+  i2c_device_config_t config = {
+    .dev_addr_length = dev_addr_length,
+    .device_address = address,
+    .scl_speed_hz = frequency_hz,
+    .scl_wait_us = timeout_us,
+    .flags = {
+      .disable_ack_check = disable_ack_check,
+    },
+  };
+  i2c_master_dev_handle_t handle;
+  esp_err_t err = i2c_master_bus_add_device(bus->handle(), &config, &handle);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer remove_device { [&] { if (!handed_to_proxy) i2c_master_bus_rm_device(handle); } };
 
-  // Ship the built command.
-  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
-  // TODO(florian): we could return the error code here: Smi::from(err).
-  // We would need to type-dispatch on the Toit side to know whether it was an error or not.
-  if (err != ESP_OK) return process->null_object();
+  auto resource = _new I2cDeviceResource(bus->resource_group(),
+                                         bus,
+                                         handle);
+  if (resource == null) FAIL(MALLOC_FAILED);
 
-  return array;
+  bus->resource_group()->register_resource(resource);
+  proxy->set_external_address(resource);
+  handed_to_proxy = true;
+
+  return proxy;
 }
 
-PRIMITIVE(write) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, buffer);
+PRIMITIVE(device_close) {
+  ARGS(I2cDeviceResource, resource);
 
-  return write_i2c(process, i2c, i2c_address, null, 0, buffer);
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+  return process->null_object();
 }
 
-PRIMITIVE(write_reg) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, Blob, buffer);
+PRIMITIVE(device_write) {
+  ARGS(I2cDeviceResource, resource, Blob, buffer);
+  if (resource->handle() == null) FAIL(ALREADY_CLOSED);
 
-  if (!(0 <= reg && reg < 256)) FAIL(INVALID_ARGUMENT);
-
-  uint8 reg_address[1] = { static_cast<uint8>(reg) };
-  return write_i2c(process, i2c, i2c_address, reg_address, 1, buffer);
+  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
+  esp_err_t err = i2c_master_transmit(resource->handle(), buffer.address(), buffer.length(), timeout);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
 }
 
-PRIMITIVE(write_address) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, address, Blob, buffer);
+PRIMITIVE(device_read) {
+  ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
+  if (resource->handle() == null) FAIL(ALREADY_CLOSED);
+  if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
 
-  return write_i2c(process, i2c, i2c_address, address.address(), address.length(), buffer);
+  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
+  esp_err_t err = i2c_master_receive(resource->handle(), buffer.address(), length, timeout);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
 }
 
-PRIMITIVE(read) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, length);
 
-  return read_i2c(process, i2c, i2c_address, null, 0, length);
-}
+PRIMITIVE(device_write_read) {
+  ARGS(I2cDeviceResource, resource, Blob, tx_buffer, MutableBlob, rx_buffer, int, length)
+  if (resource->handle() == null) FAIL(ALREADY_CLOSED);
+  if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
 
-
-PRIMITIVE(read_reg) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, int, length)
-
-  if (!(0 <= reg && reg < 256)) FAIL(INVALID_ARGUMENT);
-
-  uint8 address[1] = { static_cast<uint8>(reg) };
-  return read_i2c(process, i2c, i2c_address, address, 1, length);
-}
-
-PRIMITIVE(read_address) {
-  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, address, int, length);
-
-  return read_i2c(process, i2c, i2c_address, address.address(), address.length(), length);
+  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
+  esp_err_t err = i2c_master_transmit_receive(resource->handle(),
+                                              tx_buffer.address(),
+                                              tx_buffer.length(),
+                                              rx_buffer.address(),
+                                              length,
+                                              timeout);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
 }
 
 } // namespace toit

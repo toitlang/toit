@@ -385,9 +385,12 @@ class Registers extends serial.Registers:
     transfer_ data --read
     return data.copy 1
 
-  /** See $super. */
+  /**
+  See $super.
+
+  Deprecated. Use exception handling instead.
+  */
   read-bytes register count [failure]:
-    // TODO(anders): Can SPI fail?
     return read-bytes register count
 
   /**
