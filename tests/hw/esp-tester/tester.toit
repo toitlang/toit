@@ -19,13 +19,14 @@ import .shared
 ALL-TESTS-DONE ::= "All tests done"
 JAG-DECODE ::= "jag decode"
 
-start-time/Time := ?
+start-time-us/int := ?
 
 log message/string:
-  print "--- $(%06d (Duration.since start-time).in-ms): $message"
+  duration := Duration --us=(Time.monotonic-us - start-time-us)
+  print "--- $(%06d duration.in-ms): $message"
 
 main args:
-  start-time = Time.now
+  start-time-us = Time.monotonic-us
   root-cmd := cli.Command "tester"
       --help="Run tests on an ESP tester"
       --options=[
