@@ -16,7 +16,7 @@ test client/LspClient:
   diagnostics := client.diagnostics-for --path=path
   expect-equals 4 diagnostics.size
 
-  content := (file.read-content path).to-string
+  content := (file.read-contents path).to-string
   untitled-uri := "untitled:Untitled-1"
   client.send-did-open --uri=untitled-uri --text=content
   diagnostics = client.diagnostics-for --path=path

@@ -16,7 +16,7 @@ main args:
 
   with-tmp-dir: | tmp-dir/string |
     src-path := "$tmp-dir/hello.toit"
-    file.write-content --path=src-path """
+    file.write-contents --path=src-path """
       main: print "hello world"
       """
 
@@ -49,9 +49,9 @@ main args:
       hello-snapshot
     ]
 
-    hello32-content := file.read-content hello32-image
-    hello64-content := file.read-content hello64-image
-    ubjson-content := file.read-content ubjson-output
+    hello32-content := file.read-contents hello32-image
+    hello64-content := file.read-contents hello64-image
+    ubjson-content := file.read-contents ubjson-output
     decoded := ubjson.decode ubjson-content
 
     images := decoded["images"]

@@ -68,7 +68,7 @@ test client/LspClient files-to-check/List:
       print "Message: $message"
       crash-count++
 
-    content := (file.read-content path).to-string
+    content := (file.read-contents path).to-string
     client.send-did-open --path=path --text=content
 
     last-was-whitespace := false

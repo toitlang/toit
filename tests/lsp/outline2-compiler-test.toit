@@ -17,7 +17,7 @@ main args:
 
 test-ranges client/LspClient outline-path/string:
 
-  content := file.read-content outline-path
+  content := file.read-contents outline-path
   lines := content.to-string.split "\n"
   lines.map --in-place: it.replace --all "\r" ""
 
