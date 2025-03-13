@@ -87,6 +87,7 @@ test:
     diff-in-ms = (stop-us - start-us) / 1000
     unit-value2 := pulse-unit2.value
 
+    print "diff-in-ms: $diff-in-ms, unit-value2: $unit-value2"
     expect (0.8 * diff-in-ms) < unit-value2 < (1.2 * diff-in-ms)
 
     sleep --ms=3

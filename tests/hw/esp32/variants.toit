@@ -59,7 +59,7 @@ abstract class Variant:
   Two more pins that are connected with a 330 Ohm resistor.
   */
   connected2-pin1 -> int: return voltage-divider-start-pin
-  connected2-pin2 -> int: return voltage-divider-end-pin
+  connected2-pin2 -> int: return voltage-divider-adc1-pin
 
   /**
   A pin that is restricted.

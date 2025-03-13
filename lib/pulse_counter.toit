@@ -154,6 +154,7 @@ class Unit:
       glitch-filter-ns = 0
     if low and low >= 0: throw "INVALID_ARGUMENT"
     if high and high <= 0: throw "INVALID_ARGUMENT"
+    // Use 0 (and invalid value) to indicate to the primitive that the max range should be used.
     if not low: low = 0
     if not high: high = 0
     unit-resource_ = pcnt-new-unit_ resource-freeing-module_ low high glitch-filter-ns
