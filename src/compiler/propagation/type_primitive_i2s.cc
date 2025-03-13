@@ -29,7 +29,8 @@ TYPE_PRIMITIVE_ANY(preload)
 TYPE_PRIMITIVE_ANY(close)
 TYPE_PRIMITIVE_ANY(write)
 TYPE_PRIMITIVE_ANY(read_to_buffer)
-TYPE_PRIMITIVE_ANY(errors)
+TYPE_PRIMITIVE_INT(underrun_errors)
+TYPE_PRIMITIVE_INT(overrun_errors)
 
 }  // namespace toit::compiler
 }  // namespace toit
