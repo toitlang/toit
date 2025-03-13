@@ -19,5 +19,5 @@ main:
 
   print "validating"
   firmware.validate
-  file.write-content --path="$test-dir/mark" "done"
+  file.write-contents --path="$test-dir/mark" "done"
   exit (int.parse os.env["BOOT_EXIT_CODE"])

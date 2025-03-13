@@ -60,7 +60,7 @@ test client/LspClient p1-path/string p2-path/string p3-good-path/string p3-bad-p
   expect-equals 0 diagnostics.size
 
   // If we change p3-good to p3-bad, we should get a warning.
-  p3-bad-content := file.read-content p3-bad-path
+  p3-bad-content := file.read-contents p3-bad-path
 
   client.send-did-open --path=p3-good-path
   diagnostics = client.diagnostics-for --path=p2-path

@@ -274,7 +274,7 @@ class LspClient:
     version := version-map_.update uri --if-absent=(: 1): it + 1
     if text == null:
       assert: path != null
-      text = (file.read-content path).to-string
+      text = (file.read-contents path).to-string
     connection_.send "textDocument/didOpen" {
       "textDocument": {
         "uri": uri,

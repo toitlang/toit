@@ -39,7 +39,7 @@ class Location:
 // Also imports all relatively imported files.
 // Fails if there is an indirect recursion (directly importing itself is ok).
 extract-locations path -> Map/*<string, Location>*/:
-  content := (file.read-content path).to-string
+  content := (file.read-contents path).to-string
   lines := (content.trim --right "\n").split "\n"
   if platform == system.PLATFORM-WINDOWS:
     lines = lines.map: |line| line.trim --right "\r"
