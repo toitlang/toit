@@ -26,6 +26,8 @@ abstract class Registers:
   Variant of $(read-bytes register count)
 
   Calls the $failure block in case of an exception.
+
+  Deprecated. Use exception handling instead.
   */
   abstract read-bytes register/int count/int [failure] -> ByteArray
   /** Writes the $data to the given $register. */
@@ -89,10 +91,14 @@ abstract class Registers:
   Uses little endian.
 
   Calls the $failure block in case of an exception.
+
+  Deprecated. Use exception handling instead.
   */
   read-u16-be register/int [failure] -> int:
-    bytes := read-bytes register 2: return failure.call it
-    return BIG-ENDIAN.uint16 bytes 0
+    e := catch:
+      bytes := read-bytes register 2
+      return BIG-ENDIAN.uint16 bytes 0
+    return failure.call e
 
 
   /**
