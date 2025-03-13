@@ -24,7 +24,7 @@ HELLO ::= "hello world"
 
 first-call test-dir/string:
   print "first call"
-  file.write-content --path="$test-dir/mark" "first"
+  file.write-contents --path="$test-dir/mark" "first"
 
   with-region: | region/storage.Region |
     region.write --at=0 HELLO

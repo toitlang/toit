@@ -152,7 +152,7 @@ class DescribeCommand:
     else:
       output-path := "$out-dir/packages/$url-path/$version"
       directory.mkdir --recursive output-path
-      file.write-content --path="$output-path/desc.yaml" (yaml.encode description)
+      file.write-contents --path="$output-path/desc.yaml" (yaml.encode description)
 
   output description/Description:
     output-map := ListCommand.verbose-description description --allow-extra-fields

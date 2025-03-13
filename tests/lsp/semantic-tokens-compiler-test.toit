@@ -23,7 +23,7 @@ test client/LspClient:
   test-cases := []
 
   test-file := "$(directory.cwd)/semantic-tokens.toit"
-  content := (file.read-content test-file).to-string
+  content := (file.read-contents test-file).to-string
   lines := (content.trim --right "\n").split "\n"
   for i := 0; i < lines.size; i++:
     line /string := lines[i]
