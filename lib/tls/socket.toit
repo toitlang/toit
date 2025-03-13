@@ -22,7 +22,7 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
   Creates a new TLS socket for a client-side TCP socket.
 
   If $server-name is provided, it will validate the peer certificate against that. If
-    the $server-name is omitted, it will skip verification.
+    the $server-name is omitted, it will skip validation.
 
   The $root-certificates are used to validate the peer certificate. It is
     generally preferred to install root certificates on a process level,
@@ -33,8 +33,8 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
   The handshake routine requires at most $handshake-timeout between each step
     in the handshake process.
 
-  Verification of the server certificate can be disabled by setting
-    $skip-certificate-verification to true. This is not recommended, as it
+  Validation of the server certificate can be disabled by setting
+    $skip-certificate-validation to true. This is not recommended, as it
     allows man-in-the-middle attacks. However, establishing a connection
     without verification consumes less resources, and can be useful in some
     cases.
@@ -46,13 +46,13 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
       --certificate/Certificate?=null
       --root-certificates=[]
       --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT
-      --skip-certificate-verification/bool=false:
+      --skip-certificate-validation/bool=false:
     session_ = Session.client socket_.in socket_.out
       --server-name=server-name
       --certificate=certificate
       --root-certificates=root-certificates
       --handshake-timeout=handshake-timeout
-      --skip-certificate-verification=skip-certificate-verification
+      --skip-certificate-validation=skip-certificate-validation
 
   /**
   Creates a new TLS socket for a server-side TCP socket.

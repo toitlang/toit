@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2025 Toit contributors
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
@@ -39,7 +39,7 @@ main:
 
   // We can skip the verification.
   client-socket := network.tcp-connect "localhost" port
-  client-tls-socket := tls.Socket.client client-socket --skip-certificate-verification
+  client-tls-socket := tls.Socket.client client-socket --skip-certificate-validation
   message := client-tls-socket.in.read
   expect-equals "OK" message.to-string
   client-socket.close

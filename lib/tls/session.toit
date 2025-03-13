@@ -121,7 +121,7 @@ class Session:
   certificate/Certificate?
   root-certificates/List
   handshake-timeout/Duration
-  skip-certificate-verification/bool
+  skip-certificate-validation/bool
 
   reader_/io.CloseableReader? := ?
   writer_/io.CloseableWriter? := ?
@@ -195,7 +195,7 @@ class Session:
       --.root-certificates=[]
       --.session-state=null
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT
-      --.skip-certificate-verification=false:
+      --.skip-certificate-validation=false:
     server-name_ = server-name
     state-bits_ = session-state ? SESSION-PROVIDED_ : 0
 
@@ -215,7 +215,7 @@ class Session:
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT:
     is-server = true
     state-bits_ = 0
-    skip-certificate-verification = false
+    skip-certificate-validation = false
 
   /**
   Explicitly completes the handshake step.
@@ -321,7 +321,7 @@ class Session:
         tls-add-root-certificate_ tls_ root.ensure-parsed_.res_
     if certificate:
       tls-add-certificate_ tls_ certificate.certificate.res_ certificate.private-key certificate.password
-    tls-init-socket_ tls_ null skip-certificate-verification
+    tls-init-socket_ tls_ null skip-certificate-validation
 
     while true:
       tls-handshake_ tls_
@@ -1149,7 +1149,7 @@ tls-add-root-certificate_ group cert:
 tls-error_ socket error:
   #primitive.tls.error
 
-tls-init-socket_ tls-socket transport-id skip-certificate-verification:
+tls-init-socket_ tls-socket transport-id skip-certificate-validation:
   #primitive.tls.init-socket
 
 tls-handshake_ tls-socket:

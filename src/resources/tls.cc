@@ -197,7 +197,7 @@ void BaseMbedTlsSocket::apply_certs(Process* process) {
   }
 }
 
-void BaseMbedTlsSocket::disable_certificate_verification() {
+void BaseMbedTlsSocket::disable_certificate_validation() {
   mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_NONE);
 }
 
@@ -838,10 +838,10 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
 }
 
 PRIMITIVE(init_socket) {
-  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id, bool, skip_certificate_verification);
+  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id, bool, skip_certificate_validation);
   USE(transport_id);
-  if (skip_certificate_verification) {
-    socket->disable_certificate_verification();
+  if (skip_certificate_validation) {
+    socket->disable_certificate_validation();
   } else {
     socket->apply_certs(process);
   }
