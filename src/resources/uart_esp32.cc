@@ -24,6 +24,7 @@
 #include "driver/gpio.h"
 #include "soc/uart_periph.h"
 #include "hal/gpio_hal.h"
+#include "esp_log.h"
 #include "esp_rom_gpio.h"
 #include "esp_timer.h"
 #include "driver/periph_ctrl.h"
@@ -164,6 +165,15 @@ class RxBuffer : public RxTxBuffer {
 
   void read(UartResource* uart, uint8* buffer, uword length);
   UART_ISR_INLINE void write(const uint8* buffer, uword length);
+
+  UART_ISR_INLINE void signal_dropped_data() { has_dropped_data_ = true; }
+  bool has_dropped_data() const { return has_dropped_data_; }
+  bool has_reported_dropped_data() const { return has_reported_dropped_data_; }
+  void set_has_reported_dropped_data() { has_reported_dropped_data_ = true; }
+
+ private:
+  bool has_dropped_data_ = false;
+  bool has_reported_dropped_data_ = false;
 };
 
 class UartResource : public EventQueueResource {
@@ -193,6 +203,9 @@ public:
   bool receive_event(word* data) override;
   void clear_data_event_in_queue();
   void clear_tx_event_in_queue();
+
+  void increment_errors() { errors_++; }
+  int errors() const { return errors_; }
 
   UART_ISR_INLINE void enable_rx_interrupts();
   UART_ISR_INLINE void disable_rx_interrupts();
@@ -273,6 +286,7 @@ public:
   bool rts_active_ = false;
   bool data_event_in_queue_ = false;
   bool tx_event_in_queue_ = false;
+  int64 errors_ = 0;
 };
 
 class UartResourceGroup : public ResourceGroup {
@@ -636,8 +650,13 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       reinterpret_cast<UartResource*>(r)->clear_tx_event_in_queue();
       break;
 
+    case UART_FIFO_OVF:
+    case UART_BUFFER_FULL:
+      reinterpret_cast<UartResource*>(r)->rx_buffer()->signal_dropped_data();
+      [[fallthrough]];
     default:
       state |= kErrorState;
+      reinterpret_cast<UartResource*>(r)->increment_errors();
       break;
   }
 
@@ -998,6 +1017,14 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
   RxBuffer* buffer = uart->rx_buffer();
+
+#ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
+  if (buffer->has_dropped_data() && !buffer->has_reported_dropped_data()) {
+    buffer->set_has_reported_dropped_data();
+    ESP_LOGE("uart", "dropped data; no further warnings will be issued");
+  }
+#endif
+
   uword available = buffer->available();
   if (available == 0) return process->null_object();
 
@@ -1019,6 +1046,11 @@ PRIMITIVE(set_control_flags) {
 
 PRIMITIVE(get_control_flags) {
   FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(errors) {
+  ARGS(UartResource, uart)
+  return Primitive::integer(uart->errors(), process);
 }
 
 } // namespace toit

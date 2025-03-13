@@ -308,6 +308,19 @@ abstract class Variant:
   uart-flush-in2 -> int: return connected2-pin1
   uart-flush-out2 -> int: return connected2-pin2
 
+
+  /**
+  Uart flush test pins.
+
+  Connect $uart-error-in1 to $uart-error-out1 with a 330Ohm resistor.
+  Connect $uart-error-in2 to $uart-error-out2 with a 330Ohm resistor.
+  */
+  uart-error-in1 -> int: return connected1-pin1
+  uart-error-out1 -> int: return connected1-pin2
+
+  uart-error-in2 -> int: return connected2-pin1
+  uart-error-out2 -> int: return connected2-pin2
+
   /**
   Uart io-data pins.
 

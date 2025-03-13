@@ -47,12 +47,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
   out_/UartWriter? := null
 
   /**
-  Number of encountered errors.
-  Deprecated.
-  */
-  errors := 0
-
-  /**
   Constructs a UART port using the given $tx for transmission and $rx
     for read.
 
@@ -240,7 +234,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
       if not uart_: return null
       if state-bits & ERROR-STATE_ != 0:
         state_.clear-state ERROR-STATE_
-        errors++
       else if state-bits & READ-STATE_ != 0:
         data := uart-read_ uart_
         if data and data.size > 0: return data
@@ -276,8 +269,16 @@ class Port extends Object with io.InMixin implements reader.Reader:
       return written
 
   /**
-  Waits for a break signal to be received.
+  Number of encountered errors.
 
+  Typically, this number is incremented if received data wasn't processed in
+    time, and the UART hardware has lost data.
+  */
+  errors -> int:
+    return uart-errors_ uart_
+
+  /**
+  Waits for a break signal to be received.
   A break signal is a continuous low signal on the RX pin for a duration of at least one byte.
 
   Not supported on all platforms.
@@ -455,3 +456,6 @@ uart-set-control-flags_ uart flags:
 
 uart-get-control-flags_ uart:
   #primitive.uart.get-control-flags
+
+uart-errors_ uart:
+  #primitive.uart.errors
