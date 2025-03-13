@@ -16,7 +16,7 @@ main:
     exit EXIT-CODE-STOP
 
   print "updating firmware with $new-firmware-path"
-  firmware-bytes := file.read-content new-firmware-path
+  firmware-bytes := file.read-contents new-firmware-path
   // Delete it, so that we don't loop forever if there is a rollback.
   file.delete new-firmware-path
   writer := firmware.FirmwareWriter 0 firmware-bytes.size

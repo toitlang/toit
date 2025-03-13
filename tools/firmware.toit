@@ -97,7 +97,7 @@ pad bits/ByteArray alignment/int -> ByteArray:
 
 read-file path/string --ui/cli.Ui -> ByteArray:
   exception := catch:
-    return file.read-content path
+    return file.read-contents path
   ui.abort "Failed to open '$path' for reading ($exception)."
   unreachable
 
@@ -443,7 +443,7 @@ container-list invocation/cli.Invocation -> none:
   output := entries-json["containers"]
 
   if output-path:
-    file.write-content --path=output-path (json.encode output)
+    file.write-contents --path=output-path (json.encode output)
     return
 
   output-string := ""

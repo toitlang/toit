@@ -9,7 +9,7 @@ import host.os
 main:
   new-firmware-path := os.env["TOIT_FIRMWARE_TEST_PATH"]
   print "Updating firmware with $new-firmware-path"
-  firmware-bytes := file.read-content new-firmware-path
+  firmware-bytes := file.read-contents new-firmware-path
   writer := firmware.FirmwareWriter 0 firmware-bytes.size
   writer.write firmware-bytes
   writer.commit
