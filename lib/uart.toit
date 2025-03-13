@@ -439,6 +439,7 @@ uart-write_ uart data from to break-length:
     // The `uart-write_` function is allowed to consume less than the whole data slice.
     // We limit the chunk size to 256 bytes.
     return io.primitive-redo-io-data_ it data from (min to (from + 256)): | prefix/ByteArray |
+      // Only send the break-length if the prefix is the whole thing.
       size := prefix.size
       prefix-break-length := size == to - from ? break-length : 0
       uart-write_ uart prefix 0 size prefix-break-length
