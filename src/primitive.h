@@ -486,7 +486,6 @@ namespace toit {
   PRIMITIVE(new_unit, 4)                     \
   PRIMITIVE(close_unit, 1)                   \
   PRIMITIVE(new_channel, 7)                  \
-  PRIMITIVE(close_channel, 2)                \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
   PRIMITIVE(clear, 1)                        \
