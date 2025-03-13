@@ -523,12 +523,30 @@ class Bus:
   /**
   Number of encountered errors.
 
-  If the program wasn't fast enough to read or write the buffers, then
-    a buffer overrun or underrun might occur. This is counted as an error.
+  This is the sum of $underrun-errors and $overrun-errors.
   */
   errors -> int:
+    return underrun-errors + overrun-errors
+
+  /**
+  Number of encountered underrun errors.
+
+  If the program wasn't fast enough to write the buffers, then
+    a buffer underun might occur. This is counted as an error.
+  */
+  underrun-errors -> int:
     if not i2s_: throw "CLOSED"
-    return i2s-errors_ i2s_
+    return i2s-underrun-errors_ i2s_
+
+  /**
+  Number of encountered overrun errors.
+
+  If the program wasn't fast enough to read the buffers, then
+    a buffer overrun might occur. This is counted as an error.
+  */
+  overrun-errors -> int:
+    if not i2s_: throw "CLOSED"
+    return i2s-overrun-errors_ i2s_
 
   /**
   Starts the bus.
@@ -713,5 +731,8 @@ i2s-write_ i2s bytes -> int:
 i2s-read-to-buffer_ i2s buffer:
   #primitive.i2s.read-to-buffer
 
-i2s-errors_ i2s -> int:
-  #primitive.i2s.errors
+i2s-underrun-errors_ i2s -> int:
+  #primitive.i2s.underrun-errors
+
+i2s-overrun-errors_ i2s -> int:
+  #primitive.i2s.overrun-errors
