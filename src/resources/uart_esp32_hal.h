@@ -33,6 +33,7 @@ typedef enum {
   UART_TOIT_INTR_TX_BRK_DONE,       // Transfer break completed
   UART_TOIT_INTR_TX_DONE,           // Transfer completed
   UART_TOIT_INTR_RX_TIMEOUT,        // The RxFifo has data, not over its threshold, but some time since last byte
+  UART_TOIT_INTR_BRK_DET,           // Break detected
   UART_TOIT_ALL_INTR_MASK,          // All interrupt bits
   UART_TOIT_INTR_MAX
 } uart_toit_interrupt_index_t;
