@@ -18,7 +18,7 @@ with-test-registry [block]:
   try:
     os.env["TOIT_PKG_CACHE_DIR"] = "$tmp-dir/.test-cache"
     directory.mkdir --recursive "$tmp-dir/.test-cache"
-    file.write-content --path="$tmp-dir/.test-cache/registries.yaml"
+    file.write-contents --path="$tmp-dir/.test-cache/registries.yaml"
         yaml.encode {"toit": TOIT-REGISTRY-MAP}
 
     block.call tmp-dir

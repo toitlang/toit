@@ -30,7 +30,7 @@ abstract class LocationCompilerTestRunner:
     run-client-test args: test it test-path locations
 
   test client/LspClient test-path/string locations/Map:
-    content := (file.read-content test-path).to-string
+    content := (file.read-contents test-path).to-string
 
     client.send-did-open --path=test-path --text=content
 

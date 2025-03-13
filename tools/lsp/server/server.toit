@@ -365,7 +365,7 @@ class LspServer:
     else:
       path := translator.to-path uri
       if file.is-file path:
-        content = (file.read-content path).to-string
+        content = (file.read-contents path).to-string
     if not content: return []
     return document.summary.to-lsp-document-symbol content
 

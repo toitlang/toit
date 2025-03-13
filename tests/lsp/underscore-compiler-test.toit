@@ -23,7 +23,7 @@ test client/LspClient:
   uri := escaped-uri.replace --all "%5f" "_"
 
   print "Checking that the file has errors."
-  underscore-content := (file.read-content underscore-path).to-string
+  underscore-content := (file.read-contents underscore-path).to-string
   client.send-did-open --uri=uri --text=underscore-content
   // By finding the diagnostics for the escaped_uri, we know that the server
   // replaced the "%5f"

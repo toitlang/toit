@@ -141,7 +141,7 @@ decode invocation/cli.Invocation -> none:
 
   snapshot-content := null
   if snapshot-path:
-    snapshot-content = file.read-content invocation["snapshot"]
+    snapshot-content = file.read-contents invocation["snapshot"]
 
   if encoded-system-message.size < 1 or encoded-system-message[0] != '[':
     pipe.print-to-stderr "\nNot a ubjson message: '$invocation["message"]'\n"

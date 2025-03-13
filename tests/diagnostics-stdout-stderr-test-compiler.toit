@@ -11,7 +11,7 @@ main args:
   tmp-dir := directory.mkdtemp "/tmp/diagnostic-test-"
   try:
     input-path := "$tmp-dir/input.toit"
-    file.write-content --path=input-path """
+    file.write-contents --path=input-path """
     /// Deprecated.
     foo:
     main: foo

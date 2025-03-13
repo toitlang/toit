@@ -48,8 +48,8 @@ main args:
   command.run args
 
 decode-types invocation/cli.Invocation -> none:
-  snapshot-content := file.read-content invocation["snapshot"]
-  types-content := file.read-content invocation["types"]
+  snapshot-content := file.read-contents invocation["snapshot"]
+  types-content := file.read-contents invocation["types"]
   types := json.decode types-content
   show-types types snapshot-content
       --sdk=invocation["sdk"]

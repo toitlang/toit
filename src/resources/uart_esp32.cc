@@ -73,6 +73,7 @@ const uart_port_t kInvalidUartPort = static_cast<uart_port_t>(-1);
 const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
+const int kBreakState = 1 << 3;
 
 static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
     // Uart 0 is reserved for serial communication (stdout).
@@ -463,6 +464,7 @@ uint32 UartResource::baud_rate() const {
 UART_ISR_INLINE void UartResource::enable_rx_interrupts() {
   enable_interrupt_index(UART_TOIT_INTR_RXFIFO_FULL);
   enable_interrupt_index(UART_TOIT_INTR_RX_TIMEOUT);
+  enable_interrupt_index(UART_TOIT_INTR_BRK_DET);
 }
 
 UART_ISR_INLINE void UartResource::disable_rx_interrupts() {
@@ -586,6 +588,9 @@ UART_ISR_INLINE void UartResource::handle_isr() {
     clear_interrupt_index(UART_TOIT_INTR_RXFIFO_OVF);
     clear_rx_fifo();
     event = UART_FIFO_OVF;
+  } else if (status & interrupt_mask(UART_TOIT_INTR_BRK_DET)) {
+    clear_interrupt_index(UART_TOIT_INTR_BRK_DET);
+    event = UART_BREAK;
   } else {
     clear_interrupt_mask(status);
   }
@@ -637,7 +642,7 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       break;
 
     case UART_BREAK:
-      // Ignore.
+      state |= kBreakState;
       break;
 
     case UART_TX_EVENT:
