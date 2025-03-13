@@ -295,6 +295,8 @@ class AssetsBuilder:
     git-run ["init"]
     git-run ["config", "user.email", "test@example.com"]
     git-run ["config", "user.name", "Test User"]
+    git-run ["config", "tag.forceSignAnnotated", "false"]
+    git-run ["config", "tag.gpgSign", "false"]
     stream := directory.DirectoryStream source-dir
     while version-name := stream.next:
       // Start by deleting the current version.
