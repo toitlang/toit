@@ -286,7 +286,7 @@ public:
   bool rts_active_ = false;
   bool data_event_in_queue_ = false;
   bool tx_event_in_queue_ = false;
-  int errors_ = 0;
+  int64 errors_ = 0;
 };
 
 class UartResourceGroup : public ResourceGroup {
@@ -1050,7 +1050,7 @@ PRIMITIVE(get_control_flags) {
 
 PRIMITIVE(errors) {
   ARGS(UartResource, uart)
-  return Smi::from(uart->errors());
+  return Primitive::Integer(uart->errors(), process);
 }
 
 } // namespace toit

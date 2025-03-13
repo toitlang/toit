@@ -22,7 +22,6 @@ TX1 ::= Variant.CURRENT.uart-error-out1
 RX2 ::= Variant.CURRENT.uart-error-in1
 TX2 ::= Variant.CURRENT.uart-error-out2
 
-
 main:
   run-test: test
 

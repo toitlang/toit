@@ -31,7 +31,7 @@ TYPE_PRIMITIVE_ANY(read)
 TYPE_PRIMITIVE_ANY(wait_tx)
 TYPE_PRIMITIVE_ANY(set_control_flags)
 TYPE_PRIMITIVE_ANY(get_control_flags)
-TYPE_PRIMITIVE_ANY(errors)
+TYPE_PRIMITIVE_INT(errors)
 
 }  // namespace toit::compiler
 }  // namespace toit
