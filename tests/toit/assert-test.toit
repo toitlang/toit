@@ -17,7 +17,7 @@ main args:
 
   with-tmp-dir: | tmp-dir/string |
     src-path := "$tmp-dir/assert.toit"
-    file.write-content --path=src-path """
+    file.write-contents --path=src-path """
       main args:
         // The assert will always fail.
         assert: args.size > 100

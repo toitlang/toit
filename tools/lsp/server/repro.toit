@@ -67,7 +67,7 @@ class FilesystemRepro extends FilesystemBase:
   sdk-path -> string: return sdk-path_
   package-cache-paths -> List: return package-cache-paths_
 
-  read-content path/string -> ByteArray?:
+  read-contents path/string -> ByteArray?:
     has-content := file-meta_.get path
         --if-present=: it["has_content"]
         --if-absent=: false

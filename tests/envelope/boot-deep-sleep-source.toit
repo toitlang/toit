@@ -11,5 +11,5 @@ main:
   if file.is-file "$test-dir/mark":
     print "Test succeeded"
     exit EXIT-CODE_STOP
-  file.write-content --path="$test-dir/mark" "first"
+  file.write-contents --path="$test-dir/mark" "first"
   __deep_sleep__ 20  // Sleep 20 ms.
