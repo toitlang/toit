@@ -102,7 +102,7 @@ serve docs-path/string --port/int --open-browser/bool --cli/Cli:
       resource-path = "$web-dir/index.html"
 
     ui.emit --debug "Serving $resource-path."
-    content := file.read-content resource-path
+    content := file.read-contents resource-path
     content-type := get-content-type-from-extension resource-path
     content-size := content.size
     writer.headers.set "Content-Type" content-type

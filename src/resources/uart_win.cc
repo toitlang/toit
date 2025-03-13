@@ -435,5 +435,10 @@ PRIMITIVE(get_control_flags) {
   return Smi::from(flags);
 }
 
+PRIMITIVE(errors) {
+  ARGS(IntResource, resource);
+  return Smi::from(0);
+}
+
 }
 #endif

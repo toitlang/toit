@@ -173,7 +173,7 @@ class SnapshotBundle:
   sdk-version      / string
 
   constructor.from-file name/string:
-    return SnapshotBundle name (file.read-content name)
+    return SnapshotBundle name (file.read-contents name)
 
   constructor byte-array/ByteArray:
     return SnapshotBundle null byte-array
@@ -1358,7 +1358,7 @@ abstract class SourceSegment extends Segment:
     set-offset_ SegmentHeader.SIZE
 
   content:
-    if not content_: content_ = read-content_
+    if not content_: content_ = read-contents_
     return content_
 
   read-position_ -> Position:
@@ -1367,7 +1367,7 @@ abstract class SourceSegment extends Segment:
   read-string_ -> string:
     return strings_.content[read-cardinal_]
 
-  abstract read-content_
+  abstract read-contents_
 
 // Abstract class for a segment that contain a list of elements.
 abstract class ListSegment extends SourceSegment:
@@ -1379,7 +1379,7 @@ abstract class ListSegment extends SourceSegment:
 
   abstract read-element_ index / int
 
-  read-content_:
+  read-contents_:
     return List count_: read-element_ it
 
   content -> List: return super
@@ -1397,7 +1397,7 @@ abstract class MapSegment extends SourceSegment:
 
   abstract read-element_ -> List  // A pair of key / value.
 
-  read-content_:
+  read-contents_:
     result := {:}
     count_.repeat:
       element := read-element_

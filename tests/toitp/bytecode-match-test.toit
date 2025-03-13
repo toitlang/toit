@@ -21,7 +21,7 @@ parse-bytecodes bytes:
     [name, size, format, description]
 
 main args:
-  c-bytecode-list := parse-bytecodes (file.read-content args[0])
+  c-bytecode-list := parse-bytecodes (file.read-contents args[0])
   expect-equals BYTE-CODES.size c-bytecode-list.size
   used-c-formats := {}
   format-mapping := {:}

@@ -32,12 +32,12 @@ copy-all entry source-dir target-dir:
   if file.is-directory source-path:
     copy-all source-path target-path
   else:
-    content := file.read-content source-path
+    content := file.read-contents source-path
     write-to-file target-path content
 
 
 read-lock-file path:
-  content-string := (file.read-content path).to-string
+  content-string := (file.read-contents path).to-string
   result := parse-lock-file content-string
   // For simplicity add empty prefixes and packages if they don't exist.
   result.get "prefixes" --init=:{:}
