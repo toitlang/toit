@@ -752,6 +752,7 @@ static Object* add_global_root(const uint8* data, size_t length, Object* hash, P
       int major_error = (-ret & 0xff80);
       if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 &&
           (-major_error == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG ||
+           -major_error == MBEDTLS_ERR_X509_INVALID_EXTENSIONS ||
            -major_error == MBEDTLS_ERR_ASN1_UNEXPECTED_TAG)) {
         return process->null_object();
       } else {
