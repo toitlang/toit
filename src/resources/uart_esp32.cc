@@ -1050,7 +1050,7 @@ PRIMITIVE(get_control_flags) {
 
 PRIMITIVE(errors) {
   ARGS(UartResource, uart)
-  return Primitive::Integer(uart->errors(), process);
+  return Primitive::integer(uart->errors(), process);
 }
 
 } // namespace toit
