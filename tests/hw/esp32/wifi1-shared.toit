@@ -55,7 +55,6 @@ CONFIGS-TO-TEST ::= [
   Config --is-encrypted=true --channel=1,
 ]
 
-
 main-board1:
   run-test: test-board1
 

@@ -428,7 +428,7 @@ esp_err_t WifiResourceGroup::establish(WifiEvents* events,
   if (err != ESP_OK) return err;
 
   int password_length = strlen(password);
-  wifi_auth_mode_t auth_mode = password_length == 0
+  wifi_auth_mode_t auth_mode = (password_length == 0)
       ? WIFI_AUTH_OPEN
       : WIFI_AUTH_WPA2_PSK;
   wifi_config_t config;
