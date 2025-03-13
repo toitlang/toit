@@ -154,7 +154,7 @@ snapshot-to-image invocation/cli.Invocation:
   program := snapshot-bundle.decode
   system-uuid ::= sdk-version-uuid --sdk-version=snapshot-bundle.sdk-version
   assets-path := invocation[ASSETS-OPTION]
-  assets := assets-path ? file.read-content assets-path : null
+  assets := assets-path ? file.read-contents assets-path : null
   id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
 
   output := { "id": id.stringify }

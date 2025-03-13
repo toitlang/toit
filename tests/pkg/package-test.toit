@@ -18,7 +18,7 @@ import ...tools.pkg.registry
 project-dir/string := ?
 
 verify-ref package ref:
-  lock := yaml.decode (file.read-content "$project-dir/package.lock")
+  lock := yaml.decode (file.read-contents "$project-dir/package.lock")
   expect-equals ref lock["packages"][package]["hash"]
 
 main:

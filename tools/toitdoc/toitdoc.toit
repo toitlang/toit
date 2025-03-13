@@ -243,7 +243,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
     package-yaml-path := fs.join source "package.yaml"
     if not file.is-file package-yaml-path:
       ui.abort "No package.yaml found at $package-yaml-path."
-    content := yaml.decode (file.read-content package-yaml-path)
+    content := yaml.decode (file.read-contents package-yaml-path)
     if content is Map:
       if content.contains "name":
         pkg-name = kebabify content["name"]
@@ -252,7 +252,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
       // Try to find the name from the README.
       readme-path := fs.join source "README.md"
       if file.is-file readme-path:
-        readme := (file.read-content readme-path).to-string
+        readme := (file.read-contents readme-path).to-string
         new-line-pos := readme.index-of "\n"
         first-line/string := ?
         if new-line-pos == -1:
@@ -306,7 +306,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   if for-package: built-toitdoc["mode"] = "package"
   if for-sdk: built-toitdoc["mode"] = "sdk"
 
-  file.write-content --path=output (json.encode built-toitdoc)
+  file.write-contents --path=output (json.encode built-toitdoc)
 
 toitdoc-build invocation/cli.Invocation --toitc/string --sdk-path/string?:
   output := invocation["output"]

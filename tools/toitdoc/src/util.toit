@@ -42,7 +42,7 @@ load-package-names project-uri/string? -> Map?:
   lock-path := fs.join (lsp.to-path project-uri) "package.lock"
   if not file.is-file lock-path: return null
 
-  data := file.read-content lock-path
+  data := file.read-contents lock-path
   decoded := yaml.decode data
 
   result := {:}
