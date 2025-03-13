@@ -19,7 +19,14 @@ import .shared
 ALL-TESTS-DONE ::= "All tests done"
 JAG-DECODE ::= "jag decode"
 
+start-time-us/int := ?
+
+log message/string:
+  duration := Duration --us=(Time.monotonic-us - start-time-us)
+  print "--- $(%06d duration.in-ms): $message"
+
 main args:
+  start-time-us = Time.monotonic-us
   root-cmd := cli.Command "tester"
       --help="Run tests on an ESP tester"
       --options=[
@@ -117,25 +124,32 @@ run-test invocation/cli.Invocation:
     board1-ready := monitor.Latch
 
     task::
+      log "Connecting to board1"
       board1.connect-network
+      log "Installing test on board1"
       board1.install-test test-path arg
+      log "Board1 ready"
       board1-ready.set true
-
-    // TODO(florian): move this to after the second board is ready.
-    board1-ready.get
 
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
+      log "Connecting to board2"
       board2.connect-network
+      log "Installing test on board2"
       board2.install-test test2-path arg
+      log "Board2 ready"
 
+    board1-ready.get
+    log "Running test"
     board1.run-test
     if port-board2:
       board2.run-test
 
     ui.emit --verbose "Waiting for all tests to be done"
     board1.all-tests-done.get
+    log "Board1 done"
     if board2: board2.all-tests-done.get
+    log "Board2 done"
 
   finally:
     board1.close
@@ -150,6 +164,7 @@ class TestDevice:
   is-active/bool := false
   collected-output/string := ""
   ready-latch/monitor.Latch := monitor.Latch
+  installed-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   ui/cli.Ui
   tmp-dir/string
@@ -181,6 +196,8 @@ class TestDevice:
             ready-latch.set true
           if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
             all-tests-done.set true
+          if not installed-container.has-value and collected-output.contains "\nINSTALLED CONTAINER":
+            installed-container.set true
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.
@@ -239,6 +256,7 @@ class TestDevice:
     network_ = null
 
   install-test test-path arg/string:
+    log "Compiling test"
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
       "compile",
@@ -247,6 +265,7 @@ class TestDevice:
       test-path
     ]
 
+    log "Converting snapshot to image"
     snapshot := file.read-contents snapshot-path
     image-path := fs.join tmp-dir "image.envelope"
     toit_ [
@@ -258,6 +277,7 @@ class TestDevice:
     ]
     image := file.read-contents image-path
 
+    log "Sending test to device"
     socket_.out.little-endian.write-int32 arg.size
     socket_.out.write arg
     socket_.out.little-endian.write-int32 image.size
@@ -266,6 +286,9 @@ class TestDevice:
     summer.add image
     socket_.out.write summer.get
     socket_.out.write image
+
+    log "Waiting for test to be fully installed"
+    installed-container.get
 
   run-test -> none:
     socket_.out.write RUN-TEST
