@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import io show LITTLE-ENDIAN BIG-ENDIAN
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
 import serial.registers show Registers
 
 class TestRegisters extends Registers:
@@ -52,8 +52,44 @@ class TestRegisters extends Registers:
       value |= data[3] << 8
       hi-word-regs[reg] = value
 
+class TestSizedRegisters extends Registers:
+  memory/ByteArray ::= ByteArray 128
+  last-direct-write/ByteArray? := null
+
+  constructor --register-byte-size/int --register-byte-order/ByteOrder:
+    super --register-byte-size=register-byte-size --register-byte-order=register-byte-order
+
+  read-bytes reg/int count/int -> ByteArray:
+    return memory[reg..reg + count]
+
+  write-bytes reg/int data/ByteArray -> none:
+    memory.replace reg data
+
+  write-bytes_ data/ByteArray -> none:
+    register-size := register-byte-size_
+    order/ByteOrder := register-byte-order_
+    register/int := order.read-uint data register-size 0
+    write-bytes register data[register-size..]
+    last-direct-write = data
+
 main:
+  test-unsized
+  test-sized
+
+test-unsized:
   regs := TestRegisters
+
+  run-tests regs
+
+test-sized:
+  [1, 2, 3, 4].do: | register-size/int |
+    [LITTLE-ENDIAN, BIG-ENDIAN].do: | order/ByteOrder |
+      regs := TestSizedRegisters --register-byte-size=register-size --register-byte-order=order
+      run-tests regs
+
+      run-sized-tests regs --register-byte-size=register-size --register-byte-order=order
+
+run-tests regs/Registers:
   expect-equals 0
     regs.read-u8 0
   expect-equals 0
@@ -166,3 +202,43 @@ main:
     regs.read-u32-le 9
   expect-equals 0x12345678
     regs.read-i32-le 9
+
+run-sized-tests regs/TestSizedRegisters --register-byte-size/int --register-byte-order/ByteOrder:
+  regs.last-direct-write = null
+
+  regs.write-u8 0 42
+  expect-not-null regs.last-direct-write
+  expect-equals (register-byte-size + 1) regs.last-direct-write.size
+  regs.last-direct-write = null
+
+  regs.write-u16-le 1 1234
+  expect-not-null regs.last-direct-write
+  expect-equals (register-byte-size + 2) regs.last-direct-write.size
+  regs.last-direct-write = null
+
+  if register-byte-size <= 1: return
+
+  regs.write-u16-be 0x1234 1234
+  expect-not-null regs.last-direct-write
+  expect-equals (register-byte-size + 2) regs.last-direct-write.size
+  // Check that the byte-order is correct.
+  expect-equals 0x1234 (register-byte-order.read-uint regs.last-direct-write register-byte-size 0)
+  regs.last-direct-write = null
+
+  if register-byte-size <= 2: return
+
+  regs.write-u16-be 0x123456 0x1234
+  expect-not-null regs.last-direct-write
+  expect-equals (register-byte-size + 2) regs.last-direct-write.size
+  // Check that the byte-order is correct.
+  expect-equals 0x1234 (register-byte-order.read-uint regs.last-direct-write register-byte-size 0)
+  regs.last-direct-write = null
+
+  if register-byte-size <= 3: return
+
+  regs.write-u24-le 0x12345678 0x123456
+  expect-not-null regs.last-direct-write
+  expect-equals (register-byte-size + 3) regs.last-direct-write.size
+  regs.last-direct-write = null
+  // Check that the byte-order is correct.
+  expect-equals 0x12345678 (register-byte-order.read-uint regs.last-direct-write register-byte-size 0)

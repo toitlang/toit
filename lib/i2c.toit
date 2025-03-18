@@ -168,10 +168,24 @@ class Device implements serial.Device:
   /**
   See $serial.Device.registers.
 
-  Always returns the same object.
+  The $register-byte-size parameter specifies the size of the registers in bytes. For most
+    I2C devices, this is 1, but 2 is common too. If the register size is greater than 1, then
+    the $register-byte-order parameter specifies the byte order of the register address.
+
+  Always returns the same object, unless the size of the registers changes or the register byte-order
+    is not the same. The first allocation of the register cached; all subsequent *different* ones
+    will create new objects.
   */
-  registers -> serial.Registers:
-    if not registers_: registers_= Registers.init_ this
+  registers --register-byte-size/int=1 --register-byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
+    if register-byte-size <= 0: throw "OUT_OF_RANGE"
+    if not registers_:
+      registers_= Registers.init_ this
+          --register-byte-size=register-byte-size
+          --register-byte-order=register-byte-order
+    else if registers_.register-byte-size_ != register-byte-size or registers_.register-byte-order_ != register-byte-order:
+      return Registers.init_ this
+          --register-byte-size=register-byte-size
+          --register-byte-order=register-byte-order
     return registers_
 
   with-failure-handling_ [block] [--on-failure]:
@@ -368,28 +382,26 @@ class Registers extends serial.Registers:
   */
   constructor .device_:
 
-  constructor.init_ .device_:
+  constructor.init_ .device_ --register-byte-size/int --register-byte-order/io.ByteOrder:
+    super --register-byte-size=register-byte-size --register-byte-order=register-byte-order
+
+  register-byte-size_ -> int:
+    return super
 
   /** See $super. */
   read-bytes reg count -> ByteArray:
     return device_.read-reg reg count
 
-  /**
-  See $super.
-
-  Deprecated. Use exception handling instead.
-  */
-  read-bytes reg count [failure] -> ByteArray:
-    e := catch:
-      return read-bytes reg count
-    return failure.call e
-
   /** See $super. */
   write-bytes reg bytes:
-    data := ByteArray bytes.size + 1
-    data[0] = reg
-    data.replace 1 bytes
+    register-size := register-byte-size_
+    data := ByteArray bytes.size + register-size
+    register-byte-order_.put-uint data register-size 0 reg
+    data.replace register-size bytes
     device_.write data
+
+  write-bytes_ bytes/ByteArray:
+    device_.write bytes
 
 resource-group_ ::= i2c-init_
 
