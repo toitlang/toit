@@ -89,6 +89,7 @@ class Bus:
       --pull-up/bool=false:
     frequency_ = frequency
     resource_ = i2c-bus-create_ resource-group_ sda.num scl.num pull-up
+    add-finalizer this:: close
 
   /**
   Scans all valid addresses.
@@ -122,8 +123,11 @@ class Bus:
   Releases the resources associated with this bus.
   */
   close -> none:
+    if not resource_: return
     devices_.values.do: it.close
+    devices_.clear
     i2c-bus-close_ resource_
+    resource_ = null
 
   /**
   Creates the device connected on the $i2c-address.
@@ -164,6 +168,7 @@ class Device implements serial.Device:
     timeout-us := 100_000
     disable-ack-check := false
     resource_ = i2c-device-create_ bus_.resource_ address-bit-size address frequency timeout-us disable-ack-check
+    add-finalizer this:: close
 
   /**
   See $serial.Device.registers.
@@ -353,7 +358,9 @@ class Device implements serial.Device:
 
   /** Closes this device and releases the I2C address. */
   close -> none:
-    if not bus_: return
+    if not resource_: return
+    i2c-device-close_ resource_
+    resource_ = null
     bus_.devices_.remove address
     bus_ = null
 
@@ -411,7 +418,7 @@ i2c-bus-reset_ resource:
 i2c-device-create_ bus address-length/int address/int frequency/int timeout-us/int disable-ack-check/bool:
   #primitive.i2c.device-create
 
-i2c-device_ device:
+i2c-device-close_ device:
   #primitive.i2c.device-close
 
 i2c-device-read_ device buffer/ByteArray size/int:
