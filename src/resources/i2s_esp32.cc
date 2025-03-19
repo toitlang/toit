@@ -110,25 +110,60 @@ class I2sResource: public EventQueueResource {
 
   bool receive_event(word* data) override;
 
-  int errors() const {
+  int errors_underrun() const {
     portENTER_CRITICAL(&spinlock_);
-    int result = errors_;
+    int result = errors_underrun_;
     portEXIT_CRITICAL(&spinlock_);
     return result;
   }
-  void inc_errors() {
+
+  int errors_overrun() const {
     portENTER_CRITICAL(&spinlock_);
-    errors_++;
+    int result = errors_overrun_;
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
+
+  void inc_errors_underrun() {
+    portENTER_CRITICAL(&spinlock_);
+    errors_underrun_++;
     portEXIT_CRITICAL(&spinlock_);
   }
 
+  void inc_errors_overrun() {
+    portENTER_CRITICAL(&spinlock_);
+    errors_overrun_++;
+    portEXIT_CRITICAL(&spinlock_);
+  }
+
+  bool has_reported_underrun() const {
+    return error_state_ & TX_UNDERRUN_REPORTED_;
+  }
+
+  bool has_reported_overrun() const {
+    return error_state_ & RX_OVERRUN_REPORTED_;
+  }
+
+  void set_has_reported_underrun() {
+    error_state_ |= TX_UNDERRUN_REPORTED_;
+  }
+
+  void set_has_reported_overrun() {
+    error_state_ |= RX_OVERRUN_REPORTED_;
+  }
+
  private:
+  static const int RX_OVERRUN_REPORTED_ = 1 << 0;
+  static const int TX_UNDERRUN_REPORTED_ = 1 << 1;
+
   i2s_chan_handle_t tx_handle_;
   i2s_chan_handle_t rx_handle_;
   mutable spinlock_t spinlock_;
   word pending_event_ = 0;
   State state_ = UNITIALIZED;
-  int errors_ = 0;
+  int64 errors_underrun_ = 0;
+  int64 errors_overrun_ = 0;
+  int error_state_ = 0;
 };
 
 bool I2sResource::receive_event(word* data) {
@@ -181,11 +216,20 @@ IRAM_ATTR static bool channel_read_handler(i2s_chan_handle_t handle,
   return channel_send(resource);
 }
 
-IRAM_ATTR static bool channel_error_handler(i2s_chan_handle_t handle,
-                                  i2s_event_data_t* event,
-                                  void* user_ctx) {
+IRAM_ATTR static bool channel_overrun_error_handler(i2s_chan_handle_t handle,
+                                                     i2s_event_data_t* event,
+                                                     void* user_ctx) {
   auto resource = reinterpret_cast<I2sResource*>(user_ctx);
-  resource->inc_errors();
+  resource->inc_errors_overrun();
+  resource->adjust_pending_event(kErrorState);
+  return channel_send(resource);
+}
+
+IRAM_ATTR static bool channel_underrun_error_handler(i2s_chan_handle_t handle,
+                                                      i2s_event_data_t* event,
+                                                      void* user_ctx) {
+  auto resource = reinterpret_cast<I2sResource*>(user_ctx);
+  resource->inc_errors_underrun();
   resource->adjust_pending_event(kErrorState);
   return channel_send(resource);
 }
@@ -253,7 +297,7 @@ PRIMITIVE(create) {
       .on_recv = null,
       .on_recv_q_ovf = null,
       .on_sent = &channel_sent_handler,
-      .on_send_q_ovf = &channel_error_handler,
+      .on_send_q_ovf = &channel_underrun_error_handler,
     };
     err = i2s_channel_register_event_callback(tx_handle, &callbacks, resource);
     if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -261,7 +305,7 @@ PRIMITIVE(create) {
   if (rx_handle != null) {
     i2s_event_callbacks_t callbacks = {
       .on_recv = &channel_read_handler,
-      .on_recv_q_ovf = &channel_error_handler,
+      .on_recv_q_ovf = &channel_overrun_error_handler,
       .on_sent = null,
       .on_send_q_ovf = null,
     };
@@ -481,6 +525,14 @@ PRIMITIVE(close) {
 
 PRIMITIVE(write) {
   ARGS(I2sResource, resource, Blob, buffer);
+
+#ifdef CONFIG_TOIT_REPORT_I2S_DATA_LOSS
+  if (!resource->has_reported_underrun() && resource->errors_underrun() > 0) {
+    resource->set_has_reported_underrun();
+    ESP_LOGE("i2s", "i2s underrun detected; no further warnings will be issued");
+  }
+#endif
+
   auto tx_handle = resource->tx_handle();
   if (tx_handle == null) FAIL(UNSUPPORTED);
   size_t written = 0;
@@ -494,6 +546,14 @@ PRIMITIVE(write) {
 
 PRIMITIVE(read_to_buffer) {
   ARGS(I2sResource, resource, MutableBlob, buffer);
+
+#ifdef CONFIG_TOIT_REPORT_I2S_DATA_LOSS
+  if (!resource->has_reported_overrun() && resource->errors_overrun() > 0) {
+    resource->set_has_reported_overrun();
+    ESP_LOGE("i2s", "i2s overrun detected; no further warnings will be issued");
+  }
+#endif
+
   auto rx_handle = resource->rx_handle();
   if (rx_handle == null) FAIL(UNSUPPORTED);
 
@@ -504,9 +564,14 @@ PRIMITIVE(read_to_buffer) {
   return Smi::from(static_cast<word>(read));
 }
 
-PRIMITIVE(errors) {
+PRIMITIVE(errors_underrun) {
   ARGS(I2sResource, resource);
-  return Smi::from(resource->errors());
+  return Primitive::integer(resource->errors_underrun(), process);
+}
+
+PRIMITIVE(errors_overrun) {
+  ARGS(I2sResource, resource);
+  return Primitive::integer(resource->errors_overrun(), process);
 }
 
 } // namespace toit
