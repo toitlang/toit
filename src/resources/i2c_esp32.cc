@@ -37,7 +37,7 @@ const int TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS = 1000;
 class I2cResourceGroup : public ResourceGroup {
  public:
   TAG(I2cResourceGroup);
-  I2cResourceGroup(Process* process)
+  explicit I2cResourceGroup(Process* process)
     : ResourceGroup(process) {}
 };
 
@@ -95,8 +95,9 @@ I2cDeviceResource::~I2cDeviceResource() {
 
 I2cBusResource::~I2cBusResource() {
   while (!DeviceList::is_empty()) {
-    // Removing the device doesn't delete the resource. That needs to be
-    // done separately.
+    // Removing the device doesn't delete the `I2cDeviceResource`, but only modifies
+    // it so it doesn't have any handle anymore. The `I2cDeviceResource` still needs to
+    // be deleted.
     remove_device(DeviceList::first());
   }
   i2c_del_master_bus(handle());
