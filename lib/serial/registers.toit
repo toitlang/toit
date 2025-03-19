@@ -25,37 +25,37 @@ abstract class Registers:
   The register size in bytes.
 
   If non-zero, then this class prefixes data with the register address, using
-    $register-byte-order_ to determine the order of the bytes.
+    $byte-order_ to determine the order of the bytes.
 
   # Inheritance
   This field is protected and not private.
   */
-  register-byte-size_/int
+  byte-size_/int
 
   /**
   The byte order of the register address.
 
-  Only used if $register-byte-size_ is non-zero.
+  Only used if $byte-size_ is non-zero.
 
   # Inheritance
   This field is protected and not private.
   */
-  register-byte-order_/ByteOrder
+  byte-order_/ByteOrder
 
   /**
   Contructs a new Registers object.
 
   # Inheritance
-  The $register-byte-size can be used to tell this class to write the register
-    in front of data (when writing to registers).The $register-byte-order then
+  The $byte-size can be used to tell this class to write the register
+    in front of data (when writing to registers).The $byte-order then
     determines the order of the bytes.
 
-  If a non-zero $register-byte-size is supported, then the subclass must override
+  If a non-zero $byte-size is supported, then the subclass must override
     $(write-bytes_ data).
   */
-  constructor --register-byte-size/int=0 --register-byte-order/ByteOrder=LITTLE_ENDIAN:
-    register-byte-size_ = register-byte-size
-    register-byte-order_ = register-byte-order
+  constructor --byte-size/int=0 --byte-order/ByteOrder=BIG_ENDIAN:
+    byte-size_ = byte-size
+    byte-order_ = byte-order
 
   /**
   Reads the $count bytes from the given $register.
@@ -85,7 +85,7 @@ abstract class Registers:
   Writes the given $data to the device.
 
   # Inheritance
-  Subclasses must override this method if they support $register-byte-size_ that are
+  Subclasses must override this method if they support $byte-size_ that are
     non-zero.
 
   This method is protected and not private.
@@ -96,15 +96,15 @@ abstract class Registers:
   /**
   Writes the given $data to the given $register.
 
-  If $register-byte-size_ is non-zero, then the register is prefixed to the data
-    using $register-byte-order_.
+  If $byte-size_ is non-zero, then the register is prefixed to the data
+    using $byte-order_.
   */
   write-bytes-fill-register_ register/int data/ByteArray -> none:
-    register-size := register-byte-size_
+    register-size := byte-size_
     if register-size == 0:
       write-bytes register data
     else:
-      register-byte-order_.put-uint data register-size 0 register
+      byte-order_.put-uint data register-size 0 register
       write-bytes_ data
 
   /** Reads an unsigned 8-bit integer from the $register. */
@@ -246,7 +246,7 @@ abstract class Registers:
   Writes the $value to the given $register as an unsigned 8-bit integer.
   */
   write-u8 register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-1_: buffer-1_ = ByteArray (1 + offset)
     buffer-1_[offset] = value
     write-bytes-fill-register_ register buffer-1_
@@ -254,7 +254,7 @@ abstract class Registers:
   /** Writes the $value to the given $register as a signed 8-bit integer. */
   write-i8 register/int value/int -> none:
     if not -128 <= value <= 127: throw "OUT_OF_BOUNDS"
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-1_: buffer-1_ = ByteArray (1 + offset)
     buffer-1_[offset] = value
     write-bytes-fill-register_ register buffer-1_
@@ -265,7 +265,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-u16-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-2_: buffer-2_ = ByteArray (2 + offset)
     LITTLE-ENDIAN.put-uint16 buffer-2_ offset value
     write-bytes-fill-register_ register buffer-2_
@@ -276,7 +276,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-i16-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-2_: buffer-2_ = ByteArray (2 + offset)
     LITTLE-ENDIAN.put-int16 buffer-2_ offset value
     write-bytes-fill-register_ register buffer-2_
@@ -287,7 +287,7 @@ abstract class Registers:
   Uses big endian.
   */
   write-u16-be register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-2_: buffer-2_ = ByteArray (2 + offset)
     BIG-ENDIAN.put-uint16 buffer-2_ offset value
     write-bytes-fill-register_ register buffer-2_
@@ -298,7 +298,7 @@ abstract class Registers:
   Uses big endian.
   */
   write-i16-be register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-2_: buffer-2_ = ByteArray (2 + offset)
     BIG-ENDIAN.put-int16 buffer-2_ offset value
     write-bytes-fill-register_ register buffer-2_
@@ -309,7 +309,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-u24-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-3_: buffer-3_ = ByteArray (3 + offset)
     LITTLE-ENDIAN.put-uint24 buffer-3_ offset value
     write-bytes-fill-register_ register buffer-3_
@@ -320,7 +320,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-i24-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-3_: buffer-3_ = ByteArray (3 + offset)
     LITTLE-ENDIAN.put-int24 buffer-3_ offset value
     write-bytes-fill-register_ register buffer-3_
@@ -331,7 +331,7 @@ abstract class Registers:
   Uses big endian.
   */
   write-u24-be register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-3_: buffer-3_ = ByteArray (3 + offset)
     BIG-ENDIAN.put-uint24 buffer-3_ offset value
     write-bytes-fill-register_ register buffer-3_
@@ -342,7 +342,7 @@ abstract class Registers:
   Uses big endian.
   */
   write-i24-be register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-3_: buffer-3_ = ByteArray (3 + offset)
     BIG-ENDIAN.put-int24 buffer-3_ offset value
     write-bytes-fill-register_ register buffer-3_
@@ -353,7 +353,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-32-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-4_: buffer-4_ = ByteArray (4 + offset)
     LITTLE-ENDIAN.put-int32 buffer-4_ offset value
     write-bytes-fill-register_ register buffer-4_
@@ -364,7 +364,7 @@ abstract class Registers:
   Uses little endian.
   */
   write-u32-le register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-4_: buffer-4_ = ByteArray (4 + offset)
     LITTLE-ENDIAN.put-uint32 buffer-4_ offset value
     write-bytes-fill-register_ register buffer-4_
@@ -375,7 +375,7 @@ abstract class Registers:
   Uses big endian.
   */
   write-i32-be register/int value/int -> none:
-    offset := register-byte-size_
+    offset := byte-size_
     if not buffer-4_: buffer-4_ = ByteArray (4 + offset)
     BIG-ENDIAN.put-int32 buffer-4_ offset value
     write-bytes-fill-register_ register buffer-4_

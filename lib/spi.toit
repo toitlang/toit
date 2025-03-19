@@ -154,15 +154,15 @@ interface Device extends serial.Device:
   /**
   See $serial.Device.registers.
 
-  The $register-byte-size parameter specifies the size of the registers in bytes. For most
+  The $byte-size parameter specifies the size of the registers in bytes. For most
     I2C devices, this is 1, but 2 is common too. If the register size is greater than 1, then
-    the $register-byte-order parameter specifies the byte order of the register address.
+    the $byte-order parameter specifies the byte order of the register address.
 
   Always returns the same object, unless the size of the registers changes or the register byte-order
     is not the same. The first allocation of the register cached; all subsequent *different* ones
     will create new objects.
   */
-  registers --register-byte-size/int=1 --register-byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers
 
   /**
   Transfers the given $data to the device.
@@ -225,23 +225,23 @@ abstract class DeviceBase_ implements Device:
   /**
   See $serial.Device.registers.
 
-  The $register-byte-size parameter specifies the size of the registers in bytes. For most
+  The $byte-size parameter specifies the size of the registers in bytes. For most
     I2C devices, this is 1, but 2 is common too.
 
   Always returns the same object, unless the size of the registers changes or the register byte-order
     is not the same. The first allocation of the register cached; all subsequent *different* ones
     will create new objects.
   */
-  registers --register-byte-size/int=1 --register-byte-order/io.ByteOrder=io.LITTLE-ENDIAN -> serial.Registers:
-    if register-byte-size <= 0: throw "OUT_OF_RANGE"
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
+    if byte-size <= 0: throw "OUT_OF_RANGE"
     if not registers_:
       registers_= Registers.init_ this
-          --register-byte-size=register-byte-size
-          --register-byte-order=register-byte-order
-    else if registers_.register-byte-size_ != register-byte-size or registers_.register-byte-order_ != register-byte-order:
+          --byte-size=byte-size
+          --byte-order=byte-order
+    else if registers_.byte-size_ != byte-size or registers_.byte-order_ != byte-order:
       return Registers.init_ this
-          --register-byte-size=register-byte-size
-          --register-byte-order=register-byte-order
+          --byte-size=byte-size
+          --byte-order=byte-order
     return registers_
 
   /**
@@ -390,11 +390,8 @@ class Registers extends serial.Registers:
   /** Deprecated. Use $Device.registers. */
   constructor .device_:
 
-  constructor.init_ .device_ --register-byte-size/int --register-byte-order/io.ByteOrder:
-    super --register-byte-size=register-byte-size --register-byte-order=register-byte-order
-
-  register-byte-size_ -> int:
-    return super
+  constructor.init_ .device_ --byte-size/int --byte-order/io.ByteOrder:
+    super --byte-size=byte-size --byte-order=byte-order
 
   /**
   Sets the writing mode.
@@ -417,9 +414,9 @@ class Registers extends serial.Registers:
     value so it has a low most-significant bit.
   */
   read-bytes register/int count/int:
-    register-size := register-byte-size_
+    register-size := byte-size_
     data := ByteArray register-size + count
-    register-byte-order_.put-uint data register-size 0 register
+    byte-order_.put-uint data register-size 0 register
     data[0] = mask-reg_ (not msb-write_) data[0]
     transfer_ data --read
     return data.copy 1
@@ -430,10 +427,10 @@ class Registers extends serial.Registers:
   If `msb-write` is set (see $set-msb-write) modifies the register
     value so it has a high most-significant bit.
   */
-  write-bytes reg bytes:
-    register-size := register-byte-size_
+  write-bytes reg/int bytes/ByteArray:
+    register-size := byte-size_
     data := ByteArray bytes.size + register-size
-    register-byte-order_.put-uint data register-size 0 reg
+    byte-order_.put-uint data register-size 0 reg
     data[0] = mask-reg_ msb-write_ data[0]
     data.replace register-size bytes
     transfer_ data
@@ -443,7 +440,7 @@ class Registers extends serial.Registers:
 
   Still sets the write/read bit.
 
-  This function is needed because we support non-zero register-byte-sizes.
+  This function is needed because we support non-zero byte-sizes.
   Overrides the superclass implementation.
   */
   write-bytes_ bytes/ByteArray:

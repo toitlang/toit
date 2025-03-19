@@ -173,24 +173,24 @@ class Device implements serial.Device:
   /**
   See $serial.Device.registers.
 
-  The $register-byte-size parameter specifies the size of the registers in bytes. For most
+  The $byte-size parameter specifies the size of the registers in bytes. For most
     I2C devices, this is 1, but 2 is common too. If the register size is greater than 1, then
-    the $register-byte-order parameter specifies the byte order of the register address.
+    the $byte-order parameter specifies the byte order of the register address.
 
   Always returns the same object, unless the size of the registers changes or the register byte-order
     is not the same. The first allocation of the register cached; all subsequent *different* ones
     will create new objects.
   */
-  registers --register-byte-size/int=1 --register-byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
-    if register-byte-size <= 0: throw "OUT_OF_RANGE"
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
+    if byte-size <= 0: throw "OUT_OF_RANGE"
     if not registers_:
       registers_= Registers.init_ this
-          --register-byte-size=register-byte-size
-          --register-byte-order=register-byte-order
-    else if registers_.register-byte-size_ != register-byte-size or registers_.register-byte-order_ != register-byte-order:
+          --byte-size=byte-size
+          --byte-order=byte-order
+    else if registers_.byte-size_ != byte-size or registers_.byte-order_ != byte-order:
       return Registers.init_ this
-          --register-byte-size=register-byte-size
-          --register-byte-order=register-byte-order
+          --byte-size=byte-size
+          --byte-order=byte-order
     return registers_
 
   with-failure-handling_ [block] [--on-failure]:
@@ -389,21 +389,18 @@ class Registers extends serial.Registers:
   */
   constructor .device_:
 
-  constructor.init_ .device_ --register-byte-size/int --register-byte-order/io.ByteOrder:
-    super --register-byte-size=register-byte-size --register-byte-order=register-byte-order
-
-  register-byte-size_ -> int:
-    return super
+  constructor.init_ .device_ --byte-size/int --byte-order/io.ByteOrder:
+    super --byte-size=byte-size --byte-order=byte-order
 
   /** See $super. */
-  read-bytes reg count -> ByteArray:
+  read-bytes reg/int count/int -> ByteArray:
     return device_.read-reg reg count
 
   /** See $super. */
-  write-bytes reg bytes:
-    register-size := register-byte-size_
+  write-bytes reg/int bytes/ByteArray:
+    register-size := byte-size_
     data := ByteArray bytes.size + register-size
-    register-byte-order_.put-uint data register-size 0 reg
+    byte-order_.put-uint data register-size 0 reg
     data.replace register-size bytes
     device_.write data
 
