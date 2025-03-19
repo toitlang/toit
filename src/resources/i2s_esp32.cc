@@ -99,7 +99,7 @@ class I2sResource: public EventQueueResource {
     return result;
   }
 
-  void adjust_pending_event(word event_type) {
+  IRAM_ATTR void adjust_pending_event(word event_type) {
     portENTER_CRITICAL(&spinlock_);
     pending_event_ |= event_type;
     portEXIT_CRITICAL(&spinlock_);
