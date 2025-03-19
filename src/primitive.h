@@ -415,14 +415,16 @@ namespace toit {
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
-  PRIMITIVE(init, 5)                         \
-  PRIMITIVE(close, 1)                        \
-  PRIMITIVE(write, 3)                        \
-  PRIMITIVE(write_reg, 4)                    \
-  PRIMITIVE(write_address, 4)                \
-  PRIMITIVE(read, 3)                         \
-  PRIMITIVE(read_reg, 4)                     \
-  PRIMITIVE(read_address, 4)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(bus_create, 4)                   \
+  PRIMITIVE(bus_close, 1)                    \
+  PRIMITIVE(bus_probe, 3)                    \
+  PRIMITIVE(bus_reset, 1)                    \
+  PRIMITIVE(device_create, 6)                \
+  PRIMITIVE(device_close, 1)                 \
+  PRIMITIVE(device_write, 2)                 \
+  PRIMITIVE(device_read, 3)                  \
+  PRIMITIVE(device_write_read, 4)            \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -1069,7 +1071,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
 #define _A_T_Font(N, name)                MAKE_UNPACKING_MACRO(Font, N, name)
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
-#define _A_T_I2cCommand(N, name)          MAKE_UNPACKING_MACRO(I2cCommand, N, name)
+#define _A_T_I2cBusResource(N, name)      MAKE_UNPACKING_MACRO(I2cBusResource, N, name)
+#define _A_T_I2cDeviceResource(N, name)   MAKE_UNPACKING_MACRO(I2cDeviceResource, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
 #define _A_T_LwipSocket(N, name)          MAKE_UNPACKING_MACRO(LwipSocket, N, name)

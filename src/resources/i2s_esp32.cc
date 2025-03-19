@@ -26,15 +26,12 @@
 #include "../objects_inline.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
 
 namespace toit {
-
-const i2s_port_t kInvalidPort = i2s_port_t(-1);
 
 const int kReadState = 1 << 0;
 const int kWriteState = 1 << 1;
@@ -277,7 +274,7 @@ PRIMITIVE(create) {
     // free I2S peripherals.
     // We don't want to do this ourselves, as some platforms allow to have
     // multiple simplex channels on the same controller.
-    FAIL(OUT_OF_RANGE);
+    FAIL(ALREADY_IN_USE);
   }
   if (err != ESP_OK) return Primitive::os_error(err, process);
   Defer del_tx_channel { [&] { if (!handed_to_resource && tx_handle != null) i2s_del_channel(tx_handle); } };
