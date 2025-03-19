@@ -20,7 +20,7 @@ set(TOIT_SKIP_TESTS
   # We are missing a DHT11.
   dht11-board1.toit-esp32s3
 
-  # I2C is flaky.
+  # I2S is flaky.
   # https://github.com/espressif/esp-idf/issues/15275
   i2s-test.toit-esp32
   i2s-board1.toit-esp32-msb8-slave
