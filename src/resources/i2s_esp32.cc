@@ -110,29 +110,29 @@ class I2sResource: public EventQueueResource {
 
   bool receive_event(word* data) override;
 
-  int underrun_errors() const {
+  int errors_underrun() const {
     portENTER_CRITICAL(&spinlock_);
-    int result = underrun_errors_;
+    int result = errors_underrun_;
     portEXIT_CRITICAL(&spinlock_);
     return result;
   }
 
-  int overrun_errors() const {
+  int errors_overrun() const {
     portENTER_CRITICAL(&spinlock_);
-    int result = overrun_errors_;
+    int result = errors_overrun_;
     portEXIT_CRITICAL(&spinlock_);
     return result;
   }
 
-  void inc_underrun_errors() {
+  void inc_errors_underrun() {
     portENTER_CRITICAL(&spinlock_);
-    underrun_errors_++;
+    errors_underrun_++;
     portEXIT_CRITICAL(&spinlock_);
   }
 
-  void inc_overrun_errors() {
+  void inc_errors_overrun() {
     portENTER_CRITICAL(&spinlock_);
-    overrun_errors_++;
+    errors_overrun_++;
     portEXIT_CRITICAL(&spinlock_);
   }
 
@@ -161,8 +161,8 @@ class I2sResource: public EventQueueResource {
   mutable spinlock_t spinlock_;
   word pending_event_ = 0;
   State state_ = UNITIALIZED;
-  int64 underrun_errors_ = 0;
-  int64 overrun_errors_ = 0;
+  int64 errors_underrun_ = 0;
+  int64 errors_overrun_ = 0;
   int error_state_ = 0;
 };
 
@@ -220,7 +220,7 @@ IRAM_ATTR static bool channel_overrun_error_handler(i2s_chan_handle_t handle,
                                                      i2s_event_data_t* event,
                                                      void* user_ctx) {
   auto resource = reinterpret_cast<I2sResource*>(user_ctx);
-  resource->inc_overrun_errors();
+  resource->inc_errors_overrun();
   resource->adjust_pending_event(kErrorState);
   return channel_send(resource);
 }
@@ -229,7 +229,7 @@ IRAM_ATTR static bool channel_underrun_error_handler(i2s_chan_handle_t handle,
                                                       i2s_event_data_t* event,
                                                       void* user_ctx) {
   auto resource = reinterpret_cast<I2sResource*>(user_ctx);
-  resource->inc_underrun_errors();
+  resource->inc_errors_underrun();
   resource->adjust_pending_event(kErrorState);
   return channel_send(resource);
 }
@@ -527,7 +527,7 @@ PRIMITIVE(write) {
   ARGS(I2sResource, resource, Blob, buffer);
 
 #ifdef CONFIG_TOIT_REPORT_I2S_DATA_LOSS
-  if (!resource->has_reported_underrun() && resource->underrun_errors() > 0) {
+  if (!resource->has_reported_underrun() && resource->errors_underrun() > 0) {
     resource->set_has_reported_underrun();
     ESP_LOGE("i2s", "i2s underrun detected; no further warnings will be issued");
   }
@@ -548,7 +548,7 @@ PRIMITIVE(read_to_buffer) {
   ARGS(I2sResource, resource, MutableBlob, buffer);
 
 #ifdef CONFIG_TOIT_REPORT_I2S_DATA_LOSS
-  if (!resource->has_reported_overrun() && resource->overrun_errors() > 0) {
+  if (!resource->has_reported_overrun() && resource->errors_overrun() > 0) {
     resource->set_has_reported_overrun();
     ESP_LOGE("i2s", "i2s overrun detected; no further warnings will be issued");
   }
@@ -564,14 +564,14 @@ PRIMITIVE(read_to_buffer) {
   return Smi::from(static_cast<word>(read));
 }
 
-PRIMITIVE(underrun_errors) {
+PRIMITIVE(errors_underrun) {
   ARGS(I2sResource, resource);
-  return Primitive::integer(resource->underrun_errors(), process);
+  return Primitive::integer(resource->errors_underrun(), process);
 }
 
-PRIMITIVE(overrun_errors) {
+PRIMITIVE(errors_overrun) {
   ARGS(I2sResource, resource);
-  return Primitive::integer(resource->overrun_errors(), process);
+  return Primitive::integer(resource->errors_overrun(), process);
 }
 
 } // namespace toit

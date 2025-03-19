@@ -434,8 +434,8 @@ namespace toit {
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read_to_buffer, 2)               \
-  PRIMITIVE(underrun_errors, 1)              \
-  PRIMITIVE(overrun_errors, 1)               \
+  PRIMITIVE(errors_underrun, 1)              \
+  PRIMITIVE(errors_overrun, 1)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \

@@ -76,11 +76,11 @@ test:
     sleep --ms=10
 
   print "Errors: $out.errors"
-  print "Overrun errors: $out.overrun-errors"
-  print "Underrun errors: $out.underrun-errors"
+  print "Overrun errors: $(out.errors --overrun)"
+  print "Underrun errors: $(out.errors --underrun)"
   expect out.errors > 0
-  expect (out.underrun-errors > 0)
-  expect-equals 0 out.overrun-errors
+  expect ((out.errors --underrun) > 0)
+  expect-equals 0 (out.errors --overrun)
   out.write #[0x01, 0x02]
 
   // We want to get more errors.
@@ -97,11 +97,11 @@ test:
     sleep --ms=10
 
   print "Errors: $in.errors"
-  print "Overrun errors: $in.overrun-errors"
-  print "Underrun errors: $in.underrun-errors"
+  print "Overrun errors: $(out.errors --overrun)"
+  print "Underrun errors: $(out.errors --underrun)"
   expect in.errors > 0
-  expect (in.overrun-errors > 0)
-  expect-equals 0 in.underrun-errors
+  expect ((in.errors --overrun) > 0)
+  expect-equals 0 (in.errors --underrun)
 
   // We should get a warning/error message now.
   in.read
