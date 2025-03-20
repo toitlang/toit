@@ -19,11 +19,25 @@ set(TOIT_SKIP_TESTS
   dac-test.toit-esp32s3
   # We are missing a DHT11.
   dht11-board1.toit-esp32s3
+
+  # I2S is flaky.
+  # https://github.com/espressif/esp-idf/issues/15275
+  i2s-test.toit-esp32
+  i2s-board1.toit-esp32-msb8-slave
+  i2s-board1.toit-esp32-pcm16-outstereoleft
+  i2s-board1.toit-esp32-pcm16-outstereoright
+  i2s-board1.toit-esp32-pcm16-outmonoboth
+  i2s-board1.toit-esp32-pcm32-outstereoleft
+  i2s-board1.toit-esp32-pcm32-inmonoleft
+  i2s-test.toit-esp32s3
+  i2s-board1.toit-esp32s3-msb16-writer-fast-slave
+  i2s-board1.toit-esp32s3-pcm16-outstereoleft
+  i2s-board1.toit-esp32s3-pcm16-outstereoright
+  i2s-board1.toit-esp32s3-pcm16-outmonoboth
+  i2s-board1.toit-esp32s3-pcm32-outstereoleft
 )
 
 set(TOIT_FAILING_TESTS
-  # The anti-glitching doesn't seem to work.
-  pulse-counter-test.toit-esp32s3
   # Idle level 1 doesn't seem to work.
   rmt-drain-pullup-test.toit-esp32s3
   # Probably just an issue with the number of RMT channels.

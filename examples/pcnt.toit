@@ -24,8 +24,7 @@ main:
       sleep --ms=20
 
   pin := gpio.Pin 18
-  unit := pulse-counter.Unit
-  channel := unit.add-channel pin
+  unit := pulse-counter.Unit pin
 
   5.repeat:
     print unit.value

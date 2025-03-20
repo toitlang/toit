@@ -297,7 +297,7 @@ namespace toit {
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
   PRIMITIVE(deinit, 1)                       \
-  PRIMITIVE(init_socket, 2)                  \
+  PRIMITIVE(init_socket, 3)                  \
   PRIMITIVE(create, 2)                       \
   PRIMITIVE(take_outgoing, 1)                \
   PRIMITIVE(set_incoming, 3)                 \
@@ -436,7 +436,8 @@ namespace toit {
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read_to_buffer, 2)               \
-  PRIMITIVE(errors, 1)                       \
+  PRIMITIVE(errors_underrun, 1)              \
+  PRIMITIVE(errors_overrun, 1)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -488,7 +489,6 @@ namespace toit {
   PRIMITIVE(new_unit, 4)                     \
   PRIMITIVE(close_unit, 1)                   \
   PRIMITIVE(new_channel, 7)                  \
-  PRIMITIVE(close_channel, 2)                \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
   PRIMITIVE(clear, 1)                        \

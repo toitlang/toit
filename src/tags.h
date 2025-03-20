@@ -52,6 +52,7 @@ namespace toit {
   fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
+  fn(PcntChannelResource)               \
   fn(PwmResource)                       \
   fn(RmtResource)                       \
   fn(Directory)                         \
@@ -104,7 +105,6 @@ namespace toit {
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \
   fn(X509ResourceGroup)                 \
-  fn(PcntChannelResourceGroup)          \
   fn(PcntUnitResourceGroup)             \
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
