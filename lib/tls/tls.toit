@@ -138,4 +138,12 @@ main:
     // Handle the connection
     tls-socket.close
 ```
+
+You can create your self-signed certificates using the `openssl` command-line
+  tool. Don't forget to add a common name (CN), like 'localhost' to the
+  certificate.
+
+```
+openssl req -nodes -new -x509 -keyout key.pem -out server.cert
+```
 */

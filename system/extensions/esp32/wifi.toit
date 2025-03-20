@@ -117,7 +117,10 @@ class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Inte
     if password.size != 0 and password.size < 8:
       throw "wifi password must be at least 8 characters"
     channel/int := config.get wifi.CONFIG-CHANNEL --if-absent=: 1
-    if channel < 1 or channel > 13:
+    // The safe world mode only allows channels 1-11.
+    // Most of the world uses channels 1-13.
+    // Japan allows channels 1-14. For simplicity we go with 1-13.
+    if not 1 <= channel <= 13:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG-BROADCAST --if-absent=: true
 

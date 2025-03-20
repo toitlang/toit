@@ -22,23 +22,37 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
   Creates a new TLS socket for a client-side TCP socket.
 
   If $server-name is provided, it will validate the peer certificate against that. If
-    the $server-name is omitted, it will skip verification.
-  The $root-certificates are used to validate the peer certificate.
+    the $server-name is omitted, it will skip validation.
+
+  The $root-certificates are used to validate the peer certificate. It is
+    generally preferred to install root certificates on a process level,
+    rather than passing them to each TLS socket.
+
   If $certificate is given, the certificate is used by the server to validate the
     authority of the client. This is not done using e.g. HTTPS communication.
   The handshake routine requires at most $handshake-timeout between each step
     in the handshake process.
+
+  Validation of the server certificate can be disabled by setting
+    $skip-certificate-validation to true. This is not recommended, as it
+    allows man-in-the-middle attacks. However, establishing a connection
+    without verification consumes less resources, and can be useful in some
+    cases.
+  When connecting to a server that uses a self-signed certificate prefer to
+    install the server's certificate as root certificate.
   */
   constructor.client .socket_/tcp.Socket
       --server-name/string?=null
       --certificate/Certificate?=null
       --root-certificates=[]
-      --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT:
+      --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT
+      --skip-certificate-validation/bool=false:
     session_ = Session.client socket_.in socket_.out
       --server-name=server-name
       --certificate=certificate
       --root-certificates=root-certificates
       --handshake-timeout=handshake-timeout
+      --skip-certificate-validation=skip-certificate-validation
 
   /**
   Creates a new TLS socket for a server-side TCP socket.
