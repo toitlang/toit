@@ -173,10 +173,24 @@ class Device implements serial.Device:
   /**
   See $serial.Device.registers.
 
-  Always returns the same object.
+  The $byte-size parameter specifies the size of the registers in bytes. For most
+    I2C devices, this is 1, but 2 is common too. If the register size is greater than 1, then
+    the $byte-order parameter specifies the byte order of the register address.
+
+  Always returns the same object, unless the size of the registers changes or the register byte-order
+    is not the same. The first allocation of the register cached; all subsequent *different* ones
+    will create new objects.
   */
-  registers -> serial.Registers:
-    if not registers_: registers_= Registers.init_ this
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
+    if byte-size <= 0: throw "OUT_OF_RANGE"
+    if not registers_:
+      registers_= Registers.init_ this
+          --byte-size=byte-size
+          --byte-order=byte-order
+    else if registers_.byte-size_ != byte-size or registers_.byte-order_ != byte-order:
+      return Registers.init_ this
+          --byte-size=byte-size
+          --byte-order=byte-order
     return registers_
 
   with-failure-handling_ [block] [--on-failure]:
@@ -375,28 +389,23 @@ class Registers extends serial.Registers:
   */
   constructor .device_:
 
-  constructor.init_ .device_:
+  constructor.init_ .device_ --byte-size/int --byte-order/io.ByteOrder:
+    super --byte-size=byte-size --byte-order=byte-order
 
   /** See $super. */
-  read-bytes reg count -> ByteArray:
+  read-bytes reg/int count/int -> ByteArray:
     return device_.read-reg reg count
 
-  /**
-  See $super.
-
-  Deprecated. Use exception handling instead.
-  */
-  read-bytes reg count [failure] -> ByteArray:
-    e := catch:
-      return read-bytes reg count
-    return failure.call e
-
   /** See $super. */
-  write-bytes reg bytes:
-    data := ByteArray bytes.size + 1
-    data[0] = reg
-    data.replace 1 bytes
+  write-bytes reg/int bytes/ByteArray:
+    register-size := byte-size_
+    data := ByteArray bytes.size + register-size
+    byte-order_.put-uint data register-size 0 reg
+    data.replace register-size bytes
     device_.write data
+
+  write-bytes_ bytes/ByteArray:
+    device_.write bytes
 
 resource-group_ ::= i2c-init_
 
