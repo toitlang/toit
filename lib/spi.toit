@@ -244,15 +244,6 @@ abstract class DeviceBase_ implements Device:
           --byte-order=byte-order
     return registers_
 
-  /**
-  See $Device.registers.
-
-  Always returns the same object.
-  */
-  registers -> Registers:
-    if not registers_: registers_= Registers.init_ this
-    return registers_
-
   /** See $serial.Device.read. */
   read size/int -> ByteArray:
     bytes := ByteArray size
