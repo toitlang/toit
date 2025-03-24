@@ -152,7 +152,7 @@ class Logger:
       keys_ = keys
       values_ = values
 
-  /** Returns the level of the logger. */
+  /** The level of the logger. */
   level -> int:
     return level_
 
