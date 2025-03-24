@@ -152,6 +152,10 @@ class Logger:
       keys_ = keys
       values_ = values
 
+  /** Returns the level of the logger. */
+  level -> int:
+    return level_
+
   /** Adds the $name to a copy of this logger. */
   with-name name/string -> Logger:
     return Logger.internal_ this --name=name
