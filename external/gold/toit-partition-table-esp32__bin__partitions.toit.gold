@@ -1,0 +1,57 @@
+toit-partition-table-esp32/bin/partitions.toit:28:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "esptool"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:30:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "port"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:33:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "partition-table-offset"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:36:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "partition-table-size"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:25:13: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  cmd := cli.Command "partitions"
+            ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:41:30: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  print-partitions-cmd := cli.Command "print-partitions"
+                             ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:51:27: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  print-otadata-cmd := cli.Command "print-otadata"
+                          ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:64:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "out"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:70:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "partition"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:61:18: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  read-cmd := cli.Command "read"
+                 ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:85:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "in"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:91:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "partition"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:82:19: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  write-cmd := cli.Command "write"
+                  ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:106:12: warning: Deprecated constructor of 'Flag'. Use '--help' instead of '--short-help'
+        cli.Flag "make-active"
+           ^~~~~
+toit-partition-table-esp32/bin/partitions.toit:109:12: warning: Deprecated constructor of 'OptionEnum'. Use '--help' instead of '--short-help'
+        cli.OptionEnum "state" ["new", "pending-verify", "valid", "aborted", "undefined"]
+           ^~~~~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:112:12: warning: Deprecated constructor of 'OptionInt'. Use '--help' instead of '--short-help'
+        cli.OptionInt "select-entry"
+           ^~~~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:116:12: warning: Deprecated constructor of 'Option'. Use '--help' instead of '--short-help'
+        cli.Option "partition"
+           ^~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:103:27: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  set-ota-state-cmd := cli.Command "set-ota-state"
+                          ^~~~~~~~
+toit-partition-table-esp32/bin/partitions.toit:128:21: warning: Deprecated constructor of 'Command'. Use '--help' instead of '--short-help'
+  version-cmd := cli.Command "version"
+                    ^~~~~~~~
