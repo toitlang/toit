@@ -16,13 +16,15 @@ network := net.open
 main:
   certificate-roots.install-common-trusted-roots
 
-  // These two are too flaky.  Often the first reconnect succeeds, but the
-  // second one fails.
-  //test-site-with-one-retry "amazon.com"
-  //test-site-with-one-retry "app.supabase.com" --no-read-data
   test-site-with-one-retry "cloudflare.com"
   test-site-with-one-retry "adafruit.com"
-  test-site-with-one-retry "punktum.dk"
+  test-site-with-one-retry "ft.dk"
+
+  // These two are too flaky.  Often the first reconnect succeeds, but the
+  // second one fails.
+  if false:
+    test-site-with-one-retry "amazon.com"
+    test-site-with-one-retry "app.supabase.com" --no-read-data
 
 test-site-with-one-retry host/string --read-data/bool=true -> none:
   catch --trace:
