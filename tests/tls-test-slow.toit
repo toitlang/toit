@@ -53,7 +53,7 @@ run-tests:
     // Connect to the IP address at the TCP level, but verify the cert name.
     "$(dns.dns-lookup "amazon.com" --network=network)/amazon.com",
 
-    "dkhostmaster.dk",
+    "punktum.dk",
     "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
 
     "sha256.badssl.com",

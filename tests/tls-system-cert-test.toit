@@ -56,7 +56,7 @@ run-tests:
   working := [
     "amazon.com",
     "adafruit.com",
-    "dkhostmaster.dk",
+    "punktum.dk",
     "dmi.dk",
     "pravda.ru",
     "elpriser.nu",

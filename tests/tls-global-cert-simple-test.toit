@@ -56,7 +56,7 @@ run-tests:
   working := [
     "amazon.com",
     "adafruit.com",
-    "dkhostmaster.dk",
+    "punktum.dk",
     "dmi.dk",
     "pravda.ru",
     "elpriser.nu",
@@ -138,7 +138,7 @@ add-global-certs -> none:
   tls.add-global-root-certificate_ USERTRUST-ECC-CERTIFICATION-AUTHORITY-BYTES  // Needed for helsinki.fi.
   // Test ASCII (PEM) roots.
   tls.add-global-root-certificate_ USERTRUST-RSA-CERTIFICATE-TEXT 0x0c49cbaf  // Needed for dmi.dk.
-  tls.add-global-root-certificate_ ISRG-ROOT-X1-TEXT  // Needed by dkhostmaster.dk and digimedia.com.
+  tls.add-global-root-certificate_ ISRG-ROOT-X1-TEXT  // Needed by punktum.dk and digimedia.com.
   // Test that the cert can be a slice.
   tls.add-global-root-certificate_ DIGICERT-ROOT-TEXT[..DIGICERT-ROOT-TEXT.size - 9]
   tls.add-global-root-certificate_ COMODO-AAA-SERVICES-ROOT-BYTES_

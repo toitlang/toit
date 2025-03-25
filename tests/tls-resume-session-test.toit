@@ -22,7 +22,7 @@ main:
   //test-site-with-one-retry "app.supabase.com" --no-read-data
   test-site-with-one-retry "cloudflare.com"
   test-site-with-one-retry "adafruit.com"
-  test-site-with-one-retry "dkhostmaster.dk"
+  test-site-with-one-retry "punktum.dk"
 
 test-site-with-one-retry host/string --read-data/bool=true -> none:
   catch --trace:
