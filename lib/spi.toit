@@ -162,7 +162,7 @@ interface Device extends serial.Device:
     is not the same. The first allocation of the register cached; all subsequent *different* ones
     will create new objects.
   */
-  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> Registers
 
   /**
   Transfers the given $data to the device.
@@ -232,7 +232,7 @@ abstract class DeviceBase_ implements Device:
     is not the same. The first allocation of the register cached; all subsequent *different* ones
     will create new objects.
   */
-  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> serial.Registers:
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> Registers:
     if byte-size <= 0: throw "OUT_OF_RANGE"
     if not registers_:
       registers_= Registers.init_ this
