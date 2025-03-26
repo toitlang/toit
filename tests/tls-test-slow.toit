@@ -161,11 +161,14 @@ working-site host port expected-certificate-name:
     load-limiter.dec
 
 connect-to-site-with-retry host port expected-certificate-name:
-  2.repeat: | attempt-number |
-    error := catch --unwind=(:attempt-number == 1):
+  attempts ::= 3
+  delay-between-attempts ::= Duration --s=1
+  attempts.repeat: | attempt-number |
+    error := catch --unwind=(:attempt-number == attempts - 1):
       connect-to-site host port expected-certificate-name
     if not error: return
-    print "Retrying $host"
+    sleep delay-between-attempts
+    print "Retrying $host after delaying for $delay-between-attempts"
 
 connect-to-site host port expected-certificate-name:
   bytes := 0
