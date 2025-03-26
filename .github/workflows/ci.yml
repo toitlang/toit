@@ -78,11 +78,6 @@ on:
         required: false
         type: string
         default:
-      enable-lto:
-        description: "Enable link-time optimizations"
-        required: false
-        type: boolean
-        default: false
 
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
@@ -204,7 +199,7 @@ jobs:
         run: ccache -s
 
       - name: Enable link-time optimizations
-        if: env.DO_RELEASE == 'true' || github.event.inputs.enable-lto == 'true'
+        if: env.DO_RELEASE == 'true'
         run: |
           make enable-lto
 
