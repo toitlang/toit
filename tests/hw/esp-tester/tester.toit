@@ -143,13 +143,15 @@ run-test invocation/cli.Invocation:
     log "Running test"
     board1.run-test
     if port-board2:
+      board1.running-container.get
       board2.run-test
 
     ui.emit --verbose "Waiting for all tests to be done"
     board1.all-tests-done.get
     log "Board1 done"
-    if board2: board2.all-tests-done.get
-    log "Board2 done"
+    if board2:
+      board2.all-tests-done.get
+      log "Board2 done"
 
   finally:
     board1.close
@@ -165,6 +167,7 @@ class TestDevice:
   collected-output/string := ""
   ready-latch/monitor.Latch := monitor.Latch
   installed-container/monitor.Latch := monitor.Latch
+  running-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   ui/cli.Ui
   tmp-dir/string
@@ -189,15 +192,14 @@ class TestDevice:
             data-str = data-str[.. data-str.size - 1]
           else:
             at-new-line = false
-          std-out := data-str.replace --all "\n" "\n$name: "
+          timestamp := Duration --us=(Time.monotonic-us - start-time-us)
+          std-out := data-str.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
           stdout.write std-out
           collected-output += data-str
-          if not ready-latch.has-value and collected-output.contains "\n$MINI-JAG-LISTENING":
-            ready-latch.set true
-          if not all-tests-done.has-value and collected-output.contains ALL-TESTS-DONE:
-            all-tests-done.set true
-          if not installed-container.has-value and collected-output.contains "\nINSTALLED CONTAINER":
-            installed-container.set true
+          if collected-output.contains "\n$MINI-JAG-LISTENING": set-latch_ ready-latch
+          if collected-output.contains "\n$ALL-TESTS-DONE": set-latch_ all-tests-done
+          if collected-output.contains "\n$INSTALLED-CONTAINER": set-latch_ installed-container
+          if collected-output.contains "\n$RUNNING-CONTAINER": set-latch_ running-container
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.
@@ -216,6 +218,10 @@ class TestDevice:
         if port:
           port.close
           port = null
+
+  set-latch_ latch/monitor.Latch:
+    if latch.has-value: return
+    latch.set true
 
   close:
     if read-task:
