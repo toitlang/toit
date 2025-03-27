@@ -239,7 +239,7 @@ class TestDevice:
     port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS true
     is-active = true
-    sleep --ms=200
+    sleep --ms=500
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
 
     ui.emit --verbose "Waiting for $name to be ready"
