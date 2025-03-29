@@ -1,0 +1,7 @@
+tests/negative/import-upper-test.toit:5:9: warning: Import identifiers should be lowercase
+import .Import-Upper
+        ^~~~~~~~~~~~
+tests/negative/import-upper-test.toit:8:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed
