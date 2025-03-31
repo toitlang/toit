@@ -330,7 +330,7 @@ class Device implements serial.Device:
   Reads $size bytes from the given $address.
   */
   read-address address/ByteArray size/int -> ByteArray:
-    return read-address address size: throw it
+    return write-read address size
 
   /**
   Variant of $(read-address address size).
