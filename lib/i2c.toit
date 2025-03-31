@@ -330,11 +330,13 @@ class Device implements serial.Device:
   Reads $size bytes from the given $address.
   */
   read-address address/ByteArray size/int -> ByteArray:
-    return read-address address size: throw it
+    return write-read address size
 
   /**
   Variant of $(read-address address size).
   Calls the $failure block if the operation fails.
+
+  Deprecated. Use exception handling instead.
   */
   read-address address/ByteArray size/int [failure] -> ByteArray:
     return with-failure-handling_ --on-failure=failure:
@@ -342,7 +344,6 @@ class Device implements serial.Device:
 
   /**
   Writes the $tx-buffer to the device and reads $size bytes.
-
 
   # Advanced
   This operation is done as follows:
