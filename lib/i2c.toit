@@ -335,6 +335,8 @@ class Device implements serial.Device:
   /**
   Variant of $(read-address address size).
   Calls the $failure block if the operation fails.
+
+  Deprecated. Use exception handling instead.
   */
   read-address address/ByteArray size/int [failure] -> ByteArray:
     return with-failure-handling_ --on-failure=failure:
