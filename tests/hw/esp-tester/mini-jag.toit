@@ -21,6 +21,7 @@ main:
   print "Wakeup cause: $cause"
   // It looks like resetting the chip through the UART yields RESET-UNKNOWN.
   if cause == esp32.RESET-POWER-ON or cause == esp32.RESET-UNKNOWN:
+    print "Clearing containers and waiting for new test"
     clear-containers
     with-client: | socket/tcp.Socket |
       install-new-test socket.in
@@ -78,7 +79,7 @@ install-new-test reader/io.Reader:
   bucket := storage.Bucket.open --ram BUCKET-NAME
   bucket["arg"] = arg.to-string
   bucket.close
-  print "INSTALLED CONTAINER"
+  print INSTALLED-CONTAINER
 
 wait-for-run-signal reader/io.Reader:
   print "WAITING FOR RUN-SIGNAL"
@@ -88,7 +89,7 @@ wait-for-run-signal reader/io.Reader:
     return
 
 run-test:
-  print "RUNNING INSTALLED CONTAINER"
+  print RUNNING-CONTAINER
   bucket := storage.Bucket.open --ram BUCKET-NAME
   arg := bucket["arg"]
   bucket.close
