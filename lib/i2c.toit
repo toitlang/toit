@@ -345,7 +345,6 @@ class Device implements serial.Device:
   /**
   Writes the $tx-buffer to the device and reads $size bytes.
 
-
   # Advanced
   This operation is done as follows:
   - send a 'start',
