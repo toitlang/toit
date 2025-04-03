@@ -212,7 +212,7 @@ class EspNowResource : public EventQueueResource {
   bool receive_event(word* data) override;
 
   // Returns null if the initializations succeeded.
-  Object* init(Process* process, int mode, Blob pmk, wifi_phy_rate_t phy_rate);
+  Object* init(Process* process, Blob pmk);
 
  private:
   enum class State {
@@ -266,7 +266,7 @@ EspNowResource::~EspNowResource() {
   }
 }
 
-Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate_t phy_rate) {
+Object* EspNowResource::init(Process* process, Blob pmk) {
   id_ = wifi_espnow_pool.any();
   if (id_ == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
@@ -290,23 +290,26 @@ Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate
   state_ = State::RX_QUEUE_ALLOCATED;
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  wifi_mode_t wifi_mode = mode == 0 ? WIFI_MODE_STA : WIFI_MODE_AP;
-
   esp_err_t err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   state_ = State::WIFI_INITTED;
 
   err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  err = esp_wifi_set_mode(wifi_mode);
+
+  err = esp_wifi_set_mode(WIFI_MODE_STA);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = esp_wifi_start();
   if (err != ESP_OK) return Primitive::os_error(err, process);
   state_ = State::WIFI_STARTED;
 
-  wifi_interface_t interface = mode == 0 ? WIFI_IF_STA : WIFI_IF_AP;
-  err = esp_wifi_config_espnow_rate(interface, phy_rate);
+  uint8 protocol;
+  err = esp_wifi_get_protocol(WIFI_IF_STA, &protocol);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  protocol |= WIFI_PROTOCOL_LR;
+
+  err = esp_wifi_set_protocol(WIFI_IF_STA, protocol);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = esp_now_init();
@@ -385,6 +388,21 @@ static wifi_phy_rate_t map_toit_rate_to_esp_idf_rate(int toit_rate) {
   }
 }
 
+static wifi_phy_mode_t map_toit_mode_to_esp_idf_mode(int toit_mode) {
+  switch (toit_mode) {
+    case 0: return WIFI_PHY_MODE_LR;
+    case 1: return WIFI_PHY_MODE_11B;
+    case 2: return WIFI_PHY_MODE_11G;
+    case 3: return WIFI_PHY_MODE_11A;
+    case 4: return WIFI_PHY_MODE_HT20;
+    case 5: return WIFI_PHY_MODE_HT40;
+    case 6: return WIFI_PHY_MODE_HE20;
+    case 7: return WIFI_PHY_MODE_VHT20;
+    default:
+      return static_cast<wifi_phy_mode_t>(-1);
+  }
+}
+
 MODULE_IMPLEMENTATION(espnow, MODULE_ESPNOW)
 
 PRIMITIVE(init) {
@@ -409,13 +427,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate, int, channel);
-
-  wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
-  if (rate != -1) {
-    phy_rate =  map_toit_rate_to_esp_idf_rate(rate);
-    if (static_cast<int>(phy_rate) == -1) FAIL(INVALID_ARGUMENT);
-  }
+  ARGS(EspNowResourceGroup, group, Blob, pmk, int, channel);
 
   if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
 
@@ -436,7 +448,7 @@ PRIMITIVE(create) {
   // From now on the resource is in charge of all allocations. The
   // event_queue, too, is now deleted by it.
 
-  Object* init_result = resource->init(process, mode, pmk, phy_rate);
+  Object* init_result = resource->init(process, pmk);
   if (init_result != null) {
     delete resource;
     return init_result;
@@ -519,7 +531,19 @@ PRIMITIVE(receive) {
 }
 
 PRIMITIVE(add_peer) {
-  ARGS(EspNowResource, resource, Blob, mac, int, channel, Blob, key);
+  ARGS(EspNowResource, resource, Blob, mac, int, channel, Blob, key, int, mode, int, rate);
+
+  if ((mode != -1 && rate == -1) || (mode == -1 && rate != -1)) FAIL(INVALID_ARGUMENT);
+
+  wifi_phy_mode_t phy_mode = WIFI_PHY_MODE_LR;
+  wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
+  if (mode != -1) {
+    phy_rate =  map_toit_rate_to_esp_idf_rate(rate);
+    if (static_cast<int>(phy_rate) == -1) FAIL(INVALID_ARGUMENT);
+
+    phy_mode = map_toit_mode_to_esp_idf_mode(mode);
+    if (static_cast<int>(phy_mode) == -1) FAIL(INVALID_ARGUMENT);
+  }
 
   wifi_mode_t wifi_mode;
   esp_err_t err = esp_wifi_get_mode(&wifi_mode);
@@ -539,7 +563,30 @@ PRIMITIVE(add_peer) {
   err = esp_now_add_peer(&peer);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->true_object();
+  if (mode != -1) {
+    esp_now_rate_config_t rate_config {
+      .phymode = phy_mode,
+      .rate = phy_rate,
+      .ersu = false,
+      .dcm = false,
+    };
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
+    err = esp_now_set_peer_rate_config(peer.peer_addr, &rate_config);
+    if (err != ESP_OK) {
+      esp_now_del_peer(peer.peer_addr);
+      return Primitive::os_error(err, process);
+    }
+  }
+
+  return process->null_object();
+}
+
+PRIMITIVE(remove_peer) {
+  ARGS(EspNowResource, resource, Blob, mac);
+
+  esp_err_t err = esp_now_del_peer(mac.address());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
 }
 
 } // namespace toit
