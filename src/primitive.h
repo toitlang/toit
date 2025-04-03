@@ -758,12 +758,13 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 5)                       \
+  PRIMITIVE(create, 3)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
   PRIMITIVE(receive, 1)                      \
-  PRIMITIVE(add_peer, 4)                     \
+  PRIMITIVE(add_peer, 6)                     \
+  PRIMITIVE(remove_peer, 2)                  \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
   PRIMITIVE(binary_operator, 5)              \

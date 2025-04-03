@@ -27,6 +27,7 @@ TYPE_PRIMITIVE_ANY(send)
 TYPE_PRIMITIVE_BOOL(send_succeeded)
 TYPE_PRIMITIVE_ANY(receive)
 TYPE_PRIMITIVE_ANY(add_peer)
+TYPE_PRIMITIVE_NULL(remove_peer)
 
 }  // namespace toit::compiler
 }  // namespace toit
