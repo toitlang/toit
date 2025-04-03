@@ -25,6 +25,7 @@ abstract class Variant:
   /**
   A voltage divider consisting of three 330 Ohm resistors in series.
   The resistors must go from start->adc1->adc2->end.
+
   The adc1 pin must be an ADC pin of ADC1.
   The adc2 pin must be an ADC pin of ADC2 (if there is one).
   */
@@ -47,10 +48,6 @@ abstract class Variant:
 
   /**
   Two pins that are connected with a 330 Ohm resistor.
-
-  It is probably OK to use the $chain2-pin2 and $chain2-pin3 pins for
-    this, but often there is a more suitable connection available that
-    isn't transitively connected to GND.
   */
   abstract connected1-pin1 -> int
   abstract connected1-pin2 -> int
@@ -154,11 +151,17 @@ abstract class Variant:
 
   Pin 3 goes to the same pin on both boards.
   Pin 4 goes to the same pin on both boards.
+  Pin 5 goes to the same pin on both boards.
+  Pin 6 goes to the same pin on both boards.
+
+  Pin 5 and 6 must be connected with a 5K resistor.
   */
   abstract board-connection-pin1 -> int
   abstract board-connection-pin2 -> int
   abstract board-connection-pin3 -> int
   abstract board-connection-pin4 -> int
+  abstract board-connection-pin5 -> int
+  abstract board-connection-pin6 -> int
 
   /*
   ADC.
@@ -363,15 +366,22 @@ A configuration for the ESP32.
 
 On board 1 connect as follows:
 - a voltage divider consisting of 4 pins each connected with a
-  330Ohm resistor.
-  IO27 (start) - IO32 (ADC1_4) - IO26 (ADC2_9/DAC_2) - IO14 (end)
+  330Ohm resistor, continued to 2 more pins with a 5k and 330Ohm
+  IO27 (start) - IO32 (ADC1_4) - IO26 (ADC2_9/DAC_2) - IO14 (end) - IO13 - IO36
+
+  The connection between IO14 and IO13 must be a 5K resistor.
+  IO36 is input only.
+
 - IO25 (DAC1) - IO33 with 330Ohm
+
+- IO13 (also connected with board2) - IO17 (also connected with board2) with 5KOhm.
+
 - The following pins in a row: GND - IO21 - IO19 - IO18
   * IO21 to GND with a 1MOhm resistor.
   * IO21 to IO19 without any resistor.
   * IO19 to IO18 with a 330Ohm resistor.
 
-IO2, IO4, and IO16 must stay unconnected.
+IO2, IO4, and IO16 must stay unconnected (or connected to the other board).
 Pins IO4 and IO2 are used for touch tests.
 
 On board2:
@@ -389,7 +399,9 @@ Connect the two boards.
 - IO22 (board1) - IO23 (board2)
 - IO23 (board1) - IO22 (board2)
 - IO16 (board1) - IO16 (board2)
+- IO27 (board1) - IO27 (board2)
 - IO17 (board1) - IO17 (board2)
+- IO13 (board1) - IO13 (board2)
 */
 class Esp32 extends Variant:
   pulse-counter-channel-count ::= 8
@@ -447,7 +459,9 @@ class Esp32 extends Variant:
   board-connection-pin1 ::= 22
   board-connection-pin2 ::= 23
   board-connection-pin3 ::= 16
-  board-connection-pin4 ::= 17
+  board-connection-pin4 ::= 27
+  board-connection-pin5 ::= 17
+  board-connection-pin6 ::= 13
 
 /**
 A configuration for the ESP32-S3.
@@ -456,7 +470,11 @@ On board 1 connect as follows:
 - a voltage divider consisting of 4 pins each connected with a
   330Ohm resistor.
   IO13 (start) - IO09 (ADC1) - IO12 (ADC2) - IO10 (end)
+
 - IO19 - IO21 with 330Ohm
+
+- IO38 (also connected to board2) - IO47 (also connected to board2) with 5KOhm.
+
 - The following pins in a row: GND - IO1 - IO2 - IO42
   * IO1 to GND with a 1MOhm resistor.
   * IO1 to IO2 without any resistor.
@@ -479,7 +497,9 @@ Connect the two boards.
 - IO04 (board1) - IO05 (board2)
 - IO05 (board1) - IO04 (board2)
 - IO21 (board1) - IO21 (board2)
+- IO17 (board1) - IO17 (board2)
 - IO47 (board1) - IO47 (board2)
+- IO38 (board1) - IO38 (board2)
 */
 class Esp32s3 extends Variant:
   pulse-counter-channel-count ::= 4
@@ -538,4 +558,6 @@ class Esp32s3 extends Variant:
   board-connection-pin1 ::= 4
   board-connection-pin2 ::= 5
   board-connection-pin3 ::= 21
-  board-connection-pin4 ::= 47
+  board-connection-pin4 ::= 17
+  board-connection-pin5 ::= 47
+  board-connection-pin6 ::= 38
