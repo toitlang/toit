@@ -301,7 +301,7 @@ class Service:
   The $mode must be one of $MODE-LR, $MODE-11B, $MODE-11G, $MODE-11A,
     $MODE-HT20, $MODE-HT40, $MODE-HE20, or $MODE-VHT20.
   The $rate must be one of the ESP-Now rate constants. See $RATE-1M-L for example.
-    By default the one provided a construction is used.
+    By default the one provided at construction is used.
 
   For long-range operation use $mode set to $MODE-LR and $rate set to $RATE-LORA-250K
     or $RATE-LORA-500K.
