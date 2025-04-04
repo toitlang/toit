@@ -81,7 +81,10 @@ class Bus:
   /**
   Configures a device on this SPI bus.
 
-  The device's clock speed is configured to the given $frequency.
+  The device's clock speed is configured to the given $frequency. The given
+    $frequency is only aspirational, and the actual frequency might
+    be different. For example, the ESP32S3 seems to have a minimum frequency of
+    100kHz.
 
   An optional $cs (chip select) and $dc (data/command) pin can be assigned
     for this device. If no $cs pin is provided, then the chip must be enabled
