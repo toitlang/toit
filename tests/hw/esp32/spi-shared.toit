@@ -65,7 +65,6 @@ test-board1:
   master-mosi.close
   master-miso.close
 
-
 main-board2:
   run-test --background: test-board2
 

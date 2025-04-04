@@ -61,7 +61,6 @@ test
 
   idle-clk-level := cpol
   on-from-idle-edge := cpha == 0
-  //expect-equals idle-clk-level slave-sclk.get
 
   if run-slave-receive:
     slave.prepare-receive 24 --cpol=cpol --cpha=cpha
