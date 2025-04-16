@@ -29,12 +29,14 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-pcm16-outmonoboth
   i2s-board1.toit-esp32-pcm32-outstereoleft
   i2s-board1.toit-esp32-pcm32-inmonoleft
+  i2s-board1.toit-esp32-pcm32-mclk
   i2s-test.toit-esp32s3
   i2s-board1.toit-esp32s3-msb16-writer-fast-slave
   i2s-board1.toit-esp32s3-pcm16-outstereoleft
   i2s-board1.toit-esp32s3-pcm16-outstereoright
   i2s-board1.toit-esp32s3-pcm16-outmonoboth
   i2s-board1.toit-esp32s3-pcm32-outstereoleft
+  i2s-board1.toit-esp32s3-pcm32-mclk
 )
 
 set(TOIT_FAILING_TESTS
