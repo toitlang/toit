@@ -19,6 +19,7 @@ The $level-pin should be configured as not-output (input or nothing) and will be
   reconfigured as output
 */
 test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
+  print "GND <-1M-> $test-pin.num <-> $measure-pin.num <-330-> $level-pin.num"
   // The pin is in full output mode and should just win.
   expect-equals 0 measure-pin.get
   test-pin.set 1
@@ -42,6 +43,7 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
 
   expect-equals 0 measure-pin.get
   test-pin.set 1
+  sleep --ms=1  // Give the 1MOhm resistor time to drain.
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
 
@@ -79,6 +81,20 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
 
   // Try with a pull-up.
 
+  test-pin.configure --input --pull-up
+
+  expect-equals 1 measure-pin.get
+
+  // Disable the pull-up.
+  test-pin.set-pull 0
+  sleep --ms=1  // Give the 1MOhm resistor time to drain.
+  // The 1MOhm resistor wins now.
+  expect-equals 0 measure-pin.get
+  // Enable it again.
+  test-pin.set-pull 1
+
+  expect-equals 1 measure-pin.get
+
   test-pin.configure --pull-up --input --output --open-drain
   // 0 drains.
   expect-equals 0 measure-pin.get
@@ -88,6 +104,7 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
 
   // Disable the pull-up.
   test-pin.set-pull 0
+  sleep --ms=1  // Give the 1MOhm resistor time to drain.
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
   // Enable it again.
