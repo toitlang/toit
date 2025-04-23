@@ -465,6 +465,30 @@ PRIMITIVE(pin_set_open_drain) {
   return process->null_object();
 }
 
+PRIMITIVE(pin_set_pull) {
+  ARGS(GpioPinResource, pin, int, direction)
+
+  auto settings = pin->settings();
+  if (settings == null) FAIL(INVALID_ARGUMENT);
+
+
+  gpiod_line_bias bias;
+  if (direction == 0) {
+    bias = GPIOD_LINE_BIAS_DISABLED;
+  } else if (direction < 0) {
+    bias = GPIOD_LINE_BIAS_PULL_DOWN;
+  } else {
+    bias = GPIOD_LINE_BIAS_PULL_UP;
+  }
+
+  gpiod_line_settings_set_bias(settings, bias);
+
+  Object* error = pin->apply_and_store_settings(settings, process);
+  if (error != null) return error;
+
+  return process->null_object();
+}
+
 PRIMITIVE(pin_config_edge_detection) {
   ARGS(GpioPinResource, pin, bool, enable)
 

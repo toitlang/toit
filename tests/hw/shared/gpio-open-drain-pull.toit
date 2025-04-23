@@ -25,6 +25,18 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   expect-equals 1 measure-pin.get
   test-pin.set 0
 
+  test-pin.configure --input
+  // The pin is in input mode and the 1MOhm resistor should win.
+  expect-equals 0 measure-pin.get
+  test-pin.set-pull 1  // Pull up.
+  expect-equals 1 measure-pin.get
+  test-pin.set-pull -1  // Pull down.
+  // Given the 1MOhm resistor, we don't see a difference to the non-pull configuration,
+  // but at least we know that something changed compared to the pull-up.
+  expect-equals 0 measure-pin.get
+
+  test-pin.configure --output
+
   // Enable open drain.
   test-pin.set-open-drain true
 
@@ -32,6 +44,11 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   test-pin.set 1
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
+
+  test-pin.set-pull 1  // Pull up.
+  // The internal pull up wins.
+  expect-equals 1 measure-pin.get
+  test-pin.set-pull 0  // Disable any pull.
 
   level-pin.configure --output
   level-pin.set 1
@@ -69,6 +86,12 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   // Now the pull up wins (and not the 1M resistor).
   expect-equals 1 measure-pin.get
 
+  // Disable the pull-up.
+  test-pin.set-pull 0
+  // The 1MOhm resistor wins now.
+  expect-equals 0 measure-pin.get
+  // Enable it again.
+  test-pin.set-pull 1
 
   // It's not recommended, but we can switch to non-open-drain.
   test-pin.set-open-drain false

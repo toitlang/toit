@@ -381,6 +381,15 @@ interface Pin:
   */
   set-open-drain value/bool
 
+  /**
+  Sets the pull-up/down resistor depending on the given $value.
+
+  If $value is negative, then the pull-down resistor is set.
+  If $value is positive, then the pull-up resistor is set.
+  Otherwise, the pull-up and pull-down resistors are disabled.
+  */
+  set-pull value/int
+
 /**
 A base class for pins.
 
@@ -428,6 +437,11 @@ abstract class PinBase implements Pin:
   See $Pin.set-open-drain.
   */
   abstract set-open-drain value/bool
+
+  /**
+  See $Pin.set-pull.
+  */
+  abstract set-pull value/int
 
   /**
   See $Pin.config.
@@ -581,10 +595,16 @@ class Pin_ extends PinBase:
         gpio-config-interrupt_ resource_ false
 
   /**
-  See $Pin.wait-for.
+  See $Pin.set-open-drain.
   */
   set-open-drain value/bool:
     gpio-set-open-drain_ num value
+
+  /**
+  See $Pin.set-pull.
+  */
+  set-pull value/int:
+    gpio-set-pull_ num value
 
 
 /**
@@ -634,6 +654,9 @@ class VirtualPin extends PinBase:
   /** Not supported. */
   set-open-drain value/bool: throw "UNSUPPORTED"
 
+  /** Not supported. */
+  set-pull value/int: throw "UNSUPPORTED"
+
 
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
@@ -676,6 +699,9 @@ class InvertedPin extends PinBase:
 
   set-open-drain value/bool:
     original-pin_.set-open-drain value
+
+  set-pull value/int:
+    original-pin_.set-pull -value
 
 /**
 A GPIO chip on Linux.
@@ -845,6 +871,9 @@ class PinLinux_ extends PinBase:
   set-open-drain value/bool:
     gpio-linux-pin-set-open-drain_ resource_ value
 
+  set-pull value/int:
+    gpio-linux-pin-set-pull_ resource_ value
+
 
 gpio-init_:
   #primitive.gpio.init
@@ -875,6 +904,9 @@ gpio-last-edge-trigger-timestamp_ resource:
 
 gpio-set-open-drain_ num value/bool:
   #primitive.gpio.set-open-drain
+
+gpio-set-pull_ num value/int:
+  #primitive.gpio.set-pull
 
 gpio-linux-list-chips_ -> List:
   #primitive.gpio-linux.list-chips
@@ -917,6 +949,9 @@ gpio-linux-pin-set_ resource value:
 
 gpio-linux-pin-set-open-drain_ resource value:
   #primitive.gpio-linux.pin-set-open-drain
+
+gpio-linux-pin-set-pull_ resource value:
+  #primitive.gpio-linux.pin-set-pull
 
 gpio-linux-pin-config-edge-detection_ resource enabled/bool:
   #primitive.gpio-linux.pin-config-edge-detection
