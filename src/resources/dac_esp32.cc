@@ -129,12 +129,12 @@ DacResource::~DacResource() {
   } else {
     release_oneshot();
   }
+  ASSERT(!uses_cosine());
   dac_channels_.put(channel_);
 }
 
 void DacResource::release_oneshot() {
   ASSERT(!uses_cosine());
-
   auto handle = oneshot_handle_;
   if (handle != null) {
     ESP_ERROR_CHECK(dac_oneshot_del_channel(handle));
@@ -143,13 +143,14 @@ void DacResource::release_oneshot() {
 }
 
 void DacResource::release_cosine() {
+  ASSERT(uses_cosine());
   auto handle = cosine_handle_;
   if (handle != null) {
     dac_cosine_stop(handle);
     ESP_ERROR_CHECK(dac_cosine_del_channel(handle));
   }
+  cosine_handle_ = null;
   uses_cosine_ = false;
-  oneshot_handle_ = null;
 }
 
 MODULE_IMPLEMENTATION(dac, MODULE_DAC)
@@ -158,7 +159,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto* group = _new SimpleResourceGroup(process);
+  auto group = _new SimpleResourceGroup(process);
   if (!group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(group);
@@ -202,7 +203,8 @@ PRIMITIVE(set) {
   ARGS(DacResource, resource, uint8, dac_value);
 
   if (resource->uses_cosine()) {
-    resource->release_cosine();
+    resource->
+    ();
   }
 
   if (resource->oneshot_handle() == null) {
