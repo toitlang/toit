@@ -382,13 +382,15 @@ interface Pin:
   set-open-drain value/bool
 
   /**
-  Sets the pull-up/down resistor depending on the given $value.
+  Sets the pull-up/down resistor depending on the set flag.
 
-  If $value is negative, then the pull-down resistor is set.
-  If $value is positive, then the pull-up resistor is set.
-  Otherwise, the pull-up and pull-down resistors are disabled.
+  If $up is true, then the pull-up resistor is set.
+  If $down is true, then the pull-down resistor is set.
+  If $off is true, then neither pull-up nor pull-down resistor is set.
+
+  One, and only one of these flags must be set.
   */
-  set-pull value/int
+  configure-pull --up/bool=false --down/bool=false --off/bool=false
 
 /**
 A base class for pins.
@@ -439,9 +441,9 @@ abstract class PinBase implements Pin:
   abstract set-open-drain value/bool
 
   /**
-  See $Pin.set-pull.
+  See $Pin.configure-pull.
   */
-  abstract set-pull value/int
+  abstract configure-pull --up/bool=false --down/bool=false --off/bool=false
 
   /**
   See $Pin.config.
@@ -601,9 +603,16 @@ class Pin_ extends PinBase:
     gpio-set-open-drain_ num value
 
   /**
-  See $Pin.set-pull.
+  See $Pin.configure-pull.
   */
-  set-pull value/int:
+  configure-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not up or down or off: throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    value := 0
+    if up: value = 1
+    if down: value = -1
     gpio-set-pull_ num value
 
 
@@ -655,7 +664,8 @@ class VirtualPin extends PinBase:
   set-open-drain value/bool: throw "UNSUPPORTED"
 
   /** Not supported. */
-  set-pull value/int: throw "UNSUPPORTED"
+  configure-pull --up/bool=false --down/bool=false --off/bool=false:
+    throw "UNSUPPORTED"
 
 
 /**
@@ -700,8 +710,18 @@ class InvertedPin extends PinBase:
   set-open-drain value/bool:
     original-pin_.set-open-drain value
 
-  set-pull value/int:
-    original-pin_.set-pull -value
+  configure-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not up or down or off: throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    if up:
+      down = true
+      up = false
+    if down:
+      up = true
+      down = false
+    original-pin_.configure-pull --up=up --down=down --off=off
 
 /**
 A GPIO chip on Linux.
@@ -871,7 +891,14 @@ class PinLinux_ extends PinBase:
   set-open-drain value/bool:
     gpio-linux-pin-set-open-drain_ resource_ value
 
-  set-pull value/int:
+  configure-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not up or down or off: throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    value := 0
+    if up: value = 1
+    if down: value = -1
     gpio-linux-pin-set-pull_ resource_ value
 
 
