@@ -29,9 +29,9 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   test-pin.configure --input
   // The pin is in input mode and the 1MOhm resistor should win.
   expect-equals 0 measure-pin.get
-  test-pin.set-pull 1  // Pull up.
+  test-pin.configure-pull --up
   expect-equals 1 measure-pin.get
-  test-pin.set-pull -1  // Pull down.
+  test-pin.configure-pull --down
   // Given the 1MOhm resistor, we don't see a difference to the non-pull configuration,
   // but at least we know that something changed compared to the pull-up.
   expect-equals 0 measure-pin.get
@@ -47,10 +47,10 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
 
-  test-pin.set-pull 1  // Pull up.
+  test-pin.configure-pull --up
   // The internal pull up wins.
   expect-equals 1 measure-pin.get
-  test-pin.set-pull 0  // Disable any pull.
+  test-pin.configure-pull --off
 
   level-pin.configure --output
   level-pin.set 1
@@ -86,12 +86,12 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   expect-equals 1 measure-pin.get
 
   // Disable the pull-up.
-  test-pin.set-pull 0
+  test-pin.configure-pull --off
   sleep --ms=1  // Give the 1MOhm resistor time to drain.
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
   // Enable it again.
-  test-pin.set-pull 1
+  test-pin.configure-pull --up
 
   expect-equals 1 measure-pin.get
 
@@ -103,12 +103,12 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   expect-equals 1 measure-pin.get
 
   // Disable the pull-up.
-  test-pin.set-pull 0
+  test-pin.configure-pull --off
   sleep --ms=1  // Give the 1MOhm resistor time to drain.
   // The 1MOhm resistor wins now.
   expect-equals 0 measure-pin.get
   // Enable it again.
-  test-pin.set-pull 1
+  test-pin.configure-pull --up
 
   // It's not recommended, but we can switch to non-open-drain.
   test-pin.set-open-drain false
