@@ -339,7 +339,7 @@ test:
     clk-div = 9
     glitch-filter-ns = 125
 
-  rmt-channel := rmt.Channel --output out --clk-div=clk-div --idle-level=0
+  rmt-channel := rmt.Out out --resolution=(80_000_000 / clk-div)
 
   unit = Unit in --glitch-filter-ns=glitch-filter-ns --on-negative-edge=Channel.EDGE-INCREMENT
 
@@ -348,7 +348,7 @@ test:
   shortest-pulse := rmt.Signals 2
   shortest-pulse.set 0 --level=1 --period=1
   shortest-pulse.set 1 --level=0 --period=0
-  rmt-channel.write shortest-pulse
+  rmt-channel.write shortest-pulse --done-level=0
 
   expect-equals 0 unit.value
 
@@ -358,7 +358,7 @@ test:
   short-pulse := rmt.Signals 2
   shortest-pulse.set 0 --level=1 --period=4
   shortest-pulse.set 1 --level=0 --period=0
-  rmt-channel.write shortest-pulse
+  rmt-channel.write shortest-pulse --done-level=0
 
   expect-equals 2 unit.value  // Up and down.
 
