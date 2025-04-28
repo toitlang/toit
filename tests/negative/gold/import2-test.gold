@@ -4,4 +4,4 @@ import .import2-b show foo
 tests/negative/import2-test.toit:5:24: note: First show of identifier 'foo'
 import .import2-a show foo
                        ^~~
-Compilation failed.
+Compilation failed

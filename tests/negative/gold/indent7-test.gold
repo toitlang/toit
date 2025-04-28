@@ -4,4 +4,4 @@ tests/negative/indent7-test.toit:7:6: error: Empty blocks are not allowed
 tests/negative/indent7-test.toit:8:12: error: Unresolved identifier: 'unresolved'
   local := unresolved
            ^~~~~~~~~~
-Compilation failed.
+Compilation failed

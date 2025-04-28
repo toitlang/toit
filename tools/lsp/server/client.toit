@@ -13,17 +13,18 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
 import .rpc show RpcConnection
-import .uri-path-translator
+import .uri-path-translator as translator
 
 import .utils show FakePipe
 import .server show LspServer
 import .file-server show sdk-path-from-compiler
 
-import host.pipe
-import monitor
+import fs
 import host.file
+import host.pipe
+import io
+import monitor
 
 with-lsp-client [block]
     --toitc/string
@@ -45,24 +46,21 @@ with-lsp-client [block]
 with-lsp-client [block]
     --toitc/string
     --lsp-server/string?  // Can be null if not spawning.
-    --toitlsp-exe/string?=null
     --compiler-exe/string = toitc
     --supports-config=true
     --needs-server-args=(not supports-config)
     --spawn-process=true
     [--pre-initialize]:
+  // Clean the given paths, so we use native path separators.
+  // This increases test-coverage on Windows.
+  toitc = fs.clean toitc
+  compiler-exe = fs.clean compiler-exe
+  if lsp-server: lsp-server = fs.clean lsp-server
   server-args := [lsp-server]
   if needs-server-args: server-args.add compiler-exe
 
-  server-cmd/string := ?
-  if toitlsp-exe:
-    server-cmd = toitlsp-exe
-    server-args = ["--toitc", compiler-exe, "--sdk", (sdk-path-from-compiler toitc)]
-  else:
-    server-cmd = toitc
-
   client := LspClient.start
-      server-cmd
+      toitc
       server-args
       --supports-config=supports-config
       --compiler-exe=compiler-exe
@@ -84,8 +82,6 @@ class LspClient:
 
   version-map_ /Map ::= {:}
 
-  translator_ /UriPathTranslator ::= UriPathTranslator
-
   diagnostics_ /Map ::= {:}
 
   idle-semaphore_ /monitor.Semaphore? := null
@@ -100,13 +96,13 @@ class LspClient:
 
   /**
   The language server.
-  Only set, when the client was configured with `--no-spawn_process`.
+  Only set, when the client was configured with `--no-spawn-process`.
   */
   server/LspServer? ::= ?
 
   /**
   The language server process ID.
-  Only set, when the client was configured without `--spawn_process`.
+  Only set, when the client was configured without `--spawn-process`.
   */
   server-pid ::= ?
 
@@ -134,11 +130,11 @@ class LspClient:
     else:
       server-from := FakePipe
       server-to   := FakePipe
-      server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
-      server := LspServer server-rpc-connection compiler-exe UriPathTranslator
+      server-rpc-connection := RpcConnection server-to.in server-from.out
+      server := LspServer server-rpc-connection compiler-exe
       task::
         server.run
-      return [server-to, server-from, server, null]
+      return [server-to.out, server-from.in, server, null]
 
 
   static start -> LspClient
@@ -152,15 +148,15 @@ class LspClient:
     server-to   := start-result[0]
     server-from := start-result[1]
     server := start-result[2]
-    reader := BufferedReader server-from
-    writer := server-to
+    reader := io.Reader.adapt server-from
+    writer := io.Writer.adapt server-to
     rpc-connection := RpcConnection reader writer
     client := LspClient.internal_ rpc-connection compiler-exe supports-config --server=server --server-pid=start-result[3]
     client.run_
     return client
 
-  to-uri path/string -> string: return translator_.to-uri path
-  to-path uri/string -> string: return translator_.to-path uri
+  to-uri path/string -> string: return translator.to-uri path
+  to-path uri/string -> string: return translator.to-path uri
 
   run_:
     task::
@@ -237,7 +233,7 @@ class LspClient:
     // Currently we only support one waiter on idle.
     assert: idle-semaphore_ == null
     idle-semaphore_ = monitor.Semaphore
-    connection_.send "toit/report_idle" null
+    connection_.send "toit/reportIdle" null
     idle-semaphore_.down
 
   handle-idle_ msg -> none:
@@ -254,7 +250,7 @@ class LspClient:
     if message.contains "crashed":
       exit 1
 
-  diagnostics-for --path/string -> List?: return diagnostics-for --uri=(translator_.to-uri path)
+  diagnostics-for --path/string -> List?: return diagnostics-for --uri=(translator.to-uri path)
   diagnostics-for --uri/string -> List?:
     return diagnostics_.get uri
 
@@ -278,7 +274,7 @@ class LspClient:
     version := version-map_.update uri --if-absent=(: 1): it + 1
     if text == null:
       assert: path != null
-      text = (file.read-content path).to-string
+      text = (file.read-contents path).to-string
     connection_.send "textDocument/didOpen" {
       "textDocument": {
         "uri": uri,
@@ -289,12 +285,12 @@ class LspClient:
     }
     if always-wait-for-idle: wait-for-idle
 
-  send-did-open-many --paths/List -> none:
+  send-analyze-many --paths/List -> none:
     uris := paths.map: to-uri it
-    send-did-open-many --uris=uris
+    send-analyze-many --uris=uris
 
-  send-did-open-many --uris/List -> none:
-    connection_.send "toit/didOpenMany" { "uris": uris }
+  send-analyze-many --uris/List -> none:
+    connection_.send "toit/analyzeMany" { "uris": uris }
     if always-wait-for-idle: wait-for-idle
 
   send-did-close --path -> none:
@@ -397,7 +393,7 @@ class LspClient:
     return result
 
   send-reset-crash-rate-limit -> none:
-    connection_.send "toit/reset_crash_rate_limit" null
+    connection_.send "toit/resetCrashRateLimit" null
 
   send-request method/string arg/any -> any:
     return connection_.request method arg

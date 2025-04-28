@@ -37,13 +37,6 @@ static bool is_path_separator_(char c) {
   return c == '/' || c == '\\';
 }
 
-char* FilesystemLocal::get_executable_path() {
-  char* path = _new char[MAX_PATH];
-  auto length = GetModuleFileName(NULL, path, MAX_PATH);
-  path[length] = '\0';
-  return path;
-}
-
 // Returns the size of the root prefix of the given path.
 // Returns 0 if the path doesn't have any root prefix.
 // Accepted roots are:

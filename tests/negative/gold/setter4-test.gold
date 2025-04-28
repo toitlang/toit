@@ -7,25 +7,25 @@ setter2=--optional=499 x:  optional + x
 tests/negative/setter4-test.toit:7:1: error: Setters must take exactly one parameter
 setter3=:
 ^~~~~~~~
-tests/negative/setter4-test.toit:10:3: error: No setter method 'setter=' found.
+tests/negative/setter4-test.toit:10:3: error: No setter method 'setter=' found
   setter = 42
   ^~~~~~
-tests/negative/setter4-test.toit:12:3: error: No setter method 'setter3=' found.
+tests/negative/setter4-test.toit:12:3: error: No setter method 'setter3=' found
   setter3 = 412
   ^~~~~~~
-tests/negative/setter4-test.toit:13:3: error: No getter method 'setter' (0 arguments) found.
+tests/negative/setter4-test.toit:13:3: error: No getter method 'setter' (0 arguments) found
   setter += 42
   ^~~~~~
-tests/negative/setter4-test.toit:13:3: error: No setter method 'setter=' found.
+tests/negative/setter4-test.toit:13:3: error: No setter method 'setter=' found
   setter += 42
   ^~~~~~
-tests/negative/setter4-test.toit:14:3: error: No getter method 'setter2' (0 arguments) found.
+tests/negative/setter4-test.toit:14:3: error: No getter method 'setter2' (0 arguments) found
   setter2 += 499
   ^~~~~~~
-tests/negative/setter4-test.toit:15:3: error: No getter method 'setter3' (0 arguments) found.
+tests/negative/setter4-test.toit:15:3: error: No getter method 'setter3' (0 arguments) found
   setter3 += 412
   ^~~~~~~
-tests/negative/setter4-test.toit:15:3: error: No setter method 'setter3=' found.
+tests/negative/setter4-test.toit:15:3: error: No setter method 'setter3=' found
   setter3 += 412
   ^~~~~~~
-Compilation failed.
+Compilation failed

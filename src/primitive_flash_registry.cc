@@ -13,13 +13,17 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+
 #include "flash_registry.h"
+
+#if !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)
+
 #include "primitive.h"
 
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_flash.h"
 #include "esp_partition.h"
 #else
@@ -31,7 +35,7 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_ESP32
 static std::unordered_map<std::string, word*> partitions;
 #endif
 
@@ -48,7 +52,7 @@ static int const SCAN_RESERVED = 2;
 
 PRIMITIVE(next) {
   PRIVILEGED;
-  ARGS(int, current);
+  ARGS(word, current);
   int result;
   if (current == -1) {
     reservation_scan = reservations.begin();
@@ -60,7 +64,7 @@ PRIMITIVE(next) {
   }
 
   // Compute the next.
-  int next = FlashRegistry::find_next(result, &reservation_scan);
+  word next = FlashRegistry::find_next(result, &reservation_scan);
   if (next < 0) return process->null_object();
 
   // Update current and next -- and return the result.
@@ -71,12 +75,12 @@ PRIMITIVE(next) {
 
 PRIMITIVE(info) {
   PRIVILEGED;
-  ARGS(int, current);
+  ARGS(word, current);
   if (current < 0 || flash_registry_offset_current != current) {
     FAIL(OUT_OF_BOUNDS);
   }
   const FlashAllocation* allocation = FlashRegistry::allocation(current);
-  int page_size = (flash_registry_offset_next - current) >> 12;
+  word page_size = (flash_registry_offset_next - current) >> 12;
   if (allocation == null) {
     if (reservation_scan != reservations.end() && current == reservation_scan->left()) {
       ++reservation_scan;
@@ -92,23 +96,21 @@ PRIMITIVE(info) {
 
 PRIMITIVE(erase) {
   PRIVILEGED;
-  ARGS(int, offset, int, size);
+  ARGS(word, offset, word, size);
   return Smi::from(FlashRegistry::erase_chunk(offset, size));
 }
 
 PRIMITIVE(get_size) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (allocation == null) FAIL(INVALID_ARGUMENT);
-  int size = allocation->size();
-  if (allocation->is_program()) size += allocation->program_assets_size(null, null);
-  return Smi::from(size);
+  return Smi::from(allocation->size());
 }
 
 PRIMITIVE(get_header_page) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
@@ -120,9 +122,42 @@ PRIMITIVE(get_header_page) {
   return proxy;
 }
 
+PRIMITIVE(get_all_pages) {
+  PRIVILEGED;
+  ARGS(word, offset);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  // Not normally possible, may indicate a bug or a worn flash chip.
+  if (!allocation) FAIL(FILE_NOT_FOUND);
+  // TODO(kasper): Add support invalidation of proxy. The proxy is read-only and backed by flash.
+  uint8* memory = reinterpret_cast<uint8*>(const_cast<FlashAllocation*>(allocation));
+  proxy->set_external_address(allocation->size(), memory);
+  return proxy;
+}
+
+PRIMITIVE(write_non_header_pages) {
+  PRIVILEGED;
+  ARGS(word, offset, Blob, content);
+  for (auto reservation : reservations) {
+    int reserved_offset = reservation->left();
+    if (reserved_offset < offset) continue;
+    if (reserved_offset > offset) break;
+    ASSERT(reserved_offset == offset);
+
+    int length = Utils::min(reservation->size() - FLASH_PAGE_SIZE, content.length());
+    if (!FlashRegistry::write_chunk(content.address(), offset + FLASH_PAGE_SIZE, length)) {
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+
+  }
+  FAIL(OUT_OF_BOUNDS);
+}
+
 PRIMITIVE(reserve_hole) {
   PRIVILEGED;
-  ARGS(int, offset, int, size);
+  ARGS(word, offset, word, size);
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
   if (size == 0) FAIL(INVALID_ARGUMENT);
@@ -150,7 +185,7 @@ PRIMITIVE(reserve_hole) {
 
 PRIMITIVE(cancel_reservation) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   Reservation* reservation = reservations.remove_where([&offset](Reservation* reservation) -> bool {
     return reservation->left() == offset;
@@ -168,7 +203,7 @@ PRIMITIVE(erase_flash_registry) {
 
 PRIMITIVE(allocate) {
   PRIVILEGED;
-  ARGS(int, offset, int, size, int, type, Blob, id, Blob, metadata, Blob, content);
+  ARGS(word, offset, word, size, int, type, Blob, id, Blob, metadata, Blob, content);
   for (auto reservation : reservations) {
     int reserved_offset = reservation->left();
     if (reserved_offset < offset) continue;
@@ -208,7 +243,10 @@ PRIMITIVE(grant_access) {
   if (!grant) FAIL(MALLOC_FAILED);
   Locker locker(OS::global_mutex());
   for (auto it : grants) {
-    if (it->offset() == offset && it->size() == size) FAIL(ALREADY_IN_USE);
+    if (it->offset() == offset && it->size() == size) {
+      delete grant;
+      FAIL(ALREADY_IN_USE);
+    }
   }
   grants.prepend(grant);
   return process->null_object();
@@ -242,7 +280,7 @@ PRIMITIVE(partition_find) {
   if (size <= 0 || (type < 0x00) || (type > 0xff)) FAIL(INVALID_ARGUMENT);
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) FAIL(ALLOCATION_FAILED);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   const esp_partition_t* partition = esp_partition_find_first(
       static_cast<esp_partition_type_t>(type),
       ESP_PARTITION_SUBTYPE_ANY,
@@ -341,7 +379,7 @@ PRIMITIVE(region_read) {
     const uint8* region = FlashRegistry::region(offset, resource->size());
     memcpy(bytes.address(), region + from, size);
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword source = region + from;
     uint8* destination = bytes.address();
@@ -367,7 +405,7 @@ PRIMITIVE(region_write) {
       FAIL(HARDWARE_ERROR);
     }
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword destination = region + from;
     const uint8* source = bytes.address();
@@ -391,7 +429,7 @@ PRIMITIVE(region_is_erased) {
   if ((offset & 1) == 0) {
     return BOOL(FlashRegistry::is_erased(from + offset, size));
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     static const uword BUFFER_SIZE = 256;
     AllocationManager allocation(process);
     uint8* buffer = allocation.alloc(BUFFER_SIZE);
@@ -432,7 +470,7 @@ PRIMITIVE(region_erase) {
       FAIL(HARDWARE_ERROR);
     }
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword destination = region + from;
     if (esp_flash_erase_region(NULL, destination, size) != ESP_OK) {
@@ -447,3 +485,5 @@ PRIMITIVE(region_erase) {
 }
 
 }
+
+#endif  // !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)

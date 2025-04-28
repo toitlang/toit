@@ -29,7 +29,7 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #endif
 
@@ -50,7 +50,7 @@ ProgramHeap::~ProgramHeap() {
 }
 
 Instance* ProgramHeap::allocate_instance(Smi* class_id) {
-  int size = program()->instance_size_for(class_id);
+  int size = program()->allocation_instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
   return allocate_instance(class_tag, class_id, Smi::from(size));
 }

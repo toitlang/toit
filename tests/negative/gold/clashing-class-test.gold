@@ -4,4 +4,4 @@ class A:
 tests/negative/clashing-class-test.toit:5:7: note: First definition of 'A'
 class A:
       ^
-Compilation failed.
+Compilation failed

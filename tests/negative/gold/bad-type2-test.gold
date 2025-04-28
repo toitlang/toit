@@ -16,4 +16,4 @@ gee x/prefix: null
 tests/negative/bad-type2-test.toit:14:10: error: Unexpected 'super' in type
 foobar x/super: null
          ^~~~~
-Compilation failed.
+Compilation failed

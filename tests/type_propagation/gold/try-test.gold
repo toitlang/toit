@@ -1,14 +1,23 @@
 main tests/type_propagation/try-test.toit
   0[053] - invoke static test-nested tests/type_propagation/try-test.toit // {Null_}
+<<<<<<< HEAD
   3[091] - return null S1 0
 
 test-nested tests/type_propagation/try-test.toit
   0[053] - invoke static nested tests/type_propagation/try-test.toit // {Null_|SmallInteger_}
   3[091] - return null S1 0
+=======
+  3[090] - return null S1 0
+
+test-nested tests/type_propagation/try-test.toit
+  0[053] - invoke static nested tests/type_propagation/try-test.toit // {Null_|SmallInteger_}
+  3[090] - return null S1 0
+>>>>>>> master
 
 nested tests/type_propagation/try-test.toit
   0[022] - load null
   1[029] - load method [block] in nested tests/type_propagation/try-test.toit
+<<<<<<< HEAD
   6[096] - link try 0
   8[038] - load block 4
  10[055] - invoke block S1 // [[block]] -> {Null_}
@@ -17,30 +26,60 @@ nested tests/type_propagation/try-test.toit
  15[018] - load local 4
  16[090] - return S6 0
  19[098] - unwind
+=======
+  6[095] - link try 0
+  8[038] - load block 4
+ 10[055] - invoke block S1 // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[096] - unlink try 0
+ 15[018] - load local 4
+ 16[089] - return S6 0
+ 19[097] - unwind
+>>>>>>> master
  20[041] - pop 1
 
 [block] in nested tests/type_propagation/try-test.toit
  - argument 0: [block]
   0[022] - load null
   1[029] - load method [block] in [block] in nested tests/type_propagation/try-test.toit
+<<<<<<< HEAD
   6[096] - link try 0
   8[038] - load block 4
  10[055] - invoke block S1 // [[block]] -> {SmallInteger_}
  12[041] - pop 1
  13[097] - unlink try 0
+=======
+  6[095] - link try 0
+  8[038] - load block 4
+ 10[055] - invoke block S1 // [[block]] -> {SmallInteger_}
+ 12[041] - pop 1
+ 13[096] - unlink try 0
+>>>>>>> master
  15[000] - load local S7
  17[019] - load local 5
  18[006] - store outer S1
  20[041] - pop 1
+<<<<<<< HEAD
  21[098] - unwind
  22[041] - pop 1
  23[022] - load null
  24[004] - store local, pop S1
  26[090] - return S1 1
+=======
+ 21[097] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[004] - store local, pop S1
+ 26[089] - return S1 1
+>>>>>>> master
 
 [block] in [block] in nested tests/type_propagation/try-test.toit
  - argument 0: [block]
   0[016] - load local 2
   1[026] - load smi 42
   3[006] - store outer S1
+<<<<<<< HEAD
   5[090] - return S1 1
+=======
+  5[089] - return S1 1
+>>>>>>> master

@@ -16,4 +16,4 @@ tests/negative/uninitialized-loopvar-test.toit:17:11: error: Can't assign to fin
 tests/negative/uninitialized-loopvar-test.toit:21:13: error: Can't assign to final local multiple times
       local = 499
             ^
-Compilation failed.
+Compilation failed

@@ -28,4 +28,4 @@ export foo
 tests/negative/export-cyclic4-a.toit:6:8: error: Unresolved export 'foo'
 export foo
        ^~~
-Compilation failed.
+Compilation failed

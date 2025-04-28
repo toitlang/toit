@@ -193,3 +193,13 @@ class TextDocumentPositionParams extends MapWrapper:
   */
   position -> Position:
     return at_ "position": Position.from-map it
+
+/**
+A textual edit applicable to a text document.
+*/
+class TextEdit extends MapWrapper:
+  constructor
+      --range/Range
+      --new-text/string:
+    map_["range"]    = range.map_
+    map_["newText"]  = new-text

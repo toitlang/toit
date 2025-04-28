@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_netif.h>
 
@@ -46,7 +46,7 @@
 #include <lwip/tcpip.h>
 
 #endif  // TOIT_USE_LWIP
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP32
 
 #include "../flags.h"
 #include "../heap_report.h"
@@ -60,7 +60,7 @@ namespace toit {
 
 bool needs_gc = false;
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 static bool is_toit_error(int err) {
   return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
@@ -181,7 +181,7 @@ LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
     , call_done_(OS::allocate_condition_variable(mutex())) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
-#if defined(TOIT_FREERTOS)
+#if defined(TOIT_ESP32)
   // Create the LWIP thread.
   esp_netif_init();
 #else
@@ -228,7 +228,7 @@ void LwipEventSource::on_thread(void* arg) {
   OS::signal_all(lwip->call_done());
 }
 
-#else // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#else // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
@@ -236,6 +236,6 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
   return process->null_object();
 }
 
-#endif // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 } // namespace toit

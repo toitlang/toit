@@ -1,3 +1,0 @@
-pkg-ntp/examples/settime.toit:14:17: warning: Deprecated constructor 'Time.from-string'
-  if now < (Time.from_string "2022-01-10T00:00:00Z"):
-                ^

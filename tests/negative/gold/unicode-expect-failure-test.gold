@@ -8,7 +8,11 @@
 ASSERTION_FAILED error. 
 Expected <╒════╤════════╕
 │ no   header │
-╘════╧═══...
+╘════╧════════╛
+>, but was <┌────┬────────┐
+│ no   header │
+└────┴────────┘
+>
   0: catch.<block>             <sdk>/core/exceptions.toit:124:10
   1: catch                     <sdk>/core/exceptions.toit:122:1
   2: catch                     <sdk>/core/exceptions.toit:73:10

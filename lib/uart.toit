@@ -3,9 +3,10 @@
 // found in the lib/LICENSE file.
 
 import gpio
+import io
 import monitor show ResourceState_
 import reader
-import writer
+import writer  // For toitdocs.
 
 class StopBits:
   value_ /int
@@ -21,10 +22,10 @@ UART features asynchronous communication with an external device on two data
 */
 
 /**
-The UART Port exposes the hardware features for communicating with an external
+The UART port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
-class Port implements reader.Reader:
+class Port extends Object with io.InMixin implements reader.Reader:
   static STOP-BITS-1   ::= StopBits.private_ 1
   static STOP-BITS-1-5 ::= StopBits.private_ 2
   static STOP-BITS-2   ::= StopBits.private_ 3
@@ -43,8 +44,7 @@ class Port implements reader.Reader:
   uart_ := ?
   state_/ResourceState_
 
-  /** Number of encountered errors. */
-  errors := 0
+  out_/UartWriter? := null
 
   /**
   Constructs a UART port using the given $tx for transmission and $rx
@@ -75,7 +75,17 @@ class Port implements reader.Reader:
 
   Setting a $high-priority increases the interrupt priority to level 3 on the ESP32.
     If you do not specify true or false for this argument, the high priority is
-    automatically selected for baud rates of 460800 or above.
+    automatically selected for baud rates of 460800 or above.  (To avoid system
+    hangs, the maximum priority on the ESP32C3 is limited to level 2.)
+
+  For regular priority, the buffer sizes are set to 256 bytes for tx, 768 for
+    rx, and can be doubled with `--large-buffers`.
+
+  For high priority, the buffer sizes are set to 4096 bytes for tx, 4096 for rx,
+    and can be halved with `--no-large-buffers`.
+
+  These are the software buffers, which are used by the interrupt to refill the
+    hardware FIFO.  The hardware FIFO is 128 bytes for tx and 128 bytes for rx.
 
   The ESP32 has hardware support for up to two UART ports (the third one is
     normally already taken for the USB connection/debugging console.
@@ -86,7 +96,8 @@ class Port implements reader.Reader:
       --invert-tx/bool=false --invert-rx/bool=false
       --parity/int=PARITY-DISABLED
       --mode/int=MODE-UART
-      --high-priority/bool?=null:
+      --high-priority/bool?=null
+      --large-buffers/bool?=null:
     if (not tx) and (not rx): throw "INVALID_ARGUMENT"
     if mode == MODE-RS485-HALF-DUPLEX and cts: throw "INVALID_ARGUMENT"
     if not MODE-UART <= mode <= MODE-IRDA: throw "INVALID_ARGUMENT"
@@ -95,6 +106,9 @@ class Port implements reader.Reader:
     if high-priority == null: high-priority = baud-rate >= 460800
     if high-priority:
       tx-flags |= 8
+    if large-buffers == null: large-buffers = high-priority
+    if large-buffers:
+      tx-flags |= 16
     uart_ = uart-create_
       resource-group_
       tx ? tx.num : -1
@@ -124,13 +138,17 @@ class Port implements reader.Reader:
     return HostPort device --baud-rate=baud-rate --data-bits=data-bits --stop-bits=stop-bits --parity=parity
 
   constructor.host-port_ device/string
-       --baud-rate/int
-       --data-bits/int=8
-       --stop-bits/StopBits=STOP-BITS-1
-       --parity/int=PARITY-DISABLED:
-     group := resource-group_
-     uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
-     state_ = ResourceState_ group uart_
+      --baud-rate/int
+      --data-bits/int=8
+      --stop-bits/StopBits=STOP-BITS-1
+      --parity/int=PARITY-DISABLED:
+    group := resource-group_
+    uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
+    state_ = ResourceState_ group uart_
+
+  out -> UartWriter:
+    if not out_: out_ = UartWriter.private_ this
+    return out_
 
   /**
   Sets the baud rate to the given $new-rate.
@@ -157,6 +175,8 @@ class Port implements reader.Reader:
   */
   close:
     if not uart_: return
+    mark-reader-closed_
+    if out_: out_.mark-closed_
     critical-do:
       state_.dispose
       uart-close_ resource-group_ uart_
@@ -175,8 +195,8 @@ class Port implements reader.Reader:
     something like the following could be used.
 
   ```
-  for position := 0; position < data.size; null:
-    position += my_uart.write data[position..data.size]
+  for position := 0; position < data.byte-size; null:
+    position += my-uart.write (data.byte-slice position data.byte-size)
   ```
 
   If $wait is true, the method blocks until all bytes that were written have been emitted to the
@@ -184,13 +204,15 @@ class Port implements reader.Reader:
     buffered.
 
   Returns the number of bytes written.
+
+  Deprecated. Use $out instead.
   */
-  write data from=0 to=data.size --break-length=0 --wait=false -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length=0 --wait=false -> int:
     size := to - from
     while from < to:
-      from += write-no-wait_ data from to --break-length=break-length
+      from += try-write_ data from to --break-length=break-length
 
-    if wait: flush
+    if wait: flush_
 
     return size
 
@@ -200,14 +222,18 @@ class Port implements reader.Reader:
   This method blocks until data is available.
 
   Returns null if closed.
+
+  Deprecated. Use $in instead.
   */
   read -> ByteArray?:
+    return read_
+
+  read_ -> ByteArray?:
     while true:
       state-bits := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       if not uart_: return null
       if state-bits & ERROR-STATE_ != 0:
         state_.clear-state ERROR-STATE_
-        errors++
       else if state-bits & READ-STATE_ != 0:
         data := uart-read_ uart_
         if data and data.size > 0: return data
@@ -217,15 +243,20 @@ class Port implements reader.Reader:
   Flushes the output buffer, waiting until all written data has been transmitted.
 
   Often, one can just use the `--wait` flag of the $write function instead.
+
+  Deprecated. Use $out instead.
   */
   flush -> none:
+    flush_
+
+  flush_ -> none:
     while true:
       if not uart_: throw "CLOSED"
       flushed := uart-wait-tx_ uart_
       if flushed: return
       yield
 
-  write-no-wait_ data from=0 to=data.size --break-length=0:
+  try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
     while true:
       s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
       if not uart_: throw "CLOSED"
@@ -236,6 +267,28 @@ class Port implements reader.Reader:
         if written == 0: continue
 
       return written
+
+  /**
+  Number of encountered errors.
+
+  Typically, this number is incremented if received data wasn't processed in
+    time, and the UART hardware has lost data.
+  */
+  errors -> int:
+    return uart-errors_ uart_
+
+  /**
+  Waits for a break signal to be received.
+  A break signal is a continuous low signal on the RX pin for a duration of at least one byte.
+
+  Not supported on all platforms.
+  */
+  wait-for-break -> none:
+    state_.clear-state BREAK-STATE_
+    while true:
+      if not uart_: throw "CLOSED"
+      state-bits := state_.wait-for-state BREAK-STATE_ | ERROR-STATE_
+      if (state-bits & BREAK-STATE_) != 0: return
 
 /**
 Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
@@ -294,11 +347,71 @@ class HostPort extends Port:
   set-control-flags flags/int:
     uart-set-control-flags_ uart_ flags
 
+class UartWriter extends io.Writer:
+  port_/Port
+
+  constructor.private_ .port_:
+
+  /**
+  Writes data to the $Port.
+
+  If $break-length is greater than 0, an additional break signal is added after
+    the data is written. The duration of the break signal is bit-duration * $break-length,
+    where bit-duration is the duration it takes to write one bit at the current baud rate.
+
+  If not all bytes could be written without blocking, this will be indicated by
+    the return value.  In this case the break is not written even if requested.
+    The easiest way to handle this by using the $writer.Writer class.  Alternatively,
+    something like the following could be used.
+
+  ```
+  for position := 0; position < data.byte-size; null:
+    position += my-uart.write (data.byte-slice position data.byte-size)
+  ```
+
+  If $flush is true, the method blocks until all bytes that were written have been emitted to the
+    physical pins. This is equivalent to calling $flush. Otherwise, returns as soon as the data is
+    buffered.
+
+  Returns the number of bytes written.
+  */
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
+    data-size := to - from
+    while not is-closed_:
+      from += try-write data from to --break-length=break-length --flush=flush
+      if from >= to: return data-size
+      yield
+    assert: is-closed_
+    throw "WRITER_CLOSED"
+
+  /**
+  Tries to write the given $data to this writer.
+  If the writer can't write all the data at once, it writes as much as possible.
+  If the writer is closed while writing, throws, or returns the number of bytes written.
+  Otherwise always returns the number of bytes written.
+
+  If $break-length is greater than 0, an additional break signal is added after
+    the data is written. The duration of the break signal is bit-duration * $break-length,
+    where bit-duration is the duration it takes to write one bit at the current baud rate.
+  */
+  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
+    if is-closed_: throw "WRITER_CLOSED"
+    result := port_.try-write_ data from to --break-length=break-length
+    if flush and (result > 0 or data.byte-size == 0): this.flush
+    return result
+
+  try-write_ data/io.Data from/int to/int --break-length/int=0 -> int:
+    return port_.try-write_ data from to --break-length=break-length
+
+  flush -> none:
+    port_.flush_
+
 resource-group_ ::= uart-init_
 
 READ-STATE_  ::= 1 << 0
 ERROR-STATE_ ::= 1 << 1
 WRITE-STATE_ ::= 1 << 2
+BREAK-STATE_ ::= 1 << 3
 
 uart-init_:
   #primitive.uart.init
@@ -323,7 +436,14 @@ Writes the $data to the uart.
 Returns the amount of bytes that were written.
 */
 uart-write_ uart data from to break-length:
-  #primitive.uart.write
+  #primitive.uart.write:
+    // The `uart-write_` function is allowed to consume less than the whole data slice.
+    // We limit the chunk size to 256 bytes.
+    return io.primitive-redo-io-data_ it data from (min to (from + 256)): | prefix/ByteArray |
+      // Only send the break-length if the prefix is the whole thing.
+      size := prefix.size
+      prefix-break-length := size == to - from ? break-length : 0
+      uart-write_ uart prefix 0 size prefix-break-length
 
 uart-wait-tx_ uart:
   #primitive.uart.wait-tx
@@ -337,3 +457,5 @@ uart-set-control-flags_ uart flags:
 uart-get-control-flags_ uart:
   #primitive.uart.get-control-flags
 
+uart-errors_ uart:
+  #primitive.uart.errors

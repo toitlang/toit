@@ -35,13 +35,21 @@
 
 namespace toit {
 
-inline bool are_smis(Object* a, Object* b) {
+inline bool Interpreter::are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
   bool result = is_smi(reinterpret_cast<Object*>(bits));
   // The or-trick only works if smis are tagged with a zero-bit.
   // The following ASSERT makes sure we catch any change to this scheme.
   ASSERT(!result || (is_smi(a) && is_smi(b)));
   return result;
+}
+
+inline bool Interpreter::are_floats(Object* a, Object* b) {
+  uword bits = reinterpret_cast<uword>(a) & reinterpret_cast<uword>(b);
+  bool has_smi = is_smi(reinterpret_cast<Object*>(bits));
+  if (has_smi) return false;
+  return HeapObject::cast(a)->has_class_tag(DOUBLE_TAG) &&
+         HeapObject::cast(b)->has_class_tag(DOUBLE_TAG);
 }
 
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
@@ -73,12 +81,12 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              int interface_selector_index,
                                              bool is_nullable) const {
   if (is_nullable && value == program->null_object()) return true;
-  int selector_offset = program->interface_check_offsets[interface_selector_index];
+  word selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);
   return target.is_valid();
 }
 
-Method Program::find_method(Object* receiver, int offset) {
+Method Program::find_method(Object* receiver, word offset) {
   Smi* class_id = is_smi(receiver) ? smi_class_id() : HeapObject::cast(receiver)->class_id();
   int index = Smi::value(class_id) + offset;
   int entry_id = dispatch_table[index];
@@ -215,7 +223,7 @@ inline word mul(word a, word b) { return a * b; }
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -225,7 +233,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -235,7 +243,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
 #elif BUILD_64
@@ -244,7 +252,7 @@ inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = (Smi*) (((word) a) << bits_to_shift);
@@ -253,7 +261,7 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = Smi::from(Smi::value(a) >> bits_to_shift);
@@ -261,7 +269,7 @@ inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   word a_value = Smi::value(a);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE || a_value < 0) return false;
@@ -527,6 +535,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
+    process_->set_current_bcp(bcp);
     Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
@@ -536,23 +545,19 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = gc(sp, false, attempts, false);
+      sp = gc(sp, false, attempts, false, "'allocate instance'", class_index);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     process_->object_heap()->leave_primitive();
+    process_->set_current_bcp(null);
 
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
-    Instance* instance = Instance::cast(result);
-    int fields = Instance::fields_from_size(program->instance_size_for(instance));
-    for (int i = 0; i < fields; i++) {
-      instance->at_put(i, program->null_object());
-    }
     PUSH(result);
     if (Flags::gc_a_lot) {
-      sp = gc(sp, false, 1, false);
+      sp = gc(sp, false, 1, false, "'gc a lot'");
       process_->object_heap()->leave_primitive();
     }
   OPCODE_END();
@@ -692,7 +697,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
-    int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
+    word selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -704,7 +709,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -736,7 +741,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     Object* receiver = STACK_AT(1);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -888,14 +893,14 @@ Interpreter::Result Interpreter::run() {
   INVOKE_ARITHMETIC_NO_ZERO(INVOKE_MOD, %)
 #undef INVOKE_ARITHMETIC_NO_ZERO
 
-#define INVOKE_OVERFLOW_ARITHMETIC(opcode, op)                         \
+#define INVOKE_ARITHMETIC(opcode, op)                                  \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     Smi* result;                                                       \
     if (op(a0, a1, &result)) {                                         \
       STACK_AT_PUT(1, result);                                         \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -903,13 +908,35 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_ADD, intrinsic_add)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_SUB, intrinsic_sub)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_MUL, intrinsic_mul)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
-#undef INVOKE_OVERFLOW_ARITHMETIC
+#define INVOKE_ARITHMETIC_FP(opcode, op, fop)                          \
+  OPCODE_BEGIN(opcode);                                                \
+    Object* a0 = STACK_AT(1);                                          \
+    Object* a1 = STACK_AT(0);                                          \
+    Smi* result;                                                       \
+    if (op(a0, a1, &result)) {                                         \
+      STACK_AT_PUT(1, result);                                         \
+      DROP1();                                                         \
+      DISPATCH(opcode##_LENGTH);                                       \
+    } else if (Interpreter::are_floats(a0, a1)) {                                   \
+      Object* float_object = float_op(process(), a0, a1, fop);         \
+      if (float_object) {                                              \
+        STACK_AT_PUT(1, float_object);                                 \
+        DROP1();                                                       \
+        DISPATCH(opcode##_LENGTH);                                     \
+      }                                                                \
+    }                                                                  \
+    PUSH(a0);                                                          \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
+    goto INVOKE_VIRTUAL_FALLBACK;                                      \
+  OPCODE_END();
+
+  INVOKE_ARITHMETIC_FP(INVOKE_ADD, intrinsic_add, &double_add)
+  INVOKE_ARITHMETIC_FP(INVOKE_SUB, intrinsic_sub, &double_sub)
+  INVOKE_ARITHMETIC_FP(INVOKE_MUL, intrinsic_mul, &double_mul)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
+  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
+#undef INVOKE_ARITHMETIC
 
   OPCODE_BEGIN(INVOKE_AT);
     Object* receiver = STACK_AT(1);
@@ -940,6 +967,17 @@ Interpreter::Result Interpreter::run() {
     PUSH(receiver);
     index__ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     goto INVOKE_VIRTUAL_FALLBACK;
+  OPCODE_END();
+
+  OPCODE_BEGIN(INVOKE_SIZE);
+    Object* receiver = STACK_AT(0);
+    Smi* result;
+
+    if (fast_size(process_, receiver, &result)) {
+      STACK_AT_PUT(0, result);
+      DISPATCH(INVOKE_SIZE_LENGTH);
+    }
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -1057,6 +1095,7 @@ Interpreter::Result Interpreter::run() {
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
+      process_->set_current_bcp(bcp);
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
@@ -1091,7 +1130,7 @@ Interpreter::Result Interpreter::run() {
         }
 #endif
 
-        sp = gc(sp, malloc_failed, attempts, force_cross_process);
+        sp = gc(sp, malloc_failed, attempts, force_cross_process, "primitive", primitive_module, primitive_index);
         sp_ = sp;
         result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = sp_;
@@ -1100,6 +1139,7 @@ Interpreter::Result Interpreter::run() {
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       process_->object_heap()->leave_primitive();
+      process_->set_current_bcp(null);
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1113,6 +1153,7 @@ Interpreter::Result Interpreter::run() {
       PUSH(result);
       process_->object_heap()->leave_primitive();
       CHECK_PROPAGATED_TYPES_RETURN();
+      process_->set_current_bcp(null);
       DISPATCH(0);
     }
   OPCODE_END();

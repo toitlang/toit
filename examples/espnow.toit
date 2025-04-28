@@ -15,10 +15,8 @@ import esp32.espnow
 PMK ::= espnow.Key.from-string "pmk1234567890123"
 
 main:
-  service := espnow.Service.station --key=PMK
-  service.add-peer
-      espnow.BROADCAST-ADDRESS
-      --channel=1
+  service := espnow.Service.station --key=PMK --channel=1
+  service.add-peer espnow.BROADCAST-ADDRESS
   task:: send-task service
   task:: receive-task service
 

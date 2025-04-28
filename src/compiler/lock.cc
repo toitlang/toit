@@ -17,6 +17,7 @@
 #include <limits.h>
 
 #include "third_party/libyaml/include/yaml.h"
+#include "third_party/nlohmann/json.hpp"
 #include "third_party/semver/semver.h"
 
 #include "../top.h"
@@ -32,6 +33,7 @@ namespace toit {
 namespace compiler {
 
 static const char* LOCK_FILE = "package.lock";
+static const char* CONTENTS_FILE = "contents.json";
 static const char* PACKAGE_CACHE_PATH = ".cache/toit/tpkg/";
 static const char* LOCAL_PACKAGE_DIR = ".packages";
 
@@ -41,8 +43,10 @@ static const char* PREFIXES_LABEL = "prefixes";
 static const char* PACKAGES_LABEL = "packages";
 // The label for SDK entry in the lockfile.
 static const char* SDK_LABEL = "sdk";
-// The label for path entries in lockfile.
+// The label for path entries in the lockfile.
 static const char* PATH_LABEL = "path";
+// The label for name entries in the lockfile.
+static const char* NAME_LABEL = "name";
 
 // The directory in which packages have their sources.
 static constexpr const char* PACKAGE_SOURCE_DIR = "src";
@@ -198,6 +202,7 @@ namespace {  // Anonymous.
     std::string url;
     std::string version;
     std::string path;
+    std::string name;
     Source::Range range;
   };
 
@@ -622,6 +627,9 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
       std::string path;
       bool seen_path = false;
 
+      std::string name;
+      bool seen_name = false;
+
       bool seen_prefixes = false;
 
       bool is_valid = true;
@@ -675,6 +683,22 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
           });
         }
 
+        if (key == NAME_LABEL) {
+          if (seen_name) {
+            diagnostics->report_error(key_range, "Multiple 'name' entries");
+            has_errors = true;
+          }
+          seen_name = true;
+          return parser.parse_string([&](const std::string& name_str, const Source::Range& name_range) {
+            if (name_str == "") {
+              diagnostics->report_error(key_range, "Name must not be empty string");
+              is_valid = false;
+            }
+            name = name_str;
+            return YamlParser::OK;
+          });
+        }
+
         if (key == PREFIXES_LABEL) {
           if (seen_prefixes) {
             diagnostics->report_error(key_range, "Multiple 'prefixes' entries");
@@ -700,6 +724,8 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         diagnostics->report_error(pkg_id_range, "Package '%s' is missing a 'url' or 'path' entry", pkg_id.c_str());
         is_valid = false;
       }
+      // TODO(florian): add check that "name" must be present.
+      // Older versions of the lock file didn't have the name field.
 
       if (!is_valid) has_errors = true;
 
@@ -708,6 +734,7 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
           .url = url,
           .version = version,
           .path = path,
+          .name = name,
           .range = pkg_location_range,
         };
         packages.set(pkg_id, entry);
@@ -773,6 +800,55 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
   };
 }
 
+static void fill_package_mappings(Map<std::string, Map<std::string, std::string>>* mappings,
+                                  List<const char*> package_dirs,
+                                  Filesystem* fs) {
+  for (auto package_dir : package_dirs) {
+    PathBuilder path_builder(fs);
+    path_builder.join(package_dir);
+    path_builder.join(CONTENTS_FILE);
+    auto mapping_path = path_builder.buffer();
+    if (fs->exists(mapping_path.c_str())) {
+      int source_size;
+      auto mapping_source = fs->read_content(mapping_path.c_str(), &source_size);
+      auto json = nlohmann::json::parse(mapping_source, mapping_source + source_size,
+                                        null,
+                                        false);  // Don't throw.
+      if (json.is_discarded() || !json.is_object()) {
+        // We couldn't parse the file.
+        // TODO(florian): report error.
+        continue;
+      }
+      for (auto& entry : json.items()) {
+        auto key = entry.key();
+        auto value = entry.value();
+        if (!value.is_object()) {
+          // We only support map values.
+          // TODO(florian): report error.
+          continue;
+        }
+
+        for (auto& version_entry : value.items()) {
+          auto version = version_entry.key();
+          auto value = version_entry.value();
+          if (!value.is_string()) {
+            // We only support string values.
+            // TODO(florian): report error.
+            continue;
+          }
+          PathBuilder package_path_builder(fs);
+          package_path_builder.join(package_dir);
+          package_path_builder.join(value.get<std::string>());
+          auto& mapping = (*mappings)[key];
+          if (mapping.find(version) == mapping.end()) {
+            mapping.set(version, package_path_builder.buffer());
+          }
+        }
+      }
+    }
+  }
+}
+
 PackageLock PackageLock::read(const std::string& lock_file_path,
                               const char* entry_path,
                               SourceManager* source_manager,
@@ -799,6 +875,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
   ASSERT(!is_valid_package_id(Package::VIRTUAL_PACKAGE_ID));
   Package virtual_package(Package::VIRTUAL_PACKAGE_ID,
+                          Package::NO_NAME,
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
@@ -810,6 +887,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
   ASSERT(!is_valid_package_id(Package::ERROR_PACKAGE_ID));
   Package error_package(Package::ERROR_PACKAGE_ID,
+                        Package::NO_NAME,
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
@@ -833,6 +911,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
   ASSERT(!is_valid_package_id(Package::SDK_PACKAGE_ID));
   Package sdk_package(Package::SDK_PACKAGE_ID,
+                      Package::NO_NAME,
                       sdk_lib_path,
                       sdk_lib_path,
                       std::string(fs->library_root()),
@@ -878,6 +957,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     }
   }
   Package entry_package(Package::ENTRY_PACKAGE_ID,
+                        std::string(""),
                         entry_pkg_path,
                         absolute_error_path,
                         relative_error_path,
@@ -906,43 +986,14 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     package_dirs = builder.build();
   }
 
+  Map<std::string, Map<std::string, std::string>> mappings;
+  fill_package_mappings(&mappings, package_dirs, fs);
+
   Map<std::string, std::string> path_to_package;
   for (auto package_id : lock_content.packages.keys()) {
     auto entry = lock_content.packages.at(package_id);
 
-    // For simplicity we are using a loop from -1 to length, so we don't
-    // have to duplicate the code.
-    // -1 is only used when the package is of kind 'PATH'.
-    for (int i = -1; i < package_dirs.length(); i++) {
-      PathBuilder builder(fs);
-
-      std::string error_path;
-      bool is_path_package = !entry.path.empty();
-      if (is_path_package) {
-        char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
-        ASSERT(i == -1);
-        if (!fs->is_absolute(localized)) {
-          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
-          builder.join(package_lock_dir);
-        }
-        error_path = std::string(localized);
-        builder.join(error_path);
-        builder.canonicalize();
-        free(localized);
-      } else {
-        if (i == -1) continue;
-        if (!fs->is_absolute(package_dirs[i])) {
-          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
-          builder.join(fs->cwd());
-        }
-        builder.join(package_dirs[i]);
-        builder.join(entry.url);
-        builder.join(entry.version);
-        error_path = entry.url + "-" + entry.version;
-        builder.canonicalize();
-      }
-      std::string path = builder.buffer();
-
+    auto locate_package = [&](std::string path, const std::string& error_path, bool is_path_package) -> Package {
       if (fs->exists(path.c_str()) && fs->is_directory(path.c_str())) {
         PathBuilder src_builder(fs);
         src_builder.join(path, PACKAGE_SOURCE_DIR);
@@ -965,71 +1016,108 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
           if (prefix_probe != lock_content.prefixes.end()) {
             package_prefixes = prefix_probe->second;
           }
-          Package package(package_id,
-                          path,
-                          path,
-                          path,
-                          Package::STATE_OK,
-                          package_prefixes,
-                          is_path_package);
-          packages[package_id] = package;
-          goto prefix_done;
+          return Package(package_id,
+                         entry.name,
+                         path,
+                         path,
+                         path,
+                         Package::STATE_OK,
+                         package_prefixes,
+                         is_path_package);
         } else {
           diagnostics->report_error(entry.range,
                           "Package '%s' at '%s' is missing a '%s' folder",
                           package_id.c_str(),
                           path.c_str(),
                           PACKAGE_SOURCE_DIR);
-          Package package(package_id,
-                          std::string(""),
-                          std::string(""),
-                          std::string(""),
-                          Package::STATE_NOT_FOUND,
-                          {},  // The prefixes aren't relevant.
-                          is_path_package);
-          packages[package_id] = package;
-          goto prefix_done;
+          return Package(package_id,
+                         entry.name,
+                         std::string(""),
+                         std::string(""),
+                         std::string(""),
+                         Package::STATE_NOT_FOUND,
+                         {},  // The prefixes aren't relevant.
+                         is_path_package);
         }
       }
+      return Package::invalid();
+    };
 
-      if (i == -1) {
-        ASSERT(!entry.path.empty());
+    auto package = Package::invalid();
+    bool is_path_package = !entry.path.empty();
+    if (is_path_package) {
+      PathBuilder builder(fs);
+
+      std::string error_path;
+      // The entry_path is always with slashes.
+      auto entry_path = entry.path.c_str();
+      char* localized = FilesystemLocal::to_local_path(entry_path);
+      if (!fs->is_absolute(localized)) {
+        // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
+        builder.add(package_lock_dir);
+      }
+      builder.join_slash_path(std::string(entry_path));
+      builder.canonicalize();
+      error_path = std::string(localized);
+      free(localized);
+      auto path = builder.buffer();
+
+      package = locate_package(path, error_path, is_path_package);
+      if (!package.is_valid()) {
         diagnostics->report_error(entry.range,
                                   "Package '%s' not found at '%s'",
                                   entry.path.c_str(),
                                   path.c_str());
-        Package package(package_id,
+      }
+    } else if (entry.url != "" && entry.version != "") {
+      // Not a path package.
+      auto error_path = entry.url + "-" + entry.version;
+      // Try the mappings first.
+      {
+        PathBuilder builder(fs);
+        auto path_probe = mappings.find(entry.url);
+        if (path_probe != mappings.end()) {
+          auto version_probe = path_probe->second.find(entry.version);
+          if (version_probe != path_probe->second.end()) {
+            builder.join(version_probe->second);
+            builder.canonicalize();
+            auto path = builder.buffer();
+            package = locate_package(path, error_path, is_path_package);
+          }
+        }
+      }
+      // Try in the package-directories.
+      for (int i = 0; !package.is_valid() && i < package_dirs.length(); i++) {
+        PathBuilder builder(fs);
+        if (!fs->is_absolute(package_dirs[i])) {
+          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
+          builder.join(fs->cwd());
+        }
+        builder.join(package_dirs[i]);
+        builder.join(entry.url);
+        builder.join(entry.version);
+        builder.canonicalize();
+        auto path = builder.buffer();
+        package = locate_package(path, error_path, is_path_package);
+      }
+      if (!package.is_valid()) {
+        diagnostics->report_error(entry.range,
+                                  "Package '%s-%s' not found",
+                                  entry.url.c_str(),
+                                  entry.version.c_str());
+      }
+    }
+    if (!package.is_valid()) {
+      package = Package(package_id,
+                        entry.name,
                         std::string(""),
                         std::string(""),
                         std::string(""),
                         Package::STATE_NOT_FOUND,
                         {},  // The prefixes aren't relevant.
                         is_path_package);
-        packages[package_id] = package;
-        goto prefix_done;
-      }
     }
-
-    // If the url or the version is empty we already reported an error.
-    if (entry.url != "" && entry.version != "") {
-      diagnostics->report_error(entry.range,
-                                "Package '%s-%s' not found",
-                                entry.url.c_str(),
-                                entry.version.c_str());
-    }
-    { // Needs to be scoped so that the 'goto' can jump over it.
-      Package package(package_id,
-                      std::string(""),
-                      std::string(""),
-                      std::string(""),
-                      Package::STATE_NOT_FOUND,
-                      {},  // The prefixes aren't relevant.
-                      false);  // Not a path package.
-      packages[package_id] = package;
-    }
-
-    prefix_done:
-    continue;
+    packages[package_id] = package;
   }
   return PackageLock(lock_content.source,
                      lock_content.sdk_constraint,

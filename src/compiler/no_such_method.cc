@@ -86,8 +86,28 @@ static void report_no_such_method(List<ir::Node*> candidates,
   static const int BLOCK_NAME = 2;
   Map<Symbol, int> call_site_names;  // The names that are used at the call site.
 
+  std::string helpful_note = "";
+  Set<Symbol> seen_names;
+  // During resolution we made sure that duplicated names in parameters (at the
+  // function site) each had their own fresh symbol. This is now working against
+  // us, since we can't rely on object identity anymore. We thus use std::strings
+  // instead.
+  Set<std::string> reported_duplicates;
+
   int index = 0;
-  for (auto symbol : selector.shape().names()) {
+  auto names = selector.shape().names();
+  for (auto symbol : names) {
+    if (seen_names.contains(symbol)) {
+      auto name_str = std::string(symbol.c_str());
+      if (!reported_duplicates.contains(name_str)) {
+        helpful_note += "\n" "Argument '--";
+        helpful_note += symbol.c_str();
+        helpful_note += "' provided multiple times";
+      }
+      reported_duplicates.insert(name_str);
+    }
+    seen_names.insert(symbol);
+
     call_site_names.set(symbol, selector.shape().is_block_name(index) ? BLOCK_NAME : NAME);
     index++;
   }
@@ -164,7 +184,6 @@ static void report_no_such_method(List<ir::Node*> candidates,
   bool too_many_unnamed_blocks = selector_blocks > max_blocks;
   bool selector_uses_named_blocks = selector.shape().named_block_count() != 0;
   bool mention_unnamed_blocks = selector_uses_named_blocks || !no_candidates_take_a_named_block;
-  std::string helpful_note = "";
   const char* unnamed = mention_unnamed_blocks ? " unnamed" : "";
   if (too_many_unnamed_blocks) {
     if (selector_blocks == 1) {
@@ -237,17 +256,21 @@ static void report_no_such_method(List<ir::Node*> candidates,
     } else {
       if ((call_site_names[symbol] & BLOCK_NAME) != 0) {
         if ((candidate_names[symbol] & ANY_BLOCK_NAME) == 0) {
-          helpful_note += "\n" "The argument '--";
-          helpful_note += symbol.c_str();
-          helpful_note += "' was passed with block type, but must be non-block";
+          if (!reported_duplicates.contains(std::string(symbol.c_str()))) {
+            helpful_note += "\n" "Argument '--";
+            helpful_note += symbol.c_str();
+            helpful_note += "' was passed with block type, but must be non-block";
+          }
           added_not_provided_note = true;
         }
       } else {
         ASSERT((call_site_names[symbol] & NAME) != 0);
         if ((candidate_names[symbol] & ANY_NAME) == 0) {
-          helpful_note += "\n" "The argument '--";
-          helpful_note += symbol.c_str();
-          helpful_note += "' was passed with non-block type, but must be block";
+          if (!reported_duplicates.contains(std::string(symbol.c_str()))) {
+            helpful_note += "\n" "Argument '--";
+            helpful_note += symbol.c_str();
+            helpful_note += "' was passed with non-block type, but must be block";
+          }
           added_not_provided_note = true;
         }
       }
@@ -258,9 +281,11 @@ static void report_no_such_method(List<ir::Node*> candidates,
   for (auto symbol : candidate_names.keys()) {
     if ((candidate_names[symbol] & (REQUIRED_NAME | REQUIRED_BLOCK_NAME)) != 0) {
       if (!call_site_names.contains_key(symbol)) {
-        helpful_note += "\n" "Required named argument '--";
-        helpful_note += symbol.c_str();
-        helpful_note += "' not provided";
+        if (!reported_duplicates.contains(std::string(symbol.c_str()))) {
+          helpful_note += "\n" "Required named argument '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "' not provided";
+        }
         added_not_provided_note = true;
       }
     }

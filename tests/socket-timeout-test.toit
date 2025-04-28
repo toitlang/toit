@@ -2,21 +2,23 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .tcp
 import expect show *
+import net
+import net.modules.tcp
 
 main:
-  server := TcpServerSocket
+  network := net.open
+  server := tcp.TcpServerSocket network
   server.listen "localhost" 0
 
-  socket := TcpSocket
+  socket := tcp.TcpSocket network
   socket.connect "localhost" server.local-address.port
 
   before := Time.monotonic-us
   e := catch:
     with-timeout --ms=100:
       with-timeout --ms=1_000:
-        socket.read
+        socket.in.read
         throw "UNEXPECTED"
   after := Time.monotonic-us
   expect-equals DEADLINE-EXCEEDED-ERROR e

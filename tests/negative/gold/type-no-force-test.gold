@@ -1,4 +1,4 @@
 tests/negative/type-no-force-test.toit:8:7: error: Type mismatch. Expected 'int'. Got 'string'
   foo "str"
       ^~~~~
-Compilation failed.
+Compilation failed

@@ -46,8 +46,7 @@ set_target_properties(
 set(BYTECODE_LIST ${TOITP_TEST_DIR}/bytecode.output)
 
 add_custom_target(build_test_toitp_requirements DEPENDS ${TOITP_EXE} ${BYTECODE_LIST})
-add_dependencies(check build_test_toitp_requirements)
-add_dependencies(check_slow build_test_toitp_requirements)
+add_dependencies(build_test_assets build_test_toitp_requirements)
 
 add_custom_command(
   OUTPUT ${BYTECODE_LIST}
@@ -63,6 +62,11 @@ add_test(
   COMMAND $<TARGET_FILE:toit.run> ${BYTECODE_MATCH_TEST} ${BYTECODE_LIST}
   DEPENDS ${BYTECODE_LIST}
   )
+
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  # Don't run toitp tests if the optimization level is overridden.
+  set(TOITP_TESTS)
+endif()
 
 foreach(file ${TOITP_TESTS})
   get_filename_component(base ${file} NAME_WE)
@@ -84,32 +88,40 @@ foreach(file ${TOITP_TESTS})
   set(build_snap tests-toitp-build_${test_name}-input)
   add_custom_target(${build_snap} DEPENDS ${snap})
 
-  # Make sure the test input is built before we run the tests.
-  add_dependencies(check ${build_snap})
-  add_dependencies(check_slow ${build_snap})
+  add_dependencies(build_test_assets ${build_snap})
 
   file(RELATIVE_PATH toitp_test_name ${TOIT_SDK_SOURCE_DIR} ${toitp_test})
   if (NOT "${toitp_test_name}" IN_LIST TOIT_SKIP_TESTS)
+    set(TEST_EXPECTATION_NAME "${toitp_test_name}")
+    if("${toitp_test_name}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${toitp_test_name}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME ${toitp_test_name}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${toitp_test} ${snap} $<TARGET_FILE:toit.run> ${TOITP_EXE}
       DEPENDS ${TOITP_EXE}
       )
-    set_tests_properties(${toitp_test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
     if ("${toitp_test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${toitp_test_name} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
   endif()
 
   file(RELATIVE_PATH snap_test_name ${TOIT_SDK_SOURCE_DIR} ${snap_test})
   if (NOT "${snap_test_name}" IN_LIST TOIT_SKIP_TESTS)
+    set(TEST_EXPECTATION_NAME "${snap_test_name}")
+    if("${snap_test_name}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${snap_test_name}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME ${snap_test_name}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${snap_test} ${snap}
       )
-    set_tests_properties(${snap_test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
     if ("${snap_test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${snap_test_name} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
   endif()
 endforeach()

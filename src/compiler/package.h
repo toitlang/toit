@@ -59,10 +59,14 @@ class Package {
   // yet, or where we don't have any access to the package id.
   static constexpr const char* INVALID_PACKAGE_ID = "<invalid>";
 
+  // The string that is used for packages that don't have a name.
+  static constexpr const char* NO_NAME = "";
+
   // Constructor must be valid, as we use the class as values in a map.
   Package() {}
 
   std::string id() const { return id_; }
+  std::string name() const { return name_; }
   std::string absolute_path() const { return absolute_path_; }
   ErrorState error_state() const { return error_state_; }
 
@@ -95,7 +99,8 @@ class Package {
   }
 
  private:
-  Package(const std::string id,
+  Package(const std::string& id,
+          const std::string& name,
           const std::string& absolute_path,
           const std::string& absolute_error_path,
           const std::string& relative_error_path,
@@ -103,6 +108,7 @@ class Package {
           Map<std::string, std::string> prefixes,
           bool is_path_package)
       : id_(id)
+      , name_(name)
       , absolute_path_(absolute_path)
       , absolute_error_path_(absolute_error_path)
       , relative_error_path_(relative_error_path)
@@ -111,6 +117,7 @@ class Package {
       , is_path_package_(is_path_package) {}
 
   std::string id_ = std::string(INVALID_PACKAGE_ID);
+  std::string name_ = std::string("");
   std::string absolute_path_ = std::string("");
   // The absolute location of the relative error path.
   // Usually the same as the absolute_path. Can be different for the entry package.

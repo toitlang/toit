@@ -4,4 +4,4 @@ tests/negative/utf8-test.toit:6:17: error: Can't call result of evaluating expre
 tests/negative/utf8-test.toit:7:3: error: Can't call result of evaluating expression
   "𝄞𝄞" 3
   ^~~~
-Compilation failed.
+Compilation failed

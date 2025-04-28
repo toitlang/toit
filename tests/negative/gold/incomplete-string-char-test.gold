@@ -19,4 +19,4 @@ tests/negative/incomplete-string-char-test.toit:13:3: error: Unresolved identifi
 tests/negative/incomplete-string-char-test.toit:14:7: error: Type mismatch. Expected 'int'. Got 'string'
   foo "str"
       ^~~~~
-Compilation failed.
+Compilation failed

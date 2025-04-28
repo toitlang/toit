@@ -119,7 +119,7 @@ class UdpSocketResource : public WindowsResource {
     return overlapped_result;
   }
 
-  bool send(const uint8* buffer, int length, ToitSocketAddress* socket_address) {
+  bool send(const uint8* buffer, word length, ToitSocketAddress* socket_address) {
     // We need to copy the buffer out to a long-lived heap object
     if (write_buffer_.buf != null) {
       free(write_buffer_.buf);

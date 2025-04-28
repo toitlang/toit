@@ -31,20 +31,27 @@ run-case lambda/Lambda -> Task:
   return child
 
 test-simple:
+  expect-structural-equals {:} (Task.group [])
+
+  expect-structural-equals { 0: 42 } (Task.group [
+    :: 42,
+  ])
+
   expect-structural-equals { 0: 42, 1: 87 } (Task.group [
     :: 42,
     :: 87,
   ])
 
 test-bad-arguments:
-  expect-throw "Bad Argument": (Task.group [])
-  expect-throw "Bad Argument": (Task.group [ :: 42 ])
   expect-throw "Bad Argument": (Task.group --required=-1 [ :: 42, :: 87 ])
-  expect-throw "Bad Argument": (Task.group --required= 0 [ :: 42, :: 87 ])
   expect-throw "Bad Argument": (Task.group --required= 3 [ :: 42, :: 87 ])
   expect-throw "Bad Argument": (Task.group --required= 9 [ :: 42, :: 87 ])
 
 test-required:
+  expect-structural-equals {:} (Task.group --required=0 [
+    :: 42,
+    :: sleep --ms=1_000; 87,
+  ])
   expect-structural-equals { 0: 42 } (Task.group --required=1 [
     :: 42,
     :: sleep --ms=1_000; 87,

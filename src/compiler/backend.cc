@@ -173,7 +173,7 @@ Program* Backend::emit(ir::Program* ir_program) {
 
   DispatchTable dispatch_table = DispatchTable::build(ir_program);
 
-  dispatch_table.for_each_selector_offset([&](DispatchSelector selector, int offset) {
+  dispatch_table.for_each_selector_offset([&](DispatchSelector selector, word offset) {
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
   });
 
@@ -251,9 +251,11 @@ Program* Backend::emit(ir::Program* ir_program) {
   // TODO(kasper): Move this elsewhere? Compute dispatch table offsets for
   // all the optimized virtual invoke bytecodes, so we can use them in case
   // we need to branch to the generic virtual invoke handling in the interpreter.
-  for (int i = INVOKE_EQ; i <= INVOKE_AT_PUT; i++) {
+  for (int i = INVOKE_EQ; i <= INVOKE_SIZE; i++) {
     Opcode opcode = static_cast<Opcode>(i);
-    int arity = (opcode == INVOKE_AT_PUT) ? 3 : 2;
+    int arity = 2;
+    if (opcode == INVOKE_AT_PUT) arity = 3;
+    if (opcode == INVOKE_SIZE) arity = 1;
     CallShape shape(arity, 0);  // No blocks.
     Symbol name = Symbol::for_invoke(opcode);
     Selector<PlainShape> selector(name, shape.to_plain_shape());

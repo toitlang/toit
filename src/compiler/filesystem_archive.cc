@@ -52,7 +52,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
         // Lazily compute the current working dir.
         auto cwd_result = getcwd(current_working_dir, PATH_MAX);
         if (cwd_result != current_working_dir) {
-          diagnostics->report_error("Couldn't read current working directory.");
+          diagnostics->report_error("Couldn't read current working directory");
           exit(1);
         }
         current_working_dir_len = strlen(current_working_dir);
@@ -153,7 +153,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
         goto bad_meta;
       }
       if (entry_path_list.size() != 1) {
-        diagnostics->report_error("Entry point must be provided with '-Xarchive_entry_path' for this archive.");
+        diagnostics->report_error("Entry point must be provided with '-Xarchive_entry_path' for this archive");
       }
       if (!entry_path_list[0].is_string()) {
         goto bad_meta;

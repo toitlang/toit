@@ -4,4 +4,4 @@ tests/negative/static2-test.toit:9:3: error: Redefinition of 'foo'
 tests/negative/static2-test.toit:6:10: note: First definition of 'foo'
   static foo:
          ^~~
-Compilation failed.
+Compilation failed

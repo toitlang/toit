@@ -24,7 +24,7 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "esp_partition.h"
 #include "esp_heap_caps.h"
@@ -134,7 +134,7 @@ void HeapFragmentationDumper::switch_to_page(uword address) {
   }
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
  public:

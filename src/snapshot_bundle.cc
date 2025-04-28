@@ -15,6 +15,7 @@
 
 #include "top.h"
 #include "uuid.h"
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/sha256.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 // Bring back the _ret names for sha functions.
@@ -34,8 +35,6 @@ static const char* const UUID_NAME = "uuid";
 static const char* const SDK_VERSION_NAME = "sdk-version";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
-static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
-static const char* const DEBUG_SOURCE_MAP_NAME = "D-source-map";
 
 static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, size_t length) {
   uint8 length_bytes[sizeof(uint32)];
@@ -45,15 +44,11 @@ static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, s
 }
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
-                               List<uint8> source_map_data,
-                               List<uint8> debug_snapshot,
-                               List<uint8> debug_source_map_data)
-    : SnapshotBundle(snapshot, &source_map_data, &debug_snapshot, &debug_source_map_data, vm_git_version()) {}
+                               List<uint8> source_map_data)
+    : SnapshotBundle(snapshot, &source_map_data, vm_git_version()) {}
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8>* source_map_data,
-                               List<uint8>* debug_snapshot,
-                               List<uint8>* debug_source_map_data,
                                const char* sdk_version) {
   ar::MemoryBuilder builder;
   int status = builder.open();
@@ -111,8 +106,6 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   if (source_map_data != null) add(SOURCE_MAP_NAME, *source_map_data);
-  if (debug_snapshot != null) add(DEBUG_SNAPSHOT_NAME, *debug_snapshot);
-  if (debug_source_map_data != null) add(DEBUG_SOURCE_MAP_NAME, *debug_source_map_data);
 
   builder.close(&buffer_, &size_);
 }
@@ -175,7 +168,7 @@ SnapshotBundle SnapshotBundle::stripped() const {
       sdk_version = buffer;
     }
   }
-  return SnapshotBundle(snapshot_bytes, null, null, null, sdk_version);
+  return SnapshotBundle(snapshot_bytes, null, sdk_version);
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {

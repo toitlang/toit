@@ -7,4 +7,4 @@ tests/negative/super4-test.toit:7:24: error: Can't access 'super' in field initi
 tests/negative/super4-test.toit:7:13: error: Unresolved identifier: 'unresolved'
   field2 := unresolved super
             ^~~~~~~~~~
-Compilation failed.
+Compilation failed

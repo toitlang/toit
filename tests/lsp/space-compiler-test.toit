@@ -10,8 +10,7 @@ import system
 import system show platform
 
 main args:
-  run-client-test --use-toitlsp args: test it
- // run_client_test args: test it
+  run_client_test args: test it
 
 test client/LspClient:
   space-foo := "$(directory.cwd)/with space/foo.toit"
@@ -22,7 +21,7 @@ test client/LspClient:
     space-bar = space-bar.replace --all "/" "\\"
 
   print "Checking that foo has one error."
-  foo-content := (file.read-content space-foo).to-string
+  foo-content := (file.read-contents space-foo).to-string
   client.send-did-open --path=space-foo --text=foo-content
   uri := client.to-uri space-foo
   expect (uri.contains "%20")

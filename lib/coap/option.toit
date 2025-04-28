@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
+import io show BIG-ENDIAN
 
 OPTION-OBSERVE ::= 6
 OPTION-URI-PATH ::= 11
@@ -22,13 +22,13 @@ class Option:
     if u == 0:
       value = ByteArray 0
     else if u < 256:
-      value = ByteArray 1 --filler=u
+      value = ByteArray 1 --initial=u
     else if u < 256 * 256:
       value = ByteArray 2
-      binary.BIG-ENDIAN.put-uint16 value 0 u
+      BIG-ENDIAN.put-uint16 value 0 u
     else:
       value = ByteArray 4
-      binary.BIG-ENDIAN.put-uint32 value 0 u
+      BIG-ENDIAN.put-uint32 value 0 u
 
   as-string: return value.to-string
 

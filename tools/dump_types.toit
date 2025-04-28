@@ -15,47 +15,45 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.base64 as base64
 import cli
-import host.file
+import encoding.base64 as base64
 import encoding.json
+import host.file
 import host.pipe
-import bytes
 import .snapshot
 
 main args:
   command := null
   command = cli.Command "root"
-      --long-help="""
+      --help="""
       Dumps propagated types.
 
       Run the compiler with '-Xpropagate -w program.snapshot program.toit > program.types'.
       Then use the generated snapshot and types for this tool.
       """
-      --short-help="Dumps propagated types."
       --options=[
-        cli.OptionString "snapshot" --required --short-name="s"
-            --short-help="The snapshot file for the program."
+        cli.Option "snapshot" --required --short-name="s"
+            --help="The snapshot file for the program."
             --type="file",
-        cli.OptionString "types" --required --short-name="t"
-            --short-help="The collected types in a JSON file."
+        cli.Option "types" --required --short-name="t"
+            --help="The collected types in a JSON file."
             --type="file",
         cli.Flag "sdk"
-            --short-help="Show types for the sdk."
+            --help="Show types for the sdk."
             --default=false,
         cli.Flag "show-positions" --short-name="p"
             --default=false,
       ]
-      --run=:: decode-types it command
+      --run=:: decode-types it
   command.run args
 
-decode-types parsed command -> none:
-  snapshot-content := file.read-content parsed["snapshot"]
-  types-content := file.read-content parsed["types"]
+decode-types invocation/cli.Invocation -> none:
+  snapshot-content := file.read-contents invocation["snapshot"]
+  types-content := file.read-contents invocation["types"]
   types := json.decode types-content
   show-types types snapshot-content
-      --sdk=parsed["sdk"]
-      --show-positions=parsed["show-positions"]
+      --sdk=invocation["sdk"]
+      --show-positions=invocation["show-positions"]
 
 show-types types/List snapshot-content/ByteArray -> none
     --sdk/bool

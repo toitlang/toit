@@ -26,4 +26,4 @@ tests/negative/invalid-literal-test.toit:13:20: error: Map values may not be blo
 tests/negative/invalid-literal-test.toit:14:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

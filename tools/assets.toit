@@ -13,7 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import writer
 import system.assets
 
 import cli
@@ -29,68 +28,88 @@ OPTION-ASSETS       ::= "assets"
 OPTION-OUTPUT       ::= "output"
 OPTION-OUTPUT-SHORT ::= "o"
 
-option-output ::= cli.OptionString OPTION-OUTPUT
+option-output ::= cli.Option OPTION-OUTPUT
     --short-name=OPTION-OUTPUT-SHORT
-    --short-help="Set the output assets file."
+    --help="Set the output assets file."
     --type="file"
 
 main arguments/List:
-  root-cmd := cli.Command "root"
+  root-cmd := build-command
+  root-cmd.run arguments
+
+build-command -> cli.Command:
+  cmd := cli.Command "assets"
+      --help="""
+        Manipulate assets files.
+
+        Asset files can be given to the firmware tool when installing a container.
+        They can then be decoded by the container at runtime.
+
+        Example:
+
+            import system.assets
+
+            main:
+              decoded := assets.decode
+              print decoded["my-asset"]
+        """
       --options=[
-        cli.OptionString OPTION-ASSETS
+        cli.Option OPTION-ASSETS
             --short-name="e"
-            --short-help="Set the assets to work on."
+            --help="The assets to work on."
             --type="file"
             --required
       ]
-  root-cmd.add create-cmd
-  root-cmd.add add-cmd
-  root-cmd.add get-cmd
-  root-cmd.add remove-cmd
-  root-cmd.add list-cmd
-  root-cmd.run arguments
+  cmd.add create-cmd
+  cmd.add add-cmd
+  cmd.add get-cmd
+  cmd.add remove-cmd
+  cmd.add list-cmd
+  return cmd
 
 create-cmd -> cli.Command:
   return cli.Command "create"
+      --help="Create a new assets file."
       --run=:: create-assets it
 
-create-assets parsed/cli.Parsed -> none:
-  output-path := parsed[OPTION-ASSETS]
-  store-assets output-path {:}
+create-assets invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ASSETS]
+  store-assets output-path {:} --ui=invocation.cli.ui
 
 add-cmd -> cli.Command:
   return cli.Command "add"
+      --help="Add or update an asset with the given name."
       --options=[
         option-output,
         cli.OptionEnum "format" ["binary", "ubjson", "tison"]
             --default="binary"
-            --short-help="Pick the encoding format."
+            --help="The encoding format."
 
       ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
-        cli.OptionString "path"
+        cli.Option "path"
             --type="file"
             --required
       ]
-      --short-help="Add or update asset with the given name."
       --run=:: add-asset it
 
-add-asset parsed/cli.Parsed -> none:
-  name := parsed["name"]
-  path := parsed["path"]
-  asset := read-file path
-  update-assets parsed: | entries/Map |
-    if parsed["format"] != "binary":
+add-asset invocation/cli.Invocation -> none:
+  cli := invocation.cli
+  ui := cli.ui
+  name := invocation["name"]
+  path := invocation["path"]
+  asset := read-file path --ui=ui
+  update-assets invocation: | entries/Map |
+    if invocation["format"] != "binary":
       decoded := null
       exception := catch: decoded = json.decode asset
       if not decoded:
-        print "Unable to decode '$path' as JSON. ($exception)"
-        exit 1
-      if parsed["format"] == "ubjson":
+        cli.ui.abort "Unable to decode '$path' as JSON. ($exception)"
+      if invocation["format"] == "ubjson":
         asset = ubjson.encode decoded
-      else if parsed["format"] == "tison":
+      else if invocation["format"] == "tison":
         asset = tison.encode decoded
       else:
         unreachable
@@ -98,33 +117,34 @@ add-asset parsed/cli.Parsed -> none:
 
 get-cmd -> cli.Command:
   return cli.Command "get"
+      --help="Get the asset with the given name."
       --options=[
         cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
             --default="auto"
-            --short-help="Pick the encoding format.",
-        cli.OptionString "output"
+            --help="The encoding format.",
+        cli.Option "output"
             --short-name="o"
-            --short-help="Set the name of the output file."
+            --help="The name of the output file."
             --type="file"
             --required,
       ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
       ]
-      --short-help="Get the asset with the given name."
       --run=:: get-asset it
 
-get-asset parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ASSETS]
-  output-path := parsed["output"]
-  name := parsed["name"]
-  format := parsed["format"]
-  entries := load-assets input-path
+get-asset invocation/cli.Invocation -> none:
+  cli := invocation.cli
+  ui := cli.ui
+  input-path := invocation[OPTION-ASSETS]
+  output-path := invocation["output"]
+  name := invocation["name"]
+  format := invocation["format"]
+  entries := load-assets input-path --ui=ui
   entry := entries.get name
   if not entry:
-    print "No such asset: $name"
-    exit 1
+    cli.ui.abort "No such asset: $name"
   content := entry
   exception := null
   if format == "auto":
@@ -138,28 +158,27 @@ get-asset parsed/cli.Parsed -> none:
   else if format == "ubjson":
     exception = catch: content = "$(json.stringify (ubjson.decode content))\n"
   if exception:
-    print "Failed to decode asset '$name' as $format.to-ascii-upper"
-    exit 1
-  write-file output-path: it.write content
+    cli.ui.abort "Failed to decode asset '$name' as $format.to-ascii-upper"
+  write-file output-path --ui=ui: it.write content
 
 remove-cmd -> cli.Command:
   return cli.Command "remove"
+      --help="Remove the asset with the given name."
       --options=[ option-output ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
       ]
-      --short-help="Remove asset with the given name."
       --run=:: remove-asset it
 
-remove-asset parsed/cli.Parsed -> none:
-  name := parsed["name"]
-  update-assets parsed: | entries/Map |
+remove-asset invocation/cli.Invocation -> none:
+  name := invocation["name"]
+  update-assets invocation: | entries/Map |
     entries.remove name
 
 list-cmd -> cli.Command:
   return cli.Command "list"
-      --short-help="Print all assets in JSON."
+      --help="Print all assets."
       --run=:: list-assets it
 
 decode entry/Map content/ByteArray -> string:
@@ -174,28 +193,32 @@ decode entry/Map content/ByteArray -> string:
     return "json"
   return "binary"
 
-list-assets parsed/cli.Parsed -> none:
-  input-path := parsed[OPTION-ASSETS]
-  entries := load-assets input-path
+list-assets invocation/cli.Invocation -> none:
+  input-path := invocation[OPTION-ASSETS]
+  entries := load-assets input-path --ui=invocation.cli.ui
   mapped := entries.map: | _ content/ByteArray |
     entry := { "size": content.size }
     entry["kind"] = decode entry content
     entry
-  print (json.stringify mapped)
+  invocation.cli.ui.emit-map --result
+      --title="Assets"
+      mapped
 
-update-assets parsed/cli.Parsed [block] -> none:
-  input-path := parsed[OPTION-ASSETS]
-  output-path := parsed[OPTION-OUTPUT]
+update-assets invocation/cli.Invocation [block] -> none:
+  input-path := invocation[OPTION-ASSETS]
+  output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
 
-  existing := load-assets input-path
-  block.call existing
-  store-assets output-path existing
+  ui := invocation.cli.ui
 
-load-assets path/string -> Map:
-  bytes := read-file path
+  existing := load-assets input-path --ui=ui
+  block.call existing
+  store-assets output-path existing --ui=ui
+
+load-assets path/string --ui/cli.Ui -> Map:
+  bytes := read-file path --ui=ui
   return assets.decode bytes
 
-store-assets path/string entries/Map -> none:
+store-assets path/string entries/Map --ui/cli.Ui -> none:
   bytes := assets.encode entries
-  write-file path: it.write bytes
+  write-file path --ui=ui: it.write bytes

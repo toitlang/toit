@@ -32,7 +32,7 @@
 
 namespace toit {
 
-static const int ALLOCATION_SIZE = 2 * MB;
+static const int ALLOCATION_SIZE = 64 * MB;
 
 static void* allocations_mmap = null;
 static size_t allocations_mmap_size = 0;
@@ -41,14 +41,14 @@ uint8* FlashRegistry::allocations_memory_ = null;
 static bool is_file_backed = false;
 
 static long pagesize = 0;
-static int dirty_start = INT32_MAX;
-static int dirty_end = 0;
+static word dirty_start = INT32_MAX;
+static word dirty_end = 0;
 
 static bool is_dirty() {
   return dirty_start < dirty_end;
 }
 
-static void mark_dirty(int offset, int size) {
+static void mark_dirty(word offset, word size) {
   dirty_start = Utils::min(dirty_start, offset);
   dirty_end = Utils::max(dirty_end, offset + size);
 }
@@ -115,8 +115,8 @@ void FlashRegistry::tear_down() {
 
 void FlashRegistry::flush() {
   if (!is_file_backed || !is_dirty()) return;
-  int offset = Utils::round_down(dirty_start, pagesize);
-  int size = Utils::round_up(dirty_end - offset, pagesize);
+  word offset = Utils::round_down(dirty_start, pagesize);
+  word size = Utils::round_up(dirty_end - offset, pagesize);
   if (msync(void_cast(allocations_memory_ + offset), size, MS_SYNC) != 0) {
     perror("FlashRegistry::flush/msync");
   }
@@ -129,7 +129,7 @@ int FlashRegistry::allocations_size() {
   return ALLOCATION_SIZE;
 }
 
-int FlashRegistry::erase_chunk(int offset, int size) {
+int FlashRegistry::erase_chunk(word offset, word size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
   memset(region(offset, size), 0xff, size);
@@ -137,10 +137,10 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   return size;
 }
 
-bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
+bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   uint8* destination = region(offset, size);
   const uint8* source = static_cast<const uint8*>(chunk);
-  for (int i = 0; i < size; i++) destination[i] &= source[i];
+  for (word i = 0; i < size; i++) destination[i] &= source[i];
   mark_dirty(offset, size);
   return true;
 }

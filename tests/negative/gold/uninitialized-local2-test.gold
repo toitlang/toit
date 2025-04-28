@@ -31,4 +31,4 @@ tests/negative/uninitialized-local2-test.toit:49:7: error: Local 'local7' must b
 tests/negative/uninitialized-local2-test.toit:52:29: error: Can't assign to final local multiple times
   for i := 0; i < 2; local8 = 42:
                             ^
-Compilation failed.
+Compilation failed

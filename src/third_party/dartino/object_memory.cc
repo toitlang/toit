@@ -168,8 +168,8 @@ bool Space::includes(uword address) {
 class InSpaceVisitor : public RootCallback {
  public:
   explicit InSpaceVisitor(Space* space) : space(space) {}
-  void do_roots(Object** p, int length) {
-    for (int i = 0; i < length; i++) {
+  void do_roots(Object** p, word length) {
+    for (word i = 0; i < length; i++) {
       Object* object = p[i];
       if (is_smi(object)) continue;
       if (space->includes(reinterpret_cast<uword>(object))) {
@@ -231,6 +231,7 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
+#ifdef TOIT_FREERTOS
   static const int UNUSABLE_SIZE = 50;
   void* unusable_pages[UNUSABLE_SIZE];
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
@@ -248,8 +249,12 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   printf("New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
   printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
   FATAL("Toit heap outside expected range");
+#else
+  void* memory = OS::allocate_pages(Utils::round_up(size, TOIT_PAGE_SIZE));
+  if (!memory) return null;
+  return allocate_chunk_helper(owner, size, memory);
+#endif
 }
-
 
 Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memory) {
   if (memory == null) return null;
@@ -267,6 +272,7 @@ Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memor
 #ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
+  GcMetadata::map_metadata_for_chunk(chunk);
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
     chunk->initialize_metadata();

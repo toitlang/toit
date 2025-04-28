@@ -55,11 +55,11 @@ else
 endif
 
 .PHONY: all
-all: sdk
+all: sdk build-test-assets
 
 .PHONY: debug
 debug:
-	LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
+	cmake -E env LOCAL_CFLAGS="-O0" LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
 
 .PHONY: sdk
 sdk: tools toit-tools version-file
@@ -69,6 +69,7 @@ sdk: tools toit-tools version-file
 .PHONY: sdk-no-cmake
 sdk-no-cmake: tools-no-cmake toit-tools-no-cmake
 
+.PHONY: check-env
 check-env:
 ifndef IGNORE_SUBMODULE
 	@ if git submodule status | grep '^[-+]' ; then \
@@ -96,6 +97,14 @@ ifeq ("$(wildcard ./toolchains/$(TOOLCHAIN).cmake)","")
 	$(error invalid compilation target '$(TOOLCHAIN)')
 endif
 
+.PHONY: check-mbedtls-config
+check-mbedtls-config: check-env
+	@ if ! diff -q --ignore-all-space third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h mbedtls/include/default_config.h; then \
+		echo "mbedtls/include/default_config.h is not in sync with third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h"; \
+		echo "See the mbedtls/include/README.md for instructions on how to update mbedtls/include/default_config.h"; \
+		exit 1; \
+	fi
+
 # We mark this phony because adding and removing .cc files means that
 # cmake needs to be rerun, but we don't detect that, so it might not
 # get run enough.  It takes <1s on Linux to run cmake, so it's
@@ -117,34 +126,39 @@ sysroot: check-env
 endif
 
 BIN_DIR = $(abspath $(BUILD)/$(HOST)/sdk/bin)
-TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+TOIT_BIN = $(BIN_DIR)/toit$(EXE_SUFFIX)
 FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 
 .PHONY: download-packages
-download-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt tools
-	(cd $(BUILD)/$(HOST) && ninja download_packages)
+download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
+	(cd $(BUILD)/$(TARGET) && ninja download_packages)
 
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
-	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
+	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DHOST_TOIT=$(TOIT_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
 .PHONY: sync
 sync: sync-packages
 	git submodule update --init --recursive
 
 .PHONY: sync-packages
-sync-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt
-	(cd $(BUILD)/$(HOST) && ninja sync_packages)
+sync-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
+	(cd $(BUILD)/$(TARGET) && ninja sync_packages)
 
 .PHONY: disable-auto-sync
 disable-auto-sync:
 	$(MAKE) rebuild-cmake
-	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(HOST)
+	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(TARGET)
+
+.PHONY: enable-lto
+enable-lto:
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DENABLE_LTO=ON $(BUILD)/$(HOST)
+
 
 .PHONY: host-tools
-host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
+host-tools: check-mbedtls-config check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_tools)
 
 .PHONY: tools
@@ -153,6 +167,10 @@ host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 # the second attempt will be a no-op.
 tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt tools-no-cmake
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
+
+.PHONY: build-envelope
+build-envelope: download-packages
+	(cd $(BUILD)/$(TARGET) && ninja build_envelope)
 
 .PHONY: tools-no-cmake
 tools-no-cmake:
@@ -178,7 +196,7 @@ version-file: $(BUILD)/$(TARGET)/CMakeCache.txt
 .PHONY: pi
 pi: raspbian
 
-TOITLANG_SYSROOTS := armv7 aarch64 riscv64 raspbian arm-linux-gnueabi
+TOITLANG_SYSROOTS := armv7 aarch64 raspbian arm-linux-gnueabi
 ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
 SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.3.0/sysroot-$(TARGET).tar.gz
 
@@ -225,6 +243,22 @@ esp32:
 esp32-no-env: check-env check-esp32-env sdk
 	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
+.PHONY: esp32c3
+esp32c3:
+	$(MAKE) IDF_TARGET=esp32c3 ESP32_CHIP=esp32c3 esp32
+
+.PHONY: esp32c6
+esp32c6:
+	$(MAKE) IDF_TARGET=esp32c6 ESP32_CHIP=esp32c6 esp32
+
+.PHONY: esp32s2
+esp32s2:
+	$(MAKE) IDF_TARGET=esp32s2 ESP32_CHIP=esp32s2 esp32
+
+.PHONY: esp32s3
+esp32s3:
+	$(MAKE) IDF_TARGET=esp32s3 ESP32_CHIP=esp32s3 esp32
+
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
 menuconfig:
@@ -264,9 +298,18 @@ INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
 install-sdk:
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*
-	install -D --target-directory="$(DESTDIR)$(prefix)"/tools "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*
-	install -D --target-directory="$(DESTDIR)$(prefix)"/vessels "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*
+	mkdir -p "$(DESTDIR)$(prefix)"/bin
+	mkdir -p "$(DESTDIR)$(prefix)"/tools
+	mkdir -p "$(DESTDIR)$(prefix)"/vessels
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
+	done
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/tools; \
+	done
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/vessels; \
+	done
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
@@ -278,6 +321,33 @@ install: install-sdk
 .PHONY: test
 test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
+
+.PHONY: rebuild-cmake-hw
+rebuild-cmake-hw:
+	@if [ -z "$$TOIT_EXE_HW" ]; then \
+		echo "TOIT_EXE_HW is not set."; \
+		exit 1; \
+	fi
+	mkdir -p $(BUILD)/hw
+	(cd $(BUILD)/hw && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
+
+.PHONY: download-packages-hw-host
+download-packages-hw-host:
+	cmake -E env TOIT_EXE_HW=$(BUILD)/$(HOST)/sdk/bin/toit $(MAKE) download-packages-hw
+
+.PHONY: download-packages-hw
+download-packages-hw:
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp32
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp-tester
+
+.PHONY: test-hw
+test-hw: rebuild-cmake-hw download-packages-hw
+	(cd $(BUILD)/hw && ninja check_hw)
+
+.PHONY: build-test-assets
+build-test-assets: rebuild-cmake
+	(cd $(BUILD)/$(HOST) && ninja build_test_assets)
 
 .PHONY: test-flaky
 test-flaky:
@@ -291,16 +361,17 @@ test-fast:
 update-gold:
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja update_gold)
+	(cd $(BUILD)/$(HOST) && ninja update_pkg_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_minus_s_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_type_gold)
 
 .PHONY: test-health
-test-health: download-packages
+test-health: download-packages download-packages-hw-host
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_health)
 
 .PHONY: update-health-gold
-update-health-gold: download-packages
+update-health-gold: download-packages download-packages-hw-host
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_health_gold)
@@ -343,3 +414,9 @@ update-external-health-gold: download-packages check-external-enabled
 	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_external_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_external_health_gold)
+
+.PHONY: update-pkgs
+update-pkgs:
+	for d in $$(git ls-files | grep package.yaml | grep -v tests/pkg | grep -v tests/lsp/project-root-multi); do \
+	  toit pkg update --project-root $$(dirname $$d); \
+	done

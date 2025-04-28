@@ -4,9 +4,6 @@ tests/negative/missing-name-test.toit:5:1: error: Invalid name for declaration
 tests/negative/missing-name-test.toit:6:3: warning: Unusual indentation for parameter
   unresolved
   ^~~~~~~~~~
-tests/negative/missing-name-test.toit:8:1: error: Expected name of declaration
-:
-^
 tests/negative/missing-name-test.toit:11:1: error: Invalid name for declaration
 (499 + 33 + unresolved)
 ^
@@ -19,9 +16,6 @@ tests/negative/missing-name-test.toit:14:3: error: Invalid name for declaration
 tests/negative/missing-name-test.toit:15:5: warning: Unusual indentation for parameter
     unresolved
     ^~~~~~~~~~
-tests/negative/missing-name-test.toit:17:3: error: Expected name of declaration
-  :
-  ^
 tests/negative/missing-name-test.toit:20:3: error: Invalid name for declaration
   (499 + 33 + unresolved)
   ^
@@ -40,15 +34,9 @@ tests/negative/missing-name-test.toit:24:11: error: Expected name of declaration
 tests/negative/missing-name-test.toit:26:9: error: Expected name of declaration
   static    /* comment
         ^
-tests/negative/missing-name-test.toit:5:1: error: Missing body
-4
-^
 tests/negative/missing-name-test.toit:11:1: error: Missing body
 (499 + 33 + unresolved)
 ^
-tests/negative/missing-name-test.toit:14:3: error: Missing body
-  4
-  ^
 tests/negative/missing-name-test.toit:20:3: error: Missing body
   (499 + 33 + unresolved)
   ^
@@ -64,9 +52,6 @@ tests/negative/missing-name-test.toit:24:11: error: Members can't be abstract in
 tests/negative/missing-name-test.toit:26:9: error: Missing body
   static    /* comment
         ^
-tests/negative/missing-name-test.toit:9:3: error: Unresolved identifier: 'unresolved'
-  unresolved
-  ^~~~~~~~~~
 tests/negative/missing-name-test.toit:30:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
@@ -77,7 +62,4 @@ tests/negative/missing-name-test.toit:31:8: error: Argument mismatch for 'A'
 Method does not take any arguments, but one was provided
   a := A unresolved
        ^
-tests/negative/missing-name-test.toit:18:5: error: Unresolved identifier: 'unresolved'
-    unresolved
-    ^~~~~~~~~~
-Compilation failed.
+Compilation failed

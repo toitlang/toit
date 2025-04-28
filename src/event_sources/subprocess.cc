@@ -219,4 +219,4 @@ void SubprocessEventSource::entry() {
 
 } // namespace toit
 
-#endif // TOIT_LINUX
+#endif // defined(TOIT_LINUX) || defined(TOIT_DARWIN)

@@ -791,7 +791,8 @@ class Printer : public Visitor {
            node->shape().arity(),
            node->shape().total_block_count(),
            node->shape().named_block_count());
-    for (auto name : node->shape().names()) {
+    auto names = node->shape().names();
+    for (auto name : names) {
       printf(", %s", name.c_str());
     }
     printf(") ");

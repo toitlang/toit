@@ -19,7 +19,6 @@ add_custom_target(update_minus_s_gold)
 
 foreach(file ${MINUS_S_TESTS})
   get_filename_component(name ${file} NAME_WE)
-  set(lib_dir ".")
   set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
   file(RELATIVE_PATH relative_negative_path ${CMAKE_CURRENT_SOURCE_DIR} ${toit_file})
   get_filename_component(relative_negative_dir "${relative_negative_path}" DIRECTORY)
@@ -43,9 +42,11 @@ foreach(file ${MINUS_S_TESTS})
   string(REPLACE " " "__" generate_gold ${generate_gold})
   set(generate_gold "build_${generate_gold}")
   add_custom_target(${generate_gold})
+  add_dependencies(${generate_gold} toit.run)
 
   add_custom_command(
     TARGET ${generate_gold}
+    POST_BUILD
     COMMAND ${CMAKE_COMMAND}
         -DUPDATE_GOLD=true
         -DTOITVM=$<TARGET_FILE:toit.run>
@@ -54,7 +55,6 @@ foreach(file ${MINUS_S_TESTS})
         -DTMP=${CMAKE_BINARY_DIR}/tmp
         -P ${CMAKE_CURRENT_SOURCE_DIR}/run.cmake
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    DEPENDS $<TARGET_FILE:toit.run>
   )
   add_dependencies(update_minus_s_gold ${generate_gold})
 endforeach()

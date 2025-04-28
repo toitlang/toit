@@ -1,0 +1,5 @@
+prefixes:
+  p3: p3-good
+packages:
+  p3-good:
+    path: ../p3-good

@@ -2,26 +2,30 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import reader show BufferedReader
 import system.storage
 import encoding.tison
 import expect show *
+import .io-utils show FakeData
 
 main:
   test-bucket-ram
   test-bucket-ram-large-payload
   test-bucket-ram-overflow
   test-bucket-flash
+  test-bucket-flash-multi
+  test-bucket-flash-large
 
   test-region-flash-open
   test-region-flash-double-open
   test-region-flash-erase
   test-region-flash-is-erased
   test-region-flash-write-all
+  test-region-flash-write-io-data
   test-region-flash-ignore-set
   test-region-flash-out-of-space
   test-region-flash-stream
   test-region-flash-no-writable
+  test-region-flash-large
 
   test-region-flash-delete
   test-region-flash-list
@@ -106,7 +110,7 @@ test-bucket-flash:
   expect-equals 87 (bucket.get "hest" --init=: 87)
   expect-equals 87 bucket["hest"]
 
-  // Explicitly storing to the bucket from an --if_absent block is
+  // Explicitly storing to the bucket from an --if-absent block is
   // a bit of anti-pattern (using --init is nicer), but it is not
   // that uncommon and it should work.
   bucket.remove "fisk"
@@ -139,6 +143,32 @@ test-bucket-flash:
   expect-equals 2345 bucket[long]
   bucket.remove long
   expect-throw "key not found": bucket[long]
+
+test-bucket-flash-multi:
+  b1 := storage.Bucket.open --flash "gris"
+  b2 := storage.Bucket.open --flash "gris"
+  b1["fisk"] = 1234
+  b1["hest"] = 2345
+  expect-equals 1234 b2["fisk"]
+  b2.remove "fisk"
+  expect-null (b1.get "fisk")
+  b1.close
+  expect-equals 2345 b2["hest"]
+
+test-bucket-flash-large:
+  bucket := storage.Bucket.open --flash "hund"
+  content := List 32:
+    ByteArray 512 + (random 512): random 0x100
+  content.size.repeat: bucket["entry$it"] = content[it]
+  content.size.repeat: expect-bytes-equal content[it] bucket["entry$it"]
+  // Make sure that writes do not invalidate previously written
+  // entries because of weird cache neutering issues.
+  bucket["42"] = 87
+  bucket.close
+  // Re-open the bucket to force this to be read from flash again.
+  bucket = storage.Bucket.open --flash "hund"
+  content.size.repeat: expect-bytes-equal content[it] bucket["entry$it"]
+  bucket.close
 
 test-region-flash-open:
   storage.Region.delete --flash "region-0"
@@ -183,19 +213,19 @@ test-region-flash-is-erased:
   expect (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=3 #[1]
+  region.write --at=3 #[1]
   expect-not (region.is-erased --from=1 --to=31)
   expect (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=29 #[2]
+  region.write --at=29 #[2]
   expect-not (region.is-erased --from=1 --to=31)
   expect-not (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
   expect (region.is-erased --from=4 --to=28)
 
-  region.write --from=17 #[2]
+  region.write --at=17 #[2]
   expect-not (region.is-erased --from=1 --to=31)
   expect-not (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
@@ -217,7 +247,7 @@ test-region-flash-write-all:
   while written < region.size:
     snippet-size := min ((random 128) + 1) (region.size - written)
     snippets.add (ByteArray snippet-size: random 0x100)
-    region.write --from=written snippets.last
+    region.write --at=written snippets.last
     written += snippet-size
 
   read := 0
@@ -226,12 +256,25 @@ test-region-flash-write-all:
     read += snippet.size
   region.close
 
+test-region-flash-write-io-data:
+  region := storage.Region.open --flash "region-1" --capacity=1000
+
+  region.erase
+  region.write --at=0 "foo"
+  expect-equals #['f', 'o', 'o'] (region.read --from=0 --to=3)
+
+  region.erase
+  region.write --at=0 (FakeData "bar")
+  expect-equals #['b', 'a', 'r'] (region.read --from=0 --to=3)
+
+  region.close
+
 test-region-flash-ignore-set:
   region := storage.Region.open --flash "region-2" --capacity=1000
   region.erase
-  region.write --from=0 #[0b1010_1010]
+  region.write --at=0 #[0b1010_1010]
   expect-bytes-equal #[0b1010_1010] (region.read --from=0 --to=1)
-  region.write --from=0 #[0b1111_0000]
+  region.write --at=0 #[0b1111_0000]
   expect-bytes-equal #[0b1010_0000] (region.read --from=0 --to=1)
   region.close
 
@@ -262,7 +305,7 @@ test-region-flash-stream:
 test-region-flash-stream region/storage.Region max-size/int?:
   region.erase
   bytes-written := ByteArray region.size: random 0x100
-  region.write --from=0 bytes-written
+  region.write --at=0 bytes-written
 
   if max-size and max-size < 16:
     expect-throw "Bad Argument": region.stream --max-size=max-size
@@ -270,15 +313,14 @@ test-region-flash-stream region/storage.Region max-size/int?:
 
   expect-bytes-equal
       bytes-written
-      (BufferedReader (region.stream --max-size=max-size)).read-bytes region.size
+      (region.stream --max-size=max-size).read-bytes region.size
 
   indexes := [-100, -1, 0, 1, 7, 99, 500, 512, 999, 1000, 1001, 10000]
   indexes.do: | from/int |
     indexes.do: | to/int |
       if 0 <= from <= to <= bytes-written.size:
         reader := region.stream --from=from --to=to --max-size=max-size
-        buffered := BufferedReader reader
-        bytes-read := buffered.read-bytes to - from
+        bytes-read := reader.read-bytes to - from
         expect-bytes-equal bytes-written[from..to] bytes-read
       else:
         expect-throw "OUT_OF_BOUNDS":
@@ -293,8 +335,24 @@ test-region-flash-stream region/storage.Region max-size/int?:
 test-region-flash-no-writable:
   region := storage.Region.open --flash "region-1" --capacity=1000 --no-writable
   expect-throw "PERMISSION_DENIED": region.erase
-  expect-throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  expect-throw "PERMISSION_DENIED": region.write --at=0 #[0b1010_1010]
   region.read --from=0 --to=1
+  region.close
+
+test-region-flash-large:
+  capacity := 60_000_000  // Roughly 60 MB.
+  region := storage.Region.open --flash "region-large" --capacity=capacity
+  region.erase
+  content := ByteArray capacity
+  1000.repeat:
+    content[random capacity] = random 0x100
+  content[0] = 42
+  content[capacity - 1] = 0x42
+  region.write --at=0 content
+  region.close
+  region = storage.Region.open --flash "region-large" --capacity=capacity
+  stored := region.read --from=0 --to=capacity
+  expect-equals content stored
   region.close
 
 test-region-flash-delete:
@@ -302,7 +360,7 @@ test-region-flash-delete:
   expect-throw "ALREADY_IN_USE": storage.Region.delete --flash "region-3"
   region.close
   expect-throw "ALREADY_CLOSED": region.read --from=0 --to=4
-  expect-throw "ALREADY_CLOSED": region.write --from=0 #[1]
+  expect-throw "ALREADY_CLOSED": region.write --at=0 #[1]
   expect-throw "ALREADY_CLOSED": region.is-erased --from=0 --to=4
   expect-throw "ALREADY_CLOSED": region.erase --from=0 --to=4096
   storage.Region.delete --flash "region-3"
@@ -323,6 +381,6 @@ test-region-partition:
 test-region-partition-no-writable:
   region := storage.Region.open --partition "partition-0" --no-writable
   expect-throw "PERMISSION_DENIED": region.erase
-  expect-throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  expect-throw "PERMISSION_DENIED": region.write --at=0 #[0b1010_1010]
   region.read --from=0 --to=1
   region.close

@@ -28,9 +28,9 @@ class EncodeVisitor : public Visitor {
  public:
   explicit EncodeVisitor(ProgramOrientedEncoder* encoder) : encoder_(encoder), level_(0) {};
 
-  void visit_byte_array(const uint8* bytes, int length) {
+  void visit_byte_array(const uint8* bytes, word length) {
     encoder_->write_byte_array_header(length);
-    for (int i = 0; i < length; i++) {
+    for (word i = 0; i < length; i++) {
       encoder_->write_byte(bytes[i]);
     }
   }
@@ -39,9 +39,9 @@ class EncodeVisitor : public Visitor {
   EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : encoder_(encoder), level_(level) {};
 
   // Restrictions when encoding collections.
-  const int MAX_NOF_STRING_ELEMENTS = 104;
-  const int MAX_NOF_BYTEARRAY_ELEMENTS = 40;
-  const int MAX_NOF_ARRAY_ELEMENTS = 10;
+  const word MAX_NOF_STRING_ELEMENTS = 255;
+  const word MAX_NOF_BYTEARRAY_ELEMENTS = 40;
+  const word MAX_NOF_ARRAY_ELEMENTS = 10;
 
   void visit_smi(Smi* smi) {
     encoder_->write_int(Smi::value(smi));
@@ -76,7 +76,7 @@ class EncodeVisitor : public Visitor {
     encoder_->write_int(array->length());
     encoder_->write_byte('[');
     encoder_->write_byte('#');
-    const int limit = Utils::min(array->length(), MAX_NOF_ARRAY_ELEMENTS);
+    const word limit = Utils::min(array->length(), MAX_NOF_ARRAY_ELEMENTS);
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
@@ -99,12 +99,12 @@ class EncodeVisitor : public Visitor {
 
   void visit_stack(Stack* stack);
 
-  void visit_list(Instance* instance, Array* backing_array, int size) {
+  void visit_list(Instance* instance, Array* backing_array, word size) {
     encoder_->write_header(2, 'L');
     encoder_->write_int(size);
     encoder_->write_byte('[');
     encoder_->write_byte('#');
-    const int limit = Utils::min(size, MAX_NOF_ARRAY_ELEMENTS);
+    const word limit = Utils::min(size, MAX_NOF_ARRAY_ELEMENTS);
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
@@ -160,7 +160,7 @@ class EncodeVisitor : public Visitor {
   int level_;
 };
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define MAX_NUMBER_OF_STACK_FRAMES  40  // About 629 bytes of stack trace, max.
 #else
 #define MAX_NUMBER_OF_STACK_FRAMES 100
@@ -283,7 +283,7 @@ void Encoder::write_byte(uint8 c) {
   buffer_->put_byte(c);
 }
 
-void Encoder::write_header(int size, uint8 tag) {
+void Encoder::write_header(word size, uint8 tag) {
   write_byte('[');
   write_byte('#');
   write_int32(size + 1);
@@ -329,7 +329,7 @@ void Encoder::write_double(double value) {
   buffer_->put_int64(raw);
 }
 
-void Encoder::write_byte_array_header(int length) {
+void Encoder::write_byte_array_header(word length) {
   write_byte('[');
   write_byte('$');
   write_byte('U');

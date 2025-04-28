@@ -128,6 +128,7 @@ A signal synchronization primitive.
 This class must not be extended.
 */
 monitor Signal:
+  waiters_ /int := 0
   current_ /int := 0
   awaited_ /int := 0
 
@@ -169,17 +170,20 @@ monitor Signal:
 
   // Helper method for condition waiting.
   wait_ [condition] -> none:
-    while true:
-      awaited := awaited_
-      if current_ == awaited:
+    waiters_++
+    try:
+      while true:
+        awaited := awaited_
+        awaited_ = ++awaited
+        await: current_ >= awaited
+        if condition.call: return
+    finally:
+      if waiters_-- == 1:
         // No other task is waiting for this signal to be raised,
         // so it is safe to reset the counters. This helps avoid
         // the ever increasing counter issue that may lead to poor
         // performance in (very) extreme cases.
-        current_ = awaited = 0
-      awaited_ = ++awaited
-      await: current_ >= awaited
-      if condition.call: return
+        current_ = awaited_ = 0
 
 /**
 A synchronization gate.
@@ -297,8 +301,8 @@ monitor Channel:
 
   /**
   Receives a message from the channel.
-  If no message is ready, and $blocking is true, blocks until another tasks
-    sends a message through $send.
+  If no message is ready, and $blocking is true (the default), blocks until
+    another tasks sends a message through $send.
   If no message is ready, and $blocking is false, returns null.
   If multiple tasks are blocked waiting for a new value, then a $send call only
     unblocks one waiting task.

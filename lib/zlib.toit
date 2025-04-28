@@ -2,27 +2,60 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE_ENDIAN
 import monitor
-import reader
 import crypto
 import crypto.adler32
 import crypto.crc as crc-algorithms
 import expect show *
+import .io as io
+import .io show LITTLE-ENDIAN
 
-class CompressionReader implements reader.Reader:
-  wrapped_ := null
+SMALL-BUFFER-DEFLATE-HEADER_ ::= #[8, 0x1d]
+MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 
-  constructor.private_:
+/**
+An extension of the $io.Writer interface that improves the
+  $io.Writer.wait-for-more-room_ method.
+*/
+class CompressionWriter_ extends io.CloseableWriter:
+  coder_/Coder_
 
-  read --wait/bool=true -> ByteArray?:
-    return wrapped_.read_ --wait=wait
+  constructor.private_ .coder_:
 
-  close:
-    wrapped_.close-read_
+  wait-for-more-room_:
+    coder_.wait-for-more-room_
 
-SMALL-BUFFER-DEFLATE-HEADER_ ::= [8, 0x1d]
-MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
+  try-write_ data/io.Data from/int to/int -> int:
+    return coder_.try-write_ data from to
+
+  close_:
+    coder_.close-writer_
+
+/**
+An $io.CloseableReader that supports '--no-wait' for the $read method.
+
+In that case the result might be an empty byte-array, indicating that more
+  data needs to be fed into the encoder.
+*/
+class CompressionReader extends io.CloseableReader:
+  coder_/Coder_
+
+  constructor.private_ .coder_:
+
+  read --max-size/int?=null --wait/bool=true -> ByteArray?:
+    // It's important that all non-empty byte arrays go through the
+    // normal read method, as this affects the $io.Reader.processed count.
+    if wait or buffered-size != 0 or not coder_.backend-needs-input_:
+      return super --max-size=max-size
+
+    if is-closed_: return null
+    return #[]
+
+  read_ -> ByteArray?:
+    return coder_.read_
+
+  close_ -> none:
+    coder_.close-reader_
 
 /**
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
@@ -44,7 +77,7 @@ class UncompressedDeflateBackend_ implements Backend_:
 
   static BLOCK-HEADER-SIZE_ ::= 5
 
-  write collection from=0 to=collection.size -> int:
+  write data/io.Data from=0 to=data.byte-size -> int:
     if not summer_: throw "ALREADY_CLOSED"
     if buffer-fullness_ == buffer_.size:
       return 0  // Read more.
@@ -52,14 +85,17 @@ class UncompressedDeflateBackend_ implements Backend_:
       length := min
           buffer_.size - buffer-fullness_
           to - from
-      buffer_.replace buffer-fullness_ collection from (from + length)
-      summer_.add collection from (from + length)
+      buffer_.replace buffer-fullness_ data from (from + length)
+      summer_.add data from (from + length)
       buffer-fullness_ += length
       return length
     else:
       // Construct a new buffer that can hold the whole write.
-      buffer_ = buffer_[..buffer-fullness_] + collection[from..to]
-      summer_.add collection from to
+      new-buffer := ByteArray buffer-fullness_ + (to - from)
+      new-buffer.replace 0 buffer_ 0 buffer-fullness_
+      data.write-to-byte-array new-buffer --at=buffer-fullness_ from to
+      buffer_ = new-buffer
+      summer_.add data from to
       buffer-fullness_ = buffer_.size
       return to - from
 
@@ -125,8 +161,8 @@ class CrcAndLengthChecksum_ extends crypto.Checksum:
 
   constructor.private_ .length_ .crc_:
 
-  add collection from/int to/int -> none:
-    crc_.add collection from to
+  add data/io.Data from/int to/int -> none:
+    crc_.add data from to
     length_ += to - from
 
   get:
@@ -177,7 +213,7 @@ class RunLengthDeflateBackend_ implements Backend_:
     buffer-fullness_ = 0
     return result
 
-  write collection from=0 to=collection.size:
+  write data/io.Data from/int=0 to/int=data.byte-size:
     if not rle_: throw "ALREADY_CLOSED"
     // The buffer is 256 large, and we don't let it get too full because then the compressor
     // may not be able to make progress, so we flush it when we hit three quarters full.
@@ -185,12 +221,12 @@ class RunLengthDeflateBackend_ implements Backend_:
     if buffer-fullness_ > 192:
       return 0  // Read more.
 
-    result := rle-add_ rle_ buffer_ buffer-fullness_ collection from to
+    result := rle-add_ rle_ buffer_ buffer-fullness_ data from to
     written := result >> 15
     read := result & 0x7fff
     assert: read != 0  // Not enough slack in the buffer.
     buffer-fullness_ += written
-    summer_.add collection from from + read
+    summer_.add data from from + read
     return read
 
   /**
@@ -231,6 +267,7 @@ interface Backend_:
   /// Returns null on end of file.
   /// Returns a zero length ByteArray if it needs a write operation.
   read -> ByteArray?
+
   /// Returns zero if it needs a read operation.
   write data from/int to/int -> int
   close -> none
@@ -243,8 +280,8 @@ class ZlibBackend_ implements Backend_:
   read -> ByteArray?:
     return zlib-read_ zlib_
 
-  write data from/int=0 to/int=data.size -> int:
-    return zlib-write_ zlib_ data[from..to]
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return zlib-write_ zlib_ (data.byte-slice from to)
 
   close -> none:
     zlib-close_ zlib_
@@ -252,72 +289,133 @@ class ZlibBackend_ implements Backend_:
 // An Encoder or Decoder.
 abstract class Coder_:
   backend_/Backend_
-  closed-write_ := false
-  closed-read_ := false
   signal_ /monitor.Signal := monitor.Signal
   state_/int := STATE-READY-TO-READ_ | STATE-READY-TO-WRITE_
+  in_/CompressionReader? := null
+  out_/CompressionWriter_? := null
+  /**
+  A temporarily buffered byte-array.
+  */
+  buffered_/ByteArray? := null
 
   static STATE-READY-TO-READ_  ::= 1 << 0
   static STATE-READY-TO-WRITE_ ::= 1 << 1
 
   constructor .backend_:
-    reader = CompressionReader.private_
-    reader.wrapped_ = this
     add-finalizer this::
       this.uninit_
 
   /**
   A reader that can be used to read the compressed or decompressed data output
     by the Encoder or Decoder.
-  */
-  reader/CompressionReader
 
-  read_ --wait/bool -> ByteArray?:
-    if closed-read_: return null
+  By default the $CompressionReader blocks until there is data available.
+  Use $CompressionReader.read with the '--wait' flag set to false to get an empty
+    ByteArray when the buffers are empty, and a call to the write method is
+    needed.
+  */
+  in -> CompressionReader:
+    if not in_: in_ = CompressionReader.private_ this
+    return in_
+
+  /**
+  Deprecated. Use $in instead.
+  */
+  reader -> CompressionReader:
+    return in
+
+  /**
+  A writer that can be used to write data to the Encoder or Decoder.
+
+  If the writers $io.Writer.try-write returns 0, then that means that the
+    read method must be called because the buffers are full.
+  */
+  out -> io.CloseableWriter:
+    if not out_: out_ = CompressionWriter_.private_ this
+    return out_
+
+  read_ -> ByteArray?:
+    if buffered_:
+      result := buffered_
+      buffered_ = null
+      return result
     result := backend_.read
-    while result and wait and result.size == 0:
-      state_ &= ~STATE-READY-TO-READ_
-      state_ |= STATE-READY-TO-WRITE_
-      signal_.raise
-      signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+    while result and result.size == 0:
+      wait-for-more-data_
       result = backend_.read
     return result
 
-  close-read_ -> none:
-    if not closed-read_:
-      closed-read_ = true
-      if closed-write_:
-        uninit_
-      state_ |= STATE-READY-TO-WRITE_
-      signal_.raise
+  /**
+  Whether the backend needs more input.
+
+  This is done by asking the backend and then, potentially, storing the
+    returned data in this instance.
+  */
+  backend-needs-input_ -> bool:
+    assert: not buffered_
+    data := backend_.read
+    if not data:
+      // The backend is closed.
+      return false
+    if data.size != 0:
+      buffered_ = data
+      // Data is available.
+      return false
+    // No data. The backend needs input.
+    return true
+
+  close-reader_ -> none:
+    if out.is-closed:
+      uninit_
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
 
   /**
   Writes data to the compressor or decompressor.
   If $wait is false, it may return before all data has been written.
     If it returns zero, then that means the read method must be called
     because the buffers are full.
+
+  Deprecated. Use out.try-write or out.write instead.
   */
-  write --wait/bool=true data from/int=0 to/int=data.size -> int:
-    if closed-read_: throw "READER_CLOSED"
+  write --wait/bool=true data/io.Data from/int=0 to/int=data.byte-size -> int:
+    if not wait: return try-write_ data from to
     pos := from
     while pos < to:
-      bytes-written := backend_.write data pos to
-      if bytes-written == 0:
-        if wait:
-          state_ &= ~STATE-READY-TO-WRITE_
-          state_ |= STATE-READY-TO-READ_
-          signal_.raise
-          signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
-      if not wait: return bytes-written
+      bytes-written := try-write_ data pos to
+      if bytes-written == 0: wait-for-more-room_
       pos += bytes-written
-    return pos - from
+    return to - from
 
+  try-write_ data/io.Data from/int to/int -> int:
+    if in.is-closed: throw "READER_CLOSED"
+    return backend_.write data from to
+
+  wait-for-more-room_:
+    state_ &= ~STATE-READY-TO-WRITE_
+    state_ |= STATE-READY-TO-READ_
+    signal_.raise
+    signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
+
+  wait-for-more-data_:
+    state_ &= ~STATE-READY-TO-READ_
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
+    signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+
+  /**
+  Closes the writer.
+
+  Deprecated. Use out.close instead.
+  */
+  // TODO(florian): this should close in and out and uninit.
   close -> none:
-    if not closed-write_:
-      backend_.close
-      closed-write_ = true
-      state_ |= STATE-READY-TO-READ_
-      signal_.raise
+    close-writer_
+
+  close-writer_:
+    backend_.close
+    state_ |= STATE-READY-TO-READ_
+    signal_.raise
 
   /**
   Releases memory associated with this compressor.  This is called
@@ -342,28 +440,6 @@ class Encoder extends Coder_:
     super
         ZlibBackend_ (zlib-init-deflate_ resource-freeing-module_ level)
 
-  /**
-  Writes uncompressed data into the compressor.
-  In the default $wait mode this method may block and will not return
-    until all bytes have been written to the compressor.
-  Returns the number of bytes that were compressed.  If zero bytes were
-    compressed that means that data needs to be read using the reader before
-    more data can be accepted.
-  Any bytes that were not compressed need to be resubmitted to this method
-    later.
-  */
-  write --wait/bool=true data -> int:
-    return super --wait=wait data
-
-  /**
-  Closes the encoder.
-  This tells the encoder that no more uncompressed input is coming.  Subsequent
-    calls to the reader will return the buffered compressed data and then
-    return null.
-  */
-  close -> none:
-    super
-
 /**
 A Zlib decompressor/inflater.
 Not usually supported on embedded platforms due to high memory use.
@@ -375,28 +451,6 @@ class Decoder extends Coder_:
   constructor:
     super
         ZlibBackend_ (zlib-init-inflate_ resource-freeing-module_)
-
-  /**
-  Writes compressed data into the decompressor.
-  In the default $wait mode this method may block and will not return
-    until all bytes have been written to the decompressor.
-  Returns the number of bytes that were decompressed.  If zero bytes were
-    decompressed that means that data needs to be read using the reader before
-    more data can be accepted.
-  Any bytes that were not decompressed need to be resubmitted to this method
-    later.
-  */
-  write --wait/bool=true data -> int:
-    return super --wait=wait data
-
-  /**
-  Closes the decoder.
-  This will tell the decoder that no more compressed input is coming.
-    Subsequent calls to the reader will return the buffered decompressed data
-    and then return null.
-  */
-  close -> none:
-    super
 
 /**
 A utility class for the pure Toit DEFLATE Inflater (zlib decompresser).
@@ -609,7 +663,7 @@ class InflaterBackend implements Backend_:
         n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
         adler32 := n-bits_ 32
         if adler32 < 0: return NEED-MORE-DATA_
-        calculated := LITTLE_ENDIAN.uint32 adler_.get 0
+        calculated := LITTLE-ENDIAN.uint32 adler_.get 0
         adler_ = null  // Only read the checksum once.
         if calculated != adler32: throw "Checksum mismatch"
         state_ = INITIAL_
@@ -1072,8 +1126,10 @@ Compresses the bytes in source in the given range, and writes them into the
   The number of bytes read is v & 0x7fff, and the number of bytes written is
   v >> 15.
 */
-rle-add_ rle destination index source from to:
-  #primitive.zlib.rle-add
+rle-add_ rle destination index source/io.Data from/int to/int -> int:
+  #primitive.zlib.rle-add:
+    return io.primitive-redo-io-data_ it source from to: | bytes/ByteArray |
+      rle-add_ rle destination index bytes 0 bytes.size
 
 /// Returns the number of bytes written to terminate the zlib stream.
 rle-finish_ rle destination index:
@@ -1089,7 +1145,9 @@ zlib-read_ zlib -> ByteArray?:
   #primitive.zlib.zlib-read
 
 zlib-write_ zlib data -> int:
-  #primitive.zlib.zlib-write
+  #primitive.zlib.zlib-write:
+    return io.primitive-redo-io-data_ it data: | bytes/ByteArray |
+      zlib-write_ zlib bytes
 
 zlib-close_ zlib -> none:
   #primitive.zlib.zlib-close

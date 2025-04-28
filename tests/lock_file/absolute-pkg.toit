@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.json as json
+import expect show *
 import host.file
 import host.directory
-import expect show *
-import writer show Writer
-import encoding.json as json
 import host.pipe
+import io
 
 import .lock-parser
 
@@ -16,7 +16,7 @@ LOCAL-PACKAGE-DIR ::= ".packages"
 
 write-to-file path content:
   stream := file.Stream.for-write path
-  (Writer stream).write content
+  (io.Writer.adapt stream).write content
   stream.close
 
 copy-all source-dir target-dir:
@@ -32,12 +32,12 @@ copy-all entry source-dir target-dir:
   if file.is-directory source-path:
     copy-all source-path target-path
   else:
-    content := file.read-content source-path
+    content := file.read-contents source-path
     write-to-file target-path content
 
 
 read-lock-file path:
-  content-string := (file.read-content path).to-string
+  content-string := (file.read-contents path).to-string
   result := parse-lock-file content-string
   // For simplicity add empty prefixes and packages if they don't exist.
   result.get "prefixes" --init=:{:}

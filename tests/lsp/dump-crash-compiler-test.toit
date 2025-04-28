@@ -22,7 +22,6 @@ binary-contains-string byte-array/ByteArray needle/string -> bool:
 
 main args:
   run-client-test args --use-mock: test it
-  run-client-test args --use-toitlsp --use-mock: test it
 
 test client/LspClient:
   mock-compiler := MockCompiler client
@@ -54,7 +53,7 @@ test client/LspClient:
     expect (message.contains "/tmp/")
     repro-path := message.copy (message.index-of "/tmp/")
     expect (file.is-file repro-path)
-    content := file.read-content repro-path
+    content := file.read-contents repro-path
     // We are only looking for "protocol1.toit" to avoid issues with Unicode characters.
     expect (binary-contains-string content "/protocol1.toit")
     file.delete repro-path

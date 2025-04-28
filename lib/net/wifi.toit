@@ -113,6 +113,11 @@ open config/Map? -> Client
   if save: service.configure config
   return Client service --name=name connection
 
+/**
+Establishes a soft AP with the given $ssid and $password credentials.
+
+If the $password is the empty string, the AP will be open.
+*/
 establish --ssid/string --password/string -> Client
     --name/string?=null
     --broadcast/bool=true
@@ -124,12 +129,25 @@ establish --ssid/string --password/string -> Client
     CONFIG-CHANNEL: channel,
   }
 
+/**
+Variant of $(establish --ssid --password) that takes a configuration
+  map instead of individual arguments.
+*/
 establish config/Map? -> Client
     --name/string?=null:
   service := service_
   if not service: throw "WiFi unavailable"
   return Client service --name=name (service.establish config)
 
+/**
+Scans the given $channels for access points and returns a list of
+  the found access points.
+
+The $channels must be a byte-array, where each byte represents a
+  channel number. Channels must be in the range 1-14.
+
+Returns a list of $AccessPoint objects.
+*/
 scan channels/ByteArray --passive/bool=false --period-per-channel-ms/int=SCAN-TIMEOUT-MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"
 
@@ -187,11 +205,8 @@ configure config/Map -> none:
 /**
 Reset the stored WiFi configuration and go back to using
   the WiFi credentials embedded in the firmware image.
-
-The argument $reset must be true.
 */
-configure --reset/bool -> none:
-  if reset != true: throw "Argument Error"
+configure --reset/True -> none:
   service := service_
   if not service: throw "WiFi unavailable"
   service.configure null

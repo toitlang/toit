@@ -32,4 +32,4 @@ tests/negative/slice-test.toit:29:4: error: Argument mismatch for 'C.[..]'
 Required named argument '--from' not provided
   c[..]
    ^
-Compilation failed.
+Compilation failed

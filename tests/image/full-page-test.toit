@@ -2,12 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import bytes show Buffer
 import host.directory
 import expect show *
+import io show Buffer Writer
 import host.file
 import host.pipe
-import writer show Writer
 
 TOIT-PAGE-SIZE ::= 1 << 12
 
@@ -61,10 +60,10 @@ compile bigger-chunk-count small-string-size -> int:
   str :=  buffer.bytes.to-string
 
   stream := file.Stream.for-write toit-file
-  (Writer stream).write str
+  (Writer.adapt stream).write str
   stream.close
-  pipe.backticks [toitrun, "-w", snap-file, toit-file]
-  pipe.backticks [toitrun, snapshot-to-image, "--binary", "-o", img-file, snap-file]
+  pipe.run-program [toitrun, "-w", snap-file, toit-file]
+  pipe.run-program [toitrun, snapshot-to-image, "--format", "binary", "-o", img-file, snap-file]
   return file.size img-file
 
 // Tests that the image creation works when a heap page is completely full.

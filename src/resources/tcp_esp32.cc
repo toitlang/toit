@@ -15,11 +15,11 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include <esp_wifi.h>
 #endif
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"
@@ -144,7 +144,7 @@ void LwipSocket::on_read(pbuf* p, err_t err) {
   send_state();
 }
 
-void LwipSocket::on_wrote(int length) {
+void LwipSocket::on_wrote(word length) {
   send_pending_ -= length;
 
   if (send_closed_ && send_pending_ == 0) {
@@ -526,12 +526,12 @@ static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
     ip_addr_get_ip4_u32(&socket->tpcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer,
-                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
-                       (address >> 0) & 0xff,
-                       (address >> 8) & 0xff,
-                       (address >> 16) & 0xff,
-                       (address >> 24) & 0xff);
+  word length = sprintf(buffer,
+                        "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
+                        (address >> 0) & 0xff,
+                        (address >> 8) & 0xff,
+                        (address >> 16) & 0xff,
+                        (address >> 24) & 0xff);
   return  process->allocate_string_or_error(buffer, length);
 }
 
@@ -632,4 +632,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)

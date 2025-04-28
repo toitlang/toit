@@ -7,41 +7,46 @@
 
 import expect show *
 
-import .tcp
 import monitor show *
+import net
+import net.modules.tcp
+import net.tcp show Socket
 
 main:
-  test-window-size
+  network := net.open
+  test-window-size network
   print "done"
 
-test-window-size:
+test-window-size network/net.Client:
   default := null
-  with-server: | port |
-    socket := TcpSocket
+  with-server network: | port |
+    socket := tcp.TcpSocket network
     socket.connect "localhost" port
     default = socket.window-size
     socket.close
 
-  with-server: | port |
-    socket := TcpSocket 4096
+  with-server network: | port |
+    socket := tcp.TcpSocket network 4096
     socket.connect "localhost" port
     expect default != socket.window-size
     socket.close
 
-with-server [code]:
+with-server network/net.Client [code]:
   ready := Channel 1
-  task:: simple-server ready
+  task:: simple-server network ready
   port := ready.receive
   code.call port
 
-simple-server ready:
-  server := TcpServerSocket
+simple-server network/net.Client ready:
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
   ready.send server.local-address.port
-  socket := server.accept
+  socket/Socket := server.accept
 
-  while data := socket.read:
-    socket.write data;
+  reader := socket.in
+  writer := socket.out
+  while data := reader.read:
+    writer.write data;
 
   socket.close
   server.close

@@ -3,13 +3,13 @@ tests/negative/bad-loop-variable-test.toit:8:9: error: Can't use 'this' as name 
         ^~~~
 tests/negative/bad-loop-variable-test.toit:9:12: error: Left-hand side of definition must be an identifier
   while foo.bar := 42: print 2
-           ^
+           ^~~~
 tests/negative/bad-loop-variable-test.toit:9:9: error: Unresolved identifier: 'foo'
   while foo.bar := 42: print 2
         ^~~
 tests/negative/bad-loop-variable-test.toit:10:12: error: Left-hand side of definition must be an identifier
   while pre.bar := 42: print 2
-           ^
+           ^~~~
 tests/negative/bad-loop-variable-test.toit:10:13: error: Unresolved identifier: 'bar'
   while pre.bar := 42: print 2
             ^~~
@@ -21,13 +21,13 @@ tests/negative/bad-loop-variable-test.toit:12:9: error: Can't use 'this' as name
         ^~~~
 tests/negative/bad-loop-variable-test.toit:13:12: error: Left-hand side of definition must be an identifier
   while foo.bar ::= 42: print 2
-           ^
+           ^~~~
 tests/negative/bad-loop-variable-test.toit:13:9: error: Unresolved identifier: 'foo'
   while foo.bar ::= 42: print 2
         ^~~
 tests/negative/bad-loop-variable-test.toit:14:12: error: Left-hand side of definition must be an identifier
   while pre.bar ::= 42: print 2
-           ^
+           ^~~~
 tests/negative/bad-loop-variable-test.toit:14:13: error: Unresolved identifier: 'bar'
   while pre.bar ::= 42: print 2
             ^~~
@@ -39,13 +39,13 @@ tests/negative/bad-loop-variable-test.toit:17:7: error: Can't use 'this' as name
       ^~~~
 tests/negative/bad-loop-variable-test.toit:18:10: error: Left-hand side of definition must be an identifier
   for foo.bar := 499; true; true: print 1
-         ^
+         ^~~~
 tests/negative/bad-loop-variable-test.toit:18:7: error: Unresolved identifier: 'foo'
   for foo.bar := 499; true; true: print 1
       ^~~
 tests/negative/bad-loop-variable-test.toit:19:10: error: Left-hand side of definition must be an identifier
   for pre.bar := 499; true; true: print 1
-         ^
+         ^~~~
 tests/negative/bad-loop-variable-test.toit:19:11: error: Unresolved identifier: 'bar'
   for pre.bar := 499; true; true: print 1
           ^~~
@@ -57,23 +57,23 @@ tests/negative/bad-loop-variable-test.toit:21:7: error: Can't use 'this' as name
       ^~~~
 tests/negative/bad-loop-variable-test.toit:22:10: error: Left-hand side of definition must be an identifier
   for foo.bar ::= 499; true; true: print 1
-         ^
+         ^~~~
 tests/negative/bad-loop-variable-test.toit:22:7: error: Unresolved identifier: 'foo'
   for foo.bar ::= 499; true; true: print 1
       ^~~
 tests/negative/bad-loop-variable-test.toit:23:10: error: Left-hand side of definition must be an identifier
   for pre.bar ::= 499; true; true: print 1
-         ^
+         ^~~~
 tests/negative/bad-loop-variable-test.toit:23:11: error: Unresolved identifier: 'bar'
   for pre.bar ::= 499; true; true: print 1
           ^~~
 tests/negative/bad-loop-variable-test.toit:24:7: error: Left-hand side of definition must be an identifier
   for 42 ::= 499; true; true: print 1
       ^~
-tests/negative/bad-loop-variable-test.toit:8:3: warning: Condition always evaluates to true
+tests/negative/bad-loop-variable-test.toit:8:14: warning: Condition always evaluates to true
   while this := 499: print 1
-  ^~~~~
-tests/negative/bad-loop-variable-test.toit:12:3: warning: Condition always evaluates to true
+             ^~
+tests/negative/bad-loop-variable-test.toit:12:14: warning: Condition always evaluates to true
   while this ::= 499: print 1
-  ^~~~~
-Compilation failed.
+             ^~~
+Compilation failed

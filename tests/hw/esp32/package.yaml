@@ -1,0 +1,13 @@
+dependencies:
+  bme280:
+    url: github.com/toitware/bme280-driver
+    version: ^1.1.0
+  dhtxx:
+    url: github.com/toitware/toit-dhtxx
+    version: ^1.5.0
+  ds18b20:
+    url: github.com/toitware/toit-ds18b20
+    version: ^2.1.0
+  hc_sr04:
+    url: github.com/lask/toit-hc-sr04
+    version: ^2.1.1

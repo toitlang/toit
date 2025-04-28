@@ -4,4 +4,4 @@ tests/negative/shadow1-test.toit:8:5: error: Definition of 'x' shadows outer fie
 tests/negative/shadow1-test.toit:6:3: note: Shadowed field 'x'
   x := 0
   ^
-Compilation failed.
+Compilation failed

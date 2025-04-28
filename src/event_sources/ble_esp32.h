@@ -17,24 +17,19 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+#if defined(TOIT_ESP32) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
 #include "ble.h"
 namespace toit {
 
-class BleEventSource : public LazyEventSource {
+class BleEventSource : public EventSource {
  public:
   static BleEventSource* instance() { return instance_; }
 
   BleEventSource();
 
   void on_event(BleResource* resource, word data);
-
- protected:
-  bool start() override;
-
-  void stop() override;
 
  protected:
   static BleEventSource* instance_;
@@ -44,4 +39,4 @@ class BleEventSource : public LazyEventSource {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+#endif // defined(TOIT_ESP32) && CONFIG_BT_ENABLED

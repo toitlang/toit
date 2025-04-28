@@ -4,4 +4,4 @@ foo = 499
 tests/negative/assign3-test.toit:8:7: error: Unexpected token '='. Did you mean ':='?
   bar = 42
       ^
-Compilation failed.
+Compilation failed

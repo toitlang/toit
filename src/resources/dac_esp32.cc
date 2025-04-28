@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#if defined(TOIT_ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
 
 #include <driver/gpio.h>
 #include <driver/dac.h>
@@ -35,7 +35,7 @@ static constexpr int kDacMaxFrequency = 5500;
 
 static constexpr dac_channel_t kInvalidChannel = static_cast<dac_channel_t>(-1);
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if CONFIG_IDF_TARGET_ESP32
 
 static dac_channel_t get_dac_channel(int pin) {
   switch (pin) {
@@ -43,6 +43,20 @@ static dac_channel_t get_dac_channel(int pin) {
     case 26: return DAC_CHANNEL_2;
     default: return kInvalidChannel;
   }
+}
+
+#elif CONFIG_IDF_TARGET_ESP32C3
+
+static dac_channel_t get_dac_channel(int pin) {
+  // The ESP32-C3 does not have any DAC.
+  return kInvalidChannel;
+}
+
+#elif CONFIG_IDF_TARGET_ESP32C6
+
+static dac_channel_t get_dac_channel(int pin) {
+  // The ESP32-C6 does not have any DAC.
+  return kInvalidChannel;
 }
 
 #elif CONFIG_IDF_TARGET_ESP32S2
@@ -55,22 +69,16 @@ static dac_channel_t get_dac_channel(int pin) {
   }
 }
 
-#elif CONFIG_IDF_TARGET_ESP32C3
+#elif CONFIG_IDF_TARGET_ESP32S3
 
 static dac_channel_t get_dac_channel(int pin) {
-  // The ESP32-C3 does not have any DAC.
+  // The ESP32-S3 does not have any DAC.
   return kInvalidChannel;
 }
-
-#elif CONFIG_IDF_TARGET_ESP32
-
-#error "Unsupported ESP32 target"
 
 #else
 
-static dac_channel_t get_dac_channel(int pin) {
-  return kInvalidChannel;
-}
+#error "Unsupported ESP32 target"
 
 #endif
 
@@ -233,4 +241,4 @@ PRIMITIVE(cosine_wave) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#endif // TOIT_ESP32 && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)

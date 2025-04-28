@@ -7,4 +7,4 @@ tests/negative/returns-test.toit:6:3: note: Return without value
 tests/negative/returns-test.toit:7:3: note: Return with value
   return 499
   ^~~~~~
-Compilation failed.
+Compilation failed

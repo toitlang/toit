@@ -4,4 +4,4 @@ tests/negative/shadow4-test.toit:9:9: error: Definition of 'x' shadows earlier d
 tests/negative/shadow4-test.toit:8:3: note: Earlier definition of 'x'
   x := true
   ^
-Compilation failed.
+Compilation failed

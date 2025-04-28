@@ -2,21 +2,23 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE-ENDIAN
+import io show LITTLE-ENDIAN
 import system
 import system.trace show send-trace-message
+
+import ..io as io
 
 /**
 Contains various utility functions.
 */
 
-/** Deprecated. Use system.BITS-PER-BYTE instead. */
+/** Deprecated. Use $system.BITS-PER-BYTE instead. */
 BITS-PER-BYTE ::= 8
 
-/** Deprecated. Use system.BITS-PER-WORD instead. */
+/** Deprecated. Use $system.BITS-PER-WORD instead. */
 BITS-PER-WORD ::= system.BYTES-PER-WORD * system.BITS-PER-BYTE
 
-/** Deprecated. Use system.BYTES-PER-WORD instead. */
+/** Deprecated. Use $system.BYTES-PER-WORD instead. */
 BYTES-PER-WORD ::= system.word-size_
 
 /** The number of bytes per kilobyte. */
@@ -36,7 +38,7 @@ Two strings are identical if they contain the same characters. For example,
   we have `identical "tw" + "in" "twin"`.
 For floats, two NaN's (not-a-number) are identical when they have the same
   bits. For example, we have `identical float.NAN float.NAN`, but not
-  `identical float.NAN (float.from_bits float.NAN.bits + 1)`. This is unlike
+  `identical float.NAN (float.from-bits float.NAN.bits + 1)`. This is unlike
   `==` where NaN's are never equal, so `float.NAN == float.NAN` is always
   false.
 */
@@ -53,7 +55,7 @@ Returns the smaller element, according to $Comparable.compare-to, otherwise.
 min a/Comparable b/Comparable: return (min-special-compare-to_ a b) ? a : b
 
 /**
-Returns true if this < other in the compare_to sense,
+Returns true if this < other in the `compare-to` sense,
   but with the exception that Nan is smaller than anything
   else.
 */
@@ -74,9 +76,9 @@ Rounds a non-negative $value up to the next multiple of the $divisor.
 
 # Examples
 ```
-round_up 17 10  // => 20
-round_up 7 2    // => 8
-round_up -13 10 // => OUT_OF_RANGE error
+round-up 17 10  // => 20
+round-up 7 2    // => 8
+round-up -13 10 // => OUT_OF_RANGE error
 ```
 */
 round-up value/int divisor/int -> int:
@@ -91,9 +93,9 @@ Rounds a non-negative $value down to the previous multiple of the $divisor.
 
 # Examples
 ```
-round_down 27 10  // => 20
-round_down 7 2    // => 6
-round_down -13 10 // => OUT_OF_RANGE error
+round-down 27 10  // => 20
+round-down 7 2    // => 6
+round-down -13 10 // => OUT_OF_RANGE error
 ```
 */
 round-down value/int divisor/int -> int:
@@ -110,7 +112,7 @@ encode_ object:
 /** Encodes $exception, $message and the current stack trace into a ubjson encoded byte array. */
 encode-error_ exception message -> ByteArray?:
   #primitive.core.encode-error:
-    print_ "encode_error_ primitive failed: $exception, $message"
+    print_ "encode-error_ primitive failed: $exception, $message"
     return null
 
 /**
@@ -138,20 +140,25 @@ random start/int end/int:
 
 /**
 Seeds the random number generator with the $seed.
-The $seed must be a byte array or a string.
 Currently only the first 16 bytes of the $seed are used.
 */
-set-random-seed seed:
-  #primitive.core.random-seed
+set-random-seed seed/io.Data -> none:
+  #primitive.core.random-seed:
+    if it == "WRONG_BYTES_TYPE":
+      set-random-seed (ByteArray.from seed 0 (min seed.byte-size 16))
+    else:
+      throw it
 
-random-add-entropy_ data:
-  #primitive.core.add-entropy
+random-add-entropy_ data/io.Data -> none:
+  #primitive.core.add-entropy: | error |
+    io.primitive-redo-chunked-io-data_ error data: random-add-entropy_ it
 
 /**
 Returns the number of initial zeros in binary representation of the argument.
 The argument is treated as an unsigned 64 bit number.  Thus
   it returns 0 if given a negative input.
-#Deprecated.  Use $int.count_leading_zeros instead.
+
+Deprecated.  Use $int.count-leading-zeros instead.
 */
 count-leading-zeros value/int:
   #primitive.core.count-leading-zeros
@@ -450,7 +457,7 @@ Converts a number between 0 and 15 to an upper case
 to-upper-case-hex c/int -> int:
   return "0123456789ABCDEF"[c]
 
-/** Deprecated. Use system.print-objects instead. */
+/** Deprecated. Use $system.print-objects instead. */
 print-objects --marker/string="" --gc/bool=false -> none:
   system.print-objects --marker=marker --gc=gc
 

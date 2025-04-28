@@ -3,19 +3,24 @@
 // be found in the tests/LICENSE file.
 
 import certificate-roots
-import .dns
-import writer
 import tls
-import .tcp as tcp
+import net
+import net.modules.dns
+import net.modules.tcp
 import net.x509 as net
 import system
 import system show platform
+
+BIG-MEMORY ::= platform != system.PLATFORM-FREERTOS
+CHECK-CERTS-EXPIRE ::= platform != system.PLATFORM-FREERTOS
+
+network := net.open
 
 monitor LimitLoad:
   current := 0
   has-test-failure := null
   // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == system.PLATFORM-FREERTOS ? 1 : 3
+  concurrent-processes ::= BIG-MEMORY ? 3 : 1
 
   inc:
     await: current < concurrent-processes
@@ -44,15 +49,14 @@ run-tests:
     "amazon.com",
     "adafruit.com",
     // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
-    "$(dns-lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
 
-    //"dkhostmaster.dk",
-    // Gnu.org is down for everyone 2023-08-18.
-    // "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
+    // Connect to the IP address at the TCP level, but verify the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)/amazon.com",
+
+    "dkhostmaster.dk",
+    "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
 
     "sha256.badssl.com",
-    // "sha384.badssl.com",  Expired.
-    // "sha512.badssl.com",  Expired.
     "ecc256.badssl.com",
     "ecc384.badssl.com",
     "rsa2048.badssl.com",
@@ -67,29 +71,40 @@ run-tests:
     "longextendedsubdomainnamewithoutdashesinordertotestwordwrapping.badssl.com",
     // "dh2048.badssl.com"  // Diffie Hellman doesn't work in Chrome either.
     ]
+  expired := [
+    "sha384.badssl.com",
+    "sha512.badssl.com",
+  ]
   non-working := [
-    "$(dns-lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
-    "wrong.host.badssl.com/Common Name|unknown root cert",
-    "self-signed.badssl.com/Certificate verification failed|unknown root cert",
-    "untrusted-root.badssl.com/Certificate verification failed|unknown root cert",
+    // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
+    "$(dns.dns-lookup "amazon.com" --network=network)",
+
+    "wrong.host.badssl.com/CN_MISMATCH|nknown root cert",
+    "self-signed.badssl.com/Certificate verification failed|nknown root cert",
+    "untrusted-root.badssl.com/Certificate verification failed|nknown root cert",
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
     //  "pinning-test.badssl.com",  // We don't have support for cert pinning yet.
-    //  "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
+    "sha1-intermediate.badssl.com/EXPIRED|BAD_MD",
     // The peer rejects us here because we don't have any hash algorithm in common.
     "rc4-md5.badssl.com/7780|received from our peer",
     "rc4.badssl.com/7780|received from our peer",
     "null.badssl.com/7780|received from our peer",
-    //  "3des.badssl.com",         // Chrome allows this one too
+    "3des.badssl.com",
     //  "mozilla-old.badssl.com",  // Chrome allows this one too
     "dh480.badssl.com",
     "dh512.badssl.com",
     //  "dh-small-subgroup.badssl.com", // Should we not connect to sites with crappy certs?
     //  "dh-composite.badssl.com", // Should we not connect to sites with crappy certs?
-    "subdomain.preloaded-hsts.badssl.com/Common Name",
+    "subdomain.preloaded-hsts.badssl.com/CN_MISMATCH",
     "captive-portal.badssl.com",
     "mitm-software.badssl.com",
-    "sha1-2017.badssl.com",
+    "sha1-2017.badssl.com/BAD_MD",
+    "sha1.badssl.com/BAD_MD",
     ]
+  if CHECK-CERTS-EXPIRE:
+    expired.do: non-working.add "$it/EXPIRED"
+  else:
+    working.add-all expired
   working.do: | site |
     test-site site true
     if load-limiter.has-test-failure: throw load-limiter.has-test-failure  // End early if we have a test failure.
@@ -117,12 +132,10 @@ test-site url expect-ok:
   else:
     task:: non-working-site host port extra-info
 
-non-working-site site port exception-text1:
-  exception-text2 := null
-  if exception-text1 and exception-text1.contains "|":
-    parts := exception-text1.split "|"
-    exception-text2 = parts[0]
-    exception-text1 = parts[1]
+non-working-site site port exception-text-in/string?:
+  exception-text/List? := null
+  if exception-text-in:
+    exception-text = exception-text-in.split "|"
 
   test-failure := false
   exception ::= catch:
@@ -130,10 +143,10 @@ non-working-site site port exception-text1:
     load-limiter.log-test-failure "*** Incorrectly failed to reject SSL connection to $site ***"
     test-failure = true
   if not test-failure:
-    if exception-text1 and ("$exception".index-of exception-text1) == -1 and (not exception-text2 or ("$exception".index-of exception-text2) == -1):
+    if exception-text and (exception-text.every: ("$exception".index-of it) == -1):
       print "$site:$port: Was expecting exception:"
       print "  $exception"
-      print "to contain the phrase '$exception-text1' or '$exception-text2'"
+      print "to contain one of $exception-text-in"
       load-limiter.log-test-failure "Wrong error message"
   load-limiter.dec
 
@@ -152,12 +165,13 @@ connect-to-site-with-retry host port expected-certificate-name:
     error := catch --unwind=(:attempt-number == 1):
       connect-to-site host port expected-certificate-name
     if not error: return
+    print "Retrying $host"
 
 connect-to-site host port expected-certificate-name:
   bytes := 0
   connection := null
 
-  raw := tcp.TcpSocket
+  raw := tcp.TcpSocket network
   try:
     raw.connect host port
 
@@ -174,11 +188,12 @@ connect-to-site host port expected-certificate-name:
       --server-name=expected-certificate-name or host
 
     try:
-      writer := writer.Writer socket
+      writer := socket.out
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
       print "$host: $((socket as any).session_.mode == tls.SESSION-MODE-TOIT ? "Toit mode" : "MbedTLS mode")"
 
-      while data := socket.read:
+      reader := socket.in
+      while data := reader.read:
         bytes += data.size
 
     finally:

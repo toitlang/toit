@@ -2,8 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE-ENDIAN
 import .checksum
+import io
+import io show LITTLE-ENDIAN
 
 /**
 Pure Toit MD5 implementation.
@@ -46,10 +47,14 @@ class Md5 extends Checksum:
   constructor.private_ .size_ buffer/ByteArray? .a_ .b_ .c_ .d_:
     buffer_ = buffer.copy
 
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     if not buffer_: throw "ALREADY_CLOSED"
-    slice := data[from..to]
-    add-bytes_ (slice is ByteArray ? slice : slice.to-byte-array)
+    slice := ?
+    if data is ByteArray:
+      slice = (data as ByteArray)[from..to]
+    else:
+      slice = ByteArray.from data from to
+    add-bytes_ slice
 
   add-bytes_ bytes/ByteArray -> none:
     extra := bytes.size
@@ -156,8 +161,6 @@ class Md5 extends Checksum:
 
 /**
 Computes the MD5 hash of the given $data.
-
-The $data must be a string or byte array.
 */
-md5 data from/int=0 to/int=data.size -> ByteArray:
+md5 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Md5 data from to

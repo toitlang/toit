@@ -4,4 +4,4 @@ class C extends B:
 tests/negative/abstract9-test.toit:7:12: note: Missing implementation for 'bar'
   abstract bar
            ^~~
-Compilation failed.
+Compilation failed

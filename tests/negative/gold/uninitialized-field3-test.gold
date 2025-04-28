@@ -43,4 +43,4 @@ tests/negative/uninitialized-field3-test.toit:13:3: error: Field 'field5' must b
 tests/negative/uninitialized-field3-test.toit:14:3: error: Field 'field6' must be initialized in a constructor
   field6 /int? ::= ?
   ^~~~~~
-Compilation failed.
+Compilation failed

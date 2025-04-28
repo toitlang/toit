@@ -1,0 +1,10 @@
+prefixes:
+  p2: p2
+  p3: p3-bad
+packages:
+  p2:
+    path: ../p2
+    prefixes:
+      p3: p3-bad
+  p3-bad:
+    path: ../p3-bad

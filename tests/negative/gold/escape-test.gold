@@ -9,4 +9,4 @@ tests/negative/escape-test.toit:7:3: error: Invalid string: '\s'
 
   "\s"
   ^~~~
-Compilation failed.
+Compilation failed

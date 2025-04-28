@@ -7,4 +7,4 @@ tests/negative/bad-string-interpolation-test.toit:8:15: error: Invalid member na
 tests/negative/bad-string-interpolation-test.toit:9:15: error: Invalid member name 'super'
   print "$foo.super "
               ^~~~~
-Compilation failed.
+Compilation failed

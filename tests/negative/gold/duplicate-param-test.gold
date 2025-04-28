@@ -26,15 +26,14 @@ tests/negative/duplicate-param-test.toit:10:5: note: First declaration of 'name'
 gee --name --name:
     ^~~~~~
 tests/negative/duplicate-param-test.toit:14:3: error: Argument mismatch for 'bar'
-The argument '--name' was passed with block type, but must be non-block
-Required named argument '--name' not provided
+Argument '--name' provided multiple times
   bar --name=(: it) --name
   ^~~
 tests/negative/duplicate-param-test.toit:15:3: error: Argument mismatch for 'gee'
-Required named argument '--name' not provided
+Argument '--name' provided multiple times
   gee --name --name
   ^~~
 tests/negative/duplicate-param-test.toit:7:5: error: Class 'int' does not have any method 'copy'
   y.copy 2
     ^~~~
-Compilation failed.
+Compilation failed

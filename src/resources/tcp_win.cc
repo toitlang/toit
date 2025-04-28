@@ -173,7 +173,7 @@ class TcpSocketResource : public TcpSocketBaseResource {
     return overlapped_result;
   }
 
-  bool send(const uint8* buffer, int length) {
+  bool send(const uint8* buffer, word length) {
     if (write_buffer_.buf != null) {
       free(write_buffer_.buf);
       write_buffer_.buf = null;

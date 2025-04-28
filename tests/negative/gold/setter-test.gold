@@ -10,7 +10,7 @@ setter= x y: unresolved
 tests/negative/setter-test.toit:6:14: error: Unresolved identifier: 'unresolved'
 setter= x y: unresolved
              ^~~~~~~~~~
-tests/negative/setter-test.toit:16:3: error: No setter method 'setter=' found.
+tests/negative/setter-test.toit:16:3: error: No setter method 'setter=' found
   setter = 3
   ^~~~~~
 tests/negative/setter-test.toit:9:3: error: Setters must take exactly one parameter
@@ -45,4 +45,4 @@ tests/negative/setter-test.toit:18:21: error: Argument mismatch for 'A.instance-
 Could not find an overload with exactly 1 arguments
   A.instance-setter = 7
                     ^
-Compilation failed.
+Compilation failed

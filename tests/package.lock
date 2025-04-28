@@ -1,39 +1,56 @@
-sdk: ^1.6.10
+sdk: ^2.0.0-alpha.161
 prefixes:
   ar: pkg-ar
   certificate_roots: toit-cert-roots
   cli: pkg-cli
   font_x11_adobe: pkg-font-x11-adobe
+  fs: pkg-fs
   host: pkg-host
+  partition-table: toit-partition-table-esp32
   tar: pkg-tar
 packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
-    version: 1.0.0
-    hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
+    version: 1.4.1
+    hash: 66f0359ed405dbebbc06a0cda9864b10b2d6aa34
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 1.1.1
-    hash: 4cfb8204a27b6eea6c4d1339c96f6e8cb41e43db
+    version: 2.2.0
+    hash: ae142d3c8783939935ba37a924f9b2c2a0ad2479
+    prefixes:
+      fs: pkg-fs
+      host: pkg-host
   pkg-font-x11-adobe:
     url: github.com/toitlang/pkg-font-x11-adobe
     name: font_x11_adobe
     version: 0.1.0
     hash: f844400722165252148f087cdf189abab0a47f3d
+  pkg-fs:
+    url: github.com/toitlang/pkg-fs
+    name: fs
+    version: 2.3.1
+    hash: 60836d4500317af2093d59d50c117d612c33f1fa
+    prefixes:
+      host: pkg-host
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.8.1
-    hash: 7f0cc4280065fb18ee09d3803f12180cec852d32
+    version: 1.15.3
+    hash: 62393e8522b77eafbafe60b9817935266117daf6
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
-    version: 1.0.0
-    hash: 72f9f1318b03300657dee12c8cfac72413ca1b56
+    version: 1.2.0
+    hash: fa4667de1073976a343f5816ddcea291e4cbf4ff
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
-    name: certificate_roots
-    version: 1.5.0
-    hash: 27a9f9ff3d337b6128e98e220126e3cc275bcd73
+    name: certificate-roots
+    version: 1.8.0
+    hash: 369a0b36e813e37d6248990de59964020644ab50
+  toit-partition-table-esp32:
+    url: github.com/toitware/toit-partition-table-esp32
+    name: partition-table
+    version: 1.4.0
+    hash: 9ee4032b913a00d0c0f87446261d034842b707f1

@@ -1,0 +1,5 @@
+tests/negative/named4-test.toit:11:3: error: Argument mismatch for 'foo'
+Argument '--named' provided multiple times
+  foo --named=1 --named=2
+  ^~~
+Compilation failed

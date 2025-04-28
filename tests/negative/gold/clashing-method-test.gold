@@ -4,4 +4,4 @@ tests/negative/clashing-method-test.toit:9:3: error: Redefinition of 'foo'
 tests/negative/clashing-method-test.toit:6:3: note: First definition of 'foo'
   foo:
   ^~~
-Compilation failed.
+Compilation failed

@@ -27,12 +27,6 @@ namespace toit {
 
 typedef LinkedList<SchedulerThread> SchedulerThreadList;
 
-// Keep in sync with constants in messages.toit.
-enum scheduler_err_t : int {
-  MESSAGE_OK = 0,
-  MESSAGE_NO_SUCH_RECEIVER = 1
-};
-
 class SchedulerThread : public Thread, public SchedulerThreadList::Element {
  public:
   explicit SchedulerThread(Scheduler* scheduler)
@@ -45,14 +39,9 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
 
   void entry();
 
-  bool is_pinned() const { return is_pinned_; }
-  void pin() { is_pinned_ = true; }
-  void unpin() { is_pinned_ = false; }
-
  private:
   Scheduler* const scheduler_;
   Interpreter interpreter_;
-  bool is_pinned_ = false;
 };
 
 class Scheduler {
@@ -100,12 +89,12 @@ class Scheduler {
   Process* run_external(ProcessRunner* runner);
 
   // Send a system message. Returns an error code to signal whether the message was delivered.
-  scheduler_err_t send_system_message(SystemMessage* message);
+  message_err_t send_system_message(SystemMessage* message);
 
   // Send message to the process by id. Returns an error code to signal whether the message was delivered.
   // Takes over the message (should not be freed on success or failure).
   // This only fails if the process id is invalid there are no retryable (allocation related) failures.
-  scheduler_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
+  message_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
   // Send notify message.
   void send_notify_message(ObjectNotifier* notifier);
@@ -193,7 +182,7 @@ class Scheduler {
 
   bool has_exit_reason() { return exit_state_.reason != EXIT_NONE; }
 
-  scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
+  message_err_t send_system_message(Locker& locker, SystemMessage* message);
 
   void terminate_execution(Locker& locker, ExitState exit);
 
@@ -240,6 +229,7 @@ class Scheduler {
 
   static const int NUMBER_OF_READY_QUEUES = 5;
   ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
+  int ready_count_ = 0;
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
     return ready_queue_[compute_ready_queue_index(priority)];
@@ -252,8 +242,6 @@ class Scheduler {
     if (priority != Process::PRIORITY_IDLE) return 3;
     return 4;
   }
-
-  bool has_ready_processes(Locker& locker);
 
   int num_threads_;
   int max_threads_;

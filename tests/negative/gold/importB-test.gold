@@ -28,4 +28,4 @@ import .dir2.not-directory.bar as toto
 tests/negative/importB-test.toit:9:14: note: Cannot enter 'tests/negative/dir2/not_directory': not a folder
 import .dir2.not-directory.bar as toto
              ^~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -16,12 +16,24 @@ tests/negative/parse-parameters-test.toit:8:14: error: Can't have space between 
 tests/negative/parse-parameters-test.toit:8:18: error: Can't have space between '.' and the field name
   gee this . x . y:
                  ^
+tests/negative/parse-parameters-test.toit:6:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo this . x:
+      ^~~~~~~~
 tests/negative/parse-parameters-test.toit:6:7: error: Unresolved target for field-storing parameter
   foo this . x:
       ^~~~~~~~
+tests/negative/parse-parameters-test.toit:7:7: warning: Field-storing parameters in non-constructors are deprecated
+  bar . x:
+      ^~~
 tests/negative/parse-parameters-test.toit:7:7: error: Unresolved target for field-storing parameter
   bar . x:
       ^~~
+tests/negative/parse-parameters-test.toit:8:7: warning: Field-storing parameters in non-constructors are deprecated
+  gee this . x . y:
+      ^~~~~~~~
+tests/negative/parse-parameters-test.toit:8:16: warning: Field-storing parameters in non-constructors are deprecated
+  gee this . x . y:
+               ^~~
 tests/negative/parse-parameters-test.toit:8:7: error: Unresolved target for field-storing parameter
   gee this . x . y:
       ^~~~~~~~
@@ -40,4 +52,4 @@ tests/negative/parse-parameters-test.toit:13:7: error: Argument mismatch for 'A.
 Too few arguments provided
   (A).gee
       ^~~
-Compilation failed.
+Compilation failed

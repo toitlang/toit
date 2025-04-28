@@ -15,11 +15,9 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
-#include <driver/adc.h>
-#include <esp_adc_cal.h>
 #include <hal/gpio_hal.h>
 
 #include <freertos/FreeRTOS.h>
@@ -41,17 +39,35 @@ namespace toit {
 enum GpioState {
   GPIO_STATE_EDGE_TRIGGERED = 1,
 };
+/*
+GPIO summary:
+- Esp32: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html
+- Esp32c3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html
+- Esp32c6: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-reference/peripherals/gpio.html
+- Esp32s2: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s2/api-reference/peripherals/gpio.html
+- Esp32s3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/gpio.html
+*/
 
-ResourcePool<int, -1> gpio_pins(
+static ResourcePool<int, -1> gpio_pins(
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    20, 21, 26, 27, 28, 29,
-    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-    40, 41, 42, 43, 44, 45, 46, 47, 48, 49
-#else
+#ifdef CONFIG_IDF_TARGET_ESP32
     21, 22, 23, 25, 26, 27,
     32, 33, 34, 35, 36, 37, 38, 39
+#elif CONFIG_IDF_TARGET_ESP32C3
+    20, 21
+#elif CONFIG_IDF_TARGET_ESP32C6
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+#elif CONFIG_IDF_TARGET_ESP32S3
+    20, 21, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44, 45, 46, 47, 48
+#elif CONFIG_IDF_TARGET_ESP32S2
+    20, 21, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44, 45, 46
+#else
+#error Unknown ESP32 target architecture
 #endif
 );
 
@@ -64,6 +80,11 @@ static bool is_restricted_pin(int num) {
 static bool is_restricted_pin(int num) {
   // The flash pins should generally not be used.
   return 12 <= num && num <= 17;
+}
+#elif CONFIG_IDF_TARGET_ESP32C6
+static bool is_restricted_pin(int num) {
+  // Pins 24-30 are used for flash and PSRAM.
+  return 24 <= num && num <= 30;
 }
 #elif CONFIG_IDF_TARGET_ESP32S3
 static bool is_restricted_pin(int num) {
@@ -236,7 +257,9 @@ PRIMITIVE(use) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (!allow_restricted && is_restricted_pin(num)) FAIL(INVALID_ARGUMENT);
+  if (!allow_restricted && is_restricted_pin(num)) {
+    FAIL(PERMISSION_DENIED);
+  }
 
   if (!gpio_pins.take(num)) FAIL(ALREADY_IN_USE);
 
@@ -261,7 +284,7 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain);
+  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, value);
 
   gpio_config_t cfg = {
     .pin_bit_mask = 1ULL << num,
@@ -280,15 +303,29 @@ PRIMITIVE(config) {
     }
   } else if (output) {
     cfg.mode = open_drain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT;
+    // Set the value before switching the mode.
+    // This may be harmful if the pin switches from push-pull to open-drain.
+    // Specifically, if the pin is push-pull and set to GND, then switching to
+    // open-drain with 1 could cause a short-circuit (if another device is
+    // currently driving the line to low).
+    // We don't have an easy way to know in which state the pin currently is, so
+    // we just require users to pay attention to this.
+    if (value != -1) {
+      esp_err_t err = gpio_set_level((gpio_num_t)num, value);
+      if (err != ESP_OK) return Primitive::os_error(err, process);
+    }
+
   }
 
   esp_err_t err = gpio_config(&cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   if (input) {
     // The gpio driver enables interrupts automatically for input pins. Since this is handled more fine-grained
     // in config_interrupt we disable the interrupt.
-    gpio_intr_disable(static_cast<gpio_num_t>(num));
+    err = gpio_intr_disable(static_cast<gpio_num_t>(num));
+    if (err != ESP_OK) return Primitive::os_error(err, process);
   }
-  if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->null_object();
 }
@@ -350,4 +387,4 @@ PRIMITIVE(set) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -1,0 +1,168 @@
+name: "Setup the build environment"
+
+inputs:
+  toit-dir:
+    description: "The directory where the Toit SDK is located."
+    required: true
+  esp32:
+    description: "Whether to install build tools for compiling to the ESP32."
+    required: false
+    default: "false"
+  use-ccache:
+    description: "Whether to use ccache for caching build artifacts."
+    required: false
+    default: "true"
+  cache-key-prefix:
+    description: "Prefix for the cache key."
+    required: false
+    default: "ccache"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Inputs
+      shell: bash
+      run: |
+        echo "Toit directory: ${{ inputs.toit-dir }}"
+        echo "ESP32: ${{ inputs.esp32 }}"
+        echo "Use ccache: ${{ inputs.use-ccache }}"
+        echo "Cache key prefix: ${{ inputs.cache-key-prefix }}"
+
+    - name: Fetch tags
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}
+        git fetch --tags --recurse-submodules=no
+
+      # We only need the mbedtls submodule for building.
+    - name: Initialize mbedtls submodule
+      if: inputs.esp32 == 'false'
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
+        git submodule update --init .
+        git submodule update --init components/mbedtls
+
+    - name: Initialize all submodules
+      if: inputs.esp32 == 'true'
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}
+        git submodule sync --recursive
+        git submodule update --init --recursive -j 16
+
+    # Use Go 1.20
+    - name: Switch to Go 1.20
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.20'
+        cache-dependency-path: |
+          tools/**/go.sum
+
+    - name: Ccache cache
+      if: inputs.use-ccache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ${{inputs.cache-key-prefix}}-${{ runner.os }}-${{ github.sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-${{ runner.os }}-
+
+    # Fetch the dependencies. Different for each platform.
+    - name: Install dependencies - Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat valgrind
+        ninja --version
+        cmake --version
+        gcc --version
+        socat -V
+    - name: Install dependencies - macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install ninja ccache
+        ninja --version
+        cmake --version
+    - name: Install dependencies - Windows
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        choco install ninja ccache
+        ninja --version
+        ccache --version
+        cmake --version
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        cache-dependency-path: ${{inputs.toit-dir}}/third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+
+    # Get values for sha hashes to be used in later steps.
+    - name: Get Sha hashes
+      if: inputs.esp32 == 'true'
+      id: sha-hashes
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}
+        echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+    - name: ESP32 tools cache
+      uses: actions/cache@v4
+      if: inputs.esp32 == 'true'
+      # Store and retrieve the cache with the given sha.
+      # The 'restore-keys' prefix finds the most recent cache in case there
+      # is no match (which should almost always be the case).
+      with:
+        path: /home/runner/.espressif
+        # Note that we have the 'espressif' before the runner.os so we don't clash with
+        # the standard runner.os cache.
+        key: ${{inputs.cache-key-prefix}}-espressif-${{ runner.os }}-${{ steps.sha-hashes.outputs.espressif_sha }}
+        restore-keys: ${{inputs.cache-key-prefix}}-espressif-${{ runner.os }}-
+
+    - name: Set up Python modules for MbedTLS
+      shell: bash
+      run: |
+        pip install jsonschema jinja2
+
+    - name: Install ESP32 tools - Linux, macOS
+      if: inputs.esp32 == 'true' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        ${{inputs.toit-dir}}/third_party/esp-idf/install.sh
+        source ${{inputs.toit-dir}}/third_party/esp-idf/export.sh
+        # Install the MbedTLS dependencies in the sourced Python environment.
+        pip install jsonschema jinja2
+
+    - name: Install ESP32 tools - Windows
+      if: inputs.esp32 == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        ${{inputs.toit-dir}}/third_party/esp-idf/install.ps1
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
+        ./export.ps1
+        # Install the MbedTLS dependencies in the sourced Python environment.
+        pip install jsonschema jinja2
+
+    - name: Setup compilation env
+      shell: bash
+      run: |
+        # if the path is already absolute use it directly.
+        if [[ ${{ inputs.toit-dir }} == /* ]]; then
+          echo 'IDF_PATH=${{ inputs.toit-dir }}/third_party/esp-idf' >> $GITHUB_ENV
+        else
+          echo 'IDF_PATH=${{ github.workspace }}/${{ inputs.toit-dir }}/third_party/esp-idf' >> $GITHUB_ENV
+        fi
+
+    - name: Setup compilation env - Ccache
+      if: inputs.use-ccache == 'true'
+      shell: bash
+      run: |
+        echo 'CCACHE_DIR=${{ github.workspace }}/.ccache' >> $GITHUB_ENV
+        echo 'CCACHE_BASEDIR=${{ github.workspace }}' >> $GITHUB_ENV
+        echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+        echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
+        echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV

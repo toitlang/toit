@@ -45,8 +45,12 @@ foreach(file ${VALGRIND_TESTS})
 
   set(valgrind_xml_prefix ${VALGRIND_TEST_DIR}/${file}.valgrind)
 
+  set(TEST_EXPECTATION_NAME "${test_name}")
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+  endif()
   add_test(
-    NAME ${test_name}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND ${CMAKE_COMMAND}
         -DTOIT_RUN=$<TARGET_FILE:toit.run>
         -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
@@ -56,9 +60,9 @@ foreach(file ${VALGRIND_TESTS})
         -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
     CONFIGURATIONS slow
   )
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 400)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 400)
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

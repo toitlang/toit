@@ -90,6 +90,7 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  bool is_for_dependencies;
   /// Optimization level.
   int optimization_level;
 };
@@ -131,17 +132,6 @@ class Pipeline {
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
 
-  // Gives the Pipeline the opportunity to change the program once it was
-  // resolved.
-  virtual void patch(ir::Program* program);
-
-  virtual void lsp_selection_import_path(const char* path,
-                                         const char* segment,
-                                         const char* resolved) {}
-  virtual void lsp_complete_import_first_segment(ast::Identifier* segment,
-                                                 const Package& current_package,
-                                                 const PackageLock& package_lock) {}
-
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
 
@@ -174,44 +164,38 @@ class Pipeline {
   void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
-class DebugCompilationPipeline : public Pipeline {
- public:
-  // Forward constructor arguments to super class.
-  using Pipeline::Pipeline;
-
- protected:
-  void patch(ir::Program* program);
-  List<const char*> adjust_source_paths(List<const char*> source_paths);
-  PackageLock load_package_lock(List<const char*> source_paths);
-
- public:
-  static constexpr const char* const DEBUG_ENTRY_PATH = "///<debug>";
-  static constexpr const char* const DEBUG_ENTRY_CONTENT = R"""(
-// We are avoiding types to make the patching easier.
-dispatch_debug_string location_token obj nested -> any:
-  // Calls to the static dispatch methods will be patched in here.
-  throw "Unknown location token"
-
-main args:
-  throw "Unimplemented")""";
-};
 
 class LanguageServerPipeline : public Pipeline {
  public:
-  // Forward constructor arguments to super class.
-  using Pipeline::Pipeline;
+  enum class Kind {
+    analyze,
+    semantic_tokens,
+    completion,
+    goto_definition,
+  };
+
+  LanguageServerPipeline(Kind kind,
+                         const PipelineConfiguration& configuration)
+      : Pipeline(configuration)
+      , kind_(kind) {}
 
  protected:
   bool is_for_analysis() const { return true; }
+
+  Kind kind() const { return kind_; }
+
+ private:
+  Kind kind_;
 };
 
 class LocationLanguageServerPipeline : public LanguageServerPipeline {
  public:
-  LocationLanguageServerPipeline(const char* path,
+  LocationLanguageServerPipeline(Kind kind,
+                                 const char* path,
                                  int line_number,   // 1-based
                                  int column_number, // 1-based
                                  const PipelineConfiguration& configuration)
-      : LanguageServerPipeline(configuration)
+      : LanguageServerPipeline(kind, configuration)
       , lsp_selection_path_(path)
       , line_number_(line_number)
       , column_number_(column_number) {}
@@ -230,44 +214,44 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
 
 class CompletionPipeline : public LocationLanguageServerPipeline {
  public:
-  // Forward constructor arguments to super class.
-  using LocationLanguageServerPipeline::LocationLanguageServerPipeline;
+  CompletionPipeline(const char* completion_path,
+                     int line_number,   // 1-based
+                     int column_number, // 1-based
+                     const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::completion,
+                                       completion_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
   Source* _load_file(const char* path, const PackageLock& package_lock);
 
-
-
-  void lsp_complete_import_first_segment(ast::Identifier* segment,
-                                         const Package& current_package,
-                                         const PackageLock& package_lock);
-  void lsp_selection_import_path(const char* path,
-                                 const char* segment,
-                                 const char* resolved);
-
   bool is_lsp_selection_identifier() { return true; }
 
  private:
-  Symbol completion_prefix_ = Symbol::invalid();
-  std::string package_id_ = Package::INVALID_PACKAGE_ID;
+  CompletionHandler* handler() {
+    return static_cast<CompletionHandler*>(lsp()->selection_handler());
+  }
+
+  friend class LocationLanguageServerPipeline;
 };
 
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
  public:
-  GotoDefinitionPipeline(const char* completion_path,
+  GotoDefinitionPipeline(const char* goto_definition_path,
                          int line_number,   // 1-based
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
-      : LocationLanguageServerPipeline(completion_path, line_number, column_number,
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+                                       goto_definition_path,
+                                       line_number,
+                                       column_number,
                                        configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
-
-  void lsp_selection_import_path(const char* path,
-                                 const char* segment,
-                                 const char* resolved);
 
   bool is_lsp_selection_identifier() { return false; }
 };
@@ -375,6 +359,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
   };
 
@@ -396,15 +381,10 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     if (path_count < 1) {
       FATAL("LANGUAGE SERVER ERROR - parse must have at least one source");
     }
-    auto source_paths = ListBuilder<const char*>::allocate(path_count + 1);
+    auto source_paths = ListBuilder<const char*>::allocate(path_count);
     for (int i = 0; i < path_count; i++) {
       source_paths[i] = strdup(reader.next("path"));
     }
-    // Add the debug-content which would be needed for a real compilation.
-    fs->register_intercepted(DebugCompilationPipeline::DEBUG_ENTRY_PATH,
-                             unsigned_cast(DebugCompilationPipeline::DEBUG_ENTRY_CONTENT),
-                             strlen(DebugCompilationPipeline::DEBUG_ENTRY_CONTENT));
-    source_paths[path_count] = DebugCompilationPipeline::DEBUG_ENTRY_PATH;
 
     NullDiagnostics diagnostics(&source_manager);
     configuration.diagnostics = &diagnostics;
@@ -462,7 +442,7 @@ void Compiler::lsp_goto_definition(const char* source_path,
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::analyze, configuration);
   pipeline.run(source_paths, false);
 }
 
@@ -482,7 +462,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -541,7 +521,8 @@ bool read_from_pipe(int fd, void* buffer, int requested_bytes) {
 }
 
 void Compiler::analyze(List<const char*> source_paths,
-                       const Compiler::Configuration& compiler_config) {
+                       const Compiler::Configuration& compiler_config,
+                       bool for_dependencies) {
   // We accept '/' paths on Windows as well.
   // For simplicity (and consistency) switch to localized ones in the compiler.
   source_paths = FilesystemLocal::to_local_path(source_paths);
@@ -552,13 +533,19 @@ void Compiler::analyze(List<const char*> source_paths,
                                            compiler_config.show_package_warnings,
                                            compiler_config.print_diagnostics_on_stdout);
   NullDiagnostics null_diagnostics(&source_manager);
-  Diagnostics* diagnostics = Flags::migrate_dash_ids
+  Diagnostics* diagnostics = (Flags::migrate_dash_ids || for_dependencies)
       ? static_cast<Diagnostics*>(&null_diagnostics)
       : static_cast<Diagnostics*>(&analysis_diagnostics);
+  const char* dep_file = (for_dependencies && compiler_config.dep_file == null)
+      ? "-"
+      : compiler_config.dep_file;
+  DepFormat dep_format = (for_dependencies && compiler_config.dep_format == DepFormat::none)
+      ? DepFormat::list
+      : compiler_config.dep_format;
   PipelineConfiguration configuration = {
     .out_path = null,
-    .dep_file = compiler_config.dep_file,
-    .dep_format = compiler_config.dep_format,
+    .dep_file = dep_file,
+    .dep_format = dep_format,
     .project_root = compiler_config.project_root,
     .filesystem = &fs,
     .source_manager = &source_manager,
@@ -567,7 +554,8 @@ void Compiler::analyze(List<const char*> source_paths,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
-    .is_for_analysis = true,
+    .is_for_analysis = !for_dependencies,
+    .is_for_dependencies = for_dependencies,
     .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
@@ -696,6 +684,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
   };
 
@@ -706,18 +695,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
                                  const PipelineConfiguration& configuration) {
   PipelineConfiguration main_configuration = configuration;
 
-  NullDiagnostics null_diagnostics(configuration.source_manager);
-  PipelineConfiguration debug_configuration = main_configuration;
-  debug_configuration.diagnostics = &null_diagnostics;
-  // TODO(florian): the dep-file needs to keep track of both compilations.
-  debug_configuration.dep_file = null;
-  debug_configuration.dep_format = DepFormat::none;
-  debug_configuration.werror = false;
-
   auto source_paths = ListBuilder<const char*>::build(source_path);
 
   auto pipeline_main_result = Pipeline::Result::invalid();
-  auto pipeline_debug_result = Pipeline::Result::invalid();
 
   if (Flags::no_fork) {
     if (Flags::compiler_sandbox) {
@@ -726,10 +706,6 @@ SnapshotBundle Compiler::compile(const char* source_path,
     }
     Pipeline main_pipeline(main_configuration);
     pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
-    if (pipeline_main_result.is_valid()) {
-      DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths, false);
-    }
   } else {
 #ifdef TOIT_POSIX
     int pipefd[2];
@@ -748,45 +724,28 @@ SnapshotBundle Compiler::compile(const char* source_path,
       Pipeline pipeline(main_configuration);
       auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
       send_pipeline_result(write_fd, pipeline_result);
-      if (pipeline_result.is_valid()) {
-        DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths, false);
-        send_pipeline_result(write_fd, pipeline_result);
-      }
       close(write_fd);
       exit(0);
     }
     close(write_fd);  // Not needing that direction.
     pipeline_main_result = receive_pipeline_result(read_fd);
-    if (pipeline_main_result.is_valid()) {
-      pipeline_debug_result = receive_pipeline_result(read_fd);
-    }
     close(read_fd);
     wait_for_child(cpid, main_configuration.diagnostics);
 #else
     FATAL("fork not supported");
 #endif
   }
-  if (!pipeline_main_result.is_valid() || !pipeline_debug_result.is_valid()) {
-    // We don't create the debug-result if the main-result failed, and
-    // the debug-compilation should never fail. The following frees should thus
-    // not be necessary. However, they can't hurt either.
+  if (!pipeline_main_result.is_valid()) {
     pipeline_main_result.free_all();
-    pipeline_debug_result.free_all();
     return SnapshotBundle::invalid();
   }
   SnapshotBundle result(List<uint8>(pipeline_main_result.snapshot,
                                     pipeline_main_result.snapshot_size),
                         List<uint8>(pipeline_main_result.source_map_data,
-                                    pipeline_main_result.source_map_size),
-                        List<uint8>(pipeline_debug_result.snapshot,
-                                    pipeline_debug_result.snapshot_size),
-                        List<uint8>(pipeline_debug_result.source_map_data,
-                                    pipeline_debug_result.source_map_size));
+                                    pipeline_main_result.source_map_size));
   // The snapshot bundle copies all given data. It's thus safe to free
   //   the pipeline data.
   pipeline_main_result.free_all();
-  pipeline_debug_result.free_all();
   return result;
 }
 
@@ -857,70 +816,6 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   return result;
 }
 
-void Pipeline::patch(ir::Program* program) {}
-
-void DebugCompilationPipeline::patch(ir::Program* program) {
-  // Patches the dispatch_debug_string method that was given in the DEBUG_ENTRY_PATH.
-  // The method receives 3 parameters:
-  //   - the location_token
-  //   - a JSON object
-  //   - a lambda for nested deserialization
-  // The method should dispatch to the `debug_string` method of the class that
-  // corresponds to the location_token.
-  // We therefore find all static `Class.debug_string` methods, and add an `if`
-  //   that checks whether the `location_token` is the same as the `Class`' token.
-  //   If yes, we call that method, passing the JSON object and the lambda.
-  ir::Method* dispatch_method = null;
-  for (auto method : program->methods()) {
-    if (method->name() == Symbols::dispatch_debug_string) {
-      auto location = source_manager()->compute_location(method->range().from());
-      if (strcmp(location.source->absolute_path(), DEBUG_ENTRY_PATH) == 0) {
-        dispatch_method = method;
-        break;
-      }
-    }
-  }
-  ASSERT(dispatch_method != null);
-  auto range = dispatch_method->range();
-  ir::Parameter* location_token_param = dispatch_method->parameters()[0];
-  ir::Parameter* obj_param = dispatch_method->parameters()[1];
-  ir::Parameter* nested_callback_param = dispatch_method->parameters()[2];
-  ListBuilder<ir::Expression*> dispatch_statements;
-  CallShape call_shape(2, 0);
-  for (auto method : program->methods()) {
-    auto klass = method->holder();
-    if (klass == null) continue;
-    if (method->name() != Symbols::debug_string) continue;
-    if (!method->is_global_fun()) continue;  // Exclude constructors and factories.
-    auto shape = method->resolution_shape();
-    if (!shape.accepts(call_shape)) continue;
-    // We now have a static `Class.debug_string` method with the right shape.
-    // Add the following `if` to the body:
-    // ```
-    // if <Class-location-token> == location_token: return <Class.debug_string> object nested
-    // ```
-    CallBuilder builder(range);  // The `<Class.debug-string> object nested` call.
-    builder.add_argument(_new ir::ReferenceLocal(obj_param, 0, range),
-                              Symbol::invalid());
-    builder.add_argument(_new ir::ReferenceLocal(nested_callback_param, 0, range),
-                              Symbol::invalid());
-    auto call = builder.call_static(_new ir::ReferenceMethod(method, range));
-    CallBuilder comparison_builder(range);  // `<Class-location-token> == location_token`.
-    comparison_builder.add_argument(_new ir::ReferenceLocal(location_token_param, 0, range),
-                                    Symbol::invalid());
-    int class_location_token = klass->range().from().token();
-    auto dot = _new ir::Dot(_new ir::LiteralInteger(class_location_token, range),
-                            Token::symbol(Token::EQ));
-    auto comparison_call = comparison_builder.call_instance(dot);
-    dispatch_statements.add(_new ir::If(comparison_call,
-                                        _new ir::Return(call, 0, range),
-                                        _new ir::LiteralNull(range),
-                                        range));
-  }
-  dispatch_statements.add(dispatch_method->body());
-  dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
-}
-
 void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
@@ -933,18 +828,6 @@ List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) 
     // The filesystem can override the entry path.
     source_paths = ListBuilder<const char*>::build(fs_entry_path);
   }
-  return source_paths;
-}
-
-List<const char*> DebugCompilationPipeline::adjust_source_paths(List<const char*> source_paths) {
-  source_paths = Pipeline::adjust_source_paths(source_paths);
-  ASSERT(source_paths.length() == 1);
-  // We should use the SourceManager's VIRTUAL_FILE_PREFIX, but hard-coding it is
-  // much simpler, and we do have an ASSERT to make sure we update if the prefix
-  // ever changes.
-  ASSERT(SourceManager::is_virtual_file(DEBUG_ENTRY_PATH));
-  filesystem()->register_intercepted(DEBUG_ENTRY_PATH, unsigned_cast(DEBUG_ENTRY_CONTENT), strlen(DEBUG_ENTRY_CONTENT));
-  source_paths = ListBuilder<const char*>::build(DEBUG_ENTRY_PATH, source_paths[0]);
   return source_paths;
 }
 
@@ -963,33 +846,23 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
                            diagnostics());
 }
 
-PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> source_paths) {
-  // When doing the debug-compilation, the actual entry file has been pushed back (and the
-  //   synthetic main has been inserted in front). The lock file should still be found
-  //   relative to the original path.
-  ASSERT(source_paths.length() == 2);
-  auto entry_path = source_paths[1];
-  auto lock_file = find_lock_file(entry_path, filesystem());
-  return PackageLock::read(lock_file,
-                           entry_path,
-                           source_manager(),
-                           filesystem(),
-                           diagnostics());
-}
-
 ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
   if (strcmp(source->absolute_path(), lsp_selection_path_) != 0) return Pipeline::parse(source);
 
   const uint8* text = source->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
 
-  // We only provide completions after a `-` if we are after a " --".
-  if (offset >= 1 && text[offset - 1] == '-') {
-    if (offset < 3 ||
-        text[offset - 1] != '-' ||
-        text[offset - 2] != '-' ||
-        text[offset - 3] != ' ') {
-      exit(0);
+  if (kind() == LanguageServerPipeline::Kind::completion) {
+    auto handler = static_cast<CompletionPipeline*>(this)->handler();
+    // We only provide completions after a '-' if there isn't a space in
+    // front of the '-', and if we don't have 'foo--'. That is, a '--'
+    // without a space in front.
+    if (offset >= 2 && text[offset - 1] == '-' &&
+        (text[offset - 2] == ' ' || text[offset - 2] == '\n')) {
+      handler->terminate();
+    }
+    if (offset >= 3 && text[offset - 1] == '-' && text[offset - 2] == '-' && text[offset - 3] != ' ') {
+      handler->terminate();
     }
   }
 
@@ -1007,61 +880,49 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   // Now that we have loaded the file that contains the LSP selection, extract
   // the prefix (if there is any), and the package it is from.
 
-  package_id_ = package_lock.package_for(path, filesystem()).id();
+  auto package_id = package_lock.package_for(path, filesystem()).id();
+  handler()->set_package_id(package_id);
 
   const uint8* text = result->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
   int start_offset = offset;
   IdentifierValidator validator;
   validator.disable_start_check();
-  while (start_offset > 0 &&
-         validator.check_next_char(text[start_offset - 1], [&]() { return text[start_offset]; })) {
+  while (true) {
+    if (start_offset <= 0) break;
+    auto peek = [&]() {
+      if (offset == start_offset) return LSP_SELECTION_MARKER;
+      return text[start_offset];
+    };
+    // Walk backwards as long as it's a valid identifier character.
+    if (!validator.check_next_char(text[start_offset - 1], peek)) {
+      break;
+    }
     start_offset--;
   }
 
   if (start_offset == offset || !IdentifierValidator::is_identifier_start(text[start_offset])) {
-    completion_prefix_ = Symbols::empty_string;
+    handler()->set_and_emit_prefix(Symbols::empty_string, result->range(start_offset, start_offset));
   } else {
+    auto range = result->range(start_offset, offset);
     int len = offset - start_offset;
     auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      completion_prefix_ = canonicalized.symbol;
+      handler()->set_and_emit_prefix(canonicalized.symbol, range);
     } else {
-      completion_prefix_ = Token::symbol(canonicalized.kind);
+      handler()->set_and_emit_prefix(Token::symbol(canonicalized.kind), range);
     }
   }
   return result;
 }
 
 void CompletionPipeline::setup_lsp_selection_handler() {
-  lsp()->setup_completion_handler(completion_prefix_, package_id_, source_manager());
-}
-
-
-void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
-                                                           const Package& current_package,
-                                                           const PackageLock& package_lock) {
-  lsp()->complete_first_segment(completion_prefix_,
-                                segment,
-                                current_package,
-                                package_lock);
-}
-
-void CompletionPipeline::lsp_selection_import_path(const char* path,
-                                                   const char* segment,
-                                                   const char* resolved) {
-  lsp()->complete_import_path(completion_prefix_, path, filesystem());
+  lsp()->setup_completion_handler(source_manager());
 }
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
   lsp()->setup_goto_definition_handler(source_manager());
-}
-
-void GotoDefinitionPipeline::lsp_selection_import_path(const char* path,
-                                                       const char* segment,
-                                                       const char* resolved) {
-  lsp()->goto_definition_import_path(resolved);
 }
 
 /// Returns the error-unit if the file can't be parsed.
@@ -1103,7 +964,7 @@ enum class AddSegmentResult {
 /// If 'should_check_is_toit_file' is true, checks that the result is a regular file.
 /// If 'should_check_is_toit_file' is false, checks that the result is a directory.
 static AddSegmentResult add_segment(PathBuilder* path_builder,
-                                    Symbol segment,
+                                    const char* segment,
                                     Filesystem* fs,
                                     bool should_check_is_toit_file) {
   auto check_path = [&]() {
@@ -1133,15 +994,13 @@ static AddSegmentResult add_segment(PathBuilder* path_builder,
   // So remember the length of the path before we add the segment.
   int path_length_before_segment = path_builder->length();
 
-  const char* segment_c = segment.c_str();
-
   // First add the segment verbatim. In most cases that will just work.
-  path_builder->join(segment_c);
+  path_builder->join(segment);
   auto result = check_path();
   if (result != AddSegmentResult::NOT_FOUND) return result;
 
-  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment_c, strlen(segment_c));
-  if (old_style == segment_c) {
+  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment, strlen(segment));
+  if (old_style == segment) {
     // Didn't contain any '-'.
     return AddSegmentResult::NOT_FOUND;
   }
@@ -1242,7 +1101,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   if (unit->source() == null) FATAL("unit without source");
 
   if (SourceManager::is_virtual_file(unit->absolute_path()) && import->is_relative()) {
-    diagnostics()->report_error(import, "Relative import not possible from virtual file.");
+    diagnostics()->report_error(import, "Relative import not possible from virtual file");
     // Virtual files don't have a location in the file system and thus can't have
     // relative imports.
     return null;
@@ -1262,12 +1121,16 @@ Source* Pipeline::_load_import(ast::Unit* unit,
 
   const char* lsp_path = null;
   const char* lsp_segment = null;
+  bool lsp_is_first_segment = false;
 
   std::string expected_import_package_id;
   PathBuilder import_path_builder(filesystem());
   int relative_segment_start = 0;
   bool dotted_out = false;
   Package import_package;
+
+  Source* result = null;
+  auto result_package = Package::invalid();
 
   if (is_relative) {
     // The file is relative to the unit_package.
@@ -1298,15 +1161,12 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     auto module_segment = segments[0];
     auto prefix = std::string(module_segment->data().c_str());
     if (module_segment->is_LspSelection()) {
-      lsp_complete_import_first_segment(module_segment, unit_package, package_lock);
-      // Otherwise still mark that we had an LSP segment, as we might need it for
-      // goto-definition. That one doesn't care for the values, as it only looks
-      // at the result value.
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
+      lsp_is_first_segment = true;
     }
     import_package = package_lock.resolve_prefix(unit_package, prefix);
-    auto error_range = module_segment->range();
+    auto error_range = module_segment->selection_range();
     switch (import_package.error_state()) {
       case Package::STATE_OK:
         // All good.
@@ -1322,20 +1182,20 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                       "Package for prefix '%s' not found",
                                       prefix.c_str());
         }
-        return null;
+        goto done;
 
       case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
-        return null;
+        goto done;
 
       case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),
                                     prefix.c_str());
-        return null;
+        goto done;
     }
     expected_import_package_id = import_package.id();
     import_path_builder.join(import_package.absolute_path());
@@ -1343,18 +1203,22 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     ASSERT(import_path_builder[import_path_builder.length() - 1] != '/');
   }
 
-  Source* result = null;
-  auto result_package = Package::invalid();
-
   if (relative_segment_start == segments.length()) {
     // Something like `import foo` where `foo` is the name of a package.
     // We only allow `foo.toit` (inside the package's `src` directory), but
     // not `foo/foo.toit`.
-    // TODO(florian): the file name should not be based on the import
-    // segment, but on the package name.
+    // If we know the name of the package, then use that to find the library. Otherwise,
+    // use the last segment of the import. The latter is deprecated.
     int length_before_segment = import_path_builder.length();
+    auto name = import_package.name();
+    const char* next_segment;
+    if (name == Package::NO_NAME) {
+      next_segment = segments[segments.length() - 1]->data().c_str();
+    } else {
+      next_segment = IdentifierValidator::canonicalize(name.c_str(), name.size());
+    }
     auto result = add_segment(&import_path_builder,
-                              segments[segments.length() - 1]->data(),
+                              next_segment,
                               filesystem(),
                               true);  // Must be a toit file.
     if (result != AddSegmentResult::OK) {
@@ -1370,7 +1234,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                             true, // Did find the alternative directory, since we found a package and its 'src' directory.
                             filesystem(),
                             diagnostics());
-      goto segments_done;
+      goto done;
     }
   }
   for (int i = relative_segment_start; i < segments.length(); i++) {
@@ -1383,7 +1247,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     bool is_last_segment = i == segments.length() - 1;
     int length_before_new_segment = import_path_builder.length();
     auto result = add_segment(&import_path_builder,
-                              segment,
+                              segment.c_str(),
                               filesystem(),
                               is_last_segment);  // Check whether it's a toit file for the last segment.
     if (result != AddSegmentResult::OK) {
@@ -1398,7 +1262,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               filesystem(),
                               diagnostics());
         // Don't return just yet, but give the lsp handler an opportunity to run.
-        goto segments_done;
+        goto done;
       } else {
         // We didn't find the toit file.
         // Keep the toit file path for error reporting.
@@ -1408,7 +1272,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         // For example, for `import foo` we search for `foo.toit` and `foo/foo.toit`.
         import_path_builder.reset_to(length_before_new_segment);
         result = add_segment(&import_path_builder,
-                             segment,
+                             segment.c_str(),
                              filesystem(),
                              false);  // Now it must be a directory.
         bool found_alternative_directory = result == AddSegmentResult::OK;
@@ -1418,7 +1282,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
 
           // We found a directory, so we duplicate the last segment.
           result = add_segment(&import_path_builder,
-                               segment,
+                               segment.c_str(),
                                filesystem(),
                                true);  // Now it must be a toit file.
         }
@@ -1434,7 +1298,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                 filesystem(),
                                 diagnostics());
           // Don't return just yet, but give the lsp handler an opportunity to run.
-          goto segments_done;
+          goto done;
         }
       }
     }
@@ -1446,17 +1310,23 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     if (load_result.status == SourceManager::LoadResult::OK) {
       result = load_result.source;
     } else {
-      load_result.report_error(import->range(), diagnostics());
+      load_result.report_error(import->selection_range(), diagnostics());
       // Don't return just yet, but give the lsp handler an opportunity to run.
-      goto segments_done;
+      goto done;
     }
   }
-  segments_done:
+
+  done:
+
 
   if (lsp_path != null) {
-    lsp_selection_import_path(lsp_path,
-                              lsp_segment,
-                              result == null ? null : result->absolute_path());
+    lsp()->selection_handler()->import_path(lsp_path,
+                                            lsp_segment,
+                                            lsp_is_first_segment,
+                                            result == null ? null : result->absolute_path(),
+                                            unit_package,
+                                            package_lock,
+                                            filesystem());
   }
 
   if (result == null) {
@@ -1600,7 +1470,7 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
+static bool check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
   int status = semver_parse(&constraint.c_str()[1], &constraint_semver);
@@ -1618,7 +1488,9 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
     diagnostics->report_error("The SDK constraint defined in the package.lock file is not satisfied: %s < %s",
                               compiler_version,
                               constraint.c_str());
+    return false;
   };
+  return true;
 }
 
 static void drop_abstract_methods(ir::Program* ir_program) {
@@ -1787,15 +1659,28 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     Flags::enable_asserts = true;
   }
 
+#ifdef TOIT_OPTIMIZATION_OVERRIDE
+  configuration_.optimization_level = TOIT_OPTIMIZATION_OVERRIDE;
+#endif
+#if defined(TOIT_ASSERT_OVERRIDE) && TOIT_ASSERT_OVERRIDE == 0
+  Flags::enable_asserts = false;
+#elif TOIT_ASSERT_OVERRIDE != 0
+  Flags::enable_asserts = true;
+#endif
+
+  setup_lsp_selection_handler();
+
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
   auto package_lock = load_package_lock(source_paths);
 
   if (package_lock.sdk_constraint() != "") {
-    // TODO(florian): we should be able to continue compiling even with
-    // a wrong SDK.
-    check_sdk(package_lock.sdk_constraint(), diagnostics());
+    bool succeeded = check_sdk(package_lock.sdk_constraint(), diagnostics());
+    if (!succeeded && !configuration_.force && configuration_.lsp == null) {
+      diagnostics()->report_error("Compilation failed");
+      exit(1);
+    }
   }
 
   auto units = _parse_units(source_paths, package_lock);
@@ -1804,6 +1689,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     ASSERT(configuration_.dep_format != Compiler::DepFormat::none);
     PlainDepWriter plain_writer;
     NinjaDepWriter ninja_writer;
+    ListDepWriter list_writer;
     DepWriter* chosen_writer = null;
     switch (configuration_.dep_format) {
       case Compiler::DepFormat::plain:
@@ -1812,6 +1698,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
       case Compiler::DepFormat::ninja:
         chosen_writer = &ninja_writer;
         break;
+      case Compiler::DepFormat::list:
+        chosen_writer = &list_writer;
+        break;
       case Compiler::DepFormat::none:
         UNREACHABLE();
     }
@@ -1819,11 +1708,12 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
                                                    configuration_.out_path,
                                                    units,
                                                    CORE_UNIT_INDEX);
+    if (configuration_.is_for_dependencies) {
+      return Result::invalid();
+    }
   }
 
   if (configuration_.parse_only) return Result::invalid();
-
-  setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());
@@ -1832,28 +1722,28 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (Flags::print_ir_tree) ir_program->print(true);
 
-  patch(ir_program);
   check_types_and_deprecations(ir_program);
   check_definite_assignments_returns(ir_program, diagnostics());
 
+  bool encountered_error = diagnostics()->encountered_error();
+  if (configuration_.werror && diagnostics()->encountered_warning()) {
+    encountered_error = true;
+  }
+
   if (configuration_.is_for_analysis) {
-    if (diagnostics()->encountered_error()) exit(1);
+    if (encountered_error) exit(1);
     return Result::invalid();
   }
 
   // If we already encountered errors before the type-check we won't be able
   // to compile the program.
   if (encountered_error_before_type_checks) {
-    diagnostics()->report_error("Compilation failed.");
+    diagnostics()->report_error("Compilation failed");
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
-  bool encountered_error = diagnostics()->encountered_error();
-  if (configuration_.werror && diagnostics()->encountered_warning()) {
-    encountered_error = true;
-  }
   if (!configuration_.force && encountered_error) {
-    diagnostics()->report_error("Compilation failed.");
+    diagnostics()->report_error("Compilation failed");
     exit(1);
   }
 
@@ -1872,7 +1762,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
     sort_classes(ir_program->classes());
-    patch(ir_program);
     // We check the types again, because the compiler computes types as
     // a side-effect of this and the types are necessary for the
     // optimizations. This feels a little bit unfortunate, but it is

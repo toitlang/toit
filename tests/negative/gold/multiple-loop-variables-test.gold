@@ -37,4 +37,4 @@ tests/negative/multiple-loop-variables-test.toit:13:5: error: Can't assign to un
 tests/negative/multiple-loop-variables-test.toit:11:10: error: Condition can't be 'none'
   while (foo (x := 499) (y := 42)):
          ^~~
-Compilation failed.
+Compilation failed

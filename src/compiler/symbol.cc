@@ -63,6 +63,7 @@ Symbol Symbol::for_invoke(Opcode opcode) {
     case INVOKE_MOD: return Token::symbol(Token::MOD);
     case INVOKE_AT: return Symbols::index;
     case INVOKE_AT_PUT: return Symbols::index_put;
+    case INVOKE_SIZE: return Symbols::size;
     default: return Symbol::invalid();
   }
 }

@@ -6,16 +6,28 @@ main tests/type_propagation/array-do-test.toit
  12[015] - load local 1
  13[038] - load block 1
  15[058] - invoke virtual do // [{List_}, [block]] -> {Null_}
+<<<<<<< HEAD
  19[091] - return null S3 0
+=======
+ 19[090] - return null S3 0
+>>>>>>> master
 
 [block] in main tests/type_propagation/array-do-test.toit
  - argument 0: [block]
  - argument 1: {*}
   0[016] - load local 2
   1[053] - invoke static id tests/type_propagation/array-do-test.toit // [{*}] -> {*}
+<<<<<<< HEAD
   4[090] - return S1 2
+=======
+  4[089] - return S1 2
+>>>>>>> master
 
 id tests/type_propagation/array-do-test.toit
  - argument 0: {*}
   0[016] - load local 2
+<<<<<<< HEAD
   1[090] - return S1 1
+=======
+  1[089] - return S1 1
+>>>>>>> master

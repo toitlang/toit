@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_efuse.h>
 #include <esp_chip_info.h>
@@ -44,12 +44,18 @@
 #include <soc/uart_reg.h>
 #include <hal/efuse_hal.h>
 
-#if CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32
+  #include <esp32/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C6
+  #include <esp32c6/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
   #include <esp32s3/rtc.h>
 #else
-  #include <esp32/rtc.h>
+  #error "Unknown target"
 #endif
 
 #include "uuid.h"
@@ -116,40 +122,6 @@ int OS::num_cores() {
 void OS::close(int fd) {
   // Do nothing.
 }
-
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level)
-    , sem_(xSemaphoreCreateMutex()) {
-    if (!sem_) FATAL("Failed allocating mutex semaphore")
-  }
-
-  ~Mutex() {
-    vSemaphoreDelete(sem_);
-  }
-
-  void lock() {
-    if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
-      FATAL("Mutex lock failed");
-    }
-  }
-
-  void unlock() {
-    if (xSemaphoreGive(sem_) != pdTRUE) {
-      FATAL("Mutex unlock failed");
-    }
-  }
-
-  bool is_locked() {
-    return xSemaphoreGetMutexHolder(sem_) != null;
-  }
-
-  int level() const { return level_; }
-
-  int level_;
-  SemaphoreHandle_t sem_;
-};
 
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
@@ -233,33 +205,6 @@ class ConditionVariable {
   static const uint32 SIGNAL_ONE = 1 << 0;
   static const uint32 SIGNAL_ALL = 1 << 1;
 };
-
-void Locker::leave() {
-  Thread* thread = Thread::current();
-  if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
-}
-
-void Locker::enter() {
-  Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
-    if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
-    }
-  }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
-  previous_ = thread->locker_;
-  thread->locker_ = this;
-}
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
 
@@ -366,14 +311,18 @@ void OS::set_up() {
   // This will normally return 100 or 300.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  const char* chip_name = "ESP32S3";
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  const char* chip_name = "ESP32S2";
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  const char* chip_name = "ESP32";
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
   const char* chip_name = "ESP32C3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  const char* chip_name = "ESP32C6";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  const char* chip_name = "ESP32S2";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  const char* chip_name = "ESP32S3";
 #else
-  const char* chip_name = "ESP32";
+  #error "Unknown target"
 #endif
   printf("[toit] INFO: running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
 }
@@ -497,14 +446,16 @@ const char* OS::get_platform() {
 }
 
 const char* OS::get_architecture() {
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  return "esp32s3";
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  return "esp32";
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
   return "esp32c3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  return "esp32c6";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   return "esp32s2";
-#elif defined(CONFIG_IDF_TARGET_ESP32)
-  return "esp32";
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  return "esp32s3";
 #else
   #error "Unknown architecture"
 #endif
@@ -663,7 +614,7 @@ class HeapSummaryPage {
 
 class HeapSummaryCollector {
  public:
-  HeapSummaryCollector(int max_pages, Process* current_process)
+  HeapSummaryCollector(word max_pages, Process* current_process)
       : current_process_(current_process)
       , max_pages_(max_pages) {
     if (max_pages > 0) {
@@ -748,8 +699,8 @@ class HeapSummaryCollector {
     printf("  │   Bytes   │  Count   │  Type                                               │\n");
     printf("  ├───────────┼──────────┼─────────────────────────────────────────────────────┤\n");
 
-    int size = 0;
-    int count = 0;
+    word size = 0;
+    word count = 0;
     uword metadata_location, metadata_size;
     GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
@@ -799,21 +750,23 @@ class HeapSummaryCollector {
     multi_heap_info_t info;
     int caps = OS::toit_heap_caps_flags_for_heap();
     heap_caps_get_info(&info, caps);
-    int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
-    int used_bytes = size * 100 / capacity_bytes;
+    word capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
+    word used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴──────────┴─────────────────────────────────────────────────────┘\n");
     printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
-        size, count, used_bytes,
+        static_cast<int>(size),
+        static_cast<int>(count),
+        static_cast<int>(used_bytes),
         static_cast<int>(info.largest_free_block >> 10),
         static_cast<int>(info.total_free_bytes >> 10));
 
-    int page_count = 0;
-    for (int i = 0; i < max_pages_; i++) {
+    word page_count = 0;
+    for (word i = 0; i < max_pages_; i++) {
       if (!pages_[i].unused()) page_count++;
     }
     if (page_count == 0) return;
 
-    for (int i = 0; i < max_pages_; i++) {
+    for (word i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
@@ -830,8 +783,8 @@ class HeapSummaryCollector {
   uword toit_memory_[MAX_PROCESSES];
   Process* processes_[MAX_PROCESSES];
   Process* current_process_;
-  const int max_pages_;
-  int dropped_pages_ = 0;
+  const word max_pages_;
+  word dropped_pages_ = 0;
   bool out_of_memory_ = false;
 };
 
@@ -889,4 +842,4 @@ bool OS::set_real_time(struct timespec* time) {
 
 }
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -10,10 +10,18 @@ main:
   adapter := ble.Adapter
   peripheral := adapter.peripheral
 
-  data := ble.AdvertisementData
+  data := ble.Advertisement
       --name="Toit device"
-      --service-classes=[BATTERY-SERVICE]
-      --manufacturer-data=#[0xFF, 0xFF, 't', 'o', 'i', 't']
+      --services=[BATTERY-SERVICE]
+      --manufacturer-specific=#[0xFF, 0xFF, 't', 'o', 'i', 't']
+  if false:
+    // An equivalent way to create the data would use data blocks.
+    data = ble.Advertisement [
+      ble.DataBlock.name "Toit device",
+      ble.DataBlock.services-16 [BATTERY-SERVICE],
+      // The company-id is not included here, as its default is #[0xFF, 0xFF].
+      ble.DataBlock.manufacturer-specific "toit",
+    ]
 
   peripheral.start-advertise data
   sleep --ms=1000000

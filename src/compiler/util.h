@@ -122,6 +122,27 @@ class PathBuilder {
     join(segment4);
   }
 
+  // Joins the given sub_path to this builder.
+  // The sub_path must use slashes as path separators.
+  void join_slash_path(const std::string& sub_path) {
+    if (sub_path.empty()) return;
+    size_t start_pos = 0;
+    while (start_pos < sub_path.size()) {
+      auto slash_pos = sub_path.find_first_of('/', start_pos);
+      if (slash_pos == std::string::npos) {
+        // No more slashes, use the rest of the string.
+        slash_pos = sub_path.size();
+      }
+      // For absolute paths we need to add the leading "/".
+      if (slash_pos == 0 && buffer_.empty()) {
+        buffer_ += fs_->path_separator();
+      } else {
+        join(sub_path.substr(start_pos, slash_pos - start_pos));
+      }
+      start_pos = slash_pos + 1;
+    }
+  }
+
   void canonicalize();
 
  private:

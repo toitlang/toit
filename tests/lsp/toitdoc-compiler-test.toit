@@ -361,7 +361,9 @@ test client/LspClient:
     filler := TemplateFiller it
     filled := filler.fill FILE-TEMPLATE
     client.send-did-change --uri=FILE-URI filled
+    project-uri := client.server.documents_.project-uri-for --uri=FILE-URI
     // Reaching into the private state of the server.
-    document := client.server.documents_.get-existing-document --uri=FILE-URI
+    analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+    document := analyzed-documents.get-existing --uri=FILE-URI
     summary := document.summary
     filler.check summary

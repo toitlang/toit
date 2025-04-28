@@ -6,4 +6,4 @@ tests/negative/unicode-test.toit:7:9: error: Invalid string: '\u{FFFFFF}'
 
   str = "\u{FFFFFF}"
         ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

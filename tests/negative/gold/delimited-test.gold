@@ -4,4 +4,4 @@ tests/negative/delimited-test.toit:7:9: error: Missing closing ']'
 tests/negative/delimited-test.toit:8:7: error: Incomplete expression
   z :=
       ^
-Compilation failed.
+Compilation failed

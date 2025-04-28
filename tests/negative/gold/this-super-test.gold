@@ -136,4 +136,4 @@ tests/negative/this-super-test.toit:32:15: error: Can't use 'super' as name for 
 tests/negative/this-super-test.toit:34:5: error: Unresolved identifier: 'method'
     super
     ^~~~~
-Compilation failed.
+Compilation failed

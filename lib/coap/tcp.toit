@@ -2,10 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import bytes
-import binary
-import writer
-import reader
+import io
 import monitor
 
 import .client
@@ -18,28 +15,28 @@ CODE-PONG ::= (CODE-CLASS-SIGNALING-CODES << CODE-CLASS-SHIFT_) | 3
 
 CODE-CLASS-SIGNALING-CODES ::= 7
 
-class Reader_ implements reader.SizedReader:
+class SizedReader_ extends io.Reader:
   done_/monitor.Latch ::= monitor.Latch
   transport_/Transport
-  reader_/reader.BufferedReader
-  size/int
+  reader_/io.Reader
+  content-size/int
 
-  rem_/int := ?
+  remaining_/int := ?
 
-  constructor .transport_ .reader_ .size:
-    rem_ = size
-    if size == 0: done_.set null
+  constructor .transport_ .reader_ .content-size:
+    remaining_ = content-size
+    if content-size == 0: done_.set null
 
-  read -> ByteArray?:
-    if rem_ == 0:
+  read_ -> ByteArray?:
+    if remaining_ == 0:
       done_.set null
       return null
     // We loop so we get to return the socket's closed error instead
     // of some other one.
     try:
       with-timeout Client.DEFAULT-MAX-DELAY:
-        b := reader_.read --max-size=rem_
-        rem_ -= b.size
+        b := reader_.read --max-size=remaining_
+        remaining_ -= b.size
         return b
     finally: | is-exception _ |
       if is-exception: transport_.close
@@ -47,15 +44,15 @@ class Reader_ implements reader.SizedReader:
 
 class TcpTransport implements Transport:
   socket_ ::= ?
-  reader_/reader.BufferedReader ::= ?
-  writer_/writer.Writer ::= ?
+  reader_/io.Reader ::= ?
+  writer_/io.Writer ::= ?
 
-  current-reader_/Reader_? := null
+  current-sized-reader_/SizedReader_? := null
 
   constructor .socket_ --send-csm=true:
     socket_.no-delay = true
-    reader_ = reader.BufferedReader socket_
-    writer_ = writer.Writer socket_
+    reader_ = socket_.in
+    writer_ = socket_.out
 
     if send-csm:
       csm-msg := new-message as TcpMessage
@@ -68,21 +65,21 @@ class TcpTransport implements Transport:
 
   read -> Response?:
     while true:
-      if current-reader_:
-        current-reader_.done_.get
-        current-reader_ = null
+      if current-sized-reader_:
+        current-sized-reader_.done_.get
+        current-sized-reader_ = null
       msg := TcpMessage.parse this reader_
       if not msg: return null
       if msg.code == CODE-CSM:
         while msg.payload.read:
         // TODO: Process values.
       else:
-        current-reader_ = msg.payload as Reader_
+        current-sized-reader_ = msg.payload as SizedReader_
         return Response.message msg
 
   close:
     // Be sure to abort any ongoing reading.
-    if current-reader_: current-reader_.done_.set null
+    if current-sized-reader_: current-sized-reader_.done_.set null
     socket_.close
 
   new-message --reliable=true -> Message:
@@ -107,26 +104,22 @@ class TcpMessage extends Message:
 
   header -> ByteArray:
     // TODO(anders): Get size without creating the buffer?
-    optionsData := bytes.Buffer
+    optionsData := io.Buffer
     write-options_ optionsData
 
     size := optionsData.size
-    if payload: size += payload.size + 1
+    if payload: size += payload.content-size + 1
 
-    header := bytes.Buffer
+    header := io.Buffer
     // Reserve a byte for data0.
     header.write-byte 0
     data0 := (token ? token.bytes.size : 0) & TKL-MASK_
     if size >= _4-BYTE-OFFSET:
       data0 |= _4-BYTE-MARKER << LENGTH-SHIFT_
-      array := ByteArray 4
-      binary.BIG-ENDIAN.put-uint32 array 0 size - _4-BYTE-OFFSET
-      header.write array
+      header.big-endian.write-uint32 (size - _4-BYTE-OFFSET)
     else if size >= _2-BYTE-OFFSET:
       data0 |= _2-BYTE-MARKER << LENGTH-SHIFT_
-      array := ByteArray 2
-      binary.BIG-ENDIAN.put-uint16 array 0 size - _2-BYTE-OFFSET
-      header.write array
+      header.big-endian.write-uint16 (size - _2-BYTE-OFFSET)
     else if size >= _1-BYTE-OFFSET:
       data0 |= _1-BYTE-MARKER << LENGTH-SHIFT_
       header.write-byte size - _1-BYTE-OFFSET
@@ -136,7 +129,7 @@ class TcpMessage extends Message:
     header.write-byte code
     if token: header.write token.bytes
 
-    header.write optionsData.buffer 0 optionsData.size
+    header.write optionsData.bytes 0 optionsData.size
 
     if payload:
       header.write-byte Message.PAYLOAD-MARKER_
@@ -146,16 +139,14 @@ class TcpMessage extends Message:
     return data
 
   // Parse a Stream message from the reader.
-  static parse transport/Transport reader/reader.BufferedReader -> TcpMessage?:
-    if not reader.can-ensure 1: return null
+  static parse transport/Transport reader/io.Reader -> TcpMessage?:
+    if not reader.try-ensure-buffered 1: return null
     data0 := reader.read-byte
     length := (data0 >> LENGTH-SHIFT_) & LENGTH-MASK_
     if length == _4-BYTE-MARKER:
-      length = _4-BYTE-OFFSET +
-        binary.BIG-ENDIAN.uint32 (reader.read-bytes 4) 0
+      length = _4-BYTE-OFFSET + reader.big-endian.read-uint32
     else if length == _2-BYTE-MARKER:
-      length = _2-BYTE-OFFSET +
-        binary.BIG-ENDIAN.uint16 (reader.read-bytes 2) 0
+      length = _2-BYTE-OFFSET + reader.big-endian.read-uint16
     else if length == _1-BYTE-MARKER:
       length = _1-BYTE-OFFSET + reader.read-byte
     msg := TcpMessage
@@ -167,5 +158,5 @@ class TcpMessage extends Message:
       msg.token = Token
         reader.read-bytes tkl
     rem := msg.parse-options_ length reader
-    msg.payload = Reader_ transport reader rem
+    msg.payload = SizedReader_ transport reader rem
     return msg

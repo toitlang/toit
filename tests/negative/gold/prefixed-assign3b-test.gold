@@ -1,4 +1,4 @@
 tests/negative/prefixed-assign3b-test.toit:8:6: error: Can't assign to class 'A'
   pa.A = 3
      ^
-Compilation failed.
+Compilation failed

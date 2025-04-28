@@ -9,7 +9,6 @@ import monitor
 
 main args:
   run-client-test args --use-mock: test it
-  run-client-test --use-toitlsp args --use-mock: test it
 
 test client/LspClient:
   // We want to cancel the request before it has finished, so we
@@ -36,16 +35,24 @@ test client/LspClient:
   cancel-succeeded := false
   while sleep-amount < 1000_000:
     mock-compiler.set-completion-result
-      "SLOW\n$sleep-amount\nfoo\n-1\nbar\n-1\n"
+      "SLOW\n$sleep-amount\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
     client.wait-for-idle
 
     completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
       print "canceling $it"
       client.send-cancel it
     if completions.contains "code":
-      expect-equals -32800 completions["code"]
-      cancel-succeeded = true
-      break
+      if completions["code"] == -32800:
+        // This is the expected result.
+        cancel-succeeded = true
+        break
+      if completions["code"] != 0:
+        // Fail, if the code is neither -32800 or 0 (see below for 0).
+        expect-equals -32800 completions["code"]
+
+      // On the Go version of the LSP server we sometimes get 0 as code, with
+      // a message saying "EOF".
+      // We just try again.
     else:
       print "Got a response: $completions"
     sleep-amount *= 2
@@ -55,7 +62,7 @@ test client/LspClient:
 
   // Now try to cancel a request where we were too slow for the cancel.
   mock-compiler.set-completion-result
-    "foo\n-1\nbar\n-1\n"
+    "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
   id := null
   completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
     id = it

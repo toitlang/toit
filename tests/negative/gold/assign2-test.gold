@@ -1,4 +1,4 @@
-tests/negative/assign2-test.toit:32:3: error: No setter method 'foo=' found.
+tests/negative/assign2-test.toit:32:3: error: No setter method 'foo=' found
   foo = unresolved
   ^~~
 tests/negative/assign2-test.toit:32:9: error: Unresolved identifier: 'unresolved'
@@ -40,33 +40,33 @@ tests/negative/assign2-test.toit:12:5: error: Final field 'final-field' cannot b
 tests/negative/assign2-test.toit:12:19: error: Unresolved identifier: 'unresolved'
     final-field = unresolved
                   ^~~~~~~~~~
-tests/negative/assign2-test.toit:18:5: error: No getter method 'missing-getter' (0 arguments) found.
+tests/negative/assign2-test.toit:18:5: error: No getter method 'missing-getter' (0 arguments) found
     missing-getter += unresolved
     ^~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:18:23: error: Unresolved identifier: 'unresolved'
     missing-getter += unresolved
                       ^~~~~~~~~~
-tests/negative/assign2-test.toit:19:5: error: No setter method 'missing-setter=' found.
+tests/negative/assign2-test.toit:19:5: error: No setter method 'missing-setter=' found
     missing-setter += unresolved
     ^~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:19:23: error: Unresolved identifier: 'unresolved'
     missing-setter += unresolved
                       ^~~~~~~~~~
-tests/negative/assign2-test.toit:26:5: error: No getter method 'foo' (0 arguments) found.
+tests/negative/assign2-test.toit:26:5: error: No getter method 'foo' (0 arguments) found
     foo++
     ^~~
-tests/negative/assign2-test.toit:27:5: error: No setter method 'foo2=' found.
+tests/negative/assign2-test.toit:27:5: error: No setter method 'foo2=' found
     foo2++
     ^~~~
 tests/negative/assign2-test.toit:40:6: error: Argument mismatch for 'A.missing-getter'
 No getter available
   (A).missing-getter += unresolved
-     ^
+     ^~~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:41:6: error: Argument mismatch for 'A.missing-setter'
 No setter available
   (A).missing-setter += unresolved
-     ^
+     ^~~~~~~~~~~~~~~
 tests/negative/assign2-test.toit:43:15: error: Can't assign to final local
   final-local = unresolved
               ^
-Compilation failed.
+Compilation failed

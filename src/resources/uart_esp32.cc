@@ -15,13 +15,16 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
+
+#include <unistd.h>
 
 #include "event_sources/system_esp32.h"
 #include "uart_esp32_hal.h"
 #include "driver/gpio.h"
 #include "soc/uart_periph.h"
 #include "hal/gpio_hal.h"
+#include "esp_log.h"
 #include "esp_rom_gpio.h"
 #include "esp_timer.h"
 #include "driver/periph_ctrl.h"
@@ -34,12 +37,31 @@
 #define UART_ISR_INLINE inline __attribute__((always_inline))
 
 // Valid UART port numbers.
-#define UART_NUM_0             (0) /*!< UART port 0 */
-#define UART_NUM_1             (1) /*!< UART port 1 */
-#if SOC_UART_NUM > 2
-#define UART_NUM_2             (2) /*!< UART port 2 */
+#define UART_NUM_0             (static_cast<uart_port_t>(0)) /*!< UART port 0 */
+#define UART_NUM_1             (static_cast<uart_port_t>(1)) /*!< UART port 1 */
+#if SOC_UART_HP_NUM > 2
+#define UART_NUM_2             (static_cast<uart_port_t>(2)) /*!< UART port 2 */
 #endif
-#define UART_NUM_MAX           (SOC_UART_NUM) /*!< UART port max */
+#if SOC_UART_HP_NUM > 3
+#error "SOC_UART_HP_NUM > 3"
+#endif
+#define UART_NUM_MAX           (SOC_UART_HP_NUM) /*!< UART port max */
+
+static periph_module_t module_from_port(uart_port_t port) {
+  switch (port) {
+    case UART_NUM_0: return PERIPH_UART0_MODULE;
+    case UART_NUM_1: return PERIPH_UART1_MODULE;
+#if SOC_UART_HP_NUM > 2
+    case UART_NUM_2: return PERIPH_UART2_MODULE;
+#endif
+#if SOC_UART_HP_NUM > 3
+#error "SOC_UART_HP_NUM > 3"
+#endif
+    default:  // Includes LP uarts.
+      UNREACHABLE();
+  }
+  FATAL("Invalid UART port: %d", port);
+}
 
 namespace toit {
 
@@ -51,13 +73,14 @@ const uart_port_t kInvalidUartPort = static_cast<uart_port_t>(-1);
 const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
+const int kBreakState = 1 << 3;
 
-ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
-  // Uart 0 is reserved serial communication (stdout).
-#if SOC_UART_NUM > 2
-  UART_NUM_2,
+static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
+    // Uart 0 is reserved for serial communication (stdout).
+    UART_NUM_1
+#if SOC_UART_HP_NUM > 2
+  , UART_NUM_2
 #endif
-  UART_NUM_1
 );
 
 typedef enum {
@@ -142,6 +165,15 @@ class RxBuffer : public RxTxBuffer {
 
   void read(UartResource* uart, uint8* buffer, uword length);
   UART_ISR_INLINE void write(const uint8* buffer, uword length);
+
+  UART_ISR_INLINE void signal_dropped_data() { has_dropped_data_ = true; }
+  bool has_dropped_data() const { return has_dropped_data_; }
+  bool has_reported_dropped_data() const { return has_reported_dropped_data_; }
+  void set_has_reported_dropped_data() { has_reported_dropped_data_ = true; }
+
+ private:
+  bool has_dropped_data_ = false;
+  bool has_reported_dropped_data_ = false;
 };
 
 class UartResource : public EventQueueResource {
@@ -172,12 +204,17 @@ public:
   void clear_data_event_in_queue();
   void clear_tx_event_in_queue();
 
+  void increment_errors() { errors_++; }
+  int errors() const { return errors_; }
+
   UART_ISR_INLINE void enable_rx_interrupts();
   UART_ISR_INLINE void disable_rx_interrupts();
 
   UART_ISR_INLINE void enable_tx_interrupts(bool begin);
   UART_ISR_INLINE void disable_tx_interrupts(bool done);
 
+  /// Whether the tx fifo is empty and the last byte has been emitted.
+  UART_ISR_INLINE bool is_empty_tx_fifo();
   UART_ISR_INLINE bool drain_tx_fifo();
   UART_ISR_INLINE void write_tx_break(uint8 length);
   UART_ISR_INLINE uint32 write_tx_fifo(const uint8* data, uint32 length);
@@ -249,6 +286,7 @@ public:
   bool rts_active_ = false;
   bool data_event_in_queue_ = false;
   bool tx_event_in_queue_ = false;
+  int64 errors_ = 0;
 };
 
 class UartResourceGroup : public ResourceGroup {
@@ -414,7 +452,7 @@ UartResource::~UartResource() {
 
   uart_toit_hal_deinit(hal_);
 
-  periph_module_disable(uart_periph_signal[port_].module);
+  periph_module_disable(module_from_port(port_));
 }
 
 uint32 UartResource::baud_rate() const {
@@ -426,6 +464,7 @@ uint32 UartResource::baud_rate() const {
 UART_ISR_INLINE void UartResource::enable_rx_interrupts() {
   enable_interrupt_index(UART_TOIT_INTR_RXFIFO_FULL);
   enable_interrupt_index(UART_TOIT_INTR_RX_TIMEOUT);
+  enable_interrupt_index(UART_TOIT_INTR_BRK_DET);
 }
 
 UART_ISR_INLINE void UartResource::disable_rx_interrupts() {
@@ -461,10 +500,17 @@ UART_ISR_INLINE void UartResource::disable_tx_interrupts(bool done) {
   }
 }
 
+UART_ISR_INLINE bool UartResource::is_empty_tx_fifo() {
+  // Once the fifo is empty, one last byte is still being transmitted.
+  // The check for is_tx_idle is necessary to ensure that this last byte is
+  // completely transmitted.
+  return get_tx_fifo_free() == SOC_UART_FIFO_LEN && uart_toit_hal_is_tx_idle(hal_);
+}
+
 UART_ISR_INLINE bool UartResource::drain_tx_fifo() {
-  if (get_tx_fifo_free() == SOC_UART_FIFO_LEN) return true;
+  if (is_empty_tx_fifo()) return true;
   int64 start = esp_timer_get_time();
-  while (get_tx_fifo_free() < SOC_UART_FIFO_LEN) {
+  while (!is_empty_tx_fifo()) {
     int64 now = esp_timer_get_time();
     if (now - start > 1000) return false;  // One ms.
   }
@@ -542,6 +588,9 @@ UART_ISR_INLINE void UartResource::handle_isr() {
     clear_interrupt_index(UART_TOIT_INTR_RXFIFO_OVF);
     clear_rx_fifo();
     event = UART_FIFO_OVF;
+  } else if (status & interrupt_mask(UART_TOIT_INTR_BRK_DET)) {
+    clear_interrupt_index(UART_TOIT_INTR_BRK_DET);
+    event = UART_BREAK;
   } else {
     clear_interrupt_mask(status);
   }
@@ -593,7 +642,7 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       break;
 
     case UART_BREAK:
-      // Ignore.
+      state |= kBreakState;
       break;
 
     case UART_TX_EVENT:
@@ -601,8 +650,13 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       reinterpret_cast<UartResource*>(r)->clear_tx_event_in_queue();
       break;
 
+    case UART_FIFO_OVF:
+    case UART_BUFFER_FULL:
+      reinterpret_cast<UartResource*>(r)->rx_buffer()->signal_dropped_data();
+      [[fallthrough]];
     default:
       state |= kErrorState;
+      reinterpret_cast<UartResource*>(r)->increment_errors();
       break;
   }
 
@@ -637,7 +691,7 @@ class UartInitialization {
     }
 
     if (hardware_initialized) {
-      periph_module_disable(uart_periph_signal[port].module);
+      periph_module_disable(module_from_port(port));
     }
 
     uart_ports.put(port);
@@ -652,7 +706,7 @@ class UartInitialization {
   uart_hal_handle_t hal = null;
   bool hardware_initialized = false;
   UartResource* uart = null;
-  uart_port_t port = 0;
+  uart_port_t port = UART_NUM_0;
   uint8* rx_buffer = null;
   uint8* tx_buffer = null;
   bool keep = false;
@@ -701,12 +755,12 @@ bool UartInitialization::try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) c
 }
 
 static uart_port_t determine_preferred_port(int tx, int rx, int rts, int cts) {
-  for (int uart = UART_NUM_0; uart < SOC_UART_NUM; uart++) {
+  for (int uart = UART_NUM_0; uart < SOC_UART_HP_NUM; uart++) {
     if ((tx == -1 || tx == uart_periph_signal[uart].pins[SOC_UART_TX_PIN_IDX].default_gpio) &&
         (rx == -1 || rx == uart_periph_signal[uart].pins[SOC_UART_RX_PIN_IDX].default_gpio) &&
         (rts == -1 || rts == uart_periph_signal[uart].pins[SOC_UART_RTS_PIN_IDX].default_gpio) &&
         (cts == -1 || cts == uart_periph_signal[uart].pins[SOC_UART_CTS_PIN_IDX].default_gpio)) {
-      return uart;
+      return static_cast<uart_port_t>(uart);
     }
   }
   return kInvalidUartPort;
@@ -725,7 +779,7 @@ PRIMITIVE(create) {
   if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
-  if (options < 0 || options > 15) FAIL(INVALID_ARGUMENT);
+  if (options < 0 || options > 31) FAIL(INVALID_ARGUMENT);
   if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) FAIL(INVALID_ARGUMENT);
   if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) FAIL(INVALID_ARGUMENT);
   if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) FAIL(INVALID_ARGUMENT);
@@ -751,7 +805,7 @@ PRIMITIVE(create) {
     // High speed setting.
     interrupt_flags |= HI;
     full_interrupt_threshold = 35;
-    tx_buffer_size = 1024;
+    tx_buffer_size = 2048;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
     // Medium speed setting.
@@ -766,12 +820,16 @@ PRIMITIVE(create) {
     tx_buffer_size = 256;
     rx_buffer_size = 768;
   }
+  if ((options & 16) != 0) {
+    tx_buffer_size *= 2;
+    rx_buffer_size *= 2;
+  }
 
   UartInitialization init;
   uart_port_t port = determine_preferred_port(tx, rx, rts, cts);
 
   port = uart_ports.preferred(port);
-  if (port == kInvalidUartPort) FAIL(OUT_OF_RANGE);
+  if (port == kInvalidUartPort) FAIL(ALREADY_IN_USE);
   init.port = port;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -788,12 +846,12 @@ PRIMITIVE(create) {
   }
 
   const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-  init.rx_buffer = static_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
+  init.rx_buffer = unvoid_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
   if (!init.rx_buffer) {
     FAIL(MALLOC_FAILED);
   }
 
-  init.tx_buffer = static_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
+  init.tx_buffer = unvoid_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
   if (!init.tx_buffer) {
     FAIL(MALLOC_FAILED);
   }
@@ -806,20 +864,21 @@ PRIMITIVE(create) {
     FAIL(MALLOC_FAILED);
   }
 
-  periph_module_enable(uart_periph_signal[port].module);
-    // Workaround for ESP32C3: enable core reset
-    // before enabling uart module clock
-    // to prevent uart from outputting garbage value.
+  periph_module_enable(module_from_port(port));
+
+  // Workaround for ESP32C3: enable core reset
+  // before enabling uart module clock
+  // to prevent uart from outputting garbage value.
 #if SOC_UART_REQUIRE_CORE_RESET
-    uart_toit_hal_set_reset_core(init.hal, true);
-    periph_module_reset(uart_periph_signal[port].module);
-    uart_toit_hal_set_reset_core(init.hal, false);
+  uart_toit_hal_set_reset_core(init.hal, true);
+  periph_module_reset(module_from_port(port));
+  uart_toit_hal_set_reset_core(init.hal, false);
 #else
-    periph_module_reset(uart_periph_signal[port].module);
+  periph_module_reset(module_from_port(port));
 #endif
   init.hardware_initialized = true;
 
-  uart_toit_hal_set_sclk(init.hal, UART_SCLK_APB);
+  uart_toit_hal_set_sclk(init.hal, UART_SCLK_DEFAULT);
   init.uart->set_baud_rate(baud_rate);
   uart_toit_hal_set_mode(init.hal, static_cast<uart_mode_t>(mode));
 
@@ -863,6 +922,17 @@ PRIMITIVE(create) {
   uart_toit_hal_set_rxfifo_full_thr(init.hal, full_interrupt_threshold);
   uart_toit_hal_set_txfifo_empty_thr(init.hal, 10);
   uart_toit_hal_set_rx_timeout(init.hal, 10);
+
+  if (GPIO_IS_VALID_GPIO(rx)) {
+    // On some chips (specifically the S3) we have received up to a byte of
+    // 1-bits when the UART is enabled.
+    // To avoid this, we wait for the time of one byte at the baud rate, and
+    // then clear the RX FIFO.
+    // The stop-bits value is too large for STOP-BITS-1_5 and STOP-BITS-2, but
+    // waiting longer is OK.
+    int wait_us = 1 + (1000000 * (data_bits + stop_bits) - 1) / baud_rate;
+    usleep(wait_us);
+  }
 
   init.uart->initialize();
 
@@ -947,6 +1017,14 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
   RxBuffer* buffer = uart->rx_buffer();
+
+#ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
+  if (buffer->has_dropped_data() && !buffer->has_reported_dropped_data()) {
+    buffer->set_has_reported_dropped_data();
+    ESP_LOGE("uart", "dropped data; no further warnings will be issued");
+  }
+#endif
+
   uword available = buffer->available();
   if (available == 0) return process->null_object();
 
@@ -970,6 +1048,11 @@ PRIMITIVE(get_control_flags) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(errors) {
+  ARGS(UartResource, uart)
+  return Primitive::integer(uart->errors(), process);
+}
+
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

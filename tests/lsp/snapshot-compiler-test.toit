@@ -22,14 +22,14 @@ test client/LspClient toitc:
   uri := "untitled:Untitled0"
   client.send-did-open --uri=uri --text=HELLO-WORLD
 
-  snapshot-bundle := client.send-request "toit/snapshot_bundle" { "uri": uri }
+  snapshot-bundle := client.send-request "toit/snapshotBundle" { "uri": uri }
   expect-not-null snapshot-bundle
 
   dir := directory.mkdtemp "/tmp/test-lsp-snapshot-"
   snapshot-path := "$dir/hello.snapshot"
   try:
     writer := file.Stream.for-write snapshot-path
-    writer.write (base64.decode snapshot-bundle["snapshot_bundle"])
+    writer.out.write (base64.decode snapshot-bundle["snapshot_bundle"])
     writer.close
 
     check-snapshot toitc snapshot-path
@@ -39,4 +39,3 @@ test client/LspClient toitc:
 
 main args:
   run-client-test args: test it args[0]
-  run-client-test --use-toitlsp args: test it args[0]

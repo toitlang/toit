@@ -1,0 +1,27 @@
+main tests/type_propagation/loop-list-test.toit
+  0[023] - load smi 0
+  1[053] - invoke static create-array_ <sdk>/core/collections.toit // [{SmallInteger_}] -> {LargeArray_|SmallArray_}
+  4[053] - invoke static create-list-literal-from-array_ <sdk>/core/collections.toit // [{LargeArray_|SmallArray_}] -> {List_}
+  7[014] - load local 0
+  8[080] - invoke size size // [{List_}] -> {LargeInteger_|SmallInteger_}
+ 11[026] - load smi 100
+ 13[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True|False}
+ 14[083] - branch if false T36
+ 17[014] - load local 0
+ 18[015] - load local 1
+ 19[080] - invoke size size // [{List_}] -> {LargeInteger_|SmallInteger_}
+ 22[016] - load local 2
+ 23[053] - invoke static List.last <sdk>/core/collections.toit // [{List_}] -> {*}
+ 26[073] - invoke add // [{LargeInteger_|SmallInteger_}, {*}] -> {float|LargeInteger_|SmallInteger_}
+ 27[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {float|LargeInteger_|SmallInteger_}] -> {Null_}
+ 30[041] - pop 1
+ 31[084] - branch back T7
+ 36[027] - load smi 4950
+ 39[015] - load local 1
+ 40[053] - invoke static List.last <sdk>/core/collections.toit // [{List_}] -> {*}
+ 43[062] - invoke eq // [{SmallInteger_}, {*}] -> {True|False}
+ 44[082] - branch if true T53
+ 47[020] - load literal Bad computation
+ 49[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+ 52[041] - pop 1
+ 53[090] - return null S1 0

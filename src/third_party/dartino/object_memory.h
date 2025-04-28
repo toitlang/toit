@@ -31,7 +31,7 @@ class Smi;
 class Space;
 class TwoSpaceHeap;
 
-static const int SENTINEL_SIZE = sizeof(void*);
+static const uword SENTINEL_SIZE = sizeof(void*);
 
 // In oldspace, the sentinel marks the end of each chunk, and never moves or is
 // overwritten.
@@ -295,6 +295,9 @@ class SemiSpace : public Space {
   // there is no room to allocate the object.
   uword allocate(uword size);
 
+  // Allocate raw object without trying very hard.
+  inline uword try_allocate(uword size);
+
   // For the mutable heap.
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
@@ -495,7 +498,6 @@ class OldSpace : public Space {
   // Actually new space garbage found since last compacting GC. Used to
   // evaluate whether we are out of memory.
   uword new_space_garbage_found_since_last_gc_ = 0;
-  int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
   uword used_ = 0;               // Allocated bytes.
   // Record whether a promotion failed during a scavenge, so we can save time
@@ -535,5 +537,22 @@ class ObjectMemory {
   static Chunk* spare_chunk_;
   static Mutex* spare_chunk_mutex_;
 };
+
+inline void write_sentinel_at(uword address) {
+  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
+  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
+}
+
+uword SemiSpace::try_allocate(uword size) {
+  // Make sure there is room for chunk end sentinel by using <= instead of <.
+  // Use this ordering of the comparison to avoid very large allocations
+  // turning into 'successful' allocations of negative size.
+  if (limit_ - top_ <= size) return 0;
+  uword result = top_;
+  top_ += size;
+  // Always write a sentinel so the scavenger knows where to stop.
+  write_sentinel_at(top_);
+  return result;
+}
 
 }  // namespace toit

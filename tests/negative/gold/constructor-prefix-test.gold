@@ -4,4 +4,4 @@ tests/negative/constructor-prefix-test.toit:9:18: error: Can't use prefix 'core'
 tests/negative/constructor-prefix-test.toit:10:22: error: Can't use prefix 'core' as an expression
   constructor.named: core
                      ^~~~
-Compilation failed.
+Compilation failed

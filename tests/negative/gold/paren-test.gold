@@ -13,4 +13,4 @@ tests/negative/paren-test.toit:7:2: error: Unresolved identifier: 'unresolved'
 tests/negative/paren-test.toit:11:2: error: Unresolved identifier: 'unresolved'
  unresolved
  ^~~~~~~~~~
-Compilation failed.
+Compilation failed

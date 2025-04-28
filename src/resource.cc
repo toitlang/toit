@@ -41,7 +41,7 @@ void ResourceGroup::tear_down() {
       event_source_->unregister_resource(resource);
     }
     on_unregister_resource(resource);
-    resource->make_deletable();
+    resource->delete_or_mark_for_deletion();
   }
 
   if (event_source_ != null) {
@@ -87,7 +87,7 @@ void ResourceGroup::unregister_resource(Resource* resource) {
     on_unregister_resource(resource);
   }
 
-  delete resource;
+  resource->delete_or_mark_for_deletion();
 }
 
 EventSource::EventSource(const char* name, int lock_level)
@@ -206,6 +206,13 @@ IntResource* EventSource::find_resource_by_id(const Locker& locker, word id) {
   for (auto it : resources_) {
     IntResource* r = static_cast<IntResource*>(it);
     if (r->id() == id) return r;
+  }
+  return null;
+}
+
+Resource* EventSource::find_resource(const std::function<bool(Resource*)>& predicate) {
+  for (auto it : resources_) {
+    if (predicate(it)) return it;
   }
   return null;
 }

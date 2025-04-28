@@ -17,6 +17,12 @@
 
 #if defined(TOIT_WINDOWS)
 
+// TODO(mikkel/florian) Figure out a better way to do this for cross builds
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
+#endif
+#define _WIN32_WINNT 0xa000
+
 #include "objects.h"
 #include "primitive_file.h"
 #include "primitive.h"
@@ -24,16 +30,16 @@
 
 #include <dirent.h>
 #include <cerrno>
-#include <fcntl.h>
 #include <rpc.h>     // For rpcdce.h.
 #include <rpcdce.h>  // For UuidCreate.
-#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <windows.h>
+
 #include <pathcch.h>
 #include <shlwapi.h>
 #include <fileapi.h>
+#include <ntdef.h>
 
 #include "objects_inline.h"
 
@@ -45,21 +51,21 @@ MODULE_IMPLEMENTATION(file, MODULE_FILE)
 
 class AutoCloser {
  public:
-  explicit AutoCloser(int fd) : fd_(fd) {}
+  explicit AutoCloser(HANDLE handle) : handle_(handle) {}
   ~AutoCloser() {
-    if (fd_ >= 0) {
-      close(fd_);
+    if (handle_ != INVALID_HANDLE_VALUE) {
+      CloseHandle(handle_);
     }
   }
 
-  int clear() {
-    int tmp = fd_;
-    fd_ = -1;
+  HANDLE clear() {
+    HANDLE tmp = handle_;
+    handle_ = INVALID_HANDLE_VALUE;
     return tmp;
   }
 
  private:
-  int fd_;
+  HANDLE handle_;
 };
 
 // For Posix-like calls, including socket calls.
@@ -92,6 +98,13 @@ static const int FILE_ST_SIZE = 7;
 static const int FILE_ST_ATIME = 8;
 static const int FILE_ST_MTIME = 9;
 static const int FILE_ST_CTIME = 10;
+
+static const int UNIX_CHARACTER_DEVICE = 1;
+static const int UNIX_DIRECTORY = 2;
+static const int UNIX_REGULAR_FILE = 4;
+static const int UNIX_SYMBOLIC_LINK = 5;
+static const int UNIX_SOCKET = 6;
+static const int UNIX_DIRECTORY_SYMBOLIC_LINK = 7;
 
 const wchar_t* current_dir(Process* process) {
   const wchar_t* current_directory = process->current_directory();
@@ -148,25 +161,24 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 PRIMITIVE(open) {
   ARGS(WindowsPath, path, int, flags, int, mode);
 
-  int os_flags = _O_BINARY;
-  if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
-  else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= _O_WRONLY;
-  else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= _O_RDWR;
+  DWORD os_flags = 0;
+  if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= GENERIC_READ;
+  else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= GENERIC_WRITE;
+  else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= GENERIC_READ | GENERIC_WRITE;
   else FAIL(INVALID_ARGUMENT);
-  if ((flags & FILE_APPEND) != 0) os_flags |= _O_APPEND;
-  if ((flags & FILE_CREAT) != 0) os_flags |= _O_CREAT;
-  if ((flags & FILE_TRUNC) != 0) os_flags |= _O_TRUNC;
-  int fd = _wopen(path, os_flags, mode);
-  AutoCloser closer(fd);
-  if (fd < 0) return return_open_error(process, errno);
-  struct stat statbuf{};
-  int res = fstat(fd, &statbuf);
-  if (res < 0) {
-    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
-    FAIL(ERROR);
-  }
-  int type = statbuf.st_mode & S_IFMT;
-  if (type != S_IFREG) {
+
+  DWORD open_flags = OPEN_EXISTING;
+  if ((flags & FILE_CREAT) != 0 && (flags & FILE_TRUNC) != 0) open_flags = CREATE_ALWAYS;
+  else if ((flags & FILE_CREAT) != 0) open_flags = CREATE_NEW;
+
+  HANDLE handle = CreateFileW(path, os_flags, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                          open_flags, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  AutoCloser closer(handle);
+
+  DWORD type = GetFileType(handle);
+  if (type != FILE_TYPE_DISK and type != FILE_TYPE_REMOTE) {
     // An attempt to open something with file::open that is not a regular file
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
@@ -174,7 +186,7 @@ PRIMITIVE(open) {
     if (_wcsicmp(L"\\\\.\\NUL", path) != 0) FAIL(INVALID_ARGUMENT);
   }
   closer.clear();
-  return Smi::from(fd);
+  return Smi::from(reinterpret_cast<word>(handle));
 }
 
 class Directory : public SimpleResource {
@@ -275,6 +287,7 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
+  auto handle = reinterpret_cast<HANDLE>(fd);
   const int SIZE = 64 * KB;
 
   AllocationManager allocation(process);
@@ -288,11 +301,9 @@ PRIMITIVE(read) {
 
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
-    ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
-    if (bytes_read < 0) {
-      if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EISDIR || errno == EBADF) FAIL(INVALID_ARGUMENT);
-    }
+    DWORD bytes_read;
+    BOOL success = ReadFile(handle,buffer + buffer_fullness, SIZE - buffer_fullness, &bytes_read, NULL);
+    if (!success) WINDOWS_ERROR;
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
@@ -309,15 +320,13 @@ PRIMITIVE(read) {
 
 PRIMITIVE(write) {
   ARGS(int, fd, Blob, bytes, int, from, int, to);
+  auto handle = reinterpret_cast<HANDLE>(fd);
   if (from > to || from < 0 || to > bytes.length()) FAIL(OUT_OF_BOUNDS);
   ssize_t current_offset = from;
   while (current_offset < to) {
-    ssize_t bytes_written = write(fd, bytes.address() + current_offset, to - current_offset);
-    if (bytes_written < 0) {
-      if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EBADF) FAIL(INVALID_ARGUMENT);
-      FAIL(ERROR);
-    }
+    DWORD bytes_written;
+    BOOL success = WriteFile(handle, bytes.address() + current_offset, to - current_offset, &bytes_written, NULL);
+    if (!success) WINDOWS_ERROR;
     current_offset += bytes_written;
   }
   return Smi::from(current_offset - from);
@@ -325,23 +334,30 @@ PRIMITIVE(write) {
 
 PRIMITIVE(close) {
   ARGS(int, fd);
+  HANDLE handle = reinterpret_cast<HANDLE>(fd);
   while (true) {
-    int result = close(fd);
-    if (result < 0) {
-      if (GetFileType(reinterpret_cast<HANDLE>(fd)) == FILE_TYPE_PIPE && errno == EBADF) {
+    int result = CloseHandle(handle);
+    if (result == 0) {
+      if (GetFileType(handle) == FILE_TYPE_PIPE && GetLastError() == ERROR_INVALID_HANDLE) {
         return process->null_object(); // Ignore already closed on PIPEs
       }
-      if (errno == EINTR) continue;
-      if (errno == EBADF) FAIL(ALREADY_CLOSED);
-      if (errno == ENOSPC) FAIL(QUOTA_EXCEEDED);
-      FAIL(ERROR);
+      WINDOWS_ERROR;
     }
     return process->null_object();
   }
 }
 
-Object* time_stamp(Process* process, time_t time) {
-  return Primitive::integer(time * 1000000000ll, process);
+int64 low_high_to_int64(DWORD high, DWORD low) {
+  return (static_cast<int64>(high) << 32) + low;
+}
+
+#define WINDOWS_TICKS_PER_SECOND 10000000
+#define SEC_TO_UNIX_EPOCH 11644473600LL
+
+Object* time_stamp(Process* process, FILETIME* time) {
+  int64 windows_ticks = low_high_to_int64(time->dwHighDateTime, time->dwLowDateTime);
+  int64 unix_ticks = (windows_ticks - SEC_TO_UNIX_EPOCH * WINDOWS_TICKS_PER_SECOND) * 100;
+  return Primitive::integer(unix_ticks, process);
 }
 
 // Returns null for entries that do not exist.
@@ -349,48 +365,86 @@ Object* time_stamp(Process* process, time_t time) {
 PRIMITIVE(stat) {
   ARGS(WindowsPath, path, bool, follow_links);
 
-  USE(follow_links);
+  DWORD attributes = FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_NORMAL;
+  if (!follow_links) attributes |= FILE_OPEN_REPARSE_POINT;
 
-  struct stat64 statbuf{};
-  int result = _wstat64(path, &statbuf);
-  if (result < 0) {
-    if (errno == ENOENT || errno == ENOTDIR) {
-      return process->null_object();
+  HANDLE handle = CreateFileW(path, 0, 0,
+                              NULL, OPEN_EXISTING, attributes, NULL);
+
+  if (handle == INVALID_HANDLE_VALUE) {
+    if (GetLastError() == ERROR_FILE_NOT_FOUND ||
+        GetLastError() == ERROR_PATH_NOT_FOUND ||
+        GetLastError() == ERROR_INVALID_NAME) {
+      return process->null_object(); // Toit code expects this to be null
     }
-    return return_open_error(process, errno);
+    WINDOWS_ERROR;
   }
+  AutoCloser closer(handle);
+
+  BY_HANDLE_FILE_INFORMATION file_info;
+  BOOL success = GetFileInformationByHandle(handle, &file_info);
+  if (!success) WINDOWS_ERROR;
 
   Array* array = process->object_heap()->allocate_array(11, Smi::zero());
   if (!array) FAIL(ALLOCATION_FAILED);
 
-  int type = (statbuf.st_mode & S_IFMT) >> 13;
-  int mode = (statbuf.st_mode & 0x1ff);
+  FILE_STANDARD_INFO standard_info;
+  success = GetFileInformationByHandleEx(handle, FileStandardInfo, &standard_info, sizeof(FILE_STANDARD_INFO));
+  if (!success) WINDOWS_ERROR;
 
-  Object* device_id = Primitive::integer(statbuf.st_dev, process);
+  int type;
+  if (!follow_links && (file_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+    if (standard_info.Directory) {
+      type = UNIX_DIRECTORY_SYMBOLIC_LINK;
+    } else {
+      type = UNIX_SYMBOLIC_LINK;
+    }
+  } else {
+    if (standard_info.Directory) {
+      type = UNIX_DIRECTORY;
+    } else {
+      DWORD file_type = GetFileType(handle);
+      switch (file_type) { // Convert to unix enum
+        case FILE_TYPE_CHAR:
+          type = UNIX_CHARACTER_DEVICE;
+          break;
+        case FILE_TYPE_DISK:
+          type = UNIX_REGULAR_FILE;
+          break;
+        case FILE_TYPE_PIPE:
+          type = UNIX_SOCKET;
+          break;
+        default:
+          FAIL(INVALID_ARGUMENT);
+      }
+    }
+  }
+
+  Object* device_id = Primitive::integer(file_info.dwVolumeSerialNumber, process);
   if (Primitive::is_error(device_id)) return device_id;
 
-  Object* inode = Primitive::integer(statbuf.st_ino, process);
+  Object* inode = Primitive::integer(low_high_to_int64(file_info.nFileIndexHigh, file_info.nFileIndexLow), process);
   if (Primitive::is_error(inode)) return inode;
 
-  Object* size = Primitive::integer(statbuf.st_size, process);
+  Object* size = Primitive::integer(low_high_to_int64(file_info.nFileSizeHigh, file_info.nFileSizeLow), process);
   if (Primitive::is_error(size)) return size;
 
-  Object* atime = time_stamp(process, statbuf.st_atime);
+  Object* atime = time_stamp(process, &file_info.ftLastAccessTime);
   if (Primitive::is_error(atime)) return atime;
 
-  Object* mtime = time_stamp(process, statbuf.st_mtime);
+  Object* mtime = time_stamp(process, &file_info.ftLastWriteTime);
   if (Primitive::is_error(mtime)) return mtime;
 
-  Object* ctime = time_stamp(process, statbuf.st_ctime);
+  Object* ctime = time_stamp(process, &file_info.ftCreationTime);
   if (Primitive::is_error(ctime)) return ctime;
 
   array->at_put(FILE_ST_DEV, device_id);
   array->at_put(FILE_ST_INO, inode);
-  array->at_put(FILE_ST_MODE, Smi::from(mode));
+  array->at_put(FILE_ST_MODE, Smi::from(file_info.dwFileAttributes));
   array->at_put(FILE_ST_TYPE, Smi::from(type));
-  array->at_put(FILE_ST_NLINK, Smi::from(statbuf.st_nlink));
-  array->at_put(FILE_ST_UID, Smi::from(statbuf.st_uid));
-  array->at_put(FILE_ST_GID, Smi::from(statbuf.st_gid));
+  array->at_put(FILE_ST_NLINK, Smi::from(file_info.nNumberOfLinks));
+  array->at_put(FILE_ST_UID, Smi::from(0));
+  array->at_put(FILE_ST_GID, Smi::from(0));
   array->at_put(FILE_ST_SIZE, size);
   array->at_put(FILE_ST_ATIME, atime);
   array->at_put(FILE_ST_MTIME, mtime);
@@ -438,6 +492,65 @@ PRIMITIVE(chdir) {
   return process->null_object();
 }
 
+PRIMITIVE(chmod) {
+  ARGS(WindowsPath, path, int, mode);
+  int result = SetFileAttributesW(path, mode);
+  if (result == 0) WINDOWS_ERROR;
+  return process->null_object();
+}
+
+PRIMITIVE(link) {
+  ARGS(WindowsPath, source, Blob, target, int, type);
+  WideCharAllocationManager allocation(process);
+  wchar_t* target_relative = allocation.to_wcs(&target);
+
+  int result;
+  if (type == 0) {
+    wchar_t target_absolute[MAX_PATH];
+    auto error = get_absolute_path(process, target_relative, target_absolute);
+    if (error) return error;
+    result = CreateHardLinkW(source, target_absolute, NULL);
+  } else {
+    DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+    if (type == 2) flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    result = CreateSymbolicLinkW(source, target_relative, flags);
+  }
+  if (result == 0) WINDOWS_ERROR;
+  return process->null_object();
+}
+
+PRIMITIVE(readlink) {
+  ARGS(WindowsPath, path);
+  HANDLE handle = CreateFileW(path, 0, 0,
+                              NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  AutoCloser closer(handle);
+
+  char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+  DWORD bytes_returned;
+  BOOL success = DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, NULL, 0, buffer, sizeof(buffer), &bytes_returned, 0);
+  if (!success) WINDOWS_ERROR;
+
+  auto reparse_data = reinterpret_cast<REPARSE_DATA_BUFFER*>(buffer);
+  if (reparse_data->ReparseTag != IO_REPARSE_TAG_SYMLINK) FAIL(INVALID_ARGUMENT);
+
+  WideCharAllocationManager allocation(process);
+  USHORT link_name_bytes = reparse_data->SymbolicLinkReparseBuffer.SubstituteNameLength;
+
+  word string_length = static_cast<word>(link_name_bytes / sizeof(wchar_t) + 1); // including null termination
+  wchar_t* w_result = allocation.wcs_alloc(string_length);
+  memcpy(w_result,
+         reparse_data->SymbolicLinkReparseBuffer.PathBuffer +
+            reparse_data->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(WCHAR),
+         link_name_bytes);
+  w_result[string_length - 1] = 0;
+
+  String* result = process->allocate_string(w_result);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  return result;
+}
+
 PRIMITIVE(mkdir) {
   ARGS(WindowsPath, path, int, mode);
 
@@ -447,7 +560,7 @@ PRIMITIVE(mkdir) {
 }
 
 PRIMITIVE(mkdtemp) {
-  ARGS(StringOrSlice, prefix_blob);
+  ARGS(CStringBlob, prefix_blob);
   DWORD ret;
 
   WideCharAllocationManager allocation(process);
@@ -517,7 +630,7 @@ PRIMITIVE(is_open_file) {
 }
 
 PRIMITIVE(realpath) {
-  ARGS(StringOrSlice, filename_blob);
+  ARGS(CStringBlob, filename_blob);
   WideCharAllocationManager allocation(process);
   wchar_t* filename = allocation.to_wcs(&filename_blob);
   DWORD result_length = GetFullPathNameW(filename, 0, NULL, NULL);

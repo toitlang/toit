@@ -68,6 +68,18 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
   }
 }
 
+#elif CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6
+
+static touch_pad_t get_touch_pad(int pin) {
+  // ESP32C3 and ESP32C6 do not have touch support.
+  return kInvalidTouchPad;
+}
+
+int touch_pad_to_pin_num(touch_pad_t pad) {
+  // ESP32C3 and ESP32C6 do not have touch support.
+  return -1;
+}
+
 #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 static touch_pad_t get_touch_pad(int pin) {
@@ -110,31 +122,9 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
   }
 }
 
-#elif CONFIG_IDF_TARGET_ESP32C3
-
-static touch_pad_t get_touch_pad(int pin) {
-  // ESP32C3 does not have touch support.
-  return kInvalidTouchPad;
-}
-
-int touch_pad_to_pin_num(touch_pad_t pad) {
-  // ESP32C3 does not have touch support.
-  return -1;
-}
-
-#elif CONFIG_IDF_TARGET_ESP32
-
-#error "Unsupported ESP32 target"
-
 #else
 
-static touch_pad_t get_touch_pad(int pin) {
-  return kInvalidTouchPad;
-}
-
-int touch_pad_to_pin_num(touch_pad_t pad) {
-  return -1;
-}
+#error "Unsupported ESP32 target"
 
 #endif
 

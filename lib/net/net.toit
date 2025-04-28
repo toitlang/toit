@@ -14,6 +14,7 @@ import .modules.tcp as tcp-module
 import .modules.udp as udp-module
 
 import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show NetworkServiceClientBase
 import system.base.network show NetworkResourceProxy
 
 export IpAddress SocketAddress
@@ -24,7 +25,7 @@ service_/NetworkServiceClient? ::= (NetworkServiceClient).open
 /// Gets the default network interface.
 open -> Client
     --name/string?=null
-    --service/NetworkServiceClient?=service_:
+    --service/NetworkServiceClientBase?=service_:
   if not service: throw "Network unavailable"
   return Client service --name=name service.connect
 
@@ -54,13 +55,13 @@ class Client extends NetworkResourceProxy implements Interface:
   // client about the bits on connect.
   proxy-mask/int
 
-  constructor service/NetworkServiceClient --name/string? connection/List:
+  constructor service/NetworkServiceClientBase --name/string? connection/List:
     handle := connection[0]
     proxy-mask = connection[1]
     this.name = name or connection[2]
     super service handle
 
-  constructor service/NetworkServiceClient
+  constructor service/NetworkServiceClientBase
       --handle/int
       --.proxy-mask
       --.name:
@@ -69,7 +70,7 @@ class Client extends NetworkResourceProxy implements Interface:
   address -> IpAddress:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-ADDRESS) != 0: return super
-    socket := udp-module.Socket
+    socket := udp-module.Socket this
     try:
       // This doesn't actually cause any network traffic, but it picks an
       // interface for 8.8.8.8, which is not on the LAN.
@@ -85,16 +86,16 @@ class Client extends NetworkResourceProxy implements Interface:
   resolve host/string -> List /* of IpAddress */:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-RESOLVE) != 0: return super host
-    return dns-module.dns-lookup-multi host
+    return dns-module.dns-lookup-multi host --network=this
 
   quarantine -> none:
     if (proxy-mask & NetworkService.PROXY-QUARANTINE) == 0: return
-    (client_ as NetworkServiceClient).quarantine name
+    (client_ as NetworkServiceClientBase).quarantine name
 
   udp-open --port/int?=null -> udp.Socket:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-UDP) != 0: return super --port=port
-    return udp-module.Socket "0.0.0.0" (port ? port : 0)
+    return udp-module.Socket this "0.0.0.0" (port ? port : 0)
 
   tcp-connect host/string port/int -> tcp.Socket:
     ips := resolve host
@@ -106,14 +107,14 @@ class Client extends NetworkResourceProxy implements Interface:
   tcp-connect address/net.SocketAddress -> tcp.Socket:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-TCP) != 0: return super address
-    result := tcp-module.TcpSocket
+    result := tcp-module.TcpSocket this
     result.connect address.ip.stringify address.port
     return result
 
   tcp-listen port/int -> tcp.ServerSocket:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-TCP) != 0: return super port
-    result := tcp-module.TcpServerSocket
+    result := tcp-module.TcpServerSocket this
     result.listen "0.0.0.0" port
     return result
 

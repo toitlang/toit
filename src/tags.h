@@ -17,7 +17,7 @@
 
 namespace toit {
 
-#define NON_TLS_RESOURCE_CLASSES_DO(fn) \
+#define NON_BLE_RESOURCE_CLASSES_DO(fn) \
   fn(IntResource)                       \
   fn(LookupResult)                      \
   fn(LwipSocket)                        \
@@ -35,6 +35,7 @@ namespace toit {
   fn(AesCbcContext)                     \
   fn(SslSession)                        \
   fn(Sha1)                              \
+  fn(Blake2s)                           \
   fn(Sha)                               \
   fn(Siphash)                           \
   fn(Adler32)                           \
@@ -42,18 +43,18 @@ namespace toit {
   fn(Zlib)                              \
   fn(UartResource)                      \
   fn(GpioResource)                      \
+  fn(GpioPinResource)                   \
+  fn(GpioChipResource)                  \
+  fn(I2cBusResource)                    \
+  fn(I2cDeviceResource)                 \
   fn(I2sResource)                       \
+  fn(SpiResource)                       \
   fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
+  fn(PcntChannelResource)               \
   fn(PwmResource)                       \
   fn(RmtResource)                       \
-  fn(BleCentralManagerResource)         \
-  fn(BlePeripheralManagerResource)      \
-  fn(BleRemoteDeviceResource)           \
-  fn(BleServiceResource)                \
-  fn(BleCharacteristicResource)         \
-  fn(BleDescriptorResource)             \
   fn(Directory)                         \
   fn(UdpSocketResource)                 \
   fn(TcpSocketResource)                 \
@@ -63,9 +64,21 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
-
-#define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \
+
+// When adding a class make sure that they all are subclasses of
+// the BleCallbackResource. If it isn't update the Min/MaxTag below.
+// Similarly, check, whether the new class is a read-write class.
+#define BLE_CLASSES_DO(fn)              \
+  fn(BleAdapterResource)                \
+  fn(BleCentralManagerResource)         \
+  fn(BlePeripheralManagerResource)      \
+  fn(BleRemoteDeviceResource)           \
+  fn(BleServiceResource)                \
+
+#define BLE_READ_WRITE_CLASSES_DO(fn)   \
+  fn(BleCharacteristicResource)         \
+  fn(BleDescriptorResource)             \
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
@@ -92,7 +105,6 @@ namespace toit {
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \
   fn(X509ResourceGroup)                 \
-  fn(PcntChannelResourceGroup)          \
   fn(PcntUnitResourceGroup)             \
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
@@ -108,10 +120,15 @@ enum StructTag {
 
   // Resource subclasses.
   ResourceMinTag,
-  NON_TLS_RESOURCE_CLASSES_DO(MAKE_ENUM)
-  BaseTlsSocketMinTag,
-  TLS_CLASSES_DO(MAKE_ENUM)
-  BaseTlsSocketMaxTag,
+  NON_BLE_RESOURCE_CLASSES_DO(MAKE_ENUM)
+  BleResourceMinTag,
+  BleCallbackResourceMinTag,
+  BLE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMinTag,
+  BLE_READ_WRITE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMaxTag,
+  BleCallbackResourceMaxTag,
+  BleResourceMaxTag,
   ResourceMaxTag,
 
   // ResourceGroup subclasses.
@@ -120,7 +137,6 @@ enum StructTag {
   ResourceGroupMaxTag,
 
   // Misc.
-  LeakyDirectoryTag,
   FontTag,
   ImageOutputStreamTag,
   ChannelTag

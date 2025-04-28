@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary
+import io show LITTLE-ENDIAN
 import uuid
 import monitor
 
@@ -28,6 +28,7 @@ import system.containers as system-containers
 import .flash.allocation
 import .flash.image-writer
 import .flash.registry
+import .flash.reservation
 import .services
 
 class Container:
@@ -160,7 +161,7 @@ class ContainerImageFlash extends ContainerImage:
     return allocation_.metadata[0]
 
   data -> int:
-    return binary.LITTLE-ENDIAN.uint32 allocation_.metadata 1
+    return LITTLE-ENDIAN.uint32 allocation_.metadata 1
 
   spawn container/Container arguments/any:
     return container-spawn_ allocation_.offset container.id arguments
@@ -267,7 +268,17 @@ abstract class ContainerServiceProvider extends ServiceProvider
   image-writer-open client/int size/int -> ServiceResource:
     relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
     reservation := image-registry.reserve relocated-size
-    if reservation == null: throw "No space left in flash"
+    if not reservation: throw "No space left in flash"
+    return create-container-image-writer_ client reservation
+
+  /**
+  Creates a new container image writer service resource.
+
+  # Inheritance
+  This method may be overridden by subclasses to provide a custom
+    implementation of the `ContainerImageWriter` service resource.
+  */
+  create-container-image-writer_ client/int reservation/FlashReservation -> ContainerImageWriter:
     return ContainerImageWriter this client reservation
 
   image-writer-write writer/ContainerImageWriter bytes/ByteArray -> none:

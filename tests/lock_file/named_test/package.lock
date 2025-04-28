@@ -1,0 +1,7 @@
+prefixes:
+  foo-other-name: foo-1.0
+
+packages:
+  foo-1.0:
+    name: foo
+    path: foo

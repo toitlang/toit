@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "flash_registry.h"
 
@@ -30,17 +30,17 @@ static const esp_partition_t* allocations_partition = null;
 static spi_flash_mmap_handle_t allocations_handle;
 uint8* FlashRegistry::allocations_memory_ = null;
 
-static bool is_erased_page(int offset) {
+static bool is_erased_page(word offset) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   return FlashRegistry::is_erased(offset, FLASH_PAGE_SIZE);
 }
 
-static esp_err_t ensure_erased(int offset, int size) {
+static esp_err_t ensure_erased(word offset, word size) {
   FlashRegistry::flush();
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
   int to = offset + size;
-  for (int cursor = offset; cursor < to; cursor += FLASH_PAGE_SIZE) {
+  for (word cursor = offset; cursor < to; cursor += FLASH_PAGE_SIZE) {
     if (!is_erased_page(cursor)) {
       // Determine size of dirty range.
       int dirty_to = cursor + FLASH_PAGE_SIZE;
@@ -85,7 +85,7 @@ int FlashRegistry::allocations_size() {
   return static_cast<int>(allocations_partition->size);
 }
 
-int FlashRegistry::erase_chunk(int offset, int size) {
+int FlashRegistry::erase_chunk(word offset, word size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
   esp_err_t result = ensure_erased(offset, size);
@@ -98,7 +98,7 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   }
 }
 
-bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
+bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
   return result == ESP_OK;
 }
@@ -111,4 +111,4 @@ bool FlashRegistry::erase_flash_registry() {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

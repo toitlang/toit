@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import gpio
-import binary show LITTLE-ENDIAN
+import io show LITTLE-ENDIAN
 
 /**
 Support for the ESP32 Remote Control (RMT).
@@ -22,7 +22,7 @@ import rmt
 
 main:
   pin := gpio.Pin 18
-  channel := rmt.Channel pin --output --idle_level=0
+  channel := rmt.Channel pin --output --idle-level=0
   pulse := rmt.Signals 1
   pulse.set 0 --level=1 --duration=50
   channel.write pulse
@@ -72,7 +72,7 @@ class Signals:
     $size * $BYTES-PER-SIGNAL.
   */
   // TODO(florian): take a clock-divider as argument and allow the user to specify
-  // durations in us. Then also add a `do --us_periods:`.
+  // durations in us. Then also add a `do --us-periods:`.
   constructor .size:
     bytes_ = ByteArray
         round-up (size * 2) 4
@@ -232,6 +232,10 @@ class Channel:
   /**
   Constructs a channel using the given $num using the given $pin.
 
+  Note: only the ESP32 and the ESP32S2 support configuring the channel direction at a later
+    time. For all other platforms, this constructor will give a TX channel, unless
+    the channel-id is provided.
+
   The $memory-block-count determines how many memory blocks are assigned to this channel. See
     the Advanced section for more information.
 
@@ -242,6 +246,8 @@ class Channel:
 
   This constructor does not configure the channel for input or output yet. Call $configure
     (either `--input` or `--output`) to do so.
+
+  Deprecated. Use the `--input` or `--output` constructor instead.
 
   # Advanced
 
@@ -272,14 +278,14 @@ class Channel:
     of a channel with 7 memory blocks.
   */
   constructor .pin/gpio.Pin --memory-block-count/int=1 --channel-id/int?=null:
-    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1)
+    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) 0
 
   /**
   Variant of $(constructor pin).
 
   Configures the channel for input. See $(configure --input) for input parameters.
   */
-  constructor --input/bool pin/gpio.Pin --memory-block-count/int=1
+  constructor --input/bool .pin/gpio.Pin --memory-block-count/int=1
       --channel-id /int? = null
       --clk-div /int = DEFAULT-IN-CLK-DIV
       --flags /int = DEFAULT-IN-FLAGS
@@ -290,22 +296,21 @@ class Channel:
     if not input: throw "INVALID_ARGUMENT"
     if not 1 <= memory-block-count <= 8: throw "INVALID_ARGUMENT"
 
-    result := Channel pin --memory-block-count=memory-block-count --channel-id=channel-id
-    result.configure --input
+    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) -1
+    configure --input
         --clk-div=clk-div
         --flags=flags
         --idle-threshold=idle-threshold
         --enable-filter=enable-filter
         --filter-ticks-threshold=filter-ticks-threshold
         --buffer-size=buffer-size
-    return result
 
   /**
   Variant of $(constructor pin).
 
   Configures the channel for output. See $(configure --output) for output parameters.
   */
-  constructor --output/bool pin/gpio.Pin --memory-block-count/int=1
+  constructor --output/bool .pin/gpio.Pin --memory-block-count/int=1
       --channel-id /int? = null
       --clk-div /int = DEFAULT-OUT-CLK-DIV
       --flags /int = DEFAULT-OUT-FLAGS
@@ -317,8 +322,8 @@ class Channel:
     if not output: throw "INVALID_ARGUMENT"
     if not 1 <= memory-block-count <= 8: throw "INVALID_ARGUMENT"
 
-    result := Channel pin --memory-block-count=memory-block-count --channel-id=channel-id
-    result.configure --output
+    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) 1
+    configure --output
         --clk-div=clk-div
         --flags=flags
         --enable-carrier=enable-carrier
@@ -326,10 +331,12 @@ class Channel:
         --carrier-level=carrier-level
         --carrier-duty-percent=carrier-duty-percent
         --idle-level=idle-level
-    return result
 
   /**
   Configures the channel for input.
+
+  Only some chips (for example ESP32 and ESP32S2) support configuring the channel direction
+    at a later time. For all other platforms changing direction will throw.
 
   The $clk-div divides the 80MHz clock. The value must be in range [1, 255].
   The RMT unit works with ticks. All sent and received signals count ticks.
@@ -383,6 +390,9 @@ class Channel:
 
   /**
   Configures the channel for output.
+
+  Only some chips (for example ESP32 and ESP32S2) support configuring the channel direction
+    at a later time. For all other platforms changing direction will throw.
 
   The $clk-div divides the 80MHz clock. The value must be in range [1, 255].
   The RMT unit works with ticks. All sent and received signals count ticks.
@@ -531,7 +541,7 @@ class Channel:
     if not is-output: throw "INVALID_STATE"
 
     // Start sending the data.
-    // We receive a write_buffer with external memory that we need to keep alive
+    // We receive a write-buffer with external memory that we need to keep alive
     // until the sending is done. This buffer may be the $signals.bytes_ buffer
     // if that one is external.
     buffer := rmt-transmit_ resource_ signals.bytes_
@@ -563,7 +573,7 @@ resource-group_ ::= rmt-init_
 rmt-init_:
   #primitive.rmt.init
 
-rmt-channel-new_ resource-group memory-block-count channel-num:
+rmt-channel-new_ resource-group memory-block-count channel-num direction:
   #primitive.rmt.channel-new
 
 rmt-channel-delete_ resource-group resource:

@@ -23,7 +23,7 @@ namespace toit {
 namespace ar {
 
 static const char* const AR_HEADER = "!<arch>\x0A";
-static const int AR_HEADER_SIZE = strlen(AR_HEADER);
+static const int AR_HEADER_SIZE = sizeof("!<arch>\x0A") - 1;
 
 static constexpr const char* const FILE_HEADER_ENDING_CHARS = "\x60\x0A";
 static const int FILE_NAME_OFFSET = 0;
@@ -46,9 +46,9 @@ static const int FILE_MODE_SIZE = FILE_BYTE_SIZE_OFFSET - FILE_MODE_OFFSET;
 static const int FILE_BYTE_SIZE_SIZE = FILE_ENDING_CHARS_OFFSET - FILE_BYTE_SIZE_OFFSET;
 static const int FILE_ENDING_CHARS_SIZE = FILE_HEADER_SIZE - FILE_ENDING_CHARS_OFFSET;
 
-static void write_string(uint8* buffer, const char* str, int length) {
+static void write_string(uint8* buffer, const char* str, word length) {
   // The string is truncated if it is too long.
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     char c = *str;
     if (c == '\0') {
       // Pad with spaces.
@@ -60,19 +60,19 @@ static void write_string(uint8* buffer, const char* str, int length) {
   }
 }
 
-static void write_number(uint8* buffer, int number, int length, int base) {
+static void write_number(uint8* buffer, int number, word length, int base) {
   // The number is trimmed if it doesn't fit.
   // For simplicity, we write the number right to left, and then shift the
   // computed values.
-  int i = length - 1;
+  word i = length - 1;
   for (; i >= 0; i--) {
     buffer[i] = '0' + number % base;
     number = number / base;
     if (number == 0) break;
   }
   // 'i' is the last entry where we wrote a significant digit.
-  int nb_digits = length - i;
-  int offset = i;
+  word nb_digits = length - i;
+  word offset = i;
   for (int j = 0; j < nb_digits; j++) {
     buffer[j] = buffer[j + offset];
   }
@@ -81,11 +81,11 @@ static void write_number(uint8* buffer, int number, int length, int base) {
   }
 }
 
-static void write_decimal(uint8* buffer, int number, int length) {
+static void write_decimal(uint8* buffer, int number, word length) {
   write_number(buffer, number, length, 10);
 }
 
-static void write_octal(uint8* buffer, int number, int length) {
+static void write_octal(uint8* buffer, int number, word length) {
   write_number(buffer, number, length, 8);
 }
 
@@ -121,7 +121,7 @@ static void write_ar_file_header(uint8* buffer, const File& file) {
                FILE_ENDING_CHARS_SIZE);
 }
 
-static bool needs_padding(int content_size) {
+static bool needs_padding(word content_size) {
   return (content_size & 1) != 0;
 }
 
@@ -134,12 +134,12 @@ int MemoryBuilder::open() {
 }
 
 int MemoryBuilder::add(File file) {
-  int needed_size = FILE_HEADER_SIZE + file.byte_size;
+  word needed_size = FILE_HEADER_SIZE + file.byte_size;
   if (needs_padding(file.byte_size)) needed_size++;
-  int new_size = size_ + needed_size;
+  word new_size = size_ + needed_size;
   buffer_ = unvoid_cast<uint8*>(realloc(buffer_, new_size));
   if (buffer_ == null) return AR_OUT_OF_MEMORY;
-  int offset = size_;
+  word offset = size_;
   write_ar_file_header(&buffer_[offset], file);
   offset += FILE_HEADER_SIZE;
   memcpy(&buffer_[offset], file.content(), file.byte_size);
@@ -154,7 +154,7 @@ int MemoryBuilder::add(File file) {
 int FileBuilder::open(const char* archive_path) {
   file_ = fopen(archive_path, "wb");
   if (file_ == NULL) return AR_ERRNO_ERROR;
-  int written = fwrite(AR_HEADER, 1, AR_HEADER_SIZE, file_);
+  word written = fwrite(AR_HEADER, 1, AR_HEADER_SIZE, file_);
   if (written != AR_HEADER_SIZE) return AR_ERRNO_ERROR;
   return 0;
 }
@@ -171,7 +171,7 @@ int FileBuilder::close() {
 int FileBuilder::add(File file) {
   uint8 buffer[FILE_HEADER_SIZE];
   write_ar_file_header(buffer, file);
-  int written = fwrite(buffer, 1, FILE_HEADER_SIZE, file_);
+  word written = fwrite(buffer, 1, FILE_HEADER_SIZE, file_);
   if (written != FILE_HEADER_SIZE) return AR_ERRNO_ERROR;
   written = fwrite(file.content(), 1, file.byte_size, file_);
   if (written != file.byte_size) return AR_ERRNO_ERROR;
@@ -196,8 +196,8 @@ static int parse_ar_file_header(const uint8* data, File* file) {
 
   // We parse the size first, as parsing the name can't lead to errors, and we
   // don't want to allocate memory if there is an error.
-  int byte_size = 0;
-  for (int i = 0; i < FILE_BYTE_SIZE_SIZE; i++) {
+  word byte_size = 0;
+  for (word i = 0; i < FILE_BYTE_SIZE_SIZE; i++) {
     char c = data[FILE_BYTE_SIZE_OFFSET + i];
     if ('0' <= c && c <= '9') {
       byte_size = byte_size * 10 + c - '0';
@@ -213,7 +213,7 @@ static int parse_ar_file_header(const uint8* data, File* file) {
   memcpy(name, &data[FILE_NAME_OFFSET], FILE_NAME_SIZE);
   name[FILE_NAME_SIZE] = '\0';
   // Remove the padding.
-  for (int i = FILE_NAME_SIZE - 1; i >= 0; i--) {
+  for (word i = FILE_NAME_SIZE - 1; i >= 0; i--) {
     if (name[i] == ' ') {
       name[i] = '\0';
     } else if (name[i] == '/') {

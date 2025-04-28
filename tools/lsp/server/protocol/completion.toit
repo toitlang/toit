@@ -77,3 +77,38 @@ class CompletionItem extends MapWrapper:
       --kind  /int:
     map_["label"] = label
     if kind != -1: map_["kind"] = kind
+
+  set-text-edit edit/TextEdit: map_["textEdit"] = edit
+  label -> string: return at_ "label"
+
+/**
+A collection of $CompletionItem elements.
+*/
+class CompletionList extends MapWrapper:
+  /**
+  Creates a completion-list.
+
+  If $is-incomplete is true, indicates that the completion list is not complete.
+  */
+  constructor
+      --items         /List  // of CompletionItem
+      --is-incomplete /bool = false
+      --item-defaults /CompletionItemDefaults?:
+    map_["items"] = items
+    if is-incomplete: map_["isIncomplete"] = is-incomplete
+    if item-defaults: map_["itemDefaults"] = item-defaults
+
+/**
+Properties that are shared among many completion items, and are
+the default if not overridden by the individual completion items.
+*/
+class CompletionItemDefaults extends MapWrapper:
+  /**
+  Creates a new instance.
+
+  The $edit-range specifies the range of the document that should be replaced by
+    the completion item. It's the "prefix" of the completion items.
+  */
+  constructor
+      --edit-range /Range?:
+    if edit-range: map_["editRange"] = edit-range

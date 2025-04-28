@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import cli
 import host.pipe show print-to-stdout
 import host.directory
 import host.file
@@ -21,7 +22,7 @@ import encoding.json as json
 import .compiler
 import .documents
 import .file-server
-import .uri-path-translator
+import .uri-path-translator as translator
 import .server show DEFAULT-TIMEOUT-MS
 import .tar-utils
 import .utils
@@ -66,7 +67,7 @@ class FilesystemRepro extends FilesystemBase:
   sdk-path -> string: return sdk-path_
   package-cache-paths -> List: return package-cache-paths_
 
-  read-content path/string -> ByteArray?:
+  read-contents path/string -> ByteArray?:
     has-content := file-meta_.get path
         --if-present=: it["has_content"]
         --if-absent=: false
@@ -140,21 +141,88 @@ write-repro
 create-archive project-uri/string? compiler-path/string entry-path/string out-path/string:
   cwd := directory.cwd
   if not entry-path.starts-with "/": entry-path = "$cwd/$entry-path"
-  translator := UriPathTranslator
-  documents := Documents translator
+  documents := Documents
   sdk-path := sdk-path-from-compiler compiler-path
-  protocol := FileServerProtocol.local compiler-path sdk-path documents translator
-  compiler := Compiler compiler-path translator DEFAULT-TIMEOUT-MS
+  protocol := FileServerProtocol.local compiler-path sdk-path documents
+  compiler := Compiler compiler-path DEFAULT-TIMEOUT-MS
       --protocol=protocol
-      --project-uri=project-uri
   entry-uri := translator.to-uri entry-path
-  compiler.analyze [entry-uri]
+  compiler.analyze [entry-uri] --project-uri=project-uri
 
   write-repro
       --repro-path=out-path
-      --compiler-flags=compiler.build-run-flags
+      --compiler-flags=compiler.build-run-flags --project-uri=project-uri
       --compiler-input="ANALYZE\n1\n$entry-path\n"
       --info="from repro tool"
       --protocol=protocol
       --cwd-path=cwd
       --include-sdk
+
+create-repro-server archive/string-> TcpFileServer:
+  documents := Documents
+  filesystem := FilesystemRepro archive
+  protocol := FileServerProtocol documents filesystem
+  result := TcpFileServer protocol
+  return result
+
+serve archive/string port/int:
+  compiler-input := tar-extract archive REPRO-COMPILER-INPUT-PATH
+  is-first := true
+  while true:
+    file-server := create-repro-server archive
+    server-port-line := file-server.run --port=port
+    // Once we have a port, we stick to it.
+    port = int.parse server-port-line
+    if is-first:
+      is-first = false
+      print "Server started at $port"
+      print "Run the compiler with:"
+      print "  toitc -Xno_fork --lsp"
+      print "Stdin for the compiler:"
+      print port
+      print compiler-input
+    file-server.wait-for-done
+
+/**
+Generates a tar file that can be used as source-bundle, to reproduce a compilation
+  environment.
+Alternatively, when invoked with 'serve' starts a file server using the provided
+  repro tar file.
+*/
+main args:
+  cmd := cli.Command "repro"
+      --help="Capture or serve repros."
+
+  serve-cmd := cli.Command "serve"
+      --help="Serve a repro."
+      --options=[
+        cli.OptionInt "port"
+            --short-name="p"
+            --help="Port to serve on."
+            --default=0,
+      ]
+      --rest=[
+        cli.Option "archive"
+            --type="file"
+            --required,
+      ]
+      --run=:: serve it["archive"] it["port"]
+  cmd.add serve-cmd
+
+  create-cmd := cli.Command "create"
+      --help="Create a repro."
+      --rest=[
+        cli.Option "compiler-path"
+            --type="file"
+            --required,
+        cli.Option "entry-path"
+            --type="file"
+            --required,
+        cli.Option "out-path"
+            --type="file"
+            --required,
+      ]
+      --run=:: create-archive null it["compiler-path"] it["entry-path"] it["out-path"]
+  cmd.add create-cmd
+
+  cmd.run args

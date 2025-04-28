@@ -8,6 +8,7 @@ import encoding.json
 import fixed-point show FixedPoint
 import math
 import reader show Reader BufferedReader
+import io
 
 main:
   test-parse
@@ -19,6 +20,7 @@ main:
   test-number-terminators
   test-with-reader
   test-multiple-objects
+  test-stream
 
 test-stringify:
   expect-equals "\"testing\"" (json.stringify "testing")
@@ -363,6 +365,16 @@ class TestReader implements Reader:
       throw "READ_ERROR"
     return list[pos++]
 
+class TestIoReader extends TestReader with io.InMixin:
+  constructor list:
+    super list
+
+  read_ -> ByteArray?:
+    return read
+
+io-reader-for list -> io.Reader:
+  return (TestIoReader list).in
+
 test-multiple-objects -> none:
   VECTORS ::= [
       // Put the border between the reads in different places.
@@ -377,14 +389,20 @@ test-multiple-objects -> none:
     expect-equals 42 first["foo"]
     expect-equals 103 second["bar"]
 
+    reader := io-reader-for it
+    first = json.decode-stream reader
+    second = json.decode-stream reader
+    expect-equals 42 first["foo"]
+    expect-equals 103 second["bar"]
+
 test-with-reader -> none:
   expect-equals 3.1415
-    json.decode-stream
-      TestReader ["3", ".", "1", "4", "1", "5"]
+      json.decode-stream
+          io-reader-for ["3", ".", "1", "4", "1", "5"]
 
   // Split in middle of number in list.
   result := json.decode-stream
-    TestReader ["[3, 5, 4", "2, 103]"]
+      io-reader-for ["[3, 5, 4", "2, 103]"]
   expect-equals 4 result.size
   expect-equals 3 result[0]
   expect-equals 5 result[1]
@@ -393,7 +411,7 @@ test-with-reader -> none:
 
   // Split in middle of number in map.
   result = json.decode-stream
-    TestReader [""" {"foo": 3, "bar": 5, "baz": 4""", """2, "fizz": 103}"""]
+      io-reader-for [""" {"foo": 3, "bar": 5, "baz": 4""", """2, "fizz": 103}"""]
   expect-equals 4 result.size
   expect-equals 3 result["foo"]
   expect-equals 5 result["bar"]
@@ -405,13 +423,13 @@ test-with-reader -> none:
     part-1 := BIG[..it]
     part-2 := BIG[it..]
     result = json.decode-stream
-      TestReader [part-1, part-2]
+        io-reader-for [part-1, part-2]
     check-big-parse-result result
     part-2.size.repeat:
       part-2a := part-2[..it]
       part-2b := part-2[it..]
       result = json.decode-stream
-        TestReader [part-1, part-2a, part-2b]
+          io-reader-for [part-1, part-2a, part-2b]
       check-big-parse-result result
 
   // Exceptions from the reader should not be swallowed by the
@@ -419,10 +437,10 @@ test-with-reader -> none:
   BIG.size.repeat:
     part-1 := BIG[..it]
     part-2 := BIG[it..]
-    test-reader := TestReader [part-1, part-2]
+    test-reader := TestIoReader [part-1, part-2]
     test-reader.throw-on-last-part = true
     expect-throw "READ_ERROR":
-      json.decode-stream test-reader
+      json.decode-stream test-reader.in
 
   BAD-JSON-EXAMPLES ::= [
     """{"foo": 3 "bar": 4}""",
@@ -434,7 +452,7 @@ test-with-reader -> none:
       part-1 := example[..it]
       part-2 := example[it..]
       expect-throw "INVALID_JSON_CHARACTER":
-        json.decode-stream (TestReader [part-1, part-2])
+        json.decode-stream (io-reader-for [part-1, part-2])
 
     example-bytes := example.to-byte-array
     chunks := []
@@ -442,12 +460,33 @@ test-with-reader -> none:
       chunks.add example-bytes[it .. it + 1]
 
     expect-throw "INVALID_JSON_CHARACTER":
-      json.decode-stream (TestReader chunks)
+      json.decode-stream (io-reader-for chunks)
 
   // Split anywhere:
   NUMBER-WITH-LEADING-SPACE.size.repeat:
     part-1 := NUMBER-WITH-LEADING-SPACE[..it]
     part-2 := NUMBER-WITH-LEADING-SPACE[it..]
     result = json.decode-stream
-      TestReader [part-1, part-2]
+        io-reader-for [part-1, part-2]
     expect-equals -123.54e-5 result
+
+test-stream:
+  OBJ ::= {"foo": 42}
+
+  writer := TestWriter
+  json.encode-stream --writer=writer OBJ
+
+  encoded := json.encode OBJ
+
+  expect-equals ("{\"foo\":42}".to-byte-array) encoded
+  expect-equals writer.ba encoded
+
+class TestWriter extends io.Writer:
+  ba := #[]
+  try-write_ data from/int to/int -> int:
+    slice := data[from..to]
+    if slice is string:
+      ba += slice.to-byte-array
+    else:
+      ba += slice
+    return to - from

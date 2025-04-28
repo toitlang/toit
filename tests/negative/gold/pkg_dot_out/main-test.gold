@@ -7,4 +7,4 @@ import ..src.target
 <pkg:target>/target.toit:10:1: error: Cyclic export dependency
 export *
 ^~~~~~
-Compilation failed.
+Compilation failed

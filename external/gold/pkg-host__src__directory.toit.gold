@@ -1,6 +1,0 @@
-pkg-host/src/directory.toit:154:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-pkg-host/src/directory.toit:154:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~

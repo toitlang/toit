@@ -4,4 +4,4 @@ tests/negative/final-field4-test.toit:18:19: error: Final field 'field' cannot b
 tests/negative/final-field4-test.toit:26:17: error: Final field 'field' cannot be assigned
     block := (: field = it)
                 ^~~~~
-Compilation failed.
+Compilation failed

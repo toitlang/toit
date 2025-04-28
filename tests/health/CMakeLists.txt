@@ -37,20 +37,19 @@ add_custom_target(
 
 set(SKIP_PREFIXES
     "${TOIT_SDK_SOURCE_DIR}/tests/negative/"
+    "${TOIT_SDK_SOURCE_DIR}/tests/pkg/assets/"
     "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/"
     "${TOIT_SDK_SOURCE_DIR}/.git/"
     # Don't go into the top-level external/ directory which is covered by
     # the external health tests.
     "${TOIT_SDK_SOURCE_DIR}/external/"
-    # Don't go into the packages directory which only contains external packages.
-    "${TOIT_SDK_SOURCE_DIR}/packages/"
     # Normally not necessary as toit files in the build directory are generally
     # only accessible through symlinks. But on Windows the globbing would find them.
     "${CMAKE_SOURCE_DIR}/build/")
 
-# Don't go into .packages directories.
+# Don't go into .packages or .packages-bootstrap directories.
 # The packages we want to check must be added differently.
-set(DOT_PACKAGES_PATTERN "/[.]packages/")
+set(DOT_PACKAGES_PATTERN "/[.]packages(-bootstrap)?/")
 
 # Sets the RESULT variable to TRUE if STR has PREFIX as prefix.
 # Leaves the RESULT variable untouched otherwise.
@@ -80,7 +79,7 @@ foreach(file ${HEALTH_SOURCES})
   endif()
   add_health_test("${file}"
     RELATIVE_TO "${TOIT_SDK_SOURCE_DIR}"
-    LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
+    LIB_DIR "${TOIT_SDK_SOURCE_DIR}/lib"
     GOLD_DIR "${GOLD_DIR}"
     CONFIGURATION health
     SHOW_PACKAGE_WARNINGS ON

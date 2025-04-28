@@ -36,4 +36,4 @@ Too few arguments provided
 tests/negative/conditional-test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

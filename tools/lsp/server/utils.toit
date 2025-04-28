@@ -13,12 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
+import fs.xdg
 import host.file
-import monitor
-import reader show Reader
 import host.os
+import io
+import monitor
 
-PACKAGE-CACHE-PATH := ".cache/toit/tpkg/"
+PACKAGE-CACHE-PATH := "toit/tpkg/"
 
 /// Finds the directories where to look for downloaded (cached) packages.
 find-package-cache-paths -> List:
@@ -26,14 +28,12 @@ find-package-cache-paths -> List:
   if cache-paths:
     entries := cache-paths.split ":"
     if not entries.is-empty: return entries
-  // TODO(florian): we currently require the `HOME` env variable to be set.
-  // There are other ways to find the home directory but they aren't
-  //   accessible in Toit yet.
-  home := os.env["HOME"]
-  if not home.ends-with "/": home += "/"
-  return [
-    "$home$PACKAGE-CACHE-PATH"
-  ]
+
+  catch:
+    cache-path := xdg.cache-home
+    return [fs.join cache-path PACKAGE-CACHE-PATH]
+
+  return []
 
 class FakePipeLink:
   next := null
@@ -42,13 +42,13 @@ class FakePipeLink:
   constructor .data:
 
 // TODO(florian): replace this with a "Buffer" class from io, once that one exists.
-class FakePipe implements Reader:
+class FakePipe extends Object with io.CloseableOutMixin io.InMixin:
   first := null
   last := null
   is-closed := false
   channel := monitor.Channel 1
 
-  write data from=0 to=data.size:
+  try-write_ data from=0 to=data.size -> int:
     copied := null
     if data is string:
       copied = data.to-byte-array
@@ -65,7 +65,7 @@ class FakePipe implements Reader:
     channel.send null
     return to - from
 
-  read -> ByteArray?:
+  read_ -> ByteArray?:
     while true:
       if not first and is-closed: return null
       if not first:
@@ -76,14 +76,14 @@ class FakePipe implements Reader:
       if first == null: last = null
       return result
 
-  close-write:
+  close-writer_:
     is-closed = true
     channel.send null
 
 /**
 A Reader/Writer that logs all read/written data.
 */
-class LoggingIO implements Reader:
+class LoggingIO extends Object with io.InMixin io.CloseableOutMixin:
   /// The wrapped reader/writer.
   wrapped_ ::= ?
 
@@ -97,22 +97,22 @@ class LoggingIO implements Reader:
     must-close-writer_ = true
     log-writer_ = file.Stream path file.CREAT | file.WRONLY 0x1ff
 
-  read:
+  read_:
     msg := wrapped_.read
-    if msg != null: log-writer_.write msg
+    if msg != null: log-writer_.out.write msg
     return msg
 
-  write data from=0 to=data.size:
-    log-writer_.write data from to
+  try-write_ data from=0 to=data.size -> int:
+    log-writer_.out.write data from to
     return wrapped_.write data from to
 
-  close:
+  close-writer_:
     if must-close-writer_: log-writer_.close
     wrapped_.close
 
 log-to-file msg:
   log-file := file.Stream "/tmp/lsp.log" (file.WRONLY | file.CREAT | file.APPEND) 0x1ff
-  log-file.write "$Time.monotonic-us: $msg\n"
+  log-file.out.write "$Time.monotonic-us: $msg\n"
 
 /**
 A binary search to find a $needle in a $list of intervals.
@@ -143,3 +143,10 @@ interval-binary-search list/List needle/int --try-first=null -> int:
   while list[result + 1] == needle: result++
   assert: list[result] <= needle < list[result + 1]
   return result
+
+/** Whether the given $uri is inside a .packages folder. */
+is-inside-dot-packages --uri/string -> bool:
+  return uri.contains "/.packages/" or
+      uri.contains "%5C.packages%5C" or
+      uri.contains "%5c.packages%5c"
+

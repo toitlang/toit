@@ -32,6 +32,10 @@
 
 namespace toit {
 
+char* OS::get_executable_path_from_arg(const char* source_arg) {
+  return realpath(source_arg, null);
+}
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -39,43 +43,6 @@ int64 OS::get_system_time() {
   }
   return us;
 }
-
-class Mutex {
- public:
-  Mutex(int level, const char* name)
-    : level_(level) {
-    pthread_mutex_init(&mutex_, null);
-  }
-
-  ~Mutex() {
-    pthread_mutex_destroy(&mutex_);
-  }
-
-  void lock() {
-    int error = pthread_mutex_lock(&mutex_);
-    if (error != 0) FATAL("mutex lock failed with error %d", error);
-  }
-
-  void unlock() {
-    int error = pthread_mutex_unlock(&mutex_);
-    if (error != 0) FATAL("mutex unlock failed with error %d", error);
-  }
-
-  bool is_locked() {
-    int error = pthread_mutex_trylock(&mutex_);
-    if (error == 0) {
-      unlock();
-      return false;
-    }
-    if (error != EBUSY) FATAL("mutex trylock failed with error %d", error);
-    return true;
-  }
-
-  int level() const { return level_; }
-
-  int level_;
-  pthread_mutex_t mutex_;
-};
 
 class ConditionVariable {
  public:
@@ -92,7 +59,7 @@ class ConditionVariable {
 
   void wait() {
     if (pthread_cond_wait(&cond_, &mutex_->mutex_) != 0) {
-      FATAL("pthread_cond_timedwait() error");
+      FATAL("pthread_cond_wait() error");
     }
   }
 
@@ -136,33 +103,6 @@ class ConditionVariable {
   pthread_cond_t cond_;
 };
 
-void Locker::leave() {
-  Thread* thread = Thread::current();
-  if (thread->locker_ != this) FATAL("unlocking would break lock order");
-  thread->locker_ = previous_;
-  // Perform the actual unlock.
-  mutex_->unlock();
-}
-
-void Locker::enter() {
-  Thread* thread = Thread::current();
-  int level = mutex_->level();
-  Locker* previous_locker = thread->locker_;
-  if (previous_locker != null) {
-    int previous_level = previous_locker->mutex_->level();
-    if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
-    }
-  }
-  // Lock after checking the precondition to avoid deadlocking
-  // instead of just failing the precondition check.
-  mutex_->lock();
-  // Only update variables after we have the lock - that grants right
-  // to update the locker.
-  previous_ = thread->locker_;
-  thread->locker_ = this;
-}
-
 static pthread_key_t thread_key;
 
 static pthread_t pthread_from_handle(void* handle) {
@@ -201,6 +141,11 @@ bool Thread::spawn(int stack_size, int core) {
 void Thread::run() {
   ASSERT(handle_ == null);
   thread_start(void_cast(this));
+}
+
+void Thread::cancel() {
+  ASSERT(handle_ != null);
+  pthread_cancel(pthread_from_handle(handle_));
 }
 
 void Thread::join() {

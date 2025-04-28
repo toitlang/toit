@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
+import io
 import .uri-path-translator
 import .protocol.document-symbol as lsp
 import .protocol.document as lsp
@@ -27,36 +27,93 @@ safe-name_ name/string -> string:
 
 /** A summary of a module. */
 class Module:
-  uri / string ::= ?
-  dependencies / List/*<string>*/ ::= ?
-  exported-modules / List/*<string>*/ ::= ?
-  exports      / List ::= ?
-  classes      / List ::= ?
-  functions    / List ::= ?
-  globals      / List/*<Method>*/ ::= ?
-  toitdoc      / Contents? ::= ?
+  uri / string
+  external-hash / ByteArray
+  dependencies / List?/*<string>*/
+
+  /**
+  The summary bytes.
+
+  If this field is set, then the module hasn't been parsed yet.
+  It needs to go through the $SummaryReader first.
+  */
+  summary-bytes_ / ByteArray? := ?
+  toplevel-offset_ / int := ?
+  module-toplevel-offsets_ / List := ?
+  module-uris_ / List := ?
+
+  exported-modules_ / List?/*<string>*/ := null
+  is-deprecated_ / bool? := null
+  exports_      / List? := null
+  classes_      / List? := null
+  functions_    / List? := null
+  globals_      / List?/*<Method>*/ := null
+  toitdoc_      / Contents? := null
 
   constructor
       --.uri
+      --.external-hash
       --.dependencies
-      --.exports
-      --.exported-modules
-      --.classes
-      --.functions
-      --.globals
-      --.toitdoc:
+      --summary-bytes/ByteArray
+      --toplevel-offset/int
+      --module-toplevel-offsets/List
+      --module-uris/List:
+    summary-bytes_ = summary-bytes
+    toplevel-offset_ = toplevel-offset
+    module-toplevel-offsets_ = module-toplevel-offsets
+    module-uris_ = module-uris
+
+  constructor
+      --.uri
+      --.external-hash
+      --.dependencies
+      --exports/List
+      --exported-modules/List
+      --classes/List
+      --functions/List
+      --globals/List
+      --toitdoc/Contents?:
+    summary-bytes_ = null
+    toplevel-offset_ = -1
+    module-toplevel-offsets_ = []
+    module-uris_ = []
+    exported-modules_ = exported-modules
+    exports_ = exports
+    classes_ = classes
+    functions_ = functions
+    globals_ = globals
+    toitdoc_ = toitdoc
+
+  is-deprecated -> bool:
+    if summary-bytes_: parse_
+    return is-deprecated_
+
+  exported-modules -> List/*<string>*/:
+    if summary-bytes_: parse_
+    return exported-modules_
+
+  exports -> List:
+    if summary-bytes_: parse_
+    return exports_
+
+  classes -> List/*<Class>*/:
+    if summary-bytes_: parse_
+    return classes_
+
+  functions -> List/*<Method>*/:
+    if summary-bytes_: parse_
+    return functions_
+
+  globals -> List/*<Method>*/:
+    if summary-bytes_: parse_
+    return globals_
+
+  toitdoc -> Contents?:
+    if summary-bytes_: parse_
+    return toitdoc_
 
   equals-external other/Module -> bool:
-    return other and
-        uri == other.uri and
-        // The dependencies only have an external impact if `export_all` is true. However, we
-        //    conservatively just return require that they are the same.
-        dependencies == other.dependencies and
-        exported-modules == other.exported-modules and
-        (exports.equals other.exports --element-equals=: |a b| a.equals-external b) and
-        (classes.equals other.classes --element-equals=: |a b| a.equals-external b) and
-        (functions.equals other.functions --element-equals=: |a b| a.equals-external b) and
-        (globals.equals other.globals --element-equals=: |a b| a.equals-external b)
+    return external-hash == other.external-hash
 
   to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
     lines := Lines content
@@ -70,7 +127,7 @@ class Module:
   Finds the toplevel element with the given $id.
   Returns either a class or a method.
   */
-  toplevel-element-with-id id/int -> any:
+  toplevel-element-with-id id/int -> ToplevelElement:
     if id < classes.size: return classes[id]
     id -= classes.size
     if id < functions.size: return functions[id]
@@ -78,21 +135,25 @@ class Module:
     assert: id < globals.size
     return globals[id]
 
+  parse_ -> none:
+    reader := ModuleReader summary-bytes_
+        --toplevel-offset=toplevel-offset_
+        --module-toplevel-offsets=module-toplevel-offsets_
+        --module-uris=module-uris_
+    reader.fill-module this
+    summary-bytes_ = null
+
 class Export:
   static AMBIGUOUS ::= 0
   static NODES ::= 1
+
+  hash-code / int ::= hash-code-counter_++
 
   name / string ::= ?
   kind / int ::= ?
   refs / List /* ToplevelRef */ ::= ?
 
   constructor .name .kind .refs:
-
-  equals-external other/Export -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        refs.equals other.refs --element-equals=: |a b| a.equals-external b
 
 class Range:
   start / int ::= -1
@@ -105,15 +166,15 @@ class Range:
         lines.lsp-position-for-offset start
         lines.lsp-position-for-offset end
 
+  stringify -> string:
+    return "$start-$end"
+
 class ToplevelRef:
   module-uri / string ::= ?
   id / int ::= 0
 
   constructor .module-uri .id:
     assert: id >= 0
-
-  equals-external other/ToplevelRef -> bool:
-    return other and module-uri == other.module-uri and id == other.id
 
 class Type:
   static ANY-KIND ::= -1
@@ -135,22 +196,28 @@ class Type:
   is-any -> bool: return kind == ANY-KIND
   is-none -> bool: return kind == NONE-KIND
 
-  equals-external other/Type -> bool:
-    return other and kind == other.kind and class-ref.equals-external other.class-ref
-
 hash-code-counter_ := 0
 
-class Class:
-  static KIND_CLASS ::= "class"
-  static KIND_INTERFACE ::= "interface"
-  static KIND_MIXIN ::= "mixin"
+interface ToplevelElement:
+  hash-code -> int
+  name -> string
+  toplevel-id -> int
+
+class Class implements ToplevelElement:
+  static KIND-CLASS ::= "class"
+  static KIND-INTERFACE ::= "interface"
+  static KIND-MIXIN ::= "mixin"
+
+  hash-code / int ::= hash-code-counter_++
 
   name  / string ::= ?
   range / Range  ::= ?
-  toplevel-id / int ::= ?
+  outline-range / Range ::= ?
+  toplevel-id   / int   ::= ?
 
-  kind         / string ::= ?
-  is_abstract  / bool ::= false
+  kind          / string ::= ?
+  is-abstract   / bool ::= ?
+  is-deprecated / bool ::= ?
 
   superclass   / ToplevelRef? ::= ?
   interfaces   / List ::= ?
@@ -165,23 +232,13 @@ class Class:
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
-      --.superclass --.interfaces --.mixins
+  constructor --.name --.range --.outline-range --.toplevel-id --.kind --.is-abstract
+      --.is-deprecated --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
-  equals-external other/Class -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
-        (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
-        (mixins.equals other.mixins --element_equals=: |a b| a.equals-external b) and
-        (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
-        (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
-        (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and
-        (fields.equals other.fields --element-equals=: |a b| a.equals-external b) and
-        (methods.equals other.methods --element-equals=: |a b| a.equals-external b)
+  is-class -> bool: return kind == KIND-CLASS
+  is-interface -> bool: return kind == KIND-INTERFACE
+  is-mixin -> bool: return kind == KIND-MIXIN
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     children := []
@@ -198,11 +255,15 @@ class Class:
     return lsp.DocumentSymbol
         --name=safe-name_ name
         --kind= kind == KIND-INTERFACE ? lsp.SymbolKind.INTERFACE : lsp.SymbolKind.CLASS  // Mixins count as class.
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
         --children=children
 
-class Method:
+interface ClassMember:
+  hash-code -> int
+  name -> string
+
+class Method implements ClassMember ToplevelElement:
   static INSTANCE-KIND ::= 0
   static GLOBAL-FUN-KIND ::= 1
   static GLOBAL-KIND ::= 2
@@ -213,25 +274,20 @@ class Method:
 
   name        / string ::= ?
   range       / Range  ::= ?
-  toplevel-id / int    ::= ?
+  outline-range / Range ::= ?
+  toplevel-id   / int   ::= ?
   kind / int ::= 0
   parameters  / List  ::= ?
   return-type / Type? ::= ?
 
-  is-abstract  / bool ::= false
-  is-synthetic / bool ::= false
+  is-abstract   / bool ::= ?
+  is-synthetic  / bool ::= ?
+  is-deprecated / bool ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.kind --.parameters --.return-type --.is-abstract --.is-synthetic --.toitdoc:
-
-  equals-external other/Method -> bool:
-    return other and
-        name == other.name and
-        kind == other.kind and
-        is-abstract == other.is-abstract and
-        (parameters.equals other.parameters --element-equals=: |a b| a.equals-external b) and
-        (return-type == other.return-type or (return-type and return-type.equals-external other.return-type))
+  constructor --.name --.range --.outline-range --.toplevel-id --.kind --.parameters
+      --.return-type --.is-abstract --.is-synthetic --.is-deprecated --.toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     lsp-kind := -1
@@ -256,30 +312,28 @@ class Method:
         --name=safe-name_ name
         --detail=details
         --kind=lsp-kind
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
 
-class Field:
+class Field implements ClassMember:
+  hash-code / int ::= hash-code-counter_++
+
   name / string ::= ?
   range / Range ::= ?
-  is-final / bool ::= false
+  outline-range / Range ::= ?
+  is-final / bool ::= ?
+  is-deprecated / bool ::= ?
   type / Type? ::= ?
 
   toitdoc / Contents? ::= ?
 
-  constructor .name .range .is-final .type .toitdoc:
-
-  equals-external other/Field -> bool:
-    return other and
-        name == other.name and
-        is-final == other.is-final and
-        (type == other.type or (type and type.equals-external other.type))
+  constructor --.name --.range --.outline-range --.is-final --.is-deprecated --.type --.toitdoc:
 
   to-lsp-document-symbol lines/Lines -> lsp.DocumentSymbol:
     return lsp.DocumentSymbol
         --name=safe-name_ name
         --kind=lsp.SymbolKind.FIELD
-        --range=range.to-lsp-range lines
+        --range=outline-range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
 
 class Parameter:
@@ -288,30 +342,44 @@ class Parameter:
   is-required / bool ::= ?
   is-named / bool ::= ?
   type / Type? ::= ?
+  default-value / string? ::= ?
 
-  constructor .name .original-index --.is-required --.is-named .type:
+  constructor .name .original-index .type --.is-required --.is-named --.default-value:
 
   is-block -> bool: return type and type.is-block
 
-  equals-external other/Parameter -> bool:
-    return other and
-        name == other.name and
-        is-required == other.is-required and
-        is-named == other.is-named and
-        (type == other.type or (type and type.equals-external other.type))
+class ReaderBase:
+  reader_ / io.Reader
 
-class SummaryReader:
-  reader_ / BufferedReader ::= ?
-  uri-path-translator_ / UriPathTranslator ::= ?
+  constructor .reader_:
 
+  read-line -> string:
+    return reader_.read-line
+
+  read-bytes count/int -> ByteArray:
+    return reader_.read-bytes count
+
+  read-int -> int:
+    return int.parse read-line
+
+  read-list [block] -> List:
+    count := read-int
+    // TODO(1268, florian): remove this work-around and use the commented code instead.
+    // return List count block
+    result := List count
+    for i := 0; i < count; i++:
+      result[i] = block.call i
+    return result
+
+class SummaryReader extends ReaderBase:
   module-uris_             / List ::= []
   module-toplevel-offsets_ / List ::= []
-  current-module-id_ := 0
-  current-toplevel-id_ := 0
+  current-module-id_ / int := 0
 
-  constructor .reader_ .uri-path-translator_:
+  constructor reader/io.Reader:
+    super reader
 
-  to-uri_ path / string -> string: return uri-path-translator_.to-uri path --from-compiler
+  to-uri_ path / string -> string: return to-uri path --from-compiler
 
   read-summary -> Map/*<uri, Module>*/:
     module-count := read-int
@@ -333,13 +401,45 @@ class SummaryReader:
     return result
 
   read-module -> Module:
-    current-toplevel-id_ = 0;
     module-offset := module-toplevel-offsets_[current-module-id_]
     module-path := read-line
     module-uri := to-uri_ module-path
     assert: module-uri == module-uris_[current-module-id_]
 
     dependencies := read-list: to-uri_ read-line
+
+    hash := read-bytes 20
+    module-bytes-size := read-int
+    module-bytes := read-bytes module-bytes-size
+
+    return Module
+        --uri=module-uri
+        --dependencies=dependencies
+        --external-hash=hash
+        --summary-bytes=module-bytes
+        --toplevel-offset=module-offset
+        --module-toplevel-offsets=module-toplevel-offsets_
+        --module-uris=module-uris_
+
+class ModuleReader extends ReaderBase:
+  current-toplevel-id_ / int := 0
+  toplevel-offset_ / int
+  module-toplevel-offsets_ / List
+  module-uris_ / List
+
+  constructor bytes/ByteArray
+      --toplevel-offset/int
+      --module-toplevel-offsets/List
+      --module-uris/List:
+    toplevel-offset_ = toplevel-offset
+    module-toplevel-offsets_ = module-toplevel-offsets
+    module-uris_ = module-uris
+    super (io.Reader bytes)
+
+  to-uri_ path / string -> string: return to-uri path --from-compiler
+
+  fill-module module/Module -> none:
+    is-deprecated := read-line == "deprecated"
     exported-modules := read-list: to-uri_ read-line
     exported := read-list: read-export
     // The order also defines the toplevel-ids.
@@ -348,15 +448,13 @@ class SummaryReader:
     functions := read-list: read-method
     globals := read-list: read-method
     toitdoc := read-toitdoc
-    return Module
-        --uri=module-uri
-        --dependencies=dependencies
-        --exported-modules=exported-modules
-        --exports=exported
-        --classes=classes
-        --functions=functions
-        --globals=globals
-        --toitdoc=toitdoc
+    module.is-deprecated_ = is-deprecated
+    module.exported-modules_ = exported-modules
+    module.exports_ = exported
+    module.classes_ = classes
+    module.functions_ = functions
+    module.globals_ = globals
+    module.toitdoc_ = toitdoc
 
   read-export -> Export:
     name := read-line
@@ -368,11 +466,13 @@ class SummaryReader:
     toplevel-id := current-toplevel-id_++
     name := read-line
     range := read-range
+    outline-range := read-range
     global-id := read-int
-    assert: global-id == toplevel-id + module-toplevel-offsets_[current-module-id_]
+    assert: global-id == toplevel-id + toplevel-offset_
     kind := read-line
     assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
     is-abstract := read-line == "abstract"
+    is-deprecated := read-line == "deprecated"
     superclass := read-toplevel-ref
     interfaces := read-list: read-toplevel-ref
     mixins := read-list: read-toplevel-ref
@@ -385,9 +485,11 @@ class SummaryReader:
     return Class
         --name=name
         --range=range
+        --outline-range=outline-range
         --toplevel-id=toplevel-id
         --kind=kind
         --is-abstract=is-abstract
+        --is-deprecated=is-deprecated
         --superclass=superclass
         --interfaces=interfaces
         --mixins=mixins
@@ -401,8 +503,9 @@ class SummaryReader:
   read-method -> Method:
     name := read-line
     range := read-range
+    outline-range := read-range
     global-id := read-int  // Might be -1
-    toplevel-id := (global-id == -1) ? -1 : global-id - module-toplevel-offsets_[current-module-id_]
+    toplevel-id := (global-id == -1) ? -1 : global-id - toplevel-offset_
     kind-string := read-line
     kind := -1
     is-abstract := false
@@ -442,18 +545,21 @@ class SummaryReader:
       assert: global-id == -1
     else:
       throw "Unknown kind"
+    is-deprecated := read-line == "deprecated"
     parameters := read-list: read-parameter
     return-type := read-type
     toitdoc := read-toitdoc
     return Method
         --name=name
         --range=range
+        --outline-range=outline-range
         --toplevel-id=toplevel-id
         --kind=kind
         --parameters=parameters
         --return-type=return-type
         --is-abstract=is-abstract
         --is-synthetic=is-synthetic
+        --is-deprecated=is-deprecated
         --toitdoc=toitdoc
 
   read-parameter -> Parameter:
@@ -462,17 +568,33 @@ class SummaryReader:
     kind := read-line
     is-required := kind == "required" or kind == "required named"
     is-named := kind == "required named" or kind == "optional named"
+    default-value-length := read-int
+    default-value-string := default-value-length > 0
+        ? reader_.read-string default-value-length
+        : null
     type := read-type
     is-block := type.is-block
-    return Parameter name original-index --is-required=is-required --is-named=is-named type
+    return Parameter name original-index type
+        --is-required=is-required
+        --is-named=is-named
+        --default-value=default-value-string
 
   read-field -> Field:
     name := read-line
     range := read-range
+    outline-range := read-range
     is-final := read-line == "final"
+    is-deprecated := read-line == "deprecated"
     type := read-type
     toitdoc := read-toitdoc
-    return Field name range is-final type toitdoc
+    return Field
+        --name=name
+        --range=range
+        --outline-range=outline-range
+        --is-deprecated=is-deprecated
+        --is-final=is-final
+        --type=type
+        --toitdoc=toitdoc
 
   read-toitdoc -> Contents?:
     sections := read-list: read-section
@@ -480,11 +602,12 @@ class SummaryReader:
     return Contents sections
 
   read-section -> Section:
-    title := null
-    title = read-toitdoc-symbol
+    title/string? := read-toitdoc-symbol
     if title == "": title = null
+    level := read-int
     return Section
       title
+      level
       read-list: read-statement
 
   read-statement -> Statement:
@@ -515,8 +638,14 @@ class SummaryReader:
     kind := read-line
     if kind == "TEXT": return Text read-toitdoc-symbol
     if kind == "CODE": return Code read-toitdoc-symbol
-    assert: kind == "REF"
-    return read-toitdoc-ref
+    if kind == "LINK": return read-link
+    if kind == "REF": return read-toitdoc-ref
+    throw "Unknown kind $kind"
+
+  read-link -> Link:
+    text := read-toitdoc-symbol
+    uri := read-toitdoc-symbol
+    return Link text uri
 
   read-toitdoc-ref -> ToitdocRef:
     text := read-toitdoc-symbol
@@ -524,6 +653,9 @@ class SummaryReader:
     if kind < 0 or kind == ToitdocRef.OTHER:
       // Either bad reference, or not yet supported.
       return ToitdocRef.other text
+
+    if kind == ToitdocRef.PARAMETER:
+      return ToitdocRef.parameter text
 
     assert: ToitdocRef.CLASS <= kind <= ToitdocRef.FIELD
     module-uri := to-uri_ read-line
@@ -585,24 +717,8 @@ class SummaryReader:
   read-range -> Range:
     return Range read-int read-int
 
-  read-list [block] -> List:
-    count := read-int
-    // TODO(1268, florian): remove this work-around and use the commented code instead.
-    // return List count block
-    result := List count
-    for i := 0; i < count; i++:
-      result[i] = block.call i
-    return result
-
-  read-line -> string:
-    return reader_.read-line
-
-  read-int -> int:
-    return int.parse read-line
-
 class Lines:
   offsets_ ::= []
-  size_ ::= 0
   last-hit_ := 0
 
   constructor text/string:
@@ -613,7 +729,9 @@ class Lines:
     offsets_.add text.size
 
   lsp-position-for-offset offset/int -> lsp.Position:
-    if offset == -1 or offset >= offsets_.last:
+    if offsets_.is-empty: return lsp.Position 0 0
+
+    if offset == -1 or offset > offsets_.last:
       // No position given or file has changed in size.
       return lsp.Position 0 0
 

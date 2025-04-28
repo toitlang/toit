@@ -22,17 +22,23 @@ file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-compiler.t
 set(ALL_TESTS ${TOIT_TESTS} ${TOIT_SLOW_TESTS} ${TOIT_FORCE_TESTS} ${TOIT_NO_BOOT_TESTS} ${TOIT_COMPILER_TESTS})
 
 toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
-toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/esp32")
+toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/hw/esp32")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
 
-IF(APPLE)
+if(APPLE)
   set(DEFAULT_TIMEOUT 80)
   set(SLOW_TIMEOUT 800)
 else()
   set(DEFAULT_TIMEOUT 40)
   set(SLOW_TIMEOUT 400)
+endif()
+
+# Double the timeouts if the optimization override is set.
+if(DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  math(EXPR DEFAULT_TIMEOUT "${DEFAULT_TIMEOUT} * 2")
+  math(EXPR SLOW_TIMEOUT "${SLOW_TIMEOUT} * 2")
 endif()
 
 # The SHARD_START end SHARD_STRIDE environment variables must be set when
@@ -57,10 +63,17 @@ add_custom_target(
 
 add_custom_target(
   check_flaky
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-regex "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  # Run flaky tests up to 3 times.
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --repeat until-pass:3 --label-regex "flaky" -T test -C slow --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
+
+add_custom_target(build_test_assets)
+# Make sure the assets are built before we run the tests.
+add_dependencies(check build_test_assets)
+add_dependencies(check_slow build_test_assets)
+
 
 # Create 15 flaky dummy tests, so that the strides mechanism works.
 foreach(i RANGE 15)
@@ -73,8 +86,18 @@ endforeach()
 
 include(fail.cmake OPTIONAL)
 
+set(OPTIMIZATION_IS_OVERRIDDEN FALSE)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATION_IS_OVERRIDDEN TRUE)
+endif()
+
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
+  if(OPTIMIZATION_IS_OVERRIDDEN AND "${file}" IN_LIST TOIT_OPTIMIZATION_SKIP_TESTS)
+    message("Skipping ${file} as optimization is overridden")
     continue()
   endif()
 
@@ -98,25 +121,30 @@ foreach(file ${ALL_TESTS})
     set(TEST_CONFIGURATIONS "slow")
   endif()
 
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${file}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_ARGS} ${file} ${TEST_ARGS}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS ${TEST_CONFIGURATIONS}
     )
 
-  set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
 
   if("${file}" IN_LIST TOIT_SLOW_TESTS)
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
   else()
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   endif()
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
   if("${file}" IN_LIST TOIT_FLAKY_TESTS)
-    set_tests_properties(${file} PROPERTIES LABELS "flaky")
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES LABELS "flaky")
   endif()
 endforeach()
 
@@ -133,6 +161,7 @@ add_subdirectory(negative)
 add_subdirectory(type_propagation)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
+add_subdirectory(toit)
 add_subdirectory(toitp)
 add_subdirectory(image)
 add_subdirectory(profiler)
@@ -143,3 +172,12 @@ add_subdirectory(lock_file)
 add_subdirectory(vessels)
 add_subdirectory(valgrind)
 add_subdirectory(strip)
+add_subdirectory(pkg)
+add_subdirectory(envelope)
+add_subdirectory(toitdoc)
+add_subdirectory(dependencies)
+
+# Add the pi-tests so that its packages are downloaded.
+# This is only necessary for the health tests, since the tests themselves
+# have a different cmake entry point in the hw directory.
+toit_project(pi-tests "${CMAKE_CURRENT_LIST_DIR}/hw/pi")

@@ -1,4 +1,4 @@
 tests/negative/not-test.toit:9:7: error: 'not' must be parenthesized when used at this location
   foo not 499
       ^~~
-Compilation failed.
+Compilation failed

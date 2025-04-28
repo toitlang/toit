@@ -4,7 +4,6 @@
 
 import host.file
 import host.pipe
-import reader show BufferedReader
 import .lsp-client show LspClient run-client-test
 import .utils
 import system
@@ -29,10 +28,9 @@ abstract class LocationCompilerTestRunner:
     locations := extract-locations test-path
 
     run-client-test args: test it test-path locations
-    run-client-test --use-toitlsp args: test it test-path locations
 
   test client/LspClient test-path/string locations/Map:
-    content := (file.read-content test-path).to-string
+    content := (file.read-contents test-path).to-string
 
     client.send-did-open --path=test-path --text=content
 

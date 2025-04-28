@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
+import io
 import .time-impl_
 
 /**
@@ -26,11 +27,11 @@ main:
   print now.local   // >> 2021-04-21T17:30:35.
   print now.local.h // >> 17.
 
-  summing_duration := Duration.of:
+  summing-duration := Duration.of:
     sum := 0
     1000.repeat: sum += it
     print sum  // >> 499500.
-  print summing_duration // Prints the duration. For example: 1.118ms.
+  print summing-duration // Prints the duration. For example: 1.118ms.
 ```
 */
 
@@ -74,6 +75,121 @@ class Duration implements Comparable:
   /** The number of seconds per hour. */
   static SECONDS-PER-HOUR /int   ::= 3600
 
+  /**
+  Parses a duration from the given string.
+
+  Accepts string of the form '-?(\d+([.]\d+)?(h|m|ms|us|ns)][ ]?)+'.
+  Only seconds, ms, and us may have a fractional part.
+  Spaces are not allowed inside units (like 'u s') but otherwise all spaces are ignored.
+  Units may only be used once.
+
+  # Examples
+  ```
+  print (Duration.parse "1h2m3s")          // >> 1h2m3s
+  print (Duration.parse "1h2m3.4s")        // >> 1h2m3.4s
+  print (Duration.parse "1h2m3.4s5ms")     // >> 1h2m3.4s5ms
+  print (Duration.parse "1h2m3.4s5ms6us")  // >> 1h2m3.4s5ms6us
+  print (Duration.parse "66m")             // >> 1h6m
+  print (Duration.parse "-1h")             // >> -1h
+  ```
+  */
+  static parse str/string -> Duration:
+    return parse str --on-error=: throw it
+
+  /**
+  Variant of $(parse str) that calls $on-error if $str is not a valid duration.
+  */
+  static parse str/string [--on-error] -> Duration?:
+    // Simplifies the handling of '-'.
+    str = str.trim
+
+    if str == "" or str == "-": return on-error.call "MISSING_VALUE"
+
+    used-h := false
+    used-m := false
+    used-s := false
+    used-ms := false
+    used-us := false
+    used-ns := false
+
+    ns := 0
+    current-number := 0
+    current-unit/int := -1
+    current-power/int := 1
+    has-seen-decimal-point := false
+    has-seen-value := false
+    for i := str.size - 1; i >= -1; i--:
+      c := i == -1 ? '*' : str[i]
+      if c == ' ': continue
+      if '0' <= c <= '9':
+        current-number += (c - '0') * current-power
+        current-power *= 10
+        continue
+      if c == '.':
+        if has-seen-decimal-point: return on-error.call "INVALID_NUMBER"
+        has-seen-decimal-point = true
+        if current-number == -1: return on-error.call "MISSING_VALUE"
+        if current-unit != NANOSECONDS-PER-SECOND and
+            current-unit != NANOSECONDS-PER-MILLISECOND and
+            current-unit != NANOSECONDS-PER-MICROSECOND:
+          return on-error.call "INVALID_FRACTION"
+        ns += current-number * current-unit / current-power
+        current-number = 0
+        current-power = 1
+        continue
+
+      if current-power == 1 and i != str.size - 1:
+        return on-error.call "MISSING_VALUE"
+
+      ns += current-number * current-unit
+      current-number = 0
+      current-power = 1
+      has-seen-decimal-point = false
+      current-unit = -1
+
+      if c == '-' and i == 0:
+        ns = -ns
+        break
+      if c == '*' and i == -1: break
+      if c == 'h':
+        if used-h: return on-error.call "DUPLICATE_UNIT"
+        used-h = true
+        current-unit = NANOSECONDS-PER-HOUR
+      else if c == 'm':
+        if used-m: return on-error.call "DUPLICATE_UNIT"
+        used-m = true
+        current-unit = NANOSECONDS-PER-MINUTE
+      else if c == 's':
+        if i > 0:
+          if str[i - 1] == 'm':
+            if used-ms: return on-error.call "DUPLICATE_UNIT"
+            used-ms = true
+            current-unit = NANOSECONDS-PER-MILLISECOND
+            i--
+          else if str[i - 1] == 'u':
+            if used-us: return on-error.call "DUPLICATE_UNIT"
+            used-us = true
+            current-unit = NANOSECONDS-PER-MICROSECOND
+            i--
+          else if str[i - 1] == 'n':
+            if used-ns: return on-error.call "DUPLICATE_UNIT"
+            used-ns = true
+            current-unit = 1
+            i--
+          else:
+            if used-s: return on-error.call "DUPLICATE_UNIT"
+            used-s = true
+            current-unit = NANOSECONDS-PER-SECOND
+        else:
+          if used-s: return on-error.call "DUPLICATE_UNIT"
+          used-s = true
+          // Will lead to an error since the number is missing.
+          current-unit = NANOSECONDS-PER-SECOND
+      else:
+        return on-error.call "INVALID_CHARACTER"
+    return Duration ns
+
+
   ns_ /int
 
   /**
@@ -110,7 +226,7 @@ class Duration implements Comparable:
 
   For times in the past ($time < $Time.now), this constructs a positive duration.
 
-  This operation is equivalent to `time.to_now` which is preferred, unless
+  This operation is equivalent to $Time.to-now which is preferred, unless
     the developer wants to emphasize the $Duration type.
   */
   constructor.since time/Time:
@@ -624,8 +740,8 @@ tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
 
 # Examples
 ```
-set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2022).
-set_timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2022).
+set-timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2024).
+set-timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2024).
 ```
 */
 set-timezone rules/string:
@@ -672,6 +788,7 @@ class Time implements Comparable:
 
   /**
   Constructs a time instance in local time.
+
   $dst can be used to force daylight saving. This is
     only interesting when the remaining values are ambiguous. For example,
     (most of) Europe changed to winter time on October 27 2019, at 3 a.m.
@@ -722,7 +839,7 @@ class Time implements Comparable:
 
   This operation is the inverse of $to-byte-array.
   */
-  constructor.deserialize bytes/ByteArray:
+  constructor.deserialize bytes/io.Data:
     values := tison.decode bytes
     return Time.epoch --s=values[0] --ns=values[1]
 
@@ -802,15 +919,16 @@ class Time implements Comparable:
     return parse str --on-error=: throw "INVALID_ARGUMENT"
 
   /**
-  Returns a monotonic microsecond value.
-  This clock source only increments and never jumps.
-  The clock is not anchored and thus has no fixed relationship to the current
-    time.
+  Returns a monotonically increasing microsecond value.
 
-  If the system time is updated (for example because of an NTP adjustment),
-    then this function is unaffected.
+  If $since-wakeup is false, the clock can be used across deep sleeps.
+    Otherwise, the clock is reset to zero when waking up.
+
+  The clock is not anchored and thus has no fixed relationship to the current
+    time. Changes to the system time (for example because of an NTP adjustment)
+    do not affect the values returned from this function.
   */
-  static monotonic-us -> int:
+  static monotonic-us --since-wakeup/bool=false -> int:
     #primitive.core.time
 
   /**
@@ -926,10 +1044,10 @@ class Time implements Comparable:
   main:
     // In this example, we assume the time is 2021-04-21 15:30:35 UTC.
     time := Time.utc --year=2021 --month=04 --day=21 --h=12 --m=30 --s=35
-    print time.to_now  // >> 3h0m0s
+    print time.to-now  // >> 3h0m0s
 
     time = Time.utc --year=2021 --month=04 --day=21 --h=18 --m=30 --s=35
-    print time.to_now  // >> --3h0m0s
+    print time.to-now  // >> --3h0m0s
   ```
   */
   to-now -> Duration:
@@ -961,5 +1079,5 @@ class Time implements Comparable:
   The returned byte array is a valid input for the constructor
     $Time.deserialize.
   */
-  to-byte-array:
+  to-byte-array -> ByteArray:
     return tison.encode [seconds_, ns_]

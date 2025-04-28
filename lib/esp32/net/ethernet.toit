@@ -58,7 +58,7 @@ This provider must be installed before Ethernet networking can be used
 An example of how to install the service provider in the same
   container. This example is for the Olimex ESP32-POE board.
 
-``` toit
+```
 import gpio
 import net.ethernet
 import esp32.net.ethernet as esp32
@@ -83,12 +83,13 @@ main:
 
 # Olimex Ethernet boards
 The Olimex Ethernet boards (Gateway and ESP32-POE)
-  need an envelope with an RMII clock output: `firmware-esp32-eth-clk-out17`.
+  need an envelope with an RMII clock output: `esp32-eth-clk-out17`
+  (WROOM) or `esp32-eth-clk-out0-spiram` (WROVER).
 
-This firmware contains the following sdk-config change (enable
-  `CONFIG_ETH_RMII_CLK_OUTPUT`):
+This firmware contains the sdk-config change to enable
+  `CONFIG_ETH_RMII_CLK_OUTPUT` (here shown for the WROOM):
 
-``` diff
+```
 --- b/toolchains/esp32/sdkconfig
 +++ a/toolchains/esp32/sdkconfig
 @@ -505,9 +505,10 @@
@@ -106,6 +107,11 @@ This firmware contains the following sdk-config change (enable
  CONFIG_ETH_DMA_RX_BUFFER_NUM=10
  CONFIG_ETH_DMA_TX_BUFFER_NUM=10
 ```
+
+# Lilygo T-Internet-COM
+The [Lilygo T-Internet-COM](https://lilygo.cc/products/t-internet-com) is similar
+  to the Olimex board. It uses the `esp32-eth-clk-out0-spiram` envelope
+  and GPIO 4 as power pin. The rest is the same.
 */
 class EthernetServiceProvider extends EthernetServiceProviderBase_:
   state_/NetworkState ::= NetworkState

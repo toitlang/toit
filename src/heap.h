@@ -54,8 +54,7 @@ class ObjectHeap {
   ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables, Mutex* mutex);
   ~ObjectHeap();
 
-  // TODO: In the new heap there need not be a max allocation size.
-  static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
+  static word max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
 
   inline void do_objects(const std::function<void (HeapObject*)>& func) {
     two_space_heap_.do_objects(func);
@@ -64,13 +63,13 @@ class ObjectHeap {
   inline bool cross_process_gc_needed() const { return two_space_heap_.cross_process_gc_needed(); }
 
   // Shared allocation operations.
+  // Allocates an instance object in new space and fills it with nulls.
   Instance* allocate_instance(Smi* class_id);
-  Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
-  Array* allocate_array(int length, Object* filler);
-  ByteArray* allocate_external_byte_array(int length, uint8* memory, bool dispose, bool clear_content = true);
-  String* allocate_external_string(int length, uint8* memory, bool dispose);
-  ByteArray* allocate_internal_byte_array(int length);
-  String* allocate_internal_string(int length);
+  Array* allocate_array(word length, Object* filler);
+  ByteArray* allocate_external_byte_array(word length, uint8* memory, bool dispose, bool clear_content = true);
+  String* allocate_external_string(word length, uint8* memory, bool dispose);
+  ByteArray* allocate_internal_byte_array(word length);
+  String* allocate_internal_string(word length);
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
 
@@ -114,7 +113,7 @@ class ObjectHeap {
   ObjectHeap(Program* program, Process* owner);
 
   Task* allocate_task();
-  Stack* allocate_stack(int length);
+  Stack* allocate_stack(word length);
   // Convenience methods for allocating proxy like objects.
   ByteArray* allocate_proxy(int length, uint8* memory, bool dispose = false) {
     return allocate_external_byte_array(length, memory, dispose, false);
@@ -177,8 +176,12 @@ class ObjectHeap {
 
  private:
   Program* const program_;
-  HeapObject* _allocate_raw(int byte_size) {
+  HeapObject* _allocate_raw(word byte_size) {
     return two_space_heap_.allocate(byte_size);
+  }
+
+  inline word allocate_new_space(word byte_size) {
+    return two_space_heap_.allocate_new_space(byte_size);
   }
 
   void install_heap_limit();
@@ -226,6 +229,7 @@ class ObjectHeap {
   // per-heap mutex protects against that.
   Mutex* mutex_;
 
+  friend class Interpreter;
   friend class ObjectNotifier;
   friend class Process;
 };

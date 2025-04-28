@@ -12,4 +12,4 @@ tests/negative/null-char-test.toit:7:3: error: Unresolved identifier: 'unresolve
   unresolved
   ^~~~~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/null-char-test.toit'
-Compilation failed.
+Compilation failed

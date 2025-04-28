@@ -34,6 +34,16 @@
 
 namespace toit {
 
+// The maximum amount of us a process is allowed to run without
+// returning to the scheduler.
+static const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
+
+#ifdef TOIT_ESP32
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = true;
+#else
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = false;
+#endif
+
 void SchedulerThread::entry() {
   scheduler_->run(this);
 }
@@ -187,6 +197,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     while (ready_queue.remove_first()) {
       // Clear out the list of ready processes, so we don't have any dangling
       // pointers to processes that we delete in a moment.
+      ready_count_--;
     }
   }
 
@@ -257,12 +268,12 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   return process;
 }
 
-scheduler_err_t Scheduler::send_system_message(SystemMessage* message) {
+message_err_t Scheduler::send_system_message(SystemMessage* message) {
   Locker locker(mutex_);
   return send_system_message(locker, message);
 }
 
-scheduler_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
+message_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
   Locker locker(mutex_);
   Process* p = find_process(locker, process_id);
   if (p == null) {
@@ -274,7 +285,7 @@ scheduler_err_t Scheduler::send_message(int process_id, Message* message, bool f
   return MESSAGE_OK;
 }
 
-scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {
+message_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* message) {
   if (boot_process_ != null) {
     boot_process_->_append_message(message);
     process_ready(locker, boot_process_);
@@ -383,7 +394,7 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
   // all OS threads at startup on platforms that may have a hard time starting
   // such threads later due to memory pressure.
   while (!has_exit_reason()) {
-    if (!has_ready_processes(locker)) {
+    if (ready_count_ == 0) {
       OS::wait(has_processes_);
       continue;
     }
@@ -393,11 +404,12 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
       ProcessListFromScheduler& ready_queue = ready_queue_[i];
       if (ready_queue.is_empty()) continue;
       process = ready_queue.remove_first();
+      ready_count_--;
       break;
     }
     ASSERT(process->state() == Process::SCHEDULED);
 
-    if (has_ready_processes(locker)) {
+    if (ready_count_ > 0) {
       // Notify potential other thread that there are more processes ready.
       OS::signal(has_processes_);
     }
@@ -439,7 +451,9 @@ bool Scheduler::kill(const Program* program) {
 void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   bool doing_idle_process_gc = try_hard || malloc_failed || (process && process->system_refused_memory());
   bool doing_cross_process_gc = false;
-  uint64 start = OS::get_monotonic_time();
+  // Avoid getting time if we don't need it.  Best-case scavenges
+  // are around 1us on desktop and this call is surprisingly expensive.
+  uint64 start = try_hard ? OS::get_monotonic_time() : 0;
 #ifdef TOIT_GC_LOGGING
   bool is_boot_process = process && VM::current()->scheduler()->is_boot_process(process);
 #endif
@@ -551,7 +565,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->null_object();  // Process not found.
   uword length = array->length();
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   multi_heap_info_t info;
   heap_caps_get_info(&info, MALLOC_CAP_8BIT);
 #else
@@ -610,7 +624,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
-  scheduler_thread->unpin();
+  process->set_run_timestamp(OS::get_monotonic_time());
 
   ProcessRunner* runner = process->runner();
   bool interpreted = (runner == null);
@@ -640,10 +654,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     result = runner->run();
   }
 
+  process->clear_run_timestamp();
   process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
-    uint32_t signals = process->signals();
+    uint32 signals = process->signals();
     if (signals == 0) break;
     if (signals & Process::KILL) {
       result = Interpreter::Result(Interpreter::Result::TERMINATED);
@@ -688,9 +703,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::TERMINATED: {
       wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
 
+      int id = process->id();
       ProcessGroup* group = process->group();
       bool last_in_group = !group->remove(process);
-      ASSERT(group->lookup(process->id()) == null);
+      ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
 
       // Deleting processes might need to take the event source lock, so we have
@@ -709,7 +725,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       // the boot process that is going away.
       if (send_system_message(locker, message) != MESSAGE_OK) {
 #ifdef TOIT_FREERTOS
-        printf("[message: cannot send termination message for pid %d]\n", process->id());
+        printf("[message: cannot send termination message for pid %d]\n", id);
 #endif
         delete message;
       }
@@ -749,6 +765,7 @@ void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority
     process->signal(Process::PREEMPT);
   } else if (process->state() == Process::SCHEDULED) {
     ready_queue(process->priority()).remove(process);
+    ready_count_--;
     process->set_state(Process::IDLE);
     process_ready(locker, process);
   }
@@ -763,6 +780,7 @@ void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
   } else if (process->state() == Process::SCHEDULED) {
     process->set_state(Process::SUSPENDED_SCHEDULED);
     ready_queue(process->priority()).remove(process);
+    ready_count_--;
   }
   ASSERT(process->is_suspended());
 }
@@ -822,46 +840,50 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   }
   process->set_state(Process::SCHEDULED);
 
-  if (!has_ready_processes(locker)) {
+  uint8 priority = process->update_priority();
+  ready_queue(priority).append(process);
+  if (++ready_count_ == 1) {
+    // Only signal if we added the first ready process.
     OS::signal(has_processes_);
   }
 
-  uint8 priority = process->update_priority();
-  ready_queue(priority).append(process);
+  // Count the number of idle scheduler threads.
+  int idle = 0;
+  for (SchedulerThread* thread : threads_) {
+    Process* process = thread->interpreter()->process();
+    if (process) continue;
+    if (++idle >= ready_count_) return;
+  }
+
+  // On some platforms, we can dynamically spin up another thread
+  // to take care of the extra work.
+  SchedulerThread* extra_thread = start_thread(locker);
+  if (extra_thread) return;
+
+  // TODO(kasper): Can we avoid preempting anything? If we know
+  // that there are already enough processes marked for preemption
+  // to satisfy all the more important ready processes, we don't
+  // need more.
 
   // If all scheduler threads are busy running code, we preempt
   // the lowest priority process unless it is more important
   // than the process we're enqueuing.
   Process* lowest = null;
   uint8 lowest_priority = 0;
-  SchedulerThread* lowest_thread = null;
   for (SchedulerThread* thread : threads_) {
     // If the thread has already been picked to be preempted,
     // we choose another one.
-    if (thread->is_pinned()) continue;
     Process* process = thread->interpreter()->process();
-    if (process == null) {
-      // We have found a thread that is ready to pick up
-      // work. We pin it, so we don't pick this again before
-      // it has had the chance to work.
-      thread->pin();
-      return;
-    }
+    if (process == null || (process->signals() & Process::PREEMPT) != 0) continue;
     // If a process is external we cannot preempt it.
     if (process->program() == null) continue;
     // If we already have a better candidate, we skip this one.
     if (lowest && process->priority() >= lowest_priority) continue;
     lowest = process;
     lowest_priority = process->priority();
-    lowest_thread = thread;
   }
-  // On some platforms, we can dynamically spin up another thread
-  // to take care of the extra work.
-  SchedulerThread* extra_thread = start_thread(locker);
-  if (extra_thread) {
-    extra_thread->pin();
-  } else if (lowest && lowest_priority < priority) {
-    lowest_thread->pin();
+
+  if (lowest && lowest_priority < priority) {
     lowest->signal(Process::PREEMPT);
   }
 }
@@ -884,7 +906,7 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
 
-  int first_non_empty_ready_queue = -1;
+  int first_non_empty_ready_queue = NUMBER_OF_READY_QUEUES;
   for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
     if (ready_queue_[i].is_empty()) continue;
     first_non_empty_ready_queue = i;
@@ -892,20 +914,57 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   bool any_profiling = num_profiled_processes_ > 0;
-  if (!any_profiling && first_non_empty_ready_queue < 0) {
-    // No need to do preemption when there are no active profilers
-    // and no other processes ready to run.
-    return;
-  }
+  bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) return;
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
-    int ready_queue_index = compute_ready_queue_index(process->priority());
-    bool is_profiling = any_profiling && process->profiler() != null;
-    if (is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
-      process->signal(Process::PREEMPT);
+
+    int64 run_time_us = process->run_time_us(now);
+    if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
+      fprintf(stderr, "Potential deadlock detected:\n");
+      fprintf(stderr, "  Process: %d\n", process->id());
+      uint8* current_bcp = process->current_bcp();
+      Program* program = process->program();  // External processes have null programs.
+      if (program) {
+        const uint8* uuid = program->id();
+        char uuid_buffer[37];
+        snprintf(uuid_buffer, sizeof(uuid_buffer), "%08x-%04x-%04x-%04x-%04x%08x",
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+        fprintf(stderr, "  Program: %s\n", uuid_buffer);
+
+        if (program->is_valid_bcp(current_bcp)) {
+          int bci = program->absolute_bci_from_bcp(current_bcp);
+          fprintf(stderr, "  BCI: 0x%x\n", bci);
+
+          Opcode opcode = static_cast<Opcode>(*current_bcp);
+          if (opcode == Opcode::PRIMITIVE) {
+            int module = current_bcp[1];
+            int index = Utils::read_unaligned_uint16(current_bcp + 2);
+            fprintf(stderr, "  Primitive: %d:%d\n", module, index);
+          } else if (opcode == Opcode::ALLOCATE) {
+            fprintf(stderr, "  Allocate: %d\n", current_bcp[1]);
+          } else if (opcode == Opcode::ALLOCATE_WIDE) {
+            fprintf(stderr, "  Allocate: %d\n", Utils::read_unaligned_uint16(current_bcp + 1));
+          }
+        }
+        FATAL("Potential dead-lock");
+      }
+      FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
+
+    if (process->signals() & Process::PREEMPT) continue;
+    bool should_preempt =
+         (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US / 2)
+      || (any_profiling && process->profiler() != null)
+      || (any_ready && compute_ready_queue_index(process->priority()) >= first_non_empty_ready_queue);
+    if (should_preempt) process->signal(Process::PREEMPT);
   }
 }
 
@@ -946,13 +1005,6 @@ void Scheduler::iterate_process_chunks(void* context, process_chunk_callback_t* 
       it->object_heap()->iterate_chunks(context, callback);
     }
   }
-}
-
-bool Scheduler::has_ready_processes(Locker& locker) {
-  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
-    if (!ready_queue_[i].is_empty()) return true;
-  }
-  return false;
 }
 
 } // namespace toit

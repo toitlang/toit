@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
 #include <esp_mac.h>
@@ -56,8 +56,8 @@ enum {
 const int kInvalidEthernet = -1;
 
 // Only allow one instance of WiFi running.
-ResourcePool<int, kInvalidEthernet> ethernet_pool(
-  0
+static ResourcePool<int, kInvalidEthernet> ethernet_pool(
+    0
 );
 
 class EthernetResourceGroup : public ResourceGroup {
@@ -90,6 +90,10 @@ class EthernetResourceGroup : public ResourceGroup {
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
+
+  esp_err_t set_hostname(const char* hostname) {
+    return esp_netif_set_hostname(netif_, hostname);
+  }
 
  private:
   int id_;
@@ -177,14 +181,14 @@ MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 PRIMITIVE(init) {
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+#if (!CONFIG_IDF_TARGET_ESP32)
   return Primitive::os_error(ESP_FAIL, process);
 #else
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
@@ -203,8 +207,8 @@ PRIMITIVE(init) {
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
     eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
-    emac_config.smi_mdc_gpio_num = mdc_num;
-    emac_config.smi_mdio_gpio_num = mdio_num;
+    emac_config.smi_gpio.mdc_num = mdc_num;
+    emac_config.smi_gpio.mdio_num = mdio_num;
     mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
 #ifdef CONFIG_ETH_USE_OPENETH
   } else if (mac_chip == MAC_CHIP_OPENETH) {
@@ -284,11 +288,16 @@ PRIMITIVE(init) {
 PRIMITIVE(init_spi) {
   ARGS(int, mac_chip, SpiResourceGroup, spi, int, frequency, int, cs, int, int_num)
 
+#ifndef CONFIG_ETH_SPI_ETHERNET_W5500
+  if (mac_chip == MAC_CHIP_W5500) {
+    return Primitive::os_error(ESP_ERR_NOT_SUPPORTED, process);
+  }
+#endif
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
@@ -303,6 +312,7 @@ PRIMITIVE(init_spi) {
     .address_bits     = 0,
     .dummy_bits       = 0,
     .mode             = 0,
+    .clock_source     = SPI_CLK_SRC_DEFAULT,
     .duty_cycle_pos   = 0,
     .cs_ena_pretrans  = 0,
     .cs_ena_posttrans = 0,
@@ -323,6 +333,7 @@ PRIMITIVE(init_spi) {
   esp_eth_mac_t* mac = null;
   esp_eth_phy_t* phy = null;
   switch (mac_chip) {
+#ifdef CONFIG_ETH_SPI_ETHERNET_W5500
     case MAC_CHIP_W5500: {
       eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_host, &spi_config);
       w5500_config.int_gpio_num = int_num;
@@ -330,6 +341,7 @@ PRIMITIVE(init_spi) {
       phy = esp_eth_phy_new_w5500(&phy_config);
       break;
     }
+#endif
   }
   if (!phy || !mac) {
     ethernet_pool.put(id);
@@ -442,7 +454,17 @@ PRIMITIVE(get_ip) {
   return result;
 }
 
+PRIMITIVE(set_hostname) {
+  ARGS(EthernetResourceGroup, group, cstring, hostname);
+
+  if (strlen(hostname) > 32) FAIL(INVALID_ARGUMENT);
+
+  esp_err_t err = group->set_hostname(hostname);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
+}
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)

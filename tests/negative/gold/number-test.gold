@@ -76,4 +76,4 @@ tests/negative/number-test.toit:51:7: error: Type mismatch. Expected 'int'. Got 
 tests/negative/number-test.toit:52:7: error: Type mismatch. Expected 'float'. Got 'int'
   bar -int-fun
       ^
-Compilation failed.
+Compilation failed

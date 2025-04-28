@@ -15,12 +15,13 @@
 
 #include "os.h"
 
+#include <errno.h>
+#include <limits.h>
+#include <pthread.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
-#include <errno.h>
-#include <pthread.h>
-#include <stdlib.h>
 
 #include "utils.h"
 
@@ -44,7 +45,9 @@ int OS::cpu_revision_ = 1000000;
 
 void OS::set_up_mutexes() {
   global_mutex_ = allocate_mutex(0, "Global mutex");
-  tls_mutex_ = allocate_mutex(4, "TLS mutex");
+  // We need to be able to take the scheduler mutex (level 2), to do GC
+  // while we hold the TLS mutex during handshakes.
+  tls_mutex_ = allocate_mutex(1, "TLS mutex");
   process_mutex_ = allocate_mutex(4, "Process mutex");
   resource_mutex_ = allocate_mutex(99, "Resource mutex");
 }
@@ -137,125 +140,124 @@ AlignedMemory::~AlignedMemory() {
 
 #ifndef TOIT_FREERTOS
 
-// The normal way to get an aligned address is to round up
-// the allocation size, then discard the unaligned ends.  Here
-// we try something slightly different: We try to get an allocation
-// near the unaligned one.  (If that fails we'll try random
-// addresses.)
-static void* try_grab_aligned(void* suggestion, uword size) {
-  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
-  void* result = OS::grab_virtual_memory(suggestion, size);
-  if (result == null) return result;
-  uword numeric_address = reinterpret_cast<uword>(result);
-  uword rounded = Utils::round_up(numeric_address, TOIT_PAGE_SIZE);
-  if (numeric_address == rounded) return result;
-  // If we got an allocation that was not toit-page-aligned,
-  // then it's a pretty good guess that the next few aligned
-  // addresses might work.
-  OS::ungrab_virtual_memory(result, size);
-  uword increment = size;
-  for (int i = 0; i < 16; i++) {
-    void* next_suggestion = reinterpret_cast<void*>(rounded);
-    result = OS::grab_virtual_memory(next_suggestion, size);
-    if (result == next_suggestion) return result;
-    if (result) OS::ungrab_virtual_memory(result, size);
-    rounded += increment;
-    if ((i & 3) == 3) increment *= 2;
-  }
-  return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
-}
-
 OS::HeapMemoryRange OS::single_range_ = { 0 };
 
 // Protected by the resource mutex.
-// We keep a list of recently freed addresses, to cut down on virtual memory
-// fragmentation when an application keeps growing and then shrinking its
-// memory use.  This size covers about 320MB of memory fluctuation with a 32k
-// page (default on 64 bit).
-static const int RECENTLY_FREED_SIZE = 10000;
-static int recently_freed_index = 0;
-void* recently_freed[RECENTLY_FREED_SIZE];
+static void* toit_heap_range = null;  // Start of the range.
+static uword toit_heap_size = 0;      // Size of the range.
+static uint64* toit_heap_bits;        // Free bits for the range.
+
+static const int BITS_PER_UINT64_LOG_2 = 6;
+
+// Scans forwards from start of the bitmaps to find a set of free pages that
+// are big enough.  On 64 bit platforms there are 512 bitmaps (each 64 bit) for
+// the default max heap size of 1Gbyte.  We don't make allocations that cross
+// the boundary between bitmaps. Currently the max allocation size requested is
+// 256k, which is 8 pages.
+static void* find_free_area(const Locker& locker, uword size) {
+  int bitmaps = toit_heap_size >> (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2);
+  for (int i = 0; i < bitmaps; i++) {
+    uint64 map = toit_heap_bits[i];
+    // Fast out for fully allocated bitmaps.
+    if (map + 1 == 0) continue;  // All 1's.
+    unsigned unused_pages = 64 - Utils::popcount(map);
+    // Fast out - if there are not enough zero bits in the word there is no
+    // point in scanning it for a long enough run.
+    if (unused_pages < size) continue;
+    if (size == 64) {
+      uint64 zero = 0;
+      toit_heap_bits[i] = zero - 1;  // All ones.
+      return Utils::void_add(toit_heap_range, i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2));
+    }
+    uint64 one = 1;
+    uint64 mask = (one << size) - 1;
+    // Scan the bitmap word for a run of the right length.
+    for (unsigned j = 0; j <= 64 - size; j++) {
+      if ((map & mask) == 0) {
+        toit_heap_bits[i] |= mask;
+        return Utils::void_add(toit_heap_range, (i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2)) + (j << TOIT_PAGE_SIZE_LOG2));
+      }
+      mask <<= 1;
+    }
+  }
+  return null;
+}
 
 void* OS::allocate_pages(uword size) {
   Locker locker(OS::resource_mutex());
-  if (single_range_.size == 0) FATAL("GcMetadata::set_up not called");
-  size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  uword original_size = size;
-  // First attempt, use a recently freed address.
-  void* result = null;
-  if (recently_freed_index != 0) {
-    result = try_grab_aligned(recently_freed[--recently_freed_index], size);
-  }
-  if (result == null) {
-    // Second attempt, let the OS pick a location.
-    result = try_grab_aligned(null, size);
-    if (result == null) return null;
-  }
-  uword numeric_address = reinterpret_cast<uword>(result);
-  uword result_end = numeric_address + size;
-  int attempt = 0;
-  while (result < single_range_.address ||
-         result_end > reinterpret_cast<uword>(single_range_.address) + single_range_.size ||
-         numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
-    if (attempt++ > 20) FATAL("Out of memory (cannot allocate pages)");
-    // We did not get a result in the right range.
-    // Try to use a random address in the right range.
-    ungrab_virtual_memory(result, size);
-    uword mask = MAX_HEAP - 1;
-    uword r = rand();
-    r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
-    uword suggestion = reinterpret_cast<uword>(single_range_.address) + (r & mask);
-    result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
-    numeric_address = reinterpret_cast<uword>(result);
-    result_end = numeric_address + size;
-  }
-  use_virtual_memory(result, original_size);
+  ASSERT(Utils::is_aligned(size, TOIT_PAGE_SIZE));
+  size >>= TOIT_PAGE_SIZE_LOG2;
+  ASSERT(size <= 64);  // 64 bits per bitmap, since we use uint64.
+  void* result = find_free_area(locker, size);
+  if (result) use_virtual_memory(result, size << TOIT_PAGE_SIZE_LOG2);
   return result;
 }
 
 void OS::free_pages(void* address, uword size) {
   Locker locker(OS::resource_mutex());
-  if (recently_freed_index < RECENTLY_FREED_SIZE) {
-    recently_freed[recently_freed_index++] = address;
+  word size_in_pages = size >> TOIT_PAGE_SIZE_LOG2;
+  uword page_number = Utils::void_sub(address, toit_heap_range) >> TOIT_PAGE_SIZE_LOG2;
+  uword index = page_number >> BITS_PER_UINT64_LOG_2;
+  ASSERT(size_in_pages <= 64);  // 64 bits per bitmap, since we use uint64.
+  uint64 old_bits = toit_heap_bits[index];
+  if (size_in_pages == 64) {
+    ASSERT(old_bits + 1 == 0);  // All 1's.
+    toit_heap_bits[index] = 0;
+  } else {
+    uint64 one = 1;
+    uint64 mask = (one << size_in_pages) - 1;
+    uint64 new_bits = old_bits & ~(mask << (page_number & 63));
+    ASSERT(Utils::popcount(old_bits) - Utils::popcount(new_bits) == size_in_pages);
+    toit_heap_bits[index] = new_bits;
   }
-  ungrab_virtual_memory(address, size);
+  unuse_virtual_memory(address, size);
 }
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  // We make a single allocation to see where in the huge address space we can
-  // expect allocations.
-  void* probe = grab_virtual_memory(null, TOIT_PAGE_SIZE);
-  ungrab_virtual_memory(probe, TOIT_PAGE_SIZE);
-  uword addr = reinterpret_cast<uword>(probe);
-  uword HALF_MAX = MAX_HEAP / 2;
-  if (addr < HALF_MAX) {
-    // Address is near the start of address space, so we set the range
-    // to be the first MAX_HEAP of the address space.
-    single_range_.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
-  } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
-    // Address is near the end of address space, so we set the range to
-    // be the last MAX_HEAP of the address space.
-    single_range_.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
-  } else {
-    uword from = addr - MAX_HEAP / 2;
-#if defined(TOIT_DARWIN) && defined(BUILD_64)
-    uword to = from + MAX_HEAP;
-    // On macOS, we never get addresses in the first 4Gbytes, in order to flush
-    // out 32 bit uncleanness, so let's try to avoid having the range cover
-    // both sides of the 4Gbytes boundary.
-    const uword FOUR_GB = 4LL * GB;
-    if (from < FOUR_GB && to > FOUR_GB) {
-      single_range_.address = reinterpret_cast<void*>(FOUR_GB);
-    } else {
+  if (single_range_.address == null) {
+    uword max_heap = MAX_HEAP;
+    const char* max_string = getenv("TOIT_MAX_HEAP_GB");
+    if (max_string) {
+      long gb = 0;
+      if ('0' <= max_string[0] && max_string[0] <= '9') {
+        gb = strtol(max_string, null, 10);
+        if (gb == LONG_MAX || gb == LONG_MIN) gb = 0;
+      }
+#ifdef BUILD_32
+      if (gb > 1) {
+        // It's not realistic to run with max heap of more than 1Gbyte on a 32 bit
+        // platform.
+        fprintf(stderr, "TOIT_MAX_HEAP_GB is set to %ld, but this is a 32-bit build\n", gb);
+        gb = 1;
+      }
 #else
-    {
+      if (gb > 1024) {
+        // In theory, Toit can run with multi-terabyte heaps, but it's not currently
+        // engineered for it, and nobody wants one hour GC pauses.
+        fprintf(stderr, "TOIT_MAX_HEAP_GB is set to %ld, which is unrealistic\n", gb);
+        gb = 1024;
+      }
 #endif
-      // We will be allocating within a symmetric range either side of this
-      // single allocation.
-      single_range_.address = reinterpret_cast<void*>(from);
+      max_heap = 1ull * GB * gb;
+      if (!max_heap) {
+        fprintf(stderr, "Could not parse TOIT_MAX_HEAP_GB of '%s'\n", max_string);
+        max_heap = MAX_HEAP;
+      }
     }
+
+    // We grab the whole virtual memory range with an mmap, but we don't
+    // actually ask for the memory. That is done on demand with mprotect.
+    toit_heap_range = Utils::round_up(grab_virtual_memory(null, max_heap + TOIT_PAGE_SIZE), TOIT_PAGE_SIZE);
+    if (!toit_heap_range) {
+      FATAL("Could not reserve %dMbytes of address space.", static_cast<int>(max_heap >> 20));
+    }
+    toit_heap_size = max_heap;
+    uword bitmaps = max_heap / (TOIT_PAGE_SIZE * 64);
+    toit_heap_bits = reinterpret_cast<uint64*>(calloc(bitmaps, sizeof(uint64)));
+    single_range_.address = toit_heap_range;
+    single_range_.size = max_heap;
   }
-  single_range_.size = MAX_HEAP;
+
   return single_range_;
 }
 

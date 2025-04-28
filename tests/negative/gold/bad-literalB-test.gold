@@ -16,4 +16,4 @@ tests/negative/bad-literalB-test.toit:10:9: error: Literal doesn't fit 64 bits
 tests/negative/bad-literalB-test.toit:11:9: error: Literal doesn't fit 64 bits
   print -9223372036854775809
         ^~~~~~~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -19,7 +19,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
+#if defined(TOIT_ESP32) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
@@ -428,12 +428,12 @@ static Object* get_address_or_error(UdpSocket* socket, Process* process, bool pe
     ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer,
-                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
-                       (address >> 0) & 0xff,
-                       (address >> 8) & 0xff,
-                       (address >> 16) & 0xff,
-                       (address >> 24) & 0xff);
+  word length = sprintf(buffer,
+                        "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
+                        (address >> 0) & 0xff,
+                        (address >> 8) & 0xff,
+                        (address >> 16) & 0xff,
+                        (address >> 24) & 0xff);
   return process->allocate_string_or_error(buffer, length);
 }
 
@@ -499,4 +499,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)

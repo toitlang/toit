@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-User-space side of the service API for key-value storage.
+User-space side of the service API for storage.
 
 # Examples
 Store and read a value in a RAM-backed bucket. The used memory
@@ -25,12 +25,12 @@ import system.storage
 
 main:
   region := storage.Region.open --flash "my-region" --capacity=128
-  region.write --from=0 #[0x12, 0x34]
+  region.write --at=0 #[0x12, 0x34]
 ```
 */
 
 import encoding.tison
-import reader show Reader
+import io
 
 import system.api.storage show StorageService StorageServiceClient
 import system.services show ServiceResourceProxy
@@ -116,8 +116,13 @@ class Bucket extends ServiceResourceProxy:
 
   get key/string [--if-present] [--if-absent] -> any:
     bytes := (client_ as StorageServiceClient).bucket-get handle_ key
-    if not bytes: return if-absent.call key
-    return if-present.call (tison.decode bytes)
+    if bytes:
+      // Play it safe and handle the case where a bucket ended up
+      // with illegal encoded bits by treating it as an absent entry.
+      decoded := null
+      exception := catch: decoded = tison.decode bytes
+      if not exception: return if-present.call decoded
+    return if-absent.call key
 
   get key/string [--init]:
     return get key
@@ -358,7 +363,7 @@ class Region extends ServiceResourceProxy:
     read --from=from bytes
     return bytes
 
-  stream --from/int=0 --to/int=size --max-size/int=256 -> Reader:
+  stream --from/int=0 --to/int=size --max-size/int=256 -> io.Reader:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if max-size < 16: throw "Bad Argument"
     return RegionReader_
@@ -367,9 +372,24 @@ class Region extends ServiceResourceProxy:
         --to=to
         --max-size=max-size
 
+  /**
+  Deprecated. Use $(write --at bytes) instead.
+  */
   write --from/int bytes/ByteArray -> none:
     if not resource_: throw "ALREADY_CLOSED"
     flash-region-write_ resource_ from bytes
+
+  /**
+  Writes the given $data into the region at the given offset $at.
+
+  If the region has already data, the new data might be combined
+    with the existing data. See $erase-value, $write-can-clear-bits,
+    and $write-can-set-bits. Use $erase to reset areas to the $erase-value
+    after which this method will write the data as given.
+  */
+  write --at/int data/io.Data -> none:
+    if not resource_: throw "ALREADY_CLOSED"
+    flash-region-write_ resource_ at data
 
   is-erased --from/int=0 --to/int=size -> bool:
     if not resource_: throw "ALREADY_CLOSED"
@@ -393,19 +413,21 @@ class Region extends ServiceResourceProxy:
       resource_ = null
     super
 
-class RegionReader_ implements Reader:
+class RegionReader_ extends io.Reader:
   region_/Region
   from_/int := ?
   to_/int
   max-size_/int
+  content-size/int
 
   constructor --region/Region --from/int --to/int --max-size/int:
     region_ = region
     from_ = from
     to_ = to
     max-size_ = max-size
+    content-size = to - from
 
-  read -> ByteArray?:
+  read_ -> ByteArray?:
     from := from_
     remaining := to_ - from
     if remaining == 0: return null
@@ -419,8 +441,6 @@ class RegionReader_ implements Reader:
     from_ = from + n
     return result
 
-// --------------------------------------------------------------------------
-
 flash-region-open_ group client handle offset size:
   #primitive.flash.region-open
 
@@ -430,8 +450,11 @@ flash-region-close_ resource:
 flash-region-read_ resource from bytes:
   #primitive.flash.region-read
 
-flash-region-write_ resource from bytes:
-  #primitive.flash.region-write
+flash-region-write_ resource at data:
+  #primitive.flash.region-write: | error |
+    return io.primitive-redo-io-data_ error data: | bytes |
+      flash-region-write_ resource at bytes
+
 
 flash-region-is-erased_ resource from size:
   #primitive.flash.region-is-erased

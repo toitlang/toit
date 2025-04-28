@@ -493,7 +493,7 @@ PRIMITIVE(get_nonbuiltin) {
   for (int index = 0; index < arrays->length(); index++) {
     Object* block_array = arrays->at(index);
     const uint8* bytes;
-    int length;
+    word length;
     if (!is_heap_object(block_array)) FAIL(WRONG_OBJECT_TYPE);
     if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     // TODO: We should perhaps avoid redoing this verification if the data is

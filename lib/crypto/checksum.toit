@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
+
 /**
 Checksum framework.
 
@@ -19,23 +21,17 @@ To get the checksum use $get.
 abstract class Checksum:
 
   /** Variant of $(add data from to). */
-  add data -> none:
-    if data is not string and data is not ByteArray:
-      throw "WRONG_OBJECT_TYPE"
-    add data 0 data.size
+  add data/io.Data -> none:
+    add data 0 data.byte-size
 
   /** Variant of $(add data from to). */
-  add data from/int -> none:
-    if data is not string and data is not ByteArray:
-      throw "WRONG_OBJECT_TYPE"
-    add data from data.size
+  add data/io.Data from/int -> none:
+    add data from data.byte-size
 
   /**
   Adds the $data to the data to be checksummed.
-
-  The $data must be a string of a byte array.
   */
-  abstract add data from/int to/int -> none
+  abstract add data/io.Data from/int to/int -> none
 
   /** Computes the checksum from the added data. */
   abstract get -> ByteArray
@@ -51,7 +47,7 @@ Computes the hash of the given $data.
 
 The $data must be a string or a byte array.
 */
-checksum summer/Checksum data from/int=0 to/int=data.size -> ByteArray:
+checksum summer/Checksum data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   summer.add data from to
   return summer.get
 

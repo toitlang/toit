@@ -17,7 +17,7 @@ import cli
 import host.file
 import monitor
 import host.pipe
-import reader show BufferedReader
+import io
 
 import .utils
 import .rpc
@@ -54,41 +54,42 @@ Use:
   ```
 */
 main args:
-  parsed := null
+  parameters/cli.Parameters? := null
   parser := cli.Command "replay"
       --rest=[
-          cli.OptionString "debug-file" --required
+          cli.Option "debug-file" --required
       ]
       --options=[
           cli.Flag "print-out" --default=false,
           cli.Flag "use-std-ports" --default=false,
           cli.Flag "log-formatted" --default=false,
       ]
-      --run=:: parsed = it
+      --run=:: parameters = it.parameters
   parser.run args
-  if not parsed: exit 0
 
-  use-std-ports := parsed["use-std-ports"]
-  log-formatted := parsed["log-formatted"]
+  use-std-ports := parameters["use-std-ports"]
+  log-formatted := parameters["log-formatted"]
   if use-std-ports and log-formatted:
     print "Can't use std ports and log formatted at same time"
     exit 1
 
-  server-to   := null
-  server-from := null
+  server-to-writer/io.Writer := ?
+  server-from-reader/io.Reader := ?
   if use-std-ports:
-    server-from = pipe.stdin
-    server-to   = pipe.stdout
+    server-from-reader = io.Reader.adapt pipe.stdin
+    server-to-writer = io.Writer.adapt pipe.stdout
   else:
-    server-from = FakePipe
-    server-to   = FakePipe
-    server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
-    server := LspServer server-rpc-connection null UriPathTranslator
+    server-from := FakePipe
+    server-to-pipe := FakePipe
+    server-from-reader = server-from.in
+    server-to-writer = server-to-pipe.out
+    server-rpc-connection := RpcConnection server-to-pipe.in server-from.out
+    server := LspServer server-rpc-connection null
     task:: catch --trace: server.run
 
-  debug-file := parsed["debug-file"]
-  replay-rpc := RpcConnection (BufferedReader (file.Stream.for-read debug-file)) pipe.stderr
-  std-rpc := RpcConnection (BufferedReader server-from) server-to
+  debug-file := parameters["debug-file"]
+  replay-rpc := RpcConnection (io.Reader.adapt (file.Stream.for-read debug-file)) pipe.stderr
+  std-rpc := RpcConnection server-from-reader server-to-writer
 
   channel := monitor.Channel 1
 
@@ -100,7 +101,7 @@ main args:
         // Don't send responses before they have been requested.
         while packet["id"] > current-request-id:
           channel.receive
-      if parsed["print-out"]:
+      if parameters["print-out"]:
         if log-formatted:
           log-packet --to-server packet
         else:

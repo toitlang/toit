@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
@@ -32,37 +32,25 @@
 
 namespace toit {
 
-ResourcePool<int, 0> dma_channels(1, 2);
-
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
-ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-  SPI2_HOST,
-  SPI3_HOST
-#elif CONFIG_IDF_TARGET_ESP32S2
-  SPI2_HOST,
-  SPI3_HOST
-#elif CONFIG_IDF_TARGET_ESP32C3
+static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
+  // SPI1_HOST is typically reserved for flash and spiram.
   SPI2_HOST
-#else
-  HSPI_HOST,
-  VSPI_HOST
+#if SOC_SPI_PERIPH_NUM > 2
+  , SPI3_HOST
 #endif
 );
 
-SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device,
-                                   int dma_channel)
+SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
     : ResourceGroup(process, event_source)
-    , host_device_(host_device)
-    , dma_channel_(dma_channel) {}
+    , host_device_(host_device) {}
 
 SpiResourceGroup::~SpiResourceGroup() {
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
   });
   spi_host_devices.put(host_device_);
-  dma_channels.put(dma_channel_);
 }
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
@@ -76,38 +64,21 @@ PRIMITIVE(init) {
   spi_host_device_t host_device = kInvalidHostDevice;
 
   // Check if there is a preferred device.
+  // TODO(florian): match against the preferred pins for each device.
   if ((mosi == -1 || mosi == 13) &&
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI2_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S3
-    host_device = SPI2_HOST;
-#else
-    host_device = HSPI_HOST;
-#endif
   }
+#if SOC_SPI_PERIPH_NUM > 2
   if ((mosi == -1 || mosi == 23) &&
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-    host_device = SPI2_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S3
     host_device = SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S2
-    host_device = SPI3_HOST;
-#else
-    host_device = VSPI_HOST;
+  }
 #endif
-  }
   host_device = spi_host_devices.preferred(host_device);
-  if (host_device == kInvalidHostDevice) FAIL(OUT_OF_RANGE);
-
-  int dma_chan = dma_channels.any();
-  if (dma_chan == 0) {
-    spi_host_devices.put(host_device);
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
 
   spi_bus_config_t conf = {};
   conf.mosi_io_num = mosi;
@@ -118,33 +89,19 @@ PRIMITIVE(init) {
   conf.max_transfer_sz = 0;
   conf.flags = 0;
   conf.intr_flags = ESP_INTR_FLAG_IRAM;
-  struct {
-    spi_host_device_t host_device;
-    int dma_chan;
-    esp_err_t err;
-  } args {
-    .host_device = host_device,
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-    .dma_chan = SPI_DMA_CH_AUTO,
-#else
-    .dma_chan = dma_chan,
-#endif
-    .err = ESP_OK,
-  };
+  CAPTURE2(spi_host_device_t, host_device, spi_bus_config_t, conf);
+  esp_err_t err = ESP_OK;
   SystemEventSource::instance()->run([&]() -> void {
-    args.err = spi_bus_initialize(args.host_device, &conf, args.dma_chan);
+    err = spi_bus_initialize(capture.host_device, &capture.conf, SPI_DMA_CH_AUTO);
   });
-  if (args.err != ESP_OK) {
+  if (err != ESP_OK) {
     spi_host_devices.put(host_device);
-    dma_channels.put(dma_chan);
-    return Primitive::os_error(args.err, process);
+    return Primitive::os_error(err, process);
   }
 
-  // TODO: Reclaim dma channel.
-  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device, dma_chan);
+  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device);
   if (!spi) {
     spi_host_devices.put(host_device);
-    dma_channels.put(dma_chan);
     FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(spi);
@@ -178,6 +135,7 @@ PRIMITIVE(device) {
     .address_bits     = uint8(address_bits),
     .dummy_bits       = 0,
     .mode             = uint8(mode),
+    .clock_source     = SPI_CLK_SRC_DEFAULT,
     .duty_cycle_pos   = 0,
     .cs_ena_pretrans  = 0,
     .cs_ena_posttrans = 0,
@@ -281,4 +239,4 @@ PRIMITIVE(release_bus) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

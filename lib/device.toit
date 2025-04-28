@@ -16,7 +16,7 @@ name -> string:
   return hardware-id.stringify
 
 /** Hardware ID of this device. */
-hardware-id/uuid.Uuid ::= uuid.uuid5 "hw_id" get-mac-address_
+hardware-id/uuid.Uuid ::= uuid.Uuid.uuid5 "hw_id" get-mac-address_
 
 // --------------------------------------------------------------------------
 

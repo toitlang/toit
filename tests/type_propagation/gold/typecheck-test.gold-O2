@@ -4,39 +4,53 @@ main tests/type_propagation/typecheck-test.toit
   4[053] - invoke static test-any tests/type_propagation/typecheck-test.toit // {Null_}
   7[041] - pop 1
   8[053] - invoke static test-throws tests/type_propagation/typecheck-test.toit // {Null_}
+<<<<<<< HEAD
  11[091] - return null S1 0
+=======
+ 11[090] - return null S1 0
+>>>>>>> master
 
 test-simple tests/type_propagation/typecheck-test.toit
   0[022] - load null
-  1[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{Null_}] -> {False_}
-  4[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False_}] -> {False_}
+  1[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{Null_}] -> {False}
+  4[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False}] -> {False}
   7[041] - pop 1
   8[026] - load smi 7
- 10[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{SmallInteger_}] -> {True_}
- 13[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True_}] -> {True_}
+ 10[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{SmallInteger_}] -> {True}
+ 13[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True}] -> {True}
  16[041] - pop 1
  17[020] - load literal 7.9000000000000003553
- 19[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{float}] -> {False_}
- 22[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False_}] -> {False_}
+ 19[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{float}] -> {False}
+ 22[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False}] -> {False}
  25[041] - pop 1
  26[020] - load literal kurt
+<<<<<<< HEAD
  28[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{String_}] -> {False_}
  31[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False_}] -> {False_}
  34[091] - return null S1 0
+=======
+ 28[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{String_}] -> {False}
+ 31[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False}] -> {False}
+ 34[090] - return null S1 0
+>>>>>>> master
 
 test-any tests/type_propagation/typecheck-test.toit
   0[020] - load literal true
-  2[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True_}] -> {True_}
+  2[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True}] -> {True}
   5[041] - pop 1
   6[020] - load literal true
-  8[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True_}] -> {True_}
+  8[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True}] -> {True}
  11[041] - pop 1
  12[026] - load smi 7
  14[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{SmallInteger_}] -> {SmallInteger_}
  17[041] - pop 1
  18[020] - load literal hest
  20[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{String_}] -> {String_}
+<<<<<<< HEAD
  23[091] - return null S1 0
+=======
+ 23[090] - return null S1 0
+>>>>>>> master
 
 test-throws tests/type_propagation/typecheck-test.toit
   0[029] - load method [block] in test-throws tests/type_propagation/typecheck-test.toit
@@ -50,35 +64,61 @@ test-throws tests/type_propagation/typecheck-test.toit
  21[022] - load null
  22[022] - load null
  23[053] - invoke static catch <sdk>/core/exceptions.toit // [[block], {Null_}, {Null_}] -> {*}
+<<<<<<< HEAD
  26[091] - return null S2 0
+=======
+ 26[090] - return null S2 0
+>>>>>>> master
 
 [block] in test-throws tests/type_propagation/typecheck-test.toit
  - argument 0: [block]
   0[053] - invoke static foo tests/type_propagation/typecheck-test.toit // {SmallInteger_}
+<<<<<<< HEAD
   3[048] - as class StringSlice_(8 - 10) // {False_}
   5[090] - return S1 1
+=======
+  3[048] - as class StringSlice_(9 - 11) // {False}
+  5[089] - return S1 1
+>>>>>>> master
 
 [block] in test-throws tests/type_propagation/typecheck-test.toit
  - argument 0: [block]
   0[026] - load smi 7
   2[053] - invoke static bar tests/type_propagation/typecheck-test.toit // [{SmallInteger_}] -> {}
+<<<<<<< HEAD
   5[090] - return S1 1
 
 foo tests/type_propagation/typecheck-test.toit
   0[026] - load smi 42
   2[090] - return S1 0
+=======
+  5[089] - return S1 1
+
+foo tests/type_propagation/typecheck-test.toit
+  0[026] - load smi 42
+  2[089] - return S1 0
+>>>>>>> master
 
 bar tests/type_propagation/typecheck-test.toit
  - argument 0: {SmallInteger_}
-  0[052] - load local, as class, pop 2 - StringSlice_(8 - 10) // {False_}
+  0[052] - load local, as class, pop 2 - StringSlice_(9 - 11) // {False}
 
 is-int tests/type_propagation/typecheck-test.toit
  - argument 0: {String_|Null_|float|SmallInteger_}
   0[016] - load local 2
+<<<<<<< HEAD
   1[044] - is class LargeInteger_(19 - 21) // {True_|False_}
   3[090] - return S1 1
+=======
+  1[044] - is class LargeInteger_(20 - 22) // {True|False}
+  3[089] - return S1 1
+>>>>>>> master
 
 id tests/type_propagation/typecheck-test.toit
- - argument 0: {String_|True_|False_|SmallInteger_}
+ - argument 0: {String_|True|False|SmallInteger_}
   0[016] - load local 2
+<<<<<<< HEAD
   1[090] - return S1 1
+=======
+  1[089] - return S1 1
+>>>>>>> master

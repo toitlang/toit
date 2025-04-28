@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <stdio.h>
 
@@ -35,16 +35,13 @@
 #include <soc/soc.h>
 #include <soc/rtc.h>
 
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-  #include "soc/sens_reg.h"
-#endif
-
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 
 #include "heap.h"
 #include "process.h"
 #include "memory.h"
+#include "messaging.h"
 #include "embedded_data.h"
 #include "os.h"
 #include "program.h"
@@ -112,6 +109,7 @@ static void start() {
   Scheduler::ExitState exit_state;
   { VM vm;
     vm.load_platform_event_sources();
+    create_and_start_external_message_handlers(&vm);
     int group_id = vm.scheduler()->next_group_id();
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
@@ -186,4 +184,4 @@ extern "C" void toit_start() {
   toit::start();
 }
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

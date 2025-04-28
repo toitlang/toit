@@ -11,10 +11,10 @@ main:
   adapter := ble.Adapter
   central := adapter.central
 
-  addresses := []
+  identifiers := []
 
   central.scan --duration=SCAN-DURATION: | device/ble.RemoteScannedDevice |
-    if device.data.service-classes.contains BATTERY-SERVICE:
-      addresses.add device.address
+    if device.data.contains-service BATTERY-SERVICE:
+      identifiers.add device.identifier
 
-  print addresses
+  print identifiers

@@ -1,4 +1,4 @@
 tests/negative/type2-test.toit:5:7: error: Unresolved type: 'NonExisting'
 glob /NonExisting := null
       ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

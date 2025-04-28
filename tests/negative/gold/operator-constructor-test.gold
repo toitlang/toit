@@ -16,4 +16,4 @@ tests/negative/operator-constructor-test.toit:7:3: error: Redefinition of 'const
 tests/negative/operator-constructor-test.toit:6:3: note: First definition of 'constructor'
   constructor.+ other:
   ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

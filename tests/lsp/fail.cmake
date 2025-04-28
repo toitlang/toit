@@ -16,6 +16,9 @@
 set(TOIT_FAILING_TESTS
 )
 
+set(TOIT_SERIAL_TESTS
+  tests/lsp/lsp-stress-compiler-test-slow.toit
+)
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS

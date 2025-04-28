@@ -1,0 +1,3 @@
+tests/json-test.toit:386:17: warning: Class 'BufferedReader' is deprecated. Use 'io.Reader' instead
+    buffered := BufferedReader (TestReader it)
+                ^~~~~~~~~~~~~~

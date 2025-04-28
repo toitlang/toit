@@ -32,8 +32,13 @@ function(add_tests flags)
     string(REPLACE " " "__" test_name ${relative}${flags})
 
     if(NOT "${test_name}" IN_LIST TOIT_SKIP_TESTS)
+      set(TEST_EXPECTATION_NAME "${test_name}")
+      if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+        set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+      endif()
+
       add_test(
-        NAME ${test_name}
+        NAME ${TEST_EXPECTATION_NAME}
         COMMAND ${CMAKE_COMMAND}
             -DTOIT_RUN=$<TARGET_FILE:toit.run>
             -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
@@ -48,10 +53,10 @@ function(add_tests flags)
         WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
         CONFIGURATIONS slow
       )
-      set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
       if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-        set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+        set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
       endif()
     endif()
 
@@ -60,9 +65,12 @@ function(add_tests flags)
     string(REPLACE " " "__" generate_type_gold ${generate_type_gold})
     set(generate_gold "build_${generate_type_gold}")
     add_custom_target(${generate_type_gold})
+    # Add a dependency from the 'generate_type_gold' target to toit.compile.
+    add_dependencies(${generate_type_gold} toit.compile)
 
     add_custom_command(
       TARGET ${generate_type_gold}
+      POST_BUILD
       COMMAND ${CMAKE_COMMAND}
           -DUPDATE_GOLD=true
           -DTOIT_RUN=$<TARGET_FILE:toit.run>
@@ -76,11 +84,12 @@ function(add_tests flags)
           "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-      DEPENDS toit.compile
     )
     add_dependencies(update_type_gold ${generate_type_gold})
   endforeach()
 endfunction()
 
-add_tests("")
-add_tests("-O2")
+if (NOT DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE} AND NOT DEFINED ENV{TOIT_ASSERT_OVERRIDE})
+  add_tests("")
+  add_tests("-O2")
+endif()

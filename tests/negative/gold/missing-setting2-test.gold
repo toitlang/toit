@@ -1,4 +1,7 @@
+tests/negative/missing-setting2-test.toit:8:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x:
+      ^~
 tests/negative/missing-setting2-test.toit:8:7: error: Can't set final field
   foo .x:
       ^~
-Compilation failed.
+Compilation failed

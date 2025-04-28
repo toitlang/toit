@@ -4,4 +4,4 @@ global := 3
 tests/negative/duplicated-global-assign-test.toit:5:1: note: First definition of 'global'
 global := 3
 ^~~~~~
-Compilation failed.
+Compilation failed

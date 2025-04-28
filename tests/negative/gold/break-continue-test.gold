@@ -37,4 +37,4 @@ tests/negative/break-continue-test.toit:22:3: error: 'continue' must be inside l
 tests/negative/break-continue-test.toit:23:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

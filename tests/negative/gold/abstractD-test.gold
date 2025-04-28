@@ -10,4 +10,4 @@ tests/negative/abstractD-test.toit:6:18: error: Unresolved identifier: 'unresolv
 tests/negative/abstractD-test.toit:10:16: error: Unresolved identifier: 'unresolved'
     return x + unresolved
                ^~~~~~~~~~
-Compilation failed.
+Compilation failed

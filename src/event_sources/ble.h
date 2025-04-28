@@ -13,8 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "../top.h"
 #include "../resource.h"
+#include "../tags.h"
+
 namespace toit {
 
 enum {
@@ -41,15 +45,18 @@ enum {
   kBleDataReceived = 1 << 20,
   kBleDiscoverOperationFailed = 1 << 21,
   kBleMallocFailed = 1 << 22,
-  kBleDataReadRequest = 1 << 23
-
+  kBleDataReadRequest = 1 << 23,
+  kBleDataWriteRequest = 1 << 24,
 };
 
 class BleResourceGroup;
 
 class BleResource : public Resource {
  public:
+  TAGS(BleResource);
+
   enum Kind {
+    ADAPTER,
     CENTRAL_MANAGER,
     PERIPHERAL_MANAGER,
     REMOTE_DEVICE,

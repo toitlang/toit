@@ -40,10 +40,10 @@ class FlashAllocation {
     static const unsigned ID_SIZE = UUID_SIZE;
     static const unsigned METADATA_SIZE = 5;  // Picked for 16 byte alignment.
 
-    Header(const void* memory, uint8 type, const uint8* id, int size, const uint8* metadata);
+    Header(const void* memory, uint8 type, const uint8* id, word size, const uint8* metadata);
 
     const uint8* id() const { return id_; }
-    int size() const { return size_in_pages_ << FLASH_PAGE_SIZE_LOG2; }
+    word size() const { return size_in_pages_ << FLASH_PAGE_SIZE_LOG2; }
 
    private:
     // Data section for the header.
@@ -68,10 +68,13 @@ class FlashAllocation {
   bool is_region() const { return type() == FLASH_ALLOCATION_TYPE_REGION; }
 
   // Simple accessors.
-  int size() const { return header_.size(); }
+  word size_no_assets() const { return header_.size(); }
   uint8 type() const { return header_.type(); }
   const uint8* id() const { return header_.id(); }
   const uint8* metadata() const { return header_.metadata(); }
+
+  // Get the full size of the allocation. For programs, this includes the assets.
+  word size() const;
 
   // Check if the allocation is valid.
   bool is_valid() const { return header_.is_valid(false); }
@@ -81,7 +84,7 @@ class FlashAllocation {
   // whether the allocation is valid after the commit.
   // Includes the virtual memory address of the allocation in the checksum
   // just in case the flash is mapped at an incompatible address.
-  static bool commit(const void* memory, int size, const Header* header);
+  static bool commit(const void* memory, word size, const Header* header);
 
   // Get the flags encoded in the first metadata byte. Only valid for programs.
   int program_flags() const { ASSERT(is_program()); return header_.metadata()[0]; }
@@ -92,10 +95,10 @@ class FlashAllocation {
   }
 
   // Get the total size of the appended program assets if any.
-  int program_assets_size(uint8** bytes, int* length) const;
+  int program_assets_size(uint8** bytes, word* length) const;
 
  protected:
-  FlashAllocation(const uint8* id, int size) : header_(0, FLASH_ALLOCATION_TYPE_PROGRAM, id, size, null) {}
+  FlashAllocation(const uint8* id, word size) : header_(0, FLASH_ALLOCATION_TYPE_PROGRAM, id, size, null) {}
 
  private:
   Header header_;
@@ -105,15 +108,15 @@ class Reservation;
 typedef LinkedList<Reservation> ReservationList;
 class Reservation : public ReservationList::Element {
  public:
-  Reservation(int offset, int size) : offset_(offset), size_(size) {}
+  Reservation(word offset, word size) : offset_(offset), size_(size) {}
 
-  int left() const { return offset_; }
-  int right() const { return offset_ + size_; }
-  int size() const { return size_; }
+  word left() const { return offset_; }
+  word right() const { return offset_ + size_; }
+  word size() const { return size_; }
 
  private:
-  int offset_;
-  int size_;
+  word offset_;
+  word size_;
 };
 
 class RegionGrant;

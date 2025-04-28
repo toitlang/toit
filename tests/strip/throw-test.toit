@@ -18,10 +18,14 @@ main args:
 
     non-stripped-snapshot := variants[0]
     output := backticks-failing [runner, non-stripped-snapshot]
+    print "Variant 0:"
+    print output
     expect (output.contains EXPECTED-EXCEPTION-OUTPUT)
     expect (output.contains ".toit")  // At least on stack trace frame.
 
     variants[1..].do:
       output = backticks-failing [runner, it]
+      print "Variant $it:"
+      print output
       expect (output.contains EXPECTED-EXCEPTION-OUTPUT)
       expect-not (output.contains ".toit")

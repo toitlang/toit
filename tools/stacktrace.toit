@@ -1,49 +1,67 @@
+// Copyright (C) 2024 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+import cli
 import host.file
 import host.pipe
-import cli
-import reader show BufferedReader
-
-USAGE ::= """
-    Decodes an esp-idf backtrace message from the UART console.
-    Example use:
-    echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
-    or
-    toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf
-    """
-
-usage:
-  print "USAGE"
-  exit 1
+import io
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
 ELF-FILE ::= "elf-file"
 
 main args/List:
-  parsed := null
-  parser := cli.Command "stacktrace"
-      --long-help=USAGE
-      --rest=[cli.OptionString --required ELF-FILE --type="path"]
+  cmd := build-command
+  cmd.run args
+
+build-command -> cli.Command:
+  cmd := cli.Command "stacktrace"
+      --help="Decode an ESP-IDF backtrace message from the UART console."
+      --rest=[cli.Option --required ELF-FILE --type="path"]
       --options=[
           cli.Flag "disassemble" --short-name="d",
-          cli.OptionString "objdump" --default=OBJDUMP,
-          cli.OptionString "backtrace" --default="-"
+          cli.Option "objdump" --default=OBJDUMP,
+          cli.Option "backtrace" --default="-"
           ]
-      --run=:: parsed = it
-  parser.run args
-  if not parsed: exit 0
+      --run=:: decode-stacktrace it
+      --examples=[
+        cli.Example """
+          Read a stacktrace from the standard input and decode it using the default objdump and
+          the 'build/esp32/toit.elf' file.
+          The command could be prefixed with something like
+          'echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 |'
+          """
+          --arguments="build/esp32/toit.elf",
+        cli.Example """
+          Decode the given stacktrace the default objdump and the 'build/esp32s3/toit.elf' file:"""
+          --arguments="--backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" build/esp32s3/toit.elf"
+      ]
+  return cmd
 
-  disassemble := parsed["disassemble"]
-  objdump-exe := parsed["objdump"]
-  objdump / BufferedReader? := null
+decode-stacktrace invocation/cli.Invocation:
+  disassemble := invocation["disassemble"]
+  objdump-exe := invocation["objdump"]
+  objdump / io.Reader? := null
   symbols-only := false
-  elf-file := parsed[ELF-FILE]
+  elf-file := invocation[ELF-FILE]
   elf-size := file.size elf-file
   exception := catch:
     flags := disassemble ? "-dC" : "-tC"
-    objdump = BufferedReader
+    objdump = io.Reader.adapt
         pipe.from objdump-exe flags elf-file
-    objdump.ensure (min 1000 elf-size) // Read once to see if objdump understands the file.
+    objdump.ensure-buffered (min 1000 elf-size) // Read once to see if objdump understands the file.
   if exception:
     throw "$exception: $objdump-exe"
   symbols := []
@@ -75,17 +93,16 @@ main args/List:
       disassembly-lines[address] = line
 
   backtrace / string? := null
-  if parsed["backtrace"] == "-":
+  if invocation["backtrace"] == "-":
     error := catch:
       with-timeout --ms=2000:
-        backtrace = (BufferedReader pipe.stdin).read-line
+        backtrace = (io.Reader.adapt pipe.stdin).read-line
     if error == "DEADLINE_EXCEEDED":
-      print "Timed out waiting for stdin"
-      usage
+      throw "Timed out waiting for stdin"
     if error:
       throw error
   else:
-    backtrace = parsed["backtrace"]
+    backtrace = invocation["backtrace"]
     if not (backtrace.starts-with "Backtrace:"):
       backtrace = "Backtrace:$backtrace"
 
@@ -113,7 +130,7 @@ main args/List:
   * 4010661d:	0008e0        	callx8	a8
     40106620:	0a2d      	mov.n	a2, a10
   ...
-  */    
+  */
   backtrace-do backtrace symbols: | address symbol |
     name := "(unknown)"
     if disassemble: print ""
@@ -137,7 +154,9 @@ main args/List:
     if disassemble: print ""
 
 backtrace-do backtrace/string symbols/List [block]:
-  if not backtrace.starts-with "Backtrace:": usage
+  if not backtrace.starts-with "Backtrace:":
+    print "Invalid backtrace: $backtrace. Doesn't start with 'Backtrace:'"
+    throw "INVALID_BACKTRACE"
   backtrace[10..].split " ": | pair |
     if pair.contains ":":
       if not pair.starts-with "0x":

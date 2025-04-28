@@ -1,0 +1,15 @@
+tests/buffer-deprecated-test.toit:10:13: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
+  buffer := Buffer
+            ^~~~~~
+tests/buffer-deprecated-test.toit:17:12: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
+  buffer = Buffer
+           ^~~~~~
+<sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
+class BufferSizeCounter extends BufferConsumer:
+      ^~~~~~~~~~~~~~~~~
+<sdk>/bytes.toit:333:3: warning: Class 'BufferConsumer' is deprecated
+  constructor:
+  ^~~~~~~~~~~
+<sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
+  constructor.with-initial-size .init-size_/int:
+  ^~~~~~~~~~~

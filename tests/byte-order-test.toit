@@ -4,7 +4,7 @@
 
 import expect show *
 
-import binary show *
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
 
 main:
   test-little-endian
@@ -161,7 +161,7 @@ test-big-endian:
   array2[0] = 99
   test-either-endian BIG-ENDIAN array2 1
 
-test-either-endian either array offset:
+test-either-endian either/ByteOrder array offset:
   either.put-uint32 array offset 0
   expect-equals 0 (either.int32 array offset)
 
@@ -225,11 +225,17 @@ test-either-endian either array offset:
   either.put-float64 array offset 1.234
   expect-equals 1.234 (either.float64 array offset)
 
+  either.put-float64 array offset -1.234
+  expect-equals -1.234 (either.float64 array offset)
+
   either.put-float64 array offset float.INFINITY
   expect-equals float.INFINITY (either.float64 array offset)
 
   either.put-float32 array offset 0.5
   expect-equals 0.5 (either.float32 array offset)
+
+  either.put-float32 array offset -0.5
+  expect-equals -0.5 (either.float32 array offset)
 
   either.put-float32 array offset float.INFINITY
   expect-equals float.INFINITY (either.float32 array offset)

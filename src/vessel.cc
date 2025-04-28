@@ -35,6 +35,7 @@ static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 
 int main(int argc, char **argv) {
   Flags::program_name = argv[0];
+  Flags::program_path = OS::get_executable_path();
   Flags::process_args(&argc, argv);
 
   FlashRegistry::set_up();

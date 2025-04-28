@@ -17,7 +17,7 @@
 
 #include <functional>
 
-#if defined(TOIT_USE_LWIP) || defined(TOIT_FREERTOS)
+#if defined(TOIT_USE_LWIP) || defined(TOIT_ESP32)
 
 #include <lwip/tcpip.h>
 
@@ -89,4 +89,4 @@ class LwipEventSource : public EventSource {
 
 } // namespace toit
 
-#endif  // TOIT_USE_LWIP
+#endif  // defined(TOIT_USE_LWIP) || defined(TOIT_ESP32)

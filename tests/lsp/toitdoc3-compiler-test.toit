@@ -12,15 +12,11 @@ import system show platform
 import host.directory
 import expect show *
 
-OPERATORS-WITH-ASSIGN ::= [
-  "==", "<=", ">=", "[]="
-]
-
 main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
@@ -41,7 +37,7 @@ build-shape_ method/Method:
       --arity=arity
       --total-block-count=total-block-count
       --named-block-count=named-block-count
-      --is-setter=method.name.ends-with "=" and not OPERATORS-WITH-ASSIGN.contains method.name
+      --is-setter=method.name.ends-with "=" and not method.name.starts-with "operator "
       --names=names
 
 build-name element klass/Class?=null:
@@ -63,7 +59,11 @@ build-name element klass/Class?=null:
 
 build-refs client/LspClient names/List --path=FILE-PATH:
   all-elements-map := {:}
-  document := client.server.documents_.get-existing-document --path=path
+  uri := client.to-uri path
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  // Reaching into the private state of the server.
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   summary.classes.do: |klass|
     all-elements-map[build-name klass] = [ToitdocRef.CLASS, klass]
@@ -94,7 +94,7 @@ build-refs client/LspClient names/List --path=FILE-PATH:
     element := kind-element[1]
     holder := null
     name := element.name
-    if name.ends-with "=" and not OPERATORS-WITH-ASSIGN.contains name:
+    if name.ends-with "=" and not name.starts-with "operator ":
       name = name.trim --right "="
     if ref.contains ".":
       parts := ref.split "."
@@ -128,8 +128,11 @@ test-toitdoc
     diagnostics := client.diagnostics-for --path=FILE-PATH
     diagnostics.do: print it
     expect diagnostics.is-empty
+  uri := client.to-uri FILE-PATH
+  project-uri := client.server.documents_.project-uri-for --uri=uri
   // Reaching into the private state of the server.
-  document := client.server.documents_.get-existing-document --path=FILE-PATH
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   toitdoc := extract-toitdoc.call document.summary
   expected-refs := build-expected-refs.call
   ref-counter := 0
@@ -138,8 +141,8 @@ test-toitdoc
       if it is Paragraph:
         it.expressions.do:
           if it is ToitdocRef:
-            actual := it
-            expected := expected-refs[ref-counter++]
+            actual/ToitdocRef := it
+            expected/ToitdocRef := expected-refs[ref-counter++]
             expect-equals expected.text actual.text
             expect-equals expected.kind actual.kind
             expect-equals expected.module-uri actual.module-uri
@@ -538,101 +541,101 @@ test client/LspClient:
       client
       --extract-toitdoc=: it.classes.first.toitdoc
       --build-expected-refs=: build-refs client [
-        "A.==",
-        "A.<",
-        "A.<=",
-        "A.>=",
-        "A.>",
-        "A.+",
-        "A.-",
-        "A.*",
-        "A./",
-        "A.%",
-        "A.~",
-        "A.&",
-        "A.|",
-        "A.^",
-        "A.>>",
-        "A.>>>",
-        "A.<<",
-        "A.[]",
-        "A.[]=",
-        ".A.==",
-        ".A.<",
-        ".A.<=",
-        ".A.>=",
-        ".A.>",
-        ".A.+",
-        ".A.-",
-        ".A.*",
-        ".A./",
-        ".A.%",
-        ".A.~",
-        ".A.&",
-        ".A.|",
-        ".A.^",
-        ".A.>>",
-        ".A.>>>",
-        ".A.<<",
-        ".A.[]",
-        ".A.[]=",
-        "B.==",
-        "B.<",
-        "B.<=",
-        "B.>=",
-        "B.>",
-        "B.+",
-        "B.-",
-        "B.*",
-        "B./",
-        "B.%",
-        "B.~",
-        "B.&",
-        "B.|",
-        "B.^",
-        "B.>>",
-        "B.>>>",
-        "B.<<",
-        "B.[]",
-        "B.[]=",
-        ["A.== x", "A.=="],
-        ["A.< x", "A.<"],
-        ["A.<= x", "A.<="],
-        ["A.>= x", "A.>="],
-        ["A.> x", "A.>"],
-        ["A.+ x", "A.+"],
-        ["A.- x", "A.-"],
-        ["A.* x", "A.*"],
-        ["A./ x", "A./"],
-        ["A.% x", "A.%"],
-        ["A.~", "A.~"],
-        ["A.& x", "A.&"],
-        ["A.| x", "A.|"],
-        ["A.^ x", "A.^"],
-        ["A.>> x", "A.>>"],
-        ["A.>>> x", "A.>>>"],
-        ["A.<< x", "A.<<"],
-        ["A.[] x", "A.[]"],
-        ["A.[]= x y", "A.[]="],
-        ["== x", "A.=="],
-        ["< x", "A.<"],
-        ["<= x", "A.<="],
-        [">= x", "A.>="],
-        ["> x", "A.>"],
-        ["+ x", "A.+"],
-        ["- x", "A.-"],
-        ["* x", "A.*"],
-        ["/ x", "A./"],
-        ["% x", "A.%"],
-        ["~", "A.~"],
-        ["& x", "A.&"],
-        ["| x", "A.|"],
-        ["^ x", "A.^"],
-        [">> x", "A.>>"],
-        [">>> x", "A.>>>"],
-        ["<< x", "A.<<"],
-        ["[] x", "A.[]"],
-        ["[]= x y", "A.[]="],
+        ["A.==", "A.operator =="],
+        ["A.<", "A.operator <"],
+        ["A.<=", "A.operator <="],
+        ["A.>=", "A.operator >="],
+        ["A.>", "A.operator >"],
+        ["A.+", "A.operator +"],
+        ["A.-", "A.operator -"],
+        ["A.*", "A.operator *"],
+        ["A./", "A.operator /"],
+        ["A.%", "A.operator %"],
+        ["A.~", "A.operator ~"],
+        ["A.&", "A.operator &"],
+        ["A.|", "A.operator |"],
+        ["A.^", "A.operator ^"],
+        ["A.>>", "A.operator >>"],
+        ["A.>>>", "A.operator >>>"],
+        ["A.<<", "A.operator <<"],
+        ["A.[]", "A.operator []"],
+        ["A.[]=", "A.operator []="],
+        ["==", "A.operator =="],
+        ["<", "A.operator <"],
+        ["<=", "A.operator <="],
+        [">=", "A.operator >="],
+        [">", "A.operator >"],
+        ["+", "A.operator +"],
+        ["-", "A.operator -"],
+        ["*", "A.operator *"],
+        ["/", "A.operator /"],
+        ["%", "A.operator %"],
+        ["~", "A.operator ~"],
+        ["&", "A.operator &"],
+        ["|", "A.operator |"],
+        ["^", "A.operator ^"],
+        [">>", "A.operator >>"],
+        [">>>", "A.operator >>>"],
+        ["<<", "A.operator <<"],
+        ["[]", "A.operator []"],
+        ["[]=", "A.operator []="],
+        ["B.==", "B.operator =="],
+        ["B.<", "B.operator <"],
+        ["B.<=", "B.operator <="],
+        ["B.>=", "B.operator >="],
+        ["B.>", "B.operator >"],
+        ["B.+", "B.operator +"],
+        ["B.-", "B.operator -"],
+        ["B.*", "B.operator *"],
+        ["B./", "B.operator /"],
+        ["B.%", "B.operator %"],
+        ["B.~", "B.operator ~"],
+        ["B.&", "B.operator &"],
+        ["B.|", "B.operator |"],
+        ["B.^", "B.operator ^"],
+        ["B.>>", "B.operator >>"],
+        ["B.>>>", "B.operator >>>"],
+        ["B.<<", "B.operator <<"],
+        ["B.[]", "B.operator []"],
+        ["B.[]=", "B.operator []="],
+        ["A.== x", "A.operator =="],
+        ["A.< x", "A.operator <"],
+        ["A.<= x", "A.operator <="],
+        ["A.>= x", "A.operator >="],
+        ["A.> x", "A.operator >"],
+        ["A.+ x", "A.operator +"],
+        ["A.- x", "A.operator -"],
+        ["A.* x", "A.operator *"],
+        ["A./ x", "A.operator /"],
+        ["A.% x", "A.operator %"],
+        ["A.~", "A.operator ~"],
+        ["A.& x", "A.operator &"],
+        ["A.| x", "A.operator |"],
+        ["A.^ x", "A.operator ^"],
+        ["A.>> x", "A.operator >>"],
+        ["A.>>> x", "A.operator >>>"],
+        ["A.<< x", "A.operator <<"],
+        ["A.[] x", "A.operator []"],
+        ["A.[]= x y", "A.operator []="],
+        ["== x", "A.operator =="],
+        ["< x", "A.operator <"],
+        ["<= x", "A.operator <="],
+        [">= x", "A.operator >="],
+        ["> x", "A.operator >"],
+        ["+ x", "A.operator +"],
+        ["- x", "A.operator -"],
+        ["* x", "A.operator *"],
+        ["/ x", "A.operator /"],
+        ["% x", "A.operator %"],
+        ["~", "A.operator ~"],
+        ["& x", "A.operator &"],
+        ["| x", "A.operator |"],
+        ["^ x", "A.operator ^"],
+        [">> x", "A.operator >>"],
+        [">>> x", "A.operator >>>"],
+        ["<< x", "A.operator <<"],
+        ["[] x", "A.operator []"],
+        ["[]= x y", "A.operator []="],
       ]
       """
       /**
@@ -733,11 +736,11 @@ test client/LspClient:
       \$([]= x y)
       */
       class A:
-        operator == other:
-        operator < other:
-        operator <= other:
-        operator >= other:
-        operator > other:
+        operator == other: return true
+        operator < other: return true
+        operator <= other: return true
+        operator >= other: return true
+        operator > other: return true
         operator + other:
         operator - other:  // Unary minus is tested elsewhere.
         operator * other:
@@ -754,11 +757,11 @@ test client/LspClient:
         operator []= i val:
 
       class B:
-        operator == other:
-        operator < other:
-        operator <= other:
-        operator >= other:
-        operator > other:
+        operator == other: return true
+        operator < other: return true
+        operator <= other: return true
+        operator >= other: return true
+        operator > other: return true
         operator + other:
         operator - other:  // Unary minus is tested elsewhere.
         operator * other:
@@ -816,8 +819,8 @@ test client/LspClient:
       client
       --extract-toitdoc=: it.classes.first.toitdoc
       --build-expected-refs=: build-refs client [
-        ".A.-",
-        ["-", "B.-"],
+        ["-", "A.operator -"],
+        ["-", "B.operator -"],
       ]
       """
       /**

@@ -37,4 +37,4 @@ tests/negative/prefix-postfix-test.toit:10:9: error: Can't assign to expression
 tests/negative/prefix-postfix-test.toit:10:3: error: Can't invoke local variable 'foo'
   foo ++
   ^~~
-Compilation failed.
+Compilation failed

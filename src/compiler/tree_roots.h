@@ -23,29 +23,30 @@ namespace compiler {
 // Pairs of program-name and their symbol.
 // The first parameter is the name in the Program class: `X_class`.
 // The second parameter is the symbol name for the class: `Symbols::Y`.
-#define TREE_ROOT_CLASSES(T)            \
-  T(array, SmallArray_)                 \
-  T(byte_array, ByteArray_)             \
-  T(byte_array_cow, CowByteArray_)      \
-  T(byte_array_slice, ByteArraySlice_)  \
-  T(list, List_)                        \
-  T(list_slice, ListSlice_)             \
-  T(tombstone, Tombstone_)              \
-  T(map, Map)                           \
-  T(string, String_)                    \
-  T(string_slice, StringSlice_)         \
-  T(double, float_)                     \
-  T(large_integer, LargeInteger_)       \
-  T(false, False_)                      \
-  T(null, Null_)                        \
-  T(object, Object)                     \
-  T(smi, SmallInteger_)                 \
-  T(task, Task_)                        \
-  T(large_array, LargeArray_)           \
-  T(true, True_)                        \
-  T(lazy_initializer, LazyInitializer_) \
-  T(stack, Stack_)                      \
-  T(exception, Exception_)              \
+#define TREE_ROOT_CLASSES(T)              \
+  T(array, SmallArray_)                   \
+  T(byte_array, ByteArray_)               \
+  T(byte_array_cow, CowByteArray_)        \
+  T(byte_array_slice, ByteArraySlice_)    \
+  T(list, List_)                          \
+  T(list_slice, ListSlice_)               \
+  T(tombstone, Tombstone_)                \
+  T(map, Map)                             \
+  T(string, String_)                      \
+  T(string_slice, StringSlice_)           \
+  T(string_byte_slice, StringByteSlice_)  \
+  T(double, float_)                       \
+  T(large_integer, LargeInteger_)         \
+  T(false, False)                         \
+  T(null, Null_)                          \
+  T(object, Object)                       \
+  T(smi, SmallInteger_)                   \
+  T(task, Task_)                          \
+  T(large_array, LargeArray_)             \
+  T(true, True)                           \
+  T(lazy_initializer, LazyInitializer_)   \
+  T(stack, Stack_)                        \
+  T(exception, Exception_)                \
 
 } // namespace toit::compiler
 } // namespace toit

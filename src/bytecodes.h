@@ -175,6 +175,7 @@ enum BytecodeFormat {
   BYTECODE(INVOKE_MOD,                 1, OP, "invoke mod")                    \
   BYTECODE(INVOKE_AT,                  1, OP, "invoke at")                     \
   BYTECODE(INVOKE_AT_PUT,              1, OP, "invoke at_put")                 \
+  BYTECODE(INVOKE_SIZE,                3, OP_SO, "invoke size")                \
   \
   BYTECODE(BRANCH,                     3, OP_SF, "branch")                     \
   BYTECODE(BRANCH_IF_TRUE,             3, OP_SF, "branch if true")             \

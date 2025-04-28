@@ -23,7 +23,7 @@ namespace toit {
 #define MATERIALIZE_DEBUG_FLAG(type, prefix, name, value, doc)
 #endif
 
-#ifndef IOT_DEVICE
+#ifndef TOIT_FREERTOS
 #define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc) type Flags::name = value;
 #else
 #define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc)
@@ -31,7 +31,7 @@ namespace toit {
 
 FLAGS_DO(MATERIALIZE_DEBUG_FLAG, MATERIALIZE_DEPLOY_FLAG)
 
-#ifndef IOT_DEVICE
+#ifndef TOIT_FREERTOS
 
 static bool is_valid_flag(const char* argument) {
   return (strncmp(argument, "-X", 2) == 0) && (strlen(argument) > 2);
@@ -164,5 +164,6 @@ int Flags::process_args(int* argc, char** argv) {
 #endif
 
 const char* Flags::program_name = null;
+const char* Flags::program_path = null;
 
 }

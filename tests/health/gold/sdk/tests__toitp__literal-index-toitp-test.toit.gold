@@ -1,6 +1,0 @@
-<pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/pipe.toit:329:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~

@@ -3,23 +3,25 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .tcp
+import io
 import monitor show *
-import writer show *
+import net
+import net.modules.tcp
+import net.tcp show Socket
 
 PACKET-SIZE := 1024
 PACKAGES := 128
 
 main:
-  run-test
+  network := net.open
+  run-test network
 
-run-test:
+run-test network/net.Client:
   print "RUN"
 
-  server := TcpServerSocket
+  server := tcp.TcpServerSocket network
   server.listen "127.0.0.1" 0
-  task:: run-client server.local-address.port
+  task:: run-client network server.local-address.port
   socket := server.accept
 
   done := Channel 1
@@ -31,8 +33,8 @@ run-test:
   done.receive
   socket.close
 
-run-client port:
-  socket := TcpSocket
+run-client network/net.Client port:
+  socket := tcp.TcpSocket network
   socket.connect "127.0.0.1" port
 
   done := Channel 1
@@ -43,29 +45,30 @@ run-client port:
   done.receive
   socket.close
 
-writer socket delay done:
+writer socket/Socket delay done:
   sleep --ms=delay
 
-  writer := Writer socket
+  writer := socket.out
   array := ByteArray PACKET-SIZE
   for i := 0; i < PACKAGES; i++:
     writer.write array
 
   print "DONE WRITER"
-  socket.close-write
+  writer.close
   done.send null
 
-reader socket delay done:
+reader socket/Socket delay done:
   sleep --ms=delay
 
   count := 0
 
+  reader := socket.in
   while count < PACKET-SIZE * PACKAGES:
-    data := socket.read
+    data := reader.read
     count += data.size
 
   while true:
-    data := socket.read
+    data := reader.read
     if data == null:  break
     expect data.size == 0
 

@@ -7,4 +7,4 @@ tests/negative/capture-block-test.toit:7:13: error: Can't capture block variable
 tests/negative/capture-block-test.toit:10:15: error: Unresolved identifier: 'unresolved'
   lambda.call unresolved
               ^~~~~~~~~~
-Compilation failed.
+Compilation failed

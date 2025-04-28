@@ -5,7 +5,7 @@
 import coap
 import coap.message as coap
 import coap.transport as coap
-import bytes
+import io
 import expect show *
 
 // Inject known token id, as the token is random.
@@ -66,7 +66,7 @@ test-error-response:
   token := #[1,2,3,4]
   msg := coap.Message
   msg.token = coap.Token token
-  msg.payload = bytes.Reader "my error".to-byte-array
+  msg.payload = io.Reader "my error".to-byte-array
   // Delay setting the response until the request is issued.
   task::
     t.set-response
@@ -85,10 +85,12 @@ monitor TestTransport implements coap.Transport:
   error_ := null
   response_ := null
 
-  instruct .expect_ .return_:
+  instruct expect return-value:
+    expect_ = expect
+    return_ = return-value
 
-  set-response .response_:
-  set-error .error_:
+  set-response response: response_ = response
+  set-error error: error_ = error
 
   write msg/coap.Message:
 

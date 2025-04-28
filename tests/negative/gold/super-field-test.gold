@@ -40,4 +40,4 @@ tests/negative/super-field-test.toit:12:5: error: Unresolved identifier: 'while'
 tests/negative/super-field-test.toit:15:5: error: Unresolved identifier: '+'
     super
     ^~~~~
-Compilation failed.
+Compilation failed

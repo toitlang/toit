@@ -17,6 +17,11 @@ file(GLOB PROFILER_TESTS "*-test.toit")
 
 include(fail.cmake)
 
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  # Don't run profiler tests if the optimization level is overridden.
+  set(PROFILER_TESTS)
+endif()
+
 foreach(profiler_test ${PROFILER_TESTS})
   get_filename_component(base ${profiler_test} NAME_WE)
   string(REGEX REPLACE "-test$" "" test_name ${base})
@@ -27,13 +32,18 @@ foreach(profiler_test ${PROFILER_TESTS})
     continue()
   endif()
 
+  set(TEST_EXPECTATION_NAME ${profiler_test_name})
+  if("${profiler_test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${profiler_test_name}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${profiler_test_name}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${profiler_test} $<TARGET_FILE:toit.run> ${profiler_input}
     )
-  set_tests_properties(${profiler_test_name} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if("${profiler_test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${profiler_test_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

@@ -1,0 +1,5 @@
+prefixes:
+  pkg1: pkg1
+packages:
+  pkg1:
+    path: .packages/pkg1

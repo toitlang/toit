@@ -1,8 +1,9 @@
+sdk: ^2.0.0-alpha.144
 prefixes:
   ntp: pkg-ntp
 packages:
   pkg-ntp:
     url: github.com/toitlang/pkg-ntp
     name: ntp
-    version: 1.0.0
-    hash: 1c3cc4a4819f459393f00efc576f66f838665719
+    version: 1.1.0
+    hash: e69bb1abc0d3d4aa7642eec3360e52744e4d011d

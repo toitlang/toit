@@ -671,11 +671,20 @@ void ByteGen::visit_CallVirtual(CallVirtual* node) {
   int arity = shape.arity();
 
   auto compile_invocation = [&]() {
-    Selector<PlainShape> selector(node->target()->selector(), shape.to_plain_shape());
+    auto target_selector = node->target()->selector();
+    Selector<PlainShape> selector(target_selector, shape.to_plain_shape());
     int offset = dispatch_table()->dispatch_offset_for(selector);
     if (offset != -1) {
       __ invoke_virtual(node->opcode(), offset, arity);
     } else {
+      // If this isn't a binary, non-setter method, we just treat it as
+      // an ordinary virtual invocation.
+      if (target_selector == Symbol::for_invoke(INVOKE_EQ) &&
+          shape == CallShape(1).with_implicit_this()) {
+        // The equality checks must go through the opcode bytecode as
+        // it checks for identity and null.
+        UNREACHABLE();
+      }
       // No method in the whole program implements that selector.
       // Pop all arguments, and push the name of the method on the stack.
       // Then call `lookup_failure`.

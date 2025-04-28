@@ -60,7 +60,7 @@ void Diagnostics::report_error(Source::Range range, const char* format, ...) {
 }
 
 void Diagnostics::report_error(const ast::Node* position_node, const char* format, ...) {
-  auto range = position_node->range();
+  auto range = position_node->selection_range();
   va_list arguments;
   va_start(arguments, format);
   report_error(range, format, arguments);
@@ -92,12 +92,12 @@ void Diagnostics::report_warning(Source::Range range, const char* format, ...) {
 void Diagnostics::report_warning(const ast::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  report_warning(position_node->range(), format, arguments);
+  report_warning(position_node->selection_range(), format, arguments);
   va_end(arguments);
 }
 
 void Diagnostics::report_note(const ast::Node* position_node, const char* format, ...) {
-  auto range = position_node->range();
+  auto range = position_node->selection_range();
   va_list arguments;
   va_start(arguments, format);
   report_note(range, format, arguments);
@@ -284,7 +284,7 @@ bool LanguageServerAnalysisDiagnostics::emit(Severity severity,
                                              const char* format,
                                              va_list& arguments) {
   lsp()->diagnostics()->emit(severity,
-                             range_to_lsp_range(range, source_manager()),
+                             range_to_lsp_location(range, source_manager()),
                              format,
                              arguments);
   return true;

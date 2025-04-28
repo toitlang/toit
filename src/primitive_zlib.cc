@@ -53,7 +53,7 @@ PRIMITIVE(adler32_clone) {
 }
 
 PRIMITIVE(adler32_add) {
-  ARGS(Adler32, adler32, Blob, data, int, from, int, to, bool, unadd);
+  ARGS(Adler32, adler32, Blob, data, word, from, word, to, bool, unadd);
   if (!adler32) FAIL(INVALID_ARGUMENT);
   if (from < 0 || to > data.length() || from > to) FAIL(OUT_OF_RANGE);
   if (unadd) {
@@ -95,18 +95,20 @@ PRIMITIVE(rle_add) {
 #ifndef CONFIG_TOIT_ZLIB_RLE
   FAIL(UNIMPLEMENTED);
 #else
-  ARGS(ZlibRle, rle, MutableBlob, destination_bytes, int, index, Blob, data, int, from, int, to);
+  ARGS(ZlibRle, rle, MutableBlob, destination_bytes, word, index, Blob, data, word, from, word, to);
   if (!rle) FAIL(INVALID_ARGUMENT);
   if (from < 0 || to > data.length() || from > to) FAIL(OUT_OF_RANGE);
   // We need to return distances packed in 15 bit fields, so we limit the size
   // we attempt in order to prevent an outcome we can't report.
-  word destination_length = Utils::min(0x7000, destination_bytes.length());
-  to = Utils::min(to, from + 0x7000);
+  word LIMIT_15_BIT = 0x7000;
+  word HARD_LIMIT = 0x8000;
+  word destination_length = Utils::min(LIMIT_15_BIT, destination_bytes.length());
+  to = Utils::min(to, from + LIMIT_15_BIT);
   if (index < 0 || index >= destination_length) FAIL(OUT_OF_RANGE);
   rle->set_output_buffer(destination_bytes.address(), index, destination_length);
   word read = rle->add(data.address() + from, to - from);
   word written = rle->get_output_index() - index;
-  ASSERT(read < 0x8000 && written < 0x8000 && read >= 0 && written >= 0);
+  ASSERT(read < HARD_LIMIT && written < HARD_LIMIT && read >= 0 && written >= 0);
   return Smi::from(read | (written << 15));
 #endif
 }
@@ -115,8 +117,9 @@ PRIMITIVE(rle_finish) {
 #ifndef CONFIG_TOIT_ZLIB_RLE
   FAIL(UNIMPLEMENTED);
 #else
-  ARGS(ZlibRle, rle, MutableBlob, destination_bytes, int, index);
-  word destination_length = Utils::min(0x7000, destination_bytes.length());
+  ARGS(ZlibRle, rle, MutableBlob, destination_bytes, word, index);
+  word LIMIT_15_BIT = 0x7000;
+  word destination_length = Utils::min(LIMIT_15_BIT, destination_bytes.length());
   if (index < 0 || index >= destination_length) FAIL(OUT_OF_RANGE);
   rle->set_output_buffer(destination_bytes.address(), index, destination_length);
   rle->finish();
@@ -138,9 +141,9 @@ class Zlib : public SimpleResource {
 
   int init_deflate(int compression_level);
   int init_inflate();
-  int write(const uint8* data, int length, int* error_return);
+  int write(const uint8* data, word length, int* error_return);
   int output_available();
-  void get_output(uint8* buffer, int length);
+  void get_output(uint8* buffer, word length);
   void close() { closed_ = true; }
   bool closed() const { return closed_; }
 
@@ -182,7 +185,7 @@ Zlib::~Zlib() {
   }
 }
 
-int Zlib::write(const uint8* data, int length, int* error_return) {
+int Zlib::write(const uint8* data, word length, int* error_return) {
   stream_.next_in = const_cast<uint8*>(data);
   stream_.avail_in = length;
   int result = deflate_ ? deflate(&stream_, Z_NO_FLUSH) : inflate(&stream_, Z_NO_FLUSH);
@@ -203,7 +206,7 @@ int Zlib::output_available() {
   return ZLIB_BUFFER_SIZE - stream_.avail_out;
 }
 
-void Zlib::get_output(uint8* buffer, int length) {
+void Zlib::get_output(uint8* buffer, word length) {
   memcpy(buffer, output_buffer_, length);
   stream_.next_out = &output_buffer_[0];
   stream_.avail_out = ZLIB_BUFFER_SIZE;
@@ -272,7 +275,7 @@ PRIMITIVE(zlib_read) {
   FAIL(UNIMPLEMENTED);
 #else
   ARGS(Zlib, zlib);
-  int length = zlib->output_available();
+  word length = zlib->output_available();
   if (length == 0 && zlib->closed()) return process->null_object();
   ByteArray* result = process->allocate_byte_array(length);
   if (result == null) FAIL(ALLOCATION_FAILED);

@@ -1,7 +1,13 @@
+tests/negative/setting-super-test.toit:6:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x: 42
+      ^~
 tests/negative/setting-super-test.toit:6:7: error: Field-storing parameter can only set local fields
   foo .x: 42
+      ^~
+tests/negative/setting-super-test.toit:12:7: warning: Field-storing parameters in non-constructors are deprecated
+  foo .x: 499
       ^~
 tests/negative/setting-super-test.toit:12:7: error: Field-storing parameter can only set local fields
   foo .x: 499
       ^~
-Compilation failed.
+Compilation failed

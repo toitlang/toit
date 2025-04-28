@@ -11,4 +11,4 @@ tests/negative/indent5-test.toit:10:5: error: Argument mismatch for 'foo'
 Block argument not provided
     foo
     ^~~
-Compilation failed.
+Compilation failed

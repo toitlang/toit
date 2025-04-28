@@ -65,8 +65,8 @@ main args:
     initial := int.parse --radix=16 fields[3][2..]
     xor := int.parse --radix=16 fields[6][2..]
 
-    initial-string := initial == 0 ? "" : " --initial_state=0x$(%x initial)"
-    xor-string     := xor == 0     ? "" : " --xor_result=0x$(%x xor)"
+    initial-string := initial == 0 ? "" : " --initial-state=0x$(%x initial)"
+    xor-string     := xor == 0     ? "" : " --xor-result=0x$(%x xor)"
 
     if make-test:
       print """  expect_equals $fields[1] (crc.$name-snake "123456789")"""

@@ -49,13 +49,13 @@ tests/negative/none2-test.toit:31:12: error: Variable can't be initialized with 
 tests/negative/none2-test.toit:39:13: error: Logical operation argument can't be 'none'
   a2 = a or unreachable
             ^~~~~~~~~~~
-tests/negative/none2-test.toit:41:6: warning: Condition always evaluates to true
+tests/negative/none2-test.toit:41:3: warning: Condition always evaluates to true
   "" ? 4 : null
-     ^
-tests/negative/none2-test.toit:42:3: warning: Condition always evaluates to true
+  ^~
+tests/negative/none2-test.toit:42:6: warning: Condition always evaluates to true
   if "":
-  ^~
-tests/negative/none2-test.toit:53:3: warning: Condition always evaluates to true
+     ^~
+tests/negative/none2-test.toit:53:6: warning: Condition always evaluates to true
   if 0:
-  ^~
-Compilation failed.
+     ^
+Compilation failed

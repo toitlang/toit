@@ -30,6 +30,13 @@ class VM;
 
 typedef LinkedFifo<Message> MessageFIFO;
 
+// Keep in sync with constants in messages.toit.
+enum message_err_t : int {
+  MESSAGE_OK = 0,
+  MESSAGE_OOM = 1,
+  MESSAGE_NO_SUCH_RECEIVER = 2,
+};
+
 enum MessageType {
   MESSAGE_INVALID = 0,
   MESSAGE_MONITOR_NOTIFY = 1,
@@ -48,6 +55,22 @@ enum {
   MESSAGING_ENCODING_MAX_NESTING      = 8,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
+
+  // This constant needs to be kept in sync with the one in lib/core/message_.toit.
+  MESSAGING_RESERVED_MESSAGE_TYPES = 64,
+};
+
+// These constants need to be kept in sync with the ones in lib/core/message_.toit.
+enum SystemMessageType {
+  SYSTEM_TERMINATED = 0,
+  SYSTEM_SPAWNED = 1,
+  SYSTEM_TRACE = 2,  // Stack traces, histograms, and profiling information.
+  SYSTEM_RPC_REQUEST = 3,
+  SYSTEM_RPC_REPLY = 4,
+  SYSTEM_RPC_CANCEL = 5,
+  SYSTEM_RPC_NOTIFY_TERMINATED = 6,
+  SYSTEM_RPC_NOTIFY_RESOURCE = 7,
+  SYSTEM_EXTERNAL_NOTIFICATION = 8,
 };
 
 class Message : public MessageFIFO::Element {
@@ -165,7 +188,12 @@ class MessageEncoder {
   uint8* take_buffer();
 
   bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
-  bool encode_bytes_external(void* data, int length, bool free_on_failure = true);
+  bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
+  // If 'is_exception' is true, encodes the string.
+  // Otherwise the data and length.
+  bool encode_rpc_reply_external(int id,
+                                 bool is_exception, const char* exception,
+                                 void* data, word length, bool free_on_failure);
 
 #ifndef TOIT_FREERTOS
   bool encode_arguments(char** argv, int argc);
@@ -198,7 +226,7 @@ class MessageEncoder {
   //   it points at.
   uint8* buffer_;
   bool take_ownership_of_buffer_ = false;
-  int cursor_ = 0;
+  word cursor_ = 0;
   int nesting_ = 0;
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
@@ -212,10 +240,10 @@ class MessageEncoder {
   unsigned externals_count_ = 0;
   ByteArray* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  bool encode_array(Array* object, int from, int to);
+  bool encode_array(Array* object, word from, word to);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
-  bool encode_list(Instance* instance, int from, int to);
+  bool encode_list(Instance* instance, word from, word to);
   bool encode_map(Instance* instance);
 
   void write_uint8(uint8 value) {
@@ -269,7 +297,8 @@ class MessageDecoder {
   void remove_disposing_finalizers();
 
   Object* decode() { ASSERT(!decoding_tison()); return decode_any(); }
-  bool decode_byte_array_external(void** data, int* length);
+  bool decode_external_data(void** data, word* length);
+  bool decode_rpc_request_external(int* id, int* name, void** data, word* length);
 
   // Encoded messages may contain pointers to external areas allocated using
   // malloc. To deallocate such messages, we have to traverse them and free
@@ -277,12 +306,12 @@ class MessageDecoder {
   static void deallocate(uint8* buffer);
 
  protected:
-  MessageDecoder(Process* process, const uint8* buffer, int size, MessageFormat format);
+  MessageDecoder(Process* process, const uint8* buffer, word size, MessageFormat format);
 
   bool decoding_tison() const { return format_ == MESSAGE_FORMAT_TISON; }
   bool overflown() const { return cursor_ > size_; }
-  int remaining() const { return size_ - cursor_; }
-  unsigned externals_count() const { return externals_count_; }
+  word remaining() const { return size_ - cursor_; }
+  uword externals_count() const { return externals_count_; }
 
   Object* decode_any();
 
@@ -302,17 +331,17 @@ class MessageDecoder {
   Process* const process_ = null;
   Program* const program_ = null;
   const uint8* const buffer_;
-  const int size_ = INT_MAX;
+  const word size_ = INT_MAX;
   const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
-  int cursor_ = 0;
+  word cursor_ = 0;
   Status status_ = DECODE_SUCCESS;
 
   unsigned externals_count_ = 0;
   HeapObject* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
   word externals_sizes_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  void register_external(HeapObject* object, int length);
+  void register_external(HeapObject* object, word length);
 
   Object* decode_string(bool inlined);
   Object* decode_array();
@@ -324,7 +353,7 @@ class MessageDecoder {
   void deallocate();
 
   uint8 read_uint8() {
-    int cursor = cursor_++;
+    word cursor = cursor_++;
     return (cursor < size_) ? buffer_[cursor] : 0;
   }
 
@@ -334,7 +363,7 @@ class MessageDecoder {
 
 class TisonDecoder : public MessageDecoder {
  public:
-  TisonDecoder(Process* process, const uint8* buffer, int length)
+  TisonDecoder(Process* process, const uint8* buffer, word length)
       : MessageDecoder(process, buffer, length, MESSAGE_FORMAT_TISON) {}
 
   ~TisonDecoder() {
@@ -367,22 +396,51 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
 
-  // Send a message to a specific pid, using Scheduler::send_message. Returns
+  // Callback for received requests.
+  virtual void on_request(int sender, int id, int name, void* data, int length) {
+    FATAL("on_request on message handler that doesn't support it");
+  }
+
+  virtual bool supports_rpc_requests() const { return false; }
+
+  // Send a message to a specified pid, using Scheduler::send_message. Returns
   // true if the data was sent or false if an error occurred. The data is
   // assumed to be a malloced message. If free_on_failure is true, the data is
   // always freed even on failures; otherwise, only messages that are
   // succesfully sent are taken over by the receiver and must not be touched or
   // deallocated by the sender.
-  bool send(int pid, int type, void* data, int length, bool free_on_failure = false);
+  bool send(int pid, int type, void* data, word length, bool free_on_failure = false) {
+    return send_(pid, type, data, length, free_on_failure) == MESSAGE_OK;
+  }
+
+  // Send a message to the specified pid, using Scheduler::send_message.
+  //
+  // If 'is_exception' is true, then only the exception is used, and 'data',
+  // 'length', and 'free_on_failure' is completely ignored.
+  // Otherwise, the data is used as reply. See 'send' for information on
+  // 'data', and 'free_on_failure'.
+  message_err_t reply_rpc(int pid, int id,
+                          bool is_exception, const char* exception,
+                          void* data, word length, bool free_on_failure);
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false
   // causes the message to be discarded.
-  virtual bool on_failed_allocation(int length) { return false; }
+  virtual bool on_failed_allocation(word length) { return false; }
 
   // Try collecting garbage. If asked to try hard, the system will preempt running
   // processes and get them to stop before garbage collecting their heaps.
   void collect_garbage(bool try_hard);
+
+ protected:
+  // Send a message to a specific pid, using Scheduler::send_message.
+  // Returns the message_err_t code. Otherwise this is the same as 'send'.
+  //
+  // The data is assumed to be a malloced message. If free_on_failure is true, the data is
+  // always freed even on failures; otherwise, only messages that are
+  // succesfully sent are taken over by the receiver and must not be touched or
+  // deallocated by the sender.
+  message_err_t send_(int pid, int type, void* data, word length, bool free_on_failure);
 
  private:
   VM* vm_;
@@ -391,6 +449,17 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Called by the scheduler.
   virtual Interpreter::Result run() override;
   virtual void set_process(Process* process) override;
+
+  message_err_t send_(int pid, int type, MessageEncoder* encoder, bool free_on_failure);
 };
+
+/// Creates and starts all external processes.
+/// This function must be called early (before Toit programs are started), and
+/// assumes that memory allocations don't fail.
+void create_and_start_external_message_handlers(VM* vm);
+
+/// Returns the pid for the given external id.
+/// If the id is unknown returns -1.
+int pid_for_external_id(String* id);
 
 }  // namespace toit

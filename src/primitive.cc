@@ -13,11 +13,13 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <string.h>
+
 #include "primitive.h"
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_err.h"
 #endif
 
@@ -59,7 +61,7 @@ Object* Primitive::allocate_large_integer(int64 value, Process* process) {
   return mark_as_error(process->program()->allocation_failed());
 }
 
-Object* Primitive::allocate_array(int length, Object* filler, Process* process) {
+Object* Primitive::allocate_array(word length, Object* filler, Process* process) {
   ASSERT(length <= Array::max_length_in_process());
   if (length > Array::max_length_in_process()) return null;
   Object* result = length == 0 ? process->program()->empty_array() :process->object_heap()->allocate_array(length, filler);
@@ -67,8 +69,8 @@ Object* Primitive::allocate_array(int length, Object* filler, Process* process) 
   return mark_as_error(process->program()->allocation_failed());
 }
 
-Object* Primitive::os_error(int error, Process* process) {
-#ifdef TOIT_FREERTOS
+Object* Primitive::os_error(int error, Process* process, const char* operation) {
+#ifdef TOIT_ESP32
   if (error == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
   const size_t BUF_SIZE = 200;
   char buffer[BUF_SIZE];
@@ -80,6 +82,14 @@ Object* Primitive::os_error(int error, Process* process) {
 #else
   char* error_text = strerror(error);
 #endif
+  if (operation != null) {
+    const char* format = "Failed to %s: %s";
+    auto length = strlen(format) + strlen(operation) + strlen(error_text) + 1;
+    char* message = static_cast<char*>(malloc(length));
+    if (message == null) FAIL(MALLOC_FAILED);
+    snprintf(message, length, format, operation, error_text);
+    error_text = message;
+  }
   String* result = process->allocate_string(error_text);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return Error::from(result);

@@ -43,4 +43,4 @@ tests/negative/underscore-test.toit:20:10: error: Can't reference '_'
 tests/negative/underscore-test.toit:41:3: error: Can't reference '_'
   _
   ^
-Compilation failed.
+Compilation failed

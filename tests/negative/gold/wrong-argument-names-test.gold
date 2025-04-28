@@ -24,7 +24,7 @@ No argument named '--foo'
   Static.no-named --foo=: it  // Has no (block) argument named foo.
          ^~~~~~~~
 tests/negative/wrong-argument-names-test.toit:140:10: error: Argument mismatch for 'foo-argument'
-The argument '--foo' was passed with block type, but must be non-block
+Argument '--foo' was passed with block type, but must be non-block
   Static.foo-argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:142:10: error: Argument mismatch for 'foo-argument'
@@ -41,15 +41,15 @@ tests/negative/wrong-argument-names-test.toit:150:10: error: Argument mismatch f
   Static.either-block-argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:152:10: error: Argument mismatch for 'foo-argument'
-The argument '--foo' was passed with block type, but must be non-block
+Argument '--foo' was passed with block type, but must be non-block
   Static.foo-argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:154:10: error: Argument mismatch for 'optional-foo-argument'
-The argument '--foo' was passed with block type, but must be non-block
+Argument '--foo' was passed with block type, but must be non-block
   Static.optional-foo-argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:156:10: error: Argument mismatch for 'foo-block-argument'
-The argument '--foo' was passed with non-block type, but must be block
+Argument '--foo' was passed with non-block type, but must be block
   Static.foo-block-argument --foo=42  // Foo should be a block.
          ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:158:10: error: Argument mismatch for 'foo-argument'
@@ -108,7 +108,7 @@ No argument named '--foo'
   a.no-named --foo=: it  // Has no (block) argument named foo.
     ^~~~~~~~
 tests/negative/wrong-argument-names-test.toit:87:5: error: Argument mismatch for 'Instance.foo-argument'
-The argument '--foo' was passed with block type, but must be non-block
+Argument '--foo' was passed with block type, but must be non-block
   a.foo-argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:89:5: error: Argument mismatch for 'Instance.foo-argument'
@@ -125,11 +125,11 @@ tests/negative/wrong-argument-names-test.toit:97:5: error: Argument mismatch for
   a.either-block-argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
     ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:99:5: error: Argument mismatch for 'Instance.foo-argument'
-The argument '--foo' was passed with block type, but must be non-block
+Argument '--foo' was passed with block type, but must be non-block
   a.foo-argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:101:5: error: Argument mismatch for 'Instance.foo-block-argument'
-The argument '--foo' was passed with non-block type, but must be block
+Argument '--foo' was passed with non-block type, but must be block
   a.foo-block-argument --foo=42  // Foo should be a block.
     ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong-argument-names-test.toit:103:5: error: Argument mismatch for 'Instance.foo-argument'
@@ -166,4 +166,4 @@ Required named argument '--fizz-buzz' not provided
 Required named argument '--foo' not provided
   a.lots-of-args
     ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

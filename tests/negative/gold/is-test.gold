@@ -15,17 +15,17 @@ tests/negative/is-test.toit:12:8: error: Invalid type
        ^
 tests/negative/is-test.toit:13:11: error: Unresolved type: 'C'
   a is pre.C
-          ^
+          ^~
 tests/negative/is-test.toit:14:8: error: Type 'none' is only allowed as return type
   a is none
        ^~~~
 tests/negative/is-test.toit:15:11: error: Invalid type
   a is foo.bar
-          ^
+          ^~~~
 tests/negative/is-test.toit:18:5: error: Invalid type
     not B
     ^~~
 tests/negative/is-test.toit:20:8: error: Invalid type
   a is (not B)
        ^
-Compilation failed.
+Compilation failed

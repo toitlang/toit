@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS)
+#if defined(TOIT_ESP32)
 
 #include <nvs_flash.h>
 
@@ -145,4 +145,4 @@ PRIMITIVE(erase) {
 
 } // namespace toit
 
-#endif
+#endif  // defined(TOIT_ESP32)

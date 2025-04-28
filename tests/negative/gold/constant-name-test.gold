@@ -10,4 +10,4 @@ tests/negative/constant-name-test.toit:11:3: warning: Final field with constant-
 tests/negative/constant-name-test.toit:12:3: warning: Final field with constant-like name: 'A-B499'. Missing 'static'?
   A-B499 ::= 43
   ^~~~~~
-Compilation failed.
+Compilation failed

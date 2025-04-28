@@ -17,6 +17,11 @@
 
 #if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
 
+#if !defined(TOIT_FREERTOS)
+#define CONFIG_TOIT_CRYPTO_EXTRA 1
+#endif
+
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
 
@@ -28,6 +33,7 @@
 #include "resource.h"
 #include "resources/tls.h"
 #include "sha1.h"
+#include "blake2s.h"
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
@@ -66,7 +72,7 @@ PRIMITIVE(sha1_clone) {
 }
 
 PRIMITIVE(sha1_add) {
-  ARGS(Sha1, sha1, Blob, data, int, from, int, to);
+  ARGS(Sha1, sha1, Blob, data, word, from, word, to);
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   sha1->add(data.address() + from, to - from);
@@ -83,6 +89,73 @@ PRIMITIVE(sha1_get) {
   sha1->resource_group()->unregister_resource(sha1);
   sha1_proxy->clear_external_address();
   return result;
+}
+
+PRIMITIVE(blake2s_start) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(SimpleResourceGroup, group, Blob, key, word, output_length);
+  if (key.length() > Blake2s::BLOCK_SIZE) FAIL(INVALID_ARGUMENT);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* blake = _new Blake2s(group, key.length(), output_length);
+  if (!blake) FAIL(MALLOC_FAILED);
+  if (key.length() > 0) {
+    uint8 padded_key[Blake2s::BLOCK_SIZE];
+    memset(padded_key, 0, Blake2s::BLOCK_SIZE);
+    memcpy(padded_key, key.address(), key.length());
+    blake->add(padded_key, Blake2s::BLOCK_SIZE);
+  }
+  proxy->set_external_address(blake);
+  return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_clone) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* child = _new Blake2s(static_cast<SimpleResourceGroup*>(parent->resource_group()), 0, 0);
+  if (!child) FAIL(MALLOC_FAILED);
+  parent->clone(child);
+  proxy->set_external_address(child);
+  return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_add) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, blake, Blob, data, word, from, word, to);
+
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  blake->add(data.address() + from, to - from);
+  return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_get) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, blake, word, size);
+  if (!(1 <= size && size <= Blake2s::MAX_HASH_SIZE)) FAIL(INVALID_ARGUMENT);
+  ByteArray* result = process->allocate_byte_array(size);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  uint8 hash[Blake2s::MAX_HASH_SIZE];
+  blake->get_hash(hash);
+  memcpy(ByteArray::Bytes(result).address(), hash, size);
+  blake->resource_group()->unregister_resource(blake);
+  blake_proxy->clear_external_address();
+  return result;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(sha_start) {
@@ -110,7 +183,7 @@ PRIMITIVE(sha_clone) {
 
 
 PRIMITIVE(sha_add) {
-  ARGS(Sha, sha, Blob, data, int, from, int, to);
+  ARGS(Sha, sha, Blob, data, word, from, word, to);
   if (!sha) FAIL(INVALID_ARGUMENT);
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   sha->add(data.address() + from, to - from);
@@ -129,7 +202,8 @@ PRIMITIVE(sha_get) {
 }
 
 PRIMITIVE(siphash_start) {
-  ARGS(SimpleResourceGroup, group, Blob, key, int, output_length, int, c_rounds, int, d_rounds);
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(SimpleResourceGroup, group, Blob, key, word, output_length, int, c_rounds, int, d_rounds);
   if (output_length != 8 && output_length != 16) FAIL(INVALID_ARGUMENT);
   if (key.length() < 16) FAIL(INVALID_ARGUMENT);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -139,9 +213,13 @@ PRIMITIVE(siphash_start) {
   if (!siphash) FAIL(MALLOC_FAILED);
   proxy->set_external_address(siphash);
   return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_clone) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Siphash, parent);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -150,17 +228,25 @@ PRIMITIVE(siphash_clone) {
   if (!child) FAIL(MALLOC_FAILED);
   proxy->set_external_address(child);
   return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_add) {
-  ARGS(Siphash, siphash, Blob, data, int, from, int, to);
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Siphash, siphash, Blob, data, word, from, word, to);
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   siphash->add(data.address() + from, to - from);
   return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_get) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Siphash, siphash);
   ByteArray* result = process->allocate_byte_array(siphash->output_length());
   if (result == null) FAIL(ALLOCATION_FAILED);
@@ -168,6 +254,9 @@ PRIMITIVE(siphash_get) {
   siphash->resource_group()->unregister_resource(siphash);
   siphash_proxy->clear_external_address();
   return result;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 /**
@@ -200,9 +289,9 @@ class AeadContext : public SimpleResource {
 
   virtual ~AeadContext();
 
-  static const int NONCE_SIZE = 12;
-  static const int BLOCK_SIZE = 16;
-  static const int TAG_SIZE = 16;
+  static const word NONCE_SIZE = 12;
+  static const word BLOCK_SIZE = 16;
+  static const word TAG_SIZE = 16;
 
   inline mbedtls_chachapoly_context* chachapoly_context() { return &chachapoly_context_; }
   inline mbedtls_gcm_context* gcm_context() { return &gcm_context_; }
@@ -210,11 +299,11 @@ class AeadContext : public SimpleResource {
   inline bool is_encrypt() const { return encrypt_; }
   inline bool currently_generating_message() const { return currently_generating_message_; }
   inline void set_currently_generating_message() { currently_generating_message_ = true; }
-  inline void increment_length(int by) { length_ += by; }
+  inline void increment_length(word by) { length_ += by; }
   inline uint8* buffered_data() { return buffered_data_; }
-  inline int number_of_buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
-  int update(int size, const uint8* input_data, uint8* output_data, uword* output_length = null);
-  int finish(uint8* output_data, int size);
+  inline word number_of_buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
+  word update(word size, const uint8* input_data, uint8* output_data, uword* output_length = null);
+  word finish(uint8* output_data, word size);
 
  private:
   uint8 buffered_data_[BLOCK_SIZE];
@@ -228,7 +317,7 @@ class AeadContext : public SimpleResource {
   };
 };
 
-int AeadContext::update(int size, const uint8* input_data, uint8* output_data, uword* output_length) {
+word AeadContext::update(word size, const uint8* input_data, uint8* output_data, uword* output_length) {
   uword dummy;
   if (output_length == null) {
     ASSERT(size == Utils::round_down(size, BLOCK_SIZE));
@@ -253,7 +342,7 @@ int AeadContext::update(int size, const uint8* input_data, uint8* output_data, u
   }
 }
 
-int AeadContext::finish(uint8* output_data, int size) {
+word AeadContext::finish(uint8* output_data, word size) {
   switch (cipher_id_) {
     case MBEDTLS_CIPHER_ID_AES:
 #if MBEDTLS_VERSION_MAJOR >= 3
@@ -347,7 +436,7 @@ PRIMITIVE(aead_init) {
     group->unregister_resource(aead_context);
     return tls_error(null, process, err);
   }
-  
+
   proxy->set_external_address(aead_context);
   return proxy;
 }
@@ -440,13 +529,13 @@ PRIMITIVE(aead_add) {
   ARGS(AeadContext, context, Blob, in, MutableBlob, out);
   if (!context->currently_generating_message()) FAIL(INVALID_ARGUMENT);
 
-  static const int BLOCK_SIZE = AeadContext::BLOCK_SIZE;
+  static const word BLOCK_SIZE = AeadContext::BLOCK_SIZE;
 
   uint8*       out_address = out.address();
   const uint8* in_address  = in.address();
-  int          in_length   = in.length();
+  word         in_length   = in.length();
 
-  int output_length = Utils::round_down(
+  word output_length = Utils::round_down(
       context->number_of_buffered_bytes() + in_length,
       BLOCK_SIZE);
   if (output_length > out.length()) {
@@ -454,14 +543,14 @@ PRIMITIVE(aead_add) {
     return process->null_object();
   }
 
-  int buffered = context->number_of_buffered_bytes();
+  word buffered = context->number_of_buffered_bytes();
   // We cache buffered above because the next line changes the result of
   // context->number_of_buffered_bytes().
   context->increment_length(in.length());
 
   if (buffered != 0) {
     // We have data buffered.  Fill the block and crypt it separately.
-    const int to_copy = Utils::min(
+    const word to_copy = Utils::min(
         BLOCK_SIZE - buffered,
         in_length);
     memcpy(context->buffered_data() + buffered, in_address, to_copy);
@@ -474,7 +563,7 @@ PRIMITIVE(aead_add) {
     }
   }
 
-  int to_process = Utils::round_down(in_length, BLOCK_SIZE);
+  word to_process = Utils::round_down(in_length, BLOCK_SIZE);
   ASSERT(out_address + to_process <= out.address() + out.length());
 
   context->update(to_process, in_address, out_address);
@@ -502,7 +591,7 @@ PRIMITIVE(aead_finish) {
   ARGS(AeadContext, context);
   if (!context->is_encrypt()) FAIL(INVALID_ARGUMENT);
   if (!context->currently_generating_message()) FAIL(INVALID_ARGUMENT);
-  int rest = context->number_of_buffered_bytes();
+  word rest = context->number_of_buffered_bytes();
   ByteArray* result = process->allocate_byte_array(rest + AeadContext::TAG_SIZE);
   if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes result_bytes(result);
@@ -537,14 +626,14 @@ PRIMITIVE(aead_verify) {
   ASSERT(rest_output < AeadContext::BLOCK_SIZE);
   ASSERT(rest_output <= static_cast<uword>(rest.length()));
   uint8 plaintext_and_tag[AeadContext::BLOCK_SIZE + AeadContext::TAG_SIZE];
-  int plaintext_from_finish = rest.length() - rest_output;
+  word plaintext_from_finish = rest.length() - rest_output;
   ok = context->finish(plaintext_and_tag, AeadContext::TAG_SIZE + plaintext_from_finish);
   if (ok != 0) {
     return tls_error(null, process, ok);
   }
   uint8 zero = 0;
   // Constant time calculation.
-  for (int i = 0; i < AeadContext::TAG_SIZE; i++) {
+  for (word i = 0; i < AeadContext::TAG_SIZE; i++) {
     zero |= plaintext_and_tag[plaintext_from_finish + i] ^ verification_tag.address()[i];
   }
   if (zero == 0) {

@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE-ENDIAN
+import io show LITTLE-ENDIAN
 
 decode assets/ByteArray=assets_ -> Map:
   result := {:}

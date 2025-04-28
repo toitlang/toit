@@ -22,4 +22,4 @@ tests/negative/member-name-test.toit:6:11: error: Unresolved identifier: 'unreso
 tests/negative/member-name-test.toit:9:12: error: Unresolved identifier: 'unresolved'
   bar.= y: unresolved
            ^~~~~~~~~~
-Compilation failed.
+Compilation failed

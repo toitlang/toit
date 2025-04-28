@@ -7,4 +7,4 @@ foo x=499 y:
 tests/negative/default-values-test.toit:7:14: error: Unresolved identifier: 'unresolved'
   return x + unresolved
              ^~~~~~~~~~
-Compilation failed.
+Compilation failed

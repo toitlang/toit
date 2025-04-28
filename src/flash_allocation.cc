@@ -44,7 +44,10 @@ uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
   // is useful if the allocation contains relocated pointers to parts
   // of itself. In that case, those pointers are only correct if the
   // allocation is always access from the same virtual memory address.
-  uint32 initial = Utils::crc32(FORMAT_MARKER, reinterpret_cast<uint8*>(&memory), sizeof(memory));
+  // We don't need to do that for data as it doesn't have pointers in it.
+  uint32 initial = (type_ == FLASH_ALLOCATION_TYPE_REGION)
+      ? FORMAT_MARKER
+      : Utils::crc32(FORMAT_MARKER, reinterpret_cast<uint8*>(&memory), sizeof(memory));
   // The rest of the header is also covered. This gives a much
   // stronger header validation check and reduces the risk of
   // accidentally treating garbage in the flash as allocations.
@@ -54,7 +57,7 @@ uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
 FlashAllocation::Header::Header(const void* memory,
                                 uint8 type,
                                 const uint8* id,
-                                int size,
+                                word size,
                                 const uint8* metadata) {
   marker_ = FORMAT_MARKER;
   initialize(id_, id, sizeof(id_));
@@ -68,6 +71,12 @@ FlashAllocation::Header::Header(const void* memory,
     memcpy(uuid_, EmbeddedData::uuid(), sizeof(uuid_));
   }
   checksum_ = compute_checksum(memory);
+}
+
+word FlashAllocation::size() const {
+  word size = size_no_assets();
+  if (is_program()) size += program_assets_size(null, null);
+  return size;
 }
 
 bool FlashAllocation::Header::is_valid(bool embedded) const {
@@ -86,7 +95,7 @@ bool FlashAllocation::Header::is_valid(bool embedded) const {
   return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
 }
 
-bool FlashAllocation::commit(const void* memory, int size, const Header* header) {
+bool FlashAllocation::commit(const void* memory, word size, const Header* header) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
   uint32 offset = FlashRegistry::offset(memory);
   bool success = FlashRegistry::write_chunk(header, offset, sizeof(Header));
@@ -94,10 +103,10 @@ bool FlashAllocation::commit(const void* memory, int size, const Header* header)
   return success && static_cast<const FlashAllocation*>(memory)->is_valid();
 }
 
-int FlashAllocation::program_assets_size(uint8** bytes, int* length) const {
+int FlashAllocation::program_assets_size(uint8** bytes, word* length) const {
   if (!program_has_assets()) return 0;
   uword allocation_address = reinterpret_cast<uword>(this);
-  uword assets_address = allocation_address + size();
+  uword assets_address = allocation_address + size_no_assets();
   int assets_length = *reinterpret_cast<uint32*>(assets_address);
   if (bytes) *bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
   if (length) *length = assets_length;

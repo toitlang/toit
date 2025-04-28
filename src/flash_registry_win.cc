@@ -22,7 +22,7 @@
 
 namespace toit {
 
-static const int ALLOCATION_SIZE = 2 * MB;
+static const word ALLOCATION_SIZE = 64 * MB;
 
 // An aligned (FLASH_BASED_SIZE) view into the allocations_malloced.
 uint8* FlashRegistry::allocations_memory_ = null;
@@ -52,17 +52,17 @@ int FlashRegistry::allocations_size() {
   return ALLOCATION_SIZE;
 }
 
-int FlashRegistry::erase_chunk(int offset, int size) {
+int FlashRegistry::erase_chunk(word offset, word size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
   memset(region(offset, size), 0xff, size);
   return size;
 }
 
-bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
+bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   uint8* destination = region(offset, size);
   const uint8* source = static_cast<const uint8*>(chunk);
-  for (int i = 0; i < size; i++) destination[i] &= source[i];
+  for (word i = 0; i < size; i++) destination[i] &= source[i];
   return true;
 }
 

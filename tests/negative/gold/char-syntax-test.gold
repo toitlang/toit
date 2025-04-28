@@ -10,4 +10,4 @@ tests/negative/char-syntax-test.toit:8:7: error: Invalid character '\u!'
 tests/negative/char-syntax-test.toit:9:7: error: Invalid character '\u12345'
   c = '\u12345'
       ^~~~~~~~~
-Compilation failed.
+Compilation failed

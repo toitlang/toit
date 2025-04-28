@@ -2,33 +2,33 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ..tests.syntax
-import .syntax show show-foo2
-import bytes
+import ..tests.syntax-companion
+import .syntax-companion show show-foo2
+import io
 
-import ..tests.syntax show global-x global-y
-import .syntax show global-x global-y
-import bytes show Buffer
+import ..tests.syntax-companion show global-x global-y
+import .syntax-companion show global-x global-y
+import io show Buffer
 
-import ..tests.syntax show
+import ..tests.syntax-companion show
   global-x
   global-y
-import .syntax
+import .syntax-companion
   show
     global-x
     global-y
 import
-  bytes
+  io
   show
   Buffer
-  BufferConsumer
+  InMixin
 
-import ..tests.syntax show *
-import .syntax show *
+import ..tests.syntax-companion show *
+import .syntax-companion show *
 import bytes show *
 
-import ..tests.syntax as imp1
-import .syntax as imp2
+import ..tests.syntax-companion as imp1
+import .syntax-companion as imp2
 import bytes as imp3
 
 import core as core
@@ -36,6 +36,8 @@ import core as core
 export global-x
 export global-x global-y
 export *
+
+import .syntax-companion as as-prefix
 
 import-foo:
 show-foo:
@@ -107,16 +109,16 @@ global-fun6 x / any y/Type?: while true: some-fun "2" /*comment*/ null true
 global-fun7 -> none:
   while true: some-fun "2" /*comment*/ null true
 
-global-fun8 x/bytes.Buffer -> none:
+global-fun8 x/io.Buffer -> none:
   while true: some-fun "2" /*comment*/ null true
 
 global-fun9 -> none
-    x / bytes.Buffer?
+    x / io.Buffer?
     y/any:
   while true: some-fun "2" /*comment*/ null true
 
 global-fun9b -> none
-    x /bytes.Buffer? /*comment*/
+    x /io.Buffer? /*comment*/
     y /any:
   while true: some-fun "2" /*comment*/ null true
 
@@ -150,6 +152,17 @@ global-setter= x:
   499
 global-setter2= x -> none:
   42
+
+fun
+    --some
+    --args
+    on
+    multiple
+    lines
+:
+  print "with colon at same level as 'fun'"
+
+class X-Of:
 
 abstract class Type:
   foo := 499
@@ -403,6 +416,9 @@ main:
   "string with\\ \" escapes"
 
   assert-x := 499
+  assert-x--
   as-something := assert-x + 42
   null-foo := as-something + assert-x
   assert-x += null-foo
+
+  x-of := X-Of

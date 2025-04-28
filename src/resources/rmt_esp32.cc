@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/rmt.h>
 #include <driver/gpio.h>
@@ -31,16 +31,73 @@ namespace toit {
 
 const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
+// Copied from rmt_legacy.c.
+#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP-SOC_RMT_TX_CANDIDATES_PER_GROUP)
+#define RMT_TX_CHANNEL_ENCODING_END   (SOC_RMT_TX_CANDIDATES_PER_GROUP-1)
+
+// Copied from rmt_legacy.c.
+#define RMT_IS_RX_CHANNEL(channel) ((channel) >= RMT_RX_CHANNEL_ENCODING_START)
+#define RMT_IS_TX_CHANNEL(channel) ((channel) <= RMT_TX_CHANNEL_ENCODING_END)
+
 #ifndef SOC_RMT_CHANNELS_PER_GROUP
 #error "SOC_RMT_CHANNELS_PER_GROUP not defined"
 #endif
 
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
-    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
+#if SOC_RMT_CHANNELS_PER_GROUP == SOC_RMT_TX_CANDIDATES_PER_GROUP
+// All channels are TX channels. We assume that they also are RX channels.
+// This is the setup on the ESP32 and ESP32S2 chips.
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1
+#if SOC_RMT_CHANNELS_PER_GROUP > 2
+    , RMT_CHANNEL_2, RMT_CHANNEL_3
 #if SOC_RMT_CHANNELS_PER_GROUP > 4
     , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 #endif
+#endif
 );
+
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
+
+#else
+// Some channels are TX, some are RX.
+// This is the configuration on the ESP32C3, ESP32H2, and ESP32S3 chips.
+// The TX channels are always before the RX channels.
+
+#if SOC_RMT_RX_CANDIDATES_PER_GROUP != SOC_RMT_TX_CANDIDATES_PER_GROUP
+#error "Expected same number of RX as TX channels"
+#endif
+
+#if SOC_RMT_TX_CANDIDATES_PER_GROUP == 2
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1
+);
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+    RMT_CHANNEL_2, RMT_CHANNEL_3
+);
+#elif SOC_RMT_TX_CANDIDATES_PER_GROUP == 4
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
+);
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+    RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
+);
+#else
+error "Unexpected amount of RMT channels"
+#endif
+
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_tx_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_rx_channels_;
+
+#endif
+
+static void put_channel_into_pool(rmt_channel_t channel) {
+  if (RMT_IS_TX_CHANNEL(channel)) {
+    rmt_tx_channels->put(channel);
+  } else {
+    rmt_rx_channels->put(channel);
+  }
+}
 
 class RmtResource : public Resource {
  public:
@@ -71,7 +128,7 @@ class RmtResourceGroup : public ResourceGroup {
     rmt_get_channel_status(&channel_status);
     if (channel_status.status[channel] != RMT_CHANNEL_UNINIT) rmt_driver_uninstall(channel);
     for (int i = 0; i < rmt_resource->memory_block_count(); i++) {
-      rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
+      put_channel_into_pool(static_cast<rmt_channel_t>(channel + i));
     }
   }
 };
@@ -90,25 +147,39 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(channel_new) {
-  ARGS(RmtResourceGroup, resource_group, int, memory_block_count, int, channel_num)
+  // The direction is:
+  // * 0: no direction given.
+  // * -1: input
+  // * +1: output
+  ARGS(RmtResourceGroup, resource_group, int, memory_block_count, int, channel_num, int, direction)
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
   if (memory_block_count <= 0) FAIL(INVALID_ARGUMENT);
 
+  // Output by default (unless a channel_num was given).
+  if (channel_num != -1 && direction == 0) {
+    direction = RMT_IS_RX_CHANNEL(channel_num) ? -1 : 1;
+  } else if (direction == 0) {
+    // Output by default.
+    direction = 1;
+  }
+
+  auto channel_pool = direction == -1 ? rmt_rx_channels : rmt_tx_channels;
+
   rmt_channel_t channel = kInvalidChannel;
 
   if (channel_num == -1 && memory_block_count == 1) {
-    channel = rmt_channels.any();
+    channel = channel_pool->any();
   } else if (memory_block_count == 1) {
     channel = static_cast<rmt_channel_t>(channel_num);
-    if (!rmt_channels.take(channel)) channel = kInvalidChannel;
+    if (!channel_pool->take(channel)) channel = kInvalidChannel;
   } else {
     // Try to find adjacent channels that are still free.
     int current_start_id = (channel_num == -1) ? 0 : channel_num;
     while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_PER_GROUP) {
       int taken = 0;
       for (int i = 0; i < memory_block_count; i++) {
-        bool succeeded = rmt_channels.take(static_cast<rmt_channel_t>(current_start_id + i));
+        bool succeeded = channel_pool->take(static_cast<rmt_channel_t>(current_start_id + i));
         if (!succeeded) break;
         taken++;
       }
@@ -120,7 +191,7 @@ PRIMITIVE(channel_new) {
         // Release all the channels we have reserved, and then try at a later
         // position.
         for (int i = 0; i < taken; i++) {
-          rmt_channels.put(static_cast<rmt_channel_t>(current_start_id + i));
+          channel_pool->put(static_cast<rmt_channel_t>(current_start_id + i));
         }
         if (channel_num == -1) {
           // Continue searching after the current failure.
@@ -139,7 +210,7 @@ PRIMITIVE(channel_new) {
     resource = _new RmtResource(resource_group, channel, memory_block_count);
     if (!resource) {
       for (int i = 0; i < memory_block_count; i++) {
-        rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
+        channel_pool->put(static_cast<rmt_channel_t>(channel + i));
       }
       FAIL(MALLOC_FAILED);
     }
@@ -172,7 +243,7 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
   err = rmt_config(config);
   if (ESP_OK != err) return err;
 
-  err = rmt_set_source_clk(channel_num, RMT_BASECLK_APB);
+  err = rmt_set_source_clk(channel_num, RMT_BASECLK_DEFAULT);
   if (ESP_OK != err) return err;
 
   err = rmt_driver_install(channel_num, rx_buffer_size, 0);
@@ -259,7 +330,7 @@ PRIMITIVE(config_bidirectional_pin) {
   // Enable the pin. "w1ts" = "write 1 to set".
   // TODO(florian): not completely sure why this is needed, but without it
   // it won't work.
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
   if (pin >= MAX_GPIO_NUM) FAIL(INVALID_ARGUMENT);
   GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
 #else
@@ -404,4 +475,4 @@ PRIMITIVE(stop_receive) {
 }
 
 } // namespace toit
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

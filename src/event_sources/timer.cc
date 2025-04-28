@@ -108,7 +108,7 @@ void TimerEventSource::entry() {
     }
 
     bool time_is_accurate = true;
-    int64 time = OS::get_monotonic_time();
+    int64 time = OS::get_system_time();  // Must match Time.monotonic-us.
     do {
       Timer* next = timers_.first();
       int64 delay_us = next->timeout() - time;

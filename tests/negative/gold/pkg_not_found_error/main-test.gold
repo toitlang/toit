@@ -10,4 +10,4 @@ import error
 tests/negative/pkg_not_found_error/main-test.toit:8:15: error: Unresolved identifier: 'foo'
   print error.foo
               ^~~
-Compilation failed.
+Compilation failed

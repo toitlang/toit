@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import .pin
+import .gpio
 
 /**
 Pulse-Width Modulation (PWM) support.
@@ -23,13 +23,13 @@ main:
   // By default the duty factor is 0.
   channel := generator.start led
 
-  duty_percent := 0
+  duty-percent := 0
   step := 1
   while true:
     // Update the duty factor.
-    channel.set_duty_factor duty_percent/100.0
-    duty_percent += step
-    if duty_percent == 0 or duty_percent == 100:
+    channel.set-duty-factor duty-percent/100.0
+    duty-percent += step
+    if duty-percent == 0 or duty-percent == 100:
       step = -step
     sleep --ms=10
 ```
@@ -49,17 +49,17 @@ main:
 
   // Generally, the acceptable duty-factor range of servos is 0.025 to 0.125.
   // Therefore start the pin with 0.075.
-  channel := generator.start servo --duty_factor=0.075
+  channel := generator.start servo --duty-factor=0.075
   sleep --ms=1000
 
   // Max angle.
   print "max"
-  channel.set_duty_factor 0.125
+  channel.set-duty-factor 0.125
   sleep --ms=1500
 
   // Min angle.
   print "min"
-  channel.set_duty_factor 0.025
+  channel.set-duty-factor 0.025
   sleep --ms=1500
 ```
 */

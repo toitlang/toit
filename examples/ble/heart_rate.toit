@@ -28,14 +28,14 @@ main:
       BleUuid #[0x63, 0x4b, 0x3c, 0x6e, 0x1c, 0x41, 0x40, 0x85,
                 0xa9, 0x7c, 0xdd, 0x68, 0x7f, 0xa1, 0xe5, 0x0d]
 
-  service.deploy
+  peripheral.deploy
 
   connection-mode := platform == system.PLATFORM-MACOS
-    ? BLE-CONNECT-MODE-NONE
-    : BLE-CONNECT-MODE-UNDIRECTIONAL
+      ? BLE-CONNECT-MODE-NONE
+      : BLE-CONNECT-MODE-UNDIRECTIONAL
   peripheral.start-advertise
-    AdvertisementData --name="Toit heart rate demo"
-    --connection-mode=connection-mode
+      --connection-mode=connection-mode
+      AdvertisementData --name="Toit heart rate demo"
 
   task::
     simulated-heart-rate := 60

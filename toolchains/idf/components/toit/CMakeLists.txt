@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.11)
 set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 
 # Register without sources, this will create an INTERFACE lib and we can then specify link options later
-idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src"
+idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src" "${TOIT_BASE_DIR}/include"
         REQUIRES "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_netif" "esp_rom" "nvs_flash" "spi_flash" "mbedtls" "bt" "app_update" "ulp" "fatfs")
 
 cmake_policy(SET CMP0079 NEW)
@@ -120,7 +120,6 @@ function(toit_postprocess)
                     "--firmware.bin=${EXECUTABLE_NAME}.bin"
                     "--firmware.elf=${EXECUTABLE_NAME}.elf"
                     "--partitions.bin=partition_table/partition-table.bin"
-                    "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
                     "--otadata.bin=ota_data_initial.bin"
                     "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"

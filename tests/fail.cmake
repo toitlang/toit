@@ -28,12 +28,22 @@ list(APPEND TOIT_FLAKY_TESTS
   tests/tls-client-cert-test.toit
   tests/tls-global-cert-test-slow.toit
   tests/tls-test-slow.toit
+  tests/tls-ubuntu-test.toit
+  tests/tls-global-cert-simple-test.toit
+  tests/tls-simple-cert.toit
+  tests/tls-resume-session-test.toit
+)
+
+list(APPEND TOIT_OPTIMIZATION_SKIP_TESTS
+  # The following tests only work with standard optimizations.
+  tests/bytes-allocated-test.toit
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/time-test.toit # https://github.com/toitlang/toit/issues/1369
     tests/zlib-test.toit
+    tests/zlib-deprecated-test.toit
     tests/cow-read-only-test-compiler.toit
     tests/uart-test.toit
   )

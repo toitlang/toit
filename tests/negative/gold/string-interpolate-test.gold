@@ -10,4 +10,4 @@ tests/negative/string-interpolate-test.toit:6:16: error: Can't have a block as i
 tests/negative/string-interpolate-test.toit:10:7: error: Class 'string' does not have any method 'foo'
   str.foo
       ^~~
-Compilation failed.
+Compilation failed

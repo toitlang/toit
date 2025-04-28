@@ -1,4 +1,4 @@
 tests/negative/uninitialized-final-global-test.toit:5:1: error: Global final variables can't be initialized with '?'
 global ::= ?
 ^~~~~~
-Compilation failed.
+Compilation failed

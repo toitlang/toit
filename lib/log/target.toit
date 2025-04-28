@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import bytes
+import io
 import system.api.log show LogService LogServiceClient
 
 import .level
@@ -25,7 +25,7 @@ Standard log service used when the system log service cannot
   be resolved.
 */
 class StandardLogService_ implements LogService:
-  buffer_/bytes.Buffer ::= bytes.Buffer.with-initial-size 64
+  buffer_/io.Buffer ::= io.Buffer.with-capacity 64
 
   log level/int message/string names/List? keys/List? values/List? -> none:
     buffer ::= buffer_

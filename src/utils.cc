@@ -295,7 +295,7 @@ static const uint32 HIGH_BIT_OF_EACH_BYTE = 0x80808080;
 
 #endif
 
-bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
+bool Utils::is_valid_utf_8(const uint8* buffer, word length) {
   // Align.
   while (length != 0 && !is_aligned(buffer, WORD_SIZE) && (buffer[0] & 0xff) <= MAX_ASCII) {
     length--;
@@ -312,7 +312,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   // Thanks to Per Vognsen.  Explanation at
   // https://gist.github.com/pervognsen/218ea17743e1442e59bb60d29b1aa725
   uint64 state = UTF_BASE;
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     unsigned char c = buffer[i];
     state = UTF_8_STATE_TABLE[c] >> (state & UTF_MASK);  // The '&' is optimized out.
   }
@@ -320,7 +320,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
 #else
   int32 state = UTF_BASE;
   int allowed_nibbles = START;
-  for (int i = 0; i < length; i++) {
+  for (word i = 0; i < length; i++) {
     unsigned char c = buffer[i];
     int high_nibble = c >> 4;
     if ((allowed_nibbles & (1 << high_nibble)) == 0) return false;
@@ -486,7 +486,7 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
       bool in_new_environment = false;
       // Environment variable key  from p to p + utf_16_key_value_length.
       // Environment variable name from p to p + utf_16_key_length.
-      for (int i = 0; i < environment->length(); i += 2) {
+      for (word i = 0; i < environment->length(); i += 2) {
         Blob key;
         environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
         if (utf_8_equals_utf_16(key.address(), key.length(), p, utf_16_key_length)) {
@@ -505,7 +505,7 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
     }
     // Now that we have inherited the environment variables that were not
     // mentioned in the new environment map, add the new variables.
-    for (int i = 0; i < environment->length(); i += 2) {
+    for (word i = 0; i < environment->length(); i += 2) {
       Blob key;
       if (environment->at(i + 1) != process->null_object()) {
         Blob key, value;
@@ -643,7 +643,7 @@ void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
 void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
   ASSERT((bytes & 3) == 0);
   ASSERT(((uintptr_t)src & 3) == 0);
-#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
   uint32_t tmp;
   __asm__ __volatile__(
     "srai %3, %3, 2   \n"  // Divide bytes by 4.
@@ -659,8 +659,10 @@ void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
     : "r" (dst), "r" (src), "r" (bytes)
     // Clobbers.
     : );
-#else
+#elif (!defined(TOIT_ESP32)) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32S2)
   memcpy(dst, src, bytes);
+#else
+  #error "Unknown target"
 #endif
 }
 

@@ -2,12 +2,16 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..io as io
+
 /**
 A number.
 This is an abstract super class for $int and $float.
 See also https://docs.toit.io/language/math.
 */
 abstract class num implements Comparable:
+  static PARSE-ERR_ ::= "NUMBER_PARSING_ERROR"
+
   equals-from-float_ other/float -> bool: return false
   equals-from-small-integer_ other/int -> bool: return false
   equals-from-large-integer_ other/int -> bool: return false
@@ -21,14 +25,14 @@ abstract class num implements Comparable:
 
   # Examples
   ```
-  42.to_int  // => 42
+  42.to-int  // => 42
 
-  (100.0).to_int   // => 100
-  (-1.123).to_int  // => -1
+  (100.0).to-int   // => 100
+  (-1.123).to-int  // => -1
 
-  float.MAX_FINITE.to_int  // Error.
-  float.INFINITY.to_int    // Error.
-  float.NAN.to_int         // Error.
+  float.MAX-FINITE.to-int  // Error.
+  float.INFINITY.to-int    // Error.
+  float.NAN.to-int         // Error.
   ```
   */
   abstract to-int -> int
@@ -136,12 +140,12 @@ abstract class num implements Comparable:
   1 < float.NAN          // => false
   float.NAN < 1.0        // => false
 
-  float.MAX_FINITE < float.INFINITY  // => true
+  float.MAX-FINITE < float.INFINITY  // => true
   float.NAN < float.INFINITY  // => false
   float.INFINITY < float.NAN  // => false
   ```
   */
-  abstract operator <  other/num -> bool
+  abstract operator < other/num -> bool
 
   /**
   Whether this number is less than or equal to the $other.
@@ -170,7 +174,7 @@ abstract class num implements Comparable:
   1 <= float.NAN          // => false
   float.NAN <= 1.0        // => false
 
-  float.MAX_FINITE <= float.INFINITY  // => true
+  float.MAX-FINITE <= float.INFINITY  // => true
   float.NAN <= float.INFINITY  // => false
   float.INFINITY <= float.NAN  // => false
   ```
@@ -204,12 +208,12 @@ abstract class num implements Comparable:
   1 > float.NAN          // => false
   float.NAN > 1.0        // => false
 
-  float.MAX_FINITE > float.INFINITY  // => false
+  float.MAX-FINITE > float.INFINITY  // => false
   float.NAN > float.INFINITY  // => false
   float.INFINITY > float.NAN  // => false
   ```
   */
-  abstract operator >  other/num -> bool
+  abstract operator > other/num -> bool
 
   /**
   Whether this number is greater than or equal to the $other.
@@ -238,7 +242,7 @@ abstract class num implements Comparable:
   1 >= float.NAN          // => false
   float.NAN >= 1.0        // => false
 
-  float.MAX_FINITE >= float.INFINITY  // => false
+  float.MAX-FINITE >= float.INFINITY  // => false
   float.NAN >= float.INFINITY  // => false
   float.INFINITY >= float.NAN  // => false
   ```
@@ -274,7 +278,7 @@ abstract class num implements Comparable:
   float.INFINITY + -float.INFINITY    // => float.NAN
   ```
   */
-  abstract operator +  other/num
+  abstract operator + other/num
 
   /**
   Subtracts this number from the $other.
@@ -303,7 +307,7 @@ abstract class num implements Comparable:
   float.INFINITY - float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator -  other/num
+  abstract operator - other/num
 
   /**
   Multiplies this number with the $other.
@@ -338,7 +342,7 @@ abstract class num implements Comparable:
   float.INFINITY * -float.INFINITY  // => -float.INFINITY
   ```
   */
-  abstract operator *  other/num
+  abstract operator * other/num
 
   /**
   Divides this number by the $other.
@@ -379,7 +383,7 @@ abstract class num implements Comparable:
   float.INFINITY / float.INFINITY  // => float.NAN
   ```
   */
-  abstract operator /  other/num
+  abstract operator / other/num
 
   /**
   Takes this number modulo the $other.
@@ -414,7 +418,7 @@ abstract class num implements Comparable:
   float.NAN % float.NAN  // => float.NAN
   ```
   */
-  abstract operator %  other/num
+  abstract operator % other/num
 
   /**
   Compares this number to the $other.
@@ -433,21 +437,21 @@ abstract class num implements Comparable:
 
 
   Contrary to `<` this comparison handles `0.0` and `-0.0`, such that
-    `0.0.compare_to -0.0` returns 1.
+    `0.0.compare-to -0.0` returns 1.
 
   # Examples
   ```
-  2.compare_to 1  // => 1
-  1.compare_to 1  // => 0
-  1.compare_to 2  // => -1
+  2.compare-to 1  // => 1
+  1.compare-to 1  // => 0
+  1.compare-to 2  // => -1
 
-  (-0.0).compare_to 0.0 // => -1
+  (-0.0).compare-to 0.0 // => -1
 
-  2.compare_to float.NAN // => -1
+  2.compare-to float.NAN // => -1
 
-  float.INFINITY.compare_to 3               // => 1
-  float.INFINITY.compare_to float.INFINITY  // => 0
-  3.compare_to float.INFINITY               // => -1
+  float.INFINITY.compare-to 3               // => 1
+  float.INFINITY.compare-to float.INFINITY  // => 0
+  3.compare-to float.INFINITY               // => -1
   ```
   */
   compare-to other/num -> int:
@@ -482,10 +486,10 @@ abstract class num implements Comparable:
 
   # Examples
   ```
-  2.to_float   // => 2.0
-  2.1.to_float // => 2.1
+  2.to-float   // => 2.0
+  2.1.to-float // => 2.1
 
-  9223372036854775807.to_float  // => 9223372036854775808.0
+  9223372036854775807.to-float  // => 9223372036854775808.0
 
   ```
   */
@@ -508,9 +512,9 @@ abstract class num implements Comparable:
 
     constructor .seconds .nanoseconds:
 
-    compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if_equal=:
-        nanoseconds.compare_to other.nanoseconds
+    compare-to other/MyTime -> int:
+      return seconds.compare-to other.seconds --if-equal=:
+        nanoseconds.compare-to other.nanoseconds
   ```
   */
   compare-to other/num [--if-equal] -> int:
@@ -532,6 +536,26 @@ abstract class num implements Comparable:
   ```
   */
   abstract sqrt -> float
+
+  /**
+  Parses the given $data as a number.
+
+  Tries to parse the $data as an integer first, and if that fails, as a float.
+
+  See $int.parse and $float.parse.
+  */
+  static parse data/io.Data -> num:
+    return parse data --on-error=: throw it
+
+  /**
+  Variant of $(parse data).
+
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  */
+  static parse data/io.Data [--on-error] -> num?:
+    return int.parse data --on-error=:
+      return float.parse data --on-error=:
+        return on-error.call PARSE-ERR_
 
 /**
 A 64 bit integer.
@@ -562,6 +586,33 @@ abstract class int extends num:
   */
   static MIN ::= -MAX - 1
 
+  /** The minimum signed 8-bit integer value. */
+  static MIN-8 ::= -MAX-8 - 1
+  /** The maximum signed 8-bit integer value. */
+  static MAX-8 ::= 0x7F
+  /** The minimum signed 16-bit integer value. */
+  static MIN-16 ::= -MAX-16 - 1
+  /** The maximum signed 16-bit integer value. */
+  static MAX-16 ::= 0x7FFF
+  /** The minimum signed 24-bit integer value. */
+  static MIN-24 ::= -MAX-24 - 1
+  /** The maximum signed 24-bit integer value. */
+  static MAX-24 ::= 0x7F_FFFF
+  /** The minimum signed 32-bit integer value. */
+  static MIN-32 ::= -MAX-32 - 1
+  /** The maximum signed 32-bit integer values. */
+  static MAX-32 ::= 0x7FFF_FFFF
+
+  /** The maximum unsigned 8-bit integer values. */
+  static MAX-U8 ::= 0xFF
+  /** The maximum unsigned 16-bit integer values. */
+  static MAX-U16 ::= 0xFFFF
+  /** The maximum unsigned 24-bit integer values. */
+  static MAX-U24 ::= 0xFF_FFFF
+  /** The maximum unsigned 32-bit integer values. */
+  static MAX-U32 ::= 0xFFFF_FFFF
+
+
   static PARSE-ERR_ ::= "INTEGER_PARSING_ERROR"
   static RANGE-ERR_ ::= "OUT_OF_RANGE"
   static MAX-INT64-DIV-10_ ::= 922337203685477580
@@ -570,8 +621,6 @@ abstract class int extends num:
 
   /**
   Parses the $data as an integer.
-
-  The data must be a $string or $ByteArray.
 
   The given $radix must be in the range 2 and 36 (inclusive).
 
@@ -599,35 +648,66 @@ abstract class int extends num:
   int.parse "A" --radix=16        // => 10
   ```
   */
-  static parse data --radix=10 -> int:
-    return parse_ data 0 data.size --radix=radix --on-error=: throw it
+  static parse data/io.Data --radix/int?=null -> int:
+    return parse_ data 0 data.byte-size --radix=radix --on-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
-  static parse data from/int to/int=data.size --radix=10 -> int:
+  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null -> int:
     return parse_ data from to --radix=radix --on-error=: throw it
 
   /**
   Variant of $(parse data from to --radix).
 
-  If the data can't be parsed correctly, returns the result of calling the $on-error
-    lambda.
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
   */
-  static parse data --radix=10 [--on-error] -> int?:
-    return parse_ data 0 data.size --radix=radix --on-error=on-error
+  static parse data/io.Data --radix/int?=null [--on-error] -> int?:
+    return parse_ data 0 data.byte-size --radix=radix --on-error=on-error
 
   /**
   Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
   */
-  static parse data from/int to/int=data.size --radix=10 [--on-error] -> int?:
-    return parse_ data from to --radix=10 --on-error=on-error
+  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null [--on-error] -> int?:
+    return parse_ data from to --radix=radix --on-error=on-error
 
-  static parse_ data from/int to/int=data.size --radix [--on-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--on-error] -> int?:
+    negative := false
+    if radix == null:
+      radix = 10
+      if to - from > 2:
+        byte0 := data.byte-at from
+        byte1 := data.byte-at from + 1
+        byte2 := data.byte-at from + 2
+        if byte0 == '0' and (byte1 == 'x' or byte1 == 'X'):
+          radix = 16
+          from += 2
+          if byte2 == '-':
+            return on-error.call PARSE-ERR_
+        else if byte0 == '0' and (byte1 == 'b' or byte1 == 'B'):
+          radix = 2
+          from += 2
+          if byte2 == '-':
+            return on-error.call PARSE-ERR_
+        else if to - from > 3:
+          byte3 := data.byte-at from + 3
+          if byte0 == '-' and byte1 == '0' and (byte2 == 'x' or byte2 == 'X'):
+            negative = true
+            radix = 16
+            from += 3
+            if byte3 == '-':
+              return on-error.call PARSE-ERR_
+          else if byte0 == '-' and byte1 == '0' and (byte2 == 'b' or byte2 == 'B'):
+            negative = true
+            radix = 2
+            from += 3
+            if byte3 == '-':
+              return on-error.call PARSE-ERR_
+
     if radix == 10:
       return parse-10_ data from to --on-error=on-error
     else if radix == 16:
-      return parse-16_ data from to --on-error=on-error
+      return parse-16_ data from to --negative=negative --on-error=on-error
     else:
-      return parse-generic-radix_ radix data from to --on-error=on-error
+      return parse-generic-radix_ radix data from to --negative=negative --on-error=on-error
 
   static char-to-int_ c/int -> int:
     if '0' <= c <= '9': return c - '0'
@@ -635,7 +715,7 @@ abstract class int extends num:
     else if 'a' <= c <= 'z': return 10 + c - 'a'
     throw PARSE-ERR_
 
-  static parse-generic-radix_ radix/int data from/int to/int [--on-error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--on-error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max-num := (min radix 10) + '0' - 1
@@ -647,7 +727,7 @@ abstract class int extends num:
     max-int64-div-radix := (to - from > 12) ? MAX / radix : MAX
     max-last-char := MAX-INT64-LAST-CHARS_[radix]
 
-    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
       value := 0
 
       if result > max-int64-div-radix or (result == max-int64-div-radix and (char-to-int_ char) > max-last-char):
@@ -671,20 +751,22 @@ abstract class int extends num:
       result += value
       continue.generic-parser_ result
 
-  static parse-10_ data from/int to/int [--on-error] -> int?:
+  static parse-10_ data/io.Data from/int to/int [--on-error] -> int?:
     #primitive.core.int-parse:
-      return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
-        if not '0' <= char <= '9': return on-error.call PARSE-ERR_
-        // The max int64 ends with a '7' and the min int64 ends with an '8'
-        if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
-          if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
-            return int.MIN
-          return on-error.call RANGE-ERR_
-        continue.generic-parser_ result * 10 + char - '0'
+      if it == "WRONG_BYTES_TYPE":
+        return parse-10_ (ByteArray.from data) from to --on-error=on-error
+      else:
+        return generic-parser_ data from to --negative=false --on-error=on-error: | char result is-last negative |
+          if not '0' <= char <= '9': return on-error.call PARSE-ERR_
+          // The max int64 ends with a '7' and the min int64 ends with an '8'
+          if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
+            if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
+              return int.MIN
+            return on-error.call RANGE-ERR_
+          continue.generic-parser_ result * 10 + char - '0'
 
-  static generic-parser_ data from/int to/int [--on-error] [parse-char] -> int?:
+  static generic-parser_ data from/int to/int --negative/bool [--on-error] [parse-char] -> int?:
     result := 0
-    negative := false
     underscore := false
     size := to - from
     if size == 0: return on-error.call PARSE-ERR_
@@ -692,6 +774,7 @@ abstract class int extends num:
       char := data[from + it]
       if char == '-':
         if it != 0 or size == 1: return on-error.call PARSE-ERR_
+        if negative: return on-error.call PARSE-ERR_
         negative = true
       else if char == '_' and not underscore:
         if is-invalid-underscore_ it size negative:
@@ -709,10 +792,10 @@ abstract class int extends num:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
-  static parse-16_ data from/int to/int [--on-error] -> int?:
+  static parse-16_ data from/int to/int --negative/bool [--on-error] -> int?:
     max-int64-div-radix := MAX / 16
 
-    return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
       if result > max-int64-div-radix or (result == max-int64-div-radix and char > 'f'):
         if negative and is-last and char == '0' and result == max-int64-div-radix + 1:
             return int.MIN
@@ -850,7 +933,7 @@ abstract class int extends num:
   abstract operator << number-of-bits/int -> int
 
   /**
-  Variant of $stringify.
+  Variant of $(stringify).
   Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
@@ -868,8 +951,19 @@ abstract class int extends num:
   35.stringify 36 // => z
   ```
   */
-  stringify radix/int:
+  stringify radix/int -> string:
     #primitive.core.int64-to-string
+
+  /**
+  Variant of $(stringify).
+
+  Treats the number as an unsigned 64-bit integer.
+  */
+  stringify --uint64/True -> string:
+    return stringify-uint64_ this
+
+  static stringify-uint64_ number/int -> string:
+    #primitive.core.uint64-to-string
 
   /** See $super. */
   abs -> int:
@@ -889,9 +983,9 @@ abstract class int extends num:
 
   # Examples
   ```
-  255.sign_extend --bits=8  // => -1
-  128.sign_extend --bits=8  // => -128
-  127.sign_extend --bits=8  // => 127
+  255.sign-extend --bits=8  // => -1
+  128.sign-extend --bits=8  // => -128
+  127.sign-extend --bits=8  // => 127
   ```
   */
   sign-extend --bits/int -> int:
@@ -921,15 +1015,15 @@ abstract class int extends num:
 
   # Examples
   ```
-  1.is_power_of_two     // => true
-  2.is_power_of_two     // => true
-  4.is_power_of_two     // => true
-  1096.is_power_of_two  // => true
+  1.is-power-of-two     // => true
+  2.is-power-of-two     // => true
+  4.is-power-of-two     // => true
+  1096.is-power-of-two  // => true
 
-  0.is_power_of_two     // => false
-  (-2).is_power_of_two  // => false
-  1.is_power_of_two     // => false
-  14.is_power_of_two    // => false
+  0.is-power-of-two     // => false
+  (-2).is-power-of-two  // => false
+  1.is-power-of-two     // => false
+  14.is-power-of-two    // => false
   ```
   */
   is-power-of-two -> bool:
@@ -942,15 +1036,15 @@ abstract class int extends num:
 
   # Examples
   ```
-  8.is_aligned 2         // => true
-  4.is_aligned 4         // => true
-  16384.is_aligned 4096  // => true
-  0.is_aligned 4096      // => true
+  8.is-aligned 2         // => true
+  4.is-aligned 4         // => true
+  16384.is-aligned 4096  // => true
+  0.is-aligned 4096      // => true
 
-  2.is_aligned 1024  // => false
-  3.is_aligned 2     // => false.
+  2.is-aligned 1024  // => false
+  3.is-aligned 2     // => false.
 
-  2.is_aligned 3     // Error.
+  2.is-aligned 3     // Error.
     ```
   */
   is-aligned n/int -> bool:
@@ -988,11 +1082,11 @@ abstract class int extends num:
     it returns 0 if called on a negative integer.
   # Examples
   ```
-  (0x00FF).count_leading_zeros  // => 56
-  (0x0025).count_leading_zeros  // => 58
-  (0).count_leading_zeros       // => 64
-  int.MIN.count_leading_zeros   // => 0
-  int.MAX.count_leading_zeros   // => 1
+  (0x00FF).count-leading-zeros  // => 56
+  (0x0025).count-leading-zeros  // => 58
+  (0).count-leading-zeros       // => 64
+  int.MIN.count-leading-zeros   // => 0
+  int.MAX.count-leading-zeros   // => 1
   ```
   */
   count-leading-zeros -> int:
@@ -1005,13 +1099,13 @@ abstract class int extends num:
     Thus it returns 1 if called on -2.
   # Examples
   ```
-  (0b101000).count_trailing_zeros   // => 3
-  (0b101100).count_trailing_zeros   // => 2
-  (0b101010).count_trailing_zeros   // => 1
-  (0b101101).count_trailing_zeros   // => 0
-  (0).count_trailing_zeros          // => 64
-  int.MIN.count_trailing_zeros      // => 63
-  int.MAX.count_trailing_zeros      // => 0
+  (0b101000).count-trailing-zeros   // => 3
+  (0b101100).count-trailing-zeros   // => 2
+  (0b101010).count-trailing-zeros   // => 1
+  (0b101101).count-trailing-zeros   // => 0
+  (0).count-trailing-zeros          // => 64
+  int.MIN.count-trailing-zeros      // => 63
+  int.MAX.count-trailing-zeros      // => 0
   ```
   */
   count-trailing-zeros -> int:
@@ -1025,14 +1119,14 @@ abstract class int extends num:
     Thus it returns 64 if called on -1.
   # Examples
   ```
-  (0b101101).population_count  // => 2
-  (0b101100).population_count  // => 3
-  (0b101110).population_count  // => 4
-  (0b101111).population_count  // => 5
-  (0).population_count         // => 0
-  (-1).population_count        // => 64
-  int.MIN.population_count     // => 1
-  int.MAX.population_count     // => 63
+  (0b101101).population-count  // => 2
+  (0b101100).population-count  // => 3
+  (0b101110).population-count  // => 4
+  (0b101111).population-count  // => 5
+  (0).population-count         // => 0
+  (-1).population-count        // => 64
+  int.MIN.population-count     // => 1
+  int.MAX.population-count     // => 63
   ```
   */
   population-count -> int:
@@ -1373,11 +1467,11 @@ class float extends num:
   There are multiple representations of not-a-number. For example, the
   following produces another not-a-number representation:
   ```
-  float.from_bits (float.NAN.bits + 1)
+  float.from-bits (float.NAN.bits + 1)
   ```
   Comparing the above representation with this constant will result in false:
   ```
-  float.NAN == float.from_bits (float.NAN.bits + 1)  // => false
+  float.NAN == float.from-bits (float.NAN.bits + 1)  // => false
   ```
   It is therefore important to use $is-nan to check for not-a-number.
   */
@@ -1398,8 +1492,6 @@ class float extends num:
 /**
   Parses the $data to a float.
 
-  The data must be a $string or $ByteArray.
-
   Returns the nearest floating point number for $data not representable by any
     floating point number.
 
@@ -1417,19 +1509,28 @@ class float extends num:
   float.parse "anno 2017"  // Error.
   ```
   */
-  static parse data -> float:
-    return parse_ data 0 data.size
+  static parse data/io.Data -> float:
+    return parse_ data 0 data.byte-size --on-error=: throw it
+
+  /**
+  Variant of $(parse data).
+
+  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  */
+  static parse data/io.Data [--on-error] -> float?:
+    return parse_ data 0 data.byte-size --on-error=on-error
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
-  static parse data from/int to/int=data.size -> float:
-    return parse_ data from to
+  static parse data/io.Data from/int to/int=data.byte-size -> float:
+    return parse_ data from to --on-error=: throw it
 
-  static parse_ data from/int to/int -> float:
+  static parse_ data/io.Data from/int to/int [--on-error] -> float?:
     #primitive.core.float-parse:
-      if it == "ERROR": throw "FLOAT_PARSING_ERROR"
-      throw it
+      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to --on-error=on-error
+      if it == "ERROR": return on-error.call "FLOAT_PARSING_ERROR"
+      return on-error.call it
 
   /**
   Returns the sign of this instance.
@@ -1578,15 +1679,15 @@ class float extends num:
 
   # Examples
   ```
-  float.NAN.is_nan                               // => true
-  (-1).sqrt.is_nan                               // => true
-  (float.from_bits (float.NAN.bits + 1)).is_nan  // => true
+  float.NAN.is-nan                               // => true
+  (-1).sqrt.is-nan                               // => true
+  (float.from-bits (float.NAN.bits + 1)).is-nan  // => true
 
-  2.0.is_nan                 // => false
-  2.sqrt.is_nan              // => false
-  float.INFINITY.is_nan      // => false
-  float.MAX_FINITE.is_nan    // => false
-  float.MIN_POSITIVE.is_nan  // => false
+  2.0.is-nan                 // => false
+  2.sqrt.is-nan              // => false
+  float.INFINITY.is-nan      // => false
+  float.MAX-FINITE.is-nan    // => false
+  float.MIN_POSITIVE.is-nan  // => false
   ```
   */
   is-nan -> bool:
@@ -1597,15 +1698,15 @@ class float extends num:
 
   # Examples
   ```
-  2.0.is_finite                 // => true
-  (-9001.0).is_finite           // => true
-  2.sqrt.is_finite              // => true
-  float.MAX_FINITE.is_finite    // => true
-  float.MIN_POSITIVE.is_finite  // => true
+  2.0.is-finite                 // => true
+  (-9001.0).is-finite           // => true
+  2.sqrt.is-finite              // => true
+  float.MAX-FINITE.is-finite    // => true
+  float.MIN_POSITIVE.is-finite  // => true
 
-  float.NAN.is_finite       // => false
-  (-1).sqrt.is_finite       // => false
-  float.INFINITY.is_finite  // => false
+  float.NAN.is-finite       // => false
+  (-1).sqrt.is-finite       // => false
+  float.INFINITY.is-finite  // => false
   ```
   */
   is-finite -> bool:
@@ -1717,21 +1818,21 @@ class float extends num:
   // here.
 
   equals-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float == this
 
   less-than-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float < this
 
   less-than-or-equal-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float <= this
 
   greater-than-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float > this
 
   greater-than-or-equal-from-large-integer_ other:
-    if other is int: unreachable
+    if other is int: unreachable  // See comment above.
     return other.to-float >= this

@@ -215,17 +215,18 @@ enum Precedence {
   I(String)                                                              \
   I(String_)                                                             \
   I(StringSlice_)                                                        \
+  I(StringByteSlice_)                                                    \
   I(LargeInteger_)                                                       \
-  I(False_)                                                              \
+  I(False)                                                               \
   I(Null_)                                                               \
   I(SmallInteger_)                                                       \
-  I(True_)                                                               \
+  I(True)                                                                \
   I(monitor)                                                             \
   IN(interface_, "interface")                                            \
   I(mixin)                                                               \
   I(extends)                                                             \
   I(implements)                                                          \
-  I(with)                                                      \
+  I(with)                                                                \
   I(none)                                                                \
   I(any)                                                                 \
   IN(empty_string, "")                                                   \
@@ -255,6 +256,7 @@ enum Precedence {
   I(from)                                                                \
   I(to)                                                                  \
   IN(enum_, "enum")                                                      \
+  I(size)                                                                \
 
 
 class Token {

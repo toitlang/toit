@@ -18,9 +18,12 @@ import monitor
 import log
 
 import net.modules.dns as dns-module
+import net.modules.udp as udp-module
+import net.udp
 import net.wifi
 
 import encoding.tison
+import system
 import system.assets
 import system.firmware
 import system.storage
@@ -42,7 +45,7 @@ BACKUP-DNS-ADDRESS-INDEX_ ::= 2
 // we keep it around forever.
 bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/wifi"
 
-class WifiServiceProvider extends NetworkServiceProviderBase:
+class WifiServiceProvider extends NetworkServiceProviderBase implements udp.Interface:
   static WIFI-CONFIG-STORE-KEY ::= "system/wifi"
   state_/NetworkState ::= NetworkState
 
@@ -114,7 +117,10 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     if password.size != 0 and password.size < 8:
       throw "wifi password must be at least 8 characters"
     channel/int := config.get wifi.CONFIG-CHANNEL --if-absent=: 1
-    if channel < 1 or channel > 13:
+    // The safe world mode only allows channels 1-11.
+    // Most of the world uses channels 1-13.
+    // Japan allows channels 1-14. For simplicity we go with 1-13.
+    if not 1 <= channel <= 13:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG-BROADCAST --if-absent=: true
 
@@ -145,22 +151,27 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).address.to-byte-array
 
   resolve resource/ServiceResource host/string -> List:
-    return (dns-module.dns-lookup-multi host).map: it.raw
+    return (dns-module.dns-lookup-multi host --network=this).map: it.raw
 
   ap-info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap-info
 
   scan config/Map -> List:
-    if state_.module:
-      throw "wifi already connected or established"
-    module := WifiModule.sta this "" ""
+    channels := config.get wifi.CONFIG-SCAN-CHANNELS
+    passive := config.get wifi.CONFIG-SCAN-PASSIVE
+    period := config.get wifi.CONFIG-SCAN-PERIOD
+    connected := state_.up --if-unconnected=:
+      // If the network is unconnected, we bring up the network
+      // module, but keep it unconnected. We scan while keeping
+      // the state lock, so others can't interfere with us. They
+      // will have to wait their turn to bring the network up.
+      unconnected := WifiModule.sta this "" ""
+      return unconnected.scan channels passive period --close
     try:
-      channels := config.get wifi.CONFIG-SCAN-CHANNELS
-      passive := config.get wifi.CONFIG-SCAN-PASSIVE
-      period := config.get wifi.CONFIG-SCAN-PERIOD
-      return module.scan channels passive period
+      // Scan using the connected network module.
+      return (connected as WifiModule).scan channels passive period
     finally:
-      module.disconnect
+      state_.down
 
   configure config/Map? -> none:
     if config:
@@ -173,6 +184,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       resources-do: | resource/NetworkResource |
         if not resource.is-closed:
           resource.notify_ NetworkService.NOTIFY-CLOSED --close
+
+  // This method comes from the udp.Interface definition. It is necessary
+  // to allow the DNS client to use the WiFi when sending out requests.
+  udp-open --port/int?=null -> udp.Socket:
+    return udp-module.Socket this "0.0.0.0" (port ? port : 0)
 
 class WifiModule implements NetworkModule:
   static WIFI-CONNECTED    ::= 1 << 0
@@ -214,6 +230,7 @@ class WifiModule implements NetworkModule:
     return address_
 
   connect -> none:
+    wifi-set-hostname_ resource-group_ system.hostname
     with-timeout WIFI-CONNECT-TIMEOUT_: wait-for-connected_
     if ap:
       wait-for-static-ip-address_
@@ -311,14 +328,14 @@ class WifiModule implements NetworkModule:
   ap-info -> List:
     return wifi-get-ap-info_ resource-group_
 
-  scan channels/ByteArray passive/bool period/int -> List:
+  scan channels/ByteArray passive/bool period/int --close/bool=false -> List:
     if ap or not resource-group_:
       throw "wifi is AP mode or not initialized"
 
     resource := wifi-init-scan_ resource-group_
     scan-events := monitor.ResourceState_ resource-group_ resource
-    result := []
     try:
+      result := []
       channels.do:
         wifi-start-scan_ resource-group_ it passive period
         state := scan-events.wait
@@ -326,10 +343,12 @@ class WifiModule implements NetworkModule:
         scan-events.clear-state WIFI-SCAN-DONE
         array := wifi-read-scan_ resource-group_
         result.add-all array
+      return result
     finally:
       scan-events.dispose
-
-    return result
+      if close:
+        wifi-close_ resource-group_
+        resource-group_ = null
 
   on-event_ state/int:
     // TODO(kasper): We should be clearing the state in the
@@ -342,6 +361,9 @@ class WifiModule implements NetworkModule:
 
 wifi-init_ ap:
   #primitive.wifi.init
+
+wifi-set-hostname_ resource-group hostname:
+  #primitive.wifi.set-hostname
 
 wifi-close_ resource-group:
   #primitive.wifi.close

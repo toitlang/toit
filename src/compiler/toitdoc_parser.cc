@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "comments.h"
 #include "scanner.h"
 #include "parser.h"
 #include "toitdoc_parser.h"
@@ -23,6 +24,10 @@ namespace toit {
 namespace compiler {
 
 namespace {  // anonymous
+
+static bool needs_escaping(int c) {
+  return c == '\\' || c == '`' || c == '\'' || c == '$' || c == '"' || c == '[';
+}
 
 /// Wraps an existing diagnostics and modifies all errors to be warnings instead.
 class ToitdocDiagnostics : public Diagnostics {
@@ -196,9 +201,10 @@ class ToitdocParser {
   toitdoc::Code* parse_code();
   toitdoc::Text* parse_string();
   Symbol parse_delimited(int delimiter,
-                         bool keep_delimiters_and_escapes,
+                         bool keep_delimiters,
                          const char* error_message);
   toitdoc::Ref* parse_ref();
+  toitdoc::Link* parse_link();
   void skip_comment(bool should_report_error = true);
 
  private:  // Scanning related.
@@ -250,6 +256,31 @@ class ToitdocParser {
   void pop_construct(Construct construct);
 
   Symbol make_symbol(int from, int to) { return Symbol::synthetic(make_string(from, to)); }
+
+  Symbol make_escaped_symbol(int from, int to) {
+    // See whether the string contains any escapes.
+    bool contains_escapes = false;
+    for (int i = from; i < to - 1; i++) {
+      if (toitdoc_source_->text()[i] == '\\') {
+        if (needs_escaping(toitdoc_source_->text()[i + 1])) {
+          contains_escapes = true;
+          break;
+        }
+      }
+    }
+    if (!contains_escapes) return make_symbol(from, to);
+    // If it does, we need to unescape it.
+    std::string buffer;
+    for (int i = from; i < to; i++) {
+      if (toitdoc_source_->text()[i] == '\\') {
+        if (i < to - 1 && needs_escaping(toitdoc_source_->text()[i + 1])) {
+          i++;
+        }
+      }
+      buffer += toitdoc_source_->text()[i];
+    }
+    return Symbol::synthetic(buffer);
+  }
   std::string make_string(int from, int to);
 
   bool matches(const char* str);
@@ -278,45 +309,24 @@ class ToitdocParser {
 
 /// Manages all existing comments, making it easier to find
 ///   toitdocs, and associating them with their respective AST nodes.
-class CommentsManager {
+class ToitdocCommentsManager : public CommentsManager {
  public:
-  CommentsManager(List<Scanner::Comment> comments,
-                  Source* source,
-                  SymbolCanonicalizer* symbols,
-                  Diagnostics* diagnostics)
-      : comments_(comments)
-      , source_(source)
+  ToitdocCommentsManager(List<Scanner::Comment> comments,
+                         Source* source,
+                         SymbolCanonicalizer* symbols,
+                         Diagnostics* diagnostics)
+      : CommentsManager(comments, source)
       , symbols_(symbols)
       , diagnostics_(diagnostics) {
     ASSERT(is_sorted(comments));
   }
 
-  int find_closest_before(ast::Node* node);
   Toitdoc<ast::Node*> find_for(ast::Node* node);
-  bool is_attached(int index1, int index2) {
-    return is_attached(comments_[index1].range(), comments_[index2].range(), false);
-  }
-  bool is_attached(Source::Range previous,
-                   Source::Range next,
-                   bool allow_modifiers);
   Toitdoc<ast::Node*> make_ast_toitdoc(int index);
 
  private:
-  List<Scanner::Comment> comments_;
-  Source* source_;
   SymbolCanonicalizer* symbols_;
   Diagnostics* diagnostics_;
-
-  int last_index_ = 0;
-
-  static bool is_sorted(List<Scanner::Comment> comments) {
-    for (int i = 1; i < comments.length(); i++) {
-      if (!comments[i - 1].range().from().is_before(comments[i].range().from())) {
-        return false;
-      }
-    }
-    return true;
-  }
 };
 
 int ToitdocSource::source_offset_at(int offset) const  {
@@ -452,9 +462,14 @@ toitdoc::Section* ToitdocParser::parse_section() {
   ListBuilder<toitdoc::Statement*> statements;
 
   auto title = Symbol::invalid();
+  int level = 1;
   if (peek() == '#') {
     ConstructScope scope(this, SECTION_TITLE);
     advance();
+    while (peek() == '#') {
+      advance();
+      level++;
+    }
     // Skip over leading whitespace.
     while (peek() == ' ') advance();
     int begin = index_;
@@ -467,7 +482,7 @@ toitdoc::Section* ToitdocParser::parse_section() {
     if (statement != null) statements.add(statement);
     skip_whitespace();
   }
-  return _new toitdoc::Section(title, statements.build());
+  return _new toitdoc::Section(title, level, statements.build());
 }
 
 toitdoc::Statement* ToitdocParser::parse_statement() {
@@ -603,6 +618,11 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
             (is_operator_start(look_ahead()) && !is_comment_start(look_ahead(1), look_ahead(2)));
         break;
 
+      case 'h':
+        // We want to allow http:// or https:// in the text.
+        is_special_char = matches("http://") || matches("https://");
+        break;
+
       case '"':
         is_special_char = true;
         break;
@@ -651,7 +671,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
 
     // Extract all the text so far, so we can handle the special char.
     if (text_start != index_) {
-      expressions.add(_new toitdoc::Text(make_symbol(text_start, index_)));
+      expressions.add(_new toitdoc::Text(make_escaped_symbol(text_start, index_)));
     }
 
     if (c == '\0') break;
@@ -661,6 +681,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
       case '`': expressions.add(parse_code()); break;
       case '"': expressions.add(parse_string()); break;
       case '$': expressions.add(parse_ref()); break;
+      case 'h': expressions.add(parse_link()); break;
       case '/':
         // We know that '/' is a special char, and therefore that the next character must be
         // a '*'.
@@ -726,27 +747,24 @@ toitdoc::Text* ToitdocParser::parse_string() {
 }
 
 Symbol ToitdocParser::parse_delimited(int delimiter,
-                                      bool keep_delimiters_and_escapes,
+                                      bool keep_delimiters,
                                       const char* error_message) {
   ASSERT(peek() == delimiter);
   int delimited_begin = index_;
-  int chunk_start = keep_delimiters_and_escapes ? index_ : index_ + 1;
+  int chunk_start = keep_delimiters ? index_ : index_ + 1;
   int c;
   std::string buffer;
   do {
     advance();
     c = peek();
-    if (c == '\\' &&
-        ((look_ahead() == '\\' || look_ahead() == delimiter))) {
-      if (keep_delimiters_and_escapes) {
-        // Skip over the escaped character.
-        advance(2);
-      } else {
-        buffer += make_string(chunk_start, index_);
-        advance();
-        chunk_start = index_;
-        advance();
-      }
+    // We also allow to escape `*` as this might be necessary to avoid opening or
+    // closing the toitdoc.
+    if (c == '\\' && needs_escaping(look_ahead())) {
+      buffer += make_string(chunk_start, index_);
+      // Skip over the escape character, but not the escaped
+      // character. That happens at the top of the loop.
+      advance();
+      chunk_start = index_;
     }
   } while (c != delimiter && c != '\0');
   ASSERT(c == delimiter || c == '\0');
@@ -756,7 +774,7 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
     report_error(delimited_begin, index_, error_message);
     end_offset = index_;
   } else {
-    end_offset = keep_delimiters_and_escapes ? index_ + 1 : index_;
+    end_offset = keep_delimiters ? index_ + 1 : index_;
     advance();
   }
   buffer += make_string(chunk_start, end_offset);
@@ -785,6 +803,49 @@ toitdoc::Ref* ToitdocParser::parse_ref() {
     if (look_ahead(-1) == ')') end--;
   }
   return _new toitdoc::Ref(id, make_symbol(begin, end));
+}
+
+static bool is_legal_link_char(int c) {
+  if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9')) {
+    return true;
+  }
+  switch (c) {
+    case '.':
+    case '-':
+    case '@':
+    case ':':
+    case '_':
+    case '+':
+    case '~':
+    case '#':
+    case '=':
+    case '?':
+    case '&':
+    case '/':
+      return true;
+    default:
+      return false;
+  }
+}
+
+toitdoc::Link* ToitdocParser::parse_link() {
+  ASSERT(peek() == 'h');
+  int begin = index_;
+  advance(4); // Skip over 'http'
+  if (peek() == 's') advance();
+  advance("://");
+  while (true) {
+    int c = peek();
+    if (c == '.') {
+      // We don't allow trailing '.' in the link.
+      if (!is_legal_link_char(look_ahead())) break;
+    }
+    if (!is_legal_link_char(c)) break;
+    advance();
+  }
+  int text_end = index_;
+  auto symbol = make_symbol(begin, text_end);
+  return _new toitdoc::Link(symbol, symbol);
 }
 
 void ToitdocParser::skip_comment(bool should_report_error) {
@@ -871,6 +932,11 @@ std::string ToitdocParser::make_string(int from, int to) {
       if (i >= to) break;
     }
     int c = text[i];
+    if (c == '\r' && i < to - 1 && text[i + 1] == '\n') {
+      // Skip over the '\r' in '\r\n'.
+      i++;
+      c = '\n';
+    }
     if (c == '\n' && replace_newlines_with_space) c = ' ';
     if (c == ' ' && last_was_space && squash_spaces) continue;
 
@@ -1070,67 +1136,11 @@ void ToitdocParser::report_error(Source::Range range, const char* message) {
   diagnostics_->report_error(range, message);
 }
 
-int CommentsManager::find_closest_before(ast::Node* node) {
-  auto node_range = node->range();
-  if (node_range.is_before(comments_[0].range())) return -1;
-  if (comments_.last().range().is_before(node_range)) return comments_.length() - 1;
-
-  if (comments_[last_index_].range().is_before(node_range) &&
-      node_range.is_before(comments_[last_index_ + 1].range())) {
-    return last_index_;
-  }
-  int start = 0;
-  int end = comments_.length() - 1;
-  while (start < end) {
-    int mid = start + (end - start) / 2;
-    if (comments_[mid].range().is_before(node_range)) {
-      if (node_range.is_before(comments_[mid + 1].range())) {
-        return mid;
-      }
-      start = mid + 1;
-    } else {
-      end = mid;
-    }
-  }
-  return -1;
-}
-
-/// When [allow_modifiers] is true, allows modifiers on the line of the
-///   [next] range.
-/// For simplicity we allow any string as long as it doesn't contain a `:` which
-///   would indicate a different declaration: `class A: foo:`
-// TODO(florian, 1218): Remove the hack. The declaration range should be correct and
-//    include modifiers.
-bool CommentsManager::is_attached(Source::Range previous,
-                                  Source::Range next,
-                                  bool allow_modifiers) {
-  // Check that there is one newline, and otherwise only whitespace.
-  int start_offset = source_->offset_in_source(previous.to());
-  int end_offset = source_->offset_in_source(next.from());
-  int i = start_offset;
-  auto text = source_->text();
-  while (i < end_offset and text[i] == ' ') i++;
-  if (i == end_offset) return true;
-  if (text[i] == '\r') i++;
-  if (i == end_offset) return true;
-  if (text[i++] != '\n') return false;
-  while (i < end_offset and text[i] == ' ') i++;
-  if (i == end_offset) return true;
-  if (!allow_modifiers) return false;
-  for (; i < end_offset; i++) {
-    if (text[i] == '\n') return false;
-    if (text[i] == '\r') return false;
-    if (text[i] == ':') return false;
-  }
-  return true;
-}
-
-
-Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
+Toitdoc<ast::Node*> ToitdocCommentsManager::find_for(ast::Node* node) {
   auto not_found = Toitdoc<ast::Node*>::invalid();
   int closest = find_closest_before(node);
   if (closest == -1) return not_found;
-  if (!is_attached(comments_[closest].range(), node->range(), true)) return not_found;
+  if (!is_attached(comments_[closest].range(), node->full_range())) return not_found;
   int closest_toit = closest;
   // Walk backward to find the closest toitdoc.
   // Usually it's the first attached comment, but we allow non-toitdocs:
@@ -1151,7 +1161,7 @@ Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
   return make_ast_toitdoc(closest_toit);
 }
 
-Toitdoc<ast::Node*> CommentsManager::make_ast_toitdoc(int index) {
+Toitdoc<ast::Node*> ToitdocCommentsManager::make_ast_toitdoc(int index) {
   // If the comment is a single line '///' comment, search for comments that
   // precede and succeed it.
   int first_toit = index;
@@ -1190,12 +1200,12 @@ void attach_toitdoc(ast::Unit* unit,
                     Diagnostics* diagnostics) {
   if (scanner_comments.is_empty()) return;
   ToitdocDiagnostics toitdoc_diagnostics(diagnostics);
-  CommentsManager comments_manager(scanner_comments, source, symbols, &toitdoc_diagnostics);
+  ToitdocCommentsManager comments_manager(scanner_comments, source, symbols, &toitdoc_diagnostics);
 
   ast::Node* earliest_declaration = null;
   for (auto declaration : unit->declarations()) {
     if (earliest_declaration == null ||
-        declaration->range().is_before(earliest_declaration->range())) {
+        declaration->selection_range().is_before(earliest_declaration->selection_range())) {
       earliest_declaration = declaration;
     }
 
@@ -1223,7 +1233,7 @@ void attach_toitdoc(ast::Unit* unit,
     bool is_module_comment = false;
     if (earliest_declaration == null) {
       is_module_comment = true;
-    } else if (earliest_declaration->range().is_before(comment.range())) {
+    } else if (earliest_declaration->selection_range().is_before(comment.range())) {
       // Comment is after the first declaration and thus not a module comment.
       is_module_comment =false;
     } else {

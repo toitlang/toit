@@ -3,38 +3,37 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-
-import .dns
 import net
 import net.modules.dns
 
 main:
-  txt-test
-  cname-test
+  network := net.open
+  txt-test network
+  cname-test network
   parse-numeric-test
   encode-decode-packets-test
 
-txt-test:
-  client := DnsClient [
+txt-test network/net.Client:
+  client := dns.DnsClient [
       "8.8.8.8",    // Google DNS.
       ]
-  texts := client.get --record-type=RECORD-TXT "toit.io"
+  texts := client.get --record-type=dns.RECORD-TXT --network=network "toit.io"
   expect
-      texts.contains "OSSRH-61647"
-  ptr := client.get --record-type=RECORD-PTR "toit.io"
+      texts.size == 2
+  ptr := client.get --record-type=dns.RECORD-PTR --network=network "toit.io"
   expect
       ptr.size == 0
-  srv := client.get --record-type=RECORD-SRV "toit.io"
+  srv := client.get --record-type=dns.RECORD-SRV --network=network "toit.io"
   expect
       srv.size == 0
 
-cname-test:
-  client := DnsClient [
+cname-test network/net.Client:
+  client := dns.DnsClient [
       "8.8.8.8",    // Google DNS.
       ]
   // Normally CNAME results are just consumed internally in our DNS code, but
   // we can explicitly ask for them.
-  cname := client.get --record-type=RECORD-CNAME "www.yahoo.com"
+  cname := client.get --record-type=dns.RECORD-CNAME --network=network "www.yahoo.com"
   expect
       cname.size > 0
   cname.do: | name |
@@ -110,7 +109,7 @@ encode-decode-packets-test:
   ]
   packet-2 := dns.create-dns-packet queries resources --id=42 --is-response=true
   decoded-2 := dns.decode-packet packet-2
-  
+
   expect-equals 42 decoded-2.id
   expect-equals 1 decoded-2.questions.size
   expect-equals 1 decoded-2.resources.size

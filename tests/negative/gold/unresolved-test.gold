@@ -10,4 +10,4 @@ tests/negative/unresolved-test.toit:6:12: error: Unresolved identifier: 'gee'
 tests/negative/unresolved-test.toit:6:3: error: Unresolved identifier: 'foo'
   foo bar (gee (toto 1 2))
   ^~~
-Compilation failed.
+Compilation failed

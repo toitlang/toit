@@ -33,7 +33,9 @@
 namespace toit {
 namespace compiler {
 
-char* get_executable_path();
+char* FilesystemLocal::get_executable_path() {
+  return OS::get_executable_path();
+}
 
 List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
   auto result = ListBuilder<const char*>::allocate(paths.length());
@@ -72,20 +74,16 @@ bool FilesystemLocal::do_is_directory(const char* path) {
 
 const char* FilesystemLocal::sdk_path() {
   if (sdk_path_ == null) {
-    if (Flags::lib_path != null) {
-      sdk_path_ = to_local_path(Flags::lib_path);
-    } else {
-      // Compute the library_root based on the executable path.
-      char* path = get_executable_path();
-      // TODO: We should check if the current folder contains a lib folder and if not,
-      //   return an appropriate error code.
-      char* toit_root = ::dirname(path);
-      int root_len = strlen(toit_root);
-      // `dirname` might return its result in a static buffer (especially on macos), and we
-      // have to copy the result back into path. (+1 for the terminating '\0' character).
-      memmove(path, toit_root, root_len + 1);
-      sdk_path_ = path;
-    }
+    // Compute the library_root based on the executable path.
+    char* path = get_executable_path();
+    // TODO: We should check if the current folder contains a lib folder and if not,
+    //   return an appropriate error code.
+    char* toit_root = ::dirname(path);
+    int root_len = strlen(toit_root);
+    // `dirname` might return its result in a static buffer (especially on macos), and we
+    // have to copy the result back into path. (+1 for the terminating '\0' character).
+    memmove(path, toit_root, root_len + 1);
+    sdk_path_ = path;
   }
   return sdk_path_;
 }

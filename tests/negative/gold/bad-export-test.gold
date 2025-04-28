@@ -10,4 +10,4 @@ export foo
 tests/negative/bad-export-test.toit:8:3: error: Unresolved identifier: 'foo'
   foo
   ^~~
-Compilation failed.
+Compilation failed

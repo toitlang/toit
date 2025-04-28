@@ -18,7 +18,7 @@ import .storage show StorageServiceProvider
 import encoding.base64
 import system.assets
 import system.services show ServiceResource
-import uuid
+import uuid show *
 
 abstract class BucketResource extends ServiceResource:
   // We keep a cache of computed ids around. The ids encode
@@ -41,27 +41,12 @@ abstract class BucketResource extends ServiceResource:
 
   compute-id_ key/string -> string:
     return ids_.get key --init=:
-      id := uuid.uuid5 root key
+      id := Uuid.uuid5 root key
       encoded := base64.encode id.to-byte-array
       // Keys used in nvs must be 15 bytes or less, so we
       // pick the first 12 encoded bytes which correspond
       // to the first 9 bytes of the 16 uuid bytes.
       encoded[..12]
-
-class FlashBucketResource extends BucketResource:
-  static group ::= flash-kv-init_ "nvs" "toit" false
-  root/string
-  constructor provider/StorageServiceProvider client/int .root:
-    super provider client
-
-  get key/string -> ByteArray?:
-    return flash-kv-read-bytes_ group (compute-id_ key)
-
-  set key/string value/ByteArray -> none:
-    flash-kv-write-bytes_ group (compute-id_ key) value
-
-  remove key/string -> none:
-    flash-kv-delete_ group (compute-id_ key)
 
 class RamBucketResource extends BucketResource:
   static memory ::= RtcMemory
@@ -104,18 +89,6 @@ class RtcMemory:
     bytes_.replace 0 encoded
 
 // --------------------------------------------------------------------------
-
-flash-kv-init_ partition/string volume/string read-only/bool:
-  #primitive.flash-kv.init
-
-flash-kv-read-bytes_ group key/string:
-  #primitive.flash-kv.read-bytes
-
-flash-kv-write-bytes_ group key/string value/ByteArray:
-  #primitive.flash-kv.write-bytes
-
-flash-kv-delete_ group key/string:
-  #primitive.flash-kv.delete
 
 rtc-memory_ -> ByteArray:
   #primitive.core.rtc-user-bytes

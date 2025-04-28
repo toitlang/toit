@@ -4,4 +4,4 @@ tests/negative/lambda6-test.toit:6:23: error: Lambdas can have at most 4 paramet
 tests/negative/lambda6-test.toit:7:24: error: Lambdas can have at most 4 parameters
   fun2 := :: | a b c d e0 f0 | null
                        ^~~~~
-Compilation failed.
+Compilation failed

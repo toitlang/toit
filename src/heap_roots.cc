@@ -34,10 +34,10 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
   if (!is_heap_object(backing_array_object)) return false;  // Defensive.
   if (is_array(backing_array_object)) {
     Array* backing_array = Array::cast(backing_array_object);
-    int size = backing_array->length();
+    word size = backing_array->length();
     // The backing has the order key, value, key, value...
     // We only zap the values.
-    for (int i = 1; i < size; i += 2) {
+    for (word i = 1; i < size; i += 2) {
       Object* entry_object = backing_array->at(i);
       if (is_smi(entry_object)) continue;
       HeapObject* entry = HeapObject::cast(entry_object);
@@ -54,8 +54,8 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
     Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
     if (!is_array(vector_object)) return false;  // Defensive.
     Array* vector = Array::cast(vector_object);
-    int size = vector->length();
-    for (int i = 0; i < size; i++) {
+    word size = vector->length();
+    for (word i = 0; i < size; i++) {
       bool arraylet_had_zaps = recursive_zap_dead_values(program, vector->at(i), oracle);
       if (arraylet_had_zaps) has_zapped = true;
     }
@@ -82,7 +82,7 @@ static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, L
 class MarkingShim : public RootCallback {
  public:
   MarkingShim(RootCallback* cb) : cb_(cb) {}
-  virtual void do_roots(Object** roots, int length) {
+  virtual void do_roots(Object** roots, word length) {
     cb_->do_roots(roots, length);
   }
   virtual bool shrink_stacks() const { UNREACHABLE(); }

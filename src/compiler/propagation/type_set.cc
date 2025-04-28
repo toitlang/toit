@@ -165,11 +165,11 @@ int TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nul
   int words_per_type = TypeSet::words_per_type(program);
   bool contains_null_before = contains_null(program);
   int size_before = size(words_per_type);
-  int selector_offset = program->interface_check_offsets[index];
+  word selector_offset = program->interface_check_offsets[index];
   Iterator it(*this, words_per_type);
   while (it.has_next()) {
     unsigned id = it.next();
-    int entry_index = id + selector_offset;
+    word entry_index = id + selector_offset;
     int entry_id = program->dispatch_table[entry_index];
     if (entry_id != -1) {
       Method target(program->bytecodes, entry_id);

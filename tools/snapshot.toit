@@ -15,8 +15,8 @@
 
 import ar show *
 import host.file
-import binary show *
-import uuid show Uuid NIL
+import io show LITTLE-ENDIAN
+import uuid show Uuid
 
 // Library for parsing a snapshot file into a useful structure.
 /**
@@ -133,12 +133,10 @@ class Program:
   selector-class-for location-id/int -> SelectorClass:
     return selectors_[location-id]
 
-  do --class-infos [block]:
-    if class-infos != true: throw "class_infos flag must be true"
+  do --class-infos/True [block]:
     class-table_.do block
 
-  do --method-infos [block]:
-    if method-infos != true: throw "method_infos flag must be true"
+  do --method-infos/True [block]:
     method-table_.do --values block
 
   method-from-absolute-bci absolute-bci/int -> ToitMethod:
@@ -175,7 +173,7 @@ class SnapshotBundle:
   sdk-version      / string
 
   constructor.from-file name/string:
-    return SnapshotBundle name (file.read-content name)
+    return SnapshotBundle name (file.read-contents name)
 
   constructor byte-array/ByteArray:
     return SnapshotBundle null byte-array
@@ -189,18 +187,20 @@ class SnapshotBundle:
         ? SourceMap bytes source-map-offsets.from source-map-offsets.to
         : null
     uuid-offsets := extract-ar-offsets_ bytes UUID-NAME
-    uuid = uuid-offsets ? (Uuid bytes[uuid-offsets.from..uuid-offsets.to]) : NIL
+    uuid = uuid-offsets ? (Uuid bytes[uuid-offsets.from..uuid-offsets.to]) : Uuid.NIL
     sdk-version-offsets := extract-ar-offsets_ bytes SDK-VERSION-NAME
     sdk-version = sdk-version-offsets
         ? bytes[sdk-version-offsets.from..sdk-version-offsets.to].to-string-non-throwing
         : ""
 
   static is-bundle-content buffer/ByteArray -> bool:
-    magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
-    if not magic-file-offsets: return false
-    magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
-    if magic-content.to-string != MAGIC-CONTENT: return false
-    return true
+    catch:
+      if not has-valid-ar-header buffer: return false
+      magic-file-offsets := extract-ar-offsets_ --silent buffer MAGIC-NAME
+      if not magic-file-offsets: return false
+      magic-content := buffer.copy  magic-file-offsets.from magic-file-offsets.to
+      return magic-content.to-string == MAGIC-CONTENT
+    return false
 
   has-source-map -> bool:
     return source-map != null
@@ -532,7 +532,10 @@ class ToitMethod:
 
   bci-from-absolute-bci absolute-bci/int -> int:
     bci := absolute-bci - id - HEADER-SIZE
-    assert: 0 <= bci < bytecodes.size
+    // For method calls the return-bci is just after the call. If a method
+    // is known not to return, then there might not be any bytecodes left and
+    // the bci is equal to the bytecode size.
+    assert: 0 <= bci <= bytecodes.size
     return bci
 
   absolute-bci-from-bci bci/int -> int:
@@ -883,6 +886,7 @@ BYTE-CODES ::= [
   Bytecode "INVOKE_MOD"                 1 OP "invoke mod",
   Bytecode "INVOKE_AT"                  1 OP "invoke at",
   Bytecode "INVOKE_AT_PUT"              1 OP "invoke at_put",
+  Bytecode "INVOKE_SIZE"                3 OP-SO "invoke size",
   Bytecode "BRANCH"                     3 OP-SF "branch",
   Bytecode "BRANCH_IF_TRUE"             3 OP-SF "branch if true",
   Bytecode "BRANCH_IF_FALSE"            3 OP-SF "branch if false",
@@ -1356,7 +1360,7 @@ abstract class SourceSegment extends Segment:
     set-offset_ SegmentHeader.SIZE
 
   content:
-    if not content_: content_ = read-content_
+    if not content_: content_ = read-contents_
     return content_
 
   read-position_ -> Position:
@@ -1365,7 +1369,7 @@ abstract class SourceSegment extends Segment:
   read-string_ -> string:
     return strings_.content[read-cardinal_]
 
-  abstract read-content_
+  abstract read-contents_
 
 // Abstract class for a segment that contain a list of elements.
 abstract class ListSegment extends SourceSegment:
@@ -1377,7 +1381,7 @@ abstract class ListSegment extends SourceSegment:
 
   abstract read-element_ index / int
 
-  read-content_:
+  read-contents_:
     return List count_: read-element_ it
 
   content -> List: return super
@@ -1395,7 +1399,7 @@ abstract class MapSegment extends SourceSegment:
 
   abstract read-element_ -> List  // A pair of key / value.
 
-  read-content_:
+  read-contents_:
     result := {:}
     count_.repeat:
       element := read-element_

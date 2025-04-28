@@ -7,4 +7,4 @@ class A extends B:
 tests/negative/class-cycle-test.toit:7:17: error: This clause contributes to the cycle
 class B extends A:
                 ^
-Compilation failed.
+Compilation failed

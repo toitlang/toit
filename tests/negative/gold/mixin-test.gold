@@ -37,4 +37,4 @@ interface I2 extends I1 with MixB:
 tests/negative/mixin-test.toit:15:12: error: Members can't be abstract in non-abstract mixin
   abstract foo x y -> int
            ^~~
-Compilation failed.
+Compilation failed

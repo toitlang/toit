@@ -77,11 +77,13 @@ class KillerVisitor : public TraversingVisitor {
 class OptimizationVisitor : public ReplacingVisitor {
  public:
   OptimizationVisitor(TypeOracle* oracle,
+                      List<ir::Type> literal_types,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
       : oracle_(oracle)
       , holder_(null)
       , method_(null)
+      , literal_types_(literal_types)
       , queryables_(queryables)
       , field_names_(field_names) {}
 
@@ -99,7 +101,7 @@ class OptimizationVisitor : public ReplacingVisitor {
   /// Transforms virtual getters/setters into field accesses (when possible).
   Node* visit_CallVirtual(CallVirtual* node) {
     node = ReplacingVisitor::visit_CallVirtual(node)->as_CallVirtual();
-    return optimize_virtual_call(node, holder_, method_, field_names_, queryables_);
+    return optimize_virtual_call(node, holder_, method_, literal_types_, field_names_, queryables_);
   }
 
   /// Pushes `return`s into `if`s.
@@ -115,7 +117,7 @@ class OptimizationVisitor : public ReplacingVisitor {
 
   Node* visit_Typecheck(Typecheck* node) {
     node = ReplacingVisitor::visit_Typecheck(node)->as_Typecheck();
-    return optimize_typecheck(node, holder_, method_);
+    return optimize_typecheck(node, holder_, method_, literal_types_);
   }
 
   Node* visit_Super(Super* node) {
@@ -131,6 +133,7 @@ class OptimizationVisitor : public ReplacingVisitor {
 
   Class* holder_;  // Null, if not in class (or a static method/field).
   Method* method_;
+  List<ir::Type> literal_types_;
   UnorderedMap<Class*, QueryableClass> queryables_;
   UnorderedSet<Symbol> field_names_;
 };
@@ -144,7 +147,9 @@ void optimize(Program* program, TypeOracle* oracle) {
 
   auto classes = program->classes();
   bool include_abstracts;
-  auto queryables = build_queryables_from_plain_shapes(classes, include_abstracts=false);
+  // We construct the direct_queryables from the original "full" queryable set,
+  // and then remove methods that are overwritten.
+  auto direct_queryables = build_queryables_from_plain_shapes(classes, include_abstracts=false);
 
   UnorderedSet<Symbol> field_names;
 
@@ -161,7 +166,7 @@ void optimize(Program* program, TypeOracle* oracle) {
       // Nuke members in the superclass if they have been overridden.
       auto current = klass->super();
       while (current != null) {
-        auto& queryable = queryables[current];
+        auto& queryable = direct_queryables[current];
         bool was_present = queryable.remove(selector);
         // No need to go further if the super didn't have it.
         if (!was_present) break;
@@ -170,7 +175,7 @@ void optimize(Program* program, TypeOracle* oracle) {
     }
   }
 
-  OptimizationVisitor visitor(oracle, queryables, field_names);
+  OptimizationVisitor visitor(oracle, program->literal_types(), direct_queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);

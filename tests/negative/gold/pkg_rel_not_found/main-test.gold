@@ -7,4 +7,4 @@ import pre.not-exist as pre
 tests/negative/pkg_rel_not_found/main-test.toit:8:13: error: Unresolved identifier: 'foo'
   print pre.foo
             ^~~
-Compilation failed.
+Compilation failed

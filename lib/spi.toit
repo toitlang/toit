@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import gpio
+import io
 import serial
 import monitor
 
@@ -12,7 +13,7 @@ SPI is a serial communication bus able to address multiple devices along a main 
 To set up a SPI BUS:
 ```
 import gpio
-import serial.protocols.spi as spi
+import spi
 
 main:
   bus := spi.Bus
@@ -29,6 +30,20 @@ In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/B
   device := bus.device
     --cs=gpio.Pin 15
     --frequency=10_000_000
+```
+
+# Linux
+On Linux, devices can be created directly using their path. There is no need to create
+  a bus first.
+
+Example:
+```
+import spi
+
+main:
+  device := spi.Device --path="/dev/spidev0.0" --frequency=10_000_000
+  device.write #[0x01, 0x02, 0x03, 0x04]
+  device.close
 ```
 */
 
@@ -66,7 +81,10 @@ class Bus:
   /**
   Configures a device on this SPI bus.
 
-  The device's clock speed is configured to the given $frequency.
+  The device's clock speed is configured to the given $frequency. The given
+    $frequency is only aspirational, and the actual frequency might
+    be different. For example, the ESP32S3 seems to have a minimum frequency of
+    100kHz.
 
   An optional $cs (chip select) and $dc (data/command) pin can be assigned
     for this device. If no $cs pin is provided, then the chip must be enabled
@@ -109,8 +127,45 @@ class Bus:
 A device connected with SPI.
 */
 interface Device extends serial.Device:
-  /** See $serial.Device.registers. */
-  registers -> Registers
+  /**
+  Constructs a device from the given $path.
+
+  This function is only available on Linux.
+
+  The given $frequency is only aspirational, and the actual frequency might
+    be different. For example, the Raspberry Pi only supports a frequency range of
+    3.814 kHz to 125 MHz. If the given $frequency is outside this range, it will be
+    silently clamped to the nearest valid value.
+
+  The $mode parameter configures the clock polarity and phase (CPOL and CPHA) for this device.
+  The possible configurations are:
+  - 0 (0b00): CPOL=0, CPHA=0
+  - 1 (0b01): CPOL=0, CPHA=1
+  - 2 (0b10): CPOL=1, CPHA=0
+  - 3 (0b11): CPOL=1, CPHA=1
+
+  # Pin numbers
+  This constructor does not take any pin numbers. The pins are
+    tied to the path, and configured outside. On the Raspberry Pi,
+    look at `/boot/overlays/README` for more information. There, you
+    can find options to move the SPI block, or to change/disable the
+    chip select pins.
+  */
+  constructor --path/string --frequency/int --mode/int=0:
+    return DevicePath_ --path=path --frequency=frequency --mode=mode
+
+  /**
+  See $serial.Device.registers.
+
+  The $byte-size parameter specifies the size of the registers in bytes. For most
+    I2C devices, this is 1, but 2 is common too. If the register size is greater than 1, then
+    the $byte-order parameter specifies the byte order of the register address.
+
+  Always returns the same object, unless the size of the registers changes or the register byte-order
+    is not the same. The first allocation of the register cached; all subsequent *different* ones
+    will create new objects.
+  */
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> Registers
 
   /**
   Transfers the given $data to the device.
@@ -126,7 +181,7 @@ interface Device extends serial.Device:
     after the transfer. This functionality is only allowed when the
     bus is reserved for this device. See $with-reserved-bus.
   */
-  transfer
+  transfer -> none
       data/ByteArray
       --from/int=0
       --to/int=data.size
@@ -137,24 +192,88 @@ interface Device extends serial.Device:
       --keep-cs-active/bool=false
 
   /**
+  Writes the $bytes to the device.
+
+  If $keep-cs-active is true, then the chip select pin is kept active
+    after the transfer. This functionality is only allowed when the
+    bus is reserved for this device. See $with-reserved-bus.
+  */
+  write bytes/ByteArray --keep-cs-active/bool=false -> none
+
+  /**
   Reserves the bus for this device while executing the given $block.
 
-  Starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
+  If the system supports it, actively reserves the bus for this device. In that case,
+    starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
     the bus before returning.
+
+  On some systems, like Linux, it is not possible to reserve the bus. In that case, the
+    programmer is responsible for managing the bus. This function then simply
+    calls the given $block.
 
   Reserving the bus can be useful in two contexts:
   1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
     automatic CS pins, it might be necessary to set some CS pins by hand. This should be done
     after the bus has been reserved.
-  2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
+  2. When using the `--keep-cs-active` flag of the $transfer function, the bus must be reserved.
   */
   with-reserved-bus [block]
 
   /** Closes this SPI device and releases resources associated with it. */
   close
 
+abstract class DeviceBase_ implements Device:
+  registers_/Registers? := null
+
+  /**
+  See $serial.Device.registers.
+
+  The $byte-size parameter specifies the size of the registers in bytes. For most
+    I2C devices, this is 1, but 2 is common too.
+
+  Always returns the same object, unless the size of the registers changes or the register byte-order
+    is not the same. The first allocation of the register cached; all subsequent *different* ones
+    will create new objects.
+  */
+  registers --byte-size/int=1 --byte-order/io.ByteOrder=io.BIG-ENDIAN -> Registers:
+    if byte-size <= 0: throw "OUT_OF_RANGE"
+    if not registers_:
+      registers_= Registers.init_ this
+          --byte-size=byte-size
+          --byte-order=byte-order
+    else if registers_.byte-size_ != byte-size or registers_.byte-order_ != byte-order:
+      return Registers.init_ this
+          --byte-size=byte-size
+          --byte-order=byte-order
+    return registers_
+
+  /** See $serial.Device.read. */
+  read size/int -> ByteArray:
+    bytes := ByteArray size
+    transfer bytes --read=true
+    return bytes
+
+  /** See $serial.Device.write. */
+  write bytes/ByteArray --keep-cs-active/bool=false:
+    transfer bytes --keep-cs-active=keep-cs-active
+
+  abstract close
+
+  abstract transfer
+      data/ByteArray
+      --from/int=0
+      --to/int=data.size
+      --read/bool=false
+      --dc/int=0
+      --command/int=0
+      --address/int=0
+      --keep-cs-active/bool=false
+
+  abstract with-reserved-bus [block]
+
+
 /** Device connected to an SPI bus. */
-class Device_ implements Device:
+class Device_ extends DeviceBase_:
   spi_/Bus := ?
   device_ := ?
   owning-bus_/bool := false
@@ -165,25 +284,6 @@ class Device_ implements Device:
   constructor .spi_ .device_:
 
   constructor.init_ .spi_ .device_:
-
-  /**
-  See $Device.registers.
-
-  Always returns the same object.
-  */
-  registers -> Registers:
-    if not registers_: registers_= Registers.init_ this
-    return registers_
-
-  /** See $serial.Device.read. */
-  read size/int -> ByteArray:
-    bytes := ByteArray size
-    transfer bytes --read=true
-    return bytes
-
-  /** See $serial.Device.write. */
-  write bytes/ByteArray:
-    transfer bytes
 
   /** See $Device.close. */
   close:
@@ -215,6 +315,66 @@ class Device_ implements Device:
         owning-bus_ = false
         spi-release-bus_ device_
 
+class DevicePath_ extends DeviceBase_:
+  static TRANSFER-DONE_ ::= 1 << 0
+
+  static resource-group_ ::= spi-linux-init_
+
+  resource_/ByteArray? := ?
+  state_/monitor.ResourceState_
+  // We can't enforce that the bus is reserved, but the `keep-cs-active` is only
+  // allowed if the user requested to reserve the bus.
+  reserved_/bool := false
+
+  constructor --path/string --frequency/int --mode/int:
+    resource_ = spi-linux-open_ resource-group_ path frequency mode
+    state_ = monitor.ResourceState_ resource-group_ resource_
+    add-finalizer this:: close
+
+  close:
+    resource := resource_
+    if not resource: return
+    critical-do:
+      state_.dispose
+      resource_ = null
+      remove-finalizer this
+      spi-linux-close_ resource
+
+  transfer
+      data/ByteArray
+      --from/int=0
+      --to/int=data.size
+      --read/bool=false
+      --dc/int=0
+      --command/int=0
+      --address/int=0
+      --keep-cs-active/bool=false:
+    if keep-cs-active and not reserved_: throw "INVALID_ARGUMENT"
+    state_.clear-state TRANSFER-DONE_
+    length := to - from
+    delay_us := 0
+    done := spi-linux-transfer-start_ resource_ data from length read delay_us keep-cs-active
+    in/ByteArray? := null
+    // There is no way to interrupt a started spi transfer. We have to wait for it to finish.
+    critical-do --no-respect-deadline:
+      if not done:
+        state_.wait-for-state TRANSFER-DONE_
+        if not resource_:
+          // The device was closed while we were transfering.
+          return
+      // It is critical to call finish to release the buffer and reset the internal error state.
+      in = spi-linux-transfer-finish_ resource_ read
+    if read: data.replace from in
+
+
+  with-reserved-bus [block]:
+    if reserved_: throw "INVALID_STATE"
+    try:
+      reserved_ = true
+      block.call
+    finally:
+      reserved_ = false
+
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
   device_/Device
@@ -224,7 +384,8 @@ class Registers extends serial.Registers:
   /** Deprecated. Use $Device.registers. */
   constructor .device_:
 
-  constructor.init_ .device_:
+  constructor.init_ .device_ --byte-size/int --byte-order/io.ByteOrder:
+    super --byte-size=byte-size --byte-order=byte-order
 
   /**
   Sets the writing mode.
@@ -243,31 +404,42 @@ class Registers extends serial.Registers:
   /**
   See $super.
 
-  If `msb_write` is set (see $set-msb-write) modifies the register
+  If `msb-write` is set (see $set-msb-write) modifies the register
     value so it has a low most-significant bit.
   */
   read-bytes register/int count/int:
-    data := ByteArray 1 + count
-    data[0] = mask-reg_ (not msb-write_) register
+    register-size := byte-size_
+    data := ByteArray register-size + count
+    byte-order_.put-uint data register-size 0 register
+    data[0] = mask-reg_ (not msb-write_) data[0]
     transfer_ data --read
     return data.copy 1
-
-  /** See $super. */
-  read-bytes register count [failure]:
-    // TODO(anders): Can SPI fail?
-    return read-bytes register count
 
   /**
   See $super.
 
-  If `msb_write` is set (see $set-msb-write) modifies the register
+  If `msb-write` is set (see $set-msb-write) modifies the register
     value so it has a high most-significant bit.
   */
-  write-bytes reg bytes:
-    data := ByteArray 1 + bytes.size
-    data[0] = mask-reg_ msb-write_ reg
-    data.replace 1 bytes
+  write-bytes reg/int bytes/ByteArray:
+    register-size := byte-size_
+    data := ByteArray bytes.size + register-size
+    byte-order_.put-uint data register-size 0 reg
+    data[0] = mask-reg_ msb-write_ data[0]
+    data.replace register-size bytes
     transfer_ data
+
+  /**
+  Writes the given $bytes.
+
+  Still sets the write/read bit.
+
+  This function is needed because we support non-zero byte-sizes.
+  Overrides the superclass implementation.
+  */
+  write-bytes_ bytes/ByteArray:
+    bytes[0] = mask-reg_ msb-write_ bytes[0]
+    transfer_ bytes
 
   transfer_ data --read=false:
     device_.transfer data --read=read
@@ -295,3 +467,18 @@ spi-acquire-bus_ device:
 
 spi-release-bus_ device:
   #primitive.spi.release-bus
+
+spi-linux-init_:
+  #primitive.spi_linux.init
+
+spi-linux-open_ group/ByteArray path/string frequency/int mode/int:
+  #primitive.spi_linux.open
+
+spi-linux-transfer-start_ resource/ByteArray data/ByteArray from/int length/int is-read/bool delay_usecs/int keep-cs-active/bool:
+  #primitive.spi_linux.transfer-start
+
+spi-linux-transfer-finish_ resource/ByteArray was-read/bool:
+  #primitive.spi_linux.transfer-finish
+
+spi-linux-close_ resource_/ByteArray:
+  #primitive.spi_linux.close

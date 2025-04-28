@@ -127,4 +127,4 @@ tests/negative/for-test.toit:32:3: error: Unresolved identifier: 'unresolved'
 tests/negative/for-test.toit:34:17: error: Definition of variable not allowed at this location
   for x := 0; y := 1; x++:
                 ^~
-Compilation failed.
+Compilation failed

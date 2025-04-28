@@ -10,4 +10,4 @@ tests/negative/abstractB-test.toit:7:12: note: Missing implementation for 'bar'
 tests/negative/abstractB-test.toit:8:5: error: Unresolved identifier: 'gee'
     gee
     ^~~
-Compilation failed.
+Compilation failed

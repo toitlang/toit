@@ -13,15 +13,18 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.services show ServiceProvider
+
 import .network
+import .storage
 
 import ...containers
-import ...initialize
-import ...storage
 import ...flash.registry
+import ...services
 
 initialize-host -> ContainerManager:
   registry ::= FlashRegistry.scan
-  network ::= NetworkServiceProvider
-  storage ::= StorageServiceProvider registry
-  return initialize-system registry [network, storage]
+  service-manager ::= SystemServiceManager
+  (NetworkServiceProvider).install
+  (StorageServiceProviderHost registry).install
+  return ContainerManager registry service-manager

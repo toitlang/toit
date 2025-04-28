@@ -18,54 +18,9 @@
 #include <time.h>
 
 #include "top.h"
+#include "mutex.h"
 
 namespace toit {
-
-// Stack allocated block structured operation for locking and unlocking a mutex.
-// Usage:
-//  { Locker l(mutex);
-//    .. mutex is locked until end of scope ...
-//  }
-class Locker {
- public:
-  explicit Locker(Mutex* mutex)  : mutex_(mutex), previous_(null) {
-    enter();
-  }
-  ~Locker() {
-    leave();
-  }
-
- private:
-  // Explicitly leave the locker, while in the scope. Must be re-entered by
-  // calling `enter`.
-  void leave();
-
-  // Enter a locker after leaving it.
-  void enter();
-
-  Mutex* mutex_;
-  Locker* previous_;
-
-  friend class Unlocker;
-};
-
-// Block structured operation for temporarily unlocking a mutex inside a Locker.
-// Usage:
-//  { Unlocker u(locker);
-//    .. mutex is unlocked until end of scope ...
-//  }
-class Unlocker {
- public:
-  explicit Unlocker(Locker& locker) : locker_(locker) {
-    locker_.leave();
-  }
-  ~Unlocker() {
-    locker_.enter();
-  }
-
- private:
-  Locker& locker_;
-};
 
 // Abstraction for running stuff in parallel.
 class Thread {
@@ -84,6 +39,7 @@ class Thread {
   bool spawn(int stack_size = 0, int core = -1);
   void run();  // Run on current thread.
 
+  void cancel();
   void join();
 
  protected:
@@ -157,6 +113,18 @@ class OS {
   // Returns the number of microseconds from the first get_monotonic_time call.
   static int64 get_monotonic_time();
   static void reset_monotonic_time();
+
+  /// Computes the executable path.
+  ///
+  /// Returns a malloced data structure that should be freed
+  ///   by the caller with `delete []`.
+  static char* get_executable_path();
+
+  /// Computes the executable path of a source argument.
+  /// This is equivalent to calling `realpath`/`GetFullPathName` on the argument.
+  /// Returns 'null' if anything goes wrong.
+  /// Returns a malloced data structure that should be freed.
+  static char* get_executable_path_from_arg(const char* source_arg);
 
   // Returns the number of microseconds from the last power-on event. This time
   // source is monotonic.
@@ -249,7 +217,7 @@ class OS {
   static bool setenv(const char* variable, const char* value);
   static bool unsetenv(const char* variable);
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   static bool use_spiram_for_heap() { return use_spiram_for_heap_; }
   static bool use_spiram_for_metadata() { return use_spiram_for_metadata_; }
   static int toit_heap_caps_flags_for_heap();
@@ -271,7 +239,7 @@ class OS {
   static Mutex* resource_mutex_;
   static HeapMemoryRange single_range_;
   static int cpu_revision_;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   static bool use_spiram_for_heap_;
   static bool use_spiram_for_metadata_;
 #endif

@@ -49,4 +49,4 @@ tests/negative/uninitialized-field2-test.toit:69:7: error: Field 'field' must be
 tests/negative/uninitialized-field2-test.toit:73:28: error: Field 'field' must be initialized before first use
     for i := 0; i < 2; i < field:
                            ^~~~~
-Compilation failed.
+Compilation failed

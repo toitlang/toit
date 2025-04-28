@@ -1,4 +1,4 @@
 tests/negative/assign5-test.toit:9:5: error: Can't assign to 'super' in constructor
     super = 22
     ^~~~~
-Compilation failed.
+Compilation failed

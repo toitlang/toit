@@ -55,14 +55,19 @@
 #error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
+//  TOIT_FREERTOS : FreeRTOS
+#if defined(__FREERTOS__)
+#define TOIT_FREERTOS
+#endif
+
 // -----------------------------------------------------------------------------
 // OS configuration:
-//  TOIT_FREERTOS : ESP32 RTOS
+//  TOIT_ESP32      : ESP-IDF
 //  TOIT_DARWIN   : Apple's OSX
 //  TOIT_LINUX    : Ubuntu etc.
 
-#if defined(__FREERTOS__)
-#define TOIT_FREERTOS
+#if defined(ESP_PLATFORM)
+#define TOIT_ESP32
 #define TOIT_CMPCTMALLOC
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
@@ -75,9 +80,9 @@
 #define TOIT_POSIX
 #endif
 
-#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) > 1
+#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) > 1
 #error "More than one OS configuration specified"
-#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) < 1
+#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) < 1
 #error "No OS configuration specified"
 #endif
 
@@ -95,10 +100,7 @@
 #define LP64(a,b) a##l##b
 #endif
 
-// define IOT_DEVICE iff compiled for an embedded system.
-#ifdef TOIT_FREERTOS
-#define IOT_DEVICE
-#else
+#ifndef TOIT_FREERTOS
 // For non-embedded applications, this is where we define configuration options
 // that would be determined by the model-specific sdkconfig file on an embedded
 // device.
@@ -198,17 +200,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
   ((sizeof(array) / sizeof(*(array))) /                     \
   static_cast<size_t>(!(sizeof(array) % sizeof(*(array)))))
 
-// Please use _new at allocation point to ensure proper tracking of memory usage.
-// This also ensures that we call the nothrow version of new, which can handle an
-// allocation failure (returns null instead of calling the constructor).
-#ifdef TOIT_DEBUG
-#define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
-#define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
-#define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
-#else
 #define _new new (std::nothrow)
-#endif
 
 // Please use null instead of nullptr or the grand old NULL.
 constexpr std::nullptr_t null = nullptr;
@@ -219,28 +211,6 @@ extern bool throwing_new_allowed;
 
 #ifdef ASSERT
 #undef ASSERT
-#endif
-
-#ifdef TOIT_DEBUG
-void* tracing_malloc(size_t size, const char* file, int line);
-
-void* tracing_realloc(void* ptr, size_t size, const char* file, int line);
-
-void tracing_free(void* ptr, const char* file, int line);
-
-class NewMarker	{
- public:
-  NewMarker(char const* file, int line) : file(file), line(line) {}
-  char const* const file;
-  int const line;
-};
-
-void trace_new(void* p, const NewMarker& record, char const* name);
-
-template <class T> inline T* operator*(const NewMarker& mark, T* p) {
-  trace_new(p, mark, typeid(T).name());
-  return p;
-}
 #endif
 
 // TODO: Use this scope when a thread is not expected to make any allocations,
@@ -256,30 +226,30 @@ class NoAllocationScope {
 // code with an instance of this RAII class for now.
 class AllowThrowingNew {
  public:
-  AllowThrowingNew() {
-    old_throwing_new_allowed = throwing_new_allowed;
+  AllowThrowingNew() : old_throwing_new_allowed_(throwing_new_allowed) {
     throwing_new_allowed = true;
   }
 
   ~AllowThrowingNew() {
-    throwing_new_allowed = old_throwing_new_allowed;
+    throwing_new_allowed = old_throwing_new_allowed_;
   }
 
-  bool old_throwing_new_allowed;
+ private:
+  const bool old_throwing_new_allowed_;
 };
 
 #ifndef TOIT_DEPLOY
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
 #define FATAL(message, ...) toit::fail(__FILE__, __LINE__, message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) while (false && (cond)) {}
 #define FATAL(message, ...) toit::fail(message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif
 #endif  // TOIT_DEPLOY
@@ -340,6 +310,16 @@ class Task;
 // These can fail on the device, and we can't catch that deep in the compiler's
 // libraries.  By bundling the captured variables in an on-stack object we
 // avoid that.
+
+#define CAPTURE2(T1, x1, T2, x2)               \
+  struct {                                     \
+    T1 x1;                                     \
+    T2 x2;                                     \
+  } capture = {                                \
+    .x1 = x1,                                  \
+    .x2 = x2,                                  \
+  }
+
 #define CAPTURE3(T1, x1, T2, x2, T3, x3)       \
   struct {                                     \
     T1 x1;                                     \

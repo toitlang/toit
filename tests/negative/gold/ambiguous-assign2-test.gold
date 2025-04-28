@@ -7,4 +7,4 @@ bar := 0
 tests/negative/ambiguous-b.toit:8:1: note: Resolution candidate for 'bar'
 bar := 0
 ^~~
-Compilation failed.
+Compilation failed

@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import .io as io
+
 /**
 Low level operations for manipulating byte arrays as images.
 */
@@ -87,7 +89,7 @@ Older version of bitmap-draw-bitmap.
 bitmap-draw-bitmap x /int y /int -> none
     color /int
     orientation /int
-    source
+    source /io.Data
     source-offset /int
     source-width /int
     byte-array /ByteArray
@@ -97,7 +99,10 @@ bitmap-draw-bitmap x /int y /int -> none
   bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride byte-array byte-array-width bytewise
 
 bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride destination destination-width bytewise -> none:
-  #primitive.bitmap.draw-bitmap
+  #primitive.bitmap.draw-bitmap: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      bitmap-draw-bitmap x y color orientation bytes-source \
+          source-offset source-width destination destination-width bytewise
 
 /**
 Draws an indexed bytemap on a byte-oriented frame buffer.
@@ -143,22 +148,25 @@ bitmap-draw-bytemap x/int y/int -> none
 bitmap-draw-bytemap x /int y /int -> none
     transparent-color
     orientation /int
-    source-array
+    source /io.Data
     source-width /int
     palette /ByteArray
     destination-array /ByteArray
     destination-width /int:
-  bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-width palette destination-array destination-width
+  bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-width palette destination-array destination-width
 
-bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-line-stride palette destination-array destination-width -> none:
-  #primitive.bitmap.draw-bytemap
+bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-line-stride palette destination-array destination-width -> none:
+  #primitive.bitmap.draw-bytemap: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      bitmap-draw-bytemap x y transparent-color orientation bytes-source \
+          source-width palette destination-array destination-width
 
 /// Fills a frame buffer with a single color (0: black, 1: white)
-bitmap-zap byte-array color:
+bitmap-zap byte-array/ByteArray color/int:
   bytemap-zap byte-array (color == 0 ? 0 : 0xff)
 
 /// Fills a frame buffer with a single color
-bytemap-zap byte-array color:
+bytemap-zap byte-array/ByteArray color/int:
   #primitive.bitmap.byte-zap
 
 OVERWRITE ::= 0
@@ -175,8 +183,8 @@ For each pixel reads a single byte from the source, puts it through the lookup
   table, rolls it $shift bits to the right, 'ands' it with the $mask, then applies
   it to the destination, using $operation.
 $operation is one of $OVERWRITE, $OR, $AND, $XOR, $ADD, or $ADD-16-LE.  The first
-  five perform the operation dest_byte = new_byte, dest_byte |= new_byte,
-  dest_byte &= new_byte, dest_byte ^= new_byte, and dest_byte += new_byte
+  five perform the operation `dest-byte = new-byte`, `dest-byte |= new-byte`,
+  `dest-byte &= new-byte`, `dest-byte ^= new-byte`, and `dest-byte += new-byte`
   respectively, where the addition is saturating and unsigned 8 bit, clamped to
   0xff.  $ADD-16-LE treats the destination and the subsequent byte as a
   little-endian 16 bit integer, and does a saturating 16 bit addition, clamped
@@ -199,7 +207,7 @@ For both the source and destination we can define how many bytes to skip per
 
 # Examples
 ```
-  // Byte-swap the 16 bit values in byte_array from little-endian
+  // Byte-swap the 16 bit values in byte-array from little-endian
   // to big-endian (or vice versa).
   tmp := ByteArray byte-array.size
   blit byte-array tmp[1..] byte-array.size / 2 --source-pixel-stride=2 --destination-pixel-stride=2
@@ -224,7 +232,7 @@ For both the source and destination we can define how many bytes to skip per
   blit image[first-pixel..] red-extract w --source-pixel-stride=3 --source-line-stride=300
 ```
 */
-blit source destination/ByteArray pixels-per-line/int
+blit source/io.Data destination/ByteArray pixels-per-line/int -> none
     --source-pixel-stride=1
     --source-line-stride=(pixels-per-line * source-pixel-stride)
     --destination-pixel-stride=1
@@ -235,8 +243,11 @@ blit source destination/ByteArray pixels-per-line/int
     --operation=OVERWRITE:
   blit_ destination destination-pixel-stride destination-line-stride source source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation
 
-blit_ destination destination-pixel-stride destination-line-stride source source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation:
-  #primitive.bitmap.blit
+blit_ destination destination-pixel-stride destination-line-stride source source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation -> none:
+  #primitive.bitmap.blit: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      blit_ destination destination-pixel-stride destination-line-stride bytes-source \
+          source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation
 
 /**
 Transform a ByteArray in-place, using a 256-entry look-up table.
@@ -286,7 +297,7 @@ The rectangle may be wholly or partially outside the area of the byte array.  Th
 Returns true if something was drawn, or false if the entire rectangle was
   clipped away.
 */
-bitmap-rectangle x y color width height byte-array byte-array-width:
+bitmap-rectangle x/int y/int color/int width/int height/int byte-array/ByteArray byte-array-width/int:
   #primitive.bitmap.rectangle
 
 /**
@@ -301,10 +312,17 @@ The pixel layout is one byte per pixel in lines from top to bottom.  Each line
 Returns true if something was drawn, or false if the entire rectangle was
   clipped away.
 */
-bytemap-rectangle x y color w h byte-array byte-array-width:
+bytemap-rectangle x/int y/int color/int w/int h/int byte-array/ByteArray byte-array-width/int:
   #primitive.bitmap.byte-rectangle
 
-composit-bytes dest frame-opacity frame painting-opacity painting bits-not-bytes:
+/**
+Paints a framed window $frame on top of a background that has already been
+  rendered.  The $frame can be partially transparent and so can the window
+  contents.  The $frame is painted on top of the background, then window
+  contents are painted on top.
+*/
+composit-bytes dest/ByteArray frame-opacity/ByteArray frame/ByteArray?
+    painting-opacity/ByteArray painting/ByteArray bits-not-bytes/bool:
   #primitive.bitmap.composit
 
 /**
@@ -312,5 +330,5 @@ Performs Gaussian blur on the bytes of the byte array.
 The pixel layout is one byte per pixel in lines from top to bottom.  Each line
   is arranged from left to right.
 */
-bytemap-blur byte-array width x-blur-radius y-blur-radius=x-blur-radius:
+bytemap-blur byte-array/ByteArray width/int x-blur-radius/int y-blur-radius/int=x-blur-radius:
   #primitive.bitmap.bytemap-blur

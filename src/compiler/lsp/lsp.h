@@ -41,9 +41,9 @@ class Lsp {
     }
   }
 
-  void setup_completion_handler(Symbol prefix, const std::string package_id, SourceManager* source_manager) {
+  void setup_completion_handler(SourceManager* source_manager) {
     ASSERT(selection_handler_ == null);
-    selection_handler_ = _new CompletionHandler(prefix, package_id, source_manager, protocol());
+    selection_handler_ = _new CompletionHandler(source_manager, protocol());
   }
 
   void setup_goto_definition_handler(SourceManager* source_manager) {
@@ -53,28 +53,6 @@ class Lsp {
 
   bool has_selection_handler() const { return selection_handler_ != null; }
   LspSelectionHandler* selection_handler() { return selection_handler_; }
-
-  // Completion of the first segment happens before the selection handler is set up.
-  void complete_first_segment(Symbol prefix,
-                              ast::Identifier* segment,
-                              const Package& current_package,
-                              const PackageLock& package_lock) {
-      CompletionHandler::import_first_segment(prefix,
-                                              segment,
-                                              current_package,
-                                              package_lock,
-                                              protocol());
-  }
-
-  // Completion of the import path happens before the selection handler is set up.
-  void complete_import_path(Symbol prefix, const char* path, Filesystem* fs) {
-    CompletionHandler::import_path(prefix, path, fs, protocol());
-  }
-
-  // Goto-definitin of the import path happens before the selection handler is set up.
-  void goto_definition_import_path(const char* resolved) {
-    GotoDefinitionHandler::import_path(resolved, protocol());
-  }
 
   LspProtocol* protocol() { return protocol_; }
 

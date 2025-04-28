@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import binary show LITTLE-ENDIAN
 import expect show *
+import io show LITTLE-ENDIAN
 
 import crypto.crc show Crc Crc16Xmodem Crc32
 

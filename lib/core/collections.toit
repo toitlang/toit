@@ -2,8 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import bitmap
+import io
+import io show BIG-ENDIAN LITTLE-ENDIAN
 
 LIST-INITIAL-LENGTH_ ::= 4
 HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4
@@ -168,9 +169,18 @@ abstract class List extends CollectionBase:
   /**
   Creates a new List of the given $size where every slot is filled with the
     given $filler.
+
+  Will be deprecated. Use $(constructor size --initial) instead.
   */
-  constructor size/int filler=null:
+  constructor size/int filler:
     return List_.from-array_ (Array_ size filler)
+
+  /**
+  Creates a new List of the given $size where every slot is filled with the
+    given $initial value.
+  */
+  constructor size/int --initial=null:
+    return List_.from-array_ (Array_ size initial)
 
   /** Creates a List and initializes each element with the result of invoking the block. */
   constructor size/int [block]:
@@ -228,7 +238,7 @@ abstract class List extends CollectionBase:
   sub[0] = 22
   print list  // => [1, 22, 3, 4, 5]
   sub = list[..3]      // A view into [1, 22, 3]
-  sub.sort --in_place  // Sorts just the 3 values.
+  sub.sort --in-place  // Sorts just the 3 values.
   print sub   // => [1, 3, 22]
   print list  // => [1, 3, 22, 4, 5]
   sub2 := sub[1..]
@@ -301,6 +311,24 @@ abstract class List extends CollectionBase:
     collection.do: this[index++] = it
 
   /**
+  Inserts the given $value at the given index.
+  It is valid to insert at the $size position, in which case this is
+    equivalent to $add.
+  If n is the distance to the end of the list, the operation
+    runs in `O(n)` and is thus not efficient for insertions that are not near
+    the end of the list.
+  */
+  insert --at/int value/any -> none:
+    sz := size
+    if at == sz:
+      add value
+      return
+    if not 0 <= at < sz: throw "OUT_OF_BOUNDS"
+    add value  // Will soon be overwritten.
+    replace (at + 1) this at sz
+    this[at] = value
+
+  /**
   Removes the last element of this instance.
   Returns the removed element.
 
@@ -323,12 +351,23 @@ abstract class List extends CollectionBase:
   remove needle -> none:
     i := 0
     while i < size and this[i] != needle: i++
-    if i == size: return
-    i++
-    while i < size:
-      this[i - 1] = this[i]
-      i++
+    if i != size: remove --at=i
+
+  /**
+  Removes the value at the given index.
+  It is valid to remove at the $size - 1 position, in which case this is
+    equivalent to $remove-last.
+  If n is the distance to the end of the list, the operation
+    runs in `O(n)` and is thus not efficient for deletions that are not near
+    the end of the list.
+  Returns the value that was removed.
+  */
+  remove --at/int -> any:
+    result := this[at]
+    if at != size - 1:
+      replace at this (at + 1) size
     resize size - 1
+    return result
 
   /**
   Removes all entries that are equal to the given $needle.
@@ -338,8 +377,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --all/bool needle -> none:
-    if all != true: throw "Argument Error"
+  remove --all/True needle -> none:
     target-index := 0
     size.repeat:
       entry := this[it]
@@ -355,8 +393,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --last/bool needle -> none:
-    if last != true: throw "Argument Error"
+  remove --last/True needle -> none:
     for i := size - 1; i >= 0; i--:
       entry := this[i]
       if entry == needle:
@@ -420,7 +457,7 @@ abstract class List extends CollectionBase:
     return equals other --element-equals=: |a b| a == b
 
   /** See $super. */
-  do [block]:
+  do [block] -> none:
     this-size := size
     this-size.repeat: block.call this[it]
     // It is not allowed to change the size of the list while iterating over it.
@@ -428,11 +465,8 @@ abstract class List extends CollectionBase:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -457,9 +491,11 @@ abstract class List extends CollectionBase:
     return map_ [] block
 
   /**
-  Invokes the given $block on each element and stores the result in this list if
-    $in-place is true.
-  If $in-place is false, then this function is equivalent to $(map [block]).
+  Invokes the given $block on each element.
+
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the mapped elements.
+  Returns a new list if $in-place is false (the default).
   */
   // We have a second function here, since the `block` has implicitly a different
   // type. It needs to have T->T.
@@ -478,7 +514,9 @@ abstract class List extends CollectionBase:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case replaces the elements
+    in this list with the filtered elements.
+  Returns a new list if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -510,11 +548,7 @@ abstract class List extends CollectionBase:
 
   /** See $super. */
   stringify -> string:
-    str := "["
-    size.repeat:
-      if it != 0: str = str + ", "
-      str = str + this[it].stringify
-    return str + "]"
+    return stringify_ this "[" "]"
 
   /**
   Calls stringify on each element of the list, and concatenates the results
@@ -556,11 +590,11 @@ abstract class List extends CollectionBase:
   static TEMPORARY-BUFFER-MINIMUM_ ::= 16
 
   /**
-  Sorts the range [$from..$to[ using the given $compare block. The sort is stable,
-    meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Variant of $(sort from to).
 
-  The $compare block should take two arguments `a` and `b` and should return:
+  Sorts the range [$from..$to[ using the given $compare block.
+
+  The $compare block must take two arguments `a` and `b` and should return:
   - -1 if `a < b`,
   -  0 if `a == b`, and
   -  1 if `a > b`.
@@ -581,15 +615,19 @@ abstract class List extends CollectionBase:
     return result
 
   /**
-  Sorts the range [$from..$to[ using the the < and > operators.  The sort is
-    stable, meaning that equal elements do not change their relative order.
-  Returns a new list if $in-place is false. Returns this instance otherwise.
+  Sorts the range [$from..$to[ using the the < and > operators.
+
+  The sort is  stable, meaning that equal elements do not change their relative order.
+
+  Returns this instance if $in-place is true.
+  Returns a new list if $in-place is false (the default).
   */
   sort --in-place/bool=false from/int = 0 to/int = size -> List:
     return sort --in-place=in-place from to: | a b | compare_ a b
 
   /**
   Searches for $needle in the range $from (inclusive) - $to (exclusive).
+
   If $last is false (the default) returns the index of the first occurrence
     of $needle in the given range $from - $to. Otherwise returns the last
     occurrence.
@@ -603,11 +641,12 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Calls $if-absent without argument if the $needle is not contained
     in the range, and returns the result of the call.
   */
   // TODO(florian): once we have labeled breaks, we could require the
-  //   block to return an int, and let users write `break.index_of other_type`.
+  //   block to return an int, and let users write `break.index-of other-type`.
   index-of --last/bool=false needle from/int=0 to/int=size [--if-absent]:
     if not 0 <= from <= size: throw "BAD ARGUMENTS"
     if not last:
@@ -620,24 +659,25 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --last needle from to).
+
   Uses binary search, with `<`, `>` and `==`, to find the element.
   The given range must be sorted.
   Searches for $needle in the sorted range $from (inclusive) - $to (exclusive).
   Uses binary search with `<`, `>` and `==` to find the $needle.
-  The $binary flag must be true.
   */
-  index-of --binary/bool needle from/int=0 to/int=size -> int:
+  index-of --binary/True needle from/int=0 to/int=size -> int:
     return index-of --binary needle from to --if-absent=: -1
 
   /**
   Variant of $(index-of --binary needle from to).
+
   If not found, calls $if-absent with the smallest index at which the
     element is greater than $needle. If no such index exists (either because
     this instance is empty, or because the first element is greater than
     the needle) calls $if-absent with $to (where $to was adjusted
     according to the rules in $(index-of --last needle from to)).
   */
-  index-of --binary/bool needle from/int=0 to/int=size [--if-absent]:
+  index-of --binary/True needle from/int=0 to/int=size [--if-absent]:
     comp := : | a b |
       if a < b:      -1
       else if a == b: 0
@@ -646,6 +686,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -655,6 +696,7 @@ abstract class List extends CollectionBase:
 
   /**
   Variant of $(index-of --binary needle from to [--if-absent]).
+
   Uses $binary-compare to compare the elements in the sorted range.
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
@@ -692,7 +734,7 @@ abstract class List extends CollectionBase:
   is-sorted:
     return is-sorted: | a b | compare_ a b
 
-  swap i j:
+  swap i/int j/int:
     t := this[i]
     this[i] = this[j]
     this[j] = t
@@ -759,12 +801,16 @@ abstract class List extends CollectionBase:
 
   /**
   Calls the given $block with indexes splitting the $from-$to range into chunks
-    of the $available size.  The block is called with three arguments:
-    `chunk_from`, `chunk_to`, and `chunk_size`, where `chunk_size`
-    is always equal to `chunk_to - chunk_from`.  The first invocation
+    of the $available size.
+
+  The block is called with three arguments:
+    `chunk-from`, `chunk-to`, and `chunk-size`, where `chunk-size`
+    is always equal to `chunk-to - chunk-from`.  The first invocation
     receives indexes for at most $available elements. Subsequent
     invocations switch to $max-available elements (which by default is
-    the same as $available).  Returns $to - $from.
+    the same as $available).
+
+  Returns $to - $from.
   */
   static chunk-up from/int to/int available/int max-available/int=available [block] -> int:
     result := to - from
@@ -839,8 +885,8 @@ abstract class Array_ extends List:
   constructor.from-subclass_:
     super.from-subclass
 
-  do [block]:
-    return do_ this.size block
+  do [block] -> none:
+    do_ this.size block
 
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
@@ -875,6 +921,7 @@ abstract class Array_ extends List:
     collection.do: result[index++] = it
     return result
 
+  /** See $super. */
   copy from/int=0 to/int=size -> Array_:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result-size := to - from
@@ -929,7 +976,8 @@ class SmallArray_ extends Array_:
 An array for a larger number of elements.
 
 LargeArray_ is used for arrays that cannot be allocated in one page of memory.
-The implementation segments the payload into chunks of at most ARRAYLET_SIZE elements.
+The implementation segments the payload into chunks of at most $ARRAYLET-SIZE
+  elements.
 */
 class LargeArray_ extends Array_:
 
@@ -975,7 +1023,7 @@ class LargeArray_ extends Array_:
     number-of-arraylets := ((new-size - 1) / ARRAYLET-SIZE) + 1
     if number-of-arraylets == 1:
       return vector_[0].resize-for-list_ copy-size new-size filler
-    new-vector := Array_ number-of-arraylets  // new_vector may be a LargeArray_!
+    new-vector := Array_ number-of-arraylets  // new-vector may be a LargeArray_!
     remaining := new-size
     pos := 0
     number-of-arraylets.repeat:
@@ -1069,7 +1117,8 @@ class LargeArray_ extends Array_:
         // to iterate backwards.
         List.chunk-up -to -from first-chunk-max ARRAYLET-SIZE: | _ _ length |
           part1-size := min length source-mod
-          vector_[dest-div].replace (dest-mod - part1-size) source.vector_[source-div] (source-mod - part1-size) source-mod
+          if part1-size != 0:
+            vector_[dest-div].replace (dest-mod - part1-size) source.vector_[source-div] (source-mod - part1-size) source-mod
           if length != part1-size:
             // Copy part two from the next source arraylet.
             vector_[dest-div].replace (dest-mod - length) source.vector_[source-div - 1] (ARRAYLET-SIZE - length + part1-size) ARRAYLET-SIZE
@@ -1088,16 +1137,47 @@ class LargeArray_ extends Array_:
 /**
 A container specialized for bytes.
 
-A byte array can only contain (non-null) integers in the range 0-255.
+A byte array can only contain (non-null) integers in the range 0-255. When
+  storing other integer values, they are automatically truncated.
+
+Byte arrays can be created using the $ByteArray constructors, or by using the
+  byte array literal syntax: `#[1, 2, 3]`. If the latter only contains
+  constants, it is compiled such that access to the byte array doesn't need
+  the dynamic creation of the byte array. On many platforms this requires
+  less memory. These literals are still mutable and will copy their content
+  into memory the first time they are modified ("Copy on Write").
+
+# Examples
+```
+bytes := #[1, 2, 3]
+bytes[0] = 22
+print bytes  // => [22, 2, 3]
+
+bytes += #[4, 5]
+print bytes  // => [22, 2, 3, 4, 5]
+
+bytes := ByteArray 4: it
+print bytes  // => [0, 1, 2, 3]
+```
 */
-interface ByteArray:
+interface ByteArray extends io.Data:
 
   /**
   Creates a new byte array of the given $size.
 
   All elements are initialized to the $filler, which defaults to 0.
+
+  Deprecated. Use $(constructor size --initial) instead.
   */
-  constructor size/int --filler/int=0:
+  constructor size/int --filler/int:
+    #primitive.core.byte-array-new
+
+  /**
+  Creates a new byte array of the given $size.
+
+  All elements are initialized to the $initial value, which defaults to 0.
+  */
+  constructor size/int --initial/int=0:
     #primitive.core.byte-array-new
 
   /**
@@ -1111,9 +1191,40 @@ interface ByteArray:
     return result
 
   /**
+  Creates a new byte array from the given $bytes.
+  */
+  constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
+    if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
+    size := to - from
+    result := ByteArray size
+    bytes.write-to-byte-array result --at=0 from to
+    return result
+
+  /**
+  Constructs a byte array where the data is not on the Toit heap.
+
+  The byte array's backing store is allocated using 'malloc' and is thus
+    not located on the Toit heap. This has the following consequences:
+  - The garbage collector can't move the data, which can lead to fragmentation.
+  - External byte arrays can be handed over to the system. The system would
+    then "neuter" the byte array, rendering it unusable in Toit. This can
+    be useful for performance reasons, as can sometimes avoid copying the data.
+    Only few functions neuter byte arrays and typically only on request.
+
+  External byte arrays are not automatically faster than normal byte arrays.
+    Unless you know what you are doing or have a specific use-case in mind,
+    you should use normal byte arrays.
+
+  Note: bigger byte arrays are always external, even if allocated using
+    the normal $(constructor size).
+  */
+  constructor.external size/int:
+    #primitive.core.byte-array-new-external
+
+  /**
   The number of bytes in this instance.
   */
-  size
+  size -> int
 
   /**
   Whether this instance is empty.
@@ -1135,14 +1246,12 @@ interface ByteArray:
   /**
   Invokes the given $block on each byte of this instance.
   */
-  do [block]
+  do [block] -> none
 
   /**
   Iterates over all bytes in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none
+  do --reversed/True [block] -> none
 
   /**
   Whether all bytes satisfy the given $predicate.
@@ -1167,6 +1276,17 @@ interface ByteArray:
   The byte array must not be empty.
   */
   last -> int
+
+  /**
+  Reverses the order of the bytes in this instance.
+  */
+  reverse --in-place/True -> none
+
+  /**
+  Returns a copy of this instance with the order of the bytes reversed.
+  */
+  reverse -> ByteArray
+
 
   /**
   Returns the $n'th byte.
@@ -1214,7 +1334,7 @@ interface ByteArray:
   */
   to-string from/int=0 to/int=size -> string
 
-  /** Deprecated. Use $binary.ByteOrder.float64 instead. */
+  /** Deprecated. Use $io.ByteOrder.float64 instead. */
   to-float from/int --big-endian/bool?=true -> float
 
   /**
@@ -1223,7 +1343,7 @@ interface ByteArray:
   Invalid UTF-8 sequences are replaced with the Unicode replacement
     character, `\uFFFD`.
   */
-  to-string-non-throwing from=0 to=size
+  to-string-non-throwing from=0 to=size -> string
 
   /**
   Whether this instance has a valid UTF-8 string content in the range $from-$to.
@@ -1245,10 +1365,7 @@ interface ByteArray:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int to/int -> none
-  // TODO(florian): use optional arguments in the interface.
-  replace index/int source from/int -> none
-  replace index/int source -> none
+  replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Fills $value into list elements [$from..$to[.
@@ -1265,6 +1382,8 @@ interface ByteArray:
   Returns -1 otherwise.
   */
   index-of byte/int --from/int=0 --to/int=size -> int
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
 /** Internal function to create a byte array with one element. */
 create-byte-array_ x/int -> ByteArray_:
@@ -1311,8 +1430,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   abstract operator []= n/int value/int -> int
 
   operator [..] --from/int=0 --to/int=size -> ByteArray:
-    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if from == 0 and to == size: return this
+    // Don't bother checking the bounds, since the ByteArraySlice_
+    // constructor does this.
     return ByteArraySlice_ this from to
 
   /**
@@ -1321,7 +1441,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   # Inheritance
   Use $replace-generic_ as fallback if the primitive operation failed.
   */
-  abstract replace index source from/int=0 to/int=source.size -> none
+  abstract replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Whether this instance is empty.
@@ -1355,11 +1475,8 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
-
-  The argument $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -1402,9 +1519,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     #primitive.core.byte-array-convert-to-string
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    bin := big-endian ? binary.BIG-ENDIAN : binary.LITTLE-ENDIAN
+    bin := big-endian ? BIG-ENDIAN : LITTLE-ENDIAN
     bits := bin.int64 this from
     return float.from-bits bits
 
@@ -1427,7 +1544,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   /// Converts the UTF-8 byte array to a string.  If we encounter invalid UTF-8
   ///   we replace sequences of invalid bytes with a Unicode replacement
   ///   character, `\uFFFD`.
-  to-string-non-throwing from=0 to=size:
+  to-string-non-throwing from=0 to=size -> string:
     if is-valid-string-content from to:
       return to-string from to
     len := 0
@@ -1531,6 +1648,29 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
+  byte-size -> int:
+    return size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
+
+  reverse --in-place/True -> none:
+    (size >> 1).repeat: | i/int |
+      j := size - i - 1
+      tmp := this[i]
+      this[i] = this[j]
+      this[j] = tmp
+
+  reverse -> ByteArray:
+    result := ByteArray size: this[size - it - 1]
+    return result
+
 /**
 A container specialized for bytes.
 
@@ -1546,13 +1686,14 @@ class ByteArray_ extends ByteArrayBase_:
   constructor size/int --filler/int=0:
     #primitive.core.byte-array-new
 
+  /** Deprecated. Use $(ByteArray.external size) instead. */
   constructor.external_ size/int:
     #primitive.core.byte-array-new-external
 
   /**
   The number of bytes in this instance.
   */
-  size:
+  size -> int:
     #primitive.core.byte-array-length
 
   /**
@@ -1573,10 +1714,13 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     #primitive.core.byte-array-replace:
-      // TODO(florian): why can't we throw here?
-      replace-generic_ index source from to
+      if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
+        source.write-to-byte-array this --at=index from to
+      else:
+        // TODO(florian): why can't we throw here?
+        replace-generic_ index source from to
 
   // Returns true if the byte array has raw bytes as opposed to an off-heap C struct.
   is-raw-bytes_ -> bool:
@@ -1585,6 +1729,9 @@ class ByteArray_ extends ByteArrayBase_:
   stringify:
     if not is-raw-bytes_: return "Proxy"
     return super
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
 
 /**
 A Slice of a ByteArray.
@@ -1599,10 +1746,12 @@ class ByteArraySlice_ extends ByteArrayBase_:
   to_ / int
 
   constructor .byte-array_ .from_ .to_:
+    // We must check the bounds because the [..] operator on ByteArray
+    // does not check.
     if not 0 <= from_ <= to_ <= byte-array_.size:
       throw "OUT_OF_BOUNDS"
 
-  size:
+  size -> int:
     return to_ - from_
 
   operator [] n/int -> int:
@@ -1624,7 +1773,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     actual-index := from_ + index
     if from == to and actual-index == to_: return
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
@@ -1656,7 +1805,7 @@ class CowByteArray_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     return backing_.index-of byte --from=from --to=to
 
-  size:
+  size -> int:
     return backing_.size
 
   is-empty -> bool:
@@ -1686,6 +1835,12 @@ class CowByteArray_ implements ByteArray:
   last -> int:
     return backing_.last
 
+  reverse --in-place/True -> none:
+    backing_.reverse --in-place
+
+  reverse -> ByteArray:
+    return backing_.reverse
+
   operator [] n/int -> int:
     return backing_[n]
 
@@ -1701,14 +1856,14 @@ class CowByteArray_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     return backing_.to-string from to
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    byte-order /binary.ByteOrder := big-endian
-        ? binary.BIG-ENDIAN
-        : binary.LITTLE-ENDIAN
+    byte-order /io.ByteOrder := big-endian
+        ? BIG-ENDIAN
+        : LITTLE-ENDIAN
     return byte-order.float64 backing_ from
 
-  to-string-non-throwing from=0 to=size:
+  to-string-non-throwing from=0 to=size -> string:
     return backing_.to-string-non-throwing from to
 
   is-valid-string-content from/int=0 to/int=size -> bool:
@@ -1737,6 +1892,18 @@ class CowByteArray_ implements ByteArray:
       backing_ = backing_.copy
       is-mutable_ = true
     return backing_
+
+  byte-size -> int:
+    return backing_.byte-size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    backing_.write-to-byte-array target --at=at from to
 
 class ListSlice_ extends List:
   list_ / List
@@ -1826,7 +1993,7 @@ class List_ extends List:
     return result
 
   /** See $super. */
-  size:
+  size -> int:
     return size_
 
   /** See $super. */
@@ -1974,7 +2141,7 @@ A lookup starts with the hash code, which tells us where to start searching
 
 We use triangle numbers to advance to the next slot when searching the
   index, searching at offsets 1, 3, 6, 10... from the initial guess.  This
-  helps to avoid 'hot spots' of hash collisions caused by bad hash_code
+  helps to avoid 'hot spots' of hash collisions caused by bad hash-code
   implementations, eg the java.lang.Integer hashCode() which returns the
   integer.  We tried stepping forwards at offsets 1, 2, 3, 4, ...  from the
   initial guess, using 'Fibonacci hashing' to make hot-spots less likely.  This
@@ -1998,7 +2165,7 @@ Certain access patterns, including repeated removal of the first element,
   skip number, indicating that the next n positions are also deleted.
 */
 abstract class HashedInsertionOrderedCollection_:
-  // The offsets of these four fields are used by the hash_find intrinsic in
+  // The offsets of these four fields are used by the hash-find intrinsic in
   // the interpreter, so we can't move them.
   size_ := 0
   index-spaces-left_ := 0
@@ -2100,7 +2267,7 @@ abstract class HashedInsertionOrderedCollection_:
   // Returns the new index size.
   pick-new-index-size_ old-size --allow-shrink/bool -> int:
     minimum := allow-shrink ? 2 : index_.size * 2
-    enough := 1 + old-size + (old-size >> 3)  // old_size * 1.125.
+    enough := 1 + old-size + (old-size >> 3)  // old-size * 1.125.
     new-index-size := max
       minimum
       1 << (64 - enough.count-leading-zeros)
@@ -2129,7 +2296,7 @@ abstract class HashedInsertionOrderedCollection_:
     append-position := null  // Use null/non-null to avoid calling block twice.
 
     // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
-    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
+    //               (0x1351d * (hash-code_ key)) & 0x3fffffff
     //             that doesn't allocate large integers.
     // Call this early so we can't get away with single-entry sets/maps
     // that have incompatible keys.
@@ -2169,11 +2336,11 @@ abstract class HashedInsertionOrderedCollection_:
   // other than the parameters, which are modified - in this case we can reuse the
   // START state.
   // State vars:
-  // * state (START, NOT_FOUND, REBUILD, or AFTER_COMPARE).
-  // * old_size (used in REBUILD to call the rebuild block).
-  // * deleted_slot (used in NOT_FOUND and AFTER_COMPARE reset in START).
-  // * slot (used in NOT_FOUND and AFTER_COMPARE)
-  // * position, slot_step, and starting_slot (used in AFTER_COMPARE).
+  // * state (START, NOT-FOUND, REBUILD, or AFTER-COMPARE).
+  // * old-size (used in REBUILD to call the rebuild block).
+  // * deleted-slot (used in NOT-FOUND and AFTER-COMPARE reset in START).
+  // * slot (used in NOT-FOUND and AFTER-COMPARE)
+  // * position, slot-step, and starting-slot (used in AFTER-COMPARE).
   find-body_ key hash append-position [not-found] [rebuild] [compare]:
     #primitive.intrinsics.hash-find:
       // State START.
@@ -2194,7 +2361,7 @@ abstract class HashedInsertionOrderedCollection_:
             old-size := size_
             // Found free slot.
             if not append-position: append-position = not-found.call  // May not return.
-            // State NOT_FOUND.
+            // State NOT-FOUND.
             if index-spaces-left_ == 0:
               // State REBUILD.
               rebuild.call old-size
@@ -2216,7 +2383,7 @@ abstract class HashedInsertionOrderedCollection_:
           if hash-and-position & HASH-MASK_ == hash & HASH-MASK_:
             // Found hash match.
             if k is not Tombstone_ and (compare.call key k):
-              // State AFTER_COMPARE where block returns true.
+              // State AFTER-COMPARE where block returns true.
               // It's not obvious why we have to return APPEND_ here, after all,
               // we already found the entry in the index.  The reason is that the
               // not_found call can add an entry to the backing, then we find the
@@ -2224,7 +2391,7 @@ abstract class HashedInsertionOrderedCollection_:
               // backing entry in the index, and so we find it when we do another
               // iteration of the outer loop here.
               return append-position ? APPEND_ : position
-          // State AFTER_COMPARE where block returns false.
+          // State AFTER-COMPARE where block returns false.
           slot = (slot + slot-step) & index-mask
           slot-step++
           if slot == starting-slot:  // Index is full and we didn't find the entry.
@@ -2259,11 +2426,11 @@ abstract class HashedInsertionOrderedCollection_:
     index-mask := new-index-size - 1
     if not index_ or index-mask > HASH-MASK_ or rebuild-backing:
       // Rebuild the index using the backing array.
-      // By using resize_for_list_ we reuse the arraylets when growing large
+      // By using resize-for-list_ we reuse the arraylets when growing large
       // arrays.  This reduces GC churn and, more importantly, peak memory
       // usage.
       if index_:
-        index_ = index_.resize-for-list_ /*copy_size=*/0 new-index-size /*filler=*/0
+        index_ = index_.resize-for-list_ /*copy-size=*/0 new-index-size /*filler=*/0
         index_.fill 0
       else:
         index_ = Array_ new-index-size 0
@@ -2280,14 +2447,14 @@ abstract class HashedInsertionOrderedCollection_:
         key := backing_[i]
         if key is not Tombstone_:
           action := find-body_ key (hash-code_ key) null
-            (: i)  // not_found block, returns the position of where to add the new entry.
+            (: i)  // not-found block, returns the position of where to add the new entry.
             throw-block
             false-block
           assert: action == APPEND_
     else:
       // We can do an simple index rebuild from the old index.  There are
       // enough hash bits in the index slots to tell us where the slot goes in
-      // the new index, so we don't need to call hash_code or equality for the
+      // the new index, so we don't need to call hash-code or equality for the
       // entries in the backing.
       old-index := index_
       index_ = Array_ new-index-size 0
@@ -2309,9 +2476,9 @@ simple-rebuild-hash-index_ old-index index_ -> none:
 
 /**
 A set of keys.
-The objects used as keys must have a hash_code method that returns
+The objects used as keys must have a `hash-code` method that returns
   an integer that does not change while the object is in the set.
-The == operator should be compatible with the hash_code method so
+The == operator should be compatible with the hash-code method so
   that objects that test equal also have the same hash code.
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
@@ -2426,10 +2593,8 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   /**
   Variant of $(Collection.do [block]).
   Iterates over the elements of this collection in reverse order.
-  The flag $reversed must be true.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2455,6 +2620,15 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   every [predicate] -> bool:
     do: if not predicate.call it: return false
     return true
+
+  /**
+  Copies the set.
+
+  Returns a new instance that has the same values as this instance.
+  The copy is shallow and does not clone/copy the elements.
+  */
+  copy -> Set:
+    return map: it
 
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
@@ -2526,13 +2700,8 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   intersect --in-place/bool=false other/Set -> Set:
     return filter --in-place=in-place: other.contains it
 
-  stringify:
-    str := "{"
-    first := true
-    do:
-      if first: first = false else: str = str + ", "
-      str = str + it.stringify
-    return str + "}"
+  stringify -> string:
+    return stringify_ this "{" "}"
 
   /**
   Returns an element that is equal to the $key.
@@ -2588,7 +2757,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
 /**
 A set that uses object identity instead of the == operator to test equality
-  of elements. This set still uses the hash_code method on elements (see $Set). There is
+  of elements. This set still uses the hash-code method on elements (see $Set). There is
   no identity hash code operation on arbitrary classes in Toit.
 */
 class IdentitySet extends Set:
@@ -2601,9 +2770,9 @@ class IdentitySet extends Set:
 
 /**
 A map from key objects to values.
-The objects used as keys must have a hash_code method that returns
+The objects used as keys must have a hash-code method that returns
   an integer that does not change while the object is in the map.
-The == operator should be compatible with the hash_code method so
+The == operator should be compatible with the hash-code method so
   that objects that test equal also have the same hash code.
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
@@ -2853,11 +3022,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Variant of $(do [block]).
   Iterates over all key/value pairs in reverse order.
-  The flag $reversed must be true.
   Users must not modify this instance while iterating over it.
   */
-  do --reversed/bool [block] -> none:
-    if reversed != true: throw "Argument Error"
+  do --reversed/True [block] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2872,11 +3039,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each key of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $keys must be true.
   */
-  do --keys/bool --reversed/bool=false [block] -> none:
-    if keys != true: throw "Bad Argument"
+  do --keys/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call key
     else:
@@ -2885,11 +3049,8 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Invokes the given $block on each value of this instance.
   Users must not modify this instance while iterating over it.
-
-  The flag $values must be true.
   */
-  do --values/bool --reversed/bool=false [block] -> none:
-    if values != true: throw "Bad Argument"
+  do --values/True --reversed/bool=false [block] -> none:
     if reversed:
       do --reversed: | key value | block.call value
     else:
@@ -2921,8 +3082,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --values/bool [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -2935,8 +3095,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the values of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --values/bool --initial [block]:
-    if values != true: throw "Bad Argument"
+  reduce --values/True --initial [block]:
     result := initial
     do --values:
       result = block.call result it
@@ -2946,8 +3105,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --keys/bool [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True [block]:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -2960,8 +3118,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --keys/bool --initial [block]:
-    if keys != true: throw "Bad Argument"
+  reduce --keys/True --initial [block]:
     result := initial
     do --keys:
       result = block.call result it
@@ -2983,21 +3140,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether at least one key in the map satisfies the given $predicate.
-  The flag $keys must be true.
   Returns false, if the map is empty.
   */
-  any --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  any --keys/True [predicate] -> bool:
     do --keys: if predicate.call it: return true
     return false
 
   /**
   Whether at least one value in the map satisfies the given $predicate.
-  The flag $values must be true.
   Returns false, if the map is empty.
   */
-  any --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  any --values/True [predicate] -> bool:
     do --values: if predicate.call it: return true
     return false
 
@@ -3012,21 +3165,17 @@ class Map extends HashedInsertionOrderedCollection_:
 
   /**
   Whether all keys in the map satisfy the given $predicate.
-  The flag $keys must be true.
   Returns true, if the map is empty.
   */
-  every --keys/bool [predicate] -> bool:
-    if keys != true: throw "Bad Argument"
+  every --keys/True [predicate] -> bool:
     do --keys: if not predicate.call it: return false
     return true
 
   /**
   Whether all values in the map satisfy the given $predicate.
-  The flag $values must be true.
   Returns true, if the map is empty.
   */
-  every --values/bool [predicate] -> bool:
-    if values != true: throw "Bad Argument"
+  every --values/True [predicate] -> bool:
     do --values: if not predicate.call it: return false
     return true
 
@@ -3051,6 +3200,19 @@ class Map extends HashedInsertionOrderedCollection_:
 
   The $block is invoked with two arguments for each entry in this instance:
     the key and the value. The returned value becomes the new value for the key.
+
+  # Examples
+  ```
+  map := { "a": 1, "b": 2 }
+
+  // Double the values. (Key is not used).
+  doubled := map.map: | _ value | value * 2
+  print doubled  // => { "a": 2, "b": 4 }
+
+  // Prefix the values with the key.
+  prefixed := map.map: | key value | "$key-$value"
+  print prefixed  // => { "a": "a-1", "b": "b-2" }
+  ```
   */
   map [block] -> Map:
     result := Map
@@ -3060,14 +3222,11 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Maps the values of this instance.
 
-  The flag $in-place must be true.
-
   Invokes the given $block on each key/value pair and replaces the old value with
     the result of the call.
 
   */
-  map --in-place/bool [block] -> none:
-    if in-place != true: throw "Bad Argument"
+  map --in-place/True [block] -> none:
     limit := backing_ ? backing_.size : 0
     for i := 0; i < limit; i += STEP_:
       key := backing_[i]
@@ -3078,7 +3237,9 @@ class Map extends HashedInsertionOrderedCollection_:
   /**
   Filters this instance using the given $predicate.
 
-  Returns a new map if $in-place is false. Returns this instance otherwise.
+  Returns this instance if $in-place is true. In this case removes the elements
+    that don't match the $predicate.
+  Returns a new map if $in-place is false (the default).
 
   The result contains all the elements of this instance for which the $predicate returns
     true.
@@ -3101,17 +3262,9 @@ class Map extends HashedInsertionOrderedCollection_:
     shrink-if-needed_
     return this
 
-  stringify:
+  stringify -> string:
     if is-empty: return "{:}"
-    key-value-strings := []
-    size := 0
-    do: | key value |
-      key-value-string := "$key.stringify: $value.stringify"
-      size += key-value-string.size + 2
-      if size > MAX-PRINT-STRING_:
-        return "{$(key-value-strings.join ", ")..."
-      key-value-strings.add key-value-string
-    return "{$(key-value-strings.join ", ")}"
+    return stringify_ (MapStringify_ this) "{" "}"
 
   /**
   The first key of the map by insertion order.
@@ -3131,7 +3284,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
 /**
 A map that uses object identity instead of the == operator to test equality
-  of keys. This map still uses the hash_code method on keys (see $Map). There is no
+  of keys. This map still uses the hash-code method on keys (see $Map). There is no
   identity hash code operation on arbitrary classes in Toit.
 */
 class IdentityMap extends Map:
@@ -3152,7 +3305,7 @@ A collection of items, where new items can be added at the end. They can
 A deque is a generalization of a stack and a queue, and can be used for both
   purposes.
 */
-class Deque implements Collection:
+class Deque extends List implements Collection:
   // Traditionally we would have a head index, a tail index and an array
   // backing, used as a circular buffer.  Instead we have only the tail index
   // (called first_) and use a growable list as backing, copying down when
@@ -3165,81 +3318,233 @@ class Deque implements Collection:
   first_ := 0
   backing_/List := []
 
+  /**
+  Constructs an empty Deque.
+  */
+  constructor:
+    super.from-subclass
+
+  /**
+  Constructs a new Deque that initially contains the elements of the collection.
+  */
+  constructor.from collection/Collection:
+    backing_ = List.from collection
+    super.from-subclass
+
+  /// See $Collection.size.
   size -> int:
     return backing_.size - first_
 
+  /// See $Collection.is-empty.
   is-empty -> bool:
     return backing_.size == first_
 
+  /**
+  Adds the given $element to the end of this instance.
+  */
   add element -> none:
     backing_.add element
 
+  /**
+  Adds all elements of the given $collection to this instance.
+  */
   add-all collection/Collection -> none:
     backing_.add-all collection
 
+  /// See $Collection.do.
   do [block]:
     backing_[first_..].do block
 
+  /**
+  Variant of $(Collection.do [block]).
+
+  Iterates over the elements of this collection in reverse order.
+  */
   do --reversed/bool [block] -> none:
     backing_[first_..].do --reversed block
 
+  /// See $Collection.any.
   any [predicate] -> bool:
     return backing_[first_..].any predicate
 
+  /// See $Collection.every.
   every [predicate] -> bool:
     return backing_[first_..].every predicate
 
+  /// See $(Collection.reduce [block]).
   reduce [block]:
     return backing_[first_..].reduce block
 
+  /// See $(Collection.reduce --initial [block]).
   reduce --initial [block]:
     return backing_[first_..].reduce --initial=initial block
 
+  /// See $Collection.contains.
   contains element -> bool:
     return backing_[first_..].contains element
 
+  /**
+  Removes all elements.
+  */
   clear -> none:
     backing_.clear
     first_ = 0
 
+  /**
+  The first element of the deque.
+
+  The deque must not be empty.
+  */
   first -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_[first_]
 
+  /**
+  The last element of the deque.
+
+  The deque must not be empty.
+  */
   last -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     return backing_.last
 
+  /**
+  Removes the last element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-last -> any:
-    if first_ == backing_.size: throw "OUT_OF_RANGE"
+    if first_ == backing_.size: throw "OUT_OF_BOUNDS"
     result := backing_.remove-last
     shrink-if-needed_
     return result
 
+  /**
+  Removes the first element of the deque.
+
+  Returns the removed element.
+  The deque must not be empty.
+  */
   remove-first -> any:
     backing := backing_
     first := first_
-    if first == backing.size: throw "OUT_OF_RANGE"
+    if first == backing.size: throw "OUT_OF_BOUNDS"
     result := backing[first]
     backing[first] = null
     first_++
     shrink-if-needed_
     return result
 
+  /**
+  Inserts the given $element at the beginning of this instance.
+  */
   add-first element -> none:
     first := first_
     if first == 0:
       padding-size := (backing_.size >> 1) + 1
-      new_size := backing_.size + padding-size
+      new-size := backing_.size + padding-size
       // Pad both ends so we are not inefficient in the case where the next
       // operation adds to the end.
-      new_backing := List_.private_ (new_size + padding-size) new_size
-      new_backing.replace padding-size backing_
-      backing_ = new_backing
+      new-backing := List_.private_ (new-size + padding-size) new-size
+      new-backing.replace padding-size backing_
+      backing_ = new-backing
       first = padding-size
     first--
     backing_[first] = element
     first_ = first
+
+  /**
+  Returns the element at the given $index.
+  */
+  operator [] index/int:
+    if index < 0: throw "OUT_OF_BOUNDS"
+    return backing_[first_ + index]
+
+  /**
+  Sets the element at the given $index to the given $value.
+
+  The index must be in the range [0, size).
+  */
+  operator []= index/int value:
+    if index < 0: throw "OUT_OF_BOUNDS"
+    backing_[first_ + index] = value
+
+  /**
+  Returns a new Deque that contains the elements of this.
+  */
+  copy from/int=0 to/int=size -> Deque:
+    if from < 0: throw "OUT_OF_BOUNDS"
+    return Deque.from backing_[first_ + from .. first_ + to]
+
+  /**
+  Inserts the given $value at the given index $at.
+
+  It is valid to insert at the $size position, in which case this is
+    equivalent to $add.  It is also valid to add at the zero position,
+    in which case this is equivalent to $add-first.
+  If n is the shortest distance to the start or end of the deque, the operation
+    runs in `O(n)` and is thus not efficient for insertions that are not near
+    the start or end of the deque.
+  */
+  insert --at/int value -> none:
+    sz := size
+    if at < 0 or at > sz: throw "OUT_OF_BOUNDS"
+    if at >= sz >> 1:
+      backing_.insert --at=(at + first_) value
+    else:
+      add-first value
+      if at != 0:
+        // Need to move down the elements.
+        first := first_  // This is the decremented value after the add.
+        at += first
+        backing_.replace first backing_ (first + 1) (at + 1)
+        backing_[at] = value
+
+  /**
+  Removes the value at the given index $at.
+
+  It is valid to remove at the $size - 1 position, in which case this is
+    equivalent to $remove-last.  It is also valid to remove at the zero
+    position, in which case this is equivalent to $remove-first.
+  If n is the shortest distance to the start or end of the deque, the operation
+    runs in `O(n)` and is thus not efficient for deletions that are not near
+    the start or end of the deque.
+  Returns the value that was removed.
+  */
+  remove --at/int -> any:
+    last := size - 1
+    if at < 0 or at > last: throw "OUT_OF_BOUNDS"
+    if at >= last >> 1:
+      return backing_.remove --at=(first_ + at)
+    removed := remove-first
+    if at == 0: return removed
+    // Need to move up the elements.
+    first := first_  // This is the incremented value after the remove-first.
+    at += first
+    result := backing_[at - 1]
+    backing_.replace (first + 1) backing_ first (at - 1)
+    backing_[first] = removed
+    return result
+
+  /**
+  Resizes the backing store of this instance to the given $new-size.
+
+  Deprecated. Use $reserve instead.
+  */
+  resize new-size/int:
+    if new-size < 0: throw "OUT_OF_BOUNDS"
+    backing_.resize first_ + new-size
+
+  /**
+  Reserves $amount additional space in the backing store of this instance.
+
+  This operation is useful when you know that you will add $amount elements
+    to the deque, and you want to avoid reallocations.
+  */
+  reserve amount/int:
+    if amount < 0: throw "OUT_OF_BOUNDS"
+    backing_.resize (backing_.size + amount)
 
   shrink-if-needed_ -> none:
     backing := backing_
@@ -3248,3 +3553,25 @@ class Deque implements Collection:
       backing.replace 0 backing first first + size
       backing.resize size
       first_ = 0
+
+stringify_ collection open/string close/string -> string:
+  key-strings := []
+  size := 0
+  collection.do: | key |
+    key-string := key.stringify
+    size += key-string.size + 2
+    if size > MAX-PRINT-STRING_:
+      return "$open$(key-strings.join ", ")..."
+    key-strings.add key-string
+  return "$open$(key-strings.join ", ")$close"
+
+// We need this helper class because the do method of Map passes two arguments,
+// while for the other collections we only pass one argument.
+class MapStringify_:
+  map/Map
+
+  constructor .map:
+
+  do [block] -> none:
+    map.do: | key value |
+      block.call "$key: $value"

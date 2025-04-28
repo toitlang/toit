@@ -6,15 +6,14 @@ import .lsp-client show LspClient run-client-test
 import expect show *
 import host.file
 import host.directory
-import writer show Writer
+import io
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 save-to-file path content:
   stream := file.Stream.for-write path
-  writer := Writer stream
+  writer := io.Writer.adapt stream
   writer.write content
   stream.close
 

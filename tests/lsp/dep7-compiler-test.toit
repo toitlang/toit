@@ -9,13 +9,12 @@ import system show platform
 
 main args:
   run-client-test args: test it
-  run-client-test --use-toitlsp args: test it
 
 test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
   LEVELS ::= 2
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   MODULE-NAME-PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE-NAME-PREFIX$it"
   paths := List LEVELS: "$DRIVE/tmp/$MODULE-NAME-PREFIX$(it).toit"

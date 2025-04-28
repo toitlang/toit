@@ -24,16 +24,15 @@ import .image
 import .snapshot
 import .firmware show pad
 
-import binary show LITTLE-ENDIAN ByteOrder
-import bytes
 import encoding.ubjson
+import io
+import io show LITTLE-ENDIAN ByteOrder
 import system
-import uuid
+import uuid show *
 
 import host.file
 import cli
 
-BINARY-FLAG      ::= "binary"
 M32-FLAG         ::= "machine-32-bit"
 M64-FLAG         ::= "machine-64-bit"
 OUTPUT-OPTION    ::= "output"
@@ -44,15 +43,17 @@ SNAPSHOT-FILE    ::= "snapshot-file"
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE-ENDIAN
 
-  out ::= ?
-  constructor .out:
+  out-le/io.EndianWriter
+  word-size/int
+
+  constructor out/io.Writer --.word-size:
+    out-le = out.little-endian
 
   abstract write-start -> none
   abstract write-word word/int is-relocatable/bool -> none
   abstract write-end -> none
 
-  write word-size/int relocatable/ByteArray -> none:
-    if word-size != 4: unreachable
+  write relocatable/ByteArray -> none:
     chunk-size := (word-size * 8 + 1) * word-size
     write-start
     List.chunk-up 0 relocatable.size chunk-size: | from to |
@@ -60,19 +61,26 @@ abstract class RelocatedOutput:
     write-end
 
   write-chunk chunk/ByteArray -> none:
-    mask := ENDIAN.uint32 chunk 0
-    for pos := 4; pos < chunk.size; pos += 4:
-      write-word
-          ENDIAN.uint32 chunk pos
-          (mask & 1) != 0
-      mask = mask >> 1
+    if word-size == 4:
+      mask := ENDIAN.uint32 chunk 0
+      for pos := word-size; pos < chunk.size; pos += word-size:
+        word := ENDIAN.uint32 chunk pos
+        write-word word ((mask & 1) != 0)
+        mask = mask >> 1
+    else if word-size == 8:
+      mask := ENDIAN.int64 chunk 0
+      for pos := word-size; pos < chunk.size; pos += word-size:
+        word := ENDIAN.int64 chunk pos
+        write-word word ((mask & 1) != 0)
+        mask = mask >> 1
+    else:
+      unreachable
 
 class BinaryRelocatedOutput extends RelocatedOutput:
   relocation-base/int ::= ?
-  buffer_/ByteArray := ByteArray 4
 
-  constructor out .relocation-base:
-    super out
+  constructor out/io.Writer .relocation-base --word-size/int:
+    super out --word-size=word-size
 
   write-start -> none:
     // Nothing to add here.
@@ -82,71 +90,71 @@ class BinaryRelocatedOutput extends RelocatedOutput:
 
   write-word word/int is-relocatable/bool -> none:
     if is-relocatable: word += relocation-base
-    write-uint32 word
+    if word-size == 4:
+      out-le.write-uint32 word
+    else:
+      out-le.write-int64 word
 
-  write-uint16 halfword/int:
-    RelocatedOutput.ENDIAN.put-uint16 buffer_ 0 halfword
-    out.write buffer_[0..2]
+build-command -> cli.Command:
+  cmd := cli.Command "snapshot-to-image"
+      --help="""
+        Converts a snapshot into an image.
 
-  write-uint32 word/int:
-    RelocatedOutput.ENDIAN.put-uint32 buffer_ 0 word
-    out.write buffer_
+        Images are word-size specific. If built with `-m32`, the image
+        will be 32-bit, and if built with `-m64`, the image will be 64-bit.
+        When compiling to a binary (--format=binary), exactly one of these flags
+        must be provided. When compiling to UBJSON (--format=ubjson), both flags
+        may be provided, in which case the image will be compiled to both
+        word sizes.
 
-print-usage parser/cli.Command --error/string?=null:
-  if error: print-on-stderr_ "Error: $error\n"
-  print-on-stderr_ parser.usage
-  exit 1
+        The binary format produces a single relocatable image.
+        The UBJSON format produces a dictionary with the following entries:
+          - 'id': The image ID.
+          - 'images': A list of images, each with the following entries:
+            - 'flags': A list of flags used to build the image. Either `-m32` or `-m64`.
+            - 'bytes': The image bytes as a byte array.
+
+        If an assets file is provided, it will be included in the image.
+        """
+      --rest=[cli.Option SNAPSHOT-FILE]
+      --options=[
+          cli.Flag M32-FLAG --short-name="m32" --help="Build a 32-bit image.",
+          cli.Flag M64-FLAG --short-name="m64" --help="Build a 64-bit image.",
+          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"] --required --help="Output format.",
+          cli.Option OUTPUT-OPTION --short-name="o" --required --help="Output file.",
+          cli.Option ASSETS-OPTION --help="Path to assets file.",
+        ]
+      --run=:: snapshot-to-image it
+  return cmd
 
 main args:
-  parsed := null
-  parser := cli.Command "snapshot_to_image"
-      --rest=[cli.OptionString SNAPSHOT-FILE]
-      --options=[
-          cli.Flag M32-FLAG --short-name="m32",
-          cli.Flag M64-FLAG --short-name="m64",
-          cli.Flag BINARY-FLAG,
-          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.OptionString OUTPUT-OPTION --short-name="o",
-          cli.OptionString ASSETS-OPTION,
-        ]
-      --run=:: parsed = it
+  cmd := build-command
+  cmd.run args
 
-  parser.run args
+snapshot-to-image invocation/cli.Invocation:
+  output-path/string? := invocation[OUTPUT-OPTION]
+  format := invocation[FORMAT-OPTION]
 
-  output-path/string? := parsed[OUTPUT-OPTION]
-
-  if not output-path:
-    print-usage parser --error="-o flag is not optional"
-
-  format := ?
-  if parsed[BINARY-FLAG]:
-    if parsed[FORMAT-OPTION] != null:
-      print-usage parser --error="cannot use --binary with --format option"
-    format = "binary"
-  else:
-    format = parsed[FORMAT-OPTION]
-
-  if not format:
-    print-usage parser --error="no output format specified"
+  ui := invocation.cli.ui
 
   machine-word-sizes := []
-  if parsed[M32-FLAG]:
+  if invocation[M32-FLAG]:
     machine-word-sizes.add 4
-  if parsed[M64-FLAG]:
+  if invocation[M64-FLAG]:
     machine-word-sizes.add 8
   if machine-word-sizes.is-empty:
     machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
-    print-usage parser --error="more than one machine flag provided"
+    ui.abort "More than one machine flag provided"
 
-  snapshot-path/string := parsed[SNAPSHOT-FILE]
+  snapshot-path/string := invocation[SNAPSHOT-FILE]
   snapshot-bundle := SnapshotBundle.from-file snapshot-path
   snapshot-uuid ::= snapshot-bundle.uuid
   program := snapshot-bundle.decode
   system-uuid ::= sdk-version-uuid --sdk-version=snapshot-bundle.sdk-version
-  assets-path := parsed[ASSETS-OPTION]
-  assets := assets-path ? file.read-content assets-path : null
+  assets-path := invocation[ASSETS-OPTION]
+  assets := assets-path ? file.read-contents assets-path : null
   id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
 
   output := { "id": id.stringify }
@@ -155,7 +163,7 @@ main args:
         --system-uuid=system-uuid
         --snapshot-uuid=snapshot-uuid
         --id=id
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     buffer.write image.build-relocatable
     if assets:
       // Send the assets prefixed with the size and make sure
@@ -177,13 +185,14 @@ main args:
     images.add { "flags": [machine], "bytes": buffer.bytes }
 
   out := file.Stream.for-write output-path
+  writer := io.Writer.adapt out
   if format == "binary":
-    out.write output["images"].first["bytes"]
+    writer.write output["images"].first["bytes"]
   else:
-    out.write (ubjson.encode output)
+    writer.write (ubjson.encode output)
   out.close
 
-sdk-version-uuid --sdk-version/string -> uuid.Uuid:
+sdk-version-uuid --sdk-version/string -> Uuid:
   return sdk-version.is-empty
-      ? uuid.uuid5 "$random" "$Time.now-$Time.monotonic-us"
-      : uuid.uuid5 "toit:sdk-version" sdk-version
+      ? Uuid.uuid5 "$random" "$Time.now-$Time.monotonic-us"
+      : Uuid.uuid5 "toit:sdk-version" sdk-version

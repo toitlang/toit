@@ -36,12 +36,13 @@
 #define FILE_UNLINK_(dirfd, pathname, flags)               unlink(pathname)
 #define FILE_RENAME_(olddirfd, oldpath, newdirfd, newpath) rename(oldpath, newpath)
 #define FILE_MKDIR_(dirfd, ...)                            mkdir(__VA_ARGS__)
+#define FILE_LINK_(dirfd1, path1, dirfd2, path2, flags)    link(path1, path2)
 #else
-
 #define FILE_OPEN_(...)     openat(__VA_ARGS__)
 #define FILE_UNLINK_(...)   unlinkat(__VA_ARGS__)
 #define FILE_RENAME_(...)   renameat(__VA_ARGS__)
 #define FILE_MKDIR_(...)    mkdirat(__VA_ARGS__)
+#define FILE_LINK_(...)     linkat(__VA_ARGS__)
 #endif // TOIT_FREERTOS
 
 namespace toit {
@@ -217,7 +218,7 @@ PRIMITIVE(readdir) {
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  const int MAX_VFAT = 260;  // Max filename length.
+  const word MAX_VFAT = 260;  // Max filename length.
   AllocationManager allocation(process);
   uint8* backing = allocation.alloc(MAX_VFAT);
   if (!backing) FAIL(ALLOCATION_FAILED);
@@ -230,7 +231,7 @@ PRIMITIVE(readdir) {
     return process->null_object();
   }
 
-  int len = strlen(entry->d_name);
+  word len = strlen(entry->d_name);
 
   if (len <= MAX_VFAT) {
     // Take ownership of the entire allocated backing array.
@@ -433,6 +434,60 @@ PRIMITIVE(chdir) {
   process->set_current_directory(new_dir);
   close(old_dir);
   return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(chmod) {
+#ifndef TOIT_FREERTOS
+  ARGS(cstring, pathname, int, mode);
+  int result = fchmodat(current_dir(process), pathname, mode, 0);
+  if (result < 0) return return_open_error(process, errno);
+  return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(link) {
+  ARGS(cstring, source, cstring, target, int, type);
+  int result;
+  auto current_dir_ = current_dir(process);
+  USE(current_dir_);  // On FreeRTOS, current_dir_ is not used.
+  if (type == 0) {
+    result = FILE_LINK_(current_dir_, target, current_dir_, source, AT_SYMLINK_FOLLOW);
+  } else { // type 1 and 2 are only different on windows.
+#ifndef TOIT_FREERTOS
+    result = symlinkat(target, current_dir_, source);
+#else
+    FAIL(UNIMPLEMENTED);
+#endif
+  }
+  if (result < 0) return return_open_error(process, errno);
+  return process->null_object();
+}
+
+PRIMITIVE(readlink) {
+#ifndef TOIT_FREERTOS
+  ARGS(cstring, pathname);
+
+  AllocationManager allocation(process);
+  uint8* backing = allocation.alloc(PATH_MAX + 1);
+  if (!backing) FAIL(ALLOCATION_FAILED);
+
+  int result = readlinkat(process->current_directory(), pathname,
+                              reinterpret_cast<char*>(backing), PATH_MAX);
+  if (result < 0) return return_open_error(process, errno);
+
+  backing[PATH_MAX] = 0;
+  String* string = process->allocate_string(result);
+  if (!string) FAIL(ALLOCATION_FAILED);
+
+  String::MutableBytes mutable_string(string);
+  memcpy(mutable_string.address(), backing, result);
+
+  return string;
 #else
   FAIL(UNIMPLEMENTED);
 #endif

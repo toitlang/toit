@@ -7,4 +7,4 @@ tests/negative/incomplete-string-interpolation-format2-test.toit:6:5: error: Mis
 tests/negative/incomplete-string-interpolation-format2-test.toit:6:8: error: Unterminated string
   "$(%x
        ^
-Compilation failed.
+Compilation failed

@@ -50,8 +50,8 @@ TYPE_PRIMITIVE(process_stats) {
 }
 
 TYPE_PRIMITIVE_ANY(string_write_to_byte_array)  // TODO(kasper): Returns an argument.
-TYPE_PRIMITIVE_NULL(write_string_on_stdout)
-TYPE_PRIMITIVE_NULL(write_string_on_stderr)
+TYPE_PRIMITIVE_NULL(write_on_stdout)
+TYPE_PRIMITIVE_NULL(write_on_stderr)
 
 TYPE_PRIMITIVE_INT(time)
 TYPE_PRIMITIVE_ARRAY(time_info)
@@ -71,6 +71,7 @@ TYPE_PRIMITIVE_SMI(string_raw_at)
 TYPE_PRIMITIVE_STRING(string_add)
 TYPE_PRIMITIVE_STRING(string_slice)
 TYPE_PRIMITIVE_STRING(int64_to_string)
+TYPE_PRIMITIVE_STRING(uint64_to_string)
 TYPE_PRIMITIVE_STRING(printf_style_int64_to_string)
 TYPE_PRIMITIVE_STRING(smi_to_string_base_10)
 TYPE_PRIMITIVE_STRING(concat_strings)
@@ -104,6 +105,7 @@ TYPE_PRIMITIVE_NULL(random_seed)
 TYPE_PRIMITIVE_NULL(add_entropy)
 TYPE_PRIMITIVE_SMI(count_leading_zeros)
 TYPE_PRIMITIVE_SMI(popcount)
+TYPE_PRIMITIVE_SMI(int_vector_equals)
 
 TYPE_PRIMITIVE_NULL(put_uint_big_endian)
 TYPE_PRIMITIVE_NULL(put_uint_little_endian)
@@ -238,13 +240,15 @@ TYPE_PRIMITIVE_SMI(process_get_priority)
 TYPE_PRIMITIVE_NULL(process_set_priority)
 TYPE_PRIMITIVE_ARRAY(get_real_time_clock)
 TYPE_PRIMITIVE_SMI(set_real_time_clock)
-TYPE_PRIMITIVE_INT(get_system_time)
+TYPE_PRIMITIVE_NULL(tune_memory_use)
 
 TYPE_PRIMITIVE(process_send) {
   result.add_bool(program);
   failure.add_string(program);
   failure.add_array(program);
 }
+
+TYPE_PRIMITIVE_INT(pid_for_external_id)
 
 TYPE_PRIMITIVE(spawn) {
   result.add_smi(program);
@@ -256,7 +260,13 @@ TYPE_PRIMITIVE_ANY(main_arguments)
 TYPE_PRIMITIVE_SMI(spawn_method)
 TYPE_PRIMITIVE_ANY(spawn_arguments)
 
-TYPE_PRIMITIVE(command) {
+TYPE_PRIMITIVE(program_name) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(program_path) {
   result.add_string(program);
   result.add_null(program);
   failure.add_string(program);
@@ -280,6 +290,8 @@ TYPE_PRIMITIVE_ANY(firmware_unmap)
 TYPE_PRIMITIVE_ANY(firmware_mapping_at)
 TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
 TYPE_PRIMITIVE_BYTE_ARRAY(rtc_user_bytes)
+
+TYPE_PRIMITIVE_STRING(hostname)
 
 bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
   return module == INDEX_core && index == CoreIndexes::task_new;

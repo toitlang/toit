@@ -56,8 +56,8 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
 
   // When a resource group is torn down we call this.  Normally it deletes it, but
   // it may just mark it for deletion in case there are still other references to it,
-  // eg from callbacks at the OS level.
-  virtual void make_deletable() {
+  // for example from callbacks at the OS level.
+  virtual void delete_or_mark_for_deletion() {
     delete this;
   }
 
@@ -257,6 +257,10 @@ class EventSource : public EventSourceList::Element {
 
   // Only for EventSources that use the IntResource subclass.
   IntResource* find_resource_by_id(const Locker& locker, word id);
+
+  Resource* find_resource(const std::function<bool(Resource*)>& predicate);
+
+  bool is_linked_resource(Resource* r) { return resources_.is_linked(r); }
 
  private:
   void try_notify(Resource* r, const Locker& locker, bool force = false);

@@ -15,15 +15,16 @@
 
 import uuid
 import system.containers
+import system.services show ServiceProvider
 
 import .firmware
+import .storage show StorageServiceProviderEsp32
 import .wifi
 
 import ...boot
-import ...initialize
 import ...containers
-import ...storage
 import ...flash.registry
+import ...services
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -45,11 +46,11 @@ class SystemImage extends ContainerImage:
 
 main:
   registry ::= FlashRegistry.scan
-  container-manager ::= initialize-system registry [
-      FirmwareServiceProvider,
-      StorageServiceProvider registry,
-      WifiServiceProvider,
-  ]
-  container-manager.register-system-image
-      SystemImage container-manager
+  service-manager ::= SystemServiceManager
+  (FirmwareServiceProvider).install
+  (StorageServiceProviderEsp32 registry).install
+  (WifiServiceProvider).install
+  container-manager := ContainerManager registry service-manager
+  system-image := SystemImage container-manager
+  container-manager.register-system-image system-image
   exit (boot container-manager)

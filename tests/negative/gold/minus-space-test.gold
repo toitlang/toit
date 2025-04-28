@@ -7,4 +7,4 @@ tests/negative/minus-space-test.toit:11:9: error: Unresolved identifier: 'foo-ba
 tests/negative/minus-space-test.toit:18:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

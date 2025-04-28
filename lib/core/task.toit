@@ -90,15 +90,35 @@ interface Task:
     return also throws.
 
   If $required is less than the number of $lambdas, the
-    method returns when $required tasks have completed.
+    method returns when $required tasks have completed. If $required
+    is equal to 0, the method returns immediately.
+
+  # Examples
+  ```
+  results := Task.group [
+    :: 42,
+    :: 87,
+  ]
+  print results  // => {0: 42, 1: 87}.
+
+  results = Task.group --required=1 [
+    // Due to the required=1, this lambda will be aborted, once
+    // the lambda returning 42 has finished.
+    :: sleep --ms=1_000; 87,
+    :: 42,
+  ]
+  print results  // => { 1: 42 }.
+  ```
   */
   static group lambdas/List -> Map
       --required/int=lambdas.size:
     count ::= lambdas.size
     tasks ::= Array_ count
     results ::= {:}
-    if count < 2 or not (1 <= required <= count):
+    if not (0 <= required <= count):
       throw "Bad Argument"
+
+    if required == 0: return results
 
     is-stopping/bool := false
     is-canceled/bool := false

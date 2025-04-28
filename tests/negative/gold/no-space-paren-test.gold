@@ -43,4 +43,4 @@ Method does not take any arguments, but one was provided
 tests/negative/no-space-paren-test.toit:23:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

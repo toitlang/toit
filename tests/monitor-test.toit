@@ -31,6 +31,7 @@ run:
   test-process-messages-on-leave
   test-gate
   test-latch
+  test-signal
 
 monitor A:
   foo-ready := false
@@ -215,12 +216,13 @@ test-entry-timeouts:
   mutex := Mutex
   ready := Semaphore
   done := Semaphore
+  test-done := Semaphore
   value := 0
   // Create a task that owns the mutex for a while.
   task::
     mutex.do:
       ready.up
-      sleep --ms=300
+      test-done.down
   // Try to get hold of the mutex. Make sure it times
   // out as expected.
   ready.down
@@ -240,6 +242,7 @@ test-entry-timeouts:
         unreachable
   // Make sure nobody messed with the proctected value.
   expect-equals 0 value
+  test-done.up
 
 test-channel:
   channel := Channel 5
@@ -486,6 +489,40 @@ test-latch:
       finally: | is-exception exception |
         l3.set --exception exception
   expect-throw 99: l3.get
+
+test-signal:
+  done := Semaphore
+  order := []
+  signal := Signal
+  t0 := false
+  t1 := false
+  t2 := false
+  task::
+    signal.wait: t0
+    order.add 0
+    done.up
+  task::
+    signal.wait: t1
+    order.add 1
+    done.up
+  // Make sure we can raise the signal here without making
+  // progress and without getting any of the tasks already
+  // waiting stuck.
+  signal.raise
+  task::
+    signal.wait: t2
+    order.add 2
+    done.up
+  t0 = true
+  signal.raise
+  done.down
+  t1 = true
+  signal.raise
+  done.down
+  t2 = true
+  signal.raise
+  done.down
+  expect-list-equals [0, 1, 2] order
 
 test-semaphore:
   semaphore := Semaphore

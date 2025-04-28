@@ -15,6 +15,7 @@
 
 #pragma once
 
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/debug.h>
 #include <mbedtls/entropy.h>
@@ -28,7 +29,7 @@
 
 #include "../event_sources/tls.h"
 
-#if defined(TOIT_FREERTOS)
+#if defined(TOIT_ESP32)
 #include "tcp_esp32.h"
 #endif
 
@@ -57,6 +58,10 @@ enum TLS_STATE {
 
 bool is_tls_malloc_failure(int err);
 
+const int ISSUER_DETAIL = 0;
+const int SUBJECT_DETAIL = 1;
+const int ERROR_DETAILS = 2;
+
 // Common base for TLS (stream based) and in the future perhaps DTLS (datagram based) sockets.
 class BaseMbedTlsSocket : public TlsSocket {
  public:
@@ -67,6 +72,7 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   virtual bool init() = 0;
   void apply_certs(Process* process);
+  void disable_certificate_validation();
   int add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length);
   int add_root_certificate(X509Certificate* cert);
   void register_root_callback();
@@ -75,17 +81,13 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
 
-  void record_unknown_issuer(const mbedtls_asn1_named_data* issuer);
+  void record_error_detail(const mbedtls_asn1_named_data* issuer, int flags, int index);
   // Hash a textual description of the issuer of a certificate, or the
   // subject of a root certificate. These should match.
-  static uint32 hash_subject(uint8* buffer, int length);
+  static uint32 hash_subject(uint8* buffer, word length);
   uint32_t error_flags() const { return error_flags_; }
-  char* error_issuer() const { return error_issuer_; }
-  void clear_error_flags() {
-    error_flags_ = 0;
-    free(error_issuer_);
-    error_issuer_ = null;
-  }
+  char* error_detail(int index) const { return error_details_[index]; }
+  void clear_error_data();
 
  protected:
   mbedtls_ssl_config conf_;
@@ -94,46 +96,46 @@ class BaseMbedTlsSocket : public TlsSocket {
   mbedtls_x509_crt* root_certs_;
   mbedtls_pk_context* private_key_;
   uint32_t error_flags_;
-  char* error_issuer_;
+  char* error_details_[ERROR_DETAILS];
 };
 
 // A size that should be plenty for all known root certificates, but won't overflow the stack.
 static const int MAX_SUBJECT = 400;
 
-// Although it's a resource we never actually wait on a MbedTlsSocket, preferring
-// to wait on the underlying TCP socket.
+// Although it's a resource, we never actually wait on a MbedTlsSocket,
+// preferring to wait on the underlying TCP socket.
 class MbedTlsSocket : public BaseMbedTlsSocket {
  public:
   TAG(MbedTlsSocket);
   explicit MbedTlsSocket(MbedTlsResourceGroup* group);
   ~MbedTlsSocket();
 
-  Object* get_clear_outgoing();
-
   virtual bool init();
 
-  void set_incoming(Object* incoming, int from) {
-    incoming_packet_ = incoming;
-    incoming_from_ = from;
-  }
-
-  void set_outgoing(Object* outgoing, int fullness) {
-    outgoing_packet_ = outgoing;
-    outgoing_fullness_ = fullness;
+  void set_incoming(uint8* data, uword length) {
+    if (incoming_packet_) {
+      free(incoming_packet_);
+    }
+    incoming_packet_ = data;
+    incoming_from_ = 0;
+    incoming_length_ = length;
   }
 
   int outgoing_fullness() const { return outgoing_fullness_; }
   void set_outgoing_fullness(int f) { outgoing_fullness_ = f; }
   int from() const { return incoming_from_; }
   void set_from(int f) { incoming_from_ = f; }
-  Object* outgoing_packet() const { return *outgoing_packet_; }
-  Object* incoming_packet() const { return *incoming_packet_; }
+  uint8* outgoing_buffer() { return outgoing_buffer_; }
+  uword incoming_length() const { return incoming_length_; }
+  const uint8* incoming_packet() const { return incoming_packet_; }
+  static const int OUTGOING_BUFFER_SIZE = 1500;
 
  private:
-  HeapRoot outgoing_packet_; // Blob-compatible or null.
-  int outgoing_fullness_;
-  HeapRoot incoming_packet_;  // Blob-compatible or null.
-  int incoming_from_;
+  uint8 outgoing_buffer_[OUTGOING_BUFFER_SIZE];
+  int outgoing_fullness_ = 0;
+  uint8* incoming_packet_ = null;
+  uword incoming_length_ = 0;
+  uword incoming_from_ = 0;
 };
 
 class MbedTlsResourceGroup : public ResourceGroup {

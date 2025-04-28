@@ -7,4 +7,4 @@ import pkg
 tests/negative/pkg_bad_path_part/other.toit:8:14: error: Unresolved identifier: 'identify'
   return pkg.identify
              ^~~~~~~~
-Compilation failed.
+Compilation failed

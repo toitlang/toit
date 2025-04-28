@@ -28,4 +28,4 @@ import error2.not-a-directory.bar
 tests/negative/pkg_not_found/dir/dir.toit:9:15: note: Cannot enter '<pkg:path2>/not_a_directory': not a folder
 import error2.not-a-directory.bar
               ^~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

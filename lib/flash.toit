@@ -47,7 +47,7 @@ class Mount:
   Mounts an external NOR flash chip on the $spi-bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
-    $frequency should be one of the FLASH_FREQ_ constants.
+    $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
   */
   constructor.nor-unformatted
       --.mount-point/string
@@ -62,7 +62,7 @@ class Mount:
     $allocation-unit-size if it is not formatted.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
-    $frequency should be one of the FLASH_FREQ_ constants.
+    $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
   */
   constructor.nor
       --.mount-point/string
@@ -78,7 +78,7 @@ class Mount:
   Mounts an external NAND flash chip on the $spi-bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
-    $frequency should be one of the FLASH_FREQ_ constants
+    $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
   */
   constructor.nand-unformatted
       --.mount-point/string
@@ -95,7 +95,7 @@ class Mount:
      $allocation-unit-size if it is not already formatted.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
-    $frequency should be one of the FLASH_FREQ_ constants
+    $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
   */
   constructor.nand
       --.mount-point/string

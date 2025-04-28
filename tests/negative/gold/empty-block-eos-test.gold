@@ -2,4 +2,4 @@ tests/negative/empty-block-eos-test.toit:9:8: error: Empty blocks are not allowe
     foo:
        ^
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/empty-block-eos-test.toit'
-Compilation failed.
+Compilation failed

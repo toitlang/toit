@@ -135,7 +135,7 @@ void ProgramBuilder::push_lazy_initializer_id(int id) {
   push(lazy_initializer);
 }
 
-int ProgramBuilder::create_method(int selector_offset,
+int ProgramBuilder::create_method(word selector_offset,
                                   bool is_field_accessor,
                                   int arity,
                                   List<uint8> bytecodes,
@@ -249,14 +249,15 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::CowByteArray_);
   set_built_in_class_tag_and_size(Symbols::ByteArraySlice_);
   set_built_in_class_tag_and_size(Symbols::StringSlice_);
+  set_built_in_class_tag_and_size(Symbols::StringByteSlice_);
   set_built_in_class_tag_and_size(Symbols::List_);
   set_built_in_class_tag_and_size(Symbols::ListSlice_);
   set_built_in_class_tag_and_size(Symbols::Tombstone_);
   set_built_in_class_tag_and_size(Symbols::Map);
   set_built_in_class_tag_and_size(Symbols::Stack_, TypeTag::STACK_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::Object);
-  set_built_in_class_tag_and_size(Symbols::True_, TypeTag::ODDBALL_TAG);
-  set_built_in_class_tag_and_size(Symbols::False_, TypeTag::ODDBALL_TAG);
+  set_built_in_class_tag_and_size(Symbols::True, TypeTag::ODDBALL_TAG);
+  set_built_in_class_tag_and_size(Symbols::False, TypeTag::ODDBALL_TAG);
   set_built_in_class_tag_and_size(Symbols::SmallInteger_, TypeTag::INSTANCE_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::float_, TypeTag::DOUBLE_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::LargeInteger_, TypeTag::LARGE_INTEGER_TAG, 0);

@@ -17,6 +17,7 @@ main:
   test-slice
   test-replace
   test-replace-large
+  test-replace-oob
 
 test-list:
   list := [13, 1, 13, 13, 2]
@@ -366,7 +367,7 @@ test-fill:
 
 test-filled-list size:
   FILLER ::= 0xdead
-  list := List size FILLER
+  list := List size --initial=FILLER
   expect-equals size list.size
   size.repeat: expect-equals FILLER list[it]
   GROWING-STEPS ::= 15
@@ -663,6 +664,11 @@ test-replace-large:
             expect-equals (it + from - index) large[it]
           else:
             expect-equals it large[it]
+
+test-replace-oob:
+  l := []
+  1000.repeat: l.add it
+  l.replace 889 l 888 999
 
 class Coordinate implements Comparable:
   x := 0

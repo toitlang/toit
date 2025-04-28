@@ -16,7 +16,7 @@ class Icon:
   /**
   Gets the pixel width of the icon.
   Note that when you actually draw the icon it may go a few pixels to the left
-    of the origin or to the right of x origin + pixel_width.  See $icon-extent.
+    of the origin or to the right of x origin + pixel-width.  See $icon-extent.
   */
   pixel-width -> int:
     return font_.pixel-width stringify

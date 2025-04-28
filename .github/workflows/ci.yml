@@ -1,6 +1,12 @@
 name: CI
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 on:
+  schedule:
+    - cron: '00 2 * * *' # 02:00 UTC
   push:
     branches-ignore:
       - "wip/**"
@@ -10,31 +16,132 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      # Use 'inputs.<name>' when pasting into a bash `if`, like so:
+      #    if [[ "${{ inputs.strip }}" == 'true' ]]; then ...
+      #
+      # When using to guard a step, use 'github.event.inputs.<name>', like so:
+      #    if: ${{ github.event.inputs.<name> == 'true' }}
+      # or
+      #    if: ${{ github.event.inputs.<name> != 'false' }}
+      # In the first case, the step will not run if there isn't any workflow dispatch.
+      # In the second case, the step will run if there isn't any workflow dispatch.
+      # As such, the recommendation is to use the `== true` if the default is
+      # false, and the `!= false` if the default is true.
+      strip:
+        description: "Strip executables"
+        required: false
+        type: boolean
+        default: false
+      sign-macos:
+        description: "Sign macOS executables"
+        required: false
+        type: boolean
+        default: false
+      sign-windows:
+        description: "Sign Windows executables"
+        required: false
+        type: boolean
+        default: false
+      build-arm-macos:
+        description: "Build ARM macOS executables"
+        required: false
+        type: boolean
+        default: false
+      dispatch-toitdocs:
+        description: "Dispatch toitdoc rebuild"
+        required: false
+        type: boolean
+        default: false
+      run-tests:
+        description: "Run tests"
+        required: false
+        type: boolean
+        default: true
+      run-hw-tests:
+        description: "Run hardware tests"
+        required: false
+        type: boolean
+        default: false
+      test-more:
+        description: "Run more tests (including hardware tests)"
+        required: false
+        type: boolean
+        default: false
+      run-esp32-flow:
+        description: "Run the ESP32 flow"
+        required: false
+        type: boolean
+        default: true
+      do-release:
+        description: "Build release artifacts and upload with this version"
+        required: false
+        type: string
+        default:
 
 env:
-  ESPTOOL_VERSION: v4.6
+  TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
+  DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
+  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' }}
+  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' || github.event.inputs.run-hw-tests == 'true' }}
+  ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
 
 jobs:
+  prereqs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set strategy variables
+        id: vars
+        run: |
+          # ubuntu-22.04 so that we don't depend on a recent glibc.
+          # macos-13, since it's still intel based.
+          if [[ "${{ github.ref }}" == 'refs/heads/master' || \
+                "${{ env.DO_RELEASE }}" == "true" || \
+                "${{ inputs.build-arm-macos }}" == "true" || \
+                "${{ inputs.sign-macos }}" == "true" \
+              ]]; then
+            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
+          else
+            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
+          fi
+          if [[ "${{ inputs.run-tests }}" != "false" ]]; then
+            echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[{"container": "ubuntu-22.04", "shard": 6}, {"container": "ubuntu-22.04", "shard": 7}]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT_LINUX=7' >> $GITHUB_OUTPUT
+          else
+            echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
+          fi
+
+    outputs:
+      CONTAINERS: ${{ steps.vars.outputs.CONTAINERS }}
+      SHARDS: ${{ steps.vars.outputs.SHARDS }}
+      EXTRA_INCLUDES: ${{ steps.vars.outputs.EXTRA_INCLUDES }}
+      SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
+      SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
+      DO_HW_TESTS: ${{ env.DO_HW_TESTS }}
+
   build:
+    needs: prereqs
+
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # ubuntu-20.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-20.04, macos-latest, windows-latest ]
-        shard: [1, 2, 3, 4, 5]
+        container: ${{ fromJson(needs.prereqs.outputs.CONTAINERS) }}
+        shard: ${{ fromJson(needs.prereqs.outputs.SHARDS) }}
 
-        include:
-          - container: ubuntu-20.04
-            shard: 6
-          - container: ubuntu-20.04
-            shard: 7
-          - container: ubuntu-20.04
-            shard: 8
+        include: ${{ fromJson(needs.prereqs.outputs.EXTRA_INCLUDES) }}
 
     runs-on: ${{ matrix.container }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Show inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "${{ toJSON(github.event.inputs) }}"
+
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -42,24 +149,30 @@ jobs:
         id: constants
         shell: bash
         run: |
-          echo "flaky_result=flaky-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
-          echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
-          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
+          echo "flaky_result=flaky-result/${{ matrix.container }}-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
+          echo "external_result=external-result/${{ matrix.container }}-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.container }}-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
-          TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
           echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=8" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "macOS" ]; then
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
+          elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "X64" ]]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
-          elif [ "$RUNNER_OS" == "Windows" ]; then
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
+          elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "ARM64" ]]; then
+            echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -71,141 +184,89 @@ jobs:
         run: |
           mkdir -p ${{ steps.constants.outputs.debug_dir }}
 
-      # We only need the mbedtls submodule for building.
-      - name: Initialize mbedtls submodule
-        run: |
-          cd third_party/esp-idf
-          git submodule update --init .
-          git submodule update --init components/mbedtls
-
-      # Use Go 1.20
-      - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps.
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-      - name: Go cache
-        # On Windows this takes 3-5 minutes, and doesn't seem to help the build speed much.
-        if: runner.os != 'Windows'
-        uses: actions/cache@v3
+      - name: Setup build environment
+        uses: ./actions/setup-build
         with:
-          path: |
-            ${{ steps.go-cache-paths.outputs.go-build }}
-            ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-
-
-      - name: Ccache cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ github.sha }}
-          restore-keys: ${{ runner.os }}-ccache-
-
-      # Cache deb files.
-      - name: Apt cache - Linux
-        if: runner.os == 'Linux'
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/apt-cacher-ng
-          key: ${{ runner.os }}-apt-${{ github.sha }}
-          restore-keys: ${{ runner.os }}-apt
-
-      - name: Install and configure apt-cacher-ng - Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -q apt-cacher-ng
-          sudo systemctl stop apt-cacher-ng
-          if [[ -f apt-cacher-ng/cache.tar.gz ]]; then
-            sudo tar -xzf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng
-          fi
-          echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
-          echo "PassThroughPattern: .*" | sudo tee -a /etc/apt-cacher-ng/acng.conf
-          sudo systemctl restart apt-cacher-ng
-
-      # Fetch the dependencies. Different for each platform.
-      - name: Install dependencies - Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat valgrind
-          ninja --version
-          cmake --version
-          gcc --version
-          socat -V
-      - name: Install dependencies - macOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja ccache
-          ninja --version
-          cmake --version
-      - name: Install dependencies - Windows
-        if: runner.os == 'Windows'
-        run: |
-          choco install ninja ccache
-          ninja --version
-          ccache --version
-          cmake --version
-
-      - name: Copy apt cache back - Linux
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p apt-cacher-ng
-          sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
-          sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
-
-      - name: Set up Python modules for MbedTLS
-        run: |
-          pip install jsonschema jinja2
+          toit-dir: .
 
       - name: Setup compilation env
         shell: bash
         run: |
-          echo 'IDF_PATH=${{ github.workspace }}/third_party/esp-idf' >> $GITHUB_ENV
-          echo 'CCACHE_DIR=${{ github.workspace }}/.ccache' >> $GITHUB_ENV
-          echo 'CCACHE_BASEDIR=${{ github.workspace }}' >> $GITHUB_ENV
-          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
-          echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
-          echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
           echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
           echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
+
+      - name: Ccache stats
+        run: ccache -s
+
+      - name: Enable link-time optimizations
+        if: env.DO_RELEASE == 'true'
+        run: |
+          make enable-lto
 
       # Build using make.
       - name: Build sdk
         shell: bash
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
         run: |
-          ccache -s
           make sdk
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            make HOST=host32 BUILD_TYPE=Debug sdk
-            make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
-          fi
-          ccache -s
+
+      - name: Ccache stats
+        run: ccache -s
+
+      - name: Build test SDKs - Linux only
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
+        run: |
+          make HOST=host32 BUILD_TYPE=Debug sdk
+          make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
+
+      - name: Build test SDKs
+        shell: bash
+        if: env.DO_MORE_TESTS == 'true'
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug sdk
+          # It's wasteful to rebuild the SDK just to change the optimization level and assert, but
+          # it's the easiest way to make sure all tests are run in that configuration.
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host sdk
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host sdk
+          make HOST=host-lto TOOLCHAIN=host enable-lto
+          make HOST=host-lto TOOLCHAIN=host sdk
+
+      - name: Ccache stats
+        run: ccache -s
+
+      - name: Create ccache debug file
+        if: runner.os == 'Linux' && matrix.shard == 1
+        # Create the preprocessed file for the primitive_events.cc file.
+        # This file was chose arbitrarily.
+        run: |
+          mkdir ccache-debug
+          cd build/host
+          /usr/bin/c++ -fdebug-prefix-map=/home/runner/work/toit/toit=. -Wall -ffunction-sections -fdata-sections -fno-exceptions -Os -fno-rtti -std=gnu++11 -fdiagnostics-color=always -I../../include -I../../third_party/esp-idf/components/mbedtls/mbedtls/include -DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1 -DTOIT_DEPLOY -MD -MT src/CMakeFiles/toit_core.dir/primitive_events.cc.o -MF src/CMakeFiles/toit_core.dir/primitive_events.cc.o.d -E ../../src/primitive_events.cc > ../../ccache-debug/primitive_events.cc.i
+
+      - name: Upload ccache debug file
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v4
+        with:
+          path: ccache-debug
+          name: ccache-debug
+
+      - name: Strip executables - Linux
+        if: (runner.os == 'Linux' && (env.DO_RELEASE == 'true' || github.event.inputs.strip == 'true'))
+        # Note: Go executables may not be stripped on Windows.
+        run: |
+          strip -s build/host/sdk/bin/*
 
       # Test.
       - name: Test
+        if: ${{ github.event.inputs.run-tests != 'false' }}
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
           make test
           make test-health
 
       - name: Test flaky
+        if: ${{ github.event.inputs.run-tests != 'false' }}
         continue-on-error: true
         shell: bash # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
@@ -213,20 +274,57 @@ jobs:
           echo fail > ${{ steps.constants.outputs.flaky_result }}
           make test-flaky
           # If we reach here, then the test-flaky target succeeded.
+          echo "SUCCESS"
           echo success > ${{ steps.constants.outputs.flaky_result }}
 
       - name: Test type propagator
-        if: runner.os == 'Linux'
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
           make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 test
 
       - name: Test 32-bit debug
-        if: runner.os == 'Linux'
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
 
+      - name: Test 64-bit debug
+        shell: bash
+        # TODO(florian): fix Windows.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug test
+
+      - name: Test -O0 no asserts
+        shell: bash
+        # TODO(florian): Windows is currently too flaky with -O0.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host test
+
+      - name: Test -O2 with asserts
+        shell: bash
+        # TODO(florian): fix Windows.
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host test
+
+      - name: Test link-time optimizations
+        shell: bash
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        run: |
+          make HOST=host-lto TOOLCHAIN=host test
+
+      - name: Test install
+        if : matrix.shard == 1
+        shell: bash
+        run: |
+          make prefix=$PWD/build/install-out install
+          build/install-out/bin/toit.run --version
+          build/install-out/bin/toit.run -s "print 499"
+
       # Test external code.
       - name: Test external
+        if: ${{ github.event.inputs.run-tests != 'false' }}
         # External tests are allowed to fail, but we record them and
         # fail a non-required job if they do.
         continue-on-error: true
@@ -248,7 +346,7 @@ jobs:
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
-          if [ "$RUNNER_OS" == "Linux" ]; then
+          if [[ "$DO_MORE_TESTS" == "true" ]] && [[ "$RUNNER_OS" == "Linux" ]]; then
             cmake -DTOIT_TEST_EXTERNAL=ON build/host32
             make HOST=host32 BUILD_TYPE=Debug rebuild-cmake
             cd build/host32
@@ -256,16 +354,17 @@ jobs:
             cd ../..
           fi
           # If we reach here, all steps of this step succeeded.
+          echo "SUCCESS"
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store flaky test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.flaky_result_name }}
           path: ${{ steps.constants.outputs.flaky_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -274,16 +373,13 @@ jobs:
         if: runner.os == 'Linux' && matrix.shard == 1
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
-          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
-          SDKDIR: ${{ github.workspace }}/
+          TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
+          SDKDIR: ${{ github.workspace }}/build/host/sdk
         shell: bash
         run: |
-          CPU_CORES=$(nproc)
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
-          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
-          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -307,169 +403,113 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: debug
+          name: debug-${{ matrix.container }}-${{ matrix.shard }}
           path: ${{ steps.constants.outputs.debug_root_dir }}
           retention-days: 5
           if-no-files-found: ignore
 
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: toitdoc
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
 
-      - name: Authenticate to Google cloud - Linux
+      - name: Upload toitdoc release artifact - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: google-github-actions/auth@v0
+          env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
         with:
-          credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
-          service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+          asset_name: toitdoc.json
+          tag: ${{ env.TOIT_VERSION }}
+          overwrite: true
 
-      - name: Set up Cloud SDK
+      - name: Dispatch toitdoc-dev rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
+          github.ref == 'refs/heads/master' &&
           github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v0
+        uses: actions/github-script@v7
         with:
-          project_id: infrastructure-220307
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'false',
+                'toit-version': '',
+                'toitlang-run-id': '${{ github.run_id }}',
+              },
+            });
 
-      - name: Upload toitdoc to gcloud - Linux
+      - name: Dispatch toitdoc rebuild - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          JSON_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
-          echo -n $TOIT_VERSION > LATEST.tmp
-          gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
-
-      - name: Update RELEASE in gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          echo -n $TOIT_VERSION > LATEST.tmp
-
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
+          ((env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang') ||
+           github.event.inputs.dispatch-toitdocs == 'true')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitware',
+              repo: 'web-toitdocs',
+              workflow_id: 'ci.yml',
+              ref: 'master',
+              inputs: {
+                'deploy': 'true',
+                'toit-version': '${{ env.TOIT_VERSION }}'
+              },
+            });
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build-unsigned
           path: build/${{ steps.constants.outputs.artifact }}
 
-      - name: Upload artifacts - Linux/macOS
-        if: runner.os != 'Windows' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+      - name: Upload unsigned artifacts - macOS
+        if: runner.os == 'macOS' && matrix.shard == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-build-unsigned-${{ matrix.container }}
+          path: build/${{ steps.constants.outputs.artifact }}
+
+      - name: Upload artifacts - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
 
-  # Really annoying that we need to duplicate so much.
   esp32:
+    if: ${{ github.event.inputs.run-esp32-flow != 'false' }}
+
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Initialize submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive -j 16
-
-      # Use Go 1.20
-      - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps.
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
-        run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-      # Get values for sha hashes to be used in later steps.
-      - name: Get Sha hashes
-        id: sha-hashes
-        shell: bash
-        run: |
-          echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
-
-      # Cache go build cache, used to speedup go test.
-      - name: Go Build Cache
-        uses: actions/cache@v3
+      - name: Set up build environment
+        uses: ./actions/setup-build
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds.
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
-
-      - name: Ccache cache
-        uses: actions/cache@v3
-        # Store and retrieve the cache with the given sha.
-        # The 'restore-keys' prefix finds the most recent cache in case there
-        # is no match (which should almost always be the case).
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ github.sha }}
-          restore-keys: esp32-ccache-
-
-      - name: ESP32 tools cache
-        uses: actions/cache@v3
-        # Store and retrieve the cache with the given sha.
-        # The 'restore-keys' prefix finds the most recent cache in case there
-        # is no match (which should almost always be the case).
-        with:
-          path: /home/runner/.espressif
-          key: espressif-cache-${{ steps.sha-hashes.outputs.espressif_sha }}
-          restore-keys: espressif-cache-
-
-      - name: Install dependencies - Linux
-        run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache
-          ninja --version
-          cmake --version
-          gcc --version
-
-      - name: Install ESP32 tools
-        run: |
-          sh third_party/esp-idf/install.sh
+          toit-dir: .
+          esp32: true
+          cache-key-prefix: esp32
 
       # Build using make.
       - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          IDF_CCACHE_ENABLE: 1
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
         run: |
           ccache -s
           source third_party/esp-idf/export.sh
@@ -491,7 +531,7 @@ jobs:
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: firmwares
           path: |
@@ -500,51 +540,52 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
 
-      - name: Upload ESP32 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+  # The raspbian executable is also built on the 'cross' job, but we want to
+  # run the serial test as fast as possible and don't want to wait for the
+  # 'cross' job to finish.
+  rpi:
+    runs-on: ubuntu-latest
+    needs: prereqs
+    if: needs.prereqs.outputs.DO_HW_TESTS == 'true'
 
-      - name: Upload ESP32-C3 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
+    steps:
+      - uses: actions/checkout@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32c3.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          fetch-depth: 0
 
-      - name: Upload ESP32-S2 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
+      - name: Set version
+        run: |
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
+
+      - name: Set up build environment
+        uses: ./actions/setup-build
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32s2.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          toit-dir: .
+          cache-key-prefix: cross-pi
 
-      - name: Upload ESP32-S3 release firmware artifacts
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
+      - name: Make
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
+        run: |
+          make raspbian
+
+      - name: Pack artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspbian/sdk ./build/raspbian/toit
+          tar -czf build/rpi.tar.gz -C ./build/raspbian --dereference toit
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/firmware-esp32s3.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          name: rpi-build
+          path: |
+            build/rpi.tar.gz
 
-  # Really annoying that we need to duplicate so much.
   cross:
     runs-on: ubuntu-latest
 
@@ -555,80 +596,82 @@ jobs:
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # We only need a subset of all submodules for building.
-      - name: Initialize submodules
+      - name: Set version
         run: |
-          cd third_party/esp-idf
-          git submodule update --init .
-          git submodule update --init components/mbedtls
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
 
-      # Use Go 1.20
-      - name: Switch to Go 1.20
-        shell: bash
-        run:
-          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
+      - name: Set up build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+          cache-key-prefix: cross
 
-      # Get values for cache paths to be used in later steps
-      - name: Get Go paths
-        id: go-cache-paths
-        shell: bash
+      - name: Install mingw
         run: |
-          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+          sudo apt-get install mingw-w64
 
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
-
-      - name: Ccache cache
-        uses: actions/cache@v3
-        # Store and retrieve the cache with the given sha.
-        # The 'restore-keys' prefix finds the most recent cache in case there
-        # is no match (which should almost always be the case).
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ github.sha }}
-          restore-keys: esp32-ccache-
-
-      - name: Install dependencies - Linux
+      - name: Make envelopes
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache mingw-w64
-          ninja --version
-          cmake --version
-          gcc --version
+          make TARGET=win64 build-envelope
+          make TARGET=raspbian build-envelope
+          make TARGET=aarch64 build-envelope
+          make TARGET=arm-linux-gnueabi build-envelope
+
+      - name: Check envelopes exist
+        run: |
+          ls build/win64/firmware.envelope
+          ls build/raspbian/firmware.envelope
+          ls build/aarch64/firmware.envelope
+          ls build/arm-linux-gnueabi/firmware.envelope
 
       - name: Make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
         run: |
+          make sdk
           make TARGET=win64 sdk
           make raspbian
           make aarch64
           make arm-linux-gnueabi
 
-      - name: Test executables 32-bit
+      - name: Build test snapshot
+        run: |
+          echo '
+          import .system.extensions.host.run-image-exit-codes
+          main:
+            print "hello world"
+            exit EXIT-CODE-STOP
+          ' > hello.toit
+
+          build/host/sdk/bin/toit compile --snapshot -o hello.snapshot hello.toit
+
+      - name: Customize and extract envelopes
+        run: |
+          for arch in raspbian aarch64; do
+            cp build/$arch/firmware.envelope $arch.envelope
+
+            build/host/sdk/bin/toit tool firmware container install \
+              hello hello.snapshot \
+              -e $arch.envelope
+
+            build/host/sdk/bin/toit tool firmware extract \
+              -e $arch.envelope \
+              --format "tar" \
+              -o build/$arch/extracted.tar
+
+            mkdir build/$arch/extracted
+            tar -xf build/$arch/extracted.tar -C build/$arch/extracted
+          done
+
+      - name: Test 32-bit executables
+        if: env.DO_MORE_TESTS == 'true' || env.DO_HW_TESTS != 'true'
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -639,6 +682,13 @@ jobs:
               build/raspbian/sdk/bin/toit.pkg version
               build/raspbian/sdk/bin/toit.run --version
               build/raspbian/sdk/tools/firmware --help
+              build/raspbian/extracted/boot.sh > raspbian_output
+
+      - name: Check that the 32-bit run-script worked
+        if: env.DO_MORE_TESTS == 'true' || env.DO_HW_TESTS != 'true'
+        run: |
+          cat raspbian_output
+          grep "hello world" raspbian_output
 
       - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -651,6 +701,12 @@ jobs:
               build/aarch64/sdk/bin/toit.pkg version
               build/aarch64/sdk/bin/toit.run --version
               build/aarch64/sdk/tools/firmware --help
+              build/aarch64/extracted/boot.sh > aarch64_output
+
+      - name: Check that the 64-bit run-script worked
+        run: |
+          cat aarch64_output
+          grep "hello world" aarch64_output
 
       - name: Pack artifacts
         shell: bash
@@ -662,9 +718,9 @@ jobs:
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-build
+          name: ${{ runner.os }}-build-cross
           path: |
             build/${{ steps.constants.outputs.raspberry_pi_artifact }}
             build/toit-aarch64.tar.gz
@@ -674,21 +730,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: Windows-build-unsigned
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: Linux-build
+          pattern: Linux-build*
+          merge-multiple: true
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: macOS-build
+          pattern: macOS-build-unsigned*
+          merge-multiple: true
+
+      - name: Set up macOS ARM environment
+        run: |
+          if [[ "${{ env.DO_RELEASE }}" == 'true' || \
+                "${{ inputs.build-arm-macos }}" == 'true' || \
+                "${{ github.ref }}" == 'refs/heads/master' \
+              ]]; then
+            echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
+            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+            echo "MACOS_TARS<<$EOF" >> $GITHUB_ENV;
+            echo "toit-macos.tar.gz" >> $GITHUB_ENV;
+            echo "toit-macos-arm.tar.gz" >> $GITHUB_ENV;
+            echo "$EOF" >> $GITHUB_ENV;
+          else
+            echo "MACOS_TARS=toit-macos.tar.gz" >> $GITHUB_ENV;
+          fi
 
       - name: Unpack SDKs
         run: |
-          for os in windows linux macos rpi aarch64; do
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             mkdir -p $os
             tar x -zf toit-$os.tar.gz -C $os
           done
@@ -697,21 +771,24 @@ jobs:
         run: |
           mkdir -p vessels
 
-          for source in windows linux macos rpi aarch64; do
+          for source in windows linux macos rpi aarch64 $MACOS_ARM; do
             # Use same values as Go.
-            if [ "$source" == "windows" ]; then
+            if [[ "$source" == "windows" ]]; then
               CROSS_OS=windows
               CROSS_ARCH=amd64
-            elif [ "$source" == "linux" ]; then
+            elif [[ "$source" == "linux" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=amd64
-            elif [ "$source" == "macos" ]; then
+            elif [[ "$source" == "macos" ]]; then
               CROSS_OS=darwin
               CROSS_ARCH=amd64
-            elif [ "$source" == "rpi" ]; then
+            elif [[ "$source" == "macos-arm" ]]; then
+              CROSS_OS=darwin
+              CROSS_ARCH=aarch64
+            elif [[ "$source" == "rpi" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=arm
-            elif [ "$source" == "aarch64" ]; then
+            elif [[ "$source" == "aarch64" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=arm64
             else
@@ -722,8 +799,8 @@ jobs:
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi aarch64; do
-              if [ "$source" == "$target" ]; then
+            for target in windows linux macos rpi aarch64 $MACOS_ARM; do
+              if [[ "$source" == "$target" ]]; then
                 continue
               fi
               mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
@@ -737,138 +814,131 @@ jobs:
 
       - name: Download esptools
         run: |
-          for arch in arm arm64 linux-amd64 macos win64; do
-            curl -O -L https://github.com/espressif/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_VERSION-$arch.zip
-            unzip esptool-$ESPTOOL_VERSION-$arch.zip
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             EXTENSION=""
-            if [[ "$arch" = "arm" ]]; then
-              TARGET=rpi
-            elif [[ "$arch" = "arm64" ]]; then
-              TARGET=aarch64
-            elif [[ "$arch" = "linux-amd64" ]]; then
-              TARGET=linux
-            elif [[ "$arch" = "macos" ]]; then
-              TARGET=macos
-            elif [[ "$arch" = "win64" ]]; then
-              TARGET=windows
+            if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
+              ESPTOOL_ARCH=windows-x64
+            elif [[ "$os" == "linux" ]]; then
+              ESPTOOL_ARCH=linux-x64
+            elif [[ "$os" == "macos" ]]; then
+              ESPTOOL_ARCH=macos-x64
+            elif [[ "$os" == "rpi" ]]; then
+              ESPTOOL_ARCH=linux-armv7
+            elif [[ "$os" == "aarch64" ]]; then
+              ESPTOOL_ARCH=linux-aarch64
+            elif [[ "$os" == "macos-arm" ]]; then
+              ESPTOOL_ARCH=macos-aarch64
+            else
+              echo "Unknown os: $os"
+              exit 1
             fi
-            cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
-            chmod +x $TARGET/toit/tools/esptool$EXTENSION
+
+            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
+            unzip esptool-$ESPTOOL_ARCH.zip
+            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
+            chmod +x $os/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
         run: |
-          for os in windows linux macos rpi aarch64; do
+          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
+      - name: Add tar-balls with improved naming
+        run: |
+          cp toit-linux.tar.gz toit-linux-x64.tar.gz
+          cp toit-rpi.tar.gz toit-linux-armv7.tar.gz
+          cp toit-aarch64.tar.gz toit-linux-aarch64.tar.gz
+
       - name: Upload vessels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vessels
           path: vessels.tar.gz
 
       - name: Upload Windows unsigned
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Windows-build-unsigned
+          name: Windows-build-unsigned-combined
           path: toit-windows.tar.gz
 
-      - name: Upload Linux
-        uses: actions/upload-artifact@v3
+      - name: Upload macOS unsigned
+        uses: actions/upload-artifact@v4
         with:
-          name: Linux-build
-          path: |
-            toit-linux.tar.gz
-            toit-rpi.tar.gz
-            toit-aarch64.tar.gz
+          name: macOS-build-unsigned-combined
+          path: ${{ env.MACOS_TARS }}
 
-      - name: Upload macOS
-        uses: actions/upload-artifact@v3
+      - name: Upload Linux
+        uses: actions/upload-artifact@v4
         with:
-          name: macOS-build
-          path: toit-macos.tar.gz
+          name: Linux-build-combined
+          path: |
+            toit-linux-x64.tar.gz
+            toit-linux-armv7.tar.gz
+            toit-linux-aarch64.tar.gz
 
       - name: Upload release vessels
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: vessels.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
-      - name: Upload release Linux
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
+      - name: Prepare for Linux release upload
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
+        run: |
+          mkdir -p linux-upload
+          cp toit-linux.tar.gz linux-upload
+          cp toit-rpi.tar.gz linux-upload
+          cp toit-aarch64.tar.gz linux-upload
+          cp toit-linux-x64.tar.gz linux-upload
+          cp toit-linux-armv7.tar.gz linux-upload
+          cp toit-linux-aarch64.tar.gz linux-upload
+
+      - name: Upload Linux release
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-linux.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release macOS
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-macos.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release Raspberry Pi 32-bit
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-rpi.tar.gz
-          tag: ${{ github.event.release.tag_name }}
-          overwrite: true
-
-      - name: Upload release aarch64
-        if: |
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-aarch64.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          file_glob: true
+          file: linux-upload/*
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   sign_windows:
-    runs-on: windows-signing
+    runs-on: windows-latest
     needs: [combine]
-    if: github.event_name == 'release'
+    if: (github.event_name == 'release' ||
+        startsWith(github.event.inputs.do-release, 'v') ||
+        github.event.inputs.sign-windows == 'true')
     steps:
-      - name: Clean workspace
-        run: |
-          rm -Recurse -Force ${{ github.workspace }}\*
+      - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v3
-
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: Windows-build-unsigned
+          name: Windows-build-unsigned-combined
 
       - name: Decompress
         run: |
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
-      - name: Sign
-        run: |
-          Get-ChildItem toit/bin/*.exe, toit/tools/*.exe | ForEach-Object {
-              signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $_.FullName
-          }
+      - name: Sign Windows binary
+        uses: toitlang/action-sign-server@26db6e4021bfbd79af777d15964f1ab70bcfd3a4  # v1.0.7
+        with:
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
+          path: toit/bin
+
+      - name: Sign Windows tools
+        uses: toitlang/action-sign-server@26db6e4021bfbd79af777d15964f1ab70bcfd3a4  # v1.0.7
+        with:
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
+          path: toit/tools
 
       - name: Compress
         run: |
@@ -878,41 +948,165 @@ jobs:
         id: version
         shell: powershell
         run: |
-          $versionV = "${{ github.event.release.tag_name }}"
+          # If the version is empty, use 'v0.0.0' instead.
+          if ([string]::IsNullOrEmpty($env:TOIT_VERSION)) {
+            echo "TOIT_VERSION=v0.0.0" >> $env:GITHUB_ENV
+          }
+          $versionV = $env:TOIT_VERSION
           $version = $versionV.Substring(1)
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Build installer
         run: |
           & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
-          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit-windows-x64-installer.exe
+
+      - name: Sign Windows installer
+        uses: toitlang/action-sign-server@26db6e4021bfbd79af777d15964f1ab70bcfd3a4  # v1.0.7
+        with:
+          uri: ${{ vars.CERTUM_URI }}
+          password: ${{ secrets.CERTUM_PWD }}
+          path: toit-windows-x64-installer.exe
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Windows-build
+          name: Windows-build-signed
           path: |
-            toit-windows.tar.gz
+            toit-windows-x64.tar.gz
             toit-windows-x64-installer.exe
 
+      - name: Prepare upload
+        run: |
+          mkdir -p windows-upload
+          cp toit-windows.tar.gz windows-upload/toit-windows.tar.gz
+          cp toit-windows.tar.gz windows-upload/toit-windows-x64.tar.gz
+          cp toit-windows-x64-installer.exe windows-upload/toit-windows-x64-installer.exe
+
       - name: Upload release artifacts
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-windows.tar.gz
-          tag: ${{ github.event.release.tag_name }}
+          file_glob: true
+          file: windows-upload/*
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
-      - name: Upload release installer
-        if: github.event_name == 'release' &&
-            github.repository_owner == 'toitlang'
+  sign_macos:
+    runs-on: macos-latest  # An arm64 runner.
+    needs: [combine]
+    if: github.event_name == 'release' ||
+        startsWith(github.event.inputs.do-release, 'v') ||
+        github.event.inputs.sign-macos == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -e
+          brew install create-dmg
+          brew install zip
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macOS-build-unsigned-combined
+
+      - name: Create out folder
+        run: |
+          mkdir out
+
+      - name: Decompress
+        run: |
+          tar x -zf toit-macos.tar.gz
+          mv toit toit-x64
+          tar x -zf toit-macos-arm.tar.gz
+          mv toit toit-arm
+
+      - name: List executables
+        id: list-executables
+        run: |
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "result<<$EOF" >> $GITHUB_OUTPUT
+          # Don't sign the esptool which isn't from us.
+          find toit-x64/bin toit-x64/tools toit-x64/vessels/vessel* toit-x64/vessels/darwin \
+               toit-arm/bin toit-arm/tools toit-arm/vessels/vessel* toit-arm/vessels/darwin \
+             -type f \
+             ! -regex '.*/esptool' \
+             >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+
+      - name: Sign macOS executables
+        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
+          app-path: ${{ steps.list-executables.outputs.result }}
+
+      - name: Compress
+        run: |
+          for arch in x64 arm; do
+            mv toit-$arch toit
+            tar c -zf out/toit-$arch.tar.gz toit
+            mv toit toit-$arch
+          done
+
+      - name: Create DMGs
+        run: |
+          set -e
+          ln -s sdk/bin/toit toit-symlink
+          for arch in x64 arm; do
+            # Use an empty directory as source so we don't accidentally add other files than SDK.
+            mkdir empty-$arch
+            create-dmg \
+                --volname "jag" \
+                --add-file toit toit-symlink 0 0 \
+                --add-file sdk toit-$arch 200 0 \
+                out/toit-$arch.dmg \
+                empty-$arch
+          done
+
+      - name: Sign DMGs
+        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
+        with:
+          certificate: ${{ secrets.MACOS_CERTIFICATE }}
+          certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          username: ${{ secrets.AC_USERNAME }}
+          password: ${{ secrets.AC_PASSWORD }}
+          apple-team-id: ${{ vars.MACOS_TEAM_ID }}
+          app-path: |
+            out/toit-x64.dmg
+            out/toit-arm.dmg
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-build-signed
+          path: |
+            out/toit-x64.tar.gz
+            out/toit-arm.tar.gz
+            out/toit-x64.dmg
+            out/toit-arm.dmg
+
+      - name: Prepare upload
+        run: |
+          mkdir -p macos-upload
+          cp out/toit-x64.tar.gz macos-upload/toit-macos.tar.gz
+          cp out/toit-x64.tar.gz macos-upload/toit-macos-x64.tar.gz
+          cp out/toit-arm.tar.gz macos-upload/toit-macos-aarch64.tar.gz
+          cp out/toit-x64.dmg macos-upload/toit-macos-x64.dmg
+          cp out/toit-arm.dmg macos-upload/toit-macos-aarch64.dmg
+
+      - name: Upload release artifacts x64
+        if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-windows-x64-installer.exe
-          tag: ${{ github.event.release.tag_name }}
+          file_glob: true
+          file: macos-upload/*
+          tag: ${{ env.TOIT_VERSION }}
           overwrite: true
 
   external-and-flaky:
@@ -931,44 +1125,73 @@ jobs:
           echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
 
       - name: Retrieve
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.constants.outputs.flaky_result_name }}
+          pattern: ${{ steps.constants.outputs.flaky_result_name }}*
           path: flaky-result
+          merge-multiple: true
 
       - name: Retrieve
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.constants.outputs.external_result_name }}
+          pattern: ${{ steps.constants.outputs.external_result_name }}*
           path: external-result
+          merge-multiple: true
 
-      - name: Check
+      - name: List downloaded files
+        # This is mostly for debugging purposes.
         shell: bash
         run: |
           find .
-          cat external-result/*
-          ! grep "fail" external-result/*
-          cat flaky-result/*
-          ! grep "fail" flaky-result/*
+
+      - name: Check external
+        shell: bash
+        id: external
+        run: |
+          for f in external-result/*; do
+            echo "$f: $(cat $f)";
+          done
+          if grep "fail" external-result/*; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+          else
+            echo "result=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check flaky
+        shell: bash
+        id: flaky
+        run: |
+          for f in flaky-result/*; do
+            echo "$f: $(cat $f)";
+          done
+          if grep "fail" flaky-result/*; then
+            echo "result=fail" >> $GITHUB_OUTPUT
+          else
+            echo "result=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for failures
+        # We don't want to fail the action if it's a scheduled run.
+        if: github.event_name != 'schedule'
+        run: |
+          if [[ "${{ steps.external.outputs.result }}" == "fail" || \
+                "${{ steps.flaky.outputs.result }}" == "fail" ]]; then
+            echo "Found failures in external or flaky tests."
+            echo "external: ${{ steps.external.outputs.result }}"
+            echo "flaky: ${{ steps.flaky.outputs.result }}"
+            exit 1
+          fi
 
   AUR:
     name: Update AUR package
     runs-on: ubuntu-latest
-    needs: [build]
-    if: github.event_name == 'release' &&
-        !github.event.release.prerelease &&
+    needs: [combine]
+    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
         github.repository_owner == 'toitlang'
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
-      - uses: actions/checkout@v3
-
-      - name: Version number
-        id: version
-        shell: bash
-        run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          echo "version=$VERSION" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
 
       - name: Ssh
         env:
@@ -984,17 +1207,23 @@ jobs:
 
           ssh-keyscan -H aur.archlinux.org > $HOME/.ssh/known_hosts
 
-      - name: Fetch AUR package
+      - name: Fetch AUR packages
         run: |
           git clone ssh://aur@aur.archlinux.org/toit.git
+          git clone ssh://aur@aur.archlinux.org/toit-vessels-bin.git
 
-      - name: Git
+      - name: Configure git
         run: |
-          cd toit
+          pushd toit
           git config user.email "leon@toit.io"
           git config user.name "Leon Gungadin Mogensen"
+          popd
+          pushd toit-vessels-bin
+          git config user.email "leon@toit.io"
+          git config user.name "Leon Gungadin Mogensen"
+          popd
 
-      - name: Update AUR package
+      - name: Update AUR packages
         shell: bash
         run: |
           # Toit's PKGBUILD is a bit special in that we don't download
@@ -1003,24 +1232,107 @@ jobs:
           # For security, we store the hash of the commit in the PKGBUILD,
           # which is why we run a custom 'update_hash.sh' script.
           # This is the reason we can't just use the 'archlinux-package-action'.
-          cd toit
-          sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
+          pushd toit
+          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
           sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
           ./update_hash.sh
+          popd
+          # The vessel PKGBUILD also needs the '_tag' replaced instead of
+          # the usual 'pkgver'.
+          pushd toit-vessels-bin
+          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
+          popd
 
-      - name: Update .SRCINFO
-        uses: hapakaien/archlinux-package-action@v2
+      - name: Update .SRCINFO for toit
+        uses: toitlang/archlinux-package-action@main
         with:
           path: toit
           flags: ''
           namcap: false
           srcinfo: true
 
-      - name: Upload
-        run: |
-          cat ${{ github.workspace }}/toit/PKGBUILD
-          cat ${{ github.workspace }}/toit/.SRCINFO
+      - name: Update pkgsums and .SRCINFO for toit-vessels-bin
+        uses: toitlang/archlinux-package-action@main
+        with:
+          path: toit-vessels-bin
+          flags: ''
+          namcap: false
+          updpkgsums: true
+          srcinfo: true
 
-          cd ${{ github.workspace }}/toit
-          git commit -am "Update to version ${{ env.version }}"
+      - name: Upload toit and toit-vessels-bin
+        run: |
+          pushd toit
+          cat PKGBUILD
+          cat .SRCINFO
+          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
           git push origin master
+          popd
+
+          pushd toit-vessels-bin
+          cat PKGBUILD
+          cat .SRCINFO
+          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
+          git push origin master
+          popd
+
+  serial:
+    needs: [prereqs, rpi, esp32]
+    if: needs.prereqs.outputs.DO_HW_TESTS == 'true'
+
+    runs-on: serial
+
+    steps:
+      - name: Clean workspace
+        run: |
+          rm -rf ${{ github.workspace }}/*
+
+      - uses: actions/checkout@v4
+
+      # We need a more recent version of cmake than is installed globally.
+      - name: Add local bin to PATH
+        run: |
+          echo "$HOME/local/bin" >> $GITHUB_PATH
+
+      # Download the Pi artifact.
+      - name: Download the SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: rpi-build
+
+      - name: Unpack the Toit SDK
+        run: |
+          mkdir -p rpi
+          tar x -zf rpi.tar.gz -C rpi
+
+      - name: Download esptool
+        # The Toit SDK we got is not yet combined and thus missing the esptool.
+        run: |
+          export ESPTOOL_ARCH=linux-armv7
+          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
+          unzip esptool-$ESPTOOL_ARCH.zip
+          cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/tools/esptool$EXTENSION
+          chmod +x rpi/toit/tools/esptool$EXTENSION
+
+      - name: Download ESP32 envelopes
+        uses: actions/download-artifact@v4
+        with:
+          name: firmwares
+
+      - name: Unpack the ESP32 firmware
+        run: |
+          gunzip firmware-esp32.gz
+          gunzip firmware-esp32s3.gz
+
+      - name: Test Raspberry Pi
+        env:
+          TOIT_EXE_HW: ${{ github.workspace }}/rpi/toit/bin/toit
+          ESP32_ENVELOPE: ${{ github.workspace }}/firmware-esp32
+          ESP32S3_ENVELOPE: ${{ github.workspace }}/firmware-esp32s3
+        run: |
+          # Get the pin configuration from the file in the runner's home.
+          source $HOME/pi-test.env
+          # Get the esp32 port and wifi configuration from the file in the runner's home.
+          source $HOME/esp32-test.env
+
+          make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-hw

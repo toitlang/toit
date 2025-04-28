@@ -21,13 +21,12 @@
 #include <sys/types.h>
 #include <windows.h>
 
-
+#include "../error_win.h"
 #include "../objects.h"
 #include "../objects_inline.h"
-#include "../vm.h"
-#include "../error_win.h"
-#include "subprocess.h"
 #include "../primitive_file.h"
+#include "subprocess.h"
+#include "../vm.h"
 
 namespace toit {
 
@@ -152,7 +151,7 @@ class WritePipeResource : public HandlePipeResource {
   bool ready_for_write() const { return write_ready_; }
 
 
-  bool send(const uint8* buffer, int length) {
+  bool send(const uint8* buffer, word length) {
     if (write_buffer_ != null) free(write_buffer_);
 
     write_ready_ = false;
@@ -182,6 +181,11 @@ PRIMITIVE(init) {
 
   auto resource_group = _new PipeResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) FAIL(MALLOC_FAILED);
+
+  if (!WindowsEventSource::instance()->use()) {
+    resource_group->tear_down();
+    WINDOWS_ERROR;
+  }
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -646,7 +650,7 @@ PRIMITIVE(fork) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       CStringBlob, command,
        Array, args);
   USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
@@ -661,7 +665,7 @@ PRIMITIVE(fork2) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       CStringBlob, command,
        Array, args,
        Object, environment_object);
   USE(command);  // Not used on Windows.

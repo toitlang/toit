@@ -7,4 +7,4 @@ tests/negative/field-setter-type-test.toit:18:3: error: Type mismatch. Expected 
 tests/negative/field-setter-type-test.toit:22:20: error: Type mismatch. Expected 'A'. Got 'string'
   return c.field = "str"
                    ^~~~~
-Compilation failed.
+Compilation failed

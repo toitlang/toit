@@ -18,7 +18,7 @@ import encoding.json
 import host.pipe
 import host.os
 import host.file
-import reader show BufferedReader
+import io
 import semver
 import system
 import system show platform
@@ -26,36 +26,47 @@ import system show platform
 REQUIRED-SDK-VERSION ::= "2.0.0-alpha.95"
 
 main args:
-  cmd := cli.Command "root"
-      --long-help="""
+  cmd := build-command
+  cmd.run args
+
+build-command --toitc-from-args/Lambda?=null -> cli.Command:
+  cmd := cli.Command "kebabify"
+      --help="""
         Migrates a project from snake-case to kebab-case.
         """
 
+  jag-paragraph := ""
+  toitc-options := []
+  if not toitc-from-args:
+    jag-paragraph = """
+
+        Uses the Toit SDK that is available through `jag` by default.
+        """
+    toitc-options = [
+      cli.Option "toitc"
+          --help="The path to the toit.compile binary.",
+    ]
   code-command := cli.Command "code"
-      --long-help="""
+      --help="""
         Migrates the given source files from snake-case ("foo_bar") to
         kebab-case ("foo-bar").
-
-        By default uses the Toit SDK that is available through `jag`.
-        """
-      --options=[
-        cli.Option "toitc"
-            --short-help="The path to the toit.compile binary.",
+        $jag-paragraph"""
+      --options=toitc-options + [
         cli.Flag "abort-on-error"
-            --short-help="Abort the migration if a file has errors."
+            --help="Abort the migration if a file has errors."
             --default=false
       ]
       --rest=[
         cli.Option "source"
-            --short-help="The source file to migrate."
+            --help="The source file to migrate."
             --required
             --multi
       ]
-      --run=:: migrate it
+      --run=:: migrate it (toitc-from-args ? toitc-from-args.call it : it["toitc"])
   cmd.add code-command
 
   files-command := cli.Command "files"
-      --long-help="""
+      --help="""
         Renames the given source files from snake-case ("foo_bar.toit") to
         kebab-case ("foo-bar.toit").
 
@@ -71,29 +82,30 @@ main args:
         """
       --options=[
         cli.Flag "git"
-            --short-help="Use 'git mv' to rename the files."
+            --help="Use 'git mv' to rename the files."
             --default=false
       ]
       --rest=[
         cli.Option "source"
-            --short-help="The source file to migrate."
+            --help="The source file to migrate."
             --required
             --multi
       ]
       --run=:: rename-files it
   cmd.add files-command
 
-  cmd.run args
+  return cmd
 
-migrate parsed/cli.Parsed:
-  toitc := parsed["toitc"]
-  sources := parsed["source"]
-  abort-on-error := parsed["abort-on-error"]
+migrate invocation/cli.Invocation toitc/string?:
+  sources := invocation["source"]
+  abort-on-error := invocation["abort-on-error"]
+
+  ui := invocation.cli.ui
 
   if not toitc:
-    toitc = find-toitc-from-jag
+    toitc = find-toitc-from-jag --ui=ui
 
-  check-toitc-version toitc
+  check-toitc-version toitc --ui=ui
 
   migration-points := []
   sources.do: | source/string |
@@ -107,9 +119,9 @@ migrate parsed/cli.Parsed:
         toitc
         [toitc, "-Xmigrate-dash-ids", "--analyze", source]
     child-process := pipes[3]
-    reader := BufferedReader pipe-ends
+    reader := io.Reader.adapt pipe-ends
     reader.buffer-all
-    out := reader.read-string reader.buffered
+    out := reader.read-string reader.buffered-size
     pipe-ends.close
     exit-value := pipe.wait-for child-process
     if pipe.exit-signal exit-value:
@@ -132,7 +144,7 @@ migrate parsed/cli.Parsed:
     migration-points[point-count++] = migration-points[i]
   migration-points.resize point-count
 
-  print "Migrating $point-count locations."
+  ui.emit --info "Migrating $point-count locations."
   parsed-points := json.parse "[$(migration-points.join ",")]"
 
   file-points := {:}
@@ -142,7 +154,7 @@ migrate parsed/cli.Parsed:
     (file-points.get file --init=: []).add it
 
   file-points.do: | path points |
-    content/ByteArray := file.read-content path
+    content/ByteArray := file.read-contents path
 
     // No need to sort as all replacements are of the same length and don't overlap.
     points.do: | point |
@@ -151,11 +163,11 @@ migrate parsed/cli.Parsed:
       replacement/string := point[3]
       content.replace from replacement.to-byte-array
 
-    file.write-content --path=path content
+    file.write-contents --path=path content
 
-rename-files parsed/cli.Parsed:
-  git := parsed["git"]
-  sources := parsed["source"]
+rename-files invocation/cli.Invocation:
+  git := invocation["git"]
+  sources := invocation["source"]
 
   sources.do: | path/string |
     new-path := build-kebab-path path
@@ -187,27 +199,25 @@ build-kebab-path path/string -> string:
     bytes[i] = '-'
   return "$(bytes.to-string)"
 
-find-toitc-from-jag -> string:
+find-toitc-from-jag --ui/cli.Ui -> string:
   home := ?
   if platform == system.PLATFORM-WINDOWS:
     home = os.env.get "USERPROFILE"
   else:
     home = os.env.get "HOME"
   if not home:
-    print "Could not find home directory."
-    exit 1
+    ui.abort "Could not find home directory."
   exe-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
   return "$home/.cache/jaguar/sdk/bin/toit.compile$exe-extension"
 
-check-toitc-version toitc:
+check-toitc-version toitc --ui/cli.Ui:
   version-line := pipe.backticks toitc "--version"
   if not version-line.starts-with "Toit version:":
-    print "Could not get toit.compile version."
-    exit 1
+    ui.abort "Could not get toit.compile version."
   parts := version-line.split ":"
   version-with-v := parts[1].trim
   version := version-with-v[1..]
   if ((semver.compare version REQUIRED-SDK-VERSION) < 0):
-    print "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
-    print "(Using `$toitc` to invoke toit.compile.)"
-    exit 1
+    ui.emit --error "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
+    ui.emit --error "(Using `$toitc` to invoke toit.compile.)"
+    ui.abort

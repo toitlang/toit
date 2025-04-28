@@ -26,12 +26,12 @@ if (DEFINED EXECUTING_SCRIPT)
     if (NOT DEFINED TOIT_PROJECT)
       message(FATAL_ERROR "Missing TOIT_PROJECT")
     endif()
-    if (NOT DEFINED TOITPKG)
-      message(FATAL_ERROR "Missing TOITPKG")
+    if (NOT DEFINED HOST_TOIT)
+      message(FATAL_ERROR "Missing HOST_TOIT")
     endif()
 
     execute_process(
-      COMMAND "${TOITPKG}" install --auto-sync=false "--project-root=${TOIT_PROJECT}"
+      COMMAND "${HOST_TOIT}" pkg install --no-auto-sync "--project-root=${TOIT_PROJECT}"
       COMMAND_ERROR_IS_FATAL ANY
     )
     set(PACKAGE_TIMESTAMP "${TOIT_PROJECT}/.packages/package-timestamp")
@@ -52,12 +52,12 @@ endif()
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
-  if (NOT DEFINED TOITC)
-    set(TOITC "$ENV{TOITC}")
-    if ("${TOITC}" STREQUAL "")
-      # TOITC is normally set to the toit.compile executable.
+  if (NOT DEFINED HOST_TOIT)
+    set(HOST_TOIT "$ENV{HOST_TOIT}")
+    if ("${HOST_TOIT}" STREQUAL "")
+      # HOST_TOIT is normally set to the toit executable.
       # However, for cross-compilation the compiler must be provided manually.
-      message(FATAL_ERROR "TOITC not provided")
+      message(FATAL_ERROR "HOST_TOIT not provided")
     endif()
   endif()
   if(POLICY CMP0116)
@@ -66,19 +66,26 @@ function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${TOITC}" download_packages "${SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -O2 -w "${TARGET}" "${SOURCE}"
+    DEPENDS "${HOST_TOIT}" download_packages "${SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false
+      "${HOST_TOIT}" compile
+      --dependency-file "${DEP_FILE}"
+      --dependency-format ninja
+      -O2
+      --snapshot
+      -o "${TARGET}"
+      "${SOURCE}"
   )
 endfunction(ADD_TOIT_SNAPSHOT)
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
-  if (NOT DEFINED TOITC)
-    set(TOITC "$ENV{TOITC}")
-    if ("${TOITC}" STREQUAL "")
-      # TOITC is normally set to the toit.compile executable.
+  if (NOT DEFINED HOST_TOIT)
+    set(HOST_TOIT "$ENV{HOST_TOIT}")
+    if ("${HOST_TOIT}" STREQUAL "")
+      # HOST_TOIT is normally set to the toit executable.
       # However, for cross-compilation the compiler must be provided manually.
-      message(FATAL_ERROR "TOITC not provided")
+      message(FATAL_ERROR "HOST_TOIT not provided")
     endif()
   endif()
   if(POLICY CMP0116)
@@ -91,8 +98,14 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${TOITC}" download_packages "${SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja ${VESSELS_FLAG} -O2 -o "${TARGET}" "${SOURCE}"
+    DEPENDS "${HOST_TOIT}" download_packages "${SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false
+      "${HOST_TOIT}" compile
+      --dependency-file "${DEP_FILE}"
+      --dependency-format ninja ${VESSELS_FLAG}
+      -O2
+      -o "${TARGET}"
+      "${SOURCE}"
   )
 endfunction(ADD_TOIT_EXE)
 
@@ -105,12 +118,12 @@ macro(toit_project NAME PATH)
     if (EXISTS "${PATH}/package.lock")
       list(APPEND PACKAGE_FILES "${PATH}/package.lock")
     endif()
-    if (NOT DEFINED TOITPKG)
-      set(TOITPKG "$ENV{TOITPKG}")
-      if ("${TOITPKG}" STREQUAL "")
-        # TOITPKG is normally set to the toit.pkg executable.
+    if (NOT DEFINED HOST_TOIT)
+      set(HOST_TOIT "$ENV{HOST_TOIT}")
+      if ("${HOST_TOIT}" STREQUAL "")
+        # HOST_TOIT is normally set to the toit executable.
         # However, for cross-compilation the compiler must be provided manually.
-        message(FATAL_ERROR "TOITPKG not provided")
+        message(FATAL_ERROR "HOST_TOIT not provided")
       endif()
     endif()
 
@@ -120,8 +133,8 @@ macro(toit_project NAME PATH)
       )
       add_custom_target(
         sync_packages
-        COMMAND "${TOITPKG}" sync
-        DEPENDS "${TOITPKG}"
+        COMMAND "${HOST_TOIT}" pkg sync
+        DEPENDS "${HOST_TOIT}"
       )
     endif()
 
@@ -138,9 +151,9 @@ macro(toit_project NAME PATH)
           -DEXECUTING_SCRIPT=true
           -DSCRIPT_COMMAND=install_packages
           "-DTOIT_PROJECT=${PATH}"
-          "-DTOITPKG=${TOITPKG}"
+          "-DHOST_TOIT=${HOST_TOIT}"
           -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
-      DEPENDS "${TOITPKG}" ${PACKAGE_FILES} sync-${NAME}-packages
+      DEPENDS "${HOST_TOIT}" ${PACKAGE_FILES} sync-${NAME}-packages
     )
 
     add_custom_target(

@@ -39,8 +39,8 @@ class GcMetadata {
   static const int CARD_SIZE_IN_BITS_LOG_2 = CARD_SIZE_LOG_2 + 3;
 
   // There is a byte per card, and any two byte values would work here.
-  static const int NO_NEW_SPACE_POINTERS = 0;
-  static const int NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
+  static const uint8 NO_NEW_SPACE_POINTERS = 0;
+  static const uint8 NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
 
   // One bit per word of heap, so the size in bytes is 1/8th of that.
   static const int MARK_BITS_SHIFT = 3 + WORD_SHIFT;
@@ -128,7 +128,6 @@ class GcMetadata {
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for_chunk(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
@@ -404,10 +403,6 @@ class GcMetadata {
     return base + (Utils::popcount(bits) << WORD_SHIFT);
   }
 
-  static int heap_allocation_arena() {
-    return singleton_.heap_allocation_arena_;
-  }
-
   static uword lowest_old_space_address() { return singleton_.lowest_address_; }
 
   static uword heap_extent() { return singleton_.heap_extent_; }
@@ -467,6 +462,14 @@ class GcMetadata {
 
   static uword object_address_from_start(uword line, uint8 start);
 
+  static int large_heap_heuristics() {
+    return singleton_.large_heap_heuristics_;
+  }
+
+  static void set_large_heap_heuristics(int value) {
+    singleton_.large_heap_heuristics_ = value;
+  }
+
  private:
   GcMetadata() {}
   ~GcMetadata() {}
@@ -487,7 +490,6 @@ class GcMetadata {
   uword heap_extent_munged_;
   uword number_of_cards_;
   uword metadata_size_;
-  int heap_allocation_arena_;
   uint8* metadata_;
   uint8* remembered_set_;
   uint8* object_starts_;
@@ -500,6 +502,11 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+#ifdef TOIT_FREERTOS
+  int large_heap_heuristics_ = 0;
+#else
+  int large_heap_heuristics_ = 100;
+#endif
 };
 
 }  // namespace toit

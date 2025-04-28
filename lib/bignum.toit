@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.hex
-import binary show BIG-ENDIAN
+import io show BIG-ENDIAN
 
 BIGNUM-ADD_ ::= 0
 BIGNUM-SUB_ ::= 1
@@ -68,10 +68,10 @@ class Bignum:
 
   operator % other -> Bignum:
     return basic-operator_ BIGNUM-MOD_ other
-  
+
   operator == other -> bool:
     other = trans-other_ other
-    
+
     if negative_ != other.negative_:
       return false
 
@@ -85,9 +85,9 @@ class Bignum:
     cut1.repeat: if limbs_[it] != 0: return false
     cut2.repeat: if other.limbs_[it] != 0: return false
     return true
-  
+
   stringify -> string:
-    s := negative_ ? "-0x" : "0x" 
+    s := negative_ ? "-0x" : "0x"
     s += hex.encode limbs_
     return s
 

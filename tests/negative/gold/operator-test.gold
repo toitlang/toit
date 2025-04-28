@@ -625,4 +625,94 @@ tests/negative/operator-test.toit:227:5: error: Unresolved identifier: 'unresolv
 tests/negative/operator-test.toit:229:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-Compilation failed.
+tests/negative/operator-test.toit:196:3: error: Method doesn't return a value
+  operator == other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:198:3: error: Method doesn't return a value
+  operator < other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:200:3: error: Method doesn't return a value
+  operator <= other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:202:3: error: Method doesn't return a value
+  operator >= other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:204:3: error: Method doesn't return a value
+  operator > other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:157:3: error: Method doesn't return a value
+  operator == other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:159:3: error: Method doesn't return a value
+  operator < other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:161:3: error: Method doesn't return a value
+  operator <= other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:163:3: error: Method doesn't return a value
+  operator >= other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:165:3: error: Method doesn't return a value
+  operator > other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:121:3: error: Method doesn't return a value
+  operator == other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:123:3: error: Method doesn't return a value
+  operator < other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:125:3: error: Method doesn't return a value
+  operator <= other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:127:3: error: Method doesn't return a value
+  operator >= other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:129:3: error: Method doesn't return a value
+  operator > other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:85:3: error: Method doesn't return a value
+  operator == other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:87:3: error: Method doesn't return a value
+  operator < other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:89:3: error: Method doesn't return a value
+  operator <= other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:91:3: error: Method doesn't return a value
+  operator >= other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:93:3: error: Method doesn't return a value
+  operator > other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:42:3: error: Method doesn't return a value
+  operator ==:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:44:3: error: Method doesn't return a value
+  operator <:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:46:3: error: Method doesn't return a value
+  operator <=:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:48:3: error: Method doesn't return a value
+  operator >=:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:50:3: error: Method doesn't return a value
+  operator >:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:6:3: error: Method doesn't return a value
+  operator == other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:8:3: error: Method doesn't return a value
+  operator < other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:10:3: error: Method doesn't return a value
+  operator <= other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:12:3: error: Method doesn't return a value
+  operator >= other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:14:3: error: Method doesn't return a value
+  operator > other bad:
+  ^~~~~~~~~~
+Compilation failed

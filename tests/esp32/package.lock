@@ -1,9 +1,0 @@
-sdk: ^2.0.0-alpha.1
-prefixes:
-  hc_sr04: toit-hc-sr04
-packages:
-  toit-hc-sr04:
-    url: github.com/lask/toit-hc-sr04
-    name: hc_sr04
-    version: 2.1.0
-    hash: a3a90c8217da0c4637fafc095f7c759320978e8b

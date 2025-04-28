@@ -64,17 +64,17 @@ class DispatchTable {
   }
   int id_for(const ir::Class* klass) const { return klass->start_id(); }
 
-  void for_each_selector_offset(std::function<void (DispatchSelector, int)> callback) {
+  void for_each_selector_offset(std::function<void (DispatchSelector, word)> callback) {
     selector_offsets_.for_each(callback);
   }
 
  private:
   DispatchTable(List<ir::Method*> table,
-                const Map<DispatchSelector, int>& selector_offsets)
+                const Map<DispatchSelector, word>& selector_offsets)
       : table_(table), selector_offsets_(selector_offsets) {}
 
   List<ir::Method*> table_;
-  Map<DispatchSelector, int> selector_offsets_;
+  Map<DispatchSelector, word> selector_offsets_;
 };
 
 } // namespace toit::compiler

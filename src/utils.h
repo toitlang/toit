@@ -43,13 +43,13 @@ class Utils {
   }
 
   template<typename T>
-  static inline bool is_aligned(T x, int n) {
+  static inline bool is_aligned(T x, uword n) {
     ASSERT(is_power_of_two(n));
     return ((x - static_cast<T>(0)) & (n - 1)) == 0;
   }
 
   template<typename T>
-  static inline T round_down(T x, int n) {
+  static inline T round_down(T x, uword n) {
     ASSERT(is_power_of_two(n));
     return (T)((uintptr_t)(x) & -n);
   }
@@ -91,8 +91,8 @@ class Utils {
   static inline int popcount(T x) {
     typename std::make_unsigned<T>::type u = x;
 #ifdef __XTENSA__
-    int result = 0;
-    for (int i = 0; i < sizeof(u); i++) {
+    word result = 0;
+    for (word i = 0; i < sizeof(u); i++) {
       uint8 b = u & 0xff;
       result += popcount_table[b];
       u >>= 8;
@@ -111,7 +111,7 @@ class Utils {
   }
 
   template<typename T>
-  static inline T address_at(T base, int byte_offset) {
+  static inline T address_at(T base, word byte_offset) {
     return reinterpret_cast<T>(((uword) base) + byte_offset);
   }
 
@@ -121,8 +121,20 @@ class Utils {
   }
 
   template<typename T>
-  static inline T round_up(T x, int n) {
+  static inline T round_up(T x, word n) {
     return round_down(x + n - 1, n);
+  }
+
+  static inline void* round_up(void* p, word n) {
+    return reinterpret_cast<void*>(round_up(reinterpret_cast<uword>(p), n));
+  }
+
+  static inline void* void_add(void* x, uword y) {
+    return reinterpret_cast<void*>(reinterpret_cast<uword>(x) + y);
+  }
+
+  static inline uword void_sub(void* x, void* y) {
+    return reinterpret_cast<uword>(x) - reinterpret_cast<uword>(y);
   }
 
   // Implementation is from "Hacker's Delight" by Henry S. Warren, Jr.,
@@ -310,10 +322,10 @@ class Utils {
 
   // The number of leading ones in the prefix byte determines the length of a
   // UTF-8 sequence.
-  static int bytes_in_utf_8_sequence(unsigned char prefix) {
+  static word bytes_in_utf_8_sequence(unsigned char prefix) {
     if (prefix <= MAX_ASCII) return 1;
-    int count = 0;
-    int mask = 0x80;
+    word count = 0;
+    word mask = 0x80;
     while ((prefix & mask) != 0) {
       count++;
       mask >>= 1;
@@ -321,12 +333,12 @@ class Utils {
     return count;
   }
 
-  static int payload_from_prefix(unsigned char prefix) {
-    int n_byte_sequence = bytes_in_utf_8_sequence(prefix);
+  static word payload_from_prefix(unsigned char prefix) {
+    word n_byte_sequence = bytes_in_utf_8_sequence(prefix);
     return prefix & ((1 << (7 - n_byte_sequence)) - 1);
   }
 
-  static bool is_valid_utf_8(const uint8* buffer, int length);
+  static bool is_valid_utf_8(const uint8* buffer, word length);
 
  private:
   static const uint8 REVERSE_NIBBLE[16];
@@ -434,7 +446,7 @@ template<typename T>
 class List {
  public:
   List() : data_(null), length_(0) {}
-  List(T* data, int length) : data_(data), length_(length) {
+  List(T* data, word length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }
 
@@ -447,15 +459,15 @@ class List {
 
   T* data() const { return data_; }
   T*& data() { return data_; }
-  int length() const { return length_; }
+  word length() const { return length_; }
   bool is_empty() const { return length_ == 0; }
 
-  T& operator[](int index) {
+  T& operator[](word index) {
     ASSERT(index >= 0 && index < length_);
     return data_[index];
   }
 
-  const T& operator[](int index) const {
+  const T& operator[](word index) const {
     ASSERT(index >= 0 && index < length_);
     return data_[index];
   }
@@ -474,7 +486,7 @@ class List {
     return (pointer >= begin() && pointer < end());
   }
 
-  const List<T> sublist(int from, int to) const {
+  const List<T> sublist(word from, word to) const {
     ASSERT(0 <= from && from <= to && to <= length_);
     return List<T>(&data_[from], to - from);
   }
@@ -501,7 +513,7 @@ class List {
 
  private:
   T* data_;
-  int length_;
+  word length_;
 
   template <typename U>
   friend class List;

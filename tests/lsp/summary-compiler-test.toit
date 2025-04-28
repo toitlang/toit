@@ -16,7 +16,7 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
@@ -25,13 +25,17 @@ FILE-PATH ::= "$DRIVE/tmp/file.toit"
 test client/LspClient:
   client.send-did-open --path=FILE-PATH --text=""
 
-  client.send-did-open --path=FILE-PATH --text="""
+  client.send-did-change --path=FILE-PATH """
     class NotImportant:  // ID: 0
     class A:
     interface I1:
     class B extends A implements I1:
     """
-  document := client.server.documents_.get-existing-document --path=FILE-PATH
+  uri := client.to-uri FILE-PATH
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   classes := summary.classes
 

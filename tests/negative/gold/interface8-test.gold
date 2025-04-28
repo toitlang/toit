@@ -10,4 +10,4 @@ class B implements A2:
 tests/negative/interface8-test.toit:6:3: note: Missing implementation for 'foo'
   foo
   ^~~
-Compilation failed.
+Compilation failed

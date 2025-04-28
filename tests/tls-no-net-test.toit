@@ -5,7 +5,7 @@
 import tls
 import tls.session as tls
 import net.x509 as net
-import reader
+import io
 
 PACKS := 20
 SIZE := 1024
@@ -18,7 +18,7 @@ main:
   s1.peer_ = s2
   s2.peer_ = s1
 
-  s := tls.Session.server s1 s1
+  s := tls.Session.server s1.in s1.out
     --root-certificates=[TEST-ROOT-CERT]
     --certificate=tls.Certificate TEST-LOCALHOST-CERT-DIRECTLY-SIGNED TEST-LOCALHOST-KEY-DIRECTLY-SIGNED
   task::
@@ -28,7 +28,7 @@ main:
       s.write b
       i += b.size
 
-  c := tls.Session.client s2 s2
+  c := tls.Session.client s2.in s2.out
     --root-certificates=[TEST-ROOT-CERT]
     --certificate=tls.Certificate TEST-CLIENT-CERT-DIRECTLY-SIGNED TEST-CLIENT-KEY-DIRECTLY-SIGNED
 
@@ -42,9 +42,42 @@ main:
     c.write b
     i += b.size
 
-monitor Socket implements reader.Reader:
+class Writer extends io.CloseableWriter:
+  socket_/Socket
+
+  constructor .socket_:
+
+  try-write_ data/io.Data from/int to/int -> int:
+    return socket_.write data from to
+
+  close_:
+    // Do nothing for the test.
+
+class Reader extends io.CloseableReader:
+  socket_/Socket
+
+  constructor .socket_:
+
+  read_ -> ByteArray?:
+    return socket_.read
+
+  close_:
+    // Do nothing for the test.
+
+monitor Socket:
   peer_ := null
   queue_ := []
+
+  in_/Reader? := null
+  out_/Writer? := null
+
+  in -> io.CloseableReader:
+    if not in_: in_ = Reader this
+    return in_
+
+  out -> io.CloseableWriter:
+    if not out_: out_ = Writer this
+    return out_
 
   put data:
     queue_.add data

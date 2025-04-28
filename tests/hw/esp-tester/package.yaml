@@ -1,0 +1,10 @@
+dependencies:
+  cli:
+    url: github.com/toitlang/pkg-cli
+    version: ^2.2.0
+  fs:
+    url: github.com/toitlang/pkg-fs
+    version: ^2.3.1
+  host:
+    url: github.com/toitlang/pkg-host
+    version: ^1.15.3

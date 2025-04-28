@@ -13,7 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#if defined(__FREERTOS__)
+// We can't include 'top.h' in this file.
+// Therefore we don't test for `TOIT_ESP32` but for `ESP_PLATFORM`.
+#if defined(ESP_PLATFORM)
 
 #include "esp_attr.h"
 #include "uart_esp32_hal.h"
@@ -40,6 +42,7 @@ uart_hal_handle_t uart_toit_hal_init(uart_port_t port) {
   handle->interrupt_mask[UART_TOIT_INTR_TX_DONE]      = UART_INTR_TX_DONE;
   handle->interrupt_mask[UART_TOIT_ALL_INTR_MASK]     = UART_LL_INTR_MASK;
   handle->interrupt_mask[UART_TOIT_INTR_RX_TIMEOUT]   = UART_INTR_RXFIFO_TOUT;
+  handle->interrupt_mask[UART_TOIT_INTR_BRK_DET]      = UART_INTR_BRK_DET;
 
   return handle;
 }

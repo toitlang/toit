@@ -14,7 +14,7 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 check-foo-export summary client foo-path:
@@ -60,7 +60,11 @@ test client/LspClient:
     diagnostics := client.diagnostics-for --path=paths[it]
     expect-equals 0 diagnostics.size
 
-  document := client.server.documents_.get-existing-document --path=paths[0]
+  document-uri := client.to-uri paths[0]
+  project-uri := client.server.documents_.project-uri-for --uri=(client.to-uri paths[0])
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+
+  document :=  analyzed-documents.get-existing --uri=document-uri
   summary := document.summary
 
   expect summary.exported-modules.is-empty
@@ -71,7 +75,7 @@ test client/LspClient:
     diagnostics := client.diagnostics-for --path=paths[it]
     expect-equals 0 diagnostics.size
 
-  document = client.server.documents_.get-existing-document --path=paths[0]
+  document =  analyzed-documents.get-existing --uri=document-uri
   summary = document.summary
 
   expect-equals 1 summary.exported-modules.size

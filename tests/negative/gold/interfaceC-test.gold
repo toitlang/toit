@@ -34,4 +34,4 @@ tests/negative/interfaceC-test.toit:25:3: note: Method 'foo' is only partially i
 tests/negative/interfaceC-test.toit:31:3: note: Method 'bar' is only partially implemented
   bar x y [block] --named1 --named2=42 --named3=499 [--b] --named4=11
   ^~~
-Compilation failed.
+Compilation failed

@@ -10,4 +10,4 @@ tests/negative/assign4-test.toit:6:12: error: Members can't be abstract in non-a
 tests/negative/assign4-test.toit:10:5: error: Can't assign to unknown 'bar'
     super = 22
     ^~~~~
-Compilation failed.
+Compilation failed

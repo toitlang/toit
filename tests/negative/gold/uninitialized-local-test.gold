@@ -34,4 +34,4 @@ tests/negative/uninitialized-local-test.toit:66:7: error: Local 'local9' must be
 tests/negative/uninitialized-local-test.toit:21:9: error: Local 'local' must be initialized before first use
     use local
         ^~~~~
-Compilation failed.
+Compilation failed

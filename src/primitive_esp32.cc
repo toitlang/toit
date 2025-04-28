@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "flash_allocation.h"
 #include "objects_inline.h"
@@ -50,22 +50,24 @@
 #include <rom/ets_sys.h>
 #include <esp_task_wdt.h>
 
-#include <soc/rtc_cntl_reg.h>
-
 #include <driver/gpio.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-//  #include <soc/esp32/include/soc/sens_reg.h>
-  #include <esp32c3/rom/rtc.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-  #include <esp32s3/rom/rtc.h>
-  #include <driver/touch_sensor.h>
-#elif CONFIG_IDF_TARGET_ESP32S2
-  #include <esp32s2/rom/rtc.h>
-#else
+#if SOC_TOUCH_SENSOR_SUPPORTED
+#include <driver/touch_pad.h>
+#endif
+#if CONFIG_IDF_TARGET_ESP32
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>
-  #include <driver/touch_sensor.h>
+#elif CONFIG_IDF_TARGET_ESP32C3
+  #include <esp32c3/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32C6
+  #include <esp32c6/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rom/rtc.h>
+#else
+  #error Unknown ESP32 target architecture
 #endif
 
 #include "esp_partition.h"
@@ -303,6 +305,7 @@ PRIMITIVE(ota_rollback) {
   PRIVILEGED;
   bool is_rollback_possible = esp_ota_check_rollback_is_possible();
   if (!is_rollback_possible) FAIL(PERMISSION_DENIED);
+  RtcMemory::invalidate();   // Careful: This clears the RTC memory on boot.
   esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
   ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
   FAIL(ERROR);
@@ -317,19 +320,21 @@ PRIMITIVE(total_deep_sleep_time) {
 }
 
 PRIMITIVE(enable_external_wakeup) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
   ARGS(int64, pin_mask, bool, on_any_high);
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
     FAIL(ERROR);
   }
+#else
+  FAIL(UNSUPPORTED);
 #endif
   return process->null_object();
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if SOC_TOUCH_SENSOR_SUPPORTED
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
@@ -341,6 +346,8 @@ PRIMITIVE(enable_touchpad_wakeup) {
     FAIL(ERROR);
   }
   keep_touch_active();
+#else
+  FAIL(UNSUPPORTED);
 #endif
   return process->null_object();
 }
@@ -350,7 +357,7 @@ PRIMITIVE(wakeup_cause) {
 }
 
 PRIMITIVE(ext1_wakeup_status) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
   ARGS(int64, pin_mask);
   uint64 status = esp_sleep_get_ext1_wakeup_status();
   for (int pin = 0; pin_mask > 0; pin++) {
@@ -364,16 +371,12 @@ PRIMITIVE(ext1_wakeup_status) {
 }
 
 PRIMITIVE(touchpad_wakeup_status) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if SOC_TOUCH_SENSOR_SUPPORTED
   touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
   return Primitive::integer(touch_pad_to_pin_num(pad), process);
 #else
   return Smi::from(-1);
 #endif
-}
-
-PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
 }
 
 PRIMITIVE(get_mac_address) {
@@ -602,13 +605,21 @@ PRIMITIVE(pin_hold_disable) {
 }
 
 PRIMITIVE(deep_sleep_pin_hold_enable) {
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   gpio_deep_sleep_hold_en();
   return process->null_object();
+#else
+  FAIL(UNSUPPORTED);
+#endif
 }
 
 PRIMITIVE(deep_sleep_pin_hold_disable) {
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   gpio_deep_sleep_hold_dis();
   return process->null_object();
+#else
+  FAIL(UNSUPPORTED);
+#endif
 }
 
 } // namespace toit

@@ -1,0 +1,10 @@
+tests/negative/if3-test.toit:10:5: warning: Unexpected indentation: 'if' and 'else' not at same level
+    else:
+    ^~~~
+tests/negative/if3-test.toit:11:7: error: Unresolved identifier: 'unresolved'
+      unresolved
+      ^~~~~~~~~~
+tests/negative/if3-test.toit:18:11: error: Unresolved identifier: 'unresolved'
+          unresolved
+          ^~~~~~~~~~
+Compilation failed

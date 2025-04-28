@@ -17,20 +17,34 @@ file(GLOB TOIT_OPTIMIZATION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 
 include(fail.cmake)
 
+set(OPTIMIZATIONS_IS_OVERRIDEN)
+if (DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  set(OPTIMIZATIONS_IS_OVERRIDEN TRUE)
+endif()
+
 foreach(file ${TOIT_OPTIMIZATION_TESTS})
+  if(OPTIMIZATIONS_IS_OVERRIDEN)
+    # Don't run optimization tests if the optimization level is overriden.
+    continue()
+  endif()
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
 
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${file}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS slow
     )
-  set_tests_properties(${file} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

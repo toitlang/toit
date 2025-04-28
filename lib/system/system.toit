@@ -3,6 +3,21 @@
 // found in the lib/LICENSE file.
 
 import system.trace show send-trace-message
+import system.storage
+
+/**
+System related functionality.
+
+This module contains functions that provide information about the currently
+  running Toit program, as well as the system itself, such as the platform and
+  architecture. It also provides functions to collect statistics about the
+  system and the current process.
+*/
+
+// Use lazy initialization to delay opening the storage bucket
+// until we need it the first time. From that point forward,
+// we keep it around forever.
+bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/system"
 
 /** The number of bits per byte. */
 BITS-PER-BYTE ::= 8
@@ -45,13 +60,16 @@ ARCHITECTURE-X86-64 ::= "x86_64"
 ARCHITECTURE-ESP32 ::= "esp32"
 
 /** Return value from $architecture. */
+ARCHITECTURE-ESP32C3 ::= "esp32c3"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32C6 ::= "esp32c6"
+
+/** Return value from $architecture. */
 ARCHITECTURE-ESP32S2 ::= "esp32s2"
 
 /** Return value from $architecture. */
 ARCHITECTURE-ESP32S3 ::= "esp32s3"
-
-/** Return value from $architecture. */
-ARCHITECTURE-ESP32C3 ::= "esp32c3"
 
 /** Returns a string identifying the underlying architecture. */
 architecture -> string:
@@ -115,12 +133,12 @@ The "reserved memory" is the size of the heap.
 
 By passing the optional $list argument to be filled in, you can avoid causing
   an allocation, which may interfere with the tracking of allocations.  But note
-  that at some point the bytes_allocated number becomes so large that it needs
+  that at some point the bytes-allocated number becomes so large that it needs
   a small allocation of its own.
 
 # Examples
 ```
-print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
+print "There have been $(process-stats[STATS-INDEX-GC-COUNT]) GCs for this process"
 ```
 */
 process-stats --gc/bool=false list/List=(List STATS-LIST-SIZE_) -> List:
@@ -157,6 +175,19 @@ bytes-allocated-delta -> int:
 /** Returns the number of garbage collections. */
 gc-count -> int:
   #primitive.core.gc-count
+
+/**
+Sets the system tradeoff between memory use and speed.
+The $percent argument is a number between 0 and 100, where 0 means that the
+  system should use as little memory as possible, and 100 means that the system
+  should run as fast as possible.
+Host platforms default to high performance, while embedded platforms
+  default to low memory use.
+This setting is global, applying to all Toit processes running on the embedded
+  system, and all Toit processes running in a host process.
+*/
+tune-memory-use percent/int -> none:
+  #primitive.core.tune-memory-use
 
 // TODO(Lau): does it still make sense to say SDK here?
 /**
@@ -207,3 +238,55 @@ print-objects --marker/string="" --gc/bool=false -> none:
 
 object-histogram_ marker/string full-gcs/int? -> ByteArray:
   #primitive.debug.object-histogram
+
+/**
+Returns the name of the toit file, image, snapshot, or executable that the
+  current program was run from.
+
+If the program is run by the Toit command line tool, this is the name of the
+  source file passed to the tool.
+If the program is run as an executable, this is the name of the executable. In
+  this case it is equivalent to argv[0] in C, or $0 in bash.
+
+May return null if this information is not available.
+*/
+program-name -> string?:
+  #primitive.core.program-name
+
+/**
+Returns the fully resolved path to the toit file, image, or snapshot that the
+  current program was run from.
+
+If the program is run by the Toit command line tool, this is the fully resolved
+  path to the source file passed to the tool, as provided by `realpath`.
+
+If the program is run as an executable, this is the fully resolved path to the
+  executable.
+*/
+program-path -> string?:
+  #primitive.core.program-path
+
+/**
+The hostname of the machine running the program.
+*/
+hostname -> string:
+  if platform == PLATFORM-FREERTOS:
+    config-name := bucket_.get "hostname"
+    if config-name: return config-name
+  return hostname_
+
+/**
+Sets the hostname of the machine running the program.
+
+This operation is not supported on all platforms.
+
+Only new network connections will use the new hostname. Also, some
+  routers may cache the old hostname for a while.
+*/
+hostname= hostname/string -> none:
+  if platform != PLATFORM-FREERTOS:
+    throw "UNSUPPORTED"
+  bucket_["hostname"] = hostname
+
+hostname_ -> string:
+  #primitive.core.hostname

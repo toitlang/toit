@@ -10,4 +10,4 @@ interface A implements B C:
 tests/negative/interface-cycle5-test.toit:7:24: error: This clause contributes to the cycle
 interface B implements A:
                        ^
-Compilation failed.
+Compilation failed

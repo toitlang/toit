@@ -13,44 +13,29 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
 import net
 import net.tcp
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
 import host.pipe show OpenPipe
 import host.file
 import host.directory
+import io
 import monitor
 import system
 import system show platform
 
 import .documents
 import .rpc
-import .uri-path-translator
+import .uri-path-translator as translator
 import .utils
 import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
-  is-absolute/bool := ?
-  if platform == system.PLATFORM-WINDOWS:
-    compiler-path = compiler-path.replace "\\" "/"
-    if compiler-path.starts-with "/":
-      is-absolute = true
-    else if compiler-path.size >= 3 and compiler-path[1] == ':' and compiler-path[2] == '/':
-      is-absolute = true
-    else:
-      is-absolute = false
-  else:
-    is-absolute = compiler-path.starts-with "/"
-
+  compiler-path = fs.to-slash compiler-path
   index := compiler-path.index-of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
   result := compiler-path.copy 0 index
-  if not is-absolute:
-    // Make it absolute.
-    result = "$directory.cwd/$result"
-  return result
-
+  return fs.to-slash (fs.to-absolute result)
 
 class File:
   exists / bool ::= ?
@@ -64,34 +49,35 @@ class File:
 class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
-  translator_ / UriPathTranslator ::= ?
 
   file-cache_ / Map ::= {:}
   directory-cache_ / Map ::= {:}
   sdk-path_ / string? := null
   package-cache-paths_ / List? := null
 
-  constructor .documents_ .filesystem .translator_:
+  constructor .documents_ .filesystem:
 
-  constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
+  constructor.local compiler-path/string sdk-path/string .documents_:
     filesystem = FilesystemLocal sdk-path
 
-  handle reader/BufferedReader writer/Writer:
+  handle reader/io.Reader writer/io.Writer:
       while true:
         line := reader.read-line
         if line == null: break
         if line == "SDK PATH":
           if not sdk-path_:
-            sdk-path_ = translator_.local-path-to-compiler-path filesystem.sdk-path
+            sdk-path_ = translator.local-path-to-compiler-path filesystem.sdk-path
           writer.write "$sdk-path_\n"
         else if line == "PACKAGE CACHE PATHS":
-          if not package-cache-paths_: package-cache-paths_ = filesystem.package-cache-paths
+          if not package-cache-paths_:
+            paths := filesystem.package-cache-paths
+            package-cache-paths_ = paths.map: translator.local-path-to-compiler-path it
           writer.write "$package-cache-paths_.size\n"
           package-cache-paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":
           compiler-path := reader.read-line
           entries := directory-cache_.get compiler-path --init=:
-            local-path := translator_.compiler-path-to-local-path compiler-path
+            local-path := translator.compiler-path-to-local-path compiler-path
             entries-for-path/List := []
             exception := catch:  // The path might not exist.
               entries-for-path = filesystem.directory-entries local-path
@@ -118,16 +104,14 @@ class FileServerProtocol:
     is-regular := false
     is-directory := false
     content := null
-    document := documents_.get --uri=(translator_.to-uri compiler-path --from-compiler)
-    // Just having a document is not enough, as we might still have entries for
-    // deleted files.
-    if document and document.content:
+    document := documents_.get-opened --uri=(translator.to-uri compiler-path --from-compiler)
+    if document:
       exists = true
       is-regular = true
       is-directory = false
       content = document.content.to-byte-array
       return File exists is-regular is-directory content
-    local-path := translator_.compiler-path-to-local-path compiler-path
+    local-path := translator.compiler-path-to-local-path compiler-path
     return filesystem.create-file-entry local-path
 
   served-files -> Map: return file-cache_
@@ -145,7 +129,7 @@ interface FileServer:
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
   to-compiler_   / OpenPipe
-  from-compiler_ / CloseableReader
+  from-compiler_ / io.CloseableReader
 
   constructor .protocol .to-compiler_ .from-compiler_:
 
@@ -156,8 +140,8 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := BufferedReader from-compiler_
-        writer := Writer to-compiler_
+        reader := io.Reader.adapt from-compiler_
+        writer := io.Writer.adapt to-compiler_
         protocol.handle reader writer
     return "-2"
 
@@ -181,7 +165,7 @@ class TcpFileServer implements FileServer:
 
   Returns the port at which the server can be reached as a string.
   */
-  run --port=0 -> string:
+  run --port/int=0 -> string:
     network := net.open
     server_ = network.tcp-listen port
     local-port := server_.local-address.port
@@ -196,9 +180,7 @@ class TcpFileServer implements FileServer:
     socket := server_.accept
     try:
       socket.no-delay = true
-      reader := BufferedReader socket
-      writer := Writer socket
-      protocol.handle reader writer
+      protocol.handle socket.in socket.out
     finally:
       socket.close
       close
@@ -234,7 +216,7 @@ abstract class FilesystemBase implements Filesystem:
     does-exist := exists path
     is-reg := does-exist and is-regular-file path
     is-dir := does-exist and not is-reg and is-directory path
-    content := is-reg ? read-content path : null
+    content := is-reg ? read-contents path : null
     return File does-exist is-reg is-dir content
 
   abstract sdk-path -> string
@@ -244,7 +226,7 @@ abstract class FilesystemBase implements Filesystem:
   /// Whether the file (or the file a symlink is pointing to) is regular.
   abstract is-regular-file path/string -> bool
   abstract is-directory path/string -> bool
-  abstract read-content path/string -> ByteArray
+  abstract read-contents path/string -> ByteArray
   abstract directory-entries path/string -> List
 
 
@@ -269,7 +251,7 @@ class FilesystemLocal extends FilesystemBase:
       package-cache-paths_ = find-package-cache-paths
     return package-cache-paths_
 
-  read-content path/string -> ByteArray: return file.read-content path
+  read-contents path/string -> ByteArray: return file.read-contents path
 
   directory-entries path/string -> List:
     entries := []

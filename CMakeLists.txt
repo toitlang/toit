@@ -13,11 +13,13 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.19.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(toit)
 
 include(tools/toit.cmake)
+
+set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 set(TOIT_IS_CROSS FALSE)
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
@@ -32,12 +34,15 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
-set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 
-if (NOT ${TOIT_IS_CROSS})
-  set(TOITC "$<TARGET_FILE:toit.compile>")
-  set(TOITPKG "${TOITPKG_BIN}")
+set(TOIT_IS_EMBEDDED FALSE)
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  set(TOIT_IS_EMBEDDED TRUE)
+endif()
+
+if (NOT DEFINED HOST_TOIT AND (NOT ${TOIT_IS_EMBEDDED}))
+  message(FATAL_ERROR "HOST_TOIT not provided")
 endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
@@ -82,6 +87,20 @@ if (CCACHE_FOUND)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
+option(ENABLE_LTO "Enable link-time optimization" OFF)
+
+if (ENABLE_LTO AND
+    "${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND
+    NOT ${TOIT_IS_CROSS})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto=auto")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=auto")
+  # GCC automatically performs link-time optimizations during linking if any
+  # of the object files were compiled with -flto. However, it's safe to
+  # explicitly enable LTO for the linker as well.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto")
+endif()
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
@@ -90,13 +109,10 @@ else()
   endif()
 endif()
 
-if (NOT ${ESP32_CHIP} STREQUAL "esp32c3")
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
-endif()
-
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
+  "${TOIT_SDK_SOURCE_DIR}/include"
   "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
 
@@ -136,7 +152,7 @@ else()
   # pressure, but means the TLS connection often breaks after a while when the
   # counterpart makes the packets larger.  This ...IN_CONTENT_LEN define is
   # overriddden in sdkconfig files for devices.
-  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1")
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/mbedtls/include/toit_config.h\\\"")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
@@ -159,25 +175,28 @@ endif()
 
 add_custom_target(
   build_version_file
-  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
+  # It's important that there is no space after the version (before the '>'), as
+  # Windows would add a space into the output otherwise.
+  COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
+set(EXTERNAL_TOIT_LIBS)
+include(tools/external.cmake)
+
 add_subdirectory(src)
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  add_subdirectory(third_party/libgpiod)
+endif()
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_subdirectory(tools)
+  add_subdirectory(system/extensions/host)
 
   set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
   separate_arguments(GO_ENV)
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
-
-  add_custom_command(
-    OUTPUT "${TOITLSP_BIN}"
-    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
-  )
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
   add_custom_command(
     OUTPUT "${TOITPKG_BIN}"
@@ -187,7 +206,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   add_custom_target(
     build_go_tools
-    DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+    DEPENDS "${TOITPKG_BIN}"
   )
   add_dependencies(build_tools build_go_tools)
 

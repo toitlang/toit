@@ -6,6 +6,8 @@ import encoding.hex as hex
 
 import expect show *
 
+import .io-utils
+
 main:
   test [0, 1, 2, 255]
   test []
@@ -16,7 +18,11 @@ main:
   expect-equals
     "ff"
     hex.encode
-      ByteArray 1 --filler=0xff
+      ByteArray 1 --initial=0xff
+
+  expect-equals
+    "ff"
+    hex.encode (FakeData (ByteArray 1 --initial=0xff))
 
   expect-equals
     "INTEGER_PARSING_ERROR"

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -131,7 +131,8 @@ PRIMITIVE(init_sdcard) {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
       .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
-      .disk_status_check_enable = false
+      .disk_status_check_enable = false,
+      .use_one_fat = false,
   };
   sdmmc_card_t* card;
   esp_err_t ret = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config, &card);
@@ -159,6 +160,10 @@ PRIMITIVE(init_nor_flash) {
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
   if (!proxy) return error;
 
+  // The `esp_flash_spi_device_config_t` struct has a deprecated 'speed' field which we
+  // don't initialize.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
   esp_flash_spi_device_config_t conf = {
       .host_id = spi_bus->host_device(),
       .cs_io_num = gpio_cs,
@@ -167,6 +172,7 @@ PRIMITIVE(init_nor_flash) {
       .cs_id = 0,
       .freq_mhz = frequency
   };
+#pragma GCC diagnostic pop
 
   esp_flash_t* chip;
   esp_err_t ret = spi_bus_add_flash_device(&chip, &conf);
@@ -207,7 +213,8 @@ PRIMITIVE(init_nor_flash) {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
       .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
-      .disk_status_check_enable = false
+      .disk_status_check_enable = false,
+      .use_one_fat = false,
   };
 
   wl_handle_t wl_handle;
@@ -289,4 +296,5 @@ PRIMITIVE(close) {
 }
 
 }
-#endif
+
+#endif  // TOIT_ESP32

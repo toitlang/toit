@@ -14,6 +14,11 @@ SYSTEM-RPC-CANCEL_            ::= 5
 SYSTEM-RPC-NOTIFY-TERMINATED_ ::= 6
 SYSTEM-RPC-NOTIFY-RESOURCE_   ::= 7
 
+// System message types for external notifications.
+SYSTEM-EXTERNAL-NOTIFICATION_ ::= 8
+
+RESERVED-MESSAGE-TYPES_ ::= 64
+
 /**
 Sends the $message with $type to the process identified by $pid and
   returns whether the $message was delivered.
@@ -28,6 +33,14 @@ process-send_ pid/int type/int message -> bool:
     if it is List and it.size != 0 and it[0] is int:
       serialization-failure_ it[0]
     throw it
+
+/**
+Returns the process ID for the process with the given external $id.
+
+If no process with the external ID exists, returns -1.
+*/
+pid-for-external-id_ id/string -> int:
+  #primitive.core.pid-for-external-id
 
 /** Registered system message handlers for this process. */
 system-message-handlers_ ::= {:}
@@ -44,6 +57,12 @@ Sets the $handler as the system message handler for message of the $type.
 */
 set-system-message-handler_ type/int handler/SystemMessageHandler_:
   system-message-handlers_[type] = handler
+
+/**
+Removes the handler for the given $type.
+*/
+clear-system-message-handler_ type/int:
+  system-message-handlers_.remove type
 
 /** Flag to track if we're currently processing messages. */
 is-processing-messages_ := false

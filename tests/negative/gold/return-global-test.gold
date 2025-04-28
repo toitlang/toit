@@ -14,4 +14,4 @@ tests/negative/return-global-test.toit:10:26: error: Unresolved label 'global4'
 global4 := foo: continue.global4 42
                          ^~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/return-global-test.toit'
-Compilation failed.
+Compilation failed

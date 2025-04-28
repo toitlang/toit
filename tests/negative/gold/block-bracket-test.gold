@@ -9,4 +9,4 @@ Block argument not provided
 No argument named '--x'
   foo --x= 499
   ^~~
-Compilation failed.
+Compilation failed

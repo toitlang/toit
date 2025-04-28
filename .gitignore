@@ -1,5 +1,6 @@
 /build/
-.packages
+.packages/
+.packages-bootstrap/
 /.cache/
 **/.vscode/
 tedi_test.go
@@ -20,6 +21,8 @@ tedi_test.go
 /tools/lsp/client/out/
 
 /tests/health/health_sources.cmake
+/tests/pkg/.test-cache/
+/tests/pkg/.project-test-root/
 
 .gdb_history
 
@@ -29,3 +32,4 @@ tedi_test.go
 
 /toolchains/esp32*/sdkconfig.old
 /toolchains/esp32*/dependencies.lock
+/toolchains/esp32*/build/

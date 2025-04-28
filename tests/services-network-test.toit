@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import io
 import net
 import net.tcp
-import writer
 import expect show *
 
 import system.services show ServiceProvider ServiceSelector ServiceResource
@@ -63,11 +63,10 @@ test-tcp-network network/net.Interface:
     expect-equals 80 socket.peer-address.port
     expect-equals network.address socket.local-address.ip
 
-    writer := writer.Writer socket
+    writer := socket.out
     writer.write "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
-    response := #[]
-    while data := socket.read:
-      response += data
+    reader := socket.in
+    response := socket.in.read-all
 
     cr-index := response.index-of '\r'
     expect cr-index >= 0

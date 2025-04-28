@@ -140,7 +140,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  uint64_t random();
+  uint64 random();
   void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
@@ -184,14 +184,15 @@ class Process : public ProcessListFromProcessGroup::Element,
   int gc_count(GcType type) { return object_heap_.gc_count(type); }
 
   String* allocate_string(const char* content);
-  String* allocate_string(int length);
-  String* allocate_string(const char* content, int length);
+  String* allocate_string(word length);
+  String* allocate_string(const char* content, word length);
   Object* allocate_string_or_error(const char* content);
-  Object* allocate_string_or_error(const char* content, int length);
+  Object* allocate_string_or_error(const char* content, word length);
 #if defined(TOIT_WINDOWS)
   String* allocate_string(const wchar_t* content);
+  String* allocate_string(const wchar_t* content, word length);
 #endif
-  ByteArray* allocate_byte_array(int length, bool force_external=false);
+  ByteArray* allocate_byte_array(word length, bool force_external=false);
 
   void set_max_heap_size(word bytes) {
     object_heap_.set_max_heap_size(bytes);
@@ -247,7 +248,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
 
-  // These root certificate functions should be guarded by the scheduler mutex.
+  // These root certificate functions should be guarded by the TLS mutex.
   void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
     root_certificates_.append(certificate);
   }
@@ -256,6 +257,38 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   UnparsedRootCertificateList& root_certificates(const Locker& locker) {
     return root_certificates_;
+  }
+
+  // Sets the timestamp for when this process just started running.
+  void set_run_timestamp(int64 timestamp) {
+    ASSERT(state_ == RUNNING);
+    ASSERT(timestamp >= 0);
+    run_timestamp_ = timestamp;
+  }
+
+  // Clears the timestamp, so the process will not appear to have
+  // been running for any time at all.
+  void clear_run_timestamp() {
+    ASSERT(state_ == RUNNING);
+    run_timestamp_ = -1;
+  }
+
+  int64 run_time_us(int64 now) const {
+    ASSERT(now >= 0);
+    int64 timestamp = run_timestamp_;
+    ASSERT(state_ == RUNNING || timestamp < 0);
+    return timestamp < 0 ? 0 : (now - timestamp);
+  }
+
+  // Sets the current BCP variable.
+  // We use this variable for bytecodes that could potentially hang, so we can
+  // detect if a process is stuck.
+  void set_current_bcp(uint8* bcp) {
+    current_bcp_ = bcp;
+  }
+
+  uint8* current_bcp() const {
+    return current_bcp_;
   }
 
  private:
@@ -292,8 +325,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* termination_message_;
 
   bool random_seeded_;
-  uint64_t random_state0_;
-  uint64_t random_state1_;
+  uint64 random_state0_;
+  uint64 random_state1_;
 
 #if defined(TOIT_WINDOWS)
   const wchar_t* current_directory_;
@@ -317,6 +350,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
+
+  int64 run_timestamp_ = -1;
+  uint8* current_bcp_ = null;
+
   friend class HeapObject;
   friend class Scheduler;
 };

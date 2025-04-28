@@ -7,4 +7,4 @@ import .non-existing show A
 tests/negative/import9-test.toit:12:5: error: Class 'B' does not have any method 'bar'
   b.bar  // Bad.
     ^~~
-Compilation failed.
+Compilation failed

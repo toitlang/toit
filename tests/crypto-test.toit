@@ -4,9 +4,11 @@
 
 import expect show *
 
+import core
 import crypto show *
 import crypto.adler32 show *
 import crypto.aes show *
+import crypto.blake2 show *
 import crypto.chacha20 show *
 import crypto.sha show *
 import crypto.siphash show *
@@ -17,11 +19,12 @@ import crypto.hamming
 import crypto.hmac show *
 import tls.session show tls-get-random_
 
-import binary show BIG-ENDIAN
 import encoding.hex
 import encoding.base64
+import io show BIG-ENDIAN
 
 import .confuse
+import .io-utils
 
 expect name [code]:
   expect-equals
@@ -36,10 +39,6 @@ expect-invalid-argument [code]:
 
 expect-integer-parsing-error [code]:
   expect "INTEGER_PARSING_ERROR" code
-
-expect-wrong-type [code]:
-  caught-exception := catch code
-  expect-equals true (caught-exception == "WRONG_OBJECT_TYPE" or caught-exception == "AS_CHECK_FAILED")
 
 expect-already-closed [code]:
   expect "ALREADY_CLOSED" code
@@ -57,6 +56,7 @@ main:
   sip-test
   aead-simple-test
   adler-test
+  blake-test
   md5-test
   hmac-test
   random-test
@@ -130,7 +130,9 @@ hash-test -> none:
   expect-equal-arrays (sha1 ("Hello, World!".to-byte-array)) (sha1 "Hello, World!")
 
   sha1 := Sha1
+  sha1-io-data := Sha1
   sha2 := Sha256
+  sha2-io-data := Sha256
   crc32 := Crc32
   crc16 := Crc16Xmodem
   expect-equals EMPTY-HEX (hex.encode (Sha1).get)
@@ -138,36 +140,45 @@ hash-test -> none:
   expect-equals EMPTY-CRC16 (hex.encode (Crc16Xmodem).get)
   GOLD-MEMBER := "Hey, everyone! I am from Holland! Isn't that weird?\n"
   sha1.add GOLD-MEMBER
+  sha1-io-data.add (FakeData GOLD-MEMBER)
   sha2.add GOLD-MEMBER
+  sha2-io-data.add (FakeData GOLD-MEMBER)
   crc32.add GOLD-MEMBER
   crc16.add GOLD-MEMBER
   sha1b := sha1.clone
   sha2b := sha2.clone
   4.repeat: sha1.add GOLD-MEMBER
+  4.repeat: sha1-io-data.add (FakeData GOLD-MEMBER)
   4.repeat: sha1b.add GOLD-MEMBER
   4.repeat: sha2.add GOLD-MEMBER
+  4.repeat: sha2-io-data.add (FakeData GOLD-MEMBER)
   4.repeat: sha2b.add GOLD-MEMBER
   4.repeat: crc32.add GOLD-MEMBER
   4.repeat: crc16.add GOLD-MEMBER
+  sha1-long := sha1.clone
+  sha1-long-io-data := sha1-io-data.clone
+  sha2-long := sha2.clone
+  sha2-long-io-data := sha2-io-data.clone
   expect-equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1.get)
+  expect-equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1-io-data.get)
   expect-equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1b.get)
   expect-equals "56185f37" (hex.encode crc32.get)
   expect-equals "5dc2" (hex.encode crc16.get)
   expect-equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2.get)
+  expect-equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2-io-data.get)
   expect-equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2b.get)
   expect-already-closed: (sha2.get)   // Can't do this twice.
   expect-already-closed: (sha2b.get)   // Can't do this twice.
+  sha1-long.add GOLD-MEMBER * 1000
+  sha1-long-io-data.add (FakeData (GOLD-MEMBER * 1000))
+  sha2-long.add GOLD-MEMBER * 1000
+  sha2-long-io-data.add (FakeData (GOLD-MEMBER * 1000))
+  expect-equals sha1-long.get sha1-long-io-data.get
+  expect-equals sha2-long.get sha2-long-io-data.get
 
   sha2 = Sha256
   crc32 = Crc32
   crc16 = Crc16Xmodem
-
-  // Takes a string or a byte array.
-  expect-wrong-type: base64.decode (confuse 10000)
-  expect-wrong-type: sha1.add 10000
-  expect-wrong-type: sha2.add 10000
-  expect-wrong-type: crc32.add 10000
-  expect-wrong-type: crc16.add 10000
 
   // Missing trailing '=' signs.
   expect-out-of-range: base64.decode "aaa"
@@ -211,8 +222,8 @@ hamming-test:
             hamming.fix-16-11 correct ^ (1 << bit-flip-1) ^ (1 << bit-flip-2)
 
 aead-simple-test:
-  key := ByteArray 16: random 256
-  initialization-vector := ByteArray 12: random 256
+  key := ByteArray 16: core.random 256
+  initialization-vector := ByteArray 12: core.random 256
 
   encrypted := (AesGcm.encryptor key initialization-vector).encrypt DREAM
 
@@ -222,6 +233,9 @@ aead-simple-test:
   round-trip := (AesGcm.decryptor key initialization-vector).decrypt encrypted
 
   expect-equals DREAM.to-byte-array round-trip
+
+  encrypted-io-data := (AesGcm.encryptor key initialization-vector).encrypt (FakeData DREAM)
+  expect-equals encrypted encrypted-io-data
 
 chacha-test:
   // Test vectors from RFC 7539.
@@ -275,6 +289,9 @@ sip-test:
     hash-16 := siphash in[0..size] key --output-length=16
     expect-equals SIP-VECTOR-16[size] hash-16
 
+    hash-16-io-data := siphash (FakeData in[0..size]) key --output-length=16
+    expect-equals SIP-VECTOR-16[size] hash-16-io-data
+
     (size - 1).repeat:
       part1 := in[0..it + 1]
       part2 := in[it + 1..size]
@@ -299,6 +316,13 @@ sip-test:
       expect-equals SIP-VECTOR-16[size] result16
       expect-equals SIP-VECTOR-16[size] result16b
 
+blake-test:
+  sum := blake2s "abc"
+  expect-equals "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982" (hex.encode sum)
+
+  sum2 := blake2s ""
+  expect-equals "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9" (hex.encode sum2)
+
 adler-test:
   VECTORS ::= [
       ["", "00000001"],
@@ -309,15 +333,18 @@ adler-test:
       ["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", "8adb150c"],
       ["12345678901234567890123456789012345678901234567890123456789012345678901234567890", "97b61069"]
   ]
-  VECTORS.do:
-    input := it[0]
-    output := it[1]
+
+  for i := -1; i < VECTORS.size; i++:
+    test := VECTORS[i < 0 ? 0 : i]
+    input := test[0]
+    if i < 0: input = FakeData input
+    output := test[1]
     adler1 := Adler32
-    cut := input.size / 2
-    adler1.add input[..cut]
+    cut := input.byte-size / 2
+    adler1.add (input.byte-slice 0 cut)
     adler2 := adler1.clone
     [adler1, adler2].do: | adler |
-      adler.add input[cut..]
+      adler.add (input.byte-slice cut input.byte-size)
       result := adler.get
       expected := ((List result.size: result[it]).map: "$(%02x it)").join ""
       expect-equals output expected
