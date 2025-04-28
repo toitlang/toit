@@ -236,7 +236,7 @@ esp_err_t RmtOut::disable() {
   free(buffer_);
   buffer_ = null;
 
-  result = rmt_del_encoder(encoder_);
+  esp_err_t result = rmt_del_encoder(encoder_);
   encoder_ = null;
 
   return result;
