@@ -203,8 +203,7 @@ PRIMITIVE(set) {
   ARGS(DacResource, resource, uint8, dac_value);
 
   if (resource->uses_cosine()) {
-    resource->
-    ();
+    resource->release_cosine();
   }
 
   if (resource->oneshot_handle() == null) {
