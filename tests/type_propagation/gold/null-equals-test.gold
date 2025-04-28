@@ -58,24 +58,24 @@ main tests/type_propagation/null-equals-test.toit
 102[053] - invoke static A tests/type_propagation/null-equals-test.toit // [{A}] -> {A}
 105[062] - invoke eq // [{Null_}, {A}] -> {False}
 106[053] - invoke static id tests/type_propagation/null-equals-test.toit // [{False}] -> {False}
-109[090] - return null S2 0
+109[092] - return null S2 0
 
 obfuscate-null tests/type_propagation/null-equals-test.toit
-  0[090] - return null S0 0
+  0[092] - return null S0 0
 
 A tests/type_propagation/null-equals-test.toit
  - argument 0: {A}
   0[016] - load local 2
-  1[089] - return S1 1
+  1[091] - return S1 1
 
 A.== tests/type_propagation/null-equals-test.toit
  - argument 0: {A}
  - argument 1: {String_|Null_|SmallInteger_|A}
   0[052] - load local, as class, pop 2 - A(45 - 46) // {True|False}
   2[020] - load literal true
-  4[089] - return S1 2
+  4[091] - return S1 2
 
 id tests/type_propagation/null-equals-test.toit
  - argument 0: {True|False}
   0[016] - load local 2
-  1[089] - return S1 1
+  1[091] - return S1 1

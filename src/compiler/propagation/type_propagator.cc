@@ -1258,6 +1258,20 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     }
   OPCODE_END();
 
+  OPCODE_BEGIN(BRANCH_IF_NOT_NULL);
+    TypeSet top = stack->local(0);
+    bool can_be_null = top.contains_null(program);
+    stack->pop();
+    uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_null) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    } else if (top.size(propagator->words_per_type()) > 1) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
     return worklists.back()->add(target, scope, false);
@@ -1295,6 +1309,19 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       scope = worklists.back()->add(target, scope, true);
       stack = scope->top();
     }
+  OPCODE_END();
+
+  OPCODE_BEGIN(BRANCH_BACK_IF_NOT_NULL);
+    TypeSet top = stack->local(0);
+    bool can_be_null = top.contains_null(program);
+    stack->pop();
+    uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_null) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    }
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
