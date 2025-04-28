@@ -395,7 +395,7 @@ class Channel:
       --buffer-size /int? = null:
     if not input: throw "INVALID_ARGUMENT"
     if not 1 <= clk-div <= 0xFF: throw "INVALID_ARGUMENT"
-    if not 1 <= idle-threshold <=0x7FFF: throw "INVALID_ARGUMENT"
+    if not 1 <= idle-threshold <= MAX-PERIOD: throw "INVALID_ARGUMENT"
     if enable-filter and not 0 <= filter-ticks-threshold <= 0xFF: throw "INVALID_ARGUMENT"
     if buffer-size and buffer-size < 1: throw "INVALID_ARGUMENT"
 
@@ -551,7 +551,7 @@ class Channel:
       // A tick's duration in ns is 1000_000_000 / 80_000_000
       min-ns = filter-ticks-threshold_ * 100 / 8
     // A signal tick's duration in ns is 1000_000_000 / (80_000_000 / clk-div_).
-    max-ns := idle-threshold_ * (1000 * clk-div_ / 80)
+    max-ns := idle-threshold_ * (100 * clk-div_ / 8)
     (channel_ as In).start-reading --min-ns=min-ns --max-ns=max-ns
 
   /**
