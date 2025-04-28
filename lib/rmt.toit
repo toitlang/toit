@@ -395,7 +395,7 @@ class Channel:
       --buffer-size /int? = null:
     if not input: throw "INVALID_ARGUMENT"
     if not 1 <= clk-div <= 0xFF: throw "INVALID_ARGUMENT"
-    if not 1 <= idle-threshold <= MAX-PERIOD: throw "INVALID_ARGUMENT"
+    if not 1 <= idle-threshold <= Signals.MAX-PERIOD: throw "INVALID_ARGUMENT"
     if enable-filter and not 0 <= filter-ticks-threshold <= 0xFF: throw "INVALID_ARGUMENT"
     if buffer-size and buffer-size < 1: throw "INVALID_ARGUMENT"
 
