@@ -1,0 +1,25 @@
+main tests/type_propagation/default-test.toit
+  0[020] - load literal false
+  2[053] - invoke static foo tests/type_propagation/default-test.toit // [{False}] -> {Null_}
+  5[041] - pop 1
+  6[020] - load literal false
+  8[053] - invoke static foo2 tests/type_propagation/default-test.toit // [{False}] -> {Null_}
+ 11[092] - return null S1 0
+
+foo tests/type_propagation/default-test.toit
+ - argument 0: {False}
+  0[016] - load local 2
+  1[084] - branch if not null T4
+  4[016] - load local 2
+  5[083] - branch if false T8
+  8[092] - return null S0 1
+
+foo2 tests/type_propagation/default-test.toit
+ - argument 0: {False}
+  0[016] - load local 2
+  1[084] - branch if not null T8
+  4[020] - load literal true
+  6[004] - store local, pop S3
+  8[016] - load local 2
+  9[083] - branch if false T12
+ 12[092] - return null S0 1

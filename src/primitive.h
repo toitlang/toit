@@ -604,7 +604,7 @@ namespace toit {
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
-  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(use, 2)                         \
   PRIMITIVE(unuse, 2)                       \
   PRIMITIVE(set, 2)                         \
   PRIMITIVE(cosine_wave, 5)                 \

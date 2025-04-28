@@ -1258,6 +1258,20 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     }
   OPCODE_END();
 
+  OPCODE_BEGIN(BRANCH_IF_NOT_NULL);
+    TypeSet top = stack->local(0);
+    bool can_be_null = top.contains_null(program);
+    stack->pop();
+    uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_null) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    } else if (top.size(propagator->words_per_type()) > 1) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
     return worklists.back()->add(target, scope, false);
@@ -1295,6 +1309,19 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       scope = worklists.back()->add(target, scope, true);
       stack = scope->top();
     }
+  OPCODE_END();
+
+  OPCODE_BEGIN(BRANCH_BACK_IF_NOT_NULL);
+    TypeSet top = stack->local(0);
+    bool can_be_null = top.contains_null(program);
+    stack->pop();
+    uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_null) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    }
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
@@ -1553,14 +1580,41 @@ void MethodTemplate::propagate() {
   Program* program = propagator_->program();
   if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
     ConcreteType null_type = ConcreteType(Smi::value(program->null_class_id()));
+    ASSERT(!argument(0).is_any());  // Receiver is always a single type.
     bool receiver_is_null = argument(0).matches(null_type);
     bool argument_is_null = argument(1).matches(null_type);
-    if (receiver_is_null || argument_is_null) {
-      stack->push_bool_specific(program, receiver_is_null && argument_is_null);
+    bool argument_is_any = argument(1).is_any();
+
+    if (receiver_is_null) {
+      // If we know the receiver is null, then we can always compute an
+      // answer. If the argument is any, we don't know if the result is
+      // true or false. Otherwise, the result is true if the argument
+      // is null and false if the argument is non-null.
+      if (argument_is_any) {
+        stack->push_bool(program);
+      } else {
+        stack->push_bool_specific(program, argument_is_null);
+      }
       ret(propagator_, stack);
       delete scope;
       return;
     }
+
+    if (argument_is_null) {
+      // The receiver isn't null, so if the argument is null we
+      // know that the result is false.
+      stack->push_bool_specific(program, false);
+      ret(propagator_, stack);
+      delete scope;
+      return;
+    } else if (argument_is_any) {
+      // The receiver isn't null, so unless we know the argument
+      // cannot be null, we must add both true and false to the
+      // result but continue analyzing the method.
+      stack->push_bool(program);
+      ret(propagator_, stack);
+    }
+
     for (int i = 0; i < arity(); i++) {
       TypeSet argument = stack->get(i);
       argument.remove_null(program);
