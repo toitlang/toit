@@ -156,6 +156,7 @@ PRIMITIVE(init) {
     // Start with the max_frequency, so that the clocks are correctly chosen.
     .freq_hz = static_cast<uint32>(max_frequency),
     .clk_cfg = kDefaultClk,
+    .deconfigure = false,
   };
 
   err = ledc_timer_config(&config);

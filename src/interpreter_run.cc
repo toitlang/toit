@@ -999,6 +999,13 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  OPCODE_BEGIN(BRANCH_IF_NOT_NULL);
+    if (POP() != program->null_object()) {
+      bcp += Utils::read_unaligned_uint16(bcp + 1);
+      DISPATCH(0);
+    }
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
     bcp -= Utils::read_unaligned_uint16(bcp + 1);
@@ -1017,6 +1024,15 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
     if (!is_true_value(program, POP())) {
+      uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
+      bcp -= Utils::read_unaligned_uint16(bcp + 1);
+      CHECK_PREEMPT(entry);
+      DISPATCH(0);
+    }
+  OPCODE_END();
+
+  OPCODE_BEGIN(BRANCH_BACK_IF_NOT_NULL);
+    if (POP() != program->null_object()) {
       uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
       bcp -= Utils::read_unaligned_uint16(bcp + 1);
       CHECK_PREEMPT(entry);

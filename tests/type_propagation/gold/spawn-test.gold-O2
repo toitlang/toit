@@ -12,14 +12,14 @@ main tests/type_propagation/spawn-test.toit
  21[041] - pop 1
  22[020] - load literal hest
  24[053] - invoke static id tests/type_propagation/spawn-test.toit // [{String_}] -> {String_}
- 27[090] - return null S1 0
+ 27[092] - return null S1 0
 
 [lambda] in main tests/type_propagation/spawn-test.toit
   0[026] - load smi 7
   2[053] - invoke static id tests/type_propagation/spawn-test.toit // [{SmallInteger_}] -> {SmallInteger_}
-  5[089] - return S1 0
+  5[091] - return S1 0
 
 id tests/type_propagation/spawn-test.toit
  - argument 0: {String_|SmallInteger_}
   0[016] - load local 2
-  1[089] - return S1 1
+  1[091] - return S1 1
