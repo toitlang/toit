@@ -593,7 +593,7 @@ class ServiceResourceProxyManager_ implements SystemMessageHandler_:
     set-system-message-handler_ SYSTEM-RPC-NOTIFY-RESOURCE_ this
 
   register client/int handle/int proxy/ServiceResourceProxy -> none:
-    proxies := proxies_.get client --init=(: {:})
+    proxies := proxies_.get client --init=(: Map.weak)
     proxies[handle] = proxy
 
   unregister client/int handle/int -> none:
