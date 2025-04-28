@@ -15,7 +15,7 @@ main tests/type_propagation/loop-list-test.toit
  26[073] - invoke add // [{LargeInteger_|SmallInteger_}, {*}] -> {float|LargeInteger_|SmallInteger_}
  27[053] - invoke static List.add <sdk>/core/collections.toit // [{List_}, {float|LargeInteger_|SmallInteger_}] -> {Null_}
  30[041] - pop 1
- 31[084] - branch back T7
+ 31[085] - branch back T7
  36[027] - load smi 4950
  39[015] - load local 1
  40[053] - invoke static List.last <sdk>/core/collections.toit // [{List_}] -> {*}
@@ -24,4 +24,4 @@ main tests/type_propagation/loop-list-test.toit
  47[020] - load literal Bad computation
  49[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
  52[041] - pop 1
- 53[090] - return null S1 0
+ 53[092] - return null S1 0

@@ -2,11 +2,7 @@ main tests/type_propagation/lambda-test.toit
   0[053] - invoke static test-simple tests/type_propagation/lambda-test.toit // {*}
   3[041] - pop 1
   4[053] - invoke static test-arguments tests/type_propagation/lambda-test.toit // {Null_}
-<<<<<<< HEAD
-  7[091] - return null S1 0
-=======
-  7[090] - return null S1 0
->>>>>>> master
+  7[092] - return null S1 0
 
 test-simple tests/type_propagation/lambda-test.toit
   0[029] - load method [lambda] in test-simple tests/type_propagation/lambda-test.toit
@@ -19,19 +15,11 @@ test-simple tests/type_propagation/lambda-test.toit
  14[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
  17[014] - load local 0
  18[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}] -> {*}
-<<<<<<< HEAD
- 21[090] - return S2 0
+ 21[091] - return S2 0
 
 [lambda] in test-simple tests/type_propagation/lambda-test.toit
   0[026] - load smi 42
-  2[090] - return S1 0
-=======
- 21[089] - return S2 0
-
-[lambda] in test-simple tests/type_propagation/lambda-test.toit
-  0[026] - load smi 42
-  2[089] - return S1 0
->>>>>>> master
+  2[091] - return S1 0
 
 test-arguments tests/type_propagation/lambda-test.toit
   0[029] - load method [lambda] in test-arguments tests/type_propagation/lambda-test.toit
@@ -56,21 +44,13 @@ test-arguments tests/type_propagation/lambda-test.toit
  40[026] - load smi 42
  42[020] - load literal fisk
  44[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}, {SmallInteger_}, {String_}] -> {*}
-<<<<<<< HEAD
- 47[091] - return null S1 0
-=======
- 47[090] - return null S1 0
->>>>>>> master
+ 47[092] - return null S1 0
 
 [lambda] in test-arguments tests/type_propagation/lambda-test.toit
  - argument 0: {*}
   0[016] - load local 2
   1[053] - invoke static id tests/type_propagation/lambda-test.toit // [{*}] -> {*}
-<<<<<<< HEAD
-  4[090] - return S1 1
-=======
-  4[089] - return S1 1
->>>>>>> master
+  4[091] - return S1 1
 
 [lambda] in test-arguments tests/type_propagation/lambda-test.toit
  - argument 0: {*}
@@ -79,17 +59,9 @@ test-arguments tests/type_propagation/lambda-test.toit
   1[053] - invoke static id tests/type_propagation/lambda-test.toit // [{*}] -> {*}
   4[002] - pop, load local S2
   6[053] - invoke static id tests/type_propagation/lambda-test.toit // [{*}] -> {*}
-<<<<<<< HEAD
-  9[090] - return S1 2
-=======
-  9[089] - return S1 2
->>>>>>> master
+  9[091] - return S1 2
 
 id tests/type_propagation/lambda-test.toit
  - argument 0: {*}
   0[016] - load local 2
-<<<<<<< HEAD
-  1[090] - return S1 1
-=======
-  1[089] - return S1 1
->>>>>>> master
+  1[091] - return S1 1

@@ -16,9 +16,5 @@ main tests/type_propagation/time-test.toit
  24[027] - load smi 1000
  27[053] - invoke static sleep <sdk>/core/timer.toit // [{SmallInteger_}] -> {Null_}
  30[041] - pop 1
- 31[084] - branch back T1
-<<<<<<< HEAD
- 36[091] - return null S1 0
-=======
- 36[090] - return null S1 0
->>>>>>> master
+ 31[085] - branch back T1
+ 36[092] - return null S1 0

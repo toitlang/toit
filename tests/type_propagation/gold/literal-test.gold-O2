@@ -4,27 +4,15 @@ main tests/type_propagation/literal-test.toit
   4[053] - invoke static get-string tests/type_propagation/literal-test.toit // {String_}
   7[041] - pop 1
   8[053] - invoke static get-smi-or-string tests/type_propagation/literal-test.toit // {String_|SmallInteger_}
-<<<<<<< HEAD
- 11[091] - return null S1 0
+ 11[092] - return null S1 0
 
 get-smi tests/type_propagation/literal-test.toit
   0[026] - load smi 42
-  2[090] - return S1 0
+  2[091] - return S1 0
 
 get-string tests/type_propagation/literal-test.toit
   0[020] - load literal hest
-  2[090] - return S1 0
-=======
- 11[090] - return null S1 0
-
-get-smi tests/type_propagation/literal-test.toit
-  0[026] - load smi 42
-  2[089] - return S1 0
-
-get-string tests/type_propagation/literal-test.toit
-  0[020] - load literal hest
-  2[089] - return S1 0
->>>>>>> master
+  2[091] - return S1 0
 
 get-smi-or-string tests/type_propagation/literal-test.toit
   0[053] - invoke static get-smi tests/type_propagation/literal-test.toit // {SmallInteger_}
@@ -33,12 +21,6 @@ get-smi-or-string tests/type_propagation/literal-test.toit
   5[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True|False}
   6[083] - branch if false T13
   9[014] - load local 0
-<<<<<<< HEAD
- 10[090] - return S2 0
+ 10[091] - return S2 0
  13[053] - invoke static get-string tests/type_propagation/literal-test.toit // {String_}
- 16[090] - return S2 0
-=======
- 10[089] - return S2 0
- 13[053] - invoke static get-string tests/type_propagation/literal-test.toit // {String_}
- 16[089] - return S2 0
->>>>>>> master
+ 16[091] - return S2 0

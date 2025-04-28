@@ -1,33 +1,33 @@
 main tests/type_propagation/default-test.toit
   0[020] - load literal false
-  2[053] - invoke static foo tests/type_propagation/default-test.toit // [{False_}] -> {Null_}
+  2[053] - invoke static foo tests/type_propagation/default-test.toit // [{False}] -> {Null_}
   5[041] - pop 1
   6[020] - load literal false
-  8[053] - invoke static foo2 tests/type_propagation/default-test.toit // [{False_}] -> {Null_}
- 11[091] - return null S1 0
+  8[053] - invoke static foo2 tests/type_propagation/default-test.toit // [{False}] -> {Null_}
+ 11[092] - return null S1 0
 
 foo tests/type_propagation/default-test.toit
- - argument 0: {False_}
+ - argument 0: {False}
   0[016] - load local 2
-  1[083] - branch if not null T9
+  1[084] - branch if not null T9
   4[053] - invoke static bar tests/type_propagation/default-test.toit
   7[004] - store local, pop S3
   9[016] - load local 2
- 10[082] - branch if false T18
+ 10[083] - branch if false T18
  13[016] - load local 2
  14[053] - invoke static print <sdk>/core/print.toit
  17[041] - pop 1
- 18[091] - return null S0 1
+ 18[092] - return null S0 1
 
 foo2 tests/type_propagation/default-test.toit
- - argument 0: {False_}
+ - argument 0: {False}
   0[016] - load local 2
-  1[083] - branch if not null T8
+  1[084] - branch if not null T8
   4[020] - load literal true
   6[004] - store local, pop S3
   8[016] - load local 2
-  9[082] - branch if false T17
+  9[083] - branch if false T17
  12[016] - load local 2
  13[053] - invoke static print <sdk>/core/print.toit
  16[041] - pop 1
- 17[091] - return null S0 1
+ 17[092] - return null S0 1
