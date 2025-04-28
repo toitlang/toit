@@ -761,10 +761,10 @@ ScaleConstraint.recalculate tests/type_propagation/deltablue-test.toit
 EqualityConstraint tests/type_propagation/deltablue-test.toit
  - argument 0: {EqualityConstraint}
  - argument 1: {Strength}
- - argument 2: {Null_|Variable}
+ - argument 2: {Variable}
  - argument 3: {Variable}
   0[052] - load local, as class, pop 4 - Strength(52 - 53) // {True}
-  2[052] - load local, as class, pop 3 - Variable(47 - 48) // {True|False}
+  2[052] - load local, as class, pop 3 - Variable(47 - 48) // {True}
   4[052] - load local, as class, pop 2 - Variable(47 - 48) // {True}
   6[019] - load local 5
   7[019] - load local 5
@@ -1269,7 +1269,7 @@ chain-test tests/type_propagation/deltablue-test.toit
  43[032] - load global var lazy G0 // {Strength}
  45[000] - load local S6
  47[017] - load local 3
- 48[053] - invoke static EqualityConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Null_|Variable}, {Variable}] -> {EqualityConstraint}
+ 48[053] - invoke static EqualityConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Variable}, {Variable}] -> {EqualityConstraint}
  51[041] - pop 1
  52[015] - load local 1
  53[023] - load smi 0
