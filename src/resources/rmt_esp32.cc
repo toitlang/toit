@@ -210,7 +210,7 @@ static bool is_timestamp_before_or_equal(uint16 t1, uint16 t2) {
 }
 
 RmtIn::~RmtIn() {
-  if (buffer_ != null) free(buffer_);
+  free(buffer_);
 }
 
 esp_err_t RmtIn::disable() {
@@ -225,7 +225,7 @@ esp_err_t RmtIn::disable() {
 }
 
 RmtOut::~RmtOut() {
-  if (buffer_ != null) free(buffer_);
+ free(buffer_);
   if (encoder_ != null) FATAL_IF_NOT_ESP_OK(rmt_del_encoder(encoder_));
 }
 
