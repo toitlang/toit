@@ -577,6 +577,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
+  PRIMITIVE(set_pull, 2)                     \
 
 #define MODULE_GPIO_LINUX(PRIMITIVE)         \
   PRIMITIVE(list_chips, 0)                   \
@@ -593,6 +594,7 @@ namespace toit {
   PRIMITIVE(pin_get, 1)                      \
   PRIMITIVE(pin_set, 2)                      \
   PRIMITIVE(pin_set_open_drain, 2)           \
+  PRIMITIVE(pin_set_pull, 2)                 \
   PRIMITIVE(pin_config_edge_detection, 2)    \
   PRIMITIVE(pin_consume_edge_events, 1)      \
   PRIMITIVE(pin_last_edge_trigger_timestamp, 1) \
