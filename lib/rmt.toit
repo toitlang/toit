@@ -814,7 +814,7 @@ class Out extends Channel_:
     kind := open-drain ? Channel_.CHANNEL-KIND-OUTPUT-OPEN-DRAIN_ : Channel_.CHANNEL-KIND-OUTPUT_
     resource := rmt-channel-new_ resource-group_ pin.num resolution hw-symbols kind
     if open-drain:
-      pin.configure-pull --up=pull-up --off=(not pull-up)
+      pin.set-pull --up=pull-up --off=(not pull-up)
     super.from-sub_ resource
 
   /**
