@@ -70,8 +70,8 @@ A tests/type_propagation/null-equals-test.toit
 
 A.== tests/type_propagation/null-equals-test.toit
  - argument 0: {A}
- - argument 1: {*}
-  0[052] - load local, as class, pop 2 - A(40 - 41) // {True|False}
+ - argument 1: {String_|Null_|SmallInteger_|A}
+  0[052] - load local, as class, pop 2 - A(37 - 38) // {True|False}
   2[020] - load literal true
   4[089] - return S1 2
 

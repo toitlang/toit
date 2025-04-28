@@ -62,7 +62,7 @@ test-default-true tests/type_propagation/default-arguments-test.toit
   3[083] - branch if false T10
   6[020] - load literal true
   8[004] - store local, pop S3
- 10[052] - load local, as class, pop 2 - True(18 - 20) // {True|False}
+ 10[052] - load local, as class, pop 2 - True(16 - 18) // {True|False}
  12[016] - load local 2
  13[089] - return S1 1
 
@@ -74,7 +74,7 @@ test-default-false tests/type_propagation/default-arguments-test.toit
   3[083] - branch if false T10
   6[020] - load literal false
   8[004] - store local, pop S3
- 10[052] - load local, as class, pop 2 - True(18 - 20) // {True|False}
+ 10[052] - load local, as class, pop 2 - True(16 - 18) // {True|False}
  12[016] - load local 2
  13[089] - return S1 1
 
