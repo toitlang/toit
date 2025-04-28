@@ -214,10 +214,10 @@ RmtIn::~RmtIn() {
 }
 
 esp_err_t RmtIn::disable() {
-  if (buffer_ != null) {
-    free(buffer_);
-    buffer_ = null;
-  }
+  if (buffer_ == null) return ESP_OK;
+
+  free(buffer_);
+  buffer_ = null;
 
   received_ = -1;
 
@@ -230,16 +230,14 @@ RmtOut::~RmtOut() {
 }
 
 esp_err_t RmtOut::disable() {
-  if (buffer_ != null) {
-    free(buffer_);
-    buffer_ = null;
-  }
+  if (buffer_ == null) return ESP_OK;
 
-  esp_err_t result = ESP_OK;
-  if (encoder_ != null) {
-    result = rmt_del_encoder(encoder_);
-    encoder_ = null;
-  }
+  ASSERT(encoder_ != null);
+  free(buffer_);
+  buffer_ = null;
+
+  result = rmt_del_encoder(encoder_);
+  encoder_ = null;
 
   return result;
 }
@@ -372,25 +370,7 @@ PRIMITIVE(channel_new) {
 
   rmt_channel_handle_t handle;
   esp_err_t err;
-  if (kind == 0) {
-    // Input.
-    ASSERT(!is_tx);
-    rmt_rx_channel_config_t cfg = {
-      .gpio_num = static_cast<gpio_num_t>(pin_num),
-      .clk_src = RMT_CLK_SRC_DEFAULT,
-      .resolution_hz = resolution,
-      .mem_block_symbols = static_cast<size_t>(block_symbols),
-      .intr_priority = 0,
-      .flags = {
-        .invert_in = false,
-        .with_dma = false,
-        .io_loop_back = false,
-      },
-    };
-
-    err = rmt_new_rx_channel(&cfg, &handle);
-  } else {
-    ASSERT(is_tx);
+  if (is_tx) {
     bool open_drain = kind == 2;
     rmt_tx_channel_config_t cfg = {
       .gpio_num = static_cast<gpio_num_t>(pin_num),
@@ -407,6 +387,22 @@ PRIMITIVE(channel_new) {
       },
     };
     err = rmt_new_tx_channel(&cfg, &handle);
+  } else {
+    // Input.
+    rmt_rx_channel_config_t cfg = {
+      .gpio_num = static_cast<gpio_num_t>(pin_num),
+      .clk_src = RMT_CLK_SRC_DEFAULT,
+      .resolution_hz = resolution,
+      .mem_block_symbols = static_cast<size_t>(block_symbols),
+      .intr_priority = 0,
+      .flags = {
+        .invert_in = false,
+        .with_dma = false,
+        .io_loop_back = false,
+      },
+    };
+
+    err = rmt_new_rx_channel(&cfg, &handle);
   }
   if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -415,16 +411,16 @@ PRIMITIVE(channel_new) {
   RmtResource* resource = new (resource_memory) RmtResource(resource_group, handle, is_tx, in_out, queue);
   handed_to_resource = true;
 
-  if (!is_tx) {
-    rmt_rx_event_callbacks_t callbacks = {
-      .on_recv_done = rx_done,
-    };
-    err = rmt_rx_register_event_callbacks(handle, &callbacks, resource);
-  } else {
+  if (is_tx) {
     rmt_tx_event_callbacks_t callbacks = {
       .on_trans_done = tx_done,
     };
     err = rmt_tx_register_event_callbacks(handle, &callbacks, resource);
+  } else {
+    rmt_rx_event_callbacks_t callbacks = {
+      .on_recv_done = rx_done,
+    };
+    err = rmt_rx_register_event_callbacks(handle, &callbacks, resource);
   }
   if (err != ESP_OK) {
     delete resource;
