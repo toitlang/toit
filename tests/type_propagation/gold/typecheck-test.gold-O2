@@ -55,7 +55,7 @@ test-throws tests/type_propagation/typecheck-test.toit
 [block] in test-throws tests/type_propagation/typecheck-test.toit
  - argument 0: [block]
   0[053] - invoke static foo tests/type_propagation/typecheck-test.toit // {SmallInteger_}
-  3[048] - as class StringSlice_(11 - 13) // {False}
+  3[048] - as class StringSlice_(9 - 11) // {False}
   5[089] - return S1 1
 
 [block] in test-throws tests/type_propagation/typecheck-test.toit
@@ -70,12 +70,12 @@ foo tests/type_propagation/typecheck-test.toit
 
 bar tests/type_propagation/typecheck-test.toit
  - argument 0: {SmallInteger_}
-  0[052] - load local, as class, pop 2 - StringSlice_(11 - 13) // {False}
+  0[052] - load local, as class, pop 2 - StringSlice_(9 - 11) // {False}
 
 is-int tests/type_propagation/typecheck-test.toit
  - argument 0: {String_|Null_|float|SmallInteger_}
   0[016] - load local 2
-  1[044] - is class LargeInteger_(22 - 24) // {True|False}
+  1[044] - is class LargeInteger_(20 - 22) // {True|False}
   3[089] - return S1 1
 
 id tests/type_propagation/typecheck-test.toit
