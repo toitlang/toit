@@ -207,8 +207,8 @@ PRIMITIVE(init) {
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
     eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
-    emac_config.smi_mdc_gpio_num = mdc_num;
-    emac_config.smi_mdio_gpio_num = mdio_num;
+    emac_config.smi_gpio.mdc_num = mdc_num;
+    emac_config.smi_gpio.mdio_num = mdio_num;
     mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
 #ifdef CONFIG_ETH_USE_OPENETH
   } else if (mac_chip == MAC_CHIP_OPENETH) {
@@ -312,6 +312,7 @@ PRIMITIVE(init_spi) {
     .address_bits     = 0,
     .dummy_bits       = 0,
     .mode             = 0,
+    .clock_source     = SPI_CLK_SRC_DEFAULT,
     .duty_cycle_pos   = 0,
     .cs_ena_pretrans  = 0,
     .cs_ena_posttrans = 0,

@@ -2,7 +2,7 @@ main tests/type_propagation/non-local-return-test.toit
   0[053] - invoke static test-simple tests/type_propagation/non-local-return-test.toit // {SmallInteger_}
   3[041] - pop 1
   4[053] - invoke static test-continue tests/type_propagation/non-local-return-test.toit // {Null_}
-  7[090] - return null S1 0
+  7[092] - return null S1 0
 
 test-simple tests/type_propagation/non-local-return-test.toit
   0[029] - load method [block] in test-simple tests/type_propagation/non-local-return-test.toit
@@ -18,7 +18,7 @@ test-simple tests/type_propagation/non-local-return-test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non-local-return-test.toit // [[block]] -> {}
  10[004] - store local, pop S1
- 12[089] - return S1 1
+ 12[091] - return S1 1
 
 [block] in [block] in test-simple tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]
@@ -27,7 +27,7 @@ test-simple tests/type_propagation/non-local-return-test.toit
   7[038] - load block 1
   9[058] - invoke virtual repeat // [{SmallInteger_}, [block]] -> {}
  13[004] - store local, pop S1
- 15[089] - return S1 1
+ 15[091] - return S1 1
 
 [block] in [block] in [block] in test-simple tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]
@@ -35,14 +35,14 @@ test-simple tests/type_propagation/non-local-return-test.toit
   2[017] - load local 3
   3[005] - load outer S3 // [block]
   5[005] - load outer S3 // [block]
-  7[091] - non-local return 0
-  9[089] - return S1 1
+  7[093] - non-local return 0
+  9[091] - return S1 1
 
 test-continue tests/type_propagation/non-local-return-test.toit
   0[029] - load method [block] in test-continue tests/type_propagation/non-local-return-test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non-local-return-test.toit // [[block]] -> {String_}
- 10[090] - return null S2 0
+ 10[092] - return null S2 0
 
 [block] in test-continue tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]
@@ -51,17 +51,17 @@ test-continue tests/type_propagation/non-local-return-test.toit
   7[038] - load block 1
   9[058] - invoke virtual repeat // [{SmallInteger_}, [block]] -> {}
  13[004] - store local, pop S1
- 15[089] - return S1 1
+ 15[091] - return S1 1
 
 [block] in [block] in test-continue tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]
   0[020] - load literal hest
   2[017] - load local 3
-  3[091] - non-local return 1
-  5[089] - return S1 1
+  3[093] - non-local return 1
+  5[091] - return S1 1
 
 invoke tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {String_}
-  3[089] - return S1 1
+  3[091] - return S1 1
