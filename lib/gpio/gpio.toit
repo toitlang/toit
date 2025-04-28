@@ -606,7 +606,7 @@ class Pin_ extends PinBase:
   See $Pin.set-pull.
   */
   set-pull --up/bool=false --down/bool=false --off/bool=false:
-    if not up or down or off: throw "INVALID_ARGUMENT"
+    if not (up or down or off): throw "INVALID_ARGUMENT"
     if up and down: throw "INVALID_ARGUMENT"
     if up and off: throw "INVALID_ARGUMENT"
     if down and off: throw "INVALID_ARGUMENT"
@@ -711,7 +711,7 @@ class InvertedPin extends PinBase:
     original-pin_.set-open-drain value
 
   set-pull --up/bool=false --down/bool=false --off/bool=false:
-    if not up or down or off: throw "INVALID_ARGUMENT"
+    if not (up or down or off): throw "INVALID_ARGUMENT"
     if up and down: throw "INVALID_ARGUMENT"
     if up and off: throw "INVALID_ARGUMENT"
     if down and off: throw "INVALID_ARGUMENT"
@@ -892,7 +892,7 @@ class PinLinux_ extends PinBase:
     gpio-linux-pin-set-open-drain_ resource_ value
 
   set-pull --up/bool=false --down/bool=false --off/bool=false:
-    if not up or down or off: throw "INVALID_ARGUMENT"
+    if not (up or down or off): throw "INVALID_ARGUMENT"
     if up and down: throw "INVALID_ARGUMENT"
     if up and off: throw "INVALID_ARGUMENT"
     if down and off: throw "INVALID_ARGUMENT"
