@@ -20,20 +20,17 @@ namespace compiler {
 
 MODULE_TYPES(rmt, MODULE_RMT)
 
+TYPE_PRIMITIVE_INT(bytes_per_memory_block)
 TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(channel_new)
 TYPE_PRIMITIVE_ANY(channel_delete)
-TYPE_PRIMITIVE_ANY(config_rx)
-TYPE_PRIMITIVE_ANY(config_tx)
-TYPE_PRIMITIVE_ANY(get_idle_threshold)
-TYPE_PRIMITIVE_ANY(set_idle_threshold)
-TYPE_PRIMITIVE_ANY(config_bidirectional_pin)
+TYPE_PRIMITIVE_NULL(enable)
+TYPE_PRIMITIVE_NULL(disable)
 TYPE_PRIMITIVE_ANY(transmit)
-TYPE_PRIMITIVE_ANY(transmit_done)
-TYPE_PRIMITIVE_ANY(prepare_receive)
-TYPE_PRIMITIVE_ANY(start_receive)
+TYPE_PRIMITIVE_BOOL(is_transmit_done)
+TYPE_PRIMITIVE_BOOL(start_receive)
 TYPE_PRIMITIVE_ANY(receive)
-TYPE_PRIMITIVE_ANY(stop_receive)
+TYPE_PRIMITIVE_NULL(apply_carrier)
 
 }  // namespace toit::compiler
 }  // namespace toit

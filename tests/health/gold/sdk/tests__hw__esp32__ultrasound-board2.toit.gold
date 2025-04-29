@@ -1,0 +1,6 @@
+<pkg:toit-hc-sr04>/driver.toit:56:19: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+    trigger_ = rmt.Channel trigger --output --idle_level=0
+                  ^~~~~~~~
+<pkg:toit-hc-sr04>/driver.toit:57:16: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+    echo_ = rmt.Channel echo --input
+               ^~~~~~~~

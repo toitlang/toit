@@ -22,6 +22,13 @@ abstract class Variant:
   */
   abstract pulse-counter-channel-count -> int
 
+  /** The number of input RMT channels. */
+  abstract rmt-in-channel-count -> int
+  /** The number of output RMT channels. */
+  abstract rmt-out-channel-count -> int
+  /** The total number of RMT channels that can be active at the same time. */
+  abstract rmt-total-channel-count -> int
+
   /**
   A voltage divider consisting of three 330 Ohm resistors in series.
   The resistors must go from start->adc1->adc2->end.
@@ -405,6 +412,9 @@ Connect the two boards.
 */
 class Esp32 extends Variant:
   pulse-counter-channel-count ::= 8
+  rmt-in-channel-count ::= 8
+  rmt-out-channel-count ::= 8
+  rmt-total-channel-count ::= 8
 
   voltage-divider-start-pin ::= 27
   voltage-divider-adc1-pin ::= 32
@@ -503,6 +513,9 @@ Connect the two boards.
 */
 class Esp32s3 extends Variant:
   pulse-counter-channel-count ::= 4
+  rmt-in-channel-count ::= 4
+  rmt-out-channel-count ::= 4
+  rmt-total-channel-count ::= 8
 
   voltage-divider-start-pin ::= 13
   voltage-divider-adc1-pin ::= 9

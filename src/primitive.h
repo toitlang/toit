@@ -470,20 +470,17 @@ namespace toit {
   PRIMITIVE(errors, 1)                       \
 
 #define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(bytes_per_memory_block, 0)       \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 4)                  \
+  PRIMITIVE(channel_new, 5)                  \
   PRIMITIVE(channel_delete, 2)               \
-  PRIMITIVE(config_rx, 8)                    \
-  PRIMITIVE(config_tx, 11)                   \
-  PRIMITIVE(get_idle_threshold, 1)           \
-  PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 3)     \
-  PRIMITIVE(transmit, 2)                     \
-  PRIMITIVE(transmit_done, 2)                \
-  PRIMITIVE(prepare_receive, 1)              \
-  PRIMITIVE(start_receive, 2)                \
-  PRIMITIVE(receive, 3)                      \
-  PRIMITIVE(stop_receive, 1)                 \
+  PRIMITIVE(enable, 1)                       \
+  PRIMITIVE(disable, 1)                      \
+  PRIMITIVE(transmit, 4)                     \
+  PRIMITIVE(is_transmit_done, 1)             \
+  PRIMITIVE(start_receive, 4)                \
+  PRIMITIVE(receive, 1)                      \
+  PRIMITIVE(apply_carrier, 5)                \
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(new_unit, 4)                     \
