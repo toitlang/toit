@@ -1450,9 +1450,22 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(IDENTICAL);
+    TypeSet a0 = stack->local(1);
+    TypeSet a1 = stack->local(0);
+    int words_per_type = propagator->words_per_type();
+    bool distinct_types = a0.contains_none(a1, words_per_type);
+    bool same_singleton = !distinct_types
+        && (a0.size(words_per_type) == 1) && (a1.size(words_per_type) == 1)
+        && (a0.contains_null(program) || a0.contains_true(program) || a0.contains_false(program));
     stack->pop();
     stack->pop();
-    stack->push_bool(program);
+    if (distinct_types) {
+      stack->push_bool_specific(program, false);
+    } else if (same_singleton) {
+      stack->push_bool_specific(program, true);
+    } else {
+      stack->push_bool(program);
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(LINK);
