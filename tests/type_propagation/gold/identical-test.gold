@@ -1,0 +1,188 @@
+main tests/type_propagation/identical-test.toit
+  0[053] - invoke static test-literals tests/type_propagation/identical-test.toit // {Null_}
+  3[041] - pop 1
+  4[053] - invoke static test-getters tests/type_propagation/identical-test.toit // {Null_}
+  7[092] - return null S1 0
+
+test-literals tests/type_propagation/identical-test.toit
+  0[022] - load null
+  1[022] - load null
+  2[096] - identical
+  3[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+  6[041] - pop 1
+  7[022] - load null
+  8[020] - load literal true
+ 10[096] - identical
+ 11[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 14[041] - pop 1
+ 15[022] - load null
+ 16[023] - load smi 0
+ 17[096] - identical
+ 18[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 21[041] - pop 1
+ 22[022] - load null
+ 23[020] - load literal 0.0
+ 25[096] - identical
+ 26[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 29[041] - pop 1
+ 30[022] - load null
+ 31[042] - allocate instance Map
+ 33[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
+ 36[096] - identical
+ 37[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 40[041] - pop 1
+ 41[020] - load literal true
+ 43[020] - load literal true
+ 45[096] - identical
+ 46[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+ 49[041] - pop 1
+ 50[020] - load literal false
+ 52[020] - load literal false
+ 54[096] - identical
+ 55[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+ 58[041] - pop 1
+ 59[020] - load literal true
+ 61[020] - load literal false
+ 63[096] - identical
+ 64[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 67[041] - pop 1
+ 68[020] - load literal false
+ 70[020] - load literal true
+ 72[096] - identical
+ 73[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 76[041] - pop 1
+ 77[042] - allocate instance Map
+ 79[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
+ 82[042] - allocate instance Map
+ 84[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
+ 87[096] - identical
+ 88[053] - invoke static id tests/type_propagation/identical-test.toit // [{True|False}] -> {True|False}
+ 91[041] - pop 1
+ 92[042] - allocate instance Map
+ 94[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
+ 97[042] - allocate instance Set
+ 99[053] - invoke static Set <sdk>/core/collections.toit // [{Set}] -> {Set}
+102[096] - identical
+103[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+106[041] - pop 1
+107[023] - load smi 0
+108[023] - load smi 0
+109[096] - identical
+110[053] - invoke static id tests/type_propagation/identical-test.toit // [{True|False}] -> {True|False}
+113[041] - pop 1
+114[023] - load smi 0
+115[020] - load literal 0.0
+117[096] - identical
+118[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+121[041] - pop 1
+122[020] - load literal 0.0
+124[023] - load smi 0
+125[096] - identical
+126[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+129[092] - return null S1 0
+
+test-getters tests/type_propagation/identical-test.toit
+  0[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+  3[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+  6[096] - identical
+  7[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+ 10[041] - pop 1
+ 11[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+ 14[053] - invoke static get-true tests/type_propagation/identical-test.toit // {True}
+ 17[096] - identical
+ 18[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 21[041] - pop 1
+ 22[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+ 25[053] - invoke static get-int tests/type_propagation/identical-test.toit // {SmallInteger_}
+ 28[096] - identical
+ 29[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 32[041] - pop 1
+ 33[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+ 36[053] - invoke static get-float tests/type_propagation/identical-test.toit // {float}
+ 39[096] - identical
+ 40[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 43[041] - pop 1
+ 44[053] - invoke static get-null tests/type_propagation/identical-test.toit // {Null_}
+ 47[053] - invoke static get-map tests/type_propagation/identical-test.toit // {Map}
+ 50[096] - identical
+ 51[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 54[041] - pop 1
+ 55[053] - invoke static get-true tests/type_propagation/identical-test.toit // {True}
+ 58[053] - invoke static get-true tests/type_propagation/identical-test.toit // {True}
+ 61[096] - identical
+ 62[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+ 65[041] - pop 1
+ 66[053] - invoke static get-false tests/type_propagation/identical-test.toit // {False}
+ 69[053] - invoke static get-false tests/type_propagation/identical-test.toit // {False}
+ 72[096] - identical
+ 73[053] - invoke static id tests/type_propagation/identical-test.toit // [{True}] -> {True}
+ 76[041] - pop 1
+ 77[053] - invoke static get-true tests/type_propagation/identical-test.toit // {True}
+ 80[053] - invoke static get-false tests/type_propagation/identical-test.toit // {False}
+ 83[096] - identical
+ 84[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 87[041] - pop 1
+ 88[053] - invoke static get-false tests/type_propagation/identical-test.toit // {False}
+ 91[053] - invoke static get-true tests/type_propagation/identical-test.toit // {True}
+ 94[096] - identical
+ 95[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+ 98[041] - pop 1
+ 99[053] - invoke static get-map tests/type_propagation/identical-test.toit // {Map}
+102[053] - invoke static get-map tests/type_propagation/identical-test.toit // {Map}
+105[096] - identical
+106[053] - invoke static id tests/type_propagation/identical-test.toit // [{True|False}] -> {True|False}
+109[041] - pop 1
+110[053] - invoke static get-map tests/type_propagation/identical-test.toit // {Map}
+113[053] - invoke static get-set tests/type_propagation/identical-test.toit // {Set}
+116[096] - identical
+117[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+120[041] - pop 1
+121[053] - invoke static get-int tests/type_propagation/identical-test.toit // {SmallInteger_}
+124[053] - invoke static get-int tests/type_propagation/identical-test.toit // {SmallInteger_}
+127[096] - identical
+128[053] - invoke static id tests/type_propagation/identical-test.toit // [{True|False}] -> {True|False}
+131[041] - pop 1
+132[053] - invoke static get-int tests/type_propagation/identical-test.toit // {SmallInteger_}
+135[053] - invoke static get-float tests/type_propagation/identical-test.toit // {float}
+138[096] - identical
+139[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+142[041] - pop 1
+143[053] - invoke static get-float tests/type_propagation/identical-test.toit // {float}
+146[053] - invoke static get-int tests/type_propagation/identical-test.toit // {SmallInteger_}
+149[096] - identical
+150[053] - invoke static id tests/type_propagation/identical-test.toit // [{False}] -> {False}
+153[092] - return null S1 0
+
+get-null tests/type_propagation/identical-test.toit
+  0[092] - return null S0 0
+
+get-true tests/type_propagation/identical-test.toit
+  0[020] - load literal true
+  2[091] - return S1 0
+
+get-false tests/type_propagation/identical-test.toit
+  0[020] - load literal false
+  2[091] - return S1 0
+
+get-int tests/type_propagation/identical-test.toit
+  0[023] - load smi 0
+  1[091] - return S1 0
+
+get-float tests/type_propagation/identical-test.toit
+  0[020] - load literal 0.0
+  2[091] - return S1 0
+
+get-map tests/type_propagation/identical-test.toit
+  0[042] - allocate instance Map
+  2[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
+  5[091] - return S1 0
+
+get-set tests/type_propagation/identical-test.toit
+  0[042] - allocate instance Set
+  2[053] - invoke static Set <sdk>/core/collections.toit // [{Set}] -> {Set}
+  5[091] - return S1 0
+
+id tests/type_propagation/identical-test.toit
+ - argument 0: {True|False}
+  0[016] - load local 2
+  1[091] - return S1 1
