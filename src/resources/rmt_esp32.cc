@@ -514,7 +514,7 @@ PRIMITIVE(transmit) {
       .queue_nonblocking = false,
     },
   };
-  uint16 timestamp = timestamp_counter++;
+  uint16 timestamp = ++timestamp_counter;
   out->set_request_timestamp(timestamp);
   err = rmt_transmit(resource->handle(), encoder_handle, buffer, items_bytes.length(), &transmit_config);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -565,7 +565,7 @@ PRIMITIVE(start_receive) {
       .en_partial_rx = false,
     },
   };
-  uint16 timestamp = timestamp_counter++;
+  uint16 timestamp = ++timestamp_counter;
   in->set_request_timestamp(timestamp);
   esp_err_t err = rmt_receive(resource->handle(), buffer, max_size, &cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
