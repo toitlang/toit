@@ -152,7 +152,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
   // low. The receiving end would not be able to see the last signal.
   // One memory block supports 128 signals. We allocate 6 of them.
   // It seems like we need to reserve 2 signals. Not completely clear why, but good enough.
-  SIGNAL-COUNT ::= 128 * 6
+  SIGNAL-COUNT ::= 128 * 6 - 2
 
   in-parallel
     :: | idle-level-is-ready wait-for-reader-ready done |
@@ -171,8 +171,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
       // We also need to have enough space in the buffer. Otherwise we get the same error.
 
       // 2 bytes per signal. Twice for the ring-buffer. And some extra for bookkeeping.
-      buffer-size := SIGNAL-COUNT * 2 * 2 + 20
-      in := rmt.Channel pin-in --input --idle-threshold=120 --memory-block-count=6 --buffer-size=buffer-size
+      in := rmt.Channel pin-in --input --idle-threshold=120 --memory-block-count=6
       wait-for-level-ready.call
       in.start-reading
       reader-is-ready.call
