@@ -84,6 +84,4 @@ test-non-default tests/type_propagation/default-arguments-test.toit
 test-non-default-non-literal tests/type_propagation/default-arguments-test.toit
  - argument 0: {True|False}
   0[016] - load local 2
-  1[084] - branch if not null T4
-  4[016] - load local 2
-  5[091] - return S1 1
+  1[091] - return S1 1

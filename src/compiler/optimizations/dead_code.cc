@@ -200,6 +200,14 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     bool terminates_no;
     Expression* no = visit(node->no(), &terminates_no);
 
+    if (!yes && !no) {
+      // Since there are not blocks for the if, we revisit the condition
+      // just for the effect - and drop the if.
+      condition = visit_for_effect(node->condition(), &terminates);
+      ASSERT(!terminates);  // Already checked before.
+      return tag(condition, false);
+    }
+
     node->replace_condition(condition);
     node->replace_yes(yes ? yes : _new Nop(node->yes()->range()));
     node->replace_no(no ? no : _new Nop(node->no()->range()));
