@@ -94,21 +94,6 @@ test-resource pin/gpio.Pin:
   channel.close
   channels.do: it.close
 
-in-parallel fun1/Lambda fun2/Lambda:
-  idle-level-semaphore := monitor.Semaphore
-  reader-ready-semaphore := monitor.Semaphore
-  done-semaphore := monitor.Semaphore
-  task::
-    fun1.call
-        :: idle-level-semaphore.up
-        :: reader-ready-semaphore.down
-        :: done-semaphore.up
-
-  fun2.call
-      :: idle-level-semaphore.down
-      :: reader-ready-semaphore.up
-  done-semaphore.down
-
 test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
   PULSE-LENGTH ::= 50
 
