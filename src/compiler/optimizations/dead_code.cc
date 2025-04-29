@@ -201,7 +201,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     Expression* no = visit(node->no(), &terminates_no);
 
     if (!yes && !no) {
-      // Since there are not blocks for the if, we revisit the condition
+      // Since there are no blocks for the if, we revisit the condition
       // just for the effect - and drop the if.
       condition = visit_for_effect(node->condition(), &terminates);
       ASSERT(!terminates);  // Already checked before.
