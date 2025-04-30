@@ -4,6 +4,7 @@
 
 import gpio
 import io show LITTLE-ENDIAN
+import io
 import system
 
 /**
@@ -904,13 +905,46 @@ class Out extends Channel_:
   The $done-level parameter specifies the level of the pin when the transmission is done.
   */
   write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
+    write_ signals.bytes_ --flush=flush --done-level=done-level --loop-count=loop-count
+
+  /**
+  Variant of $(write signals)
+
+  Encodes the $data using the given $encoder.
+  */
+  write data/io.Data -> none
+      --bit-size/int=(data.byte-size * 8)
+      --encoder/Encoder
+      --flush/bool=true
+      --done-level/int=0
+      --loop-count/int=1:
+    write_ data
+        --bit-size=bit-size
+        --encoder=encoder
+        --flush=flush
+        --done-level=done-level
+        --loop-count=loop-count
+
+  write_ bytes/io.Data -> none
+      --flush/bool
+      --done-level/int
+      --loop-count/int
+      --bit-size/int?=null
+      --encoder/Encoder?=null:
     if loop-count == 0: throw "INVALID_ARGUMENT"
     if loop-count == 1: loop-count = 0
-    started := rmt-transmit_ resource_ signals.bytes_ loop-count done-level
+    if encoder and encoder.is-closed_: throw "ENCODER_CLOSED"
+
+    do-transmit := :
+      if encoder:
+        rmt-transmit-with-encoder_ resource_ bytes loop-count done-level bit-size encoder.resource_
+      else:
+        rmt-transmit_ resource_ bytes loop-count done-level
+    started := do-transmit.call
     if not started:
       // Wait for the previous write to finish.
       this.flush
-      started = rmt-transmit_ resource_ signals.bytes_ loop-count done-level
+      started = do-transmit.call
       if not started:
         throw "INVALID_STATE"
 
@@ -977,6 +1011,27 @@ class SyncManager:
   reset -> none:
     rmt-sync-manager-reset_ resource_
 
+class Encoder:
+  resource_ /ByteArray? := null
+  is-closed_/bool := false
+
+  constructor.from-bytes_ bytes/ByteArray:
+    bake_ bytes
+
+    add-finalizer this:: close
+
+  close:
+    if is-closed_: return
+    critical-do:
+      if resource_: rmt-encoder-delete_ resource-freeing-module_ resource_
+      resource_ = null
+      is-closed_ = true
+      remove-finalizer this
+
+  bake_ bytes/ByteArray:
+    if is-closed_: throw "ALREADY_CLOSED"
+    if resource_: return
+    resource_ = rmt-encoder-new_ resource-freeing-module_ bytes
 
 READ-STATE_  ::= 1 << 0
 WRITE-STATE_ ::= 1 << 1
@@ -1004,6 +1059,11 @@ rmt-disable_ resource/ByteArray:
 rmt-transmit_ resource/ByteArray signals-bytes/*/Blob*/ loop-count/int idle-level/int:
   #primitive.rmt.transmit
 
+rmt-transmit-with-encoder_ resource/ByteArray data/*/Blob*/ loop-count/int idle-level/int bit-size/int  encoder-resource/ByteArray:
+  #primitive.rmt.transmit-with-encoder:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      rmt-transmit-with-encoder_ resource bytes loop-count idle-level bit-size encoder-resource
+
 rmt-is-transmit-done_ resource/ByteArray:
   #primitive.rmt.is-transmit-done
 
@@ -1024,3 +1084,9 @@ rmt-sync_manager_delete_ resource-group resource:
 
 rmt-sync-manager-reset_ resource/ByteArray:
   #primitive.rmt.sync-manager-reset
+
+rmt-encoder-new_ resource-group bytes:
+  #primitive.rmt.encoder-new
+
+rmt-encoder-delete_ resource-group resource:
+  #primitive.rmt.encoder-delete
