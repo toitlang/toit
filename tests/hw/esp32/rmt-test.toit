@@ -8,10 +8,11 @@ Tests a simple pulse from the RMT peripheral.
 For the setup see the comment near $Variant.rmt-pin1.
 */
 
-import rmt
+import expect show *
 import gpio
 import monitor
-import expect show *
+import pulse-counter
+import rmt
 import system
 
 import .test
@@ -391,6 +392,39 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
   out2.close
   pin3.close
 
+test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
+  out := rmt.Out pin1 --resolution=RESOLUTION
+  pulse-channel := pulse-counter.Channel pin2
+  pulse-unit := pulse-counter.Unit --channels=[pulse-channel]
+  pulse-unit.start
+
+  out-signals := rmt.Signals 2
+  out-signals.set 0 --level=1 --period=50
+  out-signals.set 1 --level=0 --period=50
+  out.write out-signals --done-level=0 --loop-count=-1 --no-flush
+
+  while pulse-unit.value < 30:
+    yield
+
+  out.reset
+  pulse-unit.close
+
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    // The ESP32 doesn't support finite loop counts.
+    return
+
+  in := rmt.In pin2 --resolution=RESOLUTION
+  in.start-reading --min-ns=1 --max-ns=(120 * 1000)
+
+  LOOP-COUNT ::= 4
+  out.write out-signals --done-level=0 --loop-count=LOOP-COUNT --no-flush
+
+  in-signals := in.wait-for-data
+  expect-equals (LOOP-COUNT * 2) in-signals.size
+
+  in.close
+  out.close
+
 main:
   run-test: test
 
@@ -408,6 +442,7 @@ test:
   test-carrier pin1 pin2
   test-glitch-filter pin1 pin2
   test-bidirectional pin1 pin2
+  test-loop-count pin1 pin2
 
   pin1.close
   pin2.close

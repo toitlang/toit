@@ -893,10 +893,16 @@ class Out extends Channel_:
     case, if the write operation is aborted (for example with a $with-timeout), then the
     transmission is aborted and the channel is reset.
 
+  The $loop-count parameter specifies how many times the signals are repeated. If it is
+    set to -1, the signals are repeated indefinitely. The ESP32 only supports -1 (infinite)
+    and 1. Other variants, like the ESP32C3, ESP32C6, ESP32S2, and ESP32S3, support other
+    positive values.
+
   The $done-level parameter specifies the level of the pin when the transmission is done.
   */
-  write signals/Signals --flush/bool=true --done-level/int=0 -> none:
-    loop-count := 0
+  write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
+    if loop-count == 0: throw "INVALID_ARGUMENT"
+    if loop-count == 1: loop-count = 0
     started := rmt-transmit_ resource_ signals.bytes_ loop-count done-level
     if not started:
       // Wait for the previous write to finish.
