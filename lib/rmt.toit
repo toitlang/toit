@@ -49,6 +49,9 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   to be divisible by 4.
 */
 class Signals:
+  /** An empty signals instance. */
+  static ZERO ::= Signals 0
+
   /** Bytes per ESP32 signal. */
   static BYTES-PER-SIGNAL ::= 2
 
@@ -58,15 +61,21 @@ class Signals:
   /** The number of signals in the collection. */
   size/int
 
-  bytes_/ByteArray
+  /**
+  The resolution of the signals in Hz.
 
-  /** The empty signal collection. */
-  static ZERO ::= Signals 0
+  Null, if this instance was created without a resolution.
+  */
+  resolution/int?
+
+  bytes_/ByteArray
 
   /**
   Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
+
+  If a $resolution is provided, it is used when signals are specified in us.
 
   # Advanced
   The underlying RMT peripheral can only work on byte arrays that are divisible by
@@ -77,9 +86,7 @@ class Signals:
   In consequence, the size of the backing byte array might be 4 bytes larger than
     $size * $BYTES-PER-SIGNAL.
   */
-  // TODO(florian): take a clock-divider as argument and allow the user to specify
-  // durations in us. Then also add a `do --us-periods:`.
-  constructor .size:
+  constructor .size --.resolution/int?=null:
     bytes_ = ByteArray
         round-up (size * 2) 4
     // Terminate the signals with a high end-marker. The duration 0 signals the
@@ -101,6 +108,18 @@ class Signals:
       periods[idx]
 
   /**
+  Creates signals that alternate between a level of 0 and 1 with the periods
+    given in the $ns-durations list.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating --resolution/int --first-level/int --ns-durations/List:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    return Signals.alternating --resolution=resolution ns-durations.size --first-level=first-level: | idx |
+      ns-durations[idx]
+
+  /**
   Creates items that alternate between a level of 0 and 1 with the periods
     given by successive calls to the block.
 
@@ -119,18 +138,38 @@ class Signals:
 
     return signals
 
+  /**
+  Creates items that alternate between a level of 0 and 1 with the ns-durations
+    given by successive calls to the block.
+
+  The $block is called with the signal index and the level it is created with.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating size/int --resolution/int --first-level/int [block]:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    signals := Signals size --resolution=resolution
+    level := first-level
+    size.repeat:
+      signals.set it --ns=(block.call it level) --level=level
+      level ^= 1
+
+    return signals
 
   /**
   Creates a collection of signals from the given $bytes.
 
   The $bytes size must be divisible by 4.
 
+  If a $resolution is provided, it is used when signals are specified in us.
+
   # Advanced
   The bytes must correspond to bytes produced by the RMT primitives. The
     primitives operate with pairs of signals (called an item) which  is the
     reason the $bytes size must be divisible by 4.
   */
-  constructor.from-bytes bytes/ByteArray:
+  constructor.from-bytes bytes/ByteArray --.resolution/int?=null:
     if bytes.size % 4 != 0: throw "INVALID_ARGUMENT"
 
     bytes_ = bytes
@@ -144,6 +183,17 @@ class Signals:
   period i/int -> int:
     check-bounds_ i
     return signal-period_ i
+
+  /**
+  Returns the signal duration of the $i'th signal in nanoseconds.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+  */
+  ns-duration i/int -> int:
+    if resolution == null: throw "INVALID_ARGUMENT"
+    return (signal-period_ i) * 1_000_000_000 / resolution
 
   /**
   Returns the signal level of the $i'th signal.
@@ -167,6 +217,23 @@ class Signals:
     check-bounds_ i
     set-signal_ i period level
 
+  /**
+  Sets the $i'th signal to the given $ns duration and $level.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+
+  The given $ns is used to compute a corresponding period, which then must be in
+    the range [0..0x7FFF].
+
+  The given $level must be 0 or 1.
+  */
+  set i/int --ns/int --level/int -> none:
+    if resolution == null: throw "INVALID_STATE"
+    period := ns * resolution / 1_000_000_000
+    set i --period=period --level=level
+
   set-signal_ i/int period/int level/int -> none:
     idx := i * 2
     if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
@@ -177,13 +244,15 @@ class Signals:
   /**
   Invokes the given $block on each signal of this signal collection.
 
-  The block is invoked with the level and period of each signal.
+  The block is invoked with the level, period and ns duration of each signal. If
+    this instance was created without a $resolution, then the ns duration is null.
   */
   do [block]:
     size.repeat:
       block.call
         signal-level_ it
         signal-period_ it
+        resolution ? (ns-duration it) : null
 
   check-bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
