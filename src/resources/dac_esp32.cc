@@ -15,10 +15,15 @@
 
 #include "../top.h"
 
-#if defined(TOIT_ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#if defined(TOIT_ESP32)
+
+#include <soc/soc.h>
+
+#if SOC_DAC_SUPPORTED
 
 #include <driver/gpio.h>
-#include <driver/dac.h>
+#include <driver/dac_oneshot.h>
+#include <driver/dac_cosine.h>
 
 #include "../entropy_mixer.h"
 #include "../objects_inline.h"
@@ -35,46 +40,42 @@ static constexpr int kDacMaxFrequency = 5500;
 
 static constexpr dac_channel_t kInvalidChannel = static_cast<dac_channel_t>(-1);
 
+static ResourcePool<dac_channel_t, kInvalidChannel> dac_channels_(
+  DAC_CHAN_0,
+  DAC_CHAN_1
+);
+
 #if CONFIG_IDF_TARGET_ESP32
 
 static dac_channel_t get_dac_channel(int pin) {
   switch (pin) {
-    case 25: return DAC_CHANNEL_1;
-    case 26: return DAC_CHANNEL_2;
+    case 25: return DAC_CHAN_0;
+    case 26: return DAC_CHAN_1;
     default: return kInvalidChannel;
   }
 }
 
 #elif CONFIG_IDF_TARGET_ESP32C3
 
-static dac_channel_t get_dac_channel(int pin) {
-  // The ESP32-C3 does not have any DAC.
-  return kInvalidChannel;
-}
+#error "Unexpected DAC support for the ESP32C3"
 
 #elif CONFIG_IDF_TARGET_ESP32C6
 
-static dac_channel_t get_dac_channel(int pin) {
-  // The ESP32-C6 does not have any DAC.
-  return kInvalidChannel;
-}
+#error "Unexpected DAC support for the ESP32C6"
 
 #elif CONFIG_IDF_TARGET_ESP32S2
 
 static dac_channel_t get_dac_channel(int pin) {
   switch (pin) {
-    case 17: return DAC_CHANNEL_1;
-    case 18: return DAC_CHANNEL_2;
+    case 17: return DAC_CHAN_0;
+    case 18: return DAC_CHAN_1;
     default: return kInvalidChannel;
   }
 }
 
 #elif CONFIG_IDF_TARGET_ESP32S3
 
-static dac_channel_t get_dac_channel(int pin) {
-  // The ESP32-S3 does not have any DAC.
-  return kInvalidChannel;
-}
+#error "Unexpected DAC support for the ESP32S3"
 
 #else
 
@@ -84,71 +85,73 @@ static dac_channel_t get_dac_channel(int pin) {
 
 class DacResourceGroup;
 
-static int cosine_user_count = 0;
-
 class DacResource : public Resource {
  public:
   TAG(DacResource);
-  DacResource(DacResourceGroup* group, dac_channel_t channel);
+  DacResource(ResourceGroup* group, dac_channel_t channel)
+      : Resource(group)
+      , channel_(channel) {}
 
-  virtual ~DacResource() override {
-    unuse_cosine();
-  }
+  virtual ~DacResource() override;
 
   dac_channel_t channel() const { return channel_; }
+  bool uses_cosine() const { return uses_cosine_; }
 
-  esp_err_t use_cosine();
-  esp_err_t unuse_cosine();
+  dac_oneshot_handle_t oneshot_handle() const { return oneshot_handle_; }
+  dac_cosine_handle_t cosine_handle() const { return cosine_handle_; }
+
+  void set_oneshot_handle(dac_oneshot_handle_t handle) {
+    uses_cosine_ = false;
+    oneshot_handle_ = handle;
+  }
+  void set_cosine_handle(dac_cosine_handle_t handle) {
+    uses_cosine_ = true;
+    cosine_handle_ = handle;
+  }
+
+  void release_oneshot();
+  void release_cosine();
 
  private:
   dac_channel_t channel_;
   bool uses_cosine_ = false;
+  // During construction we don't allocate the oneshot/cosine handle. Instead, we
+  // wait for the first output-request to allocate the corresponding handle.
+  union {
+    dac_oneshot_handle_t oneshot_handle_ = null;
+    dac_cosine_handle_t cosine_handle_;
+  };
 };
 
-esp_err_t DacResource::use_cosine() {
-  Locker locker(OS::resource_mutex());
-  esp_err_t err = ESP_OK;
-  if (uses_cosine_) return err;
-  uses_cosine_ = true;
-  cosine_user_count++;
-  if (cosine_user_count == 1) {
-    // First user.
-    err = dac_cw_generator_enable();
+DacResource::~DacResource() {
+  if (uses_cosine_) {
+    release_cosine();
+  } else {
+    release_oneshot();
   }
-  return err;
+  ASSERT(!uses_cosine());
+  dac_channels_.put(channel_);
 }
 
-esp_err_t DacResource::unuse_cosine() {
-  Locker locker(OS::resource_mutex());
-  esp_err_t err = ESP_OK;
-  if (!uses_cosine_) return err;
+void DacResource::release_oneshot() {
+  ASSERT(!uses_cosine());
+  auto handle = oneshot_handle_;
+  if (handle != null) {
+    ESP_ERROR_CHECK(dac_oneshot_del_channel(handle));
+  }
+  oneshot_handle_ = null;
+}
+
+void DacResource::release_cosine() {
+  ASSERT(uses_cosine());
+  auto handle = cosine_handle_;
+  if (handle != null) {
+    dac_cosine_stop(handle);
+    ESP_ERROR_CHECK(dac_cosine_del_channel(handle));
+  }
+  cosine_handle_ = null;
   uses_cosine_ = false;
-  cosine_user_count--;
-  if (cosine_user_count == 0) {
-    // Last user.
-    err = dac_cw_generator_disable();
-  }
-  return err;
 }
-
-class DacResourceGroup : public ResourceGroup {
- public:
-  TAG(DacResourceGroup);
-  explicit DacResourceGroup(Process* process)
-      : ResourceGroup(process) {}
-
-  virtual void on_unregister_resource(Resource* resource) override {
-    DacResource* dac_resource = static_cast<DacResource*>(resource);
-
-    dac_output_disable(dac_resource->channel());
-  }
- private:
-  static int cosine_user_count_;
-};
-
-DacResource::DacResource(DacResourceGroup* group, dac_channel_t channel)
-    : Resource(group), channel_(channel) {}
-
 
 MODULE_IMPLEMENTATION(dac, MODULE_DAC)
 
@@ -156,36 +159,30 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  DacResourceGroup* touch = _new DacResourceGroup(process);
-  if (!touch) FAIL(MALLOC_FAILED);
+  auto group = _new SimpleResourceGroup(process);
+  if (!group) FAIL(MALLOC_FAILED);
 
-  proxy->set_external_address(touch);
+  proxy->set_external_address(group);
   return proxy;
 }
 
 PRIMITIVE(use) {
-  ARGS(DacResourceGroup, group, int, pin, uint8, initial_value);
+  ARGS(ResourceGroup, group, int, pin);
 
   dac_channel_t channel = get_dac_channel(pin);
   if (channel == kInvalidChannel) FAIL(INVALID_ARGUMENT);
+
+  bool handed_to_resource = false;
+  bool success = dac_channels_.take(channel);
+  if (!success) FAIL(ALREADY_IN_USE);
+  Defer put_channel { [&] { if (!handed_to_resource) dac_channels_.put(channel); } };
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   DacResource* resource = _new DacResource(group, channel);
   if (resource == null) FAIL(MALLOC_FAILED);
-
-  esp_err_t err = dac_output_voltage(channel, initial_value);
-  if (err != ESP_OK) {
-    delete resource;
-    return Primitive::os_error(err, process);
-  }
-
-  err = dac_output_enable(channel);
-  if (err != ESP_OK) {
-    delete resource;
-    return Primitive::os_error(err, process);
-  }
+  handed_to_resource = true;
 
   group->register_resource(resource);
 
@@ -194,7 +191,7 @@ PRIMITIVE(use) {
 }
 
 PRIMITIVE(unuse) {
-  ARGS(DacResourceGroup, resource_group, DacResource, resource);
+  ARGS(ResourceGroup, resource_group, DacResource, resource);
 
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
@@ -204,36 +201,73 @@ PRIMITIVE(unuse) {
 
 PRIMITIVE(set) {
   ARGS(DacResource, resource, uint8, dac_value);
-  dac_channel_t channel = resource->channel();
 
-  esp_err_t err = resource->unuse_cosine();
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  if (resource->uses_cosine()) {
+    resource->release_cosine();
+  }
 
-  err = dac_output_voltage(channel, dac_value);
+  if (resource->oneshot_handle() == null) {
+    dac_oneshot_handle_t oneshot_handle;
+    dac_oneshot_config_t cfg = {
+      .chan_id = resource->channel(),
+    };
+    esp_err_t err = dac_oneshot_new_channel(&cfg, &oneshot_handle);
+    if (err != ESP_OK)  return Primitive::os_error(err, process);
+    resource->set_oneshot_handle(oneshot_handle);
+  }
+
+  esp_err_t err = dac_oneshot_output_voltage(resource->oneshot_handle(), dac_value);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->null_object();
 }
 
+static dac_cosine_atten_t scale_to_attenuation(int scale) {
+  if (scale == 1) return DAC_COSINE_ATTEN_DB_0;
+  if (scale == 2) return DAC_COSINE_ATTEN_DB_6;
+  if (scale == 4) return DAC_COSINE_ATTEN_DB_12;
+  if (scale == 8) return DAC_COSINE_ATTEN_DB_18;
+  return static_cast<dac_cosine_atten_t>(-1);
+}
+
 PRIMITIVE(cosine_wave) {
   ARGS(DacResource, resource, int, scale, int, phase, uint32, freq, int8, offset);
-  dac_channel_t channel = resource->channel();
 
-  if (scale < DAC_CW_SCALE_1 || scale > DAC_CW_SCALE_8) FAIL(INVALID_ARGUMENT);
-  if (phase != DAC_CW_PHASE_0 && phase != DAC_CW_PHASE_180) FAIL(INVALID_ARGUMENT);
   if (freq < kDacMinFrequency || freq > kDacMaxFrequency) FAIL(INVALID_ARGUMENT);
 
-  dac_cw_config_t cw_config {
-    .en_ch = channel,
-    .scale = static_cast<dac_cw_scale_t>(scale),
-    .phase = static_cast<dac_cw_phase_t>(phase),
-    .freq = freq,
+  if (phase != 0 && phase != 180) FAIL(INVALID_ARGUMENT);
+  auto dac_phase = (phase == 0) ? DAC_COSINE_PHASE_0 : DAC_COSINE_PHASE_180;
+
+  auto attenuation = scale_to_attenuation(scale);
+  if (static_cast<int>(attenuation) == -1) FAIL(INVALID_ARGUMENT);
+
+  if (resource->uses_cosine()) {
+    // We can't modify an existing running generator. Just shut it down first.
+    resource->release_cosine();
+  } else {
+    resource->release_oneshot();
+  }
+
+  dac_cosine_config_t cfg = {
+    .chan_id = resource->channel(),
+    .freq_hz = freq,
+    .clk_src = DAC_COSINE_CLK_SRC_DEFAULT,
+    .atten = attenuation,
+    .phase = dac_phase,
     .offset = offset,
+    .flags = {
+      // We force the new frequency. We don't give any guarantees when multiple channels
+      // use the same generator, but this seems like it's the most useful.
+      .force_set_freq = true,
+    },
   };
-  esp_err_t err = dac_cw_generator_config(&cw_config);
+  dac_cosine_handle_t handle;
+  esp_err_t err = dac_cosine_new_channel(&cfg, &handle);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  err = resource->use_cosine();
+  resource->set_cosine_handle(handle);
+
+  err = dac_cosine_start(handle);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->null_object();
@@ -241,4 +275,6 @@ PRIMITIVE(cosine_wave) {
 
 } // namespace toit
 
-#endif // TOIT_ESP32 && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#endif  // SOC_DAC_SUPPORTED
+
+#endif  // TOIT_ESP32

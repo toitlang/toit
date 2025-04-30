@@ -47,12 +47,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
   out_/UartWriter? := null
 
   /**
-  Number of encountered errors.
-  Deprecated.
-  */
-  errors := 0
-
-  /**
   Constructs a UART port using the given $tx for transmission and $rx
     for read.
 
@@ -240,7 +234,6 @@ class Port extends Object with io.InMixin implements reader.Reader:
       if not uart_: return null
       if state-bits & ERROR-STATE_ != 0:
         state_.clear-state ERROR-STATE_
-        errors++
       else if state-bits & READ-STATE_ != 0:
         data := uart-read_ uart_
         if data and data.size > 0: return data
@@ -274,6 +267,28 @@ class Port extends Object with io.InMixin implements reader.Reader:
         if written == 0: continue
 
       return written
+
+  /**
+  Number of encountered errors.
+
+  Typically, this number is incremented if received data wasn't processed in
+    time, and the UART hardware has lost data.
+  */
+  errors -> int:
+    return uart-errors_ uart_
+
+  /**
+  Waits for a break signal to be received.
+  A break signal is a continuous low signal on the RX pin for a duration of at least one byte.
+
+  Not supported on all platforms.
+  */
+  wait-for-break -> none:
+    state_.clear-state BREAK-STATE_
+    while true:
+      if not uart_: throw "CLOSED"
+      state-bits := state_.wait-for-state BREAK-STATE_ | ERROR-STATE_
+      if (state-bits & BREAK-STATE_) != 0: return
 
 /**
 Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
@@ -396,6 +411,7 @@ resource-group_ ::= uart-init_
 READ-STATE_  ::= 1 << 0
 ERROR-STATE_ ::= 1 << 1
 WRITE-STATE_ ::= 1 << 2
+BREAK-STATE_ ::= 1 << 3
 
 uart-init_:
   #primitive.uart.init
@@ -422,9 +438,12 @@ Returns the amount of bytes that were written.
 uart-write_ uart data from to break-length:
   #primitive.uart.write:
     // The `uart-write_` function is allowed to consume less than the whole data slice.
-    // We limit the chunk size to 1024 bytes.
-    return io.primitive-redo-io-data_ it data from (min to (from + 1024)): | chunk/ByteArray |
-      uart-write_ uart chunk 0 chunk.size break-length
+    // We limit the chunk size to 256 bytes.
+    return io.primitive-redo-io-data_ it data from (min to (from + 256)): | prefix/ByteArray |
+      // Only send the break-length if the prefix is the whole thing.
+      size := prefix.size
+      prefix-break-length := size == to - from ? break-length : 0
+      uart-write_ uart prefix 0 size prefix-break-length
 
 uart-wait-tx_ uart:
   #primitive.uart.wait-tx
@@ -437,3 +456,6 @@ uart-set-control-flags_ uart flags:
 
 uart-get-control-flags_ uart:
   #primitive.uart.get-control-flags
+
+uart-errors_ uart:
+  #primitive.uart.errors

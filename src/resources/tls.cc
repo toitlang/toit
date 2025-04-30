@@ -197,6 +197,10 @@ void BaseMbedTlsSocket::apply_certs(Process* process) {
   }
 }
 
+void BaseMbedTlsSocket::disable_certificate_validation() {
+  mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_NONE);
+}
+
 word BaseMbedTlsSocket::handshake() {
   return mbedtls_ssl_handshake(&ssl);
 }
@@ -752,6 +756,7 @@ static Object* add_global_root(const uint8* data, size_t length, Object* hash, P
       int major_error = (-ret & 0xff80);
       if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 &&
           (-major_error == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG ||
+           -major_error == MBEDTLS_ERR_X509_INVALID_EXTENSIONS ||
            -major_error == MBEDTLS_ERR_ASN1_UNEXPECTED_TAG)) {
         return process->null_object();
       } else {
@@ -833,9 +838,13 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
 }
 
 PRIMITIVE(init_socket) {
-  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id);
+  ARGS(BaseMbedTlsSocket, socket, cstring, transport_id, bool, skip_certificate_validation);
   USE(transport_id);
-  socket->apply_certs(process);
+  if (skip_certificate_validation) {
+    socket->disable_certificate_validation();
+  } else {
+    socket->apply_certs(process);
+  }
   if (!socket->init()) FAIL(MALLOC_FAILED);
   return process->null_object();
 }

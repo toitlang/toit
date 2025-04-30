@@ -1,0 +1,18 @@
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:35:13: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+  out := rmt.Channel rmt-pin --output --idle-level=idle-level
+            ^~~~~~~~
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:36:12: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+  in := rmt.Channel rmt-pin --input
+           ^~~~~~~~
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:39:14: warning: Deprecated 'Channel.make-bidirectional'. Create an 'In' channel first, then create an 'Out' channel with the `--open-drain` flag on the same pin, instead
+  rmt.Channel.make-bidirectional --in=in --out=out
+             ^~~~~~~~~~~~~~~~~~~
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:79:13: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+  out := rmt.Channel rmt-pin --output --idle-level=idle-level
+            ^~~~~~~~
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:80:12: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+  in := rmt.Channel rmt-pin --input
+           ^~~~~~~~
+tests/hw/esp32/rmt-drain-pullup-deprecated-test.toit:83:14: warning: Deprecated 'Channel.make-bidirectional'. Create an 'In' channel first, then create an 'Out' channel with the `--open-drain` flag on the same pin, instead
+  rmt.Channel.make-bidirectional --in=in --out=out --pull-up
+             ^~~~~~~~~~~~~~~~~~~

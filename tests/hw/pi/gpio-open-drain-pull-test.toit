@@ -12,7 +12,7 @@ import gpio
 import host.os
 import expect show *
 
-import ..shared.gpio-open-drain
+import ..shared.gpio-open-drain-pull
 
 main:
   TEST-NAME ::= os.env.get "GPIO_TEST"

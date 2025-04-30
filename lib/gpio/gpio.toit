@@ -381,6 +381,17 @@ interface Pin:
   */
   set-open-drain value/bool
 
+  /**
+  Sets the pull-up/down resistor depending on the set flag.
+
+  If $up is true, then the pull-up resistor is set.
+  If $down is true, then the pull-down resistor is set.
+  If $off is true, then neither pull-up nor pull-down resistor is set.
+
+  One, and only one of these flags must be set.
+  */
+  set-pull --up/bool=false --down/bool=false --off/bool=false
+
 /**
 A base class for pins.
 
@@ -428,6 +439,11 @@ abstract class PinBase implements Pin:
   See $Pin.set-open-drain.
   */
   abstract set-open-drain value/bool
+
+  /**
+  See $Pin.set-pull.
+  */
+  abstract set-pull --up/bool=false --down/bool=false --off/bool=false
 
   /**
   See $Pin.config.
@@ -581,10 +597,23 @@ class Pin_ extends PinBase:
         gpio-config-interrupt_ resource_ false
 
   /**
-  See $Pin.wait-for.
+  See $Pin.set-open-drain.
   */
   set-open-drain value/bool:
     gpio-set-open-drain_ num value
+
+  /**
+  See $Pin.set-pull.
+  */
+  set-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not (up or down or off): throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    value := 0
+    if up: value = 1
+    if down: value = -1
+    gpio-set-pull_ num value
 
 
 /**
@@ -634,6 +663,10 @@ class VirtualPin extends PinBase:
   /** Not supported. */
   set-open-drain value/bool: throw "UNSUPPORTED"
 
+  /** Not supported. */
+  set-pull --up/bool=false --down/bool=false --off/bool=false:
+    throw "UNSUPPORTED"
+
 
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
@@ -676,6 +709,19 @@ class InvertedPin extends PinBase:
 
   set-open-drain value/bool:
     original-pin_.set-open-drain value
+
+  set-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not (up or down or off): throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    if up:
+      down = true
+      up = false
+    if down:
+      up = true
+      down = false
+    original-pin_.set-pull --up=up --down=down --off=off
 
 /**
 A GPIO chip on Linux.
@@ -845,6 +891,16 @@ class PinLinux_ extends PinBase:
   set-open-drain value/bool:
     gpio-linux-pin-set-open-drain_ resource_ value
 
+  set-pull --up/bool=false --down/bool=false --off/bool=false:
+    if not (up or down or off): throw "INVALID_ARGUMENT"
+    if up and down: throw "INVALID_ARGUMENT"
+    if up and off: throw "INVALID_ARGUMENT"
+    if down and off: throw "INVALID_ARGUMENT"
+    value := 0
+    if up: value = 1
+    if down: value = -1
+    gpio-linux-pin-set-pull_ resource_ value
+
 
 gpio-init_:
   #primitive.gpio.init
@@ -875,6 +931,9 @@ gpio-last-edge-trigger-timestamp_ resource:
 
 gpio-set-open-drain_ num value/bool:
   #primitive.gpio.set-open-drain
+
+gpio-set-pull_ num value/int:
+  #primitive.gpio.set-pull
 
 gpio-linux-list-chips_ -> List:
   #primitive.gpio-linux.list-chips
@@ -917,6 +976,9 @@ gpio-linux-pin-set_ resource value:
 
 gpio-linux-pin-set-open-drain_ resource value:
   #primitive.gpio-linux.pin-set-open-drain
+
+gpio-linux-pin-set-pull_ resource value:
+  #primitive.gpio-linux.pin-set-pull
 
 gpio-linux-pin-config-edge-detection_ resource enabled/bool:
   #primitive.gpio-linux.pin-config-edge-detection

@@ -16,11 +16,11 @@ import .test
 import .variants
 
 // Not that RX1 goes to TX2 and TX1 goes to RX2.
-RX1 ::= Variant.CURRENT.uart-baud-rate-in2
-TX1 ::= Variant.CURRENT.uart-baud-rate-out1
+RX1 ::= Variant.CURRENT.uart-flush-in2
+TX1 ::= Variant.CURRENT.uart-flush-out1
 
-RX2 ::= Variant.CURRENT.uart-baud-rate-in1
-TX2 ::= Variant.CURRENT.uart-baud-rate-out2
+RX2 ::= Variant.CURRENT.uart-flush-in1
+TX2 ::= Variant.CURRENT.uart-flush-out2
 
 
 main:

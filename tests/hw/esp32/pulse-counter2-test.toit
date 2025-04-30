@@ -18,8 +18,7 @@ IN/int ::= Variant.CURRENT.unconnected-pin1
 
 allocate-unit --close/bool=false:
   in := gpio.Pin IN
-  unit := pulse-counter.Unit
-  channel := unit.add-channel in
+  unit := pulse-counter.Unit in
   if close:
     unit.close
 

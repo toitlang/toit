@@ -20,7 +20,10 @@ RMT-PIN ::= Variant.CURRENT.rmt-drain-pullup-test-pin
 LEVEL-PIN ::= Variant.CURRENT.rmt-drain-pullup-level-pin
 MEASURE-PIN ::= Variant.CURRENT.rmt-drain-pullup-measure-pin
 
+RESOLUTION ::= 1_000_000  // 1MHz.
+
 main:
+  print "$RMT-PIN <-> $LEVEL-PIN <-> $MEASURE-PIN"
   run-test:
     2.repeat:
       test-no-pull-up --idle-level=it
@@ -32,11 +35,13 @@ test-no-pull-up --idle-level/int:
 
   rmt-pin := gpio.Pin RMT-PIN
 
-  out := rmt.Channel rmt-pin --output --idle-level=idle-level
-  in := rmt.Channel rmt-pin --input
-  // We actually don't need the bidirectionality here, but by
-  // making the channel bidirectional it switches to open drain.
-  rmt.Channel.make-bidirectional --in=in --out=out
+  in := rmt.In rmt-pin --resolution=RESOLUTION
+  out := rmt.Out rmt-pin --resolution=RESOLUTION --open-drain
+
+  signals := rmt.Signals 2
+  signals.set 0 --period=0 --level=idle-level
+  signals.set 1 --period=0 --level=idle-level
+  out.write signals --done-level=idle-level
 
   // Give the 1M resistor time to drain.
   sleep --ms=1
@@ -76,11 +81,13 @@ test-pull-up --idle-level/int:
 
   rmt-pin := gpio.Pin RMT-PIN
 
-  out := rmt.Channel rmt-pin --output --idle-level=idle-level
-  in := rmt.Channel rmt-pin --input
-  // We actually don't need the bidirectionality here, but by
-  // making the channel bidirectional it switches to open drain.
-  rmt.Channel.make-bidirectional --in=in --out=out --pull-up
+  in := rmt.In rmt-pin --resolution=RESOLUTION
+  out := rmt.Out rmt-pin --resolution=RESOLUTION --open-drain --pull-up
+
+  signals := rmt.Signals 2
+  signals.set 0 --period=0 --level=idle-level
+  signals.set 1 --period=0 --level=idle-level
+  out.write signals --done-level=idle-level
 
   if idle-level == 0:
     // The open drain wins over the 1M resistor.

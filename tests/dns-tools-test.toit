@@ -19,7 +19,7 @@ txt-test network/net.Client:
       ]
   texts := client.get --record-type=dns.RECORD-TXT --network=network "toit.io"
   expect
-      texts.size == 1
+      texts.size == 2
   ptr := client.get --record-type=dns.RECORD-PTR --network=network "toit.io"
   expect
       ptr.size == 0

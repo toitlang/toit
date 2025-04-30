@@ -1,0 +1,9 @@
+<pkg:toit-1-wire>/one_wire.toit:517:23: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+    channel-out_ = rmt.Channel --output pin --channel-id=out-channel-id
+                      ^~~~~~~~
+<pkg:toit-1-wire>/one_wire.toit:519:22: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
+    channel-in_ = rmt.Channel --input pin --channel-id=in-channel-id
+                     ^~~~~~~~
+<pkg:toit-1-wire>/one_wire.toit:524:16: warning: Deprecated 'Channel.make-bidirectional'. Create an 'In' channel first, then create an 'Out' channel with the `--open-drain` flag on the same pin, instead
+    rmt.Channel.make-bidirectional --in=channel-in_ --out=channel-out_ --pull-up=pull-up
+               ^~~~~~~~~~~~~~~~~~~

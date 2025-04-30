@@ -297,7 +297,7 @@ namespace toit {
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
   PRIMITIVE(deinit, 1)                       \
-  PRIMITIVE(init_socket, 2)                  \
+  PRIMITIVE(init_socket, 3)                  \
   PRIMITIVE(create, 2)                       \
   PRIMITIVE(take_outgoing, 1)                \
   PRIMITIVE(set_incoming, 3)                 \
@@ -415,14 +415,16 @@ namespace toit {
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
-  PRIMITIVE(init, 5)                         \
-  PRIMITIVE(close, 1)                        \
-  PRIMITIVE(write, 3)                        \
-  PRIMITIVE(write_reg, 4)                    \
-  PRIMITIVE(write_address, 4)                \
-  PRIMITIVE(read, 3)                         \
-  PRIMITIVE(read_reg, 4)                     \
-  PRIMITIVE(read_address, 4)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(bus_create, 4)                   \
+  PRIMITIVE(bus_close, 1)                    \
+  PRIMITIVE(bus_probe, 3)                    \
+  PRIMITIVE(bus_reset, 1)                    \
+  PRIMITIVE(device_create, 6)                \
+  PRIMITIVE(device_close, 1)                 \
+  PRIMITIVE(device_write, 2)                 \
+  PRIMITIVE(device_read, 3)                  \
+  PRIMITIVE(device_write_read, 4)            \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -434,7 +436,8 @@ namespace toit {
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read_to_buffer, 2)               \
-  PRIMITIVE(errors, 1)                       \
+  PRIMITIVE(errors_underrun, 1)              \
+  PRIMITIVE(errors_overrun, 1)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -462,30 +465,27 @@ namespace toit {
   PRIMITIVE(write, 5)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(wait_tx, 1)                      \
-  PRIMITIVE(set_control_flags, 2)           \
+  PRIMITIVE(set_control_flags, 2)            \
   PRIMITIVE(get_control_flags, 1)            \
+  PRIMITIVE(errors, 1)                       \
 
 #define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(bytes_per_memory_block, 0)       \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 4)                  \
+  PRIMITIVE(channel_new, 5)                  \
   PRIMITIVE(channel_delete, 2)               \
-  PRIMITIVE(config_rx, 8)                    \
-  PRIMITIVE(config_tx, 11)                   \
-  PRIMITIVE(get_idle_threshold, 1)           \
-  PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 3)     \
-  PRIMITIVE(transmit, 2)                     \
-  PRIMITIVE(transmit_done, 2)                \
-  PRIMITIVE(prepare_receive, 1)              \
-  PRIMITIVE(start_receive, 2)                \
-  PRIMITIVE(receive, 3)                      \
-  PRIMITIVE(stop_receive, 1)                 \
+  PRIMITIVE(enable, 1)                       \
+  PRIMITIVE(disable, 1)                      \
+  PRIMITIVE(transmit, 4)                     \
+  PRIMITIVE(is_transmit_done, 1)             \
+  PRIMITIVE(start_receive, 4)                \
+  PRIMITIVE(receive, 1)                      \
+  PRIMITIVE(apply_carrier, 5)                \
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(new_unit, 4)                     \
   PRIMITIVE(close_unit, 1)                   \
   PRIMITIVE(new_channel, 7)                  \
-  PRIMITIVE(close_channel, 2)                \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
   PRIMITIVE(clear, 1)                        \
@@ -574,6 +574,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
+  PRIMITIVE(set_pull, 2)                     \
 
 #define MODULE_GPIO_LINUX(PRIMITIVE)         \
   PRIMITIVE(list_chips, 0)                   \
@@ -590,6 +591,7 @@ namespace toit {
   PRIMITIVE(pin_get, 1)                      \
   PRIMITIVE(pin_set, 2)                      \
   PRIMITIVE(pin_set_open_drain, 2)           \
+  PRIMITIVE(pin_set_pull, 2)                 \
   PRIMITIVE(pin_config_edge_detection, 2)    \
   PRIMITIVE(pin_consume_edge_events, 1)      \
   PRIMITIVE(pin_last_edge_trigger_timestamp, 1) \
@@ -602,7 +604,7 @@ namespace toit {
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
-  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(use, 2)                         \
   PRIMITIVE(unuse, 2)                       \
   PRIMITIVE(set, 2)                         \
   PRIMITIVE(cosine_wave, 5)                 \
@@ -755,12 +757,13 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 5)                       \
+  PRIMITIVE(create, 3)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
   PRIMITIVE(receive, 1)                      \
-  PRIMITIVE(add_peer, 4)                     \
+  PRIMITIVE(add_peer, 6)                     \
+  PRIMITIVE(remove_peer, 2)                  \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
   PRIMITIVE(binary_operator, 5)              \
@@ -1068,7 +1071,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
 #define _A_T_Font(N, name)                MAKE_UNPACKING_MACRO(Font, N, name)
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
-#define _A_T_I2cCommand(N, name)          MAKE_UNPACKING_MACRO(I2cCommand, N, name)
+#define _A_T_I2cBusResource(N, name)      MAKE_UNPACKING_MACRO(I2cBusResource, N, name)
+#define _A_T_I2cDeviceResource(N, name)   MAKE_UNPACKING_MACRO(I2cDeviceResource, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
 #define _A_T_LwipSocket(N, name)          MAKE_UNPACKING_MACRO(LwipSocket, N, name)

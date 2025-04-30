@@ -45,11 +45,14 @@ namespace toit {
   fn(GpioResource)                      \
   fn(GpioPinResource)                   \
   fn(GpioChipResource)                  \
+  fn(I2cBusResource)                    \
+  fn(I2cDeviceResource)                 \
   fn(I2sResource)                       \
   fn(SpiResource)                       \
   fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
+  fn(PcntChannelResource)               \
   fn(PwmResource)                       \
   fn(RmtResource)                       \
   fn(Directory)                         \
@@ -102,7 +105,6 @@ namespace toit {
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \
   fn(X509ResourceGroup)                 \
-  fn(PcntChannelResourceGroup)          \
   fn(PcntUnitResourceGroup)             \
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \

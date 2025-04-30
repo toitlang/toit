@@ -17,129 +17,317 @@
 
 #ifdef TOIT_ESP32
 
-#include <driver/rmt.h>
+#include <soc/soc.h>
+#include <driver/rmt_tx.h>
+#include <driver/rmt_rx.h>
 #include <driver/gpio.h>
-#include <hal/gpio_hal.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
+
+
+#include "../event_sources/system_esp32.h"
+#include "../event_sources/ev_queue_esp32.h"
+
+#if CONFIG_RMT_ISR_IRAM_SAFE || CONFIG_RMT_RECV_FUNC_IN_IRAM
+#define RMT_MEM_ALLOC_CAPS      (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+#define RMT_IRAM_ATTR IRAM_ATTR
+#else
+#define RMT_MEM_ALLOC_CAPS      MALLOC_CAP_DEFAULT
+#define RMT_IRAM_ATTR
+#endif
 
 namespace toit {
 
-const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
+const int kReadState = 1 << 0;
+const int kWriteState = 1 << 1;
 
-// Copied from rmt_legacy.c.
-#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP-SOC_RMT_TX_CANDIDATES_PER_GROUP)
-#define RMT_TX_CHANNEL_ENCODING_END   (SOC_RMT_TX_CANDIDATES_PER_GROUP-1)
-
-// Copied from rmt_legacy.c.
-#define RMT_IS_RX_CHANNEL(channel) ((channel) >= RMT_RX_CHANNEL_ENCODING_START)
-#define RMT_IS_TX_CHANNEL(channel) ((channel) <= RMT_TX_CHANNEL_ENCODING_END)
-
-#ifndef SOC_RMT_CHANNELS_PER_GROUP
-#error "SOC_RMT_CHANNELS_PER_GROUP not defined"
-#endif
-
-#if SOC_RMT_CHANNELS_PER_GROUP == SOC_RMT_TX_CANDIDATES_PER_GROUP
-// All channels are TX channels. We assume that they also are RX channels.
-// This is the setup on the ESP32 and ESP32S2 chips.
-static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
-    RMT_CHANNEL_0, RMT_CHANNEL_1
-#if SOC_RMT_CHANNELS_PER_GROUP > 2
-    , RMT_CHANNEL_2, RMT_CHANNEL_3
-#if SOC_RMT_CHANNELS_PER_GROUP > 4
-    , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
-#endif
-#endif
-);
-
-static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_channels_;
-static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
-
-#else
-// Some channels are TX, some are RX.
-// This is the configuration on the ESP32C3, ESP32H2, and ESP32S3 chips.
-// The TX channels are always before the RX channels.
-
-#if SOC_RMT_RX_CANDIDATES_PER_GROUP != SOC_RMT_TX_CANDIDATES_PER_GROUP
-#error "Expected same number of RX as TX channels"
-#endif
-
-#if SOC_RMT_TX_CANDIDATES_PER_GROUP == 2
-static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
-    RMT_CHANNEL_0, RMT_CHANNEL_1
-);
-static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
-    RMT_CHANNEL_2, RMT_CHANNEL_3
-);
-#elif SOC_RMT_TX_CANDIDATES_PER_GROUP == 4
-static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
-    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
-);
-static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
-    RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
-);
-#else
-error "Unexpected amount of RMT channels"
-#endif
-
-static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_tx_channels_;
-static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_rx_channels_;
-
-#endif
-
-static void put_channel_into_pool(rmt_channel_t channel) {
-  if (RMT_IS_TX_CHANNEL(channel)) {
-    rmt_tx_channels->put(channel);
-  } else {
-    rmt_rx_channels->put(channel);
-  }
-}
-
-class RmtResource : public Resource {
- public:
-  TAG(RmtResource);
-  RmtResource(ResourceGroup* group, rmt_channel_t channel, int memory_block_count)
-      : Resource(group)
-      , channel_(channel)
-      , memory_block_count_(memory_block_count) {}
-
-  rmt_channel_t channel() const { return channel_; }
-  int memory_block_count() const { return memory_block_count_; }
-
- private:
-  rmt_channel_t channel_;
-  int memory_block_count_;
-};
+typedef struct Event {
+  word state;
+} Event;
 
 class RmtResourceGroup : public ResourceGroup {
  public:
   TAG(RmtResourceGroup);
-  RmtResourceGroup(Process* process)
-    : ResourceGroup(process, null) {}
+  RmtResourceGroup(Process* process, EventSource* event_source)
+    : ResourceGroup(process, event_source) {}
 
-  virtual void on_unregister_resource(Resource* r) override {
-    RmtResource* rmt_resource = static_cast<RmtResource*>(r);
-    rmt_channel_t channel = rmt_resource->channel();
-    rmt_channel_status_result_t channel_status;
-    rmt_get_channel_status(&channel_status);
-    if (channel_status.status[channel] != RMT_CHANNEL_UNINIT) rmt_driver_uninstall(channel);
-    for (int i = 0; i < rmt_resource->memory_block_count(); i++) {
-      put_channel_into_pool(static_cast<rmt_channel_t>(channel + i));
+  uint32_t on_event(Resource* r, word data, uint32_t state) override {
+    if (data == kReadState || data == kWriteState) {
+      state |= data;
     }
+    return state;
   }
 };
 
+class RmtResource;
+
+class RmtInOut {
+ public:
+  virtual ~RmtInOut() {}
+  virtual esp_err_t disable() = 0;
+};
+
+class RmtIn : public RmtInOut {
+ public:
+  ~RmtIn() override;
+
+  esp_err_t disable() override;
+
+  uint8* buffer() const { return buffer_; }
+  void set_buffer(uint8* buffer) { buffer_ = buffer; }
+
+  int received() const { return received_; }
+  RMT_IRAM_ATTR void set_received(int received) {
+    // No lock needed, as the interrupt is only active when nothing else
+    // modifies the field from the outside.
+    received_ = received;
+  }
+
+  uint16 request_timestamp() const { return request_timestamp_; }
+  void set_request_timestamp(uint16 timestamp) { request_timestamp_ = timestamp; }
+
+  /// Sets the timestamp (operation_counter) of when the last done-operation
+  /// was called from the interrupt.
+  /// If the done-timestamp is before the read-start-timestamp we know that
+  /// it was for an earlier read-request.
+  RMT_IRAM_ATTR void set_done_timestamp(uint16 timestamp) {
+    // There is no need for locks, as setting the field is atomic.
+    done_timestamp_ = timestamp;
+  }
+
+  uint16 done_timestamp() const { return done_timestamp_; }
+
+ private:
+  friend class RmtResource;
+
+  uint8* buffer_ = null;
+  int received_ = -1;
+
+  uint16 request_timestamp_ = 0;
+  uint16 done_timestamp_ = 0;
+};
+
+class RmtOut : public RmtInOut {
+ public:
+  ~RmtOut() override;
+
+  esp_err_t disable() override;
+
+  uint8* buffer() const { return buffer_; }
+  void set_buffer(uint8* buffer) { buffer_ = buffer; }
+
+  rmt_encoder_handle_t encoder() const { return encoder_; }
+  void set_encoder(rmt_encoder_handle_t encoder) { encoder_ = encoder; }
+
+  uint16 request_timestamp() const { return request_timestamp_; }
+  void set_request_timestamp(uint16 timestamp) { request_timestamp_ = timestamp; }
+
+  /// Sets the timestamp (operation_counter) of when the last done-operation
+  /// was called from the interrupt.
+  /// If the done-timestamp is before the read-start-timestamp we know that
+  /// it was for an earlier read-request.
+  RMT_IRAM_ATTR void set_done_timestamp(uint16 timestamp) {
+    // There is no need for locks, as setting the field is atomic.
+    done_timestamp_ = timestamp;
+  }
+
+  uint16 done_timestamp() const { return done_timestamp_; }
+
+ private:
+  friend class RmtResource;
+
+  uint8* buffer_ = null;
+  rmt_encoder_handle_t encoder_ = null;
+
+  uint16 request_timestamp_ = 0;
+  uint16 done_timestamp_ = 0;
+};
+
+class RmtResource : public EventQueueResource {
+ public:
+  enum State {
+    ENABLED,
+    DISABLED,
+  };
+
+  TAG(RmtResource);
+  RmtResource(RmtResourceGroup* group,
+              rmt_channel_handle_t handle,
+              bool is_tx,
+              RmtInOut* in_out,
+              QueueHandle_t queue)
+      : EventQueueResource(group, queue)
+      , handle_(handle)
+      , is_tx_(is_tx)
+      , in_out_(in_out) {}
+
+  ~RmtResource() override;
+
+  rmt_channel_handle_t handle() const { return handle_; }
+  bool is_tx() const { return is_tx_; }
+
+  bool receive_event(word* data) override;
+
+  State state() const { return state_; }
+  void set_state(State state) { state_ = state; }
+
+  bool is_enabled() const { return state_ == ENABLED; }
+
+  RmtIn* in() const {
+    ASSERT(!is_tx_);
+    return static_cast<RmtIn*>(in_out_);
+  }
+
+  RmtOut* out() const {
+    ASSERT(is_tx_);
+    return static_cast<RmtOut*>(in_out_);
+  }
+
+ private:
+  rmt_channel_handle_t handle_;
+  State state_ = DISABLED;
+  bool is_tx_;
+  RmtInOut* in_out_;
+};
+
+// A counter for identifying operations.
+// This counter is a replacement for timestamps which are hard to get inside an interrupt.
+// Each operation that expects a response through an interrupt, increments and saves
+// the counter.
+// Similarly, functions that are called by interrupts tag their response with the counter.
+// This way, we can know whether the interrupt was invoked before a new operation was started.
+// See RmtIn::set_done_timestamp for why this is important.
+static uint16 timestamp_counter = 0;
+
+/// Whether t1 is before t2.
+/// Takes wrap-around into account.
+static bool is_timestamp_before_or_equal(uint16 t1, uint16 t2) {
+  if (t1 <= t2) return (t2 - t1) < 0x3FFF;
+  return (t1 - t2) > 0xFFFF - 0x3FFF;
+}
+
+RmtIn::~RmtIn() {
+  free(buffer_);
+}
+
+esp_err_t RmtIn::disable() {
+  if (buffer_ == null) return ESP_OK;
+
+  free(buffer_);
+  buffer_ = null;
+
+  received_ = -1;
+
+  return ESP_OK;
+}
+
+RmtOut::~RmtOut() {
+ free(buffer_);
+  if (encoder_ != null) FATAL_IF_NOT_ESP_OK(rmt_del_encoder(encoder_));
+}
+
+esp_err_t RmtOut::disable() {
+  if (buffer_ == null) return ESP_OK;
+
+  ASSERT(encoder_ != null);
+  free(buffer_);
+  buffer_ = null;
+
+  esp_err_t result = rmt_del_encoder(encoder_);
+  encoder_ = null;
+
+  return result;
+}
+
+RmtResource::~RmtResource() {
+  if (is_enabled()) rmt_disable(handle());
+  FATAL_IF_NOT_ESP_OK(rmt_del_channel(handle_));
+  vQueueDelete(queue());
+  delete in_out_;
+}
+
+bool RmtResource::receive_event(word* data) {
+  Event event;
+  bool more = xQueueReceive(queue(), &event, 0);
+  if (more) {
+    if (event.state == kReadState) {
+      *data = kReadState;
+    } else {
+      // Write is finished.
+      auto request_timestamp = out()->request_timestamp();
+      auto done_timestamp = out()->request_timestamp();
+      if (is_timestamp_before_or_equal(request_timestamp, done_timestamp)) {
+        // This is the event for the current request.
+        // In theory it might have been for a previous request and was delayed
+        // long enough that the next request also finished, but that's ok. We
+        // still need to free the buffers.
+        if (out()->buffer_ != null) {
+          free(out()->buffer_);
+          out()->buffer_ = null;
+        }
+        if (out()->encoder_ != null) {
+          rmt_del_encoder(out()->encoder_);
+          out()->encoder_ = null;
+        }
+      }
+      *data = kWriteState;
+    }
+  }
+  return more;
+}
+
+RMT_IRAM_ATTR static bool tx_done(rmt_channel_t* channel,
+                                  const rmt_tx_done_event_data_t* event,
+                                  void* user_ctx) {
+  auto resource = reinterpret_cast<RmtResource*>(user_ctx);
+  auto queue = resource->queue();
+  BaseType_t higher_was_woken;
+  Event payload = {
+    .state = kWriteState,
+  };
+  resource->out()->set_done_timestamp(timestamp_counter);
+
+  // We don't use the return value of the queue-send. If the queue was full, then another
+  // done-event is already queued. Since we updated the timestamp that's ok. The
+  // user will know what to do.
+  xQueueSendFromISR(queue, &payload, &higher_was_woken);
+  return higher_was_woken == pdTRUE;
+}
+
+RMT_IRAM_ATTR static bool rx_done(rmt_channel_t* channel,
+                                  const rmt_rx_done_event_data_t* event,
+                                  void* user_ctx) {
+  auto resource = reinterpret_cast<RmtResource*>(user_ctx);
+  auto queue = resource->queue();
+  BaseType_t higher_was_woken;
+  Event payload = {
+    .state = kReadState,
+  };
+  // Each symbol is 4 bytes long.
+  resource->in()->set_received(static_cast<int>(event->num_symbols) * 4);
+  resource->in()->set_done_timestamp(timestamp_counter);
+
+  // We don't use the return value of the queue-send. If the queue was full, then another
+  // done-event is already queued. Since we updated the timestamp that's ok. The
+  // user will know what to do.
+  xQueueSendFromISR(queue, &payload, &higher_was_woken);
+  return higher_was_woken == pdTRUE;
+}
+
 MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
+
+PRIMITIVE(bytes_per_memory_block) {
+  return Smi::from(SOC_RMT_MEM_WORDS_PER_CHANNEL * sizeof(word));
+}
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  RmtResourceGroup* rmt = _new RmtResourceGroup(process);
+  RmtResourceGroup* rmt = _new RmtResourceGroup(process, EventQueueEventSource::instance());
   if (!rmt) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(rmt);
@@ -147,80 +335,129 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(channel_new) {
-  // The direction is:
-  // * 0: no direction given.
-  // * -1: input
-  // * +1: output
-  ARGS(RmtResourceGroup, resource_group, int, memory_block_count, int, channel_num, int, direction)
+  ARGS(RmtResourceGroup, resource_group, int, pin_num, uint32, resolution, uint32, block_symbols, int, kind)
+
+  if (block_symbols == 0) FAIL(INVALID_ARGUMENT);
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
-  if (memory_block_count <= 0) FAIL(INVALID_ARGUMENT);
 
-  // Output by default (unless a channel_num was given).
-  if (channel_num != -1 && direction == 0) {
-    direction = RMT_IS_RX_CHANNEL(channel_num) ? -1 : 1;
-  } else if (direction == 0) {
-    // Output by default.
-    direction = 1;
-  }
+  bool handed_to_resource = false;
 
-  auto channel_pool = direction == -1 ? rmt_rx_channels : rmt_tx_channels;
+  const int caps_flags = RMT_MEM_ALLOC_CAPS;
+  auto resource_memory = heap_caps_malloc(sizeof(RmtResource), caps_flags);
+  if (!resource_memory) FAIL(MALLOC_FAILED);
+  Defer free_resource_memory { [&] { if (!handed_to_resource) free(resource_memory); } };
 
-  rmt_channel_t channel = kInvalidChannel;
+  bool is_tx = kind != 0;
 
-  if (channel_num == -1 && memory_block_count == 1) {
-    channel = channel_pool->any();
-  } else if (memory_block_count == 1) {
-    channel = static_cast<rmt_channel_t>(channel_num);
-    if (!channel_pool->take(channel)) channel = kInvalidChannel;
+  RmtInOut* in_out;
+  if (is_tx) {
+    auto out_memory = heap_caps_malloc(sizeof(RmtOut), caps_flags);
+    if (!out_memory) FAIL(MALLOC_FAILED);
+    in_out = new (out_memory) RmtOut();
   } else {
-    // Try to find adjacent channels that are still free.
-    int current_start_id = (channel_num == -1) ? 0 : channel_num;
-    while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_PER_GROUP) {
-      int taken = 0;
-      for (int i = 0; i < memory_block_count; i++) {
-        bool succeeded = channel_pool->take(static_cast<rmt_channel_t>(current_start_id + i));
-        if (!succeeded) break;
-        taken++;
-      }
-      if (taken == memory_block_count) {
-        // Success. We have reserved channels that are next to each other.
-        channel = static_cast<rmt_channel_t>(current_start_id);
-        break;
-      } else {
-        // Release all the channels we have reserved, and then try at a later
-        // position.
-        for (int i = 0; i < taken; i++) {
-          channel_pool->put(static_cast<rmt_channel_t>(current_start_id + i));
-        }
-        if (channel_num == -1) {
-          // Continue searching after the current failure.
-          current_start_id += taken + 1;
-        } else {
-          // Failure. Couldn't allocate the requested memory blocks at this position.
-          break;
-        }
-      }
-    }
+    auto in_memory = heap_caps_malloc(sizeof(RmtIn), caps_flags);
+    if (!in_memory) FAIL(MALLOC_FAILED);
+    in_out = new (in_memory) RmtIn();
   }
-  if (channel == kInvalidChannel) FAIL(ALREADY_IN_USE);
+  Defer free_in_out { [&] { if (!handed_to_resource) delete in_out; } };
 
-  RmtResource* resource = null;
-  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    resource = _new RmtResource(resource_group, channel, memory_block_count);
-    if (!resource) {
-      for (int i = 0; i < memory_block_count; i++) {
-        channel_pool->put(static_cast<rmt_channel_t>(channel + i));
-      }
-      FAIL(MALLOC_FAILED);
-    }
+  // No need for a big queue. We only allow one read/write at a time.
+  QueueHandle_t queue = xQueueCreate(1, sizeof(word));
+  if (queue == null) FAIL(MALLOC_FAILED);
+  Defer free_queue { [&] { if (!handed_to_resource) vQueueDelete(queue); } };
+
+  rmt_channel_handle_t handle;
+  esp_err_t err;
+  if (is_tx) {
+    bool open_drain = kind == 2;
+    rmt_tx_channel_config_t cfg = {
+      .gpio_num = static_cast<gpio_num_t>(pin_num),
+      .clk_src = RMT_CLK_SRC_DEFAULT,
+      .resolution_hz = resolution,
+      .mem_block_symbols = static_cast<size_t>(block_symbols),
+      .trans_queue_depth = 1,  // We only allow one active operation.
+      .intr_priority = 0,
+      .flags = {
+        .invert_out = false,
+        .with_dma = false,
+        .io_loop_back = true,
+        .io_od_mode = open_drain,
+      },
+    };
+    err = rmt_new_tx_channel(&cfg, &handle);
+  } else {
+    // Input.
+    rmt_rx_channel_config_t cfg = {
+      .gpio_num = static_cast<gpio_num_t>(pin_num),
+      .clk_src = RMT_CLK_SRC_DEFAULT,
+      .resolution_hz = resolution,
+      .mem_block_symbols = static_cast<size_t>(block_symbols),
+      .intr_priority = 0,
+      .flags = {
+        .invert_in = false,
+        .with_dma = false,
+        .io_loop_back = false,
+      },
+    };
+
+    err = rmt_new_rx_channel(&cfg, &handle);
+  }
+  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer delete_channel { [&] { if (!handed_to_resource) rmt_del_channel(handle); } };
+
+  RmtResource* resource = new (resource_memory) RmtResource(resource_group, handle, is_tx, in_out, queue);
+  handed_to_resource = true;
+
+  if (is_tx) {
+    rmt_tx_event_callbacks_t callbacks = {
+      .on_trans_done = tx_done,
+    };
+    err = rmt_tx_register_event_callbacks(handle, &callbacks, resource);
+  } else {
+    rmt_rx_event_callbacks_t callbacks = {
+      .on_recv_done = rx_done,
+    };
+    err = rmt_rx_register_event_callbacks(handle, &callbacks, resource);
+  }
+  if (err != ESP_OK) {
+    delete resource;
+    return Primitive::os_error(err, process);
   }
 
   resource_group->register_resource(resource);
-
   proxy->set_external_address(resource);
 
   return proxy;
+}
+
+PRIMITIVE(enable) {
+  ARGS(RmtResource, resource)
+  if (!resource->is_enabled()) {
+    esp_err_t err = rmt_enable(resource->handle());
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
+  resource->set_state(RmtResource::ENABLED);
+  return process->null_object();
+}
+
+PRIMITIVE(disable) {
+  ARGS(RmtResource, resource)
+  if (resource->is_enabled()) {
+    esp_err_t err = rmt_disable(resource->handle());
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+
+    if (resource->is_tx()) {
+      err = resource->out()->disable();
+    } else {
+      err = resource->in()->disable();
+    }
+    FATAL_IF_NOT_ESP_OK(err);
+  }
+  resource->set_state(RmtResource::DISABLED);
+  return process->null_object();
 }
 
 PRIMITIVE(channel_delete) {
@@ -230,246 +467,157 @@ PRIMITIVE(channel_delete) {
   return process->null_object();
 }
 
-esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size) {
-  rmt_channel_status_result_t channel_status;
-  esp_err_t err = rmt_get_channel_status(&channel_status);
-  if (ESP_OK != err) return err;
-
-  if (channel_status.status[channel_num] != RMT_CHANNEL_UNINIT) {
-    err = rmt_driver_uninstall(channel_num);
-    if (ESP_OK != err) return err;
-  }
-
-  err = rmt_config(config);
-  if (ESP_OK != err) return err;
-
-  err = rmt_set_source_clk(channel_num, RMT_BASECLK_DEFAULT);
-  if (ESP_OK != err) return err;
-
-  err = rmt_driver_install(channel_num, rx_buffer_size, 0);
-  return err;
-}
-
-PRIMITIVE(config_tx) {
-  ARGS(RmtResource, resource, int, pin_num, uint8, clk_div, int, flags,
-       bool, carrier_en, uint32, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
-       bool, loop_en, bool, idle_output_en, int, idle_level)
-
-  if (carrier_en && carrier_level != 0 && carrier_level != 1) FAIL(INVALID_ARGUMENT);
-  if (carrier_duty_percent < 0 || carrier_duty_percent > 100) FAIL(INVALID_ARGUMENT);
-  if (idle_output_en && idle_level != 0 && idle_level != 1) FAIL(INVALID_ARGUMENT);
-
-  rmt_channel_t channel = resource->channel();
-  rmt_config_t config = RMT_DEFAULT_CONFIG_TX(static_cast<gpio_num_t>(pin_num), channel);
-
-  config.mem_block_num = resource->memory_block_count();
-  config.clk_div = clk_div;
-  config.flags = flags;
-  config.rmt_mode = RMT_MODE_TX;
-  config.tx_config.carrier_en = carrier_en;
-  config.tx_config.carrier_freq_hz = carrier_freq_hz;
-  config.tx_config.carrier_level = static_cast<rmt_carrier_level_t>(carrier_level);
-  config.tx_config.carrier_duty_percent = carrier_duty_percent;
-  config.tx_config.loop_en = loop_en;
-  config.tx_config.idle_output_en = idle_output_en;
-  config.tx_config.idle_level = static_cast<rmt_idle_level_t>(idle_level);
-
-  esp_err_t err = configure(&config, channel, 0);
-  if (ESP_OK != err) return Primitive::os_error(err, process);
-
-  return process->null_object();
-}
-
-PRIMITIVE(config_rx) {
-  ARGS(RmtResource, resource, int, pin_num, uint8, clk_div, int, flags,
-       uint16, idle_threshold, bool, filter_en, uint8, filter_ticks_thresh, int, buffer_size)
-
-  rmt_channel_t channel = resource->channel();
-  rmt_config_t config = RMT_DEFAULT_CONFIG_RX(static_cast<gpio_num_t>(pin_num), channel);
-
-  const int kMemoryBlockSize = 256;
-  if (buffer_size == -1) {
-    buffer_size = 2 * resource->memory_block_count() * kMemoryBlockSize;
-  }
-  config.mem_block_num = resource->memory_block_count();
-  config.clk_div = clk_div;
-  config.flags = flags;
-  config.rmt_mode = RMT_MODE_RX;
-  config.rx_config.idle_threshold = idle_threshold;
-  config.rx_config.filter_en = filter_en;
-  config.rx_config.filter_ticks_thresh = filter_ticks_thresh;
-
-  esp_err_t err = configure(&config, channel, buffer_size);
-  if (ESP_OK != err) return Primitive::os_error(err, process);
-
-  return process->null_object();
-}
-
-PRIMITIVE(get_idle_threshold) {
-  ARGS(RmtResource, resource)
-  uint16_t threshold;
-  esp_err_t err = rmt_get_rx_idle_thresh(resource->channel(), &threshold);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  return Smi::from(threshold);
-}
-
-PRIMITIVE(set_idle_threshold) {
-  ARGS(RmtResource, resource, uint16, threshold)
-  esp_err_t err = rmt_set_rx_idle_thresh(resource->channel(), threshold);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->null_object();
-}
-
-PRIMITIVE(config_bidirectional_pin) {
-  ARGS(int, pin, RmtResource, resource, bool, enable_pullup);
-
-  // This function has to be called after the pin was first
-  // configured as an output channel, and then as an input channel.
-  // We now need to reenable the output without losing the input.
-
-  // Enable the pin. "w1ts" = "write 1 to set".
-  // TODO(florian): not completely sure why this is needed, but without it
-  // it won't work.
-#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
-  if (pin >= MAX_GPIO_NUM) FAIL(INVALID_ARGUMENT);
-  GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
-#else
-  if (pin < 32) {
-    GPIO.enable_w1ts = (0x1 << pin);
-  } else {
-    GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
-  }
-#endif
-  esp_err_t err = rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  // Make the pin an input again.
-  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
-
-  // Make the pin open-drain.
-  GPIO.pin[pin].pad_driver = 1;
-
-  if (enable_pullup) {
-    err = gpio_pullup_en(static_cast<gpio_num_t>(pin));
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-  }
-
-  return process->null_object();
-}
-
 PRIMITIVE(transmit) {
-  ARGS(RmtResource, resource, Blob, items_bytes)
+  ARGS(RmtResource, resource, Blob, items_bytes, int, loop_count, int, idle_level)
+  if (!resource->is_tx()) FAIL(UNSUPPORTED);
   if (items_bytes.length() % 4 != 0) FAIL(INVALID_ARGUMENT);
+  if (idle_level != 0 && idle_level != 1) FAIL(INVALID_ARGUMENT);
 
-  // We are going to pass a pointer to a C function which will consume it, while we
-  // yield back to the Toit VM. There could be GCs while the C function uses the memory.
-  // As such, we need an external address.
-  const uint8* address = items_bytes.address();
-  Object* keep_alive = _raw_items_bytes;
-  if (is_byte_array(_raw_items_bytes) && ByteArray::cast(_raw_items_bytes)->has_external_address()) {
-    // Nothing to do. We already have an external address.
-  } else {
-    // Create an external byte array with the same size.
-    // We will return it to the caller, so they can keep it alive.
-    // Force external.
-    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), true);
-    if (external_copy == null) FAIL(ALLOCATION_FAILED);
-    ByteArray::Bytes bytes(external_copy);
-    memcpy(bytes.address(), address, items_bytes.length());
-    address = bytes.address();
-    keep_alive = external_copy;
+  auto out = resource->out();
+  if (out->buffer() != null) {
+    // Some operation is still in progress.
+    return process->false_object();
   }
+  ASSERT(out->encoder() == null);
 
-  rmt_channel_t channel = resource->channel();
-  const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(address);
-  bool wait_until_done;  // Local for naming argument in call.
-  esp_err_t err = rmt_write_items(channel, items, items_bytes.length() / 4, (wait_until_done=false));
+  bool successful_return = false;
+
+  // Make a copy that is owned by the resource.
+  const int caps_flags = RMT_MEM_ALLOC_CAPS;
+  uint8* buffer = unvoid_cast<uint8*>(heap_caps_malloc(items_bytes.length(), caps_flags));
+  if (buffer == null) FAIL(MALLOC_FAILED);
+  memcpy(buffer, items_bytes.address(), items_bytes.length());
+  out->set_buffer(buffer);
+  Defer free_buffer { [&] {
+    if (!successful_return) {
+      free(out->buffer());
+      out->set_buffer(null);
+    }
+  } };
+
+  rmt_copy_encoder_config_t encoder_cfg = {};
+  rmt_encoder_handle_t encoder_handle;
+  esp_err_t err = rmt_new_copy_encoder(&encoder_cfg, &encoder_handle);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  out->set_encoder(encoder_handle);
+  Defer del_encoder { [&] {
+    if (!successful_return) {
+      rmt_del_encoder(out->encoder());
+      out->set_encoder(null);
+    }
+  } };
+
+  rmt_transmit_config_t transmit_config = {
+    .loop_count = loop_count,
+    .flags = {
+      .eot_level = static_cast<uint32>(idle_level),
+      .queue_nonblocking = false,
+    },
+  };
+  uint16 timestamp = ++timestamp_counter;
+  out->set_request_timestamp(timestamp);
+  err = rmt_transmit(resource->handle(), encoder_handle, buffer, items_bytes.length(), &transmit_config);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return keep_alive;
+  successful_return = true;
+  return process->true_object();
 }
 
-PRIMITIVE(transmit_done) {
-  ARGS(RmtResource, resource, ByteArray, keep_alive)
-  USE(keep_alive);
-  esp_err_t err = rmt_wait_tx_done(resource->channel(), 0);
-  if (err == ESP_ERR_TIMEOUT) return BOOL(false);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  return BOOL(true);
-}
+PRIMITIVE(is_transmit_done) {
+  ARGS(RmtResource, resource)
+  if (!resource->is_tx()) FAIL(UNSUPPORTED);
 
-static void flush_buffer(RingbufHandle_t rb) {
-  void* bytes = null;
-  size_t length = 0;
-  while((bytes = xRingbufferReceive(rb, &length, 0))) {
-    vRingbufferReturnItem(rb, bytes);
-  }
+  auto out = resource->out();
+  return BOOL(out->buffer() == null);
 }
 
 PRIMITIVE(start_receive) {
-  ARGS(RmtResource, resource, bool, flush)
+  ARGS(RmtResource, resource, uint32, min_ns, uint32, max_ns, uint32, max_size)
+  if (resource->is_tx()) FAIL(UNSUPPORTED);
+  if (max_size % 4 != 0) FAIL(INVALID_ARGUMENT);
+  if (!resource->is_enabled()) FAIL(INVALID_STATE);
 
-  if (flush) {
-    RingbufHandle_t rb = null;
-    esp_err_t err = rmt_get_ringbuf_handle(resource->channel(), &rb);
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-    flush_buffer(rb);
+  auto in = resource->in();
+  if (in->buffer() != null) {
+    // Read in progress.
+    FAIL(INVALID_STATE);
   }
 
-  bool reset_memory;
-  esp_err_t err = rmt_rx_start(resource->channel(), reset_memory=flush);
+  bool successful_return = false;
+
+  const int caps_flags = RMT_MEM_ALLOC_CAPS;
+  uint8* buffer = unvoid_cast<uint8*>(heap_caps_malloc(max_size, caps_flags));
+  if (buffer == null) FAIL(MALLOC_FAILED);
+  in->set_buffer(buffer);
+  in->set_received(-1);
+  Defer free_buffer { [&] {
+    if (!successful_return) {
+      free(in->buffer());
+      in->set_buffer(null);
+    }
+  } };
+
+  rmt_receive_config_t cfg = {
+    .signal_range_min_ns = min_ns,
+    .signal_range_max_ns = max_ns,
+    .flags = {
+      // We don't allow partial reads. They are also not supported by all hardware.
+      .en_partial_rx = false,
+    },
+  };
+  uint16 timestamp = ++timestamp_counter;
+  in->set_request_timestamp(timestamp);
+  esp_err_t err = rmt_receive(resource->handle(), buffer, max_size, &cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  successful_return = true;
   return process->null_object();
 }
 
-PRIMITIVE(prepare_receive) {
-  ARGS(RmtResource, resource)
-
-  RingbufHandle_t rb = null;
-  esp_err_t err = rmt_get_ringbuf_handle(resource->channel(), &rb);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  size_t max_size = xRingbufferGetMaxItemSize(rb);
-
-  // Force external, so we can adjust the length after the read.
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), true);
-  if (data == null) FAIL(ALLOCATION_FAILED);
-  return data;
-}
-
 PRIMITIVE(receive) {
-  // If resize is true, then we expect that the output array was allocated in prepare_receive.
-  // As such it is an external byte array that we can resize.
-  ARGS(RmtResource, resource, ByteArray, output, bool, resize)
+  ARGS(RmtResource, resource)
+  if (resource->is_tx()) FAIL(UNSUPPORTED);
+  if (!resource->is_enabled()) FAIL(INVALID_STATE);
 
-  RingbufHandle_t rb = null;
-  esp_err_t err = rmt_get_ringbuf_handle(resource->channel(), &rb);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  size_t received_length;
-  auto received_bytes = xRingbufferReceive(rb, &received_length, 0);
-  if (received_bytes == null) return process->null_object();
-  if (received_length == 0) {
-    // We got a 0-length item. The RMT sometimes does this. Ignore it.
-    vRingbufferReturnItem(rb, received_bytes);
+  auto in = resource->in();
+  uint16 done_timestamp = in->done_timestamp();
+  uint16 request_timestamp = in->request_timestamp();
+  if (!is_timestamp_before_or_equal(request_timestamp, done_timestamp)) {
+    // We don't have the data yet.
     return process->null_object();
   }
 
-  ByteArray::Bytes bytes(output);
-  int min_length = bytes.length();
-  if (received_length < min_length) min_length = received_length;
+  auto bytes = in->buffer();
+  int received = in->received();
+  bytes = unvoid_cast<uint8*>(realloc(bytes, received));
+  if (bytes == null) FAIL(MALLOC_FAILED);
+  // In case we run out of memory for the external memory we need to store the
+  // realloced buffer.
+  in->set_buffer(bytes);
 
-  memcpy(bytes.address(), received_bytes, min_length);
-  vRingbufferReturnItem(rb, received_bytes);
+  bool dispose, clear;
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(received, bytes, dispose=true, clear=false);
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
-  if (resize && output->has_external_address()) {
-    output->resize_external(process, min_length);
-  }
-  return output;
+  in->set_buffer(null);
+  in->set_received(-1);
+
+  return result;
 }
 
-PRIMITIVE(stop_receive) {
-  ARGS(RmtResource, resource)
-  esp_err_t err = rmt_rx_stop(resource->channel());
+PRIMITIVE(apply_carrier) {
+  ARGS(RmtResource, resource, uint32, frequency, double, duty_cycle, bool, active_low, bool, always_on)
+
+  rmt_carrier_config_t cfg = {
+    .frequency_hz = frequency,
+    .duty_cycle = static_cast<float>(duty_cycle),
+    .flags = {
+      .polarity_active_low = active_low,
+      .always_on = always_on,
+    },
+  };
+
+  esp_err_t err = rmt_apply_carrier(resource->handle(), &cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->null_object();
 }

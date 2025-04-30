@@ -5,6 +5,7 @@
 import gpio
 import monitor
 import rmt
+import system
 
 import .test
 import .wait-for1-shared
@@ -55,9 +56,19 @@ test:
   pin-in.wait-for 1
 
   print "sending ultra short pulses"
-  // For some reason we seem to miss one pulse if we run at 80MHz (clk_div=1).
-  // 40MHz seems to be fine, though.
-  channel := rmt.Channel pin-out --output --clk-div=2
+
+  clk-div/int := ?
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    // For some reason we seem to miss one pulse if we run at 80MHz.
+    // 40MHz seems to be fine, though.
+    clk-div = 2
+  else:
+    // For non ESP32 devices the datasheet requires:
+    //  3 × T_apb_clk + 5 × T_rmt_sclk < period × T_clk_div
+    // We set the clk-div to 9, and the period to 1.
+    clk-div = 9
+
+  channel := rmt.Out pin-out --resolution=(80_000_000 / clk-div)
   signals := rmt.Signals 2
   signals.set 0 --period=1 --level=1
   signals.set 1 --period=0 --level=0

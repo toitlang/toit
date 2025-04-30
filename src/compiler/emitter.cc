@@ -452,6 +452,9 @@ void Emitter::branch(Condition condition, Label* label) {
   } else if (condition == IF_TRUE) {
     op = label->is_bound() ? BRANCH_BACK_IF_TRUE : BRANCH_IF_TRUE;
     stack_.pop();
+  } else if (condition == IF_NOT_NULL) {
+    op = label->is_bound() ? BRANCH_BACK_IF_NOT_NULL : BRANCH_IF_NOT_NULL;
+    stack_.pop();
   } else {
     ASSERT(condition == IF_FALSE);
     op = label->is_bound() ? BRANCH_BACK_IF_FALSE: BRANCH_IF_FALSE;

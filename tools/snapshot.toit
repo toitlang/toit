@@ -173,7 +173,7 @@ class SnapshotBundle:
   sdk-version      / string
 
   constructor.from-file name/string:
-    return SnapshotBundle name (file.read-content name)
+    return SnapshotBundle name (file.read-contents name)
 
   constructor byte-array/ByteArray:
     return SnapshotBundle null byte-array
@@ -890,9 +890,11 @@ BYTE-CODES ::= [
   Bytecode "BRANCH"                     3 OP-SF "branch",
   Bytecode "BRANCH_IF_TRUE"             3 OP-SF "branch if true",
   Bytecode "BRANCH_IF_FALSE"            3 OP-SF "branch if false",
+  Bytecode "BRANCH_IF_NOT_NULL"         3 OP-SF "branch if not null",
   Bytecode "BRANCH_BACK"                5 OP-SB-SB "branch back",
   Bytecode "BRANCH_BACK_IF_TRUE"        5 OP-SB-SB "branch back if true",
   Bytecode "BRANCH_BACK_IF_FALSE"       5 OP-SB-SB "branch back if false",
+  Bytecode "BRANCH_BACK_IF_NOT_NULL"    5 OP-SB-SB "branch back if not null",
   Bytecode "PRIMITIVE"                  4 OP-BU-SU "invoke primitive",
   Bytecode "THROW"                      2 OP-BU "throw",
   Bytecode "RETURN"                     3 OP-BS-BU "return",
@@ -1358,7 +1360,7 @@ abstract class SourceSegment extends Segment:
     set-offset_ SegmentHeader.SIZE
 
   content:
-    if not content_: content_ = read-content_
+    if not content_: content_ = read-contents_
     return content_
 
   read-position_ -> Position:
@@ -1367,7 +1369,7 @@ abstract class SourceSegment extends Segment:
   read-string_ -> string:
     return strings_.content[read-cardinal_]
 
-  abstract read-content_
+  abstract read-contents_
 
 // Abstract class for a segment that contain a list of elements.
 abstract class ListSegment extends SourceSegment:
@@ -1379,7 +1381,7 @@ abstract class ListSegment extends SourceSegment:
 
   abstract read-element_ index / int
 
-  read-content_:
+  read-contents_:
     return List count_: read-element_ it
 
   content -> List: return super
@@ -1397,7 +1399,7 @@ abstract class MapSegment extends SourceSegment:
 
   abstract read-element_ -> List  // A pair of key / value.
 
-  read-content_:
+  read-contents_:
     result := {:}
     count_.repeat:
       element := read-element_

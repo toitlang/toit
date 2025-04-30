@@ -180,9 +180,11 @@ enum BytecodeFormat {
   BYTECODE(BRANCH,                     3, OP_SF, "branch")                     \
   BYTECODE(BRANCH_IF_TRUE,             3, OP_SF, "branch if true")             \
   BYTECODE(BRANCH_IF_FALSE,            3, OP_SF, "branch if false")            \
+  BYTECODE(BRANCH_IF_NOT_NULL,         3, OP_SF, "branch if not null")         \
   BYTECODE(BRANCH_BACK,                5, OP_SB_SB, "branch back")             \
   BYTECODE(BRANCH_BACK_IF_TRUE,        5, OP_SB_SB, "branch back if true")     \
   BYTECODE(BRANCH_BACK_IF_FALSE,       5, OP_SB_SB, "branch back if false")    \
+  BYTECODE(BRANCH_BACK_IF_NOT_NULL,    5, OP_SB_SB, "branch back if not null") \
   BYTECODE(PRIMITIVE,                  4, OP_BU_SU, "invoke primitive")        \
   BYTECODE(THROW,                      2, OP_BU, "throw")                      \
   BYTECODE(RETURN,                     3, OP_BS_BU, "return")                  \

@@ -241,6 +241,20 @@ void ByteGen::visit_for_control(Expression* expression,
     return;
   }
 
+  if (yes == fallthrough && expression->is_CallBuiltin()) {
+    auto builtin = expression->as_CallBuiltin();
+    if (builtin->target()->kind() == Builtin::IDENTICAL) {
+      bool left_is_null = builtin->arguments()[0]->is_LiteralNull();
+      bool right_is_null = builtin->arguments()[1]->is_LiteralNull();
+      if (left_is_null || right_is_null) {
+        Expression* other = builtin->arguments()[left_is_null ? 1 : 0];
+        visit_for_value(other);
+        __ branch(Emitter::IF_NOT_NULL, no);
+        return;
+      }
+    }
+  }
+
   visit_for_value(expression);
   if (yes == fallthrough) {
     __ branch(Emitter::IF_FALSE, no);
