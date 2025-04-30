@@ -193,6 +193,21 @@ class RmtResource : public EventQueueResource {
   RmtInOut* in_out_;
 };
 
+class RmtSyncManagerResource : public Resource {
+ public:
+  TAG(RmtSyncManagerResource);
+  RmtSyncManagerResource(SimpleResourceGroup* group, rmt_sync_manager_handle_t handle)
+      : Resource(group)
+      , handle_(handle) {}
+
+  ~RmtSyncManagerResource() override;
+
+  rmt_sync_manager_handle_t handle() const { return handle_; }
+
+ private:
+  rmt_sync_manager_handle_t handle_;
+};
+
 // A counter for identifying operations.
 // This counter is a replacement for timestamps which are hard to get inside an interrupt.
 // Each operation that expects a response through an interrupt, increments and saves
@@ -277,6 +292,10 @@ bool RmtResource::receive_event(word* data) {
     }
   }
   return more;
+}
+
+RmtSyncManagerResource::~RmtSyncManagerResource() {
+  FATAL_IF_NOT_ESP_OK(rmt_del_sync_manager(handle_));
 }
 
 RMT_IRAM_ATTR static bool tx_done(rmt_channel_t* channel,
@@ -618,6 +637,60 @@ PRIMITIVE(apply_carrier) {
   };
 
   esp_err_t err = rmt_apply_carrier(resource->handle(), &cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+}
+
+PRIMITIVE(sync_manager_new) {
+  ARGS(SimpleResourceGroup, group, Array, channels)
+
+  if (channels->length() > SOC_RMT_CHANNELS_PER_GROUP) FAIL(INVALID_ARGUMENT);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  rmt_channel_handle_t handles[SOC_RMT_CHANNELS_PER_GROUP];
+  for (int i = 0; i < channels->length(); i++) {
+    Object* o = channels->at(i);
+    if (!is_byte_array(o)) FAIL(WRONG_OBJECT_TYPE);
+    ByteArray* bytes = ByteArray::cast(o);
+    if (!bytes->has_external_address() || bytes->external_tag() != RmtResourceTag) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    RmtResource* resource = bytes->as_external<RmtResource>();
+    if (!resource->is_tx()) FAIL(INVALID_ARGUMENT);
+    handles[i] = resource->handle();
+  }
+
+  rmt_sync_manager_config_t cfg = {
+    .tx_channel_array = handles,
+    .array_size = static_cast<size_t>(channels->length()),
+  };
+  rmt_sync_manager_handle_t handle;
+  esp_err_t err = rmt_new_sync_manager(&cfg, &handle);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  bool handed_to_resource = false;
+  Defer del_sync { [&] { if (!handed_to_resource) rmt_del_sync_manager(handle); } };
+
+  RmtSyncManagerResource* resource = _new RmtSyncManagerResource(group, handle);
+  handed_to_resource = true;
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+
+  return proxy;
+}
+
+PRIMITIVE(sync_manager_delete) {
+  ARGS(SimpleResourceGroup, group, RmtSyncManagerResource, resource)
+  group->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(sync_manager_reset) {
+  ARGS(RmtSyncManagerResource, resource)
+  esp_err_t err = rmt_sync_reset(resource->handle());
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->null_object();
 }
