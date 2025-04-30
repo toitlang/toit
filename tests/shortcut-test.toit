@@ -21,35 +21,35 @@ main:
   expect-equals "good" marker
 
   marker = null
-  if 0:
+  if 0:  // NO-WARN
     marker = "good"
   else:
     marker = "bad"
   expect-equals "good" marker
 
   marker = null
-  if "":
+  if "":  // NO-WARN
     marker = "good"
   else:
     marker = "bad"
   expect-equals "good" marker
 
   marker = null
-  if 0:
+  if 0:  // NO-WARN
     marker = "good"
   else:
     marker = "bad"
   expect-equals "good" marker
 
   marker = null
-  if ' ':
+  if ' ':  // NO-WARN
     marker = "good"
   else:
     marker = "bad"
   expect-equals "good" marker
 
   marker = null
-  if 0.0:
+  if 0.0:  // NO-WARN
     marker = "good"
   else:
     marker = "bad"

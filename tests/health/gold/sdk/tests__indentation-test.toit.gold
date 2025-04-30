@@ -1,6 +1,0 @@
-tests/indentation-test.toit:50:9: warning: Unexpected indentation: 'if' and 'else' not at same level
-        else:  // Else can be at any level. Does not require the next line to be indented more.
-        ^~~~
-tests/indentation-test.toit:57:9: warning: Unexpected indentation: 'if' and 'else' not at same level
-        else if true:
-        ^~~~

@@ -34,7 +34,7 @@ test-if:
   expect n == 43 --message="if #3"
 
   n = 87
-  if n: n = 42
+  if n: n = 42  // NO-WARN
   else: n = 43
   expect n == 42 --message="if #2"
 

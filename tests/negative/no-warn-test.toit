@@ -1,11 +1,11 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2025 Toit contributors.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+/// Deprecated.
+deprecated:
+
 main:
-  bytes := #[-1, 256]
-  print #[1, [2, 3]]
-  print #[1024]
-  f := 3.14
-  print #[f]
+  deprecated  // Should warn.
+  deprecated  // NO-WARN
   unresolved

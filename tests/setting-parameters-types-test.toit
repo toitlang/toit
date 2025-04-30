@@ -27,23 +27,23 @@ class A:
 
   constructor.not-setting x:
 
-  foo .x:
+  foo .x:  // NO-WARN
 
-  bar .y:
-  bar2 .y/string:
-  bar3 .y/any:
+  bar .y:  // NO-WARN
+  bar2 .y/string:  // NO-WARN
+  bar3 .y/any:  // NO-WARN
 
-  gee .z:
-  gee2 .z/string:
+  gee .z:  // NO-WARN
+  gee2 .z/string:  // NO-WARN
 
-  foo --named/bool .x:
+  foo --named/bool .x:  // NO-WARN
 
-  bar --named/bool .y:
-  bar2 --named/bool .y/string:
-  bar3 --named/bool .y/any:
+  bar --named/bool .y:  // NO-WARN
+  bar2 --named/bool .y/string:  // NO-WARN
+  bar3 --named/bool .y/any:  // NO-WARN
 
-  gee --named/bool .z:
-  gee2 --named/bool .z/string:
+  gee --named/bool .z:  // NO-WARN
+  gee2 --named/bool .z/string:  // NO-WARN
 
 main:
   a := A.not-setting "foo"

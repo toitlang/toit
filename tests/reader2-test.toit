@@ -17,67 +17,67 @@ class TestReader implements Reader:
     return strings_[index_++].to-byte-array
 
 main:
-  r := BufferedReader (TestReader ["foo\n", "bar\n"])
+  r := BufferedReader (TestReader ["foo\n", "bar\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"])
+  r = BufferedReader (TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["foo\r\n", "bar\r\n"])
+  r = BufferedReader (TestReader ["foo\r\n", "bar\r\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r", "\r", "\n"])
+  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r", "\r", "\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["foo\n", "bar\n"])
+  r = BufferedReader (TestReader ["foo\n", "bar\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"])
+  r = BufferedReader (TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["foo\r\n", "bar"])
+  r = BufferedReader (TestReader ["foo\r\n", "bar"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"])
+  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" r.read-line
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["foo\r\n", "bar"])
+  r = BufferedReader (TestReader ["foo\r\n", "bar"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" (r.read-string 3)
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"])
+  r = BufferedReader (TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" (r.read-string 3)
   expect-equals null r.read-line
   expect-equals null r.read-line
 
-  r = BufferedReader (TestReader ["foo\r\nbar"])
+  r = BufferedReader (TestReader ["foo\r\nbar"])  // NO-WARN
   expect-equals "foo" r.read-line
   expect-equals "bar" (r.read-string 3)
   expect-equals null r.read-line

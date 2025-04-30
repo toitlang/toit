@@ -48,9 +48,9 @@ class SettingParameters:
   x := 0
   y := 499
 
-  foo this.x this.y:
+  foo this.x this.y:  // NO-WARN
 
-  bar x this.y:  // The this.y is not visible as parameter in the body.
+  bar x this.y:  // The this.y is not visible as parameter in the body.  // NO-WARN
     this.x += x
     y++  // Updates the variable.
 
@@ -65,9 +65,9 @@ class SettingParametersB:
   x := 0
   y := 499
 
-  foo .x .y:
+  foo .x .y:  // NO-WARN
 
-  bar x .y:  // The this.y is not visible as parameter in the body.
+  bar x .y:  // The this.y is not visible as parameter in the body.  // NO-WARN
     this.x += x
     y++  // Updates the variable.
 

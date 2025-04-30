@@ -32,11 +32,11 @@ test-no-pull-up --idle-level/int:
 
   rmt-pin := gpio.Pin RMT-PIN
 
-  out := rmt.Channel rmt-pin --output --idle-level=idle-level
-  in := rmt.Channel rmt-pin --input
+  out := rmt.Channel rmt-pin --output --idle-level=idle-level  // NO-WARN
+  in := rmt.Channel rmt-pin --input  // NO-WARN
   // We actually don't need the bidirectionality here, but by
   // making the channel bidirectional it switches to open drain.
-  rmt.Channel.make-bidirectional --in=in --out=out
+  rmt.Channel.make-bidirectional --in=in --out=out  // NO-WARN
 
   // Give the 1M resistor time to drain.
   sleep --ms=1
@@ -76,11 +76,11 @@ test-pull-up --idle-level/int:
 
   rmt-pin := gpio.Pin RMT-PIN
 
-  out := rmt.Channel rmt-pin --output --idle-level=idle-level
-  in := rmt.Channel rmt-pin --input
+  out := rmt.Channel rmt-pin --output --idle-level=idle-level  // NO-WARN
+  in := rmt.Channel rmt-pin --input  // NO-WARN
   // We actually don't need the bidirectionality here, but by
   // making the channel bidirectional it switches to open drain.
-  rmt.Channel.make-bidirectional --in=in --out=out --pull-up
+  rmt.Channel.make-bidirectional --in=in --out=out --pull-up  // NO-WARN
 
   if idle-level == 0:
     // The open drain wins over the 1M resistor.

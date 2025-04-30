@@ -41,20 +41,8 @@ class Diagnostics {
   // TODO(florian): this feels hackish...
   virtual bool should_report_missing_main() const = 0;
 
-  void report(Severity severity, const char* format, va_list& arguments) {
-    severity = adjust_severity(severity);
-    bool was_emitted = emit(severity, format, arguments);
-    if (!was_emitted) return;
-    if (severity == Severity::error) encountered_error_ = true;
-    if (severity == Severity::warning) encountered_warning_ = true;
-  }
-  void report(Severity severity, Source::Range range, const char* format, va_list& arguments) {
-    severity = adjust_severity(severity);
-    bool was_emitted = emit(severity, range, format, arguments);
-    if (!was_emitted) return;
-    if (severity == Severity::error) encountered_error_ = true;
-    if (severity == Severity::warning) encountered_warning_ = true;
-  }
+  void report(Severity severity, const char* format, va_list& arguments);
+  void report(Severity severity, Source::Range range, const char* format, va_list& arguments);
 
   void report_error(const char* format, ...);
   void report_error(const char* format, va_list& arguments);
@@ -114,6 +102,9 @@ class Diagnostics {
   SourceManager* source_manager_;
   bool encountered_error_;
   bool encountered_warning_;
+
+
+  bool ends_with_no_warn_marker(const Source::Position& pos);
 };
 
 class CompilationDiagnostics : public Diagnostics {

@@ -19,11 +19,11 @@ test-compress str/string expected/ByteArray --uncompressed/bool=false:
       do-test 2 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
       do-test 2 1 str expected uncompressed --gzip=gzip --split-writes=split-writes
 
-do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed --gzip/bool --split-writes/bool:
+do-test chunk-size chunk-offset str/string zlib-expected/ByteArray? uncompressed --gzip/bool --split-writes/bool:
   compressor := uncompressed ?
     gzip ? UncompressedGzipEncoder : (UncompressedZlibEncoder --split-writes=split-writes) :
     gzip ? RunLengthGzipEncoder : RunLengthZlibEncoder
-  accumulator := bytes.Buffer
+  accumulator := bytes.Buffer  // NO-WARN
   done := Semaphore
   t := task::
     while ba := compressor.reader.read:
@@ -44,7 +44,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     // Test output against expected compressed data.
     if not zlib-expected:
       fd := file.Stream.for-write (gzip ? "out.gz" : "out.z")
-      fd.write accumulator.buffer 0 accumulator.size
+      fd.write accumulator.buffer 0 accumulator.size  // NO-WARN
       fd.close
       print accumulator.bytes
       exit 1
@@ -56,7 +56,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
       if fail:
         print_ accumulator.bytes.stringify
         fd := file.Stream.for-write "out.z"
-        fd.write accumulator.buffer 0 accumulator.size
+        fd.write accumulator.buffer 0 accumulator.size  // NO-WARN
         fd.close
       expect (not fail)
   else:
@@ -65,7 +65,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     to-zcat := subprocess[0]  // Stdin of zcat.
     from-zcat := subprocess[1]  // Stdin of zcat.
     pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
-    round-trip := bytes.Buffer
+    round-trip := bytes.Buffer  // NO-WARN
     task::  // Use a task to avoid deadlock if the pipe fills up.
       to-zcat.write accumulator.buffer 0 accumulator.size
       to-zcat.close
@@ -81,14 +81,14 @@ test-io-data:
   expected := #[8, 29, 243, 72, 29, 241, 0, 4, 114, 114, 242, 1, 160, 114, 104, 238]
   input := FakeData input-str
   compressor := RunLengthZlibEncoder
-  accumulator := bytes.Buffer
+  accumulator := bytes.Buffer  // NO-WARN
   done := Semaphore
   t := task::
-    while ba := compressor.reader.read:
+    while ba := compressor.reader.read:  // NO-WARN
       accumulator.write ba
     done.up
-  compressor.write input
-  compressor.close
+  compressor.write input  // NO-WARN
+  compressor.close  // NO-WARN
   done.down
   expect-equals expected accumulator.bytes
 
@@ -150,7 +150,7 @@ main:
   test-compress
     "H" + ("e" * 262) + "llo"
     #[8, 29, 243, 72, 29, 241, 0, 4, 114, 114, 242, 1, 160, 114, 104, 238]
-  lorem-out := bytes.Buffer
+  lorem-out := bytes.Buffer  // NO-WARN
   lorem-out.write LOREM-IPSUM
   lorem-out.write LOREM-IPSUM2
   lorem-out.write LOREM-IPSUM3
