@@ -262,6 +262,8 @@ const char* OS::get_architecture() {
   return "x86_64";
 #elif defined(__i386__)
   return "x86";
+#elif defined(__riscv) && __riscv_xlen == 64
+  return "riscv64";
 #else
   #error "Unknown architecture"
 #endif
