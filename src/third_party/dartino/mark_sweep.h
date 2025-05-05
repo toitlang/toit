@@ -59,7 +59,8 @@ class MarkingVisitor : public RootCallback {
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
 
-  bool shrink_stacks() const override { return true; }
+  bool shrink_stacks() const override { return shrink_stacks_; }
+  void set_shrink_stacks(bool value) { shrink_stacks_ = value; }
 
   // Should we skip marking of a weak map.
   // TODO - only when forced to compact.
@@ -83,6 +84,7 @@ class MarkingVisitor : public RootCallback {
   uword new_space_address_;
   uword new_space_size_;
   MarkingStack* marking_stack_;
+  bool shrink_stacks_ = false;
 };
 
 class FixPointersVisitor : public RootCallback {
