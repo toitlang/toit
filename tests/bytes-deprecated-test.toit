@@ -11,7 +11,7 @@ main:
   test-producer
 
 test-simple:
-  buffer := bytes.Buffer  // NO-WARN
+  buffer := bytes.Buffer
   expect-equals 0 buffer.size
 
   empty := buffer.bytes
@@ -47,7 +47,7 @@ test-simple:
   expect-equals "foobaroob" buffer.bytes.to-string
 
   buffer.clear
-  writer := Writer buffer  // NO-WARN
+  writer := Writer buffer
   writer.write foobar
   writer.write foobar 3
   expect-equals "foobarbar" buffer.bytes.to-string
@@ -60,9 +60,9 @@ test-producer:
   TWO ::= ByteArray TWO_.size: TWO_[it]
 
   expectation-on-producer
-    bytes.ByteArrayProducer ONE  // NO-WARN
+    bytes.ByteArrayProducer ONE
     ONE.size
-    bytes.ByteArrayProducer TWO  // NO-WARN
+    bytes.ByteArrayProducer TWO
     TWO.size
     ONE
     0
@@ -70,9 +70,9 @@ test-producer:
     0
 
   expectation-on-producer
-    bytes.ByteArrayProducer ONE 3  // NO-WARN
+    bytes.ByteArrayProducer ONE 3
     ONE.size - 3
-    bytes.ByteArrayProducer TWO 5  // NO-WARN
+    bytes.ByteArrayProducer TWO 5
     TWO.size - 5
     ONE
     3
@@ -80,9 +80,9 @@ test-producer:
     5
 
   expectation-on-producer
-    bytes.ByteArrayProducer ONE 3 8  // NO-WARN
+    bytes.ByteArrayProducer ONE 3 8
     8 - 3
-    bytes.ByteArrayProducer TWO 5 10  // NO-WARN
+    bytes.ByteArrayProducer TWO 5 10
     10 - 5
     ONE
     3

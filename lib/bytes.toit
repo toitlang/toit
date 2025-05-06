@@ -251,7 +251,7 @@ In this scenario data is processed twice, but the resulting
 
 Deprecated.
 */
-class BufferSizeCounter extends BufferConsumer:  // NO-WARN
+class BufferSizeCounter extends BufferConsumer:  // @no-warn
   /** See $BufferConsumer.size. */
   size := 0
   /** See $BufferConsumer.write-byte. */
@@ -330,7 +330,7 @@ class Buffer extends BufferConsumer:
   The backing byte array is allocated with a default size and will
     grow if needed.
   */
-  constructor:  // NO-WARN
+  constructor:  // @no-warn
     // We copy the code of the 'with-initial-size' constructor, so we don't get
     // a deprecation warning.
     init-size_ = INITIAL-BUFFER-LENGTH_
@@ -340,7 +340,7 @@ class Buffer extends BufferConsumer:
   Constructs a new buffer with the given $init-size_.
   If the $init-size_ isn't big enough, the buffer grows when necessary.
   */
-  constructor.with-initial-size .init-size_/int:  // NO-WARN
+  constructor.with-initial-size .init-size_/int:  // @no-warn
     buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray.external init-size_) : (ByteArray init-size_)
 
   /** See $BufferConsumer.size. */

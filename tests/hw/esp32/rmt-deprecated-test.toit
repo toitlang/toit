@@ -30,49 +30,49 @@ test-resource pin/gpio.Pin:
   // If we request a channel with more than one memory block, then the
   // next channel becomes unusable.
   channels := []
-  8.repeat: channels.add (rmt.Channel pin --input)  // NO-WARN
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input  // NO-WARN
+  8.repeat: channels.add (rmt.Channel pin --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel := rmt.Channel pin --input  // NO-WARN
+  channel := rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 4 channels with 2 memory blocks.
-  4.repeat: channels.add (rmt.Channel pin --memory-block-count=2 --input)  // NO-WARN
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input  // NO-WARN
+  4.repeat: channels.add (rmt.Channel pin --memory-block-count=2 --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin --input  // NO-WARN
+  channel = rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 2 channels with 3 memory blocks, and one with 2
-  2.repeat: channels.add (rmt.Channel pin --memory-block-count=3 --input)  // NO-WARN
-  channels.add (rmt.Channel pin --memory-block-count=2 --input)   // NO-WARN
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input  // NO-WARN
+  2.repeat: channels.add (rmt.Channel pin --memory-block-count=3 --input)
+  channels.add (rmt.Channel pin --memory-block-count=2 --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin --input  // NO-WARN
+  channel = rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 2 channels with 4 memory blocks.
-  2.repeat: channels.add (rmt.Channel pin --memory-block-count=4 --input)  // NO-WARN
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input  // NO-WARN
+  2.repeat: channels.add (rmt.Channel pin --memory-block-count=4 --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin --input  // NO-WARN
+  channel = rmt.Channel pin --input
   channel.close
 
   // Test fragmentation.
   channels = []
-  8.repeat: channels.add (rmt.Channel pin --input)  // NO-WARN
+  8.repeat: channels.add (rmt.Channel pin --input)
   for i := 0; i < channels.size; i += 2: channels[i].close
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=2 --input  // NO-WARN
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=2 --input
   // Close one additional one, which makes 2 adjacent memory blocks free.
   channels[5].close
-  channel = rmt.Channel pin --memory-block-count=2 --input  // NO-WARN
+  channel = rmt.Channel pin --memory-block-count=2 --input
   channel.close
   channels.do: it.close
 
@@ -96,7 +96,7 @@ test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
 
   in-parallel
     :: | idle-level-is-ready wait-for-reader-ready done |
-      out := rmt.Channel pin-out --output --idle-level=0  // NO-WARN
+      out := rmt.Channel pin-out --output --idle-level=0
       idle-level-is-ready.call
       wait-for-reader-ready.call
       signals := rmt.Signals 1
@@ -105,7 +105,7 @@ test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
       out.close
       done.call
     :: | wait-for-level-ready reader-is-ready |
-      in := rmt.Channel pin-in --input --idle-threshold=120  // NO-WARN
+      in := rmt.Channel pin-in --input --idle-threshold=120
       wait-for-level-ready.call
       in.start-reading
       reader-is-ready.call
@@ -124,7 +124,7 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
 
   in-parallel
     :: | idle-level-is-ready wait-for-reader-ready done |
-      out := rmt.Channel pin-out --output --idle-level=0  // NO-WARN
+      out := rmt.Channel pin-out --output --idle-level=0
       idle-level-is-ready.call
       wait-for-reader-ready.call
       signals := rmt.Signals.alternating SIGNAL-COUNT --first-level=1: PULSE-LENGTH
@@ -133,7 +133,7 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
       out.close
       done.call
     :: | wait-for-level-ready reader-is-ready |
-      in := rmt.Channel pin-in --input --idle-threshold=120  // NO-WARN
+      in := rmt.Channel pin-in --input --idle-threshold=120
       wait-for-level-ready.call
       in.start-reading
       reader-is-ready.call
@@ -156,7 +156,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
 
   in-parallel
     :: | idle-level-is-ready wait-for-reader-ready done |
-      out := rmt.Channel pin-out --output --idle-level=0  // NO-WARN
+      out := rmt.Channel pin-out --output --idle-level=0
       idle-level-is-ready.call
       wait-for-reader-ready.call
       signals := rmt.Signals.alternating SIGNAL-COUNT --first-level=1: PULSE-LENGTH
@@ -171,7 +171,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
       // We also need to have enough space in the buffer. Otherwise we get the same error.
 
       // 2 bytes per signal. Twice for the ring-buffer. And some extra for bookkeeping.
-      in := rmt.Channel pin-in --input --idle-threshold=120 --memory-block-count=6  // NO-WARN
+      in := rmt.Channel pin-in --input --idle-threshold=120 --memory-block-count=6
       wait-for-level-ready.call
       in.start-reading
       reader-is-ready.call
@@ -192,12 +192,12 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
 
   in-parallel
     :: | idle-level-is-ready wait-for-ready done |
-      out := rmt.Channel pin1 --output --idle-level=1  // NO-WARN
+      out := rmt.Channel pin1 --output --idle-level=1
       idle-level-is-ready.call
-      in := rmt.Channel pin1 --input  // NO-WARN
+      in := rmt.Channel pin1 --input
       // We actually don't need the bidirectionality here, but by
       // making the channel bidirectional it switches to open drain.
-      rmt.Channel.make-bidirectional --in=in --out=out  // NO-WARN
+      rmt.Channel.make-bidirectional --in=in --out=out
 
       // Do a lot of signals.
       signals := rmt.Signals.alternating 100 --first-level=1: 10
@@ -213,10 +213,10 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
       done.call
 
     :: | wait-for-level-ready reader-is-ready |
-      out := rmt.Channel pin2 --output --idle-level=1  // NO-WARN
+      out := rmt.Channel pin2 --output --idle-level=1
       wait-for-level-ready.call
-      in := rmt.Channel pin2 --input --idle-threshold=5_000 --memory-block-count=4  // NO-WARN
-      rmt.Channel.make-bidirectional --in=in --out=out  // NO-WARN
+      in := rmt.Channel pin2 --input --idle-threshold=5_000 --memory-block-count=4
+      rmt.Channel.make-bidirectional --in=in --out=out
 
       signals := rmt.Signals.alternating 100 --first-level=0: 1_000
       // Trigger the idle_threshold by pulling the 99th level low for more than 5_000us.

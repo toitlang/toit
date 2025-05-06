@@ -15,18 +15,18 @@ class TestReader implements reader.Reader:
   read:
     if index_ >= arrays_.size: return null
     return arrays_[index_++]
-
+    
 main:
   simple
   utf-8
   consumed
 
 simple:
-  r := reader.BufferedReader (TestReader ["H".to-byte-array, "ost: ".to-byte-array])  // NO-WARN
+  r := reader.BufferedReader (TestReader ["H".to-byte-array, "ost: ".to-byte-array])
   expect-equals "Host" (r.peek-string 4)
 
   // Test read_until if delimiter exists
-  r = reader.BufferedReader (TestReader ["H".to-byte-array, "ost: toitware.com".to-byte-array])  // NO-WARN
+  r = reader.BufferedReader (TestReader ["H".to-byte-array, "ost: toitware.com".to-byte-array])
   expect-equals "Host" (r.read-until ':')
   expect-equals " toit" (r.peek-string 5)
 
@@ -35,7 +35,7 @@ simple:
 DIFFICULT-STRING ::= "25€ and 23€¢ 🙈!"
 
 utf-8:
-  r := reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])  // NO-WARN
+  r := reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])
   expect (r.are-available 0)
   expect-not (r.are-available 1)  // Not yet read from the underlying TestReader.
   expect-equals "Sø" (r.read-string --max-size=3)
@@ -49,7 +49,7 @@ utf-8:
   expect-equals "ær ud!" r.read-string
   expect-equals null r.read-string
 
-  r = reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])  // NO-WARN
+  r = reader.BufferedReader (TestReader ["Sø".to-byte-array, "en så s".to-byte-array, "ær ud!".to-byte-array])
   expect-equals "Sø" r.read-string
   expect-equals "en så s" r.read-string
   expect-equals "ær ud!" r.read-string
@@ -65,7 +65,7 @@ utf-8:
 split-test ba/ByteArray split-point/int offset/int part-2-size:
   if split-point + offset <= 0: return
   if offset + split-point >= ba.size: return
-  r := reader.BufferedReader (TestReader [ba[..split-point], ba[split-point..]])  // NO-WARN
+  r := reader.BufferedReader (TestReader [ba[..split-point], ba[split-point..]])
   s1 := r.read-string --max-size=(split-point + offset)
   // Check we didn't get more bytes than we asked for unless we had to in
   // order to get a single multi-byte UTF-8 character.
@@ -127,13 +127,13 @@ consumed:
   consumed-thirteen-at-a-time
 
 consumed-one-at-a-time:
-  br := reader.BufferedReader MultiByteArrayReader  // NO-WARN
+  br := reader.BufferedReader MultiByteArrayReader
   256.repeat:
     expect-equals it br.consumed
     expect-equals it br.read-byte
 
 consumed-get-and-unget:
-  br2 := reader.BufferedReader MultiByteArrayReader  // NO-WARN
+  br2 := reader.BufferedReader MultiByteArrayReader
   expected-cursor := 0
   for i := 0; i < 256; i++:
     expect-equals expected-cursor i
@@ -147,7 +147,7 @@ consumed-get-and-unget:
     expected-cursor++
 
 consumed-thirteen-at-a-time:
-  br3 := reader.BufferedReader MultiByteArrayReader  // NO-WARN
+  br3 := reader.BufferedReader MultiByteArrayReader
   for i := 0; i < 256; i += 13:
     expect-equals i br3.consumed
     br3.read-bytes 13

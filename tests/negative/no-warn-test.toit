@@ -7,5 +7,5 @@ deprecated:
 
 main:
   deprecated  // Should warn.
-  deprecated  // NO-WARN
+  deprecated  // @no-warn
   unresolved

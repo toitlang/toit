@@ -4,9 +4,22 @@
 
 import expect show *
 
+// The test-warnings function is on the top, as the health tests record
+// the line numbers of the warnings. Having the function earlier makes it
+// less likely to change the line numbers when we change the test.
+test-warnings:
+  bytes := #[-1, 256]
+  expect bytes is ByteArray_
+  expect-equals 255 bytes[0]
+  expect-equals 0 bytes[1]
+
+  bytes = #[-1, -1, -1, -1, -1, -1]
+  expect bytes is CowByteArray_
+  bytes.do: expect-equals 255 it
+
 main:
   test-basic
-  test-truncate
+  test-warnings
   test-slices-succeed
   test-slices-fail
   test-cow-mutable-byte-content
@@ -113,16 +126,6 @@ test-basic:
   b5 = #[1, 2, 3, 4, 5]
   b5 = ByteArray 0
   b5 = #[1 + 1]
-
-test-truncate:
-  bytes := #[-1, 256]  // NO-WARN
-  expect bytes is ByteArray_
-  expect-equals 255 bytes[0]
-  expect-equals 0 bytes[1]
-
-  bytes = #[-1, -1, -1, -1, -1, -1]  // NO-WARN
-  expect bytes is CowByteArray_
-  bytes.do: expect-equals 255 it
 
 test-slices-succeed:
   for i := 0; i < 4; i++:

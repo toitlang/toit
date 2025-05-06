@@ -429,7 +429,7 @@ test-write-to-byte-array:
   check-copy.call bytes 5
 
   bytes = ByteArray 2 * str.size
-  str.write-to-byte-array bytes 1 4 5  // NO-WARN
+  str.write-to-byte-array bytes 1 4 5
   // Add the missing 'S' and 'n' so we can use our copy-check function.
   expect-equals 0 bytes[4]
   bytes[4] = 'S'
@@ -458,7 +458,7 @@ test-slice-write-to-byte-array:
   check-copy.call bytes 5
 
   bytes = ByteArray 10
-  str.write-to-byte-array bytes 17 21 5  // NO-WARN
+  str.write-to-byte-array bytes 17 21 5
   expect-equals 'c' bytes[5]
   expect-equals 'a' bytes[6]
   expect-equals 't' bytes[7]

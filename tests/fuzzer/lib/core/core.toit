@@ -4,8 +4,8 @@
 
 always: fail  // So that we don't need to worry if a test succeeds.
 
-throw exception:  // NO-WARN
-rethrow exception trace:  // NO-WARN
+throw exception:  // @no-warn
+rethrow exception trace:  // @no-warn
 lookup-failure_ receiver selector-or-selector-offset:
 as-check-failure_ receiver id:
 run-global-initializer__ id initializer:

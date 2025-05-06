@@ -37,7 +37,7 @@ static FILE* text_green(FILE* f) { return f; }
 namespace toit {
 namespace compiler {
 
-const char* const NO_WARN_MARKER = "// NO-WARN";
+const char* const NO_WARN_MARKER = "// @no-warn";
 
 void Diagnostics::report(Severity severity, const char* format, va_list& arguments) {
   severity = adjust_severity(severity);
@@ -47,15 +47,15 @@ void Diagnostics::report(Severity severity, const char* format, va_list& argumen
   if (severity == Severity::warning) encountered_warning_ = true;
 }
 
-// A hackish way of finding '// NO-WARN' comments.
+// A hackish way of finding '// @no-warn' comments.
 // This approach is simple, but doesn't work all the time. Specifically, we might not
 // report warnings in multi-line strings or toitdocs.
 // Example:
 // ```
 // str := """
-//    $(some-warning-operation)  // NO-WARN
+//    $(some-warning-operation)  // @no-warn
 // """
-// In this case the '// NO-WARN' is part of the string and shouldn't be recognized.
+// In this case the '// @no-warn' is part of the string and shouldn't be recognized.
 bool Diagnostics::ends_with_no_warn_marker(const Source::Position& pos) {
   // See if the line ends with the NO_WARN_MARKER.
   auto manager = source_manager();
