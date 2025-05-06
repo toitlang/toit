@@ -64,7 +64,7 @@ bool Diagnostics::ends_with_no_warn_marker(const Source::Position& pos) {
   auto text = source->text_at(pos);
   // Find the end of the line.
   size_t i = 0;
-  while ((text[i] != '\n') && (text[i] != '\0'))
+  while ((text[i] != '\n') && (text[i] != '\r') && (text[i] != '\0'))
     i++;
   size_t marker_length = strlen(NO_WARN_MARKER);
   if (i < marker_length) return false;
