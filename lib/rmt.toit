@@ -64,7 +64,7 @@ class Signals:
   /**
   The resolution of the signals in Hz.
 
-  Null, if this instance was created without a resolution.
+  If this instance was created without a resolution, $resolution is null.
   */
   resolution/int?
 
@@ -698,6 +698,7 @@ abstract class Channel_:
   constructor.from-sub_ .resource_:
     state_ = ResourceState_ resource-group_ resource_
     reset
+    add-finalizer this:: close
 
   /** Closes the channel. */
   close -> none:
@@ -706,6 +707,7 @@ abstract class Channel_:
       state_.dispose
       rmt-channel-delete_ resource-group_ resource_
       resource_ = null
+      remove-finalizer this
 
   /**
   Resets the channel.
@@ -905,6 +907,8 @@ class Out extends Channel_:
   */
   write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
     if loop-count == 0: throw "INVALID_ARGUMENT"
+    // The hardware interprets a loop count of 0 as a single iteration. Contrary to 1 it
+    // is supported by all chips.
     if loop-count == 1: loop-count = 0
     started := rmt-transmit_ resource_ signals.bytes_ loop-count done-level
     if not started:
