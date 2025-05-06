@@ -1,0 +1,15 @@
+tests/shortcut-test.toit:24:6: warning: Condition always evaluates to true
+  if 0:
+     ^
+tests/shortcut-test.toit:31:6: warning: Condition always evaluates to true
+  if "":
+     ^~
+tests/shortcut-test.toit:38:6: warning: Condition always evaluates to true
+  if 0:
+     ^
+tests/shortcut-test.toit:45:6: warning: Condition always evaluates to true
+  if ' ':
+     ^~~
+tests/shortcut-test.toit:52:6: warning: Condition always evaluates to true
+  if 0.0:
+     ^~~

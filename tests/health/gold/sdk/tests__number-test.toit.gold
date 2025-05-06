@@ -1,0 +1,69 @@
+tests/number-test.toit:259:32: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-int-parsing-error: int.parse "1_123" 1
+                               ^~~~~~
+tests/number-test.toit:260:32: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-int-parsing-error: int.parse "1012_" 1
+                               ^~~~~~
+tests/number-test.toit:261:32: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-int-parsing-error: int.parse "1012_1" 1 5
+                               ^~~~~~
+tests/number-test.toit:264:36: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-number-out-of-bounds: (int.parse "123" -1 --on-error=: throw it)
+                                   ^~~~~~
+tests/number-test.toit:265:36: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-number-out-of-bounds: (int.parse "123" 0 4 --on-error=: throw it)
+                                   ^~~~~~
+tests/number-test.toit:266:33: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-int-parsing-error: (int.parse "123" 0 0 --on-error=: throw it)
+                                ^~~~~~
+tests/number-test.toit:270:10: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+      int.parse "123" 1
+         ^~~~~~
+tests/number-test.toit:273:10: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+      int.parse "1-23" 1
+         ^~~~~~
+tests/number-test.toit:276:10: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+      int.parse "1-23" 2
+         ^~~~~~
+tests/number-test.toit:343:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals 16 (int.parse "foo10bar" --radix=16 3 5 --on-error=: throw it)
+                       ^~~~~~
+tests/number-test.toit:344:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals 15 (int.parse "foo10bar" --radix=15 3 5 --on-error=: throw it)
+                       ^~~~~~
+tests/number-test.toit:348:24: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals 16 (int.parse "foo0x10bar" 3 7)
+                       ^~~~~~
+tests/number-test.toit:349:25: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals -16 (int.parse "foo-0x10bar" 3 8)
+                        ^~~~~~
+tests/number-test.toit:352:24: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals 16 (int.parse "foo0x10bar".to-byte-array 3 7)
+                       ^~~~~~
+tests/number-test.toit:358:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0xbar" 3 5 --on-error=: -1)
+                       ^~~~~~
+tests/number-test.toit:359:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0x7bar" 3 5 --on-error=: -1)
+                       ^~~~~~
+tests/number-test.toit:360:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0x-7bar" 3 6 --on-error=: -1)
+                       ^~~~~~
+tests/number-test.toit:364:24: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals 16 (int.parse "foo0x10bar" 3 7)
+                       ^~~~~~
+tests/number-test.toit:365:25: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals -16 (int.parse "foo-0x10bar" 3 8)
+                        ^~~~~~
+tests/number-test.toit:368:23: warning: Deprecated 'int.parse'. Use 'parse data --radix' with a slice instead
+  expect-equals 2 (int.parse "foo0b10bar".to-byte-array 3 7)
+                      ^~~~~~
+tests/number-test.toit:373:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0bbar" 3 5 --on-error=: -1)
+                       ^~~~~~
+tests/number-test.toit:374:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0b7bar" 3 5 --on-error=: -1)
+                       ^~~~~~
+tests/number-test.toit:375:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--on-error]' with a slice instead
+  expect-equals -1 (int.parse "foo0b-7bar" 3 6 --on-error=: -1)
+                       ^~~~~~
