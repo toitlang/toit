@@ -904,6 +904,8 @@ class Out extends Channel_:
   */
   write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
     if loop-count == 0: throw "INVALID_ARGUMENT"
+    // The hardware interprets a loop count of 0 as a single iteration. Contrary to 1 it
+    // is supported by all chips.
     if loop-count == 1: loop-count = 0
     started := rmt-transmit_ resource_ signals.bytes_ loop-count done-level
     if not started:
