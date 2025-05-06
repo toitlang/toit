@@ -1081,7 +1081,7 @@ class Encoder:
   Constructs an encoder for the given $patterns.
 
   The $patterns map must have a size of 2, 4, or 16. The keys are the patterns (integers counting
-    from 0 to 1/4/16) and the values are the signals that should be emitted for each pattern.
+    from 0 to 1/3/15) and the values are the signals that should be emitted for each pattern.
 
   The $start, $between, and $stop signals are optional.
   The $start signal is emitted when the transmission starts.
