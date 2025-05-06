@@ -103,7 +103,6 @@ class Diagnostics {
   bool encountered_error_;
   bool encountered_warning_;
 
-
   bool ends_with_no_warn_marker(const Source::Position& pos);
 };
 
