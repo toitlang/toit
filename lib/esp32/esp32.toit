@@ -277,3 +277,39 @@ Disables the watchdog timer.
 */
 watchdog-deinit -> none:
   #primitive.esp32.watchdog-deinit
+
+/**
+Sets the power management configuration.
+
+See the documentation for the ESP32 power management for more details.
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/power_management.html
+*/
+pm-configure --min-frequency-mhz/int --max-frequency-mhz/int --enable-light-sleep/bool:
+  pm-configure_ min-frequency-mhz max-frequency-mhz enable-light-sleep
+
+pm-configure_ min-frequency-mhz/int max-frequency-mhz/int enable-light-sleep/bool -> none:
+  #primitive.esp32.pm-configure
+
+/**
+Returns the current power management min-frequency in MHz.
+*/
+pm-min-frequency-mhz -> int:
+  config := pm-get-configuration_
+  return config[0]
+
+/**
+Returns the current power management max-frequency in MHz.
+*/
+pm-max-frequency-mhz -> int:
+  config := pm-get-configuration_
+  return config[1]
+
+/**
+Returns whether the current power management has light-sleep enabled.
+*/
+pm-light-sleep-enabled -> bool:
+  config := pm-get-configuration_
+  return config[2]
+
+pm-get-configuration_ -> Array_:
+  #primitive.esp32.pm-get-configuration

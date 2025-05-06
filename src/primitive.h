@@ -413,6 +413,8 @@ namespace toit {
   PRIMITIVE(pin_hold_disable, 1)             \
   PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
+  PRIMITIVE(pm_configure, 3)                 \
+  PRIMITIVE(pm_get_configuration, 0)         \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
