@@ -451,7 +451,7 @@ test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
   out1.write out-signals2 --done-level=1
   out2.write out-signals1 --done-level=1
 
-  synchronizer := rmt.SyncManager [out1, out2]
+  synchronizer := rmt.SynchronizationManager [out1, out2]
 
   2.repeat:
     if it == 1: synchronizer.reset

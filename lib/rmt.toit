@@ -944,7 +944,7 @@ Synchronizes the output of multiple $Out channels.
 Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
   ESP32S2, and ESP32S3 do.
 */
-class SyncManager:
+class SynchronizationManager:
   resource_ /ByteArray? := ?
 
   /**
@@ -956,24 +956,22 @@ class SyncManager:
   constructor channels/List:
     if channels.size < 2: throw "INVALID_ARGUMENT"
 
-    array := Array_ channels.size
-    channels.size.repeat:
+    array := Array_ channels.size:
       channel := channels[it]
       if channel is not Out: throw "INVALID_ARGUMENT"
-      array[it] = channel.resource_
+      channel.resource_
     resource_ = rmt_sync_manager_new_ resource-freeing-module_ array
 
     add-finalizer this:: close
 
   /**
-  Closes the sync manager.
+  Closes the synchronization manager.
   */
   close -> none:
     if not resource_: return
-    critical-do:
-      rmt-sync-manager-delete_ resource-freeing-module_ resource_
-      resource_ = null
-      remove-finalizer this
+    rmt-sync-manager-delete_ resource-freeing-module_ resource_
+    resource_ = null
+    remove-finalizer this
 
   /**
   Resets the sync manager, allowing for another synchronized write.
