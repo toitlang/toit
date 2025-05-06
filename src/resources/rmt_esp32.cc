@@ -29,17 +29,15 @@
 #include "../process.h"
 #include "../resource.h"
 
-
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
-
 
 #define SRAM_CAPS (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
 #if CONFIG_RMT_ISR_IRAM_SAFE || CONFIG_RMT_RECV_FUNC_IN_IRAM
 #define RMT_MEM_ALLOC_CAPS SRAM_CAPS
 #define RMT_IRAM_ATTR IRAM_ATTR
 #else
-#define RMT_MEM_ALLOC_CAPS      MALLOC_CAP_DEFAULT
+#define RMT_MEM_ALLOC_CAPS MALLOC_CAP_DEFAULT
 #define RMT_IRAM_ATTR
 #endif
 
@@ -222,10 +220,6 @@ class RmtPatternEncoder {
  public:
    explicit RmtPatternEncoder(uint8* data) : data_(data) {}
 
-  ~RmtPatternEncoder() {
-    free(data_);
-  }
-
   void increase_ref() { ref_count_++; }
   void decrease_ref() {
     ref_count_--;
@@ -255,43 +249,9 @@ class RmtPatternEncoder {
     *chunk_length = length(offset_index);
   }
 
-  int max_symbol_length() const {
-    int result = 0;
-    ASSERT(START_OFFSET_INDEX == 2)
-    for(int offset_index = START_OFFSET_INDEX;
-        offset_index < CHUNKS_OFFSET_INDEX + 2 * chunk_size();
-        offset_index += 2) {
-      int len = length(offset_index);
-      if (len > result) result = len;
-    }
-    return result >> 2;
-  }
+  int max_symbol_length() const;
 
-  static bool validate(const uint8* buffer, int buffer_length) {
-    if (buffer_length < CHUNKS_OFFSET_INDEX + 2) return false;
-    int chunk_size = buffer[CHUNK_SIZE_INDEX];
-    if (chunk_size != 1 && chunk_size != 2 && chunk_size != 4) return false;
-    int msb = buffer[MSB_INDEX];
-    if (msb != 0 && msb != 1) return false;
-
-    ASSERT(START_OFFSET_INDEX == 2)
-    // The last chunk-offset is followed by an offset that points to the end
-    // of the data, so we know how long the last chunk is.
-    int size_offset = CHUNKS_OFFSET_INDEX + 2 * (1 << chunk_size);
-    int last_offset = size_offset + 2;
-    for(int offset_index = START_OFFSET_INDEX;
-        offset_index <= size_offset;
-        offset_index += 2) {
-      if (buffer_length < offset_index + 2) return false;
-      int offset = buffer[offset_index] | (buffer[offset_index + 1] << 8);
-      if (offset < last_offset) return false;
-      if (offset > buffer_length) return false;
-      // Each sequence must have a length that is a multiple of 4 (word-size).
-      if (((offset - last_offset) & 0x3) != 0) return false;
-      last_offset = offset;
-    }
-    return true;
-  }
+  static bool validate(const uint8* buffer, int buffer_length);
 
  private:
   /// Layout:
@@ -312,7 +272,11 @@ class RmtPatternEncoder {
   static const int CHUNKS_OFFSET_INDEX = 8;
 
   uint8* data_;
-  int ref_count_ = 0;
+  int ref_count_ = 1;
+
+  ~RmtPatternEncoder() {
+    free(data_);
+  }
 
   IRAM_ATTR int length(int offset_index) const {
     int start = data_[offset_index] | (data_[offset_index + 1] << 8);
@@ -477,6 +441,44 @@ bool RmtResource::receive_event(word* data) {
 
 RmtSyncManagerResource::~RmtSyncManagerResource() {
   FATAL_IF_NOT_ESP_OK(rmt_del_sync_manager(handle_));
+}
+
+int RmtPatternEncoder::max_symbol_length() const {
+  int result = 0;
+  ASSERT(START_OFFSET_INDEX == 2)
+  for(int offset_index = START_OFFSET_INDEX;
+      offset_index < CHUNKS_OFFSET_INDEX + 2 * chunk_size();
+      offset_index += 2) {
+    int len = length(offset_index);
+    if (len > result) result = len;
+  }
+  return result >> 2;
+}
+
+bool RmtPatternEncoder::validate(const uint8* buffer, int buffer_length) {
+  if (buffer_length < CHUNKS_OFFSET_INDEX + 2) return false;
+  int chunk_size = buffer[CHUNK_SIZE_INDEX];
+  if (chunk_size != 1 && chunk_size != 2 && chunk_size != 4) return false;
+  int msb = buffer[MSB_INDEX];
+  if (msb != 0 && msb != 1) return false;
+
+  ASSERT(START_OFFSET_INDEX == 2)
+  // The last chunk-offset is followed by an offset that points to the end
+  // of the data, so we know how long the last chunk is.
+  int size_offset = CHUNKS_OFFSET_INDEX + 2 * (1 << chunk_size);
+  int last_offset = size_offset + 2;
+  for (int offset_index = START_OFFSET_INDEX;
+      offset_index <= size_offset;
+      offset_index += 2) {
+    if (buffer_length < offset_index + 2) return false;
+    int offset = buffer[offset_index] | (buffer[offset_index + 1] << 8);
+    if (offset < last_offset) return false;
+    if (offset > buffer_length) return false;
+    // Each sequence must have a length that is a multiple of 4 (word-size).
+    if (((offset - last_offset) & 0x3) != 0) return false;
+    last_offset = offset;
+  }
+  return true;
 }
 
 RMT_IRAM_ATTR static bool tx_done(rmt_channel_t* channel,
@@ -1051,12 +1053,14 @@ PRIMITIVE(encoder_new) {
   if (!encoder_memory) FAIL(MALLOC_FAILED);
   auto encoder = new (encoder_memory) RmtPatternEncoder(buffer);
   handed_to_encoder = true;
-  bool handed_to_resource = false;
-  Defer del_encoder { [&] { if (!handed_to_resource) delete encoder; } };
+  Defer decrease_encoder_ref { [&] {
+    // Unconditionally decrease the ref-count. If the resource was constructed
+    // properly, it increased the ref-count and the object stays alive.
+    encoder->decrease_ref();
+  } };
 
   auto resource = _new RmtPatternEncoderResource(group, encoder);
   if (!resource) FAIL(MALLOC_FAILED);
-  handed_to_resource = true;
 
   group->register_resource(resource);
   proxy->set_external_address(resource);

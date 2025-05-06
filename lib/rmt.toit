@@ -1024,11 +1024,11 @@ class Encoder:
 
   close:
     if is-closed_: return
-    critical-do:
-      if resource_: rmt-encoder-delete_ resource-freeing-module_ resource_
-      resource_ = null
-      is-closed_ = true
-      remove-finalizer this
+    resource := resource_
+    resource_ = null
+    is-closed_ = true
+    if resource: rmt-encoder-delete_ resource-freeing-module_ resource_
+    remove-finalizer this
 
   bake_ bytes/ByteArray:
     if is-closed_: throw "ALREADY_CLOSED"
