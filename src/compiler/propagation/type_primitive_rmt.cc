@@ -31,6 +31,9 @@ TYPE_PRIMITIVE_BOOL(is_transmit_done)
 TYPE_PRIMITIVE_BOOL(start_receive)
 TYPE_PRIMITIVE_ANY(receive)
 TYPE_PRIMITIVE_NULL(apply_carrier)
+TYPE_PRIMITIVE_ANY(sync_manager_new)
+TYPE_PRIMITIVE_NULL(sync_manager_delete)
+TYPE_PRIMITIVE_NULL(sync_manager_reset)
 
 }  // namespace toit::compiler
 }  // namespace toit

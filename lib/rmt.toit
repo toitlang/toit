@@ -872,6 +872,9 @@ class Out extends Channel_:
     signals that can be stored in each block is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
   Generally, output channels don't need extra blocks as interrupts will copy data into
     the buffer when necessary.
+
+  If an $Out channel is in $open-drain mode, and an $In channel is on the same pin, then
+    the $In channel must be created first.
   */
   constructor pin/gpio.Pin
       --resolution/int
@@ -935,6 +938,47 @@ class Out extends Channel_:
         break
       state_.wait-for-state WRITE-STATE_
 
+/**
+Synchronizes the output of multiple $Out channels.
+
+Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
+  ESP32S2, and ESP32S3 do.
+*/
+class SynchronizationManager:
+  resource_ /ByteArray? := ?
+
+  /**
+  Creates a sync manager for the given $channels.
+
+  The manager ensures that all channels start writing at the same time. It waits until
+    all channels have been instructed to $Out.write before actually emitting any signal.
+  */
+  constructor channels/List:
+    if channels.size < 2: throw "INVALID_ARGUMENT"
+
+    array := Array_ channels.size:
+      channel := channels[it]
+      if channel is not Out: throw "INVALID_ARGUMENT"
+      channel.resource_
+    resource_ = rmt_sync_manager_new_ resource-freeing-module_ array
+
+    add-finalizer this:: close
+
+  /**
+  Closes the synchronization manager.
+  */
+  close -> none:
+    if not resource_: return
+    rmt-sync-manager-delete_ resource-freeing-module_ resource_
+    resource_ = null
+    remove-finalizer this
+
+  /**
+  Resets the sync manager, allowing for another synchronized write.
+  */
+  reset -> none:
+    rmt-sync-manager-reset_ resource_
+
 
 READ-STATE_  ::= 1 << 0
 WRITE-STATE_ ::= 1 << 1
@@ -973,3 +1017,12 @@ rmt-receive_ resource/ByteArray:
 
 rmt-apply-carrier_ resource/ByteArray frequency/int duty-cycle/float active-low/bool always-on/bool:
   #primitive.rmt.apply-carrier
+
+rmt-sync_manager_new_ resource-group channels/Array_:
+  #primitive.rmt.sync-manager-new
+
+rmt-sync_manager_delete_ resource-group resource:
+  #primitive.rmt.sync-manager-delete
+
+rmt-sync-manager-reset_ resource/ByteArray:
+  #primitive.rmt.sync-manager-reset

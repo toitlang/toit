@@ -425,6 +425,59 @@ test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
   in.close
   out.close
 
+test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    // The ESP32 doesn't support synchronized writes.
+    return
+
+  in := rmt.In pin1 --resolution=RESOLUTION
+
+  idle-signals := rmt.Signals 2
+  idle-signals.set 0 --level=1 --period=0
+  idle-signals.set 1 --level=1 --period=0
+  out1 := rmt.Out pin1 --resolution=RESOLUTION --open-drain --pull-up
+  out1.write idle-signals --done-level=1
+  out2 := rmt.Out pin2 --resolution=RESOLUTION --open-drain
+  out2.write idle-signals --done-level=1
+
+  out-signals1 := rmt.Signals 2
+  out-signals1.set 0 --level=0 --period=25
+  out-signals1.set 1 --level=1 --period=(83 - 25)
+
+  out-signals2 := rmt.Signals 2
+  out-signals2.set 0 --level=1 --period=50
+  out-signals2.set 1 --level=0 --period=33
+
+  out1.write out-signals2 --done-level=1
+  out2.write out-signals1 --done-level=1
+
+  synchronizer := rmt.SynchronizationManager [out1, out2]
+
+  2.repeat:
+    if it == 1: synchronizer.reset
+
+    in.start-reading --min-ns=1 --max-ns=(120 * 1000)
+    out1.write out-signals1 --done-level=1 --no-flush
+    out2.write out-signals2 --done-level=1
+
+    in-signals := in.wait-for-data
+    print in-signals
+
+    expect-equals 4 in-signals.size
+    expect-equals 0 (in-signals.level 0)
+    expect ((in-signals.period 0) - 25).abs <= SLACK
+    expect-equals 1 (in-signals.level 1)
+    expect ((in-signals.period 1) - 25).abs <= SLACK
+    expect-equals 0 (in-signals.level 2)
+    expect ((in-signals.period 2) - 33).abs <= SLACK
+    expect-equals 1 (in-signals.level 3)
+    expect-equals 0 (in-signals.period 3)
+
+  synchronizer.close
+  in.close
+  out1.close
+  out2.close
+
 main:
   run-test: test
 
@@ -443,6 +496,7 @@ test:
   test-glitch-filter pin1 pin2
   test-bidirectional pin1 pin2
   test-loop-count pin1 pin2
+  test-synchronized-write pin1 pin2
 
   pin1.close
   pin2.close
