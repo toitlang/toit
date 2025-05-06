@@ -64,7 +64,7 @@ class Signals:
   /**
   The resolution of the signals in Hz.
 
-  Null, if this instance was created without a resolution.
+  If this instance was created without a resolution, $resolution is null.
   */
   resolution/int?
 
