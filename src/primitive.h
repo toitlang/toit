@@ -477,6 +477,7 @@ namespace toit {
   PRIMITIVE(enable, 1)                       \
   PRIMITIVE(disable, 1)                      \
   PRIMITIVE(transmit, 4)                     \
+  PRIMITIVE(transmit_with_encoder, 6)        \
   PRIMITIVE(is_transmit_done, 1)             \
   PRIMITIVE(start_receive, 4)                \
   PRIMITIVE(receive, 1)                      \
@@ -484,6 +485,8 @@ namespace toit {
   PRIMITIVE(sync_manager_new, 2)             \
   PRIMITIVE(sync_manager_delete, 2)          \
   PRIMITIVE(sync_manager_reset, 1)           \
+  PRIMITIVE(encoder_new, 2)                  \
+  PRIMITIVE(encoder_delete, 2)               \
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(new_unit, 4)                     \
@@ -1117,6 +1120,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
 #define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtPatternEncoderResource(N, name)  MAKE_UNPACKING_MACRO(RmtPatternEncoderResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
 #define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
