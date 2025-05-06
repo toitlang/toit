@@ -47,14 +47,14 @@ test-different-indentations:
   x = run:
     if true:
       "good"
-        else:  // Else can be at any level. Does not require the next line to be indented more.
+        else:  // Else can be at any level. Does not require the next line to be indented more.  // @no-warn
       "bad"
   expect-equals "good" x
 
   x = run:
     if false:
       "bad"
-        else if true:
+        else if true:  // @no-warn
           // Else if, however, start a new "indentation".
           "must be indented"
   expect-equals "must be indented" x
