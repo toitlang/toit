@@ -1027,7 +1027,7 @@ class Encoder:
     resource := resource_
     resource_ = null
     is-closed_ = true
-    if resource: rmt-encoder-delete_ resource-freeing-module_ resource_
+    if resource: rmt-encoder-delete_ resource-freeing-module_ resource
     remove-finalizer this
 
   bake_ bytes/ByteArray:
