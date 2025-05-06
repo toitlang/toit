@@ -184,10 +184,6 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   endif()
 endif()
 
-if (${TOIT_IS_CROSS})
-  set(TOIT_ALL_STATIC -static)
-endif()
-
 if (DEFINED USE_LWIP)
   set(TOIT_NETWORK_LIBS mbedtls ${LWIP_SANITIZER_LIBS} lwipcore lwipcontribportunix)
 else()

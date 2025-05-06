@@ -65,7 +65,7 @@ class Signals:
   /**
   The resolution of the signals in Hz.
 
-  Null, if this instance was created without a resolution.
+  If this instance was created without a resolution, $resolution is null.
   */
   resolution/int?
 
@@ -699,6 +699,7 @@ abstract class Channel_:
   constructor.from-sub_ .resource_:
     state_ = ResourceState_ resource-group_ resource_
     reset
+    add-finalizer this:: close
 
   /** Closes the channel. */
   close -> none:
@@ -707,6 +708,7 @@ abstract class Channel_:
       state_.dispose
       rmt-channel-delete_ resource-group_ resource_
       resource_ = null
+      remove-finalizer this
 
   /**
   Resets the channel.
@@ -932,6 +934,8 @@ class Out extends Channel_:
       --bit-size/int?=null
       --encoder/Encoder?=null:
     if loop-count == 0: throw "INVALID_ARGUMENT"
+    // The hardware interprets a loop count of 0 as a single iteration. Contrary to 1 it
+    // is supported by all chips.
     if loop-count == 1: loop-count = 0
     if encoder and encoder.is-closed_: throw "ENCODER_CLOSED"
 
@@ -974,7 +978,7 @@ Synchronizes the output of multiple $Out channels.
 Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
   ESP32S2, and ESP32S3 do.
 */
-class SyncManager:
+class SynchronizationManager:
   resource_ /ByteArray? := ?
 
   /**
@@ -986,24 +990,22 @@ class SyncManager:
   constructor channels/List:
     if channels.size < 2: throw "INVALID_ARGUMENT"
 
-    array := Array_ channels.size
-    channels.size.repeat:
+    array := Array_ channels.size:
       channel := channels[it]
       if channel is not Out: throw "INVALID_ARGUMENT"
-      array[it] = channel.resource_
+      channel.resource_
     resource_ = rmt_sync_manager_new_ resource-freeing-module_ array
 
     add-finalizer this:: close
 
   /**
-  Closes the sync manager.
+  Closes the synchronization manager.
   */
   close -> none:
     if not resource_: return
-    critical-do:
-      rmt-sync-manager-delete_ resource-freeing-module_ resource_
-      resource_ = null
-      remove-finalizer this
+    rmt-sync-manager-delete_ resource-freeing-module_ resource_
+    resource_ = null
+    remove-finalizer this
 
   /**
   Resets the sync manager, allowing for another synchronized write.
