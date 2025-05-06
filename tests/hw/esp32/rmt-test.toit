@@ -31,6 +31,9 @@ TOTAL-CHANNEL-COUNT ::= Variant.CURRENT.rmt-total-channel-count
 // We allow 5us error.
 SLACK ::= 5
 
+expect-close-to --slack=SLACK expected/int actual/int:
+  expect (expected - actual).abs <= slack
+
 RESOLUTION ::= 1_000_000  // 1MHz.
 
 // Test that the channel resources are correctly handed out.
@@ -107,7 +110,7 @@ test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
   out.write out-signals --done-level=0
   in-signals := in.wait-for-data
   expect-equals 2 in-signals.size
-  expect (PULSE-LENGTH - (in-signals.period 0)).abs <= SLACK
+  expect-close-to PULSE-LENGTH (in-signals.period 0)
   expect-equals 0 (in-signals.period 1)
   out.close
   in.close
@@ -128,7 +131,7 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
   in-signals := in.wait-for-data
   expect-equals (SIGNAL-COUNT + 1) in-signals.size
   SIGNAL-COUNT.repeat:
-    expect (PULSE-LENGTH - (in-signals.period it)).abs <= SLACK
+    expect-close-to PULSE-LENGTH (in-signals.period it)
   expect-equals 0 (in-signals.period (in-signals.size - 1))
   out.close
   in.close
@@ -152,7 +155,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
   in-signals := in.wait-for-data
   expect in-signals.size >= SIGNAL-COUNT
   (SIGNAL-COUNT - 1).repeat:
-    expect (PULSE-LENGTH - (in-signals.period it)).abs <= SLACK
+    expect-close-to PULSE-LENGTH (in-signals.period it)
   expect-equals 0 (in-signals.period (in-signals.size - 1))
   out.close
   in.close
@@ -218,7 +221,7 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin
     for i := 0; i < 5; i++:
       period := in-signals.period i
       slack := 2 * (max UP-TICKS DOWN-TICKS) + SLACK
-      expect (period - SIGNAL-PERIOD).abs < slack
+      expect-close-to --slack=slack SIGNAL-PERIOD period
     return
 
   carrier-high-count := 0  // Carrier high.
@@ -336,7 +339,7 @@ test-glitch-filter pin1/gpio.Pin pin2/gpio.Pin:
   level := received.level 0
   period := received.period 0
   expect-equals 1 level
-  expect (period - SIGNAL-PERIOD).abs <= SLACK
+  expect-close-to SIGNAL-PERIOD period
 
   in.close
   out.close
@@ -466,11 +469,11 @@ test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
 
     expect-equals 4 in-signals.size
     expect-equals 0 (in-signals.level 0)
-    expect ((in-signals.period 0) - 25).abs <= SLACK
+    expect-close-to 25 (in-signals.period 0)
     expect-equals 1 (in-signals.level 1)
-    expect ((in-signals.period 1) - 25).abs <= SLACK
+    expect-close-to 25 (in-signals.period 1)
     expect-equals 0 (in-signals.level 2)
-    expect ((in-signals.period 2) - 33).abs <= SLACK
+    expect-close-to 33 (in-signals.period 2)
     expect-equals 1 (in-signals.level 3)
     expect-equals 0 (in-signals.period 3)
 
@@ -663,7 +666,7 @@ test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin
     actual-period := actual.period i
     actual-level := actual.level i
     expect-equals expected-level actual-level
-    expect ((actual-period - expected-period).abs <= SLACK)
+    expect-close-to expected-period actual-period
     expected-level = 1 - expected-level
   // The end-of-marker is a transition with a 0 period.
   expect-equals 0 (actual.level done-level)
