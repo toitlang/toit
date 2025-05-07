@@ -121,13 +121,13 @@ class I2sResource: public EventQueueResource {
     return result;
   }
 
-  void inc_errors_underrun() {
+  IRAM_ATTR void inc_errors_underrun() {
     portENTER_CRITICAL(&spinlock_);
     errors_underrun_++;
     portEXIT_CRITICAL(&spinlock_);
   }
 
-  void inc_errors_overrun() {
+  IRAM_ATTR void inc_errors_overrun() {
     portENTER_CRITICAL(&spinlock_);
     errors_overrun_++;
     portEXIT_CRITICAL(&spinlock_);

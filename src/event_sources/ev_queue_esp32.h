@@ -21,6 +21,7 @@
 
 #include "../resource.h"
 #include "../os.h"
+#include "../utils.h"
 
 #define GPIO_QUEUE_SIZE 32
 #define UART_QUEUE_SIZE 32
@@ -40,7 +41,9 @@ public:
 
   virtual ~EventQueueResource() {};
 
-  QueueHandle_t queue() const { return queue_; }
+  // Might be accessed from interrupt handlers. On the ESP32 it thus needs to be
+  // in IRAM, or be marked as inline.
+  FORCE_INLINE QueueHandle_t queue() const { return queue_; }
 
   // Receives one event with a zero timeout.  Provides the data argument for the
   // dispatch call on the event source.  Returns whether an event was available.
@@ -63,7 +66,9 @@ class EventQueueEventSource : public EventSource, public Thread {
   EventQueueEventSource();
   ~EventQueueEventSource() override;
 
-  QueueHandle_t gpio_queue() { return gpio_queue_; }
+  // Might be accessed from interrupt handlers. On the ESP32 it thus needs to be
+  // in IRAM, or be marked as inline.
+  FORCE_INLINE QueueHandle_t gpio_queue() { return gpio_queue_; }
 
  private:
   void entry() override;
