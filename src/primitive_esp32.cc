@@ -626,6 +626,9 @@ PRIMITIVE(deep_sleep_pin_hold_disable) {
 PRIMITIVE(pm_configure) {
   ARGS(int, max_freq_mhz, int, min_freq_mhz, bool, light_sleep_enable)
 #ifndef CONFIG_PM_ENABLE
+  USE(max_freq_mhz);
+  USE(min_freq_mhz);
+  USE(light_sleep_enable);
   FAIL(UNSUPPORTED);
 #else
   esp_pm_config_t cfg = {
