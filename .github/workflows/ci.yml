@@ -1,3 +1,18 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2025 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
 name: CI
 
 concurrency:
@@ -58,8 +73,13 @@ on:
         required: false
         type: boolean
         default: true
+      run-hw-tests:
+        description: "Run hardware tests"
+        required: false
+        type: boolean
+        default: false
       test-more:
-        description: "Run more tests"
+        description: "Run more tests (including hardware tests)"
         required: false
         type: boolean
         default: false
@@ -72,19 +92,14 @@ on:
         description: "Build release artifacts and upload with this version"
         required: false
         type: string
-        default:
-      enable-lto:
-        description: "Enable link-time optimizations"
-        required: false
-        type: boolean
-        default: false
+        default: ""
 
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
   DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' }}
+  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' || github.event.inputs.run-hw-tests == 'true' }}
   ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
-  TEST_PI_HW: "true"
 
 jobs:
   prereqs:
@@ -121,7 +136,7 @@ jobs:
       EXTRA_INCLUDES: ${{ steps.vars.outputs.EXTRA_INCLUDES }}
       SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
       SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
-      TEST_PI_HW: ${{ env.TEST_PI_HW }}
+      DO_HW_TESTS: ${{ env.DO_HW_TESTS }}
 
   build:
     needs: prereqs
@@ -199,7 +214,7 @@ jobs:
         run: ccache -s
 
       - name: Enable link-time optimizations
-        if: env.DO_RELEASE == 'true' || github.event.inputs.enable-lto == 'true'
+        if: env.DO_RELEASE == 'true'
         run: |
           make enable-lto
 
@@ -546,7 +561,7 @@ jobs:
   rpi:
     runs-on: ubuntu-latest
     needs: prereqs
-    if: needs.prereqs.outputs.TEST_PI_HW == 'true'
+    if: needs.prereqs.outputs.DO_HW_TESTS == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -671,7 +686,7 @@ jobs:
           done
 
       - name: Test 32-bit executables
-        if: env.DO_MORE_TESTS == 'true' || env.TEST_PI_HW != 'true'
+        if: env.DO_MORE_TESTS == 'true' || env.DO_HW_TESTS != 'true'
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -685,7 +700,7 @@ jobs:
               build/raspbian/extracted/boot.sh > raspbian_output
 
       - name: Check that the 32-bit run-script worked
-        if: env.DO_MORE_TESTS == 'true' || env.TEST_PI_HW != 'true'
+        if: env.DO_MORE_TESTS == 'true' || env.DO_HW_TESTS != 'true'
         run: |
           cat raspbian_output
           grep "hello world" raspbian_output
@@ -1036,7 +1051,7 @@ jobs:
           echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Sign macOS executables
-        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
         with:
           certificate: ${{ secrets.MACOS_CERTIFICATE }}
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -1069,7 +1084,7 @@ jobs:
           done
 
       - name: Sign DMGs
-        uses: toitlang/action-macos-sign-notarize@567fcd7c0b89e1b4d0fbc5132cce6e56224db1b7 # v1.2.0
+        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
         with:
           certificate: ${{ secrets.MACOS_CERTIFICATE }}
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -1278,7 +1293,7 @@ jobs:
 
   serial:
     needs: [prereqs, rpi, esp32]
-    if: needs.prereqs.outputs.TEST_PI_HW == 'true'
+    if: needs.prereqs.outputs.DO_HW_TESTS == 'true'
 
     runs-on: serial
 

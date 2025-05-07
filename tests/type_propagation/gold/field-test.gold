@@ -1,6 +1,6 @@
 main tests/type_propagation/field-test.toit
   0[053] - invoke static test-simple tests/type_propagation/field-test.toit // {Null_}
-  3[090] - return null S1 0
+  3[092] - return null S1 0
 
 test-simple tests/type_propagation/field-test.toit
   0[042] - allocate instance A
@@ -26,17 +26,17 @@ test-simple tests/type_propagation/field-test.toit
  43[053] - invoke static id tests/type_propagation/field-test.toit // [{Null_|True}] -> {Null_|True}
  46[010] - pop, load field local 16 // [{B}] -> {Null_|SmallInteger_}
  48[053] - invoke static id tests/type_propagation/field-test.toit // [{Null_|SmallInteger_}] -> {Null_|SmallInteger_}
- 51[090] - return null S3 0
+ 51[092] - return null S3 0
 
 id tests/type_propagation/field-test.toit
  - argument 0: {String_|Null_|True|SmallInteger_}
   0[016] - load local 2
-  1[089] - return S1 1
+  1[091] - return S1 1
 
 A.x tests/type_propagation/field-test.toit
  - argument 0: {A}
   0[009] - load field local 2 // [{A}] -> {String_|Null_|SmallInteger_}
-  2[089] - return S1 1
+  2[091] - return S1 1
 
 A tests/type_propagation/field-test.toit
  - argument 0: {A|B}
@@ -45,7 +45,7 @@ A tests/type_propagation/field-test.toit
   1[017] - load local 3
   2[013] - store field, pop 0
   4[017] - load local 3
-  5[089] - return S1 2
+  5[091] - return S1 2
 
 B tests/type_propagation/field-test.toit
  - argument 0: {B}
@@ -58,4 +58,4 @@ B tests/type_propagation/field-test.toit
   5[018] - load local 4
   6[053] - invoke static A tests/type_propagation/field-test.toit // [{B}, {True}] -> {B}
   9[002] - pop, load local S4
- 11[089] - return S1 3
+ 11[091] - return S1 3

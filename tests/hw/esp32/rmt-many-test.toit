@@ -22,6 +22,8 @@ RMT-OUT1 ::= Variant.CURRENT.rmt-many-out1
 RMT-IN2 ::= Variant.CURRENT.rmt-many-in2
 RMT-OUT2 ::= Variant.CURRENT.rmt-many-out2
 
+RESOLUTION ::= 1_000_000  // 1MHz.
+
 main:
   run-test: test
 
@@ -33,10 +35,10 @@ test:
 
   // Just test that we can allocate 4 different rmt resources.
 
-  rmt1 := rmt.Channel pin1 --input
-  rmt2 := rmt.Channel pin2 --input
-  rmt3 := rmt.Channel pin3 --output
-  rmt4 := rmt.Channel pin4 --output
+  rmt1 := rmt.In pin1 --resolution=RESOLUTION
+  rmt2 := rmt.In pin2 --resolution=RESOLUTION
+  rmt3 := rmt.Out pin3 --resolution=RESOLUTION
+  rmt4 := rmt.Out pin4 --resolution=RESOLUTION
 
   rmt1.close
   rmt2.close
@@ -47,5 +49,3 @@ test:
   pin2.close
   pin3.close
   pin4.close
-
-  print "all tests done"

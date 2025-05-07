@@ -13,7 +13,7 @@ import expect show *
 
 import .test
 import .variants
-import ..shared.gpio-open-drain
+import ..shared.gpio-open-drain-pull
 
 TEST-PIN ::= Variant.CURRENT.open-drain-test-pin
 LEVEL-PIN ::= Variant.CURRENT.open-drain-level-pin

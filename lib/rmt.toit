@@ -4,6 +4,8 @@
 
 import gpio
 import io show LITTLE-ENDIAN
+import io
+import system
 
 /**
 Support for the ESP32 Remote Control (RMT).
@@ -22,10 +24,12 @@ import rmt
 
 main:
   pin := gpio.Pin 18
-  channel := rmt.Channel pin --output --idle-level=0
-  pulse := rmt.Signals 1
-  pulse.set 0 --level=1 --duration=50
-  channel.write pulse
+  // Create a channel on pin 18 with a resolution of 1MHz.
+  channel := rmt.Channel pin --output --resolution=1_000_000
+  pulse := rmt.Signals 2
+  pulse.set 0 --level=1 --period=50  // In ticks of the specified resolution.
+  pulse.set 1 --level=1 --period=50
+  channel.write pulse --done-level=0
   channel.close
 ```
 */
@@ -46,21 +50,33 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   to be divisible by 4.
 */
 class Signals:
+  /** An empty signals instance. */
+  static ZERO ::= Signals 0
+
   /** Bytes per ESP32 signal. */
   static BYTES-PER-SIGNAL ::= 2
+
+  /** The maximum period of a signal, in ticks. */
+  static MAX-PERIOD ::= 0x7FFF
 
   /** The number of signals in the collection. */
   size/int
 
-  bytes_/ByteArray
+  /**
+  The resolution of the signals in Hz.
 
-  /** The empty signal collection. */
-  static ZERO ::= Signals 0
+  If this instance was created without a resolution, $resolution is null.
+  */
+  resolution/int?
+
+  bytes_/ByteArray
 
   /**
   Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
+
+  If a $resolution is provided, it is used when signals are specified in us.
 
   # Advanced
   The underlying RMT peripheral can only work on byte arrays that are divisible by
@@ -71,9 +87,7 @@ class Signals:
   In consequence, the size of the backing byte array might be 4 bytes larger than
     $size * $BYTES-PER-SIGNAL.
   */
-  // TODO(florian): take a clock-divider as argument and allow the user to specify
-  // durations in us. Then also add a `do --us-periods:`.
-  constructor .size:
+  constructor .size --.resolution/int?=null:
     bytes_ = ByteArray
         round-up (size * 2) 4
     // Terminate the signals with a high end-marker. The duration 0 signals the
@@ -95,6 +109,18 @@ class Signals:
       periods[idx]
 
   /**
+  Creates signals that alternate between a level of 0 and 1 with the periods
+    given in the $ns-durations list.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating --resolution/int --first-level/int --ns-durations/List:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    return Signals.alternating --resolution=resolution ns-durations.size --first-level=first-level: | idx |
+      ns-durations[idx]
+
+  /**
   Creates items that alternate between a level of 0 and 1 with the periods
     given by successive calls to the block.
 
@@ -113,18 +139,38 @@ class Signals:
 
     return signals
 
+  /**
+  Creates items that alternate between a level of 0 and 1 with the ns-durations
+    given by successive calls to the block.
+
+  The $block is called with the signal index and the level it is created with.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating size/int --resolution/int --first-level/int [block]:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    signals := Signals size --resolution=resolution
+    level := first-level
+    size.repeat:
+      signals.set it --ns=(block.call it level) --level=level
+      level ^= 1
+
+    return signals
 
   /**
   Creates a collection of signals from the given $bytes.
 
   The $bytes size must be divisible by 4.
 
+  If a $resolution is provided, it is used when signals are specified in us.
+
   # Advanced
   The bytes must correspond to bytes produced by the RMT primitives. The
     primitives operate with pairs of signals (called an item) which  is the
     reason the $bytes size must be divisible by 4.
   */
-  constructor.from-bytes bytes/ByteArray:
+  constructor.from-bytes bytes/ByteArray --.resolution/int?=null:
     if bytes.size % 4 != 0: throw "INVALID_ARGUMENT"
 
     bytes_ = bytes
@@ -138,6 +184,17 @@ class Signals:
   period i/int -> int:
     check-bounds_ i
     return signal-period_ i
+
+  /**
+  Returns the signal duration of the $i'th signal in nanoseconds.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+  */
+  ns-duration i/int -> int:
+    if resolution == null: throw "INVALID_ARGUMENT"
+    return (signal-period_ i) * 1_000_000_000 / resolution
 
   /**
   Returns the signal level of the $i'th signal.
@@ -161,6 +218,23 @@ class Signals:
     check-bounds_ i
     set-signal_ i period level
 
+  /**
+  Sets the $i'th signal to the given $ns duration and $level.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+
+  The given $ns is used to compute a corresponding period, which then must be in
+    the range [0..0x7FFF].
+
+  The given $level must be 0 or 1.
+  */
+  set i/int --ns/int --level/int -> none:
+    if resolution == null: throw "INVALID_STATE"
+    period := ns * resolution / 1_000_000_000
+    set i --period=period --level=level
+
   set-signal_ i/int period/int level/int -> none:
     idx := i * 2
     if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
@@ -171,13 +245,15 @@ class Signals:
   /**
   Invokes the given $block on each signal of this signal collection.
 
-  The block is invoked with the level and period of each signal.
+  The block is invoked with the level, period and ns duration of each signal. If
+    this instance was created without a $resolution, then the ns duration is null.
   */
   do [block]:
     size.repeat:
       block.call
         signal-level_ it
         signal-period_ it
+        resolution ? (ns-duration it) : null
 
   check-bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
@@ -202,6 +278,8 @@ An RMT channel.
 The channel must be configured after construction.
 
 The channel can be configured for either RX or TX.
+
+Deprecated. Use $In and $Out instead.
 */
 class Channel:
   static DEFAULT-CLK-DIV ::= 80
@@ -218,16 +296,23 @@ class Channel:
   static DEFAULT-OUT-CARRIER-DUTY-PERCENT ::= 33
   static DEFAULT-OUT-IDLE-LEVEL ::= null
 
-  pin       /gpio.Pin
-  resource_ /ByteArray? := ?
+  channel_/Channel_? := null
 
-  static CONFIGURED-NONE_ ::= 0
-  static CONFIGURED-AS-INPUT_ ::= 1
-  static CONFIGURED-AS-OUTPUT_ ::= 2
-  configured_ /int := CONFIGURED-NONE_
-
-  /** Whether the channel has started reading with $start-reading. */
-  is-reading_ /bool := false
+  // Configuration.
+  pin/gpio.Pin
+  input_/bool := false
+  memory-block-count_/int := 0
+  clk-div_/int := 0
+  idle-threshold_/int := 0
+  enable-filter_/bool := true
+  filter-ticks-threshold_/int := 0
+  open-drain_/bool := false
+  idle-level_/int := 0
+  enable-carrier_/bool := false
+  carrier-frequency-hz_/int := 0
+  carrier-level_/int := 0
+  carrier-duty-percent_/int := 0
+  pull-up_/bool := false
 
   /**
   Constructs a channel using the given $num using the given $pin.
@@ -278,7 +363,7 @@ class Channel:
     of a channel with 7 memory blocks.
   */
   constructor .pin/gpio.Pin --memory-block-count/int=1 --channel-id/int?=null:
-    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) 0
+    memory-block-count_ = memory-block-count
 
   /**
   Variant of $(constructor pin).
@@ -296,7 +381,7 @@ class Channel:
     if not input: throw "INVALID_ARGUMENT"
     if not 1 <= memory-block-count <= 8: throw "INVALID_ARGUMENT"
 
-    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) -1
+    memory-block-count_ = memory-block-count
     configure --input
         --clk-div=clk-div
         --flags=flags
@@ -322,7 +407,7 @@ class Channel:
     if not output: throw "INVALID_ARGUMENT"
     if not 1 <= memory-block-count <= 8: throw "INVALID_ARGUMENT"
 
-    resource_ = rmt-channel-new_ resource-group_ memory-block-count (channel-id or -1) 1
+    memory-block-count_ = memory-block-count
     configure --output
         --clk-div=clk-div
         --flags=flags
@@ -379,14 +464,28 @@ class Channel:
       --filter-ticks-threshold /int = DEFAULT-IN-FILTER-TICKS-THRESHOLD
       --buffer-size /int? = null:
     if not input: throw "INVALID_ARGUMENT"
-    if not resource_: throw "ALREADY_CLOSED"
     if not 1 <= clk-div <= 0xFF: throw "INVALID_ARGUMENT"
-    if not 1 <= idle-threshold <=0x7FFF: throw "INVALID_ARGUMENT"
+    if not 1 <= idle-threshold <= Signals.MAX-PERIOD: throw "INVALID_ARGUMENT"
     if enable-filter and not 0 <= filter-ticks-threshold <= 0xFF: throw "INVALID_ARGUMENT"
     if buffer-size and buffer-size < 1: throw "INVALID_ARGUMENT"
 
-    rmt-config-rx_ resource_ pin.num clk-div flags idle-threshold enable-filter filter-ticks-threshold (buffer-size or -1)
-    configured_ = CONFIGURED-AS-INPUT_
+    // Not clear what happened, but in the old API it was apparently possible to have
+    // a ringbuffer into which the RMT would write when the hw buffer was full. This
+    // doesn't seem to be the case anymore. To have some backward compatibility we
+    // increase the buffer size to the size of the memory blocks.
+    if buffer-size and buffer-size > memory-block-count_ * BYTES-PER-MEMORY-BLOCK:
+      memory-block-count_ = buffer-size / BYTES-PER-MEMORY-BLOCK
+    if memory-block-count_ > 4 and system.architecture != system.ARCHITECTURE-ESP32:
+      memory-block-count_ = 4
+
+    input_ = true
+    pull-up_ = false
+    clk-div_ = clk-div
+    idle-threshold_ = idle-threshold
+    enable-filter_ = enable-filter
+    filter-ticks-threshold_ = filter-ticks-threshold
+
+    create-new-channel_
 
   /**
   Configures the channel for output.
@@ -417,7 +516,6 @@ class Channel:
       --carrier-duty-percent /int = DEFAULT-OUT-CARRIER-DUTY-PERCENT
       --idle-level /int? = DEFAULT-OUT-IDLE-LEVEL:
     if not output: throw "INVALID_ARGUMENT"
-    if not resource_: throw "ALREADY_CLOSED"
     if not 1 <= clk-div <= 255: throw "INVALID_ARGUMENT"
     if idle-level != null and idle-level != 0 and idle-level != 1: throw "INVALID_ARGUMENT"
     if enable-carrier:
@@ -425,13 +523,37 @@ class Channel:
       if not 1 <= carrier-duty-percent <= 100: throw "INVALID_ARGUMENT"
       if carrier-level != 0 and carrier-level != 1: throw "INVALID_ARGUMENT"
 
-    enable-idle-output := idle-level ? true : false
-    idle-level = idle-level or -1
-    enable-loop := false
-    rmt-config-tx_ resource_ pin.num clk-div flags enable-carrier carrier-frequency-hz carrier-level carrier-duty-percent enable-loop enable-idle-output idle-level
-    configured_ = CONFIGURED-AS-OUTPUT_
+    input_ = false
+    clk-div_ = clk-div
+    enable-carrier_ = enable-carrier
+    carrier-frequency-hz_ = carrier-frequency-hz
+    carrier-level_ = carrier-level
+    carrier-duty-percent_ = carrier-duty-percent
+    idle-level_ = idle-level
+    open-drain_ = false
+
+    create-new-channel_
+
+  create-new-channel_:
+    if channel_: channel_.close
+
+    hw-signals := memory-block-count_ * 128
+    resolution := 80_000_000 / clk-div_
+    if input_:
+      channel_ = In pin --resolution=resolution --memory-blocks=memory-block-count_
+    else:
+      channel_ = Out pin --resolution=resolution --memory-blocks=memory-block-count_ --open-drain=open-drain_ --pull-up=pull-up_
+      if enable-carrier_:
+        channel_.apply-carrier carrier-frequency-hz_
+            --duty-factor=(carrier-duty-percent_/100.0)
+            --active-low=(carrier-level_ == 0)
+            --always-on=false
+
 
   /**
+  Deprecated. Create an $In channel first, then create an $Out channel with the
+    `--open-drain` flag on the same pin, instead.
+
   Takes the $in and $out channel that share the same pin and configures them to be
     bidirectional.
 
@@ -450,28 +572,38 @@ class Channel:
   Any new call to $configure requires a new call to this function.
   */
   static make-bidirectional --in/Channel --out/Channel --pull-up/bool=false:
-    if not in.is-input or not out.is-output: throw "INVALID_STATE"
-    if in.pin.num != out.pin.num: throw "INVALID_ARGUMENT"
-    rmt-config-bidirectional-pin_ out.pin.num out.resource_ pull-up
+    // The output channel must be initialized second now.
+    in.channel_.close
+    out.channel_.close
+
+    in.create-new-channel_
+
+    out.open-drain_ = true
+    out.pull-up_ = pull-up
+    out.create-new-channel_
+
+    signals := Signals 2
+    signals.set 0 --period=0 --level=out.idle-level_
+    signals.set 1 --period=0 --level=out.idle-level_
+    out.write signals
 
   is-configured -> bool:
-    return configured_ != CONFIGURED-NONE_
+    return channel_ != null
 
   is-input -> bool:
-    return configured_ == CONFIGURED-AS-INPUT_
+    return channel_ != null and channel_ is In
 
   is-output -> bool:
-    return configured_ == CONFIGURED-AS-OUTPUT_
+    return channel_ != null and channel_ is Out
 
   idle-threshold -> int?:
-    return rmt-get-idle-threshold_ resource_
+    return idle-threshold_
 
   idle-threshold= threshold/int -> none:
-    if not 1 <= threshold <=0x7FFF: throw "INVALID_ARGUMENT"
-    rmt-set-idle-threshold_ resource_ threshold
+    idle-threshold_ = threshold
 
   is-reading -> bool:
-    return is-reading_
+    return channel_ is In and (channel_ as In).is-reading
 
   /**
   Starts receiving signals for this channel.
@@ -482,15 +614,21 @@ class Channel:
   */
   start-reading --flush/bool=true -> none:
     if not is-input: throw "INVALID_STATE"
-    is-reading_ = true
-    rmt-start-receive_ resource_ flush
+    if is-reading: stop-reading
+    min-ns := 0
+    if enable-filter_:
+      // The filter runs on the 80MHz clock.
+      // A tick's duration in ns is 1000_000_000 / 80_000_000
+      min-ns = filter-ticks-threshold_ * 100 / 8
+    // A signal tick's duration in ns is 1000_000_000 / (80_000_000 / clk-div_).
+    max-ns := idle-threshold_ * (100 * clk-div_ / 8)
+    (channel_ as In).start-reading --min-ns=min-ns --max-ns=max-ns
 
   /**
   Stops receiving.
   */
   stop-reading -> none:
-    is-reading_ = false
-    rmt-stop-receive_ resource_
+    channel_.reset
 
   /**
   Receives signals.
@@ -509,28 +647,17 @@ class Channel:
   read --stop-reading/bool?=null -> Signals:
     if not is-input: throw "INVALID_STATE"
 
-    was-reading := is-reading_
-    if stop-reading == null: stop-reading = not was-reading
+    in := channel_ as In
+    was-reading := in.is-reading
     if not was-reading: start-reading
 
-    // Increase sleep time over time.
-    // TODO(florian): switch to an event-based model.
-    // Note that reading could take at worst almost a minute:
-    // If the channel uses all 8 memory blocks, it can receive 8 * 64 signals.
-    // Each signal can count 2^15 ticks. If the clock (80MHz) is furthermore divided
-    // by 255 (the max), then reading can take a long time...
-    sleep-time := 1
-    try:
-      // Let the system prepare a buffer we will use to write the received data into.
-      bytes := rmt-prepare-receive_ resource_
-      while true:
-        result := rmt-receive_ resource_ bytes true
-        if result: return Signals.from-bytes result
-        sleep --ms=sleep-time
-        if sleep-time < 10: sleep-time++
-        else if sleep-time < 100: sleep-time *= 2
-    finally:
-      if stop-reading: this.stop-reading
+    result := in.wait-for-data
+
+    if stop-reading == false or (stop-reading == null and was-reading):
+      // This is a work-around. We don't have a way to really keep the channel reading.
+      start-reading
+
+    return result
 
   /**
   Transmits the given $signals.
@@ -540,77 +667,428 @@ class Channel:
   write signals/Signals -> none:
     if not is-output: throw "INVALID_STATE"
 
-    // Start sending the data.
-    // We receive a write-buffer with external memory that we need to keep alive
-    // until the sending is done. This buffer may be the $signals.bytes_ buffer
-    // if that one is external.
-    buffer := rmt-transmit_ resource_ signals.bytes_
-
-    // Increase sleep time over time.
-    // TODO(florian): switch to an event-based model.
-    // Note that the signal size is not limited, and that writing
-    //   the signals can take significant time.
-    sleep-time := 1
-    // Send the buffer, to ensure that the compiler doesn't optimize the local variable away.
-    while not rmt-transmit-done_ resource_ buffer:
-      sleep --ms=sleep-time
-      if sleep-time < 10: sleep-time++
-      else if sleep-time < 100: sleep-time *= 2
-
-  // TODO(florian): add a `write --loop`.
-  // This function can only take a limited amount of memory (contrary to $write).
-  // It should copy the data into the internal buffers, and then reconfigure the channel.
+    out := channel_ as Out
+    out.write signals --flush --done-level=idle-level_
 
   /** Closes the channel. */
   close:
-    if resource_:
+    if channel_:
+      channel_.close
+      channel_ = null
+
+/**
+The number of bytes per memory block.
+
+On the ESP32 and ESP32S2 it is 256.
+On the ESP32C3, ESP32C6, and ESP32S3 it is 192.
+*/
+BYTES-PER-MEMORY-BLOCK/int ::= rmt-bytes-per-memory-block_
+
+/**
+An RMT channel.
+*/
+abstract class Channel_:
+  static CHANNEL-KIND-INPUT_ ::= 0
+  static CHANNEL-KIND-OUTPUT_ ::= 1
+  static CHANNEL-KIND-OUTPUT-OPEN-DRAIN_ ::= 2
+
+  state_/ResourceState_
+
+  resource_ /ByteArray? := ?
+
+  constructor.from-sub_ .resource_:
+    state_ = ResourceState_ resource-group_ resource_
+    reset
+    add-finalizer this:: close
+
+  /** Closes the channel. */
+  close -> none:
+    if not resource_: return
+    critical-do:
+      state_.dispose
       rmt-channel-delete_ resource-group_ resource_
       resource_ = null
-      configured_ = 0
+      remove-finalizer this
+
+  /**
+  Resets the channel.
+
+  If the channel was reading or writing, these operations are aborted and the
+    corresponding resources are released.
+  */
+  reset -> none:
+    critical-do --no-respect-deadline:
+      rmt-disable_ resource_
+      rmt-enable_ resource_
+
+  /**
+  Applies a carrier signal to the channel.
+
+  If $active-low is true, the carrier is applied when the signal is low. Otherwise (the default)
+    the carrier is applied when the signal is high.
+
+  The $always-on parameter indicates whether the carrier is always applied, or only when
+    signals are being sent. In other words, whether the carrier is also applied to the idle
+    level. The ESP32 RMT controller *always* applies the carrier to the idle level, even if
+    this parameter is set to false. This is a limitation of the hardware.
+  */
+  apply-carrier frequency-hz/int --duty-factor/float --active-low/bool=false --always-on/bool=false -> none:
+    if frequency-hz <= 0: throw "INVALID_ARGUMENT"
+    if not 0.0 <= duty-factor <= 1.0: throw "INVALID_ARGUMENT"
+    rmt-apply-carrier_ resource_ frequency-hz duty-factor active-low always-on
+
+  disable-carrier -> none:
+    rmt-apply-carrier_ resource_ 0 0.0 false false
+
+/**
+An RMT input channel.
+*/
+class In extends Channel_:
+  /** Whether the channel has started reading with $start-reading. */
+  is-reading_ /bool := false
+
+  /** The number of memory-blocks. */
+  memory-blocks_/int
+
+  /**
+  Constructs an input channel on the given $pin.
+
+  The $resolution is the frequency of the clock that the RMT controller uses to
+    sample the input signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz).
+
+  The $memory-blocks parameter specifies how many RMT memory blocks are assigned to this channel.
+    Each memory-block has $BYTES-PER-MEMORY-BLOCK bytes. They are in continuous memory and
+    there are only a limited number of them. Since each signal is 2 bytes long, the number of
+    signals that can be received is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
+
+  Input channels can only receive as many signals (in one sequence) as there is space
+    in the memory blocks.
+  */
+  constructor pin/gpio.Pin
+      --resolution/int
+      --memory-blocks/int=1:
+    if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
+
+    memory-blocks_ = memory-blocks
+    // Each hw symbol is 4 bytes (2 signals).
+    hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
+    resource := rmt-channel-new_ resource-group_ pin.num resolution hw-symbols Channel_.CHANNEL-KIND-INPUT_
+    super.from-sub_ resource
+
+  /** Closes the channel. */
+  close -> none:
+    if not resource_: return
+    critical-do:
+      state_.dispose
+      rmt-channel-delete_ resource-group_ resource_
+      resource_ = null
+
+  reset -> none:
+    super
+    is-reading_ = false
+
+  is-reading -> bool:
+    return is-reading_
+
+  /**
+  Starts receiving signals for this channel.
+
+  The $min-ns and $max-ns parameters specify the minimum and maximum duration of the
+    signals to be received. Any signal that is shorter than $min-ns is ignored.
+    If the level of the line stays the same for longer than the $max-ns, the
+    reception is stopped and the received signals are returned.
+
+  The $min-ns is intended for glitch filtering and is limited to very small values (3200ns).
+
+  The $max-signal-count parameter specifies the maximum number of signals that can be
+    received. If not specified, uses the maximum number of signals that can fit into
+    the memory blocks that were specified during construction.
+
+  The $min-ns and $max-ns parameters specify the minimum and maximum duration of a signal
+    in nanoseconds. The $max-signal-count parameter specifies the maximum number of signals
+    that can be received. If it is not specified, it defaults to the number of signals that
+    can be received in the memory blocks.
+  */
+  start-reading --min-ns/int=0 --max-ns/int --max-signal-count/int?=null -> none:
+    hw-signals := memory-blocks_ * BYTES-PER-MEMORY-BLOCK / Signals.BYTES-PER-SIGNAL
+    if not max-signal-count: max-signal-count = hw-signals
+    if is-reading_: throw "INVALID_STATE"
+    if not 0 <= max-signal-count <= hw-signals: throw "INVALID_ARGUMENT"
+    if not 0 <= min-ns <= max-ns: throw "INVALID_ARGUMENT"
+
+    is-reading_ = true
+    state_.clear-state READ-STATE_
+    max-bytes := max-signal-count * 2
+    rmt-start-receive_ resource_ min-ns max-ns max-bytes
+
+  /**
+  Reads the signals that have been received.
+
+  Requires a call to $start-reading.
+  */
+  wait-for-data -> Signals:
+    if not is-reading_: throw "INVALID_STATE"
+
+    while true:
+      state_.clear-state READ-STATE_
+      result := rmt-receive_ resource_
+      if result:
+        is-reading_ = false
+        return Signals.from-bytes result
+      // No data yet.
+      state_.wait-for-state READ-STATE_
+
+  /**
+  Receives signals.
+
+  This is a convenience function that calls $start-reading and $wait-for-data.
+  */
+  read --min-ns/int=0 --max-ns/int --max-signal-count/int?=null -> Signals:
+    start-reading --min-ns=min-ns --max-ns=max-ns --max-signal-count=max-signal-count
+    result := null
+    try:
+      result = wait-for-data
+    finally:
+      if not result: reset
+    return result
+
+/**
+An RMT channel.
+
+The channel must be configured after construction.
+
+The channel can be configured for either RX or TX.
+*/
+class Out extends Channel_:
+  /**
+  Constructs an output channel on the given $pin.
+
+  The $resolution is the frequency of the clock that the RMT controller uses to
+    emit the output signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz). Signals
+    are specified in ticks of this frequency.
+
+  The $memory-blocks parameter specifies how many RMT memory blocks are assigned to this channel.
+    Each memory-block has $BYTES-PER-MEMORY-BLOCK bytes. They are in continuous memory and
+    there are only a limited number of them. Since each signal is 2 bytes long, the number of
+    signals that can be stored in each block is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
+  Generally, output channels don't need extra blocks as interrupts will copy data into
+    the buffer when necessary.
+
+  If an $Out channel is in $open-drain mode, and an $In channel is on the same pin, then
+    the $In channel must be created first.
+  */
+  constructor pin/gpio.Pin
+      --resolution/int
+      --memory-blocks/int=1
+      --open-drain/bool=false
+      --pull-up/bool=false:
+    if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
+
+    // Each hw symbol is 4 bytes (2 signals).
+    hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
+    kind := open-drain ? Channel_.CHANNEL-KIND-OUTPUT-OPEN-DRAIN_ : Channel_.CHANNEL-KIND-OUTPUT_
+    resource := rmt-channel-new_ resource-group_ pin.num resolution hw-symbols kind
+    if open-drain:
+      pin.set-pull --up=pull-up --off=(not pull-up)
+    super.from-sub_ resource
+
+  /**
+  Transmits the given $signals.
+
+  If $flush is true (the default) waits for the write to finish before returning. In that
+    case, if the write operation is aborted (for example with a $with-timeout), then the
+    transmission is aborted and the channel is reset.
+
+  The $loop-count parameter specifies how many times the signals are repeated. If it is
+    set to -1, the signals are repeated indefinitely. The ESP32 only supports -1 (infinite)
+    and 1. Other variants, like the ESP32C3, ESP32C6, ESP32S2, and ESP32S3, support other
+    positive values.
+
+  The $done-level parameter specifies the level of the pin when the transmission is done.
+  */
+  write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
+    write_ signals.bytes_ --flush=flush --done-level=done-level --loop-count=loop-count
+
+  /**
+  Variant of $(write signals)
+
+  Encodes the $data using the given $encoder.
+  */
+  write data/io.Data -> none
+      --bit-size/int=(data.byte-size * 8)
+      --encoder/Encoder
+      --flush/bool=true
+      --done-level/int=0
+      --loop-count/int=1:
+    write_ data
+        --bit-size=bit-size
+        --encoder=encoder
+        --flush=flush
+        --done-level=done-level
+        --loop-count=loop-count
+
+  write_ bytes/io.Data -> none
+      --flush/bool
+      --done-level/int
+      --loop-count/int
+      --bit-size/int?=null
+      --encoder/Encoder?=null:
+    if loop-count == 0: throw "INVALID_ARGUMENT"
+    // The hardware interprets a loop count of 0 as a single iteration. Contrary to 1 it
+    // is supported by all chips.
+    if loop-count == 1: loop-count = 0
+    if encoder and encoder.is-closed_: throw "ENCODER_CLOSED"
+
+    do-transmit := :
+      if encoder:
+        rmt-transmit-with-encoder_ resource_ bytes loop-count done-level bit-size encoder.resource_
+      else:
+        rmt-transmit_ resource_ bytes loop-count done-level
+    started := do-transmit.call
+    if not started:
+      // Wait for the previous write to finish.
+      this.flush
+      started = do-transmit.call
+      if not started:
+        throw "INVALID_STATE"
+
+    if flush:
+      finished-flushing := false
+      try:
+        this.flush
+        finished-flushing = true
+      finally:
+        if not finished-flushing: reset
+
+  /**
+  Blocks until a previous $write operation has finished.
+  Returns immediately if no $write operation is in process.
+  */
+  flush -> none:
+    while true:
+      state_.clear-state WRITE-STATE_
+      if rmt-is-transmit-done_ resource_:
+        // The transmission is done.
+        break
+      state_.wait-for-state WRITE-STATE_
+
+/**
+Synchronizes the output of multiple $Out channels.
+
+Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
+  ESP32S2, and ESP32S3 do.
+*/
+class SynchronizationManager:
+  resource_ /ByteArray? := ?
+
+  /**
+  Creates a sync manager for the given $channels.
+
+  The manager ensures that all channels start writing at the same time. It waits until
+    all channels have been instructed to $Out.write before actually emitting any signal.
+  */
+  constructor channels/List:
+    if channels.size < 2: throw "INVALID_ARGUMENT"
+
+    array := Array_ channels.size:
+      channel := channels[it]
+      if channel is not Out: throw "INVALID_ARGUMENT"
+      channel.resource_
+    resource_ = rmt_sync_manager_new_ resource-freeing-module_ array
+
+    add-finalizer this:: close
+
+  /**
+  Closes the synchronization manager.
+  */
+  close -> none:
+    if not resource_: return
+    rmt-sync-manager-delete_ resource-freeing-module_ resource_
+    resource_ = null
+    remove-finalizer this
+
+  /**
+  Resets the sync manager, allowing for another synchronized write.
+  */
+  reset -> none:
+    rmt-sync-manager-reset_ resource_
+
+class Encoder:
+  resource_ /ByteArray? := null
+  is-closed_/bool := false
+
+  constructor.from-bytes_ bytes/ByteArray:
+    bake_ bytes
+
+    add-finalizer this:: close
+
+  close:
+    if is-closed_: return
+    resource := resource_
+    resource_ = null
+    is-closed_ = true
+    if resource: rmt-encoder-delete_ resource-freeing-module_ resource
+    remove-finalizer this
+
+  bake_ bytes/ByteArray:
+    if is-closed_: throw "ALREADY_CLOSED"
+    if resource_: return
+    resource_ = rmt-encoder-new_ resource-freeing-module_ bytes
+
+READ-STATE_  ::= 1 << 0
+WRITE-STATE_ ::= 1 << 1
 
 resource-group_ ::= rmt-init_
+
+rmt-bytes-per-memory-block_:
+  #primitive.rmt.bytes-per-memory-block
 
 rmt-init_:
   #primitive.rmt.init
 
-rmt-channel-new_ resource-group memory-block-count channel-num direction:
+rmt-channel-new_ resource-group pin-num/int resolution/int symbols/int kind/int:
   #primitive.rmt.channel-new
 
 rmt-channel-delete_ resource-group resource:
   #primitive.rmt.channel-delete
 
-rmt-config-rx_ resource/ByteArray pin-num/int clk-div/int flags/int
-    idle-threshold/int filter-en/bool filter-ticks-thresh/int rx-buffer-size/int:
-  #primitive.rmt.config-rx
+rmt-enable_ resource/ByteArray:
+  #primitive.rmt.enable
 
-rmt-config-tx_ resource/ByteArray pin-num/int clk-div/int flags/int
-    carrier-en/bool carrier-freq-hz/int carrier-level/int carrier-duty-percent/int
-    loop-en/bool idle-output-en/bool idle-level/int:
-  #primitive.rmt.config-tx
+rmt-disable_ resource/ByteArray:
+  #primitive.rmt.disable
 
-rmt-set-idle-threshold_ resource/ByteArray threshold/int:
-  #primitive.rmt.set-idle-threshold
-
-rmt-get-idle-threshold_ resource/ByteArray -> int:
-  #primitive.rmt.get-idle-threshold
-
-rmt-config-bidirectional-pin_ pin/int tx-resource/ByteArray enable-pullup/bool:
-  #primitive.rmt.config-bidirectional-pin
-
-rmt-transmit_ resource/ByteArray signals-bytes/*/Blob*/:
+rmt-transmit_ resource/ByteArray signals-bytes/*/Blob*/ loop-count/int idle-level/int:
   #primitive.rmt.transmit
 
-rmt-transmit-done_ resource/ByteArray signals-bytes/*/Blob*/:
-  #primitive.rmt.transmit-done
+rmt-transmit-with-encoder_ resource/ByteArray data/*/Blob*/ loop-count/int idle-level/int bit-size/int  encoder-resource/ByteArray:
+  #primitive.rmt.transmit-with-encoder:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      rmt-transmit-with-encoder_ resource bytes loop-count idle-level bit-size encoder-resource
 
-rmt-start-receive_ resource/ByteArray flush/bool:
+rmt-is-transmit-done_ resource/ByteArray:
+  #primitive.rmt.is-transmit-done
+
+rmt-start-receive_ resource/ByteArray min-ns/int max-ns/int max-bytes/int:
   #primitive.rmt.start-receive
 
-rmt-stop-receive_ resource/ByteArray:
-  #primitive.rmt.stop-receive
-
-rmt-prepare-receive_ resource/ByteArray -> ByteArray:
-  #primitive.rmt.prepare-receive
-
-rmt-receive_ resource/ByteArray target/ByteArray resize/bool:
+rmt-receive_ resource/ByteArray:
   #primitive.rmt.receive
+
+rmt-apply-carrier_ resource/ByteArray frequency/int duty-cycle/float active-low/bool always-on/bool:
+  #primitive.rmt.apply-carrier
+
+rmt-sync_manager_new_ resource-group channels/Array_:
+  #primitive.rmt.sync-manager-new
+
+rmt-sync_manager_delete_ resource-group resource:
+  #primitive.rmt.sync-manager-delete
+
+rmt-sync-manager-reset_ resource/ByteArray:
+  #primitive.rmt.sync-manager-reset
+
+rmt-encoder-new_ resource-group bytes:
+  #primitive.rmt.encoder-new
+
+rmt-encoder-delete_ resource-group resource:
+  #primitive.rmt.encoder-delete

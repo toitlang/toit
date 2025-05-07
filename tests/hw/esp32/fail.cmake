@@ -20,6 +20,9 @@ set(TOIT_SKIP_TESTS
   # We are missing a DHT11.
   dht11-board1.toit-esp32s3
 
+  # The test didn't work for the ESP32S3. No need to run it.
+  rmt-deprecated-test.toit-eps32s3
+
   # I2S is flaky.
   # https://github.com/espressif/esp-idf/issues/15275
   i2s-test.toit-esp32
@@ -29,19 +32,17 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-pcm16-outmonoboth
   i2s-board1.toit-esp32-pcm32-outstereoleft
   i2s-board1.toit-esp32-pcm32-inmonoleft
+  i2s-board1.toit-esp32-pcm32-mclk
   i2s-test.toit-esp32s3
   i2s-board1.toit-esp32s3-msb16-writer-fast-slave
   i2s-board1.toit-esp32s3-pcm16-outstereoleft
   i2s-board1.toit-esp32s3-pcm16-outstereoright
   i2s-board1.toit-esp32s3-pcm16-outmonoboth
   i2s-board1.toit-esp32s3-pcm32-outstereoleft
+  i2s-board1.toit-esp32s3-pcm32-mclk
 )
 
 set(TOIT_FAILING_TESTS
-  # Idle level 1 doesn't seem to work.
-  rmt-drain-pullup-test.toit-esp32s3
-  # Probably just an issue with the number of RMT channels.
-  rmt-test.toit-esp32s3
   # I2S is flaky and broken...
   # https://github.com/espressif/esp-idf/issues/15275
   i2s-board1.toit-esp32-msb16

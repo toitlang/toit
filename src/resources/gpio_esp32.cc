@@ -365,6 +365,27 @@ PRIMITIVE(set_open_drain) {
   return process->null_object();
 }
 
+// A very low-level change of pull-up/down.
+// If the pin is used in some peripheral, a call to this primitive doesn't
+// affect that configuration.
+PRIMITIVE(set_pull) {
+  ARGS(int, num, int, direction);
+  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
+
+  gpio_pull_mode_t mode;
+  if (direction == 0) {
+    mode = GPIO_FLOATING;
+  } else if (direction < 0) {
+    mode = GPIO_PULLDOWN_ONLY;
+  } else {
+    mode = GPIO_PULLUP_ONLY;
+  }
+  esp_err_t err = gpio_set_pull_mode(static_cast<gpio_num_t>(num), mode);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
+}
+
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
   return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);

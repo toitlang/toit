@@ -123,6 +123,15 @@ class TypeSet {
     return true;
   }
 
+  bool contains_none(TypeSet other, int words) const {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
+    for (int i = 0; i < words; i++) {
+      if ((bits_[i] & other.bits_[i]) != 0) return false;
+    }
+    return true;
+  }
+
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
   bool contains_true(Program* program) const { return contains_instance(program->true_class_id()); }
   bool contains_false(Program* program) const { return contains_instance(program->false_class_id()); }

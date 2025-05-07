@@ -470,20 +470,23 @@ namespace toit {
   PRIMITIVE(errors, 1)                       \
 
 #define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(bytes_per_memory_block, 0)       \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 4)                  \
+  PRIMITIVE(channel_new, 5)                  \
   PRIMITIVE(channel_delete, 2)               \
-  PRIMITIVE(config_rx, 8)                    \
-  PRIMITIVE(config_tx, 11)                   \
-  PRIMITIVE(get_idle_threshold, 1)           \
-  PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 3)     \
-  PRIMITIVE(transmit, 2)                     \
-  PRIMITIVE(transmit_done, 2)                \
-  PRIMITIVE(prepare_receive, 1)              \
-  PRIMITIVE(start_receive, 2)                \
-  PRIMITIVE(receive, 3)                      \
-  PRIMITIVE(stop_receive, 1)                 \
+  PRIMITIVE(enable, 1)                       \
+  PRIMITIVE(disable, 1)                      \
+  PRIMITIVE(transmit, 4)                     \
+  PRIMITIVE(transmit_with_encoder, 6)        \
+  PRIMITIVE(is_transmit_done, 1)             \
+  PRIMITIVE(start_receive, 4)                \
+  PRIMITIVE(receive, 1)                      \
+  PRIMITIVE(apply_carrier, 5)                \
+  PRIMITIVE(sync_manager_new, 2)             \
+  PRIMITIVE(sync_manager_delete, 2)          \
+  PRIMITIVE(sync_manager_reset, 1)           \
+  PRIMITIVE(encoder_new, 2)                  \
+  PRIMITIVE(encoder_delete, 2)               \
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(new_unit, 4)                     \
@@ -577,6 +580,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
+  PRIMITIVE(set_pull, 2)                     \
 
 #define MODULE_GPIO_LINUX(PRIMITIVE)         \
   PRIMITIVE(list_chips, 0)                   \
@@ -593,6 +597,7 @@ namespace toit {
   PRIMITIVE(pin_get, 1)                      \
   PRIMITIVE(pin_set, 2)                      \
   PRIMITIVE(pin_set_open_drain, 2)           \
+  PRIMITIVE(pin_set_pull, 2)                 \
   PRIMITIVE(pin_config_edge_detection, 2)    \
   PRIMITIVE(pin_consume_edge_events, 1)      \
   PRIMITIVE(pin_last_edge_trigger_timestamp, 1) \
@@ -605,7 +610,7 @@ namespace toit {
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
-  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(use, 2)                         \
   PRIMITIVE(unuse, 2)                       \
   PRIMITIVE(set, 2)                         \
   PRIMITIVE(cosine_wave, 5)                 \
@@ -758,12 +763,13 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 5)                       \
+  PRIMITIVE(create, 3)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
   PRIMITIVE(receive, 1)                      \
-  PRIMITIVE(add_peer, 4)                     \
+  PRIMITIVE(add_peer, 6)                     \
+  PRIMITIVE(remove_peer, 2)                  \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
   PRIMITIVE(binary_operator, 5)              \
@@ -1113,6 +1119,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
+#define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtPatternEncoderResource(N, name)  MAKE_UNPACKING_MACRO(RmtPatternEncoderResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
 #define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)

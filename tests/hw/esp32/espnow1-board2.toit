@@ -3,24 +3,10 @@
 // be found in the tests/LICENSE file.
 
 /**
-See 'espnow1_board1.toit'
+See 'espnow1_shared.toit'
 */
 
-import esp32.espnow
-
 import .espnow1-shared
-import .test
 
 main:
-  run-test: test-espnow
-
-test-espnow:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
-
-  service.add-peer espnow.BROADCAST-ADDRESS
-
-  TEST-DATA.do:
-    service.send
-        it.to-byte-array
-        --address=espnow.BROADCAST-ADDRESS
-    print it
+  main-board2

@@ -29,18 +29,18 @@ Digital-to-Analog channel for generating a voltage on a GPIO pin.
 */
 class Dac:
   /** Scale factor for the cosine wave generator that yields full amplitude. */
-  static COSINE-WAVE-SCALE-1/int ::= 0
+  static COSINE-WAVE-SCALE-1/int ::= 1
   /** Scale factor for the cosine wave generator that yields half amplitude. */
-  static COSINE-WAVE-SCALE-2/int ::= 1
+  static COSINE-WAVE-SCALE-2/int ::= 2
   /** Scale factor for the cosine wave generator that yields 1/4 amplitude. */
-  static COSINE-WAVE-SCALE-4/int ::= 2
+  static COSINE-WAVE-SCALE-4/int ::= 4
   /** Scale factor for the cosine wave generator that yields 1/8 amplitude. */
-  static COSINE-WAVE-SCALE-8/int ::= 3
+  static COSINE-WAVE-SCALE-8/int ::= 8
 
   /** Phase shift constant of the cosine wave generator: 0° */
-  static COSINE-WAVE-PHASE-0/int ::= 2
+  static COSINE-WAVE-PHASE-0/int ::= 0
   /** Phase shift constant of the cosine wave generator: 180° */
-  static COSINE-WAVE-PHASE-180/int ::= 3
+  static COSINE-WAVE-PHASE-180/int ::= 180
 
   pin/Pin
   resource_ := ?
@@ -51,10 +51,11 @@ class Dac:
   If provided, sets the output of the dac to the given $initial-voltage. Otherwise, the
     pin is set to emit 0V.
   */
-  constructor .pin --initial-voltage/float?=null:
+  constructor .pin --initial-voltage/float=0.0:
     group := resource-group_
-    initial-value := initial-voltage ? (voltage-to-dac-value_ initial-voltage) : 0
-    resource_ = dac-use_ group pin.num 0
+    resource_ = dac-use_ group pin.num
+    set initial-voltage
+
 
   /**
   Sets the output voltage of the DAC channel to $voltage.
@@ -89,11 +90,14 @@ class Dac:
     shifted vertically. The $offset must be in range [-1.0 .. 1.0], where -1.0 means that the wave is centered at 0V
     (cutting off anything that tips below), and 1.0 means that the wave is centered at VCC (cutting off anything that
     tips above).
+
+  The ESP32 has only one wave generator. Behavior is undefined if multiple DAC channels use it at the same time.
   */
   cosine-wave --frequency/int
       --scale/int=COSINE-WAVE-SCALE-1
       --phase/int=COSINE-WAVE-PHASE-0
       --offset/float=0.0:
+    if not 130 <= frequency <= 5500: throw "INVALID_ARGUMENT"
     if not COSINE-WAVE-SCALE-1 <= scale <= COSINE-WAVE-SCALE-8: throw "INVALID_ARGUMENT"
     if phase != COSINE-WAVE-PHASE-0 and phase != COSINE-WAVE-PHASE-180: throw "INVALID_ARGUMENT"
     if not -1.0 <= offset <= 1.0: throw "INVALID_ARGUMENT"
@@ -109,7 +113,7 @@ resource-group_ ::= dac-init_
 dac-init_:
   #primitive.dac.init
 
-dac-use_ group pin-num initial-value:
+dac-use_ group pin-num:
   #primitive.dac.use
 
 dac-unuse_ group resource:

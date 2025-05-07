@@ -135,6 +135,7 @@ PRIMITIVE(device) {
     .address_bits     = uint8(address_bits),
     .dummy_bits       = 0,
     .mode             = uint8(mode),
+    .clock_source     = SPI_CLK_SRC_DEFAULT,
     .duty_cycle_pos   = 0,
     .cs_ena_pretrans  = 0,
     .cs_ena_posttrans = 0,

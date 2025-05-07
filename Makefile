@@ -196,9 +196,9 @@ version-file: $(BUILD)/$(TARGET)/CMakeCache.txt
 .PHONY: pi
 pi: raspbian
 
-TOITLANG_SYSROOTS := armv7 aarch64 raspbian arm-linux-gnueabi
+TOITLANG_SYSROOTS := armv7 aarch64 raspbian riscv64 arm-linux-gnueabi
 ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
-SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.3.0/sysroot-$(TARGET).tar.gz
+SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.6.0/sysroot-$(TARGET).tar.gz
 
 rebuild-cmake: sysroot
 
