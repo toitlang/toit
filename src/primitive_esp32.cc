@@ -74,6 +74,7 @@
 #include "esp_partition.h"
 
 #include "event_sources/system_esp32.h"
+#include "resource.h"
 #include "resource_pool.h"
 #include "resources/touch_esp32.h"
 
@@ -84,6 +85,33 @@ const int kWatchdogSingletonId = 0;
 ResourcePool<int, kInvalidWatchdogTimer> watchdog_timers(
   kWatchdogSingletonId
 );
+
+class PmLockResource : public Resource {
+ public:
+  TAG(PmLockResource);
+  PmLockResource(SimpleResourceGroup* group, esp_pm_lock_handle_t handle, char* name)
+      : Resource(group)
+      , handle_(handle)
+      , name_(name) {}
+  ~PmLockResource() override;
+
+  esp_pm_lock_handle_t handle() const { return handle_; }
+  void increase_count() { count_++; }
+  void decrease_count() { count_--; }
+
+ private:
+  esp_pm_lock_handle_t handle_;
+  char* name_;
+  int count_ = 0;
+};
+
+PmLockResource::~PmLockResource() {
+  for (int i = 0; i < count_; i++) {
+    FATAL_IF_NOT_ESP_OK(esp_pm_lock_release(handle_));
+  }
+  FATAL_IF_NOT_ESP_OK(esp_pm_lock_delete(handle_));
+  free(name_);
+}
 
 MODULE_IMPLEMENTATION(esp32, MODULE_ESP32)
 
@@ -660,6 +688,76 @@ PRIMITIVE(pm_get_configuration) {
   array->at_put(2, BOOL(cfg.light_sleep_enable));
   return array;
 #endif
+}
+
+PRIMITIVE(pm_lock_new) {
+  ARGS(SimpleResourceGroup, group, int, lock_type_value, cstring, name);
+
+  esp_pm_lock_type_t lock_type;
+  switch (lock_type_value) {
+    case 0: lock_type = ESP_PM_CPU_FREQ_MAX; break;
+    case 1: lock_type = ESP_PM_APB_FREQ_MAX; break;
+    case 2: lock_type = ESP_PM_NO_LIGHT_SLEEP; break;
+    default: FAIL(INVALID_ARGUMENT);
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  bool handed_to_resource = false;
+
+  char* copied_name = strdup(name);
+  if (copied_name == null) FAIL(MALLOC_FAILED);
+  Defer del_string { [&] { if (!handed_to_resource) free(copied_name); } };
+
+  esp_pm_lock_handle_t handle;
+  esp_err_t err = esp_pm_lock_create(lock_type, 0, copied_name, &handle);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer release_lock { [&] { if (!handed_to_resource) esp_pm_lock_release(handle); } };
+
+  auto resource = _new PmLockResource(group, handle, copied_name);
+  if (resource == null) FAIL(ALLOCATION_FAILED);
+  handed_to_resource = true;
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+
+  return proxy;
+}
+
+PRIMITIVE(pm_lock_del) {
+  ARGS(PmLockResource, resource);
+
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(pm_lock_acquire) {
+  ARGS(PmLockResource, resource);
+
+  esp_err_t err = esp_pm_lock_acquire(resource->handle());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  resource->increase_count();
+
+  return process->null_object();
+}
+
+PRIMITIVE(pm_lock_release) {
+  ARGS(PmLockResource, resource);
+
+  esp_err_t err = esp_pm_lock_release(resource->handle());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  resource->decrease_count();
+
+  return process->null_object();
+}
+
+PRIMITIVE(pm_locks_dump) {
+  esp_err_t err = esp_pm_dump_locks(stdout);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
 }
 
 } // namespace toit

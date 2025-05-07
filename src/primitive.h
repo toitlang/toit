@@ -415,6 +415,11 @@ namespace toit {
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
   PRIMITIVE(pm_configure, 3)                 \
   PRIMITIVE(pm_get_configuration, 0)         \
+  PRIMITIVE(pm_lock_new, 3)                  \
+  PRIMITIVE(pm_lock_del, 1)                  \
+  PRIMITIVE(pm_lock_acquire, 1)              \
+  PRIMITIVE(pm_lock_release, 1)              \
+  PRIMITIVE(pm_locks_dump, 0)                \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -1117,6 +1122,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
+#define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
