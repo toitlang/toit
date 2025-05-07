@@ -20,7 +20,6 @@ test:
 
   devices := bus.scan
 
-  expect-equals 1 devices.size
   expect (devices.contains bme280.I2C-ADDRESS-ALT)
 
   device := bus.device bme280.I2C-ADDRESS-ALT

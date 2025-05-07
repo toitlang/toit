@@ -21,7 +21,7 @@ set(TOIT_SKIP_TESTS
   dht11-board1.toit-esp32s3
 
   # The test didn't work for the ESP32S3. No need to run it.
-  rmt-deprecated-test.toit-eps32s3
+  rmt-deprecated-test.toit-esp32s3
 
   # I2S is flaky.
   # https://github.com/espressif/esp-idf/issues/15275
