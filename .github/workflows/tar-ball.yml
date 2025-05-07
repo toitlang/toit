@@ -1,0 +1,55 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2025 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+name: Upload Full Source Tarball
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Fetch all history so the archive has correct metadata.
+
+      - name: Create tarball including submodules
+        id: create-tarball
+        run: |
+          tag_name=${{ github.event.release.tag_name }}
+          archive_name="${{ github.repository }}-${tag_name}-with-submodules.tar.gz"
+          git archive --format=tar --prefix="${{ github.repository }}-${tag_name}/" "$tag_name" | tar -x
+          cd "${{ github.repository }}-${tag_name}"
+          git submodule foreach --recursive '
+            mkdir -p "$toplevel/${path%/*}" &&
+            git archive --prefix="${path}/" HEAD | tar -C "$toplevel/${path%/*}" -x
+          '
+          cd ..
+          tar -czf "$archive_name" "${{ github.repository }}-${tag_name}"
+          echo "archive_name=$archive_name" >> $GITHUB_OUTPUTS
+          echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUTS
+
+      - name: Upload tarball to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ steps.create-tarball.outputs.archive_path }}
+          asset_name: ${{ steps.create-tarball.outputs.archive_name }}
+          tag: ${{ github.event.release.tag_name }}
+          overwrite: true
