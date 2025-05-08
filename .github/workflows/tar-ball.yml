@@ -67,8 +67,8 @@ jobs:
           done
 
           cd ${{ github.workspace }}
-          tar -czf "$archive_name" "toit-${version}"
-          echo "archive_version=$version" >> $GITHUB_OUTPUT
+          echo "set(TOIT_GIT_VERSION \"$version\")" > "$prefix/version.cmake"
+          tar -czf "$archive_name" "$prefix"
           echo "archive_name=$archive_name" >> $GITHUB_OUTPUT
           echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUT
           echo "archive_prefix=$prefix" >> $GITHUB_OUTPUT
@@ -90,20 +90,26 @@ jobs:
           overwrite: true
 
     outputs:
-      archive_version: ${{ steps.create-tarball.outputs.archive_version }}
       archive_name: ${{ steps.create-tarball.outputs.archive_name }}
-      archive_path: ${{ steps.create-tarball.outputs.archive_path }}
       archive_prefix: ${{ steps.create-tarball.outputs.archive_prefix }}
 
 
   test:
-    runs-on: ubuntu-latest
     needs: build-and-upload
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Download tarball from artifacts
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
 
       - name: Extract tarball
         shell: bash
@@ -114,8 +120,9 @@ jobs:
         shell: bash
         run: |
           cd ${{ needs.build-and-upload.outputs.archive_prefix }}
-          export TOIT_GIT_VERSION=${{ needs.build-and-upload.outputs.archive_version }}
-          make IGNORE_SUBMODULE=1 IGNORE_GIT_TAGS=1
+          # Note that we build without any special requisites. With the exception of 'go', the
+          # GitHub builders should have everything ready.
+          make
 
       - name: Test
         shell: bash
