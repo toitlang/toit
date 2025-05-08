@@ -50,7 +50,11 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   to be divisible by 4.
 */
 class Signals:
-  /** An empty signals instance. */
+  /**
+  An empty signals instance.
+
+  Deprecated. Signals should not be empty.
+  */
   static ZERO ::= Signals 0
 
   /** Bytes per ESP32 signal. */
@@ -88,8 +92,8 @@ class Signals:
     $size * $BYTES-PER-SIGNAL.
   */
   constructor .size --.resolution/int?=null:
-    bytes_ = ByteArray
-        round-up (size * 2) 4
+    byte-array-size := max 4 (round-up (size * 2) 4)
+    bytes_ = ByteArray byte-array-size
     // Terminate the signals with a high end-marker. The duration 0 signals the
     // end of the sequence, but with a level equal to 0 the peripheral would still
     // emit a short pulse when its pin is set to open-drain.
