@@ -33,8 +33,12 @@
 #include "../objects_inline.h"
 #include "../resource_pool.h"
 #include "../event_sources/ev_queue_esp32.h"
+#include "../utils.h"
 
-#define UART_ISR_INLINE inline __attribute__((always_inline))
+#ifndef FORCE_INLINE
+#error "FORCE_INLINE not defined"
+#endif
+#define UART_ISR_INLINE FORCE_INLINE
 
 // Valid UART port numbers.
 #define UART_NUM_0             (static_cast<uart_port_t>(0)) /*!< UART port 0 */

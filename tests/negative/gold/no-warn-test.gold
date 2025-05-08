@@ -1,0 +1,7 @@
+tests/negative/no-warn-test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/no-warn-test.toit:9:3: warning: Deprecated 'deprecated'
+  deprecated  // Should warn.
+  ^~~~~~~~~~
+Compilation failed

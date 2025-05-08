@@ -44,7 +44,7 @@ TYPE_PRIMITIVE_NULL(pin_hold_disable)
 TYPE_PRIMITIVE_NULL(deep_sleep_pin_hold_enable)
 TYPE_PRIMITIVE_NULL(deep_sleep_pin_hold_disable)
 TYPE_PRIMITIVE_NULL(pm_configure)
-TYPE_PRIMITIVE_ANY(pm_get_configuration)
+TYPE_PRIMITIVE_ARRAY(pm_get_configuration)
 TYPE_PRIMITIVE_ANY(pm_lock_new)
 TYPE_PRIMITIVE_NULL(pm_lock_del)
 TYPE_PRIMITIVE_NULL(pm_lock_acquire);

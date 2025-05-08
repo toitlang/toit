@@ -37,6 +37,51 @@ static FILE* text_green(FILE* f) { return f; }
 namespace toit {
 namespace compiler {
 
+const char* const NO_WARN_MARKER = "// @no-warn";
+
+void Diagnostics::report(Severity severity, const char* format, va_list& arguments) {
+  severity = adjust_severity(severity);
+  bool was_emitted = emit(severity, format, arguments);
+  if (!was_emitted) return;
+  if (severity == Severity::error) encountered_error_ = true;
+  if (severity == Severity::warning) encountered_warning_ = true;
+}
+
+// A hackish way of finding '// @no-warn' comments.
+// This approach is simple, but doesn't work all the time. Specifically, we might not
+// report warnings in multi-line strings or toitdocs.
+// Example:
+// ```
+// str := """
+//    $(some-warning-operation)  // @no-warn
+// """
+// In this case the '// @no-warn' is part of the string and shouldn't be recognized.
+bool Diagnostics::ends_with_no_warn_marker(const Source::Position& pos) {
+  // See if the line ends with the NO_WARN_MARKER.
+  auto manager = source_manager();
+  if (manager == null) return false;
+  auto source = manager->source_for_position(pos);
+  auto text = source->text_at(pos);
+  // Find the end of the line.
+  size_t i = 0;
+  while ((text[i] != '\n') && (text[i] != '\r') && (text[i] != '\0'))
+    i++;
+  size_t marker_length = strlen(NO_WARN_MARKER);
+  if (i < marker_length) return false;
+  return strncmp(NO_WARN_MARKER, reinterpret_cast<const char*>(&text[i - marker_length]), marker_length) == 0;
+}
+
+void Diagnostics::report(Severity severity, Source::Range range, const char* format, va_list& arguments) {
+  severity = adjust_severity(severity);
+  if (severity == Severity::warning && ends_with_no_warn_marker(range.to())) {
+    return;
+  }
+  bool was_emitted = emit(severity, range, format, arguments);
+  if (!was_emitted) return;
+  if (severity == Severity::error) encountered_error_ = true;
+  if (severity == Severity::warning) encountered_warning_ = true;
+}
+
 void Diagnostics::report_error(const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
@@ -79,6 +124,7 @@ void Diagnostics::report_warning(const char* format, va_list& arguments) {
 }
 
 void Diagnostics::report_warning(Source::Range range, const char* format, va_list& arguments) {
+
   report(Severity::warning, range, format, arguments);
 }
 

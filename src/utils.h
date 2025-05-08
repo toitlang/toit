@@ -21,6 +21,8 @@
 #include "top.h"
 #include "os.h"
 
+#define FORCE_INLINE inline __attribute__((always_inline))
+
 namespace toit {
 
 class Process;
