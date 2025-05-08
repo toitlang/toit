@@ -57,6 +57,7 @@ namespace toit {
   fn(RmtResource)                       \
   fn(RmtSyncManagerResource)            \
   fn(RmtPatternEncoderResource)         \
+  fn(PmLockResource)                    \
   fn(Directory)                         \
   fn(UdpSocketResource)                 \
   fn(TcpSocketResource)                 \

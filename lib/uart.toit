@@ -123,6 +123,8 @@ class Port extends Object with io.InMixin implements reader.Reader:
       mode
     state_ = ResourceState_ resource-group_ uart_
 
+    add-finalizer this:: close
+
   /**
   Constructs a UART port using a $device path.
 
@@ -145,6 +147,8 @@ class Port extends Object with io.InMixin implements reader.Reader:
     group := resource-group_
     uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
     state_ = ResourceState_ group uart_
+
+    add-finalizer this:: close
 
   out -> UartWriter:
     if not out_: out_ = UartWriter.private_ this
@@ -181,6 +185,7 @@ class Port extends Object with io.InMixin implements reader.Reader:
       state_.dispose
       uart-close_ resource-group_ uart_
       uart_ = null
+      remove-finalizer this
 
   /**
   Writes data to the Port.
