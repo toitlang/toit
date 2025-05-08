@@ -950,6 +950,9 @@ namespace toit {
     name = false;                                      \
   } else FAIL(WRONG_OBJECT_TYPE);
 
+// The code in primitive_esp32.cc currently relies on the fact that the
+// cstrings are always copied. When changing this code here, make sure to
+// update that code.
 #define _A_T_cstring(N, name)                                                    \
   Object* _raw_##name = __args[-(N)];                                            \
   char* _nonconst_##name = null;                                                 \

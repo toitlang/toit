@@ -314,7 +314,6 @@ pm-light-sleep-enabled -> bool:
 pm-get-configuration_ -> Array_:
   #primitive.esp32.pm-get-configuration
 
-
 /**
 The ESP32 power management lock.
 
@@ -322,9 +321,9 @@ If the lock is held, then the corresponding power management configuration is lo
   to the max frequency (for CPU and APB) or the light sleep is disabled.
 */
 class PmLock:
-  static CPU_FREQUENCY_ ::= 0
-  static APB_FREQUENCY_ ::= 1
-  static NO_LIGHT_SLEEP_ ::= 2
+  static CPU-FREQUENCY_ ::= 0
+  static APB-FREQUENCY_ ::= 1
+  static NO-LIGHT-SLEEP_ ::= 2
 
   /**
   Dumps the current power management locks to stdout.
@@ -334,14 +333,14 @@ class PmLock:
 
   resource_ /ByteArray? := ?
 
-  constructor.cpu_frequency name/string:
+  constructor.cpu-frequency name/string:
     return PmLock.private_ CPU-FREQUENCY_ name
 
   constructor.abp-frequency name/string:
     return PmLock.private_ APB-FREQUENCY_ name
 
   constructor.no-light-sleep name/string:
-    return PmLock.private_ NO_LIGHT_SLEEP_ name
+    return PmLock.private_ NO-LIGHT-SLEEP_ name
 
   constructor.private_ type/int name/string:
     resource_ = pm-lock-new_ resource-freeing-module_ type name

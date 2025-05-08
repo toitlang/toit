@@ -706,18 +706,17 @@ PRIMITIVE(pm_lock_new) {
 
   bool handed_to_resource = false;
 
-  char* copied_name = strdup(name);
-  if (copied_name == null) FAIL(MALLOC_FAILED);
-  Defer del_string { [&] { if (!handed_to_resource) free(copied_name); } };
-
   esp_pm_lock_handle_t handle;
-  esp_err_t err = esp_pm_lock_create(lock_type, 0, copied_name, &handle);
+  esp_err_t err = esp_pm_lock_create(lock_type, 0, name, &handle);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   Defer release_lock { [&] { if (!handed_to_resource) esp_pm_lock_release(handle); } };
 
-  auto resource = _new PmLockResource(group, handle, copied_name);
+  auto resource = _new PmLockResource(group, handle, const_cast<char*>(name));
   if (resource == null) FAIL(ALLOCATION_FAILED);
   handed_to_resource = true;
+  // Hack: the `cstring` type above did a copy of the Toit string.
+  // We now tell the allocation manager to keep the string alive.
+  _manager_name.keep_result();
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
