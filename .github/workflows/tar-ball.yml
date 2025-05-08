@@ -67,6 +67,7 @@ jobs:
           done
 
           cd ${{ github.workspace }}
+          cp third_party/esp-idf/LICENSE ${prefix}third_party/esp-idf/LICENSE
           tar -czf "$archive_name" "toit-${version}"
           echo "archive_version=$version" >> $GITHUB_OUTPUT
           echo "archive_name=$archive_name" >> $GITHUB_OUTPUT
