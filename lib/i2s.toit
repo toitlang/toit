@@ -372,6 +372,8 @@ class Bus:
         master
     state_ = ResourceState_ resource-group_ i2s_
 
+    add-finalizer this:: close
+
   /**
   Configures the channel.
 
@@ -673,6 +675,7 @@ class Bus:
       state_.dispose
       i2s-close_ resource-group_ i2s_
       i2s_ = null
+      remove-finalizer this
 
 resource-group_ ::= i2s-init_
 

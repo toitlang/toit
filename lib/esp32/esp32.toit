@@ -277,3 +277,103 @@ Disables the watchdog timer.
 */
 watchdog-deinit -> none:
   #primitive.esp32.watchdog-deinit
+
+/**
+Sets the power management configuration.
+
+See the documentation for the ESP32 power management for more details.
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/power_management.html
+*/
+pm-configure --min-frequency-mhz/int --max-frequency-mhz/int --enable-light-sleep/bool:
+  pm-configure_ min-frequency-mhz max-frequency-mhz enable-light-sleep
+
+pm-configure_ min-frequency-mhz/int max-frequency-mhz/int enable-light-sleep/bool -> none:
+  #primitive.esp32.pm-configure
+
+/**
+Returns the current power management min-frequency in MHz.
+*/
+pm-min-frequency-mhz -> int:
+  config := pm-get-configuration_
+  return config[0]
+
+/**
+Returns the current power management max-frequency in MHz.
+*/
+pm-max-frequency-mhz -> int:
+  config := pm-get-configuration_
+  return config[1]
+
+/**
+Returns whether the current power management has light-sleep enabled.
+*/
+pm-light-sleep-enabled -> bool:
+  config := pm-get-configuration_
+  return config[2]
+
+pm-get-configuration_ -> Array_:
+  #primitive.esp32.pm-get-configuration
+
+/**
+The ESP32 power management lock.
+
+If the lock is held, then the corresponding power management configuration is locked
+  to the max frequency (for CPU and APB) or the light sleep is disabled.
+*/
+class PmLock:
+  static CPU-FREQUENCY_ ::= 0
+  static APB-FREQUENCY_ ::= 1
+  static NO-LIGHT-SLEEP_ ::= 2
+
+  /**
+  Dumps the current power management locks to stdout.
+  */
+  static dump -> none:
+    #primitive.esp32.pm-locks-dump
+
+  resource_ /ByteArray? := ?
+
+  constructor.cpu-frequency name/string:
+    return PmLock.private_ CPU-FREQUENCY_ name
+
+  constructor.abp-frequency name/string:
+    return PmLock.private_ APB-FREQUENCY_ name
+
+  constructor.no-light-sleep name/string:
+    return PmLock.private_ NO-LIGHT-SLEEP_ name
+
+  constructor.private_ type/int name/string:
+    resource_ = pm-lock-new_ resource-freeing-module_ type name
+    add-finalizer this:: close
+
+  close -> none:
+    if not resource_: return
+    pm-lock-del_ resource_
+    resource_ = null
+    remove-finalizer this
+
+  acquire -> none:
+    pm-lock-acquire_ resource_
+
+  release -> none:
+    pm-lock-release_ resource_
+
+  do [block]:
+    acquire
+    try:
+      block.call
+    finally:
+      release
+
+pm-lock-new_ resource-freeing-module/ByteArray type/int name/string -> ByteArray:
+  #primitive.esp32.pm-lock-new
+
+pm-lock-del_ resource/ByteArray:
+  #primitive.esp32.pm-lock-del
+
+pm-lock-acquire_ resource/ByteArray:
+  #primitive.esp32.pm-lock-acquire
+
+pm-lock-release_ resource/ByteArray:
+  #primitive.esp32.pm-lock-release
+
