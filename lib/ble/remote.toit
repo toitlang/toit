@@ -132,7 +132,7 @@ class Central extends Resource_:
               --is-scan-response=false
               --address-bytes=null
               --address-type=null
-              AdvertisementData
+              AdvertisementData  // @no-warn
                   --name=next[2]
                   --service-classes=service-classes
                   --manufacturer-data=(next[4] ? next[4] : #[])
@@ -149,7 +149,7 @@ class Central extends Resource_:
               --is-scan-response=next[4]
               --address-type=identifier[0]
               --address-bytes=identifier[1..]
-              AdvertisementData.raw_ next[2] --connectable=next[3]
+              AdvertisementData.raw_ next[2] --connectable=next[3]  // @no-warn
 
         block.call discovery
     finally:
