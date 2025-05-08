@@ -46,6 +46,7 @@
 #include <esp_mac.h>
 #include <esp_sleep.h>
 #include <esp_ota_ops.h>
+#include <esp_pm.h>
 #include <esp_timer.h>
 #include <rom/ets_sys.h>
 #include <esp_task_wdt.h>
@@ -619,6 +620,45 @@ PRIMITIVE(deep_sleep_pin_hold_disable) {
   return process->null_object();
 #else
   FAIL(UNSUPPORTED);
+#endif
+}
+
+PRIMITIVE(pm_configure) {
+  ARGS(int, max_freq_mhz, int, min_freq_mhz, bool, light_sleep_enable)
+#ifndef CONFIG_PM_ENABLE
+  USE(max_freq_mhz);
+  USE(min_freq_mhz);
+  USE(light_sleep_enable);
+  FAIL(UNSUPPORTED);
+#else
+  esp_pm_config_t cfg = {
+    .max_freq_mhz = max_freq_mhz,
+    .min_freq_mhz = min_freq_mhz,
+    .light_sleep_enable = light_sleep_enable,
+  };
+
+  esp_err_t err = esp_pm_configure(&cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
+#endif
+}
+
+PRIMITIVE(pm_get_configuration) {
+#ifndef CONFIG_PM_ENABLE
+  FAIL(UNSUPPORTED);
+#else
+  Array* array = process->object_heap()->allocate_array(3, Smi::zero());
+  if (array == null) FAIL(ALLOCATION_FAILED);
+
+  esp_pm_config_t cfg;
+  esp_err_t err = esp_pm_get_configuration(&cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  array->at_put(0, Smi::from(cfg.max_freq_mhz));
+  array->at_put(1, Smi::from(cfg.min_freq_mhz));
+  array->at_put(2, BOOL(cfg.light_sleep_enable));
+  return array;
 #endif
 }
 
