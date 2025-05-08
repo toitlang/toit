@@ -45,6 +45,11 @@ TYPE_PRIMITIVE_NULL(deep_sleep_pin_hold_enable)
 TYPE_PRIMITIVE_NULL(deep_sleep_pin_hold_disable)
 TYPE_PRIMITIVE_NULL(pm_configure)
 TYPE_PRIMITIVE_ARRAY(pm_get_configuration)
+TYPE_PRIMITIVE_ANY(pm_lock_new)
+TYPE_PRIMITIVE_NULL(pm_lock_del)
+TYPE_PRIMITIVE_NULL(pm_lock_acquire);
+TYPE_PRIMITIVE_NULL(pm_lock_release);
+TYPE_PRIMITIVE_NULL(pm_locks_dump);
 
 }  // namespace toit::compiler
 }  // namespace toit

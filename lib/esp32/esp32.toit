@@ -313,3 +313,67 @@ pm-light-sleep-enabled -> bool:
 
 pm-get-configuration_ -> Array_:
   #primitive.esp32.pm-get-configuration
+
+/**
+The ESP32 power management lock.
+
+If the lock is held, then the corresponding power management configuration is locked
+  to the max frequency (for CPU and APB) or the light sleep is disabled.
+*/
+class PmLock:
+  static CPU-FREQUENCY_ ::= 0
+  static APB-FREQUENCY_ ::= 1
+  static NO-LIGHT-SLEEP_ ::= 2
+
+  /**
+  Dumps the current power management locks to stdout.
+  */
+  static dump -> none:
+    #primitive.esp32.pm-locks-dump
+
+  resource_ /ByteArray? := ?
+
+  constructor.cpu-frequency name/string:
+    return PmLock.private_ CPU-FREQUENCY_ name
+
+  constructor.abp-frequency name/string:
+    return PmLock.private_ APB-FREQUENCY_ name
+
+  constructor.no-light-sleep name/string:
+    return PmLock.private_ NO-LIGHT-SLEEP_ name
+
+  constructor.private_ type/int name/string:
+    resource_ = pm-lock-new_ resource-freeing-module_ type name
+    add-finalizer this:: close
+
+  close -> none:
+    if not resource_: return
+    pm-lock-del_ resource_
+    resource_ = null
+    remove-finalizer this
+
+  acquire -> none:
+    pm-lock-acquire_ resource_
+
+  release -> none:
+    pm-lock-release_ resource_
+
+  do [block]:
+    acquire
+    try:
+      block.call
+    finally:
+      release
+
+pm-lock-new_ resource-freeing-module/ByteArray type/int name/string -> ByteArray:
+  #primitive.esp32.pm-lock-new
+
+pm-lock-del_ resource/ByteArray:
+  #primitive.esp32.pm-lock-del
+
+pm-lock-acquire_ resource/ByteArray:
+  #primitive.esp32.pm-lock-acquire
+
+pm-lock-release_ resource/ByteArray:
+  #primitive.esp32.pm-lock-release
+
