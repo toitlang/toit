@@ -51,11 +51,10 @@ runs:
         git submodule sync --recursive
         git submodule update --init --recursive -j 16
 
-    # Use Go 1.20
-    - name: Switch to Go 1.20
+    - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.20'
+        go-version: stable
         cache-dependency-path: |
           tools/**/go.sum
 
@@ -73,7 +72,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat valgrind
+        sudo apt-get install -q ccache gcc-multilib g++-multilib socat valgrind
         ninja --version
         cmake --version
         gcc --version
@@ -82,15 +81,14 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       run: |
-        brew install ninja ccache
+        brew install ccache
         ninja --version
         cmake --version
     - name: Install dependencies - Windows
       if: runner.os == 'Windows'
       shell: bash
       run: |
-        choco install ninja ccache
-        ninja --version
+        choco install ccache
         ccache --version
         cmake --version
 
