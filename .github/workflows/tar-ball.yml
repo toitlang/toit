@@ -30,7 +30,7 @@ jobs:
           submodules: false
           fetch-depth: 0  # Fetch all history so the archive has correct metadata.
 
-      - name: Create tarball including submodules
+      - name: Create tarball including mbedtls
         id: create-tarball
         shell: bash
         run: |
