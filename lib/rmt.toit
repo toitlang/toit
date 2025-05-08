@@ -1013,6 +1013,61 @@ class SynchronizationManager:
   reset -> none:
     rmt-sync-manager-reset_ resource_
 
+/**
+An encoder for the RMT controller.
+
+Encoders convert the input data to RMT signals by matching them against patterns.
+
+# Example
+
+The following example implements a simple UART encoder at BAUD-RATE baud rate, with the
+  RMT $Out running at RESOLUTION Hz.
+```
+uart-period := RESOLUTION / BAUD-RATE
+
+uart-start := rmt.Signals 2
+// There must always be two signals, and neither must have a period of 0.
+uart-start.set 0 --level=0 --period=uart-period - 1
+uart-start.set 1 --level=0 --period=1
+
+// A combination of the stop and start signals.
+uart-between := rmt.Signals 2
+uart-between.set 0 --level=1 --period=uart-period  // A stop bit.
+uart-between.set 1 --level=0 --period=uart-period  // A start bit.
+
+uart-stop := rmt.Signals 2
+uart-stop.set 0 --level=1 --period=uart-period - 1
+uart-stop.set 1 --level=1 --period=1
+
+// Since we must always have two signals, we use a chunk-size of 2.
+uart-00 := rmt.Signals 2
+uart-00.set 0 --level=0 --period=uart-period
+uart-00.set 1 --level=0 --period=uart-period
+uart-01 := rmt.Signals 2
+uart-01.set 0 --level=1 --period=uart-period
+uart-01.set 1 --level=0 --period=uart-period
+uart-10 := rmt.Signals 2
+uart-10.set 0 --level=0 --period=uart-period
+uart-10.set 1 --level=1 --period=uart-period
+uart-11 := rmt.Signals 2
+uart-11.set 0 --level=1 --period=uart-period
+uart-11.set 1 --level=1 --period=uart-period
+uart-start := Signals 1
+uart-start.set 0 --level=0 --period=uart-period
+
+encoder := Encoder
+    --msb=false  // UART is LSB first.
+    --start=uart-start
+    --between=uart-between
+    --stop=uart-stop
+    {
+      0b00: uart-00,
+      0b01: uart-01,
+      0b10: uart-10,
+      0b11: uart-11,
+    }
+```
+*/
 class Encoder:
   resource_ /ByteArray? := null
   is-closed_/bool := false
@@ -1021,6 +1076,99 @@ class Encoder:
     bake_ bytes
 
     add-finalizer this:: close
+
+  /**
+  Constructs an encoder for the given $patterns.
+
+  The $patterns map must have a size of 2, 4, or 16. The keys are the patterns (integers counting
+    from 0 to 1/3/15) and the values are the signals that should be emitted for each pattern.
+
+  The $start, $between, and $stop signals are optional.
+  The $start signal is emitted when the transmission starts.
+  The $between signal is emitted between each byte.
+  The $stop signal is emitted when the transmission ends.
+  The $msb parameter indicates whether the patterns are MSB first or LSB first.
+  */
+  constructor --start/Signals?=null --between/Signals?=null --stop/Signals?=null --msb/bool patterns/Map:
+    chunk-size := ?
+    if patterns.size == 2:
+      chunk-size = 1
+    else if patterns.size == 4:
+      chunk-size = 2
+    else if patterns.size == 16:
+      chunk-size = 4
+    else:
+      throw "INVALID_ARGUMENT"
+    ((chunk-size << 1) - 1).repeat:
+      if not patterns.contains it: throw "INVALID_ARGUMENT"
+
+    patterns.do --values: | patterns/Signals |
+      if patterns.size & 1 != 0: throw "INVALID_ARGUMENT"
+      if patterns.size == 0: throw "INVALID_ARGUMENT"
+      patterns.do: | _ period/int _ |
+        if period == 0: throw "INVALID_ARGUMENT"
+
+    // Layout:
+    // 1 byte of the bit-size of the chunks. Must be 1, 2, or 4.
+    // 1 byte to indicate whether the chunks should be processed MSB first.
+    // 2 bytes (little-endian): index into the array for the start sequence.
+    // 2 bytes (little-endian): index into the array for the between sequence.
+    // 2 bytes (little-endian): index into the array for the end sequence.
+    // 2 bytes (little-endian): for each chunk (up to 16 of them).
+    // 2 bytes (little-endian): pointing to the end of the data stream.
+    // Data for the offsets. Must be in the same order as the indexes (so we can compute
+    // the length of each sequence).
+    total-signals-byte-size := 0
+    if start: total-signals-byte-size += start.bytes_.size
+    if between: total-signals-byte-size += between.bytes_.size
+    if stop: total-signals-byte-size += stop.bytes_.size
+    patterns.do --values: | signals/Signals |
+      total-signals-byte-size += signals.bytes_.size
+    header-byte-size := 1 + 1 + 2 + 2 + 2 + (2 * patterns.size) + 2
+    size := header-byte-size + total-signals-byte-size
+
+    bytes := ByteArray size
+    signals-offset := header-byte-size
+    i := 0
+    bytes[i++] = chunk-size
+    bytes[i++] = msb ? 1 : 0
+    // Fill in the start values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if start:
+      bytes.replace signals-offset start.bytes_
+      signals-offset += start.bytes_.size
+
+    // Fill in the between values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if between:
+      bytes.replace signals-offset between.bytes_
+      signals-offset += between.bytes_.size
+
+    // Fill in the stop values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if stop:
+      bytes.replace signals-offset stop.bytes_
+      signals-offset += stop.bytes_.size
+
+    // Fill in the patterns.
+    patterns.size.repeat: | pattern/int |
+      signals := patterns[pattern]
+      LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+      i += 2
+      bytes.replace signals-offset signals.bytes_
+      signals-offset += signals.bytes_.size
+
+    // Fill in the end of the data stream.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+
+    assert: i == header-byte-size
+    assert: signals-offset == size
+
+    return Encoder.from-bytes_ bytes
 
   close:
     if is-closed_: return
