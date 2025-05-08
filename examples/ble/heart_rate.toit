@@ -35,7 +35,7 @@ main:
       : BLE-CONNECT-MODE-UNDIRECTIONAL
   peripheral.start-advertise
       --connection-mode=connection-mode
-      AdvertisementData --name="Toit heart rate demo"
+      Advertisement --name="Toit heart rate demo"
 
   task::
     simulated-heart-rate := 60
