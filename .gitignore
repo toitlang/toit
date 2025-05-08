@@ -1,6 +1,7 @@
 /build/
 .packages/
 .packages-bootstrap/
+/version.cmake
 /.cache/
 **/.vscode/
 tedi_test.go
