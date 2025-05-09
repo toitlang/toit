@@ -68,6 +68,7 @@ jobs:
 
           cd ${{ github.workspace }}
           echo "set(TOIT_GIT_VERSION \"$version\")" > "$prefix/version.cmake"
+          cp third_party/esp-idf/LICENSE ${prefix}third_party/esp-idf/LICENSE
           tar -czf "$archive_name" "$prefix"
           echo "archive_name=$archive_name" >> $GITHUB_OUTPUT
           echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUT
