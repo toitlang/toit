@@ -1,0 +1,12 @@
+<pkg:pkg-cli>/parser_.toit:16:17: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
+    pipe.stderr.write "$o\n"
+                ^~~~~
+<pkg:pkg-cli>/cache.toit:329:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write-content bytes --path=file-path
+          ^~~~~~~~~~~~~~
+<pkg:pkg-cli>/cache.toit:114:16: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return file.read-content key-path
+               ^~~~~~~~~~~~~
+<pkg:pkg-cli>/config.toit:94:22: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      content := file.read-content path
+                     ^~~~~~~~~~~~~

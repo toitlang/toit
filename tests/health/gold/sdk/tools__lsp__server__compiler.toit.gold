@@ -1,0 +1,6 @@
+tools/lsp/server/compiler.toit:75:22: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+    cpp-pipes := pipe.fork
+                     ^~~~~
+tools/lsp/server/compiler.toit:122:25: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+      exit-value := pipe.wait-for cpp-pid
+                        ^~~~~~~~~

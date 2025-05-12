@@ -1,0 +1,24 @@
+<pkg:pkg-cli>/parser_.toit:16:17: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
+    pipe.stderr.write "$o\n"
+                ^~~~~
+<pkg:pkg-cli>/cache.toit:329:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write-content bytes --path=file-path
+          ^~~~~~~~~~~~~~
+<pkg:pkg-cli>/cache.toit:114:16: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return file.read-content key-path
+               ^~~~~~~~~~~~~
+tools/kebabify.toit:112:22: warning: Class 'OpenPipe' is deprecated. Use 'Stream.constructor --parent-to-child' or 'Stream.constructor --child-to-parent' to construct pipes
+    pipe-ends := pipe.OpenPipe false
+                     ^~~~~~~~~
+tools/kebabify.toit:113:25: warning: Deprecated 'OpenPipe_.fd'
+    stdout := pipe-ends.fd
+                        ^~
+tools/kebabify.toit:114:18: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+    pipes := pipe.fork
+                 ^~~~~
+tools/kebabify.toit:126:23: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+    exit-value := pipe.wait-for child-process
+                      ^~~~~~~~~
+<pkg:pkg-cli>/config.toit:94:22: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      content := file.read-content path
+                     ^~~~~~~~~~~~~

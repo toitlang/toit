@@ -1,0 +1,6 @@
+tests/uart-test.toit:27:20: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+  fork-data := pipe.fork
+                   ^~~~~
+tests/uart-test.toit:76:9: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+    pipe.wait-for pid
+        ^~~~~~~~~

@@ -1,0 +1,6 @@
+tools/lsp/server/tar_utils.toit:55:16: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+  pipes := pipe.fork
+               ^~~~~
+tools/lsp/server/tar_utils.toit:75:9: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+    pipe.wait-for pid
+        ^~~~~~~~~
