@@ -118,8 +118,8 @@ class LspClient:
     if spawn-process:
       process := pipe.fork
           --use-path
+          --create-stdin
           --create-stdout
-          --create-stderr
           cmd
           [cmd] + args
       server-to   := process.stdin.in
