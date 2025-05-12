@@ -1229,41 +1229,30 @@ jobs:
 
       - name: Configure git
         run: |
-          pushd toit
-          git config user.email "leon@toit.io"
-          git config user.name "Leon Gungadin Mogensen"
-          popd
-          pushd toit-vessels-bin
-          git config user.email "leon@toit.io"
-          git config user.name "Leon Gungadin Mogensen"
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+              git config user.email "leon@toit.io"
+              git config user.name "Leon Gungadin Mogensen"
+            popd
+          done
 
       - name: Update AUR packages
         shell: bash
         run: |
-          # Toit's PKGBUILD is a bit special in that we don't download
-          # a tarball (since those don't contain submodules), but instead
-          # use Git to get the source code.
-          # For security, we store the hash of the commit in the PKGBUILD,
-          # which is why we run a custom 'update_hash.sh' script.
-          # This is the reason we can't just use the 'archlinux-package-action'.
-          pushd toit
-          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
-          sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
-          ./update_hash.sh
-          popd
-          # The vessel PKGBUILD also needs the '_tag' replaced instead of
-          # the usual 'pkgver'.
-          pushd toit-vessels-bin
-          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+            sed -i "s/_pkgver=.*/_pkgver=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
+            sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
+            popd
+          done
 
-      - name: Update .SRCINFO for toit
+      - name: Update pkgsums and .SRCINFO for toit
         uses: toitlang/archlinux-package-action@main
         with:
           path: toit
           flags: ''
           namcap: false
+          updpkgsums: true
           srcinfo: true
 
       - name: Update pkgsums and .SRCINFO for toit-vessels-bin
@@ -1277,19 +1266,14 @@ jobs:
 
       - name: Upload toit and toit-vessels-bin
         run: |
-          pushd toit
-          cat PKGBUILD
-          cat .SRCINFO
-          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
-          git push origin master
-          popd
-
-          pushd toit-vessels-bin
-          cat PKGBUILD
-          cat .SRCINFO
-          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
-          git push origin master
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+            cat PKGBUILD
+            cat .SRCINFO
+            git commit -am "Update to version ${{ env.TOIT_VERSION }}"
+            git push origin master
+            popd
+          done
 
   serial:
     needs: [prereqs, rpi, esp32]
