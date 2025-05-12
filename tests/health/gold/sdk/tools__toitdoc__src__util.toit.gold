@@ -1,0 +1,24 @@
+<pkg:pkg-cli>/parser_.toit:16:17: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
+    pipe.stderr.write "$o\n"
+                ^~~~~
+<pkg:pkg-cli>/cache.toit:329:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write-content bytes --path=file-path
+          ^~~~~~~~~~~~~~
+<pkg:pkg-cli>/cache.toit:114:16: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return file.read-content key-path
+               ^~~~~~~~~~~~~
+tools/lsp/server/compiler.toit:75:22: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+    cpp-pipes := pipe.fork
+                     ^~~~~
+tools/lsp/server/compiler.toit:122:25: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+      exit-value := pipe.wait-for cpp-pid
+                        ^~~~~~~~~
+<pkg:pkg-cli>/config.toit:94:22: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      content := file.read-content path
+                     ^~~~~~~~~~~~~
+tools/lsp/server/tar_utils.toit:55:16: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+  pipes := pipe.fork
+               ^~~~~
+tools/lsp/server/tar_utils.toit:75:9: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
+    pipe.wait-for pid
+        ^~~~~~~~~

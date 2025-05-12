@@ -10,6 +10,12 @@ tests/zlib-deprecated-test.toit:47:10: warning: Deprecated 'Stream.write'. Use '
 tests/zlib-deprecated-test.toit:59:12: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
         fd.write accumulator.buffer 0 accumulator.size
            ^~~~~
+tests/zlib-deprecated-test.toit:64:23: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+    subprocess := pipe.fork true pipe.PIPE-CREATED pipe.PIPE-CREATED pipe.PIPE-INHERITED "zcat" ["zcat"]
+                      ^~~~~
+tests/zlib-deprecated-test.toit:67:9: warning: Deprecated 'dont-wait-for'. Use 'Process.wait-ignore' instead
+    pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
+        ^~~~~~~~~~~~~~
 tests/zlib-deprecated-test.toit:68:24: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
     round-trip := bytes.Buffer
                        ^~~~~~~

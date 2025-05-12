@@ -1,0 +1,60 @@
+tools/pkg/git/pack.toit:51:9: warning: Deprecated 'write-content'. Use 'write-contents' instead
+    file.write_content binary-data_ --path=path
+        ^~~~~~~~~~~~~~
+tools/pkg/registry/local.toit:65:16: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return file.read_content entry
+               ^~~~~~~~~~~~~
+tools/pkg/project/lock.toit:181:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write_content "# Toit Package File." --path=file-name
+          ^~~~~~~~~~~~~~
+tools/pkg/project/lock.toit:183:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write_content --path=file-name
+          ^~~~~~~~~~~~~~
+tools/pkg/registry/registry.toit:223:9: warning: Deprecated 'write-content'. Use 'write-contents' instead
+    file.write_content --path=cache-file (yaml.encode registries-map)
+        ^~~~~~~~~~~~~~
+tools/pkg/project/specification.toit:70:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write_content "# Toit Package File." --path=file-name
+          ^~~~~~~~~~~~~~
+tools/pkg/project/specification.toit:72:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write_content --path=file-name
+          ^~~~~~~~~~~~~~
+tools/pkg/project/project.toit:175:29: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return json.decode (file.read_content contents-path)
+                            ^~~~~~~~~~~~~
+tools/pkg/project/project.toit:179:9: warning: Deprecated 'write-content'. Use 'write-contents' instead
+    file.write_content (json.encode contents) --path=contents-path
+        ^~~~~~~~~~~~~~
+tools/pkg/project/project.toit:192:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write_content hash --path=repo-toit-git-path
+          ^~~~~~~~~~~~~~
+tools/pkg/project/project.toit:227:21: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      result = (file.read_content toit-git-path).to-string
+                    ^~~~~~~~~~~~~
+<pkg:pkg-cli>/parser_.toit:16:17: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
+    pipe.stderr.write "$o\n"
+                ^~~~~
+<pkg:pkg-cli>/cache.toit:329:11: warning: Deprecated 'write-content'. Use 'write-contents' instead
+      file.write-content bytes --path=file-path
+          ^~~~~~~~~~~~~~
+<pkg:pkg-cli>/cache.toit:114:16: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    return file.read-content key-path
+               ^~~~~~~~~~~~~
+tools/pkg/commands/describe.toit:124:60: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
+                                                           ^~~~~~~~~~~~~
+<pkg:pkg-cli>/config.toit:94:22: warning: Deprecated 'read-content'. Use 'read-contents' instead
+      content := file.read-content path
+                     ^~~~~~~~~~~~~
+tools/pkg/project/specification.toit:47:39: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    file-content := (yaml.decode (file.read_content "$project.root/$Specification.FILE_NAME")) or {:}
+                                      ^~~~~~~~~~~~~
+tools/pkg/project/specification.toit:179:30: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    super ((yaml.decode (file.read_content "$dir/$Specification.FILE_NAME")) or {:})
+                             ^~~~~~~~~~~~~
+tools/pkg/project/lock.toit:144:39: warning: Deprecated 'read-content'. Use 'read-contents' instead
+    contents/Map := (yaml.decode (file.read_content (file-name specification.root-dir))) or {:}
+                                      ^~~~~~~~~~~~~
+tools/pkg/git/pack.toit:69:15: warning: Deprecated 'write-content'. Use 'write-contents' instead
+          file.write_content value --path="$path/$name"
+              ^~~~~~~~~~~~~~

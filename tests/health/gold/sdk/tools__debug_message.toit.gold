@@ -1,0 +1,3 @@
+tools/debug_message.toit:103:18: warning: Deprecated 'fork'. Use 'fork command arguments' instead
+    pipes := pipe.fork
+                 ^~~~~
