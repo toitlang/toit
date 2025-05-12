@@ -62,7 +62,7 @@ class FileSystemView_ implements FileSystemView:
     if file.is_directory entry:
       return FileSystemView_ entry
 
-    return file.read_content entry
+    return file.read_contents entry
 
   list -> Map:
     result := {:}

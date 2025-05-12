@@ -44,7 +44,7 @@ class ProjectSpecification extends Specification:
     return ProjectSpecification.private_ project {:}
 
   constructor.load project/Project:
-    file-content := (yaml.decode (file.read_content "$project.root/$Specification.FILE_NAME")) or {:}
+    file-content := (yaml.decode (file.read_contents "$project.root/$Specification.FILE_NAME")) or {:}
     return ProjectSpecification.private_ project file-content
 
   root-dir -> string:
@@ -67,9 +67,9 @@ class ProjectSpecification extends Specification:
 
   save:
     if content.is-empty:
-      file.write_content "# Toit Package File." --path=file-name
+      file.write_contents "# Toit Package File." --path=file-name
     else:
-      file.write_content --path=file-name
+      file.write_contents --path=file-name
           yaml.encode content
 
   /**
@@ -176,7 +176,7 @@ class ExternalSpecification extends Specification:
 
   constructor --.dir:
     if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read_content "$dir/$Specification.FILE_NAME")) or {:})
+    super ((yaml.decode (file.read_contents "$dir/$Specification.FILE_NAME")) or {:})
 
   root-dir -> string:
     return dir

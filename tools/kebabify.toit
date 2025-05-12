@@ -109,21 +109,16 @@ migrate invocation/cli.Invocation toitc/string?:
 
   migration-points := []
   sources.do: | source/string |
-    pipe-ends := pipe.OpenPipe false
-    stdout := pipe-ends.fd
-    pipes := pipe.fork
-        true  // Whether to use the path or not.
-        pipe.PIPE-INHERITED
-        stdout
-        pipe.PIPE-INHERITED
+    process := pipe.fork
+        --use-path
+        --create-stdout
         toitc
         [toitc, "-Xmigrate-dash-ids", "--analyze", source]
-    child-process := pipes[3]
-    reader := io.Reader.adapt pipe-ends
+    reader := process.stdout.in
     reader.buffer-all
     out := reader.read-string reader.buffered-size
-    pipe-ends.close
-    exit-value := pipe.wait-for child-process
+    process.stdout.close
+    exit-value := process.wait
     if pipe.exit-signal exit-value:
       throw "Compiler crashed while migrating $source."
     if abort-on-error and (pipe.exit-code exit-value) != 0:

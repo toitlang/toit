@@ -1,6 +1,0 @@
-tools/lsp/server/bridge.toit:52:16: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-  pipes := pipe.fork
-               ^~~~~
-tools/lsp/server/bridge.toit:72:21: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
-  exit-value := pipe.wait-for pid
-                    ^~~~~~~~~

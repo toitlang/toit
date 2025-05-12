@@ -1,6 +1,0 @@
-tests/profiler/utils.toit:21:16: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-  pipes := pipe.fork
-               ^~~~~
-tests/profiler/utils.toit:36:21: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
-  exit-value := pipe.wait-for pid
-                    ^~~~~~~~~

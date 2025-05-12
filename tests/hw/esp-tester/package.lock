@@ -7,10 +7,18 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.2.0
-    hash: ae142d3c8783939935ba37a924f9b2c2a0ad2479
+    version: 2.3.0
+    hash: 005fe9ee3950fc192af0ba353effb2d10073f3e7
     prefixes:
+      desktop: pkg-desktop
       fs: pkg-fs
+      host: pkg-host
+  pkg-desktop:
+    url: github.com/toitlang/pkg-desktop
+    name: desktop
+    version: 1.1.0
+    hash: d6ad1d5c25e16d0c2910a132acba426251b5d87f
+    prefixes:
       host: pkg-host
   pkg-fs:
     url: github.com/toitlang/pkg-fs

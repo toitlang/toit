@@ -1,6 +1,0 @@
-tests/lsp/utils.toit:85:20: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-  cpp-pipes := pipe.fork
-                   ^~~~~
-tests/lsp/utils.toit:107:23: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
-    exit-value := pipe.wait-for cpp-pid
-                      ^~~~~~~~~

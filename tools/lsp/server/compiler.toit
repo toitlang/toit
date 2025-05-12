@@ -72,16 +72,14 @@ class Compiler:
   run --project-uri/string? --ignore-crashes/bool=false --compiler-input/string [read-callback] -> bool:
     flags := build-run-flags --project-uri=project-uri
 
-    cpp-pipes := pipe.fork
-        true                // use_path
-        pipe.PIPE-CREATED   // stdin
-        pipe.PIPE-CREATED   // stdout
-        pipe.PIPE-INHERITED // stderr
+    process := pipe.fork
+        --use-path
+        --create-stdin
+        --create-stdout
         compiler-path_
         [compiler-path_] + flags
-    cpp-to   := cpp-pipes[0]
-    cpp-from := cpp-pipes[1]
-    cpp-pid  := cpp-pipes[3]
+    cpp-to   := process.stdin
+    cpp-from := process.stdout
 
 
     has-terminated := false
@@ -90,7 +88,7 @@ class Compiler:
     multiplex := MultiplexConnection cpp-from
     multiplex.start-dispatch
     to-parser := multiplex.compiler-to-parser
-    file-server := PipeFileServer protocol cpp-to multiplex.compiler-to-fs
+    file-server := PipeFileServer protocol cpp-to.out multiplex.compiler-to-fs
     file-server-line := file-server.run
 
     timeout-task := null
@@ -100,7 +98,7 @@ class Compiler:
           sleep --ms=timeout-ms_
           if not has-terminated:
             SIGKILL ::= 9
-            pipe.kill_ cpp-pid SIGKILL
+            pipe.kill_ process.pid SIGKILL
             was-killed-because-of-timeout = true
         finally:
           timeout-task = null
@@ -119,7 +117,7 @@ class Compiler:
       to-parser.close
       multiplex.close
 
-      exit-value := pipe.wait-for cpp-pid
+      exit-value := process.wait
       verbose: "Compiler terminated with exit_signal: $(pipe.exit-signal exit-value)"
       has-terminated = true
       if not ignore-crashes:

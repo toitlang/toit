@@ -193,8 +193,8 @@ class TestDevice:
           else:
             at-new-line = false
           timestamp := Duration --us=(Time.monotonic-us - start-time-us)
-          std-out := data-str.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
-          stdout.write std-out
+          stdout-text := data-str.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
+          stdout.out.write stdout-text
           collected-output += data-str
           if collected-output.contains "\n$MINI-JAG-LISTENING": set-latch_ ready-latch
           if collected-output.contains "\n$ALL-TESTS-DONE": set-latch_ all-tests-done

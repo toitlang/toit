@@ -1,6 +1,0 @@
-tests/zlib-test.toit:57:23: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-    subprocess := pipe.fork true pipe.PIPE-CREATED pipe.PIPE-CREATED pipe.PIPE-INHERITED "zcat" ["zcat"]
-                      ^~~~~
-tests/zlib-test.toit:60:9: warning: Deprecated 'dont-wait-for'. Use 'Process.wait-ignore' instead
-    pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
-        ^~~~~~~~~~~~~~

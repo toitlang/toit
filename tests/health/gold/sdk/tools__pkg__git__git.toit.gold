@@ -1,6 +1,0 @@
-tools/pkg/git/pack.toit:51:9: warning: Deprecated 'write-content'. Use 'write-contents' instead
-    file.write_content binary-data_ --path=path
-        ^~~~~~~~~~~~~~
-tools/pkg/git/pack.toit:69:15: warning: Deprecated 'write-content'. Use 'write-contents' instead
-          file.write_content value --path="$path/$name"
-              ^~~~~~~~~~~~~~

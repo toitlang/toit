@@ -17,43 +17,39 @@ main:
   finally:
     directory.rmdir --recursive tmp-dir
 
-start-socat tty0/string tty1/string:
+start-socat tty0/string tty1/string -> pipe.Process:
   user/string := pipe.backticks "bash" "-c" "echo \$USER"
   user = user.trim
 
   address1 := "pty,raw,echo=0,user-late=$user,mode=600,link=$tty0"
   address2 := "pty,raw,echo=0,user-late=$user,mode=600,link=$tty1"
 
-  fork-data := pipe.fork
-      true  // use_path.
-      pipe.PIPE-INHERITED  // stdin.
-      pipe.PIPE-CREATED  // stdout.
-      pipe.PIPE-CREATED  // stderr.
+  process := pipe.fork
+      --use-path
+      --create-stdin
       "socat"  // Program.
       ["socat", "-d", "-d", address1, address2]  // Args.
 
-  return fork-data
+  return process
 
 with-socat tmp-dir/string [block] --logger/log.Logger:
   tty0 := "$tmp-dir/tty0"
   tty1 := "$tmp-dir/tty1"
 
-  fork-data := start-socat tty0 tty1
+  socat-process := start-socat tty0 tty1
   print "started"
 
   socat-is-running := monitor.Latch
   stdout-bytes := #[]
   stderr-bytes := #[]
   task::
-    stdout /pipe.OpenPipe := fork-data[1]
-    stdout-reader := stdout.in
+    stdout-reader := socat-process.stdout.in
     while chunk := stdout-reader.read:
       print "got stdout chunk: $chunk.to-string"
       logger.debug chunk.to-string.trim
       stdout-bytes += chunk
   task::
-    stderr /pipe.OpenPipe := fork-data[2]
-    stderr-reader := stderr.in
+    stderr-reader := socat-process.stderr.in
     while chunk := stderr-reader.read:
       str := chunk.to-string.trim
       print "got stderr chunk: $chunk.to-string"
@@ -70,10 +66,9 @@ with-socat tmp-dir/string [block] --logger/log.Logger:
   try:
     block.call tty0 tty1
   finally: | is-exception _ |
-    pid := fork-data[3]
     logger.info "killing socat"
-    pipe.kill_ pid 15
-    pipe.wait-for pid
+    pipe.kill_ socat-process.pid 15
+    socat-process.wait
     if is-exception:
       print stdout-bytes.to-string
       print stderr-bytes.to-string

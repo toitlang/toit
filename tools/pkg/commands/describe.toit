@@ -121,7 +121,7 @@ class DescribeCommand:
     description := build-description
       --check-src-dir=: file.is_directory src
       --load-specification=: file.is_file (Specification.file-name url-path) and ExternalSpecification --dir=url-path
-      --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
+      --load-license-file=: file.is_file "LICENSE" and file.read_contents "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
       --url=NOT-SCRAPED-STRING

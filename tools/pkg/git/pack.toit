@@ -48,7 +48,7 @@ class Pack:
   Saves the compressed pack file to the given location $path on disk.
   */
   save path/string:
-    file.write_content binary-data_ --path=path
+    file.write_contents binary-data_ --path=path
 
   /**
   A file-system view of this pack.
@@ -66,7 +66,7 @@ class Pack:
       if value is ByteArray:
         stats := file.stat file-name
         if not stats: // TODO: Implement overwrite, including a chmod in host.file.
-          file.write_content value --path="$path/$name"
+          file.write_contents value --path="$path/$name"
       else:
         expand_ "$path/$name" value
 
