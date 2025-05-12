@@ -870,7 +870,7 @@ jobs:
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
-      - name: Add/Rename tar-balls with/to improved naming
+      - name: Add/rename tar-balls with/to improved naming
         run: |
           cp toit-linux.tar.gz toit-linux-x64.tar.gz
           cp toit-rpi.tar.gz toit-linux-armv7.tar.gz
