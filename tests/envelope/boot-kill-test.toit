@@ -39,24 +39,20 @@ main args:
 
     env := { TEST-PORT-ENV: "$server.local-address.port" }
     test.boot_ test.tmp-dir --env=env: | args env |
-      fork-data := pipe.fork
+      process := pipe.fork
           --environment=env
-          true    // use_path
-          pipe.PIPE-INHERITED
-          pipe.PIPE-INHERITED
-          pipe.PIPE-INHERITED
+          --use-path
           args[0]
           args
-      child-process := fork-data[3]
 
       // Wait for the client to start sending.
       started-latch.get
 
       // Kill it.
       SIGTERM ::= 15
-      pipe.kill_ child-process SIGTERM
+      pipe.kill_ process.pid SIGTERM
 
-      pipe.wait-for child-process
+      process.wait
 
       with-timeout --ms=3_000:
         // Wait for the client to stop.

@@ -1,6 +1,0 @@
-tests/strip/utils.toit:18:16: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-  pipes := pipe.fork
-               ^~~~~
-tests/strip/utils.toit:42:28: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
-  expect-not-equals 0 (pipe.wait-for pid)
-                           ^~~~~~~~~

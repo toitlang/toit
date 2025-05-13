@@ -52,11 +52,10 @@ tar-extract --binary/bool archive/string file-in-archive/string -> ByteArray:
     // Treat 'c:\' as a local path.
     extra-args = ["--force-local"]
 
-  pipes := pipe.fork
-      true
-      pipe.PIPE-CREATED
-      pipe.PIPE-CREATED
-      pipe.PIPE-INHERITED
+  process := pipe.fork
+      --use-path
+      --create-stdin
+      --create-stdout
       tar-path
       [
         tar-path,
@@ -66,13 +65,12 @@ tar-extract --binary/bool archive/string file-in-archive/string -> ByteArray:
         file-in-archive
       ] + extra-args
 
-  to := pipes[0]
-  from := pipes[1]
-  pid := pipes[3]
+  to := process.stdin
+  from := process.stdout
   result := io.Buffer
   try:
     result.write-from from.in
-    pipe.wait-for pid
+    process.wait
   finally:
     from.close
     to.close

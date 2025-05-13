@@ -220,7 +220,7 @@ class Registries:
       registries-map[name] = registry.to-map
 
     cache-file := cache.get-file-path "registries.yaml" : | store/FileStore | store.save #[]
-    file.write_content --path=cache-file (yaml.encode registries-map)
+    file.write_contents --path=cache-file (yaml.encode registries-map)
 
 
 abstract class Registry:

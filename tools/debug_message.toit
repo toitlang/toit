@@ -100,26 +100,22 @@ run-debug-snapshot snapshot-bytes json-message:
     // TODO(florian): we should use `spawn` or something similar to
     //   launch the debug snapshot.
     toit-run-path := "toit.run"
-    pipes := pipe.fork
-        true                // use_path
-        pipe.PIPE-CREATED   // stdin
-        pipe.PIPE-CREATED   // stdout
-        pipe.PIPE-INHERITED // stderr
+    process := pipe.fork
+        --use-path
+        --create-stdin
+        --create-stdout
         toit-run-path
         [
           toit-run-path,
           debug-toit,
         ]
-    to   := pipes[0]
-    from := pipes[1]
-    pid  := pipes[3]
 
-    (io.Writer.adapt to).write (ubjson.encode json-message)
-    to.close
+    process.stdin.out.write (ubjson.encode json-message)
+    process.stdin.close
 
-    sub-reader := io.Reader.adapt from
-    sub-reader.buffer-all
-    bytes := sub-reader.read-bytes sub-reader.buffered-size
+    bytes := process.stdout.in.read-all
+    process.stdout.close
+    process.wait
     return bytes.to-string
   finally:
     if file.is-file debug-toit: file.delete debug-toit

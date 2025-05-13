@@ -8,18 +8,14 @@ import expect show *
 main args:
   toit-run := args[0]
   input := "tests/class_field_limit_input.toit"
-  pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-INHERITED // stdin
-      pipe.PIPE-INHERITED // stdout
-      pipe.PIPE-INHERITED // stderr
+  process := pipe.fork
+      --use-path
       toit-run
       [
         toit-run,
         input
       ]
-  pid  := pipes[3]
-  exit-value := pipe.wait-for pid
+  exit-value := process.wait
   exit-code := pipe.exit-code exit-value
 
   expect-not-null exit-code

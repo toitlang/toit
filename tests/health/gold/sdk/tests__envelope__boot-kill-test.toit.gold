@@ -1,6 +1,0 @@
-tests/envelope/boot-kill-test.toit:42:24: warning: Deprecated 'fork'. Use 'fork command arguments' instead
-      fork-data := pipe.fork
-                       ^~~~~
-tests/envelope/boot-kill-test.toit:59:11: warning: Deprecated 'wait-for'. Use 'Process.wait' instead
-      pipe.wait-for child-process
-          ^~~~~~~~~

@@ -59,35 +59,30 @@ class ToitExecutable:
     if with-test-sdk:
       full-command += ["--sdk-dir", sdk-dir_]
     full-command += args
-    fork-data := pipe.fork
-        true                // use_path.
-        pipe.PIPE-INHERITED // stdin.
-        pipe.PIPE-CREATED   // stdout.
-        pipe.PIPE-CREATED   // stderr.
+    process := pipe.fork
+        --use-path
+        --create-stdout
+        --create-stderr
         full-command.first
         full-command
-    stdin := fork-data[0]
-    stdout := fork-data[1]
-    stderr := fork-data[2]
-    child-process := fork-data[3]
 
     stdout-string-latch := monitor.Latch
     stdout-task := task --background::
       try:
-        bytes := stdout.in.read-all
+        bytes := process.stdout.in.read-all
         stdout-string-latch.set bytes.to-string-non-throwing
       finally:
-        stdout.close
+        process.stdout.close
 
     stderr-string-latch := monitor.Latch
     stderr-task := task --background::
       try:
-        bytes := stderr.in.read-all
+        bytes := process.stderr.in.read-all
         stderr-string-latch.set bytes.to-string-non-throwing
       finally:
-        stderr.close
+        process.stderr.close
 
-    exit-value := pipe.wait-for child-process
+    exit-value := process.wait
     exit-signal := pipe.exit-signal exit-value
     exit-code := pipe.exit-code exit-value
 

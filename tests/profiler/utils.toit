@@ -18,22 +18,18 @@ run args -> List:
   toitrun := args[0]
   profiled-path := args[1]
 
-  pipes := pipe.fork
-      true    // use_path
-      pipe.PIPE-INHERITED  // stdin
-      pipe.PIPE-INHERITED  // stdout
-      pipe.PIPE-CREATED    // stderr
+  process := pipe.fork
+      --use-path
+      --create-stderr
       toitrun
       [ toitrun, profiled-path ]
 
-  stderr := pipes[2]
-  pid := pipes[3]
-
-  reader := io.Reader.adapt stderr
+  reader := process.stderr.in
   reader.buffer-all
   output := reader.read-string (reader.buffered-size)
+  reader.close
 
-  exit-value := pipe.wait-for pid
+  exit-value := process.wait
   exit-code := pipe.exit-code exit-value
 
   if exit-code != 0: throw "Program didn't exit with 0."

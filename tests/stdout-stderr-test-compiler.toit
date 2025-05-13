@@ -17,22 +17,20 @@ main args:
 TESTS ::= spawned.TESTS
 
 run args --stdout/bool=false --stderr/bool=false -> string:
-  pipes := pipe.fork
-      true    // use_path
-      pipe.PIPE-INHERITED  // stdin
-      stdout ? pipe.PIPE-CREATED : pipe.PIPE-INHERITED  // stdout
-      stderr ? pipe.PIPE-CREATED : pipe.PIPE-INHERITED   // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdout=stdout
+      --create-stderr=stderr
       args[0]
       args
 
-  out-pipe := stdout ? pipes[1] : pipes[2]
-  pid := pipes[3]
+  out-pipe := stdout ? process.stdout : process.stderr
 
-  reader := io.Reader.adapt out-pipe
+  reader := out-pipe.in
   reader.buffer-all
   output := reader.read-string (reader.buffered-size)
 
-  exit-value := pipe.wait-for pid
+  exit-value := process.wait
   exit-code := pipe.exit-code exit-value
 
   if exit-code != 0: throw "Program didn't exit with 0."

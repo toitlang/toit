@@ -54,14 +54,19 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     expect (not fail)
   else:
     // Test round trip with zcat.
-    subprocess := pipe.fork true pipe.PIPE-CREATED pipe.PIPE-CREATED pipe.PIPE-INHERITED "zcat" ["zcat"]
-    to-zcat := subprocess[0]  // Stdin of zcat.
-    from-zcat := subprocess[1]  // Stdin of zcat.
-    pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
+    subprocess := pipe.fork
+        --use-path
+        --create-stdin
+        --create-stdout
+        "zcat"
+        ["zcat"]
+    subprocess.wait-ignore  // Avoid zombie processes.
     round-trip := io.Buffer
     task::  // Use a task to avoid deadlock if the pipe fills up.
+      to-zcat := subprocess.stdin.out
       to-zcat.write accumulator.backing-array 0 accumulator.size
       to-zcat.close
+    from-zcat := subprocess.stdout.in
     while byte-array := from-zcat.read:
       round-trip.write byte-array
     from-zcat.close
