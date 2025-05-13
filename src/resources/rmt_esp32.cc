@@ -827,6 +827,7 @@ static Object* transmit(Process* process,
       return Primitive::os_error(err, process);
     }
     out->set_encoder(encoder_handle);
+    out->set_active_pattern_encoder(active_encoder);
   } else {
     rmt_copy_encoder_config_t encoder_cfg = {};
     esp_err_t err = rmt_new_copy_encoder(&encoder_cfg, &encoder_handle);
