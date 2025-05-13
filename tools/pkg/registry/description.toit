@@ -28,7 +28,7 @@ class Description:
   static DEPENDENCIES-KEY_ ::= "dependencies"
   static SDK-KEY_          ::= "sdk"
 
-  static DESCRIPTION_FILE_NAME ::= "desc.yaml"
+  static DESCRIPTION-FILE-NAME ::= "desc.yaml"
 
   content/Map
 
@@ -71,9 +71,9 @@ class Description:
   description -> string: return content[DESCRIPTION-KEY_]
 
   version -> SemanticVersion:
-    if not cached_version_:
-      cached_version_ = SemanticVersion.parse content[VERSION-KEY_]
-    return cached_version_
+    if not cached-version_:
+      cached-version_ = SemanticVersion.parse content[VERSION-KEY_]
+    return cached-version_
 
   sdk-version -> Constraint?:
     if cached-sdk-version_.is-empty:
