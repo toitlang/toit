@@ -17,8 +17,4 @@ set(ARM_TARGET "arm-linux-gnueabihf")
 # Compile for Raspberry Pi 3 and up.
 set(ARM_CPU_FLAGS "-mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard")
 
-# The Raspberry Pi doesn't seem to use position independent executables.
-set(CMAKE_C_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
-set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
-
 include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")
