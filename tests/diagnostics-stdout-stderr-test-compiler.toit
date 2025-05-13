@@ -36,7 +36,7 @@ run-test program args --expect-stdout/bool:
 
   stderr-bytes := #[]
   task::
-    stderr-pipe := process.stderr.in.read-all
+    stderr-bytes = process.stderr.in.read-all
 
   exit-value := process.wait
   exit-code := pipe.exit-code exit-value

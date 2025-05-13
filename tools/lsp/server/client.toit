@@ -122,8 +122,8 @@ class LspClient:
           --create-stdout
           cmd
           [cmd] + args
-      server-to   := process.stdin.in
-      server-from := process.stdout.out
+      server-to   := process.stdin.out
+      server-from := process.stdout.in
       return [server-to, server-from, null, process]
     else:
       server-from := FakePipe

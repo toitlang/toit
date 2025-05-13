@@ -26,7 +26,8 @@ start-socat tty0/string tty1/string -> pipe.Process:
 
   process := pipe.fork
       --use-path
-      --create-stdin
+      --create-stdout
+      --create-stderr
       "socat"  // Program.
       ["socat", "-d", "-d", address1, address2]  // Args.
 

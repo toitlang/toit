@@ -24,7 +24,7 @@ run args --stdout/bool=false --stderr/bool=false -> string:
       args[0]
       args
 
-  out-pipe := stdout ? process.stdout : process.stdin
+  out-pipe := stdout ? process.stdout : process.stderr
 
   reader := out-pipe.in
   reader.buffer-all
