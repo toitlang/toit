@@ -1,6 +1,0 @@
-tests/string-test.toit:432:7: warning: Deprecated 'string.write-to-byte-array'. Use 'write-to-byte-array' on a string slice instead
-  str.write-to-byte-array bytes 1 4 5
-      ^~~~~~~~~~~~~~~~~~~
-tests/string-test.toit:461:7: warning: Deprecated 'string.write-to-byte-array'. Use 'write-to-byte-array' on a string slice instead
-  str.write-to-byte-array bytes 17 21 5
-      ^~~~~~~~~~~~~~~~~~~

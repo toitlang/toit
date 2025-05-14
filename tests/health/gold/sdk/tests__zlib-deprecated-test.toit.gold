@@ -1,36 +1,6 @@
-tests/zlib-deprecated-test.toit:26:23: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
-  accumulator := bytes.Buffer
-                      ^~~~~~~
-tests/zlib-deprecated-test.toit:45:8: warning: Condition always evaluates to false
-    if not zlib-expected:
-       ^~~
-tests/zlib-deprecated-test.toit:47:10: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
-      fd.write accumulator.buffer 0 accumulator.size
-         ^~~~~
-tests/zlib-deprecated-test.toit:59:12: warning: Deprecated 'Stream.write'. Use 'write' or 'try-write' on 'out' instead
-        fd.write accumulator.buffer 0 accumulator.size
-           ^~~~~
 tests/zlib-deprecated-test.toit:64:23: warning: Deprecated 'fork'. Use 'fork command arguments' instead
     subprocess := pipe.fork true pipe.PIPE-CREATED pipe.PIPE-CREATED pipe.PIPE-INHERITED "zcat" ["zcat"]
                       ^~~~~
 tests/zlib-deprecated-test.toit:67:9: warning: Deprecated 'dont-wait-for'. Use 'Process.wait-ignore' instead
     pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
         ^~~~~~~~~~~~~~
-tests/zlib-deprecated-test.toit:68:24: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
-    round-trip := bytes.Buffer
-                       ^~~~~~~
-tests/zlib-deprecated-test.toit:84:23: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
-  accumulator := bytes.Buffer
-                      ^~~~~~~
-tests/zlib-deprecated-test.toit:87:28: warning: Deprecated 'Coder_.reader'. Use 'in' instead
-    while ba := compressor.reader.read:
-                           ^~~~~~
-tests/zlib-deprecated-test.toit:90:14: warning: Deprecated 'Coder_.write'. Use out.try-write or out.write instead
-  compressor.write input
-             ^~~~~
-tests/zlib-deprecated-test.toit:91:14: warning: Deprecated 'Coder_.close'. Use out.close instead
-  compressor.close
-             ^~~~~
-tests/zlib-deprecated-test.toit:153:21: warning: Class 'Buffer' is deprecated. Use 'io.Buffer' instead
-  lorem-out := bytes.Buffer
-                    ^~~~~~~
