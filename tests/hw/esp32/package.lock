@@ -18,8 +18,8 @@ packages:
   toit-dhtxx:
     url: github.com/toitware/toit-dhtxx
     name: dhtxx
-    version: 1.5.0
-    hash: 8e7d46610c690efd8d23de2f6aaeb239274a762d
+    version: 1.7.0
+    hash: f8cc89694cfb745373de0b0a00311a255ab739bd
   toit-ds18b20:
     url: github.com/toitware/toit-ds18b20
     name: ds18b20

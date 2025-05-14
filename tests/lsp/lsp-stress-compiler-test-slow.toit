@@ -24,7 +24,7 @@ test client/LspClient:
 
   print "Sending open documents"
   for i := 0; i < FILE-COUNT; i++:
-    pipe.stdout.write "."
+    pipe.stdout.out.write "."
     // Don't create the files in parallel, to avoid launching all the diagnostic
     // requests.
     client.send-did-open --uri="untitled:Untitled-$i" --text="""
@@ -36,9 +36,9 @@ test client/LspClient:
   drive := platform == system.PLATFORM-WINDOWS ? "c:" : ""
   completion-document := "$drive/tmp/completion.toit"
   client.send-did-open --path=completion-document  --text="""
-     completion-fun: return 499
-     main: com
-     """
+      completion-fun: return 499
+      main: com
+      """
 
   print "\nRequesting completions"
 
@@ -52,8 +52,8 @@ test client/LspClient:
         semaphore.up
 
     CONCURRENT-REQUEST-COUNT.repeat:
-      pipe.stdout.write "."
+      pipe.stdout.out.write "."
       semaphore.down
 
-    pipe.stdout.write "\n"
+    pipe.stdout.out.write "\n"
   print "done"

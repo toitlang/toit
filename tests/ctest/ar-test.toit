@@ -25,21 +25,17 @@ do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
   ]
   if in-memory: args.add "--memory"
 
-  pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-CREATED   // stdin
-      pipe.PIPE-INHERITED // stdout
-      pipe.PIPE-INHERITED // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdin
       generator-path
       args
-  to := pipes[0]
-  pid := pipes[3]
-  tar := Tar to
+  tar := Tar process.stdin.out
   file-mapping.do: |name content|
     tar.add name content
   tar.close --no-close-writer
-  to.close
-  exit-value := pipe.wait-for pid
+  process.stdin.close
+  exit-value := process.wait
   expect-equals null
     pipe.exit-signal exit-value
   expect-equals 0

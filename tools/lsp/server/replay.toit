@@ -88,7 +88,7 @@ main args:
     task:: catch --trace: server.run
 
   debug-file := parameters["debug-file"]
-  replay-rpc := RpcConnection (io.Reader.adapt (file.Stream.for-read debug-file)) pipe.stderr
+  replay-rpc := RpcConnection (file.Stream.for-read debug-file).in pipe.stderr.out
   std-rpc := RpcConnection server-from-reader server-to-writer
 
   channel := monitor.Channel 1

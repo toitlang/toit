@@ -17,7 +17,6 @@ set(ARM_TARGET "arm-linux-gnueabi")
 
 set(ARM_CPU_FLAGS "-marm -march=armv5te -mtune=arm926ej-s -msoft-float -mfloat-abi=soft")
 
-set(CMAKE_C_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie -latomic")
-set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie -latomic")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -no-pie -latomic")
 
 include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")

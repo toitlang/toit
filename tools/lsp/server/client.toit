@@ -101,12 +101,12 @@ class LspClient:
   server/LspServer? ::= ?
 
   /**
-  The language server process ID.
+  The language server process.
   Only set, when the client was configured without `--spawn-process`.
   */
-  server-pid ::= ?
+  server-process/pipe.Process? ::= ?
 
-  constructor.internal_ .connection_ .toitc .supports-config_ --.server --.server-pid=null:
+  constructor.internal_ .connection_ .toitc .supports-config_ --.server --.server-process=null:
     configuration =  {
       "toitPath": toitc,
       "shouldWriteReproOnCrash": true,
@@ -116,17 +116,15 @@ class LspClient:
   static start-server_ cmd args compiler-exe --spawn-process/bool -> List:
     print "starting the server $cmd with $args"
     if spawn-process:
-      pipes := pipe.fork
-          true                // use_path
-          pipe.PIPE-CREATED   // stdin
-          pipe.PIPE-CREATED   // stdout
-          pipe.PIPE-INHERITED // stderr
+      process := pipe.fork
+          --use-path
+          --create-stdin
+          --create-stdout
           cmd
           [cmd] + args
-      server-to   := pipes[0]
-      server-from := pipes[1]
-      pid         := pipes[3]
-      return [server-to, server-from, null, pid]
+      server-to   := process.stdin.out
+      server-from := process.stdout.in
+      return [server-to, server-from, null, process]
     else:
       server-from := FakePipe
       server-to   := FakePipe
@@ -151,7 +149,7 @@ class LspClient:
     reader := io.Reader.adapt server-from
     writer := io.Writer.adapt server-to
     rpc-connection := RpcConnection reader writer
-    client := LspClient.internal_ rpc-connection compiler-exe supports-config --server=server --server-pid=start-result[3]
+    client := LspClient.internal_ rpc-connection compiler-exe supports-config --server=server --server-process=start-result[3]
     client.run_
     return client
 
@@ -171,8 +169,8 @@ class LspClient:
           if is-request:
             id := parsed["id"]
             connection_.reply id response
-      if server-pid:
-        exit-value := pipe.wait-for server-pid
+      if server-process:
+        exit-value := server-process.wait
         exit-signal := pipe.exit-signal exit-value
         exit-code := pipe.exit-code exit-value
         if exit-signal:

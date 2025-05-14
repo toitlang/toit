@@ -4,10 +4,10 @@ dependencies:
     version: ^1.4.1
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
-    version: ^1.8.0
+    version: ^1.10.0
   cli:
     url: github.com/toitlang/pkg-cli
-    version: ^2.2.0
+    version: ^2.3.0
   font_x11_adobe:
     url: github.com/toitlang/pkg-font-x11-adobe
     version: ^0.1.0
@@ -16,7 +16,7 @@ dependencies:
     version: ^2.3.1
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.15.3
+    version: ^1.16.2
   partition-table:
     url: github.com/toitware/toit-partition-table-esp32
     version: ^1.4.0

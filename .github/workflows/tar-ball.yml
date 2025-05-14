@@ -18,34 +18,70 @@ name: Upload Full Source Tarball
 on:
   release:
     types: [published]
+  push:
 
 jobs:
   build-and-upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository with submodules
+      - name: Checkout repository without submodules
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
           fetch-depth: 0  # Fetch all history so the archive has correct metadata.
 
-      - name: Create tarball including submodules
+      - name: Create tarball including mbedtls
         id: create-tarball
+        shell: bash
         run: |
-          tag_name=${{ github.event.release.tag_name }}
-          archive_name="${{ github.repository }}-${tag_name}-with-submodules.tar.gz"
-          git archive --format=tar --prefix="${{ github.repository }}-${tag_name}/" "$tag_name" | tar -x
-          cd "${{ github.repository }}-${tag_name}"
-          git submodule foreach --recursive '
-            mkdir -p "$toplevel/${path%/*}" &&
-            git archive --prefix="${path}/" HEAD | tar -C "$toplevel/${path%/*}" -x
-          '
-          cd ..
-          tar -czf "$archive_name" "${{ github.repository }}-${tag_name}"
-          echo "archive_name=$archive_name" >> $GITHUB_OUTPUTS
-          echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUTS
+          version=${{ github.event.release.tag_name }}
+          if [ -z "$version" ]; then
+            version=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          archive_name="toit-${version}-with-submodules.tar.gz"
+
+          # Archive the Toit sources.
+          prefix="toit-${version}/"
+          git archive --format=tar --prefix="$prefix" HEAD | tar x
+
+          # Archive the relevant submodules.
+          # Initialize the top-level modules but not nested ones. This fills in the esp-idf submodule.
+          git submodule update --depth=1 --init .
+
+          esp_idf=${{ github.workspace }}/third_party/esp-idf
+          # We only need mbedtls of the esp-idf submodule to build the host tools.
+          # Don't bother initializing all the other components.
+          cd $esp_idf
+          git submodule update --depth=1 --init components/mbedtls
+
+          paths_to_archive=(
+            components/mbedtls
+            components/mbedtls/mbedtls
+          )
+          for path in "${paths_to_archive[@]}"; do
+            cd $esp_idf/$path
+            # Archive the mbedtls submodule.
+            # The --prefix option is used to set the directory structure in the archive.
+            # Tar needs to extract to the same directory structure as the original.
+            git archive --format=tar --prefix="$prefix/third_party/esp-idf/$path/" HEAD . | tar x -C ${{ github.workspace }}
+          done
+
+          cd ${{ github.workspace }}
+          echo "set(TOIT_GIT_VERSION \"$version\")" > "$prefix/version.cmake"
+          cp third_party/esp-idf/LICENSE ${prefix}third_party/esp-idf/LICENSE
+          tar -czf "$archive_name" "$prefix"
+          echo "archive_name=$archive_name" >> $GITHUB_OUTPUT
+          echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUT
+          echo "archive_prefix=$prefix" >> $GITHUB_OUTPUT
+
+      - name: Upload tarball to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.create-tarball.outputs.archive_path }}
+          name: ${{ steps.create-tarball.outputs.archive_name }}
 
       - name: Upload tarball to release
+        if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -53,3 +89,44 @@ jobs:
           asset_name: ${{ steps.create-tarball.outputs.archive_name }}
           tag: ${{ github.event.release.tag_name }}
           overwrite: true
+
+    outputs:
+      archive_name: ${{ steps.create-tarball.outputs.archive_name }}
+      archive_prefix: ${{ steps.create-tarball.outputs.archive_prefix }}
+
+
+  test:
+    needs: build-and-upload
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download tarball from artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-and-upload.outputs.archive_name }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Extract tarball
+        shell: bash
+        run: |
+          tar -xzf ${{ needs.build-and-upload.outputs.archive_name }}
+
+      - name: Build
+        shell: bash
+        run: |
+          cd ${{ needs.build-and-upload.outputs.archive_prefix }}
+          # Note that we build without any special requisites. With the exception of 'go', the
+          # GitHub builders should have everything ready.
+          make
+
+      - name: Test
+        shell: bash
+        run: |
+          cd ${{ needs.build-and-upload.outputs.archive_prefix }}
+          build/host/sdk/bin/toit version

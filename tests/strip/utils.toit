@@ -15,31 +15,26 @@ with-tmp-directory [block]:
     directory.rmdir --recursive tmp-dir
 
 backticks-failing args/List -> string:
-  pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-CREATED   // stdin
-      pipe.PIPE-CREATED   // stdout
-      pipe.PIPE-CREATED   // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdin
+      --create-stdout
+      --create-stderr
       args[0]
       args
-  pipes[0].close
-  stdout := pipes[1]
-  stderr := pipes[2]
-  pid  := pipes[3]
+  process.stdin.close
 
   // We are merging stdout and stderr into one stream.
   stdout-output := #[]
   task::
-    while chunk := stdout.read:
-      stdout-output += chunk
+    stdout-output = process.stdout.in.read-all
 
   stderr-output := #[]
   task::
-    while chunk := stderr.read:
-      stderr-output += chunk
+    stderr-output = process.stderr.in.read-all
 
   // The test is supposed to fail.
-  expect-not-equals 0 (pipe.wait-for pid)
+  expect-not-equals 0 process.wait
 
   return (stdout-output + stderr-output).to-string
 

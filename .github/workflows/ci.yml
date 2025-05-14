@@ -655,6 +655,7 @@ jobs:
           make raspbian
           make aarch64
           make arm-linux-gnueabi
+          make riscv64
 
       - name: Build test snapshot
         run: |
@@ -669,7 +670,7 @@ jobs:
 
       - name: Customize and extract envelopes
         run: |
-          for arch in raspbian aarch64; do
+          for arch in raspbian aarch64 riscv64; do
             cp build/$arch/firmware.envelope $arch.envelope
 
             build/host/sdk/bin/toit tool firmware container install \
@@ -731,6 +732,8 @@ jobs:
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian --dereference toit
           cp -R ./build/aarch64/sdk ./build/aarch64/toit
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
+          cp -R ./build/riscv64/sdk ./build/riscv64/toit
+          tar -czf build/toit-riscv64.tar.gz -C ./build/riscv64 --dereference toit
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -739,6 +742,7 @@ jobs:
           path: |
             build/${{ steps.constants.outputs.raspberry_pi_artifact }}
             build/toit-aarch64.tar.gz
+            build/toit-riscv64.tar.gz
 
   combine:
     needs: [build, cross]
@@ -777,7 +781,7 @@ jobs:
 
       - name: Unpack SDKs
         run: |
-          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
+          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             mkdir -p $os
             tar x -zf toit-$os.tar.gz -C $os
           done
@@ -786,7 +790,7 @@ jobs:
         run: |
           mkdir -p vessels
 
-          for source in windows linux macos rpi aarch64 $MACOS_ARM; do
+          for source in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             # Use same values as Go.
             if [[ "$source" == "windows" ]]; then
               CROSS_OS=windows
@@ -806,6 +810,9 @@ jobs:
             elif [[ "$source" == "aarch64" ]]; then
               CROSS_OS=linux
               CROSS_ARCH=arm64
+            elif [[ "$source" == "riscv64" ]]; then
+              CROSS_OS=linux
+              CROSS_ARCH=riscv64
             else
               echo "Unknown source: $source"
               exit 1
@@ -814,7 +821,7 @@ jobs:
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi aarch64 $MACOS_ARM; do
+            for target in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
               if [[ "$source" == "$target" ]]; then
                 continue
               fi
@@ -829,7 +836,7 @@ jobs:
 
       - name: Download esptools
         run: |
-          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
+          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             EXTENSION=""
             if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
@@ -842,6 +849,8 @@ jobs:
               ESPTOOL_ARCH=linux-armv7
             elif [[ "$os" == "aarch64" ]]; then
               ESPTOOL_ARCH=linux-aarch64
+            elif [[ "$os" == "riscv64" ]]; then
+              ESPTOOL_ARCH=linux-riscv64
             elif [[ "$os" == "macos-arm" ]]; then
               ESPTOOL_ARCH=macos-aarch64
             else
@@ -857,15 +866,16 @@ jobs:
 
       - name: Compress SDKs
         run: |
-          for os in windows linux macos rpi aarch64 $MACOS_ARM; do
+          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
-      - name: Add tar-balls with improved naming
+      - name: Add/rename tar-balls with/to improved naming
         run: |
           cp toit-linux.tar.gz toit-linux-x64.tar.gz
           cp toit-rpi.tar.gz toit-linux-armv7.tar.gz
           cp toit-aarch64.tar.gz toit-linux-aarch64.tar.gz
+          mv toit-riscv64.tar.gz toit-linux-riscv64.tar.gz
 
       - name: Upload vessels
         uses: actions/upload-artifact@v4
@@ -893,6 +903,7 @@ jobs:
             toit-linux-x64.tar.gz
             toit-linux-armv7.tar.gz
             toit-linux-aarch64.tar.gz
+            toit-linux-riscv64.tar.gz
 
       - name: Upload release vessels
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
@@ -913,6 +924,7 @@ jobs:
           cp toit-linux-x64.tar.gz linux-upload
           cp toit-linux-armv7.tar.gz linux-upload
           cp toit-linux-aarch64.tar.gz linux-upload
+          cp toit-linux-riscv64.tar.gz linux-upload
 
       - name: Upload Linux release
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
@@ -1229,41 +1241,30 @@ jobs:
 
       - name: Configure git
         run: |
-          pushd toit
-          git config user.email "leon@toit.io"
-          git config user.name "Leon Gungadin Mogensen"
-          popd
-          pushd toit-vessels-bin
-          git config user.email "leon@toit.io"
-          git config user.name "Leon Gungadin Mogensen"
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+              git config user.email "leon@toit.io"
+              git config user.name "Leon Gungadin Mogensen"
+            popd
+          done
 
       - name: Update AUR packages
         shell: bash
         run: |
-          # Toit's PKGBUILD is a bit special in that we don't download
-          # a tarball (since those don't contain submodules), but instead
-          # use Git to get the source code.
-          # For security, we store the hash of the commit in the PKGBUILD,
-          # which is why we run a custom 'update_hash.sh' script.
-          # This is the reason we can't just use the 'archlinux-package-action'.
-          pushd toit
-          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
-          sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
-          ./update_hash.sh
-          popd
-          # The vessel PKGBUILD also needs the '_tag' replaced instead of
-          # the usual 'pkgver'.
-          pushd toit-vessels-bin
-          sed -i "s/_tag=.*/_tag=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+            sed -i "s/_pkgver=.*/_pkgver=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
+            sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
+            popd
+          done
 
-      - name: Update .SRCINFO for toit
+      - name: Update pkgsums and .SRCINFO for toit
         uses: toitlang/archlinux-package-action@main
         with:
           path: toit
           flags: ''
           namcap: false
+          updpkgsums: true
           srcinfo: true
 
       - name: Update pkgsums and .SRCINFO for toit-vessels-bin
@@ -1277,19 +1278,14 @@ jobs:
 
       - name: Upload toit and toit-vessels-bin
         run: |
-          pushd toit
-          cat PKGBUILD
-          cat .SRCINFO
-          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
-          git push origin master
-          popd
-
-          pushd toit-vessels-bin
-          cat PKGBUILD
-          cat .SRCINFO
-          git commit -am "Update to version ${{ env.TOIT_VERSION }}"
-          git push origin master
-          popd
+          for pkg in toit toit-vessels-bin; do
+            pushd $pkg
+            cat PKGBUILD
+            cat .SRCINFO
+            git commit -am "Update to version ${{ env.TOIT_VERSION }}"
+            git push origin master
+            popd
+          done
 
   serial:
     needs: [prereqs, rpi, esp32]

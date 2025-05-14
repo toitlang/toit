@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.161
+sdk: ^2.0.0-alpha.170
 prefixes:
   cli: pkg-cli
   fs: pkg-fs
@@ -8,10 +8,18 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.2.0
-    hash: ae142d3c8783939935ba37a924f9b2c2a0ad2479
+    version: 2.3.0
+    hash: 005fe9ee3950fc192af0ba353effb2d10073f3e7
     prefixes:
+      desktop: pkg-desktop
       fs: pkg-fs
+      host: pkg-host
+  pkg-desktop:
+    url: github.com/toitlang/pkg-desktop
+    name: desktop
+    version: 1.1.0
+    hash: d6ad1d5c25e16d0c2910a132acba426251b5d87f
+    prefixes:
       host: pkg-host
   pkg-fs:
     url: github.com/toitlang/pkg-fs
@@ -23,8 +31,8 @@ packages:
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.15.3
-    hash: 62393e8522b77eafbafe60b9817935266117daf6
+    version: 1.16.2
+    hash: ae83f761db80166a20bb38498edd009916b72563
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar

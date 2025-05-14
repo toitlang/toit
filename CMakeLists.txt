@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.20.0...4.0.1)
 
 project(toit)
 
@@ -47,9 +47,14 @@ endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
 
+# Tar balls are shipped with a version.cmake file.
+include(version.cmake OPTIONAL)
+
 # When using the downloadable sources there is no Git, so the version has
 # to be given as argument.
-set(TOIT_GIT_VERSION "$ENV{TOIT_GIT_VERSION}")
+if (NOT DEFINED TOIT_GIT_VERSION)
+  set(TOIT_GIT_VERSION "$ENV{TOIT_GIT_VERSION}")
+endif()
 if ("${TOIT_GIT_VERSION}" STREQUAL "")
   include(tools/gitversion.cmake)
   # The Git version is only computed when cmake generates the Ninja files, but
