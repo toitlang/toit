@@ -14,8 +14,8 @@
 # directory of this repository.
 
 if ("${CMAKE_SIZEOF_VOID_P}" EQUAL 4)
-  # For tests that crash (instead of failing). Ctest doesn't have a way to deal
-  # with that, so we skip the test.
+  # For tests that crash (instead of failing). CTest doesn't have a
+  # way to deal with that, so we skip the tests.
   # See https://gitlab.kitware.com/cmake/cmake/-/issues/20397
   set(TOIT_SKIP_TESTS
   )
@@ -52,5 +52,17 @@ endif()
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
   list(APPEND TOIT_FAILING_TESTS
     tests/uart-test.toit
+  )
+endif()
+
+if(DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
+  # The type propagation tests abort on failures and we can't
+  # catch that as a failing test with CTest. Unfortunately,
+  # that means thwat we have to skip the tests instead.
+  list(APPEND TOIT_SKIP_TESTS
+    # The type propagator doesn't correctly merge types at
+    # non-local branches yet.
+    # See https://github.com/toitlang/toit/issues/2810.
+    tests/finally-params-test.toit
   )
 endif()

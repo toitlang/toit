@@ -32,15 +32,11 @@ run-test program args --expect-stdout/bool:
       [program] + args
   stdout-bytes := #[]
   task::
-    reader := process.stdout.in
-    while chunk := reader.read:
-      stdout-bytes += chunk
+    stdout-bytes = process.stdout.in.read-all
 
   stderr-bytes := #[]
   task::
-    reader := process.stderr.in
-    while chunk := reader.read:
-      stderr-bytes += chunk
+    stderr-bytes = process.stderr.in.read-all
 
   exit-value := process.wait
   exit-code := pipe.exit-code exit-value
