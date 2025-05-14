@@ -25,16 +25,16 @@ backticks-failing args/List -> string:
   process.stdin.close
 
   // We are merging stdout and stderr into one stream.
-  stdout-output := #[]
-  task::
-    stdout-output = process.stdout.in.read-all
-
-  stderr-output := #[]
-  task::
-    stderr-output = process.stderr.in.read-all
-
+  stdout-output/ByteArray? := null
+  stderr-output/ByteArray? := null
+  exit-value/int := 0
+  Task.group [
+    :: stdout-output = process.stdout.in.read-all,
+    :: stderr-output = process.stderr.in.read-all,
+    :: exit-value = process.wait
+  ]
   // The test is supposed to fail.
-  expect-not-equals 0 process.wait
+  expect-not-equals 0 exit-value
 
   return (stdout-output + stderr-output).to-string
 

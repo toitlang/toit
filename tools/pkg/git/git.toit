@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import certificate_roots
+import certificate-roots
 import http
 import io
 import net
@@ -57,7 +57,7 @@ HEAD-INDICATOR_ ::= "HEAD"
 class GitProtocol_:
   client ::= http.Client net.open --root-certificates=certificate-roots.ALL
   server-capabilities-cache ::= {:}
-  version-2-header ::= http.Headers.from_map {"Git-Protocol": "version=2"}
+  version-2-header ::= http.Headers.from-map {"Git-Protocol": "version=2"}
 
   load-capabilities url/string:
     host := url[0..url.index-of "/"]
@@ -69,8 +69,8 @@ class GitProtocol_:
                     --uri="$(url)/info/refs?service=git-upload-pack"
                     --headers=version-2-header
 
-            if capabilities-response.status_code != 200:
-              throw "Invalid repository $url, $capabilities-response.status_message"
+            if capabilities-response.status-code != 200:
+              throw "Invalid repository $url, $capabilities-response.status-message"
 
             lines := parse-response_ capabilities-response
             capabilities := {:}
@@ -90,8 +90,8 @@ class GitProtocol_:
         --headers=version-2-header
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
-    if refs-response.status_code != 200:
-      throw "Invalid repository $url, $refs-response.status_message"
+    if refs-response.status-code != 200:
+      throw "Invalid repository $url, $refs-response.status-message"
 
     lines := parse-response_ refs-response
     if lines.is-empty: throw "Invalid refs response for $url"
@@ -116,8 +116,8 @@ class GitProtocol_:
         --headers=version-2-header
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
-    if fetch-response.status_code != 200:
-      throw "Invalid repository $url, $fetch-response.status_message"
+    if fetch-response.status-code != 200:
+      throw "Invalid repository $url, $fetch-response.status-message"
 
     lines := parse-response_ fetch-response
 

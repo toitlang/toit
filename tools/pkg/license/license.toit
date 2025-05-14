@@ -16,7 +16,7 @@
 import .data
 
 validate-license-id license/string -> bool:
-  return LICENSE_IDS.contains license
+  return LICENSE-IDS.contains license
 
 cannonicalize-license license-text -> string:
   // Remove all spacaes and lines beginning with 'Copyright' from license-text
@@ -27,7 +27,7 @@ cannonicalize-license license-text -> string:
 
 guess-license license-text -> string?:
   canonicalized := cannonicalize-license license-text
-  KNOWN_LICENSES.do: | license-id text |
+  KNOWN-LICENSES.do: | license-id text |
     canonicalized-known := cannonicalize-license text
     if canonicalized-known.starts-with canonicalized or
        canonicalized-known.ends-with canonicalized:
