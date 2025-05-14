@@ -13,7 +13,7 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 
-name: Upload Full Source Tarball
+name: Upload full source tarball
 
 on:
   release:
