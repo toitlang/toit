@@ -6,7 +6,6 @@ import host.pipe
 import host.directory
 import host.file
 import expect show *
-import monitor
 
 main args:
   tmp-dir := directory.mkdtemp "/tmp/diagnostic-test-"
@@ -31,26 +30,21 @@ run-test program args --expect-stdout/bool:
       --create-stderr
       program
       [program] + args
-  stdout-latch := monitor.Latch
+
   stdout-bytes := #[]
-  task::
-    stdout-bytes = process.stdout.in.read-all
-    stdout-latch.set true
-
   stderr-bytes := #[]
-  stderr-latch := monitor.Latch
-  task::
-    stderr-bytes = process.stderr.in.read-all
-    stderr-latch.set true
+  Task.group [
+    ::
+      stdout-bytes = process.stdout.in.read-all,
+    ::
+      stderr-bytes = process.stderr.in.read-all,
+    ::
+      exit-value := process.wait
+      exit-code := pipe.exit-code exit-value
 
-  exit-value := process.wait
-  exit-code := pipe.exit-code exit-value
-
-  expect-not-null exit-code
-  expect-equals 0 exit-code
-
-  stdout-latch.get
-  stderr-latch.get
+      expect-not-null exit-code
+      expect-equals 0 exit-code
+  ]
 
   stdout := stdout-bytes.to-string
   stderr := stderr-bytes.to-string

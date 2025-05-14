@@ -7,8 +7,6 @@ import expect show *
 import host.pipe
 import host.directory
 
-import monitor
-
 with-tmp-directory [block]:
   tmp-dir := directory.mkdtemp "/tmp/toit-strip-test-"
   try:
@@ -27,23 +25,17 @@ backticks-failing args/List -> string:
   process.stdin.close
 
   // We are merging stdout and stderr into one stream.
-  stdout-done := monitor.Latch
   stdout-output := #[]
-  task::
-    stdout-output = process.stdout.in.read-all
-    stdout-done.set true
-
-  stderr-done := monitor.Latch
   stderr-output := #[]
-  task::
-    stderr-output = process.stderr.in.read-all
-    stderr-done.set true
-
-  // The test is supposed to fail.
-  expect-not-equals 0 process.wait
-
-  stdout-done.get
-  stderr-done.get
+  Task.group [
+    ::
+      stdout-output = process.stdout.in.read-all,
+    ::
+      stderr-output = process.stderr.in.read-all,
+    ::
+      // The test is supposed to fail.
+      expect-not-equals 0 process.wait
+  ]
 
   return (stdout-output + stderr-output).to-string
 
