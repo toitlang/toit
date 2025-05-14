@@ -31,20 +31,19 @@ run-test program args --expect-stdout/bool:
       program
       [program] + args
 
-  stdout-bytes := #[]
-  stderr-bytes := #[]
+  stdout-bytes/ByteArray? := null
+  stderr-bytes/ByteArray? := null
+  exit-value/int := 0
   Task.group [
-    ::
-      stdout-bytes = process.stdout.in.read-all,
-    ::
-      stderr-bytes = process.stderr.in.read-all,
-    ::
-      exit-value := process.wait
-      exit-code := pipe.exit-code exit-value
-
-      expect-not-null exit-code
-      expect-equals 0 exit-code
+    :: stdout-bytes = process.stdout.in.read-all,
+    :: stderr-bytes = process.stderr.in.read-all,
+    :: exit-value = process.wait,
   ]
+
+  exit-code := pipe.exit-code exit-value
+
+  expect-not-null exit-code
+  expect-equals 0 exit-code
 
   stdout := stdout-bytes.to-string
   stderr := stderr-bytes.to-string
