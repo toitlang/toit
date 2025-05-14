@@ -16,10 +16,10 @@
 import encoding.url
 import fs
 
-flatten_list input/List -> List:
+flatten-list input/List -> List:
   list := List
   input.do:
-    if it is List: list.add-all (flatten_list it)
+    if it is List: list.add-all (flatten-list it)
     else: list.add it
   return list
 

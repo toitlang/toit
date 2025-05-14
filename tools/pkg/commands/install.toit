@@ -75,7 +75,7 @@ class InstallCommand:
     project.install-remote prefix remote-package
 
   execute-local:
-    specification-name := "$package/$Specification.FILE_NAME"
+    specification-name := "$package/$Specification.FILE-NAME"
     src-directory := "$package/src"
     if not file.is-file specification-name:
       error "Path supplied in package argument is an invalid local package, missing $specification-name."

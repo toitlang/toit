@@ -30,15 +30,16 @@ run-test program args --expect-stdout/bool:
       --create-stderr
       program
       [program] + args
-  stdout-bytes := #[]
-  task::
-    stdout-bytes = process.stdout.in.read-all
 
-  stderr-bytes := #[]
-  task::
-    stderr-bytes = process.stderr.in.read-all
+  stdout-bytes/ByteArray? := null
+  stderr-bytes/ByteArray? := null
+  exit-value/int := 0
+  Task.group [
+    :: stdout-bytes = process.stdout.in.read-all,
+    :: stderr-bytes = process.stderr.in.read-all,
+    :: exit-value = process.wait,
+  ]
 
-  exit-value := process.wait
   exit-code := pipe.exit-code exit-value
 
   expect-not-null exit-code

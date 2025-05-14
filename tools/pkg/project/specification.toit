@@ -44,7 +44,7 @@ class ProjectSpecification extends Specification:
     return ProjectSpecification.private_ project {:}
 
   constructor.load project/Project:
-    file-content := (yaml.decode (file.read_contents "$project.root/$Specification.FILE_NAME")) or {:}
+    file-content := (yaml.decode (file.read-contents "$project.root/$Specification.FILE-NAME")) or {:}
     return ProjectSpecification.private_ project file-content
 
   root-dir -> string:
@@ -67,9 +67,9 @@ class ProjectSpecification extends Specification:
 
   save:
     if content.is-empty:
-      file.write_contents "# Toit Package File." --path=file-name
+      file.write-contents "# Toit Package File." --path=file-name
     else:
-      file.write_contents --path=file-name
+      file.write-contents --path=file-name
           yaml.encode content
 
   /**
@@ -123,7 +123,7 @@ class ProjectSpecification extends Specification:
         // in a folder 'foo'. It should just be "bar".
         human-path = fs.to-relative --base=entry-dir human-path
 
-      dep-specification-path/string := fs.join absolute-path Specification.FILE_NAME
+      dep-specification-path/string := fs.join absolute-path Specification.FILE-NAME
       // Local packages are allowed not to have a package file.
       if file.is-file dep-specification-path:
         dep-specification := ExternalSpecification --dir=absolute-path
@@ -176,7 +176,7 @@ class ExternalSpecification extends Specification:
 
   constructor --.dir:
     if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read_contents "$dir/$Specification.FILE_NAME")) or {:})
+    super ((yaml.decode (file.read-contents "$dir/$Specification.FILE-NAME")) or {:})
 
   root-dir -> string:
     return dir
@@ -206,7 +206,7 @@ abstract class Specification:
 
   content/Map
 
-  static FILE_NAME ::= "package.yaml"
+  static FILE-NAME ::= "package.yaml"
 
   constructor .content:
 
@@ -214,7 +214,7 @@ abstract class Specification:
   abstract root-dir -> string
 
   static file-name root/string -> string:
-    return "$root/$FILE_NAME"
+    return "$root/$FILE-NAME"
 
   file-name -> string:
     return file-name root-dir
