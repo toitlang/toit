@@ -290,7 +290,7 @@ function(add_repo_tests REPO)
 
     add_test(
       NAME "${TEST_EXPECTATION_NAME}"
-      COMMAND $<TARGET_FILE:toit.run> "${FILE}" $<TARGET_FILE:toit.run>
+      COMMAND $<TARGET_FILE:toit.run> "${FILE}" $<TARGET_FILE:toit>
       WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
