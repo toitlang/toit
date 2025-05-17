@@ -105,7 +105,7 @@ void PlainDepWriter::generate_dependency_entry(const char* source, List<const ch
   write(source);
   write(":\n");
   for (auto dep : dependencies) {
-    write("  ");
+    write("\t");
     writeln(dep);
   }
 }
