@@ -1,0 +1,15 @@
+sdk: ^2.0.0-alpha.145
+prefixes:
+  host: pkg-host
+  http: pkg-http
+packages:
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    name: host
+    version: 1.15.1
+    hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
+  pkg-http:
+    url: github.com/toitlang/pkg-http
+    name: http
+    version: 2.7.2
+    hash: 614dd0f374e70aab09f12e9466a35b779b9a8d63

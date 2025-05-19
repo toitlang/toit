@@ -839,6 +839,10 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
+  if (lock_file.empty()) {
+    // Use the default lock-file instead.
+    lock_file = find_lock_file_at(filesystem()->default_project_root(), filesystem());
+  }
   return PackageLock::read(lock_file,
                            entry_path,
                            source_manager(),
