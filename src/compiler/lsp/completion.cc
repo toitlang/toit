@@ -377,6 +377,7 @@ void CompletionHandler::import_path(const char* path,
   } else {
     fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
       complete(std::string(candidate), CompletionKind::MODULE);
+      return true;
     });
   }
   terminate();

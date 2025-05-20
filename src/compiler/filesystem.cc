@@ -247,7 +247,7 @@ void Filesystem::register_intercepted(const std::string& path, const uint8* cont
 }
 
 void Filesystem::list_toit_directory_entries(const char* path,
-                                             const std::function<void (const char*, bool is_directory)> callback) {
+                                             const std::function<bool (const char*, bool is_directory)> callback) {
   list_directory_entries(path, [&](const char* entry) {
     // TODO(florian): We would like to check here, whether the `full_path` is a directory
     // or not. However, we are not allowed to do another filesystem request
@@ -258,27 +258,27 @@ void Filesystem::list_toit_directory_entries(const char* path,
       if (c == '\0') {
         // Didn't find any '.'.
         // TODO(florian): We should check whether this is actually a directory.
-        callback(entry, true);
-        return;
+        return callback(entry, true);
       }
       if (c == '.') {
         // TODO(florian): we should check whether this entry is a directory.
         //    If yes, then we should not do the callback and just return.
 
         // Even if the file ends with '.toit', we can't have empty basenames.
-        if (i == 0) return;
+        if (i == 0) return true;
+        bool should_continue = true;
         if (strcmp(&entry[i], ".toit") == 0) {
           char* without_extension = unvoid_cast<char*>(malloc(i + 1));
           strncpy(without_extension, entry, i);
           without_extension[i] = '\0';
           const char* canonicalized = IdentifierValidator::canonicalize(without_extension, i);
           if (canonicalized != without_extension) free(without_extension);
-          callback(canonicalized, false);
+          should_continue = callback(canonicalized, false);
           free(const_cast<char*>(canonicalized));
         }
-        return;
+        return should_continue;
       }
-      if (!validator.check_next_char(c, [&]() { return entry[i + 1]; })) return;
+      if (!validator.check_next_char(c, [&]() { return entry[i + 1]; })) return true;
     }
   });
 }
