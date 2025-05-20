@@ -413,6 +413,13 @@ namespace toit {
   PRIMITIVE(pin_hold_disable, 1)             \
   PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
   PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
+  PRIMITIVE(pm_configure, 3)                 \
+  PRIMITIVE(pm_get_configuration, 0)         \
+  PRIMITIVE(pm_lock_new, 3)                  \
+  PRIMITIVE(pm_lock_del, 1)                  \
+  PRIMITIVE(pm_lock_acquire, 1)              \
+  PRIMITIVE(pm_lock_release, 1)              \
+  PRIMITIVE(pm_locks_dump, 0)                \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -477,10 +484,16 @@ namespace toit {
   PRIMITIVE(enable, 1)                       \
   PRIMITIVE(disable, 1)                      \
   PRIMITIVE(transmit, 4)                     \
+  PRIMITIVE(transmit_with_encoder, 6)        \
   PRIMITIVE(is_transmit_done, 1)             \
   PRIMITIVE(start_receive, 4)                \
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(apply_carrier, 5)                \
+  PRIMITIVE(sync_manager_new, 2)             \
+  PRIMITIVE(sync_manager_delete, 2)          \
+  PRIMITIVE(sync_manager_reset, 1)           \
+  PRIMITIVE(encoder_new, 2)                  \
+  PRIMITIVE(encoder_delete, 2)               \
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(new_unit, 4)                     \
@@ -937,6 +950,9 @@ namespace toit {
     name = false;                                      \
   } else FAIL(WRONG_OBJECT_TYPE);
 
+// The code in primitive_esp32.cc currently relies on the fact that the
+// cstrings are always copied. When changing this code here, make sure to
+// update that code.
 #define _A_T_cstring(N, name)                                                    \
   Object* _raw_##name = __args[-(N)];                                            \
   char* _nonconst_##name = null;                                                 \
@@ -1109,10 +1125,14 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
+#define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
+#define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
+#define _A_T_RmtPatternEncoderResource(N, name)  MAKE_UNPACKING_MACRO(RmtPatternEncoderResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
 #define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)

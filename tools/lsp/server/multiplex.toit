@@ -13,31 +13,29 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import host.pipe show OpenPipe
+import host.pipe show Stream
 import io
 import io show LITTLE-ENDIAN
 import monitor show Semaphore
 
 /**
-Connection that dispatches the data of the given $OpenPipe to two pipes.
-The $compiler-to-fs and $compiler-to-parser $SimplePipe should be used as a
-  normal $io.CloseableReader.
+Connection that dispatches the data of the given $Stream to two pipes.
 
 If data is produced faster than it is consumed, then the data is buffered. There
   is no flow-control.
 
-The given incoming $OpenPipe should be the stdout of the C++ compiler. Data
+The given incoming $Stream should be the stdout of the C++ compiler. Data
   is framed with a 4-byte integer indicating the size of the frame. If the
   number is negative then the frame-data is sent to $compiler-to-fs. Otherwise
   it's destined for $compiler-to-parser.
 */
 class MultiplexConnection:
-  compiler-to-fs          / SimplePipe
-  compiler-to-parser      / SimplePipe
-  from-compiler_          / OpenPipe
+  compiler-to-fs_         / MultiplexedReader_
+  compiler-to-parser_     / MultiplexedReader_
+  from-compiler_          / Stream
   buffered-from-compiler_ / io.Reader
 
-  constructor from-compiler/OpenPipe:
+  constructor from-compiler/Stream:
     from-compiler_ = from-compiler
 
     closed-count := 0
@@ -46,9 +44,12 @@ class MultiplexConnection:
       if closed-count == 2:
         from-compiler.close
 
-    compiler-to-fs = SimplePipe --on-close=close-check
-    compiler-to-parser = SimplePipe --on-close=close-check
-    buffered-from-compiler_ = io.Reader.adapt from-compiler_
+    compiler-to-fs_ = MultiplexedReader_ --on-close=close-check
+    compiler-to-parser_ = MultiplexedReader_ --on-close=close-check
+    buffered-from-compiler_ = from-compiler_.in
+
+  compiler-to-fs -> io.CloseableReader: return compiler-to-fs_
+  compiler-to-parser -> io.CloseableReader: return compiler-to-parser_
 
   /**
   Starts reading from stdout pipe and dispatches to the two simple pipes.
@@ -63,10 +64,10 @@ class MultiplexConnection:
       while buffered-from-compiler_.try-ensure-buffered 4:
         frame-size-bytes := buffered-from-compiler_.read-bytes 4
         frame-size := LITTLE-ENDIAN.int32 frame-size-bytes 0
-        to := compiler-to-parser
+        to := compiler-to-parser_
         if frame-size < 0:
           frame-size = -frame-size
-          to = compiler-to-fs
+          to = compiler-to-fs_
         data := buffered-from-compiler_.read-bytes frame-size
         to.write_ data
     finally:
@@ -79,7 +80,7 @@ class MultiplexConnection:
 /**
 A $io.CloseableReader that is fed data throw the $write_ method.
 */
-class SimplePipe extends io.CloseableReader:
+class MultiplexedReader_ extends io.CloseableReader:
   is-closed_ := false
   buffered_chunks_ /Deque := Deque
   sem_ / Semaphore := Semaphore

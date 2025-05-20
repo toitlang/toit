@@ -44,7 +44,8 @@ test-start:
   lambda3-value := null
   sub3 := containers.start containers.current {:}
   expect-equals 0 sub3.wait
-  sub3.on-stopped:: lambda3-value = it
+  // Test deprecated functionality.
+  sub3.on-stopped:: lambda3-value = it  // @no-warn
   expect-equals 0 lambda3-value
 
   lambda4-called := false

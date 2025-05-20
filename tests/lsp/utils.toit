@@ -82,29 +82,18 @@ extract-locations path -> Map/*<string, Location>*/:
   return result
 
 run-toit toitc args -> List?:
-  cpp-pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-CREATED   // stdin
-      pipe.PIPE-CREATED   // stdout
-      pipe.PIPE-INHERITED // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdin
+      --create-stdout
       toitc
       [toitc] + args
-  cpp-to   := cpp-pipes[0]
-  cpp-from := cpp-pipes[1]
-  cpp-pid  := cpp-pipes[3]
   try:
-    cpp-to.close
-
-    lines := []
-    try:
-      reader := io.Reader.adapt cpp-from
-      while line := reader.read-line:
-        lines.add line
-    finally:
-      cpp-from.close
-    return lines
+    process.stdin.close
+    return process.stdout.in.read-lines
   finally:
-    exit-value := pipe.wait-for cpp-pid
+    process.stdout.close
+    exit-value := process.wait
     exit-code := pipe.exit-code exit-value
     exit-signal := pipe.exit-signal exit-value
     if exit-signal:

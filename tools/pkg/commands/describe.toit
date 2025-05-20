@@ -45,7 +45,7 @@ class DescribeCommand:
     url-path = invocation[URL-PATH-OPTION]
     version = invocation[VERSION-OPTION]
     out-dir = invocation[OUT-DIR-OPTION]
-    allow-local-deps = invocation[ALLOW-LOCAL_DEPS]
+    allow-local-deps = invocation[ALLOW-LOCAL-DEPS]
 
   execute:
     if not version:
@@ -119,9 +119,9 @@ class DescribeCommand:
 
     src := "$url-path/src"
     description := build-description
-      --check-src-dir=: file.is_directory src
-      --load-specification=: file.is_file (Specification.file-name url-path) and ExternalSpecification --dir=url-path
-      --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
+      --check-src-dir=: file.is-directory src
+      --load-specification=: file.is-file (Specification.file-name url-path) and ExternalSpecification --dir=url-path
+      --load-license-file=: file.is-file "LICENSE" and file.read-contents "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
       --url=NOT-SCRAPED-STRING
@@ -140,7 +140,7 @@ class DescribeCommand:
     description := build-description
       --check-src-dir=: (file-view.get "src") is FileSystemView
       --load-specification=:
-        package-content := file-view.get Specification.FILE_NAME
+        package-content := file-view.get Specification.FILE-NAME
         package-content and RepositorySpecification package-content
       --load-license-file=: file-view.get "LICENSE"
       --hash=ref-hash
@@ -190,7 +190,7 @@ class DescribeCommand:
                   --help="The directory to write the description file to."
                   --required=false,
 
-              cli.Flag ALLOW-LOCAL_DEPS
+              cli.Flag ALLOW-LOCAL-DEPS
                   --help="Allow local dependencies."
                   --required=false
                   --default=false,
@@ -200,4 +200,4 @@ class DescribeCommand:
   static URL-PATH-OPTION ::= "URL/Path"
   static VERSION-OPTION ::= "version"
   static OUT-DIR-OPTION ::= "out-dir"
-  static ALLOW-LOCAL_DEPS ::= "allow-local-deps"
+  static ALLOW-LOCAL-DEPS ::= "allow-local-deps"

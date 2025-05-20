@@ -31,7 +31,7 @@ main:
   expect-equals ['O', 'n', 'l', 'y', ' ', 0xe2, 0x82, 0xac, '1', '0', '0'] underlying.bytes
 
   underlying = WriterThatOnlyWritesOneByte
-  writer := Writer underlying
+  writer := Writer underlying  // @no-warn
   writer.write "foo"
   expect-equals ['f', 'o', 'o'] underlying.bytes
 

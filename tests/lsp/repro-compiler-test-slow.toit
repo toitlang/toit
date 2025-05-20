@@ -95,20 +95,15 @@ create-archive path toitc -> string:
 Runs the compiler using the repro archive.
 */
 test-repro-server archive-path toitc compiler-input:
-  cpp-pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-CREATED   // stdin
-      pipe.PIPE-CREATED   // stdout
-      pipe.PIPE-INHERITED // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdin
+      --create-stdout
       toitc
       [
         toitc,
         "--lsp",
       ]
-  cpp-to   := cpp-pipes[0]
-  cpp-from := cpp-pipes[1]
-  cpp-pid  := cpp-pipes[3]
-
   // Start the repro server and extract the port from its output.
   // We use the `--json` flag to make that easier.
   port/int := ?
@@ -121,17 +116,17 @@ test-repro-server archive-path toitc compiler-input:
   port = latch.get
 
   try:
-    writer := io.Writer.adapt cpp-to
+    writer := process.stdin.out
     writer.write "$port\n"
     writer.write compiler-input
   finally:
-    cpp-to.close
+    process.stdin.close
 
   try:
-    check-compiler-output (io.Reader.adapt cpp-from)
+    check-compiler-output process.stdout.in
   finally:
-    cpp-from.close
-    exit-value := pipe.wait-for cpp-pid
+    process.stdout.close
+    exit-value := process.wait
     expect-equals null
         pipe.exit-signal exit-value
     expect-equals 0

@@ -8,11 +8,14 @@ Tests a simple pulse from the RMT peripheral.
 For the setup see the comment near $Variant.rmt-pin1.
 */
 
-import rmt
-import gpio
-import monitor
 import expect show *
+import gpio
+import io
+import monitor
+import pulse-counter
+import rmt
 import system
+import uart
 
 import .test
 import .variants
@@ -28,6 +31,30 @@ TOTAL-CHANNEL-COUNT ::= Variant.CURRENT.rmt-total-channel-count
 // Because of the resistors and a weak pull-up, the reading isn't fully precise.
 // We allow 5us error.
 SLACK ::= 5
+
+expect-close-to --slack=SLACK expected/int actual/int:
+  expect (expected - actual).abs <= slack
+
+expect-equals-sequence expected/List actual/rmt.Signals:
+  sum := expected.reduce --initial=0: | a/int b/rmt.Signals | a + b.size
+  expect-equals sum actual.size
+  actual-i := 0
+  for i := 0; i < expected.size; i++:
+    expected-signals/rmt.Signals := expected[i]
+    for j := 0; j < expected-signals.size; j++:
+      expected-level := expected-signals.level j
+      actual-level := actual.level actual-i
+      expected-period := expected-signals.period j
+      actual-period := actual.period actual-i
+      if actual-i == actual.size - 1:
+        // The last signal is a transition with a period of 0.
+        expect-equals 0 actual-level
+        expect-equals 0 actual-period
+        return
+
+      expect-equals expected-level actual-level
+      expect-close-to expected-period actual-period
+      actual-i++
 
 RESOLUTION ::= 1_000_000  // 1MHz.
 
@@ -105,7 +132,7 @@ test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
   out.write out-signals --done-level=0
   in-signals := in.wait-for-data
   expect-equals 2 in-signals.size
-  expect (PULSE-LENGTH - (in-signals.period 0)).abs <= SLACK
+  expect-close-to PULSE-LENGTH (in-signals.period 0)
   expect-equals 0 (in-signals.period 1)
   out.close
   in.close
@@ -126,7 +153,7 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
   in-signals := in.wait-for-data
   expect-equals (SIGNAL-COUNT + 1) in-signals.size
   SIGNAL-COUNT.repeat:
-    expect (PULSE-LENGTH - (in-signals.period it)).abs <= SLACK
+    expect-close-to PULSE-LENGTH (in-signals.period it)
   expect-equals 0 (in-signals.period (in-signals.size - 1))
   out.close
   in.close
@@ -150,7 +177,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
   in-signals := in.wait-for-data
   expect in-signals.size >= SIGNAL-COUNT
   (SIGNAL-COUNT - 1).repeat:
-    expect (PULSE-LENGTH - (in-signals.period it)).abs <= SLACK
+    expect-close-to PULSE-LENGTH (in-signals.period it)
   expect-equals 0 (in-signals.period (in-signals.size - 1))
   out.close
   in.close
@@ -186,9 +213,11 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin
   // The ESP32 applies the carrier even to the idle level.
   // Set the current idle level to the opposite of the active level, so we don't
   // have the carrier when we are not sending.
-  no-signals := rmt.Signals 1
-  no-signals.set 0 --level=0 --period=0
-  out.write no-signals --done-level=(active-low ? 1 : 0)
+  idle-level := active-low ? 1 : 0
+  no-signals := rmt.Signals 2
+  no-signals.set 0 --level=idle-level --period=1
+  no-signals.set 1 --level=idle-level --period=1
+  out.write no-signals --done-level=idle-level
 
   in := rmt.In pin2 --resolution=RESOLUTION
   if demodulate:
@@ -216,7 +245,7 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin
     for i := 0; i < 5; i++:
       period := in-signals.period i
       slack := 2 * (max UP-TICKS DOWN-TICKS) + SLACK
-      expect (period - SIGNAL-PERIOD).abs < slack
+      expect-close-to --slack=slack SIGNAL-PERIOD period
     return
 
   carrier-high-count := 0  // Carrier high.
@@ -334,7 +363,7 @@ test-glitch-filter pin1/gpio.Pin pin2/gpio.Pin:
   level := received.level 0
   period := received.period 0
   expect-equals 1 level
-  expect (period - SIGNAL-PERIOD).abs <= SLACK
+  expect-close-to SIGNAL-PERIOD period
 
   in.close
   out.close
@@ -391,6 +420,471 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
   out2.close
   pin3.close
 
+test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
+  out := rmt.Out pin1 --resolution=RESOLUTION
+  pulse-channel := pulse-counter.Channel pin2
+  pulse-unit := pulse-counter.Unit --channels=[pulse-channel]
+  pulse-unit.start
+
+  out-signals := rmt.Signals 2
+  out-signals.set 0 --level=1 --period=50
+  out-signals.set 1 --level=0 --period=50
+  out.write out-signals --done-level=0 --loop-count=-1 --no-flush
+
+  while pulse-unit.value < 30:
+    yield
+
+  out.reset
+  pulse-unit.close
+
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    // The ESP32 doesn't support finite loop counts.
+    return
+
+  in := rmt.In pin2 --resolution=RESOLUTION
+  in.start-reading --min-ns=1 --max-ns=(120 * 1000)
+
+  LOOP-COUNT ::= 4
+  out.write out-signals --done-level=0 --loop-count=LOOP-COUNT --no-flush
+
+  in-signals := in.wait-for-data
+  expect-equals (LOOP-COUNT * 2) in-signals.size
+
+  in.close
+  out.close
+
+test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    // The ESP32 doesn't support synchronized writes.
+    return
+
+  in := rmt.In pin1 --resolution=RESOLUTION
+
+  idle-signals := rmt.Signals 2
+  idle-signals.set 0 --level=1 --period=1
+  idle-signals.set 1 --level=1 --period=1
+  out1 := rmt.Out pin1 --resolution=RESOLUTION --open-drain --pull-up
+  out1.write idle-signals --done-level=1
+  out2 := rmt.Out pin2 --resolution=RESOLUTION --open-drain
+  out2.write idle-signals --done-level=1
+
+  out-signals1 := rmt.Signals 2
+  out-signals1.set 0 --level=0 --period=25
+  out-signals1.set 1 --level=1 --period=(83 - 25)
+
+  out-signals2 := rmt.Signals 2
+  out-signals2.set 0 --level=1 --period=50
+  out-signals2.set 1 --level=0 --period=33
+
+  out1.write out-signals2 --done-level=1
+  out2.write out-signals1 --done-level=1
+
+  synchronizer := rmt.SynchronizationManager [out1, out2]
+
+  2.repeat:
+    if it == 1: synchronizer.reset
+
+    in.start-reading --min-ns=1 --max-ns=(120 * 1000)
+    out1.write out-signals1 --done-level=1 --no-flush
+    out2.write out-signals2 --done-level=1
+
+    in-signals := in.wait-for-data
+    print in-signals
+
+    expect-equals 4 in-signals.size
+    expect-equals 0 (in-signals.level 0)
+    expect-close-to 25 (in-signals.period 0)
+    expect-equals 1 (in-signals.level 1)
+    expect-close-to 25 (in-signals.period 1)
+    expect-equals 0 (in-signals.level 2)
+    expect-close-to 33 (in-signals.period 2)
+    expect-equals 1 (in-signals.level 3)
+    expect-equals 0 (in-signals.period 3)
+
+  synchronizer.close
+  in.close
+  out1.close
+  out2.close
+
+test-encoder pin1/gpio.Pin pin2/gpio.Pin:
+  test-encoder-bytes pin1 pin2
+  test-encoder-patterns pin1 pin2
+
+test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin:
+  data := #[0xA3, 0x0F]
+  bit-size := 15
+  encoder-bytes := #[
+    1,  // chunk size.
+    0,  // LSB/MSB.
+    14, 0, // index to start-sequence.
+    18, 0, // index to between-sequence,
+    22, 0, // index to end-sequence.
+    26, 0, // index to 0 chunk
+    30, 0, // index to 1 chunk.
+    34, 0, // index to the end of the buffer.
+    115, 0x80, 15, 0x00,  // start sequence.
+    133, 0x80, 33, 0x00, // between sequence.
+    155, 0x80, 55, 0x00, // end-sequence sequence.
+    170, 0x80, 70, 0x00, // 0 chunk.
+    190, 0x80, 90, 0x00, // 1 chunk.
+  ]
+  msb := false
+  encoder-bytes[1] = 0
+  expected-periods := [
+    115, 15,  // Start.
+    190, 90,  // 3. (lsb)
+    190, 90,
+    170, 70,
+    170, 70,
+    170, 70,  // A.
+    190, 90,
+    170, 70,
+    190, 90,
+    133, 33,  // Between.
+    190, 90,  // F.
+    190, 90,
+    190, 90,
+    190, 90,
+    170, 70,  // 0. Only 3 bits.
+    170, 70,
+    170, 70,
+    155, 55,  // End.
+  ]
+  test-encoder-bytes pin1 pin2
+      --data=data
+      --bit-size=bit-size
+      --msb=msb
+      --encoder-bytes=encoder-bytes
+      --expected-periods=expected-periods
+
+  msb = true
+  encoder-bytes[1] = 1
+  bit-size = 13
+  expected-periods = [
+    115, 15,  // Start.
+    190, 90,  // A. (msb)
+    170, 70,
+    190, 90,
+    170, 70,
+    170, 70,  // 3.
+    170, 70,
+    190, 90,
+    190, 90,
+    133, 33,  // Between.
+    170, 70,  // 0.
+    170, 70,
+    170, 70,
+    170, 70,
+    190, 90,  // F. Only 1 bit.
+    155, 55,  // End.
+  ]
+  test-encoder-bytes pin1 pin2
+      --data=data
+      --bit-size=bit-size
+      --msb=msb
+      --encoder-bytes=encoder-bytes
+      --expected-periods=expected-periods
+
+  data = #[0xAA]
+  bit-size = 8
+  encoder-bytes = #[
+    1,  // chunk size.
+    0,  // LSB/MSB.
+    14, 0, // index to start-sequence.
+    14, 0, // index to between-sequence,
+    14, 0, // index to end-sequence.
+    14, 0, // index to 0 chunk
+    18, 0, // index to 1 chunk.
+    18, 0, // index to the end of the buffer.
+    142, 0x80, 42, 0x00,
+  ]
+  msb = false
+  encoder-bytes[1] = 0
+  expected-periods = [
+    // A pulse for each 1 bit. Nothing else.
+    142, 42,
+    142, 42,
+    142, 42,
+    142, 42,
+  ]
+  test-encoder-bytes pin1 pin2
+      --data=data
+      --bit-size=bit-size
+      --msb=msb
+      --encoder-bytes=encoder-bytes
+      --expected-periods=expected-periods
+
+  data = #[0x1B]
+  bit-size = 8
+  encoder-bytes = #[
+    2,  // chunk size.
+    0,  // LSB/MSB.
+    18, 0, // index to start-sequence.
+    18, 0, // index to between-sequence,
+    18, 0, // index to end-sequence.
+    18, 0, // index to 0b00 chunk
+    22, 0, // index to 0b01 chunk.
+    26, 0, // index to 0b10 chunk.
+    30, 0, // index to 0b11 chunk.
+    42, 0, // index to the end of the buffer.
+    110, 0x80, 10, 0x00,  // 0b00.
+    130, 0x80, 30, 0x00,  // 0b01.
+    150, 0x80, 50, 0x00,  // 0b10.
+    170, 0x80, 70, 0x00, 190, 0x80, 70, 0x00, 210, 0x80, 70, 0x00, // 0b11.
+
+  ]
+  msb = true
+  encoder-bytes[1] = 1
+  expected-periods = [
+    110, 10,  // 0b00.
+    130, 30,  // 0b01.
+    150, 50,  // 0b10.
+    170, 70, 190, 70, 210, 70, // 0b11.
+  ]
+  test-encoder-bytes pin1 pin2
+      --data=data
+      --bit-size=bit-size
+      --msb=msb
+      --encoder-bytes=encoder-bytes
+      --expected-periods=expected-periods
+
+  msb = false
+  encoder-bytes[1] = 0
+  expected-periods = [
+    170, 70, 190, 70, 210, 70, // 0b11.
+    150, 50,  // 0b10.
+    130, 30,  // 0b01.
+    110, 10,  // 0b00.
+  ]
+  test-encoder-bytes pin1 pin2
+      --data=data
+      --bit-size=bit-size
+      --msb=msb
+      --encoder-bytes=encoder-bytes
+      --expected-periods=expected-periods
+
+
+test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin
+    --start-level/int=0
+    --done-level/int=1
+    --data/io.Data
+    --bit-size/int
+    --msb/bool
+    --encoder-bytes/ByteArray
+    --expected-periods/List:
+  out-channel := rmt.Out pin2 --resolution=RESOLUTION
+  // Reset to start-level.
+  idle-signals := rmt.Signals 2
+  idle-signals.set 0 --level=start-level --period=1
+  idle-signals.set 1 --level=start-level --period=1
+  out-channel.write idle-signals --done-level=start-level
+
+  in-channel := rmt.In pin1 --resolution=RESOLUTION --memory-blocks=2
+
+  encoder := rmt.Encoder.from-bytes_ encoder-bytes
+  in-channel.start-reading --min-ns=1 --max-ns=270_000
+  out-channel.write data --bit-size=bit-size --encoder=encoder --flush=true --done-level=done-level
+  actual := in-channel.wait-for-data
+  expected-level := 1 - start-level
+  expected-periods.size.repeat: | i/int |
+    expected-period := expected-periods[i]
+    actual-period := actual.period i
+    actual-level := actual.level i
+    expect-equals expected-level actual-level
+    expect-close-to expected-period actual-period
+    expected-level = 1 - expected-level
+  // The end-of-marker is a transition with a 0 period.
+  expect-equals 0 (actual.level done-level)
+  expect-equals 0 (actual.period (expected-periods.size))
+
+  encoder.close
+  out-channel.close
+  in-channel.close
+
+test-encoder-patterns pin1/gpio.Pin pin2/gpio.Pin:
+  test-uart pin1 pin2
+  test-individual-patterns pin1 pin2
+
+test-uart pin1/gpio.Pin pin2/gpio.Pin:
+  BAUD_RATE ::= 115200
+
+  // in-channel := rmt.In in --resolution=RES --memory-blocks=6
+  out-channel := rmt.Out pin1 --resolution=RESOLUTION
+  // Set the output to 1.
+  no-signals := rmt.Signals 2
+  no-signals.set 0 --level=1 --period=1
+  no-signals.set 1 --level=1 --period=1
+  out-channel.write no-signals --done-level=1
+
+  uart-period := RESOLUTION / BAUD-RATE
+
+  uart-start := rmt.Signals 2
+  uart-start.set 0 --level=0 --period=uart-period - 1
+  uart-start.set 1 --level=0 --period=1
+
+  // A combination of the stop and start signals.
+  uart-between := rmt.Signals 2
+  uart-between.set 0 --level=1 --period=uart-period  // A stop bit.
+  uart-between.set 1 --level=0 --period=uart-period  // A start bit.
+
+  uart-stop := rmt.Signals 2
+  uart-stop.set 0 --level=1 --period=uart-period - 1
+  uart-stop.set 1 --level=1 --period=1
+
+  // We use chunks of 2 bits, so that we don't waste signal memory.
+  // rmt.Signals of length 1 are padded to size 2.
+  uart-00 := rmt.Signals 2
+  uart-00.set 0 --level=0 --period=uart-period
+  uart-00.set 1 --level=0 --period=uart-period
+  uart-01 := rmt.Signals 2
+  uart-01.set 0 --level=1 --period=uart-period
+  uart-01.set 1 --level=0 --period=uart-period
+  uart-10 := rmt.Signals 2
+  uart-10.set 0 --level=0 --period=uart-period
+  uart-10.set 1 --level=1 --period=uart-period
+  uart-11 := rmt.Signals 2
+  uart-11.set 0 --level=1 --period=uart-period
+  uart-11.set 1 --level=1 --period=uart-period
+
+  encoder := rmt.Encoder
+      --msb=false  // UART is LSB first.
+      --start=uart-start
+      --between=uart-between
+      --stop=uart-stop
+      {
+        0b00: uart-00,
+        0b01: uart-01,
+        0b10: uart-10,
+        0b11: uart-11,
+      }
+
+  port := uart.Port
+      --rx=pin2
+      --tx=null
+      --baud-rate=BAUD-RATE
+      --data-bits=8
+      --parity=uart.Port.PARITY-DISABLED
+      --stop-bits=uart.Port.STOP-BITS-1
+
+  done := monitor.Latch
+  message := "hello"
+  task::
+    data := port.in.read
+    done.set data.to-string
+
+  out-channel.write message --encoder=encoder --done-level=1
+  expect-equals message done.get.to-string
+
+  port.close
+  encoder.close
+  out-channel.close
+
+test-individual-patterns pin1/gpio.Pin pin2/gpio.Pin:
+  pattern-0 := rmt.Signals.alternating 2 --first-level=1: 15
+  pattern-1 := rmt.Signals.alternating 2 --first-level=1: 25
+  start := rmt.Signals.alternating --first-level=1 2: 35
+  between := rmt.Signals.alternating --first-level=1 2: 45
+  stop := rmt.Signals.alternating --first-level=1 2: 55
+
+  out := rmt.Out pin1 --resolution=RESOLUTION
+  in := rmt.In pin2 --resolution=RESOLUTION
+
+  encoder := rmt.Encoder --msb --start=start { 0: pattern-0, 1: pattern-1 }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0xA0] --encoder=encoder --bit-size=2 --flush=true --done-level=0
+  data := in.wait-for-data
+  expect-equals-sequence [start, pattern-1, pattern-0] data
+  encoder.close
+
+  encoder = rmt.Encoder --msb --between=between { 0: pattern-0, 1: pattern-1 }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0xA0] --encoder=encoder --bit-size=2 --flush=true --done-level=0
+  data = in.wait-for-data
+  // Between is only between bytes.
+  expect-equals-sequence [pattern-1, pattern-0] data
+  encoder.close
+
+  encoder = rmt.Encoder --msb --between=between { 0: pattern-0, 1: pattern-1 }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0x00, 0xFF] --encoder=encoder --bit-size=9 --flush=true --done-level=0
+  data = in.wait-for-data
+  // Between is only between bytes.
+  expect-equals-sequence ((List 8: pattern-0) + [between] + [pattern-1]) data
+  encoder.close
+
+  encoder = rmt.Encoder --msb --stop=stop { 0: pattern-0, 1: pattern-1 }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0x00] --encoder=encoder --bit-size=1 --flush=true --done-level=0
+  data = in.wait-for-data
+  expect-equals-sequence [pattern-0, stop] data
+  encoder.close
+
+  pattern-00 := rmt.Signals.alternating 2 --first-level=1: 15
+  pattern-01 := rmt.Signals.alternating 2 --first-level=1: 25
+  pattern-10 := rmt.Signals.alternating 2 --first-level=1: 35
+  pattern-11 := rmt.Signals.alternating 2 --first-level=1: 45
+  encoder = rmt.Encoder --msb {
+    0b00: pattern-00,
+    0b01: pattern-01,
+    0b10: pattern-10,
+    0b11: pattern-11,
+  }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0x1B] --encoder=encoder --flush=true --done-level=0
+  data = in.wait-for-data
+  expect-equals-sequence [pattern-00, pattern-01, pattern-10, pattern-11] data
+  encoder.close
+
+  encoder = rmt.Encoder --msb=false {
+    0b00: pattern-00,
+    0b01: pattern-01,
+    0b10: pattern-10,
+    0b11: pattern-11,
+  }
+  in.start-reading --min-ns=1 --max-ns=(100 * 1000)
+  out.write #[0x1B] --encoder=encoder --flush=true --done-level=0
+  data = in.wait-for-data
+  expect-equals-sequence [pattern-11, pattern-10, pattern-01, pattern-00] data
+  encoder.close
+
+  patterns := {
+    0b0000: rmt.Signals.alternating 2 --first-level=1: 15,
+    0b0001: rmt.Signals.alternating 2 --first-level=1: 25,
+    0b0010: rmt.Signals.alternating 2 --first-level=1: 35,
+    0b0011: rmt.Signals.alternating 2 --first-level=1: 45,
+    0b0100: rmt.Signals.alternating 2 --first-level=1: 55,
+    0b0101: rmt.Signals.alternating 2 --first-level=1: 65,
+    0b0110: rmt.Signals.alternating 2 --first-level=1: 75,
+    0b0111: rmt.Signals.alternating 2 --first-level=1: 85,
+    0b1000: rmt.Signals.alternating 2 --first-level=1: 95,
+    0b1001: rmt.Signals.alternating 2 --first-level=1: 105,
+    0b1010: rmt.Signals.alternating 2 --first-level=1: 115,
+    0b1011: rmt.Signals.alternating 2 --first-level=1: 125,
+    0b1100: rmt.Signals.alternating 2 --first-level=1: 135,
+    0b1101: rmt.Signals.alternating 2 --first-level=1: 145,
+    0b1110: rmt.Signals.alternating 2 --first-level=1: 155,
+    0b1111: rmt.Signals.alternating 2 --first-level=1: 165,
+  }
+
+  output := ByteArray (patterns.size / 2): ((2 * it) << 4) | (2 * it + 1)
+  encoder = rmt.Encoder --msb patterns
+  in.start-reading --min-ns=1 --max-ns=(200 * 1000)
+  out.write output --encoder=encoder --flush=true --done-level=0
+  data = in.wait-for-data
+  expect-equals-sequence patterns.values data
+  encoder.close
+
+  output = ByteArray (patterns.size / 2): ((2 * it + 1) << 4) | (2 * it)
+  encoder = rmt.Encoder --msb=false patterns
+  in.start-reading --min-ns=1 --max-ns=(200 * 1000)
+  out.write output --encoder=encoder --flush=true --done-level=0
+  data = in.wait-for-data
+  expect-equals-sequence patterns.values data
+  encoder.close
+
+  in.close
+  out.close
+
 main:
   run-test: test
 
@@ -408,6 +902,9 @@ test:
   test-carrier pin1 pin2
   test-glitch-filter pin1 pin2
   test-bidirectional pin1 pin2
+  test-loop-count pin1 pin2
+  test-synchronized-write pin1 pin2
+  test-encoder pin1 pin2
 
   pin1.close
   pin2.close

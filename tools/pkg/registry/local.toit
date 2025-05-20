@@ -51,7 +51,7 @@ class FileSystemView_ implements FileSystemView:
     if path.size == 1: return get path[0]
 
     entry := "$root/$path[0]"
-    if not file.is_directory entry: return null
+    if not file.is-directory entry: return null
     return (FileSystemView_ entry).get --path=path[1..]
 
   get key/string -> any:
@@ -59,10 +59,10 @@ class FileSystemView_ implements FileSystemView:
 
     if not file.stat entry: return null
 
-    if file.is_directory entry:
+    if file.is-directory entry:
       return FileSystemView_ entry
 
-    return file.read_content entry
+    return file.read-contents entry
 
   list -> Map:
     result := {:}
@@ -70,7 +70,7 @@ class FileSystemView_ implements FileSystemView:
     try:
       while next := stream.next:
         next_ := "$root/$next"
-        if file.is_directory next_:
+        if file.is-directory next_:
           result[next] = FileSystemView_ "$root/$next"
         else:
           result[next] = next

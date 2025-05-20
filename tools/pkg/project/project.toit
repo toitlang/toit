@@ -48,10 +48,10 @@ class ProjectConfiguration:
     return fs.to-absolute (project-root_ ? project-root_ : cwd_)
 
   specification-file-exists -> bool:
-    return file.is_file (Specification.file-name root)
+    return file.is-file (Specification.file-name root)
 
   lock-file-exists -> bool:
-    return file.is_file (LockFile.file-name root)
+    return file.is-file (LockFile.file-name root)
 
   verify:
     if not project-root_ and not specification-file-exists:
@@ -170,13 +170,13 @@ class Project:
 
   cached-repository-contents_ -> Map:
     contents-path := "$packages-cache-dir/contents.json"
-    if not file.is_file contents-path:
+    if not file.is-file contents-path:
       return {:}
-    return json.decode (file.read_content contents-path)
+    return json.decode (file.read-contents contents-path)
 
   write-cached-repository-contents_ contents/Map -> none:
     contents-path := "$packages-cache-dir/contents.json"
-    file.write_content (json.encode contents) --path=contents-path
+    file.write-contents (json.encode contents) --path=contents-path
 
   ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null -> Map:
     if not cached-contents: cached-contents = cached-repository-contents_
@@ -187,9 +187,9 @@ class Project:
     relative-dir := relative-cached-repository-dir url version
     assert: cached-repository-dir.ends-with relative-dir
     repo-toit-git-path := "$cached-repository-dir/.toit-git"
-    if not file.is_file repo-toit-git-path:
+    if not file.is-file repo-toit-git-path:
       hash := download_ url version --destination=cached-repository-dir
-      file.write_content hash --path=repo-toit-git-path
+      file.write-contents hash --path=repo-toit-git-path
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents
     return cached-contents
@@ -222,7 +222,7 @@ class Project:
     if not result:
       // Use the entry we wrote into the cache-directory.
       toit-git-path := "$(cached-repository-dir_ url version)/.toit-git"
-      if not file.is_file toit-git-path:
+      if not file.is-file toit-git-path:
         throw "No hash found for package '$url' version '$version'"
-      result = (file.read_content toit-git-path).to-string
+      result = (file.read-contents toit-git-path).to-string
     return result

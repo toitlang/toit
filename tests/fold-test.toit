@@ -112,8 +112,8 @@ GLOBAL-TRUE ::= true
 GLOBAL-FALSE ::= false
 
 if-test:
-  expect-not-null ("" ? 4 : null)
-  if "":
+  expect-not-null ("" ? 4 : null)  // @no-warn
+  if "":  // @no-warn
     expect true
   else:
     throw "bad"

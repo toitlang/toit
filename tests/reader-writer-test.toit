@@ -16,7 +16,7 @@ main:
   read-does-not-hang
 
 write-does-not-hang:
-  writer := ReaderWriter
+  writer := ReaderWriter  // @no-warn
   reader := writer.reader
   did-not-hang := false
   task::
@@ -30,7 +30,7 @@ write-does-not-hang:
   while not did-not-hang: sleep --ms=10
 
 read-does-not-hang:
-  writer := ReaderWriter
+  writer := ReaderWriter  // @no-warn
   reader := writer.reader
   did-not-hang := false
   task::
@@ -48,7 +48,7 @@ read-does-not-hang:
 regular-test:
   write-sem := monitor.Semaphore
 
-  writer := ReaderWriter 2
+  writer := ReaderWriter 2  // @no-warn
   reader := writer.reader
   task::
     writer.write "012"
@@ -98,7 +98,7 @@ regular-test:
   expect-equals "0123456789" all-bytes.to-string
 
 regular-test2:
-  writer := ReaderWriter 2
+  writer := ReaderWriter 2  // @no-warn
   reader := writer.reader
   task::
     writer.write "012"

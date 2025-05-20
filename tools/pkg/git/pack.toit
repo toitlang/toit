@@ -48,7 +48,7 @@ class Pack:
   Saves the compressed pack file to the given location $path on disk.
   */
   save path/string:
-    file.write_content binary-data_ --path=path
+    file.write-contents binary-data_ --path=path
 
   /**
   A file-system view of this pack.
@@ -66,16 +66,16 @@ class Pack:
       if value is ByteArray:
         stats := file.stat file-name
         if not stats: // TODO: Implement overwrite, including a chmod in host.file.
-          file.write_content value --path="$path/$name"
+          file.write-contents value --path="$path/$name"
       else:
         expand_ "$path/$name" value
 
-  static TYPE_COMMIT_ ::= 1
-  static TYPE_TREE_ ::= 2
-  static TYPE_BLOB_ ::= 3
-  static TYPE_TAG_ ::= 4
-  static TYPE_OFS_DELTA_ ::= 6
-  static TYPE_REF_DELTA_ ::= 7
+  static TYPE-COMMIT_ ::= 1
+  static TYPE-TREE_ ::= 2
+  static TYPE-BLOB_ ::= 3
+  static TYPE-TAG_ ::= 4
+  static TYPE-OFS-DELTA_ ::= 6
+  static TYPE-REF-DELTA_ ::= 7
 
   static parse-binary-data_ binary-data/ByteArray ref-hash/string -> Map:
     num-entries := BIG-ENDIAN.uint32 binary-data 8
@@ -98,37 +98,37 @@ class Pack:
           header-shift += 7
         if header-byte& 0b1000_0000 == 0: break
 
-      if entry-type == TYPE_COMMIT_ or entry-type == TYPE_TREE_ or
-         entry-type == TYPE_BLOB_ or entry-type == TYPE_TAG_:
+      if entry-type == TYPE-COMMIT_ or entry-type == TYPE-TREE_ or
+         entry-type == TYPE-BLOB_ or entry-type == TYPE-TAG_:
          // Undeltified representation.
         read := read-uncompressed_ uncompress-size binary-data[offset..]
         offset += read[0]
         entry-data := read[1]
 
-        if entry-type == TYPE_COMMIT_:
-          entry-hash := hash-entry "commit" uncompress_size entry-data
+        if entry-type == TYPE-COMMIT_:
+          entry-hash := hash-entry "commit" uncompress-size entry-data
           if (hex.encode entry-hash) == ref-hash:
             top-tree = hex.decode entry-data[5..45].to-string
 
-        if entry-type == TYPE_TREE_:
-          entry-hash := hash-entry "tree" uncompress_size entry-data
+        if entry-type == TYPE-TREE_:
+          entry-hash := hash-entry "tree" uncompress-size entry-data
           objects[entry-hash] = TreeEntry_.parse entry-data
 
-        if entry-type == TYPE_BLOB_:
-          entry-hash := hash-entry "blob" uncompress_size entry-data
+        if entry-type == TYPE-BLOB_:
+          entry-hash := hash-entry "blob" uncompress-size entry-data
           objects[entry-hash] = entry-data
 
-        if entry-type == TYPE_TAG_:
+        if entry-type == TYPE-TAG_:
           // Ignore.
 
       // deltified representation
-      if entry-type == TYPE_OFS_DELTA_:
+      if entry-type == TYPE-OFS-DELTA_:
         throw "Unsurported delta type: ofs"
 
-      if entry-type == TYPE_REF_DELTA_:
+      if entry-type == TYPE-REF-DELTA_:
         base-hash := binary-data[offset..offset+20]
         offset = offset + 20
-        read := read-uncompressed_ uncompress_size binary-data[offset..]
+        read := read-uncompressed_ uncompress-size binary-data[offset..]
         offset += read[0]
         delta-data := read[1]
 

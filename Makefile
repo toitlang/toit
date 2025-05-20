@@ -54,6 +54,22 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
+# If the user has not set the IGNORE_SUBMODULE variable, we check if a
+# version.cmake file exists. If it does, then we assume that this is a
+# tarball and that we should not do the check.
+ifeq ($(origin IGNORE_SUBMODULE), undefined)
+  ifneq ("$(wildcard version.cmake)", "")
+    IGNORE_SUBMODULE := 1
+  endif
+endif
+
+# Same for IGNORE_GIT_TAGS.
+ifeq ($(origin IGNORE_GIT_TAGS), undefined)
+	ifneq ("$(wildcard version.cmake)", "")
+		IGNORE_GIT_TAGS := 1
+	endif
+endif
+
 .PHONY: all
 all: sdk build-test-assets
 
@@ -74,12 +90,14 @@ check-env:
 ifndef IGNORE_SUBMODULE
 	@ if git submodule status | grep '^[-+]' ; then \
 		echo "Submodules not updated or initialized. Did you 'git submodule update --init --recursive'?"; \
+		echo "You can disable this check by setting IGNORE_SUBMODULE=1"; \
 		exit 1; \
 	fi
 endif
 ifndef IGNORE_GIT_TAGS
 	@ if [ -z "$$(git rev-list --tags --max-count=1)" ]; then \
 		echo "No tags in repository. Checkout is probably shallow. Run 'git fetch --tags --recurse-submodules=no'"; \
+		echo "You can disable this check by setting IGNORE_GIT_TAGS=1"; \
 		exit 1; \
 	fi
 endif
@@ -196,9 +214,9 @@ version-file: $(BUILD)/$(TARGET)/CMakeCache.txt
 .PHONY: pi
 pi: raspbian
 
-TOITLANG_SYSROOTS := armv7 aarch64 raspbian arm-linux-gnueabi
+TOITLANG_SYSROOTS := armv7 aarch64 raspbian riscv64 arm-linux-gnueabi
 ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
-SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.3.0/sysroot-$(TARGET).tar.gz
+SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.6.0/sysroot-$(TARGET).tar.gz
 
 rebuild-cmake: sysroot
 

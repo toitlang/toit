@@ -4,6 +4,7 @@
 
 import gpio
 import io show LITTLE-ENDIAN
+import io
 import system
 
 /**
@@ -49,6 +50,13 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   to be divisible by 4.
 */
 class Signals:
+  /**
+  An empty signals instance.
+
+  Deprecated. Signals should not be empty.
+  */
+  static ZERO ::= Signals 0
+
   /** Bytes per ESP32 signal. */
   static BYTES-PER-SIGNAL ::= 2
 
@@ -58,15 +66,21 @@ class Signals:
   /** The number of signals in the collection. */
   size/int
 
-  bytes_/ByteArray
+  /**
+  The resolution of the signals in Hz.
 
-  /** The empty signal collection. */
-  static ZERO ::= Signals 0
+  If this instance was created without a resolution, $resolution is null.
+  */
+  resolution/int?
+
+  bytes_/ByteArray
 
   /**
   Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
+
+  If a $resolution is provided, it is used when signals are specified in us.
 
   # Advanced
   The underlying RMT peripheral can only work on byte arrays that are divisible by
@@ -77,11 +91,9 @@ class Signals:
   In consequence, the size of the backing byte array might be 4 bytes larger than
     $size * $BYTES-PER-SIGNAL.
   */
-  // TODO(florian): take a clock-divider as argument and allow the user to specify
-  // durations in us. Then also add a `do --us-periods:`.
-  constructor .size:
-    bytes_ = ByteArray
-        round-up (size * 2) 4
+  constructor .size --.resolution/int?=null:
+    byte-array-size := max 4 (round-up (size * 2) 4)
+    bytes_ = ByteArray byte-array-size
     // Terminate the signals with a high end-marker. The duration 0 signals the
     // end of the sequence, but with a level equal to 0 the peripheral would still
     // emit a short pulse when its pin is set to open-drain.
@@ -99,6 +111,18 @@ class Signals:
 
     return Signals.alternating periods.size --first-level=first-level: | idx |
       periods[idx]
+
+  /**
+  Creates signals that alternate between a level of 0 and 1 with the periods
+    given in the $ns-durations list.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating --resolution/int --first-level/int --ns-durations/List:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    return Signals.alternating --resolution=resolution ns-durations.size --first-level=first-level: | idx |
+      ns-durations[idx]
 
   /**
   Creates items that alternate between a level of 0 and 1 with the periods
@@ -119,18 +143,38 @@ class Signals:
 
     return signals
 
+  /**
+  Creates items that alternate between a level of 0 and 1 with the ns-durations
+    given by successive calls to the block.
+
+  The $block is called with the signal index and the level it is created with.
+
+  The level of the first signal is $first-level.
+  */
+  constructor.alternating size/int --resolution/int --first-level/int [block]:
+    if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
+
+    signals := Signals size --resolution=resolution
+    level := first-level
+    size.repeat:
+      signals.set it --ns=(block.call it level) --level=level
+      level ^= 1
+
+    return signals
 
   /**
   Creates a collection of signals from the given $bytes.
 
   The $bytes size must be divisible by 4.
 
+  If a $resolution is provided, it is used when signals are specified in us.
+
   # Advanced
   The bytes must correspond to bytes produced by the RMT primitives. The
     primitives operate with pairs of signals (called an item) which  is the
     reason the $bytes size must be divisible by 4.
   */
-  constructor.from-bytes bytes/ByteArray:
+  constructor.from-bytes bytes/ByteArray --.resolution/int?=null:
     if bytes.size % 4 != 0: throw "INVALID_ARGUMENT"
 
     bytes_ = bytes
@@ -144,6 +188,17 @@ class Signals:
   period i/int -> int:
     check-bounds_ i
     return signal-period_ i
+
+  /**
+  Returns the signal duration of the $i'th signal in nanoseconds.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+  */
+  ns-duration i/int -> int:
+    if resolution == null: throw "INVALID_ARGUMENT"
+    return (signal-period_ i) * 1_000_000_000 / resolution
 
   /**
   Returns the signal level of the $i'th signal.
@@ -167,6 +222,23 @@ class Signals:
     check-bounds_ i
     set-signal_ i period level
 
+  /**
+  Sets the $i'th signal to the given $ns duration and $level.
+
+  This instance must have been created with a resolution during construction.
+
+  The given $i must be in the range [0..$size[.
+
+  The given $ns is used to compute a corresponding period, which then must be in
+    the range [0..0x7FFF].
+
+  The given $level must be 0 or 1.
+  */
+  set i/int --ns/int --level/int -> none:
+    if resolution == null: throw "INVALID_STATE"
+    period := ns * resolution / 1_000_000_000
+    set i --period=period --level=level
+
   set-signal_ i/int period/int level/int -> none:
     idx := i * 2
     if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
@@ -177,13 +249,15 @@ class Signals:
   /**
   Invokes the given $block on each signal of this signal collection.
 
-  The block is invoked with the level and period of each signal.
+  The block is invoked with the level, period and ns duration of each signal. If
+    this instance was created without a $resolution, then the ns duration is null.
   */
   do [block]:
     size.repeat:
       block.call
         signal-level_ it
         signal-period_ it
+        resolution ? (ns-duration it) : null
 
   check-bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
@@ -803,6 +877,9 @@ class Out extends Channel_:
     signals that can be stored in each block is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
   Generally, output channels don't need extra blocks as interrupts will copy data into
     the buffer when necessary.
+
+  If an $Out channel is in $open-drain mode, and an $In channel is on the same pin, then
+    the $In channel must be created first.
   */
   constructor pin/gpio.Pin
       --resolution/int
@@ -826,15 +903,56 @@ class Out extends Channel_:
     case, if the write operation is aborted (for example with a $with-timeout), then the
     transmission is aborted and the channel is reset.
 
+  The $loop-count parameter specifies how many times the signals are repeated. If it is
+    set to -1, the signals are repeated indefinitely. The ESP32 only supports -1 (infinite)
+    and 1. Other variants, like the ESP32C3, ESP32C6, ESP32S2, and ESP32S3, support other
+    positive values.
+
   The $done-level parameter specifies the level of the pin when the transmission is done.
   */
-  write signals/Signals --flush/bool=true --done-level/int=0 -> none:
-    loop-count := 0
-    started := rmt-transmit_ resource_ signals.bytes_ loop-count done-level
+  write signals/Signals --flush/bool=true --done-level/int=0 --loop-count/int=1 -> none:
+    write_ signals.bytes_ --flush=flush --done-level=done-level --loop-count=loop-count
+
+  /**
+  Variant of $(write signals)
+
+  Encodes the $data using the given $encoder.
+  */
+  write data/io.Data -> none
+      --bit-size/int=(data.byte-size * 8)
+      --encoder/Encoder
+      --flush/bool=true
+      --done-level/int=0
+      --loop-count/int=1:
+    write_ data
+        --bit-size=bit-size
+        --encoder=encoder
+        --flush=flush
+        --done-level=done-level
+        --loop-count=loop-count
+
+  write_ bytes/io.Data -> none
+      --flush/bool
+      --done-level/int
+      --loop-count/int
+      --bit-size/int?=null
+      --encoder/Encoder?=null:
+    if loop-count == 0: throw "INVALID_ARGUMENT"
+    // The hardware interprets a loop count of 0 as a single iteration. Contrary to 1 it
+    // is supported by all chips.
+    if loop-count == 1: loop-count = 0
+    if encoder and encoder.is-closed_: throw "ENCODER_CLOSED"
+
+    do-transmit := :
+      if encoder:
+        rmt-transmit-with-encoder_ resource_ bytes loop-count done-level bit-size encoder.resource_
+      else:
+        rmt-transmit_ resource_ bytes loop-count done-level
+    started := do-transmit.call
     if not started:
       // Wait for the previous write to finish.
       this.flush
-      started = rmt-transmit_ resource_ signals.bytes_ loop-count done-level
+      started = do-transmit.call
       if not started:
         throw "INVALID_STATE"
 
@@ -858,6 +976,216 @@ class Out extends Channel_:
         break
       state_.wait-for-state WRITE-STATE_
 
+/**
+Synchronizes the output of multiple $Out channels.
+
+Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
+  ESP32S2, and ESP32S3 do.
+*/
+class SynchronizationManager:
+  resource_ /ByteArray? := ?
+
+  /**
+  Creates a sync manager for the given $channels.
+
+  The manager ensures that all channels start writing at the same time. It waits until
+    all channels have been instructed to $Out.write before actually emitting any signal.
+  */
+  constructor channels/List:
+    if channels.size < 2: throw "INVALID_ARGUMENT"
+
+    array := Array_ channels.size:
+      channel := channels[it]
+      if channel is not Out: throw "INVALID_ARGUMENT"
+      channel.resource_
+    resource_ = rmt_sync_manager_new_ resource-freeing-module_ array
+
+    add-finalizer this:: close
+
+  /**
+  Closes the synchronization manager.
+  */
+  close -> none:
+    if not resource_: return
+    rmt-sync-manager-delete_ resource-freeing-module_ resource_
+    resource_ = null
+    remove-finalizer this
+
+  /**
+  Resets the sync manager, allowing for another synchronized write.
+  */
+  reset -> none:
+    rmt-sync-manager-reset_ resource_
+
+/**
+An encoder for the RMT controller.
+
+Encoders convert the input data to RMT signals by matching them against patterns.
+
+# Example
+
+The following example implements a simple UART encoder at BAUD-RATE baud rate, with the
+  RMT $Out running at RESOLUTION Hz.
+```
+uart-period := RESOLUTION / BAUD-RATE
+
+uart-start := rmt.Signals 2
+// There must always be two signals, and neither must have a period of 0.
+uart-start.set 0 --level=0 --period=uart-period - 1
+uart-start.set 1 --level=0 --period=1
+
+// A combination of the stop and start signals.
+uart-between := rmt.Signals 2
+uart-between.set 0 --level=1 --period=uart-period  // A stop bit.
+uart-between.set 1 --level=0 --period=uart-period  // A start bit.
+
+uart-stop := rmt.Signals 2
+uart-stop.set 0 --level=1 --period=uart-period - 1
+uart-stop.set 1 --level=1 --period=1
+
+// Since we must always have two signals, we use a chunk-size of 2.
+uart-00 := rmt.Signals 2
+uart-00.set 0 --level=0 --period=uart-period
+uart-00.set 1 --level=0 --period=uart-period
+uart-01 := rmt.Signals 2
+uart-01.set 0 --level=1 --period=uart-period
+uart-01.set 1 --level=0 --period=uart-period
+uart-10 := rmt.Signals 2
+uart-10.set 0 --level=0 --period=uart-period
+uart-10.set 1 --level=1 --period=uart-period
+uart-11 := rmt.Signals 2
+uart-11.set 0 --level=1 --period=uart-period
+uart-11.set 1 --level=1 --period=uart-period
+uart-start := Signals 1
+uart-start.set 0 --level=0 --period=uart-period
+
+encoder := Encoder
+    --msb=false  // UART is LSB first.
+    --start=uart-start
+    --between=uart-between
+    --stop=uart-stop
+    {
+      0b00: uart-00,
+      0b01: uart-01,
+      0b10: uart-10,
+      0b11: uart-11,
+    }
+```
+*/
+class Encoder:
+  resource_ /ByteArray? := null
+  is-closed_/bool := false
+
+  constructor.from-bytes_ bytes/ByteArray:
+    bake_ bytes
+
+    add-finalizer this:: close
+
+  /**
+  Constructs an encoder for the given $patterns.
+
+  The $patterns map must have a size of 2, 4, or 16. The keys are the patterns (integers counting
+    from 0 to 1/3/15) and the values are the signals that should be emitted for each pattern.
+
+  The $start, $between, and $stop signals are optional.
+  The $start signal is emitted when the transmission starts.
+  The $between signal is emitted between each byte.
+  The $stop signal is emitted when the transmission ends.
+  The $msb parameter indicates whether the patterns are MSB first or LSB first.
+  */
+  constructor --start/Signals?=null --between/Signals?=null --stop/Signals?=null --msb/bool patterns/Map:
+    chunk-size := ?
+    if patterns.size == 2:
+      chunk-size = 1
+    else if patterns.size == 4:
+      chunk-size = 2
+    else if patterns.size == 16:
+      chunk-size = 4
+    else:
+      throw "INVALID_ARGUMENT"
+    ((chunk-size << 1) - 1).repeat:
+      if not patterns.contains it: throw "INVALID_ARGUMENT"
+
+    patterns.do --values: | patterns/Signals |
+      if patterns.size & 1 != 0: throw "INVALID_ARGUMENT"
+      if patterns.size == 0: throw "INVALID_ARGUMENT"
+      patterns.do: | _ period/int _ |
+        if period == 0: throw "INVALID_ARGUMENT"
+
+    // Layout:
+    // 1 byte of the bit-size of the chunks. Must be 1, 2, or 4.
+    // 1 byte to indicate whether the chunks should be processed MSB first.
+    // 2 bytes (little-endian): index into the array for the start sequence.
+    // 2 bytes (little-endian): index into the array for the between sequence.
+    // 2 bytes (little-endian): index into the array for the end sequence.
+    // 2 bytes (little-endian): for each chunk (up to 16 of them).
+    // 2 bytes (little-endian): pointing to the end of the data stream.
+    // Data for the offsets. Must be in the same order as the indexes (so we can compute
+    // the length of each sequence).
+    total-signals-byte-size := 0
+    if start: total-signals-byte-size += start.bytes_.size
+    if between: total-signals-byte-size += between.bytes_.size
+    if stop: total-signals-byte-size += stop.bytes_.size
+    patterns.do --values: | signals/Signals |
+      total-signals-byte-size += signals.bytes_.size
+    header-byte-size := 1 + 1 + 2 + 2 + 2 + (2 * patterns.size) + 2
+    size := header-byte-size + total-signals-byte-size
+
+    bytes := ByteArray size
+    signals-offset := header-byte-size
+    i := 0
+    bytes[i++] = chunk-size
+    bytes[i++] = msb ? 1 : 0
+    // Fill in the start values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if start:
+      bytes.replace signals-offset start.bytes_
+      signals-offset += start.bytes_.size
+
+    // Fill in the between values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if between:
+      bytes.replace signals-offset between.bytes_
+      signals-offset += between.bytes_.size
+
+    // Fill in the stop values.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+    if stop:
+      bytes.replace signals-offset stop.bytes_
+      signals-offset += stop.bytes_.size
+
+    // Fill in the patterns.
+    patterns.size.repeat: | pattern/int |
+      signals := patterns[pattern]
+      LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+      i += 2
+      bytes.replace signals-offset signals.bytes_
+      signals-offset += signals.bytes_.size
+
+    // Fill in the end of the data stream.
+    LITTLE-ENDIAN.put-uint16 bytes i signals-offset
+    i += 2
+
+    assert: i == header-byte-size
+    assert: signals-offset == size
+
+    return Encoder.from-bytes_ bytes
+
+  close:
+    if is-closed_: return
+    resource := resource_
+    resource_ = null
+    is-closed_ = true
+    if resource: rmt-encoder-delete_ resource-freeing-module_ resource
+    remove-finalizer this
+
+  bake_ bytes/ByteArray:
+    if is-closed_: throw "ALREADY_CLOSED"
+    if resource_: return
+    resource_ = rmt-encoder-new_ resource-freeing-module_ bytes
 
 READ-STATE_  ::= 1 << 0
 WRITE-STATE_ ::= 1 << 1
@@ -885,6 +1213,11 @@ rmt-disable_ resource/ByteArray:
 rmt-transmit_ resource/ByteArray signals-bytes/*/Blob*/ loop-count/int idle-level/int:
   #primitive.rmt.transmit
 
+rmt-transmit-with-encoder_ resource/ByteArray data/*/Blob*/ loop-count/int idle-level/int bit-size/int  encoder-resource/ByteArray:
+  #primitive.rmt.transmit-with-encoder:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      rmt-transmit-with-encoder_ resource bytes loop-count idle-level bit-size encoder-resource
+
 rmt-is-transmit-done_ resource/ByteArray:
   #primitive.rmt.is-transmit-done
 
@@ -896,3 +1229,18 @@ rmt-receive_ resource/ByteArray:
 
 rmt-apply-carrier_ resource/ByteArray frequency/int duty-cycle/float active-low/bool always-on/bool:
   #primitive.rmt.apply-carrier
+
+rmt-sync_manager_new_ resource-group channels/Array_:
+  #primitive.rmt.sync-manager-new
+
+rmt-sync_manager_delete_ resource-group resource:
+  #primitive.rmt.sync-manager-delete
+
+rmt-sync-manager-reset_ resource/ByteArray:
+  #primitive.rmt.sync-manager-reset
+
+rmt-encoder-new_ resource-group bytes:
+  #primitive.rmt.encoder-new
+
+rmt-encoder-delete_ resource-group resource:
+  #primitive.rmt.encoder-delete

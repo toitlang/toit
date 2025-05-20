@@ -141,7 +141,7 @@ class LockFile:
 
 
   constructor.load specification/ProjectSpecification:
-    contents/Map := (yaml.decode (file.read_content (file-name specification.root-dir))) or {:}
+    contents/Map := (yaml.decode (file.read-contents (file-name specification.root-dir))) or {:}
     return LockFile.from-map contents specification
 
   constructor.from-map map/Map .specification:
@@ -159,7 +159,7 @@ class LockFile:
       packages.add (Package.from-map name map specification)
 
   static file-name root/string -> string:
-    return "$root/$FILE_NAME"
+    return "$root/$FILE-NAME"
 
   file-name -> string:
     return file-name specification.root-dir
@@ -178,9 +178,9 @@ class LockFile:
   save:
     content := to-map_
     if content.is-empty:
-      file.write_content "# Toit Package File." --path=file-name
+      file.write-contents "# Toit Package File." --path=file-name
     else:
-      file.write_content --path=file-name
+      file.write-contents --path=file-name
           yaml.encode content
 
   install:

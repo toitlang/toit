@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-LICENSE_IDS ::= [
+LICENSE-IDS ::= [
     "CECILL-1.1",
     "eGenix",
     "LPPL-1.3c",
@@ -477,7 +477,7 @@ LICENSE_IDS ::= [
     "LGPL-2.1",
 ]
 
-KNOWN_LICENSES := {
+KNOWN-LICENSES := {
     "MIT": """
            MIT License
 

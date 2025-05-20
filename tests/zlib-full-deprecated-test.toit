@@ -34,18 +34,18 @@ INPUT ::= "Now is the time for all good men to come to the aid of the party."
 
 simple-encoder -> ByteArray:
   compressor := zlib.Encoder
-  compressor.write INPUT
-  compressor.close
-  reader := compressor.reader
+  compressor.write INPUT  // @no-warn
+  compressor.close  // @no-warn
+  reader := compressor.reader  // @no-warn
   compressed := reader.read
   reader.close
   return compressed
 
 simple-decoder compressed/ByteArray -> none:
   decompressor := zlib.Decoder
-  decompressor.write compressed
-  decompressor.close
-  reader := decompressor.reader
+  decompressor.write compressed  // @no-warn
+  decompressor.close  // @no-warn
+  reader := decompressor.reader  // @no-warn
   round-trip := reader.read
   expect-equals INPUT round-trip.to-string
 
@@ -53,11 +53,11 @@ big-encoder-no-wait -> ByteArray:
   compressor := zlib.Encoder
   task::
     REPEATS.repeat:
-      for pos := 0; pos < INPUT.size; pos += compressor.write --wait=false INPUT[pos..]:
+      for pos := 0; pos < INPUT.size; pos += compressor.write --wait=false INPUT[pos..]:  // @no-warn
         yield
-    compressor.close
+    compressor.close  // @no-warn
   squashed := #[]
-  reader := compressor.reader
+  reader := compressor.reader  // @no-warn
   while data := reader.read --wait=false:
     if data.size == 0:
       yield
@@ -71,10 +71,10 @@ big-encoder-with-wait -> ByteArray:
   compressor := zlib.Encoder
   task::
     REPEATS.repeat:
-      compressor.write INPUT
-    compressor.close
+      compressor.write INPUT  // @no-warn
+    compressor.close  // @no-warn
   squashed2 := #[]
-  reader := compressor.reader
+  reader := compressor.reader  // @no-warn
   while data := reader.read:
     squashed2 += data
   reader.close
@@ -92,11 +92,11 @@ get-sha -> ByteArray:
 big-decoder squashed/ByteArray input-hash/ByteArray -> none:
   decompressor := zlib.Decoder
   task::
-    decompressor.write squashed
-    decompressor.close
+    decompressor.write squashed  // @no-warn
+    decompressor.close  // @no-warn
 
   sha := sha.Sha256
-  while data := decompressor.reader.read:
+  while data := decompressor.reader.read:  // @no-warn
     sha.add data
   expect-equals
     sha.get
@@ -111,20 +111,19 @@ rle-test -> none:
     str += "$(%c 'A' + it)" * it
 
   task::
-    encoder.write str
-    encoder.close
+    encoder.write str  // @no-warn
+    encoder.close  // @no-warn
 
   encoded := #[]
-  while data := encoder.reader.read:
+  while data := encoder.reader.read:  // @no-warn
     encoded += data
 
   decoder := zlib.Decoder
   task::
-    decoder.write encoded
-    decoder.close
+    decoder.write encoded  // @no-warn
+    decoder.close  // @no-warn
 
   round-trip := #[]
-  while data := decoder.reader.read:
+  while data := decoder.reader.read:  // @no-warn
     round-trip += data
   expect-equals str round-trip.to-string
-

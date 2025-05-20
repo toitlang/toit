@@ -19,19 +19,17 @@ import io
 import monitor
 
 /**
-Starts piping all data from [from_stream] to [to_stream] while logging
+Starts piping all data from $from to $to while logging
   all transferred data in log_stream, using the given mutex to make
   sure that the log stream is consistent.
 */
-start-piping from-stream to-stream --log-stream --mutex -> none:
+start-piping from/io.Reader to/io.Writer --log-writer/io.Writer --mutex -> none:
   task::
     catch --trace:
-      to-writer := io.Writer.adapt to-stream
-      log-writer := io.Writer.adapt log-stream
       while true:
-        chunk := from-stream.read
+        chunk := from.read
         if not chunk: break
-        to-writer.write chunk
+        to.write chunk
         mutex.do:
           log-writer.write chunk
 
@@ -49,27 +47,23 @@ main args:
   SERVER := "tools/lsp/server/server.toit"
   LOG := "/tmp/lsp_logs"
 
-  pipes := pipe.fork
-    true
-    pipe.PIPE-CREATED  // stdin
-    pipe.PIPE-CREATED  // stdout
-    pipe.PIPE-INHERITED  // stderr
-    TOIT-RUN
-    [
-      TOIT-RUN,
-      SERVER
-    ]
-  pipe-to := pipes[0]
-  pipe-from := pipes[1]
-  pid := pipes[3]
+  process := pipe.fork
+      --use-path
+      --create-stdin
+      --create-stdout
+      TOIT-RUN
+      [
+        TOIT-RUN,
+        SERVER
+      ]
 
   mutex := monitor.Mutex
   log-file := file.Stream.for-write LOG
 
-  start-piping pipe.stdin pipe-to --log-stream=log-file --mutex=mutex
-  start-piping pipe-from pipe.stdout --log-stream=log-file --mutex=mutex
+  start-piping pipe.stdin.in process.stdin.out --log-writer=log-file.out --mutex=mutex
+  start-piping process.stdout.in pipe.stdout.out --log-writer=log-file.out --mutex=mutex
 
-  exit-value := pipe.wait-for pid
+  exit-value := process.wait
   exit-code := pipe.exit-code exit-value
   exit-signal := pipe.exit-signal exit-value
   if exit-signal:

@@ -24,34 +24,29 @@ main args:
     directory.rmdir --recursive tmp-dir
 
 run-test program args --expect-stdout/bool:
-  pipes := pipe.fork
-      true                // use_path
-      pipe.PIPE-INHERITED // stdin
-      pipe.PIPE-CREATED   // stdout
-      pipe.PIPE-CREATED   // stderr
+  process := pipe.fork
+      --use-path
+      --create-stdout
+      --create-stderr
       program
       [program] + args
-  stdout-pipe := pipes[1]
-  stderr-pipe := pipes[2]
-  pid  := pipes[3]
-  stdout-bytes := #[]
-  task::
-    while chunk := stdout-pipe.read:
-      stdout-bytes += chunk
 
-  stderr-bytes := #[]
-  task::
-    while chunk := stderr-pipe.read:
-      stderr-bytes += chunk
+  stdout-bytes/ByteArray? := null
+  stderr-bytes/ByteArray? := null
+  exit-value/int := 0
+  Task.group [
+    :: stdout-bytes = process.stdout.in.read-all,
+    :: stderr-bytes = process.stderr.in.read-all,
+    :: exit-value = process.wait,
+  ]
 
-  exit-value := pipe.wait-for pid
   exit-code := pipe.exit-code exit-value
-  stdout := stdout-bytes.to-string
-  stderr := stderr-bytes.to-string
 
   expect-not-null exit-code
   expect-equals 0 exit-code
 
+  stdout := stdout-bytes.to-string
+  stderr := stderr-bytes.to-string
   if expect-stdout:
     expect (stdout.contains "eprecated")
     expect-equals "" stderr

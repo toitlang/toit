@@ -16,7 +16,7 @@
 import fs
 import net
 import net.tcp
-import host.pipe show OpenPipe
+import host.pipe show Stream
 import host.file
 import host.directory
 import io
@@ -128,7 +128,7 @@ interface FileServer:
 
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
-  to-compiler_   / OpenPipe
+  to-compiler_   / io.CloseableWriter
   from-compiler_ / io.CloseableReader
 
   constructor .protocol .to-compiler_ .from-compiler_:
@@ -140,9 +140,7 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := io.Reader.adapt from-compiler_
-        writer := io.Writer.adapt to-compiler_
-        protocol.handle reader writer
+        protocol.handle from-compiler_ to-compiler_
     return "-2"
 
   close:
