@@ -76,7 +76,7 @@ class Filesystem {
   // - toit files. (`x.toit`), which are listed without the extension.
   // - directories, as they might contain other toit files.
   // In both cases the identifier must be valid.
-  // This function leaks memory and should not be used frequently.
+  // The path that is given to the callback is only valid for the duration of the call.
   void list_toit_directory_entries(const char* path,
                                    const std::function<void (const char*, bool is_directory)> callback);
 
