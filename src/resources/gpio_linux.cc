@@ -482,6 +482,8 @@ PRIMITIVE(pin_set_pull) {
   }
 
   gpiod_line_settings_set_bias(settings, bias);
+  // In case the line is open-drain.
+  gpiod_line_settings_set_output_value(settings, static_cast<gpiod_line_value>(pin->get_out_value()));
 
   Object* error = pin->apply_and_store_settings(settings, process);
   if (error != null) return error;
