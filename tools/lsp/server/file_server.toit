@@ -32,10 +32,11 @@ import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
   compiler-path = fs.to-slash compiler-path
-  index := compiler-path.index-of --last "/"
-  if index < 0: throw "Couldn't determine SDK path"
-  result := compiler-path.copy 0 index
-  return fs.to-slash (fs.to-absolute result)
+  // The compiler is supposed to live in the 'lib/toit/bin' folder of the SDK.
+  result-path := fs.to-absolute (fs.join (fs.dirname compiler-path) ".." ".." "..")
+  if not (file.is-directory result-path):
+    throw "Couldn't determine SDK path"
+  return fs.to-slash result-path
 
 class File:
   exists / bool ::= ?

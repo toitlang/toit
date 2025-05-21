@@ -141,6 +141,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}"
     ${run_SRC}
     )
+  set_target_properties(toit PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
   # Add the toit.{compile,run} as dependency, so we can start using the executable once it's built.
   # This doesn't include toit.pkg, though.
   add_dependencies(toit toit.compile toit.run)
@@ -153,6 +154,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}"
     "${run_SRC}"
     )
+  set_target_properties(toit.run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin")
 
   add_dependencies(build_tools toit.run)
 

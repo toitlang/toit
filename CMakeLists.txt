@@ -34,8 +34,6 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels)
 endif()
 
-set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
-
 set(TOIT_IS_EMBEDDED FALSE)
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   set(TOIT_IS_EMBEDDED TRUE)
@@ -73,7 +71,9 @@ endif()
 set(CMAKE_INSTALL_MESSAGE LAZY)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Put all binaries in /sdk/bin folder.
+# Put all binaries in /sdk/lib/toit/bin folder.
+# When trying to find the SDK root we use assume that we need to
+# dirname 3 times.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
 
 set(CMAKE_CXX_STANDARD 11)
@@ -199,6 +199,8 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
   set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+
+  set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 
   add_custom_command(
     OUTPUT "${TOITPKG_BIN}"

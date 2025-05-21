@@ -46,20 +46,8 @@ const char* Filesystem::library_root() {
   } else if (library_root_ == null) {
     auto sdk = sdk_path();
     PathBuilder builder(this);
-    builder.join(sdk);
-    int sdk_length = builder.length();
-    builder.join("lib", "toit", "lib");
-    if (is_directory(builder.c_str())) {
-      library_root_ = builder.strdup();
-    } else {
-      builder.reset_to(sdk_length);
-      builder.join("..", "lib", "toit", "lib");
-      builder.canonicalize();
-      // Always assign the string, without testing.
-      // If the path is wrong there will be an error very soon, because the compiler can't
-      // find the core library.
-      library_root_ = builder.strdup();
-    }
+    builder.join(sdk, "lib", "toit", "lib");
+    library_root_ = builder.strdup();
   }
   return library_root_;
 }
@@ -68,20 +56,8 @@ const char* Filesystem::vessel_root() {
   if (vessel_root_ == null) {
     auto sdk = sdk_path();
     PathBuilder builder(this);
-    builder.join(sdk);
-    int sdk_length = builder.length();
-    builder.join("lib", "toit", "vessels");
-    if (is_directory(builder.c_str())) {
-      vessel_root_ = builder.strdup();
-    } else {
-      builder.reset_to(sdk_length);
-      builder.join("..", "lib", "toit", "vessels");
-      builder.canonicalize();
-      // Always assign the string, without testing.
-      // If the path is wrong there will be an error very soon, because the compiler can't
-      // find the vessel.
-      vessel_root_ = builder.strdup();
-    }
+    builder.join(sdk, "lib", "toit", "vessels");
+    vessel_root_ = builder.strdup();
   }
   return vessel_root_;
 }
