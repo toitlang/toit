@@ -308,21 +308,7 @@ INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
 install-sdk:
-	mkdir -p "$(DESTDIR)$(prefix)"/bin
-	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/bin
-	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/vessels
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
-	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/bin/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/bin; \
-	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/vessels/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/vessels; \
-	done
-	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/lib
-	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib/toit/lib
-	find "$(DESTDIR)$(prefix)"/lib/toit/lib -type f -exec chmod 644 {} \;
+	cmake --install "$(BUILD)" --prefix "$(DESTDIR)$(prefix)"
 
 install: install-sdk
 

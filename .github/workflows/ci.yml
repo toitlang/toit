@@ -398,10 +398,10 @@ jobs:
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/host/sdk ./build/host/toit
-          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host --dereference toit
+          mkdir -p build/out
+          make DEST_DIR=build/out prefix="" install
+          tar -czf ${{ steps.constants.outputs.artifact }} -C ./build/out
 
       - name: Prepare debug repros
         if: always()

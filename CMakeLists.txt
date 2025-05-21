@@ -31,7 +31,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_IS_CROSS TRUE)
   # We are using the compiler from the host system, but we want to use the vessels
   # from the target system.
-  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels)
+  set(TOIT_VESSELS_ROOT "${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels")
 endif()
 
 set(TOIT_IS_EMBEDDED FALSE)
@@ -40,7 +40,7 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 endif()
 
 if (NOT DEFINED HOST_TOIT AND (NOT ${TOIT_IS_EMBEDDED}))
-  message(FATAL_ERROR "HOST_TOIT not provided")
+  set(HOST_TOIT "${CMAKE_BINARY_DIR}/sdk/bin/toit")
 endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
@@ -210,9 +210,18 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   add_custom_target(
     build_go_tools
+    ALL
     DEPENDS "${TOITPKG_BIN}"
   )
   add_dependencies(build_tools build_go_tools)
+
+  install(PROGRAMS "${TOITPKG_BIN}" DESTINATION lib/toit/bin)
+
+  # Copy the lib folder to /usr/lib/toit/lib (recursively)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
+    DESTINATION lib/toit/lib
+    FILES_MATCHING PATTERN "*"
+  )
 
   enable_testing()
   add_subdirectory(tests)

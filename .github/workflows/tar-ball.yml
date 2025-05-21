@@ -117,16 +117,37 @@ jobs:
         run: |
           tar -xzf ${{ needs.build-and-upload.outputs.archive_name }}
 
-      - name: Build
+      - name: Detect number of CPU cores and multiply
+        id: detect_cores
         shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cores=$(powershell -Command '$env:NUMBER_OF_PROCESSORS')
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            cores=$(sysctl -n hw.ncpu)
+          else
+            cores=$(nproc)
+          fi
+          jobs=$(( cores * 2 ))
+          echo "jobs=$jobs" >> $GITHUB_OUTPUT
+
+      - name: Build
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.detect_cores.outputs.jobs }}
         run: |
           cd ${{ needs.build-and-upload.outputs.archive_prefix }}
           # Note that we build without any special requisites. With the exception of 'go', the
           # GitHub builders should have everything ready.
-          make
+          mkdir build
+          cmake -S . -B build --preset=default
+          cmake --build build
+          cmake --install build --prefix ${{ github.workspace }}/out/usr
 
       - name: Test
         shell: bash
         run: |
-          cd ${{ needs.build-and-upload.outputs.archive_prefix }}
-          build/host/sdk/bin/toit version
+          out/usr/bin/toit version
+          out/usr/lib/toit/bin/toit.compile --version
+          out/usr/lib/toit/bin/toit.run --version
+          out/usr/lib/toit/bin/toit.pkg version
+          ls out/usr/lib/toit/lib/core/core.toit
