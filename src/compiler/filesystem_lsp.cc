@@ -63,7 +63,7 @@ const uint8* FilesystemLsp::do_read_content(const char* path, int* size) {
 }
 
 void FilesystemLsp::list_directory_entries(const char* path,
-                                           const std::function<void (const char*)> callback) {
+                                           const std::function<bool (const char*)> callback) {
   protocol_->list_directory_entries(path, callback);
 }
 

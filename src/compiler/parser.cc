@@ -643,6 +643,16 @@ void Parser::peek_state(int n, Parser::State* parser_state) {
   };
 }
 
+static bool contains_upper(const char* str) {
+  int i = 0;
+  while (true) {
+    auto c = str[i];
+    if (c == '\0') return false;
+    if (isupper(c)) return true;
+    i++;
+  }
+}
+
 Import* Parser::parse_import() {
   ASSERT(current_token() == Token::IMPORT);
   start_multiline_construct(IndentationStack::IMPORT);
@@ -670,7 +680,12 @@ Import* Parser::parse_import() {
       missing_identifier = true;
       break;
     }
-    identifiers.add(parse_identifier());
+    auto identifier = parse_identifier();
+    if (contains_upper(identifier->data().c_str())) {
+      diagnostics()->report_warning(identifier->selection_range(),
+          "Import identifiers should be lowercase");
+    }
+    identifiers.add(identifier);
   } while (optional(Token::PERIOD));
 
   if (missing_identifier) {

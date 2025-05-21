@@ -76,9 +76,11 @@ class Filesystem {
   // - toit files. (`x.toit`), which are listed without the extension.
   // - directories, as they might contain other toit files.
   // In both cases the identifier must be valid.
-  // This function leaks memory and should not be used frequently.
+  // The path that is given to the callback is only valid for the duration of the call.
+  // If the callback returns 'false', the operation is aborted and no further calls to
+  // the callback are done.
   void list_toit_directory_entries(const char* path,
-                                   const std::function<void (const char*, bool is_directory)> callback);
+                                   const std::function<bool (const char*, bool is_directory)> callback);
 
   const char* cwd();
 
@@ -110,7 +112,7 @@ class Filesystem {
 
   virtual const char* getcwd(char* buffer, int buffer_size) = 0;
   virtual void list_directory_entries(const char* path,
-                                      const std::function<void (const char*)> callback) = 0;
+                                      const std::function<bool (const char*)> callback) = 0;
 
   friend class FilesystemHybrid;
 
