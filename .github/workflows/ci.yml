@@ -333,7 +333,7 @@ jobs:
         if : matrix.shard == 1
         shell: bash
         run: |
-          make DESTDIR=$PWD/build/install-out prefix="" install
+          make prefix=$PWD/build/install-out install
           build/install-out/bin/toit --version
 
       # Test external code.
@@ -399,7 +399,7 @@ jobs:
         if: matrix.shard == 1
         shell: bash
         run: |
-          make DESTDIR=build/out/toit prefix="" install
+          make prefix=build/out/toit install
           tar -czf ${{ steps.constants.outputs.artifact }} -C ./build/out toit
 
       - name: Prepare debug repros
@@ -588,7 +588,7 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          make TARGET=raspbian DESTDIR=./build/raspbian/toit prefix="" install
+          make TARGET=raspbian prefix=./build/raspbian/toit install
           tar -czf build/rpi.tar.gz -C ./build/raspbian toit
 
       - name: Upload artifacts
@@ -722,11 +722,11 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          make TARGET=raspbian DESTDIR=build/raspbian/toit prefix="" install
+          make TARGET=raspbian prefix=build/raspbian/toit install
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian toit
-          make TARGET=aarch64 DESTDIR=build/aarch64/toit prefix="" install
+          make TARGET=aarch64 prefix=build/aarch64/toit install
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
-          make TARGET=riscv64 DESTDIR=build/riscv64/toit prefix="" install
+          make TARGET=riscv64 prefix=build/riscv64/toit install
           tar -czf build/toit-riscv64.tar.gz -C ./build/riscv64 --dereference toit
 
       - name: Upload artifacts
