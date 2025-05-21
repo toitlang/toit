@@ -399,7 +399,7 @@ jobs:
         if: matrix.shard == 1
         shell: bash
         run: |
-          make DEST_DIR=build/out prefix=/toit install
+          make DESTDIR=build/out prefix=/toit install
           tar -czf ${{ steps.constants.outputs.artifact }} -C ./build/out toit
 
       - name: Prepare debug repros
@@ -722,11 +722,11 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          make TARGET=raspbian DESTDIR=build/raspbian --prefix=/toit install
+          make TARGET=raspbian DESTDIR=build/raspbian prefix=/toit install
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian toit
-          make TARGET=aarch64 DESTDIR=build/aarch64 --prefix=/toit install
+          make TARGET=aarch64 DESTDIR=build/aarch64 prefix=/toit install
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
-          make TARGET=riscv64 DESTDIR=build/riscv64 --prefix=/toit install
+          make TARGET=riscv64 DESTDIR=build/riscv64 prefix=/toit install
           tar -czf build/toit-riscv64.tar.gz -C ./build/riscv64 --dereference toit
 
       - name: Upload artifacts
