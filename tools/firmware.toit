@@ -983,7 +983,8 @@ find-esptool_ -> List:
     if file.is-file esptool-py:
       return ["python3$bin-extension", esptool-py]
   else if dir != "":
-    esptool := "$dir/../tools/esptool$bin-extension"
+    // This executable is supposed to live in 'bin', whereas the esptool is in 'lib/toit/bin'.
+    esptool := "$dir/../lib/toit/bin/esptool$bin-extension"
     if file.is-file esptool:
       return [esptool]
   // Try to find esptool in PATH.
