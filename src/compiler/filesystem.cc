@@ -45,16 +45,15 @@ const char* Filesystem::library_root() {
       library_root_ = FilesystemLocal::to_local_path(Flags::lib_path);
   } else if (library_root_ == null) {
     auto sdk = sdk_path();
-    const char* LIB_SUFFIX = "lib";
     PathBuilder builder(this);
     builder.join(sdk);
     int sdk_length = builder.length();
-    builder.join(LIB_SUFFIX);
+    builder.join("lib", "toit", "lib");
     if (is_directory(builder.c_str())) {
       library_root_ = builder.strdup();
     } else {
       builder.reset_to(sdk_length);
-      builder.join("..", "lib");
+      builder.join("..", "lib", "toit", "lib");
       builder.canonicalize();
       // Always assign the string, without testing.
       // If the path is wrong there will be an error very soon, because the compiler can't
@@ -68,16 +67,15 @@ const char* Filesystem::library_root() {
 const char* Filesystem::vessel_root() {
   if (vessel_root_ == null) {
     auto sdk = sdk_path();
-    const char* VESSEL_SUFFIX = "vessels";
     PathBuilder builder(this);
     builder.join(sdk);
     int sdk_length = builder.length();
-    builder.join(VESSEL_SUFFIX);
+    builder.join("lib", "toit", "vessels");
     if (is_directory(builder.c_str())) {
       vessel_root_ = builder.strdup();
     } else {
       builder.reset_to(sdk_length);
-      builder.join("..", "vessels");
+      builder.join("..", "lib", "toit", "vessels");
       builder.canonicalize();
       // Always assign the string, without testing.
       // If the path is wrong there will be an error very soon, because the compiler can't

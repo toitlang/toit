@@ -24,7 +24,7 @@ BUILD_TYPE ?= Release
 TARGET ?= $(HOST)
 TOOLCHAIN ?= $(TARGET)
 
-prefix ?= /opt/toit-sdk
+prefix ?= /usr
 
 # Use 'make flash ESP32_ENTRY=examples/mandelbrot.toit' to flash
 # a firmware version with an embedded application.
@@ -317,20 +317,20 @@ INSTALL_SRC_ARCH := $(TARGET)
 .PHONY: install-sdk install
 install-sdk:
 	mkdir -p "$(DESTDIR)$(prefix)"/bin
-	mkdir -p "$(DESTDIR)$(prefix)"/tools
-	mkdir -p "$(DESTDIR)$(prefix)"/vessels
+	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/tools
+	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/vessels
 	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
 		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
 	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/tools; \
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/tools/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/tools; \
 	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/vessels; \
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/vessels/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/vessels; \
 	done
-	mkdir -p "$(DESTDIR)$(prefix)"/lib
-	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
-	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
+	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/lib
+	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib/toit/lib
+	find "$(DESTDIR)$(prefix)"/lib/toit/lib -type f -exec chmod 644 {} \;
 
 install: install-sdk
 
