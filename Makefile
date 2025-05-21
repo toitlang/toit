@@ -308,7 +308,8 @@ INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
 install-sdk:
-	cmake --install "$(BUILD)/$(TARGET)" --prefix "$(DESTDIR)$(prefix)"
+	# The DESTDIR is passed as environment variable and picked up by cmake.
+	cmake --install "$(BUILD)/$(TARGET)" --prefix "$(prefix)"
 
 install: install-sdk
 
