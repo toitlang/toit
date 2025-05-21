@@ -56,7 +56,7 @@ class FilesystemLocal : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size);
   void list_directory_entries(const char* path,
-                              const std::function<void (const char*)> callback);
+                              const std::function<bool (const char*)> callback);
 
  private:
   const char* sdk_path_ = null;

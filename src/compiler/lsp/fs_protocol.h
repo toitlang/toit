@@ -52,7 +52,7 @@ class LspFsProtocol {
   const char* sdk_path();
   List<const char*> package_cache_paths();
   void list_directory_entries(const char* path,
-                              const std::function<void (const char*)> callback);
+                              const std::function<bool (const char*)> callback);
 
   PathInfo fetch_info_for(const char* path);
 
