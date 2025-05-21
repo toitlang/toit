@@ -305,7 +305,7 @@ Assuming your device is connected through `/dev/ttyUSB0`
 you can then flash a device as follows:
 
 ``` sh
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/lib/toit/tool firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
 

@@ -31,7 +31,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_IS_CROSS TRUE)
   # We are using the compiler from the host system, but we want to use the vessels
   # from the target system.
-  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels)
 endif()
 
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
@@ -75,9 +75,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Put all binaries in /sdk/bin folder.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
-# Put all libraries in /lib folder.
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_EXTENSIONS ON)  # Needed so that `tzset` is available in esp-idf.

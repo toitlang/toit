@@ -17,10 +17,7 @@ if (NOT TOIT_SDK_DIR)
     set(TOIT_SDK_DIR ${TOIT_BASE_DIR}/build/host/sdk)
 endif()
 set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
-set(TOITC ${TOIT_SDK_DIR}/bin/toit.compile)
-set(TOITPKG ${TOIT_SDK_DIR}/bin/toit.pkg)
-set(TOIT_TOOLS_DIR ${TOIT_SDK_DIR}/tools)
-set(FIRMWARE_BIN ${TOIT_TOOLS_DIR}/firmware)
+set(TOIT ${TOIT_SDK_DIR}/bin/toit)
 set(CMAKE_BUILD_TYPE Release)
 
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
@@ -56,7 +53,7 @@ target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TAR
 
 idf_component_set_property(${COMPONENT_NAME} TOIT_SDK_DIR ${TOIT_SDK_DIR})
 idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}/system.snapshot)
-idf_component_set_property(${COMPONENT_NAME} TOITC ${TOITC})
+idf_component_set_property(${COMPONENT_NAME} TOIT ${TOIT})
 idf_component_set_property(${COMPONENT_NAME} TOIT_BASE_DIR ${TOIT_BASE_DIR})
 idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
 
@@ -84,11 +81,9 @@ endfunction()
 function(toit_postprocess)
     idf_build_get_property(TOIT_COMPONENT_NAME TOIT_COMPONENT_NAME)
     idf_component_get_property(TOIT_SDK_DIR ${TOIT_COMPONENT_NAME} TOIT_SDK_DIR)
-    idf_component_get_property(TOITC ${TOIT_COMPONENT_NAME} TOITC)
+    idf_component_get_property(TOIT ${TOIT_COMPONENT_NAME} TOIT)
     idf_component_get_property(TOIT_BASE_DIR ${TOIT_COMPONENT_NAME} TOIT_BASE_DIR)
     idf_component_get_property(SYSTEM_SNAPSHOT ${TOIT_COMPONENT_NAME} SYSTEM_SNAPSHOT)
-    set(FIRMWARE_BIN ${TOIT_SDK_DIR}/tools/firmware)
-    set(ASSETS_BIN ${TOIT_SDK_DIR}/tools/assets)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
@@ -106,16 +101,16 @@ function(toit_postprocess)
     add_custom_command(
             TARGET firmware
             POST_BUILD
-            COMMAND ${TOITC} -O2 -w ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
+            COMMAND ${TOIT} compile --snapshot -O2 -o ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
     add_custom_command(
             TARGET firmware
             POST_BUILD
             COMMAND rm -f firmware.envelope
-            COMMAND "${FIRMWARE_BIN}"
+            COMMAND "${TOIT}" tool firmware
                     "--envelope=firmware.envelope"
-                    "create"
+                    "create" "esp32"
                     "--bootloader.bin=bootloader/bootloader.bin"
                     "--firmware.bin=${EXECUTABLE_NAME}.bin"
                     "--firmware.elf=${EXECUTABLE_NAME}.elf"
@@ -130,7 +125,7 @@ function(toit_postprocess)
         add_custom_command(
                 TARGET firmware
                 POST_BUILD
-                COMMAND "${FIRMWARE_BIN}"
+                COMMAND "${TOIT}" tool firmware
                         "--envelope=firmware.envelope"
                         "property" "set" "wifi" "'{\"wifi.ssid\":\"${CONFIG_TOIT_WIFI_SSID}\",\"wifi.password\":\"${CONFIG_TOIT_WIFI_PASSWORD}\"}'"
                 COMMAND echo envelope: set wifi
@@ -152,8 +147,8 @@ function(toit_postprocess)
             add_custom_command(
                     TARGET firmware
                     POST_BUILD
-                    COMMAND "${ASSETS_BIN}" "--assets=entry_assets.bin" create
-                    COMMAND "${ASSETS_BIN}" "--assets=entry_assets.bin" "add" "--format" "ubjson"
+                    COMMAND "${TOIT}" tool assets "--assets=entry_assets.bin" create
+                    COMMAND "${TOIT}" tool assets "--assets=entry_assets.bin" "add" "--format" "ubjson"
                             ${ASSET_NAME} ${RUN_PROGRAM_ASSETS_FILE}
                     COMMAND echo envelope: asset for program created
             )
@@ -163,8 +158,8 @@ function(toit_postprocess)
         add_custom_command(
                 TARGET firmware
                 POST_BUILD
-                COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
-                COMMAND "${FIRMWARE_BIN}" "--envelope=firmware.envelope"
+                COMMAND "${TOIT}" compile --snapshot -o "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
+                COMMAND "${TOIT}" tool firmware "--envelope=firmware.envelope"
                         "container" "install" ${ENTRY_ASSETS_ARGS} "program" ${CMAKE_BINARY_DIR}/program.snapshot
                 COMMAND echo envelope: program added
         )
@@ -173,7 +168,7 @@ function(toit_postprocess)
     add_custom_command(
             TARGET firmware
             POST_BUILD
-            COMMAND "${FIRMWARE_BIN}"
+            COMMAND "${TOIT}" tool firmware
                     "--envelope=firmware.envelope"
                     "extract" "--format=binary" "-o" "${EXECUTABLE_NAME}-firmware.bin"
             COMMAND echo envelope: firmware extracted

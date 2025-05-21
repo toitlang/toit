@@ -334,8 +334,7 @@ jobs:
         shell: bash
         run: |
           make prefix=$PWD/build/install-out install
-          build/install-out/bin/toit.run --version
-          build/install-out/bin/toit.run -s "print 499"
+          build/install-out/bin/toit --version
 
       # Test external code.
       - name: Test external
@@ -695,9 +694,9 @@ jobs:
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspbian/sdk/bin/toit.pkg version
+              build/raspbian/sdk/bin/toit version
               build/raspbian/sdk/bin/toit.run --version
-              build/raspbian/sdk/tools/firmware --help
+              build/raspbian/sdk/lib/toit/tools/firmware --help
               build/raspbian/extracted/boot.sh > raspbian_output
 
       - name: Check that the 32-bit run-script worked
@@ -716,7 +715,7 @@ jobs:
               uname -m > pi_uname
               build/aarch64/sdk/bin/toit.pkg version
               build/aarch64/sdk/bin/toit.run --version
-              build/aarch64/sdk/tools/firmware --help
+              build/aarch64/sdk/lib/toit/tools/firmware --help
               build/aarch64/extracted/boot.sh > aarch64_output
 
       - name: Check that the 64-bit run-script worked
@@ -819,14 +818,14 @@ jobs:
             fi
 
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
-            cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
+            cp $source/toit/lib/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
             for target in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
               if [[ "$source" == "$target" ]]; then
                 continue
               fi
-              mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
-              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              mkdir -p $target/toit/lib/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/lib/toit/vessels/vessel* $target/toit/lib/toit/vessels/$CROSS_OS/$CROSS_ARCH
             done
           done
 
@@ -860,8 +859,8 @@ jobs:
 
             curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
             unzip esptool-$ESPTOOL_ARCH.zip
-            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/tools/esptool$EXTENSION
-            chmod +x $os/toit/tools/esptool$EXTENSION
+            cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/lib/toit/tools/esptool$EXTENSION
+            chmod +x $os/toit/lib/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
