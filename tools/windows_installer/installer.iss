@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Toit"
-#define MyAppPublisher "Toitware ApS"
+#define MyAppPublisher "Toit contributors"
 #define MyAppURL "https://www.toitlang.org"
 
 [Setup]
