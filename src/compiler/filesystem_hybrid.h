@@ -51,7 +51,7 @@ class FilesystemHybrid : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size);
   void list_directory_entries(const char* path,
-                              const std::function<void (const char*)> callback);
+                              const std::function<bool (const char*)> callback);
 
  private:
   bool use_fs_archive_;

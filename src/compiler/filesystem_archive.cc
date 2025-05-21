@@ -253,11 +253,12 @@ const uint8* FilesystemArchive::do_read_content(const char* path, int* size) {
 }
 
 void FilesystemArchive::list_directory_entries(const char* path,
-                                               const std::function<void (const char*)> callback) {
+                                               const std::function<bool (const char*)> callback) {
   auto probe = directory_listings_.find(std::string(path));
   if (probe == directory_listings_.end()) return;
   for (auto& entry : probe->second) {
-    callback(entry.c_str());
+    bool should_continue = callback(entry.c_str());
+    if (!should_continue) return;
   }
 }
 

@@ -99,7 +99,7 @@ const char* FilesystemHybrid::getcwd(char* buffer, int buffer_size) {
 }
 
 void FilesystemHybrid::list_directory_entries(const char* path,
-                                              const std::function<void (const char*)> callback) {
+                                              const std::function<bool (const char*)> callback) {
   auto f = [&](const char* path, Filesystem* fs) {
     return fs->list_directory_entries(path, callback);
   };

@@ -369,14 +369,15 @@ void CompletionHandler::import_path(const char* path,
                                     Filesystem* fs) {
   if (is_first_segment) {
     current_package.list_prefixes([&](const std::string& candidate) {
-      complete(candidate.c_str(), CompletionKind::MODULE);
+      complete(candidate, CompletionKind::MODULE);
     });
     package_lock.list_sdk_prefixes([&](const std::string& candidate) {
-      complete(candidate.c_str(), CompletionKind::MODULE);
+      complete(candidate, CompletionKind::MODULE);
     });
   } else {
     fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
-      complete(candidate, CompletionKind::MODULE);
+      complete(std::string(candidate), CompletionKind::MODULE);
+      return true;
     });
   }
   terminate();
