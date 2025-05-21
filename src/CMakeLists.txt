@@ -311,6 +311,11 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     endif()
 
     add_dependencies(build_vessels ${VESSEL_TARGET})
+
+    # Install the vessels to /usr/lib/toit/vessels.
+    install(TARGETS ${VESSEL_TARGET}
+      RUNTIME DESTINATION lib/toit/vessels
+    )
   endforeach()
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
