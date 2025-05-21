@@ -975,8 +975,8 @@ static AddSegmentResult add_segment(PathBuilder* path_builder,
 
   // Checks that the casing of the found path is actually correct.
   // Assumes that the file was found.
-  // On Linux this is usually not an issue, but might happen with mounted filesystems that are
-  // not case-sensitive?
+  // On Linux this is usually not an issue, but it might happen with mounted filesystems that are
+  // not case-sensitive.
   auto check_casing = [&](const char* path) {
     // With the LSP, the 'list_toit_directory_entries' might not provide the file we found.
     // Keep track of whether we found a case-sensitive, and case-insensitive match.
@@ -1279,7 +1279,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               next_segment,
                               filesystem(),
                               true,  // Must be a toit file.
-                              segments[segments.length() -1]->selection_range(),
+                              segments[segments.length() - 1]->selection_range(),
                               diagnostics());
     if (result != AddSegmentResult::OK) {
       // To make it easier to share the error reporting with the code below
