@@ -71,9 +71,6 @@ endif()
 set(CMAKE_INSTALL_MESSAGE LAZY)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Put all binaries in /sdk/lib/toit/bin folder.
-# When trying to find the SDK root we use assume that we need to
-# dirname 3 times.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
 
 set(CMAKE_CXX_STANDARD 11)
