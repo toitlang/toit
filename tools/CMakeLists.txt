@@ -15,27 +15,6 @@
 
 include(toit.cmake)
 
-set(TOOLS assets firmware kebabify snapshot_to_image stacktrace system_message toitp)
-set(EXES)
-
-foreach (TOOL ${TOOLS})
-  set(TOOL_EXE ${CMAKE_BINARY_DIR}/sdk/lib/toit/tools/${TOOL}${CMAKE_EXECUTABLE_SUFFIX})
-
-  ADD_TOIT_EXE(
-    ${CMAKE_CURRENT_SOURCE_DIR}/${TOOL}.toit
-    ${TOOL_EXE}
-    ${CMAKE_CURRENT_BINARY_DIR}/${TOOL}.exe.dep
-    ""
-  )
-
-  list(APPEND EXES "${TOOL_EXE}")
-endforeach ()
-
-add_custom_target(
-  build_toit_tools
-  DEPENDS ${EXES}
-)
-
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
 toit_project(pkg "${CMAKE_CURRENT_LIST_DIR}/pkg")

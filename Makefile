@@ -78,12 +78,12 @@ debug:
 	cmake -E env LOCAL_CFLAGS="-O0" LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
 
 .PHONY: sdk
-sdk: tools toit-tools version-file
+sdk: tools version-file
 
 # Rebuilds the SDK using only Ninja, without rebuilding the
 # Ninja files with Cmake.
 .PHONY: sdk-no-cmake
-sdk-no-cmake: tools-no-cmake toit-tools-no-cmake
+sdk-no-cmake: tools-no-cmake
 
 .PHONY: check-env
 check-env:
@@ -193,14 +193,6 @@ build-envelope: download-packages
 .PHONY: tools-no-cmake
 tools-no-cmake:
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
-
-.PHONY: toit-tools
-toit-tools: tools download-packages
-	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
-
-.PHONY: toit-tools-no-cmake
-toit-tools-no-cmake:
-	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
 
 .PHONY: vessels
 vessels: check-env $(BUILD)/$(TARGET)/CMakeCache.txt
@@ -317,13 +309,9 @@ INSTALL_SRC_ARCH := $(TARGET)
 .PHONY: install-sdk install
 install-sdk:
 	mkdir -p "$(DESTDIR)$(prefix)"/bin
-	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/tools
 	mkdir -p "$(DESTDIR)$(prefix)"/lib/toit/vessels
 	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
 		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
-	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/tools/*; do \
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/tools; \
 	done
 	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/lib/toit/vessels/*; do \
 		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/lib/toit/vessels; \
