@@ -272,7 +272,9 @@ void Filesystem::list_toit_directory_entries(const char* path,
           strncpy(without_extension, entry, i);
           without_extension[i] = '\0';
           const char* canonicalized = IdentifierValidator::canonicalize(without_extension, i);
+          if (canonicalized != without_extension) free(without_extension);
           callback(canonicalized, false);
+          free(const_cast<char*>(canonicalized));
         }
         return;
       }
