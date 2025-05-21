@@ -9,10 +9,7 @@ If you are developing for the ESP32, we recommend to use [Jaguar](https://github
 automatically downloads a Toit SDK. For host development, see below.
 
 With Jaguar you can use Toit to develop, update, and restart your ESP32 applications in less
-than two seconds through a small service that runs on the device.
-
-It uses the capabilities of the Toit virtual machine to let you update and restart your ESP32
-applications written in Toit over WiFi whenever your source files change. Once set up, it is as easy as:
+than two seconds. Once set up, it is as easy as:
 
 ``` sh
 jag watch examples/hello.toit
