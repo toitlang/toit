@@ -20,6 +20,8 @@ file(GLOB CC_TESTS "*-test.cc")
 file(GLOB TOIT_TESTS "*-test.toit")
 
 set(CTEST_DIR ${CMAKE_BINARY_DIR}/ctest)
+set(CTEST_BIN_DIR ${CMAKE_BINARY_DIR}/ctest/lib/toit/bin)
+set(CTEST_LIB_DIR ${CMAKE_BINARY_DIR}/ctest/lib/toit/lib)
 
 if (APPLE)
   set(LN_FORCE "F")
@@ -30,8 +32,8 @@ endif()
 include(fail.cmake)
 
 add_custom_command(
-  OUTPUT ${CTEST_DIR}/lib/toit/lib
-  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_DIR}/lib/toit/lib
+  OUTPUT ${CTEST_LIB_DIR}
+  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_LIB_DIR}
   VERBATIM
 )
 
@@ -47,7 +49,7 @@ add_custom_command(
 
 add_custom_target(
     generate-ctest-lib-symlink
-    DEPENDS ${CTEST_DIR}/lib/toit/lib
+    DEPENDS ${CTEST_LIB_DIR}
     )
 
 set(NEGATIVE_TESTS)
@@ -98,7 +100,7 @@ foreach(MODE positive negative)
       target_compile_definitions(${exe} PRIVATE NEGATIVE_TEST)
     endif()
 
-    set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_DIR})
+    set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_BIN_DIR})
     add_dependencies(${exe} generate-ctest-lib-symlink)
 
     target_link_libraries(
@@ -141,7 +143,7 @@ foreach(MODE positive negative)
     string(REGEX REPLACE "-test.cc?$" "-input.toit" test_input ${file})
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND ${WRAPPER} ${CTEST_DIR}/${exe} ${test_input}
+      COMMAND ${WRAPPER} ${CTEST_BIN_DIR}/${exe} ${test_input}
     )
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
     if (IS_NEGATIVE_TEST)
@@ -173,7 +175,8 @@ foreach(file ${TOIT_TESTS})
 
   add_test(
     NAME ${TEST_EXPECTATION_NAME}
-    COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
+    COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_BIN_DIR}
+  )
 
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
   add_dependencies(build_test_assets ${exe})

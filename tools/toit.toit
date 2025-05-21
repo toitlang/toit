@@ -516,16 +516,19 @@ main args/List:
     true
   root-command.run args
 
-bin-dir sdk-dir/string? -> string:
-  if sdk-dir:
-    return fs.join sdk-dir "bin"
-  our-path := system.program-path
-  return fs.dirname our-path
-
 tool-path sdk-dir/string? tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
-  return fs.join (bin-dir sdk-dir) tool
+
+  tool-bin-dir/string := ?
+  if sdk-dir:
+    tool-bin-dir = fs.join sdk-dir "lib" "toit" "bin"
+  else:
+    our-path := system.program-path
+    our-dir := fs.dirname our-path
+    tool-bin-dir = fs.join our-dir ".." "lib" "toit" "bin"
+
+  return fs.join tool-bin-dir tool
 
 run sdk-dir/string? tool/string args/List -> int:
   args = [tool-path sdk-dir tool] + args

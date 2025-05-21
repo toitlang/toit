@@ -64,6 +64,7 @@ add_executable(
   toit.compile
   toitc.cc
   )
+set_target_properties(toit.compile PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin")
 
 add_dependencies(build_tools toit.compile)
 

@@ -76,13 +76,16 @@ const char* FilesystemLocal::sdk_path() {
   if (sdk_path_ == null) {
     // Compute the library_root based on the executable path.
     char* path = get_executable_path();
-    // TODO: We should check if the current folder contains a lib folder and if not,
-    //   return an appropriate error code.
-    char* toit_root = ::dirname(path);
-    int root_len = strlen(toit_root);
-    // `dirname` might return its result in a static buffer (especially on macos), and we
-    // have to copy the result back into path. (+1 for the terminating '\0' character).
-    memmove(path, toit_root, root_len + 1);
+    // Our executable is supposed to be located in sdk/lib/toit/bin.
+    // One dirname takes away the executable name. The rest go up
+    // the directory tree.
+    for (int i = 0; i < 4; i++) {
+      char* parent = ::dirname(path);
+      int parent_len = strlen(parent);
+      // `dirname` might return its result in a static buffer (especially on macos), and we
+      // have to copy the result back into path. (+1 for the terminating '\0' character).
+      memmove(path, parent, parent_len + 1);
+    }
     sdk_path_ = path;
   }
   return sdk_path_;

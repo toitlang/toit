@@ -81,7 +81,6 @@ class Compiler:
     cpp-to   := process.stdin
     cpp-from := process.stdout
 
-
     has-terminated := false
     was-killed-because-of-timeout := false
 

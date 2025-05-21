@@ -695,7 +695,7 @@ jobs:
           commands: |
               uname -m > pi_uname
               build/raspbian/sdk/bin/toit version
-              build/raspbian/sdk/bin/toit.run --version
+              build/raspbian/sdk/lib/toit/bin/toit.run --version
               build/raspbian/extracted/boot.sh > raspbian_output
 
       - name: Check that the 32-bit run-script worked
@@ -713,7 +713,7 @@ jobs:
           commands: |
               uname -m > pi_uname
               build/aarch64/sdk/bin/toit version
-              build/aarch64/sdk/bin/toit.run --version
+              build/aarch64/sdk/lib/toit/bin/toit.run --version
               build/aarch64/extracted/boot.sh > aarch64_output
 
       - name: Check that the 64-bit run-script worked
