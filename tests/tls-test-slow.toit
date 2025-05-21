@@ -44,6 +44,8 @@ load-limiter := LimitLoad
 main:
   run-tests
 
+needed-mbedtls := false
+
 run-tests:
   working := [
     "amazon.com",
@@ -53,7 +55,9 @@ run-tests:
     // Connect to the IP address at the TCP level, but verify the cert name.
     "$(dns.dns-lookup "amazon.com" --network=network)/amazon.com",
 
-    "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
+    // "gnu.org",  // Fails on the GitHub build servers. Other tools (like `wget`) also fail there.
+    // It's pretty hard to find a site that requires MbedTLS. This is one of the few:
+    "info.cern.ch",   // Doesn't work with Toit mode, falls back to MbedTLS C code.
 
     "sha256.badssl.com",
     "ecc256.badssl.com",
@@ -112,6 +116,11 @@ run-tests:
     if load-limiter.has-test-failure: throw load-limiter.has-test-failure  // End early if we have a test failure.
   if load-limiter.test-failures:
     throw load-limiter.has-test-failure
+
+  // Make sure one of our sites needs MbedTLS and exercises that code path.
+  // Since sites can move behind load balancers, this might change over time.
+  if not needed-mbedtls:
+    throw "No test needed MbedTLS."
 
 test-site url expect-ok:
   host := url
@@ -189,7 +198,10 @@ connect-to-site host port expected-certificate-name:
     try:
       writer := socket.out
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
-      print "$host: $((socket as any).session_.mode == tls.SESSION-MODE-TOIT ? "Toit mode" : "MbedTLS mode")"
+      uses-toit-mode := socket.session_.mode == tls.SESSION-MODE-TOIT
+      print "$host: $(uses-toit-mode ? "Toit mode" : "MbedTLS mode")"
+      if not uses-toit-mode:
+        needed-mbedtls = true
 
       reader := socket.in
       while data := reader.read:

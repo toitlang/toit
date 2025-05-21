@@ -40,7 +40,7 @@ List<const char*> LspFsProtocol::package_cache_paths() {
 }
 
 void LspFsProtocol::list_directory_entries(const char* path,
-                                           const std::function<void (const char*)> callback) {
+                                           const std::function<bool (const char*)> callback) {
   connection_->putline("LIST DIRECTORY");
   connection_->putline(path);
 
@@ -48,9 +48,14 @@ void LspFsProtocol::list_directory_entries(const char* path,
   int count = atoi(count_str);
   free(count_str);
 
+  bool should_call_callback = true;
   for (int i = 0; i < count; i++) {
     char* line = connection_->getline();
-    callback(line);
+    if (should_call_callback) {
+      // Even if the callback doesn't want to be called anymore, we still need to
+      // read the remaining lines.
+      should_call_callback = callback(line);
+    }
     free(line);
   }
 }
