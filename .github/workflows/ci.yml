@@ -43,21 +43,16 @@ on:
       # In the second case, the step will run if there isn't any workflow dispatch.
       # As such, the recommendation is to use the `== true` if the default is
       # false, and the `!= false` if the default is true.
-      strip:
-        description: "Strip executables"
+      sign:
+        description: "Sign executables"
         required: false
-        type: boolean
-        default: false
-      sign-macos:
-        description: "Sign macOS executables"
-        required: false
-        type: boolean
-        default: false
-      sign-windows:
-        description: "Sign Windows executables"
-        required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - none
+          - macos
+          - windows
+          - macos+windows
+        default: "none"
       build-arm-macos:
         description: "Build ARM macOS executables"
         required: false
@@ -68,18 +63,17 @@ on:
         required: false
         type: boolean
         default: false
-      run-tests:
+      tests:
         description: "Run tests"
         required: false
-        type: boolean
-        default: true
+        type: choice
+        options:
+          - none
+          - normal
+          - more
+        default: "normal"
       run-hw-tests:
         description: "Run hardware tests"
-        required: false
-        type: boolean
-        default: false
-      test-more:
-        description: "Run more tests (including hardware tests)"
         required: false
         type: boolean
         default: false
@@ -88,38 +82,98 @@ on:
         required: false
         type: boolean
         default: true
+      run-cross-flow:
+        description: "Run the cross flow"
+        required: false
+        type: boolean
+        default: true
       do-release:
         description: "Build release artifacts and upload with this version"
         required: false
         type: string
         default: ""
+      ssh:
+        description: "Enable ssh access to the host"
+        required: false
+        type: choice
+        options:
+          - none
+          - linux
+          - windows
+          - macos
+          - macos-arm
+        default: none
 
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
-  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' }}
-  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.test-more == 'true' || github.event.inputs.run-hw-tests == 'true' }}
+  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' }}
+  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' || github.event.inputs.run-hw-tests == 'true' }}
+  DO_TESTS: ${{ github.event.inputs.tests != 'none' }}
+  SIGN_MACOS: ${{ github.event.inputs.sign == 'macos' || github.event.inputs.sign == 'macos+windows' }}
+  SIGN_WINDOWS: ${{ github.event.inputs.sign == 'windows' || github.event.inputs.sign == 'macos+windows' }}
+  BUILD_ARM_MACOS: ${{ github.event.inputs.build-arm-macos == 'true' }}
+  DISPATCH_TOITDOCS: ${{ github.event.inputs.dispatch-toitdocs == 'true' }}
+  RUN_WINDOWS_SIGN_FLOW: ${{ github.event_name == 'release' ||
+                              startsWith(github.event.inputs.do-release, 'v') ||
+                              github.event.inputs.sign == 'windows' ||
+                              github.event.inputs.sign == 'macos+windows' }}
+  RUN_MACOS_SIGN_FLOW: ${{ github.event_name == 'release' ||
+                            startsWith(github.event.inputs.do-release, 'v') ||
+                            github.event.inputs.sign == 'macos' ||
+                            github.event.inputs.sign == 'macos+windows' }}
+  RUN_ESP32_FLOW: ${{ github.event.inputs.run-esp32-flow != 'false' }}
+  RUN_CROSS_FLOW: ${{ github.event.inputs.run-cross-flow != 'false' }}
+  RUN_AUR_FLOW: ${{ (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
+                    github.repository_owner == 'toitlang' }}
+  ENABLE_SSH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ssh != 'none' }}
   ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
 
 jobs:
   prereqs:
     runs-on: ubuntu-latest
     steps:
+      - name: Show inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "${{ toJSON(github.event.inputs) }}"
+
       - name: Set strategy variables
         id: vars
         run: |
+          # When running ssh, only run a single shard of the corresponding platform.
+          if [[ ${{ env.ENABLE_SSH }} == "true" ]]; then
+            echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
+            echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
+            echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
+            platform=${{ github.event.inputs.ssh }}
+            # Switch to the corresponding container.
+            if [[ "$platform" == "linux" ]]; then
+              echo 'CONTAINERS=[ "ubuntu-22.04" ]' >> $GITHUB_OUTPUT
+            elif [[ "$platform" == "windows" ]]; then
+              echo 'CONTAINERS=[ "windows-latest" ]' >> $GITHUB_OUTPUT
+            elif [[ "$platform" == "macos" ]]; then
+              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+            elif [[ "$platform" == "macos-arm" ]]; then
+              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+            else
+              echo "Unknown platform: $platform"
+              exit 1
+            fi
+            exit 0
+          fi
+
           # ubuntu-22.04 so that we don't depend on a recent glibc.
           # macos-13, since it's still intel based.
           if [[ "${{ github.ref }}" == 'refs/heads/master' || \
                 "${{ env.DO_RELEASE }}" == "true" || \
-                "${{ inputs.build-arm-macos }}" == "true" || \
-                "${{ inputs.sign-macos }}" == "true" \
+                "${{ env.BUILD_ARM_MACOS }}" == "true" || \
+                "${{ env.SIGN_MACOS }}" == "true" \
               ]]; then
             echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           else
             echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
           fi
-          if [[ "${{ inputs.run-tests }}" != "false" ]]; then
+          if [[ "${{ env.DO_TESTS }}" == "true" ]]; then
             echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[{"container": "ubuntu-22.04", "shard": 6}, {"container": "ubuntu-22.04", "shard": 7}]' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT=5' >> $GITHUB_OUTPUT
@@ -137,6 +191,11 @@ jobs:
       SHARD_COUNT: ${{ steps.vars.outputs.SHARD_COUNT }}
       SHARD_COUNT_LINUX: ${{ steps.vars.outputs.SHARD_COUNT_LINUX }}
       DO_HW_TESTS: ${{ env.DO_HW_TESTS }}
+      RUN_ESP32_FLOW: ${{ env.RUN_ESP32_FLOW }}
+      RUN_CROSS_FLOW: ${{ env.RUN_CROSS_FLOW }}
+      RUN_WINDOWS_SIGN_FLOW: ${{ env.RUN_WINDOWS_SIGN_FLOW }}
+      RUN_MACOS_SIGN_FLOW: ${{ env.RUN_MACOS_SIGN_FLOW }}
+      RUN_AUR_FLOW: ${{ env.RUN_AUR_FLOW }}
 
   build:
     needs: prereqs
@@ -152,10 +211,6 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
-      - name: Show inputs
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "${{ toJSON(github.event.inputs) }}"
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -229,6 +284,18 @@ jobs:
       - name: Ccache stats
         run: ccache -s
 
+
+      - shell: bash
+        if: env.ENABLE_SSH == 'true'
+        run: echo $PATH
+
+      # Run ssh.
+      - uses: luchihoratiu/debug-via-ssh@main
+        if: env.ENABLE_SSH == 'true'
+        with:
+          NGROK_AUTH_TOKEN: "${{ secrets.NGROK_FLORIAN }}"
+          SSH_PASS: "aoeuAOEU0"
+
       - name: Build test SDKs - Linux only
         if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |
@@ -267,21 +334,21 @@ jobs:
           name: ccache-debug
 
       - name: Strip executables - Linux
-        if: (runner.os == 'Linux' && (env.DO_RELEASE == 'true' || github.event.inputs.strip == 'true'))
+        if: (runner.os == 'Linux' && env.DO_RELEASE == 'true')
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
 
       # Test.
       - name: Test
-        if: ${{ github.event.inputs.run-tests != 'false' }}
+        if: env.DO_TESTS == 'true'
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
           make test
           make test-health
 
       - name: Test flaky
-        if: ${{ github.event.inputs.run-tests != 'false' }}
+        if: env.DO_TESTS == 'true'
         continue-on-error: true
         shell: bash # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
@@ -339,7 +406,7 @@ jobs:
 
       # Test external code.
       - name: Test external
-        if: ${{ github.event.inputs.run-tests != 'false' }}
+        if: env.DO_TESTS == 'true'
         # External tests are allowed to fail, but we record them and
         # fail a non-required job if they do.
         continue-on-error: true
@@ -469,7 +536,7 @@ jobs:
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
           ((env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang') ||
-           github.event.inputs.dispatch-toitdocs == 'true')
+           env.DISPATCH_TOITDOCS == 'true')
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
@@ -507,7 +574,8 @@ jobs:
           path: build/${{ steps.constants.outputs.artifact }}
 
   esp32:
-    if: ${{ github.event.inputs.run-esp32-flow != 'false' }}
+    needs: [prereqs]
+    if: needs.prereqs.outputs.RUN_ESP32_FLOW == 'true'
 
     runs-on: ubuntu-latest
 
@@ -602,6 +670,9 @@ jobs:
             build/rpi.tar.gz
 
   cross:
+    needs: [prereqs]
+    if: needs.prereqs.outputs.RUN_CROSS_FLOW == 'true'
+
     runs-on: ubuntu-latest
 
     steps:
@@ -766,7 +837,7 @@ jobs:
       - name: Set up macOS ARM environment
         run: |
           if [[ "${{ env.DO_RELEASE }}" == 'true' || \
-                "${{ inputs.build-arm-macos }}" == 'true' || \
+                "${{ env.BUILD_ARM_MACOS }}" == 'true' || \
                 "${{ github.ref }}" == 'refs/heads/master' \
               ]]; then
             echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
@@ -938,10 +1009,9 @@ jobs:
 
   sign_windows:
     runs-on: windows-latest
-    needs: [combine]
-    if: (github.event_name == 'release' ||
-        startsWith(github.event.inputs.do-release, 'v') ||
-        github.event.inputs.sign-windows == 'true')
+    needs: [prereqs, combine]
+    if: needs.prereqs.outputs.RUN_WINDOWS_SIGN_FLOW == 'true'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -977,7 +1047,8 @@ jobs:
         run: |
           # If the version is empty, use 'v0.0.0' instead.
           if ([string]::IsNullOrEmpty($env:TOIT_VERSION)) {
-            echo "TOIT_VERSION=v0.0.0" >> $env:GITHUB_ENV
+            $env:TOIT_VERSION = 'v0.0.0'
+            echo "TOIT_VERSION=$($env:TOIT_VERSION)" >> $env:GITHUB_ENV
           }
           $versionV = $env:TOIT_VERSION
           $version = $versionV.Substring(1)
@@ -1031,10 +1102,9 @@ jobs:
 
   sign_macos:
     runs-on: macos-latest  # An arm64 runner.
-    needs: [combine]
-    if: github.event_name == 'release' ||
-        startsWith(github.event.inputs.do-release, 'v') ||
-        github.event.inputs.sign-macos == 'true'
+    needs: [prereqs, combine]
+    if: needs.prereqs.outputs.RUN_MACOS_SIGN_FLOW == 'true'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -1222,9 +1292,9 @@ jobs:
   AUR:
     name: Update AUR package
     runs-on: ubuntu-latest
-    needs: [combine]
-    if: (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
-        github.repository_owner == 'toitlang'
+    needs: [prereqs, combine]
+    if: needs.prereqs.outputs.RUN_AUR_FLOW == 'true'
+
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
