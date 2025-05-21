@@ -73,7 +73,7 @@ class FilesystemArchive : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size) { return cwd_path_; }
   void list_directory_entries(const char* path,
-                              const std::function<void (const char*)> callback);
+                              const std::function<bool (const char*)> callback);
 
  private:
   struct FileEntry {

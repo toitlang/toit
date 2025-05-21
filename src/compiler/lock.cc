@@ -906,6 +906,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   if (sdk_is_dir) {
     fs->list_toit_directory_entries(sdk_lib_path.c_str(), [&](const char* entry, bool is_directory) {
       sdk_prefixes.insert(std::string(entry));
+      return true;
     });
   }
 
