@@ -400,7 +400,7 @@ jobs:
         shell: bash
         run: |
           make prefix=build/out/toit install
-          tar -czf ${{ steps.constants.outputs.artifact }} -C ./build/out toit
+          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/out toit
 
       - name: Prepare debug repros
         if: always()
