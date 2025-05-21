@@ -437,12 +437,12 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
   endif()
 
-  # Install the main binary to /usr/bin
+  # Install the main binary to /usr/bin.
   install(TARGETS toit
     RUNTIME DESTINATION bin
   )
 
-  # Install other binaries to /usr/lib/toit/bin
+  # Install other binaries to /usr/lib/toit/bin.
   install(TARGETS toit.run toit.compile
     RUNTIME DESTINATION lib/toit/bin
   )

@@ -217,7 +217,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   install(PROGRAMS "${TOITPKG_BIN}" DESTINATION lib/toit/bin)
 
-  # Copy the lib folder to /usr/lib/toit/lib (recursively)
+  # Copy the lib folder to /usr/lib/toit/lib (recursively).
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
     DESTINATION lib/toit/lib
     FILES_MATCHING PATTERN "*"
