@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #endif
 #include <string>
+#include <ctype.h>
 #include <limits.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -966,24 +967,81 @@ enum class AddSegmentResult {
 static AddSegmentResult add_segment(PathBuilder* path_builder,
                                     const char* segment,
                                     Filesystem* fs,
-                                    bool should_check_is_toit_file) {
+                                    bool should_check_is_toit_file,
+                                    const Source::Range& error_range,
+                                    Diagnostics* diagnostics) {
+  char* dir_path = path_builder->strdup();
+  Defer free_dir_path { [&] { free(dir_path); } };
+
+  // Checks that the casing of the found path is actually correct.
+  // Assumes that the file was found.
+  // On Linux this is usually not an issue, but might happen with mounted filesystems that are
+  // not case-sensitive?
+  auto check_casing = [&](const char* path) {
+    // With the LSP, the 'list_toit_directory_entries' might not provide the file we found.
+    // Keep track of whether we found a case-sensitive, and case-insensitive match.
+    bool found_sensitive_match = false;  // Whether we found a case-sensitive match.
+    const char* insensitive_match = null;  // The case-insensitive match, if we found one.
+    fs->list_toit_directory_entries(dir_path, [&] (const char* entry, bool is_dir) {
+      bool entry_match_is_cs = true;
+      for (int i = 0;; i++) {
+        if (entry[i] == '\0' && segment[i] == '\0') {
+          // Full match.
+          if (entry_match_is_cs) {
+            found_sensitive_match = true;
+            return false;  // No need to continue.
+          } else {
+            insensitive_match = strdup(entry);
+            return true;
+          }
+        }
+        if (entry[i] == '_' && segment[i] == '-') {
+          // Assume they match. This might not always be correct, but we are just
+          // trying to provide good warnings.
+          continue;
+        }
+        if (entry[i] != segment[i]) {
+          if (tolower(entry[i]) == tolower(segment[i])) {
+            if (insensitive_match != null) {
+              // No need to continue with this entry. We already found a case-insensitive match.
+              return true;
+            }
+            entry_match_is_cs = false;
+          } else {
+            return true;  // Try the next entry.
+          }
+        }
+      }
+    });
+    if (!found_sensitive_match && insensitive_match != null) {
+      diagnostics->report_warning(error_range,
+                                  "Import segment '%s' does not match case of segment '%s' in the filename",
+                                  segment,
+                                  insensitive_match);
+    }
+    free(const_cast<char*>(insensitive_match));
+  };
+
   auto check_path = [&]() {
     if (should_check_is_toit_file) {
       path_builder->add(".toit");
     }
     std::string path = path_builder->buffer();
+    auto path_c_str = path.c_str();
     if (should_check_is_toit_file) {
-      if (fs->is_regular_file(path.c_str())) {
+      if (fs->is_regular_file(path_c_str)) {
+        check_casing(path_c_str);
         return AddSegmentResult::OK;
       }
-      if (fs->exists(path.c_str())) {
+      if (fs->exists(path_c_str)) {
         return AddSegmentResult::NOT_A_REGULAR_FILE;
       }
     } else {
-      if (fs->is_directory(path.c_str())) {
+      if (fs->is_directory(path_c_str)) {
+        check_casing(path_c_str);
         return AddSegmentResult::OK;
       }
-      if (fs->exists(path.c_str())) {
+      if (fs->exists(path_c_str)) {
         return AddSegmentResult::NOT_A_DIRECTORY;
       }
     }
@@ -1220,7 +1278,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     auto result = add_segment(&import_path_builder,
                               next_segment,
                               filesystem(),
-                              true);  // Must be a toit file.
+                              true,  // Must be a toit file.
+                              segments[segments.length() -1]->selection_range(),
+                              diagnostics());
     if (result != AddSegmentResult::OK) {
       // To make it easier to share the error reporting with the code below
       // we have to remove the segment again.
@@ -1249,7 +1309,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     auto result = add_segment(&import_path_builder,
                               segment.c_str(),
                               filesystem(),
-                              is_last_segment);  // Check whether it's a toit file for the last segment.
+                              is_last_segment, // Check whether it's a toit file for the last segment.
+                              segment_id->selection_range(),
+                              diagnostics());
     if (result != AddSegmentResult::OK) {
       if (!is_last_segment || result != AddSegmentResult::NOT_FOUND) {
         _report_failed_import(import,
@@ -1274,7 +1336,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         result = add_segment(&import_path_builder,
                              segment.c_str(),
                              filesystem(),
-                             false);  // Now it must be a directory.
+                             false,  // Now it must be a directory.
+                             segment_id->selection_range(),
+                             diagnostics());
         bool found_alternative_directory = result == AddSegmentResult::OK;
         int length_after_folder = import_path_builder.length();
 
@@ -1284,7 +1348,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
           result = add_segment(&import_path_builder,
                                segment.c_str(),
                                filesystem(),
-                               true);  // Now it must be a toit file.
+                               true,  // Now it must be a toit file.
+                               segment_id->selection_range(),
+                               diagnostics());
         }
         if (result != AddSegmentResult::OK) {
           import_path_builder.reset_to(length_after_folder);

@@ -1,0 +1,10 @@
+tests/negative/bad-case-import-test.toit:7:9: warning: Import segment 'bad-case-import-other' does not match case of segment 'Bad-Case-Import-Other' in the filename
+import .bad-case-import-other as other
+        ^~~~~~~~~~~~~~~~~~~~~
+tests/negative/bad-case-import-test.toit:8:9: warning: Import segment 'bad-case-dir' does not match case of segment 'Bad-Case-Dir' in the filename
+import .bad-case-dir.other as dir
+        ^~~~~~~~~~~~
+tests/negative/bad-case-import-test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed

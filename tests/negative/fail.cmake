@@ -20,3 +20,10 @@ list(APPEND TOIT_OPTIMIZATION_SKIP_TESTS
   # The following tests only work with standard optimizations.
   tests/negative/field-type5-test.toit
 )
+
+# The following test is only relevent on Windows and macOS.
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+  list(APPEND TOIT_SKIP_TESTS
+    tests/negative/bad-case-import-test.toit
+  )
+endif()
