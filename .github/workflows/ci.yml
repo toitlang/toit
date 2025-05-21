@@ -398,10 +398,9 @@ jobs:
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/host/sdk ./build/host/toit
-          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host --dereference toit
+          make prefix=build/out/toit install
+          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/out toit
 
       - name: Prepare debug repros
         if: always()
@@ -588,10 +587,9 @@ jobs:
 
       - name: Pack artifacts
         shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/raspbian/sdk ./build/raspbian/toit
-          tar -czf build/rpi.tar.gz -C ./build/raspbian --dereference toit
+          make TARGET=raspbian prefix=./build/raspbian/toit install
+          tar -czf build/rpi.tar.gz -C ./build/raspbian toit
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -723,13 +721,12 @@ jobs:
 
       - name: Pack artifacts
         shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/raspbian/sdk ./build/raspbian/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian --dereference toit
-          cp -R ./build/aarch64/sdk ./build/aarch64/toit
+          make TARGET=raspbian prefix=build/raspbian/toit install
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian toit
+          make TARGET=aarch64 prefix=build/aarch64/toit install
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
-          cp -R ./build/riscv64/sdk ./build/riscv64/toit
+          make TARGET=riscv64 prefix=build/riscv64/toit install
           tar -czf build/toit-riscv64.tar.gz -C ./build/riscv64 --dereference toit
 
       - name: Upload artifacts
@@ -1330,8 +1327,8 @@ jobs:
           export ESPTOOL_ARCH=linux-armv7
           curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
           unzip esptool-$ESPTOOL_ARCH.zip
-          cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/tools/esptool$EXTENSION
-          chmod +x rpi/toit/tools/esptool$EXTENSION
+          cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/lib/toit/bin/esptool$EXTENSION
+          chmod +x rpi/toit/lib/toit/bin/esptool$EXTENSION
 
       - name: Download ESP32 envelopes
         uses: actions/download-artifact@v4

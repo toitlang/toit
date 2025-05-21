@@ -311,6 +311,11 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     endif()
 
     add_dependencies(build_vessels ${VESSEL_TARGET})
+
+    # Install the vessels to /usr/lib/toit/vessels.
+    install(TARGETS ${VESSEL_TARGET}
+      RUNTIME DESTINATION lib/toit/vessels
+    )
   endforeach()
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
@@ -436,4 +441,14 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
     target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
   endif()
+
+  # Install the main binary to /usr/bin.
+  install(TARGETS toit
+    RUNTIME DESTINATION bin
+  )
+
+  # Install other binaries to /usr/lib/toit/bin.
+  install(TARGETS toit.run toit.compile
+    RUNTIME DESTINATION lib/toit/bin
+  )
 endif() # TOIT_SYSTEM_NAME != esp32
