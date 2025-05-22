@@ -5,10 +5,11 @@ virtual machine, and standard libraries that together enable Toit programs to ru
 
 ## Jaguar: Live reloading for the ESP32
 
-You can use Toit to develop, update, and restart your ESP32 applications in less than two seconds through
-[Jaguar](https://github.com/toitlang/jaguar). Jaguar is a small Toit program that runs on your ESP32.
-It uses the capabilities of the Toit virtual machine to let you update and restart your ESP32
-applications written in Toit over WiFi whenever your source files change. Once set up, it is as easy as:
+If you are developing for the ESP32, we recommend to use [Jaguar](https://github.com/toitlang/jaguar). It
+automatically downloads the Toit SDK. For host development, see below.
+
+With Jaguar you can use Toit to develop, update, and restart your ESP32 applications in less
+than two seconds. Once set up, it is as easy as:
 
 ``` sh
 jag watch examples/hello.toit
@@ -74,10 +75,12 @@ in those directories and the files they contain. These subdirectories are:
 * Every subdirectory under `third_party/`
 
 # Installation
+
 The instructions in this section don't cover the IDE integration. Follow the instructions
 [below](#ide-integration) to set up Toit support for your editor.
 
 ## Arch Linux
+
 For [Arch Linux](https://archlinux.org/) (or variants such as [Manjaro](https://manjaro.org/))
 use your favorite [AUR helper](https://wiki.archlinux.org/title/AUR_helpers) to
 install the [toit](https://aur.archlinux.org/packages/toit/) or
@@ -88,10 +91,27 @@ For example:
 yay -S toit
 ```
 
-## Other platforms
-We're actively working on simple installation steps for other platforms. For now, please use the build instructions below or download the `.tar.gz` files from the
-[release](https://github.com/toitlang/toit/releases) page.
+## Other Linux distributions
 
+We are actively working on providing packages for other Linux distributions. In the meantime,
+you can use the 'tar.gz' file from the [release](https://github.com/toitlang/toit/releases)
+page.
+
+## Windows
+
+On Windows 10+ you can use the [Windows package manager](https://docs.microsoft.com/en-us/windows/package-manager/winget/):
+```
+winget install --id=Toit.Toit -e
+```
+
+Remember to run `winget upgrade --id=Toit.Toit -e` (or simply `winget upgrade`) from
+time to time to keep Toit up to date.
+
+## MacOS
+
+We hope to have a Toit package available for [Homebrew](https://brew.sh/) soon. In the meantime,
+you can use the DMG or tar.gz file from the [release](https://github.com/toitlang/toit/releases)
+page.
 
 # Building
 
