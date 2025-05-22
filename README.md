@@ -6,7 +6,7 @@ virtual machine, and standard libraries that together enable Toit programs to ru
 ## Jaguar: Live reloading for the ESP32
 
 If you are developing for the ESP32, we recommend to use [Jaguar](https://github.com/toitlang/jaguar). It
-automatically downloads a Toit SDK. For host development, see below.
+automatically downloads the Toit SDK. For host development, see below.
 
 With Jaguar you can use Toit to develop, update, and restart your ESP32 applications in less
 than two seconds. Once set up, it is as easy as:
