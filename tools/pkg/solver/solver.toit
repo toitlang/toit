@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import cli
+
 import ..constraints
 import ..project.specification show PackageDependency
 import ..registry
@@ -216,17 +218,16 @@ class Solver:
   */
   sdk-version/SemanticVersion?
 
-  outputter_/Lambda
+  ui_/cli.Ui
 
   /**
   Constructs a new solver.
 
   The solver can only be used for a single solve operation.
   */
-  constructor registries/Registries --.sdk-version --outputter/Lambda:
+  constructor registries/Registries --.sdk-version --ui/cli.Ui:
     database_ = Database_ registries
-    outputter_ = outputter
-
+    ui_ = ui
 
   /**
   Moves the given $version to the front of the list of tried
@@ -356,5 +357,5 @@ class Solver:
 
   warn_ msg/string:
     if printed-errors_.contains msg: return
-    outputter_.call "Warning: $msg"
+    ui_.emit --warning msg
     printed-errors_.add msg

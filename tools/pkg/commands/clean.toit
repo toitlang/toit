@@ -20,14 +20,12 @@ import cli
 import ..pkg
 import ..project
 
+import .base_
 import .utils_
 
-class CleanCommand:
-  project/Project
+class CleanCommand extends PkgProjectCommand:
   constructor invocation/cli.Invocation:
-    config := project-configuration-from-cli invocation
-    config.verify
-    project = Project config
+    super invocation
 
   execute:
     project.clean

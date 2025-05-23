@@ -24,7 +24,6 @@ import fs
 
 import ..registry
 import ..registry.description
-import ..error
 import ..pkg
 import ..git
 import ..semantic-version
@@ -36,13 +35,14 @@ import .specification
 class ProjectConfiguration:
   project-root_/string?
   cwd_/string
+  ui_/cli.Ui
   sdk-version/SemanticVersion
+  auto-sync/bool
 
-  constructor --project-root/string? --cwd/string --.sdk-version --auto-sync/bool:
+  constructor --project-root/string? --cwd/string --.sdk-version --.auto-sync/bool --ui/cli.Ui:
     project-root_ = project-root
     cwd_ = cwd
-    if auto-sync:
-      registries.sync
+    ui_ = ui
 
   root -> string:
     return fs.to-absolute (project-root_ ? project-root_ : cwd_)
@@ -55,8 +55,7 @@ class ProjectConfiguration:
 
   verify:
     if not project-root_ and not specification-file-exists:
-      error
-          """
+      ui_.abort """
           Command must be executed in project root.
           Run 'toit.pkg init' first to create a new application here, or
             run with '--$OPTION-PROJECT-ROOT=.'
@@ -66,14 +65,18 @@ class Project:
   config/ProjectConfiguration
   specification/ProjectSpecification? := null
   lock-file/LockFile? := null
+  ui_/cli.Ui
 
   static PACKAGES-CACHE ::= ".packages"
 
-  constructor .config/ProjectConfiguration --empty-lock-file/bool=false:
+  constructor .config/ProjectConfiguration
+      --empty-lock-file/bool=false
+      --ui/cli.Ui:
+    ui_ = ui
     if config.specification-file-exists:
-      specification = ProjectSpecification.load this
+      specification = ProjectSpecification.load this --ui=ui
     else:
-      specification = ProjectSpecification.empty this
+      specification = ProjectSpecification.empty this --ui=ui
 
     if config.lock-file-exists:
       lock-file = LockFile.load specification
@@ -90,14 +93,14 @@ class Project:
     specification.save
     lock-file.save
 
-  install-remote prefix/string remote/Description:
+  install-remote prefix/string remote/Description --registries/Registries:
     specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
-    solve_ --no-update-everything
+    solve_ --no-update-everything --registries=registries
     save
 
-  install-local prefix/string path/string:
+  install-local prefix/string path/string --registries/Registries:
     specification.add-local-dependency prefix path
-    solve_ --no-update-everything
+    solve_ --no-update-everything --registries=registries
     save
 
   uninstall prefix/string:
@@ -105,8 +108,8 @@ class Project:
     lock-file.update --remove-prefix=prefix
     save
 
-  update:
-    solve_ --update-everything
+  update --registries/Registries:
+    solve_ --update-everything --registries=registries
     save
 
   install:
@@ -140,10 +143,10 @@ class Project:
     updates all dependencies. Otherwise, uses the lock-file to avoid unnecessary
     changes.
   */
-  solve_ --update-everything/bool:
+  solve_ --update-everything/bool --registries/Registries:
     dependencies := specification.collect-registry-dependencies
     min-sdk := specification.compute-min-sdk-version
-    solver := Solver registries --sdk-version=sdk-version --outputter=(:: print it)
+    solver := Solver registries --sdk-version=sdk-version --ui=ui_
     if not update-everything and lock-file:
       lock-file.packages.do: | package/Package |
         if package is RepositoryPackage:
@@ -152,15 +155,15 @@ class Project:
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:
       throw "Unable to resolve dependencies"
-    ensure-downloaded_ --solution=solution
+    ensure-downloaded_ --solution=solution --registries=registries
     builder := LockFileBuilder --solution=solution --project=this
-    lock-file = builder.build
+    lock-file = builder.build --registries=registries
 
-  ensure-downloaded_ --solution/Solution:
+  ensure-downloaded_ --solution/Solution --registries/Registries:
     cached-contents := cached-repository-contents_
     solution.packages.do: | url/string versions/List |
       versions.do:
-        cached-contents = ensure-downloaded url it --cached-contents=cached-contents
+        cached-contents = ensure-downloaded url it --cached-contents=cached-contents --registries=registries
 
   relative-cached-repository-dir url/string version/SemanticVersion -> string:
     return "$url/$version"
@@ -178,7 +181,23 @@ class Project:
     contents-path := "$packages-cache-dir/contents.json"
     file.write-contents (json.encode contents) --path=contents-path
 
-  ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null -> Map:
+  ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null --registries/Registries -> Map:
+    return ensure-downloaded url version
+      --cached-contents=cached-contents
+      --compute-hash=:
+        description := registries.retrieve-description url version
+        hash := description.ref-hash
+        if not hash:
+          // Use the version instead.
+          version-tag := "refs/tags/v$version"
+          repository := Repository url
+          hash = repository.refs.get "refs/tags/v$version"
+          if not hash:
+            throw "Tag v$version not found for package '$url'"
+
+  ensure-downloaded url/string version/SemanticVersion -> Map
+      --cached-contents/Map?=null
+      [--compute-hash]:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
     if cached-contents.contains url and cached-contents[url].contains version-string:
@@ -188,35 +207,26 @@ class Project:
     assert: cached-repository-dir.ends-with relative-dir
     repo-toit-git-path := "$cached-repository-dir/.toit-git"
     if not file.is-file repo-toit-git-path:
-      hash := download_ url version --destination=cached-repository-dir
+      hash := compute-hash.call
       file.write-contents hash --path=repo-toit-git-path
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents
     return cached-contents
 
-  download_ url/string version/SemanticVersion --destination/string -> string:
+  download_ url/string version/SemanticVersion --destination/string --hash/string -> none:
     directory.mkdir --recursive destination
-    description := registries.retrieve-description url version
     repository := Repository url
-    hash := description.ref-hash
-    if not hash:
-      // Use the version instead.
-      version-tag := "refs/tags/v$version"
-      hash = repository.refs.get "refs/tags/v$version"
-      if not hash:
-        throw "Tag v$version not found for package '$url'"
     pack := repository.clone hash
     pack.expand destination
-    return hash
 
   load-package-specification url/string version/SemanticVersion -> ExternalSpecification:
     cached-repository-dir := cached-repository-dir_ url version
-    return ExternalSpecification --dir=(fs.to-absolute cached-repository-dir)
+    return ExternalSpecification --dir=(fs.to-absolute cached-repository-dir) --ui=ui_
 
   load-local-specification path/string -> ExternalSpecification:
-    return ExternalSpecification --dir=(fs.to-absolute "$root/$path")
+    return ExternalSpecification --dir=(fs.to-absolute "$root/$path") --ui=ui_
 
-  hash-for --url/string --version/SemanticVersion -> string?:
+  hash-for --url/string --version/SemanticVersion --registries/Registries -> string?:
     description := registries.retrieve-description url version
     result := description.ref-hash
     if not result:

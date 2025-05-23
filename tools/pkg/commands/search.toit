@@ -21,16 +21,21 @@ import ..pkg
 import ..registry
 import ..registry.description
 import ..semantic-version
+
+import .base_
 import .list
 
-class SearchCommand:
+class SearchCommand extends PkgCommand:
   verbose/bool
   search-string/string
+
   constructor invocation/cli.Invocation:
     verbose = invocation[VERBOSE-OPTION]
     search-string = invocation[NAME-OPTION]
+    super invocation
 
   execute:
+    registries.sync
     search-result := registries.search --free-text search-string
 
     url-to-description/Map := {:}

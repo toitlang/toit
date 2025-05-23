@@ -17,7 +17,6 @@ import encoding.yaml.parser
 
 import .semantic-version-parser
 
-
 class ConstraintParseResult:
   prefix/string?
   semantic-version/SemanticVersionParseResult
@@ -25,6 +24,7 @@ class ConstraintParseResult:
   constructor .prefix .semantic-version:
 
   stringify: return prefix ? "$prefix$semantic-version.triple.triple": semantic-version.triple.triple.stringify
+
 /*
   A PEG grammer for the constraints
 

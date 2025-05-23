@@ -16,12 +16,12 @@
 import cli
 import host.file
 
-import ..error
 import ..project
 
+import .base_
 import .utils_
 
-class InitCommand:
+class InitCommand extends PkgCommand:
   static NAME ::= "name"
   static DESCRIPTION ::= "description"
 
@@ -33,11 +33,12 @@ class InitCommand:
     description := invocation[DESCRIPTION]
 
     if config.specification-file-exists or config.lock-file-exists:
-      error "Directory already contains a project"
+      invocation.cli.ui.abort "Directory already contains a project"
 
-    project = Project config --empty-lock-file
+    project = Project config --empty-lock-file --ui=invocation.cli.ui
     if name: project.specification.name = name
     if description: project.specification.description = description
+    super invocation
 
   execute:
     project.save
