@@ -1,0 +1,5 @@
+toit (2.0.0~alpha.180-1) unstable; urgency=medium
+
+  * Initial release. (Closes: #XXXXXX) <---- TODO: Reference ITP bug if you file one
+
+ -- Florian Loitsch <florian@toit.io>  Thu, 22 May 2025 11:58:00 +0200

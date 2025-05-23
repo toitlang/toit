@@ -7,7 +7,6 @@
   },
   "configurePresets": [
     {
-      "binaryDir": "build",
       "name": "default",
       "hidden": false,
       "generator": "Ninja",
