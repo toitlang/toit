@@ -21,10 +21,11 @@ import encoding.yaml
 
 import ..pkg
 import ..registry
-import ..error
 import ..registry.description
 
-class ListCommand:
+import .base_
+
+class ListCommand extends PkgCommand:
   name/string?
   verbose/bool
   output/string
@@ -33,6 +34,8 @@ class ListCommand:
     name = invocation[NAME-OPTION]
     verbose = invocation[VERBOSE-OPTION]
     output = invocation[OUTPUT-OPTION]
+
+    super invocation
 
   execute:
     registry-packages := registries.list-packages

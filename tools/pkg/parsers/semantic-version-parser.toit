@@ -28,8 +28,9 @@ class TripleParseResult:
   constructor major/int minor/int? patch/int?:
     triple = [major, minor, patch]
 
-/*
-A PEG grammar for the semantic version
+/**
+A PEG grammar for the semantic version.
+
 semantic-version ::= "v"?
                       version-core
                       pre-releases?
@@ -50,7 +51,6 @@ numeric ::= '0' | (digit - '0') digit *
 digit ::= [0-9]
 letter := [a-zA-Z]
 */
-
 class SemanticVersionParser extends parser.PegParserBase_:
   allow-missing-minor/bool
 

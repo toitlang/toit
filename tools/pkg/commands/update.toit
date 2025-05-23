@@ -20,18 +20,15 @@ import cli
 import ..pkg
 import ..project
 
+import .base_
 import .utils_
 
-class UpdateCommand:
-  project/Project
-
+class UpdateCommand extends PkgProjectCommand:
   constructor invocation/cli.Invocation:
-    config := project-configuration-from-cli invocation
-    config.verify
-    project = Project config
+    super invocation
 
   execute:
-    project.update
+    project.update --registries=registries
 
   static CLI-COMMAND ::=
       cli.Command "update"

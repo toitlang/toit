@@ -1,0 +1,41 @@
+exec main.toit
+
+STDERR---
+main.toit:3:8: error: Package for prefix 'pkg' not found
+import pkg
+       ^~~
+main.toit:6:7: error: Unresolved identifier: 'say-hello'
+  pkg.say-hello
+      ^~~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+OK
+[pkg, install, --local, pkg]
+==================
+exec main.toit
+hello from pkg
+Exit Code: 0
+==================
+command
+==================
+OK
+[pkg, install, --local, --prefix=prepkg, pkg2]
+==================
+exec main2.toit
+hello from pkg2
+Exit Code: 0
+==================
+command
+==================
+OK
+[pkg, install, --local, pkg]
+==================
+command
+==================
+OK
+[pkg, install, --local, pkg3]
+==================
+exec main3.toit
+hello from pkg3_modified
+Exit Code: 0

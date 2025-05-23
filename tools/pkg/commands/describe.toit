@@ -21,7 +21,6 @@ import host.file
 import encoding.yaml
 
 import ..pkg
-import ..error
 import ..project
 import ..project.specification
 import ..registry
@@ -30,12 +29,13 @@ import ..license
 import ..git
 import ..file-system-view
 
+import .base_
 import .list
 
 
 NOT-SCRAPED-STRING ::= "<Not scraped for local paths>"
 
-class DescribeCommand:
+class DescribeCommand extends PkgCommand:
   url-path/string? := ?
   version/string?
   out-dir/string?
@@ -46,6 +46,7 @@ class DescribeCommand:
     version = invocation[VERSION-OPTION]
     out-dir = invocation[OUT-DIR-OPTION]
     allow-local-deps = invocation[ALLOW-LOCAL-DEPS]
+    super invocation
 
   execute:
     if not version:
@@ -120,7 +121,7 @@ class DescribeCommand:
     src := "$url-path/src"
     description := build-description
       --check-src-dir=: file.is-directory src
-      --load-specification=: file.is-file (Specification.file-name url-path) and ExternalSpecification --dir=url-path
+      --load-specification=: file.is-file (Specification.file-name url-path) and ExternalSpecification --dir=url-path --ui=ui
       --load-license-file=: file.is-file "LICENSE" and file.read-contents "LICENSE"
       --hash=NOT-SCRAPED-STRING
       --version=NOT-SCRAPED-STRING
@@ -141,7 +142,7 @@ class DescribeCommand:
       --check-src-dir=: (file-view.get "src") is FileSystemView
       --load-specification=:
         package-content := file-view.get Specification.FILE-NAME
-        package-content and RepositorySpecification package-content
+        package-content and RepositorySpecification package-content --ui=ui
       --load-license-file=: file-view.get "LICENSE"
       --hash=ref-hash
       --version=version

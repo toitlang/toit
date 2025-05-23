@@ -45,8 +45,8 @@ interface RepositoryPackage extends Package:
   version -> SemanticVersion
   ref-hash -> string
 
-  ensure-downloaded
   cached-repository-dir -> string
+  ensure-downloaded -> none
 
 
 interface LocalPackage extends Package:
@@ -65,13 +65,6 @@ abstract class PackageBase implements Package:
   constructor .name .prefixes .project-specification:
 
   abstract specification -> Specification
-
-  specification url/string version/SemanticVersion -> Specification:
-    ensure-downloaded url version
-    return project-specification.project.load-package-specification url version
-
-  ensure-downloaded url/string version/SemanticVersion:
-    project-specification.project.ensure-downloaded url version
 
   cached-repository-dir url/string version/SemanticVersion:
     return project-specification.project.cached-repository-dir_ url version
@@ -102,10 +95,11 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
     map["hash"] = ref-hash
 
   specification -> Specification:
-    return specification url version
+    ensure-downloaded
+    return project-specification.project.load-package-specification url version
 
   ensure-downloaded:
-    ensure-downloaded url version
+    project-specification.project.ensure-downloaded url version --compute-hash=(: ref-hash)
 
   cached-repository-dir -> string:
     return cached-repository-dir url version
@@ -259,7 +253,7 @@ class LockFileBuilder:
           runes.add '_'
     return string.from-runes runes
 
-  build -> LockFile:
+  build --registries/Registries -> LockFile:
     packages := {:}  /// From id to $Package.
     used-ids := {}  // Just to avoid clashes with local packages.
 
@@ -277,7 +271,7 @@ class LockFileBuilder:
         specification := project_.load-package-specification url version
         update-sdk-version.call specification.sdk-version
         name := specification.name
-        hash := project_.hash-for --url=url --version=version
+        hash := project_.hash-for --url=url --version=version --registries=registries
         id-prefix := url-id-prefixes-map_[url]
         // We simply use the url + major version as key.
         id := "$id-prefix-$version.major"

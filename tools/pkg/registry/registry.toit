@@ -15,6 +15,7 @@
 
 import encoding.yaml
 
+import cli
 import cli.cache show Cache FileStore
 import host.file
 
@@ -22,13 +23,12 @@ import .local
 import .git
 import .description
 import ..file-system-view
-import ..error
 import ..semantic-version
 import ..constraints
 import ..utils
 import .cache
 
-registries ::= Registries
+// registries ::= Registries
 
 // TODO(florian): move this cache global to a better place. It is used by many other libraries.
 cache ::= Cache --app-name="toit_pkg"
@@ -40,10 +40,10 @@ This class groups all registries and provides a common interface for them.
 */
 class Registries:
   registries := {:}
-  error-reporter/Lambda
-  outputter/Lambda
+  ui_/cli.Ui
 
-  constructor --.error-reporter/Lambda=(:: error it) --.outputter/Lambda=(:: print it):
+  constructor --ui/cli.Ui:
+    ui_ = ui
     registries-map :=
         yaml.decode
             cache.get "registries.yaml": | store/FileStore |
@@ -56,18 +56,19 @@ class Registries:
                       }
 
     registries-map.do: | name/string map/Map |
-      type := map.get "type" --if-absent=: error-reporter.call "Registry $name does not have a type."
+      type := map.get "type" --if-absent=: ui_.abort "Registry $name does not have a type."
       if type == "git":
-        url := map.get "url" --if-absent=: error-reporter.call "Registry $name does not have a url."
+        url := map.get "url" --if-absent=: ui_.abort "Registry $name does not have a url."
         ref-hash := map.get "ref-hash"
         registries[name] = GitRegistry name url ref-hash
       else if type == "local":
-        path := map.get "path" --if-absent=: error-reporter.call "Registry $name does not have a path."
+        path := map.get "path" --if-absent=: ui_.abort "Registry $name does not have a path."
         registries[name] = LocalRegistry name path
       else:
-        error "Registry $name has an unknown type '$type'"
+        ui_.abort "Registry $name has an unknown type '$type'"
 
-  constructor.filled .registries/Map --.error-reporter/Lambda=(:: error it) --.outputter/Lambda=(:: print it):
+  constructor.filled .registries/Map --ui/cli.Ui:
+    ui_ = ui
 
   search --registry-name/string?=null search-string/string -> Description:
     search-results := search_ registry-name search-string
@@ -82,8 +83,8 @@ class Registries:
         search-version-prefix := search-string-split[1]
         package-exists := not (search_ registry-name search-name-suffix).is-empty
         if package-exists:
-          error-reporter.call "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
-      error-reporter.call "Package '$search-string' not found $registry-info"
+          ui_.abort "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
+      ui_.abort "Package '$search-string' not found $registry-info"
     else:
       if not registry-name:
         // Test for the same package appearing in multiple registries.
@@ -94,7 +95,7 @@ class Registries:
           return search-results[0][1]
 
       registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
-      error-reporter.call "Multiple packages found for '$search-string' $registry-info"
+      ui_.abort "Multiple packages found for '$search-string' $registry-info"
 
     unreachable
 
@@ -125,14 +126,14 @@ class Registries:
             (registry.search search-string).map: [name, it]
       return search-results
     else:
-      registry/Registry := registries.get registry-name --if-absent=: error-reporter.call "Registry $registry-name not found."
+      registry/Registry := registries.get registry-name --if-absent=: ui_.abort "Registry $registry-name not found."
       search-results := registry.search search-string
       return search-results.map: [registry-name, it]
 
   retrieve-description url/string version/SemanticVersion -> Description:
     registries.do --values:
       if description := it.retrieve-description url version: return description
-    error-reporter.call "Not able to find package $url with version $version."
+    ui_.abort "Not able to find package $url with version $version."
     unreachable
 
   /**
@@ -179,27 +180,32 @@ class Registries:
 
   add --local name/string path/string:
     if not local: throw "INVALID_ARGUMENT"
-    if registries.contains name: error-reporter.call "Registry $name already exists."
+    if registries.contains name: ui_.abort "Registry $name already exists."
     registries[name] = LocalRegistry name path
     save_
 
   add --git name/string url/string:
     if not git: throw "INVALID_ARGUMENT"
-    if registries.contains name: error-reporter.call "Registry $name already exists."
+    if registries.contains name: ui_.abort "Registry $name already exists."
     registries[name] = GitRegistry name url null
     registries[name].sync  // To check that the url is valid.
     save_
 
   remove name/string:
-    if not registries.contains name: error-reporter.call "Registry $name does not exist."
+    if not registries.contains name: ui_.abort "Registry $name does not exist."
     registries.remove name
     save_
 
   list:
-    outputter.call "$(%-10s "Name") $(%-6s "Type") Url/Path"
-    outputter.call "$(%-10s "----") $(%-6s "----") --------"
+    data := []
     registries.do: | name registry |
-      outputter.call "$(%-10s name) $(%-6s registry.type) $(registry is GitRegistry ? registry.url : registry.path)"
+      row := {
+        "name": name,
+        "type": registry.type,
+        "path": registry is GitRegistry ? registry.url : registry.path
+      }
+      data.add row
+    ui_.emit-table --result --header={"name": "Name", "type": "Type", "path": "Url/Path"} data
 
   list-packages -> Map:
     return registries.map: | name registry/Registry |
@@ -210,7 +216,7 @@ class Registries:
     save_
 
   sync --name/string:
-    registry := registries.get name --if-absent=: error "Registry $name does not exist"
+    registry := registries.get name --if-absent=: ui_.abort "Registry $name does not exist"
     registry.sync
     save_
 

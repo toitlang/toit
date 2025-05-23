@@ -1,0 +1,3 @@
+Aborted
+[pkg, install, --local, main.toit]
+Error: Path supplied in package argument is an invalid local package, missing main.toit/package.yaml.

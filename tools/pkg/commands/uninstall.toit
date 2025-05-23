@@ -20,17 +20,15 @@ import cli
 import ..pkg
 import ..project
 
+import .base_
 import .utils_
 
-class UninstallCommand:
+class UninstallCommand extends PkgProjectCommand:
   name/string
-  project/Project
+
   constructor invocation/cli.Invocation:
     name = invocation[NAME]
-
-    config := project-configuration-from-cli invocation
-    config.verify
-    project = Project config
+    super invocation
 
   execute:
     project.uninstall name

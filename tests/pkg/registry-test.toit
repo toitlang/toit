@@ -12,6 +12,7 @@ import system
 import encoding.yaml
 
 import .setup
+import .utils_
 
 import ...tools.pkg.registry
 import ...tools.pkg.registry.git
@@ -95,11 +96,9 @@ test-local:
   expect-equals 2 (registry.search "local").size
 
 test-registries:
-  outputs := []
+  test-ui := TestUi
 
-  test-registries := Registries
-                       --error-reporter=(:: throw it )
-                       --outputter=(:: outputs.add it )
+  test-registries := Registries --ui=test-ui
 
   test-registries.list
   expect-equals
@@ -107,8 +106,8 @@ test-registries:
       Name       Type   Url/Path
       ----       ----   --------
       toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.add --local "local" "input/registry"
   test-registries.list
@@ -118,8 +117,8 @@ test-registries:
       ----       ----   --------
       toit       git    github.com/toitware/registry
       local      local  input/registry"""
-      outputs.join "\n"
-  outputs = []
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.remove "local"
   test-registries.list
@@ -128,8 +127,8 @@ test-registries:
       Name       Type   Url/Path
       ----       ----   --------
       toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+      test-ui.stdout
+  test-ui.stdout = ""
 
   expect-throw "Registry toit already exists." : test-registries.add --local "toit" ""
   expect-throw "Registry toit already exists." : test-registries.add --git "toit" ""
@@ -143,8 +142,8 @@ test-registries:
       ----       ----   --------
       toit       git    github.com/toitware/registry
       toit2      git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.remove "toit2"
   test-registries.list
@@ -153,8 +152,8 @@ test-registries:
       Name       Type   Url/Path
       ----       ----   --------
       toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.add --local "local" "input/registry"
   expect-equals 2 test-registries.list-packages.size
