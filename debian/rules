@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+
+# Don't run the tests. They require more setup.
+export DEB_BUILD_OPTIONS = nocheck
+
+# We get the number of available cores using 'nproc'.
+# 'dh_auto_configure' and 'dh_auto_build' will automatically pick this up.
+export CMAKE_BUILD_PARALLEL_LEVEL ?= $(shell nproc)
+
+# Tell dh_auto_configure to use the 'build' directory, matching CMakePresets.json.
+export DH_CMAKE_BUILD_DIR = build
+
+# Standard debhelper sequence.
+# The '--with cmake' ensures that CMake-specific helpers are used.
+# 'dh_auto_configure' will automatically find and use the 'default' preset
+# from your CMakePresets.json, handling the generator, toolchain, and build type.
+# 'dh_auto_build' will then build your project.
+# 'dh_auto_test' can be added if you have CTest tests enabled (e.g., CMAKE_ENABLE_TESTING=ON).
+# 'dh_auto_install' handles the installation into debian/tmp.
+%:
+	dh $@ --with cmake --buildsystem=cmake+ninja
+
+# Override dh_auto_configure to specifically use the 'default' preset from CMakePresets.json.
+# This ensures that the Ninja generator, toolchain file, and build type from your preset are used.
+override_dh_auto_configure:
+	dh_auto_configure -- --preset default
+
+
+# Override dh_auto_install to direct the installation into the debian/tmp directory.
+# 'dh_auto_install' will pass --prefix=/usr to CMake, which is correct for the final
+# Debian package installation path. This override ensures CMake installs to our
+# temporary staging area, and then 'dh_install' will move files to the final locations.
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/tmp
+
+override_dh_dwz:
+	# Don't touch the go-generated executable.
+	dh_dwz -X 'debian/toit/usr/lib/toit/bin/toit.pkg'

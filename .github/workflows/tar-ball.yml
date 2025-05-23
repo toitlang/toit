@@ -13,7 +13,7 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 
-name: Upload full source tarball
+name: Upload full source tarball and debian package
 
 on:
   release:
@@ -151,3 +151,59 @@ jobs:
           out/usr/lib/toit/bin/toit.run --version
           out/usr/lib/toit/bin/toit.pkg version
           ls out/usr/lib/toit/lib/core/core.toit
+
+  debian:
+    needs: build-and-upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download tarball from artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-and-upload.outputs.archive_name }}
+
+      - name: Extract tarball
+        shell: bash
+        run: |
+          tar -xzf ${{ needs.build-and-upload.outputs.archive_name }}
+          mv ${{ needs.build-and-upload.outputs.archive_prefix }} toit
+
+      - name: Build debian package
+        shell: bash
+        run: |
+          cd toit
+          sudo apt-get update
+          sudo apt-get install -y devscripts debhelper dh-cmake
+          # Install the dependencies for the Toit package.
+          sudo apt build-dep .
+          dpkg-buildpackage -us -uc -b
+
+      - name: Check debian package
+        shell: bash
+        run: |
+          # Check that the deb package is there.
+          if [ ! -f *.deb ]; then
+            find .
+            echo "Deb package not found!"
+            exit 1
+          fi
+          # Check that the deb package can be installed.
+          sudo dpkg -i *.deb
+          # Check that the Toit version is correct.
+          version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
+          toit version
+
+      - name: Upload debian package to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: toit-debian
+          path: "*.deb"
+
+      - name: Upload debian package to release
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "*.deb"
+          file_glob: true
+          tag: ${{ github.event.release.tag_name }}
+          overwrite: true
