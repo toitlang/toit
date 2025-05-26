@@ -90,7 +90,7 @@ main args/List:
           Write a dependency file ('-' for stdout).
           Requires the '--dependency-format' option.""",
     cli.OptionEnum "dependency-format" ["plain", "ninja"]
-      --help="Set the format of the dependency file.",
+      --help="Set the format of the dependency file. For Makefiles use 'ninja'.",
   ]
 
   compile-run-options := [
