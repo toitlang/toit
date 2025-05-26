@@ -54,15 +54,3 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
     tests/uart-test.toit
   )
 endif()
-
-if(DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
-  # The type propagation tests abort on failures and we can't
-  # catch that as a failing test with CTest. Unfortunately,
-  # that means thwat we have to skip the tests instead.
-  list(APPEND TOIT_SKIP_TESTS
-    # The type propagator doesn't correctly merge types at
-    # non-local branches yet.
-    # See https://github.com/toitlang/toit/issues/2810.
-    tests/finally-params-test.toit
-  )
-endif()

@@ -106,6 +106,7 @@ class TypeStack {
 
   bool merge(TypeStack* other);
   bool merge_required(TypeStack* other);
+  void merge_any(Program* program);
 
   TypeStack* copy() { return new TypeStack(this); }
 

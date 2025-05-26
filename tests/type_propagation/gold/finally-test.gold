@@ -257,7 +257,7 @@ test-break-update-in-finally tests/type_propagation/finally-test.toit
  21[041] - pop 1
  22[085] - branch back T2
  27[014] - load local 0
- 28[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 28[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  31[092] - return null S2 0
 
 [block] in test-break-update-in-finally tests/type_propagation/finally-test.toit
@@ -274,7 +274,7 @@ test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
  12[040] - pop 2
  14[085] - branch back T2
  19[014] - load local 0
- 20[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 20[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  23[092] - return null S2 0
 
 [block] in test-break-update-in-finally-block0 tests/type_propagation/finally-test.toit
@@ -316,7 +316,7 @@ test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
  26[040] - pop 2
  28[085] - branch back T2
  33[014] - load local 0
- 34[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 34[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  37[092] - return null S2 0
 
 [block] in test-break-update-in-finally-block1 tests/type_propagation/finally-test.toit
@@ -357,7 +357,7 @@ test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
  45[040] - pop 2
  47[085] - branch back T1
  52[014] - load local 0
- 53[053] - invoke static id tests/type_propagation/finally-test.toit // [{Null_|True}] -> {Null_|True}
+ 53[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  56[092] - return null S2 0
 
 [block] in test-break-update-in-finally-block2 tests/type_propagation/finally-test.toit
@@ -400,9 +400,9 @@ test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
  36[041] - pop 1
  37[085] - branch back T3
  42[015] - load local 1
- 43[053] - invoke static id tests/type_propagation/finally-test.toit // [{False}] -> {False}
+ 43[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  46[002] - pop, load local S0
- 48[053] - invoke static id tests/type_propagation/finally-test.toit // [{Null_|False}] -> {Null_|False}
+ 48[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  51[092] - return null S3 0
 
 [block] in test-break-update-in-finally-block3 tests/type_propagation/finally-test.toit
@@ -437,7 +437,7 @@ test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
  20[041] - pop 1
  21[085] - branch back T1
  26[014] - load local 0
- 27[053] - invoke static id tests/type_propagation/finally-test.toit // [{SmallInteger_}] -> {SmallInteger_}
+ 27[053] - invoke static id tests/type_propagation/finally-test.toit // [{*}] -> {*}
  30[092] - return null S2 0
 
 [block] in test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
@@ -469,7 +469,7 @@ test-break-update-in-finally-nested tests/type_propagation/finally-test.toit
  16[091] - return S1 1
 
 id tests/type_propagation/finally-test.toit
- - argument 0: {String_|Null_|True|False|SmallInteger_|Exception_}
+ - argument 0: {*}
   0[016] - load local 2
   1[091] - return S1 1
 

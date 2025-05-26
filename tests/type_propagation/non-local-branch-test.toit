@@ -4,6 +4,7 @@
 
 main:
   test-break
+  test-break-in-try
   test-continue
   test-nested
 
@@ -13,6 +14,14 @@ test-break:
     invoke:
       x = "hest"
       break
+  id x
+
+test-break-in-try:
+  x/any := 42
+  while true:
+    try:
+      break
+    finally:
   id x
 
 test-continue:

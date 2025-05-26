@@ -37,6 +37,7 @@ class TypeScope {
   }
 
   int level() const { return level_; }
+  int level_linked() const { return level_linked_; }
   bool is_in_try_block() const { return level_linked_ >= 0; }
   int words_per_type() const { return words_per_type_; }
 
@@ -66,6 +67,7 @@ class TypeScope {
   };
 
   bool merge(const TypeScope* other, MergeKind kind);
+  void merge_any_locals(Program* program);
 
  private:
   TypeStack* top_ = null;
@@ -78,7 +80,6 @@ class TypeScope {
   // that because they will be skipped by the unwinding that can
   // at worst stop at the innermost linked scope.
   const int level_linked_;
-  int level_linked() const { return level_linked_; }
 
   MethodTemplate* method_;
   TypeScope* const outer_;
