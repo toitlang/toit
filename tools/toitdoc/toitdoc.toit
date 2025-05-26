@@ -193,15 +193,13 @@ compute-sdk-path --sdk-path/string? --toitc/string? --ui/Ui -> string:
     return sdk-path
 
   toitc = eval-symlinks toitc
-
-  // Try first with the directory of the toitc.
-  sdk-path = fs.dirname toitc
-  lib-dir := fs.join sdk-path "lib"
-  if file.is-directory lib-dir: return sdk-path
-  // Try "..".
-  sdk-path = fs.join sdk-path ".."
-  lib-dir = fs.join sdk-path "lib"
-  if file.is-directory lib-dir: return sdk-path
+  lib-bin-dir := fs.dirname toitc
+  // Try to find the SDK path next to the lib-binary directory.
+  lib-dir := fs.join lib-bin-dir ".." "lib"
+  if file.is-directory lib-dir:
+    // Go from 'sdk/lib/toit/lib' to 'sdk'
+    sdk-path = fs.join lib-bin-dir ".." ".." ".."
+    return sdk-path
   throw "Couldn't determine SDK path"
 
 toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/string -> none:
@@ -227,7 +225,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc --ui=ui
 
   if for-sdk:
-    source = "$sdk-path/lib"
+    source = "$sdk-path/lib/toit/lib"
   else if not source:
     source = directory.cwd
 
