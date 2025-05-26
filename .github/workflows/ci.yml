@@ -1137,8 +1137,11 @@ jobs:
         run: |
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
+          # Also sign the vessels, as all binaries inside a DMG must be signed.
           find toit-x64/bin toit-x64/lib/toit/bin \
+               toit-x64/lib/toit/vessels \
                toit-arm/bin toit-arm/lib/toit/bin \
+               toit-arm/lib/toit/vessels \
                -type f \
                ! -regex '.*/esptool' \
                >> $GITHUB_OUTPUT
