@@ -1129,12 +1129,11 @@ jobs:
         run: |
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
-          # Don't sign the esptool which isn't from us.
-          find toit-x64/bin toit-x64/tools toit-x64/vessels/vessel* toit-x64/vessels/darwin \
-               toit-arm/bin toit-arm/tools toit-arm/vessels/vessel* toit-arm/vessels/darwin \
-             -type f \
-             ! -regex '.*/esptool' \
-             >> $GITHUB_OUTPUT
+          find toit-x64/bin toit-x64/lib/toit/bin \
+               toit-arm/bin toit-arm/lib/toit/bin \
+               -type f \
+               ! -regex '.*/esptool' \
+               >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Sign macOS executables
