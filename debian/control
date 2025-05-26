@@ -1,0 +1,29 @@
+Source: toit
+Maintainer: Florian Loitsch <florian@toit.io>
+Section: devel
+Priority: optional
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-cmake-compat (= 1),
+ golang-go,
+ cmake,
+ ninja-build,
+ xxd
+Standards-Version: 4.7.2
+Homepage: https://toitlang.org
+Vcs-Git: https://github.com/toitlang/toit.git
+Vcs-Browser: https://github.com/toitlang/toit
+Rules-Requires-Root: no
+
+Package: toit
+Architecture: amd64 arm64 riscv64 armhf i386
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends}
+Recommends:
+ esptool
+Description: Toit programming language SDK
+ Toit is a high-level programming language designed for microcontrollers
+ and small devices. It offers a robust and efficient development
+ experience for embedded systems, while also being suitable for desktop
+ and server applications.

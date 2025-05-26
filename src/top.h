@@ -48,7 +48,8 @@
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
 #else
-#error "No build configuration specified: use one of -DTOIT_DEBUG -DTOIT_DEPLOY"
+// If no build configuration is specified, default to TOIT_DEPLOY.
+#define TOIT_DEPLOY
 #endif
 
 #if defined(MULTIPLE_CONFIGURATION_ERROR)
