@@ -1030,7 +1030,7 @@ jobs:
         with:
           uri: ${{ vars.CERTUM_URI }}
           password: ${{ secrets.CERTUM_PWD }}
-          path: toit/tools
+          path: toit/lib/toit/bin
 
       - name: Compress
         run: |
