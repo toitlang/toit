@@ -47,6 +47,15 @@ bool TypeStack::merge_required(TypeStack* other) {
   return false;
 }
 
+void TypeStack::merge_any(Program* program) {
+  for (int i = 0; i <= sp_; i++) {
+    TypeSet existing_type = get(i);
+    if (!existing_type.is_block()) {
+      existing_type.add_any(program);
+    }
+  }
+}
+
 TypeSet TypeStack::push_empty() {
   TypeSet result = get(++sp_);
   result.clear(words_per_type_);

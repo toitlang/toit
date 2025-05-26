@@ -1414,21 +1414,24 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
-    // TODO(kasper): We should be able to do better here, because
-    // we're only unwinding to a specific scope level and we may
-    // not be crossing the try-block.
-    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    TypeSet block = stack->local(0);
+    int target_level = block.block()->level();
+    bool crosses_try = target_level <= scope->level_linked();
+    if (crosses_try) {
+      // If the non-local branch crosses a try-block, we merge
+      // our current types to the scope containing the try, so
+      // the finally block gets analyzed with the right types.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     // Decode the branch target and enqueue the processing work
     // in the worklist associated with the target scope.
     B_ARG1(height_diff);
     uint32 target_bci = Utils::read_unaligned_uint32(bcp + 2);
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
-    TypeSet block = stack->local(0);
     // Find the right outer scope. The outer scope knows if it
     // is linked and it knows its own outer scope, so it has
     // the information necessary to continue analysis in the
     // outer method or block.
-    int target_level = block.block()->level();
     TypeScope* outer = scope;
     while (outer->level() != target_level) outer = outer->outer();
     // Copy the scope using the computed outer scope as the target
@@ -1438,6 +1441,12 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeStack* target_top = target_scope->top();
     int delta = target_top->sp() - block.block()->sp();
     for (int i = 0; i < height_diff + delta; i++) target_top->pop();
+    // TODO(kasper): There may be finally blocks that get executed
+    // as part of unwinding to the non-local branch target. For now,
+    // we don't know what those blocks might do to locals, so we
+    // have to play it safe and grow the types of all possibly
+    // affected locals to the 'any' type.
+    if (crosses_try) target_scope->merge_any_locals(program);
     // Add the copied scope to the correct outer worklist. If we
     // already have a scope registered for the branch target, we
     // will merge into it and end up with a superfluous scope.

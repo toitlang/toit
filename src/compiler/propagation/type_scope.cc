@@ -180,5 +180,17 @@ bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
   return result;
 }
 
+void TypeScope::merge_any_locals(Program* program) {
+  for (int i = 0; i <= level_; i++) {
+    uword wrapped = wrapped_[i];
+    TypeStack* stack = unwrap(wrapped);
+    if (!is_copied(wrapped)) {
+      stack = stack->copy();
+      wrapped_[i] = wrap(stack, true);
+    }
+    stack->merge_any(program);
+  }
+}
+
 } // namespace toit::compiler
 } // namespace toit
