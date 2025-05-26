@@ -154,7 +154,8 @@ jobs:
 
   debian:
     needs: build-and-upload
-    runs-on: ubuntu-latest
+    # Don't use the latest Ubuntu to make it more compatible with older systems.
+    runs-on: ubuntu-22.04
     steps:
       - name: Download tarball from artifacts
         uses: actions/download-artifact@v4
