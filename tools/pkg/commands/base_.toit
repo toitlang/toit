@@ -13,7 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-
 import system
 
 import cli
