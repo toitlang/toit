@@ -1139,9 +1139,9 @@ jobs:
           echo "result<<$EOF" >> $GITHUB_OUTPUT
           # Also sign the vessels, as all binaries inside a DMG must be signed.
           find toit-x64/bin toit-x64/lib/toit/bin \
-               toit-x64/lib/toit/vessels \
+               toit-x64/lib/toit/vessels/vessel* toit-x64/lib/toit/vessels/darwin \
                toit-arm/bin toit-arm/lib/toit/bin \
-               toit-arm/lib/toit/vessels \
+               toit-arm/lib/toit/vessels/vessel* toit-arm/lib/toit/vessels/darwin \
                -type f \
                ! -regex '.*/esptool' \
                >> $GITHUB_OUTPUT
