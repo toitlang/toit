@@ -157,6 +157,18 @@ jobs:
     # Don't use the latest Ubuntu to make it more compatible with older systems.
     runs-on: ubuntu-22.04
     steps:
+      # We only check out the repository for the ccache action.
+      - name: Checkout repository without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+
       - name: Download tarball from artifacts
         uses: actions/download-artifact@v4
         with:
