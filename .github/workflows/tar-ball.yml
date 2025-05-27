@@ -198,8 +198,9 @@ jobs:
           # Check that the Toit version is correct.
           expected_version=${{ needs.build-and-upload.outputs.version }}
           pkg_version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
-          if [ "$pkg_version" != "$expected_version" ]; then
-            echo "Expected pkg version $expected_version but got $pkg_version"
+          # Add the '-1' suffix that Debian packages have.
+          if [ "$pkg_version" != "$expected_version-1" ]; then
+            echo "Expected pkg version $expected_version-1 but got $pkg_version"
             exit 1
           fi
           toit_version=$(toit version)
