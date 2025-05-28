@@ -277,7 +277,8 @@ jobs:
         run: ccache -s
 
       - name: Enable link-time optimizations
-        if: env.DO_RELEASE == 'true'
+        # TODO(florian): we must not run any rebuild-cmake on Windows.
+        if: env.DO_RELEASE == 'true' && runner.os != 'Windows'
         run: |
           make enable-lto
 
