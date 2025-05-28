@@ -73,6 +73,7 @@ jobs:
           echo "archive_name=$archive_name" >> $GITHUB_OUTPUT
           echo "archive_path=${{ github.workspace }}/$archive_name" >> $GITHUB_OUTPUT
           echo "archive_prefix=$prefix" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Upload tarball to artifacts
         uses: actions/upload-artifact@v4
@@ -91,6 +92,7 @@ jobs:
           overwrite: true
 
     outputs:
+      version: ${{ steps.create-tarball.outputs.version }}
       archive_name: ${{ steps.create-tarball.outputs.archive_name }}
       archive_prefix: ${{ steps.create-tarball.outputs.archive_prefix }}
 
@@ -172,6 +174,10 @@ jobs:
         shell: bash
         run: |
           cd toit
+          version=${{ needs.build-and-upload.outputs.version }}
+          # Remove the leading 'v' from the version if it exists.
+          version_without_v=${version:1}
+          sed -i "s/VERSION/$version_without_v/" debian/changelog
           sudo apt-get update
           sudo apt-get install -y devscripts debhelper dh-cmake
           # Install the dependencies for the Toit package.
@@ -190,8 +196,18 @@ jobs:
           # Check that the deb package can be installed.
           sudo dpkg -i *.deb
           # Check that the Toit version is correct.
-          version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
-          toit version
+          expected_version=${{ needs.build-and-upload.outputs.version }}
+          pkg_version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
+          # Add the '-1' suffix that Debian packages have, and deal with the missing 'v' prefix.
+          if [ "v$pkg_version" != "$expected_version-1" ]; then
+            echo "Expected pkg version $expected_version-1 but got v$pkg_version"
+            exit 1
+          fi
+          toit_version=$(toit version)
+          if [ "$toit_version" != "$expected_version" ]; then
+            echo "Expected toit version $expected_version but got $toit_version"
+            exit 1
+          fi
 
       - name: Upload debian package to artifacts
         uses: actions/upload-artifact@v4
