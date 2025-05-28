@@ -58,6 +58,7 @@ target_link_libraries(
   ${TOIT_COMPILER_STATIC}
   ${YAML_STATIC_LIB_NAME}
   ${SEMVER_STATIC_LIB_NAME}
+  ${UTF_8_MANIFEST_LIB}
   )
 
 add_executable(

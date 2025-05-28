@@ -133,6 +133,15 @@ endforeach()
 
 add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
 
+if ("${TOIT_SYSTEM_NAME}" MATCHES "Windows" OR "${TOIT_SYSTEM_NAME}" MATCHES "MSYS")
+  add_library(utf8_manifest OBJECT
+    manifest.rc
+    manifest.xml
+  )
+  enable_language(RC)
+  set(UTF_8_MANIFEST_LIB utf8_manifest)
+endif()
+
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_executable(
     toit
@@ -145,7 +154,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # Add the toit.{compile,run} as dependency, so we can start using the executable once it's built.
   # This doesn't include toit.pkg, though.
   add_dependencies(toit toit.compile toit.run)
-
   add_dependencies(build_tools toit)
 
   add_executable(
@@ -155,7 +163,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     "${run_SRC}"
     )
   set_target_properties(toit.run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin")
-
   add_dependencies(build_tools toit.run)
 
   add_executable(
@@ -163,13 +170,11 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     toit_run_image.cc
     "${EMBEDDED_PROGRAM_IMAGE_CC_run_image}"
     )
-
-  add_dependencies(build_tools toit_run_image)
-
   set_target_properties(toit_run_image
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/run_image"
     )
+  add_dependencies(build_tools toit_run_image)
 endif()
 
 # On linux, we need to link statically against libgcc as well.
@@ -233,6 +238,11 @@ set(TOIT_LINK_LIBS
 target_link_libraries(
   toit_vm
   ${TOIT_WINDOWS_LIBS}
+)
+
+target_link_libraries(
+  toit_vm
+  ${UTF_8_MANIFEST_LIB}
 )
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
