@@ -23,6 +23,7 @@
 // The following two includes are for the migration tool from "foo_bar" to "foo-bar".
 #include "package.h"
 #include "../flags.h"
+#include "../utils.h"
 
 namespace toit {
 namespace compiler {
@@ -44,6 +45,15 @@ void Scanner::skip_hash_bang_line() {
 
 Symbol Scanner::preserve_syntax(int begin, int end) {
   return Symbol::synthetic(input_ + begin, input_ + end);
+}
+
+Symbol Scanner::make_utf8_string(int begin, int end) {
+  // Check that the string is valid UTF-8.
+  if (!Utils::is_valid_utf_8(input_ + begin, end - begin)) {
+    report_error(begin, end, "Invalid UTF-8 string. Is the file encoded in UTF-8?");
+    return Symbol::invalid();
+  }
+  return preserve_syntax(begin, end);
 }
 
 Scanner::State Scanner::create_state(Token::Kind token) {
@@ -472,7 +482,7 @@ Scanner::State Scanner::next_string_format_part() {
     if (is_letter(peek)) {
       peek = advance();
       if (at_skippable_whitespace(peek) || at_eos()) {
-        data_ = preserve_syntax(begin, index_);
+        data_ = make_utf8_string(begin, index_);
         return create_state(Token::STRING);
       }
     }
@@ -500,17 +510,17 @@ Scanner::State Scanner::next_string_part(bool is_multiline_string) {
           advance();
         }
         index = index_ - 2;
-        data_ = preserve_syntax(begin, index);
+        data_ = make_utf8_string(begin, index);
         advance();
         return create_state(Token::STRING_END_MULTI_LINE);
       }
-      data_ = preserve_syntax(begin, index);
+      data_ = make_utf8_string(begin, index);
       advance();
       return create_state(Token::STRING_END);
     } else if (peek == '\\') {
       advance();
     } else if (peek == '$') {
-      data_ = preserve_syntax(begin, index_);
+      data_ = make_utf8_string(begin, index_);
       advance();
       auto token = is_multiline_string
           ? Token::STRING_PART_MULTI_LINE
@@ -610,7 +620,7 @@ Token::Kind Scanner::scan_string(int peek) {
       is_multiline_string = true;
     } else {
       // Just the empty string.
-      data_ = preserve_syntax(begin, index_);
+      data_ = make_utf8_string(begin, index_);
       advance();
       return Token::STRING;
     }
@@ -631,22 +641,22 @@ Token::Kind Scanner::scan_string(int peek) {
           advance();
         }
         index = index_ - 2;
-        data_ = preserve_syntax(begin, index);
+        data_ = make_utf8_string(begin, index);
         advance();
         return Token::STRING_MULTI_LINE;
       }
-      data_ = preserve_syntax(begin, index);
+      data_ = make_utf8_string(begin, index);
       advance();
       return Token::STRING;
     } else if (peek == '\\') {
       advance();
     } else if (peek == '$') {
-      data_ = preserve_syntax(begin, index_);
+      data_ = make_utf8_string(begin, index_);
       advance();
       return is_multiline_string ? Token::STRING_PART_MULTI_LINE : Token::STRING_PART;
     } else if (at_eos() || (!is_multiline_string && is_newline(peek))) {
       report_error(error_pos, index_, "%s", "Unterminated string");
-      data_ = preserve_syntax(begin, index_);
+      data_ = make_utf8_string(begin, index_);
       if (is_multiline_string) {
         return Token::STRING_MULTI_LINE;
       } else {
