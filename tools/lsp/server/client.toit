@@ -27,15 +27,15 @@ import io
 import monitor
 
 with-lsp-client [block]
-    --toitc/string
+    --toit/string
     --lsp-server/string?  // Can be null if not spawning.
-    --compiler-exe/string = toitc
+    --compiler-exe/string = toit
     --toitlsp-exe/string?=null
     --supports-config=true
     --needs-server-args=(not supports-config)
     --spawn-process=false:
   with-lsp-client block
-      --toitc=toitc
+      --toit=toit
       --lsp-server=lsp-server
       --compiler-exe=compiler-exe
       --supports-config=supports-config
@@ -44,23 +44,23 @@ with-lsp-client [block]
       --pre-initialize=(:null)
 
 with-lsp-client [block]
-    --toitc/string
+    --toit/string
     --lsp-server/string?  // Can be null if not spawning.
-    --compiler-exe/string = toitc
+    --compiler-exe/string = toit
     --supports-config=true
     --needs-server-args=(not supports-config)
     --spawn-process=true
     [--pre-initialize]:
   // Clean the given paths, so we use native path separators.
   // This increases test-coverage on Windows.
-  toitc = fs.clean toitc
+  toit = fs.clean toit
   compiler-exe = fs.clean compiler-exe
   if lsp-server: lsp-server = fs.clean lsp-server
   server-args := [lsp-server]
   if needs-server-args: server-args.add compiler-exe
 
   client := LspClient.start
-      toitc
+      toit
       server-args
       --supports-config=supports-config
       --compiler-exe=compiler-exe
@@ -136,12 +136,12 @@ class LspClient:
 
 
   static start -> LspClient
-      server-cmd/string
+      toit/string
       server-args/List
       --supports-config/bool
-      --compiler-exe=server-cmd
+      --compiler-exe=toit
       --spawn-process:
-    start-result := start-server_ server-cmd server-args compiler-exe
+    start-result := start-server_ toit server-args compiler-exe
         --spawn-process=spawn-process
     server-to   := start-result[0]
     server-from := start-result[1]
