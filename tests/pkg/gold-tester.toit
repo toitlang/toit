@@ -49,7 +49,7 @@ class RunResult_:
     if result != "" and not result.ends-with "\n":
       result += "\n <Missing newline at end of stdout> \n"
     if stderr != "":
-      result += "\nSTDERR---\n" + stderr
+      result += "\nSTDERR---\n" + (stderr.replace --all "\r" "")
       if not stderr.ends-with "\n":
         result += "\n <Missing newline at end of stderr> \n"
     result += "Exit Code: $exit-code\n"
