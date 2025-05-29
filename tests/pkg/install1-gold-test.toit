@@ -9,6 +9,7 @@ main args:
 
 test tester/GoldTester:
   tester.gold "install" [
+    ["pkg", "init"],
     ["exec", "main.toit"],
     ["pkg", "install", "--local", "pkg"],
     ["exec", "main.toit"],
