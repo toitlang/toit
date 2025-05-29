@@ -13,14 +13,14 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_NAME Windows CACHE STRING "The system name for the toolchain" FORCE)
 
 set(triple i686-w64-mingw32)
 
-set(CMAKE_C_COMPILER i686-w64-mingw32-gcc)
-set(CMAKE_C_COMPILER_TARGET ${triple})
-set(CMAKE_CXX_COMPILER i686-w64-mingw32-g++)
-set(CMAKE_CXX_COMPILER_TARGET ${triple})
+set(CMAKE_C_COMPILER i686-w64-mingw32-gcc CACHE STRING "The C compiler for the toolchain")
+set(CMAKE_C_COMPILER_TARGET ${triple} CACHE STRING "The target for the C compiler")
+set(CMAKE_CXX_COMPILER i686-w64-mingw32-g++ CACHE STRING "The C++ compiler for the toolchain")
+set(CMAKE_CXX_COMPILER_TARGET ${triple} CACHE STRING "The target for the C++ compiler")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m32 -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "c flags")
@@ -32,9 +32,9 @@ set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")
 set(CMAKE_CXX_FLAGS_DEBUG "-Og -g" CACHE STRING "c++ Debug flags")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os" CACHE STRING "c++ Release flags")
 
-set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static" CACHE STRING "Linker flags for executables")
 
-set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the host toolchain")
 
-set(GOOS "windows")
-set(GOARCH "386")
+set(GOOS "windows" CACHE STRING "The GOOS for the toolchain")
+set(GOARCH "386" CACHE STRING "The GOARCH for the toolchain")

@@ -133,7 +133,7 @@ endforeach()
 
 add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
 
-if ("${TOIT_SYSTEM_NAME}" MATCHES "Windows" OR "${TOIT_SYSTEM_NAME}" MATCHES "MSYS")
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
   add_library(utf8_manifest OBJECT
     manifest.rc
     manifest.xml

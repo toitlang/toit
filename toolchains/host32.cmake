@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the toolchain")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m32 -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "c flags")
@@ -29,9 +29,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Os $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Release
 set(CMAKE_CXX_FLAGS_ASAN "-O1 -fsanitize=address -fno-omit-frame-pointer -g" CACHE STRING "c++ Asan flags")
 set(CMAKE_CXX_FLAGS_PROF "-Os -DPROF -pg" CACHE STRING "c++ Prof flags")
 
-set(CMAKE_SYSTEM_LIBRARY_PATH /lib32 /usr/lib32)
-set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
+set(CMAKE_SYSTEM_LIBRARY_PATH /lib32 /usr/lib32 CACHE PATH "The system library path for the toolchain")
+set(FIND_LIBRARY_USE_LIB64_PATHS OFF CACHE BOOL "Use lib64 paths for finding libraries")
 
-set(GOARCH "386")
+set(GOARCH "386" CACHE STRING "The GOARCH for the toolchain")
 
 enable_testing()

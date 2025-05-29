@@ -123,18 +123,12 @@ check-mbedtls-config: check-env
 		exit 1; \
 	fi
 
-# We mark this phony because adding and removing .cc files means that
-# cmake needs to be rerun, but we don't detect that, so it might not
-# get run enough.  It takes <1s on Linux to run cmake, so it's
-# usually best to run it eagerly.
-.PHONY: $(BUILD)/$(TARGET)/CMakeCache.txt
 $(BUILD)/$(TARGET)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
 ifneq ($(TARGET),$(HOST))
 # Support for cross-compilation.
 
-.PHONY: $(BUILD)/$(HOST)/CMakeCache.txt
 $(BUILD)/$(HOST)/CMakeCache.txt:
 	$(MAKE) TARGET=$(HOST) rebuild-cmake
 
@@ -165,13 +159,11 @@ sync-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 	(cd $(BUILD)/$(TARGET) && ninja sync_packages)
 
 .PHONY: disable-auto-sync
-disable-auto-sync:
-	$(MAKE) rebuild-cmake
+disable-auto-sync: $(BUILD)/$(TARGET)/CMakeCache.txt
 	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(TARGET)
 
 .PHONY: enable-lto
-enable-lto:
-	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+enable-lto: $(BUILD)/$(HOST)/CMakeCache.txt
 	cmake -DENABLE_LTO=ON $(BUILD)/$(HOST)
 
 
@@ -316,7 +308,7 @@ install: install-sdk
 
 # TESTS (host)
 .PHONY: test
-test:
+test: rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
 .PHONY: rebuild-cmake-hw
@@ -326,6 +318,7 @@ rebuild-cmake-hw:
 		exit 1; \
 	fi
 	mkdir -p $(BUILD)/hw
+	rm -f $(BUILD)/hw/CMakeCache.txt
 	(cd $(BUILD)/hw && cmake -DTOIT_EXE_HW=$$TOIT_EXE_HW -G Ninja $(CURDIR)/tests/hw)
 
 .PHONY: download-packages-hw-host
@@ -343,7 +336,7 @@ test-hw: rebuild-cmake-hw download-packages-hw
 	(cd $(BUILD)/hw && ninja check_hw)
 
 .PHONY: build-test-assets
-build-test-assets: rebuild-cmake
+build-test-assets: $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_test_assets)
 
 .PHONY: test-flaky
@@ -356,7 +349,6 @@ test-fast:
 
 .PHONY: update-gold
 update-gold:
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja update_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_pkg_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_minus_s_gold)
@@ -364,20 +356,18 @@ update-gold:
 
 .PHONY: test-health
 test-health: download-packages download-packages-hw-host
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold: download-packages download-packages-hw-host
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_health_gold)
 
 .PHONY: enable-external
-enable-external:
-	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+enable-external: $(BUILD)/$(HOST)/CMakeCache.txt
 	cmake -DTOIT_TEST_EXTERNAL=ON $(BUILD)/$(HOST)
 	$(MAKE) download-external
+	# Run rebuild-cmake so that the new files are discovered.
 	$(MAKE) rebuild-cmake
 	$(MAKE) download-packages
 
@@ -389,8 +379,7 @@ check-external-enabled:
 	fi
 
 .PHONY: disable-external
-disable-external: check-external-enabled
-	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+disable-external: check-external-enabled $(BUILD)/$(HOST)/CMakeCache.txt
 	cmake -DTOIT_TEST_EXTERNAL=OFF $(BUILD)/$(HOST)
 
 .PHONY: download-external
@@ -408,7 +397,6 @@ test-external-health: check-external-enabled
 
 .PHONY: update-external-health-gold
 update-external-health-gold: download-packages check-external-enabled
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_external_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_external_health_gold)
 
