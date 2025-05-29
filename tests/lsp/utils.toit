@@ -81,13 +81,13 @@ extract-locations path -> Map/*<string, Location>*/:
       result[name] = Location path definition-line column
   return result
 
-run-toit toitc args -> List?:
+run-toit toit args -> List?:
   process := pipe.fork
       --use-path
       --create-stdin
       --create-stdout
-      toitc
-      [toitc] + args
+      toit
+      [toit] + args
   try:
     process.stdin.close
     return process.stdout.in.read-lines
@@ -97,6 +97,6 @@ run-toit toitc args -> List?:
     exit-code := pipe.exit-code exit-value
     exit-signal := pipe.exit-signal exit-value
     if exit-signal:
-      throw "$toitc exited with signal $exit-signal"
+      throw "$toit exited with signal $exit-signal"
     if exit-code != 0:
-      throw "$toitc exited with code $exit-code"
+      throw "$toit exited with code $exit-code"

@@ -32,9 +32,6 @@ import .lsp.server.server as lsp
 import .snapshot as snapshot-lib
 
 main args/List:
-  if args.size > 0 and args[0].ends-with ".toit":
-    args = ["run", "--"] + args
-
   // We don't want to add a `--version` option to the root command,
   // as that would make the option available to all subcommands.
   // Fundamentally, getting the version isn't really an option, but a
@@ -514,6 +511,11 @@ main args/List:
     // If the check fails, it throws an exception.
     root-command.check
     true
+
+  if args.size > 0 and
+      (args[0].ends-with ".toit" or args[0].ends-with ".snapshot"):
+    args = ["run", "--"] + args
+
   root-command.run args
 
 tool-path sdk-dir/string? tool/string -> string:
@@ -541,7 +543,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   if not file.is-file source: ui.abort "Source file not found: $source"
   source-contents := file.read-contents source
   is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
-  if command != "run" and is-snapshot:
+  if command != "run" and command != "compile" and is-snapshot:
     ui.abort "Cannot $command a snapshot file"
 
   args := []
@@ -630,12 +632,18 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
 run-lsp-server invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]
-  toitc-cmd := [tool-path sdk-dir "toit.compile"]
-  if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
+  toit-exe-path/string := ?
+  // Use ourself as the toitc command.
+  if sdk-dir:
+    toit-exe-path = fs.join sdk-dir "bin" "toit"
+    if system.platform == system.PLATFORM-WINDOWS:
+      toit-exe-path = "$(toit-exe-path).exe"
+  else:
+    toit-exe-path = system.program-path
   // We are not using the cli's Ui class, as it might print on stdout.
   if invocation.cli.ui.level >= Ui.VERBOSE-LEVEL:
-    print-on-stderr_ "Using $toitc-cmd.first"
-  lsp.main --toit-path-override=toitc-cmd.first
+    print-on-stderr_ "Using $toit-exe-path as analyzer for the LSP server."
+  lsp.main --toit-path-override=toit-exe-path
 
 run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]

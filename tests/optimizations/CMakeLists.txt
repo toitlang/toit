@@ -38,7 +38,7 @@ foreach(file ${TOIT_OPTIMIZATION_TESTS})
 
   add_test(
     NAME ${TEST_EXPECTATION_NAME}
-    COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
+    COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS slow
     )

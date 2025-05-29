@@ -57,7 +57,7 @@ Creates a tar archive at the given $path.
 Returns a `compiler-input`. When running the repro with that input, it should
   yield a result that checks successfully $check-compiler-output.
 */
-create-archive path toitc -> string:
+create-archive path toit -> string:
   documents := Documents
 
   untitled-uri := "untitled:Untitled1"
@@ -66,9 +66,9 @@ create-archive path toitc -> string:
   documents.did-open --uri=untitled-uri UNTITLED-TEXT_ 1
   timeout-ms := -1  // No timeout.
 
-  repro-filesystem := FilesystemLocal (sdk-path-from-compiler toitc)
+  repro-filesystem := FilesystemLocal (sdk-path-from-compiler toit)
   protocol := FileServerProtocol documents repro-filesystem
-  compiler := Compiler toitc timeout-ms
+  compiler := Compiler toit timeout-ms
       --protocol=protocol
 
   compiler-input := create-compiler-input --path=untitled-path
@@ -94,14 +94,15 @@ create-archive path toitc -> string:
 /**
 Runs the compiler using the repro archive.
 */
-test-repro-server archive-path toitc compiler-input:
+test-repro-server archive-path toit compiler-input:
+  print "Testing repro server with archive $archive-path"
   process := pipe.fork
       --use-path
       --create-stdin
       --create-stdout
-      toitc
+      toit
       [
-        toitc,
+        toit,
         "--lsp",
       ]
   // Start the repro server and extract the port from its output.
@@ -135,7 +136,7 @@ test-repro-server archive-path toitc compiler-input:
 archive-test
     archive-path/string
     snapshot-path/string
-    toitc/string
+    toit/string
     client/LspClient:
   untitled-uri := "untitled:Untitled1"
   untitled-path := translator.to-path untitled-uri
@@ -148,7 +149,7 @@ archive-test
   writer.close
 
   compiler-input := create-compiler-input --path=untitled-path
-  test-repro-server archive-path toitc compiler-input
+  test-repro-server archive-path toit compiler-input
 
   client.send-did-change --uri=untitled-uri HELLO-WORLD-TEXT_
   tar-string = client.send-request "toit/archive" {"uri": untitled-uri}
@@ -157,13 +158,13 @@ archive-test
   (io.Writer.adapt writer).write content
   writer.close
 
-  lines := run-toit toitc [archive-path, "world"]
+  lines := run-toit toit ["run", archive-path, "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
   // Test that we can use the archive to create a snapshot.
-  run-toit toitc ["-w", snapshot-path, archive-path]
-  lines = run-toit toitc [snapshot-path, "world"]
+  run-toit toit ["compile", "--snapshot", "-o", snapshot-path, archive-path]
+  lines = run-toit toit [snapshot-path, "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
@@ -177,32 +178,32 @@ archive-test
   (io.Writer.adapt writer).write content
   writer.close
 
-  lines = run-toit toitc [archive-path,
+  lines = run-toit toit ["run", archive-path,
                           "-Xarchive_entry_path=$untitled-path",
                           "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
-  lines = run-toit toitc [archive-path,
+  lines = run-toit toit ["run", "--", archive-path,
                           "-Xarchive_entry_path=$untitled-path2",
                           "world"]
   expect-equals 1 lines.size
   expect-equals "good bye world" lines.first
 
   // Test that we can use the archive to create a snapshot.
-  run-toit toitc ["-w",
+  run-toit toit ["compile", "--snapshot",
                   "-Xarchive_entry_path=$untitled-path",
-                  snapshot-path,
+                  "-o", snapshot-path,
                   archive-path]
-  lines = run-toit toitc [snapshot-path, "world"]
+  lines = run-toit toit [snapshot-path, "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
-  run-toit toitc ["-w",
+  run-toit toit ["compile", "--snapshot",
                   "-Xarchive_entry_path=$untitled-path2",
-                  snapshot-path,
+                  "-o", snapshot-path,
                   archive-path]
-  lines = run-toit toitc [snapshot-path, "world"]
+  lines = run-toit toit [snapshot-path, "world"]
   expect-equals 1 lines.size
   expect-equals "good bye world" lines.first
 
@@ -219,23 +220,23 @@ archive-test
   (io.Writer.adapt writer).write content
   writer.close
 
-  lines = run-toit toitc [archive-path,
+  lines = run-toit toit ["run", archive-path,
                           "-Xarchive_entry_path=$untitled-path3",
                           "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
   // Test that we can create a bundle from the archive.
-  run-toit toitc ["-w",
+  run-toit toit ["compile", "--snapshot",
                   "-Xarchive_entry_path=$untitled-path3",
-                  snapshot-path,
+                  "-o", snapshot-path,
                   archive-path]
-  lines = run-toit toitc [snapshot-path, "world"]
+  lines = run-toit toit [snapshot-path, "world"]
   expect-equals 1 lines.size
   expect-equals "hello world" lines.first
 
 main args:
-  toitc := args[0]
+  toit := args[0]
 
   dir := directory.mkdtemp "/tmp/test-repro-"
   repro-path := "$dir/repro.tar"
@@ -243,9 +244,9 @@ main args:
   archive-path := "$dir/archive.tar"
   snapshot-path := "$dir/repro.snap"
   try:
-    compiler-input := create-archive repro-path toitc
-    test-repro-server repro-path toitc compiler-input
-    run-client-test args: archive-test archive-path snapshot-path toitc it
+    compiler-input := create-archive repro-path toit
+    test-repro-server repro-path toit compiler-input
+    run-client-test args: archive-test archive-path snapshot-path toit it
 
   finally:
     directory.rmdir --recursive dir
