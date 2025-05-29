@@ -1,6 +1,3 @@
-OK
-[pkg, init]
-==================
 exec main.toit
 
 STDERR---

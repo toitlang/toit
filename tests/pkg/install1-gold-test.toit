@@ -8,8 +8,11 @@ main args:
   with-gold-tester --with-git-pkg-registry args: test it
 
 test tester/GoldTester:
+  tester.gold "init" [
+    ["pkg", "init"],  // So we don't accidentally use a /tmp/package.yaml.
+  ]
+
   tester.gold "install" [
-    ["pkg", "init"],
     ["exec", "main.toit"],
     ["pkg", "install", "--local", "pkg"],
     ["exec", "main.toit"],
