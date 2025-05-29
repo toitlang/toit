@@ -148,9 +148,6 @@ download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
-	# Delete any existing CMakeCache.txt to force a reconfiguration.
-	# Otherwise variables from the toolchain file will not be set.
-	rm -f $(BUILD)/$(TARGET)/CMakeCache.txt
 	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DHOST_TOIT=$(TOIT_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
 .PHONY: sync
@@ -311,7 +308,7 @@ install: install-sdk
 
 # TESTS (host)
 .PHONY: test
-test:
+test: rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
 .PHONY: rebuild-cmake-hw
@@ -372,7 +369,6 @@ enable-external: $(BUILD)/$(HOST)/CMakeCache.txt
 	$(MAKE) download-external
 	# Run rebuild-cmake so that the new files are discovered.
 	$(MAKE) rebuild-cmake
-	cmake -DTOIT_TEST_EXTERNAL=ON $(BUILD)/$(HOST)
 	$(MAKE) download-packages
 
 .PHONY: check-external-enabled
