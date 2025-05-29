@@ -194,6 +194,7 @@ class Project:
           hash = repository.refs.get "refs/tags/v$version"
           if not hash:
             throw "Tag v$version not found for package '$url'"
+        hash
 
   ensure-downloaded url/string version/SemanticVersion -> Map
       --cached-contents/Map?=null
@@ -208,6 +209,7 @@ class Project:
     repo-toit-git-path := "$cached-repository-dir/.toit-git"
     if not file.is-file repo-toit-git-path:
       hash := compute-hash.call
+      download_ url version --destination=cached-repository-dir --hash=hash
       file.write-contents hash --path=repo-toit-git-path
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents

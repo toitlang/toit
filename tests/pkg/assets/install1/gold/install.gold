@@ -1,10 +1,10 @@
 exec main.toit
 
 STDERR---
-main.toit:3:8: error: Package for prefix 'pkg' not found
+main.toit:5:8: error: Package for prefix 'pkg' not found
 import pkg
        ^~~
-main.toit:6:7: error: Unresolved identifier: 'say-hello'
+main.toit:8:7: error: Unresolved identifier: 'say-hello'
   pkg.say-hello
       ^~~~~~~~~
 Compilation failed
