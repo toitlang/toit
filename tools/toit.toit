@@ -54,6 +54,10 @@ main args/List:
       sdk-dir := invocation["sdk-dir"]
       tool-path sdk-dir "toit.compile"
 
+  toit-from-args := :: | invocation/cli.Invocation |
+      sdk-dir := invocation["sdk-dir"]
+      toit-path sdk-dir
+
   version-command := cli.Command "version"
       --help="Print the version of the Toit SDK."
       --options=[
@@ -496,7 +500,7 @@ main args/List:
   esp-command.add stacktrace.build-command
 
   toitdoc-command := toitdoc.build-command
-      --toitc-from-args=toitc-from-args
+      --toit-from-args=toit-from-args
       --sdk-path-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
   root-command.add toitdoc-command
 
@@ -531,6 +535,15 @@ tool-path sdk-dir/string? tool/string -> string:
     tool-bin-dir = fs.join our-dir ".." "lib" "toit" "bin"
 
   return fs.join tool-bin-dir tool
+
+toit-path sdk-dir/string? -> string:
+  // Use ourself as the toitc command.
+  if sdk-dir:
+    result := fs.join sdk-dir "bin" "toit"
+    if system.platform == system.PLATFORM-WINDOWS:
+      result = "$(result).exe"
+    return result
+  return system.program-path
 
 run sdk-dir/string? tool/string args/List -> int:
   args = [tool-path sdk-dir tool] + args
@@ -632,14 +645,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
 run-lsp-server invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]
-  toit-exe-path/string := ?
-  // Use ourself as the toitc command.
-  if sdk-dir:
-    toit-exe-path = fs.join sdk-dir "bin" "toit"
-    if system.platform == system.PLATFORM-WINDOWS:
-      toit-exe-path = "$(toit-exe-path).exe"
-  else:
-    toit-exe-path = system.program-path
+  toit-exe-path/string := toit-path sdk-dir
   // We are not using the cli's Ui class, as it might print on stdout.
   if invocation.cli.ui.level >= Ui.VERBOSE-LEVEL:
     print-on-stderr_ "Using $toit-exe-path as analyzer for the LSP server."
