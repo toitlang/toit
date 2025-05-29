@@ -347,37 +347,6 @@ jobs:
         run: |
           strip -s build/host/sdk/bin/*
 
-      # For some reason this test must run before we call 'make test' and 'make test-health'.
-      - name: Test Windows code pages
-        if: env.DO_TESTS == 'true' && runner.os == 'Windows' && matrix.shard == 1
-        shell: pwsh
-        run: |
-          # Run the test script which creates a directory with Thai characters
-          # (using code page 874) and runs Toit inside it.
-          cmd.exe /c tests\test-cp874.cmd
-
-          # Read and check output.
-          $outputContent = Get-Content -Path "output.txt" -Raw
-          Write-Host $outputContent
-          if (-not ($outputContent -match "hello")) {
-            Write-Error "Test failed: 'hello' not found in output"
-            exit 1
-          }
-
-          # Now run Toit from inside the directory (to test the CWD).
-          cd 'เดสก์ท็อป'
-          cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
-          cd ..
-          $insideContent = Get-Content -Path "output_inside.txt" -Raw
-          Write-Host $insideContent
-          if (-not ($insideContent -match "hello")) {
-            Write-Error "Test failed: 'hello' not found in output_inside"
-            exit 1
-          }
-
-          # Clean up.
-          Remove-Item -Recurse -Force 'เดสก์ท็อป'
-
       # Test.
       - name: Test
         if: env.DO_TESTS == 'true'
@@ -500,6 +469,38 @@ jobs:
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
           "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
+
+      # We run this test very late to make sure that we don't accidentally rebuild
+      # the Windows SDK without UTF-8 support during other tests.
+      - name: Test Windows code pages
+        if: env.DO_TESTS == 'true' && runner.os == 'Windows' && matrix.shard == 1
+        shell: pwsh
+        run: |
+          # Run the test script which creates a directory with Thai characters
+          # (using code page 874) and runs Toit inside it.
+          cmd.exe /c tests\test-cp874.cmd
+
+          # Read and check output.
+          $outputContent = Get-Content -Path "output.txt" -Raw
+          Write-Host $outputContent
+          if (-not ($outputContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output"
+            exit 1
+          }
+
+          # Now run Toit from inside the directory (to test the CWD).
+          cd 'เดสก์ท็อป'
+          cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
+          cd ..
+          $insideContent = Get-Content -Path "output_inside.txt" -Raw
+          Write-Host $insideContent
+          if (-not ($insideContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output_inside"
+            exit 1
+          }
+
+          # Clean up.
+          Remove-Item -Recurse -Force 'เดสก์ท็อป'
 
       - name: Pack artifacts
         if: matrix.shard == 1
