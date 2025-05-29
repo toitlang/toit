@@ -1,4 +1,4 @@
-toit (2.0.0~alpha.180-1) unstable; urgency=medium
+toit (VERSION-1) unstable; urgency=medium
 
   * Initial release. (Closes: #XXXXXX) <---- TODO: Reference ITP bug if you file one
 

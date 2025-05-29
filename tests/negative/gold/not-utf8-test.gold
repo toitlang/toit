@@ -1,0 +1,4 @@
+tests/negative/not-utf8-other.toit:6:10: error: Invalid UTF-8 string. Is the file encoded in UTF-8?
+  print "scharfes S: ß"
+         ^~~~~~~~~~~~~
+Compilation failed

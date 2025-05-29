@@ -421,6 +421,7 @@ class Scanner {
   }
 
   Symbol preserve_syntax(int begin, int end);
+  Symbol make_utf8_string(int begin, int end);
 
   State create_state(Token::Kind token);
   Token::Kind next_token();

@@ -140,6 +140,14 @@ jobs:
       - name: Set strategy variables
         id: vars
         run: |
+          # The cross-flow must be enabled when signing.
+          if [[ "${{ env.RUN_WINDOWS_SIGN_FLOW }}" == "true" || \
+                "${{ env.RUN_MACOS_SIGN_FLOW }}" == "true" ]]; then
+            echo 'RUN_CROSS_FLOW=true' >> $GITHUB_ENV
+          else
+            echo 'RUN_CROSS_FLOW=false' >> $GITHUB_ENV
+          fi
+
           # When running ssh, only run a single shard of the corresponding platform.
           if [[ ${{ env.ENABLE_SSH }} == "true" ]]; then
             echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
@@ -338,6 +346,37 @@ jobs:
         # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
+
+      # For some reason this test must run before we call 'make test' and 'make test-health'.
+      - name: Test Windows code pages
+        if: env.DO_TESTS == 'true' && runner.os == 'Windows' && matrix.shard == 1
+        shell: pwsh
+        run: |
+          # Run the test script which creates a directory with Thai characters
+          # (using code page 874) and runs Toit inside it.
+          cmd.exe /c tests\test-cp874.cmd
+
+          # Read and check output.
+          $outputContent = Get-Content -Path "output.txt" -Raw
+          Write-Host $outputContent
+          if (-not ($outputContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output"
+            exit 1
+          }
+
+          # Now run Toit from inside the directory (to test the CWD).
+          cd 'เดสก์ท็อป'
+          cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
+          cd ..
+          $insideContent = Get-Content -Path "output_inside.txt" -Raw
+          Write-Host $insideContent
+          if (-not ($insideContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output_inside"
+            exit 1
+          }
+
+          # Clean up.
+          Remove-Item -Recurse -Force 'เดสก์ท็อป'
 
       # Test.
       - name: Test
@@ -831,7 +870,7 @@ jobs:
       - name: Set up macOS ARM environment
         run: |
           if [[ "${{ env.DO_RELEASE }}" == 'true' || \
-                "${{ env.BUILD_ARM_MACOS }}" == 'true' || \
+                "${{ env.BUILD_ARM_MACOS }}" == "true" || \
                 "${{ github.ref }}" == 'refs/heads/master' \
               ]]; then
             echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
@@ -1030,7 +1069,7 @@ jobs:
         with:
           uri: ${{ vars.CERTUM_URI }}
           password: ${{ secrets.CERTUM_PWD }}
-          path: toit/tools
+          path: toit/lib/toit/bin
 
       - name: Compress
         run: |
@@ -1129,12 +1168,14 @@ jobs:
         run: |
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
-          # Don't sign the esptool which isn't from us.
-          find toit-x64/bin toit-x64/tools toit-x64/vessels/vessel* toit-x64/vessels/darwin \
-               toit-arm/bin toit-arm/tools toit-arm/vessels/vessel* toit-arm/vessels/darwin \
-             -type f \
-             ! -regex '.*/esptool' \
-             >> $GITHUB_OUTPUT
+          # Also sign the vessels, as all binaries inside a DMG must be signed.
+          find toit-x64/bin toit-x64/lib/toit/bin \
+               toit-x64/lib/toit/vessels/vessel* toit-x64/lib/toit/vessels/darwin \
+               toit-arm/bin toit-arm/lib/toit/bin \
+               toit-arm/lib/toit/vessels/vessel* toit-arm/lib/toit/vessels/darwin \
+               -type f \
+               ! -regex '.*/esptool' \
+               >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Sign macOS executables
