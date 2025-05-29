@@ -352,7 +352,6 @@ test-fast:
 
 .PHONY: update-gold
 update-gold:
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja update_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_pkg_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_minus_s_gold)
@@ -360,12 +359,10 @@ update-gold:
 
 .PHONY: test-health
 test-health: download-packages download-packages-hw-host
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold: download-packages download-packages-hw-host
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_health_gold)
 
@@ -373,7 +370,9 @@ update-health-gold: download-packages download-packages-hw-host
 enable-external: $(BUILD)/$(HOST)/CMakeCache.txt
 	cmake -DTOIT_TEST_EXTERNAL=ON $(BUILD)/$(HOST)
 	$(MAKE) download-external
+	# Run rebuild-cmake so that the new files are discovered.
 	$(MAKE) rebuild-cmake
+	cmake -DTOIT_TEST_EXTERNAL=ON $(BUILD)/$(HOST)
 	$(MAKE) download-packages
 
 .PHONY: check-external-enabled
@@ -402,7 +401,6 @@ test-external-health: check-external-enabled
 
 .PHONY: update-external-health-gold
 update-external-health-gold: download-packages check-external-enabled
-	$(MAKE) rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja clear_external_health_gold)
 	(cd $(BUILD)/$(HOST) && ninja update_external_health_gold)
 
