@@ -1,6 +1,11 @@
 OK
 [pkg, list, --verbose, list-registry]
 list-registry (list-registry (local))
+  bar:
+    version: 0.0.1
+    url: http://localhost:2222
+    hash: 11223344
+  
   foo:
     version: 1.0.3
     license: MIT
@@ -13,9 +18,4 @@ list-registry (list-registry (local))
     license: MIT
     url: gee
     hash: 99887766
-  
-  bar:
-    version: 0.0.1
-    url: http://localhost:2222
-    hash: 11223344
   

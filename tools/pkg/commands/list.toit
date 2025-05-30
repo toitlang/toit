@@ -87,6 +87,16 @@ class ListCommand extends PkgCommand:
     return { description.name : filtered }
 
   static list-descriptions descriptions/List --verbose/bool --indent/string="" --ui/cli.Ui:
+    descriptions = descriptions.sort: | a/Description b/Description |
+      a.name.compare-to b.name --if-equal=:
+        a.version.compare-to b.version --if-equal=:
+          a.ref-hash.compare-to b.ref-hash
+
+      if a.name < b.name: continue.sort -1
+      if a.name > b.name: continue.sort 1
+      if a.version < b.version: continue.sort -1
+      if a.version > b.version: continue.sort 1
+      0
     if ui.wants-structured:
       ui.emit-list --result descriptions
       return
