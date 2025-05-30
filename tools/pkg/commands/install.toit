@@ -17,14 +17,14 @@ import cli
 import host.file
 import fs
 
-import ..error
 import ..project
 import ..project.specification
 import ..registry
 
+import .base_
 import .utils_
 
-class InstallCommand:
+class InstallCommand extends PkgProjectCommand:
   static PREFIX    ::= "prefix"
   static LOCAL     ::= "local"
   static RECOMPUTE ::= "recompute"
@@ -34,7 +34,6 @@ class InstallCommand:
   package/string?
   local/bool
   recompute/bool
-  project/Project
 
   constructor invocation/cli.Invocation:
     prefix = invocation[PREFIX]
@@ -43,19 +42,21 @@ class InstallCommand:
     local = invocation[LOCAL]
     recompute = invocation[RECOMPUTE]
 
+    cli := invocation.cli
+
     if not package and local:
-      error "Can not specify local without a package"
+      cli.ui.abort "Can not specify local without a package"
 
     if not package and prefix:
-      error "Can not specify a prefix without a package."
+      cli.ui.abort "Can not specify a prefix without a package."
 
     if package and recompute:
-      error "Recompute can only be specified with no other arguments."
+      cli.ui.abort "Recompute can only be specified with no other arguments."
 
     config := project-configuration-from-cli invocation
     config.verify
 
-    project = Project config
+    super invocation
 
   execute:
     if not package:
@@ -72,7 +73,7 @@ class InstallCommand:
     if project.specification.has-package prefix:
       error "Project already has a package with name '$prefix'."
 
-    project.install-remote prefix remote-package
+    project.install-remote prefix remote-package --registries=registries
 
   execute-local:
     specification-name := "$package/$Specification.FILE-NAME"
@@ -83,10 +84,10 @@ class InstallCommand:
     if not file.is-directory src-directory:
       error "Path supplied in package argument is an invalid local package, missing $src-directory."
 
-    specification := ExternalSpecification --dir=(fs.to-absolute package)
+    specification := ExternalSpecification --dir=(fs.to-absolute package) --ui=ui
     if not prefix: prefix = specification.name
 
-    project.install-local prefix package
+    project.install-local prefix package --registries=registries
 
   static CLI-COMMAND ::=
       cli.Command "install"

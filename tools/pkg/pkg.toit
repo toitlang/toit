@@ -15,7 +15,7 @@
 
 import system
 
-import cli
+import cli show *
 
 import .commands.install
 import .commands.version
@@ -32,7 +32,10 @@ import .commands.describe
 // TODO(florian): implement completion in the cli package
 
 main arguments/List:
-  pkg := cli.Command "pkg"
+  main arguments --cli=null
+
+main arguments/List --cli/Cli?:
+  pkg := Command "pkg"
       --usage="toit.pkg [command]"
       --help="The Toit package manager"
       --subcommands=[
@@ -49,19 +52,19 @@ main arguments/List:
           VersionCommand.CLI-COMMAND
       ]
       --options=[
-          cli.Flag OPTION-AUTO-SYNC
+          Flag OPTION-AUTO-SYNC
               --help="Automatically synchronize registries."
               --default=true,
 
-          cli.Option OPTION-PROJECT-ROOT
+          Option OPTION-PROJECT-ROOT
               --help="Specify the project root.",
 
-          cli.Option OPTION-SDK-VERSION
+          Option OPTION-SDK-VERSION
               --help="Specify the SDK version."
               --default=system.vm-sdk-version
       ]
   pkg.check
-  pkg.run arguments
+  pkg.run arguments --cli=cli
 
 OPTION-SDK-VERSION ::= "sdk-version"
 OPTION-PROJECT-ROOT ::= "project-root"

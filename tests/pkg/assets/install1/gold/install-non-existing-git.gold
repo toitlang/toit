@@ -1,0 +1,3 @@
+Aborted
+[pkg, install, some-pkg]
+Error: Package 'some-pkg' not found in any registry.
