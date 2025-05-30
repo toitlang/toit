@@ -25,6 +25,10 @@ import .utils_
 
 with-tmp-dir [block]:
   tmp-dir := directory.mkdtemp "/tmp/test-"
+  // On macos the '/tmp' directory is a symlink to '/private/tmp', so we
+  // resolve the real path to avoid issues with the gold files not having the
+  // correct paths.
+  tmp-dir = directory.realpath tmp-dir
   try:
     block.call tmp-dir
   finally:
