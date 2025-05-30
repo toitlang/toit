@@ -160,9 +160,9 @@ jobs:
             elif [[ "$platform" == "windows" ]]; then
               echo 'CONTAINERS=[ "windows-latest" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos" ]]; then
-              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+              echo 'CONTAINERS=[ "macos-13" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos-arm" ]]; then
-              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+              echo 'CONTAINERS=[ "macos-latest" ]' >> $GITHUB_OUTPUT
             else
               echo "Unknown platform: $platform"
               exit 1
