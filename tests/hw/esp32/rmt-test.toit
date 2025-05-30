@@ -439,6 +439,7 @@ test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
 
   if system.architecture == system.ARCHITECTURE-ESP32:
     // The ESP32 doesn't support finite loop counts.
+    out.close
     return
 
   in := rmt.In pin2 --resolution=RESOLUTION
@@ -708,15 +709,18 @@ test-encoder-patterns pin1/gpio.Pin pin2/gpio.Pin:
 test-uart pin1/gpio.Pin pin2/gpio.Pin:
   BAUD_RATE ::= 115200
 
-  // in-channel := rmt.In in --resolution=RES --memory-blocks=6
-  out-channel := rmt.Out pin1 --resolution=RESOLUTION
+  // Switch to 20MHz.
+  // 1MHz should be enough, but I can see on the oscilloscope that the signals are
+  // slightly too short; probably due to rounding.
+  resolution := 20_000_000
+  out-channel := rmt.Out pin1 --resolution=resolution
   // Set the output to 1.
   no-signals := rmt.Signals 2
   no-signals.set 0 --level=1 --period=1
   no-signals.set 1 --level=1 --period=1
   out-channel.write no-signals --done-level=1
 
-  uart-period := RESOLUTION / BAUD-RATE
+  uart-period := resolution / BAUD-RATE
 
   uart-start := rmt.Signals 2
   uart-start.set 0 --level=0 --period=uart-period - 1
