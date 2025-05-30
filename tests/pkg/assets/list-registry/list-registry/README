@@ -1,0 +1,4 @@
+This test also contains a `dot-git.zip` file.
+The testing framework will extract this to a `.git` directory.
+The .git directory contains description files, but those must not be seen
+by the package manager.

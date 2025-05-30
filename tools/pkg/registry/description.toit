@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import cli
+
 import ..semantic-version
 import ..constraints
 import ..project.specification show PackageDependency
@@ -36,17 +38,48 @@ class Description:
   cached-sdk-version_/List := []
   cached-dependencies_/List? := null
 
-  constructor .content:
+  /**
+  Constructs a description from the given content.
+
+  The $path is only used for error messages.
+  */
+  constructor .content --path/string --ui/cli.Ui:
+    if not content.contains NAME-KEY_:
+      ui.emit --error "Description at $path is missing a name."
+      throw "INVALID_DESCRIPTION"
+    if not content.contains URL-KEY_:
+      ui.emit --error "Description at $path is missing a url."
+      throw "INVALID_DESCRIPTION"
+    url := content[URL-KEY_]
+    if url is not string:
+      ui.emit --error "Description at $path has an invalid url: $url."
+      throw "INVALID_DESCRIPTION"
+    if url == "":
+      ui.emit --error "Description at $path has an empty url."
+      throw "INVALID_DESCRIPTION"
+    if not content.contains VERSION-KEY_:
+      ui.emit --error "Description at $path is missing a version."
+      throw "INVALID_DESCRIPTION"
+    version := content[VERSION-KEY_]
+    e := catch:
+      SemanticVersion.parse version
+    if e:
+      ui.emit --error "Description at $path has an invalid version: '$version'."
+      throw "INVALID_DESCRIPTION"
+    if not content.contains HASH-KEY_:
+      ui.emit --error "Description at $path is missing a hash."
+      throw "INVALID_DESCRIPTION"
 
   // A constructor that is primarily used for testing.
-  constructor
+  constructor.for-testing_
       --name/string
       --url/string
       --description/string=""
       --version/SemanticVersion=(SemanticVersion.parse "v1.0.0")
-      --ref-hash/string="1234567890abcdef"
+      --ref-hash/string="deadbeef1234567890abcdef1234567890abcdef"
       --min-sdk/SemanticVersion?=null
-      --dependencies/List=[]:
+      --dependencies/List=[]
+      --ui/cli.Ui:
     map := {
       NAME-KEY_: name,
       URL-KEY_: url,
@@ -60,13 +93,13 @@ class Description:
           }
     }
     if min-sdk: map[ENVIRONMENT-KEY_] = {SDK-KEY_: "^$min-sdk.to-string"}
-    return Description map
+    return Description map --path=name --ui=ui
 
   url -> string: return content[URL-KEY_]
 
   name -> string: return content[NAME-KEY_]
 
-  ref-hash -> string?: return content.get HASH-KEY_
+  ref-hash -> string: return content.get HASH-KEY_
 
   description -> string: return content[DESCRIPTION-KEY_]
 

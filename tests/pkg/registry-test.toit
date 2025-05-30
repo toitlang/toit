@@ -22,7 +22,8 @@ import ...tools.pkg.registry.description
 import ...tools.pkg.semantic-version
 
 test-git:
-  registry := GitRegistry "toit" "github.com/toitware/registry" "1f76f33242ddcb7e71ff72be57c541d969aabfb2"
+  ui := TestUi
+  registry := GitRegistry "toit" "github.com/toitware/registry" "1f76f33242ddcb7e71ff72be57c541d969aabfb2" --ui=ui
 
   expect-equals 558 registry.list-all-descriptions.size
 
@@ -69,7 +70,8 @@ test-git:
   expect-equals 2 (registry.search "test").size
 
 test-local:
-  registry := LocalRegistry "local" "input/registry"
+  ui := TestUi
+  registry := LocalRegistry "local" "input/registry" --ui=ui
 
   expect-equals 3 registry.list-all-descriptions.size
 

@@ -6,6 +6,7 @@
 
 import cli show *
 import cli.ui show *
+import host.pipe
 import encoding.json
 
 class TestExit:
@@ -99,3 +100,11 @@ class TestCli implements Cli:
 
   with --name=null --cache=null --config=null --ui=null:
     unreachable
+
+unzip --source/string --target-dir/string -> none:
+  // Unzip the given 'source' zip file into the 'target-dir'.
+  exit-value := pipe.run-program ["unzip", "-q", "-d", target-dir, source]
+  if exit-value != 0:
+    exit-signal := pipe.exit-signal exit-value
+    exit-code := pipe.exit-code exit-value
+    throw "Failed to unzip '$source' into '$target-dir': $exit-value/$exit-signal"

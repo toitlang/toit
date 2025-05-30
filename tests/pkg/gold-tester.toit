@@ -113,9 +113,12 @@ class GoldTester:
       else if command == "pkg":
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui
-        e := catch:
+        e := catch --trace=(: it is not TestExit):
           pkg.main --cli=cli ["--project-root=$working-dir_"] + command-line[1..]
         exit-status := e ? "Aborted" : "OK"
+        if e and e is not TestExit:
+          print-on-stderr_ "Command failed: $e"
+          expect e is TestExit
         full-output := test-ui.stdout + test-ui.stderr
         outputs.add "$exit-status\n$command-line\n$full-output"
       else:
@@ -132,7 +135,6 @@ class GoldTester:
       expect-equals expected-content actual
 
   toit command/string args -> RunResult_:
-    directory.chdir working-dir_
     full-args := [toit-exec_, command, "--"] + args
     fork-data := pipe.fork
         true
@@ -295,6 +297,8 @@ class AssetsBuilder:
       stream := directory.DirectoryStream source
       while name := stream.next:
         copy-path --source="$source/$name" --target="$target/$name"
+    else if source.ends-with ".zip":
+      unzip --source=source --target-dir=(fs.dirname target)
     else:
       content := (file.read-contents source).to-string
       content = content.replace --all "<[*PORT*]>" "$port_"
@@ -411,6 +415,7 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
     assets-builder.setup --working-dir=tmp-dir --assets-dir=assets-dir
     git-roots := assets-builder.git-roots
     with-http-server http-dir tcp-socket --git-roots=git-roots:
+      directory.chdir tmp-dir
       tester := GoldTester
           --port=port
           --toit-exe=toit-exe

@@ -47,7 +47,7 @@ class SearchCommand extends PkgCommand:
       else:
         if version > old.version:
           url-to-description[description.url] = description
-    ListCommand.list-textual url-to-description.values --verbose=verbose
+    ListCommand.list-descriptions url-to-description.values --verbose=verbose --ui=ui
 
   static CLI-COMMAND ::=
       cli.Command "search"
