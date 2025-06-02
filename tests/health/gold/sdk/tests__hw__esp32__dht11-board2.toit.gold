@@ -1,9 +1,0 @@
-<pkg:toit-dhtxx>/driver_.toit:40:23: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
-    channel-out_ = rmt.Channel pin
-                      ^~~~~~~~
-<pkg:toit-dhtxx>/driver_.toit:44:22: warning: Class 'Channel' is deprecated. Use 'In' and 'Out' instead
-    channel-in_ = rmt.Channel --input pin
-                     ^~~~~~~~
-<pkg:toit-dhtxx>/driver_.toit:49:16: warning: Deprecated 'Channel.make-bidirectional'. Create an 'In' channel first, then create an 'Out' channel with the `--open-drain` flag on the same pin, instead
-    rmt.Channel.make-bidirectional --in=channel-in_ --out=channel-out_
-               ^~~~~~~~~~~~~~~~~~~
