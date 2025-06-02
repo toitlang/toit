@@ -26,7 +26,7 @@ import .serve
 import .src.builder show DocsBuilder
 import .src.util show kebabify
 
-build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Command:
+build-command --sdk-path-from-args/Lambda --toit-from-args/Lambda -> cli.Command:
   shared-help := """
     If --package is true, then extracts the package name from the
     package.yaml and only includes the 'src' folder. It then also adds
@@ -84,7 +84,7 @@ build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Comman
       ]
       --run=::
         toitdoc-build it
-            --toitc=(toitc-from-args.call it)
+            --toit=(toit-from-args.call it)
             --sdk-path=(sdk-path-from-args.call it)
   cmd.add build-command
 
@@ -122,7 +122,7 @@ build-command --sdk-path-from-args/Lambda --toitc-from-args/Lambda -> cli.Comman
       ]
       --run=::
         toitdoc-serve it
-            --toitc=(toitc-from-args.call it)
+            --toit=(toit-from-args.call it)
             --sdk-path=(sdk-path-from-args.call it)
   cmd.add serve-command
 
@@ -184,7 +184,7 @@ eval-symlinks path/string -> string:
 
   return result
 
-compute-sdk-path --sdk-path/string? --toitc/string? --ui/Ui -> string:
+compute-sdk-path --sdk-path/string? --toit/string? --ui/Ui -> string:
   if sdk-path:
     if not file.is-directory sdk-path:
       ui.abort "SDK not found at $sdk-path"
@@ -192,17 +192,15 @@ compute-sdk-path --sdk-path/string? --toitc/string? --ui/Ui -> string:
       sdk-path = fs.to-absolute sdk-path
     return sdk-path
 
-  toitc = eval-symlinks toitc
-  lib-bin-dir := fs.dirname toitc
-  // Try to find the SDK path next to the lib-binary directory.
-  lib-dir := fs.join lib-bin-dir ".." "lib"
+  toit = eval-symlinks toit
+  bin-dir := fs.dirname toit
+  sdk-path = fs.join bin-dir ".."
+  lib-dir := fs.join sdk-path "lib" "toit" "lib"
   if file.is-directory lib-dir:
-    // Go from 'sdk/lib/toit/lib' to 'sdk'
-    sdk-path = fs.join lib-bin-dir ".." ".." ".."
     return sdk-path
   throw "Couldn't determine SDK path"
 
-toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/string -> none:
+toitdoc invocation/cli.Invocation --toit/string --sdk-path/string? --output/string -> none:
   for-package := invocation["package"] == true
   for-sdk := invocation["sdk"] == true
   version := invocation["version"]
@@ -222,7 +220,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   if source and for-sdk:
     ui.abort "No source files are allowed when generating the SDK documentation."
 
-  sdk-path = compute-sdk-path --sdk-path=sdk-path --toitc=toitc --ui=ui
+  sdk-path = compute-sdk-path --sdk-path=sdk-path --toit=toit --ui=ui
 
   if for-sdk:
     source = "$sdk-path/lib/toit/lib"
@@ -270,10 +268,10 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
     // Only include the 'src' folder.
     source = fs.join source "src"
 
-  if not file.is-file toitc:
-    ui.abort "Toit compiler not found at $toitc."
-  if not fs.is-absolute toitc:
-    toitc = fs.to-absolute toitc
+  if not file.is-file toit:
+    ui.abort "Toit executable not found at $toit."
+  if not fs.is-absolute toit:
+    toit = fs.to-absolute toit
 
   sdk-uri := lsp.to-uri sdk-path
   if not sdk-uri.ends-with "/": sdk-uri = "$sdk-uri/"
@@ -281,7 +279,7 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
   paths := collect-files source
   uris := paths.map: lsp.to-uri (fs.to-absolute it)
 
-  documents := lsp.compute-summaries --uris=uris --toitc=toitc --sdk-path=sdk-path
+  documents := lsp.compute-summaries --uris=uris --toit=toit --sdk-path=sdk-path
   warn-if-not-one-project documents --ui=ui
   project-uri := compute-project-uri uris --documents=documents
   summaries := (documents.analyzed-documents-for --project-uri=project-uri).summaries
@@ -306,12 +304,12 @@ toitdoc invocation/cli.Invocation --toitc/string --sdk-path/string? --output/str
 
   file.write-contents --path=output (json.encode built-toitdoc)
 
-toitdoc-build invocation/cli.Invocation --toitc/string --sdk-path/string?:
+toitdoc-build invocation/cli.Invocation --toit/string --sdk-path/string?:
   output := invocation["output"]
 
-  toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
+  toitdoc invocation --toit=toit --sdk-path=sdk-path --output=output
 
-toitdoc-serve invocation/cli.Invocation --toitc/string --sdk-path/string?:
+toitdoc-serve invocation/cli.Invocation --toit/string --sdk-path/string?:
   port := invocation["port"]
   open-browser := invocation["open-browser"]
 
@@ -319,7 +317,7 @@ toitdoc-serve invocation/cli.Invocation --toitc/string --sdk-path/string?:
   try:
     output := "$tmp-dir/toitdoc.json"
 
-    toitdoc invocation --toitc=toitc --sdk-path=sdk-path --output=output
+    toitdoc invocation --toit=toit --sdk-path=sdk-path --output=output
     serve output --port=port --open-browser=open-browser --cli=invocation.cli
   finally:
     directory.rmdir --recursive tmp-dir

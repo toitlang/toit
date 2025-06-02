@@ -16,28 +16,28 @@
 set(CMAKE_C_COMPILER clang CACHE PATH "" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE PATH "" FORCE)
 
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR riscv64)
+set(CMAKE_SYSTEM_NAME Linux CACHE STRING "The system name for the toolchain" FORCE)
+set(CMAKE_SYSTEM_PROCESSOR riscv64 CACHE STRING "The system processor for the toolchain" FORCE)
 
-set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the host toolchain")
 
 if ("${CMAKE_SYSROOT}" STREQUAL "")
   if (DEFINED ENV{SYSROOT})
-    set(CMAKE_SYSROOT "$ENV{SYSROOT}")
+    set(CMAKE_SYSROOT "$ENV{SYSROOT}" CACHE PATH "The sysroot for the toolchain")
   else()
-    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot")
+    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot" CACHE PATH "The sysroot for the toolchain")
   endif()
 endif()
 
-set(CMAKE_C_COMPILER_TARGET "riscv64-linux-gnu")
-set(CMAKE_CXX_COMPILER_TARGET "riscv64-linux-gnu")
+set(CMAKE_C_COMPILER_TARGET "riscv64-linux-gnu" CACHE STRING "c compiler target")
+set(CMAKE_CXX_COMPILER_TARGET "riscv64-linux-gnu" CACHE STRING "c++ compiler target")
 
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "c flags")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "c++ flags")
 
-set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -fuse-ld=lld")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -fuse-ld=lld" CACHE STRING "Linker flags for executables")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")
@@ -51,7 +51,7 @@ set(CMAKE_CXX_FLAGS_PROF "-Os -DPROF -pg" CACHE STRING "c++ Prof flags")
 
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
-set(GOOS "linux")
-set(GOARCH "riscv64")
+set(GOOS "linux" CACHE STRING "The GOOS for the toolchain")
+set(GOARCH "riscv64" CACHE STRING "The GOARCH for the toolchain")
 
 enable_testing()

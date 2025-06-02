@@ -13,8 +13,9 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(ARM_TARGET "arm-linux-gnueabihf")
+set(ARM_TARGET "arm-linux-gnueabihf" CACHE STRING "The ARM target for the toolchain")
 
-set(ARM_CPU_FLAGS "-march=armv7")
+set(ARM_CPU_FLAGS "-march=armv7"
+                  CACHE STRING "The ARM CPU flags for the toolchain")
 
 include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")

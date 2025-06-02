@@ -18,5 +18,5 @@ include("${CMAKE_CURRENT_LIST_DIR}/arm.cmake")
 # TODO(florian): is this correct? Was like this when I found it.
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
-set(GOOS "linux")
-set(GOARCH "arm64")
+set(GOOS "linux" CACHE STRING "The GOOS for the toolchain")
+set(GOARCH "arm64" CACHE STRING "The GOARCH for the toolchain")

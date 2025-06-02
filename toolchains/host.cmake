@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the host toolchain")
 
 set(CMAKE_C_FLAGS_DEBUG "-O1 -g $ENV{LOCAL_CFLAGS}" CACHE STRING "c Debug flags")
 set(CMAKE_CXX_FLAGS_DEBUG "-O1 -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")

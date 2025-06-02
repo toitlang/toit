@@ -32,9 +32,6 @@ import .lsp.server.server as lsp
 import .snapshot as snapshot-lib
 
 main args/List:
-  if args.size > 0 and args[0].ends-with ".toit":
-    args = ["run", "--"] + args
-
   // We don't want to add a `--version` option to the root command,
   // as that would make the option available to all subcommands.
   // Fundamentally, getting the version isn't really an option, but a
@@ -56,6 +53,10 @@ main args/List:
   toitc-from-args := :: | invocation/cli.Invocation |
       sdk-dir := invocation["sdk-dir"]
       tool-path sdk-dir "toit.compile"
+
+  toit-from-args := :: | invocation/cli.Invocation |
+      sdk-dir := invocation["sdk-dir"]
+      toit-path sdk-dir
 
   version-command := cli.Command "version"
       --help="Print the version of the Toit SDK."
@@ -499,7 +500,7 @@ main args/List:
   esp-command.add stacktrace.build-command
 
   toitdoc-command := toitdoc.build-command
-      --toitc-from-args=toitc-from-args
+      --toit-from-args=toit-from-args
       --sdk-path-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
   root-command.add toitdoc-command
 
@@ -514,6 +515,11 @@ main args/List:
     // If the check fails, it throws an exception.
     root-command.check
     true
+
+  if args.size > 0 and
+      (args[0].ends-with ".toit" or args[0].ends-with ".snapshot"):
+    args = ["run", "--"] + args
+
   root-command.run args
 
 tool-path sdk-dir/string? tool/string -> string:
@@ -530,6 +536,15 @@ tool-path sdk-dir/string? tool/string -> string:
 
   return fs.join tool-bin-dir tool
 
+toit-path sdk-dir/string? -> string:
+  // Use ourself as the toit command.
+  if sdk-dir:
+    result := fs.join sdk-dir "bin" "toit"
+    if system.platform == system.PLATFORM-WINDOWS:
+      result = "$(result).exe"
+    return result
+  return system.program-path
+
 run sdk-dir/string? tool/string args/List -> int:
   args = [tool-path sdk-dir tool] + args
   return pipe.run-program args
@@ -541,7 +556,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   if not file.is-file source: ui.abort "Source file not found: $source"
   source-contents := file.read-contents source
   is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
-  if command != "run" and is-snapshot:
+  if command != "run" and command != "compile" and is-snapshot:
     ui.abort "Cannot $command a snapshot file"
 
   args := []
@@ -630,12 +645,11 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
 run-lsp-server invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]
-  toitc-cmd := [tool-path sdk-dir "toit.compile"]
-  if toitc-cmd.size != 1: throw "Unexpected toitc command: $toitc-cmd"
+  toit-exe-path/string := toit-path sdk-dir
   // We are not using the cli's Ui class, as it might print on stdout.
   if invocation.cli.ui.level >= Ui.VERBOSE-LEVEL:
-    print-on-stderr_ "Using $toitc-cmd.first"
-  lsp.main --toit-path-override=toitc-cmd.first
+    print-on-stderr_ "Using $toit-exe-path as analyzer for the LSP server."
+  lsp.main --toit-path-override=toit-exe-path
 
 run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invocation:
   sdk-dir := invocation["sdk-dir"]

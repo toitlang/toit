@@ -29,16 +29,16 @@ run-client-test
     --exit=true
     --spawn-process=true
     [--pre-initialize]:
-  toitc := args[0]
+  toit := args[0]
   lsp-server := args[1]
   mock-compiler := args[2]
 
-  compiler-exe := use-mock ? mock-compiler : toitc
+  compiler-exe := use-mock ? mock-compiler : toit
 
   repro-dir := directory.mkdtemp "/tmp/lsp_repro-"
   try:
     with-lsp-client test-fun
-        --toitc=toitc
+        --toit=toit
         --lsp-server=lsp-server
         --compiler-exe=compiler-exe
         --supports-config=supports-config

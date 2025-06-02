@@ -11,12 +11,12 @@ import tar show Tar
 import encoding.base64 as base64
 
 run args/List --entry-path/string sources/Map={:} -> SnapshotBundle:
-  toitc      /string := args[0]
-  lsp-server /string := args[1]
+  toit/string := args[0]
+  lsp-server/string := args[1]
   with-lsp-client
-      --toitc=toitc
+      --toit=toit
       --lsp-server=lsp-server
-      --compiler-exe=toitc
+      --compiler-exe=toit
       --spawn-process  // Maybe a tiny bit slower, but easier to handle.
       --supports-config=false: |client/LspClient|
     sources.do: |path content|

@@ -1,3 +1,0 @@
-<pkg:..>/driver.toit:106:21: warning: Deprecated 'Device.read'. Use exception handling instead
-    data := device_.read 3: return null
-                    ^~~~
