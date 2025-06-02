@@ -1131,7 +1131,7 @@ jobs:
       - name: Update manifest
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         run: |
-          .\wingetcreate.exe update Toit.Toit -s -v ${{ steps.version.outputs.version }} -u https://github.com/toitlang/toit/releases/download/${{ github.event.release.tag_name }}/toit-windows-x64-installer.exe -t ${{ secrets.WINGET_PAT }}
+          .\wingetcreate.exe update Toit.Toit -s -v ${{ steps.version.outputs.version }} -u https://github.com/toitlang/toit/releases/download/${{ env.TOIT_VERSION }}/toit-windows-x64-installer.exe -t ${{ secrets.WINGET_PAT }}
 
   sign_macos:
     runs-on: macos-latest  # An arm64 runner.
