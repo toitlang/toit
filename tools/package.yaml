@@ -4,10 +4,10 @@ dependencies:
     version: ^1.4.1
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
-    version: ^1.10.0
+    version: ^1.11.0
   cli:
     url: github.com/toitlang/pkg-cli
-    version: ^2.3.0
+    version: ^2.5.0
   desktop:
     url: github.com/toitlang/pkg-desktop
     version: ^1.1.0

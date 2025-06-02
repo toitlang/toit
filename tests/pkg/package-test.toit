@@ -2,15 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import system
+import cli.test show TestUi
 import encoding.yaml
-
+import expect show *
 import host.directory
 import host.file
-import expect show *
+import system
 
 import .setup
-import .utils_
 
 import ...tools.pkg.project
 import ...tools.pkg.semantic-version

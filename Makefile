@@ -405,3 +405,4 @@ update-pkgs:
 	for d in $$(git ls-files | grep package.yaml | grep -v tests/pkg | grep -v tests/lsp/project-root-multi); do \
 	  toit pkg update --project-root $$(dirname $$d); \
 	done
+	toit pkg update --project-root tests/pkg

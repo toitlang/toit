@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.150
+sdk: ^2.0.0-alpha.180
 prefixes:
   bme280: bme280-driver
   dhtxx: toit-dhtxx
@@ -13,13 +13,13 @@ packages:
   toit-1-wire:
     url: github.com/toitware/toit-1-wire
     name: one_wire
-    version: 2.3.0
-    hash: b341bf2f0dec80c1cbd6deb774c45c52e52f183f
+    version: 2.4.0
+    hash: bb30a0a4256271191b1b230c1bdea868e7e0a0ca
   toit-dhtxx:
     url: github.com/toitware/toit-dhtxx
     name: dhtxx
-    version: 1.7.0
-    hash: f8cc89694cfb745373de0b0a00311a255ab739bd
+    version: 1.8.0
+    hash: 90da97cd0763b53a32befa4d6533428f0891811d
   toit-ds18b20:
     url: github.com/toitware/toit-ds18b20
     name: ds18b20
