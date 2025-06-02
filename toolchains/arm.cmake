@@ -66,8 +66,9 @@ set(CMAKE_CXX_COMPILER_TARGET "${ARM_TARGET}" CACHE STRING "c++ compiler target 
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 
+# Force the linker flags in case they were already set. The '-fuse-ld=lld' flag is critical.
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -fuse-ld=lld"
-  CACHE STRING "The linker flags for the toolchain")
+  CACHE STRING "The linker flags for the toolchain" FORCE)
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")
