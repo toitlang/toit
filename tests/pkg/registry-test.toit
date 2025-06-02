@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.json
 import expect show *
 import fs
 import host.os
@@ -12,6 +13,7 @@ import system
 import encoding.yaml
 
 import .setup
+import .utils_
 
 import ...tools.pkg.registry
 import ...tools.pkg.registry.git
@@ -94,67 +96,72 @@ test-local:
 
   expect-equals 2 (registry.search "local").size
 
-test-registries:
-  outputs := []
+expect-table-equals expected/List actual-string/string:
+  actual := json.parse actual-string
+  expect-equals expected.size actual.size
+  for i := 0; i < expected.size; i++:
+    expected-row := expected[i]
+    actual-row := actual[i]
+    expected-row.do: | key value |
+        expect (actual-row.contains key)
+        expect-equals value actual-row[key]
 
-  test-registries := Registries
-                       --error-reporter=(:: throw it )
-                       --outputter=(:: outputs.add it )
+expect-ui-throw test-ui/TestUi error/string [command]:
+  test-ui.stderr = ""
+  test-ui.stdout = ""
+  e := catch command
+  expect-not-null e
+  expect-equals "Error: $error\n" test-ui.stderr
+
+test-registries:
+  test-ui := TestUi --json
+
+  test-registries := Registries --ui=test-ui
 
   test-registries.list
-  expect-equals
-      """
-      Name       Type   Url/Path
-      ----       ----   --------
-      toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+  expect-table-equals [
+        { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
+      ]
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.add --local "local" "input/registry"
   test-registries.list
-  expect-equals
-      """
-      Name       Type   Url/Path
-      ----       ----   --------
-      toit       git    github.com/toitware/registry
-      local      local  input/registry"""
-      outputs.join "\n"
-  outputs = []
+  expect-table-equals [
+        { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
+        { "name": "local", "type": "local", "path": "input/registry" },
+      ]
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.remove "local"
   test-registries.list
-  expect-equals
-      """
-      Name       Type   Url/Path
-      ----       ----   --------
-      toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+  expect-table-equals [
+        { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
+      ]
+      test-ui.stdout
+  test-ui.stdout = ""
 
-  expect-throw "Registry toit already exists." : test-registries.add --local "toit" ""
-  expect-throw "Registry toit already exists." : test-registries.add --git "toit" ""
-  expect-throw "Registry abc does not exist." : test-registries.remove "abc"
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" ""
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
+  expect-ui-throw test-ui "Registry abc does not exist." : test-registries.remove "abc"
 
   test-registries.add --git "toit2" "github.com/toitware/registry"
   test-registries.list
-  expect-equals
-      """
-      Name       Type   Url/Path
-      ----       ----   --------
-      toit       git    github.com/toitware/registry
-      toit2      git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+  expect-table-equals [
+        { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
+        { "name": "toit2", "type": "git", "path": "github.com/toitware/registry" }
+      ]
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.remove "toit2"
   test-registries.list
-  expect-equals
-      """
-      Name       Type   Url/Path
-      ----       ----   --------
-      toit       git    github.com/toitware/registry"""
-      outputs.join "\n"
-  outputs = []
+  expect-table-equals [
+        { "name": "toit", "type": "git", "path": "github.com/toitware/registry" }
+      ]
+      test-ui.stdout
+  test-ui.stdout = ""
 
   test-registries.add --local "local" "input/registry"
   expect-equals 2 test-registries.list-packages.size
@@ -173,11 +180,11 @@ test-registries:
 
   expect-equals 8 (test-registries.search --free-text "morse").size
 
-  expect-throw "Package 'morse' not found in registry local." : test-registries.search --registry-name="local" "morse"
-  expect-throw "Package 'mrse' not found in any registry." : test-registries.search "mrse"
-  expect-throw "Package 'morse' exists but not with version '2' in any registry." : test-registries.search "morse@2"
-  expect-throw "Package 'morse-local' exists but not with version '2' in registry local." : test-registries.search --registry-name="local"  "morse-local@2"
-  expect-throw "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
+  expect-ui-throw test-ui "Package 'morse' not found in registry local." : test-registries.search --registry-name="local" "morse"
+  expect-ui-throw test-ui "Package 'mrse' not found in any registry." : test-registries.search "mrse"
+  expect-ui-throw test-ui "Package 'morse' exists but not with version '2' in any registry." : test-registries.search "morse@2"
+  expect-ui-throw test-ui "Package 'morse-local' exists but not with version '2' in registry local." : test-registries.search --registry-name="local"  "morse-local@2"
+  expect-ui-throw test-ui "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
 
 main:
   source-location := system.program-path

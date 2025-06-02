@@ -13,6 +13,8 @@ import ...tools.pkg.registry.description
 import ...tools.pkg.semantic-version
 import ...tools.pkg.solver
 
+import .utils_
+
 main:
   test-transitive
   test-correct-version
@@ -62,29 +64,17 @@ class TestRegistry extends reg.Registry:
   sync: // Do nothing.
   stringify -> string: return "test-reg"
 
-output := []
-error/string? := null
-
-error-reporter := ::
-  error = it
-  throw "ERROR"
-
-outputter := ::
-  output.add it
+test-ui/TestMessagesUi? := null
 
 make-registries pkgs/List -> reg.Registries:
   registry := TestRegistry pkgs
-  output = []
-  error = null
-  return reg.Registries.filled { registry.name: registry }
-      --error-reporter=error-reporter
-      --outputter=outputter
+  test-ui = TestMessagesUi
+  return reg.Registries.filled { registry.name: registry } --ui=test-ui
 
 find-solution solve-for/Description registries/reg.Registries -> Solution?
     --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0")
     --preferred/List=[]:
-  solver := Solver registries --sdk-version=sdk-version
-      --outputter=outputter
+  solver := Solver registries --sdk-version=sdk-version --ui=test-ui
 
   preferred.do: | desc/Description |
     solver.set-preferred desc.url desc.version
@@ -155,6 +145,7 @@ test-fail-missing-pkg:
   registries := make-registries [a1]
   solution := find-solution a1 registries
   expect-null solution
+  output := test-ui.stdout-messages
   expect-equals 1 output.size
   expect-equals "Warning: Package 'b' not found" output[0]
 
@@ -240,6 +231,7 @@ test-uniq-error-message:
   registries := make-registries [a170, b140, b180, b200, c100, c150, d123, d200]
   solution := find-solution a170 registries
   check-solution solution [a170, b140, c100]
+  output := test-ui.stdout-messages
   expect-equals 2 output.size
   expect-equals "Warning: No version of 'b' satisfies constraint '>=3.0.0'" output[0]
   expect-equals "Warning: Package 'e' not found" output[1]
@@ -286,6 +278,7 @@ test-fail-sdk-version:
 
   solution := find-solution a170 registries --sdk-version=v105
   expect-null solution
+  output := test-ui.stdout-messages
   expect-equals 1 output.size
   expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version '1.0.5'" output[0]
 
@@ -293,5 +286,6 @@ test-fail-sdk-version:
   registries = make-registries [a170, b140, b160, b180]
   solution = find-solution a170 registries --sdk-version=v105
   expect-null solution
+  output = test-ui.stdout-messages
   expect-equals 1 output.size
   expect-equals "Warning: SDK version '1.0.5' does not satisfy the minimal SDK requirement '^1.1.0'" output[0]

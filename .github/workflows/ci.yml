@@ -124,8 +124,6 @@ env:
                             github.event.inputs.sign == 'macos+windows' }}
   RUN_ESP32_FLOW: ${{ github.event.inputs.run-esp32-flow != 'false' }}
   RUN_CROSS_FLOW: ${{ github.event.inputs.run-cross-flow != 'false' }}
-  RUN_AUR_FLOW: ${{ (github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v')) &&
-                    github.repository_owner == 'toitlang' }}
   ENABLE_SSH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ssh != 'none' }}
   ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
 
@@ -160,9 +158,9 @@ jobs:
             elif [[ "$platform" == "windows" ]]; then
               echo 'CONTAINERS=[ "windows-latest" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos" ]]; then
-              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+              echo 'CONTAINERS=[ "macos-13" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos-arm" ]]; then
-              echo 'CONTAINERS=[ "macos-13", "macos-latest" ]' >> $GITHUB_OUTPUT
+              echo 'CONTAINERS=[ "macos-latest" ]' >> $GITHUB_OUTPUT
             else
               echo "Unknown platform: $platform"
               exit 1
@@ -347,37 +345,6 @@ jobs:
         run: |
           strip -s build/host/sdk/bin/*
 
-      # For some reason this test must run before we call 'make test' and 'make test-health'.
-      - name: Test Windows code pages
-        if: env.DO_TESTS == 'true' && runner.os == 'Windows' && matrix.shard == 1
-        shell: pwsh
-        run: |
-          # Run the test script which creates a directory with Thai characters
-          # (using code page 874) and runs Toit inside it.
-          cmd.exe /c tests\test-cp874.cmd
-
-          # Read and check output.
-          $outputContent = Get-Content -Path "output.txt" -Raw
-          Write-Host $outputContent
-          if (-not ($outputContent -match "hello")) {
-            Write-Error "Test failed: 'hello' not found in output"
-            exit 1
-          }
-
-          # Now run Toit from inside the directory (to test the CWD).
-          cd 'เดสก์ท็อป'
-          cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
-          cd ..
-          $insideContent = Get-Content -Path "output_inside.txt" -Raw
-          Write-Host $insideContent
-          if (-not ($insideContent -match "hello")) {
-            Write-Error "Test failed: 'hello' not found in output_inside"
-            exit 1
-          }
-
-          # Clean up.
-          Remove-Item -Recurse -Force 'เดสก์ท็อป'
-
       # Test.
       - name: Test
         if: env.DO_TESTS == 'true'
@@ -500,6 +467,38 @@ jobs:
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
           cd "$SDKDIR"
           "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
+
+      # We run this test very late to make sure that we don't accidentally rebuild
+      # the Windows SDK without UTF-8 support during other tests.
+      - name: Test Windows code pages
+        if: env.DO_TESTS == 'true' && runner.os == 'Windows' && matrix.shard == 1
+        shell: pwsh
+        run: |
+          # Run the test script which creates a directory with Thai characters
+          # (using code page 874) and runs Toit inside it.
+          cmd.exe /c tests\test-cp874.cmd
+
+          # Read and check output.
+          $outputContent = Get-Content -Path "output.txt" -Raw
+          Write-Host $outputContent
+          if (-not ($outputContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output"
+            exit 1
+          }
+
+          # Now run Toit from inside the directory (to test the CWD).
+          cd 'เดสก์ท็อป'
+          cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
+          cd ..
+          $insideContent = Get-Content -Path "output_inside.txt" -Raw
+          Write-Host $insideContent
+          if (-not ($insideContent -match "hello")) {
+            Write-Error "Test failed: 'hello' not found in output_inside"
+            exit 1
+          }
+
+          # Clean up.
+          Remove-Item -Recurse -Force 'เดสก์ท็อป'
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -1324,84 +1323,6 @@ jobs:
             echo "flaky: ${{ steps.flaky.outputs.result }}"
             exit 1
           fi
-
-  AUR:
-    name: Update AUR package
-    runs-on: ubuntu-latest
-    needs: [prereqs, combine]
-    if: needs.prereqs.outputs.RUN_AUR_FLOW == 'true'
-
-    steps:
-      # This shouldn't be necessary, but the archlinux-package-action
-      # doesn't work without it.
-      - uses: actions/checkout@v4
-
-      - name: Ssh
-        env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
-        run: |
-          echo "$AUR_SSH_KEY" > ${{ github.workspace }}/aur_ssh_key
-          chmod 600 ${{ github.workspace }}/aur_ssh_key
-
-          mkdir -p $HOME/.ssh
-          echo "Host aur.archlinux.org" >> $HOME/.ssh/config
-          echo "  IdentityFile ${{ github.workspace }}/aur_ssh_key" >> $HOME/.ssh/config
-          echo "  User aur" >> $HOME/.ssh/config
-
-          ssh-keyscan -H aur.archlinux.org > $HOME/.ssh/known_hosts
-
-      - name: Fetch AUR packages
-        run: |
-          git clone ssh://aur@aur.archlinux.org/toit.git
-          git clone ssh://aur@aur.archlinux.org/toit-vessels-bin.git
-
-      - name: Configure git
-        run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-              git config user.email "leon@toit.io"
-              git config user.name "Leon Gungadin Mogensen"
-            popd
-          done
-
-      - name: Update AUR packages
-        shell: bash
-        run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-            sed -i "s/_pkgver=.*/_pkgver=\"${{ env.TOIT_VERSION }}\"/g" PKGBUILD
-            sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
-            popd
-          done
-
-      - name: Update pkgsums and .SRCINFO for toit
-        uses: toitlang/archlinux-package-action@main
-        with:
-          path: toit
-          flags: ''
-          namcap: false
-          updpkgsums: true
-          srcinfo: true
-
-      - name: Update pkgsums and .SRCINFO for toit-vessels-bin
-        uses: toitlang/archlinux-package-action@main
-        with:
-          path: toit-vessels-bin
-          flags: ''
-          namcap: false
-          updpkgsums: true
-          srcinfo: true
-
-      - name: Upload toit and toit-vessels-bin
-        run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-            cat PKGBUILD
-            cat .SRCINFO
-            git commit -am "Update to version ${{ env.TOIT_VERSION }}"
-            git push origin master
-            popd
-          done
 
   serial:
     needs: [prereqs, rpi, esp32]

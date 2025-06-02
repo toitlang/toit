@@ -1,4 +1,8 @@
-Package command executed. [pkg, install, pkg1]
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, pkg1]
 ==================
 == package.lock
 prefixes:

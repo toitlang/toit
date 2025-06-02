@@ -20,7 +20,9 @@ import cli
 import ..pkg
 import ..registry
 
-class RegistryCommand:
+import .base_
+
+class RegistryCommand extends PkgCommand:
   static LOCAL     ::= "local"
   static NAME      ::= "name"
   static LOCATION   ::= "location"
@@ -28,18 +30,24 @@ class RegistryCommand:
   local/bool := false
   url/string? := null
   name/string? := null
+
   constructor.add invocation/cli.Invocation:
     local = invocation[LOCAL]
     url = invocation[LOCATION]
     name = invocation[NAME]
 
+    super invocation
+
   constructor.remove invocation/cli.Invocation:
     name = invocation[NAME]
+    super invocation
 
   constructor.sync invocation/cli.Invocation:
     name = invocation[NAME]
+    super invocation
 
   constructor.list invocation/cli.Invocation:
+    super invocation
 
   add:
     if local:

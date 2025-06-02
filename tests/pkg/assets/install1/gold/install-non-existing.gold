@@ -1,0 +1,3 @@
+Aborted
+[pkg, install, --local, non-existing]
+Error: Path supplied in package argument is an invalid local package, missing non-existing/package.yaml.
