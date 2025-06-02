@@ -537,7 +537,7 @@ tool-path sdk-dir/string? tool/string -> string:
   return fs.join tool-bin-dir tool
 
 toit-path sdk-dir/string? -> string:
-  // Use ourself as the toitc command.
+  // Use ourself as the toit command.
   if sdk-dir:
     result := fs.join sdk-dir "bin" "toit"
     if system.platform == system.PLATFORM-WINDOWS:
