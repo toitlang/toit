@@ -2,6 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import cli show Cli Ui Cache Config
+import cli.ui as cli-pkg
+import encoding.json
 import encoding.yaml
 import expect show *
 import fs
@@ -18,8 +21,14 @@ import system
 
 import ...tools.pkg as pkg
 
+import .utils_
+
 with-tmp-dir [block]:
   tmp-dir := directory.mkdtemp "/tmp/test-"
+  // On macos the '/tmp' directory is a symlink to '/private/tmp', so we
+  // resolve the real path to avoid issues with the gold files not having the
+  // correct paths.
+  tmp-dir = directory.realpath tmp-dir
   try:
     block.call tmp-dir
   finally:
@@ -44,7 +53,7 @@ class RunResult_:
     if result != "" and not result.ends-with "\n":
       result += "\n <Missing newline at end of stdout> \n"
     if stderr != "":
-      result += "\nSTDERR---\n" + stderr
+      result += "\nSTDERR---\n" + (stderr.replace --all "\r" "")
       if not stderr.ends-with "\n":
         result += "\n <Missing newline at end of stderr> \n"
     result += "Exit Code: $exit-code\n"
@@ -81,9 +90,10 @@ class GoldTester:
     commands.do: | command-line/List |
       command := command-line.first
       if command.starts-with "//":
-        outputs.add command
-      else if command == "analyze":
-        run-result := analyze command-line[1..]
+        outputs.add "command\n"
+      else if command == "analyze" or command == "exec":
+        toit-command := command == "analyze" ? "analyze" : "run"
+        run-result := toit toit-command command-line[1..]
         output := run-result.full-output
         normalized := normalize output
         command-string := command-line.join " "
@@ -101,8 +111,13 @@ class GoldTester:
           normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
         outputs.add "== package.lock\n$normalized"
       else if command == "pkg":
-        pkg.main ["--project-root=$working-dir_"] + command-line[1..]
-        outputs.add "Package command executed. $command-line\n"
+        test-ui := TestUi --quiet=false
+        cli := Cli "pkg" --ui=test-ui
+        e := catch:
+          pkg.main --cli=cli ["--project-root=$working-dir_"] + command-line[1..]
+        exit-status := e ? "Aborted" : "OK"
+        full-output := test-ui.stdout + test-ui.stderr
+        outputs.add "$exit-status\n$command-line\n$full-output"
       else:
         throw "Unknown command: $command"
 
@@ -116,9 +131,9 @@ class GoldTester:
       expected-content = expected-content.replace --all "\r" ""
       expect-equals expected-content actual
 
-  analyze args -> RunResult_:
+  toit command/string args -> RunResult_:
     directory.chdir working-dir_
-    full-args := [toit-exec_, "analyze", "--"] + args
+    full-args := [toit-exec_, command, "--"] + args
     fork-data := pipe.fork
         true
         pipe.PIPE-INHERITED

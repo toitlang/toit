@@ -13,8 +13,9 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(ARM_TARGET "arm-linux-gnueabihf")
+set(ARM_TARGET "arm-linux-gnueabihf" CACHE STRING "The ARM target for the toolchain")
 # Compile for Raspberry Pi 3 and up.
-set(ARM_CPU_FLAGS "-mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard")
+set(ARM_CPU_FLAGS "-mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
+                  CACHE STRING "The ARM CPU flags for the toolchain")
 
 include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")

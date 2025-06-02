@@ -13,24 +13,24 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(CMAKE_SYSTEM_NAME "Linux")
+set(CMAKE_SYSTEM_NAME "Linux" CACHE STRING "The system name for the toolchain" FORCE)
 
 set(CMAKE_C_COMPILER clang CACHE PATH "" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE PATH "" FORCE)
 
-set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the host toolchain")
 
 if ("${CMAKE_SYSROOT}" STREQUAL "")
   if (DEFINED ENV{SYSROOT})
-    set(CMAKE_SYSROOT "$ENV{SYSROOT}")
+    set(CMAKE_SYSROOT "$ENV{SYSROOT}" CACHE PATH "The sysroot for the toolchain")
   else()
-    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot")
+    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot" CACHE PATH "The sysroot for the toolchain")
   endif()
 endif()
 
 if ("${ARM_TARGET}" STREQUAL "")
   if (DEFINED ENV{ARM_TARGET})
-    set(ARM_TARGET "$ENV{ARM_TARGET}")
+    set(ARM_TARGET "$ENV{ARM_TARGET}" CACHE STRING "The ARM target for the toolchain")
   else()
     # Typical targets are:
     # Barebone Linux:
@@ -54,16 +54,20 @@ endif()
 # Raspberry Pi 3: "-mcpu=cortex-a53 -mfpu=neon-fp-armv8 -mthumb"
 # Raspberry Pi 4: "-mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mthumb"
 # Raspberry Pi64: "-mcpu=cortex-a72"
-set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${ARM_CPU_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ARM_CPU_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_CPU_FLAGS}")
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${ARM_CPU_FLAGS}"
+  CACHE STRING "asm flags for the ARM toolchain")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ARM_CPU_FLAGS}"
+  CACHE STRING "c flags for the ARM toolchain")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_CPU_FLAGS}"
+  CACHE STRING "c++ flags for the ARM toolchain")
 
-set(CMAKE_C_COMPILER_TARGET "${ARM_TARGET}")
-set(CMAKE_CXX_COMPILER_TARGET "${ARM_TARGET}")
+set(CMAKE_C_COMPILER_TARGET "${ARM_TARGET}" CACHE STRING "c compiler target for the ARM toolchain")
+set(CMAKE_CXX_COMPILER_TARGET "${ARM_TARGET}" CACHE STRING "c++ compiler target for the ARM toolchain")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 
-set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -fuse-ld=lld")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${CMAKE_EXE_LINKER_FLAGS_INIT} -fuse-ld=lld"
+  CACHE STRING "The linker flags for the toolchain")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")

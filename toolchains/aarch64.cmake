@@ -13,5 +13,5 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(ARM_TARGET "aarch64-linux-gnu")
+set(ARM_TARGET "aarch64-linux-gnu" CACHE STRING "The ARM target for the toolchain")
 include("${CMAKE_CURRENT_LIST_DIR}/arm64.cmake")

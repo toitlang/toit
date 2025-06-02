@@ -20,8 +20,11 @@ import cli
 import ..pkg
 import ..registry
 
-class SyncCommand:
+import .base_
+
+class SyncCommand extends PkgCommand:
   constructor invocation/cli.Invocation:
+    super invocation
 
   execute:
     registries.sync

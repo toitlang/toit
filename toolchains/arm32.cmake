@@ -17,5 +17,5 @@ include("${CMAKE_CURRENT_LIST_DIR}/arm.cmake")
 
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
-set(GOOS "linux")
-set(GOARCH "arm")
+set(GOOS "linux" CACHE STRING "The GOOS for the toolchain")
+set(GOARCH "arm" CACHE STRING "The GOARCH for the toolchain")

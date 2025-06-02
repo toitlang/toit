@@ -9,6 +9,7 @@ main args:
 
 test tester/GoldTester:
   tester.gold "install" [
+    ["pkg", "init"],  // So we don't accidentally use a /tmp/package.yaml.
     ["pkg", "install", "pkg1"],
     ["package.lock"]
   ]

@@ -1,0 +1,2 @@
+OK
+[pkg, install, --local, --prefix=pkg1, pkg2]
