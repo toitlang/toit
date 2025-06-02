@@ -142,8 +142,6 @@ jobs:
           if [[ "${{ env.RUN_WINDOWS_SIGN_FLOW }}" == "true" || \
                 "${{ env.RUN_MACOS_SIGN_FLOW }}" == "true" ]]; then
             echo 'RUN_CROSS_FLOW=true' >> $GITHUB_ENV
-          else
-            echo 'RUN_CROSS_FLOW=false' >> $GITHUB_ENV
           fi
 
           # When running ssh, only run a single shard of the corresponding platform.
@@ -1131,7 +1129,7 @@ jobs:
       - name: Update manifest
         if: (env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang')
         run: |
-          .\wingetcreate.exe update Toit.Toit -s -v ${{ steps.version.outputs.version }} -u https://github.com/toitlang/toit/releases/download/${{ github.event.release.tag_name }}/toit-windows-x64-installer.exe -t ${{ secrets.WINGET_PAT }}
+          .\wingetcreate.exe update Toit.Toit -s -v ${{ steps.version.outputs.version }} -u https://github.com/toitlang/toit/releases/download/${{ env.TOIT_VERSION }}/toit-windows-x64-installer.exe -t ${{ secrets.WINGET_PAT }}
 
   sign_macos:
     runs-on: macos-latest  # An arm64 runner.
