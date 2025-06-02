@@ -20,8 +20,10 @@ main args:
   exit 0
 
 DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
-OTHER-PATH ::= "$DRIVE/tmp/other.toit"
+// FILE-PATH and OTHER-PATH must be set up such that 'file.toit' can import other with
+// an 'import .other' statement.
 FILE-PATH ::= "$DRIVE/tmp/file.toit"
+OTHER-PATH ::= "$DRIVE/tmp/other.toit"
 
 build-shape_ method/Method:
   arity := method.parameters.size
@@ -434,8 +436,6 @@ test client/LspClient:
         field-getter x:
       """
 
-  // Make sure we can reference the other path with a relative import.
-  assert: FILE-PATH == "/tmp/file.toit" and OTHER-PATH == "/tmp/other.toit"
   test-toitdoc
       client
       --extract-toitdoc=: it.toitdoc
