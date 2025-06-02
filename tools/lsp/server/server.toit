@@ -77,7 +77,7 @@ monitor Settings:
     return get_ "reproDir" --if-absent=: DEFAULT-REPRO-DIR
 
   toit-compiler-path -> string:
-    return get_ "toitPath" --if-absent=: "toit.compile"
+    return get_ "toitPath" --if-absent=: "toit"
 
   sdk-path compiler-path/string -> string:
     return get_ "sdkPath" --if-absent=: sdk-path-from-compiler compiler-path
@@ -177,10 +177,10 @@ class LspServer:
       new["sdkPath"] = sdk-path
       new
 
-  set-toitc toitc-path/string -> none:
+  set-toit toit-path/string -> none:
     settings_.replace: | old/Map |
       new := old.copy
-      new["toitPath"] = toitc-path
+      new["toitPath"] = toit-path
       new
 
   set-timeout-ms timeout-ms/int -> none:
@@ -714,7 +714,7 @@ main --toit-path-override/string?:
   server := LspServer rpc-connection toit-path-override
   server.run
 
-compute-summaries --uris/List --toitc/string --sdk-path -> Documents:
+compute-summaries --uris/List --toit/string --sdk-path -> Documents:
   sdk-uri := translator.to-uri sdk-path
 
   in-pipe := FakePipe
@@ -724,14 +724,14 @@ compute-summaries --uris/List --toitc/string --sdk-path -> Documents:
     out-pipe.in.drain
   rpc-connection := RpcConnection in-pipe.in out-pipe.out
 
-  server := LspServer rpc-connection toitc
+  server := LspServer rpc-connection toit
 
   root-uri/string? := translator.to-uri directory.cwd
   initialize-params := InitializeParams --root-uri=root-uri --capabilities=(ClientCapabilities)
   server.initialize initialize-params
   server.initialized
   server.set-sdk-path sdk-path
-  server.set-toitc toitc
+  server.set-toit toit
   server.set-timeout-ms 0  // No timeout.
 
   server.analyze-many { "uris": uris }
