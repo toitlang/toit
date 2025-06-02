@@ -1,3 +1,0 @@
-toit-cert-roots/examples/get_google.toit:16:23: error: Unresolved identifier: 'GLOBALSIGN-ROOT-CA'
-    certificate-roots.GLOBALSIGN-ROOT-CA,
-                      ^~~~~~~~~~~~~~~~~~
