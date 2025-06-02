@@ -707,7 +707,7 @@ test-encoder-patterns pin1/gpio.Pin pin2/gpio.Pin:
   test-individual-patterns pin1 pin2
 
 test-uart pin1/gpio.Pin pin2/gpio.Pin:
-  BAUD_RATE ::= 115200
+  BAUD-RATE ::= 115200
 
   // Switch to 20MHz.
   // 1MHz should be enough, but I can see on the oscilloscope that the signals are
