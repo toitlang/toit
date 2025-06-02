@@ -19,6 +19,7 @@
 #include "os.h"
 #include "run.h"
 #include "snapshot_bundle.h"
+#include "compiler/compiler.h"
 
 #include "objects_inline.h"
 
@@ -35,7 +36,27 @@ int main(int argc, char **argv) {
   ObjectMemory::set_up();
 
   int exit_state = 0;
-  if (argc >= 2 && SnapshotBundle::is_bundle_file(argv[1])) {
+  if (argc > 1 && strcmp(argv[1], "--lsp") == 0) {
+    // Usually followed by '--project-root' and a path.
+    const char* project_root = null;
+    if (argc >= 4 && strcmp(argv[2], "--project-root") == 0) {
+      project_root = argv[3];
+    }
+    compiler::Compiler::Configuration compiler_config = {
+      .dep_file = null,
+      .dep_format = compiler::Compiler::DepFormat::none,
+      .project_root = project_root,
+      .force = false,
+      .werror = false,
+      .show_package_warnings = false,
+      .print_diagnostics_on_stdout = true,
+      .optimization_level = DEFAULT_OPTIMIZATION_LEVEL,
+    };
+    compiler::Compiler compiler;
+    compiler.language_server(compiler_config);
+    OS::tear_down();
+    return 0;
+  } else if (argc >= 2 && SnapshotBundle::is_bundle_file(argv[1])) {
     // Bundle reading.
     char* bundle_path = argv[1];
     Flags::program_name = bundle_path;
