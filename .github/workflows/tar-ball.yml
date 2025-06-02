@@ -254,29 +254,22 @@ jobs:
 
           ssh-keyscan -H aur.archlinux.org > $HOME/.ssh/known_hosts
 
-      - name: Fetch AUR packages
+      - name: Fetch AUR package
         run: |
           git clone ssh://aur@aur.archlinux.org/toit.git
-          git clone ssh://aur@aur.archlinux.org/toit-vessels-bin.git
 
       - name: Configure git
         run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-              git config user.email "leon@toit.io"
-              git config user.name "Leon Gungadin Mogensen"
-            popd
-          done
+          cd toit
+          git config user.email "leon@toit.io"
+          git config user.name "Leon Gungadin Mogensen"
 
-      - name: Update AUR packages
+      - name: Update AUR package
         shell: bash
         run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-            sed -i "s/_pkgver=.*/_pkgver=\"${{ needs.build-and-upload.outputs.version }}\"/g" PKGBUILD
-            sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
-            popd
-          done
+          cd toit
+          sed -i "s/_pkgver=.*/_pkgver=\"${{ needs.build-and-upload.outputs.version }}\"/g" PKGBUILD
+          sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
 
       - name: Update pkgsums and .SRCINFO for toit
         uses: toitlang/archlinux-package-action@main
@@ -287,22 +280,10 @@ jobs:
           updpkgsums: true
           srcinfo: true
 
-      - name: Update pkgsums and .SRCINFO for toit-vessels-bin
-        uses: toitlang/archlinux-package-action@main
-        with:
-          path: toit-vessels-bin
-          flags: ''
-          namcap: false
-          updpkgsums: true
-          srcinfo: true
-
-      - name: Upload toit and toit-vessels-bin
+      - name: Upload toit
         run: |
-          for pkg in toit toit-vessels-bin; do
-            pushd $pkg
-            cat PKGBUILD
-            cat .SRCINFO
-            git commit -am "Update to version ${{ needs.build-and-upload.outputs.version }}"
-            git push origin master
-            popd
-          done
+          cd toit
+          cat PKGBUILD
+          cat .SRCINFO
+          git commit -am "Update to version ${{ needs.build-and-upload.outputs.version }}"
+          git push origin master
