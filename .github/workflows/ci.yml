@@ -142,8 +142,6 @@ jobs:
           if [[ "${{ env.RUN_WINDOWS_SIGN_FLOW }}" == "true" || \
                 "${{ env.RUN_MACOS_SIGN_FLOW }}" == "true" ]]; then
             echo 'RUN_CROSS_FLOW=true' >> $GITHUB_ENV
-          else
-            echo 'RUN_CROSS_FLOW=false' >> $GITHUB_ENV
           fi
 
           # When running ssh, only run a single shard of the corresponding platform.
