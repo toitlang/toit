@@ -490,7 +490,6 @@ test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
     out2.write out-signals2 --done-level=1
 
     in-signals := in.wait-for-data
-    print in-signals
 
     expect-equals 4 in-signals.size
     expect-equals 0 (in-signals.level 0)
@@ -721,10 +720,12 @@ test-uart pin1/gpio.Pin pin2/gpio.Pin:
   out-channel.write no-signals --done-level=1
 
   uart-period := resolution / BAUD-RATE
+  half-period := uart-period >> 1
 
   uart-start := rmt.Signals 2
-  uart-start.set 0 --level=0 --period=uart-period - 1
-  uart-start.set 1 --level=0 --period=1
+  // We need two signals, so just half the start-period and keep the same level.
+  uart-start.set 0 --level=0 --period=half-period
+  uart-start.set 1 --level=0 --period=(uart-period - half-period)
 
   // A combination of the stop and start signals.
   uart-between := rmt.Signals 2
@@ -732,8 +733,9 @@ test-uart pin1/gpio.Pin pin2/gpio.Pin:
   uart-between.set 1 --level=0 --period=uart-period  // A start bit.
 
   uart-stop := rmt.Signals 2
-  uart-stop.set 0 --level=1 --period=uart-period - 1
-  uart-stop.set 1 --level=1 --period=1
+  // Same as for the start sequence: we need two signals.
+  uart-stop.set 0 --level=1 --period=half-period
+  uart-stop.set 1 --level=1 --period=(uart-period - half-period)
 
   // We use chunks of 2 bits, so that we don't waste signal memory.
   // rmt.Signals of length 1 are padded to size 2.
@@ -771,13 +773,13 @@ test-uart pin1/gpio.Pin pin2/gpio.Pin:
       --stop-bits=uart.Port.STOP-BITS-1
 
   done := monitor.Latch
-  message := "hello"
+  message := #['h', 'e', 'l', 'l', 'o']
   task::
     data := port.in.read
-    done.set data.to-string
+    done.set data
 
   out-channel.write message --encoder=encoder --done-level=1
-  expect-equals message done.get.to-string
+  expect-equals message done.get
 
   port.close
   encoder.close
