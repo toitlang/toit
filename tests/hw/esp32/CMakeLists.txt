@@ -96,11 +96,36 @@ function(parse_args_from_file file_path result_var)
   set(${result_var} ${result_list} PARENT_SCOPE)
 endfunction()
 
+function(parse_wireless_from_file file_path result_var)
+  # Ensure the provided file exists.
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "File not found: ${file_path}")
+  endif()
+
+  # Read the file content.
+  file(READ "${file_path}" file_content)
+
+  # Use a regular expression to find a line that starts with "// WIRELESS".
+  string(REGEX MATCHALL "\n// WIRELESS" matched_lines "${file_content}")
+
+  # If we have a match, return it.
+  if(matched_lines)
+    set(${result_var} "WIRELESS" PARENT_SCOPE)
+  endif()
+endfunction()
+
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
   foreach(file ${SINGLE_TESTS})
+    set(hw_category "hw")
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
+    unset(wireless)
+    parse_wireless_from_file(${toit_file} wireless)
+    if (NOT "${wireless}" STREQUAL "")
+      set(hw_category "hw-flaky")
+    endif()
+
     foreach(arg ${args})
       set(test_name ${file}-${esp_variant})
       if (NOT ${arg} STREQUAL "**NO_ARG**")
@@ -125,12 +150,16 @@ foreach(esp_variant ${VARIANTS})
             --toit-exe "${TOIT_EXE_HW}"
             --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        CONFIGURATIONS ${esp_variant} hw
+        CONFIGURATIONS ${esp_variant} ${hw_category}
         )
 
       set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
       set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-      set_tests_properties(${test_name} PROPERTIES RESOURCE_LOCK ${esp_variant})
+      if (wireless)
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "${esp_variant};${wireless}")
+      else()
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      endif()
 
       if (${failing})
         set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
@@ -139,8 +168,15 @@ foreach(esp_variant ${VARIANTS})
   endforeach()
 
   foreach(file ${MULTI_TESTS})
+    set(hw_category "hw")
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
+    unset(wireless)
+    parse_wireless_from_file(${toit_file} wireless)
+    if (NOT "${wireless}" STREQUAL "")
+      set(hw_category "hw-flaky")
+    endif()
+
     foreach(arg ${args})
       set(test_name ${file}-${esp_variant})
       if (NOT ${arg} STREQUAL "**NO_ARG**")
@@ -168,12 +204,16 @@ foreach(esp_variant ${VARIANTS})
             --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
             --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        CONFIGURATIONS ${esp_variant} hw
+        CONFIGURATIONS ${esp_variant} ${hw_category}
         )
 
       set_tests_properties("${test_name}" PROPERTIES TIMEOUT 120)
       set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-      set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      if (wireless)
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "${esp_variant};${wireless}")
+      else()
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      endif()
 
       if (${failing})
         set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
