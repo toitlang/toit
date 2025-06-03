@@ -10,4 +10,4 @@ dependencies:
     version: ^2.1.0
   hc_sr04:
     url: github.com/lask/toit-hc-sr04
-    version: ^2.1.1
+    version: ^2.2.0
