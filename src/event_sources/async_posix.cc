@@ -56,11 +56,14 @@ void AsyncEventThread::entry() {
     auto func = element->func;
     delete element;
     state_ = RUNNING;
+    word result;
     { Unlocker unlocker(locker);
-      auto result = func(resource);
-      event_source_->on_event(resource, result);
+      result = func(resource);
     }
     state_ = IDLE;
+    { Unlocker unlocker(locker);
+      event_source_->on_event(resource, result);
+    }
   }
 }
 

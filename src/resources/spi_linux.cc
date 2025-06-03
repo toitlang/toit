@@ -45,8 +45,6 @@ class SpiResourceGroup : public ResourceGroup {
     : ResourceGroup(process, SpiEventSource::instance()) {}
 
  protected:
-  void on_unregister_resource(Resource* resource) override;
-
   uint32 on_event(Resource* resource, word data, uint32_t state) override {
     USE(resource);
     state |= data;
@@ -88,20 +86,15 @@ class SpiResource : public Resource {
   uint8* buffer_ = null;
 };
 
-void SpiResourceGroup::on_unregister_resource(Resource* resource) {
-  int fd = static_cast<SpiResource*>(resource)->fd();
-  int result = EINTR;
-  do {
-    result = close(fd);
-  } while (result == EINTR);
-}
-
 SpiResource::SpiResource(ResourceGroup* group) : Resource(group) {}
 
 SpiResource::~SpiResource() {
   delete thread_;
   if (fd_ >= 0) {
-    close(fd_);
+    int result = EINTR;
+    do {
+      result = close(fd_);
+    } while (result == EINTR);
   }
   free(buffer_);
 }
@@ -120,7 +113,14 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
   // TODO(florian): allow to neuter incoming external byte arrays.
   uint8* buffer = unvoid_cast<uint8*>(malloc(length));
   if (buffer == null) FAIL(MALLOC_FAILED);
-  Defer free_buffer{ [&] { if (!successfully_dispatched) free(buffer); } };
+  buffer_ = buffer;
+  buffer_size_ = length;
+  Defer free_buffer{ [&] {
+    if (!successfully_dispatched) {
+      buffer_ = null;
+      free(buffer_);
+    }
+  } };
 
   memcpy(buffer, data.address() + from, length);
 
@@ -149,8 +149,6 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
     thread_->start();
   }
 
-  buffer_ = buffer;
-  buffer_size_ = length;
   successfully_dispatched = thread_->run(this, [xfer](Resource* resource) {
     auto spi = static_cast<SpiResource*>(resource);
     int fd = spi->fd();
@@ -180,13 +178,17 @@ Object* SpiResource::transfer_finish(bool was_read, Process* process) {
   }
   auto result_buffer = buffer_;
   int buffer_size = buffer_size_;
+  bool dispose, clear_content;
+  auto result = process->object_heap()->allocate_external_byte_array(buffer_size,
+                                                                     result_buffer,
+                                                                     dispose=true,
+                                                                     clear_content=false);
+  if (result == null) {
+    FAIL(ALLOCATION_FAILED);
+  }
   buffer_ = null;
   buffer_size_ = 0;
-  bool dispose, clear_content;
-  return process->object_heap()->allocate_external_byte_array(buffer_size,
-                                                              result_buffer,
-                                                              dispose=true,
-                                                              clear_content=false);
+  return result;
 }
 
 MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
@@ -259,7 +261,6 @@ PRIMITIVE(close) {
 
 PRIMITIVE(transfer_start) {
   ARGS(SpiResource, resource, Blob, data, int, from, int, length, bool, is_read, int, delay_usecs, bool, keep_cs_active);
-
   return resource->transfer_start(data, from, length, is_read, delay_usecs, keep_cs_active, process);
 }
 
