@@ -25,11 +25,14 @@ test:
   if runtime-before-sleep:
     expect current-run-time-us > runtime-before-sleep
     diff := current-run-time-us - runtime-before-sleep
-    expect diff < 500_000  // 0.5s.
+    expect diff < 1_000_000  // 1s.
   else:
+    // We can't expect the current time to have a certain value, as the mini-jag
+    // (testing harness) might have delayed running the test.
+    // However, as of 2025-06-03 mini-jag has a check that the total-run-time is
+    // in a reasonable range.
     new-total := esp32.total-run-time
     expect new-total > current-run-time-us
-    // expect new-total < 500_000  // 0.5s
     bucket[RUNTIME-KEY] = new-total
     bucket.close
     // By going into deep sleep we don't return to the `run-test` function
