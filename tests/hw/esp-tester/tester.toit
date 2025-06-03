@@ -124,19 +124,31 @@ run-test invocation/cli.Invocation:
     board1-ready := monitor.Latch
 
     task::
-      log "Connecting to board1"
-      board1.connect-network
+      image/ByteArray? := null
+      Task.group [
+        ::
+          log "Connecting to board1"
+          board1.connect-network,
+        ::
+          image = board1.compile-test test-path,
+      ]
       log "Installing test on board1"
-      board1.install-test test-path arg
+      board1.install-test image arg
       log "Board1 ready"
       board1-ready.set true
 
     if port-board2:
       board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-      log "Connecting to board2"
-      board2.connect-network
+      image2/ByteArray? := null
+      Task.group [
+        ::
+          log "Connecting to board2"
+          board2.connect-network,
+        ::
+          image2 = board2.compile-test test2-path,
+      ]
       log "Installing test on board2"
-      board2.install-test test2-path arg
+      board2.install-test image2 arg
       log "Board2 ready"
 
     board1-ready.get
@@ -261,7 +273,7 @@ class TestDevice:
     if network_: network_.close
     network_ = null
 
-  install-test test-path arg/string:
+  compile-test test-path:
     log "Compiling test"
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
@@ -281,8 +293,9 @@ class TestDevice:
       "-o", image-path,
       snapshot-path
     ]
-    image := file.read-contents image-path
+    return file.read-contents image-path
 
+  install-test image/ByteArray arg/string:
     log "Sending test to device"
     socket_.out.little-endian.write-int32 arg.size
     socket_.out.write arg
