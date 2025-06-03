@@ -29,6 +29,6 @@ packages:
       one_wire: toit-1-wire
   toit-hc-sr04:
     url: github.com/lask/toit-hc-sr04
-    name: hc_sr04
-    version: 2.1.1
-    hash: da8389adec9f012999c385b69bc42e26e19b51fa
+    name: hc-sr04
+    version: 2.2.0
+    hash: b0cfb0df9e657a699f909e0aa5d37979b9e96fa2

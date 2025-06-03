@@ -21,5 +21,6 @@ test:
     distance := driver.read-distance
     print distance
     // Requires the board to be pointing towards a wall with at most 1m distance.
+    expect-not-null distance
     expect 0 < distance < 1000
     sleep --ms=200
