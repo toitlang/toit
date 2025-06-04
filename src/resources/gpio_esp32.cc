@@ -294,14 +294,7 @@ PRIMITIVE(config) {
     .intr_type = GPIO_INTR_DISABLE,
   };
 
-  if (input) {
-    cfg.intr_type = GPIO_INTR_ANYEDGE;
-    if (output) {
-      cfg.mode = open_drain ? GPIO_MODE_INPUT_OUTPUT_OD : GPIO_MODE_INPUT_OUTPUT;
-    } else {
-      cfg.mode = GPIO_MODE_INPUT;
-    }
-  } else if (output) {
+  if (output) {
     cfg.mode = open_drain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT;
     // Set the value before switching the mode.
     // This may be harmful if the pin switches from push-pull to open-drain.
@@ -314,7 +307,15 @@ PRIMITIVE(config) {
       esp_err_t err = gpio_set_level((gpio_num_t)num, value);
       if (err != ESP_OK) return Primitive::os_error(err, process);
     }
+  }
 
+  if (input) {
+    cfg.intr_type = GPIO_INTR_ANYEDGE;
+    if (output) {
+      cfg.mode = open_drain ? GPIO_MODE_INPUT_OUTPUT_OD : GPIO_MODE_INPUT_OUTPUT;
+    } else {
+      cfg.mode = GPIO_MODE_INPUT;
+    }
   }
 
   esp_err_t err = gpio_config(&cfg);
