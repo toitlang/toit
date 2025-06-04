@@ -130,23 +130,26 @@ run-test invocation/cli.Invocation:
       board1-ready := monitor.Latch
 
       task::
-        log "Connecting to board1"
-        board1.connect-network
-        log "Installing test on board1"
-        board1.install-test test-path arg
+        image/ByteArray? := null
+        Task.group [
+          :: board1.connect-network,
+          :: image = board1.compile-test test-path,
+        ]
+        board1.install-test image arg
         log "Board1 ready"
         board1-ready.set true
 
       if port-board2:
         board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-        log "Connecting to board2"
-        board2.connect-network
-        log "Installing test on board2"
-        board2.install-test test2-path arg
+        image2/ByteArray? := null
+        Task.group [
+          :: board2.connect-network,
+          :: image2 = board2.compile-test test2-path,
+        ]
+        board2.install-test image2 arg
         log "Board2 ready"
 
       board1-ready.get
-      log "Running test"
       board1.run-test
       if port-board2:
         board1.running-container.get
@@ -240,6 +243,7 @@ class TestDevice:
     run-toit toit-exe args --ui=ui
 
   connect-network:
+    log "Connecting to $name"
     // Reset the device.
     ui.emit --verbose "Resetting $name"
     port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
@@ -267,7 +271,7 @@ class TestDevice:
     if network_: network_.close
     network_ = null
 
-  install-test test-path arg/string:
+  compile-test test-path:
     log "Compiling test"
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
@@ -287,9 +291,10 @@ class TestDevice:
       "-o", image-path,
       snapshot-path
     ]
-    image := file.read-contents image-path
+    return file.read-contents image-path
 
-    log "Sending test to device"
+  install-test image/ByteArray arg/string:
+    log "Sending test to device $name"
     socket_.out.little-endian.write-int32 arg.size
     socket_.out.write arg
     socket_.out.little-endian.write-int32 image.size
@@ -303,6 +308,7 @@ class TestDevice:
     installed-container.get
 
   run-test -> none:
+    log "Running test on device $name"
     socket_.out.write RUN-TEST
 
 setup-tester invocation/cli.Invocation:
