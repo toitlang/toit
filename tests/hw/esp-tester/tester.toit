@@ -23,7 +23,8 @@ start-time-us/int := ?
 
 log message/string:
   duration := Duration --us=(Time.monotonic-us - start-time-us)
-  print "--- $(%06d duration.in-ms): $message"
+  lines := message.split "\n"
+  lines.do: print_ "--- $(%06d duration.in-ms): $it"
 
 main args:
   start-time-us = Time.monotonic-us
@@ -121,56 +122,77 @@ run-test invocation/cli.Invocation:
   arg := invocation["arg"]
   flaky := invocation["flaky"]
 
-  board1 := TestDevice --name="board1" --port-path=port-board1 --ui=ui --toit-exe=toit-exe
-  board2/TestDevice? := null
-
+  already-installed := false
   attempts := flaky ? 3 : 1
-  attempts.repeat:
-    try:
-      board1-ready := monitor.Latch
+  attempts.repeat: | attempt/int |
+    print "\n"
+    log "Attempt $(attempt + 1) of $attempts"
+    // If we didn't manage to install the test something went wrong.
+    catch --unwind=(: not already-installed or attempt == attempts - 1):
+      board1 := TestDevice
+          --name="board1"
+          --port-path=port-board1
+          --ui=ui
+          --toit-exe=toit-exe
+          --already-installed=already-installed
+      board2/TestDevice? := null
 
-      task::
-        image/ByteArray? := null
-        Task.group [
-          :: board1.connect-network,
-          :: image = board1.compile-test test-path,
-        ]
-        board1.install-test image arg
-        log "Board1 ready"
-        board1-ready.set true
+      try:
+        board1-ready := monitor.Latch
 
-      if port-board2:
-        board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-        image2/ByteArray? := null
-        Task.group [
-          :: board2.connect-network,
-          :: image2 = board2.compile-test test2-path,
-        ]
-        board2.install-test image2 arg
-        log "Board2 ready"
+        task::
+          image/ByteArray? := null
+          Task.group [
+            :: board1.connect-network,
+            :: image = board1.compile-test test-path,
+          ]
+          board1.install-test image arg
+          log "Board1 ready"
+          board1-ready.set true
 
-      board1-ready.get
-      board1.run-test
-      if port-board2:
-        board1.running-container.get
-        board2.run-test
+        if port-board2:
+          board2 = TestDevice
+              --name="board2"
+              --port-path=port-board2
+              --ui=ui
+              --toit-exe=toit-exe
+              --already-installed=already-installed
+          image2/ByteArray? := null
+          Task.group [
+            :: board2.connect-network,
+            :: image2 = board2.compile-test test2-path,
+          ]
+          board2.install-test image2 arg
+          log "Board2 ready"
 
-      ui.emit --verbose "Waiting for all tests to be done"
-      board1.all-tests-done.get
-      log "Board1 done"
-      if board2:
-        board2.all-tests-done.get
-        log "Board2 done"
+        board1-ready.get
+        already-installed = true
 
-    finally:
-      board1.close
-      if board2: board2.close
+        board1.run-test
+        if port-board2:
+          board1.running-container.get
+          board2.run-test
+
+        ui.emit --verbose "Waiting for all tests to be done"
+        board1.all-tests-done.get
+        log "Board1 done"
+        if board2:
+          board2.all-tests-done.get
+          log "Board2 done"
+
+        // Success. No need to run another attempt.
+        return
+      finally:
+        board1.close
+        if board2: board2.close
 
 class TestDevice:
   static SNAPSHOT-NAME ::= "test.snap"
   name/string
   port/uart.HostPort? := ?
   toit-exe/string
+  // Whether the test has already been installed on the device.
+  already-installed/bool
   read-task/Task? := null
   is-active/bool := false
   collected-output/string := ""
@@ -184,7 +206,7 @@ class TestDevice:
   network_/net.Client? := null
   socket_/tcp.Socket? := null
 
-  constructor --.name --.toit-exe --port-path/string --.ui:
+  constructor --.name --.toit-exe --port-path/string --.ui --.already-installed:
     port = uart.HostPort port-path --baud-rate=115200
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
     read-task = task --background::
@@ -271,7 +293,10 @@ class TestDevice:
     if network_: network_.close
     network_ = null
 
-  compile-test test-path:
+  compile-test test-path -> ByteArray:
+    if already-installed:
+      log "Skipping compilation, already installed"
+      return #[]
     log "Compiling test"
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
     toit_ [
@@ -293,10 +318,18 @@ class TestDevice:
     ]
     return file.read-contents image-path
 
-  install-test image/ByteArray arg/string:
+  install-test image/ByteArray arg/string -> none:
     log "Sending test to device $name"
     socket_.out.little-endian.write-int32 arg.size
     socket_.out.write arg
+    if already-installed:
+      log "Sending already installed signal"
+      socket_.out.little-endian.write-int32 -1
+      log "set"
+      installed-container.set true
+      log "return"
+      return
+
     socket_.out.little-endian.write-int32 image.size
 
     summer := crc.Crc32

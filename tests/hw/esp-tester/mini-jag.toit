@@ -26,8 +26,6 @@ main:
     // It just makes sure that the run-time is properly reset when the device is
     // powered on through a reset.
     expect esp32.total-run-time < 500_000  // 0.5s
-    print "Clearing containers and waiting for new test"
-    clear-containers
     with-client: | socket/tcp.Socket |
       install-new-test socket.in
       wait-for-run-signal socket.in
@@ -62,15 +60,20 @@ clear-containers:
 
 install-new-test reader/io.Reader:
   arg-size := reader.little-endian.read-int32
-  if arg-size < 0:
-    print "ALREADY INSTALLED"
-    return
   arg := reader.read-bytes arg-size
   print "ARGS: $arg.to-string"
+  bucket := storage.Bucket.open --ram BUCKET-NAME
+  bucket["arg"] = arg.to-string
+  bucket.close
   size := reader.little-endian.read-int32
+  if size < 0:
+    print "ALREADY INSTALLED"
+    return
+  print "Clearing old containers"
+  clear-containers
+  print "SIZE: $size"
   expected-crc := reader.read-bytes 4
   summer := crc.Crc32
-  print "SIZE: $size"
   writer := containers.ContainerImageWriter size
   written-size := 0
   while written-size < size:
@@ -84,9 +87,6 @@ install-new-test reader/io.Reader:
     throw"CRC MISMATCH"
     return
   writer.commit
-  bucket := storage.Bucket.open --ram BUCKET-NAME
-  bucket["arg"] = arg.to-string
-  bucket.close
   print INSTALLED-CONTAINER
 
 wait-for-run-signal reader/io.Reader:
