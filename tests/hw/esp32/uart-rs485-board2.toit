@@ -39,10 +39,10 @@ test:
     print "Board1 must be started before board2."
 
   task::
-    5.repeat:
+    5.repeat: | iteration/int |
       data := port.in.read
       if data != RESPONSE-MESSAGE:
-        throw "Error: $data $data.to-string-non-throwing"
+        throw "Error: received $data != $RESPONSE-MESSAGE ($iteration)"
 
   5.repeat:
     port.out.write OUT-MESSAGE
