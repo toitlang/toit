@@ -123,6 +123,7 @@ foreach(esp_variant ${VARIANTS})
     unset(wireless)
     parse_wireless_from_file(${toit_file} wireless)
     if (NOT "${wireless}" STREQUAL "")
+      # We consider all wireless tests to be flaky.
       set(hw_category "hw-flaky")
     endif()
 
@@ -174,6 +175,7 @@ foreach(esp_variant ${VARIANTS})
     unset(wireless)
     parse_wireless_from_file(${toit_file} wireless)
     if (NOT "${wireless}" STREQUAL "")
+      # We consider all wireless tests to be flaky.
       set(hw_category "hw-flaky")
     endif()
 
