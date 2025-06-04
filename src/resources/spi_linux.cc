@@ -117,8 +117,8 @@ Object* SpiResource::transfer_start(Blob data, int from, int length,
   buffer_size_ = length;
   Defer free_buffer{ [&] {
     if (!successfully_dispatched) {
-      buffer_ = null;
       free(buffer_);
+      buffer_ = null;
     }
   } };
 

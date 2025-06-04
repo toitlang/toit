@@ -60,6 +60,10 @@ void AsyncEventThread::entry() {
     { Unlocker unlocker(locker);
       result = func(resource);
     }
+    // Switch to idle state_ before we call the event handler. The other thread might
+    // want to run a new function immediately, and might enter the 'run' below before we
+    // leave the Unlocker scope.
+    // If we hadn't set the state to IDLE before the call it could hit the 'state_ != IDLE'.
     state_ = IDLE;
     { Unlocker unlocker(locker);
       event_source_->on_event(resource, result);
