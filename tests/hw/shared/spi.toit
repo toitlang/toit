@@ -6,6 +6,7 @@ import expect show *
 import gpio
 import monitor
 import spi
+import system
 
 /**
 Tests the SPI interface.
@@ -63,14 +64,20 @@ test
   on-from-idle-edge := cpha == 0
 
   if run-slave-receive:
-    slave.prepare-receive 24 --cpol=cpol --cpha=cpha
-    MESSAGE ::= #['O', 'K', '!']
-    device.write MESSAGE
-    response := with-timeout --ms=3_000: slave.receive
-    expected-bits := 0
-    MESSAGE.do: | c/int |
-      expected-bits = (expected-bits << 8) | c
-    expect-equals expected-bits response
+    max-attempts := 3
+    for i := 0; i < max-attempts; i++:
+      if i != 0: print "Running slave receive attempt $(i + 1) of $max-attempts"
+      e := catch --unwind=(: i == max-attempts - 1 or it != DEADLINE-EXCEEDED-ERROR):
+        slave.prepare-receive 24 --cpol=cpol --cpha=cpha
+        MESSAGE ::= #['O', 'K', '!']
+        device.write MESSAGE
+        response := with-timeout --ms=2_000: slave.receive
+        expected-bits := 0
+        MESSAGE.do: | c/int |
+          expected-bits = (expected-bits << 8) | c
+        expect-equals expected-bits response
+      if not e: break
+      print "TIMEOUT"
 
   print "OK"
   device.close
@@ -88,6 +95,7 @@ class SlaveBitBang implements Slave:
   miso/gpio.Pin
 
   received-latch/monitor.Latch? := null
+  receive-task_/Task? := null
 
   constructor --.cs --.sclk --.mosi --.miso:
     reset
@@ -109,11 +117,20 @@ class SlaveBitBang implements Slave:
     ready-latch := monitor.Latch
     received-latch = monitor.Latch
 
-    task::
-      ready-latch.set true
-      start-receiving_ bit-count --cpol=cpol --cpha=cpha
+    assert: not receive-task_
+
+    receive-task_ = task::
+      try:
+        // Run a GC to reduce the likelihood of a GC during the receive.
+        system.process-stats --gc
+        ready-latch.set true
+        start-receiving_ bit-count --cpol=cpol --cpha=cpha
+      finally:
+        receive-task_ = null
 
     ready-latch.get
+    // Let the other task start its sclk loop.
+    sleep --ms=10
 
   start-receiving_ bit-count --cpol --cpha:
     if bit-count > 30: throw "INVALID_ARGUMENT"
@@ -124,16 +141,26 @@ class SlaveBitBang implements Slave:
       yield
 
     received := 0
+    counter := 0
     bit-count.repeat:
       // Wait for the clock to go to non-idle.
       while sclk.get == idle-clk-level:
-
+        counter++
+        if counter > 50_000:
+          // Assume a timeout.
+          received-latch.set --exception DEADLINE-EXCEEDED-ERROR
+          return
 
       if on-from-idle-edge:
         received = (received << 1) | mosi.get
 
       // Wait for the clock to go to idle.
       while sclk.get != idle-clk-level:
+        counter++
+        if counter > 50_000:
+          // Assume a timeout.
+          received-latch.set --exception DEADLINE-EXCEEDED-ERROR
+          return
 
       if not on-from-idle-edge:
         received = (received << 1) | mosi.get
@@ -141,6 +168,4 @@ class SlaveBitBang implements Slave:
     received-latch.set received
 
   receive -> int:
-    result := received-latch.get
-    received-latch = null
-    return result
+      return received-latch.get
