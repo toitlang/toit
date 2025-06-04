@@ -21,7 +21,6 @@ add_custom_target(
   check_hw
   # The current Raspberry Pi can't run more than 2 tests in parallel.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
-  COMMAND ${CMAKE} env TOIT_SKIP_SETUP=1 ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw-flaky --repeat until-pass:3 --output-on-failure
   USES_TERMINAL
   )
 

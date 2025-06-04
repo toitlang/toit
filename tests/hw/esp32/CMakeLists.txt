@@ -117,14 +117,14 @@ endfunction()
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
   foreach(file ${SINGLE_TESTS})
-    set(hw_category "hw")
+    set(flaky FALSE)
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
     unset(wireless)
     parse_wireless_from_file(${toit_file} wireless)
     if (NOT "${wireless}" STREQUAL "")
       # We consider all wireless tests to be flaky.
-      set(hw_category "hw-flaky")
+      set(flaky TRUE)
     endif()
 
     foreach(arg ${args})
@@ -143,18 +143,29 @@ foreach(esp_variant ${VARIANTS})
         set(failing TRUE)
       endif()
 
+      unset(flaky_flag)
+      if (flaky)
+        # Call flaky.sh of this directory.
+        set(flaky_flag "--flaky")
+      endif()
+
       add_test(
         NAME ${test_name}
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file}
+            ${flaky_flag}
             --arg "${arg}"
             --verbose
             --toit-exe "${TOIT_EXE_HW}"
             --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        CONFIGURATIONS ${esp_variant} ${hw_category}
+        CONFIGURATIONS ${esp_variant} hw
         )
 
-      set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
+      set (timeout 120)
+      if (${flaky})
+        set(timeout 360)
+      endif()
+      set_tests_properties(${test_name} PROPERTIES TIMEOUT ${timeout})
       set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
       if (wireless)
         set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "${esp_variant};${wireless}")
@@ -169,14 +180,14 @@ foreach(esp_variant ${VARIANTS})
   endforeach()
 
   foreach(file ${MULTI_TESTS})
-    set(hw_category "hw")
+    set(flaky FALSE)
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
     unset(wireless)
     parse_wireless_from_file(${toit_file} wireless)
     if (NOT "${wireless}" STREQUAL "")
       # We consider all wireless tests to be flaky.
-      set(hw_category "hw-flaky")
+      set(flaky TRUE)
     endif()
 
     foreach(arg ${args})
@@ -197,18 +208,28 @@ foreach(esp_variant ${VARIANTS})
 
       string(REPLACE "board1" "board2" toit_file_board2 ${toit_file})
 
+      unset(flaky_flag)
+      if (flaky)
+        set(flaky_flag "--flaky")
+      endif()
+
       add_test(
         NAME "${test_name}"
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file} ${toit_file_board2}
+            ${flaky_flag}
             --verbose
             --arg "${arg}"
             --toit-exe "${TOIT_EXE_HW}"
             --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
             --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        CONFIGURATIONS ${esp_variant} ${hw_category}
+        CONFIGURATIONS ${esp_variant} hw
         )
 
+      set (timeout 120)
+      if (${flaky})
+        set(timeout 360)
+      endif()
       set_tests_properties("${test_name}" PROPERTIES TIMEOUT 120)
       set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
       if (wireless)

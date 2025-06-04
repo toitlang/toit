@@ -79,6 +79,9 @@ main args:
             --help="The argument to pass to the test"
             --type="string"
             --default="",
+        cli.Flag "flaky"
+            --help="Run the test in flaky mode, which will retry on failure"
+            --default=false,
       ]
       --rest=[
         cli.Option "test"
@@ -116,46 +119,49 @@ run-test invocation/cli.Invocation:
   test-path := invocation["test"]
   test2-path := invocation["test2"]
   arg := invocation["arg"]
+  flaky := invocation["flaky"]
 
   board1 := TestDevice --name="board1" --port-path=port-board1 --ui=ui --toit-exe=toit-exe
   board2/TestDevice? := null
 
-  try:
-    board1-ready := monitor.Latch
+  attempts := flaky ? 3 : 1
+  attempts.repeat:
+    try:
+      board1-ready := monitor.Latch
 
-    task::
-      log "Connecting to board1"
-      board1.connect-network
-      log "Installing test on board1"
-      board1.install-test test-path arg
-      log "Board1 ready"
-      board1-ready.set true
+      task::
+        log "Connecting to board1"
+        board1.connect-network
+        log "Installing test on board1"
+        board1.install-test test-path arg
+        log "Board1 ready"
+        board1-ready.set true
 
-    if port-board2:
-      board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
-      log "Connecting to board2"
-      board2.connect-network
-      log "Installing test on board2"
-      board2.install-test test2-path arg
-      log "Board2 ready"
+      if port-board2:
+        board2 = TestDevice --name="board2" --port-path=port-board2 --ui=ui --toit-exe=toit-exe
+        log "Connecting to board2"
+        board2.connect-network
+        log "Installing test on board2"
+        board2.install-test test2-path arg
+        log "Board2 ready"
 
-    board1-ready.get
-    log "Running test"
-    board1.run-test
-    if port-board2:
-      board1.running-container.get
-      board2.run-test
+      board1-ready.get
+      log "Running test"
+      board1.run-test
+      if port-board2:
+        board1.running-container.get
+        board2.run-test
 
-    ui.emit --verbose "Waiting for all tests to be done"
-    board1.all-tests-done.get
-    log "Board1 done"
-    if board2:
-      board2.all-tests-done.get
-      log "Board2 done"
+      ui.emit --verbose "Waiting for all tests to be done"
+      board1.all-tests-done.get
+      log "Board1 done"
+      if board2:
+        board2.all-tests-done.get
+        log "Board2 done"
 
-  finally:
-    board1.close
-    if board2: board2.close
+    finally:
+      board1.close
+      if board2: board2.close
 
 class TestDevice:
   static SNAPSHOT-NAME ::= "test.snap"
@@ -211,7 +217,7 @@ class TestDevice:
               line := collected-output[index + JAG-DECODE.size..new-line].trim
               snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
               toit_ ["decode", "-s", snapshot-path, line]
-            ui.abort "Error detected"
+            all-tests-done.set --exception "Error detected"
 
       finally:
         read-task = null

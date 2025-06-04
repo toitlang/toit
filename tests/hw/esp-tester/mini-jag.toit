@@ -62,6 +62,9 @@ clear-containers:
 
 install-new-test reader/io.Reader:
   arg-size := reader.little-endian.read-int32
+  if arg-size < 0:
+    print "ALREADY INSTALLED"
+    return
   arg := reader.read-bytes arg-size
   print "ARGS: $arg.to-string"
   size := reader.little-endian.read-int32
