@@ -53,6 +53,7 @@ if (${TOIT_IS_CROSS})
   set(TOIT_COMPILER_STATIC -static)
 endif()
 
+message(STATUS "********************************** TOITC -- ${UTF_8_MANIFEST_LIB}")
 target_link_libraries(
   toit_compiler
   ${TOIT_COMPILER_STATIC}
