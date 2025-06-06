@@ -252,6 +252,11 @@ jobs:
       - name: Ccache stats
         run: ccache -s
 
+      - name: Save ccache cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
 
       - shell: bash
         if: env.ENABLE_SSH == 'true'
@@ -303,5 +308,5 @@ jobs:
           Remove-Item -Recurse -Force 'เดสก์ท็อป'
           rm output.txt
           rm output_inside.txt
-          rm output.image
-          rm output.snapshot
+          # rm output.image
+          # rm output.snapshot
