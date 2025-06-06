@@ -89,6 +89,5 @@ int main(int argc, char **argv) {
 
 } // namespace toit
 
-int main(int argc, char** argv) {
-  return toit::main(argc, argv);
-}
+// Run toit::main.
+#include "./main_entry_helper.h"

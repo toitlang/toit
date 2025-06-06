@@ -398,8 +398,13 @@ int main(int argc, char **argv) {
 }
 
 } // namespace compiler
-} // namespace toit
 
+// A 'main' function in the 'toit' namespace so that the main-entry-helper below can be used.
 int main(int argc, char** argv) {
   return toit::compiler::main(argc, argv);
 }
+
+} // namespace toit
+
+// Run toit::main.
+#include "../main_entry_helper.h"
