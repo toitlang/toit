@@ -383,7 +383,7 @@ PRIMITIVE(stat) {
     if (GetLastError() == ERROR_FILE_NOT_FOUND ||
         GetLastError() == ERROR_PATH_NOT_FOUND ||
         GetLastError() == ERROR_INVALID_NAME) {
-      wprintf("stat %ls\n", path);
+      wprintf(L"stat %ls\n", path);
       print_bytes(path);
       return process->null_object(); // Toit code expects this to be null
     }
