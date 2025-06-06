@@ -309,4 +309,4 @@ jobs:
           rm output.txt
           rm output_inside.txt
           rm output.snapshot
-          # rm output.image
+          rm output.image

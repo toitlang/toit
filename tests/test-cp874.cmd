@@ -6,4 +6,4 @@ echo main: print "hello" > à´Ê¡ì·çÍ»\main.toit
 build\host\sdk\bin\toit.exe à´Ê¡ì·çÍ»\main.toit
 build\host\sdk\bin\toit.exe à´Ê¡ì·çÍ»\main.toit > output.txt
 build\host\sdk\bin\toit.exe compile --snapshot -o output.snapshot à´Ê¡ì·çÍ»\main.toit
-REM build\host\sdk\bin\toit.exe tool snapshot-to-image -o output.image --format=binary -m32 output.snapshot
+build\host\sdk\bin\toit.exe tool snapshot-to-image -o output.image --format=binary -m32 output.snapshot
