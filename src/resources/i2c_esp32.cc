@@ -149,6 +149,7 @@ PRIMITIVE(bus_create) {
     .trans_queue_depth = 0,
     .flags = {
       .enable_internal_pullup = pullup,
+      .allow_pd = false,
     },
   };
   i2c_master_bus_handle_t handle;

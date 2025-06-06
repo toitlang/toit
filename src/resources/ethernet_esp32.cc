@@ -318,6 +318,7 @@ PRIMITIVE(init_spi) {
     .cs_ena_posttrans = 0,
     .clock_speed_hz   = frequency,
     .input_delay_ns   = 0,
+    .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
     .spics_io_num     = cs,
     .flags            = 0,
     .queue_size       = 1,
