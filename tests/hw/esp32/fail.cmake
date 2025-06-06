@@ -23,7 +23,7 @@ set(TOIT_SKIP_TESTS
   # The test didn't work for the ESP32S3. No need to run it.
   rmt-deprecated-test.toit-esp32s3
 
-  # I2S is flaky.
+  # I2S is flaky and broken.
   # https://github.com/espressif/esp-idf/issues/15275
   i2s-test.toit-esp32
   i2s-board1.toit-esp32-msb8-slave
@@ -40,13 +40,11 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32s3-pcm16-outmonoboth
   i2s-board1.toit-esp32s3-pcm32-outstereoleft
   i2s-board1.toit-esp32s3-pcm32-mclk
-)
-
-set(TOIT_FAILING_TESTS
-  # I2S is flaky and broken...
-  # https://github.com/espressif/esp-idf/issues/15275
   i2s-board1.toit-esp32-msb16
   i2s-board1.toit-esp32-philips32
   i2s-board1.toit-esp32-msb32
   i2s-board1.toit-esp32-pcm32
+)
+
+set(TOIT_FAILING_TESTS
 )

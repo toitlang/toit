@@ -96,11 +96,37 @@ function(parse_args_from_file file_path result_var)
   set(${result_var} ${result_list} PARENT_SCOPE)
 endfunction()
 
+function(parse_wireless_from_file file_path result_var)
+  # Ensure the provided file exists.
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "File not found: ${file_path}")
+  endif()
+
+  # Read the file content.
+  file(READ "${file_path}" file_content)
+
+  # Use a regular expression to find a line that starts with "// WIRELESS".
+  string(REGEX MATCHALL "\n// WIRELESS" matched_lines "${file_content}")
+
+  # If we have a match, return it.
+  if(matched_lines)
+    set(${result_var} "WIRELESS" PARENT_SCOPE)
+  endif()
+endfunction()
+
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
   foreach(file ${SINGLE_TESTS})
+    set(flaky FALSE)
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
+    unset(wireless)
+    parse_wireless_from_file(${toit_file} wireless)
+    if (NOT "${wireless}" STREQUAL "")
+      # We consider all wireless tests to be flaky.
+      set(flaky TRUE)
+    endif()
+
     foreach(arg ${args})
       set(test_name ${file}-${esp_variant})
       if (NOT ${arg} STREQUAL "**NO_ARG**")
@@ -117,9 +143,16 @@ foreach(esp_variant ${VARIANTS})
         set(failing TRUE)
       endif()
 
+      unset(flaky_flag)
+      if (flaky)
+        # Call flaky.sh of this directory.
+        set(flaky_flag "--flaky")
+      endif()
+
       add_test(
         NAME ${test_name}
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file}
+            ${flaky_flag}
             --arg "${arg}"
             --verbose
             --toit-exe "${TOIT_EXE_HW}"
@@ -128,9 +161,17 @@ foreach(esp_variant ${VARIANTS})
         CONFIGURATIONS ${esp_variant} hw
         )
 
-      set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
+      set (timeout 120)
+      if (${flaky})
+        set(timeout 360)
+      endif()
+      set_tests_properties(${test_name} PROPERTIES TIMEOUT ${timeout})
       set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-      set_tests_properties(${test_name} PROPERTIES RESOURCE_LOCK ${esp_variant})
+      if (wireless)
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "${esp_variant};${wireless}")
+      else()
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      endif()
 
       if (${failing})
         set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
@@ -139,8 +180,16 @@ foreach(esp_variant ${VARIANTS})
   endforeach()
 
   foreach(file ${MULTI_TESTS})
+    set(flaky FALSE)
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
     parse_args_from_file(${toit_file} args)
+    unset(wireless)
+    parse_wireless_from_file(${toit_file} wireless)
+    if (NOT "${wireless}" STREQUAL "")
+      # We consider all wireless tests to be flaky.
+      set(flaky TRUE)
+    endif()
+
     foreach(arg ${args})
       set(test_name ${file}-${esp_variant})
       if (NOT ${arg} STREQUAL "**NO_ARG**")
@@ -159,9 +208,15 @@ foreach(esp_variant ${VARIANTS})
 
       string(REPLACE "board1" "board2" toit_file_board2 ${toit_file})
 
+      unset(flaky_flag)
+      if (flaky)
+        set(flaky_flag "--flaky")
+      endif()
+
       add_test(
         NAME "${test_name}"
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file} ${toit_file_board2}
+            ${flaky_flag}
             --verbose
             --arg "${arg}"
             --toit-exe "${TOIT_EXE_HW}"
@@ -171,9 +226,17 @@ foreach(esp_variant ${VARIANTS})
         CONFIGURATIONS ${esp_variant} hw
         )
 
+      set (timeout 120)
+      if (${flaky})
+        set(timeout 360)
+      endif()
       set_tests_properties("${test_name}" PROPERTIES TIMEOUT 120)
       set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
-      set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      if (wireless)
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "${esp_variant};${wireless}")
+      else()
+        set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK ${esp_variant})
+      endif()
 
       if (${failing})
         set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
