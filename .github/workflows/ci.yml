@@ -308,5 +308,5 @@ jobs:
           Remove-Item -Recurse -Force 'เดสก์ท็อป'
           rm output.txt
           rm output_inside.txt
+          rm output.snapshot
           # rm output.image
-          # rm output.snapshot
