@@ -345,7 +345,7 @@ class SegmentHeader:
     return "$tag_:$content-size"
 
 class Segment:
-  byte-array_ ::= ?
+  byte-array_/ByteArray ::= ?
   begin_ ::= 0
   end_ ::= 0
   pos_ := 0
@@ -1547,7 +1547,12 @@ class StringSegment extends ListSegment:
     // Only place we read string content from debugging info.
     string-size := read-cardinal_
     pos_ += string-size
-    return byte-array_.to-string pos_ - string-size pos_
+    try:
+      return byte-array_.to-string pos_ - string-size pos_
+    finally: | is-exception _ |
+      if is-exception:
+        print "XXX: $byte-array_[pos_ - string-size.. pos_].to-string-non-throwing"
+        return byte-array_[pos_ - string-size.. pos_].to-string-non-throwing
 
   stringify:
     return "string: $super"
