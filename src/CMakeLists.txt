@@ -13,6 +13,17 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+# Must be before the add_subdirectory(compiler) below, as that one
+# uses the UTF_8_MANIFEST_LIB variable.
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
+  add_library(utf8_manifest OBJECT
+    manifest.rc
+    manifest.xml
+  )
+  enable_language(RC)
+  set(UTF_8_MANIFEST_LIB utf8_manifest)
+endif()
+
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_custom_target(build_tools)
   add_subdirectory(compiler)
@@ -132,15 +143,6 @@ foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
 endforeach()
 
 add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
-
-if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
-  add_library(utf8_manifest OBJECT
-    manifest.rc
-    manifest.xml
-  )
-  enable_language(RC)
-  set(UTF_8_MANIFEST_LIB utf8_manifest)
-endif()
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_executable(
