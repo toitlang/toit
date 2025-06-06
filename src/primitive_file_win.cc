@@ -360,6 +360,14 @@ Object* time_stamp(Process* process, FILETIME* time) {
   return Primitive::integer(unix_ticks, process);
 }
 
+void print_bytes(LPCWSTR str) {
+  const BYTE* bytes = (const BYTE*) str;
+  for (size_t i = 0; i < wcslen(str) * sizeof(wchar_t); ++i) {
+    printf("%02X ", bytes[i]);
+  }
+  printf("\n");
+}
+
 // Returns null for entries that do not exist.
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
@@ -375,6 +383,8 @@ PRIMITIVE(stat) {
     if (GetLastError() == ERROR_FILE_NOT_FOUND ||
         GetLastError() == ERROR_PATH_NOT_FOUND ||
         GetLastError() == ERROR_INVALID_NAME) {
+      wprintf("stat %ls\n", path);
+      print_bytes(path);
       return process->null_object(); // Toit code expects this to be null
     }
     WINDOWS_ERROR;

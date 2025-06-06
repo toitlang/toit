@@ -553,7 +553,9 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   ui := invocation.cli.ui
 
   source := invocation["source"]
-  if not file.is-file source: ui.abort "Source file not found: $source"
+  if not file.is-file source:
+    print source.to-byte-array
+    ui.abort "Source file not found: $source"
   source-contents := file.read-contents source
   is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
   if command != "run" and command != "compile" and is-snapshot:
