@@ -47,7 +47,7 @@ int run_with_utf_8_args(int (*main_func)(int, char**), int argc, char** argv) {
     toit::Utils::utf_16_to_8(wargv[i], wcslen(wargv[i]), reinterpret_cast<uint8*>(utf_8_arg), total_len);
     utf_8_arg[total_len] = '\0';  // Null-terminate the string.
     utf_8_args[i] = utf_8_arg;  // Keep a copy.
-    argv[i] = utf_8_arg;
+    utf_8_copy[i] = utf_8_arg;
   }
   LocalFree(wargv);
 
