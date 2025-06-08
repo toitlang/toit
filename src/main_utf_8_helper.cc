@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
 #include "main_utf_8_helper.h"
 
 #ifndef TOIT_WINDOWS
