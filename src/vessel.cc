@@ -17,6 +17,7 @@
 #include "flags.h"
 #include "run.h"
 #include "flash_registry.h"
+#include "main_utf_8_helper.h"
 #include "os.h"
 #include "third_party/dartino/gc_metadata.h"
 #include "snapshot.h"
@@ -74,5 +75,5 @@ int main(int argc, char **argv) {
 } // namespace toit
 
 int main(int argc, char** argv) {
-  return toit::main(argc, argv);
+  return run_with_utf_8_args(toit::main, argc, argv);
 }

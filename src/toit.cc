@@ -20,6 +20,7 @@
 #include "run.h"
 #include "snapshot_bundle.h"
 #include "compiler/compiler.h"
+#include "main_utf_8_helper.h"
 
 #include "objects_inline.h"
 
@@ -90,5 +91,5 @@ int main(int argc, char **argv) {
 } // namespace toit
 
 int main(int argc, char** argv) {
-  return toit::main(argc, argv);
+  return run_with_utf_8_args(toit::main, argc, argv);
 }
