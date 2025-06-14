@@ -152,8 +152,10 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     )
   set_target_properties(toit PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
   # Add the toit.{compile,run} as dependency, so we can start using the executable once it's built.
-  # This doesn't include toit.pkg, though.
-  add_dependencies(toit toit.compile toit.run)
+  # As soon as the 'toit' executable is built, it might be used to call `toit pkg` in
+  # which case the `toit.pkg` executable is needed. That's why we add the `build_go_tools`
+  # dependency.
+  add_dependencies(toit toit.compile toit.run build_go_tools)
   add_dependencies(build_tools toit)
 
   add_executable(
