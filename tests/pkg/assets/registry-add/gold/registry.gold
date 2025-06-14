@@ -1,0 +1,68 @@
+// In a fresh configuration we don't expect to see any registry.
+==================
+OK
+[pkg, registry, list]
+┌──────┬──────┬──────────┐
+│ Name   Type   Url/Path │
+├──────┼──────┼──────────┤
+└──────┴──────┴──────────┘
+==================
+OK
+[pkg, registry, add, --local, test-reg, <[*WORKING-DIR*]>/registry]
+==================
+OK
+[pkg, registry, list]
+┌──────────┬───────┬───────────────────────────┐
+│ Name       Type    Url/Path                  │
+├──────────┼───────┼───────────────────────────┤
+│ test-reg   local   <[*WORKING-DIR*]>/registry │
+└──────────┴───────┴───────────────────────────┘
+==================
+OK
+[pkg, list]
+test-reg (<[*WORKING-DIR*]>/registry (local))
+  bar - 2.0.1
+  foo - 1.1.0
+  foo - 1.2.3
+  sub - 2.0.0
+  sub - 3.1.4
+==================
+// Note that the second registry is added with a relative path
+==================
+OK
+[pkg, registry, add, --local, test-reg2, registry2]
+==================
+OK
+[pkg, registry, list]
+┌───────────┬───────┬────────────────────────────┐
+│ Name        Type    Url/Path                   │
+├───────────┼───────┼────────────────────────────┤
+│ test-reg    local   <[*WORKING-DIR*]>/registry  │
+│ test-reg2   local   <[*WORKING-DIR*]>/registry2 │
+└───────────┴───────┴────────────────────────────┘
+==================
+OK
+[pkg, list]
+test-reg (<[*WORKING-DIR*]>/registry (local))
+  bar - 2.0.1
+  foo - 1.1.0
+  foo - 1.2.3
+  sub - 2.0.0
+  sub - 3.1.4
+test-reg2 (<[*WORKING-DIR*]>/registry2 (local))
+  reg - 0.0.1
+==================
+OK
+[pkg, registry, add, --local, bad-registry, bad_registry]
+Error: Description at /desc.yaml is missing a url.
+Warning: Skipping /desc.yaml
+==================
+// It's OK to add the same registry with the same name again
+==================
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+// It's an error to add a registry with an existing name but a different path
+==================
+OK
+[pkg, registry, add, --local, test-reg2, registry2]

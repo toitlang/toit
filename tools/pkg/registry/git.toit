@@ -34,6 +34,10 @@ class GitRegistry extends Registry:
   constructor name .url .ref-hash --ui/cli.Ui:
     super name --ui=ui
 
+  operator == other -> bool:
+    if not other is GitRegistry: return false
+    return type == other.type and name == other.name and url == other.url and ref-hash == other.ref-hash
+
   content -> FileSystemView:
     if not ref-hash: content_ = sync
     else if not content_: content_ = load_

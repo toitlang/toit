@@ -45,6 +45,10 @@ class LocalRegistry extends Registry:
   stringify -> string:
     return "LocalRegistry(name: $name, path: $path)"
 
+  operator == other -> bool:
+    if not other is LocalRegistry: return false
+    return type == other.type and name == other.name and path == other.path
+
 class FileSystemView_ implements FileSystemView:
   root/string
 

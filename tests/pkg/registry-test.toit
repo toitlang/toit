@@ -114,7 +114,7 @@ expect-ui-throw test-ui/TestUi error/string [command]:
   expect-not-null e
   expect-equals "Error: $error\n" test-ui.stderr
 
-test-registries:
+test-registries source-dir/string:
   test-ui := TestUi --json
 
   test-registries := Registries --ui=test-ui
@@ -127,10 +127,12 @@ test-registries:
   test-ui.reset
 
   test-registries.add --local "local" "input/registry"
+  abs-path := "$source-dir/input/registry"
+
   test-registries.list
   expect-table-equals [
         { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
-        { "name": "local", "type": "local", "path": "input/registry" },
+        { "name": "local", "type": "local", "path": abs-path },
       ]
       test-ui.stdout
   test-ui.reset
@@ -143,7 +145,7 @@ test-registries:
       test-ui.stdout
   test-ui.reset
 
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" ""
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" "input/registry"
   expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
   expect-ui-throw test-ui "Registry abc does not exist." : test-registries.remove "abc"
 
@@ -195,5 +197,5 @@ main:
   with-test-registry:
     test-git
     test-local
-    test-registries
+    test-registries source-dir
 

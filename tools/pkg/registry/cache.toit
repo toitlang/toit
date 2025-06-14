@@ -68,42 +68,46 @@ class DescriptionUrlCache:
     return result
 
   recurse_ content/FileSystemView --path/string --ui/Ui:
-    content.list.do: | name/string entry |
-      if name.starts-with ".":
-        // Skip hidden files and directories.
-        continue.do
-      if entry is FileSystemView:
-        recurse_ entry --ui=ui --path="$path/$name"
-        continue.do
-      if name != Description.DESCRIPTION-FILE-NAME:
-        continue.do
+    e := catch:
+      content.list.do: | name/string entry |
+        if name.starts-with ".":
+          // Skip hidden files and directories.
+          continue.do
+        if entry is FileSystemView:
+          recurse_ entry --ui=ui --path="$path/$name"
+          continue.do
+        if name != Description.DESCRIPTION-FILE-NAME:
+          continue.do
 
-      path = "$path/$name"
-      description/Description? := null
-      decoded/any := null
-      e := catch:
-        decoded = yaml.decode (content.get entry)
-      if e:
-        ui.emit --error "Failed to decode $path as YAML"
-        ui.emit --warning "Skipping $path"
-        continue.do
-      if decoded is not Map:
-        ui.emit --error "Expected a map in path, got $decoded"
-        ui.emit --warning "Skipping $path"
-        continue.do
+        path = "$path/$name"
+        description/Description? := null
+        decoded/any := null
+        e := catch:
+          decoded = yaml.decode (content.get entry)
+        if e:
+          ui.emit --error "Failed to decode $path as YAML"
+          ui.emit --warning "Skipping $path"
+          continue.do
+        if decoded is not Map:
+          ui.emit --error "Expected a map in path, got $decoded"
+          ui.emit --warning "Skipping $path"
+          continue.do
 
-      e = catch:
-        description = Description decoded --path=path --ui=ui
-      if e:
-        // We expect the Description constructor to have reported the error already.
-        ui.emit --warning "Skipping $path"
-        continue.do
+        e = catch:
+          description = Description decoded --path=path --ui=ui
+        if e:
+          // We expect the Description constructor to have reported the error already.
+          ui.emit --warning "Skipping $path"
+          continue.do
 
-      e = catch:
-        add_ description
-      if e:
-        ui.emit --warning "Failed to add $description.url@$description.content[Description.VERSION-KEY_] to index"
-        ui.emit --warning "Skipping $path"
+        e = catch:
+          add_ description
+        if e:
+          ui.emit --warning "Failed to add $description.url@$description.content[Description.VERSION-KEY_] to index"
+          ui.emit --warning "Skipping $path"
+    if e:
+      ui.emit --error "Failed to read $path: $e"
+      return
 
   add_ description/Description:
     cache/DescriptionVersionCache := cache_.get description.url --init=(: DescriptionVersionCache)
