@@ -4,7 +4,7 @@
 
 import cli show Cli Ui Cache Config
 import cli.ui as cli-pkg
-import cli.test show TestUi
+import cli.test show TestUi TestAbort
 import encoding.json
 import encoding.yaml
 import expect show *
@@ -20,6 +20,7 @@ import net
 import net.tcp
 import system
 
+import .utils_
 import ...tools.pkg as pkg
 
 
@@ -113,12 +114,12 @@ class GoldTester:
       else if command == "pkg":
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui
-        e := catch --trace=(: it is not TestExit):
+        e := catch --trace=(: it is not TestAbort):
           pkg.main --cli=cli ["--project-root=$working-dir_"] + command-line[1..]
         exit-status := e ? "Aborted" : "OK"
-        if e and e is not TestExit:
+        if e and e is not TestAbort:
           print-on-stderr_ "Command failed: $e"
-          expect e is TestExit
+          expect e is TestAbort
         full-output := test-ui.stdout + test-ui.stderr
         outputs.add "$exit-status\n$command-line\n$full-output"
       else:
