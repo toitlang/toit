@@ -4,6 +4,7 @@
 
 import cli show Cli Ui Cache Config
 import cli.ui as cli-pkg
+import cli.test show TestUi
 import encoding.json
 import encoding.yaml
 import expect show *
@@ -21,7 +22,6 @@ import system
 
 import ...tools.pkg as pkg
 
-import .utils_
 
 with-tmp-dir [block]:
   tmp-dir := directory.mkdtemp "/tmp/test-"
@@ -136,21 +136,20 @@ class GoldTester:
 
   toit command/string args -> RunResult_:
     full-args := [toit-exec_, command, "--"] + args
-    fork-data := pipe.fork
-        true
-        pipe.PIPE-INHERITED
-        pipe.PIPE-CREATED
-        pipe.PIPE-CREATED
+    process := pipe.fork
+        --use-path
+        --create-stdout
+        --create-stderr
         toit-exec_
         full-args
-    stdout := fork-data[1]
-    stderr := fork-data[2]
-    child-process := fork-data[3]
+    stdout := process.stdout
+    stderr := process.stderr
 
     stdout-data := #[]
     stdout-task := task::
       try:
-        while chunk := stdout.read:
+        reader := stdout.in
+        while chunk := reader.read:
           stdout-data += chunk
       finally:
         stdout.close
@@ -158,12 +157,13 @@ class GoldTester:
     stderr-data := #[]
     stderr-task := task::
       try:
-        while chunk := stderr.read:
+        reader := stderr.in
+        while chunk := reader.read:
           stderr-data += chunk
       finally:
         stderr.close
 
-    exit-value := pipe.wait-for child-process
+    exit-value := process.wait
     stdout-task.cancel
     stderr-task.cancel
 
@@ -198,19 +198,16 @@ run-git-http-backend --prefix/string --root/string request/http.RequestIncoming 
     if value != "":
       env["HTTP_$(key.to-ascii-upper.replace --all "-" "_")"] = value
 
-  fork-data := pipe.fork
+  process := pipe.fork
       --environment=env
-      true  // Use path
-      pipe.PIPE-CREATED  // stdin.
-      pipe.PIPE-CREATED  // stdout.
-      pipe.PIPE-INHERITED  // stderr.
+      --use-path
+      --create-stdin
+      --create-stdout
       "git"
       ["git", "http-backend"]
 
-  stdin/pipe.OpenPipe := fork-data[0]
-  stdout/pipe.OpenPipe := fork-data[1]
-  stderr := fork-data[2]
-  child-process := fork-data[3]
+  stdin := process.stdin
+  stdout := process.stdout
 
   stdin-task := task::
     while chunk := request.body.read:
@@ -240,7 +237,7 @@ run-git-http-backend --prefix/string --root/string request/http.RequestIncoming 
       stdout.close
       stdout-latch.set "done"
 
-  pipe.wait-for child-process
+  process.wait
   stdout-latch.get
   stdin-task.cancel
   request.body.drain

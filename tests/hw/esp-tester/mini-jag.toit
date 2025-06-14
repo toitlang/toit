@@ -4,6 +4,7 @@
 
 import crypto.crc
 import esp32
+import expect show *
 import io
 import net
 import system.containers
@@ -21,6 +22,10 @@ main:
   print "Wakeup cause: $cause"
   // It looks like resetting the chip through the UART yields RESET-UNKNOWN.
   if cause == esp32.RESET-POWER-ON or cause == esp32.RESET-UNKNOWN:
+    // This check isn't necessary, but is hard to test within our tests.
+    // It just makes sure that the run-time is properly reset when the device is
+    // powered on through a reset.
+    expect esp32.total-run-time < 500_000  // 0.5s
     print "Clearing containers and waiting for new test"
     clear-containers
     with-client: | socket/tcp.Socket |

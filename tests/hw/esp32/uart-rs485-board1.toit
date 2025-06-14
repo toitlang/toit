@@ -30,4 +30,4 @@ test:
   5.repeat:
     while rts.get == 0:
     while rts.get == 1:
-    port.out.write RESPONSE-MESSAGE
+    port.out.write RESPONSE-MESSAGE --flush

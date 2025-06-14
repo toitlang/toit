@@ -71,6 +71,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-morse
     https://github.com/toitware/toit-morse-tutorial
     https://github.com/toitware/toit-msa311
+    https://github.com/toitware/toit-mustache
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-openai
     https://github.com/toitware/toit-partition-table-esp32

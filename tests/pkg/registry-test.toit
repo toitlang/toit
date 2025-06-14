@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import cli.test show TestUi
 import encoding.json
 import expect show *
 import fs
@@ -13,7 +14,6 @@ import system
 import encoding.yaml
 
 import .setup
-import .utils_
 
 import ...tools.pkg.registry
 import ...tools.pkg.registry.git
@@ -109,8 +109,7 @@ expect-table-equals expected/List actual-string/string:
         expect-equals value actual-row[key]
 
 expect-ui-throw test-ui/TestUi error/string [command]:
-  test-ui.stderr = ""
-  test-ui.stdout = ""
+  test-ui.reset
   e := catch command
   expect-not-null e
   expect-equals "Error: $error\n" test-ui.stderr
@@ -125,7 +124,7 @@ test-registries:
         { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
       ]
       test-ui.stdout
-  test-ui.stdout = ""
+  test-ui.reset
 
   test-registries.add --local "local" "input/registry"
   test-registries.list
@@ -134,7 +133,7 @@ test-registries:
         { "name": "local", "type": "local", "path": "input/registry" },
       ]
       test-ui.stdout
-  test-ui.stdout = ""
+  test-ui.reset
 
   test-registries.remove "local"
   test-registries.list
@@ -142,7 +141,7 @@ test-registries:
         { "name": "toit", "type": "git", "path": "github.com/toitware/registry" },
       ]
       test-ui.stdout
-  test-ui.stdout = ""
+  test-ui.reset
 
   expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" ""
   expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
@@ -155,7 +154,7 @@ test-registries:
         { "name": "toit2", "type": "git", "path": "github.com/toitware/registry" }
       ]
       test-ui.stdout
-  test-ui.stdout = ""
+  test-ui.reset
 
   test-registries.remove "toit2"
   test-registries.list
@@ -163,7 +162,7 @@ test-registries:
         { "name": "toit", "type": "git", "path": "github.com/toitware/registry" }
       ]
       test-ui.stdout
-  test-ui.stdout = ""
+  test-ui.reset
 
   test-registries.add --local "local" "input/registry"
   expect-equals 2 test-registries.list-packages.size

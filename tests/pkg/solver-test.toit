@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import cli.test show TestUi
 import expect show *
 
 import ...tools.pkg.constraints
@@ -12,8 +13,6 @@ import ...tools.pkg.registry.local as reg
 import ...tools.pkg.registry.description
 import ...tools.pkg.semantic-version
 import ...tools.pkg.solver
-
-import .utils_
 
 main:
   test-transitive
@@ -66,11 +65,11 @@ class TestRegistry extends reg.Registry:
   stringify -> string: return "test-reg"
   to-string -> string: return "test-reg"
 
-test-ui/TestMessagesUi? := null
+test-ui/TestUi? := null
 
 make-registries pkgs/List -> reg.Registries:
   registry := TestRegistry pkgs
-  test-ui = TestMessagesUi
+  test-ui = TestUi
   return reg.Registries.filled { registry.name: registry } --ui=test-ui
 
 find-solution solve-for/Description registries/reg.Registries -> Solution?
@@ -282,7 +281,7 @@ test-fail-sdk-version:
   expect-null solution
   output := test-ui.stdout-messages
   expect-equals 1 output.size
-  expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version '1.0.5'" output[0]
+  expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version '1.0.5'\n" output[0]
 
   a170 = make-pkg "a-1.7.0" ["b ^1.0.0"] --min-sdk=v110
   registries = make-registries [a170, b140, b160, b180]
@@ -290,4 +289,4 @@ test-fail-sdk-version:
   expect-null solution
   output = test-ui.stdout-messages
   expect-equals 1 output.size
-  expect-equals "Warning: SDK version '1.0.5' does not satisfy the minimal SDK requirement '^1.1.0'" output[0]
+  expect-equals "Warning: SDK version '1.0.5' does not satisfy the minimal SDK requirement '^1.1.0'\n" output[0]

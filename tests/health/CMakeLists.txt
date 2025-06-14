@@ -51,6 +51,9 @@ set(SKIP_PREFIXES
 # The packages we want to check must be added differently.
 set(DOT_PACKAGES_PATTERN "/[.]packages(-bootstrap)?/")
 
+# Ignore GITIGNORE directories.
+set(GITIGNORE_PATTERN "/GITIGNORE/")
+
 # Sets the RESULT variable to TRUE if STR has PREFIX as prefix.
 # Leaves the RESULT variable untouched otherwise.
 function(starts_with PREFIX STR RESULT)
@@ -74,6 +77,7 @@ foreach(file ${HEALTH_SOURCES})
     starts_with("${PREFIX}" "${file}" SHOULD_SKIP)
   endforeach()
   contains("${DOT_PACKAGES_PATTERN}" "${file}" SHOULD_SKIP)
+  contains("${GITIGNORE_PATTERN}" "${file}" SHOULD_SKIP)
   if (${SHOULD_SKIP})
     continue()
   endif()

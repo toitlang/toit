@@ -31,6 +31,14 @@ test:
         --test-pin=test-pin
         --measure-pin=measure-pin
         --level-pin=level-pin
+
+    // Test that we can set the value when setting the pin as input and output.
+    level-pin.configure --input
+    test-pin.set 0
+    expect-equals 0 measure-pin.get
+    test-pin.configure --input --output --value=1 --open-drain
+    expect-equals 1 measure-pin.get
+
   finally:
     measure-pin.close
     test-pin.close

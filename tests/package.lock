@@ -17,8 +17,8 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.3.0
-    hash: 005fe9ee3950fc192af0ba353effb2d10073f3e7
+    version: 2.5.0
+    hash: 868f0743a739961fce5548fd8972019562b92bff
     prefixes:
       desktop: pkg-desktop
       fs: pkg-fs
@@ -55,8 +55,8 @@ packages:
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate-roots
-    version: 1.10.0
-    hash: 1445c4a6cae47689674ae02c5f1dc03660f1df8c
+    version: 1.11.0
+    hash: c117dbba4757d7c69e91af7a875ab6989f051a33
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table
