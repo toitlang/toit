@@ -1,0 +1,118 @@
+// Since there is no registry, we shouldn't find any package.
+==================
+OK
+[pkg, search, foo]
+No packages found.
+==================
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+// Search should find packages now.
+==================
+OK
+[pkg, search, foo]
+foo - 1.2.3
+==================
+OK
+[pkg, search, --verbose, foo]
+foo:
+  description: Description of foo. foo-desc.
+  version: 1.2.3
+  url: http://localhost:<[*PORT*]>/pkg/foo
+  hash: <[*HASH*]>
+  license: MIT
+
+==================
+OK
+[pkg, search, Foo-Desc]
+foo - 1.2.3
+==================
+OK
+[pkg, search, bar]
+bar - 2.0.1
+==================
+OK
+[pkg, search, sub]
+sub - 3.1.4
+==================
+// The gee package doesn't exist in this registry.
+==================
+OK
+[pkg, search, gee]
+No packages found.
+==================
+// Search also finds things in descriptions.
+==================
+OK
+[pkg, search, foo-desc]
+foo - 1.2.3
+==================
+OK
+[pkg, search, bar-desc]
+bar - 2.0.1
+==================
+OK
+[pkg, search, bAr-dEsc]
+bar - 2.0.1
+==================
+OK
+[pkg, search, desc]
+bar - 2.0.1
+foo - 1.2.3
+sub - 3.1.4
+==================
+// Search also finds things in the URL.
+==================
+OK
+[pkg, search, pkg/foo]
+foo - 1.2.3
+==================
+OK
+[pkg, search, pkg/bar]
+bar - 2.0.1
+==================
+OK
+[pkg, registry, add, --local, test-reg2, registry2]
+==================
+// The new foo package has a higher version and shadows the other one.
+==================
+OK
+[pkg, search, foo]
+foo - 5.0.3
+==================
+// The gee package is now visible too.
+==================
+OK
+[pkg, search, gee]
+gee - 1.1.1
+==================
+// Works with bad case and subset
+==================
+OK
+[pkg, search, Ee]
+gee - 1.1.1
+==================
+// Install doesn't work with subsets
+==================
+Aborted
+[pkg, install, Ee]
+Error: Package 'Ee' not found in any registry.
+==================
+// The bar and sub package didn't change
+==================
+OK
+[pkg, search, bar]
+bar - 2.0.1
+==================
+OK
+[pkg, search, sub]
+sub - 3.1.4
+==================
+// Find all packages:
+==================
+OK
+[pkg, search, ]
+bar - 2.0.1
+foo - 5.0.3
+gee - 1.1.1
+sub - 3.1.4
