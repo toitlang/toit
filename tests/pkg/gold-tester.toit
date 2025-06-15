@@ -87,6 +87,7 @@ class GoldTester:
     // In lock files, the ':' is replaced with '_'.
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
+    str = str.replace --all "\\" "/"
     return str
 
   gold name/string commands/List:
