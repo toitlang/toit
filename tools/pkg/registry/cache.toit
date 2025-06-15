@@ -57,6 +57,10 @@ class DescriptionUrlCache:
   /**
   Returns a map, mapping urls to lists of descriptions.
   */
+  XX: continue here
+  This function is currently used for `install foo`. But it doesn't take
+    the name into account. See who uses it, and whether adding the name
+    makes sense.
   search url-suffix/string version-constraint/Constraint? -> Map:
     result := {:}
     cache_.do: | url/string version-cache/DescriptionVersionCache |

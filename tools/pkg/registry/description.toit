@@ -136,3 +136,6 @@ class Description:
     return url.to-ascii-lower.contains search-string or
         name.to-ascii-lower.contains search-string or
         description.to-ascii-lower.contains search-string
+
+  stringify -> string:
+    return "$name ($version) - $description"

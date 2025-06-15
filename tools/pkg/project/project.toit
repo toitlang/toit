@@ -154,9 +154,9 @@ class Project:
           solver.set-preferred repository-package.url repository-package.version
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:
-      throw "Unable to resolve dependencies"
+      ui_.abort "Unable to resolve dependencies"
     ensure-downloaded_ --solution=solution --registries=registries
-    builder := LockFileBuilder --solution=solution --project=this
+    builder := LockFileBuilder --solution=solution --project=this --ui=ui_
     lock-file = builder.build --registries=registries
 
   ensure-downloaded_ --solution/Solution --registries/Registries:
