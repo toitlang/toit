@@ -13,7 +13,7 @@ list-registry (list-registry (local))
     hash: <[*HASH*]>
   
   gee:
-    description: package with a \"v\" version
+    description: package with a /"v/" version
     version: v1.0.3
     license: MIT
     url: gee
