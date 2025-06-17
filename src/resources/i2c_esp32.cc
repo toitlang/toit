@@ -100,7 +100,7 @@ I2cBusResource::~I2cBusResource() {
     // be deleted.
     remove_device(DeviceList::first());
   }
-  i2c_del_master_bus(handle());
+  ESP_ERROR_CHECK(i2c_del_master_bus(handle()));
 }
 
 void I2cBusResource::add_device(I2cDeviceResource* device) {
