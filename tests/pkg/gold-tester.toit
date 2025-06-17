@@ -139,6 +139,9 @@ class GoldTester:
     else:
       expected-content := (file.read-contents gold-file).to-string
       expected-content = expected-content.replace --all "\r" ""
+      if expected-content != actual:
+        print-on-stderr_ "--- Gold file mismatch for '$name'."
+        print-on-stderr_ "Expected:\n$expected-content\n\nActual:\n$actual"
       expect-equals expected-content actual
 
   toit command/string args -> RunResult_:
