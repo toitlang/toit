@@ -255,7 +255,7 @@ You should then be able to execute a toit file:
 build/host/sdk/bin/toit examples/hello.toit
 ```
 
-The package manager is found at `build/host/sdk/bin/toit.pkg`:
+The `toit` executable also serves as the package manager:
 
 ``` sh
 build/host/sdk/bin/toit pkg init --project-root=<some-directory>
