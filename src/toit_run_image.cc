@@ -21,6 +21,7 @@
 #include "process.h"
 #include "flash_registry.h"
 #include "interpreter.h"
+#include "main_utf_8_helper.h"
 #include "messaging.h"
 #include "scheduler.h"
 #include "vm.h"
@@ -99,5 +100,5 @@ int main(int argc, char **argv) {
 } // namespace toit
 
 int main(int argc, char** argv) {
-  return toit::main(argc, argv);
+  return run_with_utf_8_args(toit::main, argc, argv);
 }
