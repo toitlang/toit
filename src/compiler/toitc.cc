@@ -18,6 +18,7 @@
 
 #include "../top.h"
 #include "../flags.h"
+#include "../main_utf_8_helper.h"
 #include "compiler.h"
 #include "executable.h"
 
@@ -401,5 +402,5 @@ int main(int argc, char **argv) {
 } // namespace toit
 
 int main(int argc, char** argv) {
-  return toit::compiler::main(argc, argv);
+  return run_with_utf_8_args(toit::compiler::main, argc, argv);
 }
