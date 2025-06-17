@@ -345,10 +345,10 @@ class SegmentHeader:
     return "$tag_:$content-size"
 
 class Segment:
-  byte-array_ ::= ?
-  begin_ ::= 0
-  end_ ::= 0
-  pos_ := 0
+  byte-array_/ByteArray
+  begin_/int
+  end_/int
+  pos_/int := 0
 
   constructor .byte-array_ .begin_ .end_:
     set-offset_ 0
@@ -375,7 +375,7 @@ class Segment:
     return result
 
   read-float_:
-    result := byte-array_.to-float --no-big-endian pos_
+    result := LITTLE-ENDIAN.float64 byte-array_ pos_
     pos_ += 8
     return result
 
