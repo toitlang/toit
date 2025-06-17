@@ -183,7 +183,9 @@ class Registries:
 
   add --local/True name/string path/string:
     if not file.is-directory path: ui_.abort "Path $path is not a directory."
+    print-on-stderr_ "BEFORE ABSOLUTE: $path"
     abs-path := fs.to-absolute path
+    print-on-stderr_ "AFTER ABSOLUTE: $abs-path"
     add_ name (LocalRegistry name abs-path --ui=ui_)
 
   add --git/True name/string url/string:
