@@ -454,9 +454,9 @@ UartResource::~UartResource() {
   drain_tx_fifo();
   clear_rx_fifo();
 
-  uart_toit_hal_deinit(hal_);
+  ESP_ERROR_CHECK(uart_toit_hal_deinit(hal_));
 
-  periph_module_disable(module_from_port(port_));
+  ESP_ERROR_CHECK(periph_module_disable(module_from_port(port_)));
 }
 
 uint32 UartResource::baud_rate() const {
