@@ -31,6 +31,22 @@ import .toitdoc as toitdoc
 import .lsp.server.server as lsp
 import .snapshot as snapshot-lib
 
+/**
+Whether the given $path is a Toit source that can be run with `toit run`.
+Also accepts snapshots.
+
+Might return true for files that aren't valid Toit source files.
+*/
+is-toit-source path/string -> bool:
+  if path.ends-with ".toit": return true
+  if not file.is-file path: return false
+  contents := file.read-contents path
+  if snapshot-lib.SnapshotBundle.is-bundle-content contents: return true
+  if contents[0] == '#' and contents[1] == '!':
+    // We accept any file that starts with a shebang line.
+    return true
+  return false
+
 main args/List:
   // We don't want to add a `--version` option to the root command,
   // as that would make the option available to all subcommands.
@@ -516,8 +532,7 @@ main args/List:
     root-command.check
     true
 
-  if args.size > 0 and
-      (args[0].ends-with ".toit" or args[0].ends-with ".snapshot"):
+  if args.size > 0 and is-toit-source args[0]:
     args = ["run", "--"] + args
 
   root-command.run args

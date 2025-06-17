@@ -27,6 +27,7 @@
 #include "snapshot.h"
 #include "snapshot_bundle.h"
 #include "utils.h"
+#include "main_utf_8_helper.h"
 #include "compiler/compiler.h"
 #include "third_party/dartino/gc_metadata.h"
 
@@ -409,5 +410,5 @@ int main(int argc, char **argv) {
 } // namespace toit
 
 int main(int argc, char** argv) {
-  return toit::main(argc, argv);
+  return run_with_utf_8_args(toit::main, argc, argv);
 }
