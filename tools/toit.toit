@@ -35,7 +35,7 @@ import .snapshot as snapshot-lib
 Whether the given $path is a Toit source that can be run with `toit run`.
 Also accepts snapshots.
 
-Might return true for files that might not be valid Toit source files.
+Might return true for files that aren't valid Toit source files.
 */
 is-toit-source path/string -> bool:
   if path.ends-with ".toit": return true
