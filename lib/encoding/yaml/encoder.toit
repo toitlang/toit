@@ -51,7 +51,7 @@ class YamlEncoder extends EncoderBase_:
                     str.contains "\r" or
                     not (parse --on-error=(: null) str) is string
 
-    escaped := escape-string str
+    escaped := should-quote ? (escape-string str) : str
 
     writer := writer_
     if enclosed-in-map_: writer.write-byte ' '
