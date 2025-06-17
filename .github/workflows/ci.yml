@@ -145,6 +145,11 @@ jobs:
             echo 'RUN_CROSS_FLOW=true' >> $GITHUB_ENV
           fi
 
+          # The ESP32 flow must be enabled when running hardware tests.
+          if [[ "${{ env.DO_HW_TESTS }}" == "true" ]]; then
+            echo 'RUN_ESP32_FLOW=true' >> $GITHUB_ENV
+          fi
+
           # When running ssh, only run a single shard of the corresponding platform.
           if [[ ${{ env.ENABLE_SSH }} == "true" ]]; then
             echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
