@@ -30,7 +30,7 @@ test-stringify:
   expect-equals "€" (yaml.stringify "€")
   expect-equals "🙈" (yaml.stringify "🙈")
   expect-equals "\"\\\"\\\"\\\"\\\"\"" (yaml.stringify "\"\"\"\"")
-  expect-equals "\\\\\\\"" (yaml.stringify "\\\"")
+  expect-equals "\\\"" (yaml.stringify "\\\"")
   expect-equals "\"\\u0000\"" (yaml.stringify "\x00")
   expect-equals "\"\\u0001\"" (yaml.stringify "\x01")
 
@@ -298,7 +298,19 @@ EXAMPLE ::= """
 """
 
 test-encode:
-  expect-equals "testing".to-byte-array (yaml.encode "testing")
+  expect-equals "testing" (yaml.encode "testing").to-string
+  // Something that looks like an object must be quoted.
+  expect-equals "\"{test}\"" (yaml.encode "{test}").to-string
+  // Numbers must be quoted as well.
+  expect-equals "\"123\"" (yaml.encode "123").to-string
+  // "null", and similar strings, too.
+  expect-equals "\"null\"" (yaml.encode "null").to-string
+  expect-equals "\"true\"" (yaml.encode "true").to-string
+  expect-equals "\".inf\"" (yaml.encode ".inf").to-string
+  expect-equals "\".nan\"" (yaml.encode ".nan").to-string
+  // If a string is quoted, then the '\' must be escaped. Otherwise not.
+  expect-equals "\"{te\\\\st}\"" (yaml.encode "{te\\st}").to-string
+  expect-equals "test\\ing" (yaml.encode "test\\ing").to-string
 
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
