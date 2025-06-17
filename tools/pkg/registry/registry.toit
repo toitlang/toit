@@ -183,10 +183,10 @@ class Registries:
 
   add --local/True name/string path/string:
     if not file.is-directory path: ui_.abort "Path $path is not a directory."
-    print-on-stderr_ "BEFORE ABSOLUTE: $path"
     abs-path := fs.to-absolute path
-    print-on-stderr_ "AFTER ABSOLUTE: $abs-path"
-    add_ name (LocalRegistry name abs-path --ui=ui_)
+    local-reg := LocalRegistry name abs-path --ui=ui_
+    print "DEBUG REGISTRY: $local-reg"
+    add_ name local-reg
 
   add --git/True name/string url/string:
     add_ name (GitRegistry name url null --ui=ui_)
@@ -210,6 +210,8 @@ class Registries:
   list:
     data := []
     registries.do: | name registry |
+      if registry is not GitRegistry:
+        print "DEBUG REGISTRY: $registry - $registry.path"
       row := {
         "name": name,
         "type": registry.type,
