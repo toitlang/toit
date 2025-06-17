@@ -83,11 +83,11 @@ class GoldTester:
     return working-dir_
 
   normalize str/string -> string:
-    str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
-    // In lock files, the ':' is replaced with '_'.
-    str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
-    str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
-    str = str.replace --all "\\" "/"
+    // str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
+    // // In lock files, the ':' is replaced with '_'.
+    // str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
+    // str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
+    // str = str.replace --all "\\" "/"
     return str
 
   gold name/string commands/List:
