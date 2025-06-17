@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// WIRELESS
+
 import .wifi1-shared as shared
 
 main:
