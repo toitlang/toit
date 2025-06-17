@@ -278,4 +278,5 @@ jobs:
         if: env.DO_TESTS == 'true'
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
+          make download-packages
           ctest --test-dir build/host --verbose -C slow -R pkg
