@@ -46,7 +46,9 @@ int run_with_utf_8_args(int (*main_func)(int, char**), int argc, char** argv) {
     char* utf_8_arg = toit::unvoid_cast<char*>(malloc(total_len + 1));  // +1 for null terminator.
     toit::Utils::utf_16_to_8(wargv[i], wcslen(wargv[i]), reinterpret_cast<uint8*>(utf_8_arg), total_len);
     utf_8_arg[total_len] = '\0';  // Null-terminate the string.
-    utf_8_args[i] = utf_8_arg;  // Keep a copy.
+    utf_8_args[i] = utf_8_arg;
+    // The callee is allowed to change the argv parameter. We keep a copy, so we can
+    // reliably free the UTF-8 arguments later.
     utf_8_copy[i] = utf_8_arg;
   }
   LocalFree(wargv);
