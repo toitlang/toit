@@ -88,6 +88,10 @@ class GoldTester:
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
     str = str.replace --all "\\" "/"
+    // When printing tables, the width of the columns may vary.
+    // For normalization simply remove the "─" (not '-') characters that
+    // are used to draw the table.
+    str = str.replace --all "─" ""
     return str
 
   gold name/string commands/List:
