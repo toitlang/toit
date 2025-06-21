@@ -3,7 +3,7 @@
 OK
 [pkg, registry, list]
 ┌┬┬┐
-│ Name   Type   Url/Path │
+│ Name Type Url/Path │
 ├┼┼┤
 └┴┴┘
 ==================
@@ -13,9 +13,9 @@ OK
 OK
 [pkg, registry, list]
 ┌┬┬┐
-│ Name       Type    Url/Path                  │
+│ Name Type Url/Path │
 ├┼┼┤
-│ test-reg   local   <[*WORKING-DIR*]>/registry │
+│ test-reg local <[*WORKING-DIR*]>/registry │
 └┴┴┘
 ==================
 OK
@@ -35,10 +35,10 @@ OK
 OK
 [pkg, registry, list]
 ┌┬┬┐
-│ Name        Type    Url/Path                   │
+│ Name Type Url/Path │
 ├┼┼┤
-│ test-reg    local   <[*WORKING-DIR*]>/registry  │
-│ test-reg2   local   <[*WORKING-DIR*]>/registry2 │
+│ test-reg local <[*WORKING-DIR*]>/registry │
+│ test-reg2 local <[*WORKING-DIR*]>/registry2 │
 └┴┴┘
 ==================
 OK

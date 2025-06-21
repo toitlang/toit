@@ -92,25 +92,25 @@ class GoldTester:
     // For normalization simply remove the "─" (not '-') characters that
     // are used to draw the table.
     str = str.replace --all "─" ""
-    // Similarly, replace all whitespace followed by "│" with just " │".
-    skipped-spaces := 0
+    // Similarly, replace multiple whitespace if a line starts with "│".
     result := ByteArray str.size
     target-index := 0
+    last-was-space := false
+    last-was-newline := true
+    in-table-line := false
     for i := 0; i < str.size; i++:
       c := str.at --raw i
-      if c == ' ':
-        skipped-spaces++
+      unicode-c := str[i]
+      if c == '\n':
+        last-was-newline = true
+        in-table-line = false
+      else if unicode-c == '│' and last-was-newline:
+        in-table-line = true
+      else if in-table-line and c == ' ' and last-was-space:
+        // Skip multiple spaces.
         continue
-      if c == '│' and skipped-spaces > 0:
-        result[target-index++] = ' '
-        result[target-index++] = '│'
-        skipped-spaces = 0
-        continue
-      if skipped-spaces > 0:
-        skipped-spaces.repeat: result[target-index++] = ' '
-        skipped-spaces = 0
+      last-was-space = (c == ' ')
       result[target-index++] = c
-    skipped-spaces.repeat: result[target-index++] = ' '
     return result[..target-index].to-string
 
   gold name/string commands/List:
