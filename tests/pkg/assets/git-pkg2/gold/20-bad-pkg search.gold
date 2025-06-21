@@ -20,5 +20,6 @@ foo:
   license: MIT
 
 ==================
-OK
+Aborted
 [pkg, install, --prefix=pre3, foo]
+Error: Multiple packages found for 'foo' in all registries.

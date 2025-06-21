@@ -6,7 +6,6 @@ prefixes:
   pkg1: http_//localhost_<[*PORT*]>/pkg/pkg1-1
   pre1: http_//localhost_<[*PORT*]>/pkg/foo-1
   pre2: http_//localhost_<[*PORT*]>/pkg/bar-2
-  pre3: http_//localhost_<[*PORT*]>/pkg/foo-1
 packages:
   http_//localhost_<[*PORT*]>/pkg/bar-2:
     prefixes:
