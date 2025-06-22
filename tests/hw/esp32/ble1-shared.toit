@@ -272,7 +272,7 @@ run-central-test --iteration/int:
   indicate2.write #[0x07, 0x08]
   expect-equals #[0x07, 0x08] indicate2.read
   // The notify2 value should be cleared.
-  expect-equals null notify2.read
+  expect-equals #[] notify2.read
 
   expect-throw "OUT_OF_RANGE":
     // Check that the MTU is enforced.
