@@ -106,7 +106,10 @@ expect-table-equals expected/List actual-string/string:
     actual-row := actual[i]
     expected-row.do: | key value |
         expect (actual-row.contains key)
-        expect-equals value actual-row[key]
+        // Sometimes the table contains paths, which can contain backslashes on Windows.
+        normalized-expected := value.replace --all "\\" "/"
+        normalized-actual := actual-row[key].replace --all "\\" "/"
+        expect-equals normalized-expected normalized-actual
 
 expect-ui-throw test-ui/TestUi error/string [command]:
   test-ui.reset
