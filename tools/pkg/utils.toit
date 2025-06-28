@@ -15,6 +15,7 @@
 
 import encoding.url
 import fs
+import system
 
 flatten-list input/List -> List:
   list := List
@@ -69,3 +70,34 @@ to-uri-path path/string -> string:
     segment
 
   return segments.join "/"
+
+/**
+Escapes the given $path so it's valid.
+Escapes '\' even if the platform is Windows, where it's a valid
+  path separator.
+If two given paths are equal, then the escaped paths are also equal.
+If they are different, then the escaped paths are also different.
+*/
+escape-path path/string -> string:
+  if system.platform != system.PLATFORM-WINDOWS:
+    return path
+  // On Windows, we need to escape some characters.
+  // We use '#' as escape character.
+  // We will treat '/' as the folder separator, and escape '\'.
+  escaped-path := path.replace --all "#" "##"
+  // The following characters are not allowed:
+  //  <, >, :, ", |, ?, *
+  // '\' and '/' would both become folder separators, so
+  // we escape '\' to stay unique.
+  // We escape them as #<hex value>.
+  [ '<', '>', ':', '"', '|', '?', '*', '\\' ].do:
+    escaped-path = escaped-path.replace --all
+        string.from-rune it
+        "#$(%02X it)"
+  if escaped-path.ends-with " " or escaped-path.ends-with ".":
+    // Windows doesn't allow files to end with a space or a dot.
+    // Add a suffix to make it valid.
+    // Note that this still guarantees uniqueness, because
+    // a space would normally not be escaped.
+    escaped-path = "$escaped-path#20"
+  return escaped-path

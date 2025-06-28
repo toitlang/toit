@@ -28,6 +28,7 @@ import ..pkg
 import ..git
 import ..semantic-version
 import ..solver
+import ..utils
 
 import .lock
 import .specification
@@ -165,11 +166,13 @@ class Project:
       versions.do:
         cached-contents = ensure-downloaded url it --cached-contents=cached-contents --registries=registries
 
-  relative-cached-repository-dir url/string version/SemanticVersion -> string:
-    return "$url/$version"
+  /** The directory within the cache where the given package is cached. */
+  relative-cached-repository-dir_ url/string version/SemanticVersion -> string:
+    return escape-path "$url/$version"
 
+  /** The full path of the directory within the cache where the given package is cached. */
   cached-repository-dir_ url/string version/SemanticVersion -> string:
-    return "$packages-cache-dir/$(relative-cached-repository-dir url version)"
+    return "$packages-cache-dir/$(relative-cached-repository-dir_ url version)"
 
   cached-repository-contents_ -> Map:
     contents-path := "$packages-cache-dir/contents.json"
@@ -196,7 +199,7 @@ class Project:
     if cached-contents.contains url and cached-contents[url].contains version-string:
       return cached-contents
     cached-repository-dir := cached-repository-dir_ url version
-    relative-dir := relative-cached-repository-dir url version
+    relative-dir := relative-cached-repository-dir_ url version
     assert: cached-repository-dir.ends-with relative-dir
     repo-toit-git-path := "$cached-repository-dir/.toit-git"
     if not file.is-file repo-toit-git-path:
