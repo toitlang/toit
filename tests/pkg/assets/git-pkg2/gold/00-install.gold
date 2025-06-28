@@ -3,6 +3,7 @@ OK
 ==================
 OK
 [pkg, install, pkg1]
+Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
 ==================
 == package.lock
 prefixes:
