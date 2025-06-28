@@ -168,6 +168,8 @@ class Project:
 
   /** The directory within the cache where the given package is cached. */
   relative-cached-repository-dir_ url/string version/SemanticVersion -> string:
+    url = url.trim --left "http://"
+    url = url.trim --left "https://"
     return escape-path "$url/$version"
 
   /** The full path of the directory within the cache where the given package is cached. */
@@ -196,7 +198,9 @@ class Project:
       --hash/string:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
-    if cached-contents.contains url and cached-contents[url].contains version-string:
+    if cached-contents.contains url and
+        cached-contents[url].contains version-string and
+        file.is-directory "$packages-cache-dir/$cached-contents[url][version-string]":
       return cached-contents
     cached-repository-dir := cached-repository-dir_ url version
     relative-dir := relative-cached-repository-dir_ url version
