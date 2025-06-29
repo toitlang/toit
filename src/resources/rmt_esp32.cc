@@ -691,6 +691,7 @@ PRIMITIVE(channel_new) {
         .with_dma = false,
         .io_loop_back = true,
         .io_od_mode = open_drain,
+        .allow_pd = false,
       },
     };
     err = rmt_new_tx_channel(&cfg, &handle);
@@ -706,6 +707,7 @@ PRIMITIVE(channel_new) {
         .invert_in = false,
         .with_dma = false,
         .io_loop_back = false,
+        .allow_pd = false,
       },
     };
 

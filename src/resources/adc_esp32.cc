@@ -106,11 +106,6 @@ static int get_adc1_channel(int pin) {
   }
 }
 
-// The ESP32-C6 has no ADC2.
-static int get_adc2_channel(int pin) {
-  return -1;
-}
-
 #elif CONFIG_IDF_TARGET_ESP32S2
 
 #define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT
@@ -373,6 +368,8 @@ PRIMITIVE(init) {
       unit_id = ADC_UNIT_2;
     }
   }
+#else
+  USE(allow_restricted);
 #endif
   if (channel < 0) FAIL(OUT_OF_RANGE);
 
