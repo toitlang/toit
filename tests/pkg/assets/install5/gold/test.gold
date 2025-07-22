@@ -22,7 +22,7 @@ OK
 [pkg, search, --verbose, pkg2]
 pkg2:
   description: Ambiguous to pkg2. Prefixes URL. This is an invalid URL for testing.
-  url: http://example.com/http://localhost:<[*PORT*]>/pkg/pkg2
+  url: example.com/localhost:<[*PORT*]>/pkg/pkg2
   version: 1.0.0
   hash: <[*HASH*]>
 
@@ -35,9 +35,9 @@ pkg2:
 ==================
 // Disambiguate by giving full URL even though that's the suffix of the longer one.
 ==================
-Aborted
+OK
 [pkg, install, localhost:<[*PORT*]>/pkg/pkg2]
-Error: Multiple packages found for 'localhost:<[*PORT*]>/pkg/pkg2' in all registries.
+Package 'pkg2@2.4.2' installed with prefix 'pkg2'.
 ==================
 // Ambiguous 'ambiguous'
 ==================
@@ -51,13 +51,13 @@ ambiguous:
 
 ambiguous:
   description: second of two packages that have long name that is equal
-  url: http://localhost:<[*PORT*]>/a2/b/c/d/ambiguous
+  url: localhost:<[*PORT*]>/a2/b/c/d/ambiguous
   version: 3.1.2
   hash: <[*HASH*]>
 
 pkg2:
   description: Ambiguous to pkg2. Prefixes URL. This is an invalid URL for testing.
-  url: http://example.com/http://localhost:<[*PORT*]>/pkg/pkg2
+  url: example.com/localhost:<[*PORT*]>/pkg/pkg2
   version: 1.0.0
   hash: <[*HASH*]>
 
