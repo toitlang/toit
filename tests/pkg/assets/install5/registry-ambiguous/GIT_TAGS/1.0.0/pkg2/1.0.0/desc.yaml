@@ -1,5 +1,0 @@
-name: pkg2
-description: Ambiguous to pkg2. Prefixes URL. This is an invalid URL for testing.
-url: http://example.com/http://localhost:<[*PORT*]>/pkg/pkg2
-version: 1.0.0
-hash: 3141592653
