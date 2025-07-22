@@ -1,0 +1,42 @@
+// No package installed yet.
+==================
+exec main.toit
+
+STDERR---
+<[*WORKING-DIR*]>/package.lock:6:10: error: Package 'http://localhost:<[*PORT*]>/pkg/pkg1-1.0.0' not found
+    url: 'http://localhost:<[*PORT*]>/pkg/pkg1'
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+main.toit:5:8: error: Package 'pkg1' for prefix 'pkg1' not found
+import pkg1
+       ^~~~
+main.toit:8:14: error: Unresolved identifier: 'identify'
+  print pkg1.identify
+             ^~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+// Just 'install' doesn't add the missing dependencies.
+==================
+OK
+[pkg, install]
+==================
+== package.lock
+prefixes:
+  pkg1: pkg1
+
+packages:
+  pkg1:
+    url: 'http://localhost:<[*PORT*]>/pkg/pkg1'
+    version: 1.0.0
+    hash: <[*HASH*]>
+==================
+// With '--recompute' we get the missing dependencies.
+==================
+OK
+[pkg, install, --recompute]
+==================
+// Should work now.
+==================
+exec main.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0

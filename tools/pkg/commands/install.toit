@@ -60,7 +60,10 @@ class InstallCommand extends PkgProjectCommand:
 
   execute:
     if not package:
-      project.install
+      if recompute:
+        project.install --recompute=recompute --registries=registries
+      else:
+        project.install
     else if not local:
       execute-remote
     else:
