@@ -38,6 +38,10 @@ test tester/GoldTester:
     ["pkg", "install"],
   ]
 
+  tester.gold "40-exec" [
+    ["exec", "main.toit"],
+  ]
+
   // Ensure that the directories are back.
   // We don't guarantee that the directories are the same as before.
 
