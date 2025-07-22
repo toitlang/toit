@@ -1,0 +1,5 @@
+name: ambiguous
+description: second of two packages that have long name that is equal
+url: http://localhost:<[*PORT*]>/a2/b/c/d/ambiguous
+version: 3.1.2
+hash: deadbeef1234567890abcdef1234567890abcdef

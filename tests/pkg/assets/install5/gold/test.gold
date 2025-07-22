@@ -1,0 +1,75 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, registry, add, --local, test-reg2, registry-ambiguous]
+==================
+// Ambiguous pkg1
+==================
+Aborted
+[pkg, install, pkg1]
+Error: Multiple packages found for 'pkg1' in all registries.
+==================
+// Disambiguate by giving full URL.
+==================
+OK
+[pkg, install, localhost:<[*PORT*]>/pkg/pkg1]
+Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+// Ambiguous pkg2
+==================
+OK
+[pkg, search, --verbose, pkg2]
+pkg2:
+  description: Ambiguous to pkg2. Prefixes URL. This is an invalid URL for testing.
+  url: http://example.com/http://localhost:<[*PORT*]>/pkg/pkg2
+  version: 1.0.0
+  hash: <[*HASH*]>
+
+pkg2:
+  description: git-package 2
+  url: localhost:<[*PORT*]>/pkg/pkg2
+  version: 2.4.2
+  hash: <[*HASH*]>
+
+==================
+// Disambiguate by giving full URL even though that's the suffix of the longer one.
+==================
+Aborted
+[pkg, install, localhost:<[*PORT*]>/pkg/pkg2]
+Error: Multiple packages found for 'localhost:<[*PORT*]>/pkg/pkg2' in all registries.
+==================
+// Ambiguous 'ambiguous'
+==================
+OK
+[pkg, search, --verbose, ambiguous]
+ambiguous:
+  description: first of two packages that have long name that is equal
+  url: localhost:<[*PORT*]>/a/b/c/d/ambiguous
+  version: 3.1.2
+  hash: <[*HASH*]>
+
+ambiguous:
+  description: second of two packages that have long name that is equal
+  url: http://localhost:<[*PORT*]>/a2/b/c/d/ambiguous
+  version: 3.1.2
+  hash: <[*HASH*]>
+
+pkg2:
+  description: Ambiguous to pkg2. Prefixes URL. This is an invalid URL for testing.
+  url: http://example.com/http://localhost:<[*PORT*]>/pkg/pkg2
+  version: 1.0.0
+  hash: <[*HASH*]>
+
+==================
+// Need to add more segments to disambiguate.
+==================
+Aborted
+[pkg, install, b/c/d/ambiguous]
+Error: Multiple packages found for 'b/c/d/ambiguous' in all registries.
+==================
+// Will still yield an error (because we don't have the package),
+==================
+Aborted
+[pkg, install, a/b/c/d/ambiguous]
+Error: Failed to download package 'localhost:<[*PORT*]>/a/b/c/d/ambiguous@3.1.2': Invalid repository http://localhost:<[*PORT*]>/a/b/c/d/ambiguous, Not Found

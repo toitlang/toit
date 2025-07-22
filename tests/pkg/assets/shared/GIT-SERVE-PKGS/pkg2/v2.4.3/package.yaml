@@ -2,5 +2,5 @@ name: pkg2
 description: git-package 2
 dependencies:
   pre:
-    url: http://localhost:<[*PORT*]>/pkg/pkg3
+    url: localhost:<[*PORT*]>/pkg/pkg3
     version: ^3.0.0

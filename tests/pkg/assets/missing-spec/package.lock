@@ -3,6 +3,6 @@ prefixes:
 
 packages:
   pkg1:
-    url: 'http://localhost:<[*PORT*]>/pkg/pkg1'
+    url: 'localhost:<[*PORT*]>/pkg/pkg1'
     version: 1.0.0
     hash: deadbeef1234567890abcdef1234567890abcdef
