@@ -33,7 +33,7 @@ with-tmp-dir [block]:
   try:
     block.call tmp-dir
   finally:
-    directory.rmdir --recursive tmp-dir
+    directory.rmdir --force --recursive tmp-dir
 
 class RunResult_:
   stdout/string
@@ -81,6 +81,14 @@ class GoldTester:
 
   working-dir -> string:
     return working-dir_
+
+  package-cache-path pkg-suffix/string --version/string -> string:
+    bytes := file.read-contents "$working-dir_/.packages/contents.json"
+    packages := json.decode bytes
+    packages.do: | pkg-name/string pkg-info/Map |
+      if pkg-name.ends-with pkg-suffix:
+        return fs.join working-dir_ ".packages" (escape-path pkg-info[version])
+    unreachable
 
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
