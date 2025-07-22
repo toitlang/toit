@@ -6,10 +6,10 @@ OK
 exec main.toit
 
 STDERR---
-main.toit:3:8: error: Package for prefix 'pkg4-pre' not found
+main.toit:5:8: error: Package for prefix 'pkg4-pre' not found
 import pkg4-pre.pkg4
        ^~~~~~~~
-main.toit:6:14: error: Unresolved identifier: 'identify'
+main.toit:8:14: error: Unresolved identifier: 'identify'
   print pkg4.identify
              ^~~~~~~~
 Compilation failed
@@ -18,10 +18,10 @@ Exit Code: 1
 exec main2.toit
 
 STDERR---
-main2.toit:3:8: error: Package for prefix 'pkg1' not found
+main2.toit:5:8: error: Package for prefix 'pkg1' not found
 import pkg1
        ^~~~
-main2.toit:6:14: error: Unresolved identifier: 'identify'
+main2.toit:8:14: error: Unresolved identifier: 'identify'
   print pkg1.identify
              ^~~~~~~~
 Compilation failed
