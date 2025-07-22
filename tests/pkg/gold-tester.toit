@@ -87,7 +87,7 @@ class GoldTester:
     packages := json.decode bytes
     packages.do: | pkg-name/string pkg-info/Map |
       if pkg-name.ends-with pkg-suffix:
-        return fs.join working-dir_ ".packages" (escape-path pkg-info[version])
+        return fs.join working-dir_ ".packages" pkg-info[version]
     unreachable
 
   normalize str/string -> string:

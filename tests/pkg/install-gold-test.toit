@@ -20,24 +20,13 @@ test tester/GoldTester:
     ["exec", "main.toit"],
   ]
 
-  contents := file.read-contents "$tester.working-dir/.packages/contents.json"
-  mapping/Map := json.decode contents
-
-  foo-url/string? := null
-  bar-url/string? := null
-  mapping.do --keys: | key |
-    if key.ends-with "pkg/foo": foo-url = key
-    if key.ends-with "pkg/bar": bar-url = key
-
   foo-version := "1.2.3"
-  foo-rel-path := mapping[foo-url][foo-version]
-  foo-path := "$tester.working-dir/.packages/$foo-rel-path"
+  foo-path := tester.package-cache-path "pkg/foo" --version=foo-version
   expect (file.is-directory foo-path)
   directory.rmdir --recursive --force foo-path
 
   bar-version := "2.0.1"
-  bar-rel-path := mapping[bar-url][bar-version]
-  bar-path := "$tester.working-dir/.packages/$bar-rel-path"
+  bar-path := tester.package-cache-path "pkg/bar" --version=bar-version
   expect (file.is-directory bar-path)
   directory.rmdir --recursive --force bar-path
 
@@ -51,17 +40,9 @@ test tester/GoldTester:
 
   // Ensure that the directories are back.
   // We don't guarantee that the directories are the same as before.
-  contents = file.read-contents "$tester.working-dir/.packages/contents.json"
-  mapping = json.decode contents
 
-  mapping.do --keys: | key |
-    if key.ends-with "pkg/foo": foo-url = key
-    if key.ends-with "pkg/bar": bar-url = key
-
-  foo-rel-path = mapping[foo-url][foo-version]
-  foo-path = "$tester.working-dir/.packages/$foo-rel-path"
+  foo-path = tester.package-cache-path "pkg/foo" --version=foo-version
   expect (file.is-directory foo-path)
 
-  bar-rel-path = mapping[bar-url][bar-version]
-  bar-path = "$tester.working-dir/.packages/$bar-rel-path"
+  bar-path = tester.package-cache-path "pkg/bar" --version=bar-version
   expect (file.is-directory bar-path)
