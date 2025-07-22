@@ -1,0 +1,3 @@
+Aborted
+[pkg, install]
+Error: Project has a lock-file, but no specification file.
