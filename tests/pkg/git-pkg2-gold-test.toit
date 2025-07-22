@@ -2,6 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import expect show *
+import host.file
+import fs
 import .gold-tester
 
 main args:
@@ -30,12 +33,19 @@ test tester/GoldTester:
     ["// Execution should succeed now"],
     ["exec", "main2.toit"]
   ]
+
   tester.gold "20-bad-pkg search" [
     ["// Add a registry, so that we have conflicts"],
     ["pkg", "registry", "add", "--local", "test-reg2", "registry2"],
     ["pkg", "search", "--verbose", "foo"],
     ["pkg", "install", "--prefix=pre3", "foo"]
   ]
+
   tester.gold "30-package.lock" [
     ["package.lock"]
   ]
+
+  readme-path := fs.join tester.working-dir ".packages" "README.md"
+  expect (file.is-file readme-path)
+
+  foo-file :=
