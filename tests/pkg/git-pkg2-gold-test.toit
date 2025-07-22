@@ -47,5 +47,3 @@ test tester/GoldTester:
 
   readme-path := fs.join tester.working-dir ".packages" "README.md"
   expect (file.is-file readme-path)
-
-  foo-file :=
