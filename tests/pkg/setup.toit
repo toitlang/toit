@@ -23,4 +23,4 @@ with-test-registry [block]:
 
     block.call tmp-dir
   finally:
-    directory.rmdir --recursive tmp-dir
+    directory.rmdir --force --recursive tmp-dir
