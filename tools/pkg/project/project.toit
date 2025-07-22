@@ -90,33 +90,33 @@ class Project:
   sdk-version -> SemanticVersion:
     return config.sdk-version
 
-  save:
+  save -> none:
     specification.save
     lock-file.save
 
-  install-remote prefix/string remote/Description --registries/Registries:
+  install-remote prefix/string remote/Description --registries/Registries -> none:
     specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
     solve_ --no-update-everything --registries=registries
     save
 
-  install-local prefix/string path/string --registries/Registries:
+  install-local prefix/string path/string --registries/Registries -> none:
     specification.add-local-dependency prefix path
     solve_ --no-update-everything --registries=registries
     save
 
-  uninstall prefix/string:
+  uninstall prefix/string -> none:
     specification.remove-dependency prefix
     lock-file.update --remove-prefix=prefix
     save
 
-  update --registries/Registries:
+  update --registries/Registries -> none:
     solve_ --update-everything --registries=registries
     save
 
-  install:
+  install -> none:
     lock-file.install
 
-  clean:
+  clean -> none:
     repository-packages := lock-file.repository-packages
     url-to-version := {:}
     repository-packages.do: | package/RepositoryPackage |
@@ -134,8 +134,25 @@ class Project:
         versions.close
     urls.close
 
-  packages-cache-dir:
+  packages-cache-dir -> string:
     return "$config.root/$PACKAGES-CACHE"
+
+  ensure-packages-cache-dir_ -> none:
+    dir := packages-cache-dir
+    if file.is-directory dir: return
+    if file.stat dir:
+      ui_.abort "Expected '$dir' to be a directory, but it is a file."
+    directory.mkdir --recursive dir
+    readme-path := fs.join dir "README.md"
+    file.write-contents --path=readme-path """
+    # Package Cache Directory
+
+    This directory contains Toit packages that have been downloaded by
+    the Toit package management system.
+
+    Generally, the package manager is able to download these packages again.
+    It is thus safe to remove this directory.
+    """
 
   /**
   Solves the dependencies of the project.
@@ -144,7 +161,7 @@ class Project:
     updates all dependencies. Otherwise, uses the lock-file to avoid unnecessary
     changes.
   */
-  solve_ --update-everything/bool --registries/Registries:
+  solve_ --update-everything/bool --registries/Registries -> none:
     dependencies := specification.collect-registry-dependencies
     min-sdk := specification.compute-min-sdk-version
     solver := Solver registries --sdk-version=sdk-version --ui=ui_
@@ -160,7 +177,7 @@ class Project:
     builder := LockFileBuilder --solution=solution --project=this --ui=ui_
     lock-file = builder.build --registries=registries
 
-  ensure-downloaded_ --solution/Solution --registries/Registries:
+  ensure-downloaded_ --solution/Solution --registries/Registries -> none:
     cached-contents := cached-repository-contents_
     solution.packages.do: | url/string versions/List |
       versions.do:
@@ -219,6 +236,7 @@ class Project:
     return cached-contents
 
   download_ url/string version/SemanticVersion --destination/string --hash/string -> none:
+    ensure-packages-cache-dir_
     directory.mkdir --recursive destination
     repository := Repository url
     pack := repository.clone hash
