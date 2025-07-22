@@ -1,5 +1,0 @@
-name: ambiguous
-description: first of two packages that have long name that is equal
-url: localhost:<[*PORT*]>/a/b/c/d/ambiguous
-version: 3.1.2
-hash: deadbeef1234567890abcdef1234567890abcdef
