@@ -11,51 +11,6 @@ import .gold-tester
 main args:
   with-gold-tester args: test it
 
-/*
-		pt.GoldToit("install", [][]string{
-			{"pkg", "registry", "add", "--local", "test-reg", "registry"},
-			{"pkg", "install", "foo"},
-			{"pkg", "install", "bar"},
-			{"pkg", "install", "--local", "target"},
-			{"exec", "main.toit"},
-		})
-
-		fooVersion := "1.2.3"
-		fooPath := pt.computePathInCache("foo_git", fooVersion, "")
-		info, err := os.Stat(fooPath)
-		require.NoError(t, err)
-		require.True(t, info.IsDir())
-		err = os.RemoveAll(fooPath)
-		require.NoError(t, err)
-
-		barVersion := "2.0.1"
-		barPath := pt.computePathInCache("bar_git", barVersion, "")
-		info, err = os.Stat(barPath)
-		require.NoError(t, err)
-		require.True(t, info.IsDir())
-		err = os.RemoveAll(barPath)
-		require.NoError(t, err)
-
-		pt.GoldToit("fail", [][]string{
-			{"exec", "main.toit"},
-		})
-		pt.GoldToit("download", [][]string{
-			{"pkg", "download"},
-		})
-		pt.GoldToit("exec after download", [][]string{
-			{"exec", "main.toit"},
-		})
-
-		// Ensure that the directories are back.
-		info, err = os.Stat(fooPath)
-		require.NoError(t, err)
-		require.True(t, info.IsDir())
-
-		info, err = os.Stat(barPath)
-		require.NoError(t, err)
-		require.True(t, info.IsDir())
-*/
-
 test tester/GoldTester:
   tester.gold "10-install" [
     ["pkg", "registry", "add", "--local", "test-reg", "registry"],
@@ -78,13 +33,13 @@ test tester/GoldTester:
   foo-rel-path := mapping[foo-url][foo-version]
   foo-path := "$tester.working-dir/.packages/$foo-rel-path"
   expect (file.is-directory foo-path)
-  directory.rmdir --recursive foo-path
+  directory.rmdir --recursive --force foo-path
 
   bar-version := "2.0.1"
   bar-rel-path := mapping[bar-url][bar-version]
   bar-path := "$tester.working-dir/.packages/$bar-rel-path"
   expect (file.is-directory bar-path)
-  directory.rmdir --recursive bar-path
+  directory.rmdir --recursive --force bar-path
 
   tester.gold "20-fail" [
     ["exec", "main.toit"],
