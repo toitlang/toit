@@ -1,0 +1,32 @@
+OK
+[pkg, init]
+==================
+// Can't install two packages with '--local'
+==================
+Aborted
+[pkg, install, --local, pkg1, pkg2]
+Error: The '--local' flag requires exactly one path argument.
+==================
+// Can't install two packages with '--prefix'
+==================
+Aborted
+[pkg, install, --prefix=foo, pkg1, pkg2]
+Error: Can not specify multiple packages with '--prefix'.
+==================
+// Can't install two packages with '--local' and '--prefix'
+==================
+Aborted
+[pkg, install, --local, --prefix=foo, pkg1, pkg2]
+Error: The '--local' flag requires exactly one path argument.
+==================
+// Install both packages.
+==================
+OK
+[pkg, install, pkg1, pkg2]
+Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+Package 'pkg2@2.4.2' installed with prefix 'pkg2'.
+==================
+exec test.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0
