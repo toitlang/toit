@@ -294,7 +294,12 @@ abstract class Registry:
       split := search-string.split "@"
       search-string = split[0]
       search-version-str := split[1]
-      search-version-constraint = Constraint.parse-range search-version-str
+      if search-version-str == "":
+        ui_.abort "Missing version after '@' in '$search-string@'."
+      e := catch:
+        search-version-constraint = Constraint.parse-range search-version-str
+      if e:
+        ui_.abort "Invalid version constraint '$search-version-str' for '$search-string': $e."
 
     // Initially maps urls to list of descriptions.
     search-result := description-cache.search search-string search-version-constraint

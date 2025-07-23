@@ -347,7 +347,7 @@ class AssetsBuilder:
 
   git-run args/List:
     exit-code := pipe.run-program (["git"] + args)
-    expect-equals exit-code 0
+    if exit-code != 0: throw "Git command failed: $args"
 
   setup-git --working-dir/string --source-dir/string -> none:
     directory.mkdir --recursive working-dir
@@ -368,7 +368,9 @@ class AssetsBuilder:
       // Copy over the new version.
       copy-path --source="$source-dir/$version-name" --target=working-dir
       git-run ["add", "."]
-      git-run ["commit", "--message", "Add $version-name"]
+      // The commit is allowed to fail if the package didn't change.
+      // This can happen when we just want to have a new tag.
+      catch: git-run ["commit", "--message", "Add $version-name"]
       git-run ["tag", version-name]
     git-run ["update-server-info"]
     file.write-contents --path="$working-dir/.git/hooks/post-update" """
