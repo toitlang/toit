@@ -1078,10 +1078,11 @@ class Parser_ extends PegParserBase_:
     try-parse:
       if match-char C-FOLDED_:
         t := c-b-block-header n
-        chomp := t[0]
-        indent := t[1]
-        if res := l-folded-content indent chomp:
-          return res.join ""
+        if t:
+          chomp := t[0]
+          indent := t[1]
+          if res := l-folded-content indent chomp:
+            return res.join ""
     return null
 
   c-b-block-header n/int -> List?:
