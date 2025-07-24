@@ -10,9 +10,9 @@ prefixes:
   many: localhost_<[*PORT*]>/pkg/many-1
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 1.1.0
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:

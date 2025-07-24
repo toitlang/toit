@@ -8,33 +8,33 @@ prefixes:
   pre2: localhost_<[*PORT*]>/pkg/bar-2
 packages:
   localhost_<[*PORT*]>/pkg/bar-2:
+    hash: <[*HASH*]>
     prefixes:
       foo: localhost_<[*PORT*]>/pkg/foo-1
       sub: localhost_<[*PORT*]>/pkg/sub-3
     url: localhost:<[*PORT*]>/pkg/bar
     version: 2.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/foo
     version: 1.2.3
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
     prefixes:
       pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
     url: localhost:<[*PORT*]>/pkg/pkg1
     version: 1.0.0
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
     prefixes:
       pre: localhost_<[*PORT*]>/pkg/pkg3-3
     url: localhost:<[*PORT*]>/pkg/pkg2
     version: 2.4.2
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/pkg3
     version: 3.1.2
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/sub-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/sub
     version: 3.1.4
-    hash: <[*HASH*]>

@@ -57,7 +57,8 @@ DANGEROUS-PATHS_ ::= {
 
 /** A platform-independent version of a path that is recognized by the compiler. */
 to-uri-path path/string -> string:
-  segments := fs.split path
+  path = path.replace --all "\\" "/"
+  segments := path.split "/"
   segments.map --in-place: | segment/string |
     segment = url.encode segment
     if DANGEROUS-PATHS_.contains segment.to-ascii-upper:
@@ -72,6 +73,16 @@ to-uri-path path/string -> string:
     segment
 
   return segments.join "/"
+
+to-compiler-path path/string -> string:
+  if system.platform != system.PLATFORM-WINDOWS:
+    return path
+
+  slashed := fs.to-slash path
+  if fs.is-absolute path:
+    return "/$(fs.to-slash slashed)"
+
+  return slashed
 
 /**
 Escapes the given $path so it's valid.

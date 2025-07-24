@@ -170,13 +170,29 @@ class LockFile:
       map[LockFile.PACKAGES-KEY_] = packages-map
     return map
 
-  save:
+  sorted-deep-copy_ o/any -> any:
+    if o is Map:
+      result := {:}
+      sorted-keys := o.keys.sort
+      sorted-keys.do: | key/string |
+        result[key] = sorted-deep-copy_ o[key]
+      return result
+    if o is List:
+      return o.map: | it | sorted-deep-copy_ it
+    return o
+
+  save -> none:
     content := to-map_
     if content.is-empty:
       file.write-contents "# Toit Package File." --path=file-name
-    else:
-      file.write-contents --path=file-name
-          yaml.encode content
+      return
+
+    sorted := content.copy
+    if sorted.contains LockFile.PREFIXES-KEY_:
+      sorted[LockFile.PREFIXES-KEY_] = sorted-deep-copy_ sorted[LockFile.PREFIXES-KEY_]
+    if sorted.contains LockFile.PACKAGES-KEY_:
+      sorted[LockFile.PACKAGES-KEY_] = sorted-deep-copy_ sorted[LockFile.PACKAGES-KEY_]
+    file.write-contents --path=file-name (yaml.encode sorted)
 
   install:
     (packages.filter : it is RepositoryPackage).do: | package/RepositoryPackage |
@@ -321,7 +337,7 @@ class LockFileBuilder:
       else:
         id := compute-local-id.call absolute-path
         packages[id] = {
-          "path": to-uri-path human-path,
+          "path": to-compiler-path human-path,
           "prefixes": local-prefixes
         }
 

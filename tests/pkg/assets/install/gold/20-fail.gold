@@ -1,10 +1,10 @@
 exec main.toit
 
 STDERR---
-<[*WORKING-DIR*]>/package.lock:11:10: error: Package 'localhost:<[*PORT*]>/pkg/bar-2.0.1' not found
+<[*WORKING-DIR*]>/package.lock:12:10: error: Package 'localhost:<[*PORT*]>/pkg/bar-2.0.1' not found
     url: localhost:<[*PORT*]>/pkg/bar
          ^~~~~~~~~~~~~~~~~~~~~~~
-<[*WORKING-DIR*]>/package.lock:15:10: error: Package 'localhost:<[*PORT*]>/pkg/foo-1.2.3' not found
+<[*WORKING-DIR*]>/package.lock:16:10: error: Package 'localhost:<[*PORT*]>/pkg/foo-1.2.3' not found
     url: localhost:<[*PORT*]>/pkg/foo
          ^~~~~~~~~~~~~~~~~~~~~~~
 main.toit:5:8: error: Package 'localhost_<[*PORT*]>/pkg/foo-1' for prefix 'foo' not found

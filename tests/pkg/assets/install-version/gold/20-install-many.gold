@@ -20,13 +20,13 @@ prefixes:
   many: localhost_<[*PORT*]>/pkg/many-3
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 1.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 3.0.2
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
@@ -48,13 +48,13 @@ prefixes:
   many: localhost_<[*PORT*]>/pkg/many-3
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 1.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 3.0.2
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
