@@ -16,6 +16,8 @@ test:
   echo := gpio.Pin.in Variant.CURRENT.board2-hc-sr04-echo-pin
   trigger := gpio.Pin.out Variant.CURRENT.board2-hc-sr04-trigger-pin
   driver := hc-sr04.Driver --echo=echo --trigger=trigger
+  // Give the sensor time to settle.
+  sleep --ms=200
 
   5.repeat:
     distance := driver.read-distance
