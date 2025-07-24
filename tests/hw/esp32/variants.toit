@@ -381,7 +381,7 @@ On board 1 connect as follows:
 
 - IO25 (DAC1) - IO33 with 330Ohm
 
-- IO13 (also connected with board2) - IO17 (also connected with board2) with 5KOhm.
+- IO13 (also connected with board2) - IO17 (also connected with board2) with 5KOhm.  xx
 
 - The following pins in a row: GND - IO21 - IO19 - IO18
   * IO21 to GND with a 1MOhm resistor.
@@ -394,8 +394,8 @@ Pins IO4 and IO2 are used for touch tests.
 On board2:
 - IO19 -> HC-SR04 Echo. Ideally through a voltage divider or an LED.
 - IO18 -> HC-SR04 Trig
-- IO14 -> DHT11 Data
-- IO15 -> DS18B20 Data
+- IO15 -> DHT11 Data
+- IO14 -> DS18B20 Data
 - IO32 -> bme280 SCL (yellow)
 - IO33 -> bme280 SDA (blue)
 
@@ -462,9 +462,9 @@ class Esp32 extends Variant:
   board2-hc-sr04-trigger-pin ::= 18
   board2-hc-sr04-echo-pin ::= 19
 
-  board2-ds18b20-pin ::= 15
+  board2-ds18b20-pin ::= 14
 
-  board2-dht11-pin ::= 14
+  board2-dht11-pin ::= 15
 
   board-connection-pin1 ::= 22
   board-connection-pin2 ::= 23

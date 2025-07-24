@@ -20,12 +20,15 @@ test:
 
   devices := bus.scan
 
-  expect (devices.contains bme280.I2C-ADDRESS-ALT)
+  print devices
+  expect (devices.contains bme280.I2C-ADDRESS)
 
-  device := bus.device bme280.I2C-ADDRESS-ALT
+  device := bus.device bme280.I2C-ADDRESS
   driver := bme280.Driver device
 
   2.repeat:
+    print driver.read-pressure
+    print driver.read-humidity
     temperature := driver.read-temperature
     print temperature
     expect 12 < temperature < 35
