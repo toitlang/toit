@@ -8,13 +8,14 @@ OK
 ==================
 Aborted
 [pkg, install, pkg1]
-Error: Multiple packages found for 'pkg1' in all registries.
+Error: Multiple packages found for 'pkg1'
 ==================
 // Disambiguate by giving full URL.
 ==================
 OK
 [pkg, install, localhost:<[*PORT*]>/pkg/pkg1]
-Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+Warning: The latest version of package 'localhost:<[*PORT*]>/pkg/pkg1' has changed its name to 'pkg1'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'localhost:<[*PORT*]>/pkg/pkg1'.
 ==================
 // Ambiguous pkg2
 ==================
@@ -37,7 +38,8 @@ pkg2:
 ==================
 OK
 [pkg, install, localhost:<[*PORT*]>/pkg/pkg2]
-Package 'pkg2@2.4.2' installed with prefix 'pkg2'.
+Warning: The latest version of package 'localhost:<[*PORT*]>/pkg/pkg2' has changed its name to 'pkg2'.
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'localhost:<[*PORT*]>/pkg/pkg2'.
 ==================
 // Ambiguous 'ambiguous'
 ==================
@@ -66,7 +68,7 @@ pkg2:
 ==================
 Aborted
 [pkg, install, b/c/d/ambiguous]
-Error: Multiple packages found for 'b/c/d/ambiguous' in all registries.
+Error: Multiple packages found for 'b/c/d/ambiguous'
 ==================
 // Will still yield an error (because we don't have the package),
 ==================

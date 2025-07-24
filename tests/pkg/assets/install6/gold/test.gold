@@ -23,8 +23,8 @@ Error: The '--local' flag requires exactly one path argument.
 ==================
 OK
 [pkg, install, pkg1, pkg2]
-Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
-Package 'pkg2@2.4.2' installed with prefix 'pkg2'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'pkg2'.
 ==================
 exec test.toit
 pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2

@@ -99,6 +99,9 @@ class Project:
     specification.save
     lock-file.save
 
+  same-major-version_ version/SemanticVersion -> SemanticVersion:
+    return SemanticVersion --major=version.major
+
   /**
   Install the given $remotes packages with the given $prefixes and $constraints.
 
@@ -111,7 +114,7 @@ class Project:
       prefix := prefixes[i]
       remote := remotes[i]
       constraint := constraints[i]
-      constraint-str := constraint ? constraint.to-string : "^$remote.version"
+      constraint-str := constraint ? constraint.to-string : "^$(same-major-version_ remote.version)"
       specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint=constraint-str
     solution := solve-and-download_ --no-update-everything --registries=registries
     save

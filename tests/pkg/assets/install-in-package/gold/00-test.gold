@@ -6,11 +6,11 @@ OK
 ==================
 OK
 [pkg, install, foo]
-Package 'foo@1.2.3' installed with prefix 'foo'.
+Package 'localhost:<[*PORT*]>/pkg/foo@1.2.3' installed with prefix 'foo'.
 ==================
 OK
 [pkg, install, bar]
-Package 'bar@2.0.1' installed with prefix 'bar'.
+Package 'localhost:<[*PORT*]>/pkg/bar@2.0.1' installed with prefix 'bar'.
 ==================
 == package.lock
 sdk: ^0.1.30
@@ -38,7 +38,7 @@ packages:
 dependencies:
   foo:
     url: localhost:<[*PORT*]>/pkg/foo
-    version: ^1.2.3
+    version: ^1.0.0
   bar:
     url: localhost:<[*PORT*]>/pkg/bar
-    version: ^2.0.1
+    version: ^2.0.0

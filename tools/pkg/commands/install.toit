@@ -128,11 +128,11 @@ class InstallCommand extends PkgProjectCommand:
         --registries=registries
 
     remote-packages.size.repeat: | i/int |
-      remote-package := remote-packages[i]
+      remote-package/Description := remote-packages[i]
       package-prefix := prefixes[i]
       version := installed-versions[i]
 
-      id := "$remote-package.name@$version"
+      id := "$remote-package.url@$version"
       ui.emit --info "Package '$id' installed with prefix '$package-prefix'."
 
   execute-local:

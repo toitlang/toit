@@ -44,18 +44,6 @@ test-git:
   expect-equals 1 morse-search.size
   expect-equals "1.0.6" (morse-search[0] as Description).version.stringify
 
-  morse-search = registry.search "toit-morse@1"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.6" (morse-search[0] as Description).version.stringify
-
-  morse-search = registry.search "toit-morse@1.0.2"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.2" (morse-search[0] as Description).version.stringify
-
-  morse-search = registry.search "morse@1.0.2"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.2" (morse-search[0] as Description).version.stringify
-
   morse-search = registry.search "morse"
   expect-equals 1 morse-search.size
   expect-equals "1.0.6" (morse-search[0] as Description).version.stringify
@@ -186,13 +174,19 @@ test-registries source-dir/string:
 
   expect-equals 8 (test-registries.search --free-text "morse").size
 
-  description := test-registries.search --registry-name="local" "morse"
+  description := test-registries.search "morse"
+      --registry-name="local"
+      --if-absent=(: unreachable)
+      --if-ambiguous=(: unreachable)
   expect-equals "morse" description.name
 
-  expect-ui-throw test-ui "Package 'mrse' not found in any registry." : test-registries.search "mrse"
-  expect-ui-throw test-ui "Package 'morse' exists but not with version '2' in any registry." : test-registries.search "morse@2"
-  expect-ui-throw test-ui "Package 'morse-local' exists but not with version '2' in registry local." : test-registries.search --registry-name="local"  "morse-local@2"
-  expect-ui-throw test-ui "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
+  e := catch:
+    test-registries.search "mrse" --if-absent=(: throw "NOT-FOUND") --if-ambiguous=(: unreachable)
+  expect-equals "NOT-FOUND" e
+
+  e = catch:
+    test-registries.search  "local" --if-absent=(: unreachable) --if-ambiguous=(: throw "AMBIGUOUS")
+  expect-equals "AMBIGUOUS" e
 
 main:
   source-location := system.program-path

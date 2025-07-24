@@ -17,7 +17,8 @@ test tester/GoldTester:
     ["pkg", "init"], // So we don't accidentally use a /tmp/package.yaml.
     ["pkg", "install", "foo@1.1"],
     ["pkg", "install", "bar"],
-    ["pkg", "uninstall", "other-name"],
+    ["// Even though the package foo@1.1 has as name 'other-name', it is installed as 'foo'."],
+    ["pkg", "uninstall", "foo"],
     ["pkg", "uninstall", "bar"],
     ["pkg", "install", "foo"],
   ]

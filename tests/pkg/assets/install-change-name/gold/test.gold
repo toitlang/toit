@@ -4,25 +4,25 @@ OK
 OK
 [pkg, init]
 ==================
-Aborted
+OK
 [pkg, install, foo@1.1]
 Warning: The latest version of package 'foo' has changed its name to 'foo2'.
-Error: Failed to load package specification for 'localhost:<[*PORT*]>/pkg/foo-name@1.1.0': FILE_NOT_FOUND: "<[*WORKING-DIR*]>/.packages/localhost:<[*PORT*]>/pkg/foo-name/1.1.0/package.yaml"
+Package 'localhost:<[*PORT*]>/pkg/foo-name@1.1.0' installed with prefix 'foo'.
 ==================
-Aborted
+OK
 [pkg, install, bar]
-Error: Failed to load package specification for 'localhost:<[*PORT*]>/pkg/bar-name@2.0.1': FILE_NOT_FOUND: "<[*WORKING-DIR*]>/.packages/localhost:<[*PORT*]>/pkg/bar-name/2.0.1/package.yaml"
+Package 'localhost:<[*PORT*]>/pkg/bar-name@2.0.1' installed with prefix 'bar'.
 ==================
-Aborted
-[pkg, uninstall, other-name]
-Error: No package with prefix other-name
+// Even though the package foo@1.1 has as name 'other-name', it is installed as 'foo'.
 ==================
-Aborted
+OK
+[pkg, uninstall, foo]
+==================
+OK
 [pkg, uninstall, bar]
-Error: No package with prefix bar
 ==================
-Aborted
+OK
 [pkg, install, foo]
 Warning: The latest version of package 'foo' has changed its name to 'foo2'.
 Warning: Package 'localhost:<[*PORT*]/pkg/non-existing' not found
-Error: Unable to resolve dependencies
+Package 'localhost:<[*PORT*]>/pkg/foo-name@1.2.3' installed with prefix 'foo'.

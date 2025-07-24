@@ -190,7 +190,7 @@ class LockFile:
     packages.do: | package/Package | packages-by-name[package.name] = package
 
 
-    packages-to-remove := {}
+    packages-to-remove := { name }
     new-packages-to-remove :=  { name }
     // Calculate the transitive closure through prefixes from the name.
     while not new-packages-to-remove.is-empty:

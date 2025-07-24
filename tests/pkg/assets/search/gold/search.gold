@@ -96,7 +96,7 @@ gee - 1.1.1
 ==================
 Aborted
 [pkg, install, Ee]
-Error: Package 'Ee' not found in any registry.
+Error: Package 'Ee' not found.
 ==================
 // The bar and sub package didn't change
 ==================

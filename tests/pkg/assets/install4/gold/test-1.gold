@@ -31,7 +31,7 @@ Exit Code: 1
 ==================
 OK
 [pkg, install, pkg4, --prefix=pkg4_pre]
-Package 'pkg4@4.9.9' installed with prefix 'pkg4'.
+Package 'localhost:<[*PORT*]>/pkg/pkg4@4.9.9' installed with prefix 'pkg4_pre'.
 ==================
 // main.toit should work now.
 ==================
@@ -41,7 +41,7 @@ Exit Code: 0
 ==================
 OK
 [pkg, install, pkg1]
-Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
 ==================
 // main2.toit should also work now.
 ==================
