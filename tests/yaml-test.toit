@@ -102,6 +102,8 @@ test-stringify:
       """
       yaml.stringify {"d": [{"outer": 2, "v": 3}]}
 
+  expect-equals "\">=1.2\"" (yaml.stringify ">=1.2")
+
 
 test-converter -> none:
   fixed-converter := : | obj encoder |
