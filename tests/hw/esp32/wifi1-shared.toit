@@ -18,8 +18,10 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.board-connection-pin1
-TX ::= Variant.CURRENT.board-connection-pin2
+RX1 ::= Variant.CURRENT.board-connection-pin1
+TX1 ::= Variant.CURRENT.board-connection-pin2
+RX2 ::= Variant.CURRENT.board-connection-pin2
+TX2 ::= Variant.CURRENT.board-connection-pin1
 BAUD-RATE ::= 115200
 
 SSID ::= "test-wifi-scan"
@@ -62,18 +64,23 @@ contains-ssid access-points/List ssid/string:
   return access-points.any: | ap/wifi.AccessPoint | ap.ssid == ssid
 
 test-board1:
-  tx := gpio.Pin TX
-  rx := gpio.Pin RX
+  tx := gpio.Pin TX1
+  rx := gpio.Pin RX1
   port := uart.Port --tx=tx --rx=rx --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
     // Wait for board 2 to be ready.
     port.in.read
 
-    scanned := wifi.scan #[config.channel]
-    expect (contains-ssid scanned config.ssid)
-    other-channel := config.channel == 1 ? 5 : 1
-    scanned = wifi.scan #[other-channel]
-    expect-not (contains-ssid scanned config.ssid)
+    for i := 0; i < MAX-RETRIES; i++:
+      scanned := wifi.scan #[config.channel]
+      if i < MAX-RETRIES - 1 and not contains-ssid scanned config.ssid:
+        print "Waiting for WiFi access point $config.ssid"
+        sleep --ms=RETRY-WAIT
+        continue
+      expect (contains-ssid scanned config.ssid)
+      other-channel := config.channel == 1 ? 5 : 1
+      scanned = wifi.scan #[other-channel]
+      expect-not (contains-ssid scanned config.ssid)
 
     // Connect to the other board.
     network/net.Client? := null
@@ -95,8 +102,8 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  tx := gpio.Pin TX
-  rx := gpio.Pin RX
+  tx := gpio.Pin TX2
+  rx := gpio.Pin RX2
   port := uart.Port --tx=tx --rx=rx --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
     network-ap := wifi.establish
