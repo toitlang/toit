@@ -18,8 +18,10 @@ packages:
   toit-dhtxx:
     url: github.com/toitware/toit-dhtxx
     name: dhtxx
-    version: 1.8.0
-    hash: 90da97cd0763b53a32befa4d6533428f0891811d
+    version: 1.9.0
+    hash: bf9f7b36a20b88454f1eff63632f591b03f7e880
+    prefixes:
+      sensors: toit-sensors
   toit-ds18b20:
     url: github.com/toitware/toit-ds18b20
     name: ds18b20
@@ -32,3 +34,8 @@ packages:
     name: hc-sr04
     version: 2.2.0
     hash: b0cfb0df9e657a699f909e0aa5d37979b9e96fa2
+  toit-sensors:
+    url: github.com/toitware/toit-sensors
+    name: sensors
+    version: 1.0.0
+    hash: f9f5662a0f21016259ff6907419e54d00223714a
