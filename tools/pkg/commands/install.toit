@@ -52,6 +52,8 @@ class InstallCommand extends PkgProjectCommand:
         cli.ui.abort "Can not specify a prefix without a package."
       else if packages.size > 1:
         cli.ui.abort "Can not specify multiple packages with '--prefix'."
+      if not is-valid-prefix_ prefix:
+        cli.ui.abort "Invalid prefix '$prefix'. Prefixes must be valid Toit identifiers."
 
     if recompute and not packages.is-empty:
       cli.ui.abort "Recompute can only be specified with no other arguments."
@@ -105,6 +107,25 @@ class InstallCommand extends PkgProjectCommand:
 
     project.install-local prefix package --registries=registries
     ui.emit --info "Package '$package' installed with prefix '$prefix'."
+
+  static is-valid-prefix_ prefix/string -> bool:
+    last-was-dash := false
+    for i := 0; i < prefix.size; i++:
+      c := prefix[i]
+      if c == '-':
+        if last-was-dash: return false
+        if i == 0: return false
+        if i == prefix.size - 1: return false
+        last-was-dash = true
+        continue
+      last-was-dash = false
+      if '0' <= c <= '9':
+        if i == 0: return false
+        continue
+      if 'a' <= c <= 'z' or 'A' <= c <= 'Z' or c == '_':
+        continue
+      return false
+    return true
 
   static CLI-COMMAND ::=
       cli.Command "install"
