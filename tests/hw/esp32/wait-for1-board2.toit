@@ -17,8 +17,8 @@ main:
   run-test: test
 
 test:
-  pin-in := gpio.Pin PIN-IN --input
-  pin-out := gpio.Pin PIN-OUT --output
+  pin-in := gpio.Pin PIN-IN2 --input
+  pin-out := gpio.Pin PIN-OUT2 --output
 
   ITERATIONS.repeat: | iteration |
     if iteration % 1000 == 0: print "Iteration: $iteration"
