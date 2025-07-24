@@ -20,8 +20,8 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.board-connection-pin1
-TX ::= Variant.CURRENT.board-connection-pin2
+RX1 ::= Variant.CURRENT.board-connection-pin1
+TX2 ::= Variant.CURRENT.board-connection-pin1
 BAUD-RATE ::= 115200
 
 class FwData implements io.Data:
@@ -49,9 +49,9 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  port := uart.Port 
-      --rx=(gpio.Pin RX) 
-      --tx=null 
+  port := uart.Port
+      --rx=(gpio.Pin RX1)
+      --tx=null
       --baud-rate=BAUD-RATE
       --large-buffers
   hasher := md5.Md5
@@ -81,7 +81,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE
+  port := uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
 
   firmware.map: | mapping/firmware.FirmwareMapping |
     fw := FwData mapping 0 (32 * 1024)
