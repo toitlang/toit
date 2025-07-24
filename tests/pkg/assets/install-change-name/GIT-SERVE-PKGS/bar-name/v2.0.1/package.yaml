@@ -1,0 +1,9 @@
+name: bar
+description: Description of bar. bar-desc.
+license: MIT
+dependencies:
+  foo:
+    url: localhost:<[*PORT*]>/pkg/foo-name
+    version: 1.1.0
+environment:
+  sdk: ^0.1.20

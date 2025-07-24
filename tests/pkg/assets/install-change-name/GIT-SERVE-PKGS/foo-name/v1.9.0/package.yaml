@@ -1,0 +1,9 @@
+name: foo
+description: Description of foo. foo-desc.
+license: BSD
+dependencies:
+  foo:
+    url: localhost:<[*PORT*]>/pkg/non-existing
+    version: ^1.0.0
+environment:
+  sdk: ^0.1.30

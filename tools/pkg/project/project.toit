@@ -22,6 +22,7 @@ import encoding.yaml
 import system
 import fs
 
+import ..constraints
 import ..registry
 import ..registry.description
 import ..pkg
@@ -98,14 +99,45 @@ class Project:
     specification.save
     lock-file.save
 
-  install-remote prefix/string remote/Description --registries/Registries -> none:
-    specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
-    solve_ --no-update-everything --registries=registries
+  /**
+  Install the given $remotes packages with the given $prefixes and $constraints.
+
+  Returns a list of the installed versions.
+  */
+  install-remote --prefixes/List --remotes/List --constraints/List --registries/Registries -> List:
+    assert: prefixes.size == remotes.size
+    assert: prefixes.size == constraints.size
+    remotes.size.repeat: | i/int |
+      prefix := prefixes[i]
+      remote := remotes[i]
+      constraint := constraints[i]
+      constraint-str := constraint ? constraint.to-string : "^$remote.version"
+      specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint=constraint-str
+    solution := solve-and-download_ --no-update-everything --registries=registries
     save
+    result := []
+    remotes.size.repeat: | i/int |
+      remote/Description := remotes[i]
+      constraint/Constraint? := constraints[i]
+      installed-versions/List := solution.packages[remote.url]
+      if installed-versions.size == 1:
+        result.add installed-versions[0]
+      else if constraint:
+        installed-versions.do: | version/SemanticVersion |
+          if constraint.satisfies version:
+            result.add version
+            continue.repeat
+        unreachable
+      else:
+        // Find the highest version.
+        highest := installed-versions.reduce: | version1/SemanticVersion version2/SemanticVersion |
+          version1 > version2 ? version1 : version2
+        result.add highest
+    return result
 
   install-local prefix/string path/string --registries/Registries -> none:
     specification.add-local-dependency prefix path
-    solve_ --no-update-everything --registries=registries
+    solve-and-download_ --no-update-everything --registries=registries
     save
 
   uninstall prefix/string -> none:
@@ -114,14 +146,16 @@ class Project:
     save
 
   update --registries/Registries -> none:
-    solve_ --update-everything --registries=registries
+    solve-and-download_ --update-everything --registries=registries
     save
 
   install --recompute/bool --registries/Registries -> none:
-    if recompute or not lock-file:
-      solve_ --no-update-everything --registries=registries
-      save
-    lock-file.install
+    if not recompute and lock-file:
+      lock-file.install
+      return
+
+    solve-and-download_ --no-update-everything --registries=registries
+    save
 
   clean -> none:
     repository-packages := lock-file.repository-packages
@@ -167,8 +201,12 @@ class Project:
   If $update-everything is true, doesn't take the lock-file into account, and
     updates all dependencies. Otherwise, uses the lock-file to avoid unnecessary
     changes.
+
+  Downloads all packages.
+
+  Updates the lock-file with the solution, but does not save it.
   */
-  solve_ --update-everything/bool --registries/Registries -> none:
+  solve-and-download_ --update-everything/bool --registries/Registries -> Solution:
     dependencies := specification.collect-registry-dependencies
     min-sdk := specification.compute-min-sdk-version
     solver := Solver registries --sdk-version=sdk-version --ui=ui_
@@ -183,6 +221,7 @@ class Project:
     ensure-downloaded_ --solution=solution --registries=registries
     builder := LockFileBuilder --solution=solution --project=this --ui=ui_
     lock-file = builder.build --registries=registries
+    return solution
 
   ensure-downloaded_ --solution/Solution --registries/Registries -> none:
     cached-contents := cached-repository-contents_
@@ -258,6 +297,7 @@ class Project:
     return cached-contents
 
   download_ url/string version/SemanticVersion --destination/string --hash/string -> none:
+    ui_.emit --verbose "Downloading package $url@$version."
     ensure-packages-cache-dir_
     directory.mkdir --recursive destination
     repository := Repository url
@@ -266,7 +306,11 @@ class Project:
 
   load-package-specification url/string version/SemanticVersion -> ExternalSpecification:
     cached-repository-dir := cached-repository-dir_ url version
-    return ExternalSpecification --dir=(fs.to-absolute cached-repository-dir) --ui=ui_
+    e := catch:
+      return ExternalSpecification --dir=(fs.to-absolute cached-repository-dir) --ui=ui_
+    if e:
+      ui_.abort "Failed to load package specification for '$url@$version': $e"
+    unreachable
 
   load-local-specification path/string -> ExternalSpecification:
     return ExternalSpecification --dir=(fs.to-absolute "$root/$path") --ui=ui_

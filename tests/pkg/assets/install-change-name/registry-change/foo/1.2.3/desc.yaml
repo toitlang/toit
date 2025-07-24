@@ -1,0 +1,7 @@
+name: foo
+description: Description of foo. foo-desc.
+version: 1.2.3
+url: localhost:<[*PORT*]>/pkg/foo-name
+environment:
+  sdk: ^0.1.30
+hash: deadbeef1234567890abcdef1234567890abcdef
