@@ -20,8 +20,10 @@ import uart
 import .test
 import .variants
 
-RX ::= Variant.CURRENT.board-connection-pin1
-TX ::= Variant.CURRENT.board-connection-pin2
+RX1 ::= Variant.CURRENT.board-connection-pin1
+TX1 ::= Variant.CURRENT.board-connection-pin2
+RX2 ::= Variant.CURRENT.board-connection-pin2
+TX2 ::= Variant.CURRENT.board-connection-pin1
 BAUD-RATE ::= 115200
 
 REPETITIONS ::= 1
@@ -31,8 +33,8 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  rx := gpio.Pin RX
-  tx := gpio.Pin TX
+  rx := gpio.Pin RX1
+  tx := gpio.Pin TX1
   REPETITIONS.repeat:
     port := uart.Port --rx=rx --tx=tx --baud-rate=BAUD-RATE
     expected-size := port.in.little-endian.read-int32
@@ -47,8 +49,8 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  rx := gpio.Pin RX
-  tx := gpio.Pin TX
+  rx := gpio.Pin RX2
+  tx := gpio.Pin TX2
   REPETITIONS.repeat:
     size := it * 100 + 17
     data := ByteArray size: it & 255
