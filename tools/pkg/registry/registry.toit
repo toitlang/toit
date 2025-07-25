@@ -29,7 +29,8 @@ import ..constraints
 import ..utils
 import .cache
 
-// registries ::= Registries
+export LocalRegistry
+export GitRegistry
 
 // TODO(florian): move this cache global to a better place. It is used by many other libraries.
 cache ::= Cache --app-name="toit_pkg"

@@ -19,6 +19,7 @@ import cli
 
 import ..pkg
 import ..registry
+import ..registry.local
 
 import .base_
 
@@ -50,6 +51,19 @@ class RegistryCommand extends PkgCommand:
     super invocation
 
   add:
+    if registries.registries.contains name:
+      registry/Registry := registries.registries[name]
+      if registry is LocalRegistry:
+        local-registry := registry as LocalRegistry
+        if local-registry.path == url:
+          // Already exists with the same path.
+          return
+      else:
+        git-registry := registry as GitRegistry
+        if git-registry.url == url:
+          // Already exists with the same URL.
+          return
+      ui.abort "Registry $name already exists with a different URL or path."
     if local:
       registries.add --local name url
     else:
