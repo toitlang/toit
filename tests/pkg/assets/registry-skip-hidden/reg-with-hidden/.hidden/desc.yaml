@@ -1,0 +1,5 @@
+name: bad
+description: should not be visible
+url: some-url
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
