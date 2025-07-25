@@ -66,16 +66,19 @@ class GoldTester:
   toit-exec_/string
   should-update_/bool
   port_/int
+  registry-cache-dir_/string
 
   constructor
       --toit-exe/string
       --gold-dir/string
       --working-dir/string
+      --registry-cache-dir/string
       --should-update/bool
       --port/int:
     toit-exec_ = toit-exe
     gold-dir_ = gold-dir
     working-dir_ = working-dir
+    registry-cache-dir_ = registry-cache-dir
     should-update_ = should-update
     port_ = port
 
@@ -92,6 +95,19 @@ class GoldTester:
       if pkg-name.ends-with pkg-suffix:
         return fs.join working-dir_ ".packages" pkg-info[version]
     unreachable
+
+  delete-registry-cache name/string -> none:
+    cache := Cache --app-name="toit_pkg" --path=registry-cache-dir_
+    registry-data := cache.get "registries.yaml": unreachable
+    registries := yaml.decode registry-data
+    entry := registries[name]
+    if not entry["type"] == "git":
+      throw "UNIMPLEMENTED"
+    // The key-format might change in the future, but it would be easily detected
+    // by the 'expect' below.
+    key := "registry/git/$(entry["url"])"
+    expect (cache.contains key)
+    cache.remove key
 
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
@@ -464,5 +480,6 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
           --toit-exe=toit-exe
           --gold-dir=gold-dir
           --working-dir=tmp-dir
+          --registry-cache-dir=registry-cache-dir
           --should-update=(os.env.get "UPDATE_GOLD") != null
       block.call tester

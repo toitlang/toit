@@ -22,11 +22,12 @@ import ..semantic-version
 import ..file-system-view
 
 class LocalRegistry extends Registry:
-  type ::= "local"
   path/string
 
   constructor name/string .path/string --ui/cli.Ui:
     super name --ui=ui
+
+  type -> string: return "local"
 
   content -> FileSystemView:
     return FileSystemView_ path
@@ -37,7 +38,8 @@ class LocalRegistry extends Registry:
       "type": type,
     }
 
-  sync:
+  sync -> none:
+    // Do nothing.
 
   to-string -> string:
     return "$path ($type)"

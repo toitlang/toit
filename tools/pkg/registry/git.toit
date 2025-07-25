@@ -14,10 +14,11 @@
 // directory of this repository.
 
 import encoding.yaml
+import fs
 import host.file
 
 import cli
-import cli.cache show FileStore
+import cli.cache show DirectoryStore
 
 import ..git
 import ..file-system-view
@@ -26,41 +27,65 @@ import ..semantic-version
 import .registry
 
 class GitRegistry extends Registry:
-  type ::= "git"
+  static REGISTRY-PACK-FILE_ ::= "registry.pack"
+  static HASH-FILE_ ::= "ref-hash.txt"
+
   url/string
   ref-hash/string? := null
   content_/FileSystemView? := null
 
-  constructor name .url .ref-hash --ui/cli.Ui:
+  // The ref-hash is currently only used for testing.
+  constructor name .url .ref-hash=HEAD-INDICATOR_ --ui/cli.Ui:
     super name --ui=ui
 
   operator == other -> bool:
     if not other is GitRegistry: return false
     return type == other.type and name == other.name and url == other.url and ref-hash == other.ref-hash
 
+  type -> string: return "git"
+
   content -> FileSystemView:
-    if not ref-hash: content_ = sync
-    else if not content_: content_ = load_
+    if not content_: content_ = load_
     return content_
 
-  load_ -> FileSystemView:
-    if ref-hash == HEAD-INDICATOR_:
-      repository := open-repository url
-      ref-hash = repository.head
-    content := cache.get "registry/git/$(url)/$(ref-hash)" : | store/FileStore |
-      repository := open-repository url
+  load_ --sync/bool=false -> FileSystemView:
+    key := "registry/git/$url"
+
+    repository/Repository? := null
+    if sync and cache.contains key:
+      repository = open-repository url
+      if ref-hash == HEAD-INDICATOR_:
+        ref-hash = repository.head
+      path := cache.get-directory-path key: ui_.abort "Concurrent access to the registry cache detected."
+      current-hash := (file.read-contents (fs.join path GitRegistry.HASH-FILE_)).to-string
+      if current-hash != ref-hash:
+        // Needs an update.
+        // Delete the old entry.
+        // TODO(florian): it would be nicer if we only deleted the old pack once we have the new one.
+        cache.remove key
+
+    path := cache.get-directory-path key: | store/DirectoryStore |
+      repository = repository or open-repository url
+      if ref-hash == HEAD-INDICATOR_:
+        ref-hash = repository.head
+      // TODO(floitsch): when the repository gets larger (several MB), it might be faster
+      // to let the git server calculate the delta objects instead of downloading the full
+      // pack.
       pack-data := repository.clone --binary ref-hash
-      store.save pack-data
+      store.with-tmp-directory: | tmp-dir/string |
+        file.write-contents pack-data --path=(fs.join tmp-dir REGISTRY-PACK-FILE_)
+        file.write-contents "$ref-hash" --path=(fs.join tmp-dir HASH-FILE_)
+        store.move tmp-dir
+
+    pack-path := fs.join path REGISTRY-PACK-FILE_
+    content := file.read-contents pack-path
 
     pack := Pack content ref-hash
     return pack.content
 
   sync -> FileSystemView:
-    // TODO(mikkel): When the repository gets larger (several mb) it might be faster to let the git
-    //               server calculate the delta objects instead of downloading the full pack file for the head-ref.
-    repository := open-repository url
-    ref-hash = repository.head
-    return load_
+    content_ = load_ --sync
+    return content_
 
   to-map -> Map:
     return  {

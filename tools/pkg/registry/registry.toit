@@ -192,7 +192,7 @@ class Registries:
     add_ name (LocalRegistry name abs-path --ui=ui_)
 
   add --git/True name/string url/string:
-    add_ name (GitRegistry name url null --ui=ui_)
+    add_ name (GitRegistry name url --ui=ui_)
 
   add_ name/string registry/Registry:
     if registries.contains name:
@@ -258,7 +258,7 @@ abstract class Registry:
   abstract type -> string
   abstract content -> FileSystemView
   abstract to-map -> Map
-  abstract sync
+  abstract sync -> none
   abstract to-string -> string
 
   description-cache -> DescriptionUrlCache:
