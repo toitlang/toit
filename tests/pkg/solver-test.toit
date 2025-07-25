@@ -140,15 +140,13 @@ test-cycle:
   check-solution solution [a1, b111]
 
 test-fail-missing-pkg:
-  // TODO(florian): fix this test.
-  return
   a1 := make-pkg "a-1.7.0" ["b ^1.0.0"]
   registries := make-registries [a1]
   solution := find-solution a1 registries
   expect-null solution
   output := test-ui.stdout-messages
   expect-equals 1 output.size
-  expect-equals "Warning: Package 'b' not found" output[0]
+  expect-equals "Warning: Package 'b' not found\n" output[0]
 
 test-fail-version:
   a1 := make-pkg "a-1.7.0" ["b ^1.0.0"]
@@ -214,8 +212,6 @@ test-backtrack-2-versions:
   check-solution solution [a170, b140, b200, c100, d140]
 
 test-uniq-error-message:
-  // TODO(florian): fix this test.
-  return
   a170 := make-pkg "a-1.7.0" ["b >=1.0.0", "c >=1.0.0"]
   // The solver will try b200, then b180, each time needing to backtrack because
   // of the bad d-dependency which can't be satisfied.
@@ -234,8 +230,8 @@ test-uniq-error-message:
   check-solution solution [a170, b140, c100]
   output := test-ui.stdout-messages
   expect-equals 2 output.size
-  expect-equals "Warning: No version of 'b' satisfies constraint '>=3.0.0'" output[0]
-  expect-equals "Warning: Package 'e' not found" output[1]
+  expect-equals "Warning: No version of 'b' satisfies constraint '>=3.0.0'\n" output[0]
+  expect-equals "Warning: Package 'e' not found\n" output[1]
 
 test-min-sdk:
   v110 := SemanticVersion.parse "1.1.0"
