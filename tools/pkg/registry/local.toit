@@ -38,7 +38,7 @@ class LocalRegistry extends Registry:
       "type": type,
     }
 
-  sync -> none:
+  sync --clear-cache/bool -> none:
     // Do nothing.
 
   to-string -> string:

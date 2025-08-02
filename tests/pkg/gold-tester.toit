@@ -67,6 +67,7 @@ class GoldTester:
   should-update_/bool
   port_/int
   registry-cache-dir_/string
+  git-roots_/Map
 
   constructor
       --toit-exe/string
@@ -74,13 +75,15 @@ class GoldTester:
       --working-dir/string
       --registry-cache-dir/string
       --should-update/bool
-      --port/int:
+      --port/int
+      --git-roots/Map:
     toit-exec_ = toit-exe
     gold-dir_ = gold-dir
     working-dir_ = working-dir
     registry-cache-dir_ = registry-cache-dir
     should-update_ = should-update
     port_ = port
+    git-roots_ = git-roots
 
   working-dir -> string:
     return working-dir_
@@ -97,6 +100,21 @@ class GoldTester:
     unreachable
 
   delete-registry-cache name/string -> none:
+    with-registry-cache_ name: | cache/Cache key/string |
+      expect (cache.contains key)
+      cache.remove key
+
+  has-registry-cache name/string -> bool:
+    with-registry-cache_ name: | cache/Cache key/string |
+      return cache.contains key
+    unreachable
+
+  registry-cache-path name/string -> string:
+    with-registry-cache_ name: | cache/Cache key/string |
+      return cache.get-directory-path key: unreachable
+    unreachable
+
+  with-registry-cache_ name/string [block]:
     cache := Cache --app-name="toit_pkg" --path=registry-cache-dir_
     registry-data := cache.get "registries.yaml": unreachable
     registries := yaml.decode registry-data
@@ -106,8 +124,11 @@ class GoldTester:
     // The key-format might change in the future, but it would be easily detected
     // by the 'expect' below.
     key := "registry/git/$(entry["url"])"
-    expect (cache.contains key)
-    cache.remove key
+    block.call cache key
+
+  git-registry-path name/string -> string:
+    registries-root := git-roots_[AssetsBuilder.HTTP-REGISTRY-PREFIX]
+    return fs.join registries-root name
 
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
@@ -140,7 +161,7 @@ class GoldTester:
       result[target-index++] = c
     return result[..target-index].to-string
 
-  gold name/string commands/List:
+  run commands/List -> List:
     outputs := []
     commands.do: | command-line/List |
       command := command-line.first
@@ -184,6 +205,10 @@ class GoldTester:
         normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
       normalized
 
+    return outputs
+
+  gold name/string commands/List:
+    outputs := run commands
     gold-file := "$gold-dir_/$(name).gold"
     actual := outputs.join "==================\n"
     if should-update_:
@@ -482,4 +507,5 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
           --working-dir=tmp-dir
           --registry-cache-dir=registry-cache-dir
           --should-update=(os.env.get "UPDATE_GOLD") != null
+          --git-roots=git-roots
       block.call tester

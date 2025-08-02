@@ -1,0 +1,14 @@
+OK
+[pkg, sync, --clear-cache]
+==================
+// Should simply list the packages.
+==================
+OK
+[pkg, list]
+git-pkgs (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
+  pkg-new - 4.9.9
+  pkg1 - 1.0.0
+  pkg2 - 1.0.0
+  pkg2 - 2.4.2
+  pkg3 - 3.1.2
+  pkg4 - 4.9.9

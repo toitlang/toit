@@ -17,17 +17,21 @@ import system
 
 import cli
 
+import .registry
 import ..pkg
 import ..registry
 
 import .base_
 
 class SyncCommand extends PkgCommand:
+  clear-cache/bool
+
   constructor invocation/cli.Invocation:
+    clear-cache = invocation[RegistryCommand.CLEAR-CACHE]
     super invocation
 
   execute:
-    registries.sync
+    registries.sync --clear-cache=clear-cache
 
   static CLI-COMMAND ::=
       cli.Command "sync"
@@ -36,4 +40,9 @@ class SyncCommand extends PkgCommand:
 
               This is an alias for 'toit.pkg registry sync'
               """
+          --options=[
+              cli.Flag RegistryCommand.CLEAR-CACHE
+                  --help="Clear the cache before synchronizing."
+                  --default=false
+            ]
           --run=:: (SyncCommand it).execute

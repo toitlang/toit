@@ -27,10 +27,12 @@ class RegistryCommand extends PkgCommand:
   static LOCAL     ::= "local"
   static NAME      ::= "name"
   static LOCATION   ::= "location"
+  static CLEAR-CACHE ::= "clear-cache"
 
   local/bool := false
   url/string? := null
   name/string? := null
+  clear-cache/bool := false
 
   constructor.add invocation/cli.Invocation:
     local = invocation[LOCAL]
@@ -45,6 +47,7 @@ class RegistryCommand extends PkgCommand:
 
   constructor.sync invocation/cli.Invocation:
     name = invocation[NAME]
+    clear-cache = invocation[CLEAR-CACHE]
     super invocation
 
   constructor.list invocation/cli.Invocation:
@@ -77,9 +80,9 @@ class RegistryCommand extends PkgCommand:
 
   sync:
     if not name:
-      registries.sync
+      registries.sync --clear-cache=clear-cache
     else:
-      registries.sync --name=name
+      registries.sync --name=name --clear-cache=clear-cache
 
   static CLI-COMMAND ::=
       cli.Command "registry"
@@ -147,6 +150,11 @@ class RegistryCommand extends PkgCommand:
                         If no argument is given, synchronizes all registries.
                         If an argument is given, only that registry is synchronized.
                         """
+                    --options=[
+                        cli.Flag CLEAR-CACHE
+                            --help="Clear the cache before synchronizing."
+                            --default=false
+                      ]
                     --rest=[
                         cli.Option "name"
                             --help="Name of the registry"

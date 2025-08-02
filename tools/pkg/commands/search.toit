@@ -35,7 +35,6 @@ class SearchCommand extends PkgCommand:
     super invocation
 
   execute:
-    registries.sync
     search-result := registries.search --free-text search-string
 
     url-to-description/Map := {:}

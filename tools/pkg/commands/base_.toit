@@ -26,9 +26,11 @@ import .utils_
 class PkgCommand:
   ui/cli.Ui
   registries_/Registries? := null
+  auto-sync_/bool
 
   constructor invocation/cli.Invocation:
     ui = invocation.cli.ui
+    auto-sync_ = invocation[OPTION-AUTO-SYNC]
 
   error message/string:
     ui.abort message
@@ -38,7 +40,7 @@ class PkgCommand:
 
   registries -> Registries:
     if not registries_:
-      registries_ = Registries --ui=ui
+      registries_ = Registries --ui=ui --auto-sync=auto-sync_
     return registries_
 
 class PkgProjectCommand extends PkgCommand:
@@ -49,6 +51,3 @@ class PkgProjectCommand extends PkgCommand:
     config.verify
     project = Project config --ui=invocation.cli.ui
     super invocation
-    // TODO(florian): we should move the sync into the commands and only sync if it is relevant.
-    if config.auto-sync:
-      registries.sync

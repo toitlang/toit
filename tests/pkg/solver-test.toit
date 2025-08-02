@@ -70,7 +70,7 @@ test-ui/TestUi? := null
 make-registries pkgs/List -> reg.Registries:
   registry := TestRegistry pkgs
   test-ui = TestUi
-  return reg.Registries.filled { registry.name: registry } --ui=test-ui
+  return reg.Registries.filled { registry.name: registry } --ui=test-ui --no-auto-sync
 
 find-solution solve-for/Description registries/reg.Registries -> Solution?
     --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0")

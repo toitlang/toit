@@ -31,7 +31,7 @@ class GitRegistry extends Registry:
   static HASH-FILE_ ::= "ref-hash.txt"
 
   url/string
-  ref-hash/string? := null
+  ref-hash/string
   content_/FileSystemView? := null
 
   // The ref-hash is currently only used for testing.
@@ -48,17 +48,19 @@ class GitRegistry extends Registry:
     if not content_: content_ = load_
     return content_
 
-  load_ --sync/bool=false -> FileSystemView:
+  load_ --sync/bool=false --clear-cache/bool=false -> FileSystemView:
     key := "registry/git/$url"
+    hash := ref-hash or HEAD-INDICATOR_
 
     repository/Repository? := null
-    if sync and cache.contains key:
+    if clear-cache:
+      cache.remove key
+    else if sync and cache.contains key:
       repository = open-repository url
-      if ref-hash == HEAD-INDICATOR_:
-        ref-hash = repository.head
+      if hash == HEAD-INDICATOR_: hash = repository.head
       path := cache.get-directory-path key: ui_.abort "Concurrent access to the registry cache detected."
       current-hash := (file.read-contents (fs.join path GitRegistry.HASH-FILE_)).to-string
-      if current-hash != ref-hash:
+      if current-hash != hash:
         // Needs an update.
         // Delete the old entry.
         // TODO(florian): it would be nicer if we only deleted the old pack once we have the new one.
@@ -66,25 +68,25 @@ class GitRegistry extends Registry:
 
     path := cache.get-directory-path key: | store/DirectoryStore |
       repository = repository or open-repository url
-      if ref-hash == HEAD-INDICATOR_:
-        ref-hash = repository.head
+      if hash == HEAD-INDICATOR_: hash = repository.head
       // TODO(floitsch): when the repository gets larger (several MB), it might be faster
       // to let the git server calculate the delta objects instead of downloading the full
       // pack.
-      pack-data := repository.clone --binary ref-hash
+      pack-data := repository.clone --binary hash
       store.with-tmp-directory: | tmp-dir/string |
         file.write-contents pack-data --path=(fs.join tmp-dir REGISTRY-PACK-FILE_)
-        file.write-contents "$ref-hash" --path=(fs.join tmp-dir HASH-FILE_)
+        file.write-contents "$hash" --path=(fs.join tmp-dir HASH-FILE_)
         store.move tmp-dir
 
     pack-path := fs.join path REGISTRY-PACK-FILE_
     content := file.read-contents pack-path
+    pack-hash := (file.read-contents (fs.join path GitRegistry.HASH-FILE_)).to-string
 
-    pack := Pack content ref-hash
+    pack := Pack content pack-hash
     return pack.content
 
-  sync -> FileSystemView:
-    content_ = load_ --sync
+  sync --clear-cache/bool -> FileSystemView:
+    content_ = load_ --sync --clear-cache=clear-cache
     return content_
 
   to-map -> Map:

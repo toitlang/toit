@@ -32,14 +32,13 @@ main:
       --project-root=project-dir
       --cwd=directory.cwd
       --sdk-version=(SemanticVersion.parse system.vm-sdk-version)
-      --auto-sync=false
       --ui=ui
 
     project := Project config --empty-lock-file --ui=ui
     project.save
 
     project = Project config --ui=ui
-    registries := Registries --ui=ui
+    registries := Registries --ui=ui --no-auto-sync
 
     morse := registries.search "morse" --if-absent=(: unreachable) --if-ambiguous=(: unreachable)
     project.install-remote

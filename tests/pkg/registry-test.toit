@@ -108,7 +108,7 @@ expect-ui-throw test-ui/TestUi error/string [command]:
 test-registries source-dir/string:
   test-ui := TestUi --json
 
-  test-registries := Registries --ui=test-ui
+  test-registries := Registries --ui=test-ui --no-auto-sync
 
   test-registries.list
   expect-table-equals [
