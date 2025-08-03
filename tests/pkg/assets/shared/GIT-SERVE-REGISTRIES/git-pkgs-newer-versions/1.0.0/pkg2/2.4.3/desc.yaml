@@ -1,0 +1,8 @@
+name: pkg2
+description: git-package 2
+url: localhost:<[*PORT*]>/pkg/pkg2
+version: 2.4.3
+dependencies:
+  - url: 'localhost:<[*PORT*]>/pkg/pkg3'
+    version: ^3.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
