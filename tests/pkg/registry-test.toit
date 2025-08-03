@@ -117,8 +117,8 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  test-registries.add --local "local" "input/registry"
   abs-path := "$source-dir/input/registry"
+  test-registries.add --local "local" abs-path
 
   test-registries.list
   expect-table-equals [
@@ -136,8 +136,8 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" "input/registry"
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" abs-path
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" (fs.to-absolute "foo")
   expect-ui-throw test-ui "Registry abc does not exist." : test-registries.remove "abc"
 
   test-registries.add --git "toit2" "github.com/toitware/registry"
@@ -157,7 +157,7 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  test-registries.add --local "local" "input/registry"
+  test-registries.add --local "local" abs-path
   expect-equals 2 test-registries.list-packages.size
 
   morse-versions := test-registries.retrieve-versions "github.com/toitware/toit-morse"

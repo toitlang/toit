@@ -197,9 +197,9 @@ class Registries:
     return result
 
   add --local/True name/string path/string:
+    if not fs.is-absolute path: throw "Path $path must be absolute"
     if not file.is-directory path: ui_.abort "Path $path is not a directory."
-    abs-path := fs.to-absolute path
-    add_ name (LocalRegistry name abs-path --ui=ui_)
+    add_ name (LocalRegistry name path --ui=ui_)
 
   add --git/True name/string url/string:
     add_ name (GitRegistry name url --ui=ui_)
