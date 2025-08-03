@@ -1,0 +1,103 @@
+OK
+[pkg, registry, add, test-reg, http://localhost:<[*PORT*]>/registry/git-pkgs]
+==================
+OK
+[pkg, list]
+test-reg (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
+  pkg1 - 1.0.0
+  pkg2 - 1.0.0
+  pkg2 - 2.4.2
+  pkg3 - 3.1.2
+  pkg4 - 4.9.9
+==================
+OK
+[pkg, install, pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+OK
+[pkg, install, pkg2]
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'pkg2'.
+==================
+// Should have version 3.1.2 for pkg3
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
+==================
+== package.yaml
+dependencies:
+  pkg1:
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: ^1.0.0
+  pkg2:
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: ^2.0.0
+==================
+OK
+[pkg, registry, add, test-reg2, http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions]
+==================
+OK
+[pkg, list]
+test-reg (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
+  pkg1 - 1.0.0
+  pkg2 - 1.0.0
+  pkg2 - 2.4.2
+  pkg3 - 3.1.2
+  pkg4 - 4.9.9
+test-reg2 (http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions (git))
+  pkg2 - 2.4.3
+  pkg3 - 3.1.3
+==================
+OK
+[pkg, update]
+==================
+// Now we have new versions (pkg2-2.4.3, pkg3-3.1.3).
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.3
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.3
+==================
+== package.yaml
+dependencies:
+  pkg1:
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: ^1.0.0
+  pkg2:
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: ^2.0.0
