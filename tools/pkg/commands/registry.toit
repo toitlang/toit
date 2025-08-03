@@ -16,6 +16,7 @@
 import system
 
 import cli
+import fs
 
 import ..pkg
 import ..registry
@@ -54,23 +55,27 @@ class RegistryCommand extends PkgCommand:
     super invocation
 
   add:
+    url-or-path := url
+    if local:
+      url-or-path = fs.to-absolute url-or-path
+
     if registries.registries.contains name:
       registry/Registry := registries.registries[name]
       if registry is LocalRegistry:
         local-registry := registry as LocalRegistry
-        if local-registry.path == url:
+        if local-registry.path == url-or-path:
           // Already exists with the same path.
           return
       else:
         git-registry := registry as GitRegistry
-        if git-registry.url == url:
+        if git-registry.url == url-or-path:
           // Already exists with the same URL.
           return
       ui.abort "Registry $name already exists with a different URL or path."
     if local:
-      registries.add --local name url
+      registries.add --local name url-or-path
     else:
-      registries.add --git name url
+      registries.add --git name url-or-path
 
   remove:
     registries.remove name
