@@ -61,7 +61,7 @@ class TestRegistry extends reg.Registry:
   type -> string: return "test"
   content -> FileSystemView: unreachable
   to-map -> Map: unreachable
-  sync: // Do nothing.
+  sync --clear-cache/bool: // Do nothing.
   stringify -> string: return "test-reg"
   to-string -> string: return "test-reg"
 
