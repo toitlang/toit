@@ -49,7 +49,7 @@ dependencies:
     version: ^1.0.0
   pkg2:
     url: localhost:<[*PORT*]>/pkg/pkg2
-    version: ^2.0.0
+    version: ^2.4.2
 ==================
 OK
 [pkg, registry, add, test-reg2, http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions]
@@ -100,4 +100,4 @@ dependencies:
     version: ^1.0.0
   pkg2:
     url: localhost:<[*PORT*]>/pkg/pkg2
-    version: ^2.0.0
+    version: ^2.4.3

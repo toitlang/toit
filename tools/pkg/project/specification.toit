@@ -61,6 +61,34 @@ class ProjectSpecification extends Specification:
       Specification.PATH-KEY_: path
     }
 
+  /** Updates the remote dependencies with the ones from the solution. */
+  update-remote-dependencies solution/Solution:
+    dependencies.do: | prefix/string content/Map |
+      if not content.contains Specification.URL-KEY_:
+        // Not a remote dependency.
+        continue.do
+      url := content[Specification.URL-KEY_]
+      versions := solution.packages[url]
+      constraint-str := content[Specification.VERSION-KEY_]
+      constraint/Constraint := Constraint.parse constraint-str
+      picked-version/SemanticVersion? := null
+      for j := 0; j < versions.size; j++:
+        version/SemanticVersion := versions[j]
+        if constraint.satisfies version:
+          picked-version = version
+          break
+      assert: picked-version != null
+      old-simples := constraint.simple-constraints
+      new-simples := []
+      old-simples.do: | simple/SimpleConstraint |
+        if simple.comparator == ">" or simple.comparator == ">=":
+          // Replace with the new version.
+          new-simples.add (SimpleConstraint ">=" picked-version)
+        else:
+          new-simples.add simple
+      new-constraint := Constraint --simple-constraints=new-simples --source=""
+      content[Specification.VERSION-KEY_] = new-constraint.to-string
+
   remove-dependency prefix/string:
     if not dependencies.contains prefix: ui_.abort "No package with prefix $prefix"
     dependencies.remove prefix
@@ -234,9 +262,7 @@ abstract class Specification:
     return fs.to-absolute (fs.join root-dir path)
 
   dependencies -> Map:
-    if not content.contains DEPENDENCIES-KEY_:
-      content[DEPENDENCIES-KEY_] = {:}
-    return content[DEPENDENCIES-KEY_]
+    return content.get DEPENDENCIES-KEY_ --init=(: {:})
 
   name -> string:
     return content.get NAME-KEY_ --if-absent=: ui_.abort "Missing 'name' in $file-name."
