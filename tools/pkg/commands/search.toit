@@ -36,6 +36,10 @@ class SearchCommand extends PkgCommand:
 
   execute:
     search-result := registries.search --free-text search-string
+    search-result = search-result.sort: | a/Description b/Description |
+      a.name.compare-to b.name --if-equal=:
+        a.url.compare-to b.url --if-equal=:
+          a.version.compare-to b.version
 
     url-to-description/Map := {:}
     search-result.do: | description/Description |
