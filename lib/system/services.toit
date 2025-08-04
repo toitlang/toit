@@ -539,8 +539,8 @@ abstract class ServiceResourceProxy:
   client_/ServiceClient ::= ?
   _handle_/int? := ?
 
-  constructor .client_ ._handle_:
-    add-finalizer this:: close
+  constructor .client_ ._handle_ --install-finalizer/bool=true:
+    if install-finalizer: add-finalizer this:: close
     if _handle_ & 1 == 1:
       ServiceResourceProxyManager_.instance.register client_.id _handle_ this
 
