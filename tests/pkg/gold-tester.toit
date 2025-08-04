@@ -165,6 +165,7 @@ class GoldTester:
     else:
       expected-content := (file.read-contents gold-file).to-string
       expected-content = expected-content.replace --all "\r" ""
+      actual = actual.replace --all "\r" ""
       expect-equals expected-content actual
 
   toit command/string args -> RunResult_:
