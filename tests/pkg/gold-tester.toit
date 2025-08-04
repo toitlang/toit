@@ -180,14 +180,14 @@ class GoldTester:
         yaml-content := file.read-contents "$working-dir_/package.yaml"
         outputs.add "== package.yaml\n$yaml-content.to-string"
       else if command == "pkg":
-        command-line = command-line[1..]  // Drop the "pkg"
-        has-project-root := command-line.any: | arg/string | arg.starts-with "--project-root"
+        pkg-args := command-line[1..]  // Drop the "pkg"
+        has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
         if not has-project-root:
-          command-line = ["--project-root=$working-dir_"] + command-line
+          pkg-args = ["--project-root=$working-dir_"] + pkg-args
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
-          pkg.main --cli=cli command-line
+          pkg.main --cli=cli pkg-args
         exit-status := e ? "Aborted" : "OK"
         if e and e is not TestAbort:
           print-on-stderr_ "Command failed: $e"

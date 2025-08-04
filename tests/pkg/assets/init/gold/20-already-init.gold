@@ -1,6 +1,6 @@
 OK
-[--project-root=<[*WORKING-DIR*]>, init]
+[pkg, init]
 ==================
 Aborted
-[--project-root=<[*WORKING-DIR*]>, init]
+[pkg, init]
 Error: Directory already contains a project
