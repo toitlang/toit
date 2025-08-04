@@ -1,0 +1,11 @@
+exec main.toit
+all ok
+Exit Code: 0
+==================
+OK
+[--project-root=<[*WORKING-DIR*]>, install, --local, pkg]
+Package 'pkg' installed with prefix 'pkg'.
+==================
+exec main2.toit
+local package
+Exit Code: 0

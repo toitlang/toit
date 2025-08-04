@@ -1,0 +1,6 @@
+OK
+[--project-root=<[*WORKING-DIR*]>, init]
+==================
+Aborted
+[--project-root=<[*WORKING-DIR*]>, init]
+Error: Directory already contains a project
