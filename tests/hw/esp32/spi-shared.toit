@@ -14,8 +14,10 @@ import .variants
 
 FREQUENCY ::= 500
 
-RX ::= Variant.CURRENT.board-connection-pin1
-TX ::= Variant.CURRENT.board-connection-pin2
+RX1 ::= Variant.CURRENT.board-connection-pin1
+TX1 ::= Variant.CURRENT.board-connection-pin2
+RX2 ::= Variant.CURRENT.board-connection-pin2
+TX2 ::= Variant.CURRENT.board-connection-pin1
 
 MASTER-CS ::= Variant.CURRENT.board-connection-pin3
 MASTER-SCLK ::= Variant.CURRENT.board-connection-pin4
@@ -23,7 +25,7 @@ MASTER-SCLK ::= Variant.CURRENT.board-connection-pin4
 MASTER-MOSI ::= Variant.CURRENT.board-connection-pin5
 MASTER-MISO ::= Variant.CURRENT.board-connection-pin6
 
-SLAVE-CS ::= Variant.CURRENT.board-connection-pin3  // Pin1 and pin2 are crossed.
+SLAVE-CS ::= Variant.CURRENT.board-connection-pin3
 SLAVE-SCLK ::= Variant.CURRENT.board-connection-pin4
 SLAVE-MOSI ::= Variant.CURRENT.board-connection-pin5
 SLAVE-MISO ::= Variant.CURRENT.board-connection-pin6
@@ -37,8 +39,8 @@ test-board1:
   master-mosi := gpio.Pin MASTER-MOSI
   master-miso := gpio.Pin MASTER-MISO
 
-  rx := gpio.Pin RX
-  tx := gpio.Pin TX
+  rx := gpio.Pin RX1
+  tx := gpio.Pin TX1
   port := uart.Port --rx=rx --tx=tx --baud-rate=115200
 
   slave := SlaveRemote port
@@ -80,8 +82,8 @@ test-board2:
       --mosi=slave-mosi
       --miso=slave-miso
 
-  rx := gpio.Pin RX
-  tx := gpio.Pin TX
+  rx := gpio.Pin RX2
+  tx := gpio.Pin TX2
   port := uart.Port --rx=rx --tx=tx --baud-rate=115200
 
   in := port.in
@@ -100,7 +102,10 @@ test-board2:
       cpha := in.read-byte
       slave.prepare-receive bit-count --cpol=cpol --cpha=cpha
       ok.call
-      out.little-endian.write-uint32 slave.receive
+      e := catch:
+        out.little-endian.write-uint32 slave.receive
+      // Simply don't respond. This should lead to a timeout on the other side.
+      if e: "Error while receiving: $e"
     else if command == SlaveRemote.SET_MISO:
       value/int? := in.read-byte
       if value == -1: value = null
@@ -114,6 +119,7 @@ class SlaveRemote implements shared.Slave:
   static RESET ::= 0x01
   static SET_MISO ::= 0x02
   static RECEIVE ::= 0x03
+  static BAD := 0xFF
 
   port_/uart.Port
 
