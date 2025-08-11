@@ -76,4 +76,4 @@ Error: Missing version after '@' in 'many@'.
 ==================
 Aborted
 [pkg, install, --prefix=bad2, many@not_a-version]
-Error: Invalid version constraint 'not_a-version' in 'many@not_a-version': Parse error, expected a numeric value at position 0
+Error: Invalid version constraint 'not_a-version' in 'many@not_a-version': Parse error: expected a numeric value at position 0
