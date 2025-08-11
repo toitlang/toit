@@ -31,7 +31,7 @@ Exit Code: 1
 ==================
 OK
 [pkg, install, pkg4, --prefix=pkg4_pre]
-Package 'pkg4@4.9.9' installed with prefix 'pkg4'.
+Package 'pkg4@4.9.9' installed with prefix 'pkg4_pre'.
 ==================
 // main.toit should work now.
 ==================
