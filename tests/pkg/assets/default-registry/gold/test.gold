@@ -1,0 +1,17 @@
+// Should only contain the 'toit' registry.
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+│ toit git github.com/toitware/registry │
+└┴┴┘
+==================
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, github.com/toitware/toit-morse@1.0.6]
+Warning: The latest version of package 'github.com/toitware/toit-morse' has changed its name to 'morse'.
+Package 'github.com/toitware/toit-morse@1.0.6' installed with prefix 'github.com/toitware/toit-morse'.
