@@ -9,7 +9,7 @@ some-name:
 ==================
 OK
 [pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-bsd3]
-Using license 'BSD-3-Clause' from 'LICENSE' file
+Using license 'BSD-3-Clause' from 'LICENSE' file.
 some-name:
   description: desc in yaml.
   version: <Not scraped for local paths>

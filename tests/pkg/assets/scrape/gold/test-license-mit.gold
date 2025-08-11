@@ -9,7 +9,7 @@ some-name:
 ==================
 OK
 [pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-mit]
-Using license 'MIT' from 'LICENSE' file
+Using license 'MIT' from 'LICENSE' file.
 some-name:
   description: desc in yaml.
   version: <Not scraped for local paths>

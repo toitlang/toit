@@ -9,7 +9,7 @@ some-name:
 ==================
 OK
 [pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-apache]
-Using license 'Apache-2.0' from 'LICENSE' file
+Using license 'Apache-2.0' from 'LICENSE' file.
 some-name:
   description: desc in yaml.
   version: <Not scraped for local paths>
