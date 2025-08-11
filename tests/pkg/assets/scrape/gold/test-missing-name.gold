@@ -1,0 +1,9 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/missing-name]
+Warning: Automatic name extraction from README has been removed.
+Error: Missing name
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/missing-name]
+Warning: Automatic name extraction from README has been removed.
+Error: Missing name

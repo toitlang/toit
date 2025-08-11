@@ -57,99 +57,102 @@ class SemanticVersionParser extends parser.PegParserBase_:
   constructor source/string --.allow-missing-minor/bool=false:
     super source.to-byte-array
 
-  expect-match_ char/int -> int:
+  expect-match_ char/int [--on-error] -> int:
     if matched := match-char char: return matched
-    throw "Parse error, expected $(string.from-rune char) at position $current-position"
+    return on-error.call "expected $(string.from-rune char) at position $current-position"
 
-  expect-numeric -> int:
-    if number := numeric: return number
-    throw "Parse error, expected a numeric value at position $current-position"
+  expect-numeric [--on-error] -> int:
+    if number := numeric_: return number
+    return on-error.call "expected a numeric value at position $current-position"
 
   semantic-version --consume-all/bool=false -> SemanticVersionParseResult:
-    optional: match-string "v"
-    triple := version-core
-    pre-releases := pre-releases
-    build-numbers := build-numbers
+    return semantic-version --consume-all=consume-all --on-error=: throw "Parse error: $it"
 
-    if consume-all and not eof: throw "Parse error, not all input was consumed"
+  semantic-version --consume-all/bool=false [--on-error] -> SemanticVersionParseResult:
+    optional: match-string "v"
+    triple := version-core_ --on-error=on-error
+    pre-releases := pre-releases_ --on-error=on-error
+    build-numbers := build-numbers_ --on-error=on-error
+
+    if consume-all and not eof: return on-error.call "not all input was consumed"
 
     return SemanticVersionParseResult triple pre-releases build-numbers current-position
 
-  version-core -> TripleParseResult:
-    major := expect-numeric
+  version-core_ [--on-error] -> TripleParseResult:
+    major := expect-numeric --on-error=on-error
     minor/int? := null
     patch/int? := null
     if allow-missing-minor:
       if match-char '.':
-        minor = expect-numeric
+        minor = expect-numeric --on-error=on-error
         if match-char '.':
-          patch = expect-numeric
+          patch = expect-numeric --on-error=on-error
     else:
-      minor = expect-match_ '.'
-      minor = expect-numeric
-      patch = expect-match_ '.'
-      patch = expect-numeric
+      minor = expect-match_ '.' --on-error=on-error
+      minor = expect-numeric --on-error=on-error
+      patch = expect-match_ '.' --on-error=on-error
+      patch = expect-numeric --on-error=on-error
     return TripleParseResult major minor patch
 
-  pre-releases -> List:
+  pre-releases_ [--on-error] -> List:
     try-parse:
       result := []
       if match-char '-':
         while true:
-          if pre-release-result := pre-release: result.add pre-release-result
+          if pre-release-result := pre-release_ --on-error=on-error: result.add pre-release-result
           else: break
           if not match-char '.': return result
     return []
 
-  build-numbers -> List:
+  build-numbers_ [--on-error] -> List:
     try-parse:
       result := []
       if match-char '+':
         while true:
-          result.add build-number
+          result.add (build-number_ --on-error=on-error)
           if not match-char '.': return result
     return []
 
-  pre-release -> any:
-    if alphanumeric-result := alphanumeric: return alphanumeric-result
-    if numeric-result := numeric: return numeric-result
-    throw "Parse error in pre-release, expected an identifier or a number at position $current-position"
+  pre-release_ [--on-error] -> any:
+    if alphanumeric-result := alphanumeric_: return alphanumeric-result
+    if numeric-result := numeric_: return numeric-result
+    return on-error.call "expected an identifier or a number at position $current-position"
 
-  build-number -> string:
-    if alphanumeric-result := alphanumeric: return alphanumeric-result
+  build-number_ [--on-error] -> string:
+    if alphanumeric-result := alphanumeric_: return alphanumeric-result
     try-parse:
       mark := mark
-      if (repeat --at-least-one: digit):
+      if (repeat --at-least-one: digit_):
         return string-since mark
-    throw "Parse error in build-number, expected an identifier or digits at position $current-position"
+    return on-error.call "expected an identifier or digits at position $current-position"
 
-  alphanumeric -> string?:
+  alphanumeric_ -> string?:
     mark := mark
     try-parse:
-      if (repeat: digit) and
-         non-digit and
-         (repeat: identifier-char):
+      if (repeat: digit_) and
+         non-digit_ and
+         (repeat: identifier-char_):
         return string-since mark
     return null
 
-  identifier-char -> bool:
-    return digit or non-digit
+  identifier-char_ -> bool:
+    return digit_ or non-digit_
 
-  non-digit -> bool:
-    if match-char '-' or letter: return true
+  non-digit_ -> bool:
+    if match-char '-' or letter_: return true
     return false
 
-  numeric -> int?:
+  numeric_ -> int?:
     if match-char '0': return 0
     mark := mark
     try-parse:
-      if digit and (repeat: digit):
+      if digit_ and (repeat: digit_):
         return int.parse (string-since mark)
     return null
 
-  digit -> bool:
+  digit_ -> bool:
     return (match-range '0' '9') != null
 
-  letter -> bool:
+  letter_ -> bool:
     return (match-range 'a' 'z') != null or
            (match-range 'A' 'Z') != null

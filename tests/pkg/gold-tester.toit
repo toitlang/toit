@@ -184,7 +184,11 @@ class GoldTester:
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
         if not has-project-root:
           pkg-args = ["--project-root=$working-dir_"] + pkg-args
-        test-ui := TestUi --quiet=false
+        ui-level := Ui.NORMAL-LEVEL
+        if (pkg-args.any: it == "--verbose"):
+          ui-level = Ui.VERBOSE-LEVEL
+          pkg-args.remove "--verbose"
+        test-ui := TestUi --quiet=false --level=ui-level
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
           pkg.main --cli=cli pkg-args
@@ -204,7 +208,11 @@ class GoldTester:
       while true:
         hash-index = normalized.index-of "hash: " (hash-index + 1)
         if hash-index == -1: break
+        space-index := normalized.index-of " " (hash-index + 6)
         newline-index := normalized.index-of "\n" hash-index
+        if space-index != -1 and space-index < newline-index:
+          // This is not a real hash.
+          break
         if newline-index == -1: throw "No newline after hash"
         normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
       normalized

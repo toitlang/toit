@@ -1,0 +1,18 @@
+OK
+[pkg, describe, <[*WORKING-DIR*]>/packages/license-mit]
+some-name:
+  description: desc in yaml.
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+==================
+OK
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-mit]
+Using license 'MIT' from 'LICENSE' file
+some-name:
+  description: desc in yaml.
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT

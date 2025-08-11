@@ -38,28 +38,32 @@ class ConstraintParser extends SemanticVersionParser:
   constructor constraint/string:
     super constraint
 
-  constraints --consume-all/bool=false:
+  constraints --consume-all/bool=false -> List:
+    return constraints --consume-all=consume-all --on-error=: throw "Parse error: $it"
+
+  constraints --consume-all/bool=false [--on-error]:
     result := []
-    result.add constraint
+    result.add (constraint_ --on-error=on-error)
 
     repeat:
       if match-char ',':
-        repeat: space
-        result.add constraint
+        repeat: space_
+        result.add (constraint_ --on-error=on-error)
         true
 
-    repeat: space
+    repeat: space_
 
-    if consume-all and not eof: throw "Parse error, not all input consumed"
+    if consume-all and not eof:
+      return on-error.call "not all input consumed"
 
     return result
 
-  constraint:
-    prefix := prefix
-    version := semantic-version
+  constraint_ [--on-error] -> ConstraintParseResult:
+    prefix := prefix_
+    version := semantic-version --on-error=on-error
     return ConstraintParseResult prefix version
 
-  prefix -> string?:
+  prefix_ -> string?:
     if match-string "!=": return "!="
     if match-string ">=": return ">="
     if match-string "<=": return "<="
@@ -68,5 +72,5 @@ class ConstraintParser extends SemanticVersionParser:
       return string.from-rune char
     return ""
 
-  space:
+  space_:
     return match-chars { ' ', '\t' }

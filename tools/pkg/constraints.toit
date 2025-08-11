@@ -25,7 +25,10 @@ class Constraint:
   constructor --.simple-constraints --.source:
 
   static parse source/string -> Constraint:
-    parsed := (ConstraintParser source).constraints --consume-all
+    return parse source --on-error=: throw it
+
+  static parse source/string [--on-error] -> Constraint:
+    parsed := (ConstraintParser source).constraints --consume-all --on-error=on-error
     constraints := []
     parsed.do: | constraint/ConstraintParseResult |
       version := SemanticVersion.from-parse-result constraint.semantic-version
