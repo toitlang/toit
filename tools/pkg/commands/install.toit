@@ -108,7 +108,10 @@ class InstallCommand extends PkgProjectCommand:
             error "Package '$package-name' exists, but no version satisfies the constraint '$version-constraint'."
 
       package-prefix := prefix or description.name
-      if not prefix and not description.url.ends-with "/$package-name" and description.name != package-name:
+      url := description.url
+      if not prefix and
+          not (url == package-name or url.ends-with "/$package-name") and
+          description.name != package-name:
         // We found this package by using the name of an earlier version, but the name has changed.
         // Revert to the given package-name, but warn the user.
         package-prefix = package-name
