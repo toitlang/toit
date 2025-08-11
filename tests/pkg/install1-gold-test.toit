@@ -24,6 +24,8 @@ test tester/GoldTester:
     ["// Installing a package where the directory name is not the package name."],
     ["pkg", "install", "--local", "pkg3"],
     ["exec", "main3.toit"],
+    ["package.yaml"],
+    ["package.lock"],
   ]
 
   tester.gold "install-non-existing" [
