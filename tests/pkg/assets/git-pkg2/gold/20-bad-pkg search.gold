@@ -5,20 +5,8 @@ OK
 ==================
 OK
 [pkg, search, --verbose, foo]
-foo:
-  description: Description of another foo package. Different URL.
-  version: 0.0.1
-  url: localhost:<[*PORT*]>/pkg/foo-different-url
-  license: MIT
-  hash: <[*HASH*]>
-
-foo:
-  description: Description of foo. foo-desc.
-  version: 1.2.3
-  url: localhost:<[*PORT*]>/pkg/foo
-  hash: <[*HASH*]>
-  license: MIT
-
+foo - 0.0.1
+foo - 1.2.3
 ==================
 Aborted
 [pkg, install, --prefix=pre3, foo]
