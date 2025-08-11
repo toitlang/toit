@@ -86,7 +86,7 @@ class ListCommand extends PkgCommand:
       true
     return { description.name : filtered }
 
-  static list-descriptions descriptions/List --verbose/bool --indent/string="" --ui/cli.Ui:
+  static list-descriptions descriptions/List --indent/string="" --ui/cli.Ui:
     descriptions = descriptions.sort: | a/Description b/Description |
       a.name.compare-to b.name --if-equal=:
         a.version.compare-to b.version --if-equal=:
@@ -108,7 +108,7 @@ class ListCommand extends PkgCommand:
 
     // From now on the "plain" and "human" output are the same.
     // If we are not verbose, we just print the name and version of each package.
-    if not verbose:
+    if ui.level >= cli.Ui.VERBOSE-LEVEL:
       descriptions.do: | description/Description |
         ui.emit --result "$indent$description.name - $description.version"
       return
