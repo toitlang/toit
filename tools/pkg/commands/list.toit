@@ -30,11 +30,9 @@ import .base_
 
 class ListCommand extends PkgCommand:
   name-or-path/string?
-  verbose/bool
 
   constructor invocation/cli.Invocation:
     name-or-path = invocation[NAME-OR-PATH-OPTION]
-    verbose = invocation[VERBOSE-OPTION]
 
     super invocation
 
@@ -68,7 +66,7 @@ class ListCommand extends PkgCommand:
 
     registry-packages.do: | name/string registry/Map |
       ui.emit --result "$name ($registry["registry"].to-string)"
-      list-descriptions registry["descriptions"] --verbose=verbose --indent="  " --ui=ui
+      list-descriptions registry["descriptions"] --indent="  " --ui=ui
 
   /**
   Converts the $description into a map suitable for printing.
@@ -108,7 +106,7 @@ class ListCommand extends PkgCommand:
 
     // From now on the "plain" and "human" output are the same.
     // If we are not verbose, we just print the name and version of each package.
-    if ui.level >= cli.Ui.VERBOSE-LEVEL:
+    if ui.level < cli.Ui.VERBOSE-LEVEL:
       descriptions.do: | description/Description |
         ui.emit --result "$indent$description.name - $description.version"
       return
@@ -132,13 +130,6 @@ class ListCommand extends PkgCommand:
               cli.Option NAME-OR-PATH-OPTION
                   --required=false
             ]
-          --options=[
-              cli.Flag VERBOSE-OPTION
-                  --short-name="v"
-                  --help="Show more information about each package. Shadows the global '--verbose' option."
-                  --default=false,
-            ]
           --run=:: (ListCommand it).execute
 
   static NAME-OR-PATH-OPTION ::= "name-or-path"
-  static VERBOSE-OPTION ::= "verbose"

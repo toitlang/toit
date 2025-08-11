@@ -184,7 +184,11 @@ class GoldTester:
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
         if not has-project-root:
           pkg-args = ["--project-root=$working-dir_"] + pkg-args
-        test-ui := TestUi --quiet=false
+        ui-level := Ui.NORMAL-LEVEL
+        if (pkg-args.any: it == "--verbose"):
+          ui-level = Ui.VERBOSE-LEVEL
+          pkg-args.remove "--verbose"
+        test-ui := TestUi --quiet=false --level=ui-level
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
           pkg.main --cli=cli pkg-args
