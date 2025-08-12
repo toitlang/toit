@@ -21,6 +21,7 @@ validate-license-id license/string -> bool:
 
 cannonicalize-license license-text -> string:
   // Remove all spaces and lines beginning with 'Copyright' from license-text
+  license-text = license-text.replace --all "\r" ""
   lines := license-text.split "\n"
   lines.map --in-place: it.replace --all " " ""
   lines.filter --in-place: not it.starts-with "Copyright"
