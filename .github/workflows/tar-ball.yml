@@ -109,7 +109,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download tarball from artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
@@ -164,7 +164,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download tarball from artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
