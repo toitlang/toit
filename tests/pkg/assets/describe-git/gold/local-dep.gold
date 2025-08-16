@@ -1,0 +1,12 @@
+Aborted
+[pkg, describe, localhost:<[*PORT*]>/pkg/local-path, v1.0.0]
+Error: Package has local dependencies.
+==================
+OK
+[pkg, describe, --allow-local-deps, localhost:<[*PORT*]>/pkg/local-path, v1.0.0]
+name-from-spec:
+  description: desc from spec
+  version: v1.0.0
+  url: localhost:<[*PORT*]>/pkg/local-path
+  hash: <[*HASH*]>
+  license: MIT

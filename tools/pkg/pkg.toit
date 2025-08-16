@@ -16,6 +16,7 @@
 import system
 
 import cli show *
+import certificate-roots
 
 import .commands.install
 import .commands.version
@@ -35,6 +36,8 @@ main arguments/List:
   main arguments --cli=null
 
 main arguments/List --cli/Cli?:
+  certificate-roots.install-all-trusted-roots
+
   pkg := Command "pkg"
       --usage="toit.pkg [command]"
       --help="The Toit package manager"

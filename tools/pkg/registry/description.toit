@@ -32,35 +32,35 @@ class Description:
 
   static DESCRIPTION-FILE-NAME ::= "desc.yaml"
 
-  content/Map
+  content_/Map
 
   cached-version_/SemanticVersion? := null
   cached-sdk-version_/List := []
   cached-dependencies_/List? := null
 
   /**
-  Constructs a description from the given content.
+  Constructs a description from the given content_.
 
   The $path is only used for error messages.
   */
-  constructor .content --path/string --ui/cli.Ui:
-    if not content.contains NAME-KEY_:
+  constructor .content_ --path/string --ui/cli.Ui:
+    if not content_.contains NAME-KEY_:
       ui.abort "Description at $path is missing a name."
-    if not content.contains URL-KEY_:
+    if not content_.contains URL-KEY_:
       ui.abort "Description at $path is missing a url."
-    url := content[URL-KEY_]
+    url := content_[URL-KEY_]
     if url is not string:
       ui.abort "Description at $path has an invalid url: $url."
     if url == "":
       ui.abort "Description at $path has an empty url."
-    if not content.contains VERSION-KEY_:
+    if not content_.contains VERSION-KEY_:
       ui.abort "Description at $path is missing a version."
-    version := content[VERSION-KEY_]
+    version := content_[VERSION-KEY_]
     e := catch:
       SemanticVersion.parse version
     if e:
       ui.abort "Description at $path has an invalid version: '$version'."
-    if not content.contains HASH-KEY_:
+    if not content_.contains HASH-KEY_:
       ui.abort "Description at $path is missing a hash."
 
   // A constructor that is primarily used for testing.
@@ -88,22 +88,22 @@ class Description:
     if min-sdk: map[ENVIRONMENT-KEY_] = {SDK-KEY_: "^$min-sdk.to-string"}
     return Description map --path=name --ui=ui
 
-  url -> string: return content[URL-KEY_]
+  url -> string: return content_[URL-KEY_]
 
-  name -> string: return content[NAME-KEY_]
+  name -> string: return content_[NAME-KEY_]
 
-  ref-hash -> string: return content.get HASH-KEY_
+  ref-hash -> string: return content_.get HASH-KEY_
 
-  description -> string: return content[DESCRIPTION-KEY_]
+  description -> string: return content_[DESCRIPTION-KEY_]
 
   version -> SemanticVersion:
     if not cached-version_:
-      cached-version_ = SemanticVersion.parse content[VERSION-KEY_]
+      cached-version_ = SemanticVersion.parse content_[VERSION-KEY_]
     return cached-version_
 
   sdk-version -> Constraint?:
     if cached-sdk-version_.is-empty:
-      if environment := content.get ENVIRONMENT-KEY_:
+      if environment := content_.get ENVIRONMENT-KEY_:
         if sdk-constraint := environment.get SDK-KEY_:
           cached-sdk-version_.add (Constraint.parse sdk-constraint)
           return cached-sdk-version_[0]
@@ -112,11 +112,11 @@ class Description:
 
   dependencies -> List:
     if not cached-dependencies_:
-      if not content.contains DEPENDENCIES-KEY_:
+      if not content_.contains DEPENDENCIES-KEY_:
         cached-dependencies_ = []
       else:
         cached-dependencies_ =
-            content[DEPENDENCIES-KEY_].map: | dep |
+            content_[DEPENDENCIES-KEY_].map: | dep |
                 url := dep[URL-KEY_]
                 constraint := Constraint.parse dep[VERSION-KEY_]
                 PackageDependency url --constraint=constraint
@@ -132,3 +132,6 @@ class Description:
 
   stringify -> string:
     return "$name ($version) - $description"
+
+  to-json -> Map:
+    return content_.copy

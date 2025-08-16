@@ -1,0 +1,9 @@
+Aborted
+[pkg, describe, https://toit.io/testing/not_exist, v1.0.0]
+Error: Failed to contact repository 'https://toit.io/testing/not_exist': Unknown root certificate: 'C=GB, ST=Greater Manchester, L=Salford, O=Comodo CA Limited, CN=AAA Certificate Services'
+Certificate error 0x0008: 'C=US, O=SSL Corporation, CN=SSL.com TLS Transit ECC CA R2'
+NOT_TRUSTED
+==================
+Aborted
+[pkg, describe, github.com/toitware/toit-morse, v99.0.0]
+Error: Tag v99.0.0 not found in repository 'github.com/toitware/toit-morse'

@@ -103,7 +103,7 @@ class DescriptionUrlCache:
         e = catch:
           add_ description
         if e:
-          ui.emit --warning "Failed to add $description.url@$description.content[Description.VERSION-KEY_] to index"
+          ui.emit --warning "Failed to add $description.url@$description.version to index"
           ui.emit --warning "Skipping $path"
     if e:
       ui.emit --error "Failed to read $path: $e"

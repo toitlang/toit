@@ -13,7 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import certificate-roots
 import http
 import io
 import net
@@ -56,19 +55,35 @@ HEAD-INDICATOR_ ::= "HEAD"
 // See: git help protocol-v2
 //      git help protocol-http
 class GitProtocol_:
-  client ::= http.Client net.open --root-certificates=certificate-roots.ALL
-  server-capabilities-cache ::= {:}
-  version-2-header ::= http.Headers.from-map {"Git-Protocol": "version=2"}
+  network_/net.Client? := ?
+  client_/http.Client? := ?
+  server-capabilities-cache_/Map
+  version-2-header_/http.Headers
+
+  constructor:
+    network_ = net.open
+    client_ = http.Client network_
+    server-capabilities-cache_ = {:}
+    version-2-header_ = http.Headers.from-map {"Git-Protocol": "version=2"}
+
+  close -> none:
+    if client_:
+      client_.close
+      client_ = null
+
+    if network_:
+      network_.close
+      network_ = null
+
 
   load-capabilities url/string:
     host := url[0..url.index-of "/"]
-    return server-capabilities-cache.get host
+    return server-capabilities-cache_.get host
         --init=:
-
             capabilities-response :=
-                client.get
+                client_.get
                     --uri="$(url)/info/refs?service=git-upload-pack"
-                    --headers=version-2-header
+                    --headers=version-2-header_
 
             if capabilities-response.status-code != 200:
               throw "Invalid repository $url, $capabilities-response.status-message"
@@ -86,9 +101,9 @@ class GitProtocol_:
             capabilities
 
   load-refs url/string -> Map:
-    refs-response := client.post (pack-command_ "ls-refs" [] [])
+    refs-response := client_.post (pack-command_ "ls-refs" [] [])
         --uri="$url/git-upload-pack"
-        --headers=version-2-header
+        --headers=version-2-header_
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if refs-response.status-code != 200:
@@ -112,9 +127,9 @@ class GitProtocol_:
     arguments := ["no-progress", "want $ref-hash"]
     if capabilities.contains "fetch" and capabilities["fetch"].contains "shallow": arguments.add "deepen 1"
     arguments.add "done"
-    fetch-response := client.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
+    fetch-response := client_.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
         --uri="$url/git-upload-pack"
-        --headers=version-2-header
+        --headers=version-2-header_
         --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if fetch-response.status-code != 200:

@@ -28,6 +28,7 @@ import ..registry.description
 import ..license
 import ..git
 import ..file-system-view
+import ..semantic-version
 
 import .base_
 import .list
@@ -40,19 +41,16 @@ class DescribeCommand extends PkgCommand:
   url-path/string?
   version/string?
   out-dir/string?
-  warn-local-deps/bool
-  allow-local-deps/bool
+  allow-local-deps/bool?
 
   constructor invocation/cli.Invocation:
     url-path = invocation[URL-PATH-OPTION]
     version = invocation[VERSION-OPTION]
     out-dir = invocation[OUT-DIR-OPTION]
     if invocation.parameters.was-provided ALLOW_LOCAL_DEPS:
-      warn-local-deps = false
       allow-local-deps = invocation[ALLOW_LOCAL_DEPS]
     else:
-      warn-local-deps = true
-      allow-local-deps = true
+      allow-local-deps = null
     super invocation
 
   execute:
@@ -62,12 +60,13 @@ class DescribeCommand extends PkgCommand:
       execute-remote
 
   build-description -> Description
+      --is-remote/bool
       [--check-src-dir]
       [--load-specification]
       [--load-license-file]
       --hash/string
       --version/string
-      --url/string :
+      --url/string:
     if not check-src-dir.call:
       error "No 'src' directory in package."
 
@@ -102,8 +101,11 @@ class DescribeCommand extends PkgCommand:
       ui.emit --verbose "Using license '$license' from 'LICENSE' file."
 
     if not specification.local-dependencies.is-empty:
-      if warn-local-deps:
-        warning "Package has local dependencies."
+      if allow-local-deps == null:
+        if is-remote:
+          error "Package has local dependencies."
+        else:
+          warning "Package has local dependencies."
       else if not allow-local-deps:
         error "Package has local dependencies."
 
@@ -142,41 +144,62 @@ class DescribeCommand extends PkgCommand:
     license-path := "$path/LICENSE"
     spec-path := Specification.file-name path
     description := build-description
-      --check-src-dir=: file.is-directory src
-      --load-specification=: file.is-file spec-path ? ExternalSpecification --dir=path --ui=ui : null
-      --load-license-file=: file.is-file license-path ? file.read-contents license-path : null
-      --hash=NOT-SCRAPED-STRING
-      --version=NOT-SCRAPED-VERSION-STRING
-      --url=NOT-SCRAPED-STRING
+        --no-is-remote
+        --check-src-dir=: file.is-directory src
+        --load-specification=: file.is-file spec-path ? ExternalSpecification --dir=path --ui=ui : null
+        --load-license-file=: file.is-file license-path ? file.read-contents license-path : null
+        --hash=NOT-SCRAPED-STRING
+        --version=NOT-SCRAPED-VERSION-STRING
+        --url=NOT-SCRAPED-STRING
 
     output --local description
 
   execute-remote:
+    if not version.starts-with "v":
+      error "Version must start with 'v', for example 'v1.0.0'."
+    parsed := SemanticVersion.parse version --on-error=: error "Invalid version '$version': $it"
     url := url-path
-    if url.starts-with "https://": url = url[8..]
     git := Repository url
-    ref-hash := git.refs.get "refs/tags/v$version"
+    ref-hash/string? := null
+    e := catch:
+      ref-hash = git.refs.get "refs/tags/$version"
+    if e:
+      error "Failed to contact repository '$url': $e"
     if not ref-hash:
-      error "Tag v$version not found for version '$version'"
+      error "Tag $version not found in repository '$url'"
 
-    pack := git.clone ref-hash
+    // Force the URL to be lowercase.
+    // This avoids issues with case-insensitive file systems, and with
+    // projects that have been registered with different casing.
+    url = url.to-ascii-lower
+    url = url.trim --right ".git"
+    url = url.trim --left "https://"
+
+    pack/Pack? := null
+    e = catch:
+      pack = git.clone ref-hash
+    if e:
+      error "Failed to clone repository '$url': $e"
     file-view/FileSystemView := pack.content
     description := build-description
-      --check-src-dir=: (file-view.get "src") is FileSystemView
-      --load-specification=:
-        package-content := file-view.get Specification.FILE-NAME
-        package-content and RepositorySpecification package-content --ui=ui
-      --load-license-file=: file-view.get "LICENSE"
-      --hash=ref-hash
-      --version=version
-      --url=url
+        --is-remote
+        --check-src-dir=: (file-view.get "src") is FileSystemView
+        --load-specification=:
+          package-content := file-view.get Specification.FILE-NAME
+          package-content and RepositorySpecification package-content --ui=ui
+        --load-license-file=: file-view.get "LICENSE"
+        --hash=ref-hash
+        --version=version
+        --url=url
 
     if not out-dir:
       output --no-local description
     else:
-      output-path := "$out-dir/packages/$url/$version"
+      without-v := version.trim --left "v"
+      output-path := "$out-dir/packages/$url/$without-v"
       directory.mkdir --recursive output-path
-      file.write-contents --path="$output-path/desc.yaml" (yaml.encode description)
+      encoded := yaml.encode description.to-json
+      file.write-contents --path="$output-path/desc.yaml" encoded
 
   output --local/bool description/Description:
     output-map := ListCommand.verbose-description description --allow-extra-fields

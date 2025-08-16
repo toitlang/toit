@@ -76,7 +76,7 @@ class ListCommand extends PkgCommand:
   If $allow-extra-fields, then allows dependencies and environment keys too.
   */
   static verbose-description description/Description --allow-extra-fields/bool=false -> Map:
-    filtered := description.content.filter: | k _ |
+    filtered := description.to-json.filter: | k _ |
       if k == Description.NAME-KEY_: continue.filter false
       if allow-extra-fields: continue.filter true
       if k == Description.DEPENDENCIES-KEY_: continue.filter false

@@ -1,0 +1,18 @@
+Aborted
+[pkg, describe, ., --out-dir=foo]
+Error: The --out-dir flag requires a URL and version
+==================
+Aborted
+[pkg, describe, --out-dir=foo]
+Error: The --out-dir flag requires a URL and version
+==================
+OK
+[pkg, describe, https://github.com/toitware/toit-morse, v1.0.6, --out-dir=<[*WORKING-DIR*]>/out]
+==================
+== cat <[*WORKING-DIR*]>/out/packages/github.com/toitware/toit-morse/1.0.6/desc.yaml
+description: Functions for International (ITU) Morse code.
+name: morse
+version: v1.0.6
+url: github.com/toitware/toit-morse
+hash: <[*HASH*]>
+license: MIT
