@@ -1,0 +1,23 @@
+OK
+[pkg, describe, <[*WORKING-DIR*]>/packages/deps]
+name-from-spec:
+  description: desc-from-spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+  dependencies:
+    {url: github.com/toitware/toit-morse, version: =1.0.2}
+    {url: github.com/toitware/toit-morse-tutorial, version: =1.0.0}
+==================
+OK
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/deps]
+name-from-spec:
+  description: desc-from-spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+  dependencies:
+    {url: github.com/toitware/toit-morse, version: =1.0.2}
+    {url: github.com/toitware/toit-morse-tutorial, version: =1.0.0}

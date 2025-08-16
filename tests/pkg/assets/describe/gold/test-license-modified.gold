@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/license-modified]
+Error: Unknown license in 'LICENSE' file
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-modified]
+Error: Unknown license in 'LICENSE' file

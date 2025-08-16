@@ -144,3 +144,23 @@ make-read-only_ --recursive/bool path/string -> none:
   while child := stream.next:
     make-read-only_ --recursive (fs.join path child)
   make-read-only_ --no-recursive path
+
+is-valid-toit-identifier str/string -> bool:
+  last-was-dash := false
+  for i := 0; i < str.size; i++:
+    c := str[i]
+    if c == '-':
+      if last-was-dash: return false
+      if i == 0: return false
+      if i == str.size - 1: return false
+      last-was-dash = true
+      continue
+    last-was-dash = false
+    if '0' <= c <= '9':
+      if i == 0: return false
+      continue
+    if 'a' <= c <= 'z' or 'A' <= c <= 'Z' or c == '_':
+      continue
+    return false
+  return true
+

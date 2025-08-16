@@ -1,0 +1,32 @@
+OK
+[pkg, describe, <[*WORKING-DIR*]>/local-path]
+Warning: Package has local dependencies.
+name-from-spec:
+  description: desc from spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+==================
+OK
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/local-path]
+Warning: Package has local dependencies.
+name-from-spec:
+  description: desc from spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+==================
+OK
+[pkg, describe, --allow-local-deps, <[*WORKING-DIR*]>/local-path]
+name-from-spec:
+  description: desc from spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+==================
+Aborted
+[pkg, describe, --no-allow-local-deps, <[*WORKING-DIR*]>/local-path]
+Error: Package has local dependencies.

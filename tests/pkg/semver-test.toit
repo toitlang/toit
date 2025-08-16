@@ -32,9 +32,9 @@ main:
   expect-equals true (is-less-than "2.0.0-alpha.79" "2.0.0-alpha.121.31+pgk-in-toit.95591318")
   expect-equals true (is-less-than "2.0.0-alpha.121.31+pgk-in-toit.95591318" "3.0.0")
 
-  expect-throw "Parse error, expected a numeric value at position 0": SemanticVersion.parse "."
-  expect-throw "Parse error, expected a numeric value at position 4": SemanticVersion.parse "1.1."
-  expect-throw "Parse error, not all input was consumed": SemanticVersion.parse "1.1.02"
-  expect-throw "Parse error, expected . at position 3": SemanticVersion.parse "1.01.2"
-  expect-throw "Parse error in pre-release, expected an identifier or a number at position 6": SemanticVersion.parse "1.1.2-"
-  expect-throw "Parse error in build-number, expected an identifier or digits at position 6": SemanticVersion.parse "1.1.2+"
+  expect-throw "Parse error: expected a numeric value at position 0": SemanticVersion.parse "."
+  expect-throw "Parse error: expected a numeric value at position 4": SemanticVersion.parse "1.1."
+  expect-throw "Parse error: not all input was consumed": SemanticVersion.parse "1.1.02"
+  expect-throw "Parse error: expected . at position 3": SemanticVersion.parse "1.01.2"
+  expect-throw "Parse error: expected an identifier or a number at position 6": SemanticVersion.parse "1.1.2-"
+  expect-throw "Parse error: expected an identifier or digits at position 6": SemanticVersion.parse "1.1.2+"

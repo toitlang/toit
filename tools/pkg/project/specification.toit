@@ -24,6 +24,7 @@ import ..registry
 import ..constraints
 import ..semantic-version
 import ..solver
+import ..utils
 
 import .project
 import .lock
@@ -37,15 +38,11 @@ Contrary to an $ExternalSpecification or a $RepositorySpecification, project pac
 class ProjectSpecification extends Specification:
   project/Project
 
-  constructor.private_ .project content/Map --ui/cli.Ui:
-    super content --ui=ui
+  constructor.empty .project --ui/cli.Ui:
+    super --contents={:} --ui=ui
 
-  constructor.empty project/Project --ui/cli.Ui:
-    return ProjectSpecification.private_ project {:} --ui=ui
-
-  constructor.load project/Project --ui/cli.Ui:
-    file-content := (yaml.decode (file.read-contents "$project.root/$Specification.FILE-NAME")) or {:}
-    return ProjectSpecification.private_ project file-content --ui=ui
+  constructor.load .project --ui/cli.Ui:
+    super --path="$project.root/$Specification.FILE-NAME" --ui=ui
 
   root-dir -> string:
     return project.root
@@ -63,13 +60,13 @@ class ProjectSpecification extends Specification:
 
   /** Updates the remote dependencies with the ones from the solution. */
   update-remote-dependencies solution/Solution:
-    dependencies.do: | prefix/string content/Map |
-      if not content.contains Specification.URL-KEY_:
+    dependencies.do: | prefix/string dep-entry/Map |
+      if not dep-entry.contains Specification.URL-KEY_:
         // Not a remote dependency.
         continue.do
-      url := content[Specification.URL-KEY_]
+      url := dep-entry[Specification.URL-KEY_]
       versions := solution.packages[url]
-      constraint-str := content[Specification.VERSION-KEY_]
+      constraint-str := dep-entry[Specification.VERSION-KEY_]
       constraint/Constraint := Constraint.parse constraint-str
       picked-version/SemanticVersion? := null
       for j := 0; j < versions.size; j++:
@@ -87,18 +84,18 @@ class ProjectSpecification extends Specification:
         else:
           new-simples.add simple
       new-constraint := Constraint --simple-constraints=new-simples --source=""
-      content[Specification.VERSION-KEY_] = new-constraint.to-string
+      dep-entry[Specification.VERSION-KEY_] = new-constraint.to-string
 
   remove-dependency prefix/string:
     if not dependencies.contains prefix: ui_.abort "No package with prefix $prefix"
     dependencies.remove prefix
 
   save:
-    if content.is-empty:
+    if contents_.is-empty:
       file.write-contents "# Toit Package File." --path=file-name
     else:
       file.write-contents --path=file-name
-          yaml.encode content
+          yaml.encode contents_
 
   /**
   Transitively visits all local packages that are reachable from
@@ -131,9 +128,9 @@ class ProjectSpecification extends Specification:
       --already-visited/Set
       --entry-dir/string
       [block]:
-    specification.dependencies.do: | prefix/string content/Map |
-      if not content.contains Specification.PATH-KEY_: continue.do
-      path := content[Specification.PATH-KEY_]
+    specification.dependencies.do: | prefix/string dep-entry/Map |
+      if not dep-entry.contains Specification.PATH-KEY_: continue.do
+      path := dep-entry[Specification.PATH-KEY_]
       absolute-path/string := fs.clean (specification.absolute-path-for-dependency path)
       if already-visited.contains absolute-path: continue.do
       already-visited.add absolute-path
@@ -202,9 +199,9 @@ External package files are the same as the entry package file, but they are read
 class ExternalSpecification extends Specification:
   dir/string
 
-  constructor --.dir --ui/cli.Ui:
-    if not fs.is-absolute dir: throw "INVALID_ARGUMENT"
-    super ((yaml.decode (file.read-contents "$dir/$Specification.FILE-NAME")) or {:}) --ui=ui
+  constructor --.dir/string --ui/cli.Ui --validate/bool=true:
+    if not fs.is-absolute dir: ui.abort "Invalid directory '$dir'."
+    super --path="$dir/$Specification.FILE-NAME" --ui=ui --validate=validate
 
   root-dir -> string:
     return dir
@@ -215,8 +212,8 @@ A package file from a published package.
 Repository package files are read-only.
 */
 class RepositorySpecification extends Specification:
-  constructor content/ByteArray --ui/cli.Ui:
-    super (yaml.decode content) --ui=ui
+  constructor bytes/ByteArray --ui/cli.Ui:
+    super --bytes=bytes --ui=ui
 
   root-dir -> string:
     throw "Not possible to get root dir of a repository package file"
@@ -232,13 +229,43 @@ abstract class Specification:
   static DESCRIPTION-KEY_  ::= "description"
   static LICENSE-KEY_      ::= "license"
 
-  content/Map
+  contents_/Map
   ui_/cli.Ui
 
   static FILE-NAME ::= "package.yaml"
 
-  constructor .content --ui/cli.Ui:
+  constructor --path/string --ui/cli.Ui --validate/bool=true:
+    if not fs.is-absolute path: ui.abort "Invalid path '$path'."
+    bytes := file.read-contents path
+    contents_ = parse_ bytes --ui=ui
     ui_ = ui
+    if validate: validate_
+
+  constructor --bytes/ByteArray --ui/cli.Ui --validate/bool=true:
+    contents_ = parse_ bytes --ui=ui
+    ui_ = ui
+    if validate: validate_
+
+  constructor --contents/Map --ui/cli.Ui --validate/bool=true:
+    contents_ = contents
+    ui_ = ui
+    if validate: validate_
+
+  static parse_ bytes/ByteArray --ui/cli.Ui -> Map?:
+    decoded := yaml.decode bytes --on-error=: | error/string |
+      ui.abort "Invalid specification file content: $error."
+    if decoded == null:
+      str := bytes.to-string
+      lines := str.split "\n"
+      lines.filter --in-place: | line/string |
+        trimmed := line.trim
+        trimmed != "" and not trimmed.starts-with "#"
+      if lines.is-empty:
+        // An empty specification. Treat it like an empty map.
+        decoded = {:}
+    if decoded is not Map:
+      ui.abort "Invalid specification file content: not a map."
+    return decoded
 
   // The absolute path to the directory holding the package.yaml file.
   abstract root-dir -> string
@@ -262,19 +289,29 @@ abstract class Specification:
     return fs.to-absolute (fs.join root-dir path)
 
   dependencies -> Map:
-    return content.get DEPENDENCIES-KEY_ --init=(: {:})
+    return contents_.get DEPENDENCIES-KEY_ --init=(: {:})
+
+  has-name -> bool:
+    return contents_.contains NAME-KEY_ and
+        contents_[NAME-KEY_] is string and
+        contents_[NAME-KEY_] != ""
 
   name -> string:
-    return content.get NAME-KEY_ --if-absent=: ui_.abort "Missing 'name' in $file-name."
+    return contents_.get NAME-KEY_ --if-absent=: ui_.abort "Missing 'name' in $file-name."
 
   name= name/string:
-    content[NAME-KEY_] = name
+    contents_[NAME-KEY_] = name
+
+  has-description -> bool:
+    return contents_.contains DESCRIPTION-KEY_ and
+        contents_[DESCRIPTION-KEY_] is string and
+        contents_[DESCRIPTION-KEY_] != ""
 
   description -> string:
-    return content.get DESCRIPTION-KEY_ --if-absent=: ui_.abort "Missing 'description' in $file-name."
+    return contents_.get DESCRIPTION-KEY_ --if-absent=: ui_.abort "Missing 'description' in $file-name."
 
   description= description/string:
-    content[DESCRIPTION-KEY_] = description
+    contents_[DESCRIPTION-KEY_] = description
 
   sdk-version -> Constraint?:
     if environment_ := environment:
@@ -288,24 +325,95 @@ abstract class Specification:
   /** Returns a map from prefix to $PackageDependency objects. */
   registry-dependencies -> Map:
     dependencies := {:}
-    this.dependencies.do: | prefix/string content/Map |
-      if content.contains URL-KEY_:
-        url := content[URL-KEY_]
-        constraint := Constraint.parse content[VERSION-KEY_]
+    this.dependencies.do: | prefix/string dep-entry/Map |
+      if dep-entry.contains URL-KEY_:
+        url := dep-entry[URL-KEY_]
+        constraint := Constraint.parse dep-entry[VERSION-KEY_]
         dependencies[prefix] = PackageDependency url --constraint=constraint
     return dependencies
 
   /** Returns a map of prefix to strings representing the paths of the local packages */
   local-dependencies -> Map:
     dependencies := {:}
-    this.dependencies.do: | prefix/string content/Map |
-      if content.contains PATH-KEY_:
-        dependencies[prefix] = content[PATH-KEY_]
+    this.dependencies.do: | prefix/string dep-entry/Map |
+      if dep-entry.contains PATH-KEY_:
+        dependencies[prefix] = dep-entry[PATH-KEY_]
     return dependencies
 
-  license -> string?: return content.get LICENSE-KEY_
-  environment -> Map?: return content.get ENVIRONMENT-KEY_
+  license -> string?: return contents_.get LICENSE-KEY_
+  environment -> Map?: return contents_.get ENVIRONMENT-KEY_
 
+  validate_ -> none:
+    // Might not be a string.
+    name-entry := contents_.get NAME-KEY_
+    if name-entry and not is-valid-name_ name-entry:
+      ui_.abort "Invalid package name '$name-entry'."
+
+    description-entry := contents_.get DESCRIPTION-KEY_
+    if description-entry and not description-entry is string:
+      ui_.abort "Invalid package description '$description-entry'."
+
+    license-entry := contents_.get LICENSE-KEY_
+    if license-entry and not license-entry is string:
+      ui_.abort "Invalid license '$license-entry'."
+
+    environment-entry := contents_.get ENVIRONMENT-KEY_
+    if environment-entry and environment-entry is not Map:
+      ui_.abort "Invalid environment entry: $environment-entry"
+
+    if environment-entry:
+      sdk-entry := environment-entry.get SDK-KEY_
+      if sdk-entry:
+        if sdk-entry is not string:
+          ui_.abort "Invalid SDK constraint '$sdk-entry'."
+        Constraint.parse sdk-entry --on-error=: | error/string |
+          ui_.abort "Invalid SDK constraint '$sdk-entry': $error"
+
+    dependencies-entry := contents_.get DEPENDENCIES-KEY_
+    if dependencies-entry:
+      if dependencies-entry is not Map:
+        ui_.abort "Invalid dependencies entry: $dependencies-entry"
+
+      dependencies-entry.do: | prefix/string dependency |
+        validate-dependency_ prefix dependency
+
+  validate-dependency_ prefix/string dependency -> none:
+    if not is-valid-name_ prefix:
+      ui_.abort "Invalid dependency prefix '$prefix'."
+
+    if dependency is not Map:
+      ui_.abort "Invalid dependency entry for '$prefix': $dependency"
+
+    dependency-map := dependency as Map
+
+    url := dependency-map.get URL-KEY_
+    if url and not url is string or url == "":
+      ui_.abort "Invalid URL '$url'."
+
+    path := dependency-map.get PATH-KEY_
+    if path and not path is string or path == "":
+      ui_.abort "Invalid path '$path'."
+
+    if url and path:
+      ui_.abort "Cannot have both URL and path in a package dependency."
+
+    version := dependency-map.get VERSION-KEY_
+    if version:
+      if not version is string or version == "":
+        ui_.abort "Invalid version '$version'."
+      Constraint.parse version --on-error=: | error/string |
+        ui_.abort "Invalid version '$version': $error"
+
+    if path and version:
+      ui_.abort "Cannot have both path and version in a package dependency."
+
+    if url and not version:
+      ui_.abort "Remote dependencies must have a version constraint."
+
+  is-valid-name_ name -> bool:
+    if not name is string: return false
+
+    return is-valid-toit-identifier name
 
 /**
 Represents a dependency on a package from a repository.

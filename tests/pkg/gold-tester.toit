@@ -208,7 +208,11 @@ class GoldTester:
       while true:
         hash-index = normalized.index-of "hash: " (hash-index + 1)
         if hash-index == -1: break
+        space-index := normalized.index-of " " (hash-index + 6)
         newline-index := normalized.index-of "\n" hash-index
+        if space-index != -1 and space-index < newline-index:
+          // This is not a real hash.
+          break
         if newline-index == -1: throw "No newline after hash"
         normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
       normalized

@@ -1,0 +1,19 @@
+OK
+[pkg, describe, <[*WORKING-DIR*]>/packages/license-different]
+Warning: Unknown SDIX license-ID: 'different-license'
+name-from-spec:
+  description: desc from spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: different-license
+==================
+OK
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/license-different]
+Warning: Unknown SDIX license-ID: 'different-license'
+name-from-spec:
+  description: desc from spec
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: different-license
