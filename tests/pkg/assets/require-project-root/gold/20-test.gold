@@ -1,0 +1,6 @@
+Aborted
+[pkg, install, github.com/toitware/toit-morse]
+Error: Command must be executed in project root.
+Run 'toit pkg init' first to create a new application here, or
+  run with '--project-root=.'
+
