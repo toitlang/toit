@@ -69,6 +69,8 @@ class Project:
   ui_/cli.Ui
 
   static PACKAGES-CACHE ::= ".packages"
+  static CONTENTS-JSON ::= "contents.json"
+  static README-MD ::= "README.md"
 
   constructor .config/ProjectConfiguration
       --empty-lock-file/bool=false
@@ -186,23 +188,54 @@ class Project:
     specification.update-remote-dependencies solution
     save
 
-  clean -> none:
-    repository-packages := lock-file.repository-packages
-    url-to-version := {:}
-    repository-packages.do: | package/RepositoryPackage |
-      url-to-version[package.url] = package.version
+  clean-dir_ path/string to-keep/Map -> none:
+    stream := directory.DirectoryStream path
+    try:
+      to-delete := []
+      while name := stream.next:
+        child := "$path/$name"
+        to-keep-entry := to-keep.get name
+        if not to-keep-entry:
+          to-delete.add name
+        else if not to-keep-entry.is-empty:  // An entry map indicates a leaf.
+          if not file.is-directory child:
+            ui_.abort "Expected '$child' to be a directory, but it is a file."
+          clean-dir_ child to-keep-entry
+      to-delete.do: | name/string |
+        directory.rmdir --recursive --force "$path/$name"
+    finally:
+      stream.close
 
-    urls := directory.DirectoryStream packages-cache-dir
-    while url := urls.next:
-      if not url-to-version.contains url:
-        directory.rmdir --recursive "$packages-cache-dir/$url"
-      else:
-        versions := directory.DirectoryStream "$packages-cache-dir/$url"
-        while version := versions.next:
-          if not url-to-version[url].contains version:
-            directory.rmdir --recursive "$packages-cache-dir/$url/$version"
-        versions.close
-    urls.close
+  clean -> none:
+    contents := cached-repository-contents_
+    repository-packages := lock-file.repository-packages
+
+    to-keep-paths := []
+    new-contents := {:}
+    repository-packages.do: | package/RepositoryPackage |
+      url := package.url
+      entry := contents.get url
+      version/string := package.version.to-string
+      if not entry or not entry.contains version:
+        ui_.abort "The 'package.lock' and 'contents.json' files are out of sync."
+      relative-dir := entry[version]
+      (new-contents.get url --init=:{:})[version] = relative-dir
+      to-keep-paths.add relative-dir
+
+    // Write the new contents.
+    // Even if we fail to delete some directory, this information should still be valid.
+    write-cached-repository-contents_ new-contents
+
+    to-keep := {:}
+    to-keep-paths.do: | path/string |
+      segments := fs.split path
+      parent := to-keep
+      segments.do: | segment/string |
+        parent = parent.get segment --init=(: {:})
+    to-keep[README-MD] = {:}
+    to-keep[CONTENTS-JSON] = {:}
+
+    clean-dir_ "$packages-cache-dir" to-keep
 
   packages-cache-dir -> string:
     return "$config.root/$PACKAGES-CACHE"
@@ -213,7 +246,7 @@ class Project:
     if file.stat dir:
       ui_.abort "Expected '$dir' to be a directory, but it is a file."
     directory.mkdir --recursive dir
-    readme-path := fs.join dir "README.md"
+    readme-path := fs.join dir README-MD
     file.write-contents --path=readme-path """
     # Package Cache Directory
 
@@ -269,13 +302,13 @@ class Project:
     return "$packages-cache-dir/$(relative-cached-repository-dir_ url version)"
 
   cached-repository-contents_ -> Map:
-    contents-path := "$packages-cache-dir/contents.json"
+    contents-path := "$packages-cache-dir/$CONTENTS-JSON"
     if not file.is-file contents-path:
       return {:}
     return json.decode (file.read-contents contents-path)
 
   write-cached-repository-contents_ contents/Map -> none:
-    contents-path := "$packages-cache-dir/contents.json"
+    contents-path := "$packages-cache-dir/$CONTENTS-JSON"
     file.write-contents (json.encode contents) --path=contents-path
 
   ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null --registries/Registries -> Map:
