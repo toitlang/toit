@@ -1,0 +1,45 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, localhost:<[*PORT*]>/pkg/pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+OK
+[pkg, install, localhost:<[*PORT*]>/pkg/pkg2]
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'pkg2'.
+==================
+exec main.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
+==================
+== contents.json
+localhost:<[*PORT*]>/pkg/pkg1:
+  1.0.0: localhost:<[*PORT*]>/pkg/pkg1/1.0.0
+localhost:<[*PORT*]>/pkg/pkg2:
+  2.4.2: localhost:<[*PORT*]>/pkg/pkg2/2.4.2
+localhost:<[*PORT*]>/pkg/pkg3:
+  3.1.2: localhost:<[*PORT*]>/pkg/pkg3/3.1.2

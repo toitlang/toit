@@ -124,6 +124,7 @@ class GitProtocol_:
     throw "Missing flush packet from server"
 
   load-pack capabilities/Map url/string ref-hash/string -> ByteArray:
+    if ref-hash == "": throw "Invalid hash"
     arguments := ["no-progress", "want $ref-hash"]
     if capabilities.contains "fetch" and capabilities["fetch"].contains "shallow": arguments.add "deepen 1"
     arguments.add "done"
