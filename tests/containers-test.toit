@@ -4,6 +4,7 @@
 
 import monitor
 import system.containers
+import system
 import expect show *
 
 main arguments:
@@ -17,6 +18,7 @@ main arguments:
   test-images
   test-start
   test-background-state-changed
+  test-finalizer
 
 test-images:
   images/List := containers.images
@@ -60,6 +62,15 @@ test-start:
   with-timeout --ms=5_000: while not lambda4-called: sleep --ms=50
   expect-equals 0 lambda4-value
   expect-equals 0 sub4.wait
+
+test-finalizer:
+  // A container should receive the stop notification even if we don't have
+  // any pointer to the actual container anymore.
+  latch := monitor.Latch
+  containers.start containers.current {:} --on-stopped=(:: latch.set true)
+  // Force a GC.
+  system.process-stats --gc
+  with-timeout --ms=5_000: latch.get
 
 test-background-state-changed:
   channel := monitor.Channel 1
