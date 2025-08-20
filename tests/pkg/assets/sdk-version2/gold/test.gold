@@ -1,0 +1,11 @@
+== package.yaml
+environment:
+  sdk: ^0.1.0
+==================
+OK
+[pkg, install]
+==================
+// The lock file must have an SDK constraint.
+==================
+== package.lock
+sdk: ^0.1.0
