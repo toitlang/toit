@@ -166,7 +166,7 @@ class GoldTester:
     commands.do: | command-line/List |
       command := command-line.first
       if command.starts-with "//":
-        outputs.add "$command\n"
+        outputs.add "$(command-line.join "\n")\n"
       else if command == "analyze" or command == "exec":
         toit-command := command == "analyze" ? "analyze" : "run"
         run-result := toit toit-command command-line[1..]

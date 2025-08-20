@@ -16,7 +16,6 @@ test tester/GoldTester:
     ["pkg", "init"],
   ]
 
-
   tester.gold "20-v0.0.0" [
     ["pkg", "install", "foo", "--sdk-version", "v0.0.0"],
   ]
