@@ -1,0 +1,16 @@
+OK
+[pkg, install, foo, --sdk-version, v0.1.0]
+Package 'localhost:<[*PORT*]>/pkg/foo@1.1.0' installed with prefix 'foo'.
+==================
+exec main.toit
+hello from foo 1.1.0
+Exit Code: 0
+==================
+// Update.
+==================
+OK
+[pkg, update]
+==================
+exec main.toit
+hello from foo 1.2.3
+Exit Code: 0
