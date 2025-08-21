@@ -1,0 +1,5 @@
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+OK
+[pkg, init]

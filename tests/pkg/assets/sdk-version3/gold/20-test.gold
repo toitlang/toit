@@ -1,0 +1,29 @@
+OK
+[pkg, install, foo, --sdk-version, v0.1.10]
+Package 'localhost:<[*PORT*]>/pkg/foo@1.1.0' installed with prefix 'foo'.
+==================
+== package.lock
+sdk: ^0.1.0
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+packages:
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.1.0
+==================
+// A new 'install' doesn't change the lock file, even though
+// the sdk-version would permit an upgrade.
+==================
+OK
+[pkg, install]
+==================
+== package.lock
+sdk: ^0.1.0
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+packages:
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.1.0

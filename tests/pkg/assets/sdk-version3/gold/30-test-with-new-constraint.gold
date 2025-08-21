@@ -1,0 +1,39 @@
+// We have updated the package.yaml.
+==================
+== package.yaml
+dependencies:
+  foo:
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: ^1.1.0
+environment:
+  sdk: ^1.20.0
+==================
+OK
+[pkg, install]
+==================
+// Without --recompute nothing changed.
+==================
+== package.lock
+sdk: ^0.1.0
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+packages:
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.1.0
+==================
+OK
+[pkg, install, --recompute]
+==================
+// The lockfile now has an 1.20 SDK constraint
+==================
+== package.lock
+sdk: ^1.20.0
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+packages:
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.1.0
