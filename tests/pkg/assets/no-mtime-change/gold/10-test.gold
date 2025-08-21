@@ -1,0 +1,16 @@
+OK
+[pkg, install]
+==================
+// Just install doesn't add the missing dependency in the lock file.
+==================
+exec main.toit
+
+STDERR---
+<pkg:pkg1>/pkg1.toit:2:8: error: Package for prefix 'pkg2' not found
+import pkg2
+       ^~~~
+<pkg:pkg1>/pkg1.toit:5:30: error: Unresolved identifier: 'identify'
+  return "pkg1-1.0.0" + pkg2.identify
+                             ^~~~~~~~
+Compilation failed
+Exit Code: 1
