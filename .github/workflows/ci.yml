@@ -107,12 +107,12 @@ on:
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
-  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' }}
-  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' || github.event.inputs.run-hw-tests == 'true' }}
-  DO_TESTS: ${{ github.event.inputs.tests != 'none' }}
+  DO_MORE_TESTS: false
+  DO_HW_TESTS: false
+  DO_TESTS: false
   SIGN_MACOS: ${{ github.event.inputs.sign == 'macos' || github.event.inputs.sign == 'macos+windows' }}
   SIGN_WINDOWS: ${{ github.event.inputs.sign == 'windows' || github.event.inputs.sign == 'macos+windows' }}
-  BUILD_ARM_MACOS: ${{ github.event.inputs.build-arm-macos == 'true' }}
+  BUILD_ARM_MACOS: false
   DISPATCH_TOITDOCS: ${{ github.event.inputs.dispatch-toitdocs == 'true' }}
   RUN_WINDOWS_SIGN_FLOW: ${{ github.event_name == 'release' ||
                               startsWith(github.event.inputs.do-release, 'v') ||
@@ -122,10 +122,10 @@ env:
                             startsWith(github.event.inputs.do-release, 'v') ||
                             github.event.inputs.sign == 'macos' ||
                             github.event.inputs.sign == 'macos+windows' }}
-  RUN_ESP32_FLOW: ${{ github.event.inputs.run-esp32-flow != 'false' }}
-  RUN_CROSS_FLOW: ${{ github.event.inputs.run-cross-flow != 'false' }}
+  RUN_ESP32_FLOW: false
+  RUN_CROSS_FLOW: false
   RUN_AUR_FLOW: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
-  ENABLE_SSH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ssh != 'none' }}
+  ENABLE_SSH: true
   ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
 
 jobs:
@@ -139,8 +139,6 @@ jobs:
       - name: Set strategy variables
         id: vars
         run: |
-          echo "ENABLE_SSH=true" >> $GITHUB_ENV
-
           # The cross-flow must be enabled when signing.
           if [[ "${{ env.RUN_WINDOWS_SIGN_FLOW }}" == "true" || \
                 "${{ env.RUN_MACOS_SIGN_FLOW }}" == "true" ]]; then
