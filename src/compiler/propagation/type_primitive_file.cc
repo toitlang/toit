@@ -42,6 +42,7 @@ TYPE_PRIMITIVE_ANY(is_open_file)
 TYPE_PRIMITIVE_ANY(realpath)
 TYPE_PRIMITIVE_ANY(cwd)
 TYPE_PRIMITIVE_BYTE_ARRAY(read_file_content_posix)
+TYPE_PRIMITIVE_NULL(update_times)
 
 }  // namespace toit::compiler
 }  // namespace toit
