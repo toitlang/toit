@@ -354,8 +354,8 @@ int64 low_high_to_int64(DWORD high, DWORD low) {
 #define WINDOWS_TICKS_PER_SECOND 10000000
 #define SEC_TO_UNIX_EPOCH 11644473600LL
 
-Object* time_stamp(Process* process, FILETIME* time) {
-  int64 windows_ticks = low_high_to_int64(time->dwHighDateTime, time->dwLowDateTime);
+Object* time_stamp(Process* process, LARGE_INTEGER* time) {
+  int64 windows_ticks = low_high_to_int64(time->HighPart, time->LowPart);
   int64 unix_ticks = (windows_ticks - SEC_TO_UNIX_EPOCH * WINDOWS_TICKS_PER_SECOND) * 100;
   return Primitive::integer(unix_ticks, process);
 }
@@ -389,7 +389,7 @@ PRIMITIVE(stat) {
   if (!array) FAIL(ALLOCATION_FAILED);
 
   FILE_STANDARD_INFO standard_info;
-  success = GetFileInformationByHandleEx(handle, FileStandardInfo, &standard_info, sizeof(FILE_STANDARD_INFO));
+  success = GetFileInformationByHandleEx(handle, FileStandardInfo, &standard_info, sizeof(standard_info));
   if (!success) WINDOWS_ERROR;
 
   int type;
@@ -429,13 +429,20 @@ PRIMITIVE(stat) {
   Object* size = Primitive::integer(low_high_to_int64(file_info.nFileSizeHigh, file_info.nFileSizeLow), process);
   if (Primitive::is_error(size)) return size;
 
-  Object* atime = time_stamp(process, &file_info.ftLastAccessTime);
+  // Use FILE_BASIC_INFO for nanosecond precision.
+  FILE_BASIC_INFO basic_info = {};
+
+  // Get current file info first to preserve other timestamps
+  success = GetFileInformationByHandleEx(handle, FileBasicInfo, &basic_info, sizeof(basic_info));
+  if (!success) WINDOWS_ERROR;
+
+  Object* atime = time_stamp(process, &basic_info.LastAccessTime);
   if (Primitive::is_error(atime)) return atime;
 
-  Object* mtime = time_stamp(process, &file_info.ftLastWriteTime);
+  Object* mtime = time_stamp(process, &basic_info.LastWriteTime);
   if (Primitive::is_error(mtime)) return mtime;
 
-  Object* ctime = time_stamp(process, &file_info.ftCreationTime);
+  Object* ctime = time_stamp(process, &basic_info.ChangeTime);
   if (Primitive::is_error(ctime)) return ctime;
 
   array->at_put(FILE_ST_DEV, device_id);
@@ -451,6 +458,70 @@ PRIMITIVE(stat) {
   array->at_put(FILE_ST_CTIME, ctime);
 
   return array;
+}
+
+// We use the same values as the libc constants UTIME_NOW and UTIME_OMIT.
+const long kToitNow = (1l << 30) - 1l;  // Special value for now.
+const long kToitNoTime = (1l << 30) - 2l;  // Special value for no time change.
+
+static void fill_time(FILETIME* time, int s, int ns, const FILETIME& current_time) {
+  if (ns == kToitNoTime) {
+    time->dwLowDateTime = 0;
+    time->dwHighDateTime = 0;
+    return;
+  }
+  if (ns == kToitNow) {
+    time->dwLowDateTime = current_time.dwLowDateTime;
+    time->dwHighDateTime = current_time.dwHighDateTime;
+    return;
+  }
+
+  uint64 win_seconds = static_cast<uint64>(s) + SEC_TO_UNIX_EPOCH;
+  uint64 ticks = win_seconds * WINDOWS_TICKS_PER_SECOND + (ns / 100);
+  time->dwLowDateTime = static_cast<DWORD>(ticks);
+  time->dwHighDateTime = static_cast<DWORD>(ticks >> 32);
+}
+
+PRIMITIVE(update_times) {
+  ARGS(WindowsPath, path, int, atime_sec, int, atime_nsec, int, mtime_sec, int, mtime_nsec);
+  if (atime_nsec == kToitNow || atime_nsec == kToitNoTime) {
+    if (atime_sec != 0) FAIL(INVALID_ARGUMENT);
+  }
+  if (mtime_nsec == kToitNow || mtime_nsec == kToitNoTime) {
+    if (mtime_sec != 0) FAIL(INVALID_ARGUMENT);
+  }
+  FILETIME current_time;
+  if (atime_nsec == kToitNow || mtime_nsec == kToitNow) {
+    GetSystemTimeAsFileTime(&current_time);
+  }
+
+  HANDLE handle = CreateFileW(
+      path,
+      GENERIC_WRITE | FILE_WRITE_ATTRIBUTES,
+      0,
+      NULL,
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS,  // Required for directories.
+      NULL
+  );
+
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  AutoCloser closer(handle);
+
+  FILETIME atime;
+  FILETIME mtime;
+
+  fill_time(&atime, atime_sec, atime_nsec, current_time);
+  fill_time(&mtime, mtime_sec, mtime_nsec, current_time);
+
+  BOOL success = SetFileTime(
+      handle,
+      null,
+      &atime,
+      &mtime);
+  if (!success) WINDOWS_ERROR;
+
+  return process->null_object();
 }
 
 PRIMITIVE(unlink) {
@@ -480,10 +551,10 @@ PRIMITIVE(rename) {
 PRIMITIVE(chdir) {
   ARGS(WindowsPath, path);
 
-  struct stat64 statbuf{};
+  struct _stat64 statbuf{};
   int result = _wstat64(path, &statbuf);
   if (result < 0) WINDOWS_ERROR;  // No such file or directory?
-  if ((statbuf.st_mode & S_IFDIR) == 0) FAIL(FILE_NOT_FOUND);  // Not a directory.
+  if ((statbuf.st_mode & _S_IFDIR) == 0) FAIL(FILE_NOT_FOUND);  // Not a directory.
 
   wchar_t* copy = wcsdup(path);
 

@@ -404,6 +404,44 @@ PRIMITIVE(stat) {
   return array;
 }
 
+// We use the same values as the libc constants UTIME_NOW and UTIME_OMIT.
+const long kToitNow = (1l << 30) - 1l;  // Special value for now.
+const long kToitNoTime = (1l << 30) - 2l;  // Special value for no time change.
+
+PRIMITIVE(update_times) {
+  ARGS(cstring, path, int, atime_sec, int, atime_nsec, int, mtime_sec, int, mtime_nsec);
+#ifndef TOIT_FREERTOS
+  if (atime_nsec == kToitNow) {
+    if (atime_sec != 0) FAIL(INVALID_ARGUMENT);
+    atime_nsec = UTIME_NOW;
+  } else if (atime_nsec == kToitNoTime) {
+    if (atime_sec != 0) FAIL(INVALID_ARGUMENT);
+    atime_nsec = UTIME_OMIT;
+  }
+
+  if (mtime_nsec == kToitNow) {
+    if (mtime_sec != 0) FAIL(INVALID_ARGUMENT);
+    mtime_nsec = UTIME_NOW;
+  } else if (mtime_nsec == kToitNoTime) {
+    if (mtime_sec != 0) FAIL(INVALID_ARGUMENT);
+    mtime_nsec = UTIME_OMIT;
+  }
+
+  struct timespec times[2];
+  times[0].tv_sec = atime_sec;
+  times[0].tv_nsec = atime_nsec;
+  times[1].tv_sec = mtime_sec;
+  times[1].tv_nsec = mtime_nsec;
+  if (utimensat(AT_FDCWD, path, times, 0) == -1) {
+    // Not really an "open" call, but the errors are the same.
+    return return_open_error(process, errno);
+  }
+  return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif  // TOIT_FREERTOS
+}
+
 PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
   int result = FILE_UNLINK_(current_dir(process), pathname, 0);
@@ -582,5 +620,4 @@ PRIMITIVE(cwd) {
 }
 
 }
-
 #endif  // Linux and BSD.
