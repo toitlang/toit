@@ -139,6 +139,8 @@ jobs:
       - name: Set strategy variables
         id: vars
         run: |
+          echo "ENABLE_SSH=true" >> $GITHUB_ENV
+
           # The cross-flow must be enabled when signing.
           if [[ "${{ env.RUN_WINDOWS_SIGN_FLOW }}" == "true" || \
                 "${{ env.RUN_MACOS_SIGN_FLOW }}" == "true" ]]; then
@@ -155,7 +157,7 @@ jobs:
             echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
-            platform=${{ github.event.inputs.ssh }}
+            platform="windows-latest"
             # Switch to the corresponding container.
             if [[ "$platform" == "linux" ]]; then
               echo 'CONTAINERS=[ "ubuntu-22.04" ]' >> $GITHUB_OUTPUT
