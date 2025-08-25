@@ -155,7 +155,7 @@ jobs:
             echo 'SHARDS=[1]' >> $GITHUB_OUTPUT
             echo 'SHARD_COUNT=1' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[]' >> $GITHUB_OUTPUT
-            platform="windows-latest"
+            platform="windows"
             # Switch to the corresponding container.
             if [[ "$platform" == "linux" ]]; then
               echo 'CONTAINERS=[ "ubuntu-22.04" ]' >> $GITHUB_OUTPUT
