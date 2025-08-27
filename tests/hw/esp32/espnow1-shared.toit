@@ -53,7 +53,7 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   service.add-peer espnow.BROADCAST-ADDRESS
 
@@ -74,7 +74,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   CONFIGURATIONS.do: | config/List |
     sleep --ms=200
