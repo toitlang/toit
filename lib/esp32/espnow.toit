@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor
 import monitor show ResourceState_
 
@@ -278,7 +279,7 @@ class Service:
   The $data must be at most 250 bytes long.
   Waits for the transmission to complete.
   */
-  send data/ByteArray --address/Address -> none:
+  send data/io.Data --address/Address -> none:
     send-mutex_.do:
       state_.clear-state SEND-DONE-STATE_
       espnow-send_ resource_ address.mac data
@@ -358,7 +359,9 @@ espnow-close_ resource:
   #primitive.espnow.close
 
 espnow-send_ resource mac data:
-  #primitive.espnow.send
+  #primitive.espnow.send:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      espnow-send_ resource mac bytes
 
 espnow-send-succeeded_ resource:
   #primitive.espnow.send-succeeded
