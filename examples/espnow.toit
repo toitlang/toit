@@ -24,9 +24,7 @@ send-task service/espnow.Service:
   count := 0
   while true:
     buffer := "hello $count"
-    service.send
-        buffer.to-byte-array
-        --address=espnow.BROADCAST-ADDRESS
+    service.send buffer --address=espnow.BROADCAST-ADDRESS
     print "Send datagram: \"$buffer\""
 
     count++
