@@ -432,7 +432,7 @@ PRIMITIVE(update_times) {
   times[0].tv_nsec = atime_nsec;
   times[1].tv_sec = mtime_sec;
   times[1].tv_nsec = mtime_nsec;
-  if (utimensat(AT_FDCWD, path, times, 0) == -1) {
+  if (utimensat(AT_FDCWD, path, times, 0) != 0) {
     // Not really an "open" call, but the errors are the same.
     return return_open_error(process, errno);
   }

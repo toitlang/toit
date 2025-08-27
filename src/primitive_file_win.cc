@@ -354,8 +354,8 @@ int64 low_high_to_int64(DWORD high, DWORD low) {
 #define WINDOWS_TICKS_PER_SECOND 10000000
 #define SEC_TO_UNIX_EPOCH 11644473600LL
 
-Object* time_stamp(Process* process, LARGE_INTEGER* time) {
-  int64 windows_ticks = low_high_to_int64(time->HighPart, time->LowPart);
+Object* time_stamp(Process* process, const LARGE_INTEGER& time) {
+  int64 windows_ticks = low_high_to_int64(time.HighPart, time.LowPart);
   int64 unix_ticks = (windows_ticks - SEC_TO_UNIX_EPOCH * WINDOWS_TICKS_PER_SECOND) * 100;
   return Primitive::integer(unix_ticks, process);
 }
@@ -436,13 +436,13 @@ PRIMITIVE(stat) {
   success = GetFileInformationByHandleEx(handle, FileBasicInfo, &basic_info, sizeof(basic_info));
   if (!success) WINDOWS_ERROR;
 
-  Object* atime = time_stamp(process, &basic_info.LastAccessTime);
+  Object* atime = time_stamp(process, basic_info.LastAccessTime);
   if (Primitive::is_error(atime)) return atime;
 
-  Object* mtime = time_stamp(process, &basic_info.LastWriteTime);
+  Object* mtime = time_stamp(process, basic_info.LastWriteTime);
   if (Primitive::is_error(mtime)) return mtime;
 
-  Object* ctime = time_stamp(process, &basic_info.ChangeTime);
+  Object* ctime = time_stamp(process, basic_info.ChangeTime);
   if (Primitive::is_error(ctime)) return ctime;
 
   array->at_put(FILE_ST_DEV, device_id);
