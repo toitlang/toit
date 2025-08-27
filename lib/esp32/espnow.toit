@@ -101,7 +101,7 @@ This rate might not be supported by all devices.
 RATE-MCS8-LGI ::= 0x18
 /**
 MCS9 with long GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate, 108.3 Mbps.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate, 108.3 Mbps.
 This rate might not be supported by all devices.
 */
 RATE-MCS9-LGI ::= 0x19
@@ -163,13 +163,13 @@ MCS7 with short GI.
 RATE-MCS7-SGI ::= 0x21
 /**
 MCS8 with short GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate.
 This rate might not be supported by all devices.
 */
 RATE-MCS8-SGI ::= 0x22
 /**
 MCS9 with short GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate.
 This rate might not be supported by all devices.
 */
 RATE-MCS9-SGI ::= 0x23
@@ -281,7 +281,7 @@ class Service:
     with a key. Any communication with peers that don't have their own local
     keys is unencrypted even if a master $key is provided.
 
-  The $channel parameter must be a valid Wi-Fi channel number.
+  The $channel parameter must be a valid WiFi channel number.
   */
   constructor --key/Key?=null --rate/int=RATE-1M-L --.channel=6:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
