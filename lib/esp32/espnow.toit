@@ -229,14 +229,26 @@ class Service:
   channel/int
 
   /**
+  Deprecated. Use $(Service.constructor) instead.
+  */
+  constructor.station --key/Key?=null --rate/int=RATE-1M-L --channel/int=6:
+    return Service --key=key --rate=rate --channel=channel
+
+  /**
   Constructs a new ESP-Now service in station mode.
 
   The $rate parameter, if provided, must be a valid ESP-Now rate constant. See
     $RATE-1M-L for example. By default, the rate is set to 1Mbps.
 
+  The master $key, if provided, encrypts the local keys that are used for
+    direct communication given with $add-peer. If none is provided, a default
+    one is used. Note that this master $key is only used if the peer is added
+    with a key. Any communication with peers that don't have their own local
+    keys is unencrypted even if a master $key is provided.
+
   The $channel parameter must be a valid Wi-Fi channel number.
   */
-  constructor.station --key/Key?=null --rate/int=RATE-1M-L --.channel=6:
+  constructor --key/Key?=null --rate/int=RATE-1M-L --.channel=6:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
 
     key-data := key ? key.data : #[]
@@ -297,6 +309,13 @@ class Service:
   Adds a peer with the given $address, $key, $mode and $rate.
 
   The channel of the peer is set to the channel of the service.
+
+  If a local $key is provided, it is used for any communication with that peer.
+    That same $key is also encrypted with the master $key provided during
+    construction. This means that both the master $key and the local $key must be
+    the same on both sides of the communication. If no local $key is provided,
+    communication with that peer is unencrypted, even if a master $key was
+    provided during construction.
 
   The $mode must be one of $MODE-LR, $MODE-11B, $MODE-11G, $MODE-11A,
     $MODE-HT20, $MODE-HT40, $MODE-HE20, or $MODE-VHT20.
