@@ -211,7 +211,8 @@ class Address:
   Parses the given $str as MAC address.
 
   The $on-error block is called when the $str is not a valid MAC address. The
-    result of the block is then returned.
+    result of the block is then returned. As such, it must be of type $Address,
+    or null.
   */
   static parse str/string [--on-error] -> Address?:
     parts := str.split ":"
