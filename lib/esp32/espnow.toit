@@ -203,8 +203,41 @@ class Address:
     if mac.size != 6:
         throw "ESP-Now MAC address length must be 6 bytes"
 
+  /** Variant of $(parse str [--on-error]) that throws on errors. */
+  static parse str/string -> Address:
+    return Address.parse str --on-error=: throw it
+
+  /**
+  Parses the given $str as MAC address.
+
+  The $on-error block is called when the $str is not a valid MAC address. The
+    result of the block is then returned.
+  */
+  static parse str/string [--on-error] -> Address?:
+    parts := str.split ":"
+    if parts.size != 6: return on-error.call "INVALID_ARGUMENT"
+    mac := ByteArray 6
+    6.repeat: | i/int |
+      part := parts[i]
+      if part.size != 2: return on-error.call "INVALID_ARGUMENT"
+      byte := int.parse part --on-error=: return on-error.call it
+      if not byte or not 0 <= byte < 256:
+        return on-error.call "INVALID_ARGUMENT"
+      mac[i] = byte
+    return Address mac
+
   stringify -> string:
+    return to-string
+
+  to-string -> string:
     return "$(%02x mac[0]):$(%02x mac[1]):$(%02x mac[2]):$(%02x mac[3]):$(%02x mac[4]):$(%02x mac[5])"
+
+  operator == other -> bool:
+    if other is not Address: return false
+    return mac == other.mac
+
+  hash-code -> int:
+    return mac.hash-code
 
 class Key:
   data/ByteArray
