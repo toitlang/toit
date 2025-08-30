@@ -6,6 +6,87 @@ import io
 import monitor
 import monitor show ResourceState_
 
+/**
+ESP-NOW communication for ESP32 devices.
+
+ESP-NOW is a proprietary protocol developed by Espressif for
+  low-power, connectionless communication between ESP32 devices.
+
+Devices can either communicate by broadcasting messages to all
+  devices in range, or by sending messages to specific devices using
+  their MAC address. In both cases, a key can be used to encrypt the
+  messages.
+
+# Limitations
+
+Messages are at most 1470 bytes long. For broadcast messages there
+  is no guarantee that messages are correctly delivered. For direct
+  messages, the implementation ensures that the PHY layer has
+  received the message, but there is no guarantee that the message
+  is processed by the receiving device.
+
+ESP-NOW only supports 20 peers, although one of them can be the
+  broadcast address, which represents all devices in range.
+
+By default only 7 keys can be used. This can be changed in the
+  sdkconfig, but that requires building a custom envelope.
+
+In theory, ESP-NOW can run at the same times as Wifi, but this library
+  currently does not support this.
+
+# Examples
+
+Broadcasting an unencrypted message:
+
+```
+service := espnow.Service
+service.add-peer espnow.BROADCAST-ADDRESS
+service.send "hello world"
+    --address=espnow.BROADCAST-ADDRESS
+service.close
+```
+
+Receiving a message:
+
+```
+  service := espnow.Service
+  message := service.receive  // Blocks until a message is received.
+  sender := message.address
+  data := message.data.to-string
+  print "Received datagram from $sender: $data"
+  service.close
+```
+
+Sending to a peer with encryption:
+```
+// On both sides, create a key for the peer.
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the receiver.
+peer := espnow.Address.parse "aa:bb:cc:dd:ee:ff"
+
+service := espnow.Service
+service.add-peer peer --key=key
+service.send "hello world" --address=peer
+service.close
+```
+
+Receiving from a peer with encryption:
+```
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the sender.
+peer := espnow.Address.parse "ff:ee:dd:cc:bb:aa"
+
+service := espnow.Service
+service.add-peer peer --key=key
+
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
+```
+*/
+
 BROADCAST-ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
 
 /** 1 Mbps with long preamble. */
