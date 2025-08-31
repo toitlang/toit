@@ -363,14 +363,40 @@ class Service:
     keys is unencrypted even if a master $key is provided.
 
   The $channel parameter must be a valid WiFi channel number.
+
+  # Advanced
+  The $buffer-byte-size parameter sets the size of the internal buffer used
+    for receiving messages. It is used to store incoming messages until they
+    are handled by $receive. If a message is received that is larger than
+    the remaining space in the buffer, previous unhandled messages are dropped.
+    If a message is larger than the entire buffer, it is dropped.
+    By default the buffer size is 2048 bytes.
+
+  The $queue-size parameter sets the size of the internal queue used
+    for receiving messages. It is used to queue incoming messages until they
+    are handled by $receive. If a message is received when the queue is full,
+    the oldest message in the queue is dropped. By default the queue size is 8.
+
+  By dropping old messages, the service ensures that the most recent messages
+    are always received, at the cost of potentially losing some older ones.
+    This is especially important when starting to $receive, as there might be
+    unimportant messages already in the buffer that were sent before $receive
+    was called.
   */
-  constructor --key/Key?=null --rate/int=RATE-1M-L --.channel=6:
+  constructor
+      --key/Key?=null
+      --rate/int=RATE-1M-L
+      --.channel=6
+      --buffer-byte-size/int=2048
+      --queue-size/int=8:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
+    if buffer-byte-size < 1 or buffer-byte-size % 128 != 0:
+      throw "INVALID_ARGUMENT"
 
     key-data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     rate_ = rate
-    resource_ = espnow-create_ resource-group_ key-data channel
+    resource_ = espnow-create_ resource-group_ key-data channel buffer-byte-size queue-size
     state_ = ResourceState_ resource-group_ resource_
 
   close -> none:
@@ -467,7 +493,7 @@ SEND-DONE-STATE_ ::= 1 << 1
 espnow-init_:
   #primitive.espnow.init
 
-espnow-create_ group pmk channel:
+espnow-create_ group pmk channel buffer-byte-size queue-size:
   #primitive.espnow.create
 
 espnow-close_ resource:
