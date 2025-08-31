@@ -221,7 +221,9 @@ class Address:
     6.repeat: | i/int |
       part := parts[i]
       if part.size != 2: return on-error.call "INVALID_ARGUMENT"
-      byte := int.parse part --on-error=: return on-error.call it
+      byte := int.parse part
+          --radix=16
+          --on-error=: return on-error.call it
       if not byte or not 0 <= byte < 256:
         return on-error.call "INVALID_ARGUMENT"
       mac[i] = byte
