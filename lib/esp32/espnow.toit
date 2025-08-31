@@ -49,12 +49,12 @@ service.close
 Receiving a message:
 
 ```
-  service := espnow.Service
-  message := service.receive  // Blocks until a message is received.
-  sender := message.address
-  data := message.data.to-string
-  print "Received datagram from $sender: $data"
-  service.close
+service := espnow.Service
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
 ```
 
 Sending to a peer with encryption:
