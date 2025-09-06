@@ -221,7 +221,7 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -620,7 +620,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -672,7 +672,7 @@ jobs:
     if: needs.prereqs.outputs.DO_HW_TESTS == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -721,7 +721,7 @@ jobs:
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -1050,7 +1050,7 @@ jobs:
     if: needs.prereqs.outputs.RUN_WINDOWS_SIGN_FLOW == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v5
         with:
@@ -1143,7 +1143,7 @@ jobs:
     if: needs.prereqs.outputs.RUN_MACOS_SIGN_FLOW == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -1337,7 +1337,7 @@ jobs:
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Ssh
         env:
@@ -1398,7 +1398,7 @@ jobs:
         run: |
           rm -rf ${{ github.workspace }}/*
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # We need a more recent version of cmake than is installed globally.
       - name: Add local bin to PATH
