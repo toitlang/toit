@@ -167,7 +167,6 @@ class LocalService extends Resource_ implements Attribute:
 
   constructor .peripheral-manager .uuid:
     if peripheral-manager.deployed_: throw "Peripheral is already deployed"
-    if (peripheral-manager.services_.any: it.uuid == uuid): throw "Service already exists"
     resource := ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_
     super resource
 
@@ -384,7 +383,6 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   constructor .service .uuid .properties .permissions value/io.Data? .read-timeout-ms_:
     if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
-    if (service.characteristics_.any: it.uuid == uuid): throw "Characteristic already exists"
     resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value
     super resource
 
@@ -556,6 +554,18 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     descriptor := LocalDescriptor this uuid properties permissions value
     descriptors_.add descriptor
     return descriptor
+
+  /**
+  Adds a read-only descriptor to this characteristic.
+  $uuid is the uuid of the descriptor
+  If $secure is specified, the descriptor requires encryption.
+  The peripheral must not yet be deployed.
+  */
+  add-descriptor uuid/BleUuid --value/io.Data --secure/bool=false -> LocalDescriptor:
+    return add-descriptor uuid
+        --properties=CHARACTERISTIC-PROPERTY-READ | CHARACTERISTIC-PROPERTY-WRITE
+        --permissions=(secure ? CHARACTERISTIC-PERMISSION-READ-ENCRYPTED : CHARACTERISTIC-PERMISSION-READ)
+        --value=value
 
   /**
   The handle of the characteristic.
