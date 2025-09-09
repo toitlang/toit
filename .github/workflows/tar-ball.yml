@@ -114,7 +114,7 @@ jobs:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
 
