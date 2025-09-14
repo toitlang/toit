@@ -18,6 +18,8 @@ test:
 
   2.repeat:
     measurements := driver.read
+    // Make sure we don't crash if we read too fast.
+    measurements = driver.read
     print measurements
     expect 12 < measurements.temperature < 35
     expect 15 < measurements.humidity < 80
