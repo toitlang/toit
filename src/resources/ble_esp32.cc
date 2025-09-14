@@ -723,6 +723,10 @@ class BleServiceResource:
       const BleCallbackScope* scope,
       const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
       uint16 value_handle);
+  BleCharacteristicResource* create_characteristic(
+      const BleCallbackScope* scope,
+      const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
+      uint16 value_handle);
 
   ble_uuid_any_t& uuid() { return uuid_; }
   ble_uuid_t* ptr_uuid() { return &uuid_.u; }
@@ -942,6 +946,8 @@ class ServiceContainer : public BleCallbackResource {
   BleServiceResource* get_service(const ble_uuid_any_t& uuid);
   BleServiceResource* get_or_create_service(const BleCallbackScope* scope,
                                             const ble_uuid_any_t& uuid, uint16 start, uint16 end);
+  BleServiceResource* create_service(const BleCallbackScope* scope, const ble_uuid_any_t& uuid,
+                                     uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
   /// Clears services that have not yet been returned to the user.
@@ -1581,14 +1587,21 @@ template<typename T>
 BleServiceResource*
 ServiceContainer<T>::get_or_create_service(const BleCallbackScope* scope,
                                            const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
-  auto service = get_service(uuid);
-  if (service) {
-    if (service->start_handle() != start || service->end_handle() != end) {
-      ESP_LOGW("BLE", "Service changed handles");
+  for (auto service : services_) {
+    if (uuid_equals(uuid, service->uuid()) &&
+        service->start_handle() == start &&
+        service->end_handle() == end) {
+      return service;
     }
-    return service;
   }
-  service = _new BleServiceResource(group(), type(), uuid, start,end);
+  return create_service(scope, uuid, start, end);
+}
+
+template<typename T>
+BleServiceResource*
+ServiceContainer<T>::create_service(const BleCallbackScope* scope,
+                                    const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
+  auto service = _new BleServiceResource(group(), type(), uuid, start,end);
   if (!service && scope) {
     // Since this method is called from the BLE event handler and there is no
     // toit code monitoring the interaction, we resort to calling gc by hand to
@@ -1656,15 +1669,24 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic(
     const BleCallbackScope* scope,
     const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
     uint16 value_handle) {
-  auto characteristic = get_characteristic(uuid);
-  if (characteristic != null ) {
-    if (characteristic->properties() != properties ||
-        characteristic->definition_handle() != def_handle ||
-        characteristic->handle() != value_handle) {
-      ESP_LOGW("BLE", "Characteristic changed");
+  for (auto characteristic : characteristics_) {
+    if (uuid_equals(uuid, characteristic->uuid()) && characteristic->handle() == value_handle) {
+      if (characteristic->properties() != properties ||
+          characteristic->definition_handle() != def_handle) {
+        ESP_LOGW("BLE", "Characteristic changed");
+      }
+      return characteristic;
     }
   }
-  characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
+
+  return create_characteristic(scope, uuid, properties, def_handle, value_handle);
+}
+
+BleCharacteristicResource* BleServiceResource::create_characteristic(
+    const BleCallbackScope* scope,
+    const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
+    uint16 value_handle) {
+  auto characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
   if (!characteristic && scope) {
     // Since this method is called from the BLE event handler and there is no
     // toit code monitoring the interaction, we resort to calling gc by hand to
@@ -2988,13 +3010,10 @@ PRIMITIVE(add_service) {
 
   ble_uuid_any_t ble_uuid = uuid_from_blob(uuid);
 
-  auto existing = peripheral_manager->get_service(ble_uuid);
-  if (existing) FAIL(INVALID_ARGUMENT);
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  BleServiceResource* service_resource = peripheral_manager->get_or_create_service(null, ble_uuid, 0, 0);
+  BleServiceResource* service_resource = peripheral_manager->create_service(null, ble_uuid, 0, 0);
   if (!service_resource) FAIL(MALLOC_FAILED);
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all services are automatically returned. It is more consistent this way, though.
@@ -3017,9 +3036,6 @@ PRIMITIVE(add_characteristic) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
-
-  auto existing = service_resource->get_characteristic(ble_uuid);
-  if (existing) FAIL(INVALID_ARGUMENT);
 
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ.
@@ -3056,7 +3072,7 @@ PRIMITIVE(add_characteristic) {
   Object* error = object_to_mbuf(process, value, &om);
   if (error) return error;
 
-  BleCharacteristicResource* characteristic = service_resource->get_or_create_characteristic(null, ble_uuid, flags, 0, 0);
+  BleCharacteristicResource* characteristic = service_resource->create_characteristic(null, ble_uuid, flags, 0, 0);
 
   if (!characteristic) {
     if (om != null) os_mbuf_free(om);
