@@ -3302,6 +3302,12 @@ PRIMITIVE(notify_characteristics_value) {
     err = ble_gattc_indicate_custom(subscription->conn_handle(), characteristic->handle(), om);
   }
 
+  if (err == BLE_HS_ENOMEM) {
+    // Resource exhaustion.
+    // This typically happens when notifying/indicating too fast without flushing.
+    // Use the quota-exceeded to signal that the notify should be retried.
+    FAIL(QUOTA_EXCEEDED);
+  }
   if (err != BLE_ERR_SUCCESS && err != BLE_HS_ENOTCONN) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_notify_custom() or ble_gattc_indicate_custom()
