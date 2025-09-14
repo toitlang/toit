@@ -46,8 +46,8 @@ import log
 class Connectivity:
   logger_/log.Logger
 
-  constructor --logger/log.Logger=(log.default.with-name "connectivity"):
-    logger_ = logger
+  constructor --logger/log.Logger=log.default:
+    logger_ = logger.with-name "connectivity"
 ```
 */
 
