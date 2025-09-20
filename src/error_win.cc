@@ -60,7 +60,8 @@ Object* windows_error(Process* process, DWORD error_number) {
     FAIL(INVALID_ARGUMENT);
   }
   if (err == ERROR_FILE_EXISTS ||
-      err == ERROR_ALREADY_ASSIGNED) {
+      err == ERROR_ALREADY_ASSIGNED ||
+      err == ERROR_ALREADY_EXISTS) {
     FAIL(ALREADY_EXISTS);
   }
   if (err == ERROR_NO_DATA) {
