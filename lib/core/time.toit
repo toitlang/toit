@@ -858,7 +858,10 @@ class Time implements Comparable:
   For example "2019-12-18T06:22:48Z".
   Leap seconds are not supported, and lower case 't' and 'z' are not allowed.
 
-  Calls $on-error if there is an error parsing the string. Then rturns the
+  Contrary to RFC 3339, this function allows to provide the time without
+    seconds, like "2019-12-18T06:22Z". In this case, the seconds are set to 0.
+
+  Calls $on-error if there is an error parsing the string. Then returns the
     result of $on-error.
   */
   static parse str/string [--on-error] -> Time:
@@ -884,17 +887,24 @@ class Time implements Comparable:
           zone-minutes += str-to-int.call it
         zone-minutes = plus > 0 ? -zone-minutes : zone-minutes
         str = str[..cut]
-    parts ::= str.split "T"
-    if parts.size != 2: return on-error.call
+    parts := str.split "T"
+    if parts.size != 2:
+      return on-error.call
     date-parts ::= (parts[0].split "-").map str-to-int
     if date-parts.size != 3: return on-error.call
     time-string-parts ::= parts[1].split ":"
+    if time-string-parts.size == 2:
+      // We allow missing seconds.
+      time-string-parts.add "0"
     if time-string-parts.size != 3: return on-error.call
     if time-string-parts[2].contains ".":
       splits := time-string-parts[2].split "."
       if splits.size != 2: return on-error.call
       time-string-parts[2] = splits[0]
-      time-string-parts.add "$splits[1]000000000"[..9]
+      ns-string/string := splits[1]
+      if ns-string.size > 9: return on-error.call
+      ns-string = ns-string.pad --right 9 '0'
+      time-string-parts.add ns-string
     else:
       time-string-parts.add "0"
     time-parts := time-string-parts.map str-to-int
