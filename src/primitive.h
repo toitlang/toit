@@ -701,6 +701,7 @@ namespace toit {
   PRIMITIVE(realpath, 1)                     \
   PRIMITIVE(cwd, 0)                          \
   PRIMITIVE(read_file_content_posix, 2)      \
+  PRIMITIVE(update_times, 5)                 \
 
 #define MODULE_PIPE(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
