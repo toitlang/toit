@@ -84,7 +84,7 @@ main args/List:
         cli.Option "output" --short-name="o" --hidden
       ]
       --run=:: | invocation/cli.Invocation |
-        invocation.cli.ui.emit --result system.app-sdk-version
+        invocation.cli.ui.emit --result system.vm-sdk-version
   root-command.add version-command
 
   compile-analyze-run-options := [
