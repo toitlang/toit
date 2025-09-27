@@ -4,6 +4,7 @@
 
 import esp32.espnow
 import expect show *
+import io
 
 import .test
 import .variants
@@ -53,7 +54,7 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   service.add-peer espnow.BROADCAST-ADDRESS
 
@@ -74,7 +75,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   CONFIGURATIONS.do: | config/List |
     sleep --ms=200
@@ -85,10 +86,36 @@ test-board2:
         --rate=rate
         --mode=mode
 
-    TEST-DATA.do:
-      service.send
-          it.to-byte-array
-          --address=espnow.BROADCAST-ADDRESS
-      print it
+    count := 0
+    TEST-DATA.do: | str/string |
+      count++
+      // Test byte-array, string, and custom data type.
+      data/io.Data := ?
+      if count == 1:
+        data = FakeData str
+      else if count == 2:
+        data = str.to-byte-array
+      else:
+        data = str
+
+      service.send data --address=espnow.BROADCAST-ADDRESS
+      print str
 
     service.remove-peer espnow.BROADCAST-ADDRESS
+
+class FakeData implements io.Data:
+  data_ / io.Data
+
+  constructor .data_:
+
+  byte-size -> int:
+    return data_.byte-size
+
+  byte-at index/int -> int:
+    return data_.byte-at index
+
+  byte-slice from/int to/int -> FakeData:
+    return FakeData (data_.byte-slice from to)
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    data_.write-to-byte-array byte-array from to --at=at
