@@ -69,6 +69,7 @@ Aborted
 Error: Multiple packages found for 'b/c/d/ambiguous'
 ==================
 // Will still yield an error (because we don't have the package),
+// but it's a different one
 ==================
 Aborted
 [pkg, install, a/b/c/d/ambiguous]
