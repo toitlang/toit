@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import certificate-roots
 import cli.test show TestUi
 import encoding.json
 import expect show *
@@ -189,6 +190,7 @@ test-registries source-dir/string:
   expect-equals "AMBIGUOUS" e
 
 main:
+  certificate-roots.install-all-trusted-roots
   source-location := system.program-path
   source-dir := fs.dirname source-location
   directory.chdir source-dir
@@ -197,4 +199,3 @@ main:
     test-git
     test-local
     test-registries source-dir
-
