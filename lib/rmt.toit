@@ -14,6 +14,15 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 
 $Signals represent a collection of signals to be sent by the RMT controller.
 
+# Hardware differences
+
+The ESP32 has 8 RMT channels, each of which can be configured for input or output.
+The ESP32C3 and ESP32C6 each have 2 TX and 2 RX channels.
+The ESP32S2 and ESP32S3 each have 4 TX and 4 RX channels.
+
+The number of bytes per memory block is 256 on the ESP32 and ESP32S2. It is
+  192 on the ESP32C3, ESP32C6, and ESP32S3.
+
 # Examples
 
 ## Pulse

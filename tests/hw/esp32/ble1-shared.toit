@@ -116,6 +116,7 @@ run-peripheral-test --iteration/int:
       notify2.set-value chunk
   task --background=is-background::
     indicate2.handle-write-request: | chunk/ByteArray |
+      notify2.set-value null  // Clear the value.
       indicate2.set-value chunk
 
   notify2.write #[0x01, 0x02]
@@ -266,10 +267,12 @@ run-central-test --iteration/int:
   expect-equals #[0x03, 0x04] indicate2.read
 
   notify2.write #[0x05, 0x06]
-  indicate2.write #[0x07, 0x08]
-
   expect-equals #[0x05, 0x06] notify2.read
+
+  indicate2.write #[0x07, 0x08]
   expect-equals #[0x07, 0x08] indicate2.read
+  // The notify2 value should be cleared.
+  expect-equals #[] notify2.read
 
   expect-throw "OUT_OF_RANGE":
     // Check that the MTU is enforced.
