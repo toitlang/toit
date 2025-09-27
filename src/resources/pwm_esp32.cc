@@ -215,7 +215,10 @@ PRIMITIVE(start) {
     .timer_sel = resource_group->timer(),
     .duty = compute_duty_factor(resource_group, factor),
     .hpoint = 0,
-    .flags{},
+    .sleep_mode = LEDC_SLEEP_MODE_NO_ALIVE_NO_PD,
+    .flags = {
+      .output_invert = false,
+    },
   };
   esp_err_t err = ledc_channel_config(&config);
   if (err != ESP_OK) {
