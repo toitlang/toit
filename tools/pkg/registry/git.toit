@@ -13,12 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import ar show ArReader ArWriter ArFile
 import encoding.yaml
 import fs
 import host.file
+import io
 
 import cli
-import cli.cache show DirectoryStore
+import cli.cache show FileStore
 
 import ..git
 import ..file-system-view
@@ -27,8 +29,10 @@ import ..semantic-version
 import .registry
 
 class GitRegistry extends Registry:
-  static REGISTRY-PACK-FILE_ ::= "registry.pack"
-  static HASH-FILE_ ::= "ref-hash.txt"
+  static VERSION_ ::= "1.0.0"
+  static VERSION-FILE_ ::= "VERSION"
+  static PACK-FILE_ ::= "pack"
+  static HASH-FILE_ ::= "hash"
 
   url/string
   ref-hash/string
@@ -48,42 +52,96 @@ class GitRegistry extends Registry:
     if not content_: content_ = load_
     return content_
 
-  load_ --sync/bool=false --clear-cache/bool=false -> FileSystemView:
-    key := "registry/git/$url"
+  update-cache_ -> none
+      --clear-cache/bool
+      --sync/bool
+      old-path/string?
+      store/FileStore:
     hash := ref-hash or HEAD-INDICATOR_
 
-    repository/Repository? := null
     if clear-cache:
-      cache.remove key
-    else if sync and cache.contains key:
-      repository = open-repository url
-      if hash == HEAD-INDICATOR_: hash = repository.head
-      path := cache.get-directory-path key: ui_.abort "Concurrent access to the registry cache detected."
-      current-hash := (file.read-contents (fs.join path GitRegistry.HASH-FILE_)).to-string
-      if current-hash != hash:
-        // Needs an update.
-        // Delete the old entry.
-        // TODO(florian): it would be nicer if we only deleted the old pack once we have the new one.
-        cache.remove key
+      // Act as if there was no old path, thus replacing the value.
+      old-path=null
 
-    path := cache.get-directory-path key: | store/DirectoryStore |
-      repository = repository or open-repository url
-      if hash == HEAD-INDICATOR_: hash = repository.head
-      // TODO(floitsch): when the repository gets larger (several MB), it might be faster
-      // to let the git server calculate the delta objects instead of downloading the full
-      // pack.
-      pack-data := repository.clone --binary hash
-      store.with-tmp-directory: | tmp-dir/string |
-        file.write-contents pack-data --path=(fs.join tmp-dir REGISTRY-PACK-FILE_)
-        file.write-contents "$hash" --path=(fs.join tmp-dir HASH-FILE_)
-        store.move tmp-dir
+    repository/Repository? := null
+    if old-path and file.is-file old-path:
+      current-hash := hash
+      if current-hash == HEAD-INDICATOR_:
+        repository = open-repository url
+        current-hash = repository.head
+      old-contents := file.read-contents old-path
+      old-hash/string := ?
+      reader := ArReader (io.Reader old-contents)
+      hash-file := reader.find HASH-FILE_
+      if not hash-file:
+        ui_.emit --warning "Invalid cache entry for registry $name at $old-path (missing $HASH-FILE_)"
+      else:
+        old-hash = hash-file.contents.to-string
+        if old-hash == current-hash:
+          // No need to update.
+          return
 
-    pack-path := fs.join path REGISTRY-PACK-FILE_
-    content := file.read-contents pack-path
-    pack-hash := (file.read-contents (fs.join path GitRegistry.HASH-FILE_)).to-string
+    if not repository: repository = open-repository url
+    if hash == HEAD-INDICATOR_: hash = repository.head
+    ui_.emit --debug "Updating cache for registry $name at $url ($hash)"
 
-    pack := Pack content pack-hash
-    return pack.content
+    // TODO(floitsch): when the repository gets larger (several MB), it might be faster
+    // to let the git server calculate the delta objects instead of downloading the full
+    // pack.
+    pack-data := repository.clone --binary hash
+    buffer := io.Buffer
+    ar-writer := ArWriter buffer
+    ar-writer.add VERSION-FILE_ VERSION_
+    ar-writer.add HASH-FILE_ hash
+    ar-writer.add PACK-FILE_ pack-data
+    store.save buffer.bytes
+
+  load_ --sync/bool=false --clear-cache/bool=false -> FileSystemView:
+    key := "registry/git/$url"
+
+    ar-contents/ByteArray := ?
+    if sync or clear-cache:
+      ar-contents = cache.update key: | old-path/string store/FileStore |
+        update-cache_ --clear-cache=clear-cache --sync=sync old-path store
+    else:
+      // By just doing a 'get' we avoid taking a file lock on the cache.
+      ar-contents = cache.get key: | store/FileStore |
+        update-cache_ --clear-cache=clear-cache --sync=sync null store
+
+    ar-reader := ArReader (io.Reader ar-contents)
+    has-checked-version := false
+
+    hash/string? := null
+    while true:
+      entry := ar-reader.next
+      if not entry:
+        ui_.emit --warning "Invalid cache entry for registry $name at $key"
+        return load_ --clear-cache
+
+      if entry.name == VERSION-FILE_:
+        version-string := entry.contents.to-string
+        if version-string != VERSION_:
+          ui_.emit --info "Updating cache for registry $name at $key from version $version-string to $VERSION_"
+          return load_ --clear-cache
+        has-checked-version = true
+
+      if not has-checked-version:
+        ui_.emit --warning "Invalid cache entry for registry $name at $key (missing $VERSION-FILE_)"
+        return load_ --clear-cache
+
+      if entry.name == HASH-FILE_:
+        hash = entry.contents.to-string
+        continue
+
+      if not hash:
+        ui_.emit --warning "Invalid cache entry for registry $name at $key (missing $HASH-FILE_)"
+        return load_ --clear-cache
+
+      if entry.name == PACK-FILE_:
+        pack := Pack entry.contents hash
+        return pack.content
+
+      ui_.emit --warning "Ignoring unknown cache entry for registry $name at $key: $entry.name"
 
   sync --clear-cache/bool -> FileSystemView:
     content_ = load_ --sync --clear-cache=clear-cache
