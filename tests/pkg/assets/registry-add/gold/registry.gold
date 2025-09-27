@@ -28,6 +28,7 @@ test-reg (<[*WORKING-DIR*]>/registry (local))
   sub - 3.1.4
 ==================
 // Note that the second registry is added with a relative path
+// But that the list below shows it with an absolute path
 ==================
 OK
 [pkg, registry, add, --local, test-reg2, registry2]
