@@ -199,4 +199,3 @@ main:
     test-git
     test-local
     test-registries source-dir
-
