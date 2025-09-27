@@ -410,10 +410,12 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   This value is returned when a client reads the characteristic. The $handle-read-request
     function takes precedence over this value.
 
+  Clears the stored value if the given $value is null.
+
   In most cases $write is sufficient and easier to use. The main reason to use this function
     is to set a value without sending out any notification.
   */
-  set-value value/io.Data:
+  set-value value/io.Data?:
     ble-set-value_ resource_ value
 
   /**
