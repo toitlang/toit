@@ -124,6 +124,7 @@ class GitRegistry extends Registry:
           ui_.emit --info "Updating cache for registry $name at $key from version $version-string to $VERSION_"
           return load_ --clear-cache
         has-checked-version = true
+        continue
 
       if not has-checked-version:
         ui_.emit --warning "Invalid cache entry for registry $name at $key (missing $VERSION-FILE_)"

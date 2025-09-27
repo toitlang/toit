@@ -15,6 +15,7 @@ import host.pipe
 import host.os
 import http
 import io
+import log
 import monitor
 import net
 import net.tcp
@@ -111,7 +112,7 @@ class GoldTester:
 
   registry-cache-path name/string -> string:
     with-registry-cache_ name: | cache/Cache key/string |
-      return cache.get-directory-path key: unreachable
+      return cache.get-file-path key: unreachable
     unreachable
 
   with-registry-cache_ name/string [block]:
@@ -203,6 +204,7 @@ class GoldTester:
           ui-level = Ui.VERBOSE-LEVEL
           pkg-args.remove "--verbose"
         test-ui := TestUi --quiet=false --level=ui-level
+        log.set-default test-ui.logger
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
           pkg.main --cli=cli pkg-args

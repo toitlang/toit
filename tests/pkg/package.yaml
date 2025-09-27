@@ -1,10 +1,12 @@
 dependencies:
+  ar:
+    url: github.com/toitlang/pkg-ar
+    version: ^1.4.1
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
     version: ^1.11.0
   cli:
-    url: github.com/toitlang/pkg-cli
-    version: ^2.5.0
+    path: ../../../pkg-cli
   fs:
     url: github.com/toitlang/pkg-fs
     version: ^2.3.1
