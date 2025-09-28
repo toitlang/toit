@@ -31,7 +31,7 @@ interface Package:
   prefixes -> Map
   // TODO(florian): we should always have a name. For local packages we would extract it from the folder name.
   name -> string?
-  specification -> Specification
+  specification --fs-lock-token/Object -> Specification
 
   constructor.from-map name/string? map/Map project-specification/ProjectSpecification:
     map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
@@ -47,7 +47,8 @@ interface RepositoryPackage extends Package:
   ref-hash -> string
 
   cached-repository-dir -> string
-  ensure-downloaded -> none
+  is-downloaded -> bool
+  ensure-downloaded --fs-lock-token/Object -> none
 
 
 interface LocalPackage extends Package:
@@ -65,7 +66,7 @@ abstract class PackageBase implements Package:
 
   constructor .name .prefixes .project-specification:
 
-  abstract specification -> Specification
+  abstract specification --fs-lock-token/Object -> Specification
 
   cached-repository-dir url/string version/SemanticVersion:
     return project-specification.project.cached-repository-dir_ url version
@@ -95,12 +96,18 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
     map["version"] = version.stringify
     map["hash"] = ref-hash
 
-  specification -> Specification:
-    ensure-downloaded
+  specification --fs-lock-token/Object -> Specification:
+    ensure-downloaded --fs-lock-token=fs-lock-token
     return project-specification.project.load-package-specification url version
 
-  ensure-downloaded:
-    project-specification.project.ensure-downloaded url version --hash=ref-hash
+  is-downloaded -> bool:
+    return project-specification.project.is-downloaded url version --hash=ref-hash
+
+  ensure-downloaded --fs-lock-token/Object:
+    // TODO(floitsch): don't read the contents every time.
+    project-specification.project.ensure-downloaded url version
+        --hash=ref-hash
+        --fs-lock-token=fs-lock-token
 
   cached-repository-dir -> string:
     return cached-repository-dir url version
@@ -115,7 +122,7 @@ class LoadedLocalPackage extends PackageBase implements LocalPackage:
   enrich-map map/Map:
     map["path"] = path
 
-  specification -> Specification:
+  specification --fs-lock-token/Object -> Specification:
     return project-specification.project.load-local-specification path
 
 
@@ -194,9 +201,14 @@ class LockFile:
       sorted[LockFile.PACKAGES-KEY_] = sorted-deep-copy_ sorted[LockFile.PACKAGES-KEY_]
     file.write-contents --path=file-name (yaml.encode sorted)
 
-  install:
+  is-downloaded -> bool:
+    repository-packages := packages.filter : it is RepositoryPackage
+    return repository-packages.every: | package/RepositoryPackage |
+      package.is-downloaded
+
+  install --fs-lock-token/Object:
     (packages.filter : it is RepositoryPackage).do: | package/RepositoryPackage |
-      package.ensure-downloaded
+      package.ensure-downloaded --fs-lock-token=fs-lock-token
 
   update --remove-prefix/string:
     name := prefixes[remove-prefix]

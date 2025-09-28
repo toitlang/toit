@@ -6,6 +6,7 @@ prefixes:
   fs: pkg-fs
   host: toitlang/pkg-host
   http: pkg-http
+  lockfile: toit-lockfile
 packages:
   ../pkg-host:
     path: ../../../pkg-host
