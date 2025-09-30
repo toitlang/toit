@@ -206,7 +206,7 @@ static QueueHandle_t event_queue;
 static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) {
   tx_status = status;
   auto event = EspNowEvent::SEND_DONE;
-  auto ret = xQueueSendFromISR(event_queue, &event, 0);
+  auto ret = xQueueSend(event_queue, &event, 0);
   if (ret != pdTRUE) {
     // This should never happen as the event_queue has always space for one send-done.
     ESP_LOGE("ESPNow", "Failed to enqueue send-done event");
@@ -241,7 +241,7 @@ static void espnow_recv_cb(const esp_now_recv_info_t* esp_now_info, const uint8*
   static_assert(kEventQueueSize >= 3, "Unexpected event queue size");
   if (uxQueueSpacesAvailable(event_queue) > 1) {
     auto event = EspNowEvent::NEW_DATA_AVAILABLE;
-    portBASE_TYPE ret = xQueueSendFromISR(event_queue, &event, 0);
+    portBASE_TYPE ret = xQueueSend(event_queue, &event, 0);
     if (ret != pdTRUE) {
       ESP_LOGE("ESPNow", "Failed to enqueue receive event");
     }
@@ -572,21 +572,19 @@ PRIMITIVE(receive) {
     }
 
     bool success = datagram_pool->consume(peeked, ByteArray::Bytes(data).address());
-    if (!success) {
-      // The oldest datagram was discarded to make space for a new one.
-      peeked = datagram_pool->peek();
-      if (!peeked.is_valid()) FATAL("Expected valid datagram");
-      continue;
+    if (success) {
+      memcpy(ByteArray::Bytes(mac).address(), peeked.mac, 6);
+
+      result->at_put(0, mac);
+      result->at_put(1, data);
+
+      return result;
     }
-    break;
+
+    // The oldest datagram was discarded to make space for a new one.
+    peeked = datagram_pool->peek();
+    if (!peeked.is_valid()) FATAL("Expected valid datagram");
   }
-
-  memcpy(ByteArray::Bytes(mac).address(), peeked.mac, 6);
-
-  result->at_put(0, mac);
-  result->at_put(1, data);
-
-  return result;
 }
 
 PRIMITIVE(add_peer) {

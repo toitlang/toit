@@ -371,7 +371,7 @@ class Service:
     are handled by $receive. If a message is received that is larger than
     the remaining space in the buffer, previous unhandled messages are dropped.
     If a message is larger than the entire buffer, it is dropped.
-    By default the buffer size is 2048 bytes.
+    By default the buffer size is 2048 bytes. Its size must be a multiple of 128.
 
   The $queue-size parameter sets the size of the internal queue used
     for receiving messages. It is used to queue incoming messages until they
