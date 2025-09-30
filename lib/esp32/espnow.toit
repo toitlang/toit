@@ -10,7 +10,7 @@ import monitor show ResourceState_
 ESP-NOW communication for ESP32 devices.
 
 ESP-NOW is a proprietary protocol developed by Espressif for
-  low-power, connectionless communication between ESP32 devices.
+  low-power, connection-less communication between ESP32 devices.
 
 Devices can either communicate by broadcasting messages to all
   devices in range, or by sending messages to specific devices using
@@ -25,8 +25,9 @@ Messages are at most 1470 bytes long. For broadcast messages there
   received the message, but there is no guarantee that the message
   is processed by the receiving device.
 
-ESP-NOW only supports 20 peers, although one of them can be the
-  broadcast address, which represents all devices in range.
+ESP-NOW only supports 20 peers, although one peer-slot can be used
+  to communicate with all devices in range by specifying the broadcast
+  address.
 
 By default only 7 keys can be used. This can be changed in the
   sdkconfig, but that requires building a custom envelope.
