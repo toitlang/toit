@@ -556,8 +556,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     return descriptor
 
   /**
-  Adds a read-only descriptor to this characteristic.
-  $uuid is the uuid of the descriptor
+  Adds a read-only descriptor to this characteristic with the given $uuid.
   If $secure is specified, the descriptor requires encryption.
   The peripheral must not yet be deployed.
   */
