@@ -85,9 +85,10 @@ class Container extends ServiceResourceProxy:
   constructor.internal_ --handle/int --.id --.gid --on-event/Lambda? --on-stopped/Lambda?:
     on-event_ = on-event
     on-stopped_ = on-stopped
-    super _client_ handle
+    super _client_ handle --install-finalizer=(not (on-stopped or on-event))
 
   close -> none:
+    catch --trace: throw "close"
     // Make sure anyone waiting for the result now or in the future
     // knows that we got closed before getting an exit code.
     if not result_.has-value: result_.set null
