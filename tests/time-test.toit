@@ -190,7 +190,6 @@ simple-constructor-test:
 examples-test:
   EXAMPLES.do: test-time-string it
 
-
 duration-test:
   d / Duration := Duration --h=1 --m=2 --s=3 --ms=4 --us=5 --ns=6
   expect-equals 3723004005006 d.in-ns
