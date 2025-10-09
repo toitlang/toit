@@ -4,6 +4,7 @@
 
 import esp32.espnow
 import expect show *
+import io
 
 import .test
 import .variants
@@ -53,42 +54,86 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   service.add-peer espnow.BROADCAST-ADDRESS
 
   print "Listening for messages."
-  CONFIGURATIONS.size.repeat:
-    with-timeout --ms=10_000:
-      received := []
-      while true:
-        datagram := service.receive
-        message := datagram.data.to-string
-        received.add message
-        if message == END-TOKEN: break
-        print message
+  2.repeat:
+    large-message := (it == 1)
+    CONFIGURATIONS.size.repeat:
+      with-timeout --ms=10_000:
+        received := []
+        while true:
+          datagram := service.receive
+          message := datagram.data.to-string
+          received.add message
+          if large-message:
+            print "Received $message.size bytes"
+          else:
+            print message
+          if message.ends-with END-TOKEN: break
 
-      expect-equals TEST-DATA received
+        if large-message:
+          expect-equals 1 received.size
+          expected := (TEST-DATA.join "\n") * 4
+          expect-equals expected received[0]
+        else:
+          expect-equals TEST-DATA received
+  print "done"
 
 main-board2:
   run-test: test-board2
 
 test-board2:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
-  CONFIGURATIONS.do: | config/List |
-    sleep --ms=200
-    rate := config[0]
-    mode := config[1]
+  2.repeat:
+    large-message := (it == 1)
+    CONFIGURATIONS.do: | config/List |
+      sleep --ms=200
+      rate := config[0]
+      mode := config[1]
 
-    service.add-peer espnow.BROADCAST-ADDRESS
-        --rate=rate
-        --mode=mode
+      service.add-peer espnow.BROADCAST-ADDRESS
+          --rate=rate
+          --mode=mode
 
-    TEST-DATA.do:
-      service.send
-          it.to-byte-array
-          --address=espnow.BROADCAST-ADDRESS
-      print it
+      count := 0
+      if large-message:
+        data := (TEST-DATA.join "\n") * 4
+        print "Sending $data.size bytes"
+        service.send data --address=espnow.BROADCAST-ADDRESS
+      else:
+        TEST-DATA.do: | str/string |
+          count++
+          // Test byte-array, string, and custom data type.
+          data/io.Data := ?
+          if count == 1:
+            data = FakeData str
+          else if count == 2:
+            data = str.to-byte-array
+          else:
+            data = str
 
-    service.remove-peer espnow.BROADCAST-ADDRESS
+          service.send data --address=espnow.BROADCAST-ADDRESS
+          print str
+
+      service.remove-peer espnow.BROADCAST-ADDRESS
+
+class FakeData implements io.Data:
+  data_ / io.Data
+
+  constructor .data_:
+
+  byte-size -> int:
+    return data_.byte-size
+
+  byte-at index/int -> int:
+    return data_.byte-at index
+
+  byte-slice from/int to/int -> FakeData:
+    return FakeData (data_.byte-slice from to)
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    data_.write-to-byte-array byte-array from to --at=at

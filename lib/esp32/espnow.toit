@@ -2,8 +2,91 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor
 import monitor show ResourceState_
+
+/**
+ESP-NOW communication for ESP32 devices.
+
+ESP-NOW is a proprietary protocol developed by Espressif for
+  low-power, connection-less communication between ESP32 devices.
+
+Devices can either communicate by broadcasting messages to all
+  devices in range, or by sending messages to specific devices using
+  their MAC address. In both cases, a key can be used to encrypt the
+  messages.
+
+# Limitations
+
+Messages are at most 1470 bytes long. For broadcast messages there
+  is no guarantee that messages are correctly delivered. For direct
+  messages, the implementation ensures that the PHY layer has
+  received the message, but there is no guarantee that the message
+  is processed by the receiving device.
+
+ESP-NOW only supports 20 peers, although one peer-slot can be used
+  to communicate with all devices in range by specifying the broadcast
+  address.
+
+By default only 7 keys can be used. This can be changed in the
+  sdkconfig, but that requires building a custom envelope.
+
+In theory, ESP-NOW can run at the same times as Wifi, but this library
+  currently does not support this.
+
+# Examples
+
+Broadcasting an unencrypted message:
+
+```
+service := espnow.Service
+service.add-peer espnow.BROADCAST-ADDRESS
+service.send "hello world"
+    --address=espnow.BROADCAST-ADDRESS
+service.close
+```
+
+Receiving a message:
+
+```
+service := espnow.Service
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
+```
+
+Sending to a peer with encryption:
+```
+// On both sides, create a key for the peer.
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the receiver.
+peer := espnow.Address.parse "aa:bb:cc:dd:ee:ff"
+
+service := espnow.Service
+service.add-peer peer --key=key
+service.send "hello world" --address=peer
+service.close
+```
+
+Receiving from a peer with encryption:
+```
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the sender.
+peer := espnow.Address.parse "ff:ee:dd:cc:bb:aa"
+
+service := espnow.Service
+service.add-peer peer --key=key
+
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
+```
+*/
 
 BROADCAST-ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
 
@@ -100,7 +183,7 @@ This rate might not be supported by all devices.
 RATE-MCS8-LGI ::= 0x18
 /**
 MCS9 with long GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate, 108.3 Mbps.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate, 108.3 Mbps.
 This rate might not be supported by all devices.
 */
 RATE-MCS9-LGI ::= 0x19
@@ -162,13 +245,13 @@ MCS7 with short GI.
 RATE-MCS7-SGI ::= 0x21
 /**
 MCS8 with short GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate.
 This rate might not be supported by all devices.
 */
 RATE-MCS8-SGI ::= 0x22
 /**
 MCS9 with short GI.
-A WiFi HE 20MHz ($MODE-HE20, Wi-Fi 6) rate.
+A WiFi HE 20MHz ($MODE-HE20, WiFi 6) rate.
 This rate might not be supported by all devices.
 */
 RATE-MCS9-SGI ::= 0x23
@@ -202,8 +285,44 @@ class Address:
     if mac.size != 6:
         throw "ESP-Now MAC address length must be 6 bytes"
 
+  /** Variant of $(parse str [--on-error]) that throws on errors. */
+  static parse str/string -> Address:
+    return Address.parse str --on-error=: throw it
+
+  /**
+  Parses the given $str as MAC address.
+
+  The $on-error block is called when the $str is not a valid MAC address. The
+    result of the block is then returned. As such, it must be of type $Address,
+    or null.
+  */
+  static parse str/string [--on-error] -> Address?:
+    parts := str.split ":"
+    if parts.size != 6: return on-error.call "INVALID_ARGUMENT"
+    mac := ByteArray 6
+    6.repeat: | i/int |
+      part := parts[i]
+      if part.size != 2: return on-error.call "INVALID_ARGUMENT"
+      byte := int.parse part
+          --radix=16
+          --on-error=: return on-error.call it
+      if not byte or not 0 <= byte < 256:
+        return on-error.call "INVALID_ARGUMENT"
+      mac[i] = byte
+    return Address mac
+
   stringify -> string:
+    return to-string
+
+  to-string -> string:
     return "$(%02x mac[0]):$(%02x mac[1]):$(%02x mac[2]):$(%02x mac[3]):$(%02x mac[4]):$(%02x mac[5])"
+
+  operator == other -> bool:
+    if other is not Address: return false
+    return mac == other.mac
+
+  hash-code -> int:
+    return mac.hash-code
 
 class Key:
   data/ByteArray
@@ -229,20 +348,58 @@ class Service:
   channel/int
 
   /**
+  Deprecated. Use $(Service.constructor) instead.
+  */
+  constructor.station --key/Key?=null --rate/int=RATE-1M-L --channel/int=6:
+    return Service --key=key --rate=rate --channel=channel
+
+  /**
   Constructs a new ESP-Now service in station mode.
 
   The $rate parameter, if provided, must be a valid ESP-Now rate constant. See
     $RATE-1M-L for example. By default, the rate is set to 1Mbps.
 
-  The $channel parameter must be a valid Wi-Fi channel number.
+  The master $key, if provided, encrypts the local keys that are used for
+    direct communication given with $add-peer. If none is provided, a default
+    one is used. Note that this master $key is only used if the peer is added
+    with a key. Any communication with peers that don't have their own local
+    keys is unencrypted even if a master $key is provided.
+
+  The $channel parameter must be a valid WiFi channel number.
+
+  # Advanced
+  The $buffer-byte-size parameter sets the size of the internal buffer used
+    for receiving messages. It is used to store incoming messages until they
+    are handled by $receive. If a message is received that is larger than
+    the remaining space in the buffer, previous unhandled messages are dropped.
+    If a message is larger than the entire buffer, it is dropped.
+    By default the buffer size is 2048 bytes. Its size must be a multiple of 128.
+
+  The $queue-size parameter sets the size of the internal queue used
+    for receiving messages. It is used to queue incoming messages until they
+    are handled by $receive. If a message is received when the queue is full,
+    the oldest message in the queue is dropped. By default the queue size is 8.
+
+  By dropping old messages, the service ensures that the most recent messages
+    are always received, at the cost of potentially losing some older ones.
+    This is especially important when starting to $receive, as there might be
+    unimportant messages already in the buffer that were sent before $receive
+    was called.
   */
-  constructor.station --key/Key? --rate/int=RATE-1M-L --.channel=6:
+  constructor
+      --key/Key?=null
+      --rate/int=RATE-1M-L
+      --.channel=6
+      --buffer-byte-size/int=2048
+      --queue-size/int=8:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
+    if buffer-byte-size < 1 or buffer-byte-size % 128 != 0:
+      throw "INVALID_ARGUMENT"
 
     key-data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     rate_ = rate
-    resource_ = espnow-create_ resource-group_ key-data channel
+    resource_ = espnow-create_ resource-group_ key-data channel buffer-byte-size queue-size
     state_ = ResourceState_ resource-group_ resource_
 
   close -> none:
@@ -266,7 +423,7 @@ class Service:
   The $data must be at most 250 bytes long.
   Waits for the transmission to complete.
   */
-  send data/ByteArray --address/Address -> none:
+  send data/io.Data --address/Address -> none:
     send-mutex_.do:
       state_.clear-state SEND-DONE-STATE_
       espnow-send_ resource_ address.mac data
@@ -297,6 +454,13 @@ class Service:
   Adds a peer with the given $address, $key, $mode and $rate.
 
   The channel of the peer is set to the channel of the service.
+
+  If a local $key is provided, it is used for any communication with that peer.
+    That same $key is also encrypted with the master $key provided during
+    construction. This means that both the master $key and the local $key must be
+    the same on both sides of the communication. If no local $key is provided,
+    communication with that peer is unencrypted, even if a master $key was
+    provided during construction.
 
   The $mode must be one of $MODE-LR, $MODE-11B, $MODE-11G, $MODE-11A,
     $MODE-HT20, $MODE-HT40, $MODE-HE20, or $MODE-VHT20.
@@ -332,14 +496,16 @@ SEND-DONE-STATE_ ::= 1 << 1
 espnow-init_:
   #primitive.espnow.init
 
-espnow-create_ group pmk channel:
+espnow-create_ group pmk channel buffer-byte-size queue-size:
   #primitive.espnow.create
 
 espnow-close_ resource:
   #primitive.espnow.close
 
 espnow-send_ resource mac data:
-  #primitive.espnow.send
+  #primitive.espnow.send:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      espnow-send_ resource mac bytes
 
 espnow-send-succeeded_ resource:
   #primitive.espnow.send-succeeded
