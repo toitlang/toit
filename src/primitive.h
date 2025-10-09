@@ -701,6 +701,7 @@ namespace toit {
   PRIMITIVE(realpath, 1)                     \
   PRIMITIVE(cwd, 0)                          \
   PRIMITIVE(read_file_content_posix, 2)      \
+  PRIMITIVE(update_times, 5)                 \
 
 #define MODULE_PIPE(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
@@ -770,7 +771,7 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 3)                       \
+  PRIMITIVE(create, 5)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
