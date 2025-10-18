@@ -1060,7 +1060,7 @@ flash-cmd -> cli.Command:
             --required,
         cli.OptionInt "baud"
             --default=921600,
-        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32s2", "esp32s3"]
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3"]
             --hidden
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
@@ -1697,13 +1697,17 @@ class Esp32C6AddressMap implements AddressMap:
   drom-map-start ::= 0x42000000
   drom-map-end   ::= 0x43000000
 
+class Esp32P4AddressMap implements AddressMap:
+  drom-map-start ::= 0x40000000
+  drom-map-end   ::= 0x44000000
+
 class Esp32S2AddressMap implements AddressMap:
   drom-map-start ::= 0x3f000000
   drom-map-end   ::= 0x3ff80000
 
 class Esp32S3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
-  drom-map-end   ::= 0x3d000000
+  drom-map-end   ::= 0x3e000000
 
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
@@ -1720,6 +1724,7 @@ class Esp32Binary:
   static ESP-CHIP-ID-ESP32-C3 ::= 0x0005  // Chip ID: ESP32-C3.
   static ESP-CHIP-ID-ESP32-C6 ::= 0x000d  // Chip ID: ESP32-C6.
   static ESP-CHIP-ID-ESP32-H2 ::= 0x000a  // Chip ID: ESP32-H2.
+  static ESP-CHIP-ID-ESP32-P4 ::= 0x0012  // Chip ID: ESP32-P4.
   static ESP-CHIP-ID-ESP32-S2 ::= 0x0002  // Chip ID: ESP32-S2.
   static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
 
@@ -1727,6 +1732,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32    : Esp32AddressMap,
       ESP-CHIP-ID-ESP32-C3 : Esp32C3AddressMap,
       ESP-CHIP-ID-ESP32-C6 : Esp32C6AddressMap,
+      ESP-CHIP-ID-ESP32-P4 : Esp32P4AddressMap,
       ESP-CHIP-ID-ESP32-S2 : Esp32S2AddressMap,
       ESP-CHIP-ID-ESP32-S3 : Esp32S3AddressMap,
   }
@@ -1736,6 +1742,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32-C3 : "esp32c3",
       ESP-CHIP-ID-ESP32-C6 : "esp32c6",
       ESP-CHIP-ID-ESP32-H2 : "esp32h2",
+      ESP-CHIP-ID-ESP32-P4 : "esp32p4",
       ESP-CHIP-ID-ESP32-S2 : "esp32s2",
       ESP-CHIP-ID-ESP32-S3 : "esp32s3",
   }

@@ -50,6 +50,8 @@
   #include <esp32c3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32P4
+  #include <esp32p4/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -317,6 +319,8 @@ void OS::set_up() {
   const char* chip_name = "ESP32C3";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   const char* chip_name = "ESP32C6";
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+  const char* chip_name = "ESP32P4";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   const char* chip_name = "ESP32S2";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -452,6 +456,8 @@ const char* OS::get_architecture() {
   return "esp32c3";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return "esp32c6";
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+  return "esp32p4";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   return "esp32s2";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
