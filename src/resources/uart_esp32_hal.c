@@ -17,6 +17,13 @@
 // Therefore we don't test for `TOIT_ESP32` but for `ESP_PLATFORM`.
 #if defined(ESP_PLATFORM)
 
+// TODO(floitsch): this is a hack to get p4 working. It means that the UART
+// (uart_ll_set_baudrate, uart_ll_enable_pad_sleep_clock, ...) isn't correctly
+// protected anymore.
+#ifndef __DECLARE_RCC_ATOMIC_ENV
+#define __DECLARE_RCC_ATOMIC_ENV ((void)0)
+#endif
+
 #include "esp_attr.h"
 #include "uart_esp32_hal.h"
 #include "hal/uart_hal.h"

@@ -80,6 +80,48 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
   return -1;
 }
 
+#elif CONFIG_IDF_TARGET_ESP32P4
+
+static touch_pad_t get_touch_pad(int pin) {
+  switch (pin) {
+    case 2:  return TOUCH_PAD_NUM1;
+    case 3:  return TOUCH_PAD_NUM2;
+    case 4:  return TOUCH_PAD_NUM3;
+    case 5:  return TOUCH_PAD_NUM4;
+    case 6:  return TOUCH_PAD_NUM5;
+    case 7:  return TOUCH_PAD_NUM6;
+    case 8:  return TOUCH_PAD_NUM7;
+    case 9:  return TOUCH_PAD_NUM8;
+    case 10: return TOUCH_PAD_NUM9;
+    case 11: return TOUCH_PAD_NUM10;
+    case 12: return TOUCH_PAD_NUM11;
+    case 13: return TOUCH_PAD_NUM12;
+    case 14: return TOUCH_PAD_NUM13;
+    case 15: return TOUCH_PAD_NUM14;
+    default: return kInvalidTouchPad;
+  }
+}
+
+int touch_pad_to_pin_num(touch_pad_t pad) {
+  switch (pad) {
+    case TOUCH_PAD_NUM1:  return 2;
+    case TOUCH_PAD_NUM2:  return 3;
+    case TOUCH_PAD_NUM3:  return 4;
+    case TOUCH_PAD_NUM4:  return 5;
+    case TOUCH_PAD_NUM5:  return 6;
+    case TOUCH_PAD_NUM6:  return 7;
+    case TOUCH_PAD_NUM7:  return 8;
+    case TOUCH_PAD_NUM8:  return 9;
+    case TOUCH_PAD_NUM9:  return 10;
+    case TOUCH_PAD_NUM10: return 11;
+    case TOUCH_PAD_NUM11: return 12;
+    case TOUCH_PAD_NUM12: return 13;
+    case TOUCH_PAD_NUM13: return 14;
+    case TOUCH_PAD_NUM14: return 15;
+    default: return -1;
+  }
+}
+
 #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 static touch_pad_t get_touch_pad(int pin) {
@@ -228,7 +270,7 @@ PRIMITIVE(use) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
   esp_err_t err = touch_pad_config(pad);
   if (err == ESP_OK) {
     err = touch_pad_set_thresh(pad, threshold);

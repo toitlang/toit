@@ -659,7 +659,11 @@ void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
     : "r" (dst), "r" (src), "r" (bytes)
     // Clobbers.
     : );
-#elif (!defined(TOIT_ESP32)) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32S2)
+#elif (!defined(TOIT_ESP32)) || \
+      defined(CONFIG_IDF_TARGET_ESP32C3) || \
+      defined(CONFIG_IDF_TARGET_ESP32C6) || \
+      defined(CONFIG_IDF_TARGET_ESP32P4) || \
+      defined(CONFIG_IDF_TARGET_ESP32S2)
   memcpy(dst, src, bytes);
 #else
   #error "Unknown target"
