@@ -126,7 +126,7 @@ env:
   RUN_CROSS_FLOW: ${{ github.event.inputs.run-cross-flow != 'false' }}
   RUN_AUR_FLOW: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
   ENABLE_SSH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ssh != 'none' }}
-  ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
+  ESPTOOL_VERSION: "v5.1.0%2Btoitlang"
 
 jobs:
   prereqs:

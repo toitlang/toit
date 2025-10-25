@@ -1115,13 +1115,29 @@ flash invocation/cli.Invocation -> none:
 
           esptool := find-esptool_
 
+          // The new esptool has deprecated underscores in some arguments.
+          // TODO(floitsch): remove these replacements when the esp-idf has been updated
+          //   to a version that uses the new arguments.
+          before-args := flashing["extra_esptool_args"]["before"]
+          after-args := flashing["extra_esptool_args"]["after"]
+          write-flash-args := flashing["write_flash_args"]
+          before-args = before-args.replace --all "default_reset" "default-reset"
+          before-args = before-args.replace --all "no_reset" "no-reset"
+          after-args = after-args.replace --all "hard_reset" "hard-reset"
+          after-args = after-args.replace --all "no_reset" "no-reset"
+          write-flash-args.map --in-place:
+            if it == "--flash_mode": "--flash-mode"
+            else if it == "--flash_size": "--flash-size"
+            else if it == "--flash_freq": "--flash-freq"
+            else: it
+
           code := pipe.run-program esptool + [
             "--port", port,
             "--baud", "$baud",
             "--chip", chip,
-            "--before", flashing["extra_esptool_args"]["before"],
-            "--after",  flashing["extra_esptool_args"]["after"]
-          ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
+            "--before", before-args,
+            "--after", after-args
+          ] + [ "write-flash" ] + write-flash-args + partition-args
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
