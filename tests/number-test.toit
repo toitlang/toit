@@ -162,10 +162,10 @@ test-parse-integer:
   expect-number-out-of-range: int-parse-helper "-9999999999999999999"
   expect-number-out-of-range: int-parse-helper "9223372036854775808"
   expect-number-out-of-range: int-parse-helper "-9223372036854775809"
-  expect-equals null (int.parse "9999999999999999999" --on-error=:
+  expect-equals null (int.parse "9999999999999999999" --if-error=:
     expect-equals "OUT_OF_RANGE" it
     null)
-  expect-equals -1 (int.parse "-9999999999999999999" --on-error=:
+  expect-equals -1 (int.parse "-9999999999999999999" --if-error=:
     expect-equals "OUT_OF_RANGE" it
     -1)
 
@@ -192,15 +192,15 @@ test-parse-integer:
   expect-int-parsing-error: int-parse-helper "-" --radix=16
 
   expect-equals 0
-                int.parse "foo" --on-error=: 0
+                int.parse "foo" --if-error=: 0
   expect-equals -1
-                int.parse "" --on-error=: -1
+                int.parse "" --if-error=: -1
 
   expect-equals -2 (int-parse-helper " -2" 1 3)
   expect-equals 42 (int-parse-helper "level42" 5 7)
 
   expect-equals 499
-                int.parse "level42"[4..5] --on-error=: 499
+                int.parse "level42"[4..5] --if-error=: 499
 
   expect-equals 0 (int-parse-helper --radix=16 "0")
   expect-equals 255 (int-parse-helper --radix=16 "fF")
@@ -261,9 +261,9 @@ test-parse-integer:
   expect-int-parsing-error: int.parse "1012_1" 1 5  // @no-warn
   expect-int-parsing-error: int.parse ""
 
-  expect-number-out-of-bounds: (int.parse "123" -1 --on-error=: throw it)  // @no-warn
-  expect-number-out-of-bounds: (int.parse "123" 0 4 --on-error=: throw it)  // @no-warn
-  expect-int-parsing-error: (int.parse "123" 0 0 --on-error=: throw it)  // @no-warn
+  expect-number-out-of-bounds: (int.parse "123" -1 --if-error=: throw it)  // @no-warn
+  expect-number-out-of-bounds: (int.parse "123" 0 4 --if-error=: throw it)  // @no-warn
+  expect-int-parsing-error: (int.parse "123" 0 0 --if-error=: throw it)  // @no-warn
 
   expect-equals
       23
@@ -337,11 +337,11 @@ test-parse-integer:
   expect-equals int.MIN (int.parse      "-1y2p0ij32e8e8" --radix=36)
   expect-number-out-of-range: int.parse "-1y2p0ij32e8e9" --radix=36
 
-  expect-equals 16 (int.parse "10" --radix=16 --on-error=: throw it)
-  expect-equals 15 (int.parse "10" --radix=15 --on-error=: throw it)
+  expect-equals 16 (int.parse "10" --radix=16 --if-error=: throw it)
+  expect-equals 15 (int.parse "10" --radix=15 --if-error=: throw it)
 
-  expect-equals 16 (int.parse "foo10bar" --radix=16 3 5 --on-error=: throw it)  // @no-warn
-  expect-equals 15 (int.parse "foo10bar" --radix=15 3 5 --on-error=: throw it)  // @no-warn
+  expect-equals 16 (int.parse "foo10bar" --radix=16 3 5 --if-error=: throw it)  // @no-warn
+  expect-equals 15 (int.parse "foo10bar" --radix=15 3 5 --if-error=: throw it)  // @no-warn
 
   expect-equals 16 (int.parse "0x10")
   expect-equals 16 (int.parse "0X10")
@@ -351,13 +351,13 @@ test-parse-integer:
   expect-equals 16 (int.parse "0x10".to-byte-array)
   expect-equals 16 (int.parse "foo0x10bar".to-byte-array 3 7)  // @no-warn
 
-  expect-equals -1 (int.parse "0x" --on-error=: -1)
-  expect-equals -1 (int.parse "-0x" --on-error=: -1)
-  expect-equals -99 (int.parse "0x-1" --on-error=: -99)
-  expect-equals -1 (int.parse "0a" --on-error=: -1)
-  expect-equals -1 (int.parse "foo0xbar" 3 5 --on-error=: -1)  // @no-warn
-  expect-equals -1 (int.parse "foo0x7bar" 3 5 --on-error=: -1)  // @no-warn
-  expect-equals -1 (int.parse "foo0x-7bar" 3 6 --on-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "0x" --if-error=: -1)
+  expect-equals -1 (int.parse "-0x" --if-error=: -1)
+  expect-equals -99 (int.parse "0x-1" --if-error=: -99)
+  expect-equals -1 (int.parse "0a" --if-error=: -1)
+  expect-equals -1 (int.parse "foo0xbar" 3 5 --if-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "foo0x7bar" 3 5 --if-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "foo0x-7bar" 3 6 --if-error=: -1)  // @no-warn
 
   expect-equals 16 (int.parse "0x10")
   expect-equals 16 (int.parse "0X10")
@@ -367,12 +367,12 @@ test-parse-integer:
   expect-equals 2 (int.parse "0b10".to-byte-array)
   expect-equals 2 (int.parse "foo0b10bar".to-byte-array 3 7)  // @no-warn
 
-  expect-equals -1 (int.parse "0b" --on-error=: -1)
-  expect-equals -1 (int.parse "-0b" --on-error=: -1)
-  expect-equals -99 (int.parse "0b-1" --on-error=: -99)
-  expect-equals -1 (int.parse "foo0bbar" 3 5 --on-error=: -1)  // @no-warn
-  expect-equals -1 (int.parse "foo0b7bar" 3 5 --on-error=: -1)  // @no-warn
-  expect-equals -1 (int.parse "foo0b-7bar" 3 6 --on-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "0b" --if-error=: -1)
+  expect-equals -1 (int.parse "-0b" --if-error=: -1)
+  expect-equals -99 (int.parse "0b-1" --if-error=: -99)
+  expect-equals -1 (int.parse "foo0bbar" 3 5 --if-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "foo0b7bar" 3 5 --if-error=: -1)  // @no-warn
+  expect-equals -1 (int.parse "foo0b-7bar" 3 6 --if-error=: -1)  // @no-warn
 
 // Parse helper that validates the input is parsable both as a string and a ByteArray.
 float-parse-helper str/string from/int=0 to/int=str.size -> float:

@@ -285,29 +285,33 @@ class Address:
     if mac.size != 6:
         throw "ESP-Now MAC address length must be 6 bytes"
 
-  /** Variant of $(parse str [--on-error]) that throws on errors. */
+  /** Variant of $(parse str [--if-error]) that throws on errors. */
   static parse str/string -> Address:
-    return Address.parse str --on-error=: throw it
+    return Address.parse str --if-error=: throw it
+
+  /** Deprecated. Use $(parse str [--if-error]) instead. */
+  static parse str/string [--on-error] -> Address?:
+    return parse str --if-error=on-error
 
   /**
   Parses the given $str as MAC address.
 
-  The $on-error block is called when the $str is not a valid MAC address. The
+  The $if-error block is called when the $str is not a valid MAC address. The
     result of the block is then returned. As such, it must be of type $Address,
     or null.
   */
-  static parse str/string [--on-error] -> Address?:
+  static parse str/string [--if-error] -> Address?:
     parts := str.split ":"
-    if parts.size != 6: return on-error.call "INVALID_ARGUMENT"
+    if parts.size != 6: return if-error.call "INVALID_ARGUMENT"
     mac := ByteArray 6
     6.repeat: | i/int |
       part := parts[i]
-      if part.size != 2: return on-error.call "INVALID_ARGUMENT"
+      if part.size != 2: return if-error.call "INVALID_ARGUMENT"
       byte := int.parse part
           --radix=16
-          --on-error=: return on-error.call it
+          --if-error=: return if-error.call it
       if not byte or not 0 <= byte < 256:
-        return on-error.call "INVALID_ARGUMENT"
+        return if-error.call "INVALID_ARGUMENT"
       mac[i] = byte
     return Address mac
 

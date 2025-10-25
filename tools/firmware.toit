@@ -909,7 +909,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
     if is-file:
       partition-content = read-file value --ui=ui
     else:
-      size := int.parse value --on-error=:
+      size := int.parse value --if-error=:
         ui.abort "Malformed partition size '$value'."
       partition-content = ByteArray size
     partition-content = pad partition-content 4096
@@ -1173,7 +1173,7 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
 
   system-uuid/Uuid? := null
   if properties.contains "uuid":
-    system-uuid = Uuid.parse properties["uuid"] --on-error=(: null)
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
   return extract-binary-content
