@@ -952,11 +952,11 @@ jobs:
             EXTENSION=""
             if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
-              ESPTOOL_ARCH=windows-x64
+              ESPTOOL_ARCH=windows-amd64
             elif [[ "$os" == "linux" ]]; then
-              ESPTOOL_ARCH=linux-x64
+              ESPTOOL_ARCH=linux-amd64
             elif [[ "$os" == "macos" ]]; then
-              ESPTOOL_ARCH=macos-x64
+              ESPTOOL_ARCH=macos-amd64
             elif [[ "$os" == "rpi" ]]; then
               ESPTOOL_ARCH=linux-armv7
             elif [[ "$os" == "aarch64" ]]; then
@@ -970,8 +970,8 @@ jobs:
               exit 1
             fi
 
-            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
-            unzip esptool-$ESPTOOL_ARCH.zip
+            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.tar.gz
+            tar x -zvf esptool-$ESPTOOL_ARCH.tar.gz
             mkdir -p $os/toit/lib/toit/bin
             cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/lib/toit/bin/esptool$EXTENSION
             chmod +x $os/toit/lib/toit/bin/esptool$EXTENSION
@@ -1425,8 +1425,8 @@ jobs:
         # The Toit SDK we got is not yet combined and thus missing the esptool.
         run: |
           export ESPTOOL_ARCH=linux-armv7
-          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
-          unzip esptool-$ESPTOOL_ARCH.zip
+          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.tar.gz
+          tar x -zvf esptool-$ESPTOOL_ARCH.tar.gz
           cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/lib/toit/bin/esptool$EXTENSION
           chmod +x rpi/toit/lib/toit/bin/esptool$EXTENSION
 
