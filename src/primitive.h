@@ -420,6 +420,8 @@ namespace toit {
   PRIMITIVE(pm_lock_acquire, 1)              \
   PRIMITIVE(pm_lock_release, 1)              \
   PRIMITIVE(pm_locks_dump, 0)                \
+  PRIMITIVE(ulp_load, 1)                     \
+  PRIMITIVE(ulp_run, 1)                      \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \

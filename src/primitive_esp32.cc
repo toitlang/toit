@@ -50,6 +50,7 @@
 #include <esp_timer.h>
 #include <rom/ets_sys.h>
 #include <esp_task_wdt.h>
+#include <ulp_fsm_common.h>
 
 #include <driver/gpio.h>
 
@@ -755,6 +756,33 @@ PRIMITIVE(pm_lock_release) {
 PRIMITIVE(pm_locks_dump) {
   esp_err_t err = esp_pm_dump_locks(stdout);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  return process->null_object();
+}
+
+PRIMITIVE(ulp_load) {
+  ARGS(Blob, program);
+
+  printf("Loading ULP program of length %d\n", program.length());
+  esp_err_t err = ulp_load_binary(0, program.address(), program.length() >> 2);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return process->null_object();
+}
+
+PRIMITIVE(ulp_run) {
+  ARGS(uint32, load_address);
+
+  // Initialize GPIO2 for RTC
+  rtc_gpio_init(GPIO_NUM_2);
+  rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_OUTPUT_ONLY);
+
+  esp_err_t err = ulp_run(load_address);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
 
   return process->null_object();
 }
