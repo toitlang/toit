@@ -950,9 +950,11 @@ jobs:
         run: |
           for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             EXTENSION=""
+            ARCH_EXTENSION=.tar.gz
             if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
               ESPTOOL_ARCH=windows-amd64
+              ARCH_EXTENSION=.zip
             elif [[ "$os" == "linux" ]]; then
               ESPTOOL_ARCH=linux-amd64
             elif [[ "$os" == "macos" ]]; then
@@ -970,8 +972,14 @@ jobs:
               exit 1
             fi
 
-            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.tar.gz
-            tar x -zvf esptool-$ESPTOOL_ARCH.tar.gz
+            echo "Downloading esptool for $os ($ESPTOOL_ARCH)..."
+            echo https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            if [[ "$ARCH_EXTENSION" == ".zip" ]]; then
+              unzip esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            else
+              tar x -zvf esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            fi
             mkdir -p $os/toit/lib/toit/bin
             cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/lib/toit/bin/esptool$EXTENSION
             chmod +x $os/toit/lib/toit/bin/esptool$EXTENSION
