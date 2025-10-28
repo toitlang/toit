@@ -407,7 +407,7 @@ duration-compare-test:
       Time.parse right
 
   now := Time.now
-  parsed := Time.parse "invalid" --on-error=: now
+  parsed := Time.parse "invalid" --if-error=: now
   expect-equals now parsed
 
 rounded-test:
