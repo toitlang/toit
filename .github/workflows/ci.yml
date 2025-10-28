@@ -1057,6 +1057,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          choco install -y innosetup
+
       - uses: actions/download-artifact@v6
         with:
           name: Windows-build-unsigned-combined
