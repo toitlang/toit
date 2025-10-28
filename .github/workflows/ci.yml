@@ -349,11 +349,6 @@ jobs:
         run: |
           strip -s build/host/sdk/bin/*
 
-      - name: Configure network for UDP broadcast (macOS)
-        # Needed for the UDP broadcast test to work.
-        if: runner.os == 'macOS'
-        run: sudo route add -host 255.255.255.255 -interface $(route -n get default | grep 'interface:' | awk '{print $2}')
-
       # Test.
       - name: Test
         if: env.DO_TESTS == 'true'
