@@ -861,16 +861,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           name: Windows-build-unsigned
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           pattern: Linux-build*
           merge-multiple: true
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           pattern: macOS-build-unsigned*
           merge-multiple: true
@@ -1057,7 +1057,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           name: Windows-build-unsigned-combined
 
@@ -1156,7 +1156,7 @@ jobs:
           brew install create-dmg
           brew install zip
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           name: macOS-build-unsigned-combined
 
@@ -1276,14 +1276,14 @@ jobs:
           echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
 
       - name: Retrieve
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: ${{ steps.constants.outputs.flaky_result_name }}*
           path: flaky-result
           merge-multiple: true
 
       - name: Retrieve
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: ${{ steps.constants.outputs.external_result_name }}*
           path: external-result
@@ -1412,7 +1412,7 @@ jobs:
 
       # Download the Pi artifact.
       - name: Download the SDK
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: rpi-build
 
@@ -1431,7 +1431,7 @@ jobs:
           chmod +x rpi/toit/lib/toit/bin/esptool$EXTENSION
 
       - name: Download ESP32 envelopes
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: firmwares
 
