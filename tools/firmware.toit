@@ -1703,7 +1703,7 @@ class Esp32S2AddressMap implements AddressMap:
 
 class Esp32S3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
-  drom-map-end   ::= 0x3d000000
+  drom-map-end   ::= 0x3e000000
 
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
