@@ -32,7 +32,10 @@ static Object* custom_error(Process* process, const char* txt) {
 Object* windows_error(Process* process, DWORD error_number) {
   DWORD err = GetLastError();
   if (err == ERROR_FILE_NOT_FOUND ||
+      err == ERROR_PATH_NOT_FOUND ||
+      err == ERROR_INVALID_NAME ||
       err == ERROR_INVALID_DRIVE ||
+      err == ERROR_DIRECTORY ||
       err == ERROR_DEV_NOT_EXIST) {
     FAIL(FILE_NOT_FOUND);
   }
