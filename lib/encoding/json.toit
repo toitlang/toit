@@ -346,7 +346,7 @@ class Decoder:
     hex-value := 0
     4.repeat:
       hex-value <<= 4
-      hex-value += hex-char-to-value bytes_[offset_++] --on-error=(: throw "BAD \\u ESCAPE IN JSON STRING")
+      hex-value += hex-char-to-value bytes_[offset_++] --if-error=(: throw "BAD \\u ESCAPE IN JSON STRING")
     return hex-value
 
   decode-map_:
@@ -437,8 +437,8 @@ class Decoder:
     if offset_ == bytes_.size and buffered-reader_: throw "UNEXPECTED_END_OF_INPUT"
 
     data := bytes_ is StringView_ ? bytes_.str_ : bytes_
-    if o < 0: return float.parse_ data start -o --on-error=: throw it
-    return int.parse_ data start o --radix=10 --on-error=: throw it
+    if o < 0: return float.parse_ data start -o --if-error=: throw it
+    return int.parse_ data start o --radix=10 --if-error=: throw it
 
   decode-true_:
     "true".do: expect_ it
