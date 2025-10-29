@@ -126,7 +126,7 @@ env:
   RUN_CROSS_FLOW: ${{ github.event.inputs.run-cross-flow != 'false' }}
   RUN_AUR_FLOW: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
   ENABLE_SSH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ssh != 'none' }}
-  ESPTOOL_VERSION: "v4.8.1%2Btoitlang"
+  ESPTOOL_VERSION: "v5.1.0%2Btoitlang"
 
 jobs:
   prereqs:
@@ -945,13 +945,15 @@ jobs:
         run: |
           for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
             EXTENSION=""
+            ARCH_EXTENSION=.tar.gz
             if [[ "$os" == "windows" ]]; then
               EXTENSION=.exe
-              ESPTOOL_ARCH=windows-x64
+              ESPTOOL_ARCH=windows-amd64
+              ARCH_EXTENSION=.zip
             elif [[ "$os" == "linux" ]]; then
-              ESPTOOL_ARCH=linux-x64
+              ESPTOOL_ARCH=linux-amd64
             elif [[ "$os" == "macos" ]]; then
-              ESPTOOL_ARCH=macos-x64
+              ESPTOOL_ARCH=macos-amd64
             elif [[ "$os" == "rpi" ]]; then
               ESPTOOL_ARCH=linux-armv7
             elif [[ "$os" == "aarch64" ]]; then
@@ -965,8 +967,14 @@ jobs:
               exit 1
             fi
 
-            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
-            unzip esptool-$ESPTOOL_ARCH.zip
+            echo "Downloading esptool for $os ($ESPTOOL_ARCH)..."
+            echo https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            if [[ "$ARCH_EXTENSION" == ".zip" ]]; then
+              unzip esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            else
+              tar x -zvf esptool-$ESPTOOL_ARCH$ARCH_EXTENSION
+            fi
             mkdir -p $os/toit/lib/toit/bin
             cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION $os/toit/lib/toit/bin/esptool$EXTENSION
             chmod +x $os/toit/lib/toit/bin/esptool$EXTENSION
@@ -1425,8 +1433,8 @@ jobs:
         # The Toit SDK we got is not yet combined and thus missing the esptool.
         run: |
           export ESPTOOL_ARCH=linux-armv7
-          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.zip
-          unzip esptool-$ESPTOOL_ARCH.zip
+          curl -O -L https://github.com/toitlang/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_ARCH.tar.gz
+          tar x -zvf esptool-$ESPTOOL_ARCH.tar.gz
           cp esptool-$ESPTOOL_ARCH/esptool$EXTENSION rpi/toit/lib/toit/bin/esptool$EXTENSION
           chmod +x rpi/toit/lib/toit/bin/esptool$EXTENSION
 
