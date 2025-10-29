@@ -112,6 +112,8 @@ abstract class Variant:
 
   abstract ble6-service -> string
 
+  abstract ble7-service -> string
+
   /**
   The ESP-NOW channel and password.
 
@@ -453,6 +455,8 @@ class Esp32 extends Variant:
 
   ble6-service ::= "eede145e-b6a6-4d61-8156-ed10d5b75903"
 
+  ble7-service ::= "2c099659-d917-41a2-955d-18a4966b54c8"
+
   espnow-channel ::= 1
   espnow-password ::= "pmk-esp32-123456"
 
@@ -553,6 +557,8 @@ class Esp32s3 extends Variant:
   ble5-service ::= "ef738562-e999-482d-88a1-16ea26fa18d3"
 
   ble6-service ::= "eed6e6d2-6f4f-46e4-9ed2-116515189eba"
+
+  ble7-service ::= "0c9b0be3-1612-447d-ba1e-ab7293a3c795"
 
   espnow-channel ::= 5
   espnow-password ::= "pmk-esp32s3-1234"
