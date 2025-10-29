@@ -23,7 +23,7 @@ NIL ::= Uuid.NIL
 
 /// Deprecated. Use $Uuid.parse instead.
 parse str/string [--on-error] -> Uuid?:
-  return Uuid.parse str --on-error=on-error
+  return Uuid.parse str --if-error=on-error
 
 /// Deprecated. Use $Uuid.parse instead.
 parse str/string -> Uuid:
@@ -54,6 +54,10 @@ class Uuid:
   */
   static NIL ::= Uuid (ByteArray SIZE)
 
+  /** Deprecated. Use $(parse str [--if-error]) instead. */
+  static parse str/string [--on-error] -> Uuid?:
+    return Uuid.parse str --if-error=on-error
+
   /**
   Parses the given $str as a UUID.
 
@@ -62,35 +66,35 @@ class Uuid:
     groups, separated by a dash ('-'). The groups should contain respectively
     8, 4, 4, 4, and 12 hexadecimal characters.
 
-  Calls $on-error (and returns its result) if $str is not a valid UUID.
+  Calls $if-error (and returns its result) if $str is not a valid UUID.
 
   # Examples
   ```
   parse "123e4567-e89b-12d3-a456-426614174000"
   ```
   */
-  static parse str/string [--on-error] -> Uuid?:
+  static parse str/string [--if-error] -> Uuid?:
     uuid := ByteArray SIZE
     index := 0
     i := 0
-    error-handler := (: return on-error.call)
+    error-handler := (: return if-error.call)
     while i < str.size and index < uuid.size:
       if (str.at --raw i) == '-': i++
-      if i + 1 >= str.size: return on-error.call
-      v := hex-char-to-value str[i++] --on-error=error-handler
+      if i + 1 >= str.size: return if-error.call
+      v := hex-char-to-value str[i++] --if-error=error-handler
       v <<= 4
-      v |= hex-char-to-value str[i++] --on-error=error-handler
+      v |= hex-char-to-value str[i++] --if-error=error-handler
       uuid[index++] = v
     if i < str.size or index != uuid.size:
-      return on-error.call
+      return if-error.call
     return Uuid uuid
 
   /**
-  Variant of $(parse str [--on-error]) that throws an error if $str is not a
+  Variant of $(parse str [--if-error]) that throws an error if $str is not a
     valid UUID.
   */
   static parse str/string -> Uuid:
-    return parse str --on-error=(: throw "INVALID_UUID")
+    return parse str --if-error=(: throw "INVALID_UUID")
 
   /**
   Builds a version 5 UUID from the given $namespace and $data.
@@ -123,7 +127,7 @@ class Uuid:
   Returns whether the given $str is a valid UUID.
   */
   static is-valid str/string -> bool:
-    parse str --on-error=: return false
+    parse str --if-error=: return false
     return true
 
   bytes_/ByteArray
