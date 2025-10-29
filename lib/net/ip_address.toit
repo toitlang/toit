@@ -101,7 +101,7 @@ class IpAddress:
           found-double-colon = true
         digits-since-last-colon = 0
       else:
-        hex-char-to-value it --on-error=(: return false)
+        hex-char-to-value it --if-error=(: return false)
         if digits-since-last-colon < 0:
           digits-since-last-colon = 1
         else:
