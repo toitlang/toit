@@ -7,3 +7,9 @@ import .version
 toit-pixel-display/tests/toit-png-tools/bin/pngunzip.toit:73:22: error: Unresolved identifier: 'PNGDIFF-VERSION'
     print "pngunzip $PNGDIFF-VERSION"
                      ^~~~~~~~~~~~~~~
+toit-pixel-display/tests/toit-png-tools/bin/pngunzip.toit:188:21: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+          byte = int.parse --radix=16 byte-string[2..] --on-error=: return null
+                    ^~~~~~
+toit-pixel-display/tests/toit-png-tools/bin/pngunzip.toit:190:21: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+          byte = int.parse byte-string --on-error=: return null
+                    ^~~~~~

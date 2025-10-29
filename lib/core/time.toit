@@ -94,16 +94,20 @@ class Duration implements Comparable:
   ```
   */
   static parse str/string -> Duration:
-    return parse str --on-error=: throw it
+    return parse str --if-error=: throw it
+
+  /** Deprecated. Use $(parse str [--if-error]) instead. */
+  static parse str/string [--on-error] -> Duration?:
+    return parse str --if-error=on-error
 
   /**
-  Variant of $(parse str) that calls $on-error if $str is not a valid duration.
+  Variant of $(parse str) that calls $if-error if $str is not a valid duration.
   */
-  static parse str/string [--on-error] -> Duration?:
+  static parse str/string [--if-error] -> Duration?:
     // Simplifies the handling of '-'.
     str = str.trim
 
-    if str == "" or str == "-": return on-error.call "MISSING_VALUE"
+    if str == "" or str == "-": return if-error.call "MISSING_VALUE"
 
     used-h := false
     used-m := false
@@ -126,20 +130,20 @@ class Duration implements Comparable:
         current-power *= 10
         continue
       if c == '.':
-        if has-seen-decimal-point: return on-error.call "INVALID_NUMBER"
+        if has-seen-decimal-point: return if-error.call "INVALID_NUMBER"
         has-seen-decimal-point = true
-        if current-number == -1: return on-error.call "MISSING_VALUE"
+        if current-number == -1: return if-error.call "MISSING_VALUE"
         if current-unit != NANOSECONDS-PER-SECOND and
             current-unit != NANOSECONDS-PER-MILLISECOND and
             current-unit != NANOSECONDS-PER-MICROSECOND:
-          return on-error.call "INVALID_FRACTION"
+          return if-error.call "INVALID_FRACTION"
         ns += current-number * current-unit / current-power
         current-number = 0
         current-power = 1
         continue
 
       if current-power == 1 and i != str.size - 1:
-        return on-error.call "MISSING_VALUE"
+        return if-error.call "MISSING_VALUE"
 
       ns += current-number * current-unit
       current-number = 0
@@ -152,41 +156,41 @@ class Duration implements Comparable:
         break
       if c == '*' and i == -1: break
       if c == 'h':
-        if used-h: return on-error.call "DUPLICATE_UNIT"
+        if used-h: return if-error.call "DUPLICATE_UNIT"
         used-h = true
         current-unit = NANOSECONDS-PER-HOUR
       else if c == 'm':
-        if used-m: return on-error.call "DUPLICATE_UNIT"
+        if used-m: return if-error.call "DUPLICATE_UNIT"
         used-m = true
         current-unit = NANOSECONDS-PER-MINUTE
       else if c == 's':
         if i > 0:
           if str[i - 1] == 'm':
-            if used-ms: return on-error.call "DUPLICATE_UNIT"
+            if used-ms: return if-error.call "DUPLICATE_UNIT"
             used-ms = true
             current-unit = NANOSECONDS-PER-MILLISECOND
             i--
           else if str[i - 1] == 'u':
-            if used-us: return on-error.call "DUPLICATE_UNIT"
+            if used-us: return if-error.call "DUPLICATE_UNIT"
             used-us = true
             current-unit = NANOSECONDS-PER-MICROSECOND
             i--
           else if str[i - 1] == 'n':
-            if used-ns: return on-error.call "DUPLICATE_UNIT"
+            if used-ns: return if-error.call "DUPLICATE_UNIT"
             used-ns = true
             current-unit = 1
             i--
           else:
-            if used-s: return on-error.call "DUPLICATE_UNIT"
+            if used-s: return if-error.call "DUPLICATE_UNIT"
             used-s = true
             current-unit = NANOSECONDS-PER-SECOND
         else:
-          if used-s: return on-error.call "DUPLICATE_UNIT"
+          if used-s: return if-error.call "DUPLICATE_UNIT"
           used-s = true
           // Will lead to an error since the number is missing.
           current-unit = NANOSECONDS-PER-SECOND
       else:
-        return on-error.call "INVALID_CHARACTER"
+        return if-error.call "INVALID_CHARACTER"
     return Duration ns
 
 
@@ -851,6 +855,10 @@ class Time implements Comparable:
   constructor.from-string str/string:
     return parse str
 
+  /** Deprecated. Use $(parse str [--if-error]) instead. */
+  static parse str/string [--on-error] -> Time:
+    return parse str --if-error=on-error
+
   /**
   Parses the given $str to construct a UTC time instance.
 
@@ -858,15 +866,18 @@ class Time implements Comparable:
   For example "2019-12-18T06:22:48Z".
   Leap seconds are not supported, and lower case 't' and 'z' are not allowed.
 
-  Calls $on-error if there is an error parsing the string. Then rturns the
-    result of $on-error.
+  Contrary to RFC 3339, this function allows to provide the time without
+    seconds, like "2019-12-18T06:22Z". In this case, the seconds are set to 0.
+
+  Calls $if-error if there is an error parsing the string. Then returns the
+    result of $if-error.
   */
-  static parse str/string [--on-error] -> Time:
+  static parse str/string [--if-error] -> Time:
     zone-is-adjusted := str.ends-with "Z"
     str = str.trim --right "Z"
     str-to-int ::= : | s/string |
-      if s[0] == '-': return on-error.call
-      int.parse s --on-error=: return on-error.call
+      if s[0] == '-': return if-error.call
+      int.parse s --if-error=: return if-error.call
     zone-minutes := 0
     if not zone-is-adjusted:
       plus := str.index-of "+"
@@ -877,24 +888,31 @@ class Time implements Comparable:
         cut := plus > 0 ? plus : minus
         zone-parts := str[cut + 1..]
         // RFC 3339 requires the zone to be in the form hh:mm.
-        if zone-parts.size != 5: return on-error.call
+        if zone-parts.size != 5: return if-error.call
         zone-parts.split ":":
-          if it.size != 2: return on-error.call
+          if it.size != 2: return if-error.call
           zone-minutes *= 60
           zone-minutes += str-to-int.call it
         zone-minutes = plus > 0 ? -zone-minutes : zone-minutes
         str = str[..cut]
-    parts ::= str.split "T"
-    if parts.size != 2: return on-error.call
+    parts := str.split "T"
+    if parts.size != 2:
+      return if-error.call
     date-parts ::= (parts[0].split "-").map str-to-int
-    if date-parts.size != 3: return on-error.call
+    if date-parts.size != 3: return if-error.call
     time-string-parts ::= parts[1].split ":"
-    if time-string-parts.size != 3: return on-error.call
+    if time-string-parts.size == 2:
+      // We allow missing seconds.
+      time-string-parts.add "0"
+    if time-string-parts.size != 3: return if-error.call
     if time-string-parts[2].contains ".":
       splits := time-string-parts[2].split "."
-      if splits.size != 2: return on-error.call
+      if splits.size != 2: return if-error.call
       time-string-parts[2] = splits[0]
-      time-string-parts.add "$splits[1]000000000"[..9]
+      ns-string/string := splits[1]
+      if ns-string.size > 9: return if-error.call
+      ns-string = ns-string.pad --right 9 '0'
+      time-string-parts.add ns-string
     else:
       time-string-parts.add "0"
     time-parts := time-string-parts.map str-to-int
@@ -911,12 +929,12 @@ class Time implements Comparable:
       --is-utc=zone-is-adjusted
 
   /**
-  Variant of $(parse str [--on-error]).
+  Variant of $(parse str [--if-error]).
 
   Throws an error if the string cannot be parsed.
   */
   static parse str/string -> Time:
-    return parse str --on-error=: throw "INVALID_ARGUMENT"
+    return parse str --if-error=: throw "INVALID_ARGUMENT"
 
   /**
   Returns a monotonically increasing microsecond value.
