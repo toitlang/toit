@@ -47,7 +47,7 @@ handle-system-message system-message/SystemMessage snapshot-content -> none
       pipe.print-to-stdout "** WARNING: the $source contains an unexpected snapshot, $bundle.uuid!"
       pipe.print-to-stdout "***********************************************************"
     program = bundle.decode
-  m := mirror.decode system-message.payload program --on-error=:
+  m := mirror.decode system-message.payload program --if-error=:
     pipe.print-to-stdout it
     return
   if (pipe.stdout.is-a-terminal or force-pretty) and not force-plain:
@@ -130,7 +130,7 @@ decode invocation/cli.Invocation -> none:
   // The encoded-system-message is ubjson-encoded.
   encoded-system-message := base64.decode invocation["message"]
   // The decoded message still has its payload encoded in JSON.
-  decoded-system-message := decode-system-message encoded-system-message --on-error=:
+  decoded-system-message := decode-system-message encoded-system-message --if-error=:
     pipe.print-to-stderr it
     exit 1
 

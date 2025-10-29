@@ -66,11 +66,11 @@ test-parse:
   expect-throws "INVALID_UUID": Uuid.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa"
 
   error-uuid := Uuid.parse "123e4567-e89b-12d3-a456-426655440000"
-  expect-equals error-uuid (Uuid.parse "" --on-error=: error-uuid)
-  expect-equals error-uuid (Uuid.parse "9c20dadc-1abe-5520-b92c-85b948daf44"   --on-error=: error-uuid)
-  expect-equals error-uuid (Uuid.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa" --on-error=: error-uuid)
+  expect-equals error-uuid (Uuid.parse "" --if-error=: error-uuid)
+  expect-equals error-uuid (Uuid.parse "9c20dadc-1abe-5520-b92c-85b948daf44"   --if-error=: error-uuid)
+  expect-equals error-uuid (Uuid.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa" --if-error=: error-uuid)
 
-  expect-null (Uuid.parse "" --on-error=: null)
+  expect-null (Uuid.parse "" --if-error=: null)
 
 test-to-string:
   expect-equals
