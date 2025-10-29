@@ -1,0 +1,6 @@
+toit-png-tools/bin/pngunzip.toit:189:21: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+          byte = int.parse --radix=16 byte-string[2..] --on-error=: return null
+                    ^~~~~~
+toit-png-tools/bin/pngunzip.toit:191:21: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+          byte = int.parse byte-string --on-error=: return null
+                    ^~~~~~
