@@ -123,7 +123,7 @@ class ValueNode_:
       if TRUE.contains value: return true
       if FALSE.contains value: return false
 
-      if as-int := int.parse value --on-error=(: null): return as-int
+      if as-int := int.parse value --if-error=(: null): return as-int
 
       catch:
         // TODO(florian): Fix when float.parse takes an --on-error argument
@@ -139,11 +139,11 @@ class ValueNode_:
       if NAN.contains value: return float.NAN
 
       if value.starts-with "0x":
-        if as-int := int.parse --radix=16 value[2..] --on-error=(: null):
+        if as-int := int.parse --radix=16 value[2..] --if-error=(: null):
           return as-int
 
       if value.starts-with "0o":
-        if as-int := int.parse --radix=8 value[2..] --on-error=(: null):
+        if as-int := int.parse --radix=8 value[2..] --if-error=(: null):
           return as-int
 
     if value is List:
@@ -459,8 +459,12 @@ class Parser_ extends PegParserBase_:
     rollback start-mark
     return result
 
-  // Overall structure.
+  /** Deprecated. Use $(l-yaml-stream [--if-error]) instead. */
   l-yaml-stream [--on-error] -> any:
+    return l-yaml-stream --if-error=on-error
+
+  // Overall structure.
+  l-yaml-stream [--if-error] -> any:
     documents := []
     error/ParseError_? := catch --unwind=(: it is not ParseError_):
       repeat: l-document-prefix
@@ -474,7 +478,7 @@ class Parser_ extends PegParserBase_:
 
     parsed-value := documents.map: | node/ValueNode_ | node.resolve
     return error
-        ? on-error.call error.message
+        ? if-error.call error.message
         : ParseResult_ parsed-value
 
   /**

@@ -1,0 +1,3 @@
+toit-device-bot/src/interpreter.toit:996:15: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+    return int.parse string_value --on_error=:
+              ^~~~~~
