@@ -81,30 +81,38 @@ UTF-8 encoding is used on the writer.
 encode-stream --writer/io.Writer obj -> none:
   encode-stream --writer=writer obj: throw "INVALID_YAML_OBJECT"
 
-decode_ --as-stream/bool=false [--on-error] bytes/ByteArray -> any:
+decode_ bytes/ByteArray --as-stream/bool=false [--if-error] -> any:
   p := Parser_ bytes
-  result := p.l-yaml-stream --on-error=on-error
-  if not result is ParseResult_: return result // This happens when on-error is invoked.
+  result := p.l-yaml-stream --if-error=if-error
+  if not result is ParseResult_: return result // This happens when if-error is invoked.
   documents := result.documents
   if as-stream: return documents
   if documents.is-empty: return null
   return documents[0]
+
+/** Deprecated. Use $(decode bytes [--if-error]) instead. */
+decode bytes/ByteArray [--on-error] -> any:
+  return decode bytes --if-error=on-error
 
 /**
 Decodes the $bytes, which is a ByteArray in single document YAML format.
 The result is null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-decode [--on-error] bytes/ByteArray -> any:
-  return decode_ --on-error=on-error bytes
+decode bytes/ByteArray [--if-error] -> any:
+  return decode_ bytes --if-error=if-error
 
 /**
-Variation of (decode --on-error bytes).
+Variation of $(decode bytes [--if-error]).
 
 Throws on parse error.
 */
 decode bytes/ByteArray -> any:
-  return decode --on-error=(: throw it) bytes
+  return decode --if-error=(: throw it) bytes
+
+/** Deprecated. Use $(decode bytes --as-stream [--if-error]) instead. */
+decode bytes/ByteArray --as-stream [--on-error]-> List:
+  return decode bytes --as-stream --if-error=on-error
 
 /**
 Decodes the $bytes, which is a ByteArray in YAML stream format.
@@ -112,18 +120,18 @@ The result is a $List where each elemenet in the list corresponds to a YAML docu
   Each element will be null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-decode --as-stream [--on-error] bytes/ByteArray -> List:
+decode bytes/ByteArray --as-stream [--if-error] -> List:
   if not as-stream: throw "INVALID_ARGUMENT"
-  return decode_ --as-stream --on-error=on-error bytes
+  return decode_ --as-stream --if-error=if-error bytes
 
 /**
-Variation of (decode --as-stream --on-error bytes).
+Variation of $(decode bytes --as-stream [--if-error]).
 
 Throws on parse error.
 */
 decode --as-stream bytes/ByteArray -> List:
   if not as-stream: throw "INVALID_ARGUMENT"
-  return decode_ --as-stream --on-error=(: throw it) bytes
+  return decode_ --as-stream --if-error=(: throw it) bytes
 
 
 /**
@@ -160,21 +168,29 @@ Maps must have only string keys.  The elements of lists and the values of
 stringify obj/any -> string:
   return stringify obj: throw "INVALID_YAML_OBJECT"
 
+/** Deprecated. Use $(parse str [--if-error]) instead. */
+parse str/string [--on-error] -> any:
+  return parse str --if-error=on-error
+
 /**
 Decodes the $str, which is a string in single document YAML format.
 The result is null, or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-parse [--on-error] str/string -> any:
-  return decode_ --on-error=on-error str.to-byte-array
+parse str/string [--if-error] -> any:
+  return decode_ str.to-byte-array --if-error=if-error
 
 /**
-Variation of (parse --on-error bytes).
+Variation of $(parse bytes [--if-error]).
 
 Throws on parse error.
 */
 parse str/string -> any:
-  return parse --on-error=(: throw it ) str
+  return parse str --if-error=(: throw it )
+
+/** Deprecated. Use $(parse str --as-stream [--if-error]) instead. */
+parse str/string --as-stream [--on-error] -> List:
+  return parse str --as-stream --if-error=on-error
 
 /**
 Decodes the $str, which is a string in YAML stream format.
@@ -182,14 +198,14 @@ The result is a $List where each elemenet in the list corresponds to a YAML docu
   Each element will be null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-parse --as-stream [--on-error] str/string -> List:
+parse str/string --as-stream [--if-error] -> List:
   if not as-stream: throw "INVALID_ARGUMENT"
-  return decode_ --as-stream --on-error=on-error str.to-byte-array
+  return decode_ str.to-byte-array --as-stream --if-error=if-error
 
 /**
-Variation of (parse --as-stream --on-error bytes).
+Variation of $(parse bytes --as-stream [--if-error]).
 
 Throws on parse error.
 */
 parse --as-stream str/string -> List:
-  return parse --as-stream --on-error=(: throw it ) str
+  return parse str --as-stream --if-error=(: throw it )

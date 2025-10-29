@@ -415,33 +415,38 @@ This function can be slow as it requires a linear search for objects.
 literal-index_ o -> int?:
   #primitive.core.literal-index
 
-/// Deprecated.
+/** Deprecated. Use $hex-char-to-value instead. */
 hex-digit char/int [error-block] -> int:
-  return hex-char-to-value char --on-error=error-block
+  return hex-char-to-value char --if-error=error-block
 
-/// Deprecated.
+/** Deprecated. Use $hex-char-to-value instead. */
 hex-digit char/int -> int:
-  return hex-char-to-value char --on-error=(: throw "INVALID_ARGUMENT")
+  return hex-char-to-value char --if-error=(: throw "INVALID_ARGUMENT")
+
+/** Deprecated. Use $(hex-char-to-value char [--if-error]) instead. */
+hex-char-to-value char/int [--on-error] -> int:
+  return hex-char-to-value char --if-error=on-error
 
 /**
-Converts a hex digit character in the ranges
+Converts a hex digit character $char in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
-Calls the block on invalid input and returns its return value if any.
+Calls the block $if-error on invalid input and returns its return value if any.
 */
-hex-char-to-value char/int [--on-error] -> int:
+hex-char-to-value char/int [--if-error] -> int:
   if '0' <= char <= '9': return char - '0'
   if 'a' <= char <= 'f': return 10 + char - 'a'
   if 'A' <= char <= 'F': return 10 + char - 'A'
-  return on-error.call
+  return if-error.call
 
 /**
 Converts a hex digit character in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
+The input must be a valid hex digit character.
 */
 hex-char-to-value char/int -> int:
-  return hex-char-to-value char --on-error=(: throw "INVALID_ARGUMENT")
+  return hex-char-to-value char --if-error=(: throw "INVALID_ARGUMENT")
 
 /**
 Converts a number between 0 and 15 to a lower case
