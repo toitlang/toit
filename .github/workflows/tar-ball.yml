@@ -18,7 +18,6 @@ name: Upload full source tarball and debian package
 on:
   release:
     types: [published]
-  push:
 
 env:
   RUN_AUR_FLOW: ${{ (github.event_name == 'release' && github.event.release.prerelease != true) &&

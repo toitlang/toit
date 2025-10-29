@@ -377,6 +377,9 @@ PRIMITIVE(stat) {
         GetLastError() == ERROR_INVALID_NAME) {
       return process->null_object(); // Toit code expects this to be null
     }
+    if (GetLastError() == ERROR_ACCESS_DENIED) {
+      printf("Access denied for path: %ls\n", path);
+    }
     WINDOWS_ERROR;
   }
   AutoCloser closer(handle);
