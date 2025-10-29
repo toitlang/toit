@@ -1,0 +1,3 @@
+<pkg:..>/model.toit:2621:24: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+    str-to-int ::= :int.parse it --on-error=: throw "Cannot parse $it as integer"
+                       ^~~~~~
