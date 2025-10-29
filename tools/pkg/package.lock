@@ -6,13 +6,8 @@ prefixes:
   fs: pkg-fs
   host: pkg-host
   http: pkg-http
-  lockfile: ../toit-lockfile
+  lockfile: toit-lockfile
 packages:
-  ../toit-lockfile:
-    path: ../../../toit-lockfile
-    prefixes:
-      fs: pkg-fs
-      host: pkg-host
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
@@ -27,7 +22,7 @@ packages:
       desktop: pkg-desktop
       fs: pkg-fs
       host: pkg-host
-      lockfile: toitware/toit-lockfile
+      lockfile: toit-lockfile
   pkg-desktop:
     url: github.com/toitlang/pkg-desktop
     name: desktop
@@ -57,7 +52,7 @@ packages:
     name: certificate-roots
     version: 1.11.0
     hash: c117dbba4757d7c69e91af7a875ab6989f051a33
-  toitware/toit-lockfile:
+  toit-lockfile:
     url: github.com/toitware/toit-lockfile
     name: lockfile
     version: 1.0.0
