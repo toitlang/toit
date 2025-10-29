@@ -49,7 +49,7 @@ class YamlEncoder extends EncoderBase_:
     // for simplicity.
     should-quote := str.contains "\n" or
                     str.contains "\r" or
-                    not (parse --on-error=(: null) str) is string
+                    not (parse --if-error=(: null) str) is string
 
     escaped := should-quote ? (escape-string str) : str
 
