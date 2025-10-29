@@ -34,9 +34,9 @@ class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     if not program: throw "Stack trace can't be decoded without a snapshot"
-    frames = json[1].map: decode-json_ it program --on-error=on-error
+    frames = json[1].map: decode-json_ it program --if-error=if-error
     super json program
 
   stringify -> string:
@@ -63,7 +63,7 @@ class Frame extends Mirror:
   method-info/MethodInfo ::= ?
   position/Position ::= ?
 
-  constructor json program/Program [--on-error]:
+  constructor json program/Program [--if-error]:
     index = json[1]
     absolute-bci = json[2]
     method = program.method-from-absolute-bci absolute-bci
@@ -87,7 +87,7 @@ class Instance extends Mirror:
   static tag ::= 'I'
   class-id/int ::= ?
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     class-id = json[1]
     super json program
 
@@ -106,9 +106,9 @@ class Array extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     size = json[1]
-    content = json[2].map: decode-json_ it program --on-error=on-error
+    content = json[2].map: decode-json_ it program --if-error=if-error
     super json program
 
   stringify -> string:
@@ -122,9 +122,9 @@ class MList extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     size = json[1]
-    content = json[2].map: decode-json_ it program --on-error=on-error
+    content = json[2].map: decode-json_ it program --if-error=if-error
     super json program
 
   stringify -> string:
@@ -140,11 +140,11 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program? [--on-error]:
-    type = decode-json_ json[1] program --on-error=on-error
-    message = decode-json_ json[2] program --on-error=on-error
+  constructor json program/Program? [--if-error]:
+    type = decode-json_ json[1] program --if-error=if-error
+    message = decode-json_ json[2] program --if-error=if-error
     if program:
-      trace = decode-json_ json[3] program --on-error=on-error
+      trace = decode-json_ json[3] program --if-error=if-error
     else:
       trace = null
     super json program
@@ -328,12 +328,12 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
-    title = decode-json_ json[1] program --on-error=on-error
-    cutoff = decode-json_ json[2] program --on-error=on-error
-    total = decode-json_ json[3] program --on-error=on-error
+    title = decode-json_ json[1] program --if-error=if-error
+    cutoff = decode-json_ json[2] program --if-error=if-error
+    total = decode-json_ json[3] program --if-error=if-error
     ((json.size - 4) / 2).repeat:
       entries.add
         Record
@@ -367,7 +367,7 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
@@ -397,7 +397,7 @@ class CoreDump extends Mirror:
   static tag ::= 'c'
   core-dump ::= ?
 
-  constructor json program [--on-error]:
+  constructor json program [--if-error]:
     core-dump = json[1]
     super json program
 
@@ -467,7 +467,7 @@ class MallocReport extends Mirror:
   */
   static MEMORY-PAGE-MERGE-WITH-NEXT_ ::= 1 << 6
 
-  constructor json program [--on-error]:
+  constructor json program [--if-error]:
     for i := 1; i + 2 < json.size; i += 3:
       uses-list.add       json[i + 0]
       fullnesses-list.add json[i + 1]
@@ -592,9 +592,9 @@ class HeapReport extends Mirror:
   reason := ""
   pages ::= []
 
-  constructor json program/Program? [--on-error]:
+  constructor json program/Program? [--if-error]:
     reason = json[1]
-    pages = json[2].map: decode-json_ it program --on-error=on-error
+    pages = json[2].map: decode-json_ it program --if-error=if-error
     pages.sort --in-place: | a b | a.address.compare-to b.address
     super json program
 
@@ -647,7 +647,7 @@ class HeapPage extends Mirror:
   static PAGE-HEADER_ ::= 24
   static PAGE_ ::= 4096
 
-  constructor json program [--on-error]:
+  constructor json program [--if-error]:
     address = json[1]
     map = json[2]
     super json program
@@ -823,10 +823,10 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
       foreground = -1
       background = -1
 
-decode json-payload/any program/Program? [--on-error]:
-  return decode-json_ json-payload program --on-error=on-error
+decode json-payload/any program/Program? [--if-error]:
+  return decode-json_ json-payload program --if-error=if-error
 
-decode-json_ json program/Program? [--on-error]:
+decode-json_ json program/Program? [--if-error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json
@@ -836,18 +836,18 @@ decode-json_ json program/Program? [--on-error]:
   // Then decode a real list as a system encoded data structure.
   assert: not json is ByteArray // Note: a ByteArray is also a List.
   assert: json is List
-  if json.size == 0: return on-error.call "Expecting a non empty list"
+  if json.size == 0: return if-error.call "Expecting a non empty list"
   tag := json.first
-  if      tag == Array.tag:        return Array        json program --on-error=on-error
-  else if tag == MList.tag:        return MList        json program --on-error=on-error
-  else if tag == Stack.tag:        return Stack        json program --on-error=on-error
-  else if tag == Frame.tag:        return Frame        json program --on-error=on-error
-  else if tag == Error.tag:        return Error        json program --on-error=on-error
-  else if tag == Instance.tag:     return Instance     json program --on-error=on-error
-  else if tag == Profile.tag:      return Profile      json program --on-error=on-error
-  else if tag == Histogram.tag:    return Histogram    json program --on-error=on-error
-  else if tag == HeapReport.tag:   return HeapReport   json program --on-error=on-error
-  else if tag == HeapPage.tag:     return HeapPage     json program --on-error=on-error
-  else if tag == CoreDump.tag:     return CoreDump     json program --on-error=on-error
-  else if tag == MallocReport.tag: return MallocReport json program --on-error=on-error
-  return on-error.call "Unknown tag: $tag"
+  if      tag == Array.tag:        return Array        json program --if-error=if-error
+  else if tag == MList.tag:        return MList        json program --if-error=if-error
+  else if tag == Stack.tag:        return Stack        json program --if-error=if-error
+  else if tag == Frame.tag:        return Frame        json program --if-error=if-error
+  else if tag == Error.tag:        return Error        json program --if-error=if-error
+  else if tag == Instance.tag:     return Instance     json program --if-error=if-error
+  else if tag == Profile.tag:      return Profile      json program --if-error=if-error
+  else if tag == Histogram.tag:    return Histogram    json program --if-error=if-error
+  else if tag == HeapReport.tag:   return HeapReport   json program --if-error=if-error
+  else if tag == HeapPage.tag:     return HeapPage     json program --if-error=if-error
+  else if tag == CoreDump.tag:     return CoreDump     json program --if-error=if-error
+  else if tag == MallocReport.tag: return MallocReport json program --if-error=if-error
+  return if-error.call "Unknown tag: $tag"

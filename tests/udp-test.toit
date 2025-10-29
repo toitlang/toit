@@ -8,6 +8,7 @@ import net
 import net.modules.dns
 import net.modules.udp
 import net.udp as net
+import system
 
 import .io-utils
 
@@ -125,6 +126,10 @@ echo-resend-responder network/net.Client times ready:
   socket.close
 
 broadcast-test network/net.Client:
+  // Apple clamped down on udp broadcast in macOS 15 Sequoia, and
+  // it's not possible to run this test on GitHub runners anymore.
+  // https://developer.apple.com/forums/thread/663875.
+  if system.platform == system.PLATFORM-MACOS: return
   times := 10
 
   ready := monitor.Channel 1
