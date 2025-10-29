@@ -33,6 +33,9 @@ EXAMPLES ::= [
   "2023-10-01T15:02:04.11111111Z",
   "2023-10-01T15:02:04.111111111Z",
   "2023-10-01T15:02:59.000338385Z",  // Fails if we use floor instead of round.
+  ["2019-12-18T06:22Z", "2019-12-18T06:22:00Z"],
+  ["2019-12-18T08:05", "2019-12-18T08:05:00"],
+  ["2025-01-12T00:00Z", "2025-01-12T00:00:00Z"],
 ]
 
 TZ-TIMES ::= [
@@ -42,13 +45,21 @@ TZ-TIMES ::= [
   ["2020-10-01T15:02:04Z", "2020-10-01T15:02:04Z"],
 ]
 
-test-time-string str/string:
+test-time-string test:
+  str/string := ?
+  expected/string := ?
+  if test is List:
+    str = test[0]
+    expected = test[1]
+  else:
+    str = test
+    expected = str
   time ::= Time.parse str
   if str.ends-with "Z":
-    expect-equals str time.stringify
-    expect-equals str time.utc.stringify
+    expect-equals expected time.stringify
+    expect-equals expected time.utc.stringify
   else:
-    expect-equals str time.local.stringify
+    expect-equals expected time.local.stringify
 
 main:
   time-test
@@ -396,7 +407,7 @@ duration-compare-test:
       Time.parse right
 
   now := Time.now
-  parsed := Time.parse "invalid" --on-error=: now
+  parsed := Time.parse "invalid" --if-error=: now
   expect-equals now parsed
 
 rounded-test:
