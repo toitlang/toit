@@ -702,15 +702,19 @@ class DataBlock:
     if type == TYPE-RAW: return data.size
     return 2 + data.size
 
+  /** Deprecated. Use $(write bytes --at [--if-error]) instead. */
+  write bytes/ByteArray --at/int [--on-error] -> int:
+    return write bytes --at=at --if-error=on-error
+
   /**
   Writes this field into the given $bytes at the given position $at.
   */
-  write bytes/ByteArray --at/int [--on-error] -> int:
+  write bytes/ByteArray --at/int [--if-error] -> int:
     if type == TYPE-RAW:
       bytes.replace at data
       return at + data.size
     if bytes.size < at + 2 + data.size:
-      return on-error.call "BUFFER_TOO_SMALL"
+      return if-error.call "BUFFER_TOO_SMALL"
     bytes[at] = data.size + 1
     bytes[at + 1] = type
     bytes.replace (at + 2) data
@@ -985,7 +989,7 @@ class Advertisement:
     result := ByteArray size
     pos := 0
     data-blocks.do: | block/DataBlock |
-      pos = block.write result --at=pos --on-error=: throw it
+      pos = block.write result --at=pos --if-error=: throw it
     return result
 
   stringify -> string:

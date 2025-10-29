@@ -6,6 +6,88 @@ import io
 import monitor
 import monitor show ResourceState_
 
+/**
+ESP-NOW communication for ESP32 devices.
+
+ESP-NOW is a proprietary protocol developed by Espressif for
+  low-power, connection-less communication between ESP32 devices.
+
+Devices can either communicate by broadcasting messages to all
+  devices in range, or by sending messages to specific devices using
+  their MAC address. In both cases, a key can be used to encrypt the
+  messages.
+
+# Limitations
+
+Messages are at most 1470 bytes long. For broadcast messages there
+  is no guarantee that messages are correctly delivered. For direct
+  messages, the implementation ensures that the PHY layer has
+  received the message, but there is no guarantee that the message
+  is processed by the receiving device.
+
+ESP-NOW only supports 20 peers, although one peer-slot can be used
+  to communicate with all devices in range by specifying the broadcast
+  address.
+
+By default only 7 keys can be used. This can be changed in the
+  sdkconfig, but that requires building a custom envelope.
+
+In theory, ESP-NOW can run at the same times as Wifi, but this library
+  currently does not support this.
+
+# Examples
+
+Broadcasting an unencrypted message:
+
+```
+service := espnow.Service
+service.add-peer espnow.BROADCAST-ADDRESS
+service.send "hello world"
+    --address=espnow.BROADCAST-ADDRESS
+service.close
+```
+
+Receiving a message:
+
+```
+service := espnow.Service
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
+```
+
+Sending to a peer with encryption:
+```
+// On both sides, create a key for the peer.
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the receiver.
+peer := espnow.Address.parse "aa:bb:cc:dd:ee:ff"
+
+service := espnow.Service
+service.add-peer peer --key=key
+service.send "hello world" --address=peer
+service.close
+```
+
+Receiving from a peer with encryption:
+```
+key := espnow.Key.from-string "0123456789abcdef"
+// The address of the sender.
+peer := espnow.Address.parse "ff:ee:dd:cc:bb:aa"
+
+service := espnow.Service
+service.add-peer peer --key=key
+
+message := service.receive  // Blocks until a message is received.
+sender := message.address
+data := message.data.to-string
+print "Received datagram from $sender: $data"
+service.close
+```
+*/
+
 BROADCAST-ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
 
 /** 1 Mbps with long preamble. */
@@ -203,29 +285,33 @@ class Address:
     if mac.size != 6:
         throw "ESP-Now MAC address length must be 6 bytes"
 
-  /** Variant of $(parse str [--on-error]) that throws on errors. */
+  /** Variant of $(parse str [--if-error]) that throws on errors. */
   static parse str/string -> Address:
-    return Address.parse str --on-error=: throw it
+    return Address.parse str --if-error=: throw it
+
+  /** Deprecated. Use $(parse str [--if-error]) instead. */
+  static parse str/string [--on-error] -> Address?:
+    return parse str --if-error=on-error
 
   /**
   Parses the given $str as MAC address.
 
-  The $on-error block is called when the $str is not a valid MAC address. The
+  The $if-error block is called when the $str is not a valid MAC address. The
     result of the block is then returned. As such, it must be of type $Address,
     or null.
   */
-  static parse str/string [--on-error] -> Address?:
+  static parse str/string [--if-error] -> Address?:
     parts := str.split ":"
-    if parts.size != 6: return on-error.call "INVALID_ARGUMENT"
+    if parts.size != 6: return if-error.call "INVALID_ARGUMENT"
     mac := ByteArray 6
     6.repeat: | i/int |
       part := parts[i]
-      if part.size != 2: return on-error.call "INVALID_ARGUMENT"
+      if part.size != 2: return if-error.call "INVALID_ARGUMENT"
       byte := int.parse part
           --radix=16
-          --on-error=: return on-error.call it
+          --if-error=: return if-error.call it
       if not byte or not 0 <= byte < 256:
-        return on-error.call "INVALID_ARGUMENT"
+        return if-error.call "INVALID_ARGUMENT"
       mac[i] = byte
     return Address mac
 
@@ -284,14 +370,40 @@ class Service:
     keys is unencrypted even if a master $key is provided.
 
   The $channel parameter must be a valid WiFi channel number.
+
+  # Advanced
+  The $buffer-byte-size parameter sets the size of the internal buffer used
+    for receiving messages. It is used to store incoming messages until they
+    are handled by $receive. If a message is received that is larger than
+    the remaining space in the buffer, previous unhandled messages are dropped.
+    If a message is larger than the entire buffer, it is dropped.
+    By default the buffer size is 2048 bytes. Its size must be a multiple of 128.
+
+  The $queue-size parameter sets the size of the internal queue used
+    for receiving messages. It is used to queue incoming messages until they
+    are handled by $receive. If a message is received when the queue is full,
+    the oldest message in the queue is dropped. By default the queue size is 8.
+
+  By dropping old messages, the service ensures that the most recent messages
+    are always received, at the cost of potentially losing some older ones.
+    This is especially important when starting to $receive, as there might be
+    unimportant messages already in the buffer that were sent before $receive
+    was called.
   */
-  constructor --key/Key?=null --rate/int=RATE-1M-L --.channel=6:
+  constructor
+      --key/Key?=null
+      --rate/int=RATE-1M-L
+      --.channel=6
+      --buffer-byte-size/int=2048
+      --queue-size/int=8:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
+    if buffer-byte-size < 1 or buffer-byte-size % 128 != 0:
+      throw "INVALID_ARGUMENT"
 
     key-data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     rate_ = rate
-    resource_ = espnow-create_ resource-group_ key-data channel
+    resource_ = espnow-create_ resource-group_ key-data channel buffer-byte-size queue-size
     state_ = ResourceState_ resource-group_ resource_
 
   close -> none:
@@ -388,7 +500,7 @@ SEND-DONE-STATE_ ::= 1 << 1
 espnow-init_:
   #primitive.espnow.init
 
-espnow-create_ group pmk channel:
+espnow-create_ group pmk channel buffer-byte-size queue-size:
   #primitive.espnow.create
 
 espnow-close_ resource:
