@@ -238,7 +238,7 @@ class CronSchedule:
 
   /// Parse a non-negative integer.
   static parse-cardinal_ number/string -> int:
-    value ::= int.parse number --on-error=: throw "Cron: cannot parse $number as integer"
+    value ::= int.parse number --if-error=: throw "Cron: cannot parse $number as integer"
     if value < 0: throw "Cron: parsed integer $number is negative"
     return value
 
