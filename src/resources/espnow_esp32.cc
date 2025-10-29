@@ -33,15 +33,6 @@
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
 
-#define ESPNOW_RX_DATAGRAM_LEN_MAX  250
-#define ESPNOW_RX_DATAGRAM_NUM 8
-// The size of the event queue.
-// Can contain up to ESPNOW_RX_DATAGRAM_NUM receival events, and then
-// one for informing that a sent message was handled.
-// We rely on the fact that sending is blocking until it has been sent.
-// As such there can only be one additional event in the queue.
-#define ESPNOW_EVENT_NUM (ESPNOW_RX_DATAGRAM_NUM + 1)
-
 namespace toit {
 
 class SpinLocker {
@@ -53,70 +44,139 @@ class SpinLocker {
 };
 
 struct Datagram {
+  int offset;
   word len;
   uint8 mac[6];
-  uint8 buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
+
+  bool is_valid() const { return offset >= 0; }
 };
 
 class DatagramPool {
  public:
   DatagramPool() {
     spinlock_initialize(&spinlock_);
-    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
-      ASSERT(datagrams_[i] == NULL);
-    }
   }
 
   ~DatagramPool() {
-    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
-      // If we didn't manage to allocate all datagrams, then some entries
-      // will be 'null', as the 'datagrams_' array is initialized to null.
-      free(datagrams_[i]);
-    }
+    delete[] datagrams_;
+    free(buffer_);
   }
 
-  Object* init() {
-    // We allocate the datagrams individually instead of as
-    // a big array, so they don't need a contiguous memory area.
-    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
-      auto datagram = unvoid_cast<Datagram*>(malloc(sizeof(Datagram)));
-      if (datagram == null) {
-        FAIL(MALLOC_FAILED);
-      }
-      datagrams_[i] = datagram;
+  Object* init(int buffer_byte_size, int receive_queue_size) {
+    buffer_ = unvoid_cast<uint8*>(malloc(buffer_byte_size));
+    if (!buffer_) {
+      FAIL(MALLOC_FAILED);
     }
+    datagrams_ = _new Datagram[receive_queue_size];
+    if (!datagrams_) {
+      free(buffer_);
+      FAIL(MALLOC_FAILED);
+    }
+    queue_size_ = receive_queue_size;
+    buffer_size_ = buffer_byte_size;
     return null;
   }
 
-  Datagram* take() {
+  bool enqueue(uint8* mac,
+               const uint8* data,
+               int data_size,
+               bool* overflow_queue_size,
+               bool* overflow_buffer_size) {
     SpinLocker locker(&spinlock_);
-    int mask = 1;
-    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
-      if ((used_ & mask) == 0) {
-        used_ = used_ | mask;
-        return datagrams_[i];
+    if (data_size > buffer_size_) return false;
+
+    Datagram* newest = used_ > 0
+        ? &datagrams_[(head_ + used_) % queue_size_]
+        : null;
+
+    while (true) {
+      if (used_ >= queue_size_) {
+        *overflow_queue_size = true;
+        drop_oldest(locker);
+        continue;
       }
-      mask <<= 1;
+
+      if (used_ > 0) {
+        Datagram* oldest = &datagrams_[head_];
+        int used_buffer = newest->offset + newest->len - oldest->offset;
+        if (used_buffer < 0) used_buffer += buffer_size_;
+        int free_buffer = buffer_size_ - used_buffer;
+        if (free_buffer < data_size) {
+          *overflow_buffer_size = true;
+          drop_oldest(locker);
+          continue;
+        }
+      }
+      break;
     }
-    return null;
+
+    int index = (head_ + used_) % queue_size_;
+    Datagram* datagram = &datagrams_[index];
+    int offset = used_ > 0
+        ? (newest->offset + newest->len) % buffer_size_
+        : 0;
+    datagram->offset = offset;
+    datagram->len = data_size;
+    // Copy in two steps to handle wrap-around.
+    int first_copy = Utils::min(data_size, buffer_size_ - offset);
+    memcpy(buffer_ + offset, data, first_copy);
+    int second_copy = data_size - first_copy;
+    if (second_copy > 0) {
+      memcpy(buffer_, data + first_copy, second_copy);
+    }
+    memcpy(datagram->mac, mac, 6);
+    used_++;
+    return true;
   }
 
-  void release(Datagram* datagram) {
-    int mask = 1;
-    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
-      if (datagrams_[i] == datagram) {
-        SpinLocker locker(&spinlock_);
-        used_ = used_ & ~mask;
-        return;
-      }
-      mask <<= 1;
+  /// If the given datagram is still the oldest one, copy its data into the
+  /// out_buffer and remove it from the queue.
+  /// Returns true if the datagram was valid and copied. False, otherwise.
+  bool consume(const Datagram& datagram, uint8* out_buffer) {
+    SpinLocker locker(&spinlock_);
+    if (used_ == 0) return false;  // Should never happen.
+    Datagram* oldest = &datagrams_[head_];
+    if (memcmp(&datagram, oldest, sizeof(Datagram)) != 0) {
+      // The oldest datagram is not the same anymore.
+      return false;
     }
+    // Copy in two steps to handle wrap-around.
+    int first_copy = Utils::min(datagram.len, buffer_size_ - datagram.offset);
+    memcpy(out_buffer, buffer_ + datagram.offset, first_copy);
+    int second_copy = datagram.len - first_copy;
+    if (second_copy > 0) {
+      memcpy(out_buffer + first_copy, buffer_, second_copy);
+    }
+    drop_oldest(locker);
+    return true;
+  }
+
+  Datagram peek() {
+    SpinLocker locker(&spinlock_);
+    if (used_ == 0) {
+      return {
+        .offset = -1,
+        .len = 0,
+        .mac = {0},
+      };
+    }
+    return datagrams_[head_];
   }
 
  private:
   spinlock_t spinlock_{};
-  struct Datagram* datagrams_[ESPNOW_RX_DATAGRAM_NUM] = {};
-  volatile int used_ = 0;
+  uint8* buffer_ = null;
+  int buffer_size_ = 0;
+  struct Datagram* datagrams_ = null;
+  int head_ = 0;
+  int used_ = 0;
+  int queue_size_ = 0;
+
+  void drop_oldest(const SpinLocker& locker) {
+    ASSERT(used_ > 0);
+    head_ = (head_ + 1) % queue_size_;
+    used_--;
+  }
 };
 
 // These constants must be synchronized with the Toit code.
@@ -131,8 +191,15 @@ enum class EspNowEvent {
 };
 
 static DatagramPool* datagram_pool;
+// Only one message can be sent at a time, so we only need one status variable.
 static esp_now_send_status_t tx_status;
-static QueueHandle_t rx_queue;
+// The size of the event queue.
+// We rely on the fact that sending is blocking until it has been sent.
+// This means that there is at most one pending send-done event in the queue.
+// If only one event is in the queue, then we might add a receive event (independently,
+// of whether there is already one in the queue or not). If there are two events in
+// the queue, we will never add a receive event, as there is already one in the queue.
+const int kEventQueueSize = 3;
 static QueueHandle_t event_queue;
 
 // This function is registered as callback and will then be called on the high-priority WiFi task.
@@ -141,39 +208,43 @@ static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) 
   auto event = EspNowEvent::SEND_DONE;
   auto ret = xQueueSend(event_queue, &event, 0);
   if (ret != pdTRUE) {
-    ESP_LOGE("ESPNow", "Failed to enqueue receive event");
+    // This should never happen as the event_queue has always space for one send-done.
+    ESP_LOGE("ESPNow", "Failed to enqueue send-done event");
   }
 }
 
 // This function is registered as callback and will then be called on the high-priority WiFi task.
 static void espnow_recv_cb(const esp_now_recv_info_t* esp_now_info, const uint8* data, int data_len) {
-  if (data_len > ESPNOW_RX_DATAGRAM_LEN_MAX) {
-    ESP_LOGE("ESPNow", "Receive datagram length=%d is larger than max=%d", data_len, ESPNOW_RX_DATAGRAM_LEN_MAX);
-    return ;
-  }
-
-  struct Datagram* datagram = datagram_pool->take();
-  if (!datagram) {
-    ESP_LOGE("ESPNow", "Failed to malloc datagram");
+  bool overflow_queue_size = false;
+  bool overflow_buffer_size = false;
+  bool success = datagram_pool->enqueue(esp_now_info->src_addr,
+                                        data,
+                                        data_len,
+                                        &overflow_queue_size,
+                                        &overflow_buffer_size);
+  if (!success) {
+    ESP_LOGE("ESPNow", "Received datagram length=%d, larger than buffer", data_len);
     return;
   }
-
-  datagram->len = data_len;
-  memcpy(datagram->mac, esp_now_info->src_addr, 6);
-  memcpy(datagram->buffer, data, data_len);
-
-  portBASE_TYPE ret = xQueueSend(rx_queue, &datagram, 0);
-  if (ret != pdTRUE) {
-    // This should never happen as the rx_queue has the same amount of
-    // entries as the pool.
-    datagram_pool->release(datagram);
-    ESP_LOGE("ESPNow", "Failed to send datagram to rx_queue");
-    return;
+  if (overflow_queue_size) {
+    ESP_LOGE("ESPNow", "Dropped datagram due to queue size");
   }
-  auto event = EspNowEvent::NEW_DATA_AVAILABLE;
-  ret = xQueueSend(event_queue, &event, 0);
-  if (ret != pdTRUE) {
-    ESP_LOGE("ESPNow", "Failed to enqueue receive event");
+  if (overflow_buffer_size) {
+    ESP_LOGE("ESPNow", "Dropped datagram due to buffer size");
+  }
+
+  // Always keep at least one slot for a "send-done" event in the queue.
+  // We just need *one* event in the queue for receive events. Since the
+  // queue is bigger than 2 elements, and there is never more than one
+  // send-done event, we just need to check that there is more than one
+  // slot left.
+  static_assert(kEventQueueSize >= 3, "Unexpected event queue size");
+  if (uxQueueSpacesAvailable(event_queue) > 1) {
+    auto event = EspNowEvent::NEW_DATA_AVAILABLE;
+    portBASE_TYPE ret = xQueueSend(event_queue, &event, 0);
+    if (ret != pdTRUE) {
+      ESP_LOGE("ESPNow", "Failed to enqueue receive event");
+    }
   }
 }
 
@@ -212,14 +283,13 @@ class EspNowResource : public EventQueueResource {
   bool receive_event(word* data) override;
 
   // Returns null if the initializations succeeded.
-  Object* init(Process* process, Blob pmk);
+  Object* init(Process* process, Blob pmk, int buffer_byte_size, int receive_queue_size);
 
  private:
   enum class State {
     CONSTRUCTED,
     ESPNOW_CLAIMED,
     POOL_ALLOCATED,
-    RX_QUEUE_ALLOCATED,
     WIFI_INITTED,
     WIFI_STARTED,
     ESPNOW_INITTED,
@@ -249,10 +319,6 @@ EspNowResource::~EspNowResource() {
     case State::WIFI_INITTED:
       esp_wifi_deinit();
       [[fallthrough]];
-    case State::RX_QUEUE_ALLOCATED:
-      vQueueDelete(rx_queue);
-      rx_queue = null;
-      [[fallthrough]];
     case State::POOL_ALLOCATED:
       delete datagram_pool;
       datagram_pool = NULL;
@@ -266,7 +332,10 @@ EspNowResource::~EspNowResource() {
   }
 }
 
-Object* EspNowResource::init(Process* process, Blob pmk) {
+Object* EspNowResource::init(Process* process,
+                             Blob pmk,
+                             int buffer_byte_size,
+                             int receive_queue_size) {
   id_ = wifi_espnow_pool.any();
   if (id_ == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
@@ -278,16 +347,10 @@ Object* EspNowResource::init(Process* process, Blob pmk) {
   }
   state_ = State::POOL_ALLOCATED;
 
-  auto init_result = datagram_pool->init();
+  auto init_result = datagram_pool->init(buffer_byte_size, receive_queue_size);
   if (init_result != null) {
     return init_result;
   }
-
-  rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(Datagram*));
-  if (rx_queue == null) {
-    FAIL(MALLOC_FAILED);
-  }
-  state_ = State::RX_QUEUE_ALLOCATED;
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   esp_err_t err = esp_wifi_init(&cfg);
@@ -427,19 +490,22 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-  ARGS(EspNowResourceGroup, group, Blob, pmk, int, channel);
+  ARGS(EspNowResourceGroup, group, Blob, pmk, int, channel, int, buffer_byte_size, int, receive_queue_size);
 
   if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
+  if (buffer_byte_size < 1) FAIL(INVALID_ARGUMENT);
+  if (receive_queue_size < 1) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  event_queue = xQueueCreate(ESPNOW_EVENT_NUM, sizeof(EspNowEvent));
+  event_queue = xQueueCreate(kEventQueueSize, sizeof(EspNowEvent));
   if (!event_queue) {
     FAIL(MALLOC_FAILED);
   }
 
-  EspNowResource* resource = _new EspNowResource(group, event_queue);
+  EspNowResource* resource =
+      _new EspNowResource(group, event_queue);
   if (!resource) {
     vQueueDelete(event_queue);
     FAIL(MALLOC_FAILED);
@@ -448,7 +514,7 @@ PRIMITIVE(create) {
   // From now on the resource is in charge of all allocations. The
   // event_queue, too, is now deleted by it.
 
-  Object* init_result = resource->init(process, pmk);
+  Object* init_result = resource->init(process, pmk, buffer_byte_size, receive_queue_size);
   if (init_result != null) {
     delete resource;
     return init_result;
@@ -489,14 +555,8 @@ PRIMITIVE(send_succeeded) {
 PRIMITIVE(receive) {
   ARGS(EspNowResource, resource);
 
-  struct Datagram* peeked;
-  portBASE_TYPE ret = xQueuePeek(rx_queue, &peeked, 0);
-  if (ret != pdTRUE) {
-    return process->null_object();
-  }
-
-  ByteArray* data = process->allocate_byte_array(peeked->len);
-  if (data == null) FAIL(ALLOCATION_FAILED);
+  Datagram peeked = datagram_pool->peek();
+  if (!peeked.is_valid()) return process->null_object();
 
   ByteArray* mac = process->allocate_byte_array(6);
   if (mac == null) FAIL(ALLOCATION_FAILED);
@@ -504,30 +564,27 @@ PRIMITIVE(receive) {
   Array* result = process->object_heap()->allocate_array(2, process->null_object());
   if (result == null) FAIL(ALLOCATION_FAILED);
 
-  result->at_put(0, mac);
-  result->at_put(1, data);
+  ByteArray* data = null;
+  while (true) {
+    if (data == null || data->size() != peeked.len) {
+      data = process->allocate_byte_array(peeked.len);
+      if (data == null) FAIL(ALLOCATION_FAILED);
+    }
 
-  memcpy(ByteArray::Bytes(mac).address(), peeked->mac, 6);
-  memcpy(ByteArray::Bytes(data).address(), peeked->buffer, peeked->len);
+    bool success = datagram_pool->consume(peeked, ByteArray::Bytes(data).address());
+    if (success) {
+      memcpy(ByteArray::Bytes(mac).address(), peeked.mac, 6);
 
-  struct Datagram* actual;
-  ret = xQueueReceive(rx_queue, &actual, 0);
-  if (ret != pdTRUE) {
-    // Should not happen: there is only one process owning this resource,
-    // and there can't be two tasks executing a primitive call at the same
-    // time.
-    ESP_LOGE("ESPNow", "Didn't get peeked queue entry");
-    return process->null_object();
+      result->at_put(0, mac);
+      result->at_put(1, data);
+
+      return result;
+    }
+
+    // The oldest datagram was discarded to make space for a new one.
+    peeked = datagram_pool->peek();
+    if (!peeked.is_valid()) FATAL("Expected valid datagram");
   }
-
-  datagram_pool->release(actual);
-
-  if (actual != peeked) {
-    // As before: this should never happen.
-    ESP_LOGE("ESPNow", "Dequeued and peeked entry not the same");
-  }
-
-  return result;
 }
 
 PRIMITIVE(add_peer) {
