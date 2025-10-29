@@ -30,12 +30,12 @@ class SystemMessage:
 
   constructor --.sdk-version --.sdk-model --.program-uuid --.payload:
 
-decode-system-message bytes/ByteArray [--on-error] -> SystemMessage:
+decode-system-message bytes/ByteArray [--if-error] -> SystemMessage:
   decoded-json := null
   error ::= catch: decoded-json = ubjson.decode bytes
   if error:
-    on-error.call error
-    unreachable  // on_error callback shouldn't continue decoding.
+    if-error.call error
+    unreachable  // if_error callback shouldn't continue decoding.
   if decoded-json is not List: throw "Expecting a list when decoding a structure"
   if decoded-json.size != 5: throw "Expecting five element list"
   if decoded-json.first != 'X': throw "Expecting Message"

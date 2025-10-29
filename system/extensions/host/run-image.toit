@@ -347,7 +347,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   path = path.replace --all "\\" "/"
   last-separator := path.index-of --last "/"
   last-segment := path[last-separator + 1..]
-  file-uuid/Uuid? := Uuid.parse last-segment --on-error=: null
+  file-uuid/Uuid? := Uuid.parse last-segment --if-error=: null
 
   if file-uuid and existing-uuids.contains file-uuid:
     // Already in the flash.
