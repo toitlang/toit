@@ -59,17 +59,28 @@ test-board1:
   service.add-peer espnow.BROADCAST-ADDRESS
 
   print "Listening for messages."
-  CONFIGURATIONS.size.repeat:
-    with-timeout --ms=10_000:
-      received := []
-      while true:
-        datagram := service.receive
-        message := datagram.data.to-string
-        received.add message
-        if message == END-TOKEN: break
-        print message
+  2.repeat:
+    large-message := (it == 1)
+    CONFIGURATIONS.size.repeat:
+      with-timeout --ms=10_000:
+        received := []
+        while true:
+          datagram := service.receive
+          message := datagram.data.to-string
+          received.add message
+          if large-message:
+            print "Received $message.size bytes"
+          else:
+            print message
+          if message.ends-with END-TOKEN: break
 
-      expect-equals TEST-DATA received
+        if large-message:
+          expect-equals 1 received.size
+          expected := (TEST-DATA.join "\n") * 4
+          expect-equals expected received[0]
+        else:
+          expect-equals TEST-DATA received
+  print "done"
 
 main-board2:
   run-test: test-board2
@@ -77,31 +88,38 @@ main-board2:
 test-board2:
   service ::= espnow.Service --key=PMK --channel=CHANNEL
 
-  CONFIGURATIONS.do: | config/List |
-    sleep --ms=200
-    rate := config[0]
-    mode := config[1]
+  2.repeat:
+    large-message := (it == 1)
+    CONFIGURATIONS.do: | config/List |
+      sleep --ms=200
+      rate := config[0]
+      mode := config[1]
 
-    service.add-peer espnow.BROADCAST-ADDRESS
-        --rate=rate
-        --mode=mode
+      service.add-peer espnow.BROADCAST-ADDRESS
+          --rate=rate
+          --mode=mode
 
-    count := 0
-    TEST-DATA.do: | str/string |
-      count++
-      // Test byte-array, string, and custom data type.
-      data/io.Data := ?
-      if count == 1:
-        data = FakeData str
-      else if count == 2:
-        data = str.to-byte-array
+      count := 0
+      if large-message:
+        data := (TEST-DATA.join "\n") * 4
+        print "Sending $data.size bytes"
+        service.send data --address=espnow.BROADCAST-ADDRESS
       else:
-        data = str
+        TEST-DATA.do: | str/string |
+          count++
+          // Test byte-array, string, and custom data type.
+          data/io.Data := ?
+          if count == 1:
+            data = FakeData str
+          else if count == 2:
+            data = str.to-byte-array
+          else:
+            data = str
 
-      service.send data --address=espnow.BROADCAST-ADDRESS
-      print str
+          service.send data --address=espnow.BROADCAST-ADDRESS
+          print str
 
-    service.remove-peer espnow.BROADCAST-ADDRESS
+      service.remove-peer espnow.BROADCAST-ADDRESS
 
 class FakeData implements io.Data:
   data_ / io.Data
