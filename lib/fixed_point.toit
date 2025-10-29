@@ -185,7 +185,7 @@ class FixedPoint implements Comparable:
   */
   static parse str/string from/int=0 to/int=str.size --radix=10 --decimals/int?=null -> FixedPoint:
     dot := str.index-of "." from to
-    int-part := int.parse str[from..(dot == -1 ? to : dot)] --radix=radix --on-error=: throw it
+    int-part := int.parse str[from..(dot == -1 ? to : dot)] --radix=radix --if-error=: throw it
     if dot == -1 or dot == to - 1:
       if not decimals: decimals = 0
       return FixedPoint.private_

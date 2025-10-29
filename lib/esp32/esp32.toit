@@ -143,6 +143,8 @@ total-deep-sleep-time -> int:
 Sets the ESP32 to wake up from deep sleep if the GPIO pins in $pin-mask
   matches the mode.
 
+The $pin-mask is a bit mask of the pins to monitor.
+
 If the ESP32 wakes up due to the GPIO pins, then $reset-reason is set to
   $RESET-DEEPSLEEP and $wakeup-cause is set to $WAKEUP-EXT1.
 
@@ -157,6 +159,13 @@ The following GPIO pins can be used:
 - ESP32-S3: 0-21
 
 Support for the ESP32-C3 is not yet implemented.
+
+# Examples
+
+Wake up when GPIO pin 33 goes high:
+```
+esp32.enable-external-wakeup (1 << 33) true
+```
 */
 enable-external-wakeup pin-mask/int on-any-high/bool -> none:
   #primitive.esp32.enable-external-wakeup

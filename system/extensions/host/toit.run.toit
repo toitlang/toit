@@ -51,8 +51,8 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
 
       // Decode the stack trace.
       // Without a program we might only get the exception, but no stack trace.
-      message := system-message.decode-system-message encoded --on-error=: return false
-      mirror ::= mirror.decode message.payload program_ --on-error=: return false
+      message := system-message.decode-system-message encoded --if-error=: return false
+      mirror ::= mirror.decode message.payload program_ --if-error=: return false
       mirror-string := mirror.stringify
       // If the text already ends with a newline don't add another one.
       write-on-stderr_ mirror-string (not mirror-string.ends-with "\n")
