@@ -85,7 +85,7 @@ print-bytecodes program/Program:
   methods/List := ?
   suffix := ?
   absolute-bci := -1
-  if not filter.is-empty: absolute-bci = int.parse filter --on-error=: -1
+  if not filter.is-empty: absolute-bci = int.parse filter --if-error=: -1
   if absolute-bci >= 0:
     methods = [program.method-from-absolute-bci absolute-bci]
     suffix = " (only printing methods containing absolute bci $absolute-bci)"

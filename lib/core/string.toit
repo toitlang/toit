@@ -405,7 +405,7 @@ abstract class string implements Comparable io.Data:
     while '0' <= char <= '9': char = format.safe-at_ pos++
     alignment-width := start == pos - 1
         ? 0
-        : int.parse_ format start (pos - 1) --radix=10 --on-error=: throw it
+        : int.parse_ format start (pos - 1) --radix=10 --if-error=: throw it
     if char == '.':
       start = pos
       char = format.safe-at_ pos++
