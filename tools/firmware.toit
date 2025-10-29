@@ -909,7 +909,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
     if is-file:
       partition-content = read-file value --ui=ui
     else:
-      size := int.parse value --on-error=:
+      size := int.parse value --if-error=:
         ui.abort "Malformed partition size '$value'."
       partition-content = ByteArray size
     partition-content = pad partition-content 4096
@@ -1115,13 +1115,29 @@ flash invocation/cli.Invocation -> none:
 
           esptool := find-esptool_
 
+          // The new esptool has deprecated underscores in some arguments.
+          // TODO(floitsch): remove these replacements when the esp-idf has been updated
+          //   to a version that uses the new arguments.
+          before-args := flashing["extra_esptool_args"]["before"]
+          after-args := flashing["extra_esptool_args"]["after"]
+          write-flash-args := flashing["write_flash_args"]
+          before-args = before-args.replace --all "default_reset" "default-reset"
+          before-args = before-args.replace --all "no_reset" "no-reset"
+          after-args = after-args.replace --all "hard_reset" "hard-reset"
+          after-args = after-args.replace --all "no_reset" "no-reset"
+          write-flash-args.map --in-place:
+            if it == "--flash_mode": "--flash-mode"
+            else if it == "--flash_size": "--flash-size"
+            else if it == "--flash_freq": "--flash-freq"
+            else: it
+
           code := pipe.run-program esptool + [
             "--port", port,
             "--baud", "$baud",
             "--chip", chip,
-            "--before", flashing["extra_esptool_args"]["before"],
-            "--after",  flashing["extra_esptool_args"]["after"]
-          ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
+            "--before", before-args,
+            "--after", after-args
+          ] + [ "write-flash" ] + write-flash-args + partition-args
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
@@ -1173,7 +1189,7 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
 
   system-uuid/Uuid? := null
   if properties.contains "uuid":
-    system-uuid = Uuid.parse properties["uuid"] --on-error=(: null)
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
   return extract-binary-content
@@ -1703,7 +1719,7 @@ class Esp32S2AddressMap implements AddressMap:
 
 class Esp32S3AddressMap implements AddressMap:
   drom-map-start ::= 0x3c000000
-  drom-map-end   ::= 0x3d000000
+  drom-map-end   ::= 0x3e000000
 
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
