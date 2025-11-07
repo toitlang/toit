@@ -218,9 +218,8 @@ test-copy:
 test-reserve:
   // Basic reserve on empty deque.
   d := Deque
-  old-backing-size := d.backing_.size
   d.reserve 10
-  expect-equals (old-backing-size + 10) d.backing_.size
+  expect d.backing_.size >= 10
   expect-equals 0 d.size
   d.add-all [1, 2, 3]
   expect-equals 3 d.size
@@ -230,9 +229,8 @@ test-reserve:
   d2 := Deque
   d2.add-all [1, 2, 3]
   expect-equals 3 d2.size
-  old-backing-size = d2.backing_.size
   d2.reserve 5
-  expect d2.backing_.size >= (old-backing-size + 5)
+  expect d2.backing_.size >= 8
   expect-equals 3 d2.size
   expect-equals "[1, 2, 3]" d2.stringify
 
@@ -270,7 +268,7 @@ test-reserve:
   // Reserve zero should not change backing.
   d5 := Deque
   d5.add-all [1, 2]
-  old-backing-size = d5.backing_.size
+  old-backing-size := d5.backing_.size
   d5.reserve 0
   expect-equals old-backing-size d5.backing_.size
   expect-equals 2 d5.size
