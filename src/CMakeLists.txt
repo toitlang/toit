@@ -181,8 +181,12 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_dependencies(build_tools toit_run_image)
 endif()
 
+target_include_directories(toit_core PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  target_link_libraries(toit_core PRIVATE gpiod::gpiod)
   target_link_libraries(toit_vm PRIVATE gpiod::gpiod)
 
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)

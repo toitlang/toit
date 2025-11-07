@@ -1,0 +1,12 @@
+<pkg:pkg-tar>/tar.toit:62:37: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
+    file-size-in-octal := file-size.stringify 8
+                                    ^~~~~~~~~
+<pkg:pkg-tar>/tar.toit:64:48: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
+    permissions-in-octal/string := permissions.stringify 8
+                                               ^~~~~~~~~
+<pkg:pkg-tar>/tar.toit:80:35: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
+    checksum-in-octal := checksum.stringify 8
+                                  ^~~~~~~~~
+<pkg:pkg-http>/chunked.toit:121:14: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
+      length.stringify 16
+             ^~~~~~~~~
