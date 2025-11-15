@@ -1,0 +1,4 @@
+name: bad_version
+version: 1.0.bad.0.4
+url: bad
+hash: 00000000

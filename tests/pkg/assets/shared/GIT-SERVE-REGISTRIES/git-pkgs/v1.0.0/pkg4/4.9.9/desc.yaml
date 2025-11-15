@@ -2,3 +2,4 @@ name: pkg4
 description: git-package 4
 url: http://localhost:<[*PORT*]>/pkg/pkg4
 version: 4.9.9
+hash: deadbeef1234567890abcdef1234567890abcdef

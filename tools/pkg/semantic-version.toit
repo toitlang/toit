@@ -66,8 +66,11 @@ class SemanticVersion:
     return not this <= other
 
   compare-to other/SemanticVersion -> int:
+    return compare-to other --if-equal=: 0
+
+  compare-to other/SemanticVersion [--if-equal] -> int:
     if this < other: return -1
-    if this == other: return 0
+    if this == other: return if-equal.call
     return 1
 
   to-string -> string:

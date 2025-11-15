@@ -5,3 +5,4 @@ version: 2.4.2
 dependencies:
   - url: 'http://localhost:<[*PORT*]>/pkg/pkg3'
     version: ^3.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef

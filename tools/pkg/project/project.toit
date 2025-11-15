@@ -182,23 +182,15 @@ class Project:
     file.write-contents (json.encode contents) --path=contents-path
 
   ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null --registries/Registries -> Map:
+    description := registries.retrieve-description url version
+    hash := description.ref-hash
     return ensure-downloaded url version
       --cached-contents=cached-contents
-      --compute-hash=:
-        description := registries.retrieve-description url version
-        hash := description.ref-hash
-        if not hash:
-          // Use the version instead.
-          version-tag := "refs/tags/v$version"
-          repository := Repository url
-          hash = repository.refs.get "refs/tags/v$version"
-          if not hash:
-            throw "Tag v$version not found for package '$url'"
-        hash
+      --hash=hash
 
   ensure-downloaded url/string version/SemanticVersion -> Map
       --cached-contents/Map?=null
-      [--compute-hash]:
+      --hash/string:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
     if cached-contents.contains url and cached-contents[url].contains version-string:
@@ -208,7 +200,15 @@ class Project:
     assert: cached-repository-dir.ends-with relative-dir
     repo-toit-git-path := "$cached-repository-dir/.toit-git"
     if not file.is-file repo-toit-git-path:
-      hash := compute-hash.call
+      // Replace the testing hash with the hash of the version tag.
+      if hash == "deadbeef1234567890abcdef1234567890abcdef":
+        // Use the version instead.
+        version-tag := "refs/tags/v$version"
+        repository := Repository url
+        version-hash := repository.refs.get "refs/tags/v$version"
+        if not version-hash:
+          throw "Tag v$version not found for package '$url'"
+        hash = version-hash
       download_ url version --destination=cached-repository-dir --hash=hash
       file.write-contents hash --path=repo-toit-git-path
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
@@ -230,11 +230,4 @@ class Project:
 
   hash-for --url/string --version/SemanticVersion --registries/Registries -> string?:
     description := registries.retrieve-description url version
-    result := description.ref-hash
-    if not result:
-      // Use the entry we wrote into the cache-directory.
-      toit-git-path := "$(cached-repository-dir_ url version)/.toit-git"
-      if not file.is-file toit-git-path:
-        throw "No hash found for package '$url' version '$version'"
-      result = (file.read-contents toit-git-path).to-string
-    return result
+    return description.ref-hash

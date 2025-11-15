@@ -46,22 +46,24 @@ make-pkg -> Description
     constraint := Constraint.parse dep-version
     PackageDependency dep-url --constraint=constraint
 
-  return Description
+  return Description.for-testing_
       --name="name-for-$url"
       --url=url
       --version=SemanticVersion.parse version
       --min-sdk=min-sdk
       --dependencies=deps
+      --ui=TestUi
 
 class TestRegistry extends reg.Registry:
   constructor descriptions/List:
-    super.filled "test-reg" descriptions
+    super.filled "test-reg" descriptions --ui=TestUi
 
   type -> string: return "test"
   content -> FileSystemView: unreachable
   to-map -> Map: unreachable
   sync: // Do nothing.
   stringify -> string: return "test-reg"
+  to-string -> string: return "test-reg"
 
 test-ui/TestUi? := null
 

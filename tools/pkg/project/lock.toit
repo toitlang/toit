@@ -99,7 +99,7 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
     return project-specification.project.load-package-specification url version
 
   ensure-downloaded:
-    project-specification.project.ensure-downloaded url version --compute-hash=(: ref-hash)
+    project-specification.project.ensure-downloaded url version --hash=ref-hash
 
   cached-repository-dir -> string:
     return cached-repository-dir url version

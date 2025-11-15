@@ -110,7 +110,7 @@ class DescribeCommand extends PkgCommand:
     environment := specification.environment
     if environment: description[Description.ENVIRONMENT-KEY_] = environment
 
-    return Description description
+    return Description description --path="<local>" --ui=ui
 
 
   execute-local:

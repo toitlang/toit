@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import cli
 import host.directory
 import host.file
 
@@ -24,8 +25,8 @@ class LocalRegistry extends Registry:
   type ::= "local"
   path/string
 
-  constructor name/string .path/string:
-    super name
+  constructor name/string .path/string --ui/cli.Ui:
+    super name --ui=ui
 
   content -> FileSystemView:
     return FileSystemView_ path
@@ -38,8 +39,11 @@ class LocalRegistry extends Registry:
 
   sync:
 
-  stringify -> string:
+  to-string -> string:
     return "$path ($type)"
+
+  stringify -> string:
+    return "LocalRegistry(name: $name, path: $path)"
 
 class FileSystemView_ implements FileSystemView:
   root/string

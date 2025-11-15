@@ -16,6 +16,7 @@
 import encoding.yaml
 import host.file
 
+import cli
 import cli.cache show FileStore
 
 import ..git
@@ -30,8 +31,8 @@ class GitRegistry extends Registry:
   ref-hash/string? := null
   content_/FileSystemView? := null
 
-  constructor name .url .ref-hash:
-    super name
+  constructor name .url .ref-hash --ui/cli.Ui:
+    super name --ui=ui
 
   content -> FileSystemView:
     if not ref-hash: content_ = sync
@@ -39,6 +40,9 @@ class GitRegistry extends Registry:
     return content_
 
   load_ -> FileSystemView:
+    if ref-hash == HEAD-INDICATOR_:
+      repository := open-repository url
+      ref-hash = repository.head
     content := cache.get "registry/git/$(url)/$(ref-hash)" : | store/FileStore |
       repository := open-repository url
       pack-data := repository.clone --binary ref-hash
@@ -61,5 +65,8 @@ class GitRegistry extends Registry:
       "ref-hash": ref-hash
     }
 
-  stringify -> string:
+  to-string -> string:
     return "$url ($type)"
+
+  stringify -> string:
+    return "GitRegistry(name: $name, url: $url, ref-hash: $ref-hash)"

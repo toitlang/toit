@@ -44,26 +44,28 @@ class Registries:
 
   constructor --ui/cli.Ui:
     ui_ = ui
-    registries-map :=
-        yaml.decode
-            cache.get "registries.yaml": | store/FileStore |
-                store.save
-                    yaml.encode {
-                        "toit": {
-                            "url": "github.com/toitware/registry",
-                            "type": "git"
-                        }
-                      }
+    encoded-registries := cache.get "registries.yaml": | store/FileStore |
+      default-registry := {
+        "toit": {
+            "url": "github.com/toitware/registry",
+            "type": "git"
+        }
+      }
+      store.save (yaml.encode default-registry)
+
+    registries-map := yaml.decode encoded-registries
 
     registries-map.do: | name/string map/Map |
       type := map.get "type" --if-absent=: ui_.abort "Registry $name does not have a type."
       if type == "git":
         url := map.get "url" --if-absent=: ui_.abort "Registry $name does not have a url."
         ref-hash := map.get "ref-hash"
-        registries[name] = GitRegistry name url ref-hash
+        ui_.emit --debug "Adding git registry $name $url"
+        registries[name] = GitRegistry name url ref-hash --ui=ui_
       else if type == "local":
         path := map.get "path" --if-absent=: ui_.abort "Registry $name does not have a path."
-        registries[name] = LocalRegistry name path
+        ui_.emit --debug "Adding local registry $name $path"
+        registries[name] = LocalRegistry name path --ui=ui_
       else:
         ui_.abort "Registry $name has an unknown type '$type'"
 
@@ -181,13 +183,13 @@ class Registries:
   add --local name/string path/string:
     if not local: throw "INVALID_ARGUMENT"
     if registries.contains name: ui_.abort "Registry $name already exists."
-    registries[name] = LocalRegistry name path
+    registries[name] = LocalRegistry name path --ui=ui_
     save_
 
   add --git name/string url/string:
     if not git: throw "INVALID_ARGUMENT"
     if registries.contains name: ui_.abort "Registry $name already exists."
-    registries[name] = GitRegistry name url null
+    registries[name] = GitRegistry name url null --ui=ui_
     registries[name].sync  // To check that the url is valid.
     save_
 
@@ -232,21 +234,24 @@ class Registries:
 abstract class Registry:
   name/string
   description-cache_/DescriptionUrlCache? := null
+  ui_/cli.Ui
 
-  constructor .name:
+  constructor .name --ui/cli.Ui:
+    ui_ = ui
 
-  constructor.filled .name descriptions/List:
+  constructor.filled .name descriptions/List --ui/cli.Ui:
+    ui_ = ui
     description-cache_ = DescriptionUrlCache.filled descriptions
 
   abstract type -> string
   abstract content -> FileSystemView
   abstract to-map -> Map
   abstract sync
-  abstract stringify -> string
+  abstract to-string -> string
 
   description-cache -> DescriptionUrlCache:
     if not description-cache_:
-      description-cache_ = DescriptionUrlCache content
+      description-cache_ = DescriptionUrlCache content --ui=ui_
     return description-cache_
 
   list-all-descriptions -> List:
