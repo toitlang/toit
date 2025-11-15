@@ -41,17 +41,17 @@ class SemanticVersion:
 
   triplet -> List: return [major, minor, patch]
 
-  static compare-lists-less-than_ l1/List l2/List:
+  static compare-lists_ l1/List l2/List [--if-equal]-> int:
     l1.size.repeat:
-      if l2.size <= it: return true
-      if l1[it] < l2[it]: return true
-      if l1[it] > l2[it]: return false
-    return false
+      if l2.size <= it: return -1
+      if l1[it] < l2[it]: return -1
+      if l1[it] > l2[it]: return 1
+    return if-equal.call
 
   operator < other/SemanticVersion -> bool:
-    if compare-lists-less-than_ triplet other.triplet: return true
-    if compare-lists-less-than_ pre-releases other.pre-releases: return true
-    return false
+    comp := compare-lists_ triplet other.triplet --if-equal=:
+      compare-lists_ pre-releases other.pre-releases --if-equal=: 0
+    return comp < 0
 
   operator == other/SemanticVersion -> bool:
     return triplet == other.triplet and pre-releases == other.pre-releases

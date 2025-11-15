@@ -186,7 +186,9 @@ test-registries source-dir/string:
 
   expect-equals 8 (test-registries.search --free-text "morse").size
 
-  expect-ui-throw test-ui "Package 'morse' not found in registry local." : test-registries.search --registry-name="local" "morse"
+  description := test-registries.search --registry-name="local" "morse"
+  expect-equals "morse" description.name
+
   expect-ui-throw test-ui "Package 'mrse' not found in any registry." : test-registries.search "mrse"
   expect-ui-throw test-ui "Package 'morse' exists but not with version '2' in any registry." : test-registries.search "morse@2"
   expect-ui-throw test-ui "Package 'morse-local' exists but not with version '2' in registry local." : test-registries.search --registry-name="local"  "morse-local@2"

@@ -1,0 +1,70 @@
+// Execution should fail, as the package is not installed yet
+==================
+exec main.toit
+
+STDERR---
+main.toit:3:8: error: Package for prefix 'foo' not found
+import foo
+       ^~~
+main.toit:4:8: error: Package for prefix 'bar' not found
+import bar
+       ^~~
+main.toit:7:7: error: Unresolved identifier: 'say-hello'
+  foo.say-hello
+      ^~~~~~~~~
+main.toit:8:7: error: Unresolved identifier: 'say-hello'
+  bar.say-hello
+      ^~~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+// Install packages from the registry
+==================
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+OK
+[pkg, install, foo]
+==================
+OK
+[pkg, install, bar]
+==================
+// Execution should succeed now
+==================
+exec main.toit
+hello from foo 1.2.3
+hello from bar 2.0.1
+Exit Code: 0
+==================
+// Execution should fail, as the prefixes are not yet known
+==================
+exec main2.toit
+
+STDERR---
+main2.toit:3:8: error: Package for prefix 'pre1' not found
+import pre1.foo
+       ^~~~
+main2.toit:4:8: error: Package for prefix 'pre2' not found
+import pre2.bar
+       ^~~~
+main2.toit:7:7: error: Unresolved identifier: 'say-hello'
+  foo.say-hello
+      ^~~~~~~~~
+main2.toit:8:7: error: Unresolved identifier: 'say-hello'
+  bar.say-hello
+      ^~~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+OK
+[pkg, install, --prefix=pre1, foo]
+==================
+OK
+[pkg, install, --prefix=pre2, bar]
+==================
+// Execution should succeed now
+==================
+exec main2.toit
+hello from foo 1.2.3
+hello from bar 2.0.1
+Exit Code: 0

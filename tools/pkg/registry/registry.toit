@@ -129,7 +129,8 @@ class Registries:
             (registry.search search-string).map: [name, it]
       return search-results
     else:
-      registry/Registry := registries.get registry-name --if-absent=: ui_.abort "Registry $registry-name not found."
+      registry/Registry := registries.get registry-name
+          --if-absent=: ui_.abort "Registry $registry-name not found."
       search-results := registry.search search-string
       return search-results.map: [registry-name, it]
 
