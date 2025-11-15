@@ -1,4 +1,7 @@
 dependencies:
+  ar:
+    url: github.com/toitlang/pkg-ar
+    version: ^1.4.1
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
     version: ^1.11.0
