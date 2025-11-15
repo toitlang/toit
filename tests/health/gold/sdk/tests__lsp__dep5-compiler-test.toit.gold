@@ -1,6 +1,0 @@
-<pkg:pkg-cli>/cli.toit:865:16: warning: Deprecated 'Uuid.parse'. Use 'parse str [--if-error]' instead
-    return Uuid.parse str --on-error=:
-               ^~~~~~
-<pkg:pkg-cli>/cli.toit:770:15: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
-    return int.parse str --on-error=:
-              ^~~~~~
