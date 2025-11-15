@@ -92,11 +92,6 @@ class ListCommand extends PkgCommand:
         a.version.compare-to b.version --if-equal=:
           a.ref-hash.compare-to b.ref-hash
 
-      if a.name < b.name: continue.sort -1
-      if a.name > b.name: continue.sort 1
-      if a.version < b.version: continue.sort -1
-      if a.version > b.version: continue.sort 1
-      0
     if ui.wants-structured:
       ui.emit-list --result descriptions
       return
