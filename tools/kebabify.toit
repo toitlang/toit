@@ -140,7 +140,9 @@ migrate invocation/cli.Invocation toitc/string?:
   migration-points.resize point-count
 
   ui.emit --info "Migrating $point-count locations."
-  parsed-points := json.parse "[$(migration-points.join ",")]"
+  joined := migration-points.join ","
+  joined = joined.replace --all "\\" "\\\\"
+  parsed-points := json.parse "[$joined]"
 
   file-points := {:}
   // The entries are of the form "[file, offset-from, offset-to, replacement]".
