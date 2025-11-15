@@ -1,3 +1,0 @@
-jaguar/src/network.toit:239:21: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
-      timeout := int.parse header --on-error=: null
-                    ^~~~~~
