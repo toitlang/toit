@@ -3308,8 +3308,8 @@ A deque is a generalization of a stack and a queue, and can be used for both
 class Deque extends List implements Collection:
   // Traditionally we would have a head index, a tail index and an array
   // backing, used as a circular buffer.  Instead, we use a growable list as
-  // backing, copying down when there is enough free space. We use 'first_'
-  // as tail index, and `last_` for the head. Most of the time, `last_` will
+  // backing, copying down when there is enough free space. We use 'start_'
+  // as tail index, and `end_` for the head. Most of the time, `end_` will
   // be equal to the size of the backing list, but that can be changed to
   // reserve space.
   // Using a growable list, gives an extra level of indirection, but the same
@@ -3318,8 +3318,8 @@ class Deque extends List implements Collection:
   // determine that the collection is used very frequently and requires better
   // performance, we can reimplement with the a more traditional
   // implementation.
-  first_ := 0
-  last_ := 0
+  start_ := 0
+  end_ := 0
   backing_/List := []
 
   /**
@@ -3333,43 +3333,43 @@ class Deque extends List implements Collection:
   */
   constructor.from collection/Collection:
     backing_ = List.from collection
-    last_ = backing_.size
+    end_ = backing_.size
     super.from-subclass
 
   /// See $Collection.size.
   size -> int:
-    return last_ - first_
+    return end_ - start_
 
   /// See $Collection.is-empty.
   is-empty -> bool:
-    return last_ == first_
+    return end_ == start_
 
   /**
   Adds the given $element to the end of this instance.
   */
   add element -> none:
-    if last_ == backing_.size:
+    if end_ == backing_.size:
       backing_.add element
     else:
-      backing_[last_] = element
-    last_++
+      backing_[end_] = element
+    end_++
 
   /**
   Adds all elements of the given $collection to this instance.
   */
   add-all collection/Collection -> none:
-    if last_ == backing_.size:
+    if end_ == backing_.size:
       backing_.add-all collection
-      last_ += collection.size
+      end_ += collection.size
     else:
-      if last_ + collection.size > backing_.size:
-        backing_.resize (last_ + collection.size)
-      backing_.replace last_ collection
-      last_ += collection.size
+      if end_ + collection.size > backing_.size:
+        backing_.resize (end_ + collection.size)
+      backing_.replace end_ collection
+      end_ += collection.size
 
   /// See $Collection.do.
   do [block]:
-    backing_[first_..last_].do block
+    backing_[start_..end_].do block
 
   /**
   Variant of $(Collection.do [block]).
@@ -3377,35 +3377,35 @@ class Deque extends List implements Collection:
   Iterates over the elements of this collection in reverse order.
   */
   do --reversed/bool [block] -> none:
-    backing_[first_..last_].do --reversed block
+    backing_[start_..end_].do --reversed block
 
   /// See $Collection.any.
   any [predicate] -> bool:
-    return backing_[first_..last_].any predicate
+    return backing_[start_..end_].any predicate
 
   /// See $Collection.every.
   every [predicate] -> bool:
-    return backing_[first_..last_].every predicate
+    return backing_[start_..end_].every predicate
 
   /// See $(Collection.reduce [block]).
   reduce [block]:
-    return backing_[first_..last_].reduce block
+    return backing_[start_..end_].reduce block
 
   /// See $(Collection.reduce --initial [block]).
   reduce --initial [block]:
-    return backing_[first_..last_].reduce --initial=initial block
+    return backing_[start_..end_].reduce --initial=initial block
 
   /// See $Collection.contains.
   contains element -> bool:
-    return backing_[first_..last_].contains element
+    return backing_[start_..end_].contains element
 
   /**
   Removes all elements.
   */
   clear -> none:
     backing_.clear
-    first_ = 0
-    last_ = 0
+    start_ = 0
+    end_ = 0
 
   /**
   The first element of the deque.
@@ -3413,8 +3413,8 @@ class Deque extends List implements Collection:
   The deque must not be empty.
   */
   first -> any:
-    if first_ == last_: throw "OUT_OF_BOUNDS"
-    return backing_[first_]
+    if start_ == end_: throw "OUT_OF_BOUNDS"
+    return backing_[start_]
 
   /**
   The last element of the deque.
@@ -3422,8 +3422,8 @@ class Deque extends List implements Collection:
   The deque must not be empty.
   */
   last -> any:
-    if first_ == last_: throw "OUT_OF_BOUNDS"
-    return backing_[last_ - 1]
+    if start_ == end_: throw "OUT_OF_BOUNDS"
+    return backing_[end_ - 1]
 
   /**
   Removes the last element of the deque.
@@ -3432,15 +3432,16 @@ class Deque extends List implements Collection:
   The deque must not be empty.
   */
   remove-last -> any:
-    last := last_
+    end := end_
     backing := backing_
-    if first_ == last: throw "OUT_OF_BOUNDS"
+    if start_ == end: throw "OUT_OF_BOUNDS"
     result := ?
-    if last == backing.size:
+    if end == backing.size:
       result = backing.remove-last
     else:
-      result = backing[last - 1]
-    last_ = last - 1
+      result = backing[end - 1]
+      backing[end - 1] = null
+    end_ = end - 1
     shrink-if-needed_
     return result
 
@@ -3452,11 +3453,11 @@ class Deque extends List implements Collection:
   */
   remove-first -> any:
     backing := backing_
-    first := first_
-    if first == last_: throw "OUT_OF_BOUNDS"
+    first := start_
+    if first == end_: throw "OUT_OF_BOUNDS"
     result := backing[first]
     backing[first] = null
-    first_++
+    start_++
     shrink-if-needed_
     return result
 
@@ -3464,28 +3465,28 @@ class Deque extends List implements Collection:
   Inserts the given $element at the beginning of this instance.
   */
   add-first element -> none:
-    first := first_
+    first := start_
     if first == 0:
-      padding-size := (last_ >> 1) + 1
-      new-size := last_ + padding-size
+      padding-size := (end_ >> 1) + 1
+      new-size := end_ + padding-size
       // Pad both ends so we are not inefficient in the case where the next
       // operation adds to the end.
       new-backing := List_.private_ (new-size + padding-size) new-size
-      new-backing.replace padding-size backing_ first last_
+      new-backing.replace padding-size backing_ first end_
       backing_ = new-backing
-      last_ = new-size
+      end_ = new-size
       first = padding-size
     first--
     backing_[first] = element
-    first_ = first
+    start_ = first
 
   /**
   Returns the element at the given $index.
   */
   operator [] index/int:
     if index < 0: throw "OUT_OF_BOUNDS"
-    backing-index := first_ + index
-    if backing-index >= last_: throw "OUT_OF_BOUNDS"
+    backing-index := start_ + index
+    if backing-index >= end_: throw "OUT_OF_BOUNDS"
     return backing_[backing-index]
 
   /**
@@ -3495,8 +3496,8 @@ class Deque extends List implements Collection:
   */
   operator []= index/int value:
     if index < 0: throw "OUT_OF_BOUNDS"
-    backing-index := first_ + index
-    if backing-index >= last_: throw "OUT_OF_BOUNDS"
+    backing-index := start_ + index
+    if backing-index >= end_: throw "OUT_OF_BOUNDS"
     backing_[backing-index] = value
 
   /**
@@ -3505,7 +3506,7 @@ class Deque extends List implements Collection:
   copy from/int=0 to/int=size -> Deque:
     if from < 0: throw "OUT_OF_BOUNDS"
     if to > size: throw "OUT_OF_BOUNDS"
-    return Deque.from backing_[first_ + from .. first_ + to]
+    return Deque.from backing_[start_ + from .. start_ + to]
 
   /**
   Inserts the given $value at the given index $at.
@@ -3521,20 +3522,21 @@ class Deque extends List implements Collection:
     sz := size
     backing := backing_
     if not 0 <= at <= sz: throw "OUT_OF_BOUNDS"
-    if last_ != backing.size:
-      backing-at := first_ + at
-      backing.replace (backing-at + 1) backing backing-at last_
+    if end_ != backing.size:
+      backing-at := start_ + at
+      backing.replace (backing-at + 1) backing backing-at end_
       backing[backing-at] = value
-      last_++
+      end_++
       return
+    // If the given index is closer to the end, shift the elements up.
     if at >= (sz >> 1):
-      backing_.insert --at=(at + first_) value
-      last_++
+      backing_.insert --at=(at + start_) value
+      end_++
       return
     add-first value
     if at != 0:
       // Need to move down the elements.
-      first := first_  // This is the decremented value after the add.
+      first := start_  // This is the decremented value after the add.
       at += first
       backing_.replace first backing_ (first + 1) (at + 1)
       backing_[at] = value
@@ -3551,20 +3553,25 @@ class Deque extends List implements Collection:
   Returns the value that was removed.
   */
   remove --at/int -> any:
+    if at == 0: return remove-first
     last := size - 1
     if not 0 <= at <= last: throw "OUT_OF_BOUNDS"
+    start := start_
+    index := start + at
+    backing := backing_
+    result := backing[index]
+    // If the given index is closer to the end, remove from the end.
     if at >= (last >> 1):
-      result := backing_.remove --at=(first_ + at)
-      last_--
-      return result
-    removed := remove-first
-    if at == 0: return removed
-    // Need to move up the elements.
-    first := first_  // This is the incremented value after the remove-first.
-    at += first
-    result := backing_[at - 1]
-    backing_.replace (first + 1) backing_ first (at - 1)
-    backing_[first] = removed
+      backing.replace index backing (index + 1) end_
+      backing[end_ - 1] = null
+      backing_.resize (backing_.size - 1)
+      end_--
+    else:
+      // Otherwise, remove from the start.
+      backing.replace (start + 1) backing start index
+      backing[start] = null
+      start_ = start + 1
+    shrink-if-needed_
     return result
 
   /**
@@ -3574,7 +3581,7 @@ class Deque extends List implements Collection:
   */
   resize new-size/int:
     if new-size < 0: throw "OUT_OF_BOUNDS"
-    backing_.resize first_ + new-size
+    backing_.resize start_ + new-size
 
   /**
   Reserves $amount additional space in the backing store of this instance.
@@ -3584,20 +3591,21 @@ class Deque extends List implements Collection:
   */
   reserve amount/int:
     if amount < 0: throw "OUT_OF_BOUNDS"
-    if backing_.size - last_ >= amount: return
-    backing_.resize (last_ + amount)
+    if backing_.size - end_ >= amount: return
+    backing_.resize (end_ + amount)
 
   shrink-if-needed_ -> none:
     backing := backing_
-    first := first_
-    last := last_
-    reserved := backing.size - last
-    sz := last - first
-    if first * 2 > last:
+    first := start_
+    end := end_
+    reserved := backing.size - end
+    sz := end - first
+    // If more than half of the unreserved backing is unused we shrink.
+    if (first << 1) > end:
       backing.replace 0 backing first (first + sz)
       backing.resize (sz + reserved)
-      first_ = 0
-      last_ = sz
+      start_ = 0
+      end_ = sz
 
 stringify_ collection open/string close/string -> string:
   key-strings := []

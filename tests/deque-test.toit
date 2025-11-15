@@ -214,7 +214,6 @@ test-copy:
   expect-equals "[1, 42]" d.stringify
   expect-equals "[103, 3]" d2.stringify
 
-
 test-reserve:
   // Basic reserve on empty deque.
   d := Deque
@@ -279,12 +278,12 @@ test-reserve:
   d6.remove-first
   d6.remove-first
   expect-equals 3 d6.size
-  expect-equals 2 d6.first_
+  expect-equals 2 d6.start_
   d6.reserve 10
   // Reserve should calculate from last_, not from size.
   expect d6.backing_.size >= 15
   expect-equals 3 d6.size
-  expect-equals 2 d6.first_
+  expect-equals 2 d6.start_
 
   // Adding at back after reserve uses reserved space.
   d7 := Deque
@@ -308,14 +307,14 @@ test-reserve:
   expect-identical backing-ref8 d8.backing_
   expect-equals "[1, 2, 3]" d8.stringify
 
-  // Reserve with first_ != 0.
+  // Reserve with start_ != 0.
   d9 := Deque
   10.repeat: d9.add it
   5.repeat: d9.remove-first
-  expect d9.first_ > 0
-  old-first := d9.first_
+  expect d9.start_ > 0
+  old-first := d9.start_
   d9.reserve 15
-  expect-equals old-first d9.first_  // first_ should not change.
+  expect-equals old-first d9.start_  // start_ should not change.
   expect-equals "[5, 6, 7, 8, 9]" d9.stringify
 
   // Large reserve.
@@ -381,7 +380,7 @@ test-reserve:
   20.repeat: d16.add it
   15.repeat: d16.remove-first  // Trigger shrinking.
   expect-equals 5 d16.size
-  // After shrinking, first_ should be 0 if shrink happened.
+  // After shrinking, start_ should be 0 if shrink happened.
   d16.reserve 30
   backing-ref16 := d16.backing_
   25.repeat: d16.add (100 + it)
@@ -483,7 +482,7 @@ test-add-first-with-reserve:
   d2.add-first 0
   expect-equals "[0, 1, 2, 3]" d2.stringify
   expect-equals 4 d2.size
-  // Should have reallocated because first_ was 0.
+  // Should have reallocated because start_ was 0.
 
   // add-first after reserve and remove-first.
   d3 := Deque
@@ -514,7 +513,7 @@ test-add-first-with-reserve:
   d5 := Deque
   d5.add-all [5, 6, 7]
   d5.reserve 10
-  // When add-first is called with first_ == 0, it creates new backing with padding.
+  // When add-first is called with start_ == 0, it creates new backing with padding.
   d5.add-first 4
   d5.add-first 3
   d5.add-first 2
@@ -522,17 +521,17 @@ test-add-first-with-reserve:
   expect-equals "[1, 2, 3, 4, 5, 6, 7]" d5.stringify
   expect-equals 7 d5.size
 
-  // add-first when first_ == 0 with reserved space at end.
+  // add-first when start_ == 0 with reserved space at end.
   d6 := Deque
   d6.add-all [1, 2, 3]
   d6.reserve 10  // Reserved space at end.
-  expect-equals 0 d6.first_
+  expect-equals 0 d6.start_
   d6.add-first 0
   // Should create new backing with padding at both ends.
   // Note: The new backing might be smaller than the reserved size.
   expect-equals "[0, 1, 2, 3]" d6.stringify
   expect-equals 4 d6.size
-  expect d6.first_ > 0  // Should have some padding at the front now.
+  expect d6.start_ > 0  // Should have some padding at the front now.
 
   // add-first preserves reserved space.
   d7 := Deque
@@ -563,7 +562,7 @@ test-add-first-with-reserve:
   d9.add 1
   d9.add 2
   d9.reserve 5
-  // This was the bug: add-first would try to copy entire backing_ instead of just [first_..last_].
+  // This was the bug: add-first would try to copy entire backing_ instead of just [start_..last_].
   d9.add-first 0
   expect-equals "[0, 1, 2]" d9.stringify
   expect-equals 3 d9.size
@@ -576,7 +575,7 @@ test-add-first-with-reserve:
   d10 := Deque
   50.repeat: d10.add it
   d10.reserve 100
-  // add-first will reallocate when first_ == 0.
+  // add-first will reallocate when start_ == 0.
   d10.add-first -1
   // Verify correctness.
   expect-equals 51 d10.size
