@@ -1,6 +1,0 @@
-toit-semver/src/semver.toit:47:22: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
-    a_part_int := int.parse a_part --on_error=:
-                     ^~~~~~
-toit-semver/src/semver.toit:52:22: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
-    b_part_int := int.parse b_part --on_error=:
-                     ^~~~~~
