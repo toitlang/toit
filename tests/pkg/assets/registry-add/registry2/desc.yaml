@@ -1,0 +1,6 @@
+name: reg
+description: some pkg in registry2
+version: 0.0.1
+license: MIT
+url: bar
+hash: 71077107

@@ -1,0 +1,12 @@
+name: bar
+description: Description of bar. bar-desc.
+license: MIT
+dependencies:
+  foo:
+    url: <[*TEST_GIT_DIR*]>/foo_git
+    version: 1.2.3
+  sub:
+    url: <[*TEST_GIT_DIR*]>/sub_git
+    version: ^3.0.0
+environment:
+  sdk: ^0.1.20

@@ -17,7 +17,7 @@ exec main.toit
 hello from pkg
 Exit Code: 0
 ==================
-command
+// Install with a prefix
 ==================
 OK
 [pkg, install, --local, --prefix=prepkg, pkg2]
@@ -26,12 +26,12 @@ exec main2.toit
 hello from pkg2
 Exit Code: 0
 ==================
-command
+// Installing again yields an error.
 ==================
 OK
 [pkg, install, --local, pkg]
 ==================
-command
+// Installing a package where the directory name is not the package name.
 ==================
 OK
 [pkg, install, --local, pkg3]

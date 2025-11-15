@@ -17,6 +17,7 @@ import encoding.yaml
 
 import cli
 import cli.cache show Cache FileStore
+import fs
 import host.file
 
 import .local
@@ -180,17 +181,23 @@ class Registries:
 
     return result
 
-  add --local name/string path/string:
-    if not local: throw "INVALID_ARGUMENT"
-    if registries.contains name: ui_.abort "Registry $name already exists."
-    registries[name] = LocalRegistry name path --ui=ui_
-    save_
+  add --local/True name/string path/string:
+    if not file.is-directory path: ui_.abort "Path $path is not a directory."
+    abs-path := fs.to-absolute path
+    add_ name (LocalRegistry name abs-path --ui=ui_)
 
-  add --git name/string url/string:
-    if not git: throw "INVALID_ARGUMENT"
-    if registries.contains name: ui_.abort "Registry $name already exists."
-    registries[name] = GitRegistry name url null --ui=ui_
-    registries[name].sync  // To check that the url is valid.
+  add --git/True name/string url/string:
+    add_ name (GitRegistry name url null --ui=ui_)
+
+  add_ name/string registry/Registry:
+    if registries.contains name:
+      old-registry := registries[name]
+      if old-registry == registry: return
+      ui_.abort "Registry $name already exists."
+    registries[name] = registry
+    registry.sync  // To check that the url is valid.
+    registry.description-cache  // To report broken descriptions.
+    registries[name] = registry
     save_
 
   remove name/string:

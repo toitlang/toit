@@ -1,0 +1,6 @@
+name: sub
+description: Description of sub. sub-desc
+version: 3.1.4
+license: MIT
+url: http://localhost:<[*PORT*]>/pkg/sub
+hash: deadbeef1234567890abcdef1234567890abcdef
