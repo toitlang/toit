@@ -1,4 +1,4 @@
 dependencies:
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.16.2
+    version: ^1.17.0
