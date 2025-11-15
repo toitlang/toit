@@ -13,13 +13,13 @@ packages:
   toit-1-wire:
     url: github.com/toitware/toit-1-wire
     name: one_wire
-    version: 2.4.0
-    hash: bb30a0a4256271191b1b230c1bdea868e7e0a0ca
+    version: 2.5.0
+    hash: 75a63dda6edd75ad3f76b399aa21ca61795896e3
   toit-dhtxx:
     url: github.com/toitware/toit-dhtxx
     name: dhtxx
-    version: 1.9.0
-    hash: bf9f7b36a20b88454f1eff63632f591b03f7e880
+    version: 1.10.0
+    hash: 416e42b0db6c39175fda9dcd868c892bf50f5e2a
     prefixes:
       sensors: toit-sensors
   toit-ds18b20:
