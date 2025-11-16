@@ -19,9 +19,8 @@
 
 #include <unistd.h>
 
-#include "event_sources/system_esp32.h"
-#include "uart_esp32_hal.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "soc/uart_periph.h"
 #include "esp_log.h"
 #include "esp_rom_gpio.h"
@@ -30,6 +29,7 @@
 
 #include "../objects_inline.h"
 #include "../resource_pool.h"
+#include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
 #include "../utils.h"
 
@@ -52,7 +52,6 @@
 namespace toit {
 
 class UartResource;
-static void uart_interrupt_handler(void* arg);
 
 const uart_port_t kInvalidUartPort = static_cast<uart_port_t>(-1);
 
@@ -75,15 +74,6 @@ static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
 #endif
 );
 
-class SpinLocker {
- public:
-  UART_ISR_INLINE explicit SpinLocker(spinlock_t* spinlock) : spinlock_(spinlock) { portENTER_CRITICAL(spinlock_); }
-  UART_ISR_INLINE ~SpinLocker() { portEXIT_CRITICAL(spinlock_); }
-  UART_ISR_INLINE spinlock_t* spinlock() const { return spinlock_; }
- private:
-  spinlock_t* spinlock_;
-};
-
 class UartResourceGroup;
 
 class UartResource : public EventQueueResource {
@@ -93,34 +83,42 @@ public:
   UartResource(ResourceGroup* group, uart_port_t port, int tx_buffer_size, QueueHandle_t queue)
       : EventQueueResource(group, queue)
       , port_(port)
-      , tx_buffer_size_(tx_buffer_size) {
-    spinlock_initialize(&spinlock_);
-  }
+      , tx_buffer_size_(tx_buffer_size) {}
 
   ~UartResource() override;
 
   uart_port_t port() const { return port_; }
 
-  UART_ISR_INLINE void increment_errors() { errors_++; }
   int errors() const { return errors_; }
 
   int tx_buffer_size() const { return tx_buffer_size_; }
 
+#ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
+  bool has_dropped_data() const { return dropped_data_; }
+  bool has_reported_dropped_data() const { return has_reported_dropped_data_; }
+  void set_has_reported_dropped_data() { has_reported_dropped_data_ = true; }
+#endif
+
+
  private:
-  UART_ISR_INLINE void send_event_to_queue_isr(uart_event_types_t event, int* hp_task_awoken);
-
-  void clear_data_event_in_queue();
-  void clear_tx_event_in_queue();
-
-  friend void uart_interrupt_handler(void* arg);
-  UART_ISR_INLINE void handle_isr();
-
   const uart_port_t port_;
   const int tx_buffer_size_;
-  spinlock_t spinlock_{};
-  bool data_event_in_queue_ = false;
-  bool tx_event_in_queue_ = false;
   int64 errors_ = 0;
+
+  #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
+  bool dropped_data_ = false;
+  bool has_reported_dropped_data_ = false;
+
+  void signal_dropped_data() { dropped_data_ = true; }
+#else
+  void signal_dropped_data() {}
+#endif
+
+  // TODO(florian): do we need a lock.
+  // Errors is a 64-bit number. Could the 'errors' function read only part of it.?
+  // I don't think we need to worry about incrementing itself, as that happens only
+  // in the 'on_event' method, which should run "single-threaded".
+  void increment_errors() { errors_++; }
 
   friend class UartResourceGroup;
 };
@@ -147,49 +145,49 @@ UartResource::~UartResource() {
   }
 }
 
-UART_ISR_INLINE void UartResource::send_event_to_queue_isr(uart_event_types_t event, int* hp_task_awoken) {
-  SpinLocker locker(&spinlock_);
-  // Data and Tx Event receive special care, so as to not overflow the queue.
-  if (event == UART_DATA) {
-    if (data_event_in_queue_) return;
-    data_event_in_queue_ = true;
-  }
-
-  if (event == UART_TX_EVENT) {
-    if (tx_event_in_queue_) return;
-    tx_event_in_queue_ = true;
-  }
-
-  if (xQueueSendToBackFromISR(queue(), &event, hp_task_awoken) != pdTRUE) {
-    esp_rom_printf("[uart] warning: event queue is full\n");
-  }
-}
-
 uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
   switch (data) {
     case UART_DATA:
       state |= kReadState;
-      reinterpret_cast<UartResource*>(r)->clear_data_event_in_queue();
+      break;
+
+    case UART_TX_DONE:
+      state |= kWriteState;
       break;
 
     case UART_BREAK:
       state |= kBreakState;
       break;
 
-    case UART_TX_EVENT:
-      state |= kWriteState;
-      reinterpret_cast<UartResource*>(r)->clear_tx_event_in_queue();
-      break;
-
-    case UART_FIFO_OVF:
     case UART_BUFFER_FULL:
+    case UART_FIFO_OVF:
       reinterpret_cast<UartResource*>(r)->signal_dropped_data();
       [[fallthrough]];
-    default:
-      TODO(florian): get the list of interrupts and put them here.
+
+    case UART_PARITY_ERR:
       state |= kErrorState;
       reinterpret_cast<UartResource*>(r)->increment_errors();
       break;
+
+    case UART_DATA_BREAK:
+      // UART TX data and break event.
+      // Only used by the driver to signal the interrupt that it has data that
+      // should be terminated with a break.
+      esp_rom_printf("[uart] error: received unexpected UART_DATA_BREAK event\n");
+      break;
+
+    case UART_PATTERN_DET:
+      // We haven't given access to pattern detection.
+      esp_rom_printf("[uart] error: received unexpected UART_PATTERN_DET event\n");
+      break;
+#if SOC_UART_SUPPORT_WAKEUP_INT
+    case UART_WAKEUP:
+      esp_rom_printf("[uart] error: received unexpected UART_WAKEUP event\n");
+      break;
+#endif
+
+    case UART_EVENT_MAX:
+      UNREACHABLE();
   }
 
   return state;
@@ -348,7 +346,7 @@ PRIMITIVE(create) {
   }
 
   esp_err_t err;
-  QueueHandle_t* queue;
+  QueueHandle_t queue;
   DriverArgs args = {
     .port = port,
     .rx_buffer_size = rx_buffer_size,
@@ -370,19 +368,7 @@ PRIMITIVE(create) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   Defer uninstall_driver { [&] { if (!handed_to_resource) uart_driver_delete(port); } };
 
-  int interrupt_mask = UART_INTR_RXFIFO_FULL |
-                       UART_INTR_RXFIFO_TOUT |
-                       UART_INTR_BRK_DET |
-                       UART_INTR_TX_DONE;
-
-  uart_intr_config_t uart_intr = {
-    .intr_enable_mask = interrupt_mask,
-    .rx_timeout_thresh = 10,
-    // Unused as we don't have the TXFIFO_EMPTY interrupt.
-    .txfifo_empty_intr_thresh = 0,
-    .rxfifo_full_thresh = full_interrupt_threshold,
-  };
-  err = uart_intr_config(port, &uart_intr);
+  err = uart_set_rx_full_threshold(port, full_interrupt_threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = uart_set_mode(port, int_to_uart_mode(mode));
@@ -416,8 +402,8 @@ PRIMITIVE(create) {
   if (!resource) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
 
-  group->register_resource(init.uart);
-  proxy->set_external_address(init.uart);
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
   return proxy;
 }
 
@@ -484,8 +470,8 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
 #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
-  if (buffer->has_dropped_data() && !buffer->has_reported_dropped_data()) {
-    buffer->set_has_reported_dropped_data();
+  if (uart->has_dropped_data() && uart->has_reported_dropped_data()) {
+    uart->set_has_reported_dropped_data();
     ESP_LOGE("uart", "dropped data; no further warnings will be issued");
   }
 #endif
