@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository without submodules
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
           fetch-depth: 0  # Fetch all history so the archive has correct metadata.
@@ -238,7 +238,7 @@ jobs:
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Ssh
         env:
