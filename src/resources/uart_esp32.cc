@@ -93,12 +93,13 @@ public:
 
   int tx_buffer_size() const { return tx_buffer_size_; }
 
+ bool receive_event(word* data) override;
+
 #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
   bool has_dropped_data() const { return dropped_data_; }
   bool has_reported_dropped_data() const { return has_reported_dropped_data_; }
   void set_has_reported_dropped_data() { has_reported_dropped_data_ = true; }
 #endif
-
 
  private:
   const uart_port_t port_;
@@ -145,6 +146,10 @@ UartResource::~UartResource() {
   }
 }
 
+bool UartResource::receive_event(word* data) {
+  return xQueueReceive(queue(), data, 0);
+}
+
 uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
   switch (data) {
     case UART_DATA:
@@ -185,6 +190,11 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       esp_rom_printf("[uart] error: received unexpected UART_WAKEUP event\n");
       break;
 #endif
+
+    case UART_TX_ENTRY_RETIRED:
+      esp_rom_printf("[uart] entry retired\n");
+      state |= kWriteState;
+      break;
 
     case UART_EVENT_MAX:
       UNREACHABLE();
@@ -341,8 +351,8 @@ PRIMITIVE(create) {
     tx_buffer_size = 0;
   }
   if (rx == -1) {
-    // The driver still wants the rx-buffer size to be >= the HW FIFO size.
-    rx_buffer_size = UART_HW_FIFO_LEN(port);
+    // The driver still wants the rx-buffer size to be > the HW FIFO size.
+    rx_buffer_size = UART_HW_FIFO_LEN(port) + 1;
   }
 
   esp_err_t err;
@@ -374,12 +384,23 @@ PRIMITIVE(create) {
   err = uart_set_mode(port, int_to_uart_mode(mode));
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  uart_hw_flowcontrol_t hw_flowcontrol = UART_HW_FLOWCTRL_DISABLE;
+  if (mode != UART_MODE_RS485_HALF_DUPLEX && (rts != -1 || cts != -1)) {
+    if (rts != -1 && cts != -1) {
+      hw_flowcontrol = UART_HW_FLOWCTRL_CTS_RTS;
+    } else if (rts != -1) {
+      hw_flowcontrol = UART_HW_FLOWCTRL_RTS;
+    } else {
+      ASSERT(cts != -1);
+      hw_flowcontrol = UART_HW_FLOWCTRL_CTS;
+    }
+  }
   uart_config_t uart_config = {
     .baud_rate = baud_rate,
     .data_bits = data_bits_to_uart_word_length(data_bits),
     .parity = int_to_uart_parity(parity),
     .stop_bits = int_to_uart_stop_bits(stop_bits),
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    .flow_ctrl = hw_flowcontrol,
     // Unused if flow_ctrl is disabled, but 122 seems to be a common default, otherwise.
     .rx_flow_ctrl_thresh = 122,
     .source_clk = UART_SCLK_DEFAULT,
@@ -439,17 +460,35 @@ PRIMITIVE(write) {
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   if (break_length < 0 || break_length >= 256) FAIL(OUT_OF_RANGE);
 
-  size_t available;
-  esp_err_t err = uart_get_tx_buffer_free_size(uart->port(), &available);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
   size_t to_write = to - from;
-  if (to_write > available) to_write = available;
-  if (to_write > 0) {
-    err = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(data.address() + from), to_write);
+  size_t MAX_CHUNK_SIZE = uart->tx_buffer_size() / 4;
+  size_t written = 0;
+
+  while (to_write > written) {
+    size_t available;
+    esp_err_t err = uart_get_tx_buffer_free_size(uart->port(), &available);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+
+    size_t chunk_size = to_write - written;
+    // We write at most MAX_CHUNK_SIZE entries. Whenever an entry is retired, we
+    // get an event, which means that we can continue filling up the buffers.
+    // If we wrote everything in one go, we wouldn't be able to keep the buffers
+    // filled.
+    if (chunk_size > MAX_CHUNK_SIZE) chunk_size = MAX_CHUNK_SIZE;
+    if (chunk_size > available) chunk_size = available;
+    if (chunk_size == 0) break;
+
+    const char* src = reinterpret_cast<const char*>(data.address() + from);
+    bool is_last_chunk = (to_write == written + chunk_size);
+    if (break_length == 0 || !is_last_chunk) {
+      err = uart_write_bytes(uart->port(), src, chunk_size);
+    } else {
+      err = uart_write_bytes_with_break(uart->port(), src, chunk_size, break_length);
+    }
     if (err < 0) return Primitive::os_error(err, process);
+    written += chunk_size;
   }
-  return Smi::from(to_write);
+  return Smi::from(written);
 }
 
 PRIMITIVE(wait_tx) {
