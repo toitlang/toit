@@ -157,7 +157,6 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       break;
 
     case UART_TX_DONE:
-      esp_rom_printf("[uart] tx done\n");
       state |= kWriteState;
       break;
 
@@ -193,7 +192,6 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
 #endif
 
     case UART_TX_ENTRY_RETIRED:
-      esp_rom_printf("[uart] entry retired\n");
       state |= kWriteState;
       break;
 
@@ -420,6 +418,10 @@ PRIMITIVE(create) {
   err = uart_set_pin(port, tx, rx, rts, cts);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  // Clear the input buffer. Just in case older data was buffered.
+  err = uart_flush_input(port);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   auto resource = _new UartResource(group, port, tx_buffer_size, queue);
   if (!resource) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
@@ -479,7 +481,7 @@ PRIMITIVE(write) {
     if (chunk_size > available) chunk_size = available;
     if (chunk_size == 0) break;
 
-    const char* src = reinterpret_cast<const char*>(data.address() + from);
+    const char* src = reinterpret_cast<const char*>(data.address() + from + written);
     bool is_last_chunk = (to_write == written + chunk_size);
     if (break_length == 0 || !is_last_chunk) {
       err = uart_write_bytes(uart->port(), src, chunk_size);

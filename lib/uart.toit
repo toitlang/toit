@@ -260,12 +260,12 @@ class Port extends Object with io.InMixin implements reader.Reader:
       state_.wait-for-state WRITE-STATE_ | ERROR_STATE_
 
   try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
-    while true:
-      if not uart_: throw "CLOSED"
-      state_.clear-state WRITE-STATE_ | ERROR-STATE_
-      written := uart-write_ uart_ data from to break-length
-      if written == to - from: return written
-      state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
+    if not uart_: throw "CLOSED"
+    state_.clear-state WRITE-STATE_ | ERROR-STATE_
+    return uart-write_ uart_ data from to break-length
+
+  wait-for-more-room_ -> none:
+    state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
   /**
   Number of encountered errors.
@@ -379,7 +379,7 @@ class UartWriter extends io.Writer:
     while not is-closed_:
       from += try-write data from to --break-length=break-length --flush=flush
       if from >= to: return data-size
-      yield
+      wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
@@ -404,6 +404,10 @@ class UartWriter extends io.Writer:
 
   flush -> none:
     port_.flush_
+
+  wait-for-more-room_ -> none:
+    port_.wait-for-more-room_
+
 
 resource-group_ ::= uart-init_
 

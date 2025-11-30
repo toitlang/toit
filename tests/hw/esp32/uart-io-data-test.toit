@@ -96,6 +96,8 @@ test:
       data = data[..data.size - 1]
     expected = FakeData received out.byte-size
     for i := 0; i < data.byte-size; i++:
+      if (expected.byte-at i) != (data.byte-at i):
+        print "Mismatch at byte $i: expected $(expected.byte-at i) got $(data.byte-at i)"
       expect_equals (expected.byte-at i) data[i]
     received += data.byte-size
     if received >= out.byte-size:

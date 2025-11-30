@@ -26,7 +26,7 @@ RX2 ::= Variant.CURRENT.board-connection-pin2
 TX2 ::= Variant.CURRENT.board-connection-pin1
 BAUD-RATE ::= 115200
 
-REPETITIONS ::= 1
+REPETITIONS ::= 3
 ACK-BYTE ::= 99
 
 main-board1:
