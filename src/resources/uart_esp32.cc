@@ -157,6 +157,7 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
       break;
 
     case UART_TX_DONE:
+      esp_rom_printf("[uart] tx done\n");
       state |= kWriteState;
       break;
 
@@ -494,12 +495,7 @@ PRIMITIVE(write) {
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, uart)
 
-  size_t available;
-  esp_err_t err = uart_get_tx_buffer_free_size(uart->port(), &available);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  if (available != uart->tx_buffer_size()) return BOOL(false);
-
-  err = uart_wait_tx_done(uart->port(), pdMS_TO_TICKS(10));
+  esp_err_t err = uart_wait_tx_done(uart->port(), 0);
   if (err == ESP_ERR_TIMEOUT) return BOOL(false);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return BOOL(true);
@@ -526,8 +522,8 @@ PRIMITIVE(read) {
   if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
-  err = uart_read_bytes(port, rx.address(), static_cast<uint32_t>(available), 0);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  int read = uart_read_bytes(port, rx.address(), static_cast<uint32_t>(available), 0);
+  if (read != available) FAIL(INVALID_STATE);
   return data;
 }
 
