@@ -147,7 +147,10 @@ UartResource::~UartResource() {
 }
 
 bool UartResource::receive_event(word* data) {
-  return xQueueReceive(queue(), data, 0);
+  uart_event_t event;
+  bool result = xQueueReceive(queue(), &event, 0);
+  *data = event.type;
+  return result;
 }
 
 uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
@@ -403,9 +406,6 @@ PRIMITIVE(create) {
     // Unused if flow_ctrl is disabled, but 122 seems to be a common default, otherwise.
     .rx_flow_ctrl_thresh = 122,
     .source_clk = UART_SCLK_DEFAULT,
-#if (SOC_UART_LP_NUM >= 1)
-    .lp_source_clk = UART_LP_SCLK_DEFAULT,
-#endif
     .flags = {
       .allow_pd = 0,
       .backup_before_sleep = 0,
