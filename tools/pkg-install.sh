@@ -55,6 +55,7 @@ echo "$packages_section" | while IFS= read -r line; do
                 (
                     cd "$target_dir"
                     git checkout "$hash" --quiet
+                    rm -rf .git
                 )
                 echo "Successfully cloned $package_name (version $version, hash $hash)"
             else

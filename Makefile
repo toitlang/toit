@@ -145,6 +145,10 @@ FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 	(cd $(BUILD)/$(TARGET) && ninja download_packages)
 
+.PHONY: download-bootstrap-packages
+download-bootstrap-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt
+	(cd $(BUILD)/$(TARGET) && ninja download_embedded_program_packages)
+
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
