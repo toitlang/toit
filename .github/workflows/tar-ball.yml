@@ -71,7 +71,7 @@ jobs:
           done
 
           # Download bootstrap packages.
-          cd "$prefix"
+          cd "${{github.workspace}}/$prefix"
           make download-bootstrap-packages
           rm -rf build
 
