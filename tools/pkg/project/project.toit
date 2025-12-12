@@ -235,6 +235,7 @@ class Project:
         hash = version-hash
       download_ url version --destination=cached-repository-dir --hash=hash
       file.write-contents hash --path=repo-toit-git-path
+      make-read-only_ --recursive cached-repository-dir
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents
     return cached-contents
