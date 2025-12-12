@@ -69,7 +69,7 @@ stop-unwinding tests/type_propagation/nlr-test.toit
   1[022] - load null
   2[006] - store outer S1
   4[002] - pop, load local S2
-  6[020] - load literal 3.2999999999999998224
+  6[020] - load literal 3.3
   8[006] - store outer S1
  10[041] - pop 1
  11[029] - load method [block] in [block] in stop-unwinding tests/type_propagation/nlr-test.toit
@@ -105,7 +105,7 @@ stop-unwinding-alternative tests/type_propagation/nlr-test.toit
 [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[020] - load literal 3.2999999999999998224
+  1[020] - load literal 3.3
   3[006] - store outer S1
   5[041] - pop 1
   6[029] - load method [block] in [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit

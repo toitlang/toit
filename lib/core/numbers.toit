@@ -561,6 +561,15 @@ abstract class num implements Comparable:
       return float.parse data --if-error=:
         return if-error.call PARSE-ERR_
 
+  /**
+  Converts this number to a well-defined string.
+  */
+  abstract to-string -> string
+
+  /** See $super. */
+  stringify -> string:
+    return to-string
+
 /**
 A 64 bit integer.
 Ints are always 64 bit two's complement signed values between $int.MIN and
@@ -959,6 +968,10 @@ abstract class int extends num:
   35.stringify 36 // => z
   ```
   */
+  to-string --radix/int -> string:
+    #primitive.core.int64-to-string
+
+  /** Deprecated. Use $(to-string --radix) instead. */
   stringify radix/int -> string:
     #primitive.core.int64-to-string
 
@@ -967,6 +980,10 @@ abstract class int extends num:
 
   Treats the number as an unsigned 64-bit integer.
   */
+  to-string --uint64/True -> string:
+    return stringify-uint64_ this
+
+  /** Deprecated. Use $(to-string --uint64) instead. */
   stringify --uint64/True -> string:
     return stringify-uint64_ this
 
@@ -1289,7 +1306,7 @@ class SmallInteger_ extends int:
     #primitive.core.smi-shift-left
 
   /** See $super. */
-  stringify -> string:
+  to-string -> string:
     #primitive.core.smi-to-string-base-10
 
   /** See $super. */
@@ -1419,9 +1436,9 @@ class LargeInteger_ extends int:
   operator << number-of-bits -> int:
     #primitive.core.large-integer-shift-left
 
-  /** Se $super. */
-  stringify -> string:
-    return stringify 10
+  /** See $super. */
+  to-string -> string:
+    return to-string --radix=10
 
   /** See $super */
   to-int -> int: return this
@@ -1677,13 +1694,19 @@ class float extends num:
   /**
   See $super.
 
-  If $precision is null format "%.20lg" in C++ is used.
+  If $precision is null, the shortest correct string is returned.
   If $precision is an integer format "%.*lf" in C++ is used.
 
   # Errors
   The $precision must be an integer in range [0..64] or null.
   */
-  stringify precision=null -> string:
+  to-string --precision/int?=null -> string:
+    if precision and not 0 <= precision <= 64:
+      throw "OUT_OF_RANGE"
+    #primitive.core.float-to-string
+
+  /** Deprecated. Use $(to-string --precision) instead. */
+  stringify precision -> string:
     #primitive.core.float-to-string
 
   /**
