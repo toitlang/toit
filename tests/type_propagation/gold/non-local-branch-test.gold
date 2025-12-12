@@ -71,7 +71,7 @@ test-continue tests/type_propagation/non-local-branch-test.toit
  12[016] - load local 2
  13[095] - non-local branch {test-continue:14}
  19[016] - load local 2
- 20[020] - load literal 3.2999999999999998224
+ 20[020] - load literal 3.3
  22[006] - store outer S1
  24[002] - pop, load local S2
  26[095] - non-local branch {test-continue:19}
