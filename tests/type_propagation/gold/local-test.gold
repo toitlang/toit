@@ -58,7 +58,7 @@ test-if-nested tests/type_propagation/local-test.toit
  13[026] - load smi 42
  15[004] - store local, pop S1
  17[081] - branch T24
- 20[020] - load literal 3.1000000000000000888
+ 20[020] - load literal 3.1
  22[004] - store local, pop S1
  24[014] - load local 0
  25[053] - invoke static id tests/type_propagation/local-test.toit // [{float|SmallInteger_}] -> {float|SmallInteger_}
@@ -81,7 +81,7 @@ test-if-nested tests/type_propagation/local-test.toit
 test-if-more-locals tests/type_propagation/local-test.toit
   0[023] - load smi 0
   1[020] - load literal true
-  3[020] - load literal 3.1000000000000000888
+  3[020] - load literal 3.1
   5[022] - load null
   6[053] - invoke static pick tests/type_propagation/local-test.toit // {True|False}
   9[083] - branch if false T16
