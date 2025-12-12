@@ -595,13 +595,13 @@ extract-cmd -> cli.Command:
 
         The following formats are supported:
         For ESP32:
-        - binary: the binary app partition. This format can be used with
-          the 'esptool' tool.
+        - binary: the binary app partition. To use with 'esptool',
+          you must specify the correct memory offset for the partition.
         - elf: the ELF file of the executable. This is typically used
           for debugging.
         - ubjson: a UBJSON encoding of the sections of the image.
-        - image: a binary image suitable for running on QEMU,
-          Wokwi, or for flashing a device. See below.
+        - image: the complete flash image (bootloader, partitions, and app).
+          Can be flashed to address 0x0 using 'esptool', or run on QEMU/Wokwi.
         - qemu: a deprecated alias for 'image'.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.

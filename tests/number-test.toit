@@ -596,37 +596,37 @@ test-based-stringify:
   37.repeat: | base |
     if base >= 2:
       expect-equals "0"
-        0.stringify base
+        0.to-string --radix=base
       expect-equals "-1"
-        (-1).stringify base
+        (-1).to-string --radix=base
       expect-equals "1"
-        (1).stringify base
+        (1).to-string --radix=base
       expect-equals "10"
-        base.stringify base
+        base.to-string --radix=base
       expect-equals "-10"
-        (-base).stringify base
+        (-base).to-string --radix=base
       expect-equals "100"
-        (base * base).stringify base
+        (base * base).to-string --radix=base
       expect-equals "-100"
-        (-base * base).stringify base
+        (-base * base).to-string --radix=base
   expect-equals "zz"
-    (36 * 36 - 1).stringify 36
+    (36 * 36 - 1).to-string --radix=36
   expect-equals "-zz"
-    (-36 * 36 + 1).stringify 36
+    (-36 * 36 + 1).to-string --radix=36
 
   expect-equals "9223372036854775807"
     9223372036854775807.stringify
   expect-equals "111111111111111111111111111111111111111111111111111111111111111"
-    9223372036854775807.stringify 2
+    9223372036854775807.to-string --radix=2
   expect-equals "1y2p0ij32e8e7"
-    9223372036854775807.stringify 36
+    9223372036854775807.to-string --radix=36
 
   expect-equals "-9223372036854775808"
     (-9223372036854775808).stringify
   expect-equals "-1000000000000000000000000000000000000000000000000000000000000000"
-    (-9223372036854775808).stringify 2
+    (-9223372036854775808).to-string --radix=2
   expect-equals "-1y2p0ij32e8e8"
-    (-9223372036854775808).stringify 36
+    (-9223372036854775808).to-string --radix=36
 
 test-float-stringify:
   // First check special float values.
@@ -638,27 +638,27 @@ test-float-stringify:
   // Testing Issue #323 has been fixed.
   //  "Printing of floating-point numbers is completely broken for larger numbers"
   expect-equals
-    "1.7976931348623157081e+308"
+    "1.7976931348623157e308"
     (1.7976931348623157e+308).stringify
   // Finally test with precision.
   expect-equals
     "123.00"
-    (123.00).stringify 2
+    (123.00).to-string --precision=2
   expect-equals
     "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0"
-    (1.7976931348623157e+308).stringify 1
+    (1.7976931348623157e+308).to-string --precision=1
   // Ensure we can compare a >32 bit Smi with a large integer.
   expect-equals (0x1_0000_0000 == 0x7fff_ffff_ffff_ffff) false
 
 test-unsigned-stringify:
-  expect-equals "0" (0.stringify --uint64)
-  expect-equals "1" (1.stringify --uint64)
-  expect-equals "18446744073709551615" (-1.stringify --uint64)
+  expect-equals "0" (0.to-string --uint64)
+  expect-equals "1" (1.to-string --uint64)
+  expect-equals "18446744073709551615" (-1.to-string --uint64)
   biggest-signed := 9223372036854775807
   next := biggest-signed + 1  // Wrap around.
   expect next < 0
-  expect-equals "9223372036854775807" (9223372036854775807.stringify --uint64)
-  expect-equals "9223372036854775808" (next.stringify --uint64)
+  expect-equals "9223372036854775807" (9223372036854775807.to-string --uint64)
+  expect-equals "9223372036854775808" (next.to-string --uint64)
 
 test-float-bin:
   expect-equals 0 (0.0).bits

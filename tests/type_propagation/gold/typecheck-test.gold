@@ -15,7 +15,7 @@ test-simple tests/type_propagation/typecheck-test.toit
  10[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{SmallInteger_}] -> {True}
  13[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{True}] -> {True}
  16[041] - pop 1
- 17[020] - load literal 7.9000000000000003553
+ 17[020] - load literal 7.9
  19[053] - invoke static is-int tests/type_propagation/typecheck-test.toit // [{float}] -> {False}
  22[053] - invoke static id tests/type_propagation/typecheck-test.toit // [{False}] -> {False}
  25[041] - pop 1
