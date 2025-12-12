@@ -155,7 +155,7 @@ class GoldTester:
 
     outputs.map --in-place: | output/string |
       normalized := normalize output
-            // Replace all hash values.
+      // Replace all hash values.
       hash-index := -1
       while true:
         hash-index = normalized.index-of "hash: " (hash-index + 1)

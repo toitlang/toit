@@ -395,7 +395,7 @@ abstract class Registers:
       line += "0x"
       v := read-u8 from + i
       if v < 0x10: line += "0"
-      line += v.stringify 16
+      line += v.to-string --radix=16
 
       if i % width == width - 1:
         print line
