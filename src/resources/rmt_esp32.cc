@@ -610,9 +610,7 @@ IRAM_ATTR static size_t encoder_callback(const void* data,
     }
     // The current sequence fits.
     // Copy it over and update the active instance.
-    // The original 'memcpy' didn't work on esp32c3. We use a loop instead.
-    // memcpy(symbols, sequence_bytes, sequence_length);
-    //
+    // Hardware buffers can't be copied with 'memcpy' but must be set word by word.
     auto sequence_symbols = reinterpret_cast<rmt_symbol_word_t*>(sequence_bytes);
     for (int i = 0; i < sequence_symbols_count; i++) {
       symbols[i].val = sequence_symbols[i].val;
