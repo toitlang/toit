@@ -15,30 +15,30 @@ Package 'bar@2.0.1' installed with prefix 'bar'.
 == package.lock
 sdk: ^0.1.30
 prefixes:
-  bar: http_//localhost_<[*PORT*]>/pkg/bar-2
-  foo: http_//localhost_<[*PORT*]>/pkg/foo-1
+  bar: localhost_<[*PORT*]>/pkg/bar-2
+  foo: localhost_<[*PORT*]>/pkg/foo-1
 packages:
-  http_//localhost_<[*PORT*]>/pkg/bar-2:
+  localhost_<[*PORT*]>/pkg/bar-2:
     prefixes:
-      foo: http_//localhost_<[*PORT*]>/pkg/foo-1
-      sub: http_//localhost_<[*PORT*]>/pkg/sub-3
-    url: http://localhost:<[*PORT*]>/pkg/bar
+      foo: localhost_<[*PORT*]>/pkg/foo-1
+      sub: localhost_<[*PORT*]>/pkg/sub-3
+    url: localhost:<[*PORT*]>/pkg/bar
     version: 2.0.1
     hash: <[*HASH*]>
-  http_//localhost_<[*PORT*]>/pkg/foo-1:
-    url: http://localhost:<[*PORT*]>/pkg/foo
+  localhost_<[*PORT*]>/pkg/foo-1:
+    url: localhost:<[*PORT*]>/pkg/foo
     version: 1.2.3
     hash: <[*HASH*]>
-  http_//localhost_<[*PORT*]>/pkg/sub-3:
-    url: http://localhost:<[*PORT*]>/pkg/sub
+  localhost_<[*PORT*]>/pkg/sub-3:
+    url: localhost:<[*PORT*]>/pkg/sub
     version: 3.1.4
     hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
   foo:
-    url: http://localhost:<[*PORT*]>/pkg/foo
+    url: localhost:<[*PORT*]>/pkg/foo
     version: ^1.2.3
   bar:
-    url: http://localhost:<[*PORT*]>/pkg/bar
+    url: localhost:<[*PORT*]>/pkg/bar
     version: ^2.0.1

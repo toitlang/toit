@@ -8,14 +8,14 @@ OK
 foo:
   description: Description of another foo package. Different URL.
   version: 0.0.1
-  url: http://localhost:<[*PORT*]>/pkg/foo-different-url
+  url: localhost:<[*PORT*]>/pkg/foo-different-url
   license: MIT
   hash: <[*HASH*]>
 
 foo:
   description: Description of foo. foo-desc.
   version: 1.2.3
-  url: http://localhost:<[*PORT*]>/pkg/foo
+  url: localhost:<[*PORT*]>/pkg/foo
   hash: <[*HASH*]>
   license: MIT
 

@@ -2,5 +2,5 @@ name: foo
 description: Description of foo.
 version: 5.0.3
 license: MIT
-url: 'http://localhost:<[*PORT*]>/pkg/foo'
+url: 'localhost:<[*PORT*]>/pkg/foo'
 hash: 22222222222
