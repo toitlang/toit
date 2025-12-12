@@ -1,0 +1,6 @@
+name: foo
+description: Description of foo.
+version: 0.0.1
+license: MIT
+url: 'http://localhost:<[*PORT*]>/pkg/foo'
+hash: 111111111
