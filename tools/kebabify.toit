@@ -141,6 +141,8 @@ migrate invocation/cli.Invocation toitc/string?:
 
   ui.emit --info "Migrating $point-count locations."
   joined := migration-points.join ","
+  // If the output contained backslashes, we need to escape them since we are parsing
+  // the output as if it was JSON.
   joined = joined.replace --all "\\" "\\\\"
   parsed-points := json.parse "[$joined]"
 
