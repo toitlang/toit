@@ -91,7 +91,7 @@ test-outer tests/type_propagation/block-local-test.toit
  14[053] - invoke static id tests/type_propagation/block-local-test.toit // [{String_|True|float|SmallInteger_}] -> {String_|True|float|SmallInteger_}
  17[041] - pop 1
  18[038] - load block 0
- 20[020] - load literal 2.2000000000000001776
+ 20[020] - load literal 2.2
  22[055] - invoke block S2 // [[block], {float}] -> {String_|True|float|SmallInteger_}
  24[002] - pop, load local S3
  26[005] - load outer S2 // {String_|True|float|SmallInteger_}
