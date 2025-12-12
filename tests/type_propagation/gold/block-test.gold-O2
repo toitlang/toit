@@ -164,7 +164,7 @@ test-nesting tests/type_propagation/block-test.toit
  14[081] - branch T25
  17[016] - load local 2
  18[005] - load outer S3 // [block]
- 20[020] - load literal 3.7000000000000001776
+ 20[020] - load literal 3.7
  22[006] - store outer S1
  24[041] - pop 1
  25[016] - load local 2
@@ -229,7 +229,7 @@ test-catch tests/type_propagation/block-test.toit
   5[041] - pop 1
   6[053] - invoke static maybe-throw tests/type_propagation/block-test.toit // {Null_}
   9[002] - pop, load local S2
- 11[020] - load literal 3.2999999999999998224
+ 11[020] - load literal 3.3
  13[006] - store outer S1
  15[091] - return S1 1
 
