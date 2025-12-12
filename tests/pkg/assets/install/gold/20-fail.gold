@@ -1,0 +1,23 @@
+exec main.toit
+
+STDERR---
+<[*WORKING-DIR*]>/package.lock:11:10: error: Package 'http://localhost:<[*PORT*]>/pkg/bar-2.0.1' not found
+    url: http://localhost:<[*PORT*]>/pkg/bar
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<[*WORKING-DIR*]>/package.lock:15:10: error: Package 'http://localhost:<[*PORT*]>/pkg/foo-1.2.3' not found
+    url: http://localhost:<[*PORT*]>/pkg/foo
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+main.toit:5:8: error: Package 'http_//localhost_<[*PORT*]>/pkg/foo-1' for prefix 'foo' not found
+import foo
+       ^~~
+main.toit:6:8: error: Package 'http_//localhost_<[*PORT*]>/pkg/bar-2' for prefix 'bar' not found
+import bar
+       ^~~
+main.toit:10:7: error: Unresolved identifier: 'say-hello'
+  foo.say-hello
+      ^~~~~~~~~
+main.toit:11:7: error: Unresolved identifier: 'say-hello'
+  bar.say-hello
+      ^~~~~~~~~
+Compilation failed
+Exit Code: 1

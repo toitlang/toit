@@ -1,0 +1,20 @@
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+OK
+[pkg, install, foo]
+Package 'foo@1.2.3' installed with prefix 'foo'.
+==================
+OK
+[pkg, install, bar]
+Package 'bar@2.0.1' installed with prefix 'bar'.
+==================
+OK
+[pkg, install, --local, target]
+Package 'target' installed with prefix 'target'.
+==================
+exec main.toit
+hello from foo 1.2.3
+hello from bar 2.0.1
+hello from target
+Exit Code: 0
