@@ -338,6 +338,8 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
   if (NOT ${TOIT_IS_CROSS})
+    add_custom_target(download_embedded_program_packages)
+
     # Prepare the pkg install for the embedded programs.
     set(embedded_program_dirs)
 
@@ -378,9 +380,13 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
         # something that exists, as the current bin-dir might not exist yet.
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       )
+
+      string(MD5 dir_hash "${embedded_program_dir}")
+      add_custom_target(download_embedded_program_packages_${dir_hash} DEPENDS "${package_timestamp}")
+      add_dependencies(download_embedded_program_packages download_embedded_program_packages_${dir_hash})
+
     endforeach()
   endif()
-
 
   foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
     set(embedded_source "${EMBEDDED_PROGRAM_SOURCE_${embedded_program}}")
