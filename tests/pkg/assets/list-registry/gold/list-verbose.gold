@@ -4,18 +4,18 @@ list-registry (list-registry (local))
   bar:
     version: 0.0.1
     url: http://localhost:2222
-    hash: 11223344
+    hash: <[*HASH*]>
   
   foo:
     version: 1.0.3
     license: MIT
     url: foo
-    hash: 11112222
+    hash: <[*HASH*]>
   
   gee:
     description: package with a "v" version
     version: v1.0.3
     license: MIT
     url: gee
-    hash: 99887766
+    hash: <[*HASH*]>
   

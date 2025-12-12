@@ -79,38 +79,55 @@ class GoldTester:
     should-update_ = should-update
     port_ = port
 
+  working-dir -> string:
+    return working-dir_
+
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
     // In lock files, the ':' is replaced with '_'.
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
-    return str
+    str = str.replace --all "\\" "/"
+    // When printing tables, the width of the columns may vary.
+    // For normalization simply remove the "─" (not '-') characters that
+    // are used to draw the table.
+    str = str.replace --all "─" ""
+    // Similarly, replace multiple whitespace if a line starts with "│".
+    result := ByteArray str.size
+    target-index := 0
+    last-was-space := false
+    last-was-newline := true
+    in-table-line := false
+    for i := 0; i < str.size; i++:
+      c := str.at --raw i
+      unicode-c := str[i]
+      if c == '\n':
+        last-was-newline = true
+        in-table-line = false
+      else if unicode-c == '│' and last-was-newline:
+        in-table-line = true
+      else if in-table-line and c == ' ' and last-was-space:
+        // Skip multiple spaces.
+        continue
+      last-was-space = (c == ' ')
+      result[target-index++] = c
+    return result[..target-index].to-string
 
   gold name/string commands/List:
     outputs := []
     commands.do: | command-line/List |
       command := command-line.first
       if command.starts-with "//":
-        outputs.add "command\n"
+        outputs.add "$command\n"
       else if command == "analyze" or command == "exec":
         toit-command := command == "analyze" ? "analyze" : "run"
         run-result := toit toit-command command-line[1..]
         output := run-result.full-output
-        normalized := normalize output
         command-string := command-line.join " "
-        outputs.add "$command-string\n$normalized"
+        outputs.add "$command-string\n$output"
       else if command == "package.lock":
         lock-content := file.read-contents "$working-dir_/package.lock"
-        normalized := normalize lock-content.to-string
-        // Replace all hash values.
-        hash-index := -1
-        while true:
-          hash-index = normalized.index-of "hash: " (hash-index + 1)
-          if hash-index == -1: break
-          newline-index := normalized.index-of "\n" hash-index
-          if newline-index == -1: throw "No newline after hash"
-          normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
-        outputs.add "== package.lock\n$normalized"
+        outputs.add "== package.lock\n$lock-content.to-string"
       else if command == "pkg":
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui
@@ -124,6 +141,18 @@ class GoldTester:
         outputs.add "$exit-status\n$command-line\n$full-output"
       else:
         throw "Unknown command: $command"
+
+    outputs.map --in-place: | output/string |
+      normalized := normalize output
+      // Replace all hash values.
+      hash-index := -1
+      while true:
+        hash-index = normalized.index-of "hash: " (hash-index + 1)
+        if hash-index == -1: break
+        newline-index := normalized.index-of "\n" hash-index
+        if newline-index == -1: throw "No newline after hash"
+        normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
+      normalized
 
     gold-file := "$gold-dir_/$(name).gold"
     actual := outputs.join "==================\n"

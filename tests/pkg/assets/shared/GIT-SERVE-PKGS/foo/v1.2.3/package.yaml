@@ -1,0 +1,5 @@
+name: foo
+description: Description of foo. foo-desc.
+license: BSD
+environment:
+  sdk: ^0.1.30
