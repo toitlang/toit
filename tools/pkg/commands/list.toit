@@ -18,54 +18,57 @@ import system
 import cli
 import encoding.json
 import encoding.yaml
+import fs
+import host.file
 
 import ..pkg
 import ..registry
 import ..registry.description
+import ..registry.local
 
 import .base_
 
 class ListCommand extends PkgCommand:
-  name/string?
+  name-or-path/string?
   verbose/bool
-  output/string
 
   constructor invocation/cli.Invocation:
-    name = invocation[NAME-OPTION]
+    name-or-path = invocation[NAME-OR-PATH-OPTION]
     verbose = invocation[VERBOSE-OPTION]
-    output = invocation[OUTPUT-OPTION]
 
     super invocation
 
   execute:
     registry-packages := registries.list-packages
-    if name:
-      if not registry-packages.contains name:
-        error "Registry not found: $name"
-      registry-packages.filter --in-place: | k v | k == name
-
-    if output == "list":
-      registry-packages.do: | registry-name registry/Map |
-        print "$registry-name: $(registry["registry"].stringify)"
-        list-textual registry["descriptions"] --verbose=verbose --indent="  "
-    else:
-      result/Map := ?
-      if verbose:
-        result = registry-packages.map: | registry-name registry/Map |
-          { "registry": registry["registry"].to-map,
-            "packages": (registry["descriptions"].map: verbose-description it)
-          }
+    if name-or-path:
+      if registry-packages.contains name-or-path:
+        registry-packages.filter --in-place: | key _ | key == name-or-path
       else:
-        result = registry-packages.map: | registry-name registry/Map |
-          { "registry": registry["registry"].stringify,
-            "packages": (registry["descriptions"].map: | description/Description | {
-              description.name : description.version
-            })
+        // If the name-or-path is not a registry, we assume it is a path to a registry.
+        // We try to load the registry from that path.
+        if not file.is-directory name-or-path:
+          ui.abort "No registry found at '$name-or-path'."
+        registry := LocalRegistry (fs.basename name-or-path) name-or-path --ui=ui
+        registry-packages = {
+          name-or-path: {
+            "registry": registry,
+            "descriptions": registry.list-all-descriptions,
           }
-      if output == "json":
-        print (json.stringify result)
-      else if output == "yaml":
-        print (yaml.stringify result)
+        }
+
+    if ui.wants-structured:
+      result := registry-packages.map: | _ registry/Map |
+        {
+          "registry": (registry["registry"] as Registry).to-map,
+          // For structured output, we always use the verbose format.
+          "packages": (registry["descriptions"].map: verbose-description it)
+        }
+      ui.emit-map --result result
+      return
+
+    registry-packages.do: | name/string registry/Map |
+      ui.emit --result "$name ($registry["registry"].to-string)"
+      list-descriptions registry["descriptions"] --verbose=verbose --indent="  " --ui=ui
 
   /**
   Converts the $description into a map suitable for printing.
@@ -74,20 +77,41 @@ class ListCommand extends PkgCommand:
 
   If $allow-extra-fields, then allows dependencies and environment keys too.
   */
-  static verbose-description description/Description --allow-extra-fields=false -> Map:
-    filtered := description.content.filter: | k _ |
-                  k != Description.NAME-KEY_ and
-                       (allow-extra-fields or
-                        k != Description.DEPENDENCIES-KEY_ and k != Description.ENVIRONMENT-KEY_)
+  static verbose-description description/Description --allow-extra-fields/bool=false -> Map:
+    filtered := description.content.filter: | key _ |
+      if key == Description.NAME-KEY_: continue.filter false
+      if allow-extra-fields: continue.filter true
+      if key == Description.DEPENDENCIES-KEY_: continue.filter false
+      if key == Description.ENVIRONMENT-KEY_: continue.filter false
+      true
     return { description.name : filtered }
 
-  static list-textual descriptions/List --verbose/bool --indent/string="":
+  static list-descriptions descriptions/List --verbose/bool --indent/string="" --ui/cli.Ui:
+    descriptions = descriptions.sort: | a/Description b/Description |
+      a.name.compare-to b.name --if-equal=:
+        a.version.compare-to b.version --if-equal=:
+          a.ref-hash.compare-to b.ref-hash
+
+    if ui.wants-structured:
+      ui.emit-list --result descriptions
+      return
+
+    if ui.wants-human and descriptions.is-empty:
+      ui.emit --result "$(indent)No packages found."
+      return
+
+    // From now on the "plain" and "human" output are the same.
+    // If we are not verbose, we just print the name and version of each package.
+    if not verbose:
+      descriptions.do: | description/Description |
+        ui.emit --result "$indent$description.name - $description.version"
+      return
+
+    // Verbose output in plain or human format.
     descriptions.do: | description/Description |
-      if verbose:
-        description-text := (yaml.stringify (verbose-description description))
-        print "$indent$((description-text.split "\n").join "\n$indent")"
-      else:
-        print "$indent$description.name - $description.version"
+      description-text := yaml.stringify (verbose-description description)
+      description-text = description-text.replace --all "\n" "\n$indent"
+      ui.emit --result "$indent$description-text"
 
   static CLI-COMMAND ::=
       cli.Command "list"
@@ -95,25 +119,20 @@ class ListCommand extends PkgCommand:
               Lists all packages.
 
               If no argument is given, lists all available packages.
-              If an argument is given, it must point to a registry path. In that case
-                only the packages from that registry are shown.
+              If an argument is given, it must be either a registry name or a path to a registry.
+                In that case only the packages from that registry are shown.
               """
           --rest=[
-              cli.Option NAME-OPTION
+              cli.Option NAME-OR-PATH-OPTION
                   --required=false
             ]
           --options=[
               cli.Flag VERBOSE-OPTION
                   --short-name="v"
-                  --help="Show more information about each package."
+                  --help="Show more information about each package. Shadows the global '--verbose' option."
                   --default=false,
-              cli.OptionEnum OUTPUT-OPTION ["list", "json", "yaml"]
-                  --short-name="o"
-                  --help="Output format."
-                  --default="list"
             ]
           --run=:: (ListCommand it).execute
 
-  static NAME-OPTION ::= "name"
+  static NAME-OR-PATH-OPTION ::= "name-or-path"
   static VERBOSE-OPTION ::= "verbose"
-  static OUTPUT-OPTION ::= "output"

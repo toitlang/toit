@@ -1,0 +1,6 @@
+OK
+[pkg, list, list-registry]
+list-registry (list-registry (local))
+  bar - 0.0.1
+  foo - 1.0.3
+  gee - 1.0.3
