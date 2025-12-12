@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import cli show Ui
 import encoding.yaml
 import fs
 import host.file
@@ -224,10 +225,12 @@ class LockFileBuilder:
   project_/Project
   solution_/solver.Solution
   url-id-prefixes-map_/Map  // A map from url to ID-prefix.
+  ui_/Ui
 
-  constructor --project/Project --solution/solver.Solution:
+  constructor --project/Project --solution/solver.Solution --ui/Ui:
     project_ = project
     solution_ = solution
+    ui_ = ui
 
     used := {}
     url-id-prefixes-map_ = solution_.packages.map: | url/string _ |
@@ -335,16 +338,17 @@ class LockFileBuilder:
       dep/PackageDependency := deps[prefix]
       available-versions := solution_.packages.get dep.url
       if not available-versions:
-        print "Missing version for $dep.url in solution."
-        print "This can happen when the specification and description are out of sync."
-        throw "DESCRIPTION-SPECIFICATION-MISMATCH"
+        ui_.abort """
+          Missing version for $dep.url in solution.
+          This can happen when the specification and description are out of sync."""
+
       if available-versions.size > 0:
         // We prefer to use higher versions.
         available-versions.sort: | a b | -(a.compare-to b)
 
       matching := dep.constraint.first-satisfying available-versions
       if not matching:
-        throw "No matching version for $dep.url"
+        ui_.abort "No matching version for $dep.url"
       dep-id-prefix := url-id-prefixes-map_[dep.url]
       result[prefix] = "$dep-id-prefix-$matching.major"
     return result

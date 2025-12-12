@@ -1,0 +1,6 @@
+name: foo
+description: Description of another foo package. Different URL.
+version: 0.0.1
+url: 'http://localhost:<[*PORT*]>/pkg/foo-different-url'
+license: MIT
+hash: 111111111
