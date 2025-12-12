@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "dtoa.h"
 #include "encoder.h"
 #include "entropy_mixer.h"
 #include "flags.h"
@@ -1504,21 +1505,35 @@ static char* safe_double_print(const char* format, int precision, double value) 
 PRIMITIVE(float_to_string) {
   ARGS(double, receiver, Object, precision);
   if (isnan(receiver)) return process->allocate_string_or_error("nan");
-  const char* format;
-  word prec = 20;
+  bool is_negative = signbit(receiver);
+  if (isinf(receiver)) {
+    if (is_negative) {
+      return process->allocate_string_or_error("-inf");
+    } else {
+      return process->allocate_string_or_error("inf");
+    }
+  }
+  const char* buffer;
   if (precision == process->null_object()) {
-    format = "%.*lg";
+    if (receiver == 0.0) {
+      if (is_negative) {
+        return process->allocate_string_or_error("-0.0");
+      } else {
+        return process->allocate_string_or_error("0.0");
+      }
+    }
+    char temp_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
+    double_to_shortest(receiver, temp_buffer, sizeof(temp_buffer));
+    buffer = temp_buffer;
   } else {
-    format = "%.*lf";
+    const char* format = "%.*lf";
     if (is_large_integer(precision)) FAIL(OUT_OF_BOUNDS);
     if (!is_smi(precision)) FAIL(WRONG_OBJECT_TYPE);
-    prec = Smi::value(precision);
+    word prec = Smi::value(precision);
     if (prec < 0 || prec > 64) FAIL(OUT_OF_BOUNDS);
+    buffer = safe_double_print(format, prec, receiver);
   }
-  char* buffer = safe_double_print(format, prec, receiver);
-  if (buffer == null) FAIL(MALLOC_FAILED);
   Object* result = process->allocate_string(buffer);
-  free(buffer);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 }
