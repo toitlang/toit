@@ -760,6 +760,12 @@ class In extends Channel_:
   /** Whether the channel has started reading with $start-reading. */
   is-reading_ /bool := false
 
+  /**
+  The resolution of this channel.
+  The frequency of the clock that the RMT controller uses to sample the input signal.
+  */
+  resolution/int
+
   /** The number of memory-blocks. */
   memory-blocks_/int
 
@@ -782,6 +788,7 @@ class In extends Channel_:
       --memory-blocks/int=1:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
 
+    this.resolution = resolution
     memory-blocks_ = memory-blocks
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
@@ -847,7 +854,7 @@ class In extends Channel_:
       result := rmt-receive_ resource_
       if result:
         is-reading_ = false
-        return Signals.from-bytes result
+        return Signals.from-bytes result --resolution=resolution
       // No data yet.
       state_.wait-for-state READ-STATE_
 
