@@ -912,7 +912,7 @@ jobs:
               ARCH_EXTENSION=.zip
             elif [[ "$os" == "linux" ]]; then
               ESPTOOL_ARCH=linux-amd64
-            elif [[ "$os" == "macos" ]]; then
+            elif [[ "$os" == "rpi" ]]; then
               ESPTOOL_ARCH=linux-armv7
             elif [[ "$os" == "aarch64" ]]; then
               ESPTOOL_ARCH=linux-aarch64
