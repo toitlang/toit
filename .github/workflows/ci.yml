@@ -1195,7 +1195,7 @@ jobs:
           echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Sign macOS executables
-        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
+        uses: toitlang/action-macos-sign-notarize@385e50b59cf23df408e3361c28d3d665f4730dd1 # v1.3.0
         with:
           certificate: ${{ secrets.MACOS_CERTIFICATE }}
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -1228,7 +1228,7 @@ jobs:
           done
 
       - name: Sign DMGs
-        uses: toitlang/action-macos-sign-notarize@64b6d845b70ccd71bde584769280c612d48211db # v1.2.1
+        uses: toitlang/action-macos-sign-notarize@385e50b59cf23df408e3361c28d3d665f4730dd1 # v1.3.0
         with:
           certificate: ${{ secrets.MACOS_CERTIFICATE }}
           certificate-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
