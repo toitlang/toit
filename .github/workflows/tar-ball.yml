@@ -85,7 +85,7 @@ jobs:
           echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Upload tarball to artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           path: ${{ steps.create-tarball.outputs.archive_path }}
           name: ${{ steps.create-tarball.outputs.archive_name }}
@@ -219,7 +219,7 @@ jobs:
           fi
 
       - name: Upload debian package to artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: toit-debian
           path: "*.deb"
