@@ -46,6 +46,7 @@ static void print_usage(int exit_code) {
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
   printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
   printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
+  printf("    --format <toitfiles>...                // Format Toit files.\n");
   printf("    --dependencies <toitfiles>...          // List dependencies.\n");
   printf("  }\n");
   exit(exit_code);
@@ -104,6 +105,7 @@ int main(int argc, char **argv) {
   auto dep_format = compiler::Compiler::DepFormat::none;
   bool for_language_server = false;
   bool for_analysis = false;
+  bool for_format = false;
   bool for_dependencies = false;
   const char* vessels_root = null;
   const char* cross_os = null;
@@ -245,6 +247,10 @@ int main(int argc, char **argv) {
       for_analysis = strcmp(argv[processed_args], "--analyze") == 0;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--format") == 0) {
+      for_format = true;
+      processed_args++;
+      ways_to_run++;
     } else if (strcmp(argv[processed_args], "--dependencies") == 0) {
       for_dependencies = true;
       processed_args++;
@@ -259,7 +265,7 @@ int main(int argc, char **argv) {
     } else {
       if (strcmp(argv[processed_args], "--") == 0) processed_args++;
       if (ways_to_run == 0) {
-        ASSERT(!for_analysis && !for_dependencies);  // Otherwise ways_to_run would be 1.
+        ASSERT(!for_format && !for_analysis && !for_dependencies);  // Otherwise ways_to_run would be 1.
         if (processed_args == argc) {
           fprintf(stderr, "Missing toit-file, snapshot, or string-expression\n");
           print_usage(1);
@@ -280,7 +286,7 @@ int main(int argc, char **argv) {
       ASSERT(direct_script != null);
       fprintf(stderr, "Can't analyze string expressions\n");
     } else {
-      fprintf(stderr, "Toit-file, snapshot, or string-expressions are exclusive\n");
+      fprintf(stderr, "Toit-file, snapshot, format, or string-expressions are exclusive\n");
     }
     print_usage(1);
   }
@@ -317,9 +323,17 @@ int main(int argc, char **argv) {
       }
     } else {
       if (args[0] == NULL) {
-        fprintf(stderr,
-                "Missing toit-files to '%s'\n",
-                for_analysis ? "--analyze" : "--dependencies");
+        const char* action;
+        if (for_analysis) {
+          action = "--analyze";
+        } else if (for_dependencies) {
+          action = "--dependencies";
+        } else if (for_format) {
+          action = "--format";
+        } else {
+          UNREACHABLE();
+        }
+        fprintf(stderr, "Missing toit-files to '%s'\n", action);
         print_usage(1);
       }
       // Add all remaining arguments to the `--analyze`|`--dependencies` as source paths.
@@ -329,6 +343,10 @@ int main(int argc, char **argv) {
       //   to the end of the argv list.
       args = &argv[argc];
     }
+  } else if (for_format) {
+    // Add all remaining arguments to the `--analyze`|`--dependencies` as source paths.
+    source_paths = const_cast<const char**>(args);
+    source_path_count = argc - processed_args;
   }
   if ((dep_file == null) != (dep_format == compiler::Compiler::DepFormat::none)) {
     fprintf(stderr, "When writing dependencies, both '--dependency-file' and '--dependency-format' must be provided\n");
@@ -358,6 +376,12 @@ int main(int argc, char **argv) {
   if (for_language_server) {
     compiler::Compiler compiler;
     compiler.language_server(compiler_config);
+  } else if (for_format) {
+    compiler::Compiler compiler;
+    for (int i = 0; i < source_path_count; i++) {
+      auto source_path = source_paths[i];
+      compiler.format(source_path, source_path);
+    }
   } else if (for_analysis || for_dependencies) {
     compiler::Compiler compiler;
     compiler.analyze(List<const char*>(source_paths, source_path_count),
