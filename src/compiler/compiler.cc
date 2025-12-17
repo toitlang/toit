@@ -35,6 +35,7 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_lsp.h"
+#include "format.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
@@ -748,6 +749,52 @@ SnapshotBundle Compiler::compile(const char* source_path,
   //   the pipeline data.
   pipeline_main_result.free_all();
   return result;
+}
+
+void Compiler::format(const char* source_path,
+                      const char* out_path) {
+  FilesystemHybrid fs(source_path);
+  SourceManager source_manager(&fs);
+  PathBuilder builder(&fs);
+  if (fs.is_absolute(source_path)) {
+    builder.join(source_path);
+  } else {
+    builder.join(fs.relative_anchor(source_path));
+    builder.join(source_path);
+  }
+  builder.canonicalize();
+
+  bool show_package_warnings;
+  bool print_diagnostics_on_stdout;
+  AnalysisDiagnostics diagnostics(&source_manager,
+                                  show_package_warnings=false,
+                                  print_diagnostics_on_stdout=true);
+
+  auto load_result = source_manager.load_file(builder.buffer(), Package::invalid());
+  if (load_result.status != SourceManager::LoadResult::OK) {
+    load_result.report_error(&diagnostics);
+    exit(1);
+  }
+  Source* source = load_result.source;
+
+  SymbolCanonicalizer symbols;
+  Scanner scanner(source, &symbols, &diagnostics);
+  Parser parser(source, &scanner, &diagnostics);
+  ast::Unit* unit = parser.parse_unit();
+
+  int formatted_size;
+  uint8* formatted = format_unit(unit, &formatted_size);
+
+  // TODO(florian): if the out_path is different we should check whether the
+  // file exists, and, if yes, if the content has changed.
+  if (strcmp(source_path, out_path) != 0 ||
+      (formatted_size != unit->source()->size() &&
+       memcmp(formatted, unit->source()->text(), formatted_size) != 0)) {
+    FILE* file_out = fopen(out_path, "wb");
+    fwrite(formatted, 1, formatted_size, file_out);
+    fclose(file_out);
+  }
+  free(formatted);
 }
 
 /// Returns the offset in the source for the given line and column number.
