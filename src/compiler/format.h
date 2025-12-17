@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include "scanner.h"
+#include "list.h"
+
 namespace toit {
 namespace compiler {
 
@@ -22,7 +25,9 @@ namespace ast {
 class Unit;
 }
 
-uint8* format_unit(ast::Unit* unit, int* formatted_size);
+uint8* format_unit(ast::Unit* unit,
+                   List<Scanner::Comment> comments,
+                   int* formatted_size);
 
 } // namespace toit::compiler
 } // namespace toit

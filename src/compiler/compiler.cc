@@ -781,9 +781,8 @@ void Compiler::format(const char* source_path,
   Scanner scanner(source, &symbols, &diagnostics);
   Parser parser(source, &scanner, &diagnostics);
   ast::Unit* unit = parser.parse_unit();
-
   int formatted_size;
-  uint8* formatted = format_unit(unit, &formatted_size);
+  uint8* formatted = format_unit(unit, scanner.comments(), &formatted_size);
 
   // TODO(florian): if the out_path is different we should check whether the
   // file exists, and, if yes, if the content has changed.

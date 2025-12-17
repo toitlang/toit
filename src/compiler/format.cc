@@ -20,14 +20,34 @@
 namespace toit {
 namespace compiler {
 
+using namespace ast;
+
 /// Formats the given unit and returns the formatted version.
 /// The returned string must be freed.
-uint8* format_unit(ast::Unit* unit, int* formatted_size) {
+uint8* format_unit(Unit* unit,
+                   List<Scanner::Comment> comments,
+                   int* formatted_size) {
   const char* src = reinterpret_cast<const char*>(unit->source()->text());
   uint8* formatted = reinterpret_cast<uint8*>(strdup(src));
   *formatted_size = unit->source()->size();
   return formatted;
 }
+
+class CopyFormatter : public ast::Visitor {
+ public:
+  explicit CopyFormatter(List<Scanner::Comment> comments)
+      : comments_(comments);
+
+  void visit_Unit(Unit* unit) override {
+  }
+
+  void visit_Import(Import* import) override {
+  }
+
+ private:
+
+
+};
 
 } // namespace toit::compiler
 } // namespace toit
