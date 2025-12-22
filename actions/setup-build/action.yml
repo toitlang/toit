@@ -60,7 +60,7 @@ runs:
 
     - name: Ccache cache
       if: inputs.use-ccache == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.ccache
         key: ${{inputs.cache-key-prefix}}-${{ runner.os }}-${{ github.sha }}
@@ -109,7 +109,7 @@ runs:
         echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
 
     - name: ESP32 tools cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       if: inputs.esp32 == 'true'
       # Store and retrieve the cache with the given sha.
       # The 'restore-keys' prefix finds the most recent cache in case there
