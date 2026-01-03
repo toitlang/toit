@@ -253,7 +253,7 @@ class Crc extends Checksum:
   /**
   See $super.
 
-  Returns the checksum as a width/4 element byte array in the endian order that
+  Returns the checksum as a width/8 element byte array in the endian order that
     corresponds to the constructor used.
   */
   get -> ByteArray:
