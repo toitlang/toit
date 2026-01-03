@@ -779,7 +779,8 @@ void Compiler::format(const char* source_path,
 
   SymbolCanonicalizer symbols;
   Scanner scanner(source, &symbols, &diagnostics);
-  Parser parser(source, &scanner, &diagnostics);
+  bool needs_token_nodes;
+  Parser parser(source, &scanner, &diagnostics, needs_token_nodes=true);
   ast::Unit* unit = parser.parse_unit();
   int formatted_size;
   uint8* formatted = format_unit(unit, scanner.comments(), &formatted_size);

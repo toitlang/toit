@@ -654,21 +654,25 @@ static bool contains_upper(const char* str) {
 }
 
 Import* Parser::parse_import() {
+  ListBuilder<TokenNode*> tokens;
   ASSERT(current_token() == Token::IMPORT);
   start_multiline_construct(IndentationStack::IMPORT);
   auto range = current_range();
+  if (needs_token_nodes()) tokens.add(current_token_node());
   consume();
   Import* result = null;
   int dot_outs = 0;
   bool is_relative = false;
   ListBuilder<Identifier*> identifiers;
   if (current_token() == Token::PERIOD || current_token() == Token::SLICE) {
+    if (needs_token_nodes()) tokens.add(current_token_node());
     is_relative = true;
     // Start with -1, since the first token is just an indication that the import
     // is relative.
     dot_outs = -1;
     // Dot-outs are only allowed in the beginning of the import.
     while (current_token() == Token::PERIOD || current_token() == Token::SLICE) {
+      if (needs_token_nodes()) tokens.add(current_token_node());
       dot_outs++;
       if (current_token() == Token::SLICE) dot_outs++;
       consume();
@@ -686,6 +690,9 @@ Import* Parser::parse_import() {
           "Import identifiers should be lowercase");
     }
     identifiers.add(identifier);
+    if (needs_token_nodes() && current_token() == Token::PERIOD) {
+      tokens.add(current_token_node());
+    }
   } while (optional(Token::PERIOD));
 
   if (missing_identifier) {
@@ -697,7 +704,13 @@ Import* Parser::parse_import() {
     }
     skip_to_end_of_multiline_construct();
     // Make the import relative, so we don't need the prefix.
-    result = NEW_NODE(Import(true, 0, List<ast::Identifier*>(), null, List<ast::Identifier*>(), false),
+    result = NEW_NODE(Import(true,
+                             0,
+                             List<ast::Identifier*>(),
+                             null,
+                             List<ast::Identifier*>(),
+                             false,
+                             tokens.build()),
                       range);
   } else {
     Identifier* prefix = null;
@@ -705,6 +718,7 @@ Import* Parser::parse_import() {
     bool show_all = false;
 
     if (current_token() == Token::AS) {
+      if (needs_token_nodes()) tokens.add(current_token_node());
       auto as_range = current_range();
       consume();
       if (current_token() == Token::IDENTIFIER) {
@@ -716,6 +730,7 @@ Import* Parser::parse_import() {
       }
     } else if (at_pseudo(Symbols::show)) {
       auto show_range = current_range();
+      if (needs_token_nodes()) tokens.add(current_symbol_node());
       consume();
       ListBuilder<Identifier*> builder;
       if (current_token() == Token::IDENTIFIER) {
@@ -724,6 +739,7 @@ Import* Parser::parse_import() {
         } while (current_token() == Token::IDENTIFIER);
         show_identifiers = builder.build();
       } else if (current_token() == Token::MUL) {
+        if (needs_token_nodes()) tokens.add(current_token_node());
         consume();
         show_all = true;
       } else {
@@ -732,7 +748,13 @@ Import* Parser::parse_import() {
         skip_to_end_of_multiline_construct();
       }
     }
-    result = NEW_NODE(Import(is_relative, dot_outs, identifiers.build(), prefix, show_identifiers, show_all),
+    result = NEW_NODE(Import(is_relative,
+                             dot_outs,
+                             identifiers.build(),
+                             prefix,
+                             show_identifiers,
+                             show_all,
+                             tokens.build()),
                       range);
   }
   end_multiline_construct(IndentationStack::IMPORT, true);
@@ -2840,6 +2862,14 @@ Source::Range Parser::previous_range() {
 Token::Kind Parser::previous_token() {
   auto& previous_state = scanner_state_queue_.get(-1);
   return previous_state.token();
+}
+
+ast::TokenNode* Parser::current_token_node() {
+  return NEW_NODE(TokenNode(current_token()), current_range());
+}
+
+ast::TokenNode* Parser::current_symbol_node() {
+  return NEW_NODE(TokenNode(current_token_data()), current_range());
 }
 
 bool Parser::optional(Token::Kind kind) {
