@@ -128,6 +128,9 @@ class GoldTester:
       else if command == "package.lock":
         lock-content := file.read-contents "$working-dir_/package.lock"
         outputs.add "== package.lock\n$lock-content.to-string"
+      else if command == "package.yaml":
+        yaml-content := file.read-contents "$working-dir_/package.yaml"
+        outputs.add "== package.yaml\n$yaml-content.to-string"
       else if command == "pkg":
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui
