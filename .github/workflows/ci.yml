@@ -53,11 +53,6 @@ on:
           - windows
           - macos+windows
         default: "none"
-      build-arm-macos:
-        description: "Build ARM macOS executables"
-        required: false
-        type: boolean
-        default: false
       dispatch-toitdocs:
         description: "Dispatch toitdoc rebuild"
         required: false
@@ -100,7 +95,6 @@ on:
           - none
           - linux
           - windows
-          - macos
           - macos-arm
         default: none
 
@@ -112,7 +106,6 @@ env:
   DO_TESTS: ${{ github.event.inputs.tests != 'none' }}
   SIGN_MACOS: ${{ github.event.inputs.sign == 'macos' || github.event.inputs.sign == 'macos+windows' }}
   SIGN_WINDOWS: ${{ github.event.inputs.sign == 'windows' || github.event.inputs.sign == 'macos+windows' }}
-  BUILD_ARM_MACOS: ${{ github.event.inputs.build-arm-macos == 'true' }}
   DISPATCH_TOITDOCS: ${{ github.event.inputs.dispatch-toitdocs == 'true' }}
   RUN_WINDOWS_SIGN_FLOW: ${{ github.event_name == 'release' ||
                               startsWith(github.event.inputs.do-release, 'v') ||
@@ -161,8 +154,6 @@ jobs:
               echo 'CONTAINERS=[ "ubuntu-22.04" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "windows" ]]; then
               echo 'CONTAINERS=[ "windows-latest" ]' >> $GITHUB_OUTPUT
-            elif [[ "$platform" == "macos" ]]; then
-              echo 'CONTAINERS=[ "macos-13" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos-arm" ]]; then
               echo 'CONTAINERS=[ "macos-latest" ]' >> $GITHUB_OUTPUT
             else
@@ -173,16 +164,7 @@ jobs:
           fi
 
           # ubuntu-22.04 so that we don't depend on a recent glibc.
-          # macos-13, since it's still intel based.
-          if [[ "${{ github.ref }}" == 'refs/heads/master' || \
-                "${{ env.DO_RELEASE }}" == "true" || \
-                "${{ env.BUILD_ARM_MACOS }}" == "true" || \
-                "${{ env.SIGN_MACOS }}" == "true" \
-              ]]; then
-            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
-          else
-            echo 'CONTAINERS=[ "ubuntu-22.04", "macos-13", "windows-latest" ]' > $GITHUB_OUTPUT
-          fi
+          echo 'CONTAINERS=[ "ubuntu-22.04", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           if [[ "${{ env.DO_TESTS }}" == "true" ]]; then
             echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[{"container": "ubuntu-22.04", "shard": 6}, {"container": "ubuntu-22.04", "shard": 7}]' >> $GITHUB_OUTPUT
@@ -244,9 +226,6 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT_LINUX }}" >> $GITHUB_OUTPUT
-          elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "X64" ]]; then
-            echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
           elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$RUNNER_ARCH" == "ARM64" ]]; then
             echo "artifact=toit-macos-arm.tar.gz" >> $GITHUB_OUTPUT
             echo "total_shards=${{ needs.prereqs.outputs.SHARD_COUNT }}" >> $GITHUB_OUTPUT
@@ -870,25 +849,9 @@ jobs:
           pattern: macOS-build-unsigned*
           merge-multiple: true
 
-      - name: Set up macOS ARM environment
-        run: |
-          if [[ "${{ env.DO_RELEASE }}" == 'true' || \
-                "${{ env.BUILD_ARM_MACOS }}" == "true" || \
-                "${{ github.ref }}" == 'refs/heads/master' \
-              ]]; then
-            echo "MACOS_ARM=macos-arm" >> $GITHUB_ENV;
-            EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-            echo "MACOS_TARS<<$EOF" >> $GITHUB_ENV;
-            echo "toit-macos.tar.gz" >> $GITHUB_ENV;
-            echo "toit-macos-arm.tar.gz" >> $GITHUB_ENV;
-            echo "$EOF" >> $GITHUB_ENV;
-          else
-            echo "MACOS_TARS=toit-macos.tar.gz" >> $GITHUB_ENV;
-          fi
-
       - name: Unpack SDKs
         run: |
-          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
+          for os in windows linux macos-arm rpi aarch64 riscv64; do
             mkdir -p $os
             tar x -zf toit-$os.tar.gz -C $os
           done
@@ -897,16 +860,13 @@ jobs:
         run: |
           mkdir -p vessels
 
-          for source in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
+          for source in windows linux macos-arm rpi aarch64 riscv64; do
             # Use same values as Go.
             if [[ "$source" == "windows" ]]; then
               CROSS_OS=windows
               CROSS_ARCH=amd64
             elif [[ "$source" == "linux" ]]; then
               CROSS_OS=linux
-              CROSS_ARCH=amd64
-            elif [[ "$source" == "macos" ]]; then
-              CROSS_OS=darwin
               CROSS_ARCH=amd64
             elif [[ "$source" == "macos-arm" ]]; then
               CROSS_OS=darwin
@@ -928,7 +888,7 @@ jobs:
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/lib/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
+            for target in windows linux macos-arm rpi aarch64 riscv64; do
               if [[ "$source" == "$target" ]]; then
                 continue
               fi
@@ -943,7 +903,7 @@ jobs:
 
       - name: Download esptools
         run: |
-          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
+          for os in windows linux macos-arm rpi aarch64 riscv64; do
             EXTENSION=""
             ARCH_EXTENSION=.tar.gz
             if [[ "$os" == "windows" ]]; then
@@ -952,8 +912,6 @@ jobs:
               ARCH_EXTENSION=.zip
             elif [[ "$os" == "linux" ]]; then
               ESPTOOL_ARCH=linux-amd64
-            elif [[ "$os" == "macos" ]]; then
-              ESPTOOL_ARCH=macos-amd64
             elif [[ "$os" == "rpi" ]]; then
               ESPTOOL_ARCH=linux-armv7
             elif [[ "$os" == "aarch64" ]]; then
@@ -982,7 +940,7 @@ jobs:
 
       - name: Compress SDKs
         run: |
-          for os in windows linux macos rpi aarch64 riscv64 $MACOS_ARM; do
+          for os in windows linux macos-arm rpi aarch64 riscv64; do
             tar c -zf toit-$os.tar.gz -C $os toit
           done
 
@@ -1009,7 +967,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: macOS-build-unsigned-combined
-          path: ${{ env.MACOS_TARS }}
+          path: toit-macos-arm.tar.gz
 
       - name: Upload Linux
         uses: actions/upload-artifact@v6
@@ -1174,8 +1132,6 @@ jobs:
 
       - name: Decompress
         run: |
-          tar x -zf toit-macos.tar.gz
-          mv toit toit-x64
           tar x -zf toit-macos-arm.tar.gz
           mv toit toit-arm
 
@@ -1185,10 +1141,8 @@ jobs:
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "result<<$EOF" >> $GITHUB_OUTPUT
           # Also sign the vessels, as all binaries inside a DMG must be signed.
-          find toit-x64/bin toit-x64/lib/toit/bin \
-               toit-x64/lib/toit/vessels/vessel* toit-x64/lib/toit/vessels/darwin \
-               toit-arm/bin toit-arm/lib/toit/bin \
-               toit-arm/lib/toit/vessels/vessel* toit-arm/lib/toit/vessels/darwin \
+          find toit-arm/bin toit-arm/lib/toit/bin \
+               toit-arm/lib/toit/vessels/vessel* \
                -type f \
                ! -regex '.*/esptool' \
                >> $GITHUB_OUTPUT
@@ -1206,26 +1160,22 @@ jobs:
 
       - name: Compress
         run: |
-          for arch in x64 arm; do
-            mv toit-$arch toit
-            tar c -zf out/toit-$arch.tar.gz toit
-            mv toit toit-$arch
-          done
+          mv toit-arm toit
+          tar c -zf out/toit-arm.tar.gz toit
+          mv toit toit-arm
 
       - name: Create DMGs
         run: |
           set -e
           ln -s sdk/bin/toit toit-symlink
-          for arch in x64 arm; do
-            # Use an empty directory as source so we don't accidentally add other files than SDK.
-            mkdir empty-$arch
-            create-dmg \
-                --volname "jag" \
-                --add-file toit toit-symlink 0 0 \
-                --add-file sdk toit-$arch 200 0 \
-                out/toit-$arch.dmg \
-                empty-$arch
-          done
+          # Use an empty directory as source so we don't accidentally add other files than SDK.
+          mkdir empty-arm
+          create-dmg \
+              --volname "jag" \
+              --add-file toit toit-symlink 0 0 \
+              --add-file sdk toit-arm 200 0 \
+              out/toit-arm.dmg \
+              empty-arm
 
       - name: Sign DMGs
         uses: toitlang/action-macos-sign-notarize@385e50b59cf23df408e3361c28d3d665f4730dd1 # v1.3.0
@@ -1236,7 +1186,6 @@ jobs:
           password: ${{ secrets.AC_PASSWORD }}
           apple-team-id: ${{ vars.MACOS_TEAM_ID }}
           app-path: |
-            out/toit-x64.dmg
             out/toit-arm.dmg
 
       - name: Upload artifacts
@@ -1244,18 +1193,13 @@ jobs:
         with:
           name: macOS-build-signed
           path: |
-            out/toit-x64.tar.gz
             out/toit-arm.tar.gz
-            out/toit-x64.dmg
             out/toit-arm.dmg
 
       - name: Prepare upload
         run: |
           mkdir -p macos-upload
-          cp out/toit-x64.tar.gz macos-upload/toit-macos.tar.gz
-          cp out/toit-x64.tar.gz macos-upload/toit-macos-x64.tar.gz
           cp out/toit-arm.tar.gz macos-upload/toit-macos-aarch64.tar.gz
-          cp out/toit-x64.dmg macos-upload/toit-macos-x64.dmg
           cp out/toit-arm.dmg macos-upload/toit-macos-aarch64.dmg
 
       - name: Upload release artifacts x64
