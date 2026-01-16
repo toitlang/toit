@@ -14,6 +14,11 @@
 // directory of this repository.
 
 #include "top.h"
+#ifdef TOIT_ESP32
+#include <esp_random.h>
+#else
+#include <random>
+#endif
 
 #if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
 
@@ -748,6 +753,165 @@ PRIMITIVE(aes_ecb_close) {
   return process->null_object();
 }
 
+
+static int rsa_rng(void *ctx, unsigned char *buffer, size_t len) {
+#ifdef TOIT_ESP32
+  esp_fill_random(buffer, len);
+#else
+  // Use std::random_device for non-ESP32 platforms.
+  static thread_local std::random_device device;
+  static thread_local std::uniform_int_distribution<> distribution(0, 255);
+  for (size_t i = 0; i < len; i++) {
+    buffer[i] = static_cast<unsigned char>(distribution(device));
+  }
+#endif
+  return 0;
+}
+
+class RsaKey : public SimpleResource {
+public:
+  TAG(RsaKey);
+  RsaKey(SimpleResourceGroup *group) : SimpleResource(group) {
+    mbedtls_pk_init(&context_);
+  }
+
+  ~RsaKey() { mbedtls_pk_free(&context_); }
+
+  mbedtls_pk_context *context() { return &context_; }
+
+private:
+  mbedtls_pk_context context_;
+};
+
+PRIMITIVE(rsa_parse_private_key) {
+  ARGS(SimpleResourceGroup, group, Blob, key, Blob, password);
+  ByteArray *proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null)
+    FAIL(ALLOCATION_FAILED);
+
+  RsaKey *rsa = _new RsaKey(group);
+  if (!rsa)
+    FAIL(MALLOC_FAILED);
+
+  const unsigned char *pwd = password.length() > 0 ? password.address() : NULL;
+  size_t pwd_len = password.length();
+
+  char *key_copy = (char *)malloc(key.length() + 1);
+  if (!key_copy) {
+    delete rsa;
+    FAIL(MALLOC_FAILED);
+  }
+  memcpy(key_copy, key.address(), key.length());
+  key_copy[key.length()] = '\0';
+
+  int ret =
+      mbedtls_pk_parse_key(rsa->context(), (const unsigned char *)key_copy,
+                           key.length() + 1, pwd, pwd_len, rsa_rng, NULL);
+  free(key_copy);
+
+  if (ret != 0) {
+    delete rsa;
+    return tls_error(null, process, ret);
+  }
+
+  if (!mbedtls_pk_can_do(rsa->context(), MBEDTLS_PK_RSA)) {
+    delete rsa;
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  proxy->set_external_address(rsa);
+  return proxy;
+}
+
+PRIMITIVE(rsa_parse_public_key) {
+  ARGS(SimpleResourceGroup, group, Blob, key);
+  ByteArray *proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null)
+    FAIL(ALLOCATION_FAILED);
+
+  RsaKey *rsa = _new RsaKey(group);
+  if (!rsa)
+    FAIL(MALLOC_FAILED);
+
+  char *key_copy = (char *)malloc(key.length() + 1);
+  if (!key_copy) {
+    delete rsa;
+    FAIL(MALLOC_FAILED);
+  }
+  memcpy(key_copy, key.address(), key.length());
+  key_copy[key.length()] = '\0';
+
+  int ret = mbedtls_pk_parse_public_key(
+      rsa->context(), (const unsigned char *)key_copy, key.length() + 1);
+  free(key_copy);
+
+  if (ret != 0) {
+    delete rsa;
+    return tls_error(null, process, ret);
+  }
+
+  if (!mbedtls_pk_can_do(rsa->context(), MBEDTLS_PK_RSA)) {
+    delete rsa;
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  proxy->set_external_address(rsa);
+  return proxy;
+}
+
+PRIMITIVE(rsa_sign) {
+  ARGS(RsaKey, rsa, Blob, digest);
+
+  mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
+  if (digest.length() == 32)
+    md_alg = MBEDTLS_MD_SHA256;
+  else if (digest.length() == 20)
+    md_alg = MBEDTLS_MD_SHA1;
+  else if (digest.length() == 48)
+    md_alg = MBEDTLS_MD_SHA384;
+  else if (digest.length() == 64)
+    md_alg = MBEDTLS_MD_SHA512;
+  else
+    FAIL(INVALID_ARGUMENT);
+
+  uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
+  size_t actual_len = 0;
+
+  int ret =
+      mbedtls_pk_sign(rsa->context(), md_alg, digest.address(), digest.length(),
+                      sig, sizeof(sig), &actual_len, rsa_rng, NULL);
+
+  if (ret != 0)
+    return tls_error(null, process, ret);
+
+  ByteArray *result = process->allocate_byte_array(actual_len);
+  if (result == null)
+    FAIL(ALLOCATION_FAILED);
+  memcpy(ByteArray::Bytes(result).address(), sig, actual_len);
+  return result;
+}
+
+PRIMITIVE(rsa_verify) {
+  ARGS(RsaKey, rsa, Blob, digest, Blob, signature);
+
+  mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
+  if (digest.length() == 32)
+    md_alg = MBEDTLS_MD_SHA256;
+  else if (digest.length() == 20)
+    md_alg = MBEDTLS_MD_SHA1;
+  else if (digest.length() == 48)
+    md_alg = MBEDTLS_MD_SHA384;
+  else if (digest.length() == 64)
+    md_alg = MBEDTLS_MD_SHA512;
+  else
+    FAIL(INVALID_ARGUMENT);
+
+  int ret = mbedtls_pk_verify(rsa->context(), md_alg, digest.address(),
+                              digest.length(), signature.address(),
+                              signature.length());
+
+  return ret == 0 ? process->true_object() : process->false_object();
+}
 }
 
 #endif
