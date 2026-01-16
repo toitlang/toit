@@ -99,7 +99,7 @@ fail-test network/net.Client:
   expect error is DnsException
   exception := error as DnsException
   expect
-    exception.text.contains "NO_SUCH_DOMAIN"
+    exception.text.contains "No name record found"
 
 long-test network/net.Client:
   // As of 2022 these names both resolve, and the longer one has the max length
@@ -144,4 +144,4 @@ fallback-test-2 network/net.Client:
       --network=network
       --client=client
   expect
-    (error as DnsException).text.contains "NO_SUCH_DOMAIN"
+    (error as DnsException).text.contains "No name record found"
