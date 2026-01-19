@@ -123,7 +123,9 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
       ASSERT(module == entry_module);
       // Immediately print the tokens.
       // The function should exit, thus aborting the remaining resolutions.
-      lsp_->emit_semantic_tokens(module, entry_module->unit()->absolute_path(), source_manager_);
+      lsp_->emit_semantic_tokens(module,
+                                 entry_module->unit()->absolute_path(),
+                                 source_manager_);
       UNREACHABLE();
     }
   }
