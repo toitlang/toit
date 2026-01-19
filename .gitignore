@@ -33,6 +33,7 @@ tedi_test.go
 
 /toolchains/esp32*/sdkconfig.old
 /toolchains/esp32*/dependencies.lock
+/toolchains/esp32*/main/build/
 /toolchains/esp32*/build/
 
 GITIGNORE/
