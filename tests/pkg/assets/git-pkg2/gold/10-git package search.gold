@@ -25,9 +25,11 @@ OK
 ==================
 OK
 [pkg, install, foo]
+Package 'foo@1.2.3' installed with prefix 'foo'.
 ==================
 OK
 [pkg, install, bar]
+Package 'bar@2.0.1' installed with prefix 'bar'.
 ==================
 // Execution should succeed now
 ==================
@@ -58,9 +60,11 @@ Exit Code: 1
 ==================
 OK
 [pkg, install, --prefix=pre1, foo]
+Package 'foo@1.2.3' installed with prefix 'foo'.
 ==================
 OK
 [pkg, install, --prefix=pre2, bar]
+Package 'bar@2.0.1' installed with prefix 'bar'.
 ==================
 // Execution should succeed now
 ==================

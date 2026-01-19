@@ -12,6 +12,7 @@ Exit Code: 1
 ==================
 OK
 [pkg, install, --local, pkg]
+Package 'pkg' installed with prefix 'pkg'.
 ==================
 exec main.toit
 hello from pkg
@@ -21,6 +22,7 @@ Exit Code: 0
 ==================
 OK
 [pkg, install, --local, --prefix=prepkg, pkg2]
+Package 'pkg2' installed with prefix 'prepkg'.
 ==================
 exec main2.toit
 hello from pkg2
@@ -30,11 +32,13 @@ Exit Code: 0
 ==================
 OK
 [pkg, install, --local, pkg]
+Package 'pkg' installed with prefix 'pkg'.
 ==================
 // Installing a package where the directory name is not the package name.
 ==================
 OK
 [pkg, install, --local, pkg3]
+Package 'pkg3' installed with prefix 'pkg3_modified'.
 ==================
 exec main3.toit
 hello from pkg3_modified
