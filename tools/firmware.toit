@@ -707,7 +707,7 @@ extract-esp32 -> none
 
   if format == "elf":
     if not config-encoded.is-empty:
-      ui.emit --warning "config is ignored when extracting elf file"
+      ui.emit --warning "Config is ignored when extracting elf file."
     write-file output-path --ui=ui: it.write (envelope.entries.get AR-ENTRY-ESP32-FIRMWARE-ELF)
     return
 
