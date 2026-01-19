@@ -150,6 +150,19 @@ main args/List:
       --run=:: compile-or-analyze-or-run --command="analyze" it
   root-command.add analyze-command
 
+  format-command := cli.Command "format"
+      --help="""
+        Format the given Toit source file(s)."""
+      --rest=[
+        cli.Option "source"
+          --help="The source file to format."
+          --required
+          --multi,
+      ]
+      --hidden  // Until the feature is correctly implemented.
+      --run=:: format-sources it
+  root-command.add format-command
+
   compile-command := cli.Command "compile"
       --help="""
         Compile the given Toit source file to a Toit binary or a Toit snapshot."""
@@ -687,4 +700,13 @@ run-pkg-command command/List arg-names/List rest-args/List invocation/cli.Invoca
         args.add invocation[it]
 
   exit-code := run sdk-dir "toit.pkg" args
+  exit exit-code
+
+format-sources invocation/cli.Invocation:
+  sdk-dir := invocation["sdk-dir"]
+  sources := invocation["source"]
+
+  args := ["--format"] + sources
+
+  exit-code := run sdk-dir "toit.compile" args
   exit exit-code

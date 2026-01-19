@@ -102,6 +102,9 @@ class Compiler {
                          const char* out_path,
                          const Configuration& config);
 
+  void format(const char* source_path,
+              const char* out_path);
+
  private:
   /// Analyzes the given sources.
   ///
