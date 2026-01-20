@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
@@ -6,7 +6,7 @@ import crypto.rsa
 import crypto.sha
 import expect show *
 
-// 2048-bit RSA key
+// 2048-bit RSA key.
 PRIVATE-KEY ::= """
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDeCi2zVJ3mbsp7
@@ -54,33 +54,33 @@ main:
   test_rsa
 
 test_rsa:
-  priv := rsa.RsaKey.parse_private_key PRIVATE-KEY.to_byte_array
-  pub := rsa.RsaKey.parse_public_key PUBLIC-KEY.to_byte_array
+  priv := rsa.RsaKey.parse-private PRIVATE-KEY
+  pub := rsa.RsaKey.parse-public PUBLIC-KEY
 
   msg := "Hello World"
   digest := sha.sha256 msg
   
-  // Sign
+  // Sign.
   sig := priv.sign digest
   expect-not-null sig
   expect (sig.size > 0)
 
-  // Verify
+  // Verify.
   valid := pub.verify digest sig
   expect valid
 
-  // Tamper with digest
-  bad_digest := sha.sha256 "Hello world" // case difference
+  // Tamper with digest.
+  bad_digest := sha.sha256 "Hello world" // case difference.
   expect-not (pub.verify bad_digest sig)
 
-  // Tamper with signature
+  // Tamper with signature.
   sig[0] ^= 0xFF
   expect-not (pub.verify digest sig)
-  sig[0] ^= 0xFF // restore
+  sig[0] ^= 0xFF // Restore.
 
-  // Test with byte arrays
-  priv_bytes := rsa.RsaKey.parse_private_key (PRIVATE-KEY.to_byte_array)
-  pub_bytes := rsa.RsaKey.parse_public_key (PUBLIC-KEY.to_byte_array)
+  // Test with byte arrays.
+  priv_bytes := rsa.RsaKey.parse-private PRIVATE-KEY.to_byte_array
+  pub_bytes := rsa.RsaKey.parse-public PUBLIC-KEY.to_byte_array
   
   sig2 := priv_bytes.sign digest
   expect (pub_bytes.verify digest sig2)

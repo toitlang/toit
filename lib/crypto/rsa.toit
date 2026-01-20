@@ -1,31 +1,40 @@
-// Copyright (C) 2026 Toitware ApS. All rights reserved.
+// Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
 import .crypto
+import ..io as io
+
+/**
+Support for RSA (Rivest–Shamir–Adleman) public-key cryptography.
+
+See https://en.wikipedia.org/wiki/RSA_cryptosystem.
+
+This implementation uses native primitives.
+*/
 
 class RsaKey:
-  rsa_key_ := ?
+  rsa-key_ := ?
 
-  constructor.private_ key/ByteArray password/string?="":
-    rsa_key_ = rsa_parse_private_key_ resource-freeing-module_ key password
+  constructor.private_ key/io.Data password/string?="":
+    rsa-key_ = rsa-parse-private-key_ resource-freeing-module_ key password
 
-  constructor.public_ key/ByteArray:
-    rsa_key_ = rsa_parse_public_key_ resource-freeing-module_ key
+  constructor.public_ key/io.Data:
+    rsa-key_ = rsa-parse-public-key_ resource-freeing-module_ key
 
   /**
   Parses a PKCS#1 or PKCS#8 encoded private key.
-  The $key must be a byte array (DER or PEM).
+  The $key must be a byte array (DER or PEM) or string (PEM).
   The $password is optional and used for encrypted keys.
   */
-  static parse_private_key key/ByteArray --password/string?="" -> RsaKey:
+  static parse-private key/io.Data --password/string?="" -> RsaKey:
     return RsaKey.private_ key password
 
   /**
   Parses a PKCS#1 or X.509 encoded public key.
-  The $key must be a byte array (DER or PEM).
+  The $key must be a byte array (DER) or string (PEM).
   */
-  static parse_public_key key/ByteArray -> RsaKey:
+  static parse-public key/io.Data -> RsaKey:
     return RsaKey.public_ key
 
   /**
@@ -33,25 +42,36 @@ class RsaKey:
   $digest must be the hash of the message to sign.
   Supported hash lengths: 20 (SHA-1), 32 (SHA-256), 48 (SHA-384), 64 (SHA-512).
   */
-  sign digest/ByteArray -> ByteArray:
-    return rsa_sign_ rsa_key_ digest
+  sign digest/io.Data -> ByteArray:
+    return rsa-sign_ rsa-key_ digest
 
   /**
   Verifies the $signature of the $digest with this public key.
   $digest must be the hash of the message that was signed.
   Returns true if the signature is valid, false otherwise.
   */
-  verify digest/ByteArray signature/ByteArray -> bool:
-    return rsa_verify_ rsa_key_ digest signature
+  verify digest/io.Data signature/io.Data -> bool:
+    return rsa-verify_ rsa-key_ digest signature
 
-rsa_parse_private_key_ group key/ByteArray password/string? -> any:
-  #primitive.crypto.rsa_parse_private_key
+rsa-parse-private-key_ group key/io.Data password/string? -> any:
+  #primitive.crypto.rsa-parse-private-key:
+    return io.primitive-redo-io-data_ it key: | bytes |
+      rsa-parse-private-key_ group bytes password
 
-rsa_parse_public_key_ group key/ByteArray -> any:
-  #primitive.crypto.rsa_parse_public_key
+rsa-parse-public-key_ group key/io.Data -> any:
+  #primitive.crypto.rsa-parse-public-key:
+    return io.primitive-redo-io-data_ it key: | bytes |
+      rsa-parse-public-key_ group bytes
 
-rsa_sign_ rsa digest/ByteArray -> ByteArray:
-  #primitive.crypto.rsa_sign
+rsa-sign_ rsa digest/io.Data -> ByteArray:
+  #primitive.crypto.rsa-sign:
+    return io.primitive-redo-io-data_ it digest: | bytes |
+      rsa-sign_ rsa bytes
 
-rsa_verify_ rsa digest/ByteArray signature/ByteArray -> bool:
-  #primitive.crypto.rsa_verify
+rsa-verify_ rsa digest/io.Data signature/io.Data -> bool:
+  #primitive.crypto.rsa-verify:
+    return io.primitive-redo-io-data_ it digest: | bytes |
+      rsa-verify_ rsa bytes signature
+    io.primitive-redo-io-data_ it signature: | bytes |
+      rsa-verify_ rsa digest bytes
+
