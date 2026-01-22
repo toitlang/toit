@@ -4,6 +4,7 @@
 
 import crypto.rsa
 import crypto.sha
+import crypto.sha1
 import expect show *
 
 // 2048-bit RSA key.
@@ -51,39 +52,84 @@ yo/R41eN9uQWtztJkB/LlxpZ/5SRPWX+pCdk5p18wdZtuhKxUTPO889C48xo2m46
 """
 
 main:
-  test_rsa
+  test-rsa
+  test-sha1
+  test-digest-length
 
-test_rsa:
+test-rsa:
   priv := rsa.RsaKey.parse-private PRIVATE-KEY
   pub := rsa.RsaKey.parse-public PUBLIC-KEY
 
   msg := "Hello World"
-  digest := sha.sha256 msg
   
-  // Sign.
-  sig := priv.sign digest
+  // Test 1: Sign (implicit SHA-256).
+  sig := priv.sign msg
   expect-not-null sig
-  expect (sig.size > 0)
+  expect sig.size > 0
+  expect (pub.verify msg sig)
 
-  // Verify.
-  valid := pub.verify digest sig
-  expect valid
+  // Test 2: Explicit Hash SHA-256.
+  sig256 := priv.sign msg --hash=rsa.RsaKey.SHA-256
+  is-valid := pub.verify msg sig256 --hash=rsa.RsaKey.SHA-256
+  expect is-valid
+  // Should also work implicitly.
+  is-valid-implicit := pub.verify msg sig256
+  expect is-valid-implicit
 
-  // Tamper with digest.
-  bad_digest := sha.sha256 "Hello world" // case difference.
-  expect-not (pub.verify bad_digest sig)
+  // Test 3: Sign Digest.
+  digest := sha.sha256 msg
+  sig-digest := priv.sign-digest digest
+  is-valid-digest := pub.verify-digest digest sig-digest
+  expect is-valid-digest
+  // Mixing APIs: Verify message against digest-signed signature
+  is-valid-mixed := pub.verify msg sig-digest
+  expect is-valid-mixed
 
-  // Tamper with signature.
-  sig[0] ^= 0xFF
-  expect-not (pub.verify digest sig)
-  sig[0] ^= 0xFF // Restore.
-
-  // Test with byte arrays.
-  priv_bytes := rsa.RsaKey.parse-private PRIVATE-KEY.to_byte_array
-  pub_bytes := rsa.RsaKey.parse-public PUBLIC-KEY.to_byte_array
+  // Test 4: Tampering.
+  bad-msg := "Hello world" // Lower case.
+  is-valid-bad := pub.verify bad-msg sig
+  expect-not is-valid-bad
   
-  sig2 := priv_bytes.sign digest
-  expect (pub_bytes.verify digest sig2)
+  sig[0] ^= 0xFF
+  is-valid-tampered := pub.verify msg sig
+  expect-not is-valid-tampered
+
+test-sha1:
+  priv := rsa.RsaKey.parse-private PRIVATE-KEY
+  pub := rsa.RsaKey.parse-public PUBLIC-KEY
+
+  msg := "Legacy Message"
+  
+  // Sign with SHA-1.
+  sig := priv.sign msg --hash=rsa.RsaKey.SHA-1
+  is-valid := pub.verify msg sig --hash=rsa.RsaKey.SHA-1
+  expect is-valid
+  
+  // Implicit verification should FAIL (defaults to SHA-256).
+  is-valid-implicit := pub.verify msg sig
+  expect-not is-valid-implicit
+
+  // Explicit verification with wrong hash should FAIL.
+  is-valid-wrong := pub.verify msg sig --hash=rsa.RsaKey.SHA-256
+  expect-not is-valid-wrong
+
+test-digest-length:
+  priv := rsa.RsaKey.parse-private PRIVATE-KEY
+  
+  msg := "Message"
+  digest256 := sha.sha256 msg
+  digest1 := sha1.sha1 msg
+
+  // Pass SHA-1 digest but say it's SHA-256 -> Should Throw.
+  expect-throw "INVALID_ARGUMENT":
+    priv.sign-digest digest1 --hash=rsa.RsaKey.SHA-256
+  
+  // Pass SHA-256 digest but say it's SHA-1 -> Should Throw.
+  expect-throw "INVALID_ARGUMENT":
+    priv.sign-digest digest256 --hash=rsa.RsaKey.SHA-1
+  
+  // Pass correct length.
+  priv.sign-digest digest256 --hash=rsa.RsaKey.SHA-256
+  priv.sign-digest digest1 --hash=rsa.RsaKey.SHA-1
 
   print "RSA Tests Passed"
-
