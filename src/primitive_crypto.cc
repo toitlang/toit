@@ -824,12 +824,10 @@ PRIMITIVE(rsa_parse_private_key) {
 PRIMITIVE(rsa_parse_public_key) {
   ARGS(SimpleResourceGroup, group, Blob, key);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null)
-    FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   RsaKey* rsa = _new RsaKey(group);
-  if (!rsa)
-    FAIL(MALLOC_FAILED);
+  if (!rsa) FAIL(MALLOC_FAILED);
 
   char* key_copy = (char *)malloc(key.length() + 1);
   if (!key_copy) {
