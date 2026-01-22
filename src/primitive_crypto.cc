@@ -754,7 +754,7 @@ PRIMITIVE(aes_ecb_close) {
 }
 
 
-static int rsa_rng(void *ctx, unsigned char *buffer, size_t len) {
+static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
 #ifdef TOIT_ESP32
   esp_fill_random(buffer, len);
 #else
@@ -771,7 +771,7 @@ static int rsa_rng(void *ctx, unsigned char *buffer, size_t len) {
 class RsaKey : public SimpleResource {
 public:
   TAG(RsaKey);
-  RsaKey(SimpleResourceGroup *group) : SimpleResource(group) {
+  RsaKey(SimpleResourceGroup* group) : SimpleResource(group) {
     mbedtls_pk_init(&context_);
   }
 
@@ -785,18 +785,18 @@ private:
 
 PRIMITIVE(rsa_parse_private_key) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, password);
-  ByteArray *proxy = process->object_heap()->allocate_proxy();
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null)
     FAIL(ALLOCATION_FAILED);
 
-  RsaKey *rsa = _new RsaKey(group);
+  RsaKey* rsa = _new RsaKey(group);
   if (!rsa)
     FAIL(MALLOC_FAILED);
 
-  const unsigned char *pwd = password.length() > 0 ? password.address() : NULL;
+  const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
   size_t pwd_len = password.length();
 
-  char *key_copy = (char *)malloc(key.length() + 1);
+  char* key_copy = unvoid_cast<char*>(malloc(key.length() + 1));
   if (!key_copy) {
     delete rsa;
     FAIL(MALLOC_FAILED);
@@ -805,7 +805,7 @@ PRIMITIVE(rsa_parse_private_key) {
   key_copy[key.length()] = '\0';
 
   int ret =
-      mbedtls_pk_parse_key(rsa->context(), (const unsigned char *)key_copy,
+      mbedtls_pk_parse_key(rsa->context(), reinterpret_cast<const unsigned char*>(key_copy),
                            key.length() + 1, pwd, pwd_len, rsa_rng, NULL);
   free(key_copy);
 
@@ -825,15 +825,15 @@ PRIMITIVE(rsa_parse_private_key) {
 
 PRIMITIVE(rsa_parse_public_key) {
   ARGS(SimpleResourceGroup, group, Blob, key);
-  ByteArray *proxy = process->object_heap()->allocate_proxy();
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null)
     FAIL(ALLOCATION_FAILED);
 
-  RsaKey *rsa = _new RsaKey(group);
+  RsaKey* rsa = _new RsaKey(group);
   if (!rsa)
     FAIL(MALLOC_FAILED);
 
-  char *key_copy = (char *)malloc(key.length() + 1);
+  char* key_copy = (char *)malloc(key.length() + 1);
   if (!key_copy) {
     delete rsa;
     FAIL(MALLOC_FAILED);
@@ -863,16 +863,17 @@ PRIMITIVE(rsa_sign) {
   ARGS(RsaKey, rsa, Blob, digest);
 
   mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
-  if (digest.length() == 32)
+  if (digest.length() == 32) {  
     md_alg = MBEDTLS_MD_SHA256;
-  else if (digest.length() == 20)
+  } else if (digest.length() == 20) {
     md_alg = MBEDTLS_MD_SHA1;
-  else if (digest.length() == 48)
+  } else if (digest.length() == 48) {
     md_alg = MBEDTLS_MD_SHA384;
-  else if (digest.length() == 64)
+  } else if (digest.length() == 64) {
     md_alg = MBEDTLS_MD_SHA512;
-  else
+  } else {
     FAIL(INVALID_ARGUMENT);
+  }
 
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
@@ -884,7 +885,7 @@ PRIMITIVE(rsa_sign) {
   if (ret != 0)
     return tls_error(null, process, ret);
 
-  ByteArray *result = process->allocate_byte_array(actual_len);
+  ByteArray* result = process->allocate_byte_array(actual_len);
   if (result == null)
     FAIL(ALLOCATION_FAILED);
   memcpy(ByteArray::Bytes(result).address(), sig, actual_len);
@@ -895,22 +896,23 @@ PRIMITIVE(rsa_verify) {
   ARGS(RsaKey, rsa, Blob, digest, Blob, signature);
 
   mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
-  if (digest.length() == 32)
+  if (digest.length() == 32) {
     md_alg = MBEDTLS_MD_SHA256;
-  else if (digest.length() == 20)
+  } else if (digest.length() == 20) {
     md_alg = MBEDTLS_MD_SHA1;
-  else if (digest.length() == 48)
+  } else if (digest.length() == 48) {
     md_alg = MBEDTLS_MD_SHA384;
-  else if (digest.length() == 64)
+  } else if (digest.length() == 64) {
     md_alg = MBEDTLS_MD_SHA512;
-  else
+  } else {
     FAIL(INVALID_ARGUMENT);
+  }
 
   int ret = mbedtls_pk_verify(rsa->context(), md_alg, digest.address(),
                               digest.length(), signature.address(),
                               signature.length());
 
-  return ret == 0 ? process->true_object() : process->false_object();
+  return BOOL(ret == 0);
 }
 }
 
