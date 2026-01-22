@@ -786,12 +786,10 @@ private:
 PRIMITIVE(rsa_parse_private_key) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, password);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null)
-    FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   RsaKey* rsa = _new RsaKey(group);
-  if (!rsa)
-    FAIL(MALLOC_FAILED);
+  if (!rsa) FAIL(MALLOC_FAILED);
 
   const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
   size_t pwd_len = password.length();
