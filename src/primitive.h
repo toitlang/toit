@@ -535,8 +535,8 @@ namespace toit {
   PRIMITIVE(aead_verify, 3)                  \
   PRIMITIVE(rsa_parse_private_key, 3)        \
   PRIMITIVE(rsa_parse_public_key, 2)         \
-  PRIMITIVE(rsa_sign, 2)                     \
-  PRIMITIVE(rsa_verify, 3)                   \
+  PRIMITIVE(rsa_sign, 3)                     \
+  PRIMITIVE(rsa_verify, 4)                   \
 
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \

@@ -783,16 +783,12 @@ private:
   mbedtls_pk_context context_;
 };
 
-PRIMITIVE(rsa_parse_private_key) {
-  ARGS(SimpleResourceGroup, group, Blob, key, Blob, password);
+static Object* rsa_parse_key_helper(SimpleResourceGroup* group, Process* process, Blob key, Blob password, bool is_private) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   RsaKey* rsa = _new RsaKey(group);
   if (!rsa) FAIL(MALLOC_FAILED);
-
-  const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
-  size_t pwd_len = password.length();
 
   char* key_copy = unvoid_cast<char*>(malloc(key.length() + 1));
   if (!key_copy) {
@@ -802,9 +798,16 @@ PRIMITIVE(rsa_parse_private_key) {
   memcpy(key_copy, key.address(), key.length());
   key_copy[key.length()] = '\0';
 
-  int ret =
-      mbedtls_pk_parse_key(rsa->context(), reinterpret_cast<const unsigned char*>(key_copy),
-                           key.length() + 1, pwd, pwd_len, rsa_rng, NULL);
+  int ret;
+  if (is_private) {
+    const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
+    size_t pwd_len = password.length();
+    ret = mbedtls_pk_parse_key(rsa->context(), reinterpret_cast<const unsigned char*>(key_copy),
+                               key.length() + 1, pwd, pwd_len, rsa_rng, NULL);
+  } else {
+    ret = mbedtls_pk_parse_public_key(rsa->context(), reinterpret_cast<const unsigned char*>(key_copy),
+                                      key.length() + 1);
+  }
   free(key_copy);
 
   if (ret != 0) {
@@ -819,90 +822,67 @@ PRIMITIVE(rsa_parse_private_key) {
 
   proxy->set_external_address(rsa);
   return proxy;
+}
+
+static mbedtls_md_type_t get_md_alg(int id, int digest_length) {
+  switch (id) {
+    case 1:   return MBEDTLS_MD_SHA1;
+    case 256: return MBEDTLS_MD_SHA256;
+    case 384: return MBEDTLS_MD_SHA384;
+    case 512: return MBEDTLS_MD_SHA512;
+    default:  
+        // Fallback: infer from length if ID is unknown/0
+        if (digest_length == 32) {
+            return MBEDTLS_MD_SHA256;
+        } else if (digest_length == 20) {
+            return MBEDTLS_MD_SHA1;
+        } else if (digest_length == 48) {
+            return MBEDTLS_MD_SHA384;
+        } else if (digest_length == 64) {
+            return MBEDTLS_MD_SHA512;
+        } else {
+            return MBEDTLS_MD_NONE;
+        }
+  }
+}
+
+PRIMITIVE(rsa_parse_private_key) {
+  ARGS(SimpleResourceGroup, group, Blob, key, Blob, password);
+  return rsa_parse_key_helper(group, process, key, password, true);
 }
 
 PRIMITIVE(rsa_parse_public_key) {
   ARGS(SimpleResourceGroup, group, Blob, key);
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  RsaKey* rsa = _new RsaKey(group);
-  if (!rsa) FAIL(MALLOC_FAILED);
-
-  char* key_copy = (char *)malloc(key.length() + 1);
-  if (!key_copy) {
-    delete rsa;
-    FAIL(MALLOC_FAILED);
-  }
-  memcpy(key_copy, key.address(), key.length());
-  key_copy[key.length()] = '\0';
-
-  int ret = mbedtls_pk_parse_public_key(
-      rsa->context(), (const unsigned char *)key_copy, key.length() + 1);
-  free(key_copy);
-
-  if (ret != 0) {
-    delete rsa;
-    return tls_error(null, process, ret);
-  }
-
-  if (!mbedtls_pk_can_do(rsa->context(), MBEDTLS_PK_RSA)) {
-    delete rsa;
-    FAIL(INVALID_ARGUMENT);
-  }
-
-  proxy->set_external_address(rsa);
-  return proxy;
+  return rsa_parse_key_helper(group, process, key, Blob(), false); // Password ignored.
 }
 
 PRIMITIVE(rsa_sign) {
-  ARGS(RsaKey, rsa, Blob, digest);
+  ARGS(RsaKey, rsa, Blob, digest, int, hash_algo_id);
 
-  mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
-  if (digest.length() == 32) {  
-    md_alg = MBEDTLS_MD_SHA256;
-  } else if (digest.length() == 20) {
-    md_alg = MBEDTLS_MD_SHA1;
-  } else if (digest.length() == 48) {
-    md_alg = MBEDTLS_MD_SHA384;
-  } else if (digest.length() == 64) {
-    md_alg = MBEDTLS_MD_SHA512;
-  } else {
-    FAIL(INVALID_ARGUMENT);
-  }
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id, digest.length());
+
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
 
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
 
-  int ret =
-      mbedtls_pk_sign(rsa->context(), md_alg, digest.address(), digest.length(),
-                      sig, sizeof(sig), &actual_len, rsa_rng, NULL);
+  int ret = mbedtls_pk_sign(rsa->context(), md_alg, digest.address(), digest.length(),
+                            sig, sizeof(sig), &actual_len, rsa_rng, NULL);
 
-  if (ret != 0)
-    return tls_error(null, process, ret);
+  if (ret != 0) return tls_error(null, process, ret);
 
   ByteArray* result = process->allocate_byte_array(actual_len);
-  if (result == null)
-    FAIL(ALLOCATION_FAILED);
+  if (result == null) FAIL(ALLOCATION_FAILED);
   memcpy(ByteArray::Bytes(result).address(), sig, actual_len);
   return result;
 }
 
 PRIMITIVE(rsa_verify) {
-  ARGS(RsaKey, rsa, Blob, digest, Blob, signature);
+  ARGS(RsaKey, rsa, Blob, digest, Blob, signature, int, hash_algo_id);
 
-  mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
-  if (digest.length() == 32) {
-    md_alg = MBEDTLS_MD_SHA256;
-  } else if (digest.length() == 20) {
-    md_alg = MBEDTLS_MD_SHA1;
-  } else if (digest.length() == 48) {
-    md_alg = MBEDTLS_MD_SHA384;
-  } else if (digest.length() == 64) {
-    md_alg = MBEDTLS_MD_SHA512;
-  } else {
-    FAIL(INVALID_ARGUMENT);
-  }
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id, digest.length());
+
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
 
   int ret = mbedtls_pk_verify(rsa->context(), md_alg, digest.address(),
                               digest.length(), signature.address(),

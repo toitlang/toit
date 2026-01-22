@@ -99,7 +99,7 @@ class RsaKey:
   */
   sign-digest digest/io.Data --hash/int?=null -> ByteArray:
     if hash: check-digest-length_ digest hash
-    return rsa-sign_ rsa-key_ digest
+    return rsa-sign_ rsa-key_ digest (hash ? hash : 0)
 
   /**
   Verifies the $signature of the $message with this public key.
@@ -130,7 +130,7 @@ class RsaKey:
   */
   verify-digest digest/io.Data signature/io.Data --hash/int?=null -> bool:
     if hash: check-digest-length_ digest hash
-    return rsa-verify_ rsa-key_ digest signature
+    return rsa-verify_ rsa-key_ digest signature (hash ? hash : 0)
 
   static check-digest-length_ digest/io.Data hash/int:
     expected-length := 0
@@ -159,15 +159,15 @@ rsa-parse-public-key_ group key/io.Data -> any:
     return io.primitive-redo-io-data_ it key: | bytes |
       rsa-parse-public-key_ group bytes
 
-rsa-sign_ rsa digest/io.Data -> ByteArray:
+rsa-sign_ rsa digest/io.Data hash/int -> ByteArray:
   #primitive.crypto.rsa-sign:
     return io.primitive-redo-io-data_ it digest: | bytes |
-      rsa-sign_ rsa bytes
+      rsa-sign_ rsa bytes hash
 
-rsa-verify_ rsa digest/io.Data signature/io.Data -> bool:
+rsa-verify_ rsa digest/io.Data signature/io.Data hash/int -> bool:
   #primitive.crypto.rsa-verify:
     return io.primitive-redo-io-data_ it digest: | bytes |
-      rsa-verify_ rsa bytes signature
+      rsa-verify_ rsa bytes signature hash
     io.primitive-redo-io-data_ it signature: | bytes |
-      rsa-verify_ rsa digest bytes
+      rsa-verify_ rsa digest bytes hash
 
