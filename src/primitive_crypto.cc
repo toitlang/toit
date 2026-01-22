@@ -777,7 +777,7 @@ public:
 
   ~RsaKey() { mbedtls_pk_free(&context_); }
 
-  mbedtls_pk_context *context() { return &context_; }
+  mbedtls_pk_context* context() { return &context_; }
 
 private:
   mbedtls_pk_context context_;
