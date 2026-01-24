@@ -58,3 +58,27 @@ interface Socket:
 
   // Enable or disable broadcast messages.
   broadcast= value/bool
+
+  // Returns true if multicast loopback is enabled.
+  multicast-loopback -> bool
+
+  // Enable or disable multicast loopback.
+  multicast-loopback= value/bool
+
+  // Returns the multicast TTL.
+  multicast-ttl -> int
+
+  // Sets the multicast TTL.
+  multicast-ttl= value/int
+
+  // Returns true if reuse address is enabled.
+  reuse-address -> bool
+
+  // Enable or disable reuse address.
+  reuse-address= value/bool
+
+  // Returns true if reuse port is enabled.
+  reuse-port -> bool
+
+  // Enable or disable reuse port.
+  reuse-port= value/bool
