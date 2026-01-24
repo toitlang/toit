@@ -825,24 +825,16 @@ static Object* rsa_parse_key_helper(SimpleResourceGroup* group, Process* process
 }
 
 static mbedtls_md_type_t get_md_alg(int id, int digest_length) {
-  switch (id) {
-    case 1:   return MBEDTLS_MD_SHA1;
-    case 256: return MBEDTLS_MD_SHA256;
-    case 384: return MBEDTLS_MD_SHA384;
-    case 512: return MBEDTLS_MD_SHA512;
-    default:  
-        // Fallback: infer from length if ID is unknown/0
-        if (digest_length == 32) {
-            return MBEDTLS_MD_SHA256;
-        } else if (digest_length == 20) {
-            return MBEDTLS_MD_SHA1;
-        } else if (digest_length == 48) {
-            return MBEDTLS_MD_SHA384;
-        } else if (digest_length == 64) {
-            return MBEDTLS_MD_SHA512;
-        } else {
-            return MBEDTLS_MD_NONE;
-        }
+  if (id == 1 && digest_length == 20) {
+    return MBEDTLS_MD_SHA1;
+  } else if (id == 256 && digest_length == 32) {
+    return MBEDTLS_MD_SHA256;
+  } else if (id == 384 && digest_length == 48) {
+    return MBEDTLS_MD_SHA384;
+  } else if (id == 512 && digest_length == 64) {
+    return MBEDTLS_MD_SHA512;
+  } else {
+    return MBEDTLS_MD_NONE;
   }
 }
 
