@@ -349,6 +349,36 @@ PRIMITIVE(get_option) {
       return BOOL(value != 0);
     }
 
+    case UDP_MULTICAST_LOOPBACK: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
+
+    case UDP_MULTICAST_TTL: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return Smi::from(value);
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -369,6 +399,60 @@ PRIMITIVE(set_option) {
       }
       if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_MEMBERSHIP: {
+      if (!is_byte_array(raw)) FAIL(WRONG_OBJECT_TYPE);
+
+      ByteArray* address = ByteArray::cast(raw);
+      if (ByteArray::Bytes(address).length() != 4) FAIL(OUT_OF_BOUNDS);
+      struct ip_mreq mreq;
+      memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+      mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+      if (setsockopt(socket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                     reinterpret_cast<char*>(&mreq),
+                     sizeof(mreq)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_LOOPBACK: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
+                     reinterpret_cast<char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      int value = Smi::value(Smi::cast(raw));
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<const char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) FAIL(WRONG_OBJECT_TYPE);
+      if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<const char *>(&value),
         WINDOWS_ERROR;
       }
       break;

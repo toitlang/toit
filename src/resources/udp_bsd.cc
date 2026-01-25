@@ -304,6 +304,42 @@ PRIMITIVE(get_option) {
       return BOOL(value != 0);
     }
 
+    case UDP_MULTICAST_LOOPBACK: {
+      uint8_t value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      return BOOL(value != 0);
+    }
+
+    case UDP_MULTICAST_TTL: {
+      uint8_t value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      return Smi::from(value);
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      return BOOL(value != 0);
+    }
+
+    case UDP_REUSE_PORT: {
+      int value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      return BOOL(value != 0);
+    }
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -323,6 +359,67 @@ PRIMITIVE(set_option) {
         FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_MEMBERSHIP: {
+      if (!is_byte_array(raw)) FAIL(WRONG_OBJECT_TYPE);
+      ByteArray* address = ByteArray::cast(raw);
+      if (ByteArray::Bytes(address).length() != 4) FAIL(OUT_OF_BOUNDS);
+      struct ip_mreq mreq;
+      memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+      mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+      if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_LOOPBACK: {
+      uint8_t value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      uint8_t value = Smi::value(Smi::cast(raw));
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
+    case UDP_REUSE_PORT: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
       break;
