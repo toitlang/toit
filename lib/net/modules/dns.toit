@@ -333,14 +333,14 @@ abstract class DnsClient:
   This is just for regular DNS A and AAAA responses, it doesn't decode queries
     and the more funky record types needed for mDNS.
   */
-  decode-and-cache-response_ query/DnsQuery_ response/ByteArray -> List?:
+  decode-and-cache-response_ query/DnsQuery_ response/ByteArray --mdns/bool=false -> List?:
     decoded := decode-packet response --error-name=query.name
 
     // Check for expected response, but mask out the authoritative bit
     // and the recursion available bit, which we do not care about.
     // The recursion desired bit seems to vary randomly, so we ignore
     // that too.
-    if decoded.status-bits & ~0x580 != 0x8000:
+    if decoded.status-bits & ~0x580 != 0x8000 and not mdns:
       protocol-error_  // Unexpected response flags.
 
     id := query.base-id
@@ -350,51 +350,83 @@ abstract class DnsClient:
         expected-type = type
       id = (id + 1) & 0xffff
     // Id did not match or otherwise useless response.
-    if expected-type == null or decoded.questions.size != 1: return null
-    decoded-question/Question := decoded.questions[0] as Question
+    if not mdns:
+      if expected-type == null: return null
+      if decoded.questions.size != 1: return null
 
-    if not case-compare_ decoded-question.name query.name:
-      // Suspicious that the id matched, but the name didn't.
-      // Possible DNS poisoning attack.
-      throw (DnsException "Response name mismatch")
+    if decoded.questions.size == 1:
+      decoded-question/Question := decoded.questions[0] as Question
+
+      if not case-compare_ decoded-question.name query.name:
+        // Suspicious that the id matched, but the name didn't.
+        // Possible DNS poisoning attack.
+        if not mdns: throw (DnsException "Response name mismatch")
+        return null
 
     // Simplified list of answers for the caller.
     answers := []
 
-    relevant-name := decoded-question.name
+    // We collect answers by type so we can cache them properly.
+    // Map from type (int) to List of answers.
+    answers-by-type := {:}
+    // Map from type (int) to min TTL (int).
+    ttl-by-type := {:}
 
-    ttl := int.MAX
+    relevant-name := query.name
 
     // Since we sent a single question we expect answers that start with a
     // repeat of that question and then just contain data for that one
     // question.
     decoded.resources.do: | resource |
-      if resource.type == expected-type:
+      type := resource.type
+      type-matches := false
+      if type == expected-type:
+        type-matches = true
+      else if not expected-type and mdns:
+        // If we didn't match the ID, and we are in mDNS mode, we accept
+        // any response that matches one of the types we are looking for.
+        if query.query-packets.contains type:
+          type-matches = true
+
+      if type-matches:
         if resource.name != relevant-name: continue.do
+        
+        entry := null
         if resource is SrvResource:
-          answers.add (resource as SrvResource)
+          entry = (resource as SrvResource)
         else if resource is StringResource:
-          answers.add (resource as StringResource).value
+          entry = (resource as StringResource).value
         else if resource is AResource:
-          answers.add (resource as AResource).address
-        ttl = min ttl resource.ttl
+          entry = (resource as AResource).address
+        
+        if entry:
+          list := answers-by-type.get type --init=(: [])
+          list.add entry
+          
+          current-ttl := ttl-by-type.get type --if-absent=(: int.MAX)
+          ttl-by-type[type] = min current-ttl resource.ttl
+
       else if resource.type == RECORD-CNAME:
         relevant-name = (resource as StringResource).value
 
-    // We won't cache more than a day, even if the TTL is very high.  (In
-    // practice TTLs over one hour are rare.)
-    ttl = min ttl (3600 * 24)
-    // Ignore negative TTLs and very short TTLs.
-    ttl = max 10 ttl
+    answers-by-type.do: | type list |
+      ttl := ttl-by-type[type]
+      // We won't cache more than a day, even if the TTL is very high.  (In
+      // practice TTLs over one hour are rare.)
+      ttl = min ttl (3600 * 24)
+      // Ignore negative TTLs and very short TTLs.
+      ttl = max 10 ttl
 
-    if answers.size > 0 and ttl > 0:
-      trim-cache cache_ expected-type
-      type-cache := cache_.get expected-type --init=: {:}
-      type-cache[query.name] = CacheEntry_ answers ttl
+      if list.size > 0 and ttl > 0:
+        trim-cache cache_ type
+        type-cache := cache_.get type --init=: {:}
+        type-cache[query.name] = CacheEntry_ list ttl
+        answers.add-all list
+
     return answers
 
 
-  fetch-loop_ query/DnsQuery_ socket/udp.Socket [--do-send] [--on-timeout] -> List:
+  fetch-loop_ query/DnsQuery_ socket/udp.Socket --mdns/bool=false [--do-send] [--on-timeout] -> List:
     retry-timeout := DNS-RETRY-TIMEOUT
     attempt-counter := 1
     while true:
@@ -408,15 +440,17 @@ abstract class DnsClient:
           remaining-tries := query.query-packets.size
           while remaining-tries != 0:
             answer := socket.receive
-            // For mDNS, the ID check is strict in regular DNS logic but in mDNS
-            // responses might not match ID if they are unsolicited (but here we are soliciting).
-            // However, the standard `decode-and-cache-response_` checks ID.
-            result := decode-and-cache-response_ query answer.data
+            // mDNS responses might not match the query ID (e.g. unsolicited responses).
+            // We pass the mdns flag to allow relaxed ID checking.
+            result := decode-and-cache-response_ query answer.data --mdns=mdns
             if result:
               remaining-tries--
               if remaining-tries == 0 or result.size != 0: return result
-          on-timeout.call
+          
           throw (DnsException "No response from server" --name=query.name)
+      
+      on-timeout.call
+
 
       retry-timeout = retry-timeout * 1.5
       attempt-counter++
@@ -431,8 +465,14 @@ class DnsClient_ extends DnsClient:
     in string form.
   */
   constructor servers/List:
-    if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress): throw "INVALID_ARGUMENT"
-    servers_ = servers.map: (it is string) ? net.IpAddress.parse it : it
+    if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress and it is not net.SocketAddress): throw "INVALID_ARGUMENT"
+    servers_ = servers.map:
+      if it is string:
+        ip := net.IpAddress.parse it
+        net.SocketAddress ip DNS-UDP-PORT
+      else if it is net.IpAddress:
+        net.SocketAddress it DNS-UDP-PORT
+      else: it
     current-server-index_ = 0
     super.private_
 
@@ -440,23 +480,22 @@ class DnsClient_ extends DnsClient:
 
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
-    server-ip := servers_[current-server-index_]
+    server-addr := servers_[current-server-index_]
     try:
       socket = network.udp-open
 
-      socket.connect
-          net.SocketAddress server-ip DNS-UDP-PORT
+      socket.connect server-addr
 
-      return fetch-loop_ query socket
+      return fetch-loop_ query socket --no-mdns
           --do-send=:
             query.query-packets.do: | type packet |
               socket.write packet
           --on-timeout=:
             // The current server didn't respond after about 3 seconds. Move to the next.
             current-server-index_ = (current-server-index_ + 1) % servers_.size
-            server-ip = servers_[current-server-index_]
+            server-addr = servers_[current-server-index_]
             // We reconnect the socket, as the server we are sending to has changed.
-            socket.connect (net.SocketAddress server-ip DNS-UDP-PORT)
+            socket.connect server-addr
 
     finally:
       if socket: socket.close
@@ -490,7 +529,7 @@ class MdnsDnsClient extends DnsClient:
 
       address := net.SocketAddress address_ port_
 
-      return fetch-loop_ query socket
+      return fetch-loop_ query socket --mdns
           --do-send=:
             // Send block.
             query.query-packets.do: | type packet |
