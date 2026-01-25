@@ -371,12 +371,12 @@ abstract class DnsClient:
     decoded.resources.do: | resource |
       if resource.type == expected-type:
         if resource.name != relevant-name: continue.do
-        if resource is StringResource:
+        if resource is SrvResource:
+          answers.add (resource as SrvResource)
+        else if resource is StringResource:
           answers.add (resource as StringResource).value
         else if resource is AResource:
           answers.add (resource as AResource).address
-        else:
-          answers.add (resource as SrvResource)
         ttl = min ttl resource.ttl
       else if resource.type == RECORD-CNAME:
         relevant-name = (resource as StringResource).value
@@ -626,8 +626,7 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
       priority := reader.big-endian.read-uint16
       weight := reader.big-endian.read-uint16
       port := reader.big-endian.read-uint16
-      length := reader.read-byte
-      value := reader.read-string length
+      value := decode-name reader response
       result.resources.add
           SrvResource r-name type ttl flush value priority weight port
     read-after-record := reader.processed
@@ -831,25 +830,26 @@ create-dns-packet queries/List records/List -> ByteArray
     else if type == RECORD-TXT:
       str := (record as StringResource).value
       if str.size > 255: throw (DnsException "TXT records cannot exceed 255 bytes" --name=str)
-      result-be.write-int16 str.size
+      result-be.write-int16 (str.size + 1)
+      result.write-byte str.size
       result.write str
     else if record is SrvResource:
       srv := record as SrvResource
       str := srv.value
-      if str.size > 255: throw (DnsException "SRV records cannot exceed 255 bytes" --name=str)
-      result-be.write-int16 (str.size + 7)
+      // Calculate length of domain name part
+      name-length := write-name_ str --locations=previous-locations --buffer=null
+      result-be.write-int16 (6 + name-length)
       result-be.write-int16 srv.priority
       result-be.write-int16 srv.weight
       result-be.write-int16 srv.port
-      result.write-byte str.size
-      result.write str
+      write-name_ str --locations=previous-locations --buffer=result
     else:
       throw "Unknown record type: $record"
   return result.bytes
 
 write-name_ name/string --locations/Map? --buffer/io.Buffer? -> int:
   parts := name.split "."
-  length := 1
+  length := 0
   pos := 0
   parts.do: | part/string |
     if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes" --name=name)
@@ -867,4 +867,4 @@ write-name_ name/string --locations/Map? --buffer/io.Buffer? -> int:
       buffer.write part
     length += part.size + 1
   if buffer: buffer.write-byte 0
-  return length
+  return length + 1
