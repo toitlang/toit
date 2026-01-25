@@ -394,6 +394,34 @@ abstract class DnsClient:
     return answers
 
 
+  fetch-loop_ query/DnsQuery_ socket/udp.Socket [--do-send] [--on-timeout] -> List:
+    retry-timeout := DNS-RETRY-TIMEOUT
+    attempt-counter := 1
+    while true:
+      // Send packets.
+      do-send.call
+
+      last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
+      catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
+        with-timeout retry-timeout:
+          // Expect to get as many answers as we sent queries.
+          remaining-tries := query.query-packets.size
+          while remaining-tries != 0:
+            answer := socket.receive
+            // For mDNS, the ID check is strict in regular DNS logic but in mDNS
+            // responses might not match ID if they are unsolicited (but here we are soliciting).
+            // However, the standard `decode-and-cache-response_` checks ID.
+            result := decode-and-cache-response_ query answer.data
+            if result:
+              remaining-tries--
+              if remaining-tries == 0 or result.size != 0: return result
+          on-timeout.call
+          throw (DnsException "No response from server" --name=query.name)
+
+      retry-timeout = retry-timeout * 1.5
+      attempt-counter++
+    unreachable
+
 class DnsClient_ extends DnsClient:
   servers_/List
   current-server-index_/int := ?
@@ -412,8 +440,6 @@ class DnsClient_ extends DnsClient:
 
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
-    retry-timeout := DNS-RETRY-TIMEOUT
-    attempt-counter := 1
     server-ip := servers_[current-server-index_]
     try:
       socket = network.udp-open
@@ -421,36 +447,17 @@ class DnsClient_ extends DnsClient:
       socket.connect
           net.SocketAddress server-ip DNS-UDP-PORT
 
-      // If we don't get an answer resend the query with exponential backoff
-      // until the outer timeout expires or we have tried too many times.
-      while true:
-        // Write both packets (IPv4 and IPv6) to the socket, wait for the
-        // first response.
-        query.query-packets.do: | type packet |
-          socket.write packet
+      return fetch-loop_ query socket
+          --do-send=:
+            query.query-packets.do: | type packet |
+              socket.write packet
+          --on-timeout=:
+            // The current server didn't respond after about 3 seconds. Move to the next.
+            current-server-index_ = (current-server-index_ + 1) % servers_.size
+            server-ip = servers_[current-server-index_]
+            // We reconnect the socket, as the server we are sending to has changed.
+            socket.connect (net.SocketAddress server-ip DNS-UDP-PORT)
 
-        last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
-        catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
-          with-timeout retry-timeout:
-            // Expect to get as many answers as we sent queries.
-            remaining-tries := query.query-packets.size
-            while remaining-tries != 0:
-              answer := socket.receive
-              result := decode-and-cache-response_ query answer.data
-              if result:
-                remaining-tries--
-                if remaining-tries == 0 or result.size != 0: return result
-            throw (DnsException "No response from server" --name=query.name)
-        
-        // The current server didn't respond after about 3 seconds. Move to the next.
-        current-server-index_ = (current-server-index_ + 1) % servers_.size
-        server-ip = servers_[current-server-index_]
-        // We reconnect the socket, as the server we are sending to has changed.
-        socket.connect
-            net.SocketAddress server-ip DNS-UDP-PORT
-
-        retry-timeout = retry-timeout * 1.5
-        attempt-counter++
     finally:
       if socket: socket.close
 
@@ -465,8 +472,6 @@ class MdnsDnsClient extends DnsClient:
 
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
-    retry-timeout := DNS-RETRY-TIMEOUT
-    attempt-counter := 1
     // Recreate the query packets with the QU bit set.
     updates := {:}
     // We can't modify the map while iterating, so collect updates first.
@@ -474,7 +479,7 @@ class MdnsDnsClient extends DnsClient:
       updates[type] = create-query_ query.name query.base-id type --unicast-response
     updates.do: | type packet |
       query.query-packets[type] = packet
-    
+
     try:
       // Open a UDP socket. We don't join the multicast group, but we send to it.
       socket = network.udp-open
@@ -484,32 +489,13 @@ class MdnsDnsClient extends DnsClient:
       // We do not connect, as that would filter out the unicast responses we expect.
 
       address := net.SocketAddress address_ port_
-      while true:
-         // Write packets.
-        query.query-packets.do: | type packet |
-          socket.send (udp.Datagram packet address)
 
-        last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
-        catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
-          with-timeout retry-timeout:
-            // Expect to get as many answers as we sent queries.
-            remaining-tries := query.query-packets.size
-            while remaining-tries != 0:
-              answer := socket.receive
-              // For mDNS, the ID check is strict in regular DNS logic but in mDNS
-              // responses might not match ID if they are unsolicited (but here we are soliciting).
-              // However, the standard `decode-and-cache-response_` checks ID.
-              // In this one-shot client, we set an ID.
-              result := decode-and-cache-response_ query answer.data
-              if result:
-                remaining-tries--
-                if remaining-tries == 0 or result.size != 0: return result
-            // If we don't get a response in time, we loop and retry.
-            throw (DnsException "No response from mDNS server" --name=query.name)
-        
-        retry-timeout = retry-timeout * 1.5
-        attempt-counter++
-
+      return fetch-loop_ query socket
+          --do-send=:
+            // Send block.
+            query.query-packets.do: | type packet |
+              socket.send (udp.Datagram packet address)
+          --on-timeout=:
     finally:
       if socket: socket.close
 

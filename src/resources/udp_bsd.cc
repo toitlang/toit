@@ -283,6 +283,24 @@ static Object* get_port_or_error(int id, Process* process, bool peer) {
   return Smi::from(ntohs(sin.sin_port));
 }
 
+static Object* get_bool_option(int fd, int level, int optname, Process* process) {
+  int value = 0;
+  socklen_t size = sizeof(value);
+  if (getsockopt(fd, level, optname, &value, &size) == -1) {
+    return Primitive::os_error(errno, process);
+  }
+  return BOOL(value != 0);
+}
+
+static Object* get_int_option(int fd, int level, int optname, Process* process) {
+  int value = 0;
+  socklen_t size = sizeof(value);
+  if (getsockopt(fd, level, optname, &value, &size) == -1) {
+    return Primitive::os_error(errno, process);
+  }
+  return Smi::from(value);
+}
+
 PRIMITIVE(get_option) {
   ARGS(ByteArray, proxy, IntResource, connection_resource, int, option);
   USE(proxy);
@@ -295,74 +313,58 @@ PRIMITIVE(get_option) {
     case UDP_PORT:
       return get_port_or_error(fd, process, false);
 
-    case UDP_BROADCAST: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_BROADCAST:
+      return get_bool_option(fd, SOL_SOCKET, SO_BROADCAST, process);
 
-    case UDP_MULTICAST_LOOPBACK: {
-      uint8_t value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_MULTICAST_LOOPBACK:
+      return get_bool_option(fd, IPPROTO_IP, IP_MULTICAST_LOOP, process);
 
-    case UDP_MULTICAST_TTL: {
-      uint8_t value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return Smi::from(value);
-    }
+    case UDP_MULTICAST_TTL:
+      return get_int_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, process);
 
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_REUSE_ADDRESS:
+      return get_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, process);
 
-    case UDP_REUSE_PORT: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_REUSE_PORT:
+      return get_bool_option(fd, SOL_SOCKET, SO_REUSEPORT, process);
 
     default:
       FAIL(UNIMPLEMENTED);
   }
 }
 
+static Object* set_bool_option(int fd, int level, int optname, Object* raw, Process* process) {
+  int value = 0;
+  if (raw == process->true_object()) {
+    value = 1;
+  } else if (raw != process->false_object()) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+  if (setsockopt(fd, level, optname, &value, sizeof(value)) == -1) {
+    return Primitive::os_error(errno, process);
+  }
+  return null;
+}
+
+static Object* set_int_option(int fd, int level, int optname, Object* raw, Process* process) {
+  if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+  int value = Smi::value(Smi::cast(raw));
+  if (setsockopt(fd, level, optname, &value, sizeof(value)) == -1) {
+    return Primitive::os_error(errno, process);
+  }
+  return null;
+}
+
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, IntResource, connection_resource, int, option, Object, raw);
   USE(proxy);
   int fd = connection_resource->id();
+  Object* result = null;
 
   switch (option) {
-    case UDP_BROADCAST: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
+    case UDP_BROADCAST:
+      result = set_bool_option(fd, SOL_SOCKET, SO_BROADCAST, raw, process);
       break;
-    }
 
     case UDP_MULTICAST_MEMBERSHIP: {
       if (!is_byte_array(raw)) FAIL(WRONG_OBJECT_TYPE);
@@ -377,57 +379,27 @@ PRIMITIVE(set_option) {
       break;
     }
 
-    case UDP_MULTICAST_LOOPBACK: {
-      uint8_t value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
+    case UDP_MULTICAST_LOOPBACK:
+      result = set_bool_option(fd, IPPROTO_IP, IP_MULTICAST_LOOP, raw, process);
       break;
-    }
 
-    case UDP_MULTICAST_TTL: {
-      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
-      uint8_t value = Smi::value(Smi::cast(raw));
-      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
+    case UDP_MULTICAST_TTL:
+      result = set_int_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
-    }
 
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      break;
-    }
+  case UDP_REUSE_ADDRESS:
+    result = set_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, raw, process);
+    break;
 
-    case UDP_REUSE_PORT: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
+    case UDP_REUSE_PORT:
+      result = set_bool_option(fd, SOL_SOCKET, SO_REUSEPORT, raw, process);
       break;
-    }
 
     default:
       FAIL(UNIMPLEMENTED);
   }
+
+  if (result != null) return result;
 
   return process->null_object();
 }
