@@ -102,6 +102,43 @@ test-custom-mdns:
     throw "Expected 'instance.local', got $res-ptr"
   print "Custom mDNS PTR lookup: OK"
 
+  // Test ID Mismatch (Relaxed check)
+  // Server sends back ID+1.
+  task::
+    // Server side
+    msg := server.receive
+    // Parse the query ID (first 2 bytes)
+    id := msg.data[0] << 8 | msg.data[1]
+    bad-id := (id + 1) & 0xFFFF
+    
+    // Construct response for A record
+    questions := [dns.Question "mismatch.local" dns.RECORD-A]
+    answers := [dns.AResource "mismatch.local" 120 (net.IpAddress.parse "1.2.3.4")]
+    // Send response with WRONG ID
+    response := dns.create-dns-packet questions answers --id=bad-id --is-response --is-authoritative
+    
+    server.send (udp.Datagram response msg.address)
+
+  res-mismatch := client.get "mismatch.local" --record-type=dns.RECORD-A --network=network
+  if res-mismatch.size != 1 or res-mismatch[0] != (net.IpAddress.parse "1.2.3.4"):
+    throw "Expected 1.2.3.4, got $res-mismatch"
+  print "Custom mDNS Mismatch ID lookup: OK"
+
+  // Test Unsolicited (ID=0, No Questions)
+  task::
+    msg := server.receive
+    
+    // Construct response with NO questions and ID 0
+    questions := []
+    answers := [dns.StringResource "unsolicited.local" dns.RECORD-TXT 120 false "foo=bar"]
+    response := dns.create-dns-packet questions answers --id=0 --is-response --is-authoritative
+    server.send (udp.Datagram response msg.address)
+
+  res-unsolicited := client.get "unsolicited.local" --record-type=dns.RECORD-TXT --network=network
+  if res-unsolicited.size != 1 or res-unsolicited[0] != "foo=bar":
+    throw "Expected 'foo=bar', got $res-unsolicited"
+  print "Custom mDNS Unsolicited lookup: OK"
+
   server.close
 
 
