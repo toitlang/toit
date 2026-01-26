@@ -20,6 +20,8 @@
 #include "../error_win.h"
 
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 #include <sys/types.h>
 
@@ -59,10 +61,16 @@ class UdpSocketResource : public WindowsResource {
     read_overlapped_.hEvent = read_event;
     write_overlapped_.hEvent = write_event;
     set_state(UDP_WRITE);
+  }
+
+  void start_reading() {
+    if (started_reading_) return;
+
+    started_reading_ = true;
     if (!issue_read_request()) {
       set_state(UDP_WRITE | UDP_ERROR);
       error_code_ = GetLastError();
-    };
+    }
   }
 
   ~UdpSocketResource() override {
@@ -165,6 +173,7 @@ class UdpSocketResource : public WindowsResource {
   bool write_ready_ = true;
 
   DWORD error_code_ = ERROR_SUCCESS;
+  bool started_reading_ = false;
 };
 
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)
@@ -183,6 +192,58 @@ PRIMITIVE(init) {
 
   proxy->set_external_address(resource_group);
   return proxy;
+}
+
+PRIMITIVE(create_socket) {
+  ARGS(UdpResourceGroup, resource_group);
+
+  ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
+
+  SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
+  if (socket == INVALID_SOCKET) WINDOWS_ERROR;
+
+  WSAEVENT read_event = WSACreateEvent();
+  if (read_event == WSA_INVALID_EVENT) {
+    close_keep_errno(socket);
+    WINDOWS_ERROR;
+  }
+
+  WSAEVENT write_event = WSACreateEvent();
+  if (write_event == WSA_INVALID_EVENT) {
+    close_keep_errno(socket);
+    close_handle_keep_errno(read_event);
+    WINDOWS_ERROR;
+  }
+
+  auto resource = _new UdpSocketResource(resource_group, socket, read_event, write_event);
+  if (!resource) {
+    close_keep_errno(socket);
+    close_handle_keep_errno(read_event);
+    close_handle_keep_errno(write_event);
+    FAIL(MALLOC_FAILED);
+  }
+
+  resource_group->register_resource(resource);
+
+  resource_proxy->set_external_address(resource);
+
+  return resource_proxy;
+}
+
+PRIMITIVE(bind_socket) {
+  ARGS(ByteArray, proxy, UdpSocketResource, resource, Blob, address, int, port);
+  USE(proxy);
+
+  SOCKET socket = resource->socket();
+  ToitSocketAddress socket_address(address.address(), address.length(), port);
+  if (::bind(socket, socket_address.as_socket_address(), socket_address.size()) != 0) {
+    WINDOWS_ERROR;
+  }
+
+  resource->start_reading();
+
+  return process->null_object();
 }
 
 PRIMITIVE(bind) {
@@ -227,6 +288,7 @@ PRIMITIVE(bind) {
     FAIL(MALLOC_FAILED);
   }
 
+  resource->start_reading();
   resource_group->register_resource(resource);
 
   resource_proxy->set_external_address(resource);
@@ -244,6 +306,7 @@ PRIMITIVE(connect) {
     WINDOWS_ERROR;
   }
 
+  udp_resource->start_reading();
   return udp_resource_proxy;
 }
 
@@ -349,6 +412,36 @@ PRIMITIVE(get_option) {
       return BOOL(value != 0);
     }
 
+    case UDP_MULTICAST_LOOPBACK: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
+
+    case UDP_MULTICAST_TTL: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return Smi::from(value);
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -369,6 +462,61 @@ PRIMITIVE(set_option) {
       }
       if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_MEMBERSHIP: {
+      if (!is_byte_array(raw)) FAIL(WRONG_OBJECT_TYPE);
+
+      ByteArray* address = ByteArray::cast(raw);
+      if (ByteArray::Bytes(address).length() != 4) FAIL(OUT_OF_BOUNDS);
+      struct ip_mreq mreq;
+      memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+      mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+      if (setsockopt(socket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                     reinterpret_cast<char*>(&mreq),
+                     sizeof(mreq)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_LOOPBACK: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
+                     reinterpret_cast<char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      int value = Smi::value(Smi::cast(raw));
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<const char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
+    case UDP_REUSE_ADDRESS: {
+      int value = 0;
+      if (raw == process->true_object()) {
+        value = 1;
+      } else if (raw != process->false_object()) FAIL(WRONG_OBJECT_TYPE);
+      if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<const char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
       break;
