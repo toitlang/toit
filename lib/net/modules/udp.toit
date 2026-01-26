@@ -73,6 +73,7 @@ class Socket implements udp.Socket:
     add-finalizer this::
       this.close
 
+    successful := false
     try:
       if reuse-address:
         udp-set-option_ group id TOIT-UDP-OPTION-REUSE-ADDRESS true
@@ -89,12 +90,9 @@ class Socket implements udp.Socket:
       // Join group.
       udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
 
-    finally: | is-exception _ |
-      if is-exception:
-        udp-close_ group id
-        state_.dispose
-        remove-finalizer this
-        state_ = null
+      successful = true
+    finally:
+      if not successful: close
 
   local-address:
     state := ensure-state_
@@ -231,11 +229,13 @@ udp-create-socket_ udp-resource-group:
 
 udp-bind_ udp-resource-group address port:
   id := udp-create-socket_ udp-resource-group
+  successful := false
   try:
     udp-bind-socket_ udp-resource-group id address port
+    successful = true
     return id
-  finally: | is-exception _ |
-    if is-exception: udp-close_ udp-resource-group id
+  finally:
+    if not successful: udp-close_ udp-resource-group id
 
 udp-bind-socket_ udp-resource-group id address port:
   #primitive.udp.bind_socket

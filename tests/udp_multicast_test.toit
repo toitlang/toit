@@ -10,19 +10,19 @@ PORT := 12345
 main:
   network := net.open
   
-  // Create a listening socket for multicast
-  // We use the implementation class directly for the multicast constructor
+  // Create a listening socket for multicast.
+  // We use the implementation class directly for the multicast constructor.
   socket := impl.Socket.multicast network
       MULTICAST-ADDRESS
       PORT
-      --loopback=true
+      --loopback
       --ttl=1
-      --reuse-address=true
-      --reuse-port=true
+      --reuse-address
+      --reuse-port
 
   print "Socket created and bound to $PORT, joined $MULTICAST-ADDRESS"
 
-  // Create a sender socket (normal socket)
+  // Create a sender socket (normal socket).
   sender := network.udp-open
 
   msg := "Hello Multicast"

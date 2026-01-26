@@ -53,13 +53,13 @@ interface Socket:
   // should not exceed this value.
   mtu -> int
 
-  // Returns true if broadcast is enabled.
+  // Whether broadcast is enabled.
   broadcast -> bool
 
   // Enable or disable broadcast messages.
   broadcast= value/bool
 
-  // Returns true if multicast loopback is enabled.
+  // Whether multicast loopback is enabled.
   multicast-loopback -> bool
 
   // Enable or disable multicast loopback.
@@ -71,13 +71,13 @@ interface Socket:
   // Sets the multicast TTL.
   multicast-ttl= value/int
 
-  // Returns true if reuse address is enabled.
+  // Whether reuse address is enabled.
   reuse-address -> bool
 
   // Enable or disable reuse address.
   reuse-address= value/bool
 
-  // Returns true if reuse port is enabled.
+  // Whether reuse port is enabled.
   reuse-port -> bool
 
   // Enable or disable reuse port.
