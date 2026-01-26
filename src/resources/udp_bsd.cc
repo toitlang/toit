@@ -56,10 +56,9 @@ static void close_keep_errno(int fd) {
 }
 
 class UdpResourceGroup : public ResourceGroup {
-public:
+ public:
   TAG(UdpResourceGroup);
-  UdpResourceGroup(Process *process, EventSource *event_source)
-      : ResourceGroup(process, event_source) {}
+  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
