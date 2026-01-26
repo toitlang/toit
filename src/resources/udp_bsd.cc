@@ -45,8 +45,7 @@ namespace toit {
 
 static bool mark_non_blocking(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
-  if (flags == -1)
-    return false;
+  if (flags == -1) return false;
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) != -1;
 }
 
@@ -57,10 +56,9 @@ static void close_keep_errno(int fd) {
 }
 
 class UdpResourceGroup : public ResourceGroup {
-public:
+ public:
   TAG(UdpResourceGroup);
-  UdpResourceGroup(Process *process, EventSource *event_source)
-      : ResourceGroup(process, event_source) {}
+  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -423,9 +421,9 @@ PRIMITIVE(set_option) {
       result = set_int_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
 
-  case UDP_REUSE_ADDRESS:
-    result = set_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, raw, process);
-    break;
+    case UDP_REUSE_ADDRESS:
+      result = set_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, raw, process);
+      break;
 
     case UDP_REUSE_PORT:
       result = set_bool_option(fd, SOL_SOCKET, SO_REUSEPORT, raw, process);

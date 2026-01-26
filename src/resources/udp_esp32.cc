@@ -507,11 +507,7 @@ PRIMITIVE(get_option) {
         return BOOL(capture.socket->upcb()->flags & UDP_FLAGS_MULTICAST_LOOP);
 
       case UDP_MULTICAST_TTL:
-#if LWIP_MULTICAST_TX_OPTIONS
         return Smi::from(capture.socket->upcb()->mcast_ttl);
-#else
-        return Smi::from(1);
-#endif
 
       case UDP_REUSE_ADDRESS:
         return BOOL(capture.socket->upcb()->so_options & SOF_REUSEADDR);
@@ -564,14 +560,10 @@ PRIMITIVE(set_option) {
       }
 
       case UDP_MULTICAST_TTL: {
-#if LWIP_MULTICAST_TX_OPTIONS
         if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
         int value = Smi::value(Smi::cast(capture.raw));
         capture.socket->upcb()->mcast_ttl = value;
         break;
-#else
-        FAIL(UNIMPLEMENTED);
-#endif
       }
 
       // LwIP might not support SO_REUSEPORT distinct from SO_REUSEADDR, or it

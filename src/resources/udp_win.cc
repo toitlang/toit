@@ -439,7 +439,7 @@ PRIMITIVE(get_option) {
   }
 }
 
-static Object *set_bool_option(SOCKET socket, int level, int optname, Object* raw, Process* process) {
+static Object* set_bool_option(SOCKET socket, int level, int optname, Object* raw, Process* process) {
   int value = 0;
   if (raw == process->true_object()) {
     value = 1;
@@ -494,11 +494,11 @@ PRIMITIVE(set_option) {
       result = set_bool_option(socket, IPPROTO_IP, IP_MULTICAST_LOOP, raw, process);
       break;
 
-  case UDP_MULTICAST_TTL:
+    case UDP_MULTICAST_TTL:
       result = set_int_option(socket, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
 
-  case UDP_REUSE_ADDRESS:
+    case UDP_REUSE_ADDRESS:
       result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
       break;
 
