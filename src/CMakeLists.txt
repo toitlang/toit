@@ -411,7 +411,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       add_custom_command(
         OUTPUT "${embedded_snapshot}"
         DEPFILE "${embedded_dep}"
-        DEPENDS "${embedded_packages_timestamp}" "${embedded_source}"
+        DEPENDS "${embedded_packages_timestamp}" "${embedded_source}" "$<TARGET_FILE:toit.compile>"
         COMMAND ${CMAKE_COMMAND} -E env
             ASAN_OPTIONS=detect_leaks=false
             TOIT_PACKAGE_CACHE_PATHS="${embedded_packages_dir}"
