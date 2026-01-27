@@ -118,6 +118,7 @@ PRIMITIVE(create_socket) {
 
   IntResource* resource = resource_group->register_id(id);
   if (!resource) FAIL(MALLOC_FAILED);
+
   resource_proxy->set_external_address(resource);
   return resource_proxy;
 }
@@ -129,7 +130,7 @@ PRIMITIVE(bind_socket) {
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero((char*)&addr, size);
+  bzero(reinterpret_cast<char*>(&addr), size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
@@ -394,7 +395,9 @@ PRIMITIVE(set_option) {
       int value = 0;
       if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->false_object())  FAIL(WRONG_OBJECT_TYPE);
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
       if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
@@ -414,7 +417,9 @@ PRIMITIVE(set_option) {
       int value = 0;
       if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->false_object()) FAIL(WRONG_OBJECT_TYPE);
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
       if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
@@ -425,7 +430,9 @@ PRIMITIVE(set_option) {
       int value = 0;
       if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->false_object()) FAIL(WRONG_OBJECT_TYPE);
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
       if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }

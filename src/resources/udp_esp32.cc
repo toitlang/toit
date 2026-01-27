@@ -246,9 +246,7 @@ PRIMITIVE(create_socket) {
       udp_remove(upcb);
       FAIL(MALLOC_FAILED);
     }
-    // We don't setup recv callback here yet?
-    // Actually in LwIP we usually setup recv when we bind?
-    // But udp_recv can be called anytime.
+
     udp_recv(upcb, UdpSocket::on_recv, socket);
 
     proxy->set_external_address(socket);
@@ -557,7 +555,9 @@ PRIMITIVE(set_option) {
           udp_set_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
         } else if (capture.raw == capture.process->false_object()) {
           udp_clear_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
-        } else FAIL(WRONG_OBJECT_TYPE);
+        } else {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
         break;
       }
 
@@ -580,7 +580,9 @@ PRIMITIVE(set_option) {
           capture.socket->upcb()->so_options |= SOF_REUSEADDR;
         } else if (capture.raw == capture.process->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_REUSEADDR;
-        } else FAIL(WRONG_OBJECT_TYPE);
+        } else {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
         break;
       }
 

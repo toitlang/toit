@@ -513,7 +513,9 @@ PRIMITIVE(set_option) {
       int value = 0;
       if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->false_object()) FAIL(WRONG_OBJECT_TYPE);
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
       if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
                      reinterpret_cast<const char*>(&value),
                      sizeof(value)) == SOCKET_ERROR) {
