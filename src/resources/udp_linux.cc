@@ -129,7 +129,7 @@ PRIMITIVE(bind_socket) {
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero((char*)&addr, size);
+  bzero(reinterpret_cast<char*>(&addr), size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
