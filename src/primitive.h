@@ -284,7 +284,9 @@ namespace toit {
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create_socket, 1)                \
   PRIMITIVE(bind, 3)                         \
+  PRIMITIVE(bind_socket, 4)                  \
   PRIMITIVE(connect, 4)                      \
   PRIMITIVE(receive, 3)                      \
   PRIMITIVE(send, 7)                         \

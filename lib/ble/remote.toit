@@ -386,14 +386,14 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     and notifications, are enabled, subscribes to notifications.
   */
   subscribe -> none:
-    set-notify-subscription_ --subscribe=true
+    set-notify-subscription_ --subscribe
 
   /**
   Unsubscribes from a notification or indications on the characteristics.
     See $subscribe.
   */
   unsubscribe -> none:
-    set-notify-subscription_ --subscribe=false
+    set-notify-subscription_ --no-subscribe
 
   set-notify-subscription_ --subscribe/bool -> none:
     if (properties & (CHARACTERISTIC-PROPERTY-INDICATE

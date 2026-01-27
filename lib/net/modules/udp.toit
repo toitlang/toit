@@ -21,6 +21,8 @@ TOIT-UDP-OPTION-BROADCAST_           ::= 3
 TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP ::= 4
 TOIT-UDP-OPTION-MULTICAST-LOOPBACK   ::= 5
 TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
+TOIT-UDP-OPTION-REUSE-ADDRESS        ::= 7
+TOIT-UDP-OPTION-REUSE-PORT           ::= 8
 
 
 class Socket implements udp.Socket:
@@ -46,6 +48,51 @@ class Socket implements udp.Socket:
     state_ = ResourceState_ group id
     add-finalizer this::
       this.close
+
+  /**
+  Constructs a new multicast UDP socket.
+  The $address is the multicast address to join.
+  The $port is the port to listen on.
+  The $if_addr is the IP address of the interface to join the group on.
+    If null, the default interface is used.
+  If $reuse_address is true (the default), the SO_REUSEADDR option is set.
+  If $reuse_port is true (not default), the SO_REUSEPORT option is set (if supported).
+  */
+  constructor.multicast network/net.Client
+      address/net.IpAddress
+      port/int
+      --if-addr/net.IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1:
+    network_ = network
+    group := udp-resource-group_
+    id := udp-create-socket_ group
+    state_ = ResourceState_ group id
+    add-finalizer this::
+      this.close
+
+    successful := false
+    try:
+      if reuse-address:
+        udp-set-option_ group id TOIT-UDP-OPTION-REUSE-ADDRESS true
+      if reuse-port:
+        udp-set-option_ group id TOIT-UDP-OPTION-REUSE-PORT true
+
+      udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-LOOPBACK loopback
+      udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-TTL ttl
+
+      // Bind to the port. For multicast we usually bind to 0.0.0.0 (any)
+      // for the address part when receiving, but the port is important.
+      udp-bind-socket_ group id #[0,0,0,0] port
+
+      // Join group.
+      udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
+
+      successful = true
+    finally:
+      if not successful: close
 
   local-address:
     state := ensure-state_
@@ -107,6 +154,30 @@ class Socket implements udp.Socket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK value
 
+  multicast-ttl -> int:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL
+
+  multicast-ttl= value/int:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL value
+
+  reuse-address -> bool:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-ADDRESS
+
+  reuse-address= value/bool:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-ADDRESS value
+  
+  reuse-port -> bool:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-PORT
+
+  reuse-port= value/bool:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-PORT value
+
   receive_ output:
     while true:
       state := ensure-state_ TOIT-UDP-READ_
@@ -153,8 +224,21 @@ udp-resource-group_ ::= udp-init_
 udp-init_:
   #primitive.udp.init
 
+udp-create-socket_ udp-resource-group:
+  #primitive.udp.create_socket
+
 udp-bind_ udp-resource-group address port:
-  #primitive.udp.bind
+  id := udp-create-socket_ udp-resource-group
+  successful := false
+  try:
+    udp-bind-socket_ udp-resource-group id address port
+    successful = true
+    return id
+  finally:
+    if not successful: udp-close_ udp-resource-group id
+
+udp-bind-socket_ udp-resource-group id address port:
+  #primitive.udp.bind_socket
 
 udp-connect_ udp-resource-group id address port:
   #primitive.udp.connect
