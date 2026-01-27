@@ -824,17 +824,18 @@ static Object* rsa_parse_key_helper(SimpleResourceGroup* group, Process* process
   return proxy;
 }
 
-static mbedtls_md_type_t get_md_alg(int id, int digest_length) {
-  if (id == 1 && digest_length == 20) {
-    return MBEDTLS_MD_SHA1;
-  } else if (id == 256 && digest_length == 32) {
-    return MBEDTLS_MD_SHA256;
-  } else if (id == 384 && digest_length == 48) {
-    return MBEDTLS_MD_SHA384;
-  } else if (id == 512 && digest_length == 64) {
-    return MBEDTLS_MD_SHA512;
-  } else {
-    return MBEDTLS_MD_NONE;
+static mbedtls_md_type_t get_md_alg(int id) {
+  switch (id) {
+    case 1:
+      return MBEDTLS_MD_SHA1;
+    case 256:
+      return MBEDTLS_MD_SHA256;
+    case 384:
+      return MBEDTLS_MD_SHA384;
+    case 512:
+      return MBEDTLS_MD_SHA512;
+    default:
+      return MBEDTLS_MD_NONE;
   }
 }
 
@@ -851,7 +852,7 @@ PRIMITIVE(rsa_parse_public_key) {
 PRIMITIVE(rsa_sign) {
   ARGS(RsaKey, rsa, Blob, digest, int, hash_algo_id);
 
-  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id, digest.length());
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
 
   if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
 
@@ -872,7 +873,7 @@ PRIMITIVE(rsa_sign) {
 PRIMITIVE(rsa_verify) {
   ARGS(RsaKey, rsa, Blob, digest, Blob, signature, int, hash_algo_id);
 
-  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id, digest.length());
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
 
   if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
 

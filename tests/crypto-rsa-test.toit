@@ -7,7 +7,7 @@ import crypto.sha
 import crypto.sha1
 import expect show *
 
-// 2048-bit RSA key.
+// Non-production test vector. 2048-bit RSA key.
 PRIVATE-KEY ::= """
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDeCi2zVJ3mbsp7
@@ -78,8 +78,8 @@ test-rsa:
 
   // Test 3: Sign Digest.
   digest := sha.sha256 msg
-  sig-digest := priv.sign-digest digest
-  is-valid-digest := pub.verify-digest digest sig-digest
+  sig-digest := priv.sign-digest digest --hash=rsa.RsaKey.SHA-256
+  is-valid-digest := pub.verify-digest digest sig-digest --hash=rsa.RsaKey.SHA-256
   expect is-valid-digest
   // Mixing APIs: Verify message against digest-signed signature
   is-valid-mixed := pub.verify msg sig-digest

@@ -95,11 +95,11 @@ class RsaKey:
   Signs the $digest with this private key.
 
   The $digest must be the hash of the message to sign.
-  If $hash is provided, verifies that the $digest has the correct length.
+  The $hash is used to verify that the $digest has the correct length.
   */
-  sign-digest digest/io.Data --hash/int?=null -> ByteArray:
-    if hash: check-digest-length_ digest hash
-    return rsa-sign_ rsa-key_ digest (hash ? hash : 0)
+  sign-digest digest/io.Data --hash/int -> ByteArray:
+    check-digest-length_ digest hash
+    return rsa-sign_ rsa-key_ digest hash
 
   /**
   Verifies the $signature of the $message with this public key.
@@ -125,12 +125,12 @@ class RsaKey:
   Verifies the $signature of the $digest with this public key.
 
   The $digest must be the hash of the message that was signed.
-  If $hash is provided, verifies that the $digest has the correct length.
+  The $hash is used to verify that the $digest has the correct length.
   Returns true if the signature is valid, false otherwise.
   */
-  verify-digest digest/io.Data signature/io.Data --hash/int?=null -> bool:
-    if hash: check-digest-length_ digest hash
-    return rsa-verify_ rsa-key_ digest signature (hash ? hash : 0)
+  verify-digest digest/io.Data signature/io.Data --hash/int -> bool:
+    check-digest-length_ digest hash
+    return rsa-verify_ rsa-key_ digest signature hash
 
   static check-digest-length_ digest/io.Data hash/int:
     expected-length := 0
@@ -161,13 +161,12 @@ rsa-parse-public-key_ group key/io.Data -> any:
 
 rsa-sign_ rsa digest/io.Data hash/int -> ByteArray:
   #primitive.crypto.rsa-sign:
-    return io.primitive-redo-io-data_ it digest: | bytes |
-      rsa-sign_ rsa bytes hash
+    return io.primitive-redo-io-data_ it digest: | digest-bytes |
+      rsa-sign_ rsa digest-bytes hash
 
 rsa-verify_ rsa digest/io.Data signature/io.Data hash/int -> bool:
   #primitive.crypto.rsa-verify:
-    return io.primitive-redo-io-data_ it digest: | bytes |
-      rsa-verify_ rsa bytes signature hash
-    io.primitive-redo-io-data_ it signature: | bytes |
-      rsa-verify_ rsa digest bytes hash
+    return io.primitive-redo-io-data_ it digest: | digest-bytes |
+      io.primitive-redo-io-data_ it signature: | signature-bytes |
+        rsa-verify_ rsa digest-bytes signature-bytes hash
 
