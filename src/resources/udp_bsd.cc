@@ -44,9 +44,10 @@
 namespace toit {
 
 static bool mark_non_blocking(int fd) {
-   int flags = fcntl(fd, F_GETFL, 0);
-   if (flags == -1) return false;
-   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) != -1;
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1)
+    return false;
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) != -1;
 }
 
 static void close_keep_errno(int fd) {
@@ -56,9 +57,10 @@ static void close_keep_errno(int fd) {
 }
 
 class UdpResourceGroup : public ResourceGroup {
- public:
+public:
   TAG(UdpResourceGroup);
-  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  UdpResourceGroup(Process *process, EventSource *event_source)
+      : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -66,7 +68,8 @@ class UdpResourceGroup : public ResourceGroup {
     int unix_type = SOCK_DGRAM;
 
     int id = socket(unix_domain, unix_type, IPPROTO_UDP);
-    if (id == -1) return -1;
+    if (id == -1)
+      return -1;
 
     if (!mark_non_blocking(id)) {
       close_keep_errno(id);
@@ -82,17 +85,15 @@ class UdpResourceGroup : public ResourceGroup {
     return id;
   }
 
-  void close_socket(int id) {
-    unregister_id(id);
-  }
+  void close_socket(int id) { unregister_id(id); }
 
- private:
-  uint32_t on_event(Resource* resource, word data, uint32_t state) {
+private:
+  uint32_t on_event(Resource *resource, word data, uint32_t state) {
     return static_on_event(data, state);
   }
 
   static uint32_t static_on_event(word data, uint32_t state) {
-    struct kevent* event = reinterpret_cast<struct kevent*>(data);
+    struct kevent *event = reinterpret_cast<struct kevent *>(data);
 
     if (event->filter == EVFILT_READ) {
       state |= UDP_READ;
@@ -115,14 +116,51 @@ class UdpResourceGroup : public ResourceGroup {
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)
 
 PRIMITIVE(init) {
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  ByteArray *proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null)
+    FAIL(ALLOCATION_FAILED);
 
-  UdpResourceGroup* resource_group = _new UdpResourceGroup(process, KQueueEventSource::instance());
-  if (!resource_group) FAIL(MALLOC_FAILED);
+  UdpResourceGroup *resource_group =
+      _new UdpResourceGroup(process, KQueueEventSource::instance());
+  if (!resource_group)
+    FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
+}
+
+PRIMITIVE(create_socket) {
+  ARGS(UdpResourceGroup, resource_group);
+
+  ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
+
+  int id = resource_group->create_socket();
+  if (id == -1) return Primitive::os_error(errno, process);
+
+  IntResource* resource = resource_group->register_id(id);
+  if (!resource) FAIL(MALLOC_FAILED);
+  resource_proxy->set_external_address(resource);
+  return resource_proxy;
+}
+
+PRIMITIVE(bind_socket) {
+  ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, address, int, port);
+  USE(proxy);
+  int fd = connection_resource->id();
+
+  struct sockaddr_in addr;
+  socklen_t size = sizeof(sockaddr);
+  bzero((char*)&addr, size);
+  addr.sin_family = AF_INET;
+  // TODO(florian): we should probably check that the size is ok.
+  memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
+  addr.sin_port = htons(port);
+  if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
+    return Primitive::os_error(errno, process);
+  }
+
+  return process->null_object();
 }
 
 PRIMITIVE(bind) {
@@ -136,16 +174,17 @@ PRIMITIVE(bind) {
 
   IntResource* resource = resource_group->register_id(id);
   if (!resource) FAIL(MALLOC_FAILED);
-  AutoUnregisteringResource<IntResource> resource_manager(resource_group, resource);
+  AutoUnregisteringResource<IntResource> resource_manager(resource_group,
+                                                          resource);
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero((char*)&addr, size);
+  bzero((char *)&addr, size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
-  if (bind(id, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
+  if (bind(id, reinterpret_cast<struct sockaddr *>(&addr), size) != 0) {
     close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
@@ -161,12 +200,12 @@ PRIMITIVE(connect) {
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero((char*)&addr, size);
+  bzero((char *)&addr, size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
-  if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
+  if (connect(fd, reinterpret_cast<struct sockaddr *>(&addr), size) != 0) {
     return Primitive::os_error(errno, process);
   }
 
@@ -179,40 +218,47 @@ PRIMITIVE(receive) {
   int fd = connection->id();
 
   // TODO: Support IPv6.
-  ByteArray* address = null;
+  ByteArray *address = null;
   if (is_array(output)) {
     address = process->allocate_byte_array(4);
-    if (address == null) FAIL(ALLOCATION_FAILED);
+    if (address == null)
+      FAIL(ALLOCATION_FAILED);
   }
 
   uint8_t peek[64 * 1024];
   int available = recv(fd, peek, sizeof(peek), MSG_PEEK);
   if (available == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK)
+      return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
 
-  ByteArray* array = process->allocate_byte_array(available);
-  if (array == null) FAIL(ALLOCATION_FAILED);
+  ByteArray *array = process->allocate_byte_array(available);
+  if (array == null)
+    FAIL(ALLOCATION_FAILED);
 
   char buffer[available];
 
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
   socklen_t addr_len = sizeof(addr);
-  int read = recvfrom(fd, buffer, available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
+  int read = recvfrom(fd, buffer, available, 0,
+                      reinterpret_cast<sockaddr *>(&addr), &addr_len);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK)
+      return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->null_object();
+  if (read == 0)
+    return process->null_object();
 
   ASSERT(read == available);
   memcpy(ByteArray::Bytes(array).address(), buffer, read);
 
   if (is_array(output)) {
-    Array* out = Array::cast(output);
-    if (out->length() < 3) FAIL(INVALID_ARGUMENT);
+    Array *out = Array::cast(output);
+    if (out->length() < 3)
+      FAIL(INVALID_ARGUMENT);
     out->at_put(0, array);
     memcpy(ByteArray::Bytes(address).address(), &addr.sin_addr.s_addr, 4);
     out->at_put(1, address);
@@ -224,62 +270,68 @@ PRIMITIVE(receive) {
 }
 
 PRIMITIVE(send) {
-  ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, data, int, from, int, to, Object, address, int, port);
+  ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, data, int,
+       from, int, to, Object, address, int, port);
   USE(proxy);
   int fd = connection_resource->id();
 
-  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
+  if (from < 0 || from > to || to > data.length())
+    FAIL(OUT_OF_BOUNDS);
 
   struct sockaddr_in addr_in;
-  struct sockaddr* addr = null;
+  struct sockaddr *addr = null;
   size_t size = 0;
   if (address != process->null_object()) {
-    bzero((char*)&addr_in, sizeof(addr_in));
+    bzero((char *)&addr_in, sizeof(addr_in));
     addr_in.sin_family = AF_INET;
     Blob address_bytes;
-    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+    if (!address->byte_content(process->program(), &address_bytes,
+                               STRINGS_OR_BYTE_ARRAYS))
+      FAIL(WRONG_OBJECT_TYPE);
     // TODO(florian): we are not checking that the bytes fit into the 's_addr'.
-    memcpy(&addr_in.sin_addr.s_addr, address_bytes.address(), address_bytes.length());
+    memcpy(&addr_in.sin_addr.s_addr, address_bytes.address(),
+           address_bytes.length());
     addr_in.sin_port = htons(port);
-    addr = reinterpret_cast<struct sockaddr*>(&addr_in);
+    addr = reinterpret_cast<struct sockaddr *>(&addr_in);
     size = sizeof(addr_in);
   }
 
   int wrote = sendto(fd, data.address() + from, to - from, 0, addr, size);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(0);
+    if (errno == EWOULDBLOCK)
+      return Smi::from(0);
     return Primitive::os_error(errno, process);
   }
 
   return Smi::from(wrote);
 }
 
-static Object* get_address_or_error(int id, Process* process, bool peer) {
+static Object *get_address_or_error(int id, Process *process, bool peer) {
   struct sockaddr_in sin;
   socklen_t len = sizeof(sin);
   int result = peer ?
       getpeername(id, (struct sockaddr *)&sin, &len) :
       getsockname(id, (struct sockaddr *)&sin, &len);
 
-  if (result != 0) return Primitive::os_error(errno, process);
+  if (result != 0)
+    return Primitive::os_error(errno, process);
   char buffer[16];
   uint32_t addr_word = ntohl(sin.sin_addr.s_addr);
-  snprintf(buffer, sizeof(buffer), "%d.%d.%d.%d",
-      (addr_word >> 24) & 0xff,
-      (addr_word >> 16) & 0xff,
-      (addr_word >> 8) & 0xff,
-      (addr_word >> 0) & 0xff);
+  snprintf(buffer, sizeof(buffer), "%d.%d.%d.%d", (addr_word >> 24) & 0xff,
+           (addr_word >> 16) & 0xff, (addr_word >> 8) & 0xff,
+           (addr_word >> 0) & 0xff);
   buffer[sizeof(buffer) - 1] = '\0';
   return process->allocate_string_or_error(buffer, strlen(buffer));
 }
 
-static Object* get_port_or_error(int id, Process* process, bool peer) {
+static Object *get_port_or_error(int id, Process *process, bool peer) {
   struct sockaddr_in sin;
   socklen_t len = sizeof(sin);
   int result = peer ?
       getpeername(id, (struct sockaddr *)&sin, &len) :
       getsockname(id, (struct sockaddr *)&sin, &len);
-  if (result != 0) return Primitive::os_error(errno, process);
+  if (result != 0)
+    return Primitive::os_error(errno, process);
   return Smi::from(ntohs(sin.sin_port));
 }
 
@@ -289,47 +341,151 @@ PRIMITIVE(get_option) {
   int fd = connection_resource->id();
 
   switch (option) {
-    case UDP_ADDRESS:
-      return get_address_or_error(fd, process, false);
+  case UDP_ADDRESS:
+    return get_address_or_error(fd, process, false);
 
-    case UDP_PORT:
-      return get_port_or_error(fd, process, false);
+  case UDP_PORT:
+    return get_port_or_error(fd, process, false);
 
-    case UDP_BROADCAST: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
+  case UDP_BROADCAST: {
+    int value = 0;
+    socklen_t size = sizeof(value);
+    if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
+      return Primitive::os_error(errno, process);
     }
+    return BOOL(value != 0);
+  }
 
-    default:
-      FAIL(UNIMPLEMENTED);
+  case UDP_MULTICAST_LOOPBACK: {
+    uint8_t value = 0;
+    socklen_t size = sizeof(value);
+    if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, &size) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    return BOOL(value != 0);
+  }
+
+  case UDP_MULTICAST_TTL: {
+    uint8_t value = 0;
+    socklen_t size = sizeof(value);
+    if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    return Smi::from(value);
+  }
+
+  case UDP_REUSE_ADDRESS: {
+    int value = 0;
+    socklen_t size = sizeof(value);
+    if (getsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, &size) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    return BOOL(value != 0);
+  }
+
+  case UDP_REUSE_PORT: {
+    int value = 0;
+    socklen_t size = sizeof(value);
+    if (getsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, &size) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    return BOOL(value != 0);
+  }
+
+  default:
+    FAIL(UNIMPLEMENTED);
   }
 }
 
 PRIMITIVE(set_option) {
-  ARGS(ByteArray, proxy, IntResource, connection_resource, int, option, Object, raw);
+  ARGS(ByteArray, proxy, IntResource, connection_resource, int, option, Object,
+       raw);
   USE(proxy);
   int fd = connection_resource->id();
 
   switch (option) {
-    case UDP_BROADCAST: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      break;
+  case UDP_BROADCAST: {
+    int value = 0;
+    if (raw == process->true_object()) {
+      value = 1;
+    } else if (raw != process->false_object()) {
+      FAIL(WRONG_OBJECT_TYPE);
     }
+    if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
 
-    default:
-      FAIL(UNIMPLEMENTED);
+  case UDP_MULTICAST_MEMBERSHIP: {
+    if (!is_byte_array(raw))
+      FAIL(WRONG_OBJECT_TYPE);
+    ByteArray *address = ByteArray::cast(raw);
+    if (ByteArray::Bytes(address).length() != 4)
+      FAIL(OUT_OF_BOUNDS);
+    struct ip_mreq mreq;
+    memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) ==
+        -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
+
+  case UDP_MULTICAST_LOOPBACK: {
+    uint8_t value = 0;
+    if (raw == process->true_object()) {
+      value = 1;
+    } else if (raw != process->false_object()) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, sizeof(value)) ==
+        -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
+
+  case UDP_MULTICAST_TTL: {
+    if (!is_smi(raw))
+      FAIL(WRONG_OBJECT_TYPE);
+    uint8_t value = Smi::value(Smi::cast(raw));
+    if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, sizeof(value)) ==
+        -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
+
+  case UDP_REUSE_ADDRESS: {
+    int value = 0;
+    if (raw == process->true_object()) {
+      value = 1;
+    } else if (raw != process->false_object()) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
+
+  case UDP_REUSE_PORT: {
+    int value = 0;
+    if (raw == process->true_object()) {
+      value = 1;
+    } else if (raw != process->false_object()) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) == -1) {
+      return Primitive::os_error(errno, process);
+    }
+    break;
+  }
+
+  default:
+    FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();
