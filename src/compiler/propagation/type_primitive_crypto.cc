@@ -48,6 +48,10 @@ TYPE_PRIMITIVE_ANY(aead_add)
 TYPE_PRIMITIVE_ANY(aead_get_tag_size)
 TYPE_PRIMITIVE_ANY(aead_finish)
 TYPE_PRIMITIVE_ANY(aead_verify)
+TYPE_PRIMITIVE_ANY(rsa_parse_private_key)
+TYPE_PRIMITIVE_ANY(rsa_parse_public_key)
+TYPE_PRIMITIVE_ANY(rsa_sign)
+TYPE_PRIMITIVE_ANY(rsa_verify)
 
 }  // namespace toit::compiler
 }  // namespace toit
