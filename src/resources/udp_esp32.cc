@@ -539,11 +539,15 @@ PRIMITIVE(set_option) {
         break;
 
       case UDP_MULTICAST_MEMBERSHIP: {
-        if (!is_byte_array(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
-        ByteArray *address = ByteArray::cast(capture.raw);
-        if (ByteArray::Bytes(address).length() != 4) FAIL(OUT_OF_BOUNDS);
+        Blob bytes;
+        if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        if (bytes.length() != 4) {
+          FAIL(OUT_OF_BOUNDS);
+        }
         ip_addr_t group_addr;
-        const uint8* a = ByteArray::Bytes(address).address();
+        const uint8* a = bytes.address();
         IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
         err_t err = igmp_joingroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
         if (err != ERR_OK) return lwip_error(capture.process, err);

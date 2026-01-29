@@ -132,31 +132,35 @@ PRIMITIVE(init) {
 PRIMITIVE(create_socket) {
   ARGS(UdpResourceGroup, resource_group);
 
-  ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
+  ByteArray *resource_proxy = process->object_heap()->allocate_proxy();
+  if (resource_proxy == null)
+    FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_socket();
-  if (id == -1) return Primitive::os_error(errno, process);
+  if (id == -1)
+    return Primitive::os_error(errno, process);
 
-  IntResource* resource = resource_group->register_id(id);
-  if (!resource) FAIL(MALLOC_FAILED);
+  IntResource *resource = resource_group->register_id(id);
+  if (!resource)
+    FAIL(MALLOC_FAILED);
   resource_proxy->set_external_address(resource);
   return resource_proxy;
 }
 
 PRIMITIVE(bind_socket) {
-  ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, address, int, port);
+  ARGS(ByteArray, proxy, IntResource, connection_resource, Blob, address, int,
+       port);
   USE(proxy);
   int fd = connection_resource->id();
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero((char*)&addr, size);
+  bzero((char *)&addr, size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
-  if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
+  if (bind(fd, reinterpret_cast<struct sockaddr *>(&addr), size) != 0) {
     return Primitive::os_error(errno, process);
   }
 
@@ -418,13 +422,15 @@ PRIMITIVE(set_option) {
   }
 
   case UDP_MULTICAST_MEMBERSHIP: {
-    if (!is_byte_array(raw))
+    Blob bytes;
+    if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
       FAIL(WRONG_OBJECT_TYPE);
-    ByteArray *address = ByteArray::cast(raw);
-    if (ByteArray::Bytes(address).length() != 4)
+    }
+    if (bytes.length() != 4) {
       FAIL(OUT_OF_BOUNDS);
+    }
     struct ip_mreq mreq;
-    memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+    memcpy(&mreq.imr_multiaddr.s_addr, bytes.address(), 4);
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) ==
         -1) {
