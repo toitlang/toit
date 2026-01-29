@@ -401,11 +401,15 @@ PRIMITIVE(set_option) {
       break;
 
     case UDP_MULTICAST_MEMBERSHIP: {
-      if (!is_byte_array(raw)) FAIL(WRONG_OBJECT_TYPE);
-      ByteArray* address = ByteArray::cast(raw);
-      if (ByteArray::Bytes(address).length() != 4) FAIL(OUT_OF_BOUNDS);
+      Blob bytes;
+      if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (bytes.length() != 4) {
+        FAIL(OUT_OF_BOUNDS);
+      }
       struct ip_mreq mreq;
-      memcpy(&mreq.imr_multiaddr.s_addr, ByteArray::Bytes(address).address(), 4);
+      memcpy(&mreq.imr_multiaddr.s_addr, bytes.address(), 4);
       mreq.imr_interface.s_addr = htonl(INADDR_ANY);
       if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
         return Primitive::os_error(errno, process);
