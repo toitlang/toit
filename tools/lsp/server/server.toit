@@ -154,6 +154,7 @@ class LspServer:
         "textDocument/completion": (:: completion (CompletionParams it )),
         "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
+        "textDocument/hover":      (:: hover (HoverParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
@@ -212,6 +213,7 @@ class LspServer:
             --trigger-characters= [".", "-", "\$"]
         --definition-provider=      true
         --document-symbol-provider= true
+        --hover-provider=           true
         --text-document-sync= TextDocumentSyncOptions
             --open-close
             --change= TextDocumentSyncKind.full
@@ -348,6 +350,13 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+
+  hover params/HoverParams -> Hover?:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    content := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    if not content: return null
+    return Hover --contents=content
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri
@@ -694,13 +703,14 @@ main --toit-path-override/string?:
 
   // Generally, this flag is not used, as the extension has a way to log
   // output anyway.
-  should-log := false
+  should-log := true
   reader/io.Reader := ?
   writer/io.Writer := ?
+  // Log to project's tmp directory for easier debugging.
+  LOG-DIR ::= "/home/cl/projects/jaguar/third_party/toit/tmp"
   if should-log:
-    time := Time.now.stringify
-    log-in-file := file.Stream "/tmp/lsp_in-$(time).log" file.CREAT | file.WRONLY 0x1ff
-    log-out-file := file.Stream "/tmp/lsp_out-$(time).log" file.CREAT | file.WRONLY 0x1ff
+    log-in-file := file.Stream "$LOG-DIR/lsp_in.log" file.CREAT | file.WRONLY | file.TRUNC 0x1ff
+    log-out-file := file.Stream "$LOG-DIR/lsp_out.log" file.CREAT | file.WRONLY | file.TRUNC 0x1ff
     //log_in_file  := file.Stream "/tmp/lsp.log" file.CREAT | file.WRONLY 0x1ff
     //log_out_file := log_in_file
     reader = (LoggingIO log-in-file in-pipe).in

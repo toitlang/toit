@@ -182,5 +182,10 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
 
 
 
+
+void LspHoverProtocol::emit(const char* markdown) {
+  this->printf("%s\n", markdown);
+}
+
 } // namespace toit::compiler
 } // namespace toit

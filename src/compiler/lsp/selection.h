@@ -24,6 +24,7 @@
 #include "completion_kind.h"
 #include "protocol.h"
 
+#include "../ast.h"
 #include "../diagnostic.h"
 #include "../ir.h"
 #include "../list.h"
@@ -63,7 +64,18 @@ class LspSelectionHandler {
   /// The constructor takes a protocol as argument. All information that is
   /// sent to the LSP server must go through the protocol.
   explicit LspSelectionHandler(LspProtocol* protocol) : protocol_(protocol) {}
-  virtual ~LspSelectionHandler() {}
+  virtual ~LspSelectionHandler() {
+    if (owns_toitdocs_) delete toitdocs_;
+  }
+
+  void set_toitdocs(const ToitdocRegistry* toitdocs) { toitdocs_ = toitdocs; }
+  void set_owned_toitdocs(const ToitdocRegistry* toitdocs) {
+    if (owns_toitdocs_) delete toitdocs_;
+    owns_toitdocs_ = true;
+    toitdocs_ = toitdocs;
+  }
+
+  void set_ir_to_ast_map(const UnorderedMap<ir::Node*, ast::Node*>* map) { ir_to_ast_map_ = map; }
 
   /// Handles an import path.
   virtual void import_path(const char* path,
@@ -146,9 +158,14 @@ class LspSelectionHandler {
 
  protected:
   LspProtocol* protocol() { return protocol_; }
+  const ToitdocRegistry* toitdocs() const { return toitdocs_; }
+  const UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map() const { return ir_to_ast_map_; }
 
  private:
   LspProtocol* protocol_;
+  const ToitdocRegistry* toitdocs_ = null;
+  bool owns_toitdocs_ = false;
+  const UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map_ = null;
 };
 
 } // namespace toit::compiler

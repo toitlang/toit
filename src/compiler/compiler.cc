@@ -40,6 +40,7 @@
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/hover.h"
 #include "lsp/fs_connection_socket.h"
 #include "lsp/fs_protocol.h"
 #include "lsp/multiplex_stdout.h"
@@ -162,7 +163,9 @@ class Pipeline {
                        int core_unit_index,
                        bool quiet = false);
   void check_types_and_deprecations(ir::Program* program, bool quiet = false);
-  void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
+  void set_toitdocs(const ToitdocRegistry& registry) {
+    toitdoc_registry_ = registry;
+  }
 };
 
 
@@ -173,6 +176,7 @@ class LanguageServerPipeline : public Pipeline {
     semantic_tokens,
     completion,
     goto_definition,
+    hover,
   };
 
   LanguageServerPipeline(Kind kind,
@@ -253,6 +257,26 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler();
+
+  bool is_lsp_selection_identifier() { return false; }
+};
+
+class HoverPipeline : public LocationLanguageServerPipeline {
+ public:
+  HoverPipeline(const char* hover_path,
+                int line_number,   // 1-based
+                int column_number, // 1-based
+                const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::hover,
+                                       hover_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() {
+    lsp()->setup_hover_handler(source_manager());
+  }
 
   bool is_lsp_selection_identifier() { return false; }
 };
@@ -415,6 +439,8 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
       lsp_complete(path, line_number, column_number, configuration);
     } else if (strcmp("GOTO DEFINITION", mode) == 0) {
       lsp_goto_definition(path, line_number, column_number, configuration);
+    } else if (strcmp("HOVER", mode) == 0) {
+      lsp_hover(path, line_number, column_number, configuration);
     } else {
       FATAL("LANGUAGE SERVER ERROR - Mode not recognized");
     }
@@ -436,6 +462,16 @@ void Compiler::lsp_goto_definition(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
+
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_hover(const char* source_path,
+                         int line_number,
+                         int column_number,
+                         const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  HoverPipeline pipeline(source_path, line_number, column_number, configuration);
 
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }

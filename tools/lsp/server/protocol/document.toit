@@ -203,3 +203,11 @@ class TextEdit extends MapWrapper:
       --new-text/string:
     map_["range"]    = range.map_
     map_["newText"]  = new-text
+
+class HoverParams extends TextDocumentPositionParams:
+  constructor json-map/Map: super json-map
+
+class Hover extends MapWrapper:
+  constructor --contents/any --range/Range?=null:
+    map_["contents"] = contents
+    if range: map_["range"] = range.map_

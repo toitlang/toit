@@ -92,6 +92,12 @@ static ir::Method* resolve_entry_point(Symbol name, int arity, ModuleScope* scop
 ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                int entry_index,
                                int core_index) {
+  // Set toitdocs pointer and ir_to_ast_map early so selection handlers can access docs during resolution.
+  if (lsp_ != null && lsp_->has_selection_handler()) {
+    lsp_->selection_handler()->set_toitdocs(&toitdocs_);
+    lsp_->selection_handler()->set_ir_to_ast_map(&ir_to_ast_map_);
+  }
+
   auto modules = build_modules(units, entry_index, core_index);
   build_module_scopes(modules);
 
@@ -203,6 +209,14 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   lookup_failure,
                                   as_check_failure,
                                   lambda_box);
+
+  if (lsp_ != null && lsp_->has_selection_handler()) {
+    auto copy = new ToitdocRegistry();
+    toitdocs_.for_each([copy](void* key, Toitdoc<ir::Node*> val) {
+      copy->set_toitdoc((ir::Node*)key, val);
+    });
+    lsp_->selection_handler()->set_owned_toitdocs(copy);
+  }
 
   return program;
 }

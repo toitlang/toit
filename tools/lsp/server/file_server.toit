@@ -32,8 +32,13 @@ import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
   compiler-path = fs.to-slash compiler-path
+  dir := fs.dirname compiler-path
+  // If the compiler is in the build artifact structure, we need to go up 3 levels.
+  if dir.ends-with "/lib/toit/bin":
+    return fs.to-absolute (fs.join dir "../../..")
+
   // The compiler is supposed to live in the 'bin' folder of the SDK.
-  result-path := fs.to-absolute (fs.join (fs.dirname compiler-path) "..")
+  result-path := fs.to-absolute (fs.join dir "..")
   if not (file.is-directory result-path):
     throw "Couldn't determine SDK path"
   return fs.to-slash result-path

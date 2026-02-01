@@ -289,6 +289,20 @@ class Compiler:
       return definitions
     unreachable
 
+  hover --project-uri/string? uri/string line-number/int column-number/int -> string?:
+    path := translator.to-path uri --to-compiler
+    run --project-uri=project-uri
+        --compiler-input="HOVER\n$path\n$line-number\n$column-number\n":
+      |reader /io.Reader|
+      buffer := io.Buffer
+      while data := reader.read:
+        buffer.write data
+      content := buffer.bytes
+      
+      if content.size == 0: return null
+      return content.to-string.trim
+    unreachable
+
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.
     return run

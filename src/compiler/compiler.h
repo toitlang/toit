@@ -123,10 +123,23 @@ class Compiler {
   ///
   /// This mode does not run the program or generates any snapshots. It simply
   /// prints out the found location.
+  /// Finds the definition of the identifier at the given location.
+  ///
+  /// This mode does not run the program or generates any snapshots. It simply
+  /// prints out the found location.
   void lsp_goto_definition(const char* source_path,
                            int line_number,
                            int column_number,
                            const PipelineConfiguration& configuration);
+
+  /// Hovers over the identifier at the given location.
+  ///
+  /// This mode does not run the program or generates any snapshots. It simply
+  /// prints out the documentation for the found element.
+  void lsp_hover(const char* source_path,
+                 int line_number,
+                 int column_number,
+                 const PipelineConfiguration& configuration);
 
   /// Compiles the given program and sends the snapshot to the server.
   void lsp_snapshot(const char* source_path,

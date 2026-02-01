@@ -20,6 +20,7 @@
 #include "protocol.h"
 #include "completion.h"
 #include "goto_definition.h"
+#include "hover.h"
 #include "semantic.h"
 
 namespace toit {
@@ -49,6 +50,11 @@ class Lsp {
   void setup_goto_definition_handler(SourceManager* source_manager) {
     ASSERT(selection_handler_ == null);
     selection_handler_ = _new GotoDefinitionHandler(source_manager, protocol());
+  }
+
+  void setup_hover_handler(SourceManager* source_manager) {
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new HoverHandler(source_manager, protocol());
   }
 
   bool has_selection_handler() const { return selection_handler_ != null; }
