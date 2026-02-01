@@ -580,6 +580,58 @@ PRIMITIVE(set_option) {
         result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_REUSEADDR);
         break;
 
+      case UDP_MULTICAST_MEMBERSHIP: {
+        Blob bytes;
+        if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        if (bytes.length() != 4) {
+          FAIL(OUT_OF_BOUNDS);
+        }
+        ip_addr_t group_addr;
+        const uint8* a = bytes.address();
+        IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
+        err_t err = igmp_joingroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
+        if (err != ERR_OK) return lwip_error(capture.process, err);
+        break;
+      }
+
+      case UDP_MULTICAST_LOOPBACK: {
+        if (capture.raw == capture.process->true_object()) {
+          udp_set_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
+        } else if (capture.raw == capture.process->false_object()) {
+          udp_clear_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
+        } else {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        break;
+      }
+
+      case UDP_MULTICAST_TTL: {
+        if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
+        int value = Smi::value(Smi::cast(capture.raw));
+        capture.socket->upcb()->mcast_ttl = value;
+        break;
+      }
+
+      // LwIP might not support SO_REUSEPORT distinct from SO_REUSEADDR, or it
+      // might be same bit. Often SOF_REUSEADDR is used for both. We'll map it
+      // to REUSEADDR if REUSEPORT isn't defined, or just use REUSEADDR. But for
+      // correctness, let's just do same as REUSEADDR if not explicitly
+      // different. Actually checking LwIP source, often SOF_REUSEADDR is
+      // enough.
+      case UDP_REUSE_PORT:
+      case UDP_REUSE_ADDRESS: {
+        if (capture.raw == capture.process->true_object()) {
+          capture.socket->upcb()->so_options |= SOF_REUSEADDR;
+        } else if (capture.raw == capture.process->false_object()) {
+          capture.socket->upcb()->so_options &= ~SOF_REUSEADDR;
+        } else {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        break;
+      }
+
       default:
         FAIL(UNIMPLEMENTED);
     }

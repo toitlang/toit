@@ -390,7 +390,7 @@ abstract class DnsClient:
 
       if type-matches:
         if resource.name != relevant-name: continue.do
-        
+
         entry := null
         if resource is SrvResource:
           entry = (resource as SrvResource)
@@ -398,11 +398,11 @@ abstract class DnsClient:
           entry = (resource as StringResource).value
         else if resource is AResource:
           entry = (resource as AResource).address
-        
+
         if entry:
           list := answers-by-type.get type --init=(: [])
           list.add entry
-          
+
           current-ttl := ttl-by-type.get type --if-absent=(: int.MAX)
           ttl-by-type[type] = min current-ttl resource.ttl
 
@@ -446,9 +446,9 @@ abstract class DnsClient:
             if result:
               remaining-tries--
               if remaining-tries == 0 or result.size != 0: return result
-          
+
           throw (DnsException "No response from server" --name=query.name)
-      
+
       on-timeout.call
 
 

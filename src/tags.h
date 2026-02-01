@@ -68,6 +68,7 @@ namespace toit {
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
   fn(MbedTlsSocket)                     \
+  fn(RsaKey)                            
 
 // When adding a class make sure that they all are subclasses of
 // the BleCallbackResource. If it isn't update the Min/MaxTag below.
