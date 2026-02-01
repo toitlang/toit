@@ -518,9 +518,13 @@ PRIMITIVE(get_option) {
 }
 
 static Object* set_bool_bit(Object* raw, Process* process, uint8_t& target, uint8_t mask) {
-  if (raw == process->true_object()) target |= mask;
-  else if (raw == process->false_object()) target &= ~mask;
-  else FAIL(WRONG_OBJECT_TYPE);
+  if (raw == process->true_object()) {
+    target |= mask;
+  } else if (raw == process->false_object()) {
+    target &= ~mask;
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
 
   return null;
 }
@@ -533,7 +537,7 @@ PRIMITIVE(set_option) {
       Object*, raw,
       Process*, process);
 
-  return resource_group->event_source()->call_on_thread([&]() -> Object * {
+  return resource_group->event_source()->call_on_thread([&]() -> Object* {
     Object* result = null;
     switch (capture.option) {
       case UDP_BROADCAST:

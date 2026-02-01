@@ -24,12 +24,12 @@ test-custom-mdns:
   
   // Test A record lookup
   task::
-    // Server side
+    // Server side.
     msg := server.receive
-    // Parse the query ID (first 2 bytes)
+    // Parse the query ID (first 2 bytes).
     id := msg.data[0] << 8 | msg.data[1]
     
-    // Construct response for A record
+    // Construct response for A record.
     questions := [dns.Question "toit.local" dns.RECORD-A]
     answers := [dns.AResource "toit.local" 120 (net.IpAddress.parse "1.2.3.4")]
     response := dns.create-dns-packet questions answers --id=id --is-response --is-authoritative
@@ -41,7 +41,7 @@ test-custom-mdns:
     throw "Expected 1.2.3.4, got $res"
   print "Custom mDNS A lookup: OK"
 
-  // Test TXT record lookup
+  // Test TXT record lookup.
   task::
     msg := server.receive
     id := msg.data[0] << 8 | msg.data[1]
@@ -55,7 +55,7 @@ test-custom-mdns:
     throw "Expected 'hello=world', got $res-txt"
   print "Custom mDNS TXT lookup: OK"
 
-  // Test AAAA record lookup
+  // Test AAAA record lookup.
   task::
     msg := server.receive
     id := msg.data[0] << 8 | msg.data[1]
@@ -71,11 +71,11 @@ test-custom-mdns:
     throw "Expected ::1, got $res-aaaa"
   print "Custom mDNS AAAA lookup: OK"
 
-  // Test SRV record lookup
+  // Test SRV record lookup.
   task::
     msg := server.receive
     id := msg.data[0] << 8 | msg.data[1]
-    // 10 0 5353 "target" (simple name)
+    // 10 0 5353 "target" (simple name).
     questions := [dns.Question "service.local" dns.RECORD-SRV]
     answers := [dns.SrvResource "service.local" dns.RECORD-SRV 120 false "target" 10 0 5353]
     response := dns.create-dns-packet questions answers --id=id --is-response --is-authoritative
@@ -88,7 +88,7 @@ test-custom-mdns:
     throw "Expected SRV target 10 0 5353, got $srv.value $srv.priority $srv.weight $srv.port"
   print "Custom mDNS SRV lookup: OK"
 
-  // Test PTR record lookup
+  // Test PTR record lookup.
   task::
     msg := server.receive
     id := msg.data[0] << 8 | msg.data[1]
@@ -102,19 +102,19 @@ test-custom-mdns:
     throw "Expected 'instance.local', got $res-ptr"
   print "Custom mDNS PTR lookup: OK"
 
-  // Test ID Mismatch (Relaxed check)
+  // Test ID Mismatch (Relaxed check).
   // Server sends back ID+1.
   task::
-    // Server side
+    // Server side.
     msg := server.receive
-    // Parse the query ID (first 2 bytes)
+    // Parse the query ID (first 2 bytes).
     id := msg.data[0] << 8 | msg.data[1]
     bad-id := (id + 1) & 0xFFFF
     
-    // Construct response for A record
+    // Construct response for A record.
     questions := [dns.Question "mismatch.local" dns.RECORD-A]
     answers := [dns.AResource "mismatch.local" 120 (net.IpAddress.parse "1.2.3.4")]
-    // Send response with WRONG ID
+    // Send response with WRONG ID.
     response := dns.create-dns-packet questions answers --id=bad-id --is-response --is-authoritative
     
     server.send (udp.Datagram response msg.address)
@@ -124,11 +124,11 @@ test-custom-mdns:
     throw "Expected 1.2.3.4, got $res-mismatch"
   print "Custom mDNS Mismatch ID lookup: OK"
 
-  // Test Unsolicited (ID=0, No Questions)
+  // Test Unsolicited (ID=0, No Questions).
   task::
     msg := server.receive
     
-    // Construct response with NO questions and ID 0
+    // Construct response with NO questions and ID 0.
     questions := []
     answers := [dns.StringResource "unsolicited.local" dns.RECORD-TXT 120 false "foo=bar"]
     response := dns.create-dns-packet questions answers --id=0 --is-response --is-authoritative
@@ -140,7 +140,3 @@ test-custom-mdns:
   print "Custom mDNS Unsolicited lookup: OK"
 
   server.close
-
-
-
-

@@ -36,7 +36,7 @@ test-mdns-mixed-caching:
   
   task::
     msg := server.receive
-    // Respond with ID 0 (Unsolicited)
+    // Respond with ID 0 (Unsolicited).
     questions := []
     answers := [
       dns.AResource "mixed.local" 120 (net.IpAddress.parse "1.2.3.4"),
@@ -49,9 +49,9 @@ test-mdns-mixed-caching:
   // dns.dns-lookup-multi calls client.get_ with {A, AAAA} if configured.
   
   task::
-    // Server logic again for the A/AAAA test
+    // Server logic again for the A/AAAA test.
     msg := server.receive
-    // ID 0
+    // ID 0.
     questions := []
     answers := [
       dns.AResource "mixed.local" 120 (net.IpAddress.parse "1.2.3.4"),
@@ -62,8 +62,8 @@ test-mdns-mixed-caching:
 
   results := dns.dns-lookup-multi "mixed.local"
       --client=client
-      --accept-ipv4=true
-      --accept-ipv6=true
+      --accept-ipv4
+      --accept-ipv6
       --network=network
 
   expect (results.contains (net.IpAddress.parse "1.2.3.4"))
@@ -80,8 +80,8 @@ test-mdns-mixed-caching:
   print "  Step 2a: verify A record cache"
   results_a := dns.dns-lookup-multi "mixed.local"
       --client=client
-      --accept-ipv4=true
-      --accept-ipv6=false
+      --accept-ipv4
+      --no-accept-ipv6
       --network=network
   
   expect (results_a.contains (net.IpAddress.parse "1.2.3.4"))
@@ -90,8 +90,8 @@ test-mdns-mixed-caching:
   print "  Step 2b: verify AAAA record cache"
   results_aaaa := dns.dns-lookup-multi "mixed.local"
       --client=client
-      --accept-ipv4=false
-      --accept-ipv6=true
+      --no-accept-ipv4
+      --accept-ipv6
       --network=network
 
   expect (results_aaaa.contains (net.IpAddress #[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
@@ -103,8 +103,8 @@ test-standard-dns-retry:
   network := net.open
   
   // Setup 2 servers.
-  // 1. Silent (Mock UDP that reads but never replies)
-  // 2. Responsive (Mock UDP that replies)
+  // 1. Silent (Mock UDP that reads but never replies).
+  // 2. Responsive (Mock UDP that replies).
   
   s1 := network.udp-open --port=0
   s2 := network.udp-open --port=0
@@ -115,16 +115,18 @@ test-standard-dns-retry:
   ip_s2 := net.IpAddress.parse "127.0.0.1"
   port_s2 := s2.local-address.port
   
-  // Silent server logic
+  // Silent server logic.
   task::
-    catch:
+    e := catch:
       while true:
         msg := s1.receive
         // Do nothing, let client timeout.
+    expect-not-null e
+    expect (e == "CLOSED" or e == "NOT_CONNECTED")
 
-  // Responsive server logic
+  // Responsive server logic.
   task::
-    catch:
+    e := catch:
       while true:
         msg := s2.receive
         id := msg.data[0] << 8 | msg.data[1]
@@ -132,8 +134,10 @@ test-standard-dns-retry:
         answers := [dns.AResource "retry.local" 120 (net.IpAddress.parse "5.6.7.8")]
         response := dns.create-dns-packet questions answers --id=id --is-response --is-authoritative
         s2.send (udp.Datagram response msg.address)
+    expect-not-null e
+    expect (e == "CLOSED" or e == "NOT_CONNECTED")
 
-  // Configure Client with [Silent, Responsive]
+  // Configure Client with [Silent, Responsive].
   // Uses new SocketAddress support from our refactor.
   client := dns.DnsClient [
     net.SocketAddress ip_s1 port_s1,

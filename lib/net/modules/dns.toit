@@ -67,7 +67,7 @@ If there are multiple servers then they are tried in rotation until one
   the next one.  This is in line with the way that Linux handles multiple
   servers on the same lookup request.
   If we are looking up a name ending in ".local" and no specific client is provided,
-  we use the default mDNS client.
+  we use the default mDNS client $default-mdns-client.
 */
 dns-lookup-multi -> List
     host/string
@@ -285,6 +285,8 @@ abstract class DnsClient:
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
+    if record-types.is-empty: return []
+
     if net.IpAddress.is-valid name
         --accept-ipv4 = record-types.contains RECORD-A
         --accept-ipv6 = record-types.contains RECORD-AAAA:
@@ -385,8 +387,7 @@ abstract class DnsClient:
       else if not expected-type and mdns:
         // If we didn't match the ID, and we are in mDNS mode, we accept
         // any response that matches one of the types we are looking for.
-        if query.query-packets.contains type:
-          type-matches = true
+        type-matches = query.query-packets.contains type
 
       if type-matches:
         if resource.name != relevant-name: continue.do
@@ -434,7 +435,7 @@ abstract class DnsClient:
       do-send.call
 
       last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
-      catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
+      e := catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
         with-timeout retry-timeout:
           // Expect to get as many answers as we sent queries.
           remaining-tries := query.query-packets.size
@@ -447,10 +448,13 @@ abstract class DnsClient:
               remaining-tries--
               if remaining-tries == 0 or result.size != 0: return result
 
-          throw (DnsException "No response from server" --name=query.name)
+          // We only reach this point if we didn't send any queries.
+          // Otherwise the loop runs until we have all answers, or until the
+          // timeout interrupts us.
+          unreachable
 
+      assert: is-server-reachability-error_ e
       on-timeout.call
-
 
       retry-timeout = retry-timeout * 1.5
       attempt-counter++
@@ -480,12 +484,12 @@ class DnsClient_ extends DnsClient:
 
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
+    // Note that we continue to use the server that worked the last time
+    // since we store the index in a field.
     server-addr := servers_[current-server-index_]
     try:
       socket = network.udp-open
-
       socket.connect server-addr
-
       return fetch-loop_ query socket --no-mdns
           --do-send=:
             query.query-packets.do: | type packet |
@@ -512,12 +516,12 @@ class MdnsDnsClient extends DnsClient:
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
     // Recreate the query packets with the QU bit set.
-    updates := {:}
-    // We can't modify the map while iterating, so collect updates first.
-    query.query-packets.do: | type packet |
-      updates[type] = create-query_ query.name query.base-id type --unicast-response
-    updates.do: | type packet |
-      query.query-packets[type] = packet
+    // We modify the query in place. This is fine because the query object is
+    // created for this specific lookup request (in `get_`) and is not shared.
+    // If the lookup is retried (e.g. because of a timeout), we want to reuse
+    // the modified query object (with the QU bit set) anyway.
+    query.query-packets.map --in-place: | type packet |
+      create-query_ query.name query.base-id type --unicast-response
 
     try:
       // Open a UDP socket. We don't join the multicast group, but we send to it.
