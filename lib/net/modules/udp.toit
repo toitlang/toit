@@ -189,8 +189,14 @@ class Socket implements udp.Socket:
   send_ data from to address port:
     while true:
       state := ensure-state_ TOIT-UDP-WRITE_
-      wrote := udp-send_ state.group state.resource data from to address port
-      if wrote > 0 or wrote == to  - from: return null
+      if not state: throw "NOT_CONNECTED"
+      wrote := -1
+      e := catch:
+        wrote = udp-send_ state.group state.resource data from to address port
+      if e:
+         if e == "WRONG_OBJECT_TYPE": throw "NOT_CONNECTED"
+         throw e
+      if wrote > 0 or wrote == to - from: return null
       assert: wrote == -1
       state.clear-state TOIT-UDP-WRITE_
 
