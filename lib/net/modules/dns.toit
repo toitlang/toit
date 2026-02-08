@@ -238,8 +238,8 @@ If a DNS server fails to answer after 2.5 times the $DNS-RETRY-TIMEOUT, then
 abstract class DnsClient:
   cache_ ::= Map  // From numeric q-type to (Map name to CacheEntry_).
 
-  constructor arguments:
-    return DnsClient_ arguments
+  constructor servers/List:
+    return DnsClient_ servers
 
   constructor.mdns:
     return MdnsDnsClient

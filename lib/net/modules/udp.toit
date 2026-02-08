@@ -25,7 +25,7 @@ TOIT-UDP-OPTION-REUSE-ADDRESS        ::= 7
 TOIT-UDP-OPTION-REUSE-PORT           ::= 8
 
 
-class Socket implements udp.Socket:
+class Socket implements udp.Socket udp.MulticastSocket:
   network_/udp.Interface
   state_/ResourceState_? := ?
 
@@ -58,7 +58,7 @@ class Socket implements udp.Socket:
   If $reuse_address is true (the default), the SO_REUSEADDR option is set.
   If $reuse_port is true (not default), the SO_REUSEPORT option is set (if supported).
   */
-  constructor.multicast network/net.Client
+  constructor.multicast .network_/net.Client
       address/net.IpAddress
       port/int
       --if-addr/net.IpAddress?=null
@@ -66,7 +66,6 @@ class Socket implements udp.Socket:
       --reuse-port/bool=false
       --loopback/bool=true
       --ttl/int=1:
-    network_ = network
     group := udp-resource-group_
     id := udp-create-socket_ group
     state_ = ResourceState_ group id

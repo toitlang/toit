@@ -41,6 +41,26 @@ abstract class NetworkServiceClientBase extends ServiceClient implements Network
   udp-open handle/int port/int? -> int:
     return invoke_ NetworkService.UDP-OPEN-INDEX [handle, port]
 
+  udp-open-multicast -> int
+      handle/int
+      address/ByteArray
+      port/int
+      if-addr/ByteArray?
+      reuse-address/bool
+      reuse-port/bool
+      loopback/bool
+      ttl/int:
+    return invoke_ NetworkService.UDP-OPEN-MULTICAST-INDEX [
+        handle,
+        address,
+        port,
+        if-addr,
+        reuse-address,
+        reuse-port,
+        loopback,
+        ttl]
+
+
   udp-connect handle/int ip/ByteArray port/int -> none:
     invoke_ NetworkService.UDP-CONNECT-INDEX [handle, ip, port]
 
@@ -100,6 +120,25 @@ class NetworkResourceProxy extends ServiceResourceProxy:
   udp-open --port/int?=null -> udp.Socket:
     client ::= client_ as NetworkServiceClientBase
     socket ::= client.udp-open handle_ port
+    return UdpSocketResourceProxy_ client socket
+
+  udp-open-multicast -> udp.MulticastSocket
+      address/net.IpAddress
+      port/int
+      --if-addr/net.IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1:
+    client ::= client_ as NetworkServiceClientBase
+    socket ::= client.udp-open-multicast handle_
+        address.to-byte-array
+        port
+        (if-addr ? if-addr.to-byte-array : null)
+        reuse-address
+        reuse-port
+        loopback
+        ttl
     return UdpSocketResourceProxy_ client socket
 
   tcp-connect address/net.SocketAddress -> tcp.Socket:
@@ -304,6 +343,17 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
 
     if index == NetworkService.UDP-OPEN-INDEX:
       return udp-open client arguments[1]
+    if index == NetworkService.UDP-OPEN-MULTICAST-INDEX:
+      if not network_ is udp.MulticastInterface: throw "UNSUPPORTED"
+      socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
+          (net.IpAddress arguments[0])
+          arguments[1]
+          --if-addr=(arguments[2] ? net.IpAddress arguments[2] : null)
+          --reuse-address=arguments[3]
+          --reuse-port=arguments[4]
+          --loopback=arguments[5]
+          --ttl=arguments[6]
+      return ProxyingSocketResource_ this client socket
     if index == NetworkService.UDP-CONNECT-INDEX:
       socket ::= convert-to-socket_ client arguments[0]
       return socket.connect (convert-to-socket-address_ arguments 1)
@@ -467,7 +517,7 @@ class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin
   close-reader_:
     // TODO(florian): Implement this.
 
-class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket:
+class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket udp.MulticastSocket:
   constructor client/NetworkServiceClientBase handle/int:
     super client handle
 
