@@ -489,7 +489,13 @@ class DnsClient_ extends DnsClient:
     server-addr := servers_[current-server-index_]
     try:
       socket = network.udp-open
-      socket.connect server-addr
+      error := catch: socket.connect server-addr
+      if error:
+        if is-server-reachability-error_ error:
+          // The current server didn't respond (or was unreachable). Move to the next.
+          current-server-index_ = (current-server-index_ + 1) % servers_.size
+        throw error
+
       return fetch-loop_ query socket --no-mdns
           --do-send=:
             query.query-packets.do: | type packet |

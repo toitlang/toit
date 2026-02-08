@@ -38,13 +38,6 @@
 #endif
 
 
-#define DEBUG_UDP 1
-#if DEBUG_UDP
-#define LOG(...) do { fprintf(stderr, "[UDP_WIN] " __VA_ARGS__); fflush(stderr); } while (0)
-#else
-#define LOG(...)
-#endif
-
 namespace toit {
 
 class UdpResourceGroup : public ResourceGroup {
@@ -77,13 +70,11 @@ class UdpSocketResource : public WindowsResource {
 
   void start_reading() {
     if (started_reading_) return;
-    LOG("start_reading socket=%d\n", socket_);
 
     started_reading_ = true;
     if (!issue_read_request()) {
       set_state(UDP_WRITE | UDP_ERROR);
       error_code_ = GetLastError();
-      LOG("issue_read_request failed error=%d\n", error_code_);
     }
   }
 
@@ -129,12 +120,8 @@ class UdpSocketResource : public WindowsResource {
                                      read_peer_address_.as_socket_address(),
                                      read_peer_address_.size_pointer(),
                                      &read_overlapped_, NULL);
-    if (receive_result == SOCKET_ERROR) {
-      int error = WSAGetLastError();
-      if (error != WSA_IO_PENDING) {
-        LOG("WSARecvFrom failed error=%d\n", error);
-        return false;
-      }
+    if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+      return false;
     }
     return true;
   }
@@ -225,9 +212,8 @@ PRIMITIVE(create_socket) {
   // This makes Windows behave like Linux where ICMP errors don't crash the socket.
   DWORD dwBytesReturned = 0;
   BOOL bNewBehavior = FALSE;
-  int ioctl_result = WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
            NULL, 0, &dwBytesReturned, NULL, NULL);
-  LOG("create_socket socket=%d SIO_UDP_CONNRESET=%d\n", socket, ioctl_result);
 
   WSAEVENT read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
@@ -284,9 +270,8 @@ PRIMITIVE(bind) {
   // Disable WSAECONNRESET when ICMP unreachable is received on connected UDP socket.
   DWORD dwBytesReturned = 0;
   BOOL bNewBehavior = FALSE;
-  int ioctl_result = WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
            NULL, 0, &dwBytesReturned, NULL, NULL);
-  LOG("bind socket=%d SIO_UDP_CONNRESET=%d\n", socket, ioctl_result);
 
   int yes = 1;
   if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
@@ -334,10 +319,8 @@ PRIMITIVE(connect) {
   USE(proxy);
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
-  LOG("connect socket=%d port=%d\n", udp_resource->socket(), port);
 
   if (connect(udp_resource->socket(), socket_address.as_socket_address(), socket_address.size()) != 0) {
-    LOG("connect failed error=%d\n", WSAGetLastError());
     WINDOWS_ERROR;
   }
 
@@ -386,11 +369,9 @@ PRIMITIVE(receive) {
 
   if (!udp_resource->receive_read_response()) {
     DWORD error = WSAGetLastError();
-    LOG("receive_read_response failed error=%d\n", error);
     // If the socket received an ICMP unreachable (WSAECONNRESET), treat it as
     // "no data" and re-issue the read request. This matches Linux behavior.
     if (error == WSAECONNRESET) {
-      LOG("receive_read_response ignored WSAECONNRESET\n");
       if (!udp_resource->issue_read_request()) WINDOWS_ERROR;
       return Smi::from(-1);
     }
