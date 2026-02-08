@@ -203,6 +203,13 @@ PRIMITIVE(create_socket) {
   SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
 
+  // Disable WSAECONNRESET when ICMP unreachable is received on connected UDP socket.
+  // This makes Windows behave like Linux where ICMP errors don't crash the socket.
+  DWORD dwBytesReturned = 0;
+  BOOL bNewBehavior = FALSE;
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+           NULL, 0, &dwBytesReturned, NULL, NULL);
+
   WSAEVENT read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
@@ -254,6 +261,12 @@ PRIMITIVE(bind) {
 
   SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
+
+  // Disable WSAECONNRESET when ICMP unreachable is received on connected UDP socket.
+  DWORD dwBytesReturned = 0;
+  BOOL bNewBehavior = FALSE;
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+           NULL, 0, &dwBytesReturned, NULL, NULL);
 
   int yes = 1;
   if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
@@ -349,7 +362,16 @@ PRIMITIVE(receive) {
     if (address == null) FAIL(ALLOCATION_FAILED);
   }
 
-  if (!udp_resource->receive_read_response()) WINDOWS_ERROR;
+  if (!udp_resource->receive_read_response()) {
+    DWORD error = WSAGetLastError();
+    // If the socket received an ICMP unreachable (WSAECONNRESET), treat it as
+    // "no data" and re-issue the read request. This matches Linux behavior.
+    if (error == WSAECONNRESET) {
+      if (!udp_resource->issue_read_request()) WINDOWS_ERROR;
+      return Smi::from(-1);
+    }
+    return windows_error(process, error);
+  }
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(udp_resource->read_count()));
   if (array == null) FAIL(ALLOCATION_FAILED);
