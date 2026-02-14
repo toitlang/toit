@@ -74,6 +74,17 @@ interface NetworkService:
   udp-open handle/int port/int? -> int
   static UDP-OPEN-INDEX /int ::= 100
 
+  udp-open-multicast -> int
+      handle/int
+      address/ByteArray
+      port/int
+      if-addr/ByteArray?
+      reuse-address/bool
+      reuse-port/bool
+      loopback/bool
+      ttl/int
+  static UDP-OPEN-MULTICAST-INDEX /int ::= 104
+
   udp-connect handle/int ip/ByteArray port/int -> none
   static UDP-CONNECT-INDEX /int ::= 101
 

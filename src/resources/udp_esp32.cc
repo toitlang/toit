@@ -402,7 +402,6 @@ PRIMITIVE(receive)  {
   });
 }
 
-
 PRIMITIVE(send) {
   ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
 
@@ -518,6 +517,18 @@ PRIMITIVE(get_option) {
   });
 }
 
+static Object* set_bool_bit(Object* raw, Process* process, uint8_t& target, uint8_t mask) {
+  if (raw == process->true_object()) {
+    target |= mask;
+  } else if (raw == process->false_object()) {
+    target &= ~mask;
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+
+  return null;
+}
+
 PRIMITIVE(set_option) {
   ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, int, option, Object, raw);
   CAPTURE4(
@@ -527,15 +538,10 @@ PRIMITIVE(set_option) {
       Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
+    Object* result = null;
     switch (capture.option) {
       case UDP_BROADCAST:
-        if (capture.raw == capture.process->true_object()) {
-          capture.socket->upcb()->so_options |= SOF_BROADCAST;
-        } else if (capture.raw == capture.process->false_object()) {
-          capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
-        } else {
-          FAIL(WRONG_OBJECT_TYPE);
-        }
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_BROADCAST);
         break;
 
       case UDP_MULTICAST_MEMBERSHIP: {
@@ -555,13 +561,8 @@ PRIMITIVE(set_option) {
       }
 
       case UDP_MULTICAST_LOOPBACK: {
-        if (capture.raw == capture.process->true_object()) {
-          udp_set_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
-        } else if (capture.raw == capture.process->false_object()) {
-          udp_clear_flags(capture.socket->upcb(), UDP_FLAGS_MULTICAST_LOOP);
-        } else {
-          FAIL(WRONG_OBJECT_TYPE);
-        }
+        // UDP_FLAGS_MULTICAST_LOOP matches the bit used by calls to udp_set_flags/udp_clear_flags.
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->flags, UDP_FLAGS_MULTICAST_LOOP);
         break;
       }
 
@@ -579,20 +580,17 @@ PRIMITIVE(set_option) {
       // different. Actually checking LwIP source, often SOF_REUSEADDR is
       // enough.
       case UDP_REUSE_PORT:
-      case UDP_REUSE_ADDRESS: {
-        if (capture.raw == capture.process->true_object()) {
-          capture.socket->upcb()->so_options |= SOF_REUSEADDR;
-        } else if (capture.raw == capture.process->false_object()) {
-          capture.socket->upcb()->so_options &= ~SOF_REUSEADDR;
-        } else {
-          FAIL(WRONG_OBJECT_TYPE);
-        }
+      case UDP_REUSE_ADDRESS:
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_REUSEADDR);
         break;
-      }
+
+
 
       default:
         FAIL(UNIMPLEMENTED);
     }
+
+    if (result != null) return result;
 
     return capture.process->null_object();
   });

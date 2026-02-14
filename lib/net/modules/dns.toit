@@ -14,6 +14,10 @@ MAX-RETRY-ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX-CACHE-SIZE_ ::= platform == system.PLATFORM-FREERTOS ? 30 : 1000
 
+MDNS-MULTICAST-ADDRESS_ ::= net.IpAddress.parse "224.0.0.251"
+MDNS-PORT_ ::= 5353
+
+
 class DnsException:
   text/string
   name/string?
@@ -62,6 +66,8 @@ If there are multiple servers then they are tried in rotation until one
   responds.  If one responds with an error (eg. no such domain) we do not try
   the next one.  This is in line with the way that Linux handles multiple
   servers on the same lookup request.
+  If we are looking up a name ending in ".local" and no specific client is provided,
+  we use the default mDNS client $default-mdns-client.
 */
 dns-lookup-multi -> List
     host/string
@@ -73,7 +79,9 @@ dns-lookup-multi -> List
     --accept-ipv6/bool=false:
   if server and client: throw "INVALID_ARGUMENT"
   if not client:
-    if not server:
+    if host.ends-with ".local":
+      client = default-mdns-client
+    else if not server:
       client = default-client
     else:
       client = AUTO-CREATED-CLIENTS_.get server --init=:
@@ -98,6 +106,21 @@ AUTO-CREATED-CLIENTS_ ::= {:}
 
 user-set-client_/DnsClient? := null
 dhcp-client_/DnsClient? := null
+
+default-mdns-client_/DnsClient? := null
+
+/**
+The default mDNS client.
+
+By default this is an instance of $MdnsDnsClient, but it can be overwritten
+  with $(default-mdns-client= client).
+*/
+default-mdns-client -> DnsClient:
+  if not default-mdns-client_: default-mdns-client_ = DnsClient.mdns
+  return default-mdns-client_
+
+default-mdns-client= client/DnsClient -> none:
+  default-mdns-client_ = client
 
 RESOLV-CONF_ ::= "/etc/resolv.conf"
 
@@ -212,67 +235,23 @@ The client starts by using the first DNS server in the list.
 If a DNS server fails to answer after 2.5 times the $DNS-RETRY-TIMEOUT, then
   the client switches permanently to the next one on the list.
 */
-class DnsClient:
-  servers_/List
-  current-server-index_/int := ?
-
+abstract class DnsClient:
   cache_ ::= Map  // From numeric q-type to (Map name to CacheEntry_).
 
-  /**
-  Creates a DnsClient, given a list of DNS servers in the form of IP addresses
-    in string form.
-  */
   constructor servers/List:
-    if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress): throw "INVALID_ARGUMENT"
-    servers_ = servers.map: (it is string) ? net.IpAddress.parse it : it
-    current-server-index_ = 0
+    return DnsClient_ servers
 
-  static DNS-UDP-PORT ::= 53
+  constructor.mdns:
+    return MdnsDnsClient
 
-  fetch_ query/DnsQuery_ server-ip/net.IpAddress --network/udp.Interface -> List:
-    socket/udp.Socket? := null
-    retry-timeout := DNS-RETRY-TIMEOUT
-    attempt-counter := 1
-    try:
-      socket = network.udp-open
-
-      socket.connect
-          net.SocketAddress server-ip DNS-UDP-PORT
-
-      // If we don't get an answer resend the query with exponential backoff
-      // until the outer timeout expires or we have tried too many times.
-      while true:
-        // Write both packets (IPv4 and IPv6) to the socket, wait for the
-        // first response.
-        query.query-packets.do: | type packet |
-          socket.write packet
-
-        last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
-        catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
-          with-timeout retry-timeout:
-            // Expect to get as many answers as we sent queries.
-            remaining-tries := query.query-packets.size
-            while remaining-tries != 0:
-              answer := socket.receive
-              result := decode-and-cache-response_ query answer.data
-              if result:
-                remaining-tries--
-                if remaining-tries == 0 or result.size != 0: return result
-            throw (DnsException "No response from server" --name=query.name)
-
-        retry-timeout = retry-timeout * 1.5
-        attempt-counter++
-    finally:
-      if socket: socket.close
+  constructor.private_:
+    cache_ = Map
 
   /**
   Look up a domain name and return a list of results.
-  The $record-type argument can be $RECORD-A, or $RECORD-AAAA, in which case the result
-    is a list of $net.IpAddress.
-  If the $record-type is $RECORD-TXT, $RECORD-PTR, or $RECORD-CNAME the results
-    will be strings.
-  If the $record-type is $RECORD-SRV, the results are instances of $SrvResource
-    (normally only used for mDNS).
+  The $record-type argument can be $RECORD-A, or $RECORD-AAAA, in which case the result is a list of $net.IpAddress.
+  If the $record-type is $RECORD-TXT, $RECORD-PTR, or $RECORD-CNAME the results will be strings.
+  If the $record-type is $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
   */
   get name -> List
       --record-type/int
@@ -306,6 +285,8 @@ class DnsClient:
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
+    if record-types.is-empty: return []
+
     if net.IpAddress.is-valid name
         --accept-ipv4 = record-types.contains RECORD-A
         --accept-ipv6 = record-types.contains RECORD-AAAA:
@@ -321,24 +302,19 @@ class DnsClient:
 
     query := DnsQuery_ name --record-types=record-types
 
+    // We try servers one at a time, but if there was a good error
+    // message from one server (eg. no such domain) we let that
+    // error unwind the stack and do not try the next server.
+    unwind-block := : | exception |
+      not is-server-reachability-error_ exception
+
     with-timeout timeout:  // Typically a 20s timeout.
-      // We try servers one at a time, but if there was a good error
-      // message from one server (eg. no such domain) we let that
-      // error unwind the stack and do not try the next server.
-      unwind-block := : | exception |
-        not is-server-reachability-error_ exception
       while true:
-        // Note that we continue to use the server that worked the last time
-        // since we store the index in a field.
-        current-server-ip := servers_[current-server-index_]
-
-        trace := null
         catch --unwind=unwind-block:
-          return fetch_ query current-server-ip --network=network
-
-        // The current server didn't respond after about 3 seconds. Move to the next.
-        current-server-index_ = (current-server-index_ + 1) % servers_.size
+          return fetch_ query --network=network
     unreachable
+
+  abstract fetch_ query/DnsQuery_ --network/udp.Interface -> List
 
   static case-compare_ a/string b/string -> bool:
     if a == b: return true
@@ -359,14 +335,14 @@ class DnsClient:
   This is just for regular DNS A and AAAA responses, it doesn't decode queries
     and the more funky record types needed for mDNS.
   */
-  decode-and-cache-response_ query/DnsQuery_ response/ByteArray -> List?:
+  decode-and-cache-response_ query/DnsQuery_ response/ByteArray --mdns/bool=false -> List?:
     decoded := decode-packet response --error-name=query.name
 
     // Check for expected response, but mask out the authoritative bit
     // and the recursion available bit, which we do not care about.
     // The recursion desired bit seems to vary randomly, so we ignore
     // that too.
-    if decoded.status-bits & ~0x580 != 0x8000:
+    if decoded.status-bits & ~0x580 != 0x8000 and not mdns:
       protocol-error_  // Unexpected response flags.
 
     id := query.base-id
@@ -376,48 +352,201 @@ class DnsClient:
         expected-type = type
       id = (id + 1) & 0xffff
     // Id did not match or otherwise useless response.
-    if expected-type == null or decoded.questions.size != 1: return null
-    decoded-question/Question := decoded.questions[0] as Question
+    if not mdns:
+      if expected-type == null: return null
+      if decoded.questions.size != 1: return null
 
-    if not case-compare_ decoded-question.name query.name:
-      // Suspicious that the id matched, but the name didn't.
-      // Possible DNS poisoning attack.
-      throw (DnsException "Response name mismatch")
+    if decoded.questions.size == 1:
+      decoded-question/Question := decoded.questions[0] as Question
+
+      if not case-compare_ decoded-question.name query.name:
+        // Suspicious that the id matched, but the name didn't.
+        // Possible DNS poisoning attack.
+        if not mdns: throw (DnsException "Response name mismatch")
+        return null
 
     // Simplified list of answers for the caller.
     answers := []
 
-    relevant-name := decoded-question.name
+    // We collect answers by type so we can cache them properly.
+    // Map from type (int) to List of answers.
+    answers-by-type := {:}
+    // Map from type (int) to min TTL (int).
+    ttl-by-type := {:}
 
-    ttl := int.MAX
+    relevant-name := query.name
 
     // Since we sent a single question we expect answers that start with a
     // repeat of that question and then just contain data for that one
     // question.
     decoded.resources.do: | resource |
-      if resource.type == expected-type:
+      type := resource.type
+      type-matches := false
+      if type == expected-type:
+        type-matches = true
+      else if not expected-type and mdns:
+        // If we didn't match the ID, and we are in mDNS mode, we accept
+        // any response that matches one of the types we are looking for.
+        type-matches = query.query-packets.contains type
+
+      if type-matches:
         if resource.name != relevant-name: continue.do
+
+        entry := null
         if resource is SrvResource:
-          answers.add (resource as SrvResource)
+          entry = (resource as SrvResource)
         else if resource is StringResource:
-          answers.add (resource as StringResource).value
+          entry = (resource as StringResource).value
         else if resource is AResource:
-          answers.add (resource as AResource).address
-        ttl = min ttl resource.ttl
+          entry = (resource as AResource).address
+
+        if entry:
+          list := answers-by-type.get type --init=(: [])
+          list.add entry
+
+          current-ttl := ttl-by-type.get type --if-absent=(: int.MAX)
+          ttl-by-type[type] = min current-ttl resource.ttl
+
       else if resource.type == RECORD-CNAME:
         relevant-name = (resource as StringResource).value
 
-    // We won't cache more than a day, even if the TTL is very high.  (In
-    // practice TTLs over one hour are rare.)
-    ttl = min ttl (3600 * 24)
-    // Ignore negative TTLs and very short TTLs.
-    ttl = max 10 ttl
+    answers-by-type.do: | type list |
+      ttl := ttl-by-type[type]
+      // We won't cache more than a day, even if the TTL is very high.  (In
+      // practice TTLs over one hour are rare.)
+      ttl = min ttl (3600 * 24)
+      // Ignore negative TTLs and very short TTLs.
+      ttl = max 10 ttl
 
-    if answers.size > 0 and ttl > 0:
-      trim-cache cache_ expected-type
-      type-cache := cache_.get expected-type --init=: {:}
-      type-cache[query.name] = CacheEntry_ answers ttl
+      if list.size > 0 and ttl > 0:
+        trim-cache cache_ type
+        type-cache := cache_.get type --init=: {:}
+        type-cache[query.name] = CacheEntry_ list ttl
+        answers.add-all list
+
     return answers
+
+
+  fetch-loop_ query/DnsQuery_ socket/udp.Socket --mdns/bool=false [--do-send] [--on-timeout] -> List:
+    retry-timeout := DNS-RETRY-TIMEOUT
+    attempt-counter := 1
+    while true:
+      // Send packets.
+      do-send.call
+
+      last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
+      e := catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
+        with-timeout retry-timeout:
+          // Expect to get as many answers as we sent queries.
+          remaining-tries := query.query-packets.size
+          while remaining-tries != 0:
+            answer := socket.receive
+            // mDNS responses might not match the query ID (e.g. unsolicited responses).
+            // We pass the mdns flag to allow relaxed ID checking.
+            result := decode-and-cache-response_ query answer.data --mdns=mdns
+            if result:
+              remaining-tries--
+              if remaining-tries == 0 or result.size != 0: return result
+
+          // We only reach this point if we didn't send any queries.
+          // Otherwise the loop runs until we have all answers, or until the
+          // timeout interrupts us.
+          unreachable
+
+      assert: is-server-reachability-error_ e
+      on-timeout.call
+
+      retry-timeout = retry-timeout * 1.5
+      attempt-counter++
+    unreachable
+
+class DnsClient_ extends DnsClient:
+  servers_/List
+  current-server-index_/int := ?
+
+  /**
+  Creates a DnsClient, given a list of DNS servers in the form of IP addresses
+    in string form.
+  */
+  constructor servers/List:
+    if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress and it is not net.SocketAddress): throw "INVALID_ARGUMENT"
+    servers_ = servers.map:
+      if it is string:
+        ip := net.IpAddress.parse it
+        net.SocketAddress ip DNS-UDP-PORT
+      else if it is net.IpAddress:
+        net.SocketAddress it DNS-UDP-PORT
+      else: it
+    current-server-index_ = 0
+    super.private_
+
+  static DNS-UDP-PORT ::= 53
+
+  fetch_ query/DnsQuery_ --network/udp.Interface -> List:
+    socket/udp.Socket? := null
+    // Note that we continue to use the server that worked the last time
+    // since we store the index in a field.
+    server-addr := servers_[current-server-index_]
+    try:
+      socket = network.udp-open
+      error := catch: socket.connect server-addr
+      if error:
+        if is-server-reachability-error_ error:
+          // The current server didn't respond (or was unreachable). Move to the next.
+          current-server-index_ = (current-server-index_ + 1) % servers_.size
+        throw error
+
+      return fetch-loop_ query socket --no-mdns
+          --do-send=:
+            query.query-packets.do: | type packet |
+              socket.write packet
+          --on-timeout=:
+            // The current server didn't respond after about 3 seconds. Move to the next.
+            current-server-index_ = (current-server-index_ + 1) % servers_.size
+            server-addr = servers_[current-server-index_]
+            // We reconnect the socket, as the server we are sending to has changed.
+            socket.connect server-addr
+
+    finally:
+      if socket: socket.close
+
+class MdnsDnsClient extends DnsClient:
+  address_/net.IpAddress
+  port_/int
+
+  constructor --address/net.IpAddress=MDNS-MULTICAST-ADDRESS_ --port/int=MDNS-PORT_:
+    address_ = address
+    port_ = port
+    super.private_
+
+  fetch_ query/DnsQuery_ --network/udp.Interface -> List:
+    socket/udp.Socket? := null
+    // Recreate the query packets with the QU bit set.
+    // We modify the query in place. This is fine because the query object is
+    // created for this specific lookup request (in `get_`) and is not shared.
+    // If the lookup is retried (e.g. because of a timeout), we want to reuse
+    // the modified query object (with the QU bit set) anyway.
+    query.query-packets.map --in-place: | type packet |
+      create-query_ query.name query.base-id type --unicast-response
+
+    try:
+      // Open a UDP socket. We don't join the multicast group, but we send to it.
+      socket = network.udp-open
+
+      // Connecting a UDP socket filters incoming packets to be only from the connected peer.
+      // mDNS responders send unicast responses to the source port.
+      // We do not connect, as that would filter out the unicast responses we expect.
+
+      address := net.SocketAddress address_ port_
+
+      return fetch-loop_ query socket --mdns
+          --do-send=:
+            // Send block.
+            query.query-packets.do: | type packet |
+              socket.send (udp.Datagram packet address)
+          --on-timeout=:
+    finally:
+      if socket: socket.close
 
 protocol-error_ -> none:
   throw (DnsException "DNS protocol error")
@@ -432,7 +561,7 @@ This is a light-weight version of create-dns-packet for applications that
   are only looking up regular names and don't need advanced DNS features
   like the ones used by mDNS.
 */
-create-query_ name/string query-id/int record-type/int -> ByteArray:
+create-query_ name/string query-id/int record-type/int --unicast-response/bool=false -> ByteArray:
   result := io.Buffer
   result.big-endian.write-int16 query-id
   result.write #[
@@ -444,7 +573,9 @@ create-query_ name/string query-id/int record-type/int -> ByteArray:
   ]
   write-name_ name --locations=null --buffer=result
   result.big-endian.write-int16 record-type
-  result.big-endian.write-int16 CLASS-INTERNET
+  clas := CLASS-INTERNET
+  if unicast-response: clas |= 0x8000
+  result.big-endian.write-int16 clas
   return result.bytes
 
 select-random-ip_ name/string list/List -> net.IpAddress:

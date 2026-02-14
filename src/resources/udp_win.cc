@@ -33,6 +33,11 @@
 
 #include "udp.h"
 
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+
+
 namespace toit {
 
 class UdpResourceGroup : public ResourceGroup {
@@ -203,6 +208,13 @@ PRIMITIVE(create_socket) {
   SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
 
+  // Disable WSAECONNRESET when ICMP unreachable is received on connected UDP socket.
+  // This makes Windows behave like Linux where ICMP errors don't crash the socket.
+  DWORD dwBytesReturned = 0;
+  BOOL bNewBehavior = FALSE;
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+           NULL, 0, &dwBytesReturned, NULL, NULL);
+
   WSAEVENT read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
@@ -254,6 +266,12 @@ PRIMITIVE(bind) {
 
   SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
+
+  // Disable WSAECONNRESET when ICMP unreachable is received on connected UDP socket.
+  DWORD dwBytesReturned = 0;
+  BOOL bNewBehavior = FALSE;
+  WSAIoctl(socket, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior),
+           NULL, 0, &dwBytesReturned, NULL, NULL);
 
   int yes = 1;
   if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
@@ -349,7 +367,16 @@ PRIMITIVE(receive) {
     if (address == null) FAIL(ALLOCATION_FAILED);
   }
 
-  if (!udp_resource->receive_read_response()) WINDOWS_ERROR;
+  if (!udp_resource->receive_read_response()) {
+    DWORD error = WSAGetLastError();
+    // If the socket received an ICMP unreachable (WSAECONNRESET), treat it as
+    // "no data" and re-issue the read request. This matches Linux behavior.
+    if (error == WSAECONNRESET) {
+      if (!udp_resource->issue_read_request()) WINDOWS_ERROR;
+      return Smi::from(-1);
+    }
+    return windows_error(process, error);
+  }
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(udp_resource->read_count()));
   if (array == null) FAIL(ALLOCATION_FAILED);
@@ -390,6 +417,26 @@ static Object* get_port_or_error(SOCKET socket, Process* process) {
   return Smi::from(socket_address.port());
 }
 
+
+static Object* get_bool_option(SOCKET socket, int level, int optname, Process* process) {
+  int value = 0;
+  int size = sizeof(value);
+  if (getsockopt(socket, level, optname, reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+    WINDOWS_ERROR;
+  }
+  return BOOL(value != 0);
+}
+
+static Object* get_int_option(SOCKET socket, int level, int optname, Process* process) {
+  int value = 0;
+  int size = sizeof(value);
+  if (getsockopt(socket, level, optname, reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+    WINDOWS_ERROR;
+  }
+  return Smi::from(value);
+}
+
+
 PRIMITIVE(get_option) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option);
   USE(proxy);
@@ -402,70 +449,59 @@ PRIMITIVE(get_option) {
     case UDP_PORT:
       return get_port_or_error(socket, process);
 
-    case UDP_BROADCAST: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_BROADCAST:
+      return get_bool_option(socket, SOL_SOCKET, SO_BROADCAST, process);
 
-    case UDP_MULTICAST_LOOPBACK: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_MULTICAST_LOOPBACK:
+      return get_bool_option(socket, IPPROTO_IP, IP_MULTICAST_LOOP, process);
 
-    case UDP_MULTICAST_TTL: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return Smi::from(value);
-    }
+    case UDP_MULTICAST_TTL:
+      return get_int_option(socket, IPPROTO_IP, IP_MULTICAST_TTL, process);
 
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return BOOL(value != 0);
-    }
+    case UDP_REUSE_ADDRESS:
+      return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
+
+
 
     default:
       FAIL(UNIMPLEMENTED);
   }
 }
 
+static Object* set_bool_option(SOCKET socket, int level, int optname, Object* raw, Process* process) {
+  int value = 0;
+  if (raw == process->true_object()) {
+    value = 1;
+  } else if (raw != process->false_object()) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+  if (setsockopt(socket, level, optname, reinterpret_cast<char*>(&value),
+                 sizeof(value)) == SOCKET_ERROR) {
+    WINDOWS_ERROR;
+  }
+  return null;
+}
+
+static Object* set_int_option(SOCKET socket, int level, int optname, Object* raw, Process* process) {
+  if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+  int value = Smi::value(Smi::cast(raw));
+  if (setsockopt(socket, level, optname, reinterpret_cast<char*>(&value),
+                 sizeof(value)) == SOCKET_ERROR) {
+    WINDOWS_ERROR;
+  }
+  return null;
+}
+
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option, Object, raw);
   USE(proxy);
   SOCKET socket = udp_resource->socket();
+  Object* result = null;
 
   switch (option) {
-    case UDP_BROADCAST: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
-                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
+    case UDP_BROADCAST:
+      result = set_bool_option(socket, SOL_SOCKET, SO_BROADCAST, raw, process);
       break;
-    }
 
     case UDP_MULTICAST_MEMBERSHIP: {
       Blob bytes;
@@ -486,50 +522,23 @@ PRIMITIVE(set_option) {
       break;
     }
 
-    case UDP_MULTICAST_LOOPBACK: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
-                     reinterpret_cast<char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
+    case UDP_MULTICAST_LOOPBACK:
+      result = set_bool_option(socket, IPPROTO_IP, IP_MULTICAST_LOOP, raw, process);
       break;
-    }
 
-    case UDP_MULTICAST_TTL: {
-      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
-      int value = Smi::value(Smi::cast(raw));
-      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
-                     reinterpret_cast<const char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
+    case UDP_MULTICAST_TTL:
+      result = set_int_option(socket, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
-    }
 
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      if (raw == process->true_object()) {
-        value = 1;
-      } else if (raw != process->false_object()) {
-        FAIL(WRONG_OBJECT_TYPE);
-      }
-      if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
-                     reinterpret_cast<const char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
+    case UDP_REUSE_ADDRESS:
+      result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
       break;
-    }
 
     default:
       FAIL(UNIMPLEMENTED);
   }
+
+  if (result != null) return result;
 
   return process->null_object();
 }

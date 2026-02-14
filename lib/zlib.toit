@@ -184,7 +184,7 @@ Creates an uncompressed data stream that is compatible with gzip decoders
 class UncompressedGzipEncoder extends Coder_:
   constructor:
     super
-        UncompressedDeflateBackend_ CrcAndLengthChecksum_ --gzip-header=true --split-writes=true
+        UncompressedDeflateBackend_ CrcAndLengthChecksum_ --gzip-header --split-writes
 
 class RunLengthDeflateBackend_ implements Backend_:
   summer_/crypto.Checksum := ?
@@ -258,7 +258,7 @@ Creates a run length encoded data stream that is compatible with gzip decoders
 class RunLengthGzipEncoder extends Coder_:
   constructor:
     super
-        RunLengthDeflateBackend_ CrcAndLengthChecksum_ --gzip-header=true
+        RunLengthDeflateBackend_ CrcAndLengthChecksum_ --gzip-header
 
 /**
 A compression/decompression implementation.

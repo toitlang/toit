@@ -4,6 +4,7 @@
 
 import encoding.tison
 import io
+import .ip-address
 import .socket-address
 
 interface Interface:
@@ -59,6 +60,7 @@ interface Socket:
   // Enable or disable broadcast messages.
   broadcast= value/bool
 
+interface MulticastSocket extends Socket:
   // Whether multicast loopback is enabled.
   multicast-loopback -> bool
 
@@ -82,3 +84,28 @@ interface Socket:
 
   // Enable or disable reuse port.
   reuse-port= value/bool
+
+  // Adds the given $address to the multicast group.
+  multicast-add-membership address/IpAddress
+
+interface MulticastInterface:
+  /**
+  Opens a UDP socket for multicast.
+
+  The $address is the multicast address to join.
+  The $port is the port to listen on.
+  The $if-addr is the IP address of the interface to join the group on.
+    If null, the default interface is used.
+  If $reuse-address is true (the default), the SO_REUSEADDR option is set.
+  If $reuse-port is true (not default), the SO_REUSEPORT option is set (if supported).
+  */
+  udp-open-multicast -> MulticastSocket
+      address/IpAddress
+      port/int
+      --if-addr/IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1
+
+
