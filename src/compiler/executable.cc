@@ -165,6 +165,7 @@ int create_executable(const char* out_path,
     fprintf(stderr, "Unable to read vessel '%s'\n", vessel_path);
     return -1;
   }
+  bool replaced_vessel_content = false;
   for (size_t i = 0; i < size - sizeof(VESSEL_TOKEN); i++) {
     bool found_token = true;
     // We must find two copies of the token next to each other.
@@ -177,27 +178,35 @@ int create_executable(const char* out_path,
     if (found_token) {
       *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
       memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
-      // Use 'open', so we can give executable permissions.
-      int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0777);
-      FILE* file_out = fdopen(fd, "wb");
-      if (file_out == NULL) {
-        perror("create_executable");
-        return -1;
-      }
-      int written = fwrite(vessel_content, 1, size, file_out);
-      if (written != size) {
-        perror("create_executable");
-        return -1;
-      }
-      fclose(file_out);
-      if (sign_if_necessary(out_path, os) != 0) {
-        fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
-      }
-      return 0;
+      replaced_vessel_content = true;
+      // Some architectures (macos fat binaries) have multiple executables
+      // in the same file, so we need to replace all occurrences of the token.
+      i += bundle.size();
     }
   }
-  fprintf(stderr, "Invalid vessel file. Token not found\n");
-  return -1;
+
+  if (!replaced_vessel_content) {
+    fprintf(stderr, "Invalid vessel file. Token not found\n");
+    return -1;
+  }
+
+  // Use 'open', so we can give executable permissions.
+  int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0777);
+  FILE* file_out = fdopen(fd, "wb");
+  if (file_out == NULL) {
+    perror("create_executable");
+    return -1;
+  }
+  int written = fwrite(vessel_content, 1, size, file_out);
+  if (written != size) {
+    perror("create_executable");
+    return -1;
+  }
+  fclose(file_out);
+  if (sign_if_necessary(out_path, os) != 0) {
+    fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
+  }
+  return 0;
 }
 
 
