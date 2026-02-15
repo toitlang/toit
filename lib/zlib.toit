@@ -600,8 +600,6 @@ You would normally use $BufferingInflater, $CopyingInflater or $Inflater
 This class needs an $InflateHistory object to help it look back in up to
   32k of previously decompressed data (or whatever size the compressor was
   set to).
-Does not currently support streams with a gzip header (as opposed to the
-  zlib header).
 */
 class InflaterBackend implements Backend_:
   history_/InflateHistory
