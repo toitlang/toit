@@ -237,6 +237,8 @@ PRIMITIVE(create_path) {
   dcb.DCBlength = sizeof(DCB);
   dcb.fBinary = true;
   dcb.BaudRate = baud_rate;
+  dcb.fDtrControl = DTR_CONTROL_ENABLE;
+  dcb.fRtsControl = RTS_CONTROL_ENABLE;
 
   if (stop_bits == 1) {
     dcb.StopBits = ONESTOPBIT;
@@ -312,6 +314,9 @@ PRIMITIVE(create_path) {
     close_handle_keep_errno(error_event);
     FAIL(MALLOC_FAILED);
   }
+
+  uart_resource->set_dtr(true);
+  uart_resource->set_rts(true);
 
   resource_group->register_resource(uart_resource);
 
