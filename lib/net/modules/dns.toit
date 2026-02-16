@@ -86,7 +86,7 @@ dns-lookup-multi -> List
     else:
       client = AUTO-CREATED-CLIENTS_.get server --init=:
         DnsClient [server]
-  types := {}
+  types := []
   if accept-ipv4: types.add RECORD-A
   if accept-ipv6: types.add RECORD-AAAA
   return client.get host
@@ -217,7 +217,7 @@ class DnsQuery_:
   name/string
   query-packets/Map  // From record type (int) to packet (ByteArray).
 
-  constructor .name --record-types/Set:
+  constructor .name --record-types/List:
     base-id = random 0x10000
     query-packets = Map
     id-offset := 0
@@ -250,14 +250,14 @@ interface DnsClient:
   If the $record-types contains $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
   */
   get name -> List
-      --record-types/Set
+      --record-types/List
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT
 
   /**
   Look up a domain name and return an A or AAAA record.
 
-  If given a numeric address like "127.0.0.1" it merely parses
+  If given a numeric address like "127.0.0.1" merely parses
     the numbers without a network round trip.
   */
   get name -> net.IpAddress
@@ -284,20 +284,17 @@ abstract class DnsClientBase_ implements DnsClient:
       --accept-ipv4/bool=true
       --accept-ipv6/bool=false
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
-    types := {}
+    types := []
     if accept-ipv4: types.add RECORD-A
     if accept-ipv6: types.add RECORD-AAAA
     return select-random-ip_ name
         get name --record-types=types --network=network --timeout=timeout
 
   /**
-  Look up a domain name and return a list of results.
-  The $record-types argument can be a set of $RECORD-A, or $RECORD-AAAA, in which case the result is a list of $net.IpAddress.
-  If the $record-types contains $RECORD-TXT, $RECORD-PTR, or $RECORD-CNAME the results will be strings.
-  If the $record-types contains $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
+  See $super
   */
   get name -> List
-      --record-types/Set
+      --record-types/List
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
@@ -699,14 +696,14 @@ decode-resource_ reader/io.Reader response/ByteArray -> Resource?:
     port := reader.big-endian.read-uint16
     value := decode-name reader response
     result = SrvResource r-name type ttl flush value priority weight port
-  
+
   read-after-record := reader.processed
   // Skip the rest of the record if it wasn't consumed.
   // This allows us to skip unknown record types safely as long as rd-length is correct.
   to-skip := rd-length - (read-after-record - read-before-record)
   if to-skip < 0: protocol-error_ // Consumed more than declared?
   reader.skip to-skip
-  
+
   return result
 
 class CacheEntry_:
@@ -822,7 +819,7 @@ class SrvResource extends StringResource:
     super name type ttl flush value
 
 class TxtResource extends Resource:
-  text/List // List<string>
+  text/List  // Of string.
 
   constructor name/string ttl/int flush/bool .text:
     super name RECORD-TXT ttl flush

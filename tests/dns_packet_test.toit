@@ -176,30 +176,28 @@ test-additional-section:
   packet := io.Buffer
   packet.big-endian.write-int16 0x1234
   packet.big-endian.write-int16 0x8400
-  packet.big-endian.write-int16 1 // QD
-  packet.big-endian.write-int16 1 // AN
-  packet.big-endian.write-int16 0 // NS
-  packet.big-endian.write-int16 1 // AR !!! This is what we want to test
+  packet.big-endian.write-int16 1  // QD.
+  packet.big-endian.write-int16 1  // AN.
+  packet.big-endian.write-int16 0  // NS.
+  packet.big-endian.write-int16 1  // AR !!! This is what we want to test.
   
-  // Question: 5 query 5 local 0 + Type(TXT=16) + Class(1)
+  // Question: 5 query 5 local 0 + Type(TXT=16) + Class(1).
   packet.write-byte 5; packet.write "query"
   packet.write-byte 5; packet.write "local"
   packet.write-byte 0
   packet.big-endian.write-int16 dns.RECORD-TXT
   packet.big-endian.write-int16 1
   
-  // Answer: Pointer to 12 (C0 0C) + Type(TXT) + Class(1) + TTL(120) + RDLen + Data
+  // Answer: Pointer to 12 (C0 0C) + Type(TXT) + Class(1) + TTL(120) + RDLen + Data.
   packet.write-byte 0xC0; packet.write-byte 0x0C
   packet.big-endian.write-int16 dns.RECORD-TXT
   packet.big-endian.write-int16 1
   packet.big-endian.write-int32 120
-  packet.big-endian.write-int16 7 // len: 1 ("answer".size) + 6 "answer" // Wait, TXT len is 1 byte for string len + string.
-  // "answer" is 6 bytes. 
-  // RDATA: [6] "answer"
+  packet.big-endian.write-int16 7 // RDLENGTH: 1 (length byte) + 6 ("answer").
   packet.write-byte 6; packet.write "answer"
   
   // Additional: "additional.local" + A record
-  // 10 additional, then pointer to local (C0 12) - "local" is at 12 + 6 = 18 -> 0x12
+  // 10 additional, then pointer to local (C0 12) - "local" is at 12 + 6 = 18 -> 0x12.
   packet.write-byte 10; packet.write "additional"
   packet.write-byte 0xC0; packet.write-byte 0x12
   packet.big-endian.write-int16 dns.RECORD-A
@@ -220,7 +218,7 @@ test-additional-section:
   
   print "Additional Section Decoding: OK"
   
-  // Test Encoding support
+  // Test Encoding support.
   print "Testing Additional Section encoding..."
   
   add-questions := [dns.Question "test.local" dns.RECORD-A]
@@ -229,7 +227,7 @@ test-additional-section:
   
   encoded := dns.create-dns-packet add-questions add-answers 
       --id=123 
-      --is-response=true 
+      --is-response
       --additionals=add-additionals
       
   decoded-back := dns.decode-packet encoded
