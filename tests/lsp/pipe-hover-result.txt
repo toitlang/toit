@@ -1,0 +1,97 @@
+/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/compiler.toit:302:20: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+      length := int.parse line --radix=10 --on-error=(: return null)
+                   ^~~~~~
+starting the server /home/cl/projects/jaguar/third_party/toit/build/host/sdk/bin/toit with [/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/server.toit]
+initializing the server
+/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/compiler.toit:302:20: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+      length := int.parse line --radix=10 --on-error=(: return null)
+                   ^~~~~~
+initialized
+CHECKING RESULT: actual='Forks a process.
+
+Attaches the given $stdin, $stdout, $stderr streams to the corresponding
+streams of the child process. If a stream is null, then it is inherited.
+Use $(Stream.constructor --parent-to-child) or $(Stream.constructor --child-to-parent)
+to create a fresh pipe.
+Alternatively, a pipe can be created using the $create-stdin,
+$create-stdout, and $create-stderr flags. In this case use $Process.stdin,
+$Process.stdout, and $Process.stderr to access the streams.
+The $stdin and $create-stdin (respectively $stdout and $create-stdout,
+$stderr and $create-stderr) arguments are mutually exclusive.
+
+To avoid zombies you must either cal $Process.wait-ignore or $Process.wait.
+
+The $file-descriptor-3 and $file-descriptor-4 can be used to pass streams as
+open file descriptors 3 and/or 4 to the child process.
+
+The $environment variable, if given, must be a map where the keys are strings and
+the values strings or null, where null indicates that the variable should be
+unset in the child process.
+
+If you override the PATH environment variable, but set the $use-path
+flag, the new value of PATH will be used to find the executable.' vs expected='Forks a process.
+
+Deprecated. Use $(fork command arguments) instead.'
+: Expected <Forks a process.
+
+Deprecated. Use $(fork command arguments) instead.>, but was <Forks a process.
+
+Attaches the given $stdin, $stdout, $stderr streams to the corresponding
+streams of the child process. If a stream is null, then it is inherited.
+Use $(Stream.constructor --parent-to-child) or $(Stream.constructor --child-to-parent)
+to create a fresh pipe.
+Alternatively, a pipe can be created using the $create-stdin,
+$create-stdout, and $create-stderr flags. In this case use $Process.stdin,
+$Process.stdout, and $Process.stderr to access the streams.
+The $stdin and $create-stdin (respectively $stdout and $create-stdout,
+$stderr and $create-stderr) arguments are mutually exclusive.
+
+To avoid zombies you must either cal $Process.wait-ignore or $Process.wait.
+
+The $file-descriptor-3 and $file-descriptor-4 can be used to pass streams as
+open file descriptors 3 and/or 4 to the child process.
+
+The $environment variable, if given, must be a map where the keys are strings and
+the values strings or null, where null indicates that the variable should be
+unset in the child process.
+
+If you override the PATH environment variable, but set the $use-path
+flag, the new value of PATH will be used to find the executable.>
+ASSERTION_FAILED error. 
+Expected <Forks a process.
+
+Deprecated. Use $(fork command arguments) instead.>, but was <Forks a process.
+
+Attaches the given $stdin, $stdout, $stderr streams to the corresponding
+streams of the child process. If a stream is null, then it is inherited.
+U...
+  0: catch.<block>             <sdk>/core/exceptions.toit:124:10
+  1: catch                     <sdk>/core/exceptions.toit:122:1
+  2: catch                     <sdk>/core/exceptions.toit:73:10
+  3: expect                    <sdk>/expect.toit:21:3
+  4: expect-equals             <sdk>/expect.toit:36:5
+  5: HoverRunner.check-result  /home/cl/projects/jaguar/third_party/toit/tests/lsp/hover-test-runner.toit:25:7
+  6: LocationCompilerTestRunner.test /home/cl/projects/jaguar/third_party/toit/tests/lsp/location-compiler-test-runner-base.toit:70:9
+  7: LocationCompilerTestRunner.run.<block> /home/cl/projects/jaguar/third_party/toit/tests/lsp/location-compiler-test-runner-base.toit:30:27
+  8: with-lsp-client.<block>   /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/client.toit:71:5
+  9: with-lsp-client           /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/client.toit:46:1
+ 10: run-client-test.<block>   /home/cl/projects/jaguar/third_party/toit/tests/lsp/lsp-client.toit:40:5
+ 11: run-client-test           /home/cl/projects/jaguar/third_party/toit/tests/lsp/lsp-client.toit:23:1
+ 12: run-client-test           /home/cl/projects/jaguar/third_party/toit/tests/lsp/lsp-client.toit:63:3
+ 13: LocationCompilerTestRunner.run /home/cl/projects/jaguar/third_party/toit/tests/lsp/location-compiler-test-runner-base.toit:30:5
+ 14: main                      /home/cl/projects/jaguar/third_party/toit/tests/lsp/hover-test-runner.toit:28:17
+EXCEPTION error. 
+ALREADY_CLOSED
+  0: read-from-pipe_           <pkg:pkg-host>/pipe.toit:223:3
+  1: OpenPipe_.read_           <pkg:pkg-host>/pipe.toit:156:17
+  2: OpenPipeReader_.read_     <pkg:pkg-host>/pipe.toit:65:18
+  3: Reader.more_              <sdk>/io/reader.toit:82:14
+  4: Reader.ensure_            <sdk>/io/reader.toit:69:14
+  5: Reader.try-ensure-buffered <sdk>/io/reader.toit:111:5
+  6: MultiplexConnection.do-dispatch_.<block> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:64:37
+  7: MultiplexConnection.do-dispatch_ /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:62:3
+  8: MultiplexConnection.start-dispatch.<lambda>.<block> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:60:9
+  9: catch.<block>             <sdk>/core/exceptions.toit:124:10
+ 10: catch                     <sdk>/core/exceptions.toit:122:1
+ 11: catch                     <sdk>/core/exceptions.toit:73:10
+ 12: MultiplexConnection.start-dispatch.<lambda> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:59:7

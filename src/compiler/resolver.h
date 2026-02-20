@@ -42,22 +42,24 @@ class Resolver {
  public:
   Resolver(Lsp* lsp,
            SourceManager* source_manager,
-           Diagnostics* diagnostics)
+           Diagnostics* diagnostics,
+           ToitdocRegistry* toitdocs)
       : source_manager_(source_manager)
       , diagnostics_(diagnostics)
-      , lsp_(lsp) {}
+      , lsp_(lsp)
+      , toitdocs_(toitdocs) {}
 
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index);
 
-  ToitdocRegistry toitdocs() { return toitdocs_; }
+  ToitdocRegistry* toitdocs() { return toitdocs_; }
 
  private:
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
   UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
-  ToitdocRegistry toitdocs_;
+  ToitdocRegistry* toitdocs_;
   std::vector<ir::AssignmentGlobal*> global_assignments_;
 
   Lsp* lsp_;

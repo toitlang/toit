@@ -289,6 +289,22 @@ class Compiler:
       return definitions
     unreachable
 
+  hover --project-uri/string? uri/string line-number/int column-number/int -> string?:
+    path := translator.to-path uri --to-compiler
+
+    // Use a multi-line string or simple interpolation for the protocol header
+    compiler-input := "HOVER\n$path\n$line-number\n$column-number\n"
+
+    run --project-uri=project-uri --compiler-input=compiler-input: | reader /io.Reader |
+      line := reader.read-line
+      if not line: return null
+
+      length := int.parse line --radix=10 --on-error=(: return null)
+      if length == 0: return null
+
+      return reader.read-string length
+    return null
+
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.
     return run
@@ -336,22 +352,22 @@ class Compiler:
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
       |reader /io.Reader|
-      element-count := int.parse reader.read-line
-      result := List element-count: int.parse reader.read-line
+      element-count := int.parse reader.read-line --radix=10
+      result := List element-count: int.parse reader.read-line --radix=10
       return result
     unreachable
 
-  static read-range reader/io.Reader -> Range:
-    from-line-number := int.parse reader.read-line
-    from-column-number := int.parse reader.read-line
-    to-line-number := int.parse reader.read-line
-    to-column-number := int.parse reader.read-line
+  read-range reader/io.Reader -> Range:
+    from-line-number := int.parse reader.read-line --radix=10
+    from-column-number := int.parse reader.read-line --radix=10
+    to-line-number := int.parse reader.read-line --radix=10
+    to-column-number := int.parse reader.read-line --radix=10
     return Range
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
   read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
-    entry-count := int.parse reader.read-line
+    entry-count := int.parse reader.read-line --radix=10
     result := {:}
     entry-count.repeat:
       source-uri := translator.to-uri reader.read-line --from-compiler
