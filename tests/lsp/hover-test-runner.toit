@@ -21,6 +21,8 @@ class HoverRunner extends LocationCompilerTestRunner:
     print "CHECKING RESULT: actual='$actual' vs expected='$test-data'"
     if test-data == "null":
       expect-null actual
+    else if test-data.ends-with "...":
+      expect (actual.starts-with (test-data.trim --right "..."))
     else:
       expect-equals test-data actual
 

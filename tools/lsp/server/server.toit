@@ -155,6 +155,8 @@ class LspServer:
         "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams  it)),
         "textDocument/completion": (:: completion (CompletionParams it )),
         "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
+        "textDocument/rename":     (:: rename (RenameParams it)),
+        "textDocument/prepareRename": (:: prepare-rename (TextDocumentPositionParams it)),
         "textDocument/hover":      (:: hover      (TextDocumentPositionParams  it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
@@ -210,23 +212,24 @@ class LspServer:
       if params.capabilities.experimental.ubjson-rpc: connection_.enable-ubjson
 
     server-capabilities := ServerCapabilities
-        --completion-provider= CompletionOptions
-            --resolve-provider=   false
-            --trigger-characters= [".", "-", "\$"]
-        --definition-provider=      true
-        --hover-provider=           true
-        --document-symbol-provider= true
+        --completion-provider=CompletionOptions
+            --no-resolve-provider
+            --trigger-characters=[".", "-", "\$"]
+        --definition-provider
+        --hover-provider
+        --document-symbol-provider
         --text-document-sync= TextDocumentSyncOptions
             --open-close
-            --change= TextDocumentSyncKind.full
-            --save=   SaveOptions --no-include-text
-        --semantic-tokens-provider= SemanticTokensOptions
-            --legend= SemanticTokensLegend
-                --token-types= Compiler.SEMANTIC-TOKEN-TYPES
-                --token-modifiers= Compiler.SEMANTIC-TOKEN-MODIFIERS
+            --change=TextDocumentSyncKind.full
+            --save=SaveOptions --no-include-text
+        --semantic-tokens-provider=SemanticTokensOptions
+            --legend=SemanticTokensLegend
+                --token-types=Compiler.SEMANTIC-TOKEN-TYPES
+                --token-modifiers=Compiler.SEMANTIC-TOKEN-MODIFIERS
             --no-range
-            --full= true  // Or should it be '{ "delta": false }' ?
+            --full  // Or should it be '{ "delta": false }' ?
         --experimental=Experimental --ubjson-rpc
+        --rename-provider=RenameOptions true
 
     return InitializationResult server-capabilities
 
@@ -353,6 +356,24 @@ class LspServer:
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
+  rename params/RenameParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    new-name := params.new-name
+    references := compiler_.find-references --project-uri=project-uri uri params.position.line params.position.character
+    if references.is-empty: return null
+    // Group TextEdits by URI.
+    changes := {:}
+    references.do: |location/Location|
+      edits := changes.get location.uri --init=: []
+      edits.add (TextEdit --range=location.range --new-text=new-name)
+    return WorkspaceEdit --changes=changes
+
+  prepare-rename params/TextDocumentPositionParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+
   hover params/TextDocumentPositionParams -> Hover?:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
@@ -360,13 +381,20 @@ class LspServer:
     definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
     if not definition: return null
 
+    if definition.text:
+      return Hover --contents=definition.text
+
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     element-uri := translator.to-uri definition.path --from-compiler
     
     document := analyzed-documents.get --uri=element-uri
     if not document or not document.summary: return null
 
-    element := document.summary.element-at --start=definition.start --end=definition.end
+    element := ?
+    if definition.start == 0 and definition.end == 0:
+      element = document.summary
+    else:
+      element = document.summary.element-at --start=definition.start --end=definition.end
     if not element: return null
 
     toitdoc := element.toitdoc

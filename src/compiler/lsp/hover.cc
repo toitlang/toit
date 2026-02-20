@@ -31,9 +31,9 @@ void HoverHandler::import_path(const char* path,
                                const PackageLock& package_lock,
                                Filesystem* filesystem) {
   if (resolved == null) return;
-  std::string message = "Import: ";
-  message += resolved;
-  protocol()->hover()->emit(message.c_str());
+  std::string response = std::string(resolved) + "\n0\n0\n";
+  protocol()->hover()->emit(response.c_str());
+  has_emitted_ = true;
 }
 
 void HoverHandler::class_interface_or_mixin(ast::Node* node,

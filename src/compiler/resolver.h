@@ -54,6 +54,7 @@ class Resolver {
                        int core_unit_index);
 
   ToitdocRegistry* toitdocs() { return toitdocs_; }
+  UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
 
  private:
   SourceManager* source_manager_;

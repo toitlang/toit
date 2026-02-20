@@ -1,4 +1,4 @@
 import math
 /*         ^
-Import: ...
+Mathematical functions and constants.
 */
