@@ -180,7 +180,13 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
                token_modifiers);
 }
 
-
+void LspHoverProtocol::emit(const char* content) {
+  int length = content == null ? 0 : strlen(content);
+  this->printf("%d\n", length);
+  if (length > 0) {
+    this->write(reinterpret_cast<const uint8*>(content), length);
+  }
+}
 
 } // namespace toit::compiler
 } // namespace toit

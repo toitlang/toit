@@ -1,0 +1,69 @@
+/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/compiler.toit:302:20: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+      length := int.parse line --radix=10 --on-error=(: return null)
+                   ^~~~~~
+starting the server /home/cl/projects/jaguar/third_party/toit/build/host/sdk/bin/toit with [/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/server.toit]
+initializing the server
+/home/cl/projects/jaguar/third_party/toit/tools/lsp/server/compiler.toit:302:20: warning: Deprecated 'int.parse'. Use 'parse data --radix [--if-error]' instead
+      length := int.parse line --radix=10 --on-error=(: return null)
+                   ^~~~~~
+initialized
+CHECKING RESULT: actual='Forks a process.
+
+Attaches the given $stdin, $stdout, $stderr streams to the corresponding
+streams of the child process. If a stream is null, then it is inherited.
+Use $(Stream.constructor --parent-to-child) or $(Stream.constructor --child-to-parent)
+to create a fresh pipe.
+Alternatively, a pipe can be created using the $create-stdin,
+$create-stdout, and $create-stderr flags. In this case use $Process.stdin,
+$Process.stdout, and $Process.stderr to access the streams.
+The $stdin and $create-stdin (respectively $stdout and $create-stdout,
+$stderr and $create-stderr) arguments are mutually exclusive.
+
+To avoid zombies you must either cal $Process.wait-ignore or $Process.wait.
+
+The $file-descriptor-3 and $file-descriptor-4 can be used to pass streams as
+open file descriptors 3 and/or 4 to the child process.
+
+The $environment variable, if given, must be a map where the keys are strings and
+the values strings or null, where null indicates that the variable should be
+unset in the child process.
+
+If you override the PATH environment variable, but set the $use-path
+flag, the new value of PATH will be used to find the executable.' vs expected='Forks a process.
+
+Attaches the given $stdin, $stdout, $stderr streams to the corresponding
+streams of the child process. If a stream is null, then it is inherited.
+Use $(Stream.constructor --parent-to-child) or $(Stream.constructor --child-to-parent)
+to create a fresh pipe.
+Alternatively, a pipe can be created using the $create-stdin,
+$create-stdout, and $create-stderr flags. In this case use $Process.stdin,
+$Process.stdout, and $Process.stderr to access the streams.
+The $stdin and $create-stdin (respectively $stdout and $create-stdout,
+$stderr and $create-stderr) arguments are mutually exclusive.
+
+To avoid zombies you must either cal $Process.wait-ignore or $Process.wait.
+
+The $file-descriptor-3 and $file-descriptor-4 can be used to pass streams as
+open file descriptors 3 and/or 4 to the child process.
+
+The $environment variable, if given, must be a map where the keys are strings and
+the values strings or null, where null indicates that the variable should be
+unset in the child process.
+
+If you override the PATH environment variable, but set the $use-path
+flag, the new value of PATH will be used to find the executable.'
+EXCEPTION error. 
+ALREADY_CLOSED
+  0: read-from-pipe_           <pkg:pkg-host>/pipe.toit:223:3
+  1: OpenPipe_.read_           <pkg:pkg-host>/pipe.toit:156:17
+  2: OpenPipeReader_.read_     <pkg:pkg-host>/pipe.toit:65:18
+  3: Reader.more_              <sdk>/io/reader.toit:82:14
+  4: Reader.ensure_            <sdk>/io/reader.toit:69:14
+  5: Reader.try-ensure-buffered <sdk>/io/reader.toit:111:5
+  6: MultiplexConnection.do-dispatch_.<block> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:64:37
+  7: MultiplexConnection.do-dispatch_ /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:62:3
+  8: MultiplexConnection.start-dispatch.<lambda>.<block> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:60:9
+  9: catch.<block>             <sdk>/core/exceptions.toit:124:10
+ 10: catch                     <sdk>/core/exceptions.toit:122:1
+ 11: catch                     <sdk>/core/exceptions.toit:73:10
+ 12: MultiplexConnection.start-dispatch.<lambda> /home/cl/projects/jaguar/third_party/toit/tools/lsp/server/multiplex.toit:59:7

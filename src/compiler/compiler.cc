@@ -132,6 +132,8 @@ class Pipeline {
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
+  virtual void post_resolve();
+  virtual void post_type_check();
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
@@ -173,6 +175,7 @@ class LanguageServerPipeline : public Pipeline {
     semantic_tokens,
     completion,
     goto_definition,
+    hover,
   };
 
   LanguageServerPipeline(Kind kind,
@@ -253,6 +256,42 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler();
+
+  bool is_lsp_selection_identifier() { return false; }
+};
+
+class HoverPipeline : public LocationLanguageServerPipeline {
+ public:
+  HoverPipeline(const char* hover_path,
+                int line_number,   // 1-based
+                int column_number, // 1-based
+                const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::hover,
+                                       hover_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() {
+    lsp()->setup_hover_handler(lsp_selection_path_,
+                               line_number_,
+                               column_number_,
+                               source_manager(),
+                               toitdocs());
+  }
+
+  void post_resolve() {
+    if (lsp() == null || !lsp()->has_selection_handler()) return;
+    auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    handler->finalize();
+  }
+
+  void post_type_check() {
+    if (lsp() == null || !lsp()->has_selection_handler()) return;
+    auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    handler->finalize();
+  }
 
   bool is_lsp_selection_identifier() { return false; }
 };
@@ -415,6 +454,8 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
       lsp_complete(path, line_number, column_number, configuration);
     } else if (strcmp("GOTO DEFINITION", mode) == 0) {
       lsp_goto_definition(path, line_number, column_number, configuration);
+    } else if (strcmp("HOVER", mode) == 0) {
+      lsp_hover(path, line_number, column_number, configuration);
     } else {
       FATAL("LANGUAGE SERVER ERROR - Mode not recognized");
     }
@@ -436,6 +477,16 @@ void Compiler::lsp_goto_definition(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
+
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_hover(const char* source_path,
+                         int line_number,
+                         int column_number,
+                         const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  HoverPipeline pipeline(source_path, line_number, column_number, configuration);
 
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
@@ -802,6 +853,16 @@ void Pipeline::setup_lsp_selection_handler() {
   // Do nothing.
 }
 
+void Pipeline::post_resolve() {
+  // Do nothing. Subclasses (like HoverPipeline) can override
+  // to perform work after all modules have been resolved.
+}
+
+void Pipeline::post_type_check() {
+  // Do nothing. Subclasses (like HoverPipeline) can override
+  // to perform work after type checking completes.
+}
+
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
                                int entry_unit_index,
                                int core_unit_index,
@@ -809,11 +870,11 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   // Resolve all units.
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
-  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
+  Resolver resolver(lsp(), source_manager(), diagnostics, &toitdoc_registry_);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
-  set_toitdocs(resolver.toitdocs());
+  // The resolver populates the registry directly.
   return result;
 }
 
@@ -1782,6 +1843,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (configuration_.parse_only) return Result::invalid();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  post_resolve();
   sort_classes(ir_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
@@ -1789,6 +1851,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (Flags::print_ir_tree) ir_program->print(true);
 
   check_types_and_deprecations(ir_program);
+  post_type_check();
   check_definite_assignments_returns(ir_program, diagnostics());
 
   bool encountered_error = diagnostics()->encountered_error();

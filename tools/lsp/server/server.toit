@@ -33,6 +33,7 @@ import .protocol.initialization
 import .protocol.message
 import .protocol.server-capabilities
 import .protocol.semantic-tokens
+import .protocol.hover
 import .protocol-toit
 
 import .compiler
@@ -150,9 +151,10 @@ class LspServer:
         "textDocument/didOpen":    (:: did-open   (DidOpenTextDocumentParams   it)),
         "textDocument/didChange":  (:: did-change (DidChangeTextDocumentParams it)),
         "textDocument/didSave":    (:: did-save   (DidSaveTextDocumentParams   it)),
-        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams   it)),
+        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams  it)),
         "textDocument/completion": (:: completion (CompletionParams it )),
         "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
+        "textDocument/hover":      (:: hover      (TextDocumentPositionParams  it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
         "shutdown":                (:: shutdown),
@@ -211,6 +213,7 @@ class LspServer:
             --resolve-provider=   false
             --trigger-characters= [".", "-", "\$"]
         --definition-provider=      true
+        --hover-provider=           true
         --document-symbol-provider= true
         --text-document-sync= TextDocumentSyncOptions
             --open-close
@@ -348,6 +351,13 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+
+  hover params/TextDocumentPositionParams -> Hover?:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    markdown-content := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    if not markdown-content or markdown-content == "": return null
+    return Hover --contents=markdown-content
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri

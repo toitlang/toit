@@ -145,6 +145,14 @@ class LspSummaryProtocol : public LspProtocolBase {
             const ToitdocRegistry& toitdocs);
 };
 
+class LspHoverProtocol : public LspProtocolBase {
+ public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
+  void emit(const char* content);
+};
+
 class LspSnapshotProtocol : public LspProtocolBase {
  public:
   // Inherit constructor.
@@ -185,7 +193,8 @@ class LspProtocol {
       , completion_(writer)
       , summary_(writer)
       , snapshot_(writer)
-      , semantic_(writer) {}
+      , semantic_(writer)
+      , hover_(writer) {}
 
   LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
   LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }
@@ -193,6 +202,7 @@ class LspProtocol {
   LspSummaryProtocol* summary() { return &summary_; }
   LspSnapshotProtocol* snapshot() { return &snapshot_; }
   LspSemanticTokensProtocol* semantic() { return &semantic_; }
+  LspHoverProtocol* hover() { return &hover_; }
 
  private:
   LspDiagnosticsProtocol diagnostics_;
@@ -201,6 +211,7 @@ class LspProtocol {
   LspSummaryProtocol summary_;
   LspSnapshotProtocol snapshot_;
   LspSemanticTokensProtocol semantic_;
+  LspHoverProtocol hover_;
 };
 
 } // namespace toit::compiler
