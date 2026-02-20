@@ -135,6 +135,42 @@ class Module:
     assert: id < globals.size
     return globals[id]
 
+  /**
+  Finds the closest element (Class, Method, or Field) that contains the given offsets.
+  If an exact match is found, it is returned immediately.
+  Otherwise, returns the smallest element containing the offsets, reducing the impact of
+  out-of-date summaries.
+  */
+  element-at --start/int --end/int -> any:
+    if summary-bytes_: parse_
+    
+    best-match := null
+    best-size := -1
+    
+    check := : | element |
+      range := element.range
+      // Perfect match returns from element-at immediately.
+      if range.start == start and range.end == end: return element
+      
+      // Fallback: containment check for slightly drifted summaries.
+      if range.start <= start and range.end >= end:
+        size := range.end - range.start
+        if best-size == -1 or size < best-size:
+          best-match = element
+          best-size = size
+
+    functions_.do check
+    globals_.do check
+    classes_.do: | c/Class |
+      check.call c
+      c.statics.do check
+      c.constructors.do check
+      c.factories.do check
+      c.fields.do check
+      c.methods.do check
+
+    return best-match
+
   parse_ -> none:
     reader := ModuleReader summary-bytes_
         --toplevel-offset=toplevel-offset_

@@ -28,6 +28,12 @@ import .utils
 import .verbose
 import .multiplex
 
+class HoverDefinition:
+  path /string
+  start /int
+  end /int
+  constructor --.path --.start --.end:
+
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
   diagnostics-without-position / List/*<string>*/ ::= ?
@@ -289,7 +295,7 @@ class Compiler:
       return definitions
     unreachable
 
-  hover --project-uri/string? uri/string line-number/int column-number/int -> string?:
+  hover --project-uri/string? uri/string line-number/int column-number/int -> HoverDefinition?:
     path := translator.to-path uri --to-compiler
 
     // Use a multi-line string or simple interpolation for the protocol header
@@ -302,7 +308,14 @@ class Compiler:
       length := int.parse line --radix=10 --on-error=(: return null)
       if length == 0: return null
 
-      return reader.read-string length
+      payload := reader.read-string length
+      lines := payload.split "\n"
+      if lines.size < 3: return null
+      
+      start := int.parse lines[1] --radix=10 --on-error=(: return null)
+      end := int.parse lines[2] --radix=10 --on-error=(: return null)
+      
+      return HoverDefinition --path=lines[0] --start=start --end=end
     return null
 
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:

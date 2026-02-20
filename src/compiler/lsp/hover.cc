@@ -21,66 +21,7 @@
 namespace toit {
 namespace compiler {
 
-static std::string clean_toitdoc(const char* text, int length) {
-  // Simple cleanup:
-  // 1. Skip start `/**` or `/*` or `///` or `//`.
-  // 2. Skip end `*/`.
-  // 3. For each line, skip leading whitespace and `*` or `///` or `//`.
 
-  std::string result;
-  // We can't use stringstreams efficiently with length, so let's parse manually.
-  const char* current = text;
-  const char* end = text + length;
-
-  while (current < end) {
-    // Find end of line.
-    const char* eol = current;
-    while (eol < end && *eol != '\n') eol++;
-
-    const char* line_start = current;
-    const char* line_end = eol;
-
-    // Skip leading whitespace.
-    while (line_start < line_end && (*line_start == ' ' || *line_start == '\t')) line_start++;
-
-    // Skip comment markers.
-    if (line_start < line_end) {
-      if (line_start + 3 <= line_end && strncmp(line_start, "/**", 3) == 0) {
-        line_start += 3;
-      } else if (line_start + 2 <= line_end && strncmp(line_start, "/*", 2) == 0) {
-        line_start += 2;
-      } else if (line_start + 3 <= line_end && strncmp(line_start, "///", 3) == 0) {
-         line_start += 3;
-      } else if (line_start + 2 <= line_end && strncmp(line_start, "//", 2) == 0) {
-         line_start += 2;
-      } else if (*line_start == '*') {
-        line_start++;
-      }
-    }
-
-    // Skip closing marker if present.
-    // We only check for `*/` at the end of the line (ignoring trailing whitespace).
-    const char* content_end = line_end;
-    while (content_end > line_start && (content_end[-1] == ' ' || content_end[-1] == '\t' || content_end[-1] == '\r')) content_end--;
-    if (content_end >= line_start + 2 && strncmp(content_end - 2, "*/", 2) == 0) {
-      content_end -= 2;
-    }
-
-    // Skip (new) leading whitespace after marker.
-    while (line_start < content_end && (*line_start == ' ' || *line_start == '\t')) line_start++;
-
-    if (line_start < content_end) {
-      if (!result.empty()) result += '\n';
-      result.append(line_start, content_end - line_start);
-    } else if (!result.empty()) {
-      // Preserve empty lines if we already have content (paragraph separation).
-      result += '\n';
-    }
-    
-    current = eol + 1;
-  }
-  return result;
-}
 
 void HoverHandler::import_path(const char* path,
                                const char* segment,
@@ -263,35 +204,40 @@ void HoverHandler::emit_hover(ir::Node* node, const char* name) {
     node = node->as_Reference()->target();
   }
 
-  Toitdoc<ir::Node*> toitdoc = toitdocs_->toitdoc_for(node);
+  // We only care about emitting hover coordinates if the node is something 
+  // that exists in the Toit summary (Method, Class, Field, Global).
+  Source::Range node_range = Source::Range::invalid();
+  if (node->is_Method()) node_range = node->as_Method()->range();
+  else if (node->is_Class()) node_range = node->as_Class()->range();
+  else if (node->is_Field()) node_range = node->as_Field()->range();
+  else if (node->is_Global()) node_range = node->as_Global()->range();
 
-  // Fallback to class toitdoc for constructors.
-  if ((!toitdoc.is_valid() || toitdoc.contents() == null) && node->is_Constructor()) {
-    toitdoc = toitdocs_->toitdoc_for(node->as_Constructor()->klass());
+  // If node is a constructor (usually generated synthetic methods don't have good Toitdocs),
+  // we could optionally point to the class itself if we wanted. But the summary actually
+  // keeps constructors and classes separate, so returning the constructor's node_range is fine.
+  if (!node_range.is_valid() && node->is_Constructor()) {
+    node_range = node->as_Constructor()->klass()->range();
   }
 
-  if (!toitdoc.is_valid()) {
-    // Toitdoc not available yet — the target module may not have been
-    // resolved. Cache the node for retry after full resolution.
+  if (!node_range.is_valid()) {
     if (!has_emitted_ && deferred_node_ == null) {
       deferred_node_ = node;
     }
     return;
   }
 
-  Source::Range range = toitdoc.range();
-  if (!range.is_valid()) return;
-
-  Source* source = source_manager_->source_for_position(range.from());
+  Source* source = source_manager_->source_for_position(node_range.from());
   if (source == null) return;
 
-  int start = source->offset_in_source(range.from());
-  int end = source->offset_in_source(range.to());
-  int length = end - start;
-  const char* text = reinterpret_cast<const char*>(source->text() + start);
+  int start = source->offset_in_source(node_range.from());
+  int end = source->offset_in_source(node_range.to());
 
-  std::string cleaned = clean_toitdoc(text, length);
-  protocol()->hover()->emit(cleaned.c_str());
+  std::string response = 
+      std::string(source->absolute_path()) + "\n" +
+      std::to_string(start) + "\n" +
+      std::to_string(end) + "\n";
+
+  protocol()->hover()->emit(response.c_str());
   has_emitted_ = true;
 }
 

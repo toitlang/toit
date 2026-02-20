@@ -44,6 +44,7 @@ import .rpc
 import .uri-path-translator as translator
 import .utils
 import .verbose
+import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
 DEFAULT-TIMEOUT-MS ::= 10_000
@@ -355,9 +356,25 @@ class LspServer:
   hover params/TextDocumentPositionParams -> Hover?:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    markdown-content := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
-    if not markdown-content or markdown-content == "": return null
-    return Hover --contents=markdown-content
+    
+    definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    if not definition: return null
+
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+    element-uri := translator.to-uri definition.path --from-compiler
+    
+    document := analyzed-documents.get --uri=element-uri
+    if not document or not document.summary: return null
+
+    element := document.summary.element-at --start=definition.start --end=definition.end
+    if not element: return null
+
+    toitdoc := element.toitdoc
+    if not toitdoc: return null
+
+    visitor := ToitdocMarkdownVisitor
+    visitor.visit-Contents toitdoc
+    return Hover --contents=visitor.build
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri
