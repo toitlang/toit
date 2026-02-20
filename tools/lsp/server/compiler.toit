@@ -32,7 +32,8 @@ class HoverDefinition:
   path /string
   start /int
   end /int
-  constructor --.path --.start --.end:
+  text /string?
+  constructor --.path --.start --.end --.text=null:
 
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
@@ -295,28 +296,83 @@ class Compiler:
       return definitions
     unreachable
 
+  find-references --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
+    path := translator.to-path uri --to-compiler
+    // We don't care if the compiler crashed.
+    // Just send the references we got.
+    run --project-uri=project-uri
+        --compiler-input="REFERENCES\n$path\n$line-number\n$column-number\n":
+      |reader /io.Reader|
+      references := []
+
+      while true:
+        line := reader.read-line
+        if line == null: break
+        location := Location
+          --uri= translator.to-uri line --from-compiler
+          --range= read-range reader
+        references.add location
+
+      return references
+    unreachable
+
+  prepare-rename --project-uri/string? uri/string line-number/int column-number/int -> Map?:
+    path := translator.to-path uri --to-compiler
+    // We don't care if the compiler crashed.
+    // Just send the result we got.
+    run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n": |reader /io.Reader|
+      line := reader.read-line
+      if not line: return null
+      result-uri := translator.to-uri line --from-compiler
+      range := read-range reader
+      placeholder := reader.read-line
+      if not placeholder: return null
+      return {
+        "range": range.map_,
+        "placeholder": placeholder,
+      }
+    unreachable
+
   hover --project-uri/string? uri/string line-number/int column-number/int -> HoverDefinition?:
     path := translator.to-path uri --to-compiler
 
-    // Use a multi-line string or simple interpolation for the protocol header
-    compiler-input := "HOVER\n$path\n$line-number\n$column-number\n"
+    input := """
+      HOVER
+      $path
+      $line-number
+      $column-number
+      """
+    result/HoverDefinition? := null
 
-    run --project-uri=project-uri --compiler-input=compiler-input: | reader /io.Reader |
-      line := reader.read-line
-      if not line: return null
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      try:
+        line := reader.read-line
+        if not line: return.run
 
-      length := int.parse line --radix=10 --on-error=(: return null)
-      if length == 0: return null
+        length := int.parse line --on-error=(: 0)
+        if length <= 0: return.run
 
-      payload := reader.read-string length
-      lines := payload.split "\n"
-      if lines.size < 3: return null
-      
-      start := int.parse lines[1] --radix=10 --on-error=(: return null)
-      end := int.parse lines[2] --radix=10 --on-error=(: return null)
-      
-      return HoverDefinition --path=lines[0] --start=start --end=end
-    return null
+        payload := reader.read-string length
+        lines := payload.split "\n"
+        if lines.size < 3: return.run
+
+        start := int.parse lines[1] --on-error=(: 0)
+        end   := int.parse lines[2] --on-error=(: 0)
+
+        // Extract text only if it exists and isn't just an empty string.
+        text := null
+        if lines.size > 3 and lines[3] != "":
+          text = (lines[3..].join "\n").trim
+
+        result = HoverDefinition
+            --path=lines[0]
+            --start=start
+            --end=end
+            --text=text
+      // Ensure we drain the reader no matter what happens during parsing.
+      finally:
+        while reader.read: null  // Drain to prevent compiler crash.
+    return result
 
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.

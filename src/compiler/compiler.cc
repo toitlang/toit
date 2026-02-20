@@ -40,6 +40,7 @@
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/rename.h"
 #include "lsp/fs_connection_socket.h"
 #include "lsp/fs_protocol.h"
 #include "lsp/multiplex_stdout.h"
@@ -132,7 +133,7 @@ class Pipeline {
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
-  virtual void post_resolve();
+  virtual void post_resolve(Resolver* resolver, ir::Program* program);
   virtual void post_type_check();
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
@@ -260,6 +261,44 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
   bool is_lsp_selection_identifier() { return false; }
 };
 
+class FindReferencesPipeline : public LocationLanguageServerPipeline {
+ public:
+  FindReferencesPipeline(const char* find_references_path,
+                         int line_number,   // 1-based
+                         int column_number, // 1-based
+                         const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+                                       find_references_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() override;
+  void post_resolve(Resolver* resolver, ir::Program* program) override;
+
+  bool is_lsp_selection_identifier() override { return false; }
+};
+
+class PrepareRenamePipeline : public LocationLanguageServerPipeline {
+ public:
+  PrepareRenamePipeline(const char* path,
+                        int line_number,   // 1-based
+                        int column_number, // 1-based
+                        const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+                                       path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() override;
+  void post_resolve(Resolver* resolver, ir::Program* program) override;
+
+  bool is_lsp_selection_identifier() override { return false; }
+};
+
 class HoverPipeline : public LocationLanguageServerPipeline {
  public:
   HoverPipeline(const char* hover_path,
@@ -273,7 +312,7 @@ class HoverPipeline : public LocationLanguageServerPipeline {
                                        configuration) {}
 
  protected:
-  void setup_lsp_selection_handler() {
+  void setup_lsp_selection_handler() override {
     lsp()->setup_hover_handler(lsp_selection_path_,
                                line_number_,
                                column_number_,
@@ -281,19 +320,19 @@ class HoverPipeline : public LocationLanguageServerPipeline {
                                toitdocs());
   }
 
-  void post_resolve() {
+  void post_resolve(Resolver* resolver, ir::Program* program) override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
     handler->finalize();
   }
 
-  void post_type_check() {
+  void post_type_check() override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
     handler->finalize();
   }
 
-  bool is_lsp_selection_identifier() { return false; }
+  bool is_lsp_selection_identifier() override { return false; }
 };
 
 class LineReader {
@@ -456,8 +495,12 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
       lsp_goto_definition(path, line_number, column_number, configuration);
     } else if (strcmp("HOVER", mode) == 0) {
       lsp_hover(path, line_number, column_number, configuration);
+    } else if (strcmp("REFERENCES", mode) == 0) {
+      lsp_references(path, line_number, column_number, configuration);
+    } else if (strcmp("PREPARE RENAME", mode) == 0) {
+      lsp_prepare_rename(path, line_number, column_number, configuration);
     } else {
-      FATAL("LANGUAGE SERVER ERROR - Mode not recognized");
+      FATAL("LANGUAGE SERVER ERROR - Mode not recognized: '%s'", mode);
     }
   }
 }
@@ -477,6 +520,26 @@ void Compiler::lsp_goto_definition(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
+
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_references(const char* source_path,
+                              int line_number,
+                              int column_number,
+                              const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  FindReferencesPipeline pipeline(source_path, line_number, column_number, configuration);
+
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_prepare_rename(const char* source_path,
+                                  int line_number,
+                                  int column_number,
+                                  const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  PrepareRenamePipeline pipeline(source_path, line_number, column_number, configuration);
 
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
@@ -853,7 +916,7 @@ void Pipeline::setup_lsp_selection_handler() {
   // Do nothing.
 }
 
-void Pipeline::post_resolve() {
+void Pipeline::post_resolve(Resolver* resolver, ir::Program* program) {
   // Do nothing. Subclasses (like HoverPipeline) can override
   // to perform work after all modules have been resolved.
 }
@@ -874,7 +937,8 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
-  // The resolver populates the registry directly.
+  // Call post_resolve while the resolver (and its ir_to_ast_map) is still alive.
+  post_resolve(&resolver, result);
   return result;
 }
 
@@ -985,6 +1049,131 @@ void CompletionPipeline::setup_lsp_selection_handler() {
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
   lsp()->setup_goto_definition_handler(source_manager());
+}
+
+void FindReferencesPipeline::setup_lsp_selection_handler() {
+  lsp()->setup_find_references_handler(source_manager());
+}
+
+/// Finds the IR definition node at the given cursor position.
+///
+/// The LSP selection mechanism works by inserting a dot-marker at the cursor
+/// position, which the resolver handles as a synthetic call expression. This
+/// triggers handler callbacks (like `call_static`) at reference/usage sites.
+/// However, at definition sites (e.g., `foo x:` or `my-global := 42`), there
+/// is no call expression to resolve, so the handler callback is never invoked
+/// and no target is captured.
+///
+/// This function provides a fallback for that case: it iterates the program's
+/// top-level definitions (globals, methods, classes, and class fields) and
+/// finds the one whose name range contains the cursor position.
+static ir::Node* find_definition_at_cursor(ir::Program* program,
+                                           SourceManager* source_manager,
+                                           const char* cursor_path,
+                                           int cursor_line,     // 1-based
+                                           int cursor_column) { // 1-based
+  // Checks whether the given range's start location matches the cursor.
+  // Definition name ranges are typically short (a single identifier on one
+  // line), so we check that the cursor line matches the start line and that
+  // the cursor column falls between the start and end columns.
+  auto range_contains_cursor = [&](Source::Range range) -> bool {
+    if (!range.is_valid()) return false;
+    auto from = source_manager->compute_location(range.from());
+    if (!from.is_valid()) return false;
+    if (strcmp(from.source->absolute_path(), cursor_path) != 0) return false;
+    if (from.line_number != cursor_line) return false;
+    auto to = source_manager->compute_location(range.to());
+    // offset_in_line is 0-based; cursor_column is 1-based.
+    int cursor_col_0 = cursor_column - 1;
+    return cursor_col_0 >= from.offset_in_line && cursor_col_0 < to.offset_in_line;
+  };
+
+  // Check globals (ir::Global is a subtype of ir::Method).
+  for (int i = 0; i < program->globals().length(); i++) {
+    if (range_contains_cursor(program->globals()[i]->range())) {
+      return program->globals()[i];
+    }
+  }
+  // Check top-level methods (functions).
+  for (int i = 0; i < program->methods().length(); i++) {
+    if (range_contains_cursor(program->methods()[i]->range())) {
+      return program->methods()[i];
+    }
+  }
+  // Check classes and their fields.
+  for (int i = 0; i < program->classes().length(); i++) {
+    auto* klass = program->classes()[i];
+    if (range_contains_cursor(klass->range())) return klass;
+    for (int j = 0; j < klass->fields().length(); j++) {
+      if (range_contains_cursor(klass->fields()[j]->range())) {
+        return klass->fields()[j];
+      }
+    }
+  }
+  return null;
+}
+
+void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+  if (lsp() == null || !lsp()->has_selection_handler()) return;
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  // Fall back to scanning definitions if the cursor was on a definition site.
+  if (target == null) {
+    target = find_definition_at_cursor(
+        program, source_manager(), lsp_selection_path_, line_number_, column_number_);
+  }
+
+  if (target == null) exit(0);
+
+  auto& ir_to_ast = resolver->ir_to_ast_map();
+
+  // Emit the definition's own location.
+  Source::Range definition_range = target_range(target);
+  if (definition_range.is_valid()) {
+    auto from = source_manager()->compute_location(definition_range.from());
+    auto to = source_manager()->compute_location(definition_range.to());
+    lsp()->protocol()->find_references()->emit(
+        from.source->absolute_path(),
+        from.line_number - 1, utf16_offset_in_line(from),
+        to.line_number - 1, utf16_offset_in_line(to));
+  }
+  // Emit all reference locations.
+  FindReferencesVisitor visitor(target, source_manager(), ir_to_ast, lsp()->protocol());
+  visitor.visit(program);
+  exit(0);
+}
+
+void PrepareRenamePipeline::setup_lsp_selection_handler() {
+  lsp()->setup_find_references_handler(source_manager());
+}
+
+void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+  if (lsp() == null || !lsp()->has_selection_handler()) return;
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  // Fall back to scanning definitions if the cursor was on a definition site.
+  if (target == null) {
+    target = find_definition_at_cursor(
+        program, source_manager(), lsp_selection_path_, line_number_, column_number_);
+  }
+
+  if (target == null) exit(0);
+
+  const char* name = target_name(target);
+  Source::Range range = target_range(target);
+
+  if (name == null || !range.is_valid()) exit(0);
+
+  auto from = source_manager()->compute_location(range.from());
+  auto to = source_manager()->compute_location(range.to());
+  lsp()->protocol()->prepare_rename()->emit(
+      from.source->absolute_path(),
+      from.line_number - 1, utf16_offset_in_line(from),
+      to.line_number - 1, utf16_offset_in_line(to),
+      name);
+  exit(0);
 }
 
 /// Returns the error-unit if the file can't be parsed.
@@ -1843,7 +2032,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (configuration_.parse_only) return Result::invalid();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
-  post_resolve();
   sort_classes(ir_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();

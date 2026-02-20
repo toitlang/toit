@@ -188,5 +188,25 @@ void LspHoverProtocol::emit(const char* content) {
   }
 }
 
+void LspFindReferencesProtocol::emit(const char* path, int start_line, int start_col, int end_line, int end_col) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col);
+}
+
+void LspPrepareRenameProtocol::emit(const char* path, int start_line, int start_col,
+                                    int end_line, int end_col, const char* placeholder) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n%s\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col,
+               placeholder == null ? "" : placeholder);
+}
+
 } // namespace toit::compiler
 } // namespace toit

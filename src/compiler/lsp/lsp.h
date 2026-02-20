@@ -22,6 +22,7 @@
 #include "goto_definition.h"
 #include "semantic.h"
 #include "hover.h"
+#include "rename.h"
 
 namespace toit {
 namespace compiler {
@@ -64,6 +65,11 @@ class Lsp {
                                            protocol(),
                                            source_manager,
                                            toitdocs);
+  }
+
+  void setup_find_references_handler(SourceManager* source_manager) {
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new FindReferencesHandler(source_manager, protocol());
   }
 
   bool has_selection_handler() const { return selection_handler_ != null; }
