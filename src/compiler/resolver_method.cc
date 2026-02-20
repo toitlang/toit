@@ -17,7 +17,6 @@
 
 #include <errno.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <functional>
 #include <limits.h>
 #include <math.h>
@@ -2578,29 +2577,20 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
                                             candidates,
                                             scope_);
     } else if (class_entry.is_prefix()) {
-      FILE* f = fopen("/home/cl/projects/jaguar/third_party/toit/debug_output.txt", "a");
-      if (f) fprintf(f, "DEBUG: Found prefix in _handle_lsp_call_dot\n");
-      
       auto prefix = class_entry.prefix();
       auto name = ast_dot->name()->data();
-      if (f) fprintf(f, "DEBUG: prefix=%p name=%s\n", prefix, name.c_str());
 
       UnorderedSet<ModuleScope*> visited;
       auto resolved = prefix->lookup(name, &visited);
-      if (f) fprintf(f, "DEBUG: prefix->lookup returned kind=%d\n", resolved.kind());
 
       ir::Node* resolved_node = null;
       List<ir::Node*> candidates;
       if (resolved.kind() == ResolutionEntry::NODES) {
         if (!resolved.nodes().is_empty()) {
           resolved_node = resolved.nodes().first();
-          if (f) fprintf(f, "DEBUG: Resolved node found: %p (is_Method=%d)\n", resolved_node, resolved_node->is_Method());
-        } else {
-          if (f) fprintf(f, "DEBUG: Resolved nodes list is empty\n");
         }
         candidates = resolved.nodes();
       }
-      if (f) fclose(f);
       lsp_->selection_handler()->call_prefixed(ast_dot,
                                                resolved_node,
                                                null,
@@ -2621,37 +2611,6 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
          (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection()));
   
   auto candidates = _compute_target_candidates(ast_target, scope());
-
-  {
-    FILE* f = fopen("/tmp/hover_debug.txt", "a");
-    if (f) {
-      fprintf(f, "DEBUG _handle_lsp_call_identifier:\n");
-      fprintf(f, "  ast_target->is_Identifier() = %d\n", ast_target->is_Identifier());
-      fprintf(f, "  ast_target->is_Dot() = %d\n", ast_target->is_Dot());
-      fprintf(f, "  ast_target->is_LspSelection() = %d\n", ast_target->is_LspSelection());
-      if (ast_target->is_Dot()) {
-        fprintf(f, "  is_prefixed = %d\n", scope_->is_prefixed_identifier(ast_target));
-        fprintf(f, "  is_static = %d\n", scope_->is_static_identifier(ast_target));
-        fprintf(f, "  dot name = %s\n", ast_target->as_Dot()->name()->data().c_str());
-        fprintf(f, "  dot receiver is_Identifier = %d\n", ast_target->as_Dot()->receiver()->is_Identifier());
-        if (ast_target->as_Dot()->receiver()->is_Identifier()) {
-          fprintf(f, "  dot receiver name = %s\n", ast_target->as_Dot()->receiver()->as_Identifier()->data().c_str());
-        }
-      }
-      fprintf(f, "  candidates.name = %s\n", candidates.name.c_str());
-      fprintf(f, "  candidates.nodes.length() = %ld\n", (long)candidates.nodes.length());
-      fprintf(f, "  candidates.encountered_error = %d\n", candidates.encountered_error);
-      for (int i = 0; i < candidates.nodes.length(); i++) {
-        auto node = candidates.nodes[i];
-        fprintf(f, "  candidate[%d]: is_Method=%d is_Class=%d\n", i, node->is_Method(), node->is_Class());
-        if (node->is_Method()) {
-          auto method = node->as_Method();
-          fprintf(f, "    method name=%s is_static=%d\n", method->name().c_str(), method->is_static());
-        }
-      }
-      fclose(f);
-    }
-  }
   
   if (ast_target->is_Identifier()) {
     lsp_->selection_handler()->call_static(ast_target,
