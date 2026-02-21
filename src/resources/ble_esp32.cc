@@ -90,10 +90,13 @@ static const uword kDeletedToken = std::numeric_limits<uword>::max();
 /// convert back to the actual BleResources (assuming they are still alive).
 class TokenResourceMap {
  public:
+  TokenResourceMap() : mutex_(OS::allocate_mutex(0, "TokenResourceMap")) {}
   ~TokenResourceMap() {
+    Locker locker(mutex_);
     if (capacity != -1) {
       free(entries);
     }
+    OS::dispose(mutex_);
   }
 
   // Returns false if there was a malloc error.
@@ -111,6 +114,7 @@ class TokenResourceMap {
   void compact(bool in_preparation_for_adding=false);
 
  private:
+  Mutex* mutex_;
   static const int kInitialLength = 4;
   uword sequence_counter = 0;
 
@@ -129,6 +133,7 @@ class TokenResourceMap {
 
 // Returns false if there was a malloc error.
 bool TokenResourceMap::add(BleResource* resource, uword* result) {
+  Locker locker(mutex_);
   if (!reserve_space()) return false;
   if (sequence_counter == kInvalidToken) FATAL("TokenResourceMap overflow");
   uword token = sequence_counter++;
@@ -145,8 +150,16 @@ bool TokenResourceMap::reserve_space() {
     capacity = kInitialLength;
     length = 0;
   } else if (length == capacity) {
-    // Try to purge deleted entries first.
-    compact(true);
+    // Cannot call compact() which takes another lock. Instead do the logic here directly or use an inner unlocked compact.
+    // For simplicity, do the inline compaction.
+    int current = 0;
+    for (int i = 0; i < length; i++) {
+      if (entries[i].resource != null) {
+        entries[current++] = entries[i];
+      }
+    }
+    length = current;
+
     // Only if that didn't work grow.
     if (length == capacity) {
       bool succeeded = resize(2 * capacity);
@@ -157,6 +170,7 @@ bool TokenResourceMap::reserve_space() {
 }
 
 BleResource* TokenResourceMap::get(uword token) {
+  Locker locker(mutex_);
   int index = find(token);
   if (index == -1) return null;
   // Note that the resource could also be null.
@@ -164,6 +178,7 @@ BleResource* TokenResourceMap::get(uword token) {
 }
 
 void TokenResourceMap::remove(uword token) {
+  Locker locker(mutex_);
   int index = find(token);
   if (index == -1) return;
   // Just mark the entry as removed.
@@ -174,6 +189,7 @@ void TokenResourceMap::remove(uword token) {
 /// This operation should be done at opportune moments (at the end of
 /// deleting a Device object, for example).
 void TokenResourceMap::compact(bool in_preparation_for_adding) {
+  Locker locker(mutex_);
   // Drop empty entries.
   int current = 0;
   for (int i = 0; i < length; i++) {
