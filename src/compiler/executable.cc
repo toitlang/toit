@@ -94,6 +94,10 @@ int create_executable(const char* out_path,
   }
   if (os != null) {
     builder.join(os);
+    if (strcmp(os, "darwin") == 0 && strcmp(arch, "amd64") == 0) {
+      // We now have fat binaries that combine arm64 and x64.
+      arch = "aarch64";
+    }
   }
   if (arch != null) {
     // If we have an arch, we should always have an os, but we
