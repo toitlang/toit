@@ -1052,14 +1052,17 @@ jobs:
           echo 'main: print "hello world"' > hello.toit
           for out_os in linux darwin windows; do
             for out_arch in amd64 aarch64 arm arm64 riscv64; do
-              # We don't have vessels for every target, so limit combinations
-              if [[ "$out_os" == "darwin" && "$out_arch" != "aarch64" ]]; then continue; fi
-              if [[ "$out_os" == "windows" && "$out_arch" != "amd64" ]]; then continue; fi
               # The windows build of the compiler needs .exe
               COMPILER="toit/bin/toit"
               if [[ "$RUNNER_OS" == "Windows" ]]; then COMPILER="toit/bin/toit.exe"; fi
 
-              if [ -d "toit/lib/toit/vessels/$out_os/$out_arch" ]; then
+              VESSEL_ARCH=$out_arch
+              if [[ "$out_os" == "darwin" && "$out_arch" == "amd64" ]]; then
+                # The compiler automatically uses the fat binary in aarch64 for amd64 darwin.
+                VESSEL_ARCH="aarch64"
+              fi
+
+              if [ -d "toit/lib/toit/vessels/$out_os/$VESSEL_ARCH" ]; then
                 echo "Cross-compiling for $out_os/$out_arch"
                 ./$COMPILER compile --os=$out_os --arch=$out_arch -o hello_out hello.toit
               fi
