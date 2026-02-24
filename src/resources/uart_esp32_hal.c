@@ -62,6 +62,11 @@ void uart_toit_hal_set_sclk(uart_hal_handle_t hal, uart_sclk_t sclk) {
   uart_hal_set_sclk(HAL, sclk);
 }
 
+void uart_toit_hal_enable_sclk(uart_hal_handle_t hal) {
+  uart_hal_context_t* hal_context = (uart_hal_context_t*)hal->hal;
+  uart_ll_sclk_enable(hal_context->dev);
+}
+
 int uart_get_sclk_freq(uart_sclk_t sclk, uint32_t* out_freq_hz);
 
 void uart_toit_hal_set_baudrate(uart_hal_handle_t hal, uint32_t baud_rate) {

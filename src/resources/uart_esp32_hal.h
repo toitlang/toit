@@ -57,6 +57,7 @@ void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t* baud_rate);
 void uart_toit_hal_set_baudrate(uart_hal_handle_t hal, uint32_t baud_rate);
 void uart_toit_hal_set_stop_bits(uart_hal_handle_t hal, uart_stop_bits_t stop_bit);
 void uart_toit_hal_set_tx_idle_num(uart_hal_handle_t hal, uint16_t idle_num);
+void uart_toit_hal_enable_sclk(uart_hal_handle_t hal);
 void uart_toit_hal_set_data_bit_num(uart_hal_handle_t hal, uart_word_length_t data_bit);
 void uart_toit_hal_set_parity(uart_hal_handle_t hal, uart_parity_t parity_mode);
 void uart_toit_hal_set_hw_flow_ctrl(uart_hal_handle_t hal, uart_hw_flowcontrol_t flow_ctrl, uint8_t rx_thresh);
