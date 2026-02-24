@@ -928,15 +928,21 @@ PRIMITIVE(create) {
   uart_toit_hal_set_rx_timeout(init.hal, 10);
 
   if (GPIO_IS_VALID_GPIO(rx)) {
-    // On some chips (specifically the S3) we have received up to a byte of
-    // 1-bits when the UART is enabled.
-    // To avoid this, we wait for the time of one byte at the baud rate, and
-    // then clear the RX FIFO.
-    // The stop-bits value is too large for STOP-BITS-1_5 and STOP-BITS-2, but
-    // waiting longer is OK.
     int wait_us = 1 + (1000000 * (data_bits + stop_bits) - 1) / baud_rate;
     usleep(wait_us);
+
+    // On some chips (specifically the S3) we have received up to a byte of
+    // 1-bits when the UART is enabled. Clear the RX FIFO after waiting.
+    uart_toit_hal_rxfifo_rst(init.hal);
   }
+
+  // Reset FIFOs and clear pending interrupt status before the ISR is attached,
+  // to avoid immediate interrupt storms caused by stale UART state.
+  uint32 all_interrupt_mask = init.hal->interrupt_mask[UART_TOIT_ALL_INTR_MASK];
+  uart_toit_hal_disable_intr_mask(init.hal, all_interrupt_mask);
+  uart_toit_hal_txfifo_rst(init.hal);
+  uart_toit_hal_rxfifo_rst(init.hal);
+  uart_toit_hal_clr_intsts_mask(init.hal, all_interrupt_mask);
 
   init.uart->initialize();
 
@@ -956,7 +962,10 @@ PRIMITIVE(create) {
 
   // Install the ISR on the SystemEventSource's main thread that runs on core 0,
   // to allocate the interrupts on core 0.
-  SystemEventSource::instance()->run([&]() -> void {
+  // Scrub once more right before allocation to minimize stale pending state.
+  uart_toit_hal_disable_intr_mask(init.hal, all_interrupt_mask);
+  uart_toit_hal_clr_intsts_mask(init.hal, all_interrupt_mask);
+  SystemEventSource::instance()->run([&args]() -> void {
     args.err = esp_intr_alloc(args.irq,
                               args.interrupt_flags,
                               uart_interrupt_handler,
