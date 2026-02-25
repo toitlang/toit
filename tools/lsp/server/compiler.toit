@@ -323,7 +323,9 @@ class Compiler:
     run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n": |reader /io.Reader|
       line := reader.read-line
       if not line: return null
-      result-uri := translator.to-uri line --from-compiler
+      // The compiler emits the file path first, but prepareRename only
+      // needs the range and placeholder. We still consume the path line
+      // to advance the reader.
       range := read-range reader
       placeholder := reader.read-line
       if not placeholder: return null

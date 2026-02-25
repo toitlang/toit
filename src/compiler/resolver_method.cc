@@ -2604,11 +2604,12 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
 //   an identifier (or prefixed/static identifier).
 // In that case, the getter and setter might be different, which is why
 //   there are two IR targets.
+static bool contains_lsp_selection(ast::Node* node);
+
 void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
                                                  ir::Node* ir_target1,
                                                  ir::Node* ir_target2) {
-  ASSERT(ast_target->is_LspSelection() ||
-         (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection()));
+  ASSERT(contains_lsp_selection(ast_target));
   
   auto candidates = _compute_target_candidates(ast_target, scope());
   
@@ -2641,6 +2642,15 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
       class_entry = scope_->lookup_prefixed(receiver);
     }
     ir::Class* ir_class = class_entry.klass();
+    if (ir_class != null &&
+        (ast_dot->receiver()->is_LspSelection() ||
+         (ast_dot->receiver()->is_Dot() && ast_dot->receiver()->as_Dot()->name()->is_LspSelection()))) {
+      // The selection is on the class part of the static identifier.
+      // This is what the user expects when renaming a class in a static call.
+      if (ir_class->range().is_valid()) {
+        lsp_->selection_handler()->class_interface_or_mixin(ast_dot->receiver(), scope(), null, ir_class, false, false);
+      }
+    }
     lsp_->selection_handler()->call_class(ast_dot,
                                           ir_class,
                                           ir_target1,
@@ -2648,6 +2658,15 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
                                           candidates.nodes,
                                           scope_);
   }
+}
+
+static bool contains_lsp_selection(ast::Node* node) {
+  if (node->is_LspSelection()) return true;
+  if (node->is_Dot()) {
+    auto dot = node->as_Dot();
+    return contains_lsp_selection(dot->receiver()) || contains_lsp_selection(dot->name());
+  }
+  return false;
 }
 
 void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
@@ -2666,8 +2685,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
                                                  ir_target,
                                                  candidates.nodes);
   }
-  if (ast_target->is_LspSelection() ||
-      (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection())) {
+  if (contains_lsp_selection(ast_target)) {
     _handle_lsp_call_identifier(ast_target, ir_target, null);
   }
   if (!ir_target->is_Error() && target_name == Symbols::_) {

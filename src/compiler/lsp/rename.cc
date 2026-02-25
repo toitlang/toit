@@ -27,11 +27,26 @@ void FindReferencesHandler::call_static(ast::Node* node,
                                         List<ir::Node*> candidates,
                                         IterableScope* scope,
                                         ir::Method* surrounding) {
+  // Don't overwrite target if already set (e.g., by class_interface_or_mixin
+  // when the cursor is on the class part of a static call like Foo.bar).
+  if (target_ != null) return;
   ir::Node* t = null;
   if (resolved2 != null) t = resolved2;
   else if (candidates.length() == 1) t = candidates[0];
   else if (resolved1 != null) t = resolved1;
-  if (t != null) target_ = unwrap_reference(t);
+  if (t != null) {
+    t = unwrap_reference(t);
+    // When the resolved target is an unnamed constructor or factory called
+    // by class name (e.g., `MyObj`), the user intends to rename the class,
+    // not the constructor. Resolve to the holder class instead.
+    if (t->is_Method()) {
+      auto* method = t->as_Method();
+      if ((method->is_constructor() || method->is_factory()) && method->holder() != null) {
+        t = method->holder();
+      }
+    }
+    target_ = t;
+  }
 }
 
 FindReferencesVisitor::FindReferencesVisitor(ir::Node* target, SourceManager* source_manager, UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map, LspProtocol* protocol)
@@ -83,6 +98,11 @@ void FindReferencesVisitor::visit_ReferenceClass(ir::ReferenceClass* node) {
 }
 
 void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {
+  // TODO(rename): Virtual call sites (e.g., `obj.method`) are not yet matched
+  // as references. Virtual dispatch makes it impossible to know at compile time
+  // which concrete method is being called without full type-flow analysis.
+  // For now, renaming a virtual method only renames the definition and
+  // statically-resolved references. Virtual call sites must be renamed manually.
   TraversingVisitor::visit_CallVirtual(node);
 }
 
