@@ -27,7 +27,7 @@ namespace compiler {
 /// ReferenceClass). This function strips the wrapper to get the actual
 /// definition node (Local, Global, Method, Class), which is needed for
 /// pointer identity comparisons when searching for references.
-static ir::Node* unwrap_reference(ir::Node* node) {
+inline ir::Node* unwrap_reference(ir::Node* node) {
   if (node == null) return null;
   if (node->is_ReferenceMethod()) return node->as_ReferenceMethod()->target();
   if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target();
@@ -70,7 +70,33 @@ class FindReferencesHandler : public LspSelectionHandler {
   void import_path(const char* path, const char* segment, bool is_first_segment, const char* resolved, const Package& current_package, const PackageLock& package_lock, Filesystem* fs) override {}
   void class_interface_or_mixin(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface, bool needs_mixin) override { if (resolved) target_ = unwrap_reference(resolved); }
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none) override { if (resolved.nodes().length() == 1) target_ = unwrap_reference(resolved.nodes()[0]); }
-  void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes) override {}
+  void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes) override {
+    // Try to find a method that matches the virtual call selector.
+    Symbol selector = node->selector();
+    if (type.is_class()) {
+      auto klass = type.klass();
+      while (klass != null) {
+        for (auto method : klass->methods()) {
+          if (method->name() == selector &&
+              method->resolution_shape().accepts(node->shape())) {
+            target_ = method;
+            return;
+          }
+        }
+        klass = klass->super();
+      }
+    }
+    // Fall back: search all classes for a matching method.
+    for (auto klass : classes) {
+      for (auto method : klass->methods()) {
+        if (method->name() == selector &&
+            method->resolution_shape().accepts(node->shape())) {
+          target_ = method;
+          return;
+        }
+      }
+    }
+  }
   void call_prefixed(ast::Dot* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override { call_static(node, resolved1, resolved2, candidates, scope, null); }
   void call_class(ast::Dot* node, ir::Class* klass, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override { call_static(node, resolved1, resolved2, candidates, scope, null); }
 
@@ -79,7 +105,17 @@ class FindReferencesHandler : public LspSelectionHandler {
   void call_block(ast::Dot* node, ir::Node* ir_receiver) override {}
   void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) override {}
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name, int module, int primitive, bool on_module) override {}
-  void field_storing_parameter(ast::Parameter* node, List<ir::Field*> fields, bool field_storing_is_allowed) override {}
+  void field_storing_parameter(ast::Parameter* node, List<ir::Field*> fields, bool field_storing_is_allowed) override {
+    if (node->name()->is_LspSelection()) {
+      auto name = node->name()->data();
+      for (auto field : fields) {
+        if (field->name() == name) {
+          target_ = field;
+          return;
+        }
+      }
+    }
+  }
   void this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding) override {}
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override { if (entry.nodes().length() == 1) target_ = unwrap_reference(entry.nodes()[0]); }
