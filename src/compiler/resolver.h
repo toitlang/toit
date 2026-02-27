@@ -59,11 +59,10 @@ class Resolver {
  private:
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
-  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
-  ToitdocRegistry* toitdocs_;
-  std::vector<ir::AssignmentGlobal*> global_assignments_;
-
   Lsp* lsp_;
+  ToitdocRegistry* toitdocs_;
+  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
+  std::vector<ir::AssignmentGlobal*> global_assignments_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 

@@ -16,6 +16,7 @@
 #include "rename.h"
 #include "../ast.h"
 #include "../ir.h"
+#include "../token.h"
 #include "../../utils.h"
 
 namespace toit {
@@ -39,10 +40,15 @@ void FindReferencesHandler::call_static(ast::Node* node,
     // When the resolved target is an unnamed constructor or factory called
     // by class name (e.g., `MyObj`), the user intends to rename the class,
     // not the constructor. Resolve to the holder class instead.
+    // Named constructors (e.g., `constructor.deserialize`) should NOT be
+    // redirected — the user wants to rename the constructor's own name.
     if (t->is_Method()) {
       auto* method = t->as_Method();
       if ((method->is_constructor() || method->is_factory()) && method->holder() != null) {
-        t = method->holder();
+        auto holder_name = method->holder()->name();
+        if (method->name() == holder_name || method->name() == Symbols::constructor) {
+          t = method->holder();
+        }
       }
     }
     target_ = t;
