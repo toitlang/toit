@@ -349,17 +349,17 @@ class Compiler:
     run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
       try:
         line := reader.read-line
-        if not line: return.run
+        if not line: continue.run
 
-        length := int.parse line --on-error=(: 0)
-        if length <= 0: return.run
+        length := int.parse line --if-error=(: 0)
+        if length <= 0: continue.run
 
         payload := reader.read-string length
         lines := payload.split "\n"
-        if lines.size < 3: return.run
+        if lines.size < 3: continue.run
 
-        start := int.parse lines[1] --on-error=(: 0)
-        end   := int.parse lines[2] --on-error=(: 0)
+        start := int.parse lines[1] --if-error=(: 0)
+        end   := int.parse lines[2] --if-error=(: 0)
 
         // Extract text only if it exists and isn't just an empty string.
         text := null
