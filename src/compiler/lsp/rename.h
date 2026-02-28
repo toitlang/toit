@@ -17,6 +17,10 @@
 
 #include "selection.h"
 
+#include "../set.h"
+#include "../token.h"
+#include "../package.h"
+
 namespace toit {
 namespace compiler {
 
@@ -60,6 +64,23 @@ inline Source::Range target_range(ir::Node* target) {
   if (target->is_Field()) return target->as_Field()->range();
   if (target->is_Local()) return target->as_Local()->range();
   return Source::Range::invalid();
+}
+
+/// Returns whether the given target node is defined in the SDK.
+///
+/// SDK symbols cannot be renamed because their source files are not
+/// user-editable. Both prepareRename and rename should refuse to operate
+/// on SDK targets.
+///
+/// Locals and parameters are never from the SDK (they live inside method
+/// bodies that are being compiled from user code, even if the method type
+/// comes from the SDK).
+inline bool is_sdk_target(ir::Node* target, SourceManager* source_manager) {
+  Source::Range range = target_range(target);
+  if (!range.is_valid()) return false;
+  auto* source = source_manager->source_for_position(range.from());
+  if (source == null) return false;
+  return source->package_id() == Package::SDK_PACKAGE_ID;
 }
 
 class FindReferencesHandler : public LspSelectionHandler {
@@ -163,9 +184,98 @@ class FindReferencesHandler : public LspSelectionHandler {
   ir::Node* target_ = null;
 };
 
+/// Determines whether a CallVirtual node should be included in rename results.
+///
+/// Virtual calls in the IR don't carry a resolved method target — only a
+/// selector name and a call shape. Without full type-flow analysis, we cannot
+/// know with certainty which concrete method a virtual call dispatches to.
+///
+/// This filter uses several layers of analysis to decide whether a virtual
+/// call whose selector and shape match the target method should be included:
+///
+/// 1. **Operator exclusion**: Operators (like +, [], etc.) cannot be
+///    meaningfully renamed, so they are always excluded.
+///
+/// 2. **Class hierarchy computation**: We compute the set of all classes
+///    that participate in the target method's dispatch chain — the holder
+///    class, all ancestors that define the same method, all descendants
+///    (which inherit or override it), and all interfaces/mixins that
+///    declare it.
+///
+/// 3. **Ambiguity detection**: If other, unrelated class hierarchies also
+///    define a method with the same name and compatible shape, the match
+///    is "ambiguous" — a virtual call with that selector could be
+///    dispatching to either hierarchy. For ambiguous methods, we apply
+///    package-based filtering to reduce false positives.
+///
+/// 4. **SDK exclusion**: SDK methods cannot be renamed (their source
+///    files are not user-editable), so the filter is inactive for SDK
+///    targets.
+///
+/// 5. **Package-based filtering** (ambiguous names only): When the name
+///    is ambiguous, a virtual call site is included only if:
+///    - It is in the same source file as the target method, or
+///    - It is in the same package as the target method.
+///    This heuristic approximates visibility: call sites in the same
+///    package are likely referencing the same class hierarchy.
+class VirtualCallFilter {
+ public:
+  /// Builds a filter for the given target and program.
+  ///
+  /// If the target is not an instance method, or if it is an operator,
+  /// the returned filter is inactive and `should_include` always returns
+  /// false.
+  static VirtualCallFilter build(ir::Node* target,
+                                 ir::Program* program,
+                                 SourceManager* source_manager);
+
+  /// Returns true if the given CallVirtual node should be included in
+  /// rename results.
+  bool should_include(ir::CallVirtual* node) const;
+
+  /// Returns true if this filter is active (the target is a renameable
+  /// instance method with a non-operator name).
+  bool is_active() const { return method_ != null; }
+
+ private:
+  VirtualCallFilter()
+      : method_(null)
+      , is_ambiguous_(false)
+      , target_source_path_(null)
+      , source_manager_(null) {}
+
+  /// Computes the set of classes participating in the target method's
+  /// dispatch.
+  ///
+  /// A class "participates" if it defines or inherits the target method
+  /// and is connected to the holder through the class hierarchy (super
+  /// classes, sub classes, interfaces, or mixins).
+  void compute_participating_classes(ir::Program* program);
+
+  /// Determines whether the target method's name+shape is ambiguous.
+  ///
+  /// We consider the method ambiguous if there exists at least one class
+  /// outside the participating set that defines a method with the same
+  /// name and a compatible shape. Such a class belongs to an unrelated
+  /// hierarchy, and a virtual call with the matching selector could
+  /// dispatch to either hierarchy.
+  void detect_ambiguity(ir::Program* program);
+
+  ir::Method* method_;
+  UnorderedSet<ir::Class*> participating_classes_;
+  bool is_ambiguous_;
+  std::string target_package_id_;
+  const char* target_source_path_;
+  SourceManager* source_manager_;
+};
+
 class FindReferencesVisitor : public ir::TraversingVisitor {
  public:
-  FindReferencesVisitor(ir::Node* target, SourceManager* source_manager, UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map, LspProtocol* protocol);
+  FindReferencesVisitor(ir::Node* target,
+                        SourceManager* source_manager,
+                        UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
+                        LspProtocol* protocol,
+                        const VirtualCallFilter& virtual_call_filter);
 
   void visit_ReferenceLocal(ir::ReferenceLocal* node) override;
   void visit_ReferenceGlobal(ir::ReferenceGlobal* node) override;
@@ -180,6 +290,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   SourceManager* source_manager_;
   UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map_;
   LspProtocol* protocol_;
+  const VirtualCallFilter& virtual_call_filter_;
 };
 
 } // namespace compiler

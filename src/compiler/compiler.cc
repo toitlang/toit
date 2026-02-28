@@ -1214,6 +1214,9 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
 
   if (target == null) exit(0);
 
+  // Refuse to rename SDK symbols — their source files are not user-editable.
+  if (is_sdk_target(target, source_manager())) exit(0);
+
   auto& ir_to_ast = resolver->ir_to_ast_map();
 
   // Emit the definition's own location.
@@ -1226,8 +1229,9 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
         from.line_number - 1, utf16_offset_in_line(from),
         to.line_number - 1, utf16_offset_in_line(to));
   }
-  // Emit all reference locations.
-  FindReferencesVisitor visitor(target, source_manager(), ir_to_ast, lsp()->protocol());
+  // Emit all reference locations (static references + virtual call sites).
+  auto virtual_call_filter = VirtualCallFilter::build(target, program, source_manager());
+  FindReferencesVisitor visitor(target, source_manager(), ir_to_ast, lsp()->protocol(), virtual_call_filter);
   visitor.visit(program);
   exit(0);
 }
@@ -1309,6 +1313,9 @@ void PrepareRenamePipeline::emit_prepare_rename(ir::Node* target,
   Source::Range range = range_override.is_valid() ? range_override : target_range(target);
 
   if (name == null || !range.is_valid()) exit(0);
+
+  // Refuse to rename SDK symbols — their source files are not user-editable.
+  if (is_sdk_target(target, source_manager())) exit(0);
 
   auto from = source_manager()->compute_location(range.from());
   auto to = source_manager()->compute_location(range.to());
