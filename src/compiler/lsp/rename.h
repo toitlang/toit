@@ -103,7 +103,38 @@ class FindReferencesHandler : public LspSelectionHandler {
   void call_static(ast::Node* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope, ir::Method* surrounding) override;
 
   void call_block(ast::Dot* node, ir::Node* ir_receiver) override {}
-  void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) override {}
+  void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) override {
+    if (ir_call_target == null || ir_call_target->is_Error()) return;
+    if (!ir_call_target->is_ReferenceMethod()) return;
+
+    auto name = name_node->as_LspSelection()->data();
+    auto* ir_method = ir_call_target->as_ReferenceMethod()->target();
+
+    // Try matching against the method's parameter list (available for
+    // same-module methods that have already been resolved).
+    for (auto parameter : ir_method->parameters()) {
+      if (parameter->name() == name) {
+        target_ = parameter;
+        return;
+      }
+    }
+
+    // For cross-module methods the parameter list may not yet be populated
+    // at resolution time.  Fall back to checking the resolution shape which
+    // is always available.
+    auto shape = ir_method->resolution_shape();
+    for (int i = 0; i < shape.names().length(); i++) {
+      if (shape.names()[i] == name) {
+        // We don't have an ir::Parameter node for this cross-module
+        // parameter.  Create a temporary Local that carries the correct
+        // name and the call-site range so that emit_prepare_rename can
+        // produce a valid response.
+        auto range = name_node->as_LspSelection()->selection_range();
+        target_ = _new ir::Local(name, true, false, range);
+        return;
+      }
+    }
+  }
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name, int module, int primitive, bool on_module) override {}
   void field_storing_parameter(ast::Parameter* node, List<ir::Field*> fields, bool field_storing_is_allowed) override {
     if (node->name()->is_LspSelection()) {
