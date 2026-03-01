@@ -17,13 +17,13 @@ txt-test network/net.Client:
   client := dns.DnsClient [
       "8.8.8.8",    // Google DNS.
       ]
-  texts := client.get --record-types={dns.RECORD-TXT} --network=network "toit.io"
+  texts := client.get --record-types=[dns.RECORD-TXT] --network=network "toit.io"
   expect
       texts.size == 2
-  ptr := client.get --record-types={dns.RECORD-PTR} --network=network "toit.io"
+  ptr := client.get --record-types=[dns.RECORD-PTR] --network=network "toit.io"
   expect
       ptr.size == 0
-  srv := client.get --record-types={dns.RECORD-SRV} --network=network "toit.io"
+  srv := client.get --record-types=[dns.RECORD-SRV] --network=network "toit.io"
   expect
       srv.size == 0
 
@@ -33,7 +33,7 @@ cname-test network/net.Client:
       ]
   // Normally CNAME results are just consumed internally in our DNS code, but
   // we can explicitly ask for them.
-  cname := client.get --record-types={dns.RECORD-CNAME} --network=network "www.yahoo.com"
+  cname := client.get --record-types=[dns.RECORD-CNAME] --network=network "www.yahoo.com"
   expect
       cname.size > 0
   cname.do: | name |
