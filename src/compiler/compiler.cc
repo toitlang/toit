@@ -174,6 +174,7 @@ class LanguageServerPipeline : public Pipeline {
   enum class Kind {
     analyze,
     semantic_tokens,
+    selection_range,
     completion,
     goto_definition,
     hover,
@@ -492,6 +493,21 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     configuration.diagnostics = &diagnostics;
     configuration.is_for_analysis = true;
     lsp_semantic_tokens(path, configuration);
+  } else if (strcmp("SELECTION RANGE", mode) == 0) {
+    const char* path = reader.next("path");
+    int position_count = reader.next_int("position count");
+    std::vector<std::pair<int, int>> positions;
+    positions.reserve(position_count);
+    for (int i = 0; i < position_count; i++) {
+      // Input is 0-based; convert to 1-based.
+      int line = 1 + reader.next_int("line number (0-based)");
+      int col  = 1 + reader.next_int("column number (0-based)");
+      positions.push_back({line, col});
+    }
+    NullDiagnostics diagnostics(&source_manager);
+    configuration.diagnostics = &diagnostics;
+    configuration.is_for_analysis = true;
+    lsp_selection_range(path, positions, configuration);
   } else {
     const char* path = reader.next("path");
     // We generally use 1-based line/column numbers.
@@ -588,6 +604,15 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_selection_range(const char* source_path,
+                                   const std::vector<std::pair<int, int>>& positions,
+                                   const PipelineConfiguration& configuration) {
+  configuration.lsp->set_selection_range_request(source_path, positions);
+  ASSERT(configuration.diagnostics != null);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::selection_range, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -2181,6 +2206,12 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   }
 
   if (configuration_.parse_only) return Result::invalid();
+
+  // Selection ranges only need the parsed AST, not resolution or type-checking.
+  if (lsp() != null && lsp()->should_emit_selection_ranges()) {
+    lsp()->emit_selection_ranges(units, source_manager());
+    exit(0);
+  }
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());

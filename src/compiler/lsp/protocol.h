@@ -194,6 +194,17 @@ class LspSemanticTokensProtocol : public LspProtocolBase {
                   int token_modifiers);
 };
 
+class LspSelectionRangeProtocol : public LspProtocolBase {
+ public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
+  /// Emits the number of ranges for one cursor position.
+  void emit_range_count(int count);
+  /// Emits a single range (4 values: from_line, from_column, to_line, to_column).
+  void emit_range(const LspRange& range);
+};
+
 /// The protocol with which the compiler talks to the LSP server.
 ///
 /// *Note*: this protocol is not the same as the one between an LSP client and
@@ -213,7 +224,8 @@ class LspProtocol {
       , semantic_(writer)
       , hover_(writer)
       , find_references_(writer)
-      , prepare_rename_(writer) {}
+      , prepare_rename_(writer)
+      , selection_range_(writer) {}
 
   LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
   LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }
@@ -224,6 +236,7 @@ class LspProtocol {
   LspHoverProtocol* hover() { return &hover_; }
   LspFindReferencesProtocol* find_references() { return &find_references_; }
   LspPrepareRenameProtocol* prepare_rename() { return &prepare_rename_; }
+  LspSelectionRangeProtocol* selection_range() { return &selection_range_; }
 
  private:
   LspDiagnosticsProtocol diagnostics_;
@@ -235,6 +248,7 @@ class LspProtocol {
   LspHoverProtocol hover_;
   LspFindReferencesProtocol find_references_;
   LspPrepareRenameProtocol prepare_rename_;
+  LspSelectionRangeProtocol selection_range_;
 };
 
 } // namespace toit::compiler
