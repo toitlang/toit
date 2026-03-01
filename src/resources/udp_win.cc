@@ -461,38 +461,6 @@ PRIMITIVE(get_option) {
     case UDP_REUSE_ADDRESS:
       return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
 
-
-
-    case UDP_MULTICAST_LOOPBACK: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_LOOP,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return BOOL(value != 0);
-    }
-
-    case UDP_MULTICAST_TTL: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return Smi::from(value);
-    }
-
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
-                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
-      }
-      return BOOL(value != 0);
-    }
-
     default:
       FAIL(UNIMPLEMENTED);
   }

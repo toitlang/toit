@@ -129,7 +129,7 @@ PRIMITIVE(bind_socket) {
 
   struct sockaddr_in addr;
   socklen_t size = sizeof(sockaddr);
-  bzero(reinterpret_cast<char*>(&addr), size);
+  bzero((char*)&addr, size);
   addr.sin_family = AF_INET;
   // TODO(florian): we should probably check that the size is ok.
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
@@ -340,42 +340,6 @@ PRIMITIVE(get_option) {
 
     case UDP_REUSE_PORT:
       return get_bool_option(fd, SOL_SOCKET, SO_REUSEPORT, process);
-
-    case UDP_MULTICAST_LOOPBACK: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
-
-    case UDP_MULTICAST_TTL: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return Smi::from(value);
-    }
-
-    case UDP_REUSE_ADDRESS: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
-
-    case UDP_REUSE_PORT: {
-      int value = 0;
-      socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &value, &size) == -1) {
-        return Primitive::os_error(errno, process);
-      }
-      return BOOL(value != 0);
-    }
 
     default:
       FAIL(UNIMPLEMENTED);

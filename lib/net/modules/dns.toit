@@ -276,7 +276,7 @@ abstract class DnsClientBase_ implements DnsClient:
   /**
   Look up a domain name and return an A or AAAA record.
 
-  If given a numeric address like "127.0.0.1" it merely parses
+  If given a numeric address like "127.0.0.1" merely parses
     the numbers without a network round trip.
   */
   get name -> net.IpAddress
@@ -291,7 +291,7 @@ abstract class DnsClientBase_ implements DnsClient:
         get name --record-types=types --network=network --timeout=timeout
 
   /**
-  See $super
+  See $(DnsClient.get name --record-types --network).
   */
   get name -> List
       --record-types/List

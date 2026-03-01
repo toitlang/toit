@@ -196,7 +196,7 @@ test-additional-section:
   packet.big-endian.write-int16 7 // RDLENGTH: 1 (length byte) + 6 ("answer").
   packet.write-byte 6; packet.write "answer"
   
-  // Additional: "additional.local" + A record
+  // Additional: "additional.local" + A record.
   // 10 additional, then pointer to local (C0 12) - "local" is at 12 + 6 = 18 -> 0x12.
   packet.write-byte 10; packet.write "additional"
   packet.write-byte 0xC0; packet.write-byte 0x12
