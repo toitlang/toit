@@ -10,10 +10,13 @@ main:
   print "Key generated."
 
   print "Exporting keys..."
-  priv-pem := key.private-key
-  pub-pem := key.public-key
-  print "Private key:\n$priv-pem.to-string"
-  print "Public key:\n$pub-pem.to-string"
+  priv-key := key.private-key
+  pub-key := key.public-key
+
+  print "Private key bytes: $priv-key.size"
+  print "Public key bytes: $pub-key.size"
+  print "Private key:\n$(priv-key.to-pem.to-string)"
+  print "Public key:\n$(pub-key.to-pem.to-string)"
 
   print "Signing message..."
   message := "Hello, Toit RSA!"
@@ -27,15 +30,15 @@ main:
     throw "Verification failed!"
 
   print "Parsing exported public key..."
-  pub-key := rsa.RsaKey.parse-public pub-pem
-  if pub-key.verify message signature:
+  pub-exported := rsa.RsaKey.parse-public pub-key.der
+  if pub-exported.verify message signature:
     print "Verification with parsed public key successful!"
   else:
     throw "Verification with parsed public key failed!"
 
   print "Parsing exported private key..."
-  priv-key := rsa.RsaKey.parse-private priv-pem
-  signature2 := priv-key.sign message
+  priv-exported := rsa.RsaKey.parse-private priv-key.der
+  signature2 := priv-exported.sign message
   print "Verification of new signature with parsed keys successful!"
 
   print "Testing encryption/decryption..."

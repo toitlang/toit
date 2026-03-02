@@ -10,10 +10,10 @@ main:
   print "Key generated."
 
   print "Exporting keys..."
-  priv-pem := key.private-key
-  pub-pem := key.public-key
-  print "Private key size: $priv-pem.size"
-  print "Public key size: $pub-pem.size"
+  priv := key.private-key
+  pub := key.public-key
+  print "Private key size: $priv.size"
+  print "Public key size: $pub.size"
 
   print "Signing message..."
   message := "Hello, Toit RSA!"
@@ -24,11 +24,11 @@ main:
   expect (key.verify message signature)
 
   print "Parsing exported public key..."
-  pub-key := rsa.RsaKey.parse-public pub-pem
+  pub-key := rsa.RsaKey.parse-public pub.der
   expect (pub-key.verify message signature)
 
   print "Parsing exported private key..."
-  priv-key := rsa.RsaKey.parse-private priv-pem
+  priv-key := rsa.RsaKey.parse-private priv.der
   signature2 := priv-key.sign message
   expect (pub-key.verify message signature2)
 
