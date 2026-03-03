@@ -782,6 +782,10 @@ static mbedtls_md_type_t get_md_alg(int id) {
   }
 }
 
+static bool is_pem(Blob key) {
+  return key.length() > 5 && memcmp(key.address(), "-----", 5) == 0;
+}
+
 // Helper: parse a DER or PEM key blob into an mbedtls_pk_context.
 // For private keys, an optional password blob may be supplied (length 0 = none).
 // Returns 0 on success, a non-zero mbedtls error code on failure.
@@ -790,26 +794,37 @@ static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob passwo
   // mbedtls_pk_parse_key / mbedtls_pk_parse_public_key require the buffer to
   // be null-terminated when the input is PEM. For DER, the null byte is
   // actually harmful if it's passed as part of the length.
-  unsigned char* buf = unvoid_cast<unsigned char*>(malloc(key.length() + 1));
-  if (!buf) return MBEDTLS_ERR_PK_ALLOC_FAILED;
-  memcpy(buf, key.address(), key.length());
-  buf[key.length()] = '\0';
+  bool pem = is_pem(key);
 
-  // Determine if it's PEM or DER by checking for the "----" prefix.
-  bool is_pem = (key.length() > 5 && memcmp(key.address(), "-----", 5) == 0);
-  size_t parse_len = is_pem ? key.length() + 1 : key.length();
+  // Only allocate a copy for PEM (to add the null terminator).
+  // For DER we pass the original buffer directly.
+  unsigned char* buf = null;
+  const unsigned char* parse_buf;
+  size_t parse_len;
+
+  if (pem) {
+    buf = unvoid_cast<unsigned char*>(malloc(key.length() + 1));
+    if (!buf) return MBEDTLS_ERR_PK_ALLOC_FAILED;
+    memcpy(buf, key.address(), key.length());
+    buf[key.length()] = '\0';
+    parse_buf = buf;
+    parse_len = key.length() + 1;
+  } else {
+    parse_buf = key.address();
+    parse_len = key.length();
+  }
 
   int ret;
   if (is_private) {
     const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
     ret = mbedtls_pk_parse_key(pk,
-                               buf, parse_len,
+                               parse_buf, parse_len,
                                pwd, password.length(),
                                rsa_rng, NULL);
   } else {
-    ret = mbedtls_pk_parse_public_key(pk, buf, parse_len);
+    ret = mbedtls_pk_parse_public_key(pk, parse_buf, parse_len);
   }
-  free(buf);
+  free(buf);  // Safe: free(null) is a no-op.
   return ret;
 }
 
@@ -878,7 +893,10 @@ PRIMITIVE(rsa_generate) {
 
   int prv_ret, pub_ret;
   ByteArray* prv_der = rsa_export_der(&pk, process, true, &prv_ret);
-  ByteArray* pub_der = rsa_export_der(&pk, process, false, &pub_ret);
+  ByteArray* pub_der = null;
+  if (prv_der != null) {
+    pub_der = rsa_export_der(&pk, process, false, &pub_ret);
+  }
   mbedtls_pk_free(&pk);
 
   if (prv_der == null) {
@@ -899,6 +917,8 @@ PRIMITIVE(rsa_generate) {
 
 PRIMITIVE(rsa_sign) {
   ARGS(Blob, private_key_der, Blob, digest, int, hash_algo_id);
+
+  if (is_pem(private_key_der)) FAIL(INVALID_ARGUMENT);
 
   mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
   if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
@@ -932,6 +952,8 @@ PRIMITIVE(rsa_sign) {
 
 PRIMITIVE(rsa_verify) {
   ARGS(Blob, public_key_der, Blob, digest, Blob, signature, int, hash_algo_id);
+
+  if (is_pem(public_key_der)) FAIL(INVALID_ARGUMENT);
 
   mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
   if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
@@ -1017,6 +1039,7 @@ PRIMITIVE(rsa_get_public_key_der) {
 PRIMITIVE(rsa_encrypt) {
   ARGS(Blob, public_key_der, Blob, data, int, padding_mode, int, hash_id);
 
+  if (is_pem(public_key_der)) FAIL(INVALID_ARGUMENT);
   if (padding_mode != RSA_PADDING_PKCS1_V15 && padding_mode != RSA_PADDING_OAEP_V21) FAIL(INVALID_ARGUMENT);
 
   mbedtls_pk_context pk;
@@ -1057,6 +1080,7 @@ PRIMITIVE(rsa_encrypt) {
 PRIMITIVE(rsa_decrypt) {
   ARGS(Blob, private_key_der, Blob, data, int, padding_mode, int, hash_id);
 
+  if (is_pem(private_key_der)) FAIL(INVALID_ARGUMENT);
   if (padding_mode != RSA_PADDING_PKCS1_V15 && padding_mode != RSA_PADDING_OAEP_V21) FAIL(INVALID_ARGUMENT);
 
   mbedtls_pk_context pk;

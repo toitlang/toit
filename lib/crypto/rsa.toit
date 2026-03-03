@@ -126,8 +126,8 @@ class RsaKey:
     if bits != 1024 and bits != 2048 and bits != 3072 and bits != 4096: throw "INVALID_ARGUMENT"
     pair := rsa-generate_ bits
     return RsaKeyPair
-        (RsaKey.internal_ pair[0] true)
-        (RsaKey.internal_ pair[1] false)
+        RsaKey.internal_ pair[0] true
+        RsaKey.internal_ pair[1] false
 
   /**
   Signs the $message with this private key.
@@ -139,9 +139,9 @@ class RsaKey:
   The default is $SHA-256.
 
   # Examples
-```
+  ```
   signature := key.sign "my message"
-```
+  ```
   */
   sign message/io.Data --hash/int=SHA-256 -> ByteArray:
     digest := compute-digest_ message hash
@@ -169,9 +169,9 @@ class RsaKey:
   Returns true if the signature is valid, false otherwise.
 
   # Examples
-```
+  ```
   is-valid := key.verify "my message" signature
-```
+  ```
   */
   verify message/io.Data signature/ByteArray --hash/int=SHA-256 -> bool:
     digest := compute-digest_ message hash
@@ -213,7 +213,7 @@ class RsaKey:
   - Private key → "-----BEGIN RSA PRIVATE KEY-----"
   - Public key  → "-----BEGIN PUBLIC KEY-----"
   */
-  to-pem -> ByteArray:
+  to-pem -> string:
     return der-to-pem_ der --is-private=is-private
 
   static check-digest-length_ digest/ByteArray hash/int:
@@ -233,7 +233,7 @@ class RsaKey:
     else if hash == SHA-512: return sha512 message
     throw "INVALID_ARGUMENT"
 
-  static der-to-pem_ der/ByteArray --is-private/bool -> ByteArray:
+  static der-to-pem_ der/ByteArray --is-private/bool -> string:
     header := is-private ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PUBLIC KEY-----"
     footer := is-private ? "-----END RSA PRIVATE KEY-----" : "-----END PUBLIC KEY-----"
 
@@ -241,11 +241,11 @@ class RsaKey:
     lines := [header]
     i := 0
     while i < b64.size:
-      lines.add (b64.copy i (min (i + 64) b64.size))
+      lines.add b64[i .. min (i + 64) b64.size]
       i += 64
     lines.add footer
 
-    return (lines.join "\n").to-byte-array
+    return lines.join "\n"
 
 // Primitive: generates a new RSA key pair and returns [prv_der, pub_der].
 rsa-generate_ bits/int -> List:
@@ -279,3 +279,4 @@ rsa-encrypt_ public-key-der/ByteArray data/ByteArray padding/int hash/int -> Byt
 // Primitive: decrypt data with a private key DER blob.
 rsa-decrypt_ private-key-der/ByteArray data/ByteArray padding/int hash/int -> ByteArray:
   #primitive.crypto.rsa-decrypt
+  

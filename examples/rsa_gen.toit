@@ -15,8 +15,8 @@ main:
 
   print "Private key bytes: $priv-key.size"
   print "Public key bytes: $pub-key.size"
-  print "Private key:\n$(priv-key.to-pem.to-string)"
-  print "Public key:\n$(pub-key.to-pem.to-string)"
+  print "Private key:\n$(priv-key.to-pem)"
+  print "Public key:\n$(pub-key.to-pem)"
 
   print "Signing message..."
   message := "Hello, Toit RSA!"
