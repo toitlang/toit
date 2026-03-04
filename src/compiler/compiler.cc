@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -323,11 +323,7 @@ class HoverPipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler() override {
-    lsp()->setup_hover_handler(lsp_selection_path_,
-                               line_number_,
-                               column_number_,
-                               source_manager(),
-                               toitdocs());
+    lsp()->setup_hover_handler(source_manager(), toitdocs());
   }
 
   void post_resolve(Resolver* resolver, ir::Program* program) override {
@@ -1214,8 +1210,8 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
 
   if (target == null) exit(0);
 
-  // Refuse to rename SDK symbols — their source files are not user-editable.
-  if (is_sdk_target(target, source_manager())) exit(0);
+  // Refuse to rename non-editable symbols.
+  if (!is_renameable(target, source_manager())) exit(0);
 
   auto& ir_to_ast = resolver->ir_to_ast_map();
 
@@ -1314,8 +1310,8 @@ void PrepareRenamePipeline::emit_prepare_rename(ir::Node* target,
 
   if (name == null || !range.is_valid()) exit(0);
 
-  // Refuse to rename SDK symbols — their source files are not user-editable.
-  if (is_sdk_target(target, source_manager())) exit(0);
+  // Refuse to rename non-editable symbols.
+  if (!is_renameable(target, source_manager())) exit(0);
 
   auto from = source_manager()->compute_location(range.from());
   auto to = source_manager()->compute_location(range.to());

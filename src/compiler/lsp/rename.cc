@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -67,7 +67,7 @@ static std::string package_id_for_range(const Source::Range& range,
                                         SourceManager* source_manager) {
   if (!range.is_valid()) return Package::ENTRY_PACKAGE_ID;
   auto* source = source_manager->source_for_position(range.from());
-  if (source == null) return Package::ENTRY_PACKAGE_ID;
+  if (source == null) return Package::ERROR_PACKAGE_ID;
   return source->package_id();
 }
 
@@ -107,12 +107,14 @@ VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
   if (method->holder() == null) return filter;
   if (!method->is_instance()) return filter;
 
-  // Operators cannot be meaningfully renamed.
+  // Operators (like +, [], etc.) cannot be meaningfully renamed via LSP
+  // because their names are often tied to specific syntax or primitives,
+  // and renaming them would likely break the program's semantics.
   if (is_operator_name(method->name())) return filter;
 
-  // SDK methods cannot be renamed — their source files are not
-  // user-editable. Don't match virtual call sites for them.
-  if (is_sdk_target(target, source_manager)) return filter;
+  // SDK methods and non-path packages cannot be renamed — their source
+  // files are not user-editable. Don't match virtual call sites for them.
+  if (!is_renameable(target, source_manager)) return filter;
 
   filter.method_ = method;
 
@@ -127,6 +129,13 @@ VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
   return filter;
 }
 
+/// Computes the set of classes that could potentially participate in
+/// a virtual dispatch to the target method.
+///
+/// NOTE: This is a conservative approximation. In complex hierarchies
+/// involving multiple interfaces and mixins, it may include classes that
+/// are not strictly "connected" in a way that allows dispatch, but this
+/// ensure we don't miss legitimate call sites (favoring recall over precision).
 void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   auto* holder = method_->holder();
   Symbol name = method_->name();
@@ -198,7 +207,6 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
           break;
         }
       }
-      if (participating_classes_.contains(klass)) continue;
       for (auto mixin : klass->mixins()) {
         if (participating_classes_.contains(mixin)) {
           participating_classes_.insert(klass);
@@ -210,6 +218,13 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   }
 }
 
+/// Detects whether the target method's name and shape are ambiguous
+/// within the entire program.
+///
+/// If unrelated classes define a method with the same name and shape,
+/// any virtual call with that selector could be dispatching to either
+/// hierarchy. In such cases, we apply proximity heuristics to filter
+/// results.
 void VirtualCallFilter::detect_ambiguity(ir::Program* program) {
   Symbol name = method_->name();
   auto method_shape = method_->resolution_shape().to_plain_shape()
@@ -282,40 +297,13 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
                                      to.line_number - 1, utf16_offset_in_line(to));
 }
 
-void FindReferencesVisitor::visit_ReferenceLocal(ir::ReferenceLocal* node) {
+void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
   if (node->target() == target_) {
     auto ast_node = ir_to_ast_map_[node];
     if (ast_node != null) emit_range(ast_node->selection_range());
     else emit_range(node->range());
   }
-  TraversingVisitor::visit_ReferenceLocal(node);
-}
-
-void FindReferencesVisitor::visit_ReferenceGlobal(ir::ReferenceGlobal* node) {
-  if (node->target() == target_) {
-    auto ast_node = ir_to_ast_map_[node];
-    if (ast_node != null) emit_range(ast_node->selection_range());
-    else emit_range(node->range());
-  }
-  TraversingVisitor::visit_ReferenceGlobal(node);
-}
-
-void FindReferencesVisitor::visit_ReferenceMethod(ir::ReferenceMethod* node) {
-  if (node->target() == target_) {
-    auto ast_node = ir_to_ast_map_[node];
-    if (ast_node != null) emit_range(ast_node->selection_range());
-    else emit_range(node->range());
-  }
-  TraversingVisitor::visit_ReferenceMethod(node);
-}
-
-void FindReferencesVisitor::visit_ReferenceClass(ir::ReferenceClass* node) {
-  if (node->target() == target_) {
-    auto ast_node = ir_to_ast_map_[node];
-    if (ast_node != null) emit_range(ast_node->selection_range());
-    else emit_range(node->range());
-  }
-  TraversingVisitor::visit_ReferenceClass(node);
+  TraversingVisitor::visit_Reference(node);
 }
 
 void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {

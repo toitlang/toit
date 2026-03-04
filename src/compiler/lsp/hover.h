@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -23,12 +23,9 @@ namespace compiler {
 
 class HoverHandler : public LspSelectionHandler {
  public:
-  HoverHandler(const char* path,
-               int line_number,
-               int column_number,
-               LspProtocol* protocol,
-               SourceManager* source_manager,
-               ToitdocRegistry* toitdocs)
+  HoverHandler(SourceManager* source_manager,
+               ToitdocRegistry* toitdocs,
+               LspProtocol* protocol)
       : LspSelectionHandler(protocol)
       , source_manager_(source_manager)
       , toitdocs_(toitdocs) {}

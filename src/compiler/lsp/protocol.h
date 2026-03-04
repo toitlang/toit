@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -150,7 +150,8 @@ class LspHoverProtocol : public LspProtocolBase {
   // Inherit constructor.
   using LspProtocolBase::LspProtocolBase;
 
-  void emit(const char* content);
+  void emit_toitdoc_ref(const char* path, int start, int end);
+  void emit_string(const char* content);
 };
 
 class LspFindReferencesProtocol : public LspProtocolBase {

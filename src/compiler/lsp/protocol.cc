@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -15,15 +15,8 @@
 
 #include "protocol.h"
 
-#include <stdio.h>
-#include <functional>
-
 #include "protocol_summary.h"
 
-#include "../toitdoc_node.h"
-#include "../set.h"
-#include "../list.h"
-#include "../map.h"
 #include "../resolver_scope.h"
 
 #include "../../snapshot_bundle.h"
@@ -180,7 +173,14 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
                token_modifiers);
 }
 
-void LspHoverProtocol::emit(const char* content) {
+void LspHoverProtocol::emit_toitdoc_ref(const char* path, int start, int end) {
+  this->printf("-1\n%s\n%d\n%d\n",
+               path == null ? "" : path,
+               start,
+               end);
+}
+
+void LspHoverProtocol::emit_string(const char* content) {
   int length = content == null ? 0 : strlen(content);
   this->printf("%d\n", length);
   if (length > 0) {

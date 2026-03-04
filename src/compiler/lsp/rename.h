@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -33,10 +33,7 @@ namespace compiler {
 /// pointer identity comparisons when searching for references.
 inline ir::Node* unwrap_reference(ir::Node* node) {
   if (node == null) return null;
-  if (node->is_ReferenceMethod()) return node->as_ReferenceMethod()->target();
-  if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target();
-  if (node->is_ReferenceGlobal()) return node->as_ReferenceGlobal()->target();
-  if (node->is_ReferenceClass()) return node->as_ReferenceClass()->target();
+  if (node->is_Reference()) return node->as_Reference()->target();
   return node;
 }
 
@@ -66,21 +63,24 @@ inline Source::Range target_range(ir::Node* target) {
   return Source::Range::invalid();
 }
 
-/// Returns whether the given target node is defined in the SDK.
+/// Returns whether the given target node is eligible for renaming.
 ///
-/// SDK symbols cannot be renamed because their source files are not
-/// user-editable. Both prepareRename and rename should refuse to operate
-/// on SDK targets.
-///
-/// Locals and parameters are never from the SDK (they live inside method
-/// bodies that are being compiled from user code, even if the method type
-/// comes from the SDK).
-inline bool is_sdk_target(ir::Node* target, SourceManager* source_manager) {
+/// Refuses to rename SDK symbols or symbols in non-path packages (like git packages)
+/// because their source files are not user-editable. Both prepareRename and rename
+/// should refuse to operate on such targets.
+inline bool is_renameable(ir::Node* target, SourceManager* source_manager) {
   Source::Range range = target_range(target);
-  if (!range.is_valid()) return false;
+  if (!range.is_valid()) return true; // Locals/parameters might lack valid ranges here but are editable.
+  
   auto* source = source_manager->source_for_position(range.from());
   if (source == null) return false;
-  return source->package_id() == Package::SDK_PACKAGE_ID;
+  
+  if (source->package_id() == Package::SDK_PACKAGE_ID) return false;
+  
+  auto package = source->package();
+  if (!package.is_valid() || !package.is_path_package()) return false;
+  
+  return true;
 }
 
 class FindReferencesHandler : public LspSelectionHandler {
@@ -277,10 +277,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
                         LspProtocol* protocol,
                         const VirtualCallFilter& virtual_call_filter);
 
-  void visit_ReferenceLocal(ir::ReferenceLocal* node) override;
-  void visit_ReferenceGlobal(ir::ReferenceGlobal* node) override;
-  void visit_ReferenceMethod(ir::ReferenceMethod* node) override;
-  void visit_ReferenceClass(ir::ReferenceClass* node) override;
+  void visit_Reference(ir::Reference* node) override;
   void visit_CallVirtual(ir::CallVirtual* node) override;
 
  private:

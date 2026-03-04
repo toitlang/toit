@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -21,8 +21,6 @@
 namespace toit {
 namespace compiler {
 
-
-
 void HoverHandler::import_path(const char* path,
                                const char* segment,
                                bool is_first_segment,
@@ -31,8 +29,7 @@ void HoverHandler::import_path(const char* path,
                                const PackageLock& package_lock,
                                Filesystem* filesystem) {
   if (resolved == null) return;
-  std::string response = std::string(resolved) + "\n0\n0\n";
-  protocol()->hover()->emit(response.c_str());
+  protocol()->hover()->emit_toitdoc_ref(resolved, 0, 0);
   has_emitted_ = true;
 }
 
@@ -166,13 +163,7 @@ void HoverHandler::this_(ast::Identifier* node, ir::Class* enclosing_class, Iter
 }
 
 void HoverHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
-  if (entry.kind() == ResolutionEntry::NODES) {
-    if (entry.nodes().length() >= 1) {
-      emit_hover(entry.nodes().first(), null);
-    }
-  } else if (entry.is_class()) {
-    emit_hover(entry.klass(), null);
-  }
+  expord(node, entry, scope);
 }
 
 void HoverHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
@@ -226,18 +217,13 @@ void HoverHandler::emit_hover(ir::Node* node, const char* name) {
     return;
   }
 
-  Source* source = source_manager_->source_for_position(node_range.from());
-  if (source == null) return;
+  Source::Location location = source_manager_->compute_location(node_range.from());
+  if (location.source == null) return;
 
-  int start = source->offset_in_source(node_range.from());
-  int end = source->offset_in_source(node_range.to());
+  int start = location.source->offset_in_source(node_range.from());
+  int end = location.source->offset_in_source(node_range.to());
 
-  std::string response = 
-      std::string(source->absolute_path()) + "\n" +
-      std::to_string(start) + "\n" +
-      std::to_string(end) + "\n";
-
-  protocol()->hover()->emit(response.c_str());
+  protocol()->hover()->emit_toitdoc_ref(location.source->absolute_path(), start, end);
   has_emitted_ = true;
 }
 

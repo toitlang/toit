@@ -203,6 +203,13 @@ class Node {
 IR_NODES(DECLARE)
 #undef DECLARE
 
+  bool is_AnyReference() const {
+    return is_ReferenceLocal() ||
+           is_ReferenceGlobal() ||
+           is_ReferenceMethod() ||
+           is_ReferenceClass();
+  }
+
   virtual void accept(Visitor* visitor) = 0;
   virtual Node* accept(ReturningVisitor<Node*>* visitor) = 0;
   virtual Type accept(ReturningVisitor<Type>* visitor) = 0;

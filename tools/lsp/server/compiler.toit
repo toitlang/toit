@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -352,25 +352,29 @@ class Compiler:
         if not line: continue.run
 
         length := int.parse line --if-error=(: 0)
-        if length <= 0: continue.run
+        if length == -1:
+          ref-path := reader.read-line
+          start := int.parse reader.read-line --if-error=(: 0)
+          end := int.parse reader.read-line --if-error=(: 0)
+          result = HoverDefinition --path=ref-path --start=start --end=end
+        else if length > 0:
+          payload := reader.read-string length
+          lines := payload.split "\n"
+          if lines.size < 3: continue.run
 
-        payload := reader.read-string length
-        lines := payload.split "\n"
-        if lines.size < 3: continue.run
+          start := int.parse lines[1] --if-error=(: 0)
+          end   := int.parse lines[2] --if-error=(: 0)
 
-        start := int.parse lines[1] --if-error=(: 0)
-        end   := int.parse lines[2] --if-error=(: 0)
+          // Extract text only if it exists and isn't just an empty string.
+          text := null
+          if lines.size > 3 and lines[3] != "":
+            text = (lines[3..].join "\n").trim
 
-        // Extract text only if it exists and isn't just an empty string.
-        text := null
-        if lines.size > 3 and lines[3] != "":
-          text = (lines[3..].join "\n").trim
-
-        result = HoverDefinition
-            --path=lines[0]
-            --start=start
-            --end=end
-            --text=text
+          result = HoverDefinition
+              --path=lines[0]
+              --start=start
+              --end=end
+              --text=text
       // Ensure we drain the reader no matter what happens during parsing.
       finally:
         while reader.read: null  // Drain to prevent compiler crash.

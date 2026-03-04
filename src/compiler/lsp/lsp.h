@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -53,18 +53,10 @@ class Lsp {
     selection_handler_ = _new GotoDefinitionHandler(source_manager, protocol());
   }
 
-  void setup_hover_handler(const char* path,
-                           int line_number,
-                           int column_number,
-                           SourceManager* source_manager,
+  void setup_hover_handler(SourceManager* source_manager,
                            ToitdocRegistry* toitdocs) {
     ASSERT(selection_handler_ == null);
-    selection_handler_ = _new HoverHandler(path,
-                                           line_number,
-                                           column_number,
-                                           protocol(),
-                                           source_manager,
-                                           toitdocs);
+    selection_handler_ = _new HoverHandler(source_manager, toitdocs, protocol());
   }
 
   void setup_find_references_handler(SourceManager* source_manager) {
