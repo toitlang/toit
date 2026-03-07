@@ -535,11 +535,14 @@ namespace toit {
   PRIMITIVE(aead_get_tag_size, 1)            \
   PRIMITIVE(aead_finish, 1)                  \
   PRIMITIVE(aead_verify, 3)                  \
-  PRIMITIVE(rsa_parse_private_key, 3)        \
-  PRIMITIVE(rsa_parse_public_key, 2)         \
+  PRIMITIVE(rsa_generate, 1)                 \
   PRIMITIVE(rsa_sign, 3)                     \
   PRIMITIVE(rsa_verify, 4)                   \
-
+  PRIMITIVE(rsa_get_private_key_der, 2)      \
+  PRIMITIVE(rsa_get_public_key_der, 1)       \
+  PRIMITIVE(rsa_encrypt, 4)                  \
+  PRIMITIVE(rsa_decrypt, 4)
+  
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
 
@@ -1112,7 +1115,6 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
-#define _A_T_RsaKey(N, name)              MAKE_UNPACKING_MACRO(RsaKey, N, name)
 #define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
