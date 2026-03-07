@@ -196,7 +196,15 @@ class FindReferencesHandler : public LspSelectionHandler {
   }
 
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
-  void toitdoc_ref(ast::Node* node, List<ir::Node*> candidates, ToitdocScopeIterator* iterator, bool is_signature_toitdoc) override {}
+  void toitdoc_ref(ast::Node* node, List<ir::Node*> candidates, ToitdocScopeIterator* iterator, bool is_signature_toitdoc) override {
+    // When the cursor is on a toitdoc reference like `$helper`, capture the
+    // resolved target so that rename can proceed. Require exactly one
+    // candidate for safety — rename is destructive, so we can't pick from
+    // ambiguous overloads.
+    if (candidates.length() != 1) return;
+    target_ = unwrap_reference(candidates[0]);
+    cursor_range_ = node->selection_range();
+  }
 
   ir::Node* target() const { return target_; }
   /// Returns the source range at the cursor position (the usage site).

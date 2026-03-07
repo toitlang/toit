@@ -1560,6 +1560,73 @@ void FindReferencesPipeline::emit_all_references(ir::Node* target,
     }
   }
 
+  // --- Toitdoc reference scanning ---
+  // When a toitdoc comment references the target via `$symbol`, that
+  // reference must be updated when the target is renamed.
+  toitdocs()->for_each([&](void* key, Toitdoc<ir::Node*> ir_toitdoc) {
+    if (!ir_toitdoc.is_valid()) return;
+    auto ir_refs = ir_toitdoc.refs();
+
+    // Check if any ref in this toitdoc points to the target.
+    bool has_matching_ref = false;
+    for (int i = 0; i < ir_refs.length(); i++) {
+      auto* ref_target = ir_refs[i];
+      if (ref_target == null) continue;
+      // FieldStub → Field redirect (matching the FieldStub unwrapping above).
+      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
+      if (ref_target == target) {
+        has_matching_ref = true;
+        break;
+      }
+    }
+    if (!has_matching_ref) return;
+
+    // Look up the AST node to get source ranges for the toitdoc refs.
+    auto* ir_node = static_cast<ir::Node*>(key);
+    auto probe = ir_to_ast.find(ir_node);
+    if (probe == ir_to_ast.end()) return;
+    auto* ast_node = probe->second;
+
+    // Get the AST toitdoc from the declaration.
+    Toitdoc<ast::Node*> ast_toitdoc = Toitdoc<ast::Node*>::invalid();
+    if (ast_node->is_Class()) {
+      ast_toitdoc = ast_node->as_Class()->toitdoc();
+    } else if (ast_node->is_Method()) {
+      ast_toitdoc = ast_node->as_Method()->toitdoc();
+    } else if (ast_node->is_Field()) {
+      ast_toitdoc = ast_node->as_Field()->toitdoc();
+    }
+    if (!ast_toitdoc.is_valid()) return;
+
+    auto ast_refs = ast_toitdoc.refs();
+    ASSERT(ast_refs.length() == ir_refs.length());
+
+    for (int i = 0; i < ir_refs.length(); i++) {
+      auto* ref_target = ir_refs[i];
+      if (ref_target == null) continue;
+      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
+      if (ref_target != target) continue;
+
+      auto* ast_ref_node = ast_refs[i];
+      if (!ast_ref_node->is_ToitdocReference()) continue;
+      auto* toitdoc_ref = ast_ref_node->as_ToitdocReference();
+
+      auto* ref_target_expr = toitdoc_ref->target();
+      if (ref_target_expr == null) continue;
+
+      // For Dot expressions (e.g., `$Class.method`), emit only the part
+      // that corresponds to the rename target.
+      if (ref_target_expr->is_Dot()) {
+        auto* dot = ref_target_expr->as_Dot();
+        // The resolver resolves `$Class.method` to the method, not the class.
+        // So a matching ref means we're renaming the method → emit the name part.
+        visitor.emit_range(dot->name()->selection_range());
+      } else {
+        visitor.emit_range(ref_target_expr->selection_range());
+      }
+    }
+  });
+
   // --- Expression-level references ---
   // The visitor traverses all IR expression trees to find:
   // - Static references (ReferenceMethod, ReferenceLocal, ReferenceGlobal)
