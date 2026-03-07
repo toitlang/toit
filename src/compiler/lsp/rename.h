@@ -63,24 +63,21 @@ inline Source::Range target_range(ir::Node* target) {
   return Source::Range::invalid();
 }
 
-/// Returns whether the given target node is eligible for renaming.
+/// Returns whether the given target node is defined in the SDK.
 ///
-/// Refuses to rename SDK symbols or symbols in non-path packages (like git packages)
-/// because their source files are not user-editable. Both prepareRename and rename
-/// should refuse to operate on such targets.
-inline bool is_renameable(ir::Node* target, SourceManager* source_manager) {
+/// SDK symbols cannot be renamed because their source files are not
+/// user-editable. Both prepareRename and rename should refuse to operate
+/// on SDK targets.
+///
+/// Locals and parameters are never from the SDK (they live inside method
+/// bodies that are being compiled from user code, even if the method type
+/// comes from the SDK).
+inline bool is_sdk_target(ir::Node* target, SourceManager* source_manager) {
   Source::Range range = target_range(target);
-  if (!range.is_valid()) return true; // Locals/parameters might lack valid ranges here but are editable.
-  
+  if (!range.is_valid()) return false;
   auto* source = source_manager->source_for_position(range.from());
   if (source == null) return false;
-  
-  if (source->package_id() == Package::SDK_PACKAGE_ID) return false;
-  
-  auto package = source->package();
-  if (!package.is_valid() || !package.is_path_package()) return false;
-  
-  return true;
+  return source->package_id() == Package::SDK_PACKAGE_ID;
 }
 
 class FindReferencesHandler : public LspSelectionHandler {
@@ -89,8 +86,18 @@ class FindReferencesHandler : public LspSelectionHandler {
       : LspSelectionHandler(protocol), source_manager_(source_manager) {}
 
   void import_path(const char* path, const char* segment, bool is_first_segment, const char* resolved, const Package& current_package, const PackageLock& package_lock, Filesystem* fs) override {}
-  void class_interface_or_mixin(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface, bool needs_mixin) override { if (resolved) target_ = unwrap_reference(resolved); }
-  void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none) override { if (resolved.nodes().length() == 1) target_ = unwrap_reference(resolved.nodes()[0]); }
+  void class_interface_or_mixin(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface, bool needs_mixin) override {
+    if (resolved) {
+      target_ = unwrap_reference(resolved);
+      cursor_range_ = node->selection_range();
+    }
+  }
+  void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none) override {
+    if (resolved.nodes().length() == 1) {
+      target_ = unwrap_reference(resolved.nodes()[0]);
+      cursor_range_ = node->selection_range();
+    }
+  }
   void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes) override {
     // Try to find a method that matches the virtual call selector.
     Symbol selector = node->selector();
@@ -101,6 +108,7 @@ class FindReferencesHandler : public LspSelectionHandler {
           if (method->name() == selector &&
               method->resolution_shape().accepts(node->shape())) {
             target_ = method;
+            cursor_range_ = node->range();
             return;
           }
         }
@@ -113,13 +121,14 @@ class FindReferencesHandler : public LspSelectionHandler {
         if (method->name() == selector &&
             method->resolution_shape().accepts(node->shape())) {
           target_ = method;
+          cursor_range_ = node->range();
           return;
         }
       }
     }
   }
   void call_prefixed(ast::Dot* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override { call_static(node, resolved1, resolved2, candidates, scope, null); }
-  void call_class(ast::Dot* node, ir::Class* klass, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override { call_static(node, resolved1, resolved2, candidates, scope, null); }
+  void call_class(ast::Dot* node, ir::Class* klass, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override;
 
   void call_static(ast::Node* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope, ir::Method* surrounding) override;
 
@@ -129,6 +138,7 @@ class FindReferencesHandler : public LspSelectionHandler {
     if (!ir_call_target->is_ReferenceMethod()) return;
 
     auto name = name_node->as_LspSelection()->data();
+    auto cursor_range = name_node->as_LspSelection()->selection_range();
     auto* ir_method = ir_call_target->as_ReferenceMethod()->target();
 
     // Try matching against the method's parameter list (available for
@@ -136,6 +146,7 @@ class FindReferencesHandler : public LspSelectionHandler {
     for (auto parameter : ir_method->parameters()) {
       if (parameter->name() == name) {
         target_ = parameter;
+        cursor_range_ = cursor_range;
         return;
       }
     }
@@ -150,8 +161,8 @@ class FindReferencesHandler : public LspSelectionHandler {
         // parameter.  Create a temporary Local that carries the correct
         // name and the call-site range so that emit_prepare_rename can
         // produce a valid response.
-        auto range = name_node->as_LspSelection()->selection_range();
-        target_ = _new ir::Local(name, true, false, range);
+        target_ = _new ir::Local(name, true, false, cursor_range);
+        cursor_range_ = cursor_range;
         return;
       }
     }
@@ -163,6 +174,7 @@ class FindReferencesHandler : public LspSelectionHandler {
       for (auto field : fields) {
         if (field->name() == name) {
           target_ = field;
+          cursor_range_ = node->name()->selection_range();
           return;
         }
       }
@@ -170,18 +182,35 @@ class FindReferencesHandler : public LspSelectionHandler {
   }
   void this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding) override {}
 
-  void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override { if (entry.nodes().length() == 1) target_ = unwrap_reference(entry.nodes()[0]); }
-  void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override { if (entry.nodes().length() == 1) target_ = unwrap_reference(entry.nodes()[0]); }
+  void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override {
+    if (entry.nodes().length() == 1) {
+      target_ = unwrap_reference(entry.nodes()[0]);
+      cursor_range_ = node->selection_range();
+    }
+  }
+  void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override {
+    if (entry.nodes().length() == 1) {
+      target_ = unwrap_reference(entry.nodes()[0]);
+      cursor_range_ = node->selection_range();
+    }
+  }
 
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
   void toitdoc_ref(ast::Node* node, List<ir::Node*> candidates, ToitdocScopeIterator* iterator, bool is_signature_toitdoc) override {}
 
   ir::Node* target() const { return target_; }
+  /// Returns the source range at the cursor position (the usage site).
+  /// This is the range of the identifier the user clicked on, which may
+  /// differ from target_range(target()) when the cursor is on a reference
+  /// rather than the definition.  Used by prepareRename to return the
+  /// correct range to the editor.
+  Source::Range cursor_range() const { return cursor_range_; }
   SourceManager* source_manager() const { return source_manager_; }
 
  private:
   SourceManager* source_manager_;
   ir::Node* target_ = null;
+  Source::Range cursor_range_ = Source::Range::invalid();
 };
 
 /// Determines whether a CallVirtual node should be included in rename results.
@@ -233,13 +262,31 @@ class VirtualCallFilter {
   /// rename results.
   bool should_include(ir::CallVirtual* node) const;
 
+  /// Registers the setter FieldStub for a field target.
+  ///
+  /// When the rename target is a field, both getter and setter calls must
+  /// be matched. The filter is initially built from the getter; call this
+  /// to add the setter's shape as an additional match criterion.
+  void set_setter(ir::FieldStub* setter) { setter_ = setter; }
+
   /// Returns true if this filter is active (the target is a renameable
   /// instance method with a non-operator name).
   bool is_active() const { return method_ != null; }
 
+  /// Returns the target method this filter was built for.
+  /// Only valid when `is_active()` is true.
+  ir::Method* method() const { return method_; }
+
+  /// Returns the set of classes participating in the target method's dispatch.
+  /// Only valid when `is_active()` is true.
+  const UnorderedSet<ir::Class*>& participating_classes() const {
+    return participating_classes_;
+  }
+
  private:
   VirtualCallFilter()
       : method_(null)
+      , setter_(null)
       , is_ambiguous_(false)
       , target_source_path_(null)
       , source_manager_(null) {}
@@ -262,6 +309,7 @@ class VirtualCallFilter {
   void detect_ambiguity(ir::Program* program);
 
   ir::Method* method_;
+  ir::FieldStub* setter_;
   UnorderedSet<ir::Class*> participating_classes_;
   bool is_ambiguous_;
   std::string target_package_id_;
@@ -272,18 +320,42 @@ class VirtualCallFilter {
 class FindReferencesVisitor : public ir::TraversingVisitor {
  public:
   FindReferencesVisitor(ir::Node* target,
+                        Source::Range definition_range,
+                        int target_name_len,
                         SourceManager* source_manager,
                         UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
                         LspProtocol* protocol,
                         const VirtualCallFilter& virtual_call_filter);
 
   void visit_Reference(ir::Reference* node) override;
+  void visit_CallStatic(ir::CallStatic* node) override;
   void visit_CallVirtual(ir::CallVirtual* node) override;
+  void visit_Typecheck(ir::Typecheck* node) override;
 
- private:
   void emit_range(const Source::Range& range);
 
+ private:
+  /// Emits the source range of a named-argument token at a call site when it
+  /// matches the rename target parameter name.
+  ///
+  /// When renaming a named parameter, call sites using `--param_name=value`
+  /// must also be updated. This helper looks up the AST call expression via
+  /// ir_to_ast_map, walks its arguments to find NamedArgument nodes, and
+  /// emits the name range if the argument name matches.
+  void emit_named_argument_reference(ir::Call* node, Symbol param_name);
+
   ir::Node* target_;
+  /// Non-null when the rename target is a class. Used to detect constructor
+  /// calls and type annotations that reference the target class.
+  ir::Class* target_class_;
+  /// The source range of the target's definition name. Used to avoid
+  /// emitting duplicate entries when a compiler-generated ReferenceLocal
+  /// coincides with the definition site (e.g., typed parameter checks).
+  Source::Range definition_range_;
+  /// The length of the target symbol's name. Used to trim prefix syntax
+  /// (e.g., "[" for block params, "--" for named args, "." for dot-access)
+  /// from emitted ranges so they cover exactly the identifier name.
+  int target_name_len_;
   SourceManager* source_manager_;
   UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map_;
   LspProtocol* protocol_;

@@ -22,7 +22,15 @@ test client/LspClient test-path/string:
   for i := 0; i < lines.size; i++:
     line := lines[i]
     if line.starts-with "/*" and not line.starts-with "/**":
+      // Walk backward past any preceding consecutive marker blocks to
+      // find the actual code line.
       test-line-index := i - 1
+      while test-line-index > 0 and lines[test-line-index].trim == "*/":
+        test-line-index--
+        while test-line-index > 0 and not (lines[test-line-index].starts-with "/*"):
+          test-line-index--
+        // Now at the opening "/*" of the earlier block; step before it.
+        test-line-index--
       if i + 1 >= lines.size: continue
       next-line := lines[i + 1]
       if not next-line.contains "^": continue
@@ -48,3 +56,19 @@ test client/LspClient test-path/string:
         expect-not-null response
         expect-not-null response["range"]
         expect-equals expected-line response["placeholder"]
+
+        // Verify the range effectively covers the local occurrence.
+        range := response["range"]
+        start := range["start"]
+        end := range["end"]
+        
+        // Assert that the returned range is on the same line.
+        expect-equals test-line-index start["line"]
+        expect-equals test-line-index end["line"]
+
+        // Assert that the length matches the placeholder length.
+        expect-equals expected-line.size (end["character"] - start["character"])
+
+        // Assert that the caret was inside the range.
+        expect start["character"] <= column
+        expect column < end["character"]

@@ -5,14 +5,16 @@
 // Test: renaming a field should find definition and usages.
 class Container:
   my-field := 0
-/*^
-  2
+/*
+  ^
+  3
 */
 
   read-it -> int:
     return my-field
-/*         ^
-  2
+/*
+           ^
+  3
 */
 
 main:

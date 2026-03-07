@@ -948,6 +948,16 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
       } else {
         scope->non_prefixed_imported()->add(name, resolved_entry);
         if (export_all) exported_identifiers_map[name] = resolved_entry;
+        // Collect show references for the rename pipeline.
+        // Each show identifier in the source resolves to a definition in the
+        // imported module. Record the mapping so rename can find these.
+        for (auto ast_id : prefix.show_identifiers) {
+          if (ast_id->data() == name) {
+            for (auto node : resolved_entry.nodes()) {
+              show_export_references_.push_back({node, ast_id->selection_range()});
+            }
+          }
+        }
       }
 
       if (module == lsp_module && name == lsp_name) {
@@ -981,6 +991,13 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
             // We could invoke the lsp-handler here, but we need to handle the case where
             // the entry isn't resolved anyway.
             lsp_resolution_entry = resolved;
+          }
+          // Collect export references for the rename pipeline.
+          if (!resolved.is_empty()) {
+            auto* export_node = find_export_node(module, exported);
+            for (auto node : resolved.nodes()) {
+              show_export_references_.push_back({node, export_node->selection_range()});
+            }
           }
         }
       }

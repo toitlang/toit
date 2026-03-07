@@ -12,7 +12,7 @@ mixin Mix:
 
 class Child extends Base with Mix:
 /*
-                                 ^
+                              ^
   Mix
 */
 

@@ -2,25 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-foo param/int:
-/*
-    ^
-    2
-*/
-  return param + 1
+// Test: renaming a top-level function across files.
 
-bar y:
-  local-var := y * 2
-/*
-  ^
-    2
-*/
-  return local-var
-/*
-         ^
-    2
-*/
+import .cross-file-function-rename-test-dep show helper-function
 
 main:
-  foo 42
-  bar 10
+  helper-function 42
+/*
+  ^
+  3
+*/

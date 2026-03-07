@@ -11,7 +11,8 @@ MY-CONST ::= 100
 
 use-const -> int:
   return MY-CONST
-/*       ^
+/*
+         ^
   2
 */
 

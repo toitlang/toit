@@ -56,6 +56,23 @@ class Resolver {
   ToitdocRegistry* toitdocs() { return toitdocs_; }
   UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
 
+  /// A reference from a show/export clause to a resolved definition.
+  ///
+  /// During resolution, each `import ... show Foo` and `export Foo`
+  /// clause resolves the identifier to an ir::Node* target. We collect
+  /// these mappings so that the rename pipeline can find show/export
+  /// references to a given definition without needing access to the
+  /// module infrastructure (which is local to the resolver).
+  struct ShowExportReference {
+    ir::Node* target;       // The resolved definition (e.g., ir::Class*).
+    Source::Range range;     // The source range of the identifier in the show/export clause.
+  };
+
+  /// Returns all show/export references collected during resolution.
+  const std::vector<ShowExportReference>& show_export_references() const {
+    return show_export_references_;
+  }
+
  private:
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
@@ -63,6 +80,7 @@ class Resolver {
   ToitdocRegistry* toitdocs_;
   UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
   std::vector<ir::AssignmentGlobal*> global_assignments_;
+  std::vector<ShowExportReference> show_export_references_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 

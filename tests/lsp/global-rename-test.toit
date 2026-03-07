@@ -11,13 +11,15 @@ my-global := 42
 
 use-it:
   return my-global
-/*       ^
+/*
+         ^
   3
 */
 
 main:
   use-it
   x := my-global
-/*     ^
+/*
+       ^
   3
 */

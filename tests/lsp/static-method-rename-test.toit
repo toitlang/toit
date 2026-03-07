@@ -5,14 +5,16 @@
 // Test: renaming a static method should find definition and usages.
 class WithStatic:
   static my-static -> int:
-/*       ^
+/*
+         ^
   2
 */
     return 42
 
 call-it:
   return WithStatic.my-static
-/*                  ^
+/*
+                    ^
   2
 */
 

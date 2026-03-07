@@ -16,7 +16,8 @@
 
 class Greeter:
   greet name/string -> string:
-/*^
+/*
+  ^
   3
 */
     return "hello $name"
@@ -28,7 +29,8 @@ use-greeter g/Greeter:
 
 class Processor:
   run -> none:
-/*^
+/*
+  ^
   3
 */
     // does processing

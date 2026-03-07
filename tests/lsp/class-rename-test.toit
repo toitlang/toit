@@ -4,8 +4,9 @@
 
 // Test: renaming a class should find the definition and all usages.
 class MyClass:
-/*    ^
-  3
+/*
+      ^
+  4
 */
   field := 0
 
@@ -17,7 +18,8 @@ make -> MyClass:
 
 main:
   obj := MyClass
-/*       ^
-  3
+/*
+         ^
+  4
 */
   obj.member

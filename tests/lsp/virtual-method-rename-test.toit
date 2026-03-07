@@ -16,15 +16,17 @@
 
 class Animal:
   speak -> string:
-/*^
-  3
+/*
+  ^
+  4
 */
     return "..."
 
 class Dog extends Animal:
   speak -> string:
-/*^
-  3
+/*
+  ^
+  4
 */
     return "woof"
 

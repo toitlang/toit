@@ -139,9 +139,11 @@ class Compiler {
 
   /// Finds all references for the identifier at the given location.
   ///
-  /// This mode does not run the program or generates any snapshots. It simply
-  /// prints out the found locations.
+  /// @param source_path  The file containing the cursor (LspSelection target).
+  /// @param entry_path   The compilation entry point (may differ for cross-file
+  ///                     rename when the cursor file is a dependency).
   void lsp_references(const char* source_path,
+                      const char* entry_path,
                       int line_number,
                       int column_number,
                       const PipelineConfiguration& configuration);
@@ -151,6 +153,7 @@ class Compiler {
   /// If so, prints the symbol's range and name. Otherwise, produces
   /// no output.
   void lsp_prepare_rename(const char* source_path,
+                          const char* entry_path,
                           int line_number,
                           int column_number,
                           const PipelineConfiguration& configuration);

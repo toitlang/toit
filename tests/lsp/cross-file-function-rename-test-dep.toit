@@ -2,25 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-foo param/int:
-/*
-    ^
-    2
-*/
-  return param + 1
+// Helper file: defines a top-level function used by the cross-file test.
 
-bar y:
-  local-var := y * 2
+helper-function x/int -> int:
 /*
   ^
-    2
+  3
 */
-  return local-var
-/*
-         ^
-    2
-*/
-
-main:
-  foo 42
-  bar 10
+  return x + 1

@@ -296,12 +296,27 @@ class Compiler:
       return definitions
     unreachable
 
-  find-references --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
+  /**
+  Finds all references for the identifier at the given cursor position.
+
+  The $uri, $line-number, and $column-number specify the cursor position
+  (where the LspSelection marker is injected).
+
+  The optional $entry-uri specifies the compilation entry point. When the
+  cursor file is a dependency imported by another file, the entry point
+  must be set to the importing file so that the compilation includes both
+  files and can find cross-file references. When null, the cursor file
+  itself is used as the entry point.
+  */
+  find-references --project-uri/string? --entry-uri/string?=null uri/string line-number/int column-number/int -> List/*<Location>*/:
     path := translator.to-path uri --to-compiler
+    entry-path := entry-uri != null
+        ? (translator.to-path entry-uri --to-compiler)
+        : path
     // We don't care if the compiler crashed.
     // Just send the references we got.
     run --project-uri=project-uri
-        --compiler-input="REFERENCES\n$path\n$line-number\n$column-number\n":
+        --compiler-input="REFERENCES\n$path\n$line-number\n$column-number\n$entry-path\n":
       |reader /io.Reader|
       references := []
 
@@ -320,7 +335,7 @@ class Compiler:
     path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send the result we got.
-    run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n": |reader /io.Reader|
+    run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n$path\n": |reader /io.Reader|
       line := reader.read-line
       if not line: return null
       // The compiler emits the file path first, but prepareRename only
