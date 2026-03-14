@@ -158,6 +158,7 @@ add_test(
 add_subdirectory(lsp)
 add_subdirectory(minus_s)
 add_subdirectory(negative)
+add_subdirectory(formatter)
 add_subdirectory(type_propagation)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
