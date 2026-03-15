@@ -131,7 +131,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   }
 
   if (lsp_ != null && lsp_->needs_summary()) {
-    lsp_->emit_summary(modules, core_index, toitdocs_);
+    lsp_->emit_summary(modules, core_index, *toitdocs_);
   }
 
   // Run through the modules again, and report deprecation warnings for imports.
@@ -1450,28 +1450,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
   }
 }
 
-static bool is_operator_name(Symbol name) {
-  return name == Token::symbol(Token::EQ) ||
-      name == Token::symbol(Token::LT) ||
-      name == Token::symbol(Token::LTE) ||
-      name == Token::symbol(Token::GTE) ||
-      name == Token::symbol(Token::GT) ||
-      name == Token::symbol(Token::ADD) ||
-      name == Token::symbol(Token::SUB) ||
-      name == Token::symbol(Token::MUL) ||
-      name == Token::symbol(Token::DIV) ||
-      name == Token::symbol(Token::MOD) ||
-      name == Token::symbol(Token::BIT_NOT) ||
-      name == Token::symbol(Token::BIT_AND) ||
-      name == Token::symbol(Token::BIT_OR) ||
-      name == Token::symbol(Token::BIT_XOR) ||
-      name == Token::symbol(Token::BIT_SHR) ||
-      name == Token::symbol(Token::BIT_USHR) ||
-      name == Token::symbol(Token::BIT_SHL) ||
-      name == Symbols::index ||
-      name == Symbols::index_put ||
-      name == Symbols::index_slice;
-}
+// is_operator_name is defined in token.h.
 
 static bool is_valid_operator_shape(Symbol name, const ResolutionShape& shape) {
   if (shape.total_block_count() != 0) return false;
@@ -2345,7 +2324,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                      lsp_,
                                      ir_to_ast_map_,
                                      diagnostics());
-      toitdocs_.set_toitdoc(method, toitdoc);
+      toitdocs_->set_toitdoc(method, toitdoc);
       method->set_deprecation(extract_deprecation_message(toitdoc));
     }
   }
@@ -2377,7 +2356,7 @@ void Resolver::resolve_field(ir::Field* field,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(field, toitdoc);
+    toitdocs_->set_toitdoc(field, toitdoc);
     field->set_deprecation(extract_deprecation_message(toitdoc));
   }
 }
@@ -2480,7 +2459,7 @@ void Resolver::resolve_fill_module(Module* module,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(module, toitdoc);
+    toitdocs_->set_toitdoc(module, toitdoc);
     module->set_deprecation(extract_deprecation_message(toitdoc));
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
@@ -2567,7 +2546,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(klass, toitdoc);
+    toitdocs_->set_toitdoc(klass, toitdoc);
     klass->set_deprecation(extract_deprecation_message(toitdoc));
   }
 

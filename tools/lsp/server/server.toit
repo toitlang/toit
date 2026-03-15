@@ -33,6 +33,7 @@ import .protocol.initialization
 import .protocol.message
 import .protocol.server-capabilities
 import .protocol.semantic-tokens
+import .protocol.hover
 import .protocol-toit
 
 import .compiler
@@ -43,6 +44,7 @@ import .rpc
 import .uri-path-translator as translator
 import .utils
 import .verbose
+import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
 DEFAULT-TIMEOUT-MS ::= 10_000
@@ -150,11 +152,15 @@ class LspServer:
         "textDocument/didOpen":    (:: did-open   (DidOpenTextDocumentParams   it)),
         "textDocument/didChange":  (:: did-change (DidChangeTextDocumentParams it)),
         "textDocument/didSave":    (:: did-save   (DidSaveTextDocumentParams   it)),
-        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams   it)),
+        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams  it)),
         "textDocument/completion": (:: completion (CompletionParams it )),
         "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
+        "textDocument/rename":     (:: rename (RenameParams it)),
+        "textDocument/prepareRename": (:: prepare-rename (TextDocumentPositionParams it)),
+        "textDocument/hover":      (:: hover      (TextDocumentPositionParams  it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
+        "textDocument/selectionRange": (:: selection-range it),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
         "toit/reportIdle":         (:: report-idle),
@@ -207,22 +213,25 @@ class LspServer:
       if params.capabilities.experimental.ubjson-rpc: connection_.enable-ubjson
 
     server-capabilities := ServerCapabilities
-        --completion-provider= CompletionOptions
-            --resolve-provider=   false
-            --trigger-characters= [".", "-", "\$"]
-        --definition-provider=      true
-        --document-symbol-provider= true
+        --completion-provider=CompletionOptions
+            --no-resolve-provider
+            --trigger-characters=[".", "-", "\$"]
+        --definition-provider
+        --hover-provider
+        --document-symbol-provider
         --text-document-sync= TextDocumentSyncOptions
             --open-close
-            --change= TextDocumentSyncKind.full
-            --save=   SaveOptions --no-include-text
-        --semantic-tokens-provider= SemanticTokensOptions
-            --legend= SemanticTokensLegend
-                --token-types= Compiler.SEMANTIC-TOKEN-TYPES
-                --token-modifiers= Compiler.SEMANTIC-TOKEN-MODIFIERS
+            --change=TextDocumentSyncKind.full
+            --save=SaveOptions --no-include-text
+        --semantic-tokens-provider=SemanticTokensOptions
+            --legend=SemanticTokensLegend
+                --token-types=Compiler.SEMANTIC-TOKEN-TYPES
+                --token-modifiers=Compiler.SEMANTIC-TOKEN-MODIFIERS
             --no-range
-            --full= true  // Or should it be '{ "delta": false }' ?
+            --full  // Or should it be '{ "delta": false }' ?
         --experimental=Experimental --ubjson-rpc
+        --rename-provider=RenameOptions true
+        --selection-range-provider
 
     return InitializationResult server-capabilities
 
@@ -348,6 +357,68 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+
+  rename params/RenameParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    new-name := params.new-name
+    references := compiler_.find-references --project-uri=project-uri uri params.position.line params.position.character
+    if references.is-empty: return null
+    // Group TextEdits by URI.
+    changes := {:}
+    references.do: |location/Location|
+      edits := changes.get location.uri --init=: []
+      edits.add (TextEdit --range=location.range --new-text=new-name)
+    return WorkspaceEdit --changes=changes
+
+  prepare-rename params/TextDocumentPositionParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+
+  selection-range params/Map -> List:
+    uri := translator.canonicalize params["textDocument"]["uri"]
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    positions := params["positions"]
+    range-lists := compiler_.selection-range
+        --project-uri=project-uri
+        uri
+        positions
+    return range-lists.map: | ranges/List? |
+      if not ranges or ranges.is-empty:
+        null
+      else:
+        build-selection-range_ ranges
+
+  hover params/TextDocumentPositionParams -> Hover?:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    
+    definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    if not definition: return null
+
+    if definition.text:
+      return Hover --contents=definition.text
+
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+    element-uri := translator.to-uri definition.path --from-compiler
+    
+    document := analyzed-documents.get --uri=element-uri
+    if not document or not document.summary: return null
+
+    element := ?
+    if definition.start == 0 and definition.end == 0:
+      element = document.summary
+    else:
+      element = document.summary.element-at --start=definition.start --end=definition.end
+    if not element: return null
+
+    toitdoc := element.toitdoc
+    if not toitdoc: return null
+
+    visitor := ToitdocMarkdownVisitor
+    visitor.visit-Contents toitdoc
+    return Hover --contents=visitor.build
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri
@@ -582,6 +653,23 @@ class LspServer:
       changed-summary-documents.add-all rev-dep-result
 
     return changed-summary-documents
+
+  /**
+  Builds a SelectionRange linked-list from a flat list of ranges.
+
+  The ranges must be ordered innermost-first.
+  Returns a nested map structure where each entry has a "range" and
+    optionally a "parent" pointing to the next larger range.
+  */
+  static build-selection-range_ ranges/List -> Map:
+    result/Map? := null
+    // Fold from outermost to innermost to build the parent chain.
+    for i := ranges.size - 1; i >= 0; i--:
+      entry := {:}
+      entry["range"] = ranges[i].map_
+      if result: entry["parent"] = result
+      result = entry
+    return result
 
   send-diagnostics params/PushDiagnosticsParams -> none:
     connection_.send "textDocument/publishDiagnostics" params

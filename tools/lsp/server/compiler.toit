@@ -28,6 +28,13 @@ import .utils
 import .verbose
 import .multiplex
 
+class HoverDefinition:
+  path /string
+  start /int
+  end /int
+  text /string?
+  constructor --.path --.start --.end --.text=null:
+
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
   diagnostics-without-position / List/*<string>*/ ::= ?
@@ -289,6 +296,114 @@ class Compiler:
       return definitions
     unreachable
 
+  find-references --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
+    path := translator.to-path uri --to-compiler
+    // We don't care if the compiler crashed.
+    // Just send the references we got.
+    run --project-uri=project-uri
+        --compiler-input="REFERENCES\n$path\n$line-number\n$column-number\n":
+      |reader /io.Reader|
+      references := []
+
+      while true:
+        line := reader.read-line
+        if line == null: break
+        location := Location
+          --uri= translator.to-uri line --from-compiler
+          --range= read-range reader
+        references.add location
+
+      return references
+    unreachable
+
+  prepare-rename --project-uri/string? uri/string line-number/int column-number/int -> Map?:
+    path := translator.to-path uri --to-compiler
+    // We don't care if the compiler crashed.
+    // Just send the result we got.
+    run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n": |reader /io.Reader|
+      line := reader.read-line
+      if not line: return null
+      // The compiler emits the file path first, but prepareRename only
+      // needs the range and placeholder. We still consume the path line
+      // to advance the reader.
+      range := read-range reader
+      placeholder := reader.read-line
+      if not placeholder: return null
+      return {
+        "range": range.map_,
+        "placeholder": placeholder,
+      }
+    unreachable
+
+  /**
+  Requests selection ranges from the compiler for the given $positions.
+
+  Each position is a map with "line" and "character" keys (0-based).
+
+  Returns a list of results, one per position. Each result is a list of
+    ranges sorted innermost-first, or null if no ranges were found.
+  */
+  selection-range --project-uri/string? uri/string positions/List -> List:
+    path := translator.to-path uri --to-compiler
+    position-lines := positions.map: | pos/Map |
+      "$pos["line"]\n$pos["character"]"
+    input := "SELECTION RANGE\n$path\n$positions.size\n$(position-lines.join "\n")\n"
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      results := []
+      positions.size.repeat:
+        count-line := reader.read-line
+        if not count-line:
+          results.add null
+          return results
+        count := int.parse count-line
+        ranges := []
+        count.repeat:
+          ranges.add (read-range reader)
+        results.add (ranges.is-empty ? null : ranges)
+      return results
+    unreachable
+
+  hover --project-uri/string? uri/string line-number/int column-number/int -> HoverDefinition?:
+    path := translator.to-path uri --to-compiler
+
+    input := """
+      HOVER
+      $path
+      $line-number
+      $column-number
+      """
+    result/HoverDefinition? := null
+
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      try:
+        line := reader.read-line
+        if not line: continue.run
+
+        length := int.parse line --if-error=(: 0)
+        if length <= 0: continue.run
+
+        payload := reader.read-string length
+        lines := payload.split "\n"
+        if lines.size < 3: continue.run
+
+        start := int.parse lines[1] --if-error=(: 0)
+        end   := int.parse lines[2] --if-error=(: 0)
+
+        // Extract text only if it exists and isn't just an empty string.
+        text := null
+        if lines.size > 3 and lines[3] != "":
+          text = (lines[3..].join "\n").trim
+
+        result = HoverDefinition
+            --path=lines[0]
+            --start=start
+            --end=end
+            --text=text
+      // Ensure we drain the reader no matter what happens during parsing.
+      finally:
+        while reader.read: null  // Drain to prevent compiler crash.
+    return result
+
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.
     return run
@@ -336,22 +451,22 @@ class Compiler:
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
       |reader /io.Reader|
-      element-count := int.parse reader.read-line
-      result := List element-count: int.parse reader.read-line
+      element-count := int.parse reader.read-line --radix=10
+      result := List element-count: int.parse reader.read-line --radix=10
       return result
     unreachable
 
-  static read-range reader/io.Reader -> Range:
-    from-line-number := int.parse reader.read-line
-    from-column-number := int.parse reader.read-line
-    to-line-number := int.parse reader.read-line
-    to-column-number := int.parse reader.read-line
+  read-range reader/io.Reader -> Range:
+    from-line-number := int.parse reader.read-line --radix=10
+    from-column-number := int.parse reader.read-line --radix=10
+    to-line-number := int.parse reader.read-line --radix=10
+    to-column-number := int.parse reader.read-line --radix=10
     return Range
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
   read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
-    entry-count := int.parse reader.read-line
+    entry-count := int.parse reader.read-line --radix=10
     result := {:}
     entry-count.repeat:
       source-uri := translator.to-uri reader.read-line --from-compiler

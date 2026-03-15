@@ -180,7 +180,41 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
                token_modifiers);
 }
 
+void LspHoverProtocol::emit(const char* content) {
+  int length = content == null ? 0 : strlen(content);
+  this->printf("%d\n", length);
+  if (length > 0) {
+    this->write(reinterpret_cast<const uint8*>(content), length);
+  }
+}
 
+void LspFindReferencesProtocol::emit(const char* path, int start_line, int start_col, int end_line, int end_col) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col);
+}
+
+void LspPrepareRenameProtocol::emit(const char* path, int start_line, int start_col,
+                                    int end_line, int end_col, const char* placeholder) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n%s\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col,
+               placeholder == null ? "" : placeholder);
+}
+
+void LspSelectionRangeProtocol::emit_range_count(int count) {
+  this->printf("%d\n", count);
+}
+
+void LspSelectionRangeProtocol::emit_range(const LspRange& range) {
+  print_lsp_range(range);
+}
 
 } // namespace toit::compiler
 } // namespace toit
