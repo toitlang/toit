@@ -71,9 +71,12 @@ class InstallCommand extends PkgProjectCommand:
     if not prefix: prefix = remote-package.name
 
     if project.specification.has-package prefix:
-      error "Project already has a package with name '$prefix'."
+      error "Project already has a package with prefix '$prefix'."
 
     project.install-remote prefix remote-package --registries=registries
+    id := "$remote-package.name@$remote-package.version"
+    name := remote-package.name
+    ui.emit --info "Package '$id' installed with prefix '$name'."
 
   execute-local:
     specification-name := "$package/$Specification.FILE-NAME"
@@ -88,6 +91,7 @@ class InstallCommand extends PkgProjectCommand:
     if not prefix: prefix = specification.name
 
     project.install-local prefix package --registries=registries
+    ui.emit --info "Package '$package' installed with prefix '$prefix'."
 
   static CLI-COMMAND ::=
       cli.Command "install"
