@@ -24,267 +24,112 @@ namespace compiler {
 
 using namespace ast;
 
-/// Formats the given unit and returns the formatted version.
-/// The returned string must be freed.
-uint8* format_unit(Unit* unit,
-                   List<Scanner::Comment> comments,
-                   int* formatted_size) {
-  const char* src = reinterpret_cast<const char*>(unit->source()->text());
-  uint8* formatted = reinterpret_cast<uint8*>(strdup(src));
-  *formatted_size = unit->source()->size();
-  return formatted;
-}
-
-namespace format {
-
-class Printer {
+/// A copy formatter that reproduces the original source exactly.
+///
+/// Uses a cursor-based approach: walks the AST via TraversingVisitor, and for
+/// each leaf node, emits all source text from the current cursor position
+/// through the end of that node. Gaps between nodes (whitespace, comments,
+/// keywords, operators) are captured naturally.
+class CopyFormatter : public TraversingVisitor {
  public:
-  Printer(int max_column = 80) : max_column_(max_column) {}
+  explicit CopyFormatter(Source* source, List<Scanner::Comment> comments)
+      : source_(source), comments_(comments) {}
 
-  std::string print(Document* doc) {
+  std::string format(Unit* unit) {
+    cursor_ = 0;
     output_.clear();
-    current_column_ = 0;
-    print(doc, 0, false);
+    for (auto node : unit->imports()) node->accept(this);
+    for (auto node : unit->exports()) node->accept(this);
+    for (auto node : unit->declarations()) node->accept(this);
+    // Emit any trailing content (final newline, trailing comments).
+    emit_to(source_->size());
     return output_;
   }
 
  private:
-  int max_column_;
-  int current_column_;
+  Source* source_;
+  List<Scanner::Comment> comments_;
+  int cursor_ = 0;
   std::string output_;
 
-  void print(Document* doc, int current_indent, bool break_group) {
-    if (doc == null) return;
-    switch (doc->type()) {
-      case Document::TEXT: {
-        auto text = doc->as_text();
-        output_ += text->text();
-        current_column_ += text->text().length();
-        break;
-      }
-      case Document::LINE: {
-        auto line = doc->as_line();
-        if (break_group || line->is_hard_break()) {
-          output_ += "\n";
-          output_ += std::string(current_indent, ' ');
-          current_column_ = current_indent;
-        } else {
-          output_ += " ";
-          current_column_ += 1;
-        }
-        break;
-      }
-      case Document::INDENT: {
-        auto indent = doc->as_indent();
-        print(indent->child(), current_indent + indent->amount(), break_group);
-        break;
-      }
-      case Document::GROUP: {
-        auto group = doc->as_group();
-        bool breaks = break_group || !fits(group, max_column_ - current_column_);
-        for (Document* child : group->children()) {
-          print(child, current_indent, breaks);
-        }
-        break;
-      }
-      case Document::IFFLAT: {
-        auto if_flat = doc->as_if_flat();
-        if (break_group) {
-          if (if_flat->broken()) print(if_flat->broken(), current_indent, break_group);
-        } else {
-          if (if_flat->flat()) print(if_flat->flat(), current_indent, break_group);
-        }
-        break;
-      }
+  int offset(Source::Position pos) {
+    return source_->offset_in_source(pos);
+  }
+
+  /// Emits source text from the current cursor up to (not including) the
+  /// given byte offset.
+  void emit_to(int pos) {
+    if (pos > cursor_) {
+      auto text = source_->text();
+      output_.append(reinterpret_cast<const char*>(text) + cursor_, pos - cursor_);
+      cursor_ = pos;
     }
   }
 
-  bool fits(Document* doc, int space) {
-    if (space < 0) return false;
-    if (doc == null) return true;
-    switch (doc->type()) {
-      case Document::TEXT: {
-        return space >= static_cast<int>(doc->as_text()->text().length());
-      }
-      case Document::LINE: {
-        if (doc->as_line()->is_hard_break()) return false;
-        return space >= 1;
-      }
-      case Document::INDENT: {
-        return fits(doc->as_indent()->child(), space);
-      }
-      case Document::GROUP: {
-        int remaining = space;
-        for (Document* child : doc->as_group()->children()) {
-          if (!fits(child, remaining)) return false;
-          // In a real implementation we would track the actual consumption.
-          // For simplicity, we can do a dummy measure pass.
-          // Actually, we need a separate `measure` that returns the width or -1.
-        }
-        return true;
-      }
-      case Document::IFFLAT: {
-        auto if_flat = doc->as_if_flat();
-        if (if_flat->flat()) return fits(if_flat->flat(), space);
-        return true;
-      }
-    }
-    return true;
+  /// Emits source text from the current cursor through the end of the
+  /// given node's full range.
+  void emit_through(Node* node) {
+    emit_to(offset(node->full_range().to()));
   }
+
+  // ---- Leaf nodes: advance cursor through them ----
+
+  void visit_Import(Import* node) override { emit_through(node); }
+  void visit_Export(Export* node) override { emit_through(node); }
+  void visit_Expression(Expression* node) override { emit_through(node); }
+  void visit_Error(Error* node) override { emit_through(node); }
+  void visit_Identifier(Identifier* node) override { emit_through(node); }
+  void visit_LspSelection(LspSelection* node) override { emit_through(node); }
+  void visit_LiteralNull(LiteralNull* node) override { emit_through(node); }
+  void visit_LiteralUndefined(LiteralUndefined* node) override { emit_through(node); }
+  void visit_LiteralBoolean(LiteralBoolean* node) override { emit_through(node); }
+  void visit_LiteralInteger(LiteralInteger* node) override { emit_through(node); }
+  void visit_LiteralCharacter(LiteralCharacter* node) override { emit_through(node); }
+  void visit_LiteralString(LiteralString* node) override { emit_through(node); }
+  void visit_LiteralFloat(LiteralFloat* node) override { emit_through(node); }
+  void visit_TokenNode(TokenNode* node) override { emit_through(node); }
+
+  // ---- Non-leaf nodes with source-order fixes ----
+
+  // TraversingVisitor visits return_type before parameters, but in Toit
+  // source parameters come before the return type:
+  //   foo x/int -> int:
+  void visit_Method(Method* node) override {
+    visit_Declaration(node);  // name_or_dot
+    for (int i = 0; i < node->parameters().length(); i++) {
+      node->parameters()[i]->accept(this);
+    }
+    if (node->return_type() != null) node->return_type()->accept(this);
+    if (node->body() != null) {
+      node->body()->accept(this);
+    }
+  }
+
+  // TraversingVisitor visits handler before handler_parameters, but in Toit
+  // source handler_parameters come first:
+  //   try: body finally: | e | handler
+  void visit_TryFinally(TryFinally* node) override {
+    node->body()->accept(this);
+    for (auto parameter : node->handler_parameters()) {
+      parameter->accept(this);
+    }
+    node->handler()->accept(this);
+  }
+
+  // All other non-leaf nodes use TraversingVisitor defaults, which visit
+  // children in source order.
 };
 
-} // namespace format
+uint8* format_unit(Unit* unit,
+                   List<Scanner::Comment> comments,
+                   int* formatted_size) {
+  CopyFormatter formatter(unit->source(), comments);
+  std::string output = formatter.format(unit);
 
-namespace {  // anonymous.
-
-class FormatNode {
- public:
-  FormatNode(const char* text, const Source::Range& range)
-      : text_(text)
-      , range_(range) {}
-  FormatNode(const std::string& text, const Source::Range& range)
-      : text_(text)
-      , range_(range) {}
-
-  std::string text() const { return text_; }
-  int size() const { return static_cast<int>(text().size()); }
-
-  Source::Range range() const { return range_; }
-
-  void set_attached() { preferences_ |= ATTACHED; }
-  void set_same_line() { preferences_ |= SAME_LINE; }
-  void set_indented_by_2() { preferences_ |= INDENTED_BY_2; }
-  void set_indented_by_4() { preferences_ |= INDENTED_BY_4; }
-  void set_attached_with_space() { preferences_ |= ATTACHED_WITH_SPACE; }
-
-  bool wants_attached() { return (preferences_ & ATTACHED) != 0; }
-  bool wants_same_line() { return (preferences_ & SAME_LINE) != 0; }
-  bool wants_indented_by_2() { return (preferences_ & INDENTED_BY_2) != 0; }
-  bool wants_indented_by_4() { return (preferences_ & INDENTED_BY_4) != 0; }
-  bool wants_attached_with_space() { return (preferences_ & ATTACHED_WITH_SPACE) != 0; }
-
-  int indentation() const { return indentation_; }
-  void set_indentation(int indentation) { indentation_ = indentation; }
-
- private:
-  enum Preferences {
-    ATTACHED = 1 << 0,
-    SAME_LINE = 1 << 1,
-    INDENTED_BY_2 = 1 << 2,
-    INDENTED_BY_4 = 1 << 3,
-    ATTACHED_WITH_SPACE = 1 << 4,
-  };
-  const std::string text_;
-  Source::Range range_;
-  int preferences_ = 0;
-  int indentation_ = -1;
-};
-
-class GroupNode {
- public:
-  GroupNode(int id, const List<FormatNode>& children)
-      : id_(id), children_(children) {}
-
-  int id() const { return id_; }
-  const List<FormatNode>& children() const { return children_; }
-  List<FormatNode>& children() { return children_; }
-
- private:
-  int id_;
-  List<FormatNode> children_;
-};
-
-}  // namespace anonymous.
-
-class CopyFormatter : public ast::Visitor {
- public:
-  explicit CopyFormatter(List<Scanner::Comment> comments)
-      : comments_(comments) {}
-
-  void visit_Unit(Unit* unit) override {
-    for (auto node : unit->imports()) {
-      visit_Import(node);
-    }
-    for (auto node : unit->exports()) {
-      node->accept(this);
-    }
-    for (auto node : unit->declarations()) {
-      node->accept(this);
-    }
-  }
-
-  void visit_Import(Import* import) override {
-    ListBuilder<FormatNode> nodes;
-    int token_index = 0;
-    auto tokens = import->tokens();
-    auto import_token = tokens[token_index++];
-    ASSERT(import_token->token() == Token::IMPORT);
-    nodes.add(node_for(import_token));
-    int leading_dots = import->dot_outs();
-    if (import->is_relative()) leading_dots++;
-    for (int i = 0; i < leading_dots; i++) {
-      auto token = tokens[token_index++];
-      ASSERT(token->token() == Token::PERIOD || token->token() == Token::SLICE);
-      auto node = node_for(token);
-      if (i != 0) node.set_attached();
-      nodes.add(node);
-      if (token->token() == Token::SLICE) i++;
-    }
-    for (int i = 0; i < import->segments().length(); i++) {
-      if (i != 0) {
-        auto dot_token = tokens[token_index++];
-        ASSERT(dot_token->token() == Token::PERIOD);
-        auto node = node_for(dot_token);
-        node.set_attached();
-        nodes.add(node);
-      }
-      auto path_node = node_for(import->segments()[i]);
-      if (i != 0 || leading_dots != 0) path_node.set_attached();
-      nodes.add(path_node);
-    }
-    if (import->prefix() != null) {
-      auto as_token = tokens[token_index++];
-      ASSERT(as_token->token() == Token::AS);
-      auto as_node = node_for(as_token);
-      as_node.set_indented_by_4();
-      nodes.add(as_node);
-      nodes.add(node_for(import->prefix()));
-    } else  if (import->show_all()) {
-      auto show_token = tokens[token_index++];
-      auto all_token = tokens[token_index++];
-      ASSERT(show_token->symbol() == Symbols::show);
-      ASSERT(all_token->token() == Token::MUL);
-      auto show_node = node_for(show_token);
-      auto all_node = node_for(all_token);
-      show_node.set_indented_by_2();
-      all_node.set_attached_with_space();
-      nodes.add(show_node);
-      nodes.add(all_node);
-    } else if (!import->show_identifiers().is_empty()) {
-      auto show_token = tokens[token_index++];
-      ASSERT(show_token->symbol() == Symbols::show);
-      auto show_node = node_for(show_token);
-      show_node.set_indented_by_2();
-      nodes.add(show_node);
-      for (auto identifier : import->show_identifiers()) {
-        nodes.add(node_for(identifier));
-      }
-    }
-
-  }
-
- private:
-  List<Scanner::Comment> comments_;
-  ListBuilder<const char*> output_;
-
-  FormatNode node_for(const Identifier* identifier) const {
-    return FormatNode(identifier->data().c_str(), identifier->selection_range());
-  }
-
-  FormatNode node_for(const TokenNode* node) const {
-    return FormatNode(Token::symbol(node->token()).c_str(), node->selection_range());
-  }
-};
+  uint8* formatted = reinterpret_cast<uint8*>(strdup(output.c_str()));
+  *formatted_size = output.size();
+  return formatted;
+}
 
 } // namespace toit::compiler
 } // namespace toit
