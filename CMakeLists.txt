@@ -35,7 +35,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
 endif()
 
 set(TOIT_IS_EMBEDDED FALSE)
-if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
   set(TOIT_IS_EMBEDDED TRUE)
 endif()
 
@@ -112,8 +112,13 @@ set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-s
 
 include_directories(
   "${TOIT_SDK_SOURCE_DIR}/include"
-  "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
+
+if ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
+  include_directories("${CMAKE_SOURCE_DIR}/third_party/mbedtls/include")
+else()
+  include_directories("${IDF_PATH}/components/mbedtls/mbedtls/include")
+endif()
 
 if (DEFINED USE_LWIP)
   set(LWIP_MBEDTLSDIR "../mbedtls")
@@ -145,6 +150,8 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # However, we need to include the esp32 config file to make sure that Toit and the compiled
   # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
+elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/third_party/mbedtls_config_toit.h\\\"")
 else()
   # For now we run with the full 16k size in the input buffer on host systems.
   # For devices we still run with a smaller buffer, which saves memory
@@ -187,7 +194,7 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   add_subdirectory(third_party/libgpiod)
 endif()
 
-if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+if (NOT ${TOIT_IS_EMBEDDED})
   add_subdirectory(tools)
   add_subdirectory(system/extensions/host)
 
@@ -240,4 +247,4 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     )
 
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
-endif() # TOIT_SYSTEM_NAME != esp32
+endif() # NOT TOIT_IS_EMBEDDED

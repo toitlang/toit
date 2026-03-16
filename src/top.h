@@ -70,6 +70,12 @@
 #if defined(ESP_PLATFORM)
 #define TOIT_ESP32
 #define TOIT_CMPCTMALLOC
+#elif defined(__EC618)
+#define TOIT_EC618
+#include "FreeRTOS.h"
+#if configSUPPORT_DYNAMIC_ALLOC_HEAP == 7
+#define TOIT_CMPCTMALLOC 1
+#endif
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
 #define TOIT_BSD
@@ -81,15 +87,15 @@
 #define TOIT_POSIX
 #endif
 
-#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) > 1
+#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) > 1
 #error "More than one OS configuration specified"
-#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) < 1
+#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) < 1
 #error "No OS configuration specified"
 #endif
 
 #if (__WORDSIZE == 64) || __WIN64
 #define BUILD_64 1
-#elif (__WORDSIZE == 32) || ESP32 || __WIN32
+#elif (__WORDSIZE == 32) || ESP32 || __EC618 || __WIN32
 #define BUILD_32 1
 #else
 #error "Expecting a 32 or 64 bit memory model"
