@@ -33,7 +33,7 @@ set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
 set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
 
 # --- PLAT SDK paths ---
-set(EC618_PLAT_DIR "${CMAKE_CURRENT_LIST_DIR}/../PLAT" CACHE PATH "Path to the EC618 PLAT SDK")
+set(EC618_PLAT_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/luatos-soc-ec618/PLAT" CACHE PATH "Path to the EC618 PLAT SDK")
 set(EC618_TARGET "ec618_0h00" CACHE STRING "EC618 board target")
 
 set(PLAT_DEVICE "${EC618_PLAT_DIR}/device/target")
@@ -65,24 +65,35 @@ set(CMAKE_ASM_FLAGS_INIT "${EC618_CPU_FLAGS} --apcs=interwork -D__MICROLIB")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "-Os" CACHE STRING "" FORCE)
 
+# --- Toit mbedTLS alt headers (threading_alt.h, etc.) ---
+include_directories("${CMAKE_CURRENT_LIST_DIR}/../src/third_party/mbedtls_ec618")
+
 # --- Include directories from the PLAT SDK ---
 include_directories(SYSTEM
   "${PLAT_BOARD}/common/inc"
   "${PLAT_BOARD}/ap/inc"
-  "${PLAT_BOARD}/ap/apps/toit/inc"
+  "${PLAT_DEVICE}/board/common/ARMCM3/inc"
   "${PLAT_CHIP}/ap/inc"
   "${PLAT_CHIP}/ap/inc_cmsis"
   "${PLAT_DEVICE}/include"
+  "${EC618_PLAT_DIR}/driver/hal/ec618/ap/inc"
+  "${EC618_PLAT_DIR}/driver/hal/common/inc"
+  "${EC618_PLAT_DIR}/driver/board/${EC618_TARGET}/inc"
   "${PLAT_FREERTOS}/inc"
   "${PLAT_FREERTOS}/CMSIS/ap/inc"
   "${PLAT_FREERTOS}/CMSIS/common/inc"
   "${PLAT_FREERTOS}/portable/gcc"
-  "${PLAT_FREERTOS}/portable/mem/cmpctmalloc"
-  "${PLAT_MIDDLEWARE}/developed/qcapi/psapi/inc"
-  "${PLAT_MIDDLEWARE}/developed/qcapi/apimsg/inc"
+  "${PLAT_MIDDLEWARE}/developed/ecapi/psapi/inc"
+  "${PLAT_MIDDLEWARE}/developed/ecapi/appmwapi/inc"
+  "${PLAT_MIDDLEWARE}/developed/common/inc"
+  "${PLAT_MIDDLEWARE}/developed/debug/inc"
+  "${PLAT_MIDDLEWARE}/developed/cms/cms/inc"
+  "${PLAT_MIDDLEWARE}/developed/cms/psdial/inc"
+  "${PLAT_MIDDLEWARE}/developed/cms/sockmgr/inc"
   "${PLAT_MIDDLEWARE}/thirdparty/lwip/src/include"
   "${PLAT_MIDDLEWARE}/thirdparty/lwip/src/include/lwip"
   "${PLAT_PREBUILD}/PS/inc"
+  "${PLAT_PREBUILD}/PLAT/inc"
 )
 
 # --- Compile definitions ---
@@ -100,4 +111,5 @@ add_definitions(
   -DCONFIG_TOIT_BITMAP
   -DCONFIG_TOIT_BIT_DISPLAY
   -DCONFIG_TOIT_BYTE_DISPLAY
+  -DDEBUG_LOG_HEADER_FILE=\"debug_log_ap.h\"
 )

@@ -114,11 +114,7 @@ include_directories(
   "${TOIT_SDK_SOURCE_DIR}/include"
   )
 
-if ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
-  include_directories("${CMAKE_SOURCE_DIR}/third_party/mbedtls/include")
-else()
-  include_directories("${IDF_PATH}/components/mbedtls/mbedtls/include")
-endif()
+include_directories("${IDF_PATH}/components/mbedtls/mbedtls/include")
 
 if (DEFINED USE_LWIP)
   set(LWIP_MBEDTLSDIR "../mbedtls")
