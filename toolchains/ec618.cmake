@@ -33,6 +33,10 @@ set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
 set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
 
 # --- PLAT SDK paths ---
+# The PLAT SDK comes from a GitHub mirror of the openLuat CSDK.
+# TODO(floitsch): Check gitee.com/openLuat/luatos-soc-2022 for the canonical
+# source — it may have newer patches. The current submodule is from
+# shuanglengyunji/luatos-soc-2022, which was last updated Jan 2024.
 set(EC618_PLAT_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/luatos-soc-ec618/PLAT" CACHE PATH "Path to the EC618 PLAT SDK")
 set(EC618_TARGET "ec618_0h00" CACHE STRING "EC618 board target")
 
@@ -113,4 +117,7 @@ add_definitions(
   -DCONFIG_TOIT_BIT_DISPLAY
   -DCONFIG_TOIT_BYTE_DISPLAY
   -DDEBUG_LOG_HEADER_FILE=\"debug_log_ap.h\"
+  # The PLAT CMSIS headers use __FORCEINLINE __STATIC_INLINE together, producing
+  # duplicate 'inline' specifiers. Override __FORCEINLINE to omit 'inline'.
+  "-D__FORCEINLINE=__attribute__((always_inline))"
 )
