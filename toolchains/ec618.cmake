@@ -80,6 +80,7 @@ include_directories(SYSTEM
   "${EC618_PLAT_DIR}/driver/hal/common/inc"
   "${EC618_PLAT_DIR}/driver/board/${EC618_TARGET}/inc"
   "${PLAT_FREERTOS}/inc"
+  "${PLAT_FREERTOS}"
   "${PLAT_FREERTOS}/CMSIS/ap/inc"
   "${PLAT_FREERTOS}/CMSIS/common/inc"
   "${PLAT_FREERTOS}/portable/gcc"

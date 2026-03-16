@@ -76,6 +76,10 @@
 #if configSUPPORT_DYNAMIC_ALLOC_HEAP == 7
 #define TOIT_CMPCTMALLOC 1
 #endif
+// The PLAT SDK defines TRUE/FALSE macros that conflict with Toit's
+// token definitions and other code.
+#undef TRUE
+#undef FALSE
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
 #define TOIT_BSD

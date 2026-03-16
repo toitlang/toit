@@ -17,12 +17,9 @@
 
 #include "top.h"
 
-#ifdef TOIT_ESP32
+#ifdef TOIT_FREERTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#elif defined(TOIT_EC618)
-#include <FreeRTOS.h>
-#include <semphr.h>
 #else
 #include <errno.h>
 #include <pthread.h>

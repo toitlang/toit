@@ -17,13 +17,21 @@
 
 #include <errno.h>
 #include <limits.h>
+#ifndef TOIT_EC618
 #include <pthread.h>
-#include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#endif
+#include <stdlib.h>
 #include <time.h>
 
 #include "utils.h"
+
+#ifdef TOIT_EC618
+extern "C" {
+  uint32_t osKernelGetTickCount(void);
+}
+#endif
 
 #ifndef TIMEVAL_TO_TIMESPEC
 #define TIMEVAL_TO_TIMESPEC(tv, ts) {                   \
@@ -72,12 +80,22 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
   ASSERT(ts->tv_nsec < ns_per_second);
 }
 
+#ifdef TOIT_EC618
+bool OS::monotonic_gettime(int64* timestamp) {
+  // TODO: Use FreeRTOS tick count for monotonic time.
+  uint32_t ticks = osKernelGetTickCount();
+  // configTICK_RATE_HZ is typically 1000 on EC618 (1ms ticks).
+  *timestamp = static_cast<int64>(ticks) * 1000LL;  // Convert ms to us.
+  return true;
+}
+#else
 bool OS::monotonic_gettime(int64* timestamp) {
   struct timespec time{};
   if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return false;
   *timestamp = (time.tv_sec * 1000000LL) + (time.tv_nsec / 1000LL);
   return true;
 }
+#endif
 
 static int64 monotonic_adjustment = 0;
 
@@ -98,6 +116,17 @@ void OS::reset_monotonic_time() {
   monotonic_adjustment = timestamp;
 }
 
+#ifdef TOIT_EC618
+bool OS::get_real_time(struct timespec* time) {
+  // TODO: Read the EC618 RTC via OsaSystemTimeReadRamUtc().
+  // For now, use the monotonic time as a fallback.
+  int64 timestamp = 0;
+  if (!monotonic_gettime(&timestamp)) return false;
+  time->tv_sec = timestamp / 1000000LL;
+  time->tv_nsec = (timestamp % 1000000LL) * 1000LL;
+  return true;
+}
+#else
 bool OS::get_real_time(struct timespec* time) {
   if (clock_gettime(CLOCK_REALTIME, time) == 0) return true;
 
@@ -117,6 +146,7 @@ bool OS::get_real_time(struct timespec* time) {
   TIMEVAL_TO_TIMESPEC(&timeofday, time);
   return true;
 }
+#endif
 
 AlignedMemoryBase::~AlignedMemoryBase() {}
 

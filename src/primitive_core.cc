@@ -33,7 +33,7 @@
 #include "rtc_memory_esp32.h"
 #endif
 
-#ifndef RAW
+#if !defined(RAW) && !defined(TOIT_FREERTOS)
 #include "compiler/compiler.h"
 #endif
 
@@ -2704,6 +2704,8 @@ PRIMITIVE(hostname) {
   char* dot = strchr(buffer, '.');
   if (dot != null) *dot = '\0';
   return process->allocate_string_or_error(buffer);
+#elif defined(TOIT_EC618)
+  return process->allocate_string_or_error("ec618");
 #else
 #error "Unsupported platform"
 #endif

@@ -13,6 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
+
+#if !defined(TOIT_EC618)
+
 #define _FILE_OFFSET_BITS 64
 
 #include "primitive_file.h"
@@ -621,3 +625,5 @@ PRIMITIVE(cwd) {
 
 }
 #endif  // Linux and BSD.
+
+#endif  // !TOIT_EC618
