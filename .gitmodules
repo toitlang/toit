@@ -3,3 +3,6 @@
 	url = https://github.com/toitware/esp-idf.git
 	branch = patch-head-5.3.1
 	ignore = untracked
+[submodule "third_party/mbedtls"]
+	path = third_party/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git

@@ -27,25 +27,10 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
-# --- Compiler selection ---
-# By default, use clang (consistent with other ARM toolchains in this project).
-# Set EC618_USE_GCC=ON to use arm-none-eabi-gcc instead.
-option(EC618_USE_GCC "Use arm-none-eabi-gcc instead of clang" OFF)
-
-set(EC618_CPU_FLAGS "-mcpu=cortex-m3 -mthumb")
-
-if (EC618_USE_GCC)
-  set(CMAKE_C_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
-  set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
-  set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
-else()
-  set(CMAKE_C_COMPILER clang CACHE PATH "" FORCE)
-  set(CMAKE_CXX_COMPILER clang++ CACHE PATH "" FORCE)
-  set(CMAKE_ASM_COMPILER clang CACHE PATH "" FORCE)
-  set(CMAKE_C_COMPILER_TARGET "arm-none-eabi" CACHE STRING "" FORCE)
-  set(CMAKE_CXX_COMPILER_TARGET "arm-none-eabi" CACHE STRING "" FORCE)
-  set(CMAKE_ASM_COMPILER_TARGET "arm-none-eabi" CACHE STRING "" FORCE)
-endif()
+# --- Compiler ---
+set(CMAKE_C_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
+set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
+set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
 
 # --- PLAT SDK paths ---
 set(EC618_PLAT_DIR "${CMAKE_CURRENT_LIST_DIR}/../PLAT" CACHE PATH "Path to the EC618 PLAT SDK")
@@ -59,10 +44,13 @@ set(PLAT_MIDDLEWARE "${EC618_PLAT_DIR}/middleware")
 set(PLAT_PREBUILD "${EC618_PLAT_DIR}/prebuild")
 
 # --- Compiler flags ---
+set(EC618_CPU_FLAGS "-mcpu=cortex-m3 -mthumb")
+
 set(EC618_COMMON_FLAGS
   "${EC618_CPU_FLAGS} \
   -nostartfiles \
   -mapcs-frame \
+  -specs=nano.specs \
   -ffunction-sections \
   -fdata-sections \
   -fno-isolate-erroneous-paths-dereference \
@@ -70,27 +58,9 @@ set(EC618_COMMON_FLAGS
   -gdwarf-2"
 )
 
-if (NOT EC618_USE_GCC)
-  # Clang doesn't support all GCC flags; adjust as needed.
-  set(EC618_COMMON_FLAGS
-    "${EC618_CPU_FLAGS} \
-    -nostartfiles \
-    -ffunction-sections \
-    -fdata-sections \
-    -gdwarf-2"
-  )
-endif()
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EC618_COMMON_FLAGS}" CACHE STRING "" FORCE)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EC618_COMMON_FLAGS}" CACHE STRING "" FORCE)
-
-if (EC618_USE_GCC)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -specs=nano.specs" CACHE STRING "" FORCE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -specs=nano.specs" CACHE STRING "" FORCE)
-  set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${EC618_CPU_FLAGS} --apcs=interwork -D__MICROLIB" CACHE STRING "" FORCE)
-else()
-  set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${EC618_CPU_FLAGS}" CACHE STRING "" FORCE)
-endif()
+set(CMAKE_C_FLAGS_INIT "${EC618_COMMON_FLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${EC618_COMMON_FLAGS}")
+set(CMAKE_ASM_FLAGS_INIT "${EC618_CPU_FLAGS} --apcs=interwork -D__MICROLIB")
 
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "-Os" CACHE STRING "" FORCE)
