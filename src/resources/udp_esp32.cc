@@ -240,6 +240,8 @@ PRIMITIVE(create_socket) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
+    // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+    udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
 
     UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
@@ -302,6 +304,8 @@ PRIMITIVE(bind) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
+    // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+    udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -439,7 +443,10 @@ PRIMITIVE(send) {
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
-    if (is_byte_array(capture.address)) {
+    // Don't use is_byte_array() here: the address may be a CoW byte array
+    // (class tag INSTANCE_TAG, not BYTE_ARRAY_TAG).  The null check is the
+    // correct way to distinguish "has destination" from "use connected peer".
+    if (capture.address != capture.process->null_object()) {
       err = udp_sendto(capture.socket->upcb(), p, &capture.addr, capture.port);
     } else {
       err = udp_send(capture.socket->upcb(), p);
