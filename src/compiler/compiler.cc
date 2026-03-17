@@ -788,8 +788,8 @@ void Compiler::format(const char* source_path,
   // TODO(florian): if the out_path is different we should check whether the
   // file exists, and, if yes, if the content has changed.
   if (strcmp(source_path, out_path) != 0 ||
-      (formatted_size != unit->source()->size() &&
-       memcmp(formatted, unit->source()->text(), formatted_size) != 0)) {
+      formatted_size != unit->source()->size() ||
+      memcmp(formatted, unit->source()->text(), formatted_size) != 0) {
     FILE* file_out = fopen(out_path, "wb");
     fwrite(formatted, 1, formatted_size, file_out);
     fclose(file_out);
