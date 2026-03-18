@@ -100,15 +100,14 @@ public:
     read_ready_ = false;
     read_count_ = 0;
     bool success = ReadFile(uart_, read_data_, READ_BUFFER_SIZE, &read_count_, &read_overlapped_);
-    if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
+    if (!success && GetLastError() != ERROR_IO_PENDING) {
       return false;
     }
     return true;
   }
 
   bool receive_read_response() {
-    bool overlapped_result = GetOverlappedResult(uart_, &read_overlapped_, &read_count_, false);
-    return overlapped_result;
+    return GetOverlappedResult(uart_, &read_overlapped_, &read_count_, false);
   }
 
   bool send(const uint8* buffer, word length) {
@@ -122,7 +121,7 @@ public:
 
     DWORD tmp;
     bool send_result = WriteFile(uart_, write_buffer_, length, &tmp, &write_overlapped_);
-    if (!send_result && WSAGetLastError() != ERROR_IO_PENDING) {
+    if (!send_result && GetLastError() != ERROR_IO_PENDING) {
       return false;
     }
 
@@ -142,8 +141,11 @@ public:
       if (!succeeded) {
         error_code_ = GetLastError();
       } else {
-        if (event_mask_ & EV_ERR) state |= kErrorState;
-        /* TODO(mikkel): Handle EV_TXEMPTY and EV_BREAK */
+        if (event_mask_ & EV_ERR) {
+          DWORD errors;
+          ClearCommError(uart_, &errors, NULL);
+          state |= kErrorState;
+        }
 
         if (!issue_comm_events_request()) {
           error_code_ = GetLastError();
@@ -267,11 +269,19 @@ PRIMITIVE(create_path) {
     WINDOWS_ERROR;
   }
 
-  // Setup timeouts
-  // Read never blocks
-  // Write never times out
+  // Setup timeouts.
+  // With overlapped I/O, ReadFile itself returns immediately
+  // (ERROR_IO_PENDING), so the primitive never blocks.
+  // The MAXDWORD/MAXDWORD/1 combination means: if bytes are already
+  // buffered return them immediately; otherwise wait until at least
+  // one byte arrives, then return all available bytes at once.
+  // This avoids 0-byte completions entirely and works for both fast
+  // bursts and slow streams.
+  // Write never times out.
   COMMTIMEOUTS comm_timeouts{};
   comm_timeouts.ReadIntervalTimeout = MAXDWORD;
+  comm_timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
+  comm_timeouts.ReadTotalTimeoutConstant = 1;
   success = SetCommTimeouts(uart, &comm_timeouts);
   if (!success) {
     close_handle_keep_errno(uart);
