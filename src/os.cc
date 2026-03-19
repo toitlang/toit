@@ -29,7 +29,8 @@
 
 #ifdef TOIT_EC618
 extern "C" {
-  uint32_t osKernelGetTickCount(void);
+  #include "cmsis_os2.h"
+  #include "osasys.h"
 }
 #endif
 
@@ -82,10 +83,9 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
 
 #ifdef TOIT_EC618
 bool OS::monotonic_gettime(int64* timestamp) {
-  // TODO: Use FreeRTOS tick count for monotonic time.
   uint32_t ticks = osKernelGetTickCount();
-  // configTICK_RATE_HZ is typically 1000 on EC618 (1ms ticks).
-  *timestamp = static_cast<int64>(ticks) * 1000LL;  // Convert ms to us.
+  // Convert ticks to microseconds via portTICK_PERIOD_MS.
+  *timestamp = static_cast<int64>(ticks) * portTICK_PERIOD_MS * 1000LL;
   return true;
 }
 #else
@@ -118,12 +118,17 @@ void OS::reset_monotonic_time() {
 
 #ifdef TOIT_EC618
 bool OS::get_real_time(struct timespec* time) {
-  // TODO: Read the EC618 RTC via OsaSystemTimeReadRamUtc().
-  // For now, use the monotonic time as a fallback.
-  int64 timestamp = 0;
-  if (!monotonic_gettime(&timestamp)) return false;
-  time->tv_sec = timestamp / 1000000LL;
-  time->tv_nsec = (timestamp % 1000000LL) * 1000LL;
+  utc_timer_value_t* utc = OsaSystemTimeReadRamUtc();
+  if (utc == null || utc->UTCsecs == 0) {
+    // RTC not set yet — fall back to monotonic time.
+    int64 timestamp = 0;
+    if (!monotonic_gettime(&timestamp)) return false;
+    time->tv_sec = timestamp / 1000000LL;
+    time->tv_nsec = (timestamp % 1000000LL) * 1000LL;
+    return true;
+  }
+  time->tv_sec = utc->UTCsecs;
+  time->tv_nsec = utc->UTCms * 1000000LL;
   return true;
 }
 #else

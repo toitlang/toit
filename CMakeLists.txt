@@ -230,6 +230,11 @@ if (NOT ${TOIT_IS_EMBEDDED})
   # External Toit packages and projects.
   add_subdirectory(external)
 
+endif() # NOT TOIT_IS_EMBEDDED
+
+# Build mbedtls for non-ESP32 targets. ESP32 gets mbedtls from the ESP-IDF
+# build system.
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
   # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
   # such they might interfere with other libraries.
@@ -241,6 +246,5 @@ if (NOT ${TOIT_IS_EMBEDDED})
     "${CMAKE_BINARY_DIR}/mbedtls"
     EXCLUDE_FROM_ALL
     )
-
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
-endif() # NOT TOIT_IS_EMBEDDED
+endif()

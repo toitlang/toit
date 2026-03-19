@@ -23,6 +23,12 @@ namespace toit {
 extern "C" int _rodata_reserved_end;
 #endif
 
+#ifdef TOIT_EC618
+extern "C" {
+  #include "mem_map.h"
+}
+#endif
+
 const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   const uint32* header = reinterpret_cast<const uint32*>(pointer);
   if (!header) return null;
@@ -34,6 +40,8 @@ const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   uint32 size = header[HEADER_INDEX_USED] + header[HEADER_INDEX_FREE];
   void* end = reinterpret_cast<void*>(reinterpret_cast<uint32>(pointer) + size);
   if (end > &_rodata_reserved_end) FATAL("rodata reservation too small");
+#elif defined(TOIT_EC618)
+  // On EC618, the free field is not used (config follows used area directly).
 #endif
   return reinterpret_cast<const EmbeddedDataExtension*>(header);
 }
@@ -77,7 +85,7 @@ const Program* EmbeddedDataExtension::program(uword offset) const {
   return reinterpret_cast<const Program*>(reinterpret_cast<uword>(this) + offset);
 }
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32) || defined(TOIT_EC618)
 
 struct DromData {
   // The data between magic1 and magic2 must be less than 256 bytes, otherwise the
@@ -92,7 +100,11 @@ struct DromData {
 // Note, you can't declare this const because then the compiler thinks it can
 // just const propagate, but we are going to patch this before we flash it, so
 // we don't want that.  But it's still const because it goes in a flash section.
+#ifdef TOIT_ESP32
 DromData drom_data __attribute__((section(".rodata_custom_desc")));
+#else
+DromData drom_data __attribute__((section(".rodata")));
+#endif
 
 const uint8* EmbeddedData::uuid() {
   return drom_data.uuid;

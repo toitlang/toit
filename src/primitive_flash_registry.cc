@@ -16,8 +16,6 @@
 
 #include "flash_registry.h"
 
-#if !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)
-
 #include "primitive.h"
 
 #include "process.h"
@@ -26,6 +24,9 @@
 #ifdef TOIT_ESP32
 #include "esp_flash.h"
 #include "esp_partition.h"
+#elif defined(TOIT_EC618)
+// EC618 flash operations are handled via FlashRegistry (flash_registry_ec618.cc).
+// No additional includes needed here.
 #else
 #include <string>
 #include <unordered_map>
@@ -35,7 +36,7 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
 
-#ifndef TOIT_ESP32
+#if !defined(TOIT_ESP32) && !defined(TOIT_EC618)
 static std::unordered_map<std::string, word*> partitions;
 #endif
 
@@ -277,6 +278,11 @@ PRIMITIVE(revoke_access) {
 PRIMITIVE(partition_find) {
   PRIVILEGED;
   ARGS(cstring, path, int, type, uword, size);
+#ifdef TOIT_EC618
+  USE(path); USE(type); USE(size);
+  // EC618 doesn't use ESP-style partitions.
+  FAIL(FILE_NOT_FOUND);
+#else
   if (size <= 0 || (type < 0x00) || (type > 0xff)) FAIL(INVALID_ARGUMENT);
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) FAIL(ALLOCATION_FAILED);
@@ -305,7 +311,7 @@ PRIMITIVE(partition_find) {
     size = *partition;
   }
   uword offset = reinterpret_cast<word>(partition + 1);
-#endif
+#endif  // TOIT_ESP32
   // TODO(kasper): Clean up the offset tagging.
   Object* offset_entry = Primitive::integer(offset + 1, process);
   if (Primitive::is_error(offset_entry)) return offset_entry;
@@ -314,6 +320,7 @@ PRIMITIVE(partition_find) {
   result->at_put(0, offset_entry);
   result->at_put(1, size_entry);
   return result;
+#endif  // TOIT_EC618
 }
 
 class FlashRegion : public SimpleResource {
@@ -485,5 +492,3 @@ PRIMITIVE(region_erase) {
 }
 
 }
-
-#endif  // !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)

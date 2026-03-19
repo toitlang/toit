@@ -23,6 +23,7 @@
 // Platform
 #define MBEDTLS_HAVE_ASM
 #define MBEDTLS_HAVE_TIME
+#define MBEDTLS_PLATFORM_MS_TIME_ALT
 
 // Threading via FreeRTOS
 #define MBEDTLS_THREADING_C

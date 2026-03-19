@@ -37,6 +37,7 @@ extern "C" {
 #include "heap_report.h"
 #include "memory.h"
 #include "os.h"
+#include "rtc_memory_ec618.h"
 #include "process.h"
 #include "program.h"
 #include "scheduler.h"
@@ -50,10 +51,12 @@ namespace toit {
 static const BaseType_t TLS_THREAD_SLOT = 0;
 
 int64 OS::get_system_time() {
-  // Use tick count converted to microseconds.
-  // TODO: Account for time spent in deep sleep via RtcMemory::wakeup_time().
+  // Combine the current tick count with accumulated time from previous
+  // sleep cycles (stored in RTC memory) to get total uptime.
   uint32_t ticks = osKernelGetTickCount();
-  return static_cast<int64>(ticks) * 1000LL;  // ms to us.
+  int64 current_ms = static_cast<int64>(ticks) * portTICK_PERIOD_MS;
+  int64 wakeup_ms = RtcMemory::wakeup_time();
+  return (wakeup_ms + current_ms) * 1000LL;  // ms to us.
 }
 
 int OS::num_cores() {
@@ -368,8 +371,17 @@ bool OS::unsetenv(const char* variable) {
 }
 
 bool OS::set_real_time(struct timespec* time) {
-  // TODO: Use OsaTimerSync() to set the EC618 RTC.
-  return false;
+  struct tm tm{};
+  time_t secs = time->tv_sec;
+  gmtime_r(&secs, &tm);
+  // OsaTimerSync expects three uint32 values:
+  //   Timer1: (year << 16) | (month << 8) | day
+  //   Timer2: (hour << 16) | (min << 8) | sec
+  //   Timer3: milliseconds
+  uint32_t t1 = ((tm.tm_year + 1900) << 16) | ((tm.tm_mon + 1) << 8) | tm.tm_mday;
+  uint32_t t2 = (tm.tm_hour << 16) | (tm.tm_min << 8) | tm.tm_sec;
+  uint32_t t3 = time->tv_nsec / 1000000;
+  return OsaTimerSync(APP_TIME_SRC, SET_LOCAL_TIME, t1, t2, t3) == 0;
 }
 
 // Hardware RNG for mbedTLS entropy.
@@ -388,5 +400,11 @@ extern "C" int mbedtls_hardware_poll(
 }
 
 }  // namespace toit
+
+// mbedTLS platform time function (MBEDTLS_PLATFORM_MS_TIME_ALT).
+extern "C" int64_t mbedtls_ms_time(void) {
+  uint32_t ticks = osKernelGetTickCount();
+  return static_cast<int64_t>(ticks) * portTICK_PERIOD_MS;
+}
 
 #endif  // TOIT_EC618

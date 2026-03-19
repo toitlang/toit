@@ -92,7 +92,7 @@ PRIMITIVE(kill) {
 }
 
 PRIMITIVE(bundled_images) {
-#ifdef TOIT_ESP32
+#ifdef TOIT_FREERTOS
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   word length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
@@ -110,8 +110,6 @@ PRIMITIVE(bundled_images) {
     result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
-#elif defined(TOIT_FREERTOS)
-  FAIL(UNIMPLEMENTED);
 #else
   return process->program()->empty_array();
 #endif

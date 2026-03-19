@@ -31,6 +31,11 @@
 #ifdef TOIT_ESP32
 #include "spi_flash_mmap.h"
 #include "rtc_memory_esp32.h"
+#elif defined(TOIT_EC618)
+#include "rtc_memory_ec618.h"
+extern "C" {
+  #include "mem_map.h"
+}
 #endif
 
 #if !defined(RAW) && !defined(TOIT_FREERTOS)
@@ -2495,10 +2500,8 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifdef TOIT_CMPCTMALLOC
   ARGS(cstring, marker, int, max_pages);
   OS::heap_summary_report(max_pages, marker, process);
-#endif // def TOIT_CMPCTMALLOC
   return process->null_object();
 }
 
@@ -2553,12 +2556,8 @@ static bool firmware_is_mapped = false;
 
 PRIMITIVE(firmware_map) {
   ARGS(Object, bytes);
-#ifndef TOIT_ESP32
-  return bytes;
-#else
+#if defined(TOIT_ESP32)
   if (bytes != process->null_object()) {
-    // If we're passed non-null bytes, we use that as the
-    // firmware bits.
     return bytes;
   }
 
@@ -2566,18 +2565,14 @@ PRIMITIVE(firmware_map) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (firmware_is_mapped) {
-    // We unmap to allow the next attempt to get the current
-    // system image to succeed.
     spi_flash_munmap(firmware_mmap_handle);
     firmware_is_mapped = false;
-    FAIL(QUOTA_EXCEEDED);  // Quota is 1.
+    FAIL(QUOTA_EXCEEDED);
   }
 
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
   if (current_partition == null) FAIL(ERROR);
 
-  // On the ESP32, it is beneficial to map the partition in as instructions
-  // because there is a larger virtual address space for that.
   esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
 #if defined(CONFIG_IDF_TARGET_ESP32)
   memory = ESP_PARTITION_MMAP_INST;
@@ -2586,7 +2581,7 @@ PRIMITIVE(firmware_map) {
   const void* mapped_to = null;
   esp_err_t err = esp_partition_mmap(
       current_partition,
-      0,  // Offset from start of partition.
+      0,
       current_partition->size,
       memory,
       &mapped_to,
@@ -2602,6 +2597,21 @@ PRIMITIVE(firmware_map) {
       current_partition->size,
       const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
   return proxy;
+#elif defined(TOIT_EC618)
+  if (bytes != process->null_object()) {
+    return bytes;
+  }
+
+  // On EC618, the firmware is directly accessible via XIP. Create a proxy
+  // spanning the AP flash load area.
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  uint8* start = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR);
+  proxy->set_external_address(AP_FLASH_LOAD_SIZE, start);
+  return proxy;
+#else
+  return bytes;
 #endif
 }
 
@@ -2611,6 +2621,9 @@ PRIMITIVE(firmware_unmap) {
   if (!firmware_is_mapped) process->null_object();
   spi_flash_munmap(firmware_mmap_handle);
   firmware_is_mapped = false;
+  proxy->clear_external_address();
+#elif defined(TOIT_EC618)
+  ARGS(ByteArray, proxy);
   proxy->clear_external_address();
 #endif
   return process->null_object();
@@ -2660,7 +2673,7 @@ PRIMITIVE(firmware_mapping_copy) {
   return Smi::from(index + bytes);
 }
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32) || defined(TOIT_EC618)
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
