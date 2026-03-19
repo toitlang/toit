@@ -450,5 +450,5 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
   TraversingVisitor::visit_Typecheck(node);
 }
 
-} // namespace compiler
+} // namespace toit::compiler
 } // namespace toit

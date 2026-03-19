@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
@@ -21,7 +21,6 @@ A count of 0 means the rename should return null (not renamable).
 */
 
 import .lsp-client show LspClient run-client-test
-import .utils
 import expect show *
 import host.file
 import host.directory
@@ -96,7 +95,7 @@ apply-rename-edits response/Map client/LspClient file-contents/Map -> none:
     if not content:
       // The file might not be in our map (e.g. SDK files).
       // Skip it.
-      return
+      continue.do
     lines := content.split "\n"
 
     // Sort edits in reverse order (bottom-to-top, right-to-left) to avoid

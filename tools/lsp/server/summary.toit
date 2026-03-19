@@ -143,15 +143,15 @@ class Module:
   */
   element-at --start/int --end/int -> any:
     if summary-bytes_: parse_
-    
+
     best-match := null
     best-size := -1
-    
+
     check := : | element |
       range := element.range
       // Perfect match returns from element-at immediately.
       if range.start == start and range.end == end: return element
-      
+
       // Fallback: containment check for slightly drifted summaries.
       if range.start <= start and range.end >= end:
         size := range.end - range.start

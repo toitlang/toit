@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
@@ -39,7 +39,6 @@ main args:
 
   passed  := 0
   failed  := 0
-  errored := 0
 
   test-files.do: |test-file/string|
     name := test-file
@@ -65,10 +64,10 @@ main args:
 
   print ""
   print "=============================="
-  total := passed + failed + errored
-  print "RESULTS: $passed/$total passed, $failed failed, $errored errored"
+  total := passed + failed
+  print "RESULTS: $passed/$total passed, $failed failed"
   print "=============================="
-  if failed + errored > 0:
+  if failed > 0:
     system.exit 1
 
 /**

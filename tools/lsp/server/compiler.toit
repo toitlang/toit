@@ -447,7 +447,7 @@ class Compiler:
       return result
     unreachable
 
-  read-range reader/io.Reader -> Range:
+  static read-range reader/io.Reader -> Range:
     from-line-number := int.parse reader.read-line --radix=10
     from-column-number := int.parse reader.read-line --radix=10
     to-line-number := int.parse reader.read-line --radix=10

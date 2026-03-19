@@ -55,12 +55,13 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
                                 ir::Type type,
                                 List<ir::Class*> classes) {
   Symbol selector = node->selector();
-  
+
   if (type.is_none()) return;
 
   if (type.is_class()) {
     ir::Class* klass = type.klass();
     while (klass != null) {
+      // i == -1 iterates the class itself; i >= 0 iterates its mixins.
       for (int i = -1; i < klass->mixins().length(); i++) {
         auto current = i == -1 ? klass : klass->mixins()[i];
         for (ir::MethodInstance* method : current->methods()) {
@@ -71,7 +72,9 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
         }
       }
       if (klass->super() == null && (klass->is_interface() || klass->is_mixin())) {
-        klass = classes.length() > 0 ? classes[0] : null; // Usually Object
+        // Interfaces/mixins have no super. Fall back to the first class in
+        // the list (typically Object) to search inherited methods.
+        klass = classes.length() > 0 ? classes[0] : null;
       } else {
         klass = klass->super();
       }
@@ -203,9 +206,8 @@ void HoverHandler::emit_hover(ir::Node* node, const char* name) {
   else if (node->is_Field()) node_range = node->as_Field()->range();
   else if (node->is_Global()) node_range = node->as_Global()->range();
 
-  // If node is a constructor (usually generated synthetic methods don't have good Toitdocs),
-  // we could optionally point to the class itself if we wanted. But the summary actually
-  // keeps constructors and classes separate, so returning the constructor's node_range is fine.
+  // Constructors may have an invalid range (e.g., synthetic constructors).
+  // In that case, fall back to the enclosing class's range.
   if (!node_range.is_valid() && node->is_Constructor()) {
     node_range = node->as_Constructor()->klass()->range();
   }
@@ -232,6 +234,6 @@ void HoverHandler::finalize() {
   emit_hover(deferred_node_, null);
 }
 
-} // namespace compiler
+} // namespace toit::compiler
 } // namespace toit
 

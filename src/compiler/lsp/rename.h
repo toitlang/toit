@@ -104,12 +104,16 @@ class FindReferencesHandler : public LspSelectionHandler {
     if (type.is_class()) {
       auto klass = type.klass();
       while (klass != null) {
-        for (auto method : klass->methods()) {
-          if (method->name() == selector &&
-              method->resolution_shape().accepts(node->shape())) {
-            target_ = method;
-            cursor_range_ = node->range();
-            return;
+        // i == -1 iterates the class itself; i >= 0 iterates its mixins.
+        for (int i = -1; i < klass->mixins().length(); i++) {
+          auto current = i == -1 ? klass : klass->mixins()[i];
+          for (auto method : current->methods()) {
+            if (method->name() == selector &&
+                method->resolution_shape().accepts(node->shape())) {
+              target_ = method;
+              cursor_range_ = node->range();
+              return;
+            }
           }
         }
         klass = klass->super();
@@ -183,16 +187,10 @@ class FindReferencesHandler : public LspSelectionHandler {
   void this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding) override {}
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override {
-    if (entry.nodes().length() == 1) {
-      target_ = unwrap_reference(entry.nodes()[0]);
-      cursor_range_ = node->selection_range();
-    }
+    handle_show_or_export(node, entry);
   }
   void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override {
-    if (entry.nodes().length() == 1) {
-      target_ = unwrap_reference(entry.nodes()[0]);
-      cursor_range_ = node->selection_range();
-    }
+    handle_show_or_export(node, entry);
   }
 
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
@@ -216,6 +214,13 @@ class FindReferencesHandler : public LspSelectionHandler {
   SourceManager* source_manager() const { return source_manager_; }
 
  private:
+  void handle_show_or_export(ast::Node* node, ResolutionEntry entry) {
+    if (entry.nodes().length() == 1) {
+      target_ = unwrap_reference(entry.nodes()[0]);
+      cursor_range_ = node->selection_range();
+    }
+  }
+
   SourceManager* source_manager_;
   ir::Node* target_ = null;
   Source::Range cursor_range_ = Source::Range::invalid();
@@ -370,5 +375,5 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   const VirtualCallFilter& virtual_call_filter_;
 };
 
-} // namespace compiler
+} // namespace toit::compiler
 } // namespace toit

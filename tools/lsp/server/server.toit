@@ -463,7 +463,7 @@ class LspServer:
   hover params/TextDocumentPositionParams -> Hover?:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    
+
     definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
     if not definition: return null
 
@@ -472,7 +472,7 @@ class LspServer:
 
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     element-uri := translator.to-uri definition.path --from-compiler
-    
+
     document := analyzed-documents.get --uri=element-uri
     if not document or not document.summary: return null
 

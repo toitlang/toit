@@ -114,5 +114,5 @@ class HoverHandler : public LspSelectionHandler {
   void emit_hover(ir::Node* node, const char* name);
 };
 
-} // namespace compiler
+} // namespace toit::compiler
 } // namespace toit
