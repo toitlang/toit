@@ -71,6 +71,11 @@ sections are polish and infrastructure.
 *Milestone*: Push a firmware update over the network. The device downloads,
 verifies, commits, reboots, and runs the new firmware.
 
+### When in Doubt, Ask
+
+If the instructions are unclear or you are stuck, ask. Don't ask on the
+first build error — try to fix it yourself first.
+
 ### Key Patterns to Understand First
 
 Before starting implementation, read and understand these patterns in the

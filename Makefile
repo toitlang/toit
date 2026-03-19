@@ -232,6 +232,13 @@ endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 
+# EC618
+.PHONY: ec618
+ec618: check-env
+	mkdir -p $(BUILD)/ec618
+	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
+	(cd $(BUILD)/ec618 && ninja toit_vm)
+
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
 check-esp32-env:
