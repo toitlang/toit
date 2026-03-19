@@ -33,10 +33,11 @@ set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
 set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
 
 # --- PLAT SDK paths ---
-# The PLAT SDK comes from a GitHub mirror of the openLuat CSDK.
+# The PLAT SDK comes from our fork of the openLuat CSDK:
+#   https://github.com/toitlang/luatos-soc-2022 (branch: toit)
+# Upstream: shuanglengyunji/luatos-soc-2022 (GitHub mirror, last updated Jan 2024).
 # TODO(floitsch): Check gitee.com/openLuat/luatos-soc-2022 for the canonical
-# source — it may have newer patches. The current submodule is from
-# shuanglengyunji/luatos-soc-2022, which was last updated Jan 2024.
+# source — it may have newer patches.
 set(EC618_PLAT_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/luatos-soc-ec618/PLAT" CACHE PATH "Path to the EC618 PLAT SDK")
 set(EC618_TARGET "ec618_0h00" CACHE STRING "EC618 board target")
 
