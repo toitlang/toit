@@ -66,15 +66,30 @@ List<uint8> EmbeddedDataExtension::config() const {
   // decode the header to find the start and size of the free area.
   const uint32* header = reinterpret_cast<const uint32*>(this);
   uint32 used = header[HEADER_INDEX_USED];
+#ifdef TOIT_EC618
+  // On EC618, the free field is not used. The config data immediately
+  // follows the used area and starts with a size encoding.
+  uword address = reinterpret_cast<uword>(header) + used;
+  uword size = *reinterpret_cast<const uint32*>(address);
+  if (size == 0 || size == 0xffffffff) return List<uint8>();
+  uint8* data = reinterpret_cast<uint8*>(address + sizeof(uint32));
+  return List<uint8>(data, size);
+#else
   uint32 free = header[HEADER_INDEX_FREE];
   // The config section is supposed to start with an encoding
   // of the size of the config. Make sure the free area is big
   // enough for that before looking at it.
   if (free < sizeof(uint32)) return List<uint8>();
   uword address = reinterpret_cast<uword>(header) + used;
-  uword size = *reinterpret_cast<uint32*>(address);
+  uword size = *reinterpret_cast<const uint32*>(address);
   uint8* data = reinterpret_cast<uint8*>(address + sizeof(uint32));
   return List<uint8>(data, Utils::min(size, (uword)(free - sizeof(uint32))));
+#endif
+}
+
+uword EmbeddedDataExtension::total_size() const {
+  const uint32* header = reinterpret_cast<const uint32*>(this);
+  return header[HEADER_INDEX_USED] + header[HEADER_INDEX_FREE];
 }
 
 uword EmbeddedDataExtension::offset(const Program* program) const {

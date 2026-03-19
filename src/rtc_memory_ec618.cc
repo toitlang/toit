@@ -115,7 +115,7 @@ int64 RtcMemory::wakeup_time() {
 void RtcMemory::adjust_wakeup_time_before_sleep(uint32 sleep_ms) {
   uint32_t current_ticks = osKernelGetTickCount();
   int64 current_ms = static_cast<int64>(current_ticks) * portTICK_PERIOD_MS;
-  rtc.wakeup_time = current_ms + sleep_ms;
+  rtc.wakeup_time += current_ms + sleep_ms;
   update_rtc_checksum();
 }
 

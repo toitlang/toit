@@ -374,14 +374,19 @@ bool OS::set_real_time(struct timespec* time) {
   struct tm tm{};
   time_t secs = time->tv_sec;
   gmtime_r(&secs, &tm);
-  // OsaTimerSync expects three uint32 values:
+  // OsaTimerSync packing (from luat_rtc_ec618.c):
   //   Timer1: (year << 16) | (month << 8) | day
-  //   Timer2: (hour << 16) | (min << 8) | sec
+  //   Timer2: (hour << 24) | (min << 16) | (sec << 8) | timezone
   //   Timer3: milliseconds
-  uint32_t t1 = ((tm.tm_year + 1900) << 16) | ((tm.tm_mon + 1) << 8) | tm.tm_mday;
-  uint32_t t2 = (tm.tm_hour << 16) | (tm.tm_min << 8) | tm.tm_sec;
+  uint32_t t1 = (((tm.tm_year + 1900) << 16) & 0xfff0000)
+              | (((tm.tm_mon + 1) << 8) & 0xff00)
+              | (tm.tm_mday & 0xff);
+  uint32_t t2 = ((tm.tm_hour << 24) & 0xff000000)
+              | ((tm.tm_min << 16) & 0xff0000)
+              | ((tm.tm_sec << 8) & 0xff00)
+              | 32;  // UTC timezone (32 = no offset).
   uint32_t t3 = time->tv_nsec / 1000000;
-  return OsaTimerSync(APP_TIME_SRC, SET_LOCAL_TIME, t1, t2, t3) == 0;
+  return OsaTimerSync(0, SET_LOCAL_TIME, t1, t2, t3) == 0;
 }
 
 // Hardware RNG for mbedTLS entropy.

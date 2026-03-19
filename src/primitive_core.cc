@@ -33,6 +33,7 @@
 #include "rtc_memory_esp32.h"
 #elif defined(TOIT_EC618)
 #include "rtc_memory_ec618.h"
+#include "embedded_data.h"
 extern "C" {
   #include "mem_map.h"
 }
@@ -2603,12 +2604,19 @@ PRIMITIVE(firmware_map) {
   }
 
   // On EC618, the firmware is directly accessible via XIP. Create a proxy
-  // spanning the AP flash load area.
+  // from the AP image start to the end of the extension (config + SHA256).
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   uint8* start = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR);
-  proxy->set_external_address(AP_FLASH_LOAD_SIZE, start);
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  if (extension == null) FAIL(ERROR);
+  // Size covers from AP image start through the extension data + 32 bytes
+  // for the trailing SHA256 checksum used during OTA verification.
+  static const int SHA256_SIZE = 32;
+  uword end = reinterpret_cast<uword>(extension) + extension->total_size() + SHA256_SIZE;
+  uword size = end - reinterpret_cast<uword>(start);
+  proxy->set_external_address(size, start);
   return proxy;
 #else
   return bytes;
