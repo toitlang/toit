@@ -125,7 +125,7 @@ PRIMITIVE(ota_write) {
     FAIL(OUT_OF_BOUNDS);
   }
 
-  return process->null_object();
+  return Smi::from(ota_written);
 }
 
 PRIMITIVE(ota_end) {
