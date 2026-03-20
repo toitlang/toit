@@ -89,4 +89,4 @@ class LwipEventSource : public EventSource {
 
 } // namespace toit
 
-#endif  // defined(TOIT_USE_LWIP) || defined(TOIT_ESP32)
+#endif  // defined(TOIT_USE_LWIP) || defined(TOIT_FREERTOS)

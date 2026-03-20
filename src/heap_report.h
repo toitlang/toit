@@ -54,7 +54,11 @@ class HeapFragmentationDumper : public Buffer {
       unemitted_8_byte_overhead_(false),
       overflowed_(false) {}
 
+#ifdef TOIT_EC618
   static inline int log_allocation(void* self, void* tag, void* allocation, size_t size) {
+#else
+  static inline bool log_allocation(void* self, void* tag, void* allocation, size_t size) {
+#endif
     reinterpret_cast<HeapFragmentationDumper*>(self)->log_allocation(allocation, size, tag);
     return 0;
   }
