@@ -67,6 +67,8 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
+  fn(CellularEvents)                    \
+  fn(UartQcx216Resource)                \
   fn(MbedTlsSocket)                                              
 
 // When adding a class make sure that they all are subclasses of
@@ -112,6 +114,8 @@ namespace toit {
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
+  fn(UartQcx216ResourceGroup)           \
+  fn(CellularResourceGroup)             \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \
