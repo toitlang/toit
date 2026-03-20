@@ -46,24 +46,24 @@ class CellularEvents : public Resource {
   TAG(CellularEvents);
   CellularEvents(ResourceGroup* group)
     : Resource(group)
-    , state_(0)
-    , ipv4_addr_(0) {}
+    , state_(0) {}
 
   int state() const { return state_; }
   void set_state(int state) { state_ = state; }
-  uint32 ipv4_addr() const { return ipv4_addr_; }
-  void set_ipv4_addr(uint32 addr) { ipv4_addr_ = addr; }
 
  private:
   int state_;
-  uint32 ipv4_addr_;
 };
 
 class CellularResourceGroup : public ResourceGroup {
  public:
   TAG(CellularResourceGroup);
   CellularResourceGroup(Process* process, EventSource* event_source)
-    : ResourceGroup(process, event_source) {}
+    : ResourceGroup(process, event_source)
+    , ipv4_addr_(0) {}
+
+  uint32 ipv4_addr() const { return ipv4_addr_; }
+  void set_ipv4_addr(uint32 addr) { ipv4_addr_ = addr; }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     auto event = reinterpret_cast<CellularEvent*>(data);
@@ -76,12 +76,11 @@ class CellularResourceGroup : public ResourceGroup {
         uint8 status = info->netifInfo.netStatus;
         if (status == NM_NETIF_ACTIVATED) {
           events->set_state(CELLULAR_ATTACHED);
-          // Extract IPv4 address.
-          events->set_ipv4_addr(info->netifInfo.ipv4Info.ipv4Addr.addr);
+          ipv4_addr_ = info->netifInfo.ipv4Info.ipv4Addr.addr;
           state |= CELLULAR_ATTACHED;
         } else if (status == NM_NO_NETIF_OR_DEACTIVATED) {
           events->set_state(CELLULAR_DETACHED);
-          events->set_ipv4_addr(0);
+          ipv4_addr_ = 0;
           state |= CELLULAR_DETACHED;
         }
         break;
@@ -91,6 +90,9 @@ class CellularResourceGroup : public ResourceGroup {
     }
     return state;
   }
+
+ private:
+  uint32 ipv4_addr_;
 };
 
 MODULE_IMPLEMENTATION(cellular, MODULE_CELLULAR)
@@ -150,9 +152,9 @@ PRIMITIVE(disconnect_reason) {
 }
 
 PRIMITIVE(get_ip) {
-  ARGS(CellularEvents, events, int, index);
+  ARGS(CellularResourceGroup, group, int, index);
   USE(index);
-  uint32 addr = events->ipv4_addr();
+  uint32 addr = group->ipv4_addr();
   if (addr == 0) return process->null_object();
 
   // Return as a 4-byte byte array.
