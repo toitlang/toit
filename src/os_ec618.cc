@@ -47,8 +47,14 @@ extern "C" {
 
 namespace toit {
 
-// Thread-local storage slot index for the Thread* pointer.
-static const BaseType_t TLS_THREAD_SLOT = 0;
+// Task-to-thread map. We can't use FreeRTOS TLS pointers because the
+// prebuilt libfreertos.a was compiled with configNUM_THREAD_LOCAL_STORAGE_POINTERS=0
+// and changing it would break the TCB struct ABI.
+static const int MAX_THREADS = 16;
+static struct {
+  TaskHandle_t task;
+  Thread* thread;
+} thread_map[MAX_THREADS];
 
 int64 OS::get_system_time() {
   // Combine the current tick count with accumulated time from previous
@@ -150,11 +156,37 @@ const int DEFAULT_STACK_SIZE = 2 * KB;
 static Thread* get_current_thread() {
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
   if (task == null) return null;
-  return static_cast<Thread*>(pvTaskGetThreadLocalStoragePointer(task, TLS_THREAD_SLOT));
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (thread_map[i].task == task) return thread_map[i].thread;
+  }
+  return null;
 }
 
 static void set_current_thread(Thread* thread) {
-  vTaskSetThreadLocalStoragePointer(xTaskGetCurrentTaskHandle(), TLS_THREAD_SLOT, thread);
+  TaskHandle_t task = xTaskGetCurrentTaskHandle();
+  // Look for existing entry or empty slot.
+  int empty = -1;
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (thread_map[i].task == task) {
+      thread_map[i].thread = thread;
+      return;
+    }
+    if (empty < 0 && thread_map[i].task == null) empty = i;
+  }
+  if (empty < 0) FATAL("too many threads");
+  thread_map[empty].task = task;
+  thread_map[empty].thread = thread;
+}
+
+static void clear_current_thread() {
+  TaskHandle_t task = xTaskGetCurrentTaskHandle();
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (thread_map[i].task == task) {
+      thread_map[i].task = null;
+      thread_map[i].thread = null;
+      return;
+    }
+  }
 }
 
 struct ThreadData {
@@ -183,6 +215,7 @@ void Thread::_boot() {
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
+  clear_current_thread();
   xSemaphoreGive(thread->terminated);
   vTaskDelete(null);
 }
