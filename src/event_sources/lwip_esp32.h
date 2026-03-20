@@ -17,7 +17,7 @@
 
 #include <functional>
 
-#if defined(TOIT_USE_LWIP) || defined(TOIT_ESP32)
+#if defined(TOIT_USE_LWIP) || defined(TOIT_FREERTOS)
 
 #include <lwip/tcpip.h>
 
