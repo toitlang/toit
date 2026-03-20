@@ -27,6 +27,27 @@ extern "C" {
   #include "cmsis_os2.h"
   #include "osasys.h"
   #include "rng.h"
+#ifdef TOIT_CMPCTMALLOC
+  // These are declared in portable.h but that header is included by
+  // FreeRTOS.h before configSUPPORT_DYNAMIC_ALLOC_HEAP is defined,
+  // so the #if guard doesn't work. Redeclare them here.
+  typedef struct {
+      size_t total_free_bytes;
+      size_t total_allocated_bytes;
+      size_t largest_free_block;
+      size_t minimum_free_bytes;
+      size_t allocated_blocks;
+      size_t free_blocks;
+      size_t total_blocks;
+      void  *lowest_address;
+      void  *highest_address;
+  } heap_stats_t;
+  typedef int (*tagged_memory_callback_t)(void*, void*, void*, size_t);
+  void vPortGetHeapStats(heap_stats_t *stats);
+  void vPortIterateAllocations(void*, void*, tagged_memory_callback_t, uint32_t);
+  void vPortSetHeapTag(void *tag);
+  void *vPortGetHeapTag(void);
+#endif
 
   extern uint32_t SystemCoreClock;
   extern char end_ap_data;
@@ -325,7 +346,18 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  // Use linker-defined symbols to determine the heap extent.
+#ifdef TOIT_CMPCTMALLOC
+  heap_stats_t stats;
+  vPortGetHeapStats(&stats);
+  if (stats.lowest_address != null) {
+    HeapMemoryRange range;
+    range.address = stats.lowest_address;
+    range.size = reinterpret_cast<uword>(stats.highest_address) -
+                 reinterpret_cast<uword>(stats.lowest_address);
+    return range;
+  }
+#endif
+  // Fallback: use linker-defined symbols.
   HeapMemoryRange range;
   range.address = reinterpret_cast<void*>(&end_ap_data);
   range.size = reinterpret_cast<uword>(&start_up_buffer) - reinterpret_cast<uword>(&end_ap_data);
@@ -357,18 +389,78 @@ void OS::out_of_memory(const char* reason) {
 #ifdef TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) {
-  vTaskSetThreadLocalStoragePointer(xTaskGetCurrentTaskHandle(), 1, reinterpret_cast<void*>(tag));
+  vPortSetHeapTag(reinterpret_cast<void*>(tag));
 }
 
 word OS::get_heap_tag() {
-  return reinterpret_cast<word>(pvTaskGetThreadLocalStoragePointer(xTaskGetCurrentTaskHandle(), 1));
+  return reinterpret_cast<word>(vPortGetHeapTag());
+}
+
+static const char* heap_tag_name(int tag) {
+  switch (tag) {
+    case MISC_MALLOC_TAG: return "misc";
+    case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
+    case BIGNUM_MALLOC_TAG: return "tls/bignum";
+    case EXTERNAL_STRING_MALLOC_TAG: return "external string";
+    case TOIT_HEAP_MALLOC_TAG: return "toit processes";
+    case FREE_MALLOC_TAG: return "free";
+    case LWIP_MALLOC_TAG: return "lwip";
+    case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
+    case EVENT_SOURCE_MALLOC_TAG: return "event source";
+    case OTHER_THREADS_MALLOC_TAG: return "thread/other";
+    case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
+    case NULL_MALLOC_TAG: return "untagged";
+    case WIFI_MALLOC_TAG: return "wifi";
+    default: return "unknown";
+  }
+}
+
+// Accumulates sizes by tag during heap iteration.
+struct HeapReportAccumulator {
+  uword sizes[NUMBER_OF_MALLOC_TAGS];
+  uword counts[NUMBER_OF_MALLOC_TAGS];
+};
+
+static int accumulate_allocation(void* self, void* tag, void* address, size_t size) {
+  auto acc = reinterpret_cast<HeapReportAccumulator*>(self);
+  int type = compute_allocation_type(reinterpret_cast<uword>(tag));
+  acc->sizes[type] += size;
+  acc->counts[type]++;
+  return 0;
 }
 
 void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
-  // TODO: Implement full heap summary with cmpctmalloc iteration.
   if (marker && strlen(marker) > 0) {
-    printf("Heap report @ %s: (not yet implemented for EC618 cmpctmalloc)\n", marker);
+    printf("Heap report @ %s:\n", marker);
+  } else {
+    printf("Heap report:\n");
   }
+
+  HeapReportAccumulator acc;
+  memset(&acc, 0, sizeof(acc));
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  vPortIterateAllocations(&acc, null, reinterpret_cast<tagged_memory_callback_t>(accumulate_allocation), flags);
+
+  word total_size = 0;
+  word total_count = 0;
+  for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
+    if (i == FREE_MALLOC_TAG || acc.sizes[i] == 0) continue;
+    printf("  %7d bytes  %5d allocs  %s\n",
+        static_cast<int>(acc.sizes[i]),
+        static_cast<int>(acc.counts[i]),
+        heap_tag_name(i));
+    total_size += acc.sizes[i];
+    total_count += acc.counts[i];
+  }
+
+  heap_stats_t stats;
+  vPortGetHeapStats(&stats);
+  word capacity = stats.total_allocated_bytes + stats.total_free_bytes;
+  printf("  Total: %d bytes in %d allocations, largest free %dk, total free %dk\n",
+      static_cast<int>(total_size),
+      static_cast<int>(total_count),
+      static_cast<int>(stats.largest_free_block >> 10),
+      static_cast<int>(stats.total_free_bytes >> 10));
 }
 
 #else  // !TOIT_CMPCTMALLOC
