@@ -37,7 +37,7 @@ static const uint8 NULL_MALLOC_TAG                = 13;
 static const uint8 WIFI_MALLOC_TAG                = 14;
 static const uint8 NUMBER_OF_MALLOC_TAGS          = 15;
 
-int compute_allocation_type(uword tag);
+int compute_allocation_type(word tag);
 
 #ifdef TOIT_CMPCTMALLOC
 
@@ -54,9 +54,9 @@ class HeapFragmentationDumper : public Buffer {
       unemitted_8_byte_overhead_(false),
       overflowed_(false) {}
 
-  static inline bool log_allocation(void* self, void* tag, void* allocation, size_t size) {
+  static inline int log_allocation(void* self, void* tag, void* allocation, size_t size) {
     reinterpret_cast<HeapFragmentationDumper*>(self)->log_allocation(allocation, size, tag);
-    return false;
+    return 0;
   }
 
   void log_allocation(void* allocation, uword size, void* tag);

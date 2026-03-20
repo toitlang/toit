@@ -755,9 +755,57 @@ PRIMITIVE(smi_mod) {
 }
 
 // Signed for base 10, unsigned for bases 2, 8 or 16.
+#ifdef TOIT_EC618
+// Newlib nano doesn't support 64-bit printf specifiers (PRId64 etc.).
+// Manual int64-to-string conversion.
+static void int64_to_string(char* buffer, size_t size, int64 value, int base) {
+  if (value == 0) { buffer[0] = '0'; buffer[1] = '\0'; return; }
+  char tmp[70];
+  int i = 0;
+  bool negative = false;
+  uint64 uval;
+  if (base == 10 && value < 0) {
+    negative = true;
+    uval = static_cast<uint64>(-value);
+  } else {
+    uval = static_cast<uint64>(value);
+  }
+  while (uval > 0 && i < 68) {
+    int digit = uval % base;
+    tmp[i++] = digit < 10 ? '0' + digit : 'a' + digit - 10;
+    uval /= base;
+  }
+  char* p = buffer;
+  if (negative) *p++ = '-';
+  for (int j = i - 1; j >= 0; j--) *p++ = tmp[j];
+  *p = '\0';
+}
+#endif
+
 static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
   ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
   char buffer[70];
+#ifdef TOIT_EC618
+  // Newlib nano doesn't support 64-bit format specifiers.
+  // Use manual conversion for values that don't fit in int.
+  if (base == 2) {
+    char* p = buffer;
+    int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+    for (int i = first_bit; i >= 0; i--) {
+      *p++ = '0' + ((value >> i) & 1);
+    }
+    *p++ = '\0';
+  } else if (value >= INT_MIN && value <= INT_MAX && base != 2) {
+    int v = static_cast<int>(value);
+    switch (base) {
+      case 8:  snprintf(buffer, sizeof(buffer), "%o", static_cast<unsigned>(v)); break;
+      case 10: snprintf(buffer, sizeof(buffer), "%d", v); break;
+      case 16: snprintf(buffer, sizeof(buffer), "%x", static_cast<unsigned>(v)); break;
+    }
+  } else {
+    int64_to_string(buffer, sizeof(buffer), value, base);
+  }
+#else
   switch (base) {
     case 2: {
       char* p = buffer;
@@ -780,6 +828,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
     default:
       buffer[0] = '\0';
   }
+#endif
   return process->allocate_string_or_error(buffer);
 }
 
@@ -1460,7 +1509,12 @@ PRIMITIVE(string_rune_count) {
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
   char buffer[32];
+#ifdef TOIT_EC618
+  // Newlib nano's %zd outputs "zd" literally.
+  snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(receiver));
+#else
   snprintf(buffer, sizeof(buffer), "%zd", receiver);
+#endif
   return process->allocate_string_or_error(buffer);
 }
 
