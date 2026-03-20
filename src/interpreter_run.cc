@@ -279,7 +279,12 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
 
 Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
+  // On EC618 (no data cache), place the dispatch table in RAM for fast access.
+#ifdef TOIT_EC618
+  static void* dispatch_table[] __attribute__((section(".data"))) = {
+#else
   static void* dispatch_table[] = {
+#endif
     BYTECODES(LABEL)
   };
 #undef LABEL
