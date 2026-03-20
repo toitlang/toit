@@ -30,6 +30,7 @@ extern "C" {
 
 #include "embedded_data.h"
 #include "flash_registry.h"
+#include "sha.h"
 #include "heap.h"
 #include "memory.h"
 #include "messaging.h"
@@ -86,6 +87,20 @@ static void start() {
   GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
+
+  // Check if an OTA update was staged during execution.
+  extern bool ota_updated;
+  if (ota_updated) {
+    ota_updated = false;
+    printf("[toit] INFO: OTA update staged — committing\n");
+    // The OTA commit (verifying SHA-256 and copying from FOTA to active
+    // image) is a complex operation that will be implemented when the
+    // firmware tooling is ready. For now, just log and reboot.
+    // TODO: Implement FOTA → active image copy with SHA-256 verification.
+    RtcMemory::invalidate();
+    slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, 1000);
+    // Fall through to sleep.
+  }
 
   switch (exit_state.reason) {
     case Scheduler::EXIT_DEEP_SLEEP: {
