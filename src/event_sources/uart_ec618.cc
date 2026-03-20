@@ -61,13 +61,12 @@ void UartQcx216EventSource::entry() {
     if (event.type == Event::STOP) break;
 
     Locker locker(mutex());
-    // Dispatch to all resources that match this event type.
+    // Dispatch to all resources with matching event type.
+    // EventResource stores the event type for matching.
     for (auto r : resources()) {
-      if (r->is<EventResource>()) {
-        auto er = static_cast<EventResource*>(r);
-        if (er->event_type() == event.type) {
-          dispatch(locker, r, event.data);
-        }
+      auto er = static_cast<EventResource*>(r);
+      if (er->event_type() == event.type) {
+        dispatch(locker, r, event.data);
       }
     }
   }
