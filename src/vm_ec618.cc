@@ -19,11 +19,17 @@
 
 #include "vm.h"
 #include "event_sources/timer.h"
+#include "event_sources/cellular_ec618.h"
+#include "event_sources/uart_ec618.h"
 
 namespace toit {
 
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
+  event_manager()->add_event_source(_new CellularEventSource());
+  event_manager()->add_event_source(_new UartQcx216EventSource());
+  // TODO: LwipEventSource and TlsEventSource will be added in Phase 3
+  // (networking sections 16-18).
 }
 
 }  // namespace toit
