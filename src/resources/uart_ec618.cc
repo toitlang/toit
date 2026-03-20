@@ -122,23 +122,23 @@ PRIMITIVE(read) {
   ARGS(UartQcx216Resource, resource);
   USE(resource);
 
+  // Capture volatile state with interrupts disabled to avoid races.
+  portDISABLE_INTERRUPTS();
   int rseg = read_segment;
   int wseg = write_segment;
   int woff = write_offset;
+  portENABLE_INTERRUPTS();
 
-  if (rseg == wseg && woff == 0 && !overflow) {
-    // No data available.
+  if (rseg == wseg && woff == 0) {
     return process->null_object();
   }
 
-  // Calculate available bytes.
+  // Calculate available bytes from the captured snapshot.
   int available = 0;
   if (rseg == wseg) {
     available = woff;
   } else {
-    // Bytes in read segment (from 0 to end).
-    available = SEGMENT_SIZE;
-    // Full segments between read and write.
+    available = SEGMENT_SIZE;  // Rest of current read segment.
     int seg = (rseg + 1) % NUM_SEGMENTS;
     while (seg != wseg) {
       available += SEGMENT_SIZE;
@@ -154,17 +154,19 @@ PRIMITIVE(read) {
   ByteArray::Bytes bytes(result);
   uint8* dest = bytes.address();
 
+  // Copy from the captured read position. Only update read_segment
+  // atomically after we're done copying each full segment.
   int copied = 0;
+  int seg = rseg;
   while (copied < available) {
-    int seg = read_segment;
-    int start = (seg == rseg && rseg == wseg) ? 0 : 0;
     int end = (seg == wseg) ? woff : SEGMENT_SIZE;
-    int n = end - start;
+    int n = end;
     if (n > available - copied) n = available - copied;
-    memcpy(dest + copied, uart_buffer[seg] + start, n);
+    memcpy(dest + copied, uart_buffer[seg], n);
     copied += n;
     if (end >= SEGMENT_SIZE) {
-      read_segment = (seg + 1) % NUM_SEGMENTS;
+      seg = (seg + 1) % NUM_SEGMENTS;
+      read_segment = seg;
     } else {
       break;
     }

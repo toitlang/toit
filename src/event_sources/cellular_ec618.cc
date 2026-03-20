@@ -42,10 +42,16 @@ int32_t CellularEventSource::on_urc(PsEventID event_id, void* param, uint32_t pa
   // thread registered so mutex operations work.
   Thread::ensure_system_thread();
 
+  // Pack event data into a struct on the stack. This is safe because
+  // the callback is synchronous — dispatch completes before we return.
+  CellularEvent event;
+  event.event_id = event_id;
+  event.param = param;
+  event.param_len = param_len;
+
   Locker locker(instance_->mutex());
-  // Dispatch to all registered resources.
   for (auto r : instance_->resources()) {
-    instance_->dispatch(locker, r, static_cast<word>(event_id));
+    instance_->dispatch(locker, r, reinterpret_cast<word>(&event));
   }
   return 0;
 }

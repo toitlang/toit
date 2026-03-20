@@ -2611,10 +2611,16 @@ PRIMITIVE(firmware_map) {
   uint8* start = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR);
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   if (extension == null) FAIL(ERROR);
-  // Size covers from AP image start through the extension data + 32 bytes
-  // for the trailing SHA256 checksum used during OTA verification.
+  // Compute end from config data (which follows the used area on EC618).
+  // Add 32 bytes for the trailing SHA256 checksum.
   static const int SHA256_SIZE = 32;
-  uword end = reinterpret_cast<uword>(extension) + extension->total_size() + SHA256_SIZE;
+  List<uint8> config = extension->config();
+  uword end;
+  if (config.is_empty()) {
+    end = reinterpret_cast<uword>(extension) + extension->total_size() + SHA256_SIZE;
+  } else {
+    end = reinterpret_cast<uword>(config.data()) + config.length() + SHA256_SIZE;
+  }
   uword size = end - reinterpret_cast<uword>(start);
   proxy->set_external_address(size, start);
   return proxy;

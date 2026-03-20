@@ -30,9 +30,8 @@ namespace toit {
 // Wraps a PS event for delivery to Toit resources.
 struct CellularEvent {
   PsEventID event_id;
+  void* param;
   uint32 param_len;
-  // Event data is copied inline after this struct.
-  uint8 data[];
 };
 
 // Event source for cellular URC (unsolicited result codes) from the
