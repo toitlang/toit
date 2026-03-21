@@ -117,20 +117,18 @@ generate-docs_ source/string name/any path/any
       cache-key = DocCache.package-key --id=(name as string) --version=version
 
   if cache-key:
+    cache.put --key=cache-key:
+      generate-toitdoc_ source name path
+          --toit=toit
+          --sdk-path=sdk-path
+          --project-root=project-root
     cached := cache.get --key=cache-key
     if cached: return cached
 
-  // Generate documentation.
-  result := generate-toitdoc_ source name path
+  return generate-toitdoc_ source name path
       --toit=toit
       --sdk-path=sdk-path
       --project-root=project-root
-
-  // Cache the result for SDK and packages.
-  if cache-key:
-    cache.put --key=cache-key --data=result
-
-  return result
 
 /**
 Runs `toit doc build` to generate toitdoc JSON for the given source.

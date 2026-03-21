@@ -13,6 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import ..toitdoc.src.builder show
+    DocCode
+    DocCodeSection
+    DocExpression
+    DocItem
+    DocItemized
+    DocLink
+    DocParagraph
+    DocSection
+    DocStatement
+    DocText
+    DocToitdocRef
+    Toitdoc
+
 /**
 Converts structured data from DocIndex into clean, readable Markdown.
 */
@@ -110,21 +124,19 @@ class DocFormatter:
   */
   static format-toitdoc toitdoc -> string:
     if toitdoc == null: return ""
-    if toitdoc is not List: return ""
-    sections := toitdoc as List
-    if sections.is-empty: return ""
+    if toitdoc is Toitdoc:
+      return format-toitdoc_ (toitdoc as Toitdoc)
+    parsed := Toitdoc.from-json toitdoc
+    if not parsed: return ""
+    return format-toitdoc_ parsed
 
+  static format-toitdoc_ toitdoc/Toitdoc -> string:
     lines := []
-    sections.do: | section |
-      if section is not Map: continue.do
-      section-map := section as Map
-      title := section-map.get "title"
-      if title and title != "":
-        lines.add "## $title"
+    toitdoc.sections.do: | section/DocSection |
+      if section.title and section.title != "":
+        lines.add "## $section.title"
         lines.add ""
-      statements := section-map.get "statements"
-      if statements is List:
-        render-statements_ (statements as List) lines ""
+      render-statements_ section.statements lines ""
     return (lines.join "\n").trim
 
   /**
@@ -133,63 +145,44 @@ class DocFormatter:
   The $prefix is prepended to each line (used for nested itemized lists).
   */
   static render-statements_ statements/List lines/List prefix/string -> none:
-    statements.do: | statement |
-      if statement is not Map: continue.do
-      stmt := statement as Map
-      object-type := stmt.get "object_type"
-
-      if object-type == "statement_paragraph":
-        text := render-expressions_ (stmt.get "expressions")
+    statements.do: | statement/DocStatement |
+      if statement is DocParagraph:
+        paragraph := statement as DocParagraph
+        text := render-expressions_ paragraph.expressions
         lines.add "$prefix$text"
         lines.add ""
 
-      else if object-type == "statement_code_section":
-        code := stmt.get "text" --if-absent=: ""
+      else if statement is DocCodeSection:
+        code-section := statement as DocCodeSection
         lines.add "$(prefix)```"
-        lines.add "$code"
+        lines.add code-section.text
         lines.add "$(prefix)```"
         lines.add ""
 
-      else if object-type == "statement_itemized":
-        items := stmt.get "items"
-        if items is List:
-          (items as List).do: | item |
-            if item is not Map: continue.do
-            item-map := item as Map
-            item-statements := item-map.get "statements"
-            if item-statements is List:
-              // Render the first statement inline with the bullet.
-              item-lines := []
-              render-statements_ (item-statements as List) item-lines ""
-              item-text := (item-lines.join "\n").trim
-              lines.add "$(prefix)- $item-text"
-          lines.add ""
+      else if statement is DocItemized:
+        itemized := statement as DocItemized
+        itemized.items.do: | item/DocItem |
+          item-lines := []
+          render-statements_ item.statements item-lines ""
+          item-text := (item-lines.join "\n").trim
+          lines.add "$(prefix)- $item-text"
+        lines.add ""
 
   /**
   Renders a list of expressions into a single string.
   */
-  static render-expressions_ expressions -> string:
-    if expressions == null: return ""
-    if expressions is not List: return ""
+  static render-expressions_ expressions/List -> string:
     parts := []
-    (expressions as List).do: | expr |
-      if expr is not Map: continue.do
-      expr-map := expr as Map
-      object-type := expr-map.get "object_type"
-      text := expr-map.get "text" --if-absent=: ""
-
-      if object-type == "expression_text":
-        parts.add text
-      else if object-type == "expression_code":
-        parts.add "`$text`"
-      else if object-type == "expression_link":
-        url := expr-map.get "url" --if-absent=: ""
-        parts.add "[$text]($url)"
-      else if object-type == "toitdocref":
-        parts.add "`$text`"
-      else:
-        // Fallback: use text if present.
-        if text != "":
-          parts.add text
-
+    expressions.do: | expr/DocExpression |
+      if expr is DocText:
+        parts.add (expr as DocText).text
+      else if expr is DocCode:
+        code := expr as DocCode
+        parts.add "`$code.text`"
+      else if expr is DocLink:
+        link := expr as DocLink
+        parts.add "[$link.text]($link.url)"
+      else if expr is DocToitdocRef:
+        ref := expr as DocToitdocRef
+        parts.add "`$ref.text`"
     return parts.join ""

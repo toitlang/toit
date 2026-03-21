@@ -13,6 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import ..toitdoc.src.builder show
+    DocCode
+    DocExpression
+    DocParagraph
+    DocSection
+    DocText
+    DocToitdocRef
+    Toitdoc
+
 /**
 Searchable index over toitdoc JSON data.
 
@@ -386,32 +395,26 @@ class DocIndex:
   Returns an empty string if no text is found.
   */
   static extract-summary_ toitdoc -> string:
-    if toitdoc is not List: return ""
-    sections := toitdoc as List
+    parsed := Toitdoc.from-json toitdoc
+    if not parsed: return ""
+
+    sections := parsed.sections
     if sections.is-empty: return ""
 
-    first-section := sections[0]
-    if first-section is not Map: return ""
-    section := first-section as Map
+    first-section := sections[0] as DocSection
+    if first-section.statements.is-empty: return ""
 
-    statements := section.get "statements"
-    if statements is not List: return ""
-    if (statements as List).is-empty: return ""
-
-    first-statement := (statements as List)[0]
-    if first-statement is not Map: return ""
-    statement := first-statement as Map
-
-    if (statement.get "object_type") != "statement_paragraph": return ""
-
-    expressions := statement.get "expressions"
-    if expressions is not List: return ""
-    if (expressions as List).is-empty: return ""
+    first-statement := first-section.statements[0]
+    if first-statement is not DocParagraph: return ""
+    paragraph := first-statement as DocParagraph
 
     // Concatenate all text expressions in the first paragraph.
     parts := []
-    (expressions as List).do: | expr |
-      if expr is Map:
-        text := (expr as Map).get "text"
-        if text: parts.add text
+    paragraph.expressions.do: | expr/DocExpression |
+      if expr is DocText:
+        parts.add (expr as DocText).text
+      else if expr is DocCode:
+        parts.add (expr as DocCode).text
+      else if expr is DocToitdocRef:
+        parts.add (expr as DocToitdocRef).text
     return parts.join ""

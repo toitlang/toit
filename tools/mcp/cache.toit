@@ -44,18 +44,22 @@ class DocCache:
     return null
 
   /**
-  Stores toitdoc $data in the cache under the given $key.
+  Ensures an entry exists in the cache under the given $key.
 
-  If the entry already exists, this is a no-op (the existing entry is
-    kept). This is correct for our use case since cache keys include
-    version information.
+  If the entry already exists, the $block is not called (the existing
+    entry is kept). This is correct for our use case since cache keys
+    include version information.
+
+  If the entry does not exist, the $block is called to produce the data,
+    which is then stored.
 
   Uses the CLI cache's file store mechanism for atomic writes.
   */
-  put --key/string --data/Map -> none:
+  put --key/string [block] -> none:
     prefixed := prefixed-key_ key
-    encoded := json.encode data
     cache_.get-file-path prefixed: | store/cli-cache.FileStore |
+      data/Map := block.call
+      encoded := json.encode data
       store.save encoded
 
   /**

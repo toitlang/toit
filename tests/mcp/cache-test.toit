@@ -1,17 +1,6 @@
-// Copyright (C) 2026 Toitware ApS.
-//
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; version
-// 2.1 only.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// The license can be found in the file `LICENSE` in the top level
-// directory of this repository.
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import expect show *
 import cli.cache as cli-cache
@@ -29,32 +18,32 @@ main:
   test-multiple-keys
   test-roundtrip-complex-json
 
-/// Creates a DocCache backed by a CLI Cache in the given $tmp-dir.
-create-doc-cache tmp-dir/string -> DocCache:
-  backing := cli-cache.Cache --app-name="test" --path=tmp-dir
-  return DocCache backing
+/**
+Creates a DocCache backed by a CLI Cache in a temporary directory.
+Calls the given $block with the temporary directory and the cache.
+*/
+with-doc-cache [block] -> none:
+  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
+  try:
+    backing := cli-cache.Cache --app-name="test" --path=tmp-dir
+    cache := DocCache backing
+    block.call tmp-dir cache
+  finally:
+    directory.rmdir --recursive --force tmp-dir
 
 test-get-miss:
-  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
-  try:
-    cache := create-doc-cache tmp-dir
+  with-doc-cache: | tmp-dir/string cache/DocCache |
     result := cache.get --key="nonexistent"
     expect-null result
-  finally:
-    directory.rmdir --recursive tmp-dir
 
 test-put-and-get:
-  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
-  try:
-    cache := create-doc-cache tmp-dir
+  with-doc-cache: | tmp-dir/string cache/DocCache |
     data := {"name": "test", "value": 42}
-    cache.put --key="my-key" --data=data
+    cache.put --key="my-key": data
     result := cache.get --key="my-key"
     expect-not-null result
     expect-equals "test" result["name"]
     expect-equals 42 result["value"]
-  finally:
-    directory.rmdir --recursive tmp-dir
 
 test-sdk-key:
   key := DocCache.sdk-key --version="v2.0.0"
@@ -65,38 +54,28 @@ test-package-key:
   expect-equals "github.com%2Ftoitlang%2Fpkg-http@2.11.0" key
 
 test-put-is-noop-if-exists:
-  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
-  try:
-    cache := create-doc-cache tmp-dir
-    cache.put --key="same-key" --data={"version": 1}
+  with-doc-cache: | tmp-dir/string cache/DocCache |
+    cache.put --key="same-key": {"version": 1}
     // Second put is a no-op since the key already exists.
-    cache.put --key="same-key" --data={"version": 2}
+    cache.put --key="same-key": {"version": 2}
     result := cache.get --key="same-key"
     expect-not-null result
     // The first value is kept.
     expect-equals 1 result["version"]
-  finally:
-    directory.rmdir --recursive tmp-dir
 
 test-multiple-keys:
-  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
-  try:
-    cache := create-doc-cache tmp-dir
-    cache.put --key="alpha" --data={"id": "a"}
-    cache.put --key="beta" --data={"id": "b"}
+  with-doc-cache: | tmp-dir/string cache/DocCache |
+    cache.put --key="alpha": {"id": "a"}
+    cache.put --key="beta": {"id": "b"}
     result-a := cache.get --key="alpha"
     result-b := cache.get --key="beta"
     expect-not-null result-a
     expect-not-null result-b
     expect-equals "a" result-a["id"]
     expect-equals "b" result-b["id"]
-  finally:
-    directory.rmdir --recursive tmp-dir
 
 test-roundtrip-complex-json:
-  tmp-dir := directory.mkdtemp "/tmp/cache-test-"
-  try:
-    cache := create-doc-cache tmp-dir
+  with-doc-cache: | tmp-dir/string cache/DocCache |
     complex-data := {
       "sdk-version": "v2.0.0",
       "libraries": [
@@ -120,7 +99,7 @@ test-roundtrip-complex-json:
         "generator": "toitdoc",
       },
     }
-    cache.put --key="sdk-v2.0.0" --data=complex-data
+    cache.put --key="sdk-v2.0.0": complex-data
     result := cache.get --key="sdk-v2.0.0"
     expect-not-null result
     expect-equals "v2.0.0" result["sdk-version"]
@@ -138,5 +117,3 @@ test-roundtrip-complex-json:
     expect-equals "add" methods[0]
     metadata := result["metadata"] as Map
     expect-equals "toitdoc" metadata["generator"]
-  finally:
-    directory.rmdir --recursive tmp-dir

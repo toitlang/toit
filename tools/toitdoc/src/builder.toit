@@ -878,6 +878,16 @@ class Toitdoc:
 
   constructor --.sections:
 
+  static from-json json -> Toitdoc?:
+    if json is not List: return null
+    list := json as List
+    if list.is-empty: return null
+    sections := []
+    list.do: | entry |
+      if entry is Map:
+        sections.add (DocSection.from-json (entry as Map))
+    return Toitdoc --sections=sections
+
   to-json -> List:
     return sections.map: it.to-json
 
@@ -889,6 +899,16 @@ class DocSection:
 
   constructor --.title --.level --.statements:
 
+  static from-json json/Map -> DocSection:
+    title := json.get "title"
+    level := json.get "level" --if-absent=: 0
+    raw-statements := json.get "statements" --if-absent=: []
+    statements := []
+    if raw-statements is List:
+      (raw-statements as List).do:
+        statements.add (DocStatement.from-json it)
+    return DocSection --title=title --level=level --statements=statements
+
   to-json -> Map:
     result := {
       "object_type": TYPE,
@@ -899,6 +919,18 @@ class DocSection:
     return result
 
 abstract class DocStatement:
+  static from-json json -> DocStatement:
+    if json is not Map: return DocParagraph --expressions=[]
+    m := json as Map
+    type := m.get "object_type"
+    if type == DocCodeSection.TYPE:
+      return DocCodeSection.from-json m
+    if type == DocItemized.TYPE:
+      return DocItemized.from-json m
+    if type == DocParagraph.TYPE:
+      return DocParagraph.from-json m
+    return DocParagraph --expressions=[]
+
   abstract to-json -> Map
 
 class DocCodeSection extends DocStatement:
@@ -907,6 +939,9 @@ class DocCodeSection extends DocStatement:
   text/string
 
   constructor --.text:
+
+  static from-json json/Map -> DocCodeSection:
+    return DocCodeSection --text=(json.get "text" --if-absent=: "")
 
   to-json -> Map:
     return {
@@ -921,6 +956,14 @@ class DocItemized extends DocStatement:
 
   constructor --.items:
 
+  static from-json json/Map -> DocItemized:
+    raw-items := json.get "items" --if-absent=: []
+    items := []
+    if raw-items is List:
+      (raw-items as List).do:
+        items.add (DocItem.from-json it)
+    return DocItemized --items=items
+
   to-json -> Map:
     return {
       "object_type": TYPE,
@@ -933,6 +976,16 @@ class DocItem:
   statements/List // Of DocStatement.
 
   constructor --.statements:
+
+  static from-json json -> DocItem:
+    if json is not Map: return DocItem --statements=[]
+    m := json as Map
+    raw-statements := m.get "statements" --if-absent=: []
+    statements := []
+    if raw-statements is List:
+      (raw-statements as List).do:
+        statements.add (DocStatement.from-json it)
+    return DocItem --statements=statements
 
   to-json -> Map:
     return {
@@ -947,6 +1000,14 @@ class DocParagraph extends DocStatement:
 
   constructor --.expressions:
 
+  static from-json json/Map -> DocParagraph:
+    raw-expressions := json.get "expressions" --if-absent=: []
+    expressions := []
+    if raw-expressions is List:
+      (raw-expressions as List).do:
+        expressions.add (DocExpression.from-json it)
+    return DocParagraph --expressions=expressions
+
   to-json -> Map:
     return {
       "object_type": TYPE,
@@ -954,6 +1015,29 @@ class DocParagraph extends DocStatement:
     }
 
 abstract class DocExpression:
+  static from-json json -> DocExpression:
+    if json is not Map: return DocText --text=""
+    m := json as Map
+    type := m.get "object_type"
+    text := m.get "text" --if-absent=: ""
+    if type == DocText.TYPE:
+      return DocText --text=text
+    if type == DocCode.TYPE:
+      return DocCode --text=text
+    if type == DocLink.TYPE:
+      url := m.get "url" --if-absent=: ""
+      return DocLink --text=text --url=url
+    if type == DocToitdocRef.TYPE:
+      return DocToitdocRef
+          --kind=(m.get "kind" --if-absent=: DocToitdocRef.KIND-OTHER)
+          --text=text
+          --path=(m.get "path")
+          --holder=(m.get "holder")
+          --name=(m.get "name")
+          --shape=null
+    // Fallback: treat as text.
+    return DocText --text=text
+
   abstract to-json -> Map
 
 class DocText extends DocExpression:

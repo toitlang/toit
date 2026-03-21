@@ -1,21 +1,20 @@
-// Copyright (C) 2024 Toitware ApS.
-//
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; version
-// 2.1 only.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// The license can be found in the file `LICENSE` in the top level
-// directory of this repository.
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import expect show *
 
 import ...tools.mcp.formatter show DocFormatter
+import ...tools.toitdoc.src.builder show
+    DocCodeSection
+    DocCode
+    DocItem
+    DocItemized
+    DocLink
+    DocParagraph
+    DocSection
+    DocText
+    Toitdoc
 
 main:
   test-format-library-list
@@ -31,46 +30,26 @@ main:
   test-format-toitdoc-itemized
   test-format-toitdoc-null
 
-/// Creates a toitdoc text section with the given $text.
-make-toitdoc text/string -> List:
-  return [
-    {
-      "object_type": "section",
-      "level": 0,
-      "statements": [
-        {
-          "object_type": "statement_paragraph",
-          "expressions": [
-            {"object_type": "expression_text", "text": text},
-          ],
-        },
-      ],
-    },
+/** Creates a toitdoc text section with the given $text. */
+make-toitdoc text/string -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=[
+      DocParagraph --expressions=[DocText --text=text],
+    ],
   ]
 
-/// Creates a toitdoc section with the given $expressions.
-make-toitdoc-expressions expressions/List -> List:
-  return [
-    {
-      "object_type": "section",
-      "level": 0,
-      "statements": [
-        {
-          "object_type": "statement_paragraph",
-          "expressions": expressions,
-        },
-      ],
-    },
+/** Creates a toitdoc section with the given $expressions. */
+make-toitdoc-expressions expressions/List -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=[
+      DocParagraph --expressions=expressions,
+    ],
   ]
 
-/// Creates a toitdoc section with the given $statements.
-make-toitdoc-statements statements/List -> List:
-  return [
-    {
-      "object_type": "section",
-      "level": 0,
-      "statements": statements,
-    },
+/** Creates a toitdoc section with the given $statements. */
+make-toitdoc-statements statements/List -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=statements,
   ]
 
 test-format-library-list:
@@ -171,7 +150,7 @@ test-format-toitdoc-text:
 
 test-format-toitdoc-code:
   toitdoc := make-toitdoc-expressions [
-    {"object_type": "expression_code", "text": "my-variable"},
+    DocCode --text="my-variable",
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
@@ -179,7 +158,7 @@ test-format-toitdoc-code:
 
 test-format-toitdoc-link:
   toitdoc := make-toitdoc-expressions [
-    {"object_type": "expression_link", "text": "Click here", "url": "https://example.com"},
+    DocLink --text="Click here" --url="https://example.com",
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
@@ -187,7 +166,7 @@ test-format-toitdoc-link:
 
 test-format-toitdoc-code-section:
   toitdoc := make-toitdoc-statements [
-    {"object_type": "statement_code_section", "text": "x := 42"},
+    DocCodeSection --text="x := 42",
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
@@ -196,33 +175,14 @@ test-format-toitdoc-code-section:
 
 test-format-toitdoc-itemized:
   toitdoc := make-toitdoc-statements [
-    {
-      "object_type": "statement_itemized",
-      "items": [
-        {
-          "object_type": "statement_item",
-          "statements": [
-            {
-              "object_type": "statement_paragraph",
-              "expressions": [
-                {"object_type": "expression_text", "text": "First item"},
-              ],
-            },
-          ],
-        },
-        {
-          "object_type": "statement_item",
-          "statements": [
-            {
-              "object_type": "statement_paragraph",
-              "expressions": [
-                {"object_type": "expression_text", "text": "Second item"},
-              ],
-            },
-          ],
-        },
+    DocItemized --items=[
+      DocItem --statements=[
+        DocParagraph --expressions=[DocText --text="First item"],
       ],
-    },
+      DocItem --statements=[
+        DocParagraph --expressions=[DocText --text="Second item"],
+      ],
+    ],
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
