@@ -601,6 +601,16 @@ This class needs an $InflateHistory object to help it look back in up to
   32k of previously decompressed data (or whatever size the compressor was
   set to).
 */
+// TODO(florian): it could be interesting to create two subclasses:
+//   One for zlib and one for gzip. The factory constructor could
+//   pick the right one.
+//   Also: the `read` method could just switch over the state and
+//   then call individual functions instead of all the 'if's with
+//   body. That might be less efficient, though. (But it would make
+//   different subclasses easier, as the common code could be shared
+//   in the functions). Not sure. At the least it could remove the
+//   'if checksum_ is CrcAndLengthChecksum_' is-check which feels
+//   hacky.
 class InflaterBackend implements Backend_:
   history_/InflateHistory
   checksum_/crypto.Checksum? := null
