@@ -453,6 +453,20 @@ class Decoder extends Coder_:
         ZlibBackend_ (zlib-init-inflate_ resource-freeing-module_)
 
 /**
+A Gzip decompressor/inflater.
+*/
+class GzipDecoder extends Coder_:
+  /**
+  Creates a new decompressor.
+  */
+  constructor --window-size/int=32768:
+    history := BufferingHistory_
+    history.window-size = window-size
+    super
+        InflaterBackend history --gzip --no-zlib-header-footer
+
+
+/**
 A utility class for the pure Toit DEFLATE Inflater (zlib decompresser).
 This implementation holds on to copies of the buffers that are delivered with
   the read method, for up to 32k of data.  This is a simple way to handle the
@@ -586,12 +600,20 @@ You would normally use $BufferingInflater, $CopyingInflater or $Inflater
 This class needs an $InflateHistory object to help it look back in up to
   32k of previously decompressed data (or whatever size the compressor was
   set to).
-Does not currently support streams with a gzip header (as opposed to the
-  zlib header).
 */
+// TODO(florian): it could be interesting to create two subclasses:
+//   One for zlib and one for gzip. The factory constructor could
+//   pick the right one.
+//   Also: the `read` method could just switch over the state and
+//   then call individual functions instead of all the 'if's with
+//   body. That might be less efficient, though. (But it would make
+//   different subclasses easier, as the common code could be shared
+//   in the functions). Not sure. At the least it could remove the
+//   'if checksum_ is CrcAndLengthChecksum_' is-check which feels
+//   hacky.
 class InflaterBackend implements Backend_:
   history_/InflateHistory
-  adler_/adler32.Adler32? := null
+  checksum_/crypto.Checksum? := null
   buffer_/ByteArray := #[]
   buffer-pos_/int := 0
   valid-bits_/int := 0
@@ -612,12 +634,21 @@ class InflaterBackend implements Backend_:
   output-buffer-position_/int := 0  // Always less than the size.
   copy-length_ := 0  // Number of bytes to copy.
   copy-distance_ := 0  // Distance to copy from.
+  flags_/int := 0 // Gzip flags.
 
   static FIXED-SYMBOL-AND-LENGTH_ ::= create-fixed-symbol-and-length_
   static FIXED-DISTANCE_ ::= create-fixed-distance_
 
-  static ZLIB-HEADER_         ::= -2 // Reading zlib header.
-  static ZLIB-FOOTER_         ::= -1 // Reading Adler checksum.
+  static ZLIB-HEADER_           ::= -2 // Reading zlib header.
+  static ZLIB-FOOTER_           ::= -1 // Reading Adler checksum.
+  static GZIP-HEADER-FIXED_     ::= -3 // Reading gzip header (10 bytes).
+  static GZIP-HEADER-EXTRA-LEN_ ::= -4 // Reading gzip extra field length.
+  static GZIP-HEADER-EXTRA_     ::= -5 // Reading gzip extra field.
+  static GZIP-HEADER-NAME_      ::= -6 // Reading gzip filename.
+  static GZIP-HEADER-COMMENT_   ::= -7 // Reading gzip comment.
+  static GZIP-HEADER-CRC16_     ::= -8 // Reading gzip header CRC16.
+  static GZIP-FOOTER_           ::= -9 // Reading gzip footer (CRC32 and ISIZE).
+
   static INITIAL_             ::= 0  // Reading initial 3 bits of block.
   static NO-COMPRESSION_      ::= 2  // Reading 4 bytes of LEN and NLEN.
   static NO-COMPRESSION-BODY_ ::= 3  // Reading counter_ bytes of data.
@@ -626,10 +657,14 @@ class InflaterBackend implements Backend_:
   static GET-HLIT-AND-HDIST_  ::= 6  // Reading bit lengths for HLIT and HDIST tables.
   static DECOMPRESSING_       ::= 7  // Decompressing data.
 
-  constructor .history_ --zlib-header-footer/bool=true:
-    if zlib-header-footer:
+  constructor .history_ --zlib-header-footer/bool=true --gzip/bool=false:
+    if gzip:
+      if zlib-header-footer: throw "INVALID_ARGUMENT"
+      state_ = GZIP-HEADER-FIXED_
+      checksum_ = CrcAndLengthChecksum_
+    else if zlib-header-footer:
       state_ = ZLIB-HEADER_
-      adler_ = adler32.Adler32
+      checksum_ = adler32.Adler32
     else:
       state_ = INITIAL_
 
@@ -663,19 +698,143 @@ class InflaterBackend implements Backend_:
         n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
         adler32 := n-bits_ 32
         if adler32 < 0: return NEED-MORE-DATA_
-        calculated := LITTLE-ENDIAN.uint32 adler_.get 0
-        adler_ = null  // Only read the checksum once.
+        calculated := LITTLE-ENDIAN.uint32 checksum_.get 0
+        checksum_ = null  // Only read the checksum once.
         if calculated != adler32: throw "Checksum mismatch"
         state_ = INITIAL_
         return null
+
+      else if state_ == GZIP-HEADER-FIXED_:
+        // Read 10 bytes of header.
+        // ID1 (0x1f), ID2 (0x8b), CM (8), FLG, MTIME (4), XFL, OS
+        // We read it byte by byte to avoid adding a new function (next to
+        // n-bits).
+        // Re-use counter_ to track how many bytes we have read.
+        if counter_ == 0:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          if byte != 0x1f: throw "Not a gzip stream"
+          counter_++
+        if counter_ == 1:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          if byte != 0x8b: throw "Not a gzip stream"
+          counter_++
+        if counter_ == 2:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          if byte != 8: throw "Unsupported compression method"
+          counter_++
+        if counter_ == 3:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          flags_ = byte
+          counter_++
+        // Skip MTIME (4 bytes), XFL (1 byte), OS (1 byte).
+        while counter_ < 10:
+           byte := n-bits_ 8
+           if byte < 0: return NEED-MORE-DATA_
+           counter_++
+        counter_ = 0
+        if flags_ & 4 != 0: // FEXTRA.
+          state_ = GZIP-HEADER-EXTRA-LEN_
+        else if flags_ & 8 != 0: // FNAME.
+          state_ = GZIP-HEADER-NAME_
+        else if flags_ & 16 != 0: // FCOMMENT
+          state_ = GZIP-HEADER-COMMENT_
+        else if flags_ & 2 != 0: // FHCRC.
+          state_ = GZIP-HEADER-CRC16_
+        else:
+          state_ = INITIAL_
+
+      else if state_ == GZIP-HEADER-EXTRA-LEN_:
+        assert: counter_ == 0
+        len-lo := n-bits_ 8
+        if len-lo < 0: return NEED-MORE-DATA_
+        len-hi := n-bits_ 8
+        if len-hi < 0: return NEED-MORE-DATA_
+        counter_ = len-lo | (len-hi << 8)
+        state_ = GZIP-HEADER-EXTRA_
+
+      else if state_ == GZIP-HEADER-EXTRA_:
+        while counter_ > 0:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          counter_--
+        if flags_ & 8 != 0: // FNAME.
+          state_ = GZIP-HEADER-NAME_
+        else if flags_ & 16 != 0: // FCOMMENT.
+          state_ = GZIP-HEADER-COMMENT_
+        else if flags_ & 2 != 0: // FHCRC.
+          state_ = GZIP-HEADER-CRC16_
+        else:
+           state_ = INITIAL_
+
+      else if state_ == GZIP-HEADER-NAME_:
+        while true:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          if byte == 0: break
+        if flags_ & 16 != 0: // FCOMMENT.
+          state_ = GZIP-HEADER-COMMENT_
+        else if flags_ & 2 != 0: // FHCRC.
+          state_ = GZIP-HEADER-CRC16_
+        else:
+          state_ = INITIAL_
+
+      else if state_ == GZIP-HEADER-COMMENT_:
+        while true:
+          byte := n-bits_ 8
+          if byte < 0: return NEED-MORE-DATA_
+          if byte == 0: break
+        if flags_ & 2 != 0: // FHCRC.
+          state_ = GZIP-HEADER-CRC16_
+        else:
+          state_ = INITIAL_
+
+      else if state_ == GZIP-HEADER-CRC16_:
+        // Skip CRC16 (2 bytes).
+        byte-lo := n-bits_ 8
+        if byte-lo < 0: return NEED-MORE-DATA_
+        byte-hi := n-bits_ 8
+        if byte-hi < 0: return NEED-MORE-DATA_
+        state_ = INITIAL_
+
+      else if state_ == GZIP-FOOTER_:
+        n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
+        // CRC32 (4 bytes).
+        crc32-lo := n-bits_ 16
+        if crc32-lo < 0: return NEED-MORE-DATA_
+        crc32-hi := n-bits_ 16
+        if crc32-hi < 0: return NEED-MORE-DATA_
+        crc32 := crc32-lo | (crc32-hi << 16)
+
+        // ISIZE (4 bytes).
+        isize-lo := n-bits_ 16
+        if isize-lo < 0: return NEED-MORE-DATA_
+        isize-hi := n-bits_ 16
+        if isize-hi < 0: return NEED-MORE-DATA_
+        isize := isize-lo | (isize-hi << 16)
+
+        expected := checksum_.get
+        if (LITTLE-ENDIAN.uint32 expected 0) != crc32: throw "Checksum mismatch"
+        if (LITTLE-ENDIAN.uint32 expected 4) != isize: throw "Size mismatch"
+
+        checksum_ = null
+        state_ = INITIAL_
+        return null
+
 
       else if state_ == INITIAL_:
         if in-final-block_:
           // We are after the final block.
           if output-buffer-position_ != 0:
             return flush-output-buffer_ output-buffer-position_
-          if adler_:
-            state_ = ZLIB-FOOTER_
+          if checksum_:
+            if checksum_ is CrcAndLengthChecksum_:
+              state_ = GZIP-FOOTER_
+            else:
+              state_ = ZLIB-FOOTER_
           else:
             return null
         else:
@@ -869,7 +1028,7 @@ class InflaterBackend implements Backend_:
   // Records a byte array that has been decompressed.
   // Returns the byte array.
   record_ result/ByteArray -> ByteArray:
-    if adler_: adler_.add result
+    if checksum_: checksum_.add result
     history_.record result
     return result
 
