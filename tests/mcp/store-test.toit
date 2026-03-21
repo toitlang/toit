@@ -5,6 +5,20 @@
 import expect show *
 
 import ...tools.mcp.store show DocStore
+import ...tools.toitdoc.src.builder show
+    Class
+    ClassStructure
+    Doc
+    Function
+    Library
+    Module
+    Parameter
+    Shape
+    Toitdoc
+    DocParagraph
+    DocSection
+    DocText
+    Type
 
 main:
   test-empty-store
@@ -18,86 +32,85 @@ main:
   test-list-libraries-specific-scope
   test-search-max-results-across-scopes
 
-/// Creates a toitdoc text section with the given $text.
-make-toitdoc text/string -> List:
-  return [
-    {
-      "object_type": "section",
-      "level": 0,
-      "statements": [
-        {
-          "object_type": "statement_paragraph",
-          "expressions": [
-            {"object_type": "expression_text", "text": text},
-          ],
-        },
-      ],
-    },
+ANY-TYPE ::= Type --is-none=false --is-any=true --is-block=false --reference=null
+NONE-TYPE ::= Type --is-none=true --is-any=false --is-block=false --reference=null
+
+/** Creates a toitdoc with a single text paragraph. */
+make-toitdoc text/string -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=[
+      DocParagraph --expressions=[DocText --text=text],
+    ],
   ]
 
-/// Creates a parameter entry.
-make-parameter name/string -> Map:
-  return {
-    "object_type": "parameter",
-    "name": name,
-    "is_block": false,
-    "is_named": false,
-    "is_required": true,
-    "type": {"object_type": "type", "is_none": false, "is_any": true, "is_block": false},
-  }
+/** Creates a function entry with the given $name and $toitdoc-text. */
+make-function name/string toitdoc-text/string -> Function:
+  return Function
+      --name=name
+      --is-private=false
+      --is-abstract=false
+      --is-synthetic=false
+      --exported-from=null
+      --parameters=[
+        Parameter
+            --name="arg"
+            --is-block=false
+            --is-named=false
+            --is-required=true
+            --type=ANY-TYPE
+            --default-value=null,
+      ]
+      --return-type=NONE-TYPE
+      --shape=(Shape --arity=1 --total-block-count=0 --named-block-count=0 --names=[])
+      --toitdoc=(make-toitdoc toitdoc-text)
 
-/// Creates a function entry with the given $name and $toitdoc-text.
-make-function name/string toitdoc-text/string -> Map:
-  return {
-    "object_type": "function",
-    "name": name,
-    "is_private": false,
-    "is_abstract": false,
-    "is_synthetic": false,
-    "parameters": [make-parameter "arg"],
-    "return_type": {"object_type": "type", "is_none": true, "is_any": false, "is_block": false},
-    "shape": {"object_type": "shape", "arity": 1, "total_block_count": 0, "named_block_count": 0, "names": []},
-    "toitdoc": make-toitdoc toitdoc-text,
-  }
+/** Creates a class entry with the given $name, $toitdoc-text, and $methods. */
+make-class name/string toitdoc-text/string --methods/List=[] -> Class:
+  return Class
+      --name=name
+      --kind="class"
+      --is-abstract=false
+      --is-private=false
+      --exported-from=null
+      --interfaces=[]
+      --mixins=[]
+      --extends=null
+      --structure=(ClassStructure
+          --statics=[]
+          --constructors=[]
+          --factories=[]
+          --fields=[]
+          --methods=methods)
+      --toitdoc=(make-toitdoc toitdoc-text)
 
-/// Creates a class entry with the given $name, $toitdoc-text, and $methods.
-make-class name/string toitdoc-text/string --methods/List=[] -> Map:
-  return {
-    "object_type": "class",
-    "name": name,
-    "kind": "class",
-    "is_abstract": false,
-    "is_private": false,
-    "interfaces": [],
-    "mixins": [],
-    "extends": null,
-    "structure": {
-      "statics": [],
-      "constructors": [],
-      "factories": [],
-      "fields": [],
-      "methods": methods,
-    },
-    "toitdoc": make-toitdoc toitdoc-text,
-  }
+/** Creates a module entry with the given classes and functions. */
+make-module name/string --classes/List=[] --functions/List=[] -> Module:
+  return Module
+      --name=name
+      --is-private=false
+      --classes=classes
+      --interfaces=[]
+      --mixins=[]
+      --export-classes=[]
+      --export-interfaces=[]
+      --export-mixins=[]
+      --functions=functions
+      --export-functions=[]
+      --globals=[]
+      --export-globals=[]
+      --toitdoc=null
+      --category=null
 
-/// Creates a module entry with the given classes and functions.
-make-module name/string --classes/List=[] --functions/List=[] --globals/List=[] -> Map:
-  return {
-    "object_type": "module",
-    "name": name,
-    "is_private": false,
-    "classes": classes,
-    "interfaces": [],
-    "mixins": [],
-    "export_classes": [],
-    "export_interfaces": [],
-    "export_mixins": [],
-    "functions": functions,
-    "globals": globals,
-    "export_functions": [],
-    "export_globals": [],
-  }
+/** Creates a top-level doc fixture. */
+make-doc --libraries/Map -> Map:
+  return (Doc
+      --sdk-version="v2.0.0"
+      --sdk-path=["path", "to", "sdk"]
+      --version=null
+      --pkg-name=null
+      --packages-path=null
+      --package-names=null
+      --libraries=libraries).to-json
 
 /// Builds fixture A: "sdk" scope with a core.collections library
 ///   containing a List class with an "add" method.
@@ -109,28 +122,20 @@ build-fixture-sdk -> Map:
   collections-module := make-module "collections"
       --classes=[list-class]
 
-  return {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "core": {
-        "object_type": "library",
-        "name": "core",
-        "path": ["core"],
-        "libraries": {
-          "collections": {
-            "object_type": "library",
-            "name": "collections",
-            "path": ["core", "collections"],
-            "libraries": {:},
-            "modules": {
-              "collections": collections-module,
-            },
-          },
-        },
-        "modules": {:},
-      },
-    },
+  return make-doc --libraries={
+    "core": Library
+        --name="core"
+        --path=["core"]
+        --libraries={
+          "collections": Library
+              --name="collections"
+              --path=["core", "collections"]
+              --libraries={:}
+              --modules={"collections": collections-module}
+              --category=null,
+        }
+        --modules={:}
+        --category=null,
   }
 
 /// Builds fixture B: "pkg" scope with an mqtt library
@@ -143,20 +148,13 @@ build-fixture-pkg -> Map:
   mqtt-module := make-module "mqtt"
       --classes=[client-class]
 
-  return {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "mqtt": {
-        "object_type": "library",
-        "name": "mqtt",
-        "path": ["mqtt"],
-        "libraries": {:},
-        "modules": {
-          "mqtt": mqtt-module,
-        },
-      },
-    },
+  return make-doc --libraries={
+    "mqtt": Library
+        --name="mqtt"
+        --path=["mqtt"]
+        --libraries={:}
+        --modules={"mqtt": mqtt-module}
+        --category=null,
   }
 
 /// Helper to add both fixtures to a store.

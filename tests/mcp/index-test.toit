@@ -5,6 +5,21 @@
 import expect show *
 
 import ...tools.mcp.index show DocIndex
+import ...tools.toitdoc.src.builder show
+    Class
+    ClassStructure
+    Doc
+    Function
+    Global
+    Library
+    Module
+    Parameter
+    Shape
+    Toitdoc
+    DocParagraph
+    DocSection
+    DocText
+    Type
 
 main:
   test-list-libraries
@@ -19,95 +34,105 @@ main:
   test-get-element-not-found
   test-get-element-module
 
-/// Creates a toitdoc text section with the given $text.
-make-toitdoc text/string -> List:
-  return [
-    {
-      "object_type": "section",
-      "level": 0,
-      "statements": [
-        {
-          "object_type": "statement_paragraph",
-          "expressions": [
-            {"object_type": "expression_text", "text": text},
-          ],
-        },
-      ],
-    },
+ANY-TYPE ::= Type --is-none=false --is-any=true --is-block=false --reference=null
+NONE-TYPE ::= Type --is-none=true --is-any=false --is-block=false --reference=null
+
+/** Creates a toitdoc text section with the given $text. */
+make-toitdoc text/string -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=[
+      DocParagraph --expressions=[DocText --text=text],
+    ],
   ]
 
-/// Creates a parameter entry.
-make-parameter name/string -> Map:
-  return {
-    "object_type": "parameter",
-    "name": name,
-    "is_block": false,
-    "is_named": false,
-    "is_required": true,
-    "type": {"object_type": "type", "is_none": false, "is_any": true, "is_block": false},
-  }
+/** Creates a parameter entry. */
+make-parameter name/string -> Parameter:
+  return Parameter
+      --name=name
+      --is-block=false
+      --is-named=false
+      --is-required=true
+      --type=ANY-TYPE
+      --default-value=null
 
-/// Creates a function entry with the given $name and $toitdoc-text.
-make-function name/string toitdoc-text/string -> Map:
-  return {
-    "object_type": "function",
-    "name": name,
-    "is_private": false,
-    "is_abstract": false,
-    "is_synthetic": false,
-    "parameters": [make-parameter "arg"],
-    "return_type": {"object_type": "type", "is_none": true, "is_any": false, "is_block": false},
-    "shape": {"object_type": "shape", "arity": 1, "total_block_count": 0, "named_block_count": 0, "names": []},
-    "toitdoc": make-toitdoc toitdoc-text,
-  }
+/** Creates a function entry with the given $name and $toitdoc-text. */
+make-function name/string toitdoc-text/string -> Function:
+  return Function
+      --name=name
+      --is-private=false
+      --is-abstract=false
+      --is-synthetic=false
+      --exported-from=null
+      --parameters=[make-parameter "arg"]
+      --return-type=NONE-TYPE
+      --shape=(Shape --arity=1 --total-block-count=0 --named-block-count=0 --names=[])
+      --toitdoc=(make-toitdoc toitdoc-text)
 
-/// Creates a class entry with the given $name, $toitdoc-text, and $methods.
-make-class name/string toitdoc-text/string --methods/List=[] --kind/string="class" -> Map:
-  return {
-    "object_type": "class",
-    "name": name,
-    "kind": kind,
-    "is_abstract": false,
-    "is_private": false,
-    "interfaces": [],
-    "mixins": [],
-    "extends": null,
-    "structure": {
-      "statics": [],
-      "constructors": [],
-      "factories": [],
-      "fields": [],
-      "methods": methods,
-    },
-    "toitdoc": make-toitdoc toitdoc-text,
-  }
+/** Creates a class entry with the given $name, $toitdoc-text, and $methods. */
+make-class name/string toitdoc-text/string --methods/List=[] --kind/string="class" -> Class:
+  return Class
+      --name=name
+      --kind=kind
+      --is-abstract=false
+      --is-private=false
+      --exported-from=null
+      --interfaces=[]
+      --mixins=[]
+      --extends=null
+      --structure=(ClassStructure
+          --statics=[]
+          --constructors=[]
+          --factories=[]
+          --fields=[]
+          --methods=methods)
+      --toitdoc=(make-toitdoc toitdoc-text)
 
-/// Creates a global entry with the given $name.
-make-global name/string -> Map:
-  return {
-    "object_type": "global",
-    "name": name,
-    "is_private": false,
-    "type": {"object_type": "type", "is_none": false, "is_any": true, "is_block": false},
-  }
+/** Creates a global entry with the given $name. */
+make-global name/string -> Global:
+  return Global
+      --name=name
+      --is-private=false
+      --exported-from=null
+      --type=ANY-TYPE
+      --toitdoc=null
 
-/// Creates a module entry with the given classes, functions, and globals.
-make-module name/string --classes/List=[] --functions/List=[] --globals/List=[] -> Map:
-  return {
-    "object_type": "module",
-    "name": name,
-    "is_private": false,
-    "classes": classes,
-    "interfaces": [],
-    "mixins": [],
-    "export_classes": [],
-    "export_interfaces": [],
-    "export_mixins": [],
-    "functions": functions,
-    "globals": globals,
-    "export_functions": [],
-    "export_globals": [],
-  }
+/** Creates a module entry with the given classes, functions, and globals. */
+make-module name/string --classes/List=[] --functions/List=[] --globals/List=[] -> Module:
+  return Module
+      --name=name
+      --is-private=false
+      --classes=classes
+      --interfaces=[]
+      --mixins=[]
+      --export-classes=[]
+      --export-interfaces=[]
+      --export-mixins=[]
+      --functions=functions
+      --export-functions=[]
+      --globals=globals
+      --export-globals=[]
+      --toitdoc=null
+      --category=null
+
+/** Creates a library with the given $name, $path, sub-$libraries, and $modules. */
+make-library name/string --path/List --libraries/Map={:} --modules/Map={:} -> Library:
+  return Library
+      --name=name
+      --path=path
+      --libraries=libraries
+      --modules=modules
+      --category=null
+
+/** Creates a top-level doc fixture. */
+make-doc --libraries/Map -> Map:
+  return (Doc
+      --sdk-version="v2.0.0"
+      --sdk-path=["path", "to", "sdk"]
+      --version=null
+      --pkg-name=null
+      --packages-path=null
+      --package-names=null
+      --libraries=libraries).to-json
 
 /// Builds fixture 1: single library "core.collections" with a List class
 ///   (with an "add" method) and a "sort" top-level function.
@@ -121,28 +146,12 @@ build-fixture-single-library -> Map:
       --classes=[list-class]
       --functions=[sort-function]
 
-  return {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "core": {
-        "object_type": "library",
-        "name": "core",
-        "path": ["core"],
-        "libraries": {
-          "collections": {
-            "object_type": "library",
-            "name": "collections",
-            "path": ["core", "collections"],
-            "libraries": {:},
-            "modules": {
-              "collections": collections-module,
-            },
-          },
+  return make-doc --libraries={
+    "core": make-library "core" --path=["core"]
+        --libraries={
+          "collections": make-library "collections" --path=["core", "collections"]
+              --modules={"collections": collections-module},
         },
-        "modules": {:},
-      },
-    },
   }
 
 /// Builds fixture 2: multiple libraries. Adds "net.http" with a Client class.
@@ -153,23 +162,11 @@ build-fixture-multiple-libraries -> Map:
   http-module := make-module "http" --classes=[client-class]
 
   libraries := fixture["libraries"] as Map
-  libraries["net"] = {
-    "object_type": "library",
-    "name": "net",
-    "path": ["net"],
-    "libraries": {
-      "http": {
-        "object_type": "library",
-        "name": "http",
-        "path": ["net", "http"],
-        "libraries": {:},
-        "modules": {
-          "http": http-module,
-        },
-      },
-    },
-    "modules": {:},
-  }
+  libraries["net"] = (make-library "net" --path=["net"]
+      --libraries={
+        "http": make-library "http" --path=["net", "http"]
+            --modules={"http": http-module},
+      }).to-json
 
   return fixture
 
@@ -184,7 +181,7 @@ build-fixture-with-global -> Map:
   modules := collections-lib["modules"] as Map
   collections-module := modules["collections"] as Map
   globals := collections-module["globals"] as List
-  globals.add (make-global "EMPTY-LIST")
+  globals.add (make-global "EMPTY-LIST").to-json
 
   return fixture
 
@@ -269,28 +266,12 @@ test-search-max-results:
       --classes=[list-class, set-class, map-class]
       --functions=[sort-fn, merge-fn]
 
-  fixture := {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "core": {
-        "object_type": "library",
-        "name": "core",
-        "path": ["core"],
-        "libraries": {
-          "collections": {
-            "object_type": "library",
-            "name": "collections",
-            "path": ["core", "collections"],
-            "libraries": {:},
-            "modules": {
-              "collections": module,
-            },
-          },
+  fixture := make-doc --libraries={
+    "core": make-library "core" --path=["core"]
+        --libraries={
+          "collections": make-library "collections" --path=["core", "collections"]
+              --modules={"collections": module},
         },
-        "modules": {:},
-      },
-    },
   }
 
   index := DocIndex fixture

@@ -60,18 +60,24 @@ test-format-library-list:
 
   output := DocFormatter.format-library-list entries
 
-  expect (output.contains "core")
-  expect (output.contains "net")
-  expect (output.contains "collections")
-  expect (output.contains "utils")
-  expect (output.contains "http")
-  expect (output.contains "tcp")
+  expect-equals """
+      # Available Libraries
+
+      ## core
+      Modules: collections, utils
+
+      ## net
+      Modules: http, tcp"""
+      output
 
 test-format-library-list-empty:
   output := DocFormatter.format-library-list []
 
-  // Should not crash and should indicate no libraries.
-  expect (output.contains "No libraries" or output.contains "no libraries" or output.contains "No results")
+  expect-equals """
+      # Available Libraries
+
+      No libraries found."""
+      output
 
 test-format-search-results:
   results := [
@@ -81,19 +87,24 @@ test-format-search-results:
 
   output := DocFormatter.format-search-results results --query="collection"
 
-  expect (output.contains "collection")
-  expect (output.contains "List")
-  expect (output.contains "Map")
-  expect (output.contains "class")
-  expect (output.contains "core.collections")
-  expect (output.contains "A growable list.")
-  expect (output.contains "A key-value mapping.")
+  expect-equals """
+      # Search Results for "collection"
+
+      1. **List** (class) - core.collections
+         A growable list.
+
+      2. **Map** (class) - core.collections
+         A key-value mapping."""
+      output
 
 test-format-search-results-empty:
   output := DocFormatter.format-search-results [] --query="xyz"
 
-  expect (output.contains "xyz")
-  expect (output.contains "No results found")
+  expect-equals """
+      # Search Results for "xyz"
+
+      No results found."""
+      output
 
 test-format-element-class:
   element := {
@@ -119,14 +130,21 @@ test-format-element-class:
 
   output := DocFormatter.format-element element
 
-  expect (output.contains "List")
-  expect (output.contains "class")
-  expect (output.contains "A growable list of elements.")
-  expect (output.contains "add")
-  expect (output.contains "remove")
-  expect (output.contains "method")
-  expect (output.contains "Adds the given value to the list.")
-  expect (output.contains "Removes the value from the list.")
+  expect-equals """
+      # class List
+
+      A growable list of elements.
+
+      ## Members
+
+      ### add (method)
+
+      Adds the given value to the list.
+
+      ### remove (method)
+
+      Removes the value from the list."""
+      output
 
 test-format-element-function:
   element := {
@@ -138,15 +156,17 @@ test-format-element-function:
 
   output := DocFormatter.format-element element
 
-  expect (output.contains "sort")
-  expect (output.contains "function")
-  expect (output.contains "Sorts the given list.")
+  expect-equals """
+      # function sort
+
+      Sorts the given list."""
+      output
 
 test-format-toitdoc-text:
   toitdoc := make-toitdoc "Hello world."
   output := DocFormatter.format-toitdoc toitdoc
 
-  expect (output.contains "Hello world.")
+  expect-equals "Hello world." output
 
 test-format-toitdoc-code:
   toitdoc := make-toitdoc-expressions [
@@ -154,7 +174,7 @@ test-format-toitdoc-code:
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
-  expect (output.contains "`my-variable`")
+  expect-equals "`my-variable`" output
 
 test-format-toitdoc-link:
   toitdoc := make-toitdoc-expressions [
@@ -162,7 +182,7 @@ test-format-toitdoc-link:
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
-  expect (output.contains "[Click here](https://example.com)")
+  expect-equals "[Click here](https://example.com)" output
 
 test-format-toitdoc-code-section:
   toitdoc := make-toitdoc-statements [
@@ -170,8 +190,11 @@ test-format-toitdoc-code-section:
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
-  expect (output.contains "```")
-  expect (output.contains "x := 42")
+  expect-equals """
+      ```
+      x := 42
+      ```"""
+      output
 
 test-format-toitdoc-itemized:
   toitdoc := make-toitdoc-statements [
@@ -186,10 +209,10 @@ test-format-toitdoc-itemized:
   ]
   output := DocFormatter.format-toitdoc toitdoc
 
-  expect (output.contains "First item")
-  expect (output.contains "Second item")
-  // Should use bullet markers.
-  expect (output.contains "- " or output.contains "* ")
+  expect-equals """
+      - First item
+      - Second item"""
+      output
 
 test-format-toitdoc-null:
   output := DocFormatter.format-toitdoc null

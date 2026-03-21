@@ -8,6 +8,16 @@ import encoding.json
 
 import ...tools.mcp.mcp show create-mcp-server
 import ...tools.mcp.store show DocStore
+import ...tools.toitdoc.src.builder show
+    Class
+    ClassStructure
+    Doc
+    Library
+    Module
+    Toitdoc
+    DocParagraph
+    DocSection
+    DocText
 
 main:
   test-full-session
@@ -41,122 +51,95 @@ read-response reader/io.Reader -> Map:
   payload := reader.read-bytes content-length
   return json.decode payload
 
+/** Creates a toitdoc with a single text paragraph. */
+make-toitdoc text/string -> Toitdoc:
+  return Toitdoc --sections=[
+    DocSection --title=null --level=0 --statements=[
+      DocParagraph --expressions=[DocText --text=text],
+    ],
+  ]
+
+/** Creates a simple class with the given $name and $toitdoc-text. */
+make-class name/string toitdoc-text/string -> Class:
+  return Class
+      --name=name
+      --kind="class"
+      --is-abstract=false
+      --is-private=false
+      --exported-from=null
+      --interfaces=[]
+      --mixins=[]
+      --extends=null
+      --structure=(ClassStructure
+          --statics=[]
+          --constructors=[]
+          --factories=[]
+          --fields=[]
+          --methods=[])
+      --toitdoc=(make-toitdoc toitdoc-text)
+
+/** Creates a simple module with the given $name and $classes. */
+make-module name/string --classes/List=[] -> Module:
+  return Module
+      --name=name
+      --is-private=false
+      --classes=classes
+      --interfaces=[]
+      --mixins=[]
+      --export-classes=[]
+      --export-interfaces=[]
+      --export-mixins=[]
+      --functions=[]
+      --export-functions=[]
+      --globals=[]
+      --export-globals=[]
+      --toitdoc=null
+      --category=null
+
+/** Creates a top-level doc fixture. */
+make-doc --libraries/Map -> Map:
+  return (Doc
+      --sdk-version="v2.0.0"
+      --sdk-path=["path", "to", "sdk"]
+      --version=null
+      --pkg-name=null
+      --packages-path=null
+      --package-names=null
+      --libraries=libraries).to-json
+
 /// Builds a minimal toitdoc JSON fixture for the "sdk" scope.
 build-sdk-fixture -> Map:
-  return {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "core": {
-        "object_type": "library",
-        "name": "core",
-        "path": ["core"],
-        "libraries": {
-          "collections": {
-            "object_type": "library",
-            "name": "collections",
-            "path": ["core", "collections"],
-            "libraries": {:},
-            "modules": {
-              "collections": {
-                "object_type": "module",
-                "name": "collections",
-                "is_private": false,
-                "classes": [{
-                  "object_type": "class",
-                  "name": "List",
-                  "kind": "class",
-                  "is_abstract": false,
-                  "is_private": false,
-                  "interfaces": [],
-                  "mixins": [],
-                  "structure": {
-                    "statics": [],
-                    "constructors": [],
-                    "factories": [],
-                    "fields": [],
-                    "methods": [],
-                  },
-                  "toitdoc": [{
-                    "object_type": "section",
-                    "level": 0,
-                    "statements": [{
-                      "object_type": "statement_paragraph",
-                      "expressions": [{"object_type": "expression_text", "text": "A growable list."}],
-                    }],
-                  }],
-                }],
-                "interfaces": [],
-                "mixins": [],
-                "export_classes": [],
-                "export_interfaces": [],
-                "export_mixins": [],
-                "functions": [],
-                "globals": [],
-                "export_functions": [],
-                "export_globals": [],
-              },
-            },
-          },
-        },
-        "modules": {:},
-      },
-    },
+  list-class := make-class "List" "A growable list."
+  collections-module := make-module "collections" --classes=[list-class]
+
+  return make-doc --libraries={
+    "core": Library
+        --name="core"
+        --path=["core"]
+        --libraries={
+          "collections": Library
+              --name="collections"
+              --path=["core", "collections"]
+              --libraries={:}
+              --modules={"collections": collections-module}
+              --category=null,
+        }
+        --modules={:}
+        --category=null,
   }
 
 /// Builds a minimal toitdoc JSON fixture for a "package" scope.
 build-pkg-fixture -> Map:
-  return {
-    "sdk_version": "v2.0.0",
-    "sdk_path": ["path", "to", "sdk"],
-    "libraries": {
-      "mqtt": {
-        "object_type": "library",
-        "name": "mqtt",
-        "path": ["mqtt"],
-        "libraries": {:},
-        "modules": {
-          "mqtt": {
-            "object_type": "module",
-            "name": "mqtt",
-            "is_private": false,
-            "classes": [{
-              "object_type": "class",
-              "name": "Client",
-              "kind": "class",
-              "is_abstract": false,
-              "is_private": false,
-              "interfaces": [],
-              "mixins": [],
-              "structure": {
-                "statics": [],
-                "constructors": [],
-                "factories": [],
-                "fields": [],
-                "methods": [],
-              },
-              "toitdoc": [{
-                "object_type": "section",
-                "level": 0,
-                "statements": [{
-                  "object_type": "statement_paragraph",
-                  "expressions": [{"object_type": "expression_text", "text": "An MQTT client."}],
-                }],
-              }],
-            }],
-            "interfaces": [],
-            "mixins": [],
-            "export_classes": [],
-            "export_interfaces": [],
-            "export_mixins": [],
-            "functions": [],
-            "globals": [],
-            "export_functions": [],
-            "export_globals": [],
-          },
-        },
-      },
-    },
+  client-class := make-class "Client" "An MQTT client."
+  mqtt-module := make-module "mqtt" --classes=[client-class]
+
+  return make-doc --libraries={
+    "mqtt": Library
+        --name="mqtt"
+        --path=["mqtt"]
+        --libraries={:}
+        --modules={"mqtt": mqtt-module}
+        --category=null,
   }
 
 /// Builds a JSON-RPC initialize request with the given $id.
