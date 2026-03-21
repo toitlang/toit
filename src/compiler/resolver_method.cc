@@ -2612,9 +2612,9 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
                                                  ir::Node* ir_target1,
                                                  ir::Node* ir_target2) {
   ASSERT(contains_lsp_selection(ast_target));
-  
+
   auto candidates = _compute_target_candidates(ast_target, scope());
-  
+
   if (ast_target->is_Identifier()) {
     lsp_->selection_handler()->call_static(ast_target,
                                            ir_target1,

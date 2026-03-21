@@ -166,7 +166,6 @@ class Pipeline {
                        int core_unit_index,
                        bool quiet = false);
   void check_types_and_deprecations(ir::Program* program, bool quiet = false);
-  void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
 

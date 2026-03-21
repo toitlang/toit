@@ -442,22 +442,22 @@ class Compiler:
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
       |reader /io.Reader|
-      element-count := int.parse reader.read-line --radix=10
-      result := List element-count: int.parse reader.read-line --radix=10
+      element-count := int.parse reader.read-line
+      result := List element-count: int.parse reader.read-line
       return result
     unreachable
 
   static read-range reader/io.Reader -> Range:
-    from-line-number := int.parse reader.read-line --radix=10
-    from-column-number := int.parse reader.read-line --radix=10
-    to-line-number := int.parse reader.read-line --radix=10
-    to-column-number := int.parse reader.read-line --radix=10
+    from-line-number := int.parse reader.read-line
+    from-column-number := int.parse reader.read-line
+    to-line-number := int.parse reader.read-line
+    to-column-number := int.parse reader.read-line
     return Range
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
   read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
-    entry-count := int.parse reader.read-line --radix=10
+    entry-count := int.parse reader.read-line
     result := {:}
     entry-count.repeat:
       source-uri := translator.to-uri reader.read-line --from-compiler
