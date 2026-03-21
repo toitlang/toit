@@ -591,8 +591,6 @@ PRIMITIVE(set_option) {
         result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_REUSEADDR);
         break;
 
-
-
       default:
         FAIL(UNIMPLEMENTED);
     }

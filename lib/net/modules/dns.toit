@@ -14,7 +14,7 @@ MAX-RETRY-ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX-CACHE-SIZE_ ::= platform == system.PLATFORM-FREERTOS ? 30 : 1000
 
-MDNS-MULTICAST-ADDRESS_ ::= net.IpAddress.parse "224.0.0.251"
+MDNS-MULTICAST-ADDRESS_ ::= net.IpAddress #[224, 0, 0, 251]
 MDNS-PORT_ ::= 5353
 
 
@@ -86,10 +86,10 @@ dns-lookup-multi -> List
     else:
       client = AUTO-CREATED-CLIENTS_.get server --init=:
         DnsClient [server]
-  types := {}
+  types := []
   if accept-ipv4: types.add RECORD-A
   if accept-ipv6: types.add RECORD-AAAA
-  return client.get_ host
+  return client.get host
       --record-types=types
       --network=network
       --timeout=timeout
@@ -217,7 +217,7 @@ class DnsQuery_:
   name/string
   query-packets/Map  // From record type (int) to packet (ByteArray).
 
-  constructor .name --record-types/Set:
+  constructor .name --record-types/List:
     base-id = random 0x10000
     query-packets = Map
     id-offset := 0
@@ -235,38 +235,48 @@ The client starts by using the first DNS server in the list.
 If a DNS server fails to answer after 2.5 times the $DNS-RETRY-TIMEOUT, then
   the client switches permanently to the next one on the list.
 */
-abstract class DnsClient:
-  cache_ ::= Map  // From numeric q-type to (Map name to CacheEntry_).
-
+interface DnsClient:
   constructor servers/List:
     return DnsClient_ servers
 
   constructor.mdns:
     return MdnsDnsClient
 
-  constructor.private_:
-    cache_ = Map
 
   /**
   Look up a domain name and return a list of results.
-  The $record-type argument can be $RECORD-A, or $RECORD-AAAA, in which case the result is a list of $net.IpAddress.
-  If the $record-type is $RECORD-TXT, $RECORD-PTR, or $RECORD-CNAME the results will be strings.
-  If the $record-type is $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
+  The $record-types argument can be a set of $RECORD-A, or $RECORD-AAAA, in which case the result is a list of $net.IpAddress.
+  If the $record-types contains $RECORD-TXT, $RECORD-PTR, or $RECORD-CNAME the results will be strings.
+  If the $record-types contains $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
   */
   get name -> List
-      --record-type/int
+      --record-types/List
       --network/udp.Interface
-      --timeout/Duration=DNS-DEFAULT-TIMEOUT:
-    list := get_ name
-        --record-types={record-type}
-        --network=network
-        --timeout=timeout
-    return list
+      --timeout/Duration=DNS-DEFAULT-TIMEOUT
 
   /**
   Look up a domain name and return an A or AAAA record.
 
-  If given a numeric address like "127.0.0.1" it merely parses
+  If given a numeric address like "127.0.0.1" merely parses
+    the numbers without a network round trip.
+  */
+  get name -> net.IpAddress
+      --network/udp.Interface
+      --accept-ipv4/bool=true
+      --accept-ipv6/bool=false
+      --timeout/Duration=DNS-DEFAULT-TIMEOUT
+
+
+abstract class DnsClientBase_ implements DnsClient:
+  cache_ ::= Map  // From numeric q-type to (Map name to CacheEntry_).
+
+  constructor:
+    cache_ = Map
+
+  /**
+  Look up a domain name and return an A or AAAA record.
+
+  If given a numeric address like "127.0.0.1" merely parses
     the numbers without a network round trip.
   */
   get name -> net.IpAddress
@@ -274,14 +284,17 @@ abstract class DnsClient:
       --accept-ipv4/bool=true
       --accept-ipv6/bool=false
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
-    types := {}
+    types := []
     if accept-ipv4: types.add RECORD-A
     if accept-ipv6: types.add RECORD-AAAA
     return select-random-ip_ name
-        get_ name --record-types=types --network=network --timeout=timeout
+        get name --record-types=types --network=network --timeout=timeout
 
-  get_ name -> List
-      --record-types/Set
+  /**
+  See $(DnsClient.get name --record-types --network).
+  */
+  get name -> List
+      --record-types/List
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
@@ -460,7 +473,7 @@ abstract class DnsClient:
       attempt-counter++
     unreachable
 
-class DnsClient_ extends DnsClient:
+class DnsClient_ extends DnsClientBase_:
   servers_/List
   current-server-index_/int := ?
 
@@ -478,7 +491,6 @@ class DnsClient_ extends DnsClient:
         net.SocketAddress it DNS-UDP-PORT
       else: it
     current-server-index_ = 0
-    super.private_
 
   static DNS-UDP-PORT ::= 53
 
@@ -510,14 +522,13 @@ class DnsClient_ extends DnsClient:
     finally:
       if socket: socket.close
 
-class MdnsDnsClient extends DnsClient:
+class MdnsDnsClient extends DnsClientBase_:
   address_/net.IpAddress
   port_/int
 
   constructor --address/net.IpAddress=MDNS-MULTICAST-ADDRESS_ --port/int=MDNS-PORT_:
     address_ = address
     port_ = port
-    super.private_
 
   fetch_ query/DnsQuery_ --network/udp.Interface -> List:
     socket/udp.Socket? := null
@@ -609,8 +620,8 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
   status-bits    := reader.big-endian.read-uint16
   queries        := reader.big-endian.read-uint16
   response-count := reader.big-endian.read-uint16
-  // Ignore NSCOUNT and ANCOUNT at 8 and 10.
-  reader.skip 4
+  auth-count     := reader.big-endian.read-uint16
+  add-count      := reader.big-endian.read-uint16
 
   error := status-bits & 0xf
   if error != ERROR-NONE:
@@ -630,43 +641,68 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
         Question q-name q-type --unicast-ok=unicast-ok
 
   response-count.repeat:
-    r-name := decode-name reader response
-    type := reader.big-endian.read-uint16
-    clas := reader.big-endian.read-uint16
-    ttl  := reader.big-endian.read-int32
-    rd-length := reader.big-endian.read-uint16
+    resource := decode-resource_ reader response
+    if resource: result.resources.add resource
 
-    flush := clas & 0x8000 != 0
-    if clas & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
+  auth-count.repeat:
+    resource := decode-resource_ reader response
+    if resource: result.authorities.add resource
 
-    read-before-record := reader.processed
-    if type == RECORD-A or type == RECORD-AAAA:
-      length := type == RECORD-A ? 4 : 16
-      if rd-length != length: protocol-error_  // Unexpected IP address length.
-      result.resources.add
-          AResource r-name type ttl flush
-              net.IpAddress
-                  reader.read-bytes length
-    else if type == RECORD-PTR or type == RECORD-CNAME:
-      result.resources.add
-          StringResource r-name type ttl flush
-              decode-name reader response
-    else if type == RECORD-TXT:
-      length := reader.read-byte
+  add-count.repeat:
+    resource := decode-resource_ reader response
+    if resource: result.additionals.add resource
+
+  return result
+
+decode-resource_ reader/io.Reader response/ByteArray -> Resource?:
+  r-name := decode-name reader response
+  type := reader.big-endian.read-uint16
+  clas := reader.big-endian.read-uint16
+  ttl  := reader.big-endian.read-int32
+  rd-length := reader.big-endian.read-uint16
+
+  flush := clas & 0x8000 != 0
+  if clas & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
+
+  read-before-record := reader.processed
+  result := null
+  if type == RECORD-A or type == RECORD-AAAA:
+    length := type == RECORD-A ? 4 : 16
+    if rd-length != length: protocol-error_  // Unexpected IP address length.
+    result = AResource r-name type ttl flush
+        net.IpAddress
+            reader.read-bytes length
+  else if type == RECORD-PTR or type == RECORD-CNAME:
+    result = StringResource r-name type ttl flush
+        decode-name reader response
+  else if type == RECORD-TXT:
+    length := 0
+    // Check if we have at least one byte for the length.
+    // If rd-length is 0, we can't read a length byte.
+    value := ""
+    if rd-length > 0:
+      length = reader.read-byte
+      // The length byte is included in rd-length, so the total size of string data
+      // plus the length byte must match or be within bounds.
+      // In TXT records, the format is a sequence of <character-string>.
+      // <character-string> is a single length octet followed by that many octets.
+      // So if rd-length is 6, we might have length=5, then 5 bytes. 1+5=6.
       if rd-length < length + 1: protocol-error_  // Unexpected TXT length.
-      value := reader.read-string length
-      result.resources.add
-          StringResource r-name type ttl flush value
-    else if type == RECORD-SRV:
-      priority := reader.big-endian.read-uint16
-      weight := reader.big-endian.read-uint16
-      port := reader.big-endian.read-uint16
-      value := decode-name reader response
-      result.resources.add
-          SrvResource r-name type ttl flush value priority weight port
-    read-after-record := reader.processed
-    // Skip the rest of the record if it wasn't consumed.
-    reader.skip (rd-length - (read-after-record - read-before-record))
+      value = reader.read-string length
+    result = StringResource r-name type ttl flush value
+  else if type == RECORD-SRV:
+    priority := reader.big-endian.read-uint16
+    weight := reader.big-endian.read-uint16
+    port := reader.big-endian.read-uint16
+    value := decode-name reader response
+    result = SrvResource r-name type ttl flush value priority weight port
+
+  read-after-record := reader.processed
+  // Skip the rest of the record if it wasn't consumed.
+  // This allows us to skip unknown record types safely as long as rd-length is correct.
+  to-skip := rd-length - (read-after-record - read-before-record)
+  if to-skip < 0: protocol-error_ // Consumed more than declared?
+  reader.skip to-skip
 
   return result
 
@@ -707,6 +743,8 @@ class DecodedPacket:
   status_bits/int
   questions/List := []
   resources/List := []
+  authorities/List := []
+  additionals/List := []
 
   constructor --.id --.status-bits:
     if status-bits & 0x6070 != 0 or opcode > 2:
@@ -780,6 +818,12 @@ class SrvResource extends StringResource:
   constructor name/string type/int ttl/int flush/bool value/string .priority .weight .port:
     super name type ttl flush value
 
+class TxtResource extends Resource:
+  text/List  // Of string.
+
+  constructor name/string ttl/int flush/bool .text:
+    super name RECORD-TXT ttl flush
+
 /**
 Decodes a name from a DNS (RFC 1035) packet.
 The block is invoked with the index of the next data in the packet.
@@ -825,7 +869,9 @@ Create a DNS packet for lookups or reponses.
 create-dns-packet queries/List records/List -> ByteArray
     --id/int
     --is-response/bool
-    --is-authoritative/bool=false:
+    --is-authoritative/bool=false
+    --authorities/List=[]
+    --additionals/List=[]:
 
   previous-locations := {:}
 
@@ -839,7 +885,8 @@ create-dns-packet queries/List records/List -> ByteArray
   result-be.write-int16 status-bits
   result-be.write-int16 queries.size
   result-be.write-int16 records.size
-  result-be.write-int32 0  // Don't support the other things.
+  result-be.write-int16 authorities.size
+  result-be.write-int16 additionals.size
 
   queries.do: | query/Question |
     write-name_ query.name --locations=previous-locations --buffer=result
@@ -847,40 +894,59 @@ create-dns-packet queries/List records/List -> ByteArray
     clas := CLASS-INTERNET + (query.unicast-ok ? 0x8000 : 0)
     result-be.write-int16 clas
   records.do: | record/Resource |
-    write-name_ record.name --locations=previous-locations --buffer=result
+    write-resource_ record --locations=previous-locations --buffer=result
+  authorities.do: | record/Resource |
+    write-resource_ record --locations=previous-locations --buffer=result
+  additionals.do: | record/Resource |
+    write-resource_ record --locations=previous-locations --buffer=result
+  return result.bytes
+
+write-resource_ record/Resource --locations/Map? --buffer/io.Buffer:
+    write-name_ record.name --locations=locations --buffer=buffer
+    buffer-be := buffer.big-endian
     type := record.type
-    result-be.write-int16 type
+    buffer-be.write-int16 type
     clas := CLASS-INTERNET + (record.flush ? 0x8000 : 0)
-    result-be.write-int16 clas
-    result-be.write-int32 record.ttl
+    buffer-be.write-int16 clas
+    buffer-be.write-int32 record.ttl
     if record is AResource:
       bytes := (record as AResource).address.raw
-      result-be.write-int16 bytes.size
-      result.write bytes
+      buffer-be.write-int16 bytes.size
+      buffer.write bytes
     else if type == RECORD-CNAME or type == RECORD-PTR:
       str := (record as StringResource).value
-      length := write-name_ str --locations=previous-locations --buffer=null
-      result-be.write-int16 length
-      write-name_ str --locations=previous-locations --buffer=result
+      length := write-name_ str --locations=locations --buffer=null
+      buffer-be.write-int16 length
+      write-name_ str --locations=locations --buffer=buffer
     else if type == RECORD-TXT:
-      str := (record as StringResource).value
-      if str.size > 255: throw (DnsException "TXT records cannot exceed 255 bytes" --name=str)
-      result-be.write-int16 (str.size + 1)
-      result.write-byte str.size
-      result.write str
+      if record is TxtResource:
+        txt := record as TxtResource
+        total-len := 0
+        txt.text.do: | s |
+          if s.size > 255: throw (DnsException "TXT character-string cannot exceed 255 bytes" --name=s)
+          total-len += s.size + 1
+        buffer-be.write-int16 total-len
+        txt.text.do: | s |
+          buffer.write-byte s.size
+          buffer.write s
+      else:
+        str := (record as StringResource).value
+        if str.size > 255: throw (DnsException "TXT records cannot exceed 255 bytes" --name=str)
+        buffer-be.write-int16 (str.size + 1)
+        buffer.write-byte str.size
+        buffer.write str
     else if record is SrvResource:
       srv := record as SrvResource
       str := srv.value
       // Calculate length of domain name part
-      name-length := write-name_ str --locations=previous-locations --buffer=null
-      result-be.write-int16 (6 + name-length)
-      result-be.write-int16 srv.priority
-      result-be.write-int16 srv.weight
-      result-be.write-int16 srv.port
-      write-name_ str --locations=previous-locations --buffer=result
+      name-length := write-name_ str --locations=locations --buffer=null
+      buffer-be.write-int16 (6 + name-length)
+      buffer-be.write-int16 srv.priority
+      buffer-be.write-int16 srv.weight
+      buffer-be.write-int16 srv.port
+      write-name_ str --locations=locations --buffer=buffer
     else:
       throw "Unknown record type: $record"
-  return result.bytes
 
 write-name_ name/string --locations/Map? --buffer/io.Buffer? -> int:
   parts := name.split "."

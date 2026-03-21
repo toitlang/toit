@@ -461,8 +461,6 @@ PRIMITIVE(get_option) {
     case UDP_REUSE_ADDRESS:
       return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
 
-
-
     default:
       FAIL(UNIMPLEMENTED);
   }
