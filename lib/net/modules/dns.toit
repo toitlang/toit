@@ -922,7 +922,9 @@ write-resource_ record/Resource --locations/Map? --buffer/io.Buffer:
       if record is TxtResource:
         txt := record as TxtResource
         total-len := 0
-        txt.text.do: | s | total-len += s.size + 1
+        txt.text.do: | s |
+          if s.size > 255: throw (DnsException "TXT character-string cannot exceed 255 bytes" --name=s)
+          total-len += s.size + 1
         buffer-be.write-int16 total-len
         txt.text.do: | s |
           buffer.write-byte s.size
