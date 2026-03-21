@@ -26,7 +26,7 @@ main:
   test-unknown-tool-integration
   test-search-no-results-integration
 
-/// Encodes the given $msg as a Content-Length framed message.
+/** Encodes the given $msg as a Content-Length framed message. */
 frame-message msg/Map -> ByteArray:
   payload := json.encode msg
   header := "Content-Length: $(payload.size)\r\n\r\n"
@@ -35,7 +35,7 @@ frame-message msg/Map -> ByteArray:
   buffer.write payload
   return buffer.bytes
 
-/// Reads a single Content-Length framed response from the given $reader.
+/** Reads a single Content-Length framed response from the given $reader. */
 read-response reader/io.Reader -> Map:
   content-length := -1
   while true:
@@ -107,7 +107,7 @@ make-doc --libraries/Map -> Map:
       --package-names=null
       --libraries=libraries).to-json
 
-/// Builds a minimal toitdoc JSON fixture for the "sdk" scope.
+/** Builds a minimal toitdoc JSON fixture for the "sdk" scope. */
 build-sdk-fixture -> Map:
   list-class := make-class "List" "A growable list."
   collections-module := make-module "collections" --classes=[list-class]
@@ -128,7 +128,7 @@ build-sdk-fixture -> Map:
         --category=null,
   }
 
-/// Builds a minimal toitdoc JSON fixture for a "package" scope.
+/** Builds a minimal toitdoc JSON fixture for a "package" scope. */
 build-pkg-fixture -> Map:
   client-class := make-class "Client" "An MQTT client."
   mqtt-module := make-module "mqtt" --classes=[client-class]
@@ -142,7 +142,7 @@ build-pkg-fixture -> Map:
         --category=null,
   }
 
-/// Builds a JSON-RPC initialize request with the given $id.
+/** Builds a JSON-RPC initialize request with the given $id. */
 build-initialize-request --id/int=1 -> Map:
   return {
     "jsonrpc": "2.0",
@@ -155,14 +155,14 @@ build-initialize-request --id/int=1 -> Map:
     },
   }
 
-/// Builds a JSON-RPC initialized notification.
+/** Builds a JSON-RPC initialized notification. */
 build-initialized-notification -> Map:
   return {
     "jsonrpc": "2.0",
     "method": "notifications/initialized",
   }
 
-/// Tests the full MCP session: initialize, tools/list, search, get_element, list_libraries.
+/** Tests the full MCP session: initialize, tools/list, search, get_element, list_libraries. */
 test-full-session:
   store := DocStore
   store.add --scope="sdk" --json=(build-sdk-fixture)
@@ -252,7 +252,7 @@ test-full-session:
   text5 := (((r5["result"] as Map)["content"] as List)[0] as Map)["text"] as string
   expect (text5.contains "collections")
 
-/// Tests scoped search across multiple loaded sources.
+/** Tests scoped search across multiple loaded sources. */
 test-scoped-search:
   store := DocStore
   store.add --scope="sdk" --json=(build-sdk-fixture)
@@ -300,7 +300,7 @@ test-scoped-search:
   text3 := (((r3["result"] as Map)["content"] as List)[0] as Map)["text"] as string
   expect (text3.contains "No results found")
 
-/// Tests list_sources tool.
+/** Tests list_sources tool. */
 test-list-sources:
   store := DocStore
   store.add --scope="sdk" --json=(build-sdk-fixture)
@@ -332,7 +332,7 @@ test-list-sources:
   expect (text2.contains "sdk")
   expect (text2.contains "mqtt")
 
-/// Tests that calling an unknown tool returns an error.
+/** Tests that calling an unknown tool returns an error. */
 test-unknown-tool-integration:
   store := DocStore
 
@@ -360,7 +360,7 @@ test-unknown-tool-integration:
   r2 := read-response response-reader
   expect-equals true (r2["result"] as Map)["isError"]
 
-/// Tests searching for a nonexistent term.
+/** Tests searching for a nonexistent term. */
 test-search-no-results-integration:
   store := DocStore
   store.add --scope="sdk" --json=(build-sdk-fixture)

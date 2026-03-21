@@ -112,8 +112,10 @@ make-doc --libraries/Map -> Map:
       --package-names=null
       --libraries=libraries).to-json
 
-/// Builds fixture A: "sdk" scope with a core.collections library
-///   containing a List class with an "add" method.
+/**
+Builds fixture A: "sdk" scope with a core.collections library
+  containing a List class with an "add" method.
+*/
 build-fixture-sdk -> Map:
   add-method := make-function "add" "Adds the given value to the list."
   list-class := make-class "List" "A growable list of elements."
@@ -138,8 +140,10 @@ build-fixture-sdk -> Map:
         --category=null,
   }
 
-/// Builds fixture B: "pkg" scope with an mqtt library
-///   containing a Client class with a "connect" method.
+/**
+Builds fixture B: "pkg" scope with an mqtt library
+  containing a Client class with a "connect" method.
+*/
 build-fixture-pkg -> Map:
   connect-method := make-function "connect" "Connects to the MQTT broker."
   client-class := make-class "Client" "An MQTT client."
@@ -157,7 +161,7 @@ build-fixture-pkg -> Map:
         --category=null,
   }
 
-/// Helper to add both fixtures to a store.
+/** Helper to add both fixtures to a store. */
 add-both-fixtures store/DocStore:
   store.add --scope="sdk" --json=build-fixture-sdk
   store.add --scope="mqtt" --json=build-fixture-pkg

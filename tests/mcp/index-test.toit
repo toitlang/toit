@@ -134,8 +134,10 @@ make-doc --libraries/Map -> Map:
       --package-names=null
       --libraries=libraries).to-json
 
-/// Builds fixture 1: single library "core.collections" with a List class
-///   (with an "add" method) and a "sort" top-level function.
+/**
+Builds fixture 1: single library "core.collections" with a List class
+  (with an "add" method) and a "sort" top-level function.
+*/
 build-fixture-single-library -> Map:
   add-method := make-function "add" "Adds the given value to the list."
   list-class := make-class "List" "A growable list of elements."
@@ -154,7 +156,7 @@ build-fixture-single-library -> Map:
         },
   }
 
-/// Builds fixture 2: multiple libraries. Adds "net.http" with a Client class.
+/** Builds fixture 2: multiple libraries. Adds "net.http" with a Client class. */
 build-fixture-multiple-libraries -> Map:
   fixture := build-fixture-single-library
 
@@ -170,7 +172,7 @@ build-fixture-multiple-libraries -> Map:
 
   return fixture
 
-/// Builds fixture 3: single library with a global variable.
+/** Builds fixture 3: single library with a global variable. */
 build-fixture-with-global -> Map:
   fixture := build-fixture-single-library
 

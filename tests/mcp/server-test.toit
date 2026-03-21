@@ -16,7 +16,7 @@ main:
   test-notification-no-response
   test-multiple-tools
 
-/// Encodes the given $msg as a Content-Length framed message.
+/** Encodes the given $msg as a Content-Length framed message. */
 frame-message msg/Map -> ByteArray:
   payload := json.encode msg
   header := "Content-Length: $(payload.size)\r\n\r\n"
@@ -25,7 +25,7 @@ frame-message msg/Map -> ByteArray:
   buffer.write payload
   return buffer.bytes
 
-/// Reads a single Content-Length framed response from the given $reader.
+/** Reads a single Content-Length framed response from the given $reader. */
 read-response reader/io.Reader -> Map:
   content-length := -1
   while true:
@@ -42,7 +42,7 @@ read-response reader/io.Reader -> Map:
   payload := reader.read-bytes content-length
   return json.decode payload
 
-/// Builds a JSON-RPC initialize request with the given $id.
+/** Builds a JSON-RPC initialize request with the given $id. */
 build-initialize-request --id/int=1 -> Map:
   return {
     "jsonrpc": "2.0",
@@ -55,16 +55,18 @@ build-initialize-request --id/int=1 -> Map:
     },
   }
 
-/// Builds a JSON-RPC initialized notification.
+/** Builds a JSON-RPC initialized notification. */
 build-initialized-notification -> Map:
   return {
     "jsonrpc": "2.0",
     "method": "notifications/initialized",
   }
 
-/// Creates an McpServer with the given input bytes and returns the server
-///   and the output buffer.
-/// The $tools and $tool-handlers are passed through to the server constructor.
+/**
+Creates an McpServer with the given input bytes and returns the server
+  and the output buffer.
+The $tools and $tool-handlers are passed through to the server constructor.
+*/
 create-server input-bytes/ByteArray --tools/List=[] --tool-handlers/Map={:} -> List:
   reader := io.Reader input-bytes
   output := io.Buffer
