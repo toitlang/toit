@@ -179,37 +179,64 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
     }
   }
 
-  // Phase 2: Add interfaces and mixins that declare the matching method.
-  // Interfaces and mixins form a separate axis of the type hierarchy.
-  // A class that implements an interface inherits the interface's contract,
-  // so virtual calls typed as the interface should also be included.
-  for (auto* klass : program->classes()) {
-    if (klass->is_interface() || klass->is_mixin()) {
-      if (class_has_matching_method(klass, name, method_shape)) {
-        // Check whether this interface/mixin is connected to our holder:
-        // either the holder implements it, or one of the participating
-        // classes does.
-        bool is_connected = false;
-
-        // Check if any participating class lists this interface/mixin.
-        // Only one of the two cases can be true — a class either appears
-        // in interfaces() or mixins(), not both.
+  // Phase 2: Add connected interfaces and mixins.
+  // Walk outward from the participating classes found in Phase 1 and add
+  // any interface or mixin that declares the matching method.
+  // We also walk up through interface/mixin inheritance (super-interfaces)
+  // to find parent interfaces that declare the same method, and then
+  // walk back down to find sibling branches — this ensures multi-path
+  // hierarchies are fully covered.
+  //
+  // Example: if I1 is extended by both I2 and I3, class A implements I2,
+  // class B implements I3, and all define foo(), Phase 1 finds A.
+  // Walking outward from A finds I2. Walking up from I2 finds I1 (which
+  // also declares foo). Walking down from I1 finds I3, and Phase 3 will
+  // then find B (which implements I3).
+  //
+  // We iterate until no new interfaces/mixins are added.
+  {
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      UnorderedSet<ir::Class*> to_add;
+      // Collect interfaces/mixins referenced by current participants.
+      for (auto* participant : participating_classes_.underlying_set()) {
+        auto check_connector = [&](ir::Class* connector) {
+          if (participating_classes_.contains(connector)) return;
+          if (!class_has_matching_method(connector, name, method_shape)) return;
+          to_add.insert(connector);
+        };
+        for (auto* iface : participant->interfaces()) check_connector(iface);
+        for (auto* mixin : participant->mixins()) check_connector(mixin);
+        // Walk up through interface/mixin super-classes.
+        if (participant->is_interface() || participant->is_mixin()) {
+          if (participant->has_super()) check_connector(participant->super());
+        }
+      }
+      // Also check if any non-participating interface/mixin is connected
+      // to a participating one through its implementors/sub-interfaces.
+      for (auto* klass : program->classes()) {
+        if (participating_classes_.contains(klass)) continue;
+        if (to_add.contains(klass)) continue;
+        if (!klass->is_interface() && !klass->is_mixin()) continue;
+        if (!class_has_matching_method(klass, name, method_shape)) continue;
+        // Check if any participating class implements/mixes in this class.
         for (auto* participant : participating_classes_.underlying_set()) {
           auto connectors = klass->is_interface()
               ? participant->interfaces()
               : participant->mixins();
-          for (auto connector : connectors) {
+          for (auto* connector : connectors) {
             if (connector == klass) {
-              is_connected = true;
+              to_add.insert(klass);
               break;
             }
           }
-          if (is_connected) break;
+          if (to_add.contains(klass)) break;
         }
-
-        if (is_connected) {
-          participating_classes_.insert(klass);
-        }
+      }
+      for (auto* klass : to_add.underlying_set()) {
+        participating_classes_.insert(klass);
+        changed = true;
       }
     }
   }
@@ -220,12 +247,6 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   //
   // We iterate until no new classes are added (fixed-point), because
   // adding a descendant may cause its own descendants to become reachable.
-  //
-  // Limitation: This approach may miss some classes in complex multi-path
-  // interface hierarchies. For example, if I1 is extended by both I2 and I3,
-  // and different classes implement I2 and I3, only directly connected paths
-  // are found. A full transitive closure over interface inheritance would
-  // be needed for complete coverage.
   bool changed = true;
   while (changed) {
     changed = false;
