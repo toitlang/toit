@@ -170,4 +170,3 @@ generate-toitdoc_ source/string name/any path/any
     return json.decode content
   finally:
     directory.rmdir --recursive tmp-dir
-

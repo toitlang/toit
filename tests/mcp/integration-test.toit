@@ -288,7 +288,7 @@ test-scoped-search:
   server.run
 
   response-reader := io.Reader output.bytes
-  read-response response-reader  // skip initialize
+  read-response response-reader  // Skip initialize.
 
   // All-scope search: should find Client.
   r2 := read-response response-reader
@@ -325,7 +325,7 @@ test-list-sources:
   server.run
 
   response-reader := io.Reader output.bytes
-  read-response response-reader  // skip initialize
+  read-response response-reader  // Skip initialize.
 
   r2 := read-response response-reader
   text2 := (((r2["result"] as Map)["content"] as List)[0] as Map)["text"] as string
@@ -355,7 +355,7 @@ test-unknown-tool-integration:
   server.run
 
   response-reader := io.Reader output.bytes
-  read-response response-reader  // skip initialize
+  read-response response-reader  // Skip initialize.
 
   r2 := read-response response-reader
   expect-equals true (r2["result"] as Map)["isError"]
@@ -384,7 +384,7 @@ test-search-no-results-integration:
   server.run
 
   response-reader := io.Reader output.bytes
-  read-response response-reader  // skip initialize
+  read-response response-reader  // Skip initialize.
 
   r2 := read-response response-reader
   text2 := (((r2["result"] as Map)["content"] as List)[0] as Map)["text"] as string

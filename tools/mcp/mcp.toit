@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -71,7 +71,7 @@ create-mcp-server --store/DocStore --reader/io.Reader --writer/io.Writer
     },
     {
       "name": "list_libraries",
-      "description": "Lists available Toit libraries with their modules. Optionally filter by scope.",
+      "description": "Lists available Toit libraries with their sub-libraries. Optionally filter by scope.",
       "inputSchema": {
         "type": "object",
         "properties": {

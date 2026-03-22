@@ -32,19 +32,11 @@ main:
 
 /** Creates a toitdoc text section with the given $text. */
 make-toitdoc text/string -> Toitdoc:
-  return Toitdoc --sections=[
-    DocSection --title=null --level=0 --statements=[
-      DocParagraph --expressions=[DocText --text=text],
-    ],
-  ]
+  return make-toitdoc-expressions [DocText --text=text]
 
 /** Creates a toitdoc section with the given $expressions. */
 make-toitdoc-expressions expressions/List -> Toitdoc:
-  return Toitdoc --sections=[
-    DocSection --title=null --level=0 --statements=[
-      DocParagraph --expressions=expressions,
-    ],
-  ]
+  return make-toitdoc-statements [DocParagraph --expressions=expressions]
 
 /** Creates a toitdoc section with the given $statements. */
 make-toitdoc-statements statements/List -> Toitdoc:
@@ -54,8 +46,8 @@ make-toitdoc-statements statements/List -> Toitdoc:
 
 test-format-library-list:
   entries := [
-    {"name": "core", "path": ["core"], "modules": ["collections", "utils"]},
-    {"name": "net", "path": ["net"], "modules": ["http", "tcp"]},
+    {"name": "core", "path": ["core"], "sub_libraries": ["collections", "utils"]},
+    {"name": "net", "path": ["net"], "sub_libraries": ["http", "tcp"]},
   ]
 
   output := DocFormatter.format-library-list entries
@@ -64,10 +56,10 @@ test-format-library-list:
       # Available Libraries
 
       ## core
-      Modules: collections, utils
+      Sub-libraries: collections, utils
 
       ## net
-      Modules: http, tcp"""
+      Sub-libraries: http, tcp"""
       output
 
 test-format-library-list-empty:

@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -43,7 +43,7 @@ class DocIndex:
   /**
   Builds an index from parsed toitdoc JSON (a $Map, the top-level object).
 
-  Walks all libraries, modules, and their elements to build a flat
+  Walks all libraries, sub-libraries, and their elements to build a flat
     searchable index.
   */
   constructor json/Map:
@@ -57,7 +57,7 @@ class DocIndex:
   /**
   Returns a list of all libraries with their top-level summary.
 
-  Each entry is a map with "name", "path", and "modules" keys.
+  Each entry is a map with "name", "path", and "sub_libraries" keys.
   */
   list-libraries -> List:
     result := []
@@ -113,7 +113,7 @@ class DocIndex:
         "kind": "library",
         "library": library-path,
         "toitdoc": null,
-        "members": module-names.map: | name | {"name": name, "kind": "module"},
+        "members": module-names.map: | name | {"name": name, "kind": "sub-library"},
       }
 
     // Split element on "." to handle member access.
@@ -255,7 +255,7 @@ class DocIndex:
     result.add {
       "name": library["name"],
       "path": library.get "path" --if-absent=: [library["name"]],
-      "modules": module-names,
+      "sub_libraries": module-names,
     }
 
     sub-libraries := library.get "libraries"

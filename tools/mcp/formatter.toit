@@ -1,4 +1,4 @@
-// Copyright (C) 2026 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -34,7 +34,7 @@ class DocFormatter:
   /**
   Formats the library list as Markdown.
 
-  The $entries list contains maps with "name", "path", and "modules" keys.
+  The $entries list contains maps with "name", "path", and "sub_libraries" keys.
   */
   static format-library-list entries/List -> string:
     lines := ["# Available Libraries"]
@@ -45,11 +45,11 @@ class DocFormatter:
 
     entries.do: | entry/Map |
       name := entry["name"]
-      modules := entry["modules"]
+      sub-libraries := entry["sub_libraries"]
       lines.add ""
       lines.add "## $name"
-      if modules is List and not (modules as List).is-empty:
-        lines.add "Modules: $((modules as List).join ", ")"
+      if sub-libraries is List and not (sub-libraries as List).is-empty:
+        lines.add "Sub-libraries: $((sub-libraries as List).join ", ")"
 
     return lines.join "\n"
 
