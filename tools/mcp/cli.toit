@@ -22,6 +22,7 @@ import io
 import system
 
 import .cache show DocCache
+import .lock-file-cache show LockFileCache
 import .mcp show create-mcp-server
 import .store show DocStore
 import ..toitdoc.toitdoc as toitdoc-module
@@ -82,13 +83,20 @@ run-mcp invocation/cli.Invocation --toit/string --sdk-path/string?:
 
   cache := DocCache invocation.cli.cache
   store := DocStore
+  lock-file-caches := {:}  // Map from project-root to LockFileCache.
 
   loader := :: | source/string name/any path/any |
+    // Use the path as project root for packages if provided,
+    //   otherwise fall back to the default project root.
+    effective-root := path is string ? (path as string) : project-root
+    lock-file-cache := lock-file-caches.get effective-root
+        --init=: LockFileCache effective-root
     generate-docs_ source name path
         --toit=toit
         --sdk-path=sdk-path
-        --project-root=project-root
+        --project-root=effective-root
         --cache=cache
+        --lock-file-cache=lock-file-cache
 
   reader := io.Reader.adapt pipe.stdin
   writer := io.Writer.adapt pipe.stdout
@@ -106,35 +114,41 @@ Checks the cache first for SDK and package sources.
 Returns the parsed toitdoc JSON.
 */
 generate-docs_ source/string name/any path/any
-    --toit/string --sdk-path/string --project-root/string --cache/DocCache -> Map:
+    --toit/string --sdk-path/string --project-root/string
+    --cache/DocCache --lock-file-cache/LockFileCache -> Map:
   // Check cache for SDK and packages.
   cache-key/string? := null
+  cache-project-root/string? := null
   if source == "sdk":
     cache-key = DocCache.sdk-key --version=system.vm-sdk-version
   else if source == "package" and name is string:
-    version := resolve-package-version_ (name as string) --project-root=project-root
+    version := lock-file-cache.resolve-version --url=(name as string)
     if version:
       cache-key = DocCache.package-key --id=(name as string) --version=version
+      cache-project-root = project-root
 
   if cache-key:
-    cache.put --key=cache-key:
+    cache.put --key=cache-key --project-root=cache-project-root:
       generate-toitdoc_ source name path
           --toit=toit
           --sdk-path=sdk-path
           --project-root=project-root
-    cached := cache.get --key=cache-key
+          --lock-file-cache=lock-file-cache
+    cached := cache.get --key=cache-key --project-root=cache-project-root
     if cached: return cached
 
   return generate-toitdoc_ source name path
       --toit=toit
       --sdk-path=sdk-path
       --project-root=project-root
+      --lock-file-cache=lock-file-cache
 
 /**
 Runs `toit doc build` to generate toitdoc JSON for the given source.
 */
 generate-toitdoc_ source/string name/any path/any
-    --toit/string --sdk-path/string --project-root/string -> Map:
+    --toit/string --sdk-path/string --project-root/string
+    --lock-file-cache/LockFileCache -> Map:
   tmp-dir := directory.mkdtemp "/tmp/toitdoc-mcp-"
   try:
     output := "$tmp-dir/toitdoc.json"
@@ -143,7 +157,7 @@ generate-toitdoc_ source/string name/any path/any
     if source == "sdk":
       args.add-all ["--sdk", "--exclude-pkgs"]
     else if source == "package":
-      pkg-path := resolve-package-path_ (name as string) --project-root=project-root
+      pkg-path := lock-file-cache.resolve-path --url=(name as string)
       args.add-all ["--package", "--exclude-sdk", "--exclude-pkgs", pkg-path]
     else if source == "project":
       project-path := path ? (path as string) : project-root
@@ -157,21 +171,3 @@ generate-toitdoc_ source/string name/any path/any
   finally:
     directory.rmdir --recursive tmp-dir
 
-/**
-Resolves the local file path for a package given its ID.
-
-Looks up the package in the project's package.lock and finds
-  its code in the .packages directory.
-*/
-resolve-package-path_ package-id/string --project-root/string -> string:
-  // TODO(step-8): Implement proper package.lock parsing and path resolution.
-  throw "Package resolution not yet implemented for: $package-id"
-
-/**
-Resolves the version of a package from the project's package.lock.
-
-Returns null if the package or lock file is not found.
-*/
-resolve-package-version_ package-id/string --project-root/string -> string?:
-  // TODO(step-8): Implement proper package.lock parsing.
-  return null

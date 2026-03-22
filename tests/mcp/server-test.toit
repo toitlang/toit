@@ -79,8 +79,8 @@ create-server input-bytes/ByteArray --tools/List=[] --tool-handlers/Map={:} -> L
 
 test-initialize:
   input := io.Buffer
-  input.write (frame-message (build-initialize-request))
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialize-request)
+  input.write (frame-message build-initialized-notification)
 
   result := create-server input.bytes
   server := result[0] as McpServer
@@ -116,7 +116,7 @@ test-tools-list:
 
   input := io.Buffer
   input.write (frame-message (build-initialize-request --id=1))
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialized-notification)
   input.write (frame-message {
     "jsonrpc": "2.0",
     "id": 2,
@@ -159,7 +159,7 @@ test-tools-call:
 
   input := io.Buffer
   input.write (frame-message (build-initialize-request --id=1))
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialized-notification)
   input.write (frame-message {
     "jsonrpc": "2.0",
     "id": 2,
@@ -195,7 +195,7 @@ test-tools-call:
 test-unknown-tool:
   input := io.Buffer
   input.write (frame-message (build-initialize-request --id=1))
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialized-notification)
   input.write (frame-message {
     "jsonrpc": "2.0",
     "id": 2,
@@ -226,7 +226,7 @@ test-notification-no-response:
   input := io.Buffer
   input.write (frame-message (build-initialize-request --id=1))
   // The initialized notification should not produce a response.
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialized-notification)
   // Send a tools/list request to verify we can still get a response
   // after the notification (proving the notification didn't produce one).
   input.write (frame-message {
@@ -287,7 +287,7 @@ test-multiple-tools:
 
   input := io.Buffer
   input.write (frame-message (build-initialize-request --id=1))
-  input.write (frame-message (build-initialized-notification))
+  input.write (frame-message build-initialized-notification)
   input.write (frame-message {
     "jsonrpc": "2.0",
     "id": 2,

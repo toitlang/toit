@@ -55,7 +55,7 @@ create-mcp-server --store/DocStore --reader/io.Reader --writer/io.Writer
           },
           "path": {
             "type": "string",
-            "description": "File path (for source=file) or project path (for source=project)",
+            "description": "File path (for source=file), project path (for source=project), or project root containing the package.lock (for source=package, defaults to the server's project root)",
           },
         },
         "required": ["source"],

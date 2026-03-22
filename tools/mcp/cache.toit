@@ -14,6 +14,8 @@
 // directory of this repository.
 
 import cli.cache as cli-cache
+import crypto.sha256
+import encoding.hex
 import encoding.json
 import host.file
 
@@ -22,6 +24,10 @@ Caches toitdoc JSON files on disk, backed by the CLI's $cli-cache.Cache.
 
 Uses the CLI cache's file-locking mechanism for safe concurrent access.
   Cache entries are stored as JSON files under the "mcp/" prefix.
+
+Package documentation is cached per project, since the generated docs
+  contain project-specific file paths. SDK documentation is cached
+  globally since it does not depend on the project.
 */
 class DocCache:
   cache_/cli-cache.Cache
@@ -34,9 +40,14 @@ class DocCache:
 
   /**
   Returns cached toitdoc JSON for the given $key, or null if not cached.
+
+  If $project-root is provided, the key is scoped to that project
+    directory to isolate package docs between projects.
   */
-  get --key/string -> Map?:
-    prefixed := prefixed-key_ key
+  get --key/string --project-root/string?=null -> Map?:
+    prefixed := project-root
+        ? (project-prefixed-key_ key --project-root=project-root)
+        : (prefixed-key_ key)
     if not cache_.contains prefixed: return null
     exception := catch:
       content := file.read-contents (cache_.get-file-path prefixed)
@@ -53,10 +64,15 @@ class DocCache:
   If the entry does not exist, the $block is called to produce the data,
     which is then stored.
 
+  If $project-root is provided, the key is scoped to that project
+    directory to isolate package docs between projects.
+
   Uses the CLI cache's file store mechanism for atomic writes.
   */
-  put --key/string [block] -> none:
-    prefixed := prefixed-key_ key
+  put --key/string --project-root/string?=null [block] -> none:
+    prefixed := project-root
+        ? (project-prefixed-key_ key --project-root=project-root)
+        : (prefixed-key_ key)
     cache_.get-file-path prefixed: | store/cli-cache.FileStore |
       data/Map := block.call
       encoded := json.encode data
@@ -81,3 +97,15 @@ class DocCache:
   /** Adds the "mcp/" prefix to a cache $key. */
   prefixed-key_ key/string -> string:
     return "mcp/$(key).json"
+
+  /**
+  Adds a project-specific "mcp/<hash>/" prefix to a cache $key.
+
+  Uses a hash of the $project-root to isolate package docs between
+    projects, since generated docs contain project-specific file paths.
+  */
+  project-prefixed-key_ key/string --project-root/string -> string:
+    hash := sha256.Sha256
+    hash.add project-root
+    project-hash := (hex.encode hash.get)[..16]
+    return "mcp/$project-hash/$(key).json"

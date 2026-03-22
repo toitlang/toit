@@ -17,6 +17,7 @@ main:
   test-put-is-noop-if-exists
   test-multiple-keys
   test-roundtrip-complex-json
+  test-project-scoped-isolation
 
 /**
 Creates a DocCache backed by a CLI Cache in a temporary directory.
@@ -117,3 +118,26 @@ test-roundtrip-complex-json:
     expect-equals "add" methods[0]
     metadata := result["metadata"] as Map
     expect-equals "toitdoc" metadata["generator"]
+
+test-project-scoped-isolation:
+  with-doc-cache: | tmp-dir/string cache/DocCache |
+    key := "pkg@1.0"
+    // Store under project A.
+    cache.put --key=key --project-root="/project/a": {"from": "a"}
+    // Store under project B.
+    cache.put --key=key --project-root="/project/b": {"from": "b"}
+    // Store without project scope.
+    cache.put --key=key: {"from": "global"}
+
+    // Each scope should return its own value.
+    result-a := cache.get --key=key --project-root="/project/a"
+    expect-not-null result-a
+    expect-equals "a" result-a["from"]
+
+    result-b := cache.get --key=key --project-root="/project/b"
+    expect-not-null result-b
+    expect-equals "b" result-b["from"]
+
+    result-global := cache.get --key=key
+    expect-not-null result-global
+    expect-equals "global" result-global["from"]
