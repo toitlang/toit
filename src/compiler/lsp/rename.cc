@@ -98,12 +98,12 @@ void FindReferencesHandler::call_static(ast::Node* node,
 // ---------------------------------------------------------------------------
 
 /// Returns the package ID of the source file containing the given IR node.
-/// Falls back to the entry package ID if the source cannot be determined.
+/// Falls back to ERROR_PACKAGE_ID if the source cannot be determined.
 static std::string package_id_for_range(const Source::Range& range,
                                         SourceManager* source_manager) {
-  if (!range.is_valid()) return Package::ENTRY_PACKAGE_ID;
+  if (!range.is_valid()) return Package::ERROR_PACKAGE_ID;
   auto* source = source_manager->source_for_position(range.from());
-  if (source == null) return Package::ENTRY_PACKAGE_ID;
+  if (source == null) return Package::ERROR_PACKAGE_ID;
   return source->package_id();
 }
 
@@ -244,7 +244,6 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
           break;
         }
       }
-      if (participating_classes_.contains(klass)) continue;
       for (auto mixin : klass->mixins()) {
         if (participating_classes_.contains(mixin)) {
           participating_classes_.insert(klass);
