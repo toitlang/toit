@@ -445,6 +445,15 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   auto from = source_manager_->compute_location(range.from());
   auto to = source_manager_->compute_location(range.to());
 
+  // Skip references in read-only packages. Only the entry package (user's
+  // own code) and local path packages are editable.
+  auto source_package = from.source->package();
+  if (source_package.is_valid() &&
+      source_package.id() != Package::ENTRY_PACKAGE_ID &&
+      !source_package.is_path_package()) {
+    return;
+  }
+
   int start_col = utf16_offset_in_line(from);
   int end_col = utf16_offset_in_line(to);
 
@@ -584,6 +593,23 @@ void find_and_emit_all_references(
 
   // Refuse to rename SDK symbols — their source files are not user-editable.
   if (is_sdk_target(target, source_manager)) exit(0);
+
+  // Refuse to rename symbols defined in non-path packages (e.g., git
+  // dependencies). Only the entry package and local path packages are editable.
+  {
+    Source::Range range = target_range(target);
+    if (range.is_valid()) {
+      auto* source = source_manager->source_for_position(range.from());
+      if (source != null) {
+        auto pkg = source->package();
+        if (pkg.is_valid() &&
+            pkg.id() != Package::ENTRY_PACKAGE_ID &&
+            !pkg.is_path_package()) {
+          exit(0);
+        }
+      }
+    }
+  }
 
   // Determine the target's name and its length for range trimming.
   const char* name = target_name(target);
