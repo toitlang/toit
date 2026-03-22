@@ -20,6 +20,7 @@
 #include "../set.h"
 #include "../token.h"
 #include "../package.h"
+#include "../resolver.h"
 
 namespace toit {
 namespace compiler {
@@ -264,154 +265,23 @@ class FindReferencesHandler : public LspSelectionHandler {
   Source::Range cursor_range_ = Source::Range::invalid();
 };
 
-/// Determines whether a CallVirtual node should be included in rename results.
+/// Finds all references to [target] in the program and emits them via
+/// the protocol's find_references channel.
 ///
-/// Virtual calls in the IR don't carry a resolved method target — only a
-/// selector name and a call shape. Without full type-flow analysis, we cannot
-/// know with certainty which concrete method a virtual call dispatches to.
+/// This function handles all reference types: static references, virtual
+/// call sites, class hierarchy references (extends/implements/with),
+/// type annotations, field-storing parameters, show/export clauses,
+/// and toitdoc references.
 ///
-/// This filter uses several layers of analysis to decide whether a virtual
-/// call whose selector and shape match the target method should be included:
-///
-/// 1. **Operator exclusion**: Operators (like +, [], etc.) cannot be
-///    meaningfully renamed, so they are always excluded.
-///
-/// 2. **Class hierarchy computation**: We compute the set of all classes
-///    that participate in the target method's dispatch chain — the holder
-///    class, all ancestors that define the same method, all descendants
-///    (which inherit or override it), and all interfaces/mixins that
-///    declare it.
-///
-/// 3. **Ambiguity detection**: If other, unrelated class hierarchies also
-///    define a method with the same name and compatible shape, the match
-///    is "ambiguous" — a virtual call with that selector could be
-///    dispatching to either hierarchy. For ambiguous methods, we apply
-///    package-based filtering to reduce false positives.
-///
-/// 4. **SDK exclusion**: SDK methods cannot be renamed (their source
-///    files are not user-editable), so the filter is inactive for SDK
-///    targets.
-///
-/// 5. **Package-based filtering** (ambiguous names only): When the name
-///    is ambiguous, a virtual call site is included only if:
-///    - It is in the same source file as the target method, or
-///    - It is in the same package as the target method.
-///    This heuristic approximates visibility: call sites in the same
-///    package are likely referencing the same class hierarchy.
-class VirtualCallFilter {
- public:
-  /// Builds a filter for the given target and program.
-  ///
-  /// If the target is not an instance method, or if it is an operator,
-  /// the returned filter is inactive and `should_include` always returns
-  /// false.
-  static VirtualCallFilter build(ir::Node* target,
-                                 ir::Program* program,
-                                 SourceManager* source_manager);
-
-  /// Returns true if the given CallVirtual node should be included in
-  /// rename results.
-  bool should_include(ir::CallVirtual* node) const;
-
-  /// Registers the setter FieldStub for a field target.
-  ///
-  /// When the rename target is a field, both getter and setter calls must
-  /// be matched. The filter is initially built from the getter; call this
-  /// to add the setter's shape as an additional match criterion.
-  void set_setter(ir::FieldStub* setter) { setter_ = setter; }
-
-  /// Returns true if this filter is active (the target is a renameable
-  /// instance method with a non-operator name).
-  bool is_active() const { return method_ != null; }
-
-  /// Returns the target method this filter was built for.
-  /// Only valid when `is_active()` is true.
-  ir::Method* method() const { return method_; }
-
-  /// Returns the set of classes participating in the target method's dispatch.
-  /// Only valid when `is_active()` is true.
-  const UnorderedSet<ir::Class*>& participating_classes() const {
-    return participating_classes_;
-  }
-
- private:
-  VirtualCallFilter()
-      : method_(null)
-      , setter_(null)
-      , is_ambiguous_(false)
-      , target_source_path_(null)
-      , source_manager_(null) {}
-
-  /// Computes the set of classes participating in the target method's
-  /// dispatch.
-  ///
-  /// A class "participates" if it defines or inherits the target method
-  /// and is connected to the holder through the class hierarchy (super
-  /// classes, sub classes, interfaces, or mixins).
-  void compute_participating_classes(ir::Program* program);
-
-  /// Determines whether the target method's name+shape is ambiguous.
-  ///
-  /// We consider the method ambiguous if there exists at least one class
-  /// outside the participating set that defines a method with the same
-  /// name and a compatible shape. Such a class belongs to an unrelated
-  /// hierarchy, and a virtual call with the matching selector could
-  /// dispatch to either hierarchy.
-  void detect_ambiguity(ir::Program* program);
-
-  ir::Method* method_;
-  ir::FieldStub* setter_;
-  UnorderedSet<ir::Class*> participating_classes_;
-  bool is_ambiguous_;
-  std::string target_package_id_;
-  const char* target_source_path_;
-  SourceManager* source_manager_;
-};
-
-class FindReferencesVisitor : public ir::TraversingVisitor {
- public:
-  FindReferencesVisitor(ir::Node* target,
-                        Source::Range definition_range,
-                        int target_name_len,
-                        SourceManager* source_manager,
-                        UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
-                        LspProtocol* protocol,
-                        const VirtualCallFilter& virtual_call_filter);
-
-  void visit_Reference(ir::Reference* node) override;
-  void visit_CallStatic(ir::CallStatic* node) override;
-  void visit_CallVirtual(ir::CallVirtual* node) override;
-  void visit_Typecheck(ir::Typecheck* node) override;
-
-  void emit_range(const Source::Range& range);
-
- private:
-  /// Emits the source range of a named-argument token at a call site when it
-  /// matches the rename target parameter name.
-  ///
-  /// When renaming a named parameter, call sites using `--param_name=value`
-  /// must also be updated. This helper looks up the AST call expression via
-  /// ir_to_ast_map, walks its arguments to find NamedArgument nodes, and
-  /// emits the name range if the argument name matches.
-  void emit_named_argument_reference(ir::Call* node, Symbol param_name);
-
-  ir::Node* target_;
-  /// Non-null when the rename target is a class. Used to detect constructor
-  /// calls and type annotations that reference the target class.
-  ir::Class* target_class_;
-  /// The source range of the target's definition name. Used to avoid
-  /// emitting duplicate entries when a compiler-generated ReferenceLocal
-  /// coincides with the definition site (e.g., typed parameter checks).
-  Source::Range definition_range_;
-  /// The length of the target symbol's name. Used to trim prefix syntax
-  /// (e.g., "[" for block params, "--" for named args, "." for dot-access)
-  /// from emitted ranges so they cover exactly the identifier name.
-  int target_name_len_;
-  SourceManager* source_manager_;
-  UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map_;
-  LspProtocol* protocol_;
-  const VirtualCallFilter& virtual_call_filter_;
-};
+/// Does not return — calls exit(0) after emitting all references.
+void find_and_emit_all_references(
+    ir::Node* target,
+    ir::Program* program,
+    SourceManager* source_manager,
+    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    LspProtocol* protocol,
+    ToitdocRegistry* toitdocs,
+    const std::vector<Resolver::ShowExportReference>& show_export_references);
 
 } // namespace toit::compiler
 } // namespace toit
