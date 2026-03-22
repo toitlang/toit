@@ -6,8 +6,10 @@
 class Foo:
   method:
     return this
-/*
-    ^
+/*  ^
+  null
+*/
+/*         ^
   null
 */
 

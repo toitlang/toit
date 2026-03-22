@@ -176,6 +176,8 @@ class LanguageServerPipeline : public Pipeline {
     semantic_tokens,
     completion,
     goto_definition,
+    find_references,
+    prepare_rename,
     hover,
   };
 
@@ -267,7 +269,7 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
                          int line_number,   // 1-based
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
-      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::find_references,
                                        find_references_path,
                                        line_number,
                                        column_number,
@@ -303,7 +305,7 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
                         int line_number,   // 1-based
                         int column_number, // 1-based
                         const PipelineConfiguration& configuration)
-      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::prepare_rename,
                                        path,
                                        line_number,
                                        column_number,

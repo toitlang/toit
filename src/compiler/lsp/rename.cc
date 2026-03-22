@@ -57,27 +57,31 @@ void FindReferencesHandler::call_static(ast::Node* node,
   // Don't overwrite target if already set (e.g., by class_interface_or_mixin
   // when the cursor is on the class part of a static call like Foo.bar).
   if (target_ != null) return;
-  ir::Node* t = null;
-  if (resolved2 != null) t = resolved2;
-  else if (candidates.length() == 1) t = candidates[0];
-  else if (resolved1 != null) t = resolved1;
-  if (t != null) {
-    t = unwrap_reference(t);
+  ir::Node* target = null;
+  if (resolved2 != null) {
+    target = resolved2;
+  } else if (resolved1 != null) {
+    target = resolved1;
+  } else if (candidates.length() == 1) {
+    target = candidates[0];
+  }
+  if (target != null) {
+    target = unwrap_reference(target);
     // When the resolved target is an unnamed constructor or factory called
     // by class name (e.g., `MyObj`), the user intends to rename the class,
     // not the constructor. Resolve to the holder class instead.
     // Named constructors (e.g., `constructor.deserialize`) should NOT be
     // redirected — the user wants to rename the constructor's own name.
-    if (t->is_Method()) {
-      auto* method = t->as_Method();
+    if (target->is_Method()) {
+      auto* method = target->as_Method();
       if ((method->is_constructor() || method->is_factory()) && method->holder() != null) {
         auto holder_name = method->holder()->name();
         if (method->name() == holder_name || method->name() == Symbols::constructor) {
-          t = method->holder();
+          target = method->holder();
         }
       }
     }
-    target_ = t;
+    target_ = target;
     // For dot-access calls (Foo.bar, prefix.bar), the Dot's selection_range
     // may include the "." prefix. Use the name identifier's range instead
     // so that prepareRename returns just the name portion.
@@ -188,13 +192,17 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
         bool is_connected = false;
 
         // Check if any participating class lists this interface/mixin.
+        // Only one of the two cases can be true — a class either appears
+        // in interfaces() or mixins(), not both.
         for (auto* participant : participating_classes_.underlying_set()) {
-          for (auto iface : participant->interfaces()) {
-            if (iface == klass) { is_connected = true; break; }
-          }
-          if (is_connected) break;
-          for (auto mixin : participant->mixins()) {
-            if (mixin == klass) { is_connected = true; break; }
+          auto connectors = klass->is_interface()
+              ? participant->interfaces()
+              : participant->mixins();
+          for (auto connector : connectors) {
+            if (connector == klass) {
+              is_connected = true;
+              break;
+            }
           }
           if (is_connected) break;
         }
@@ -212,6 +220,12 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   //
   // We iterate until no new classes are added (fixed-point), because
   // adding a descendant may cause its own descendants to become reachable.
+  //
+  // Limitation: This approach may miss some classes in complex multi-path
+  // interface hierarchies. For example, if I1 is extended by both I2 and I3,
+  // and different classes implement I2 and I3, only directly connected paths
+  // are found. A full transitive closure over interface inheritance would
+  // be needed for complete coverage.
   bool changed = true;
   while (changed) {
     changed = false;

@@ -28,9 +28,9 @@ void HoverHandler::import_path(const char* path,
                                const Package& package,
                                const PackageLock& package_lock,
                                Filesystem* filesystem) {
-  if (resolved == null) return;
-  protocol()->hover()->emit_toitdoc_ref(resolved, 0, 0);
-  has_emitted_ = true;
+  // No hover for import paths.
+  // The import_path callback fires during import resolution, before all
+  // files are loaded. Emitting here would disrupt the file-server protocol.
 }
 
 void HoverHandler::class_interface_or_mixin(ast::Node* node,
@@ -59,26 +59,15 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
   if (type.is_none()) return;
 
   if (type.is_class()) {
-    ir::Class* klass = type.klass();
-    while (klass != null) {
-      // i == -1 iterates the class itself; i >= 0 iterates its mixins.
-      for (int i = -1; i < klass->mixins().length(); i++) {
-        auto current = i == -1 ? klass : klass->mixins()[i];
-        for (ir::MethodInstance* method : current->methods()) {
-          if (method->name() == selector && method->resolution_shape().accepts(node->shape())) {
-            emit_hover(method, null);
-            return;
-          }
+    walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {
+      for (ir::MethodInstance* method : current->methods()) {
+        if (method->name() == selector && method->resolution_shape().accepts(node->shape())) {
+          emit_hover(method, null);
+          return true;
         }
       }
-      if (klass->super() == null && (klass->is_interface() || klass->is_mixin())) {
-        // Interfaces/mixins have no super. Fall back to the first class in
-        // the list (typically Object) to search inherited methods.
-        klass = classes.length() > 0 ? classes[0] : null;
-      } else {
-        klass = klass->super();
-      }
-    }
+      return false;
+    });
   } else if (type.is_any()) {
     for (int i = 0; i < classes.length(); i++) {
       ir::Class* klass = classes[i];

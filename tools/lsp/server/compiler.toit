@@ -362,37 +362,33 @@ class Compiler:
     result/HoverDefinition? := null
 
     run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
-      try:
-        line := reader.read-line
-        if not line: continue.run
+      line := reader.read-line
+      if not line: continue.run
 
-        length := int.parse line --if-error=(: 0)
-        if length == -1:
-          ref-path := reader.read-line
-          start := int.parse reader.read-line --if-error=(: 0)
-          end := int.parse reader.read-line --if-error=(: 0)
-          result = HoverDefinition --path=ref-path --start=start --end=end
-        else if length > 0:
-          payload := reader.read-string length
-          lines := payload.split "\n"
-          if lines.size < 3: continue.run
+      kind := int.parse line
+      if kind == -1:
+        ref-path := reader.read-line
+        start := int.parse reader.read-line
+        end := int.parse reader.read-line
+        result = HoverDefinition --path=ref-path --start=start --end=end
+      else if kind > 0:
+        payload := reader.read-string kind
+        lines := payload.split "\n"
+        if lines.size < 3: continue.run
 
-          start := int.parse lines[1] --if-error=(: 0)
-          end   := int.parse lines[2] --if-error=(: 0)
+        start := int.parse lines[1]
+        end   := int.parse lines[2]
 
-          // Extract text only if it exists and isn't just an empty string.
-          text := null
-          if lines.size > 3 and lines[3] != "":
-            text = (lines[3..].join "\n").trim
+        // Extract text only if it exists and isn't just an empty string.
+        text := null
+        if lines.size > 3 and lines[3] != "":
+          text = (lines[3..].join "\n").trim
 
-          result = HoverDefinition
-              --path=lines[0]
-              --start=start
-              --end=end
-              --text=text
-      // Ensure we drain the reader no matter what happens during parsing.
-      finally:
-        while reader.read: null  // Drain to prevent compiler crash.
+        result = HoverDefinition
+            --path=lines[0]
+            --start=start
+            --end=end
+            --text=text
     return result
 
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:

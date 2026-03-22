@@ -1467,8 +1467,6 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
   }
 }
 
-// is_operator_name is defined in token.h.
-
 static bool is_valid_operator_shape(Symbol name, const ResolutionShape& shape) {
   if (shape.total_block_count() != 0) return false;
 

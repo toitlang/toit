@@ -66,12 +66,7 @@ inline Source::Range target_range(ir::Node* target) {
 /// Returns whether the given target node is defined in the SDK.
 ///
 /// SDK symbols cannot be renamed because their source files are not
-/// user-editable. Both prepareRename and rename should refuse to operate
-/// on SDK targets.
-///
-/// Locals and parameters are never from the SDK (they live inside method
-/// bodies that are being compiled from user code, even if the method type
-/// comes from the SDK).
+/// user-editable.
 inline bool is_sdk_target(ir::Node* target, SourceManager* source_manager) {
   Source::Range range = target_range(target);
   if (!range.is_valid()) return false;
@@ -85,14 +80,28 @@ class FindReferencesHandler : public LspSelectionHandler {
   FindReferencesHandler(SourceManager* source_manager, LspProtocol* protocol)
       : LspSelectionHandler(protocol), source_manager_(source_manager) {}
 
-  void import_path(const char* path, const char* segment, bool is_first_segment, const char* resolved, const Package& current_package, const PackageLock& package_lock, Filesystem* fs) override {}
-  void class_interface_or_mixin(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface, bool needs_mixin) override {
+  void import_path(const char* path,
+                   const char* segment,
+                   bool is_first_segment,
+                   const char* resolved,
+                   const Package& current_package,
+                   const PackageLock& package_lock,
+                   Filesystem* fs) override {}
+  void class_interface_or_mixin(ast::Node* node,
+                                IterableScope* scope,
+                                ir::Class* holder,
+                                ir::Node* resolved,
+                                bool needs_interface,
+                                bool needs_mixin) override {
     if (resolved) {
       target_ = unwrap_reference(resolved);
       cursor_range_ = node->selection_range();
     }
   }
-  void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none) override {
+  void type(ast::Node* node,
+            IterableScope* scope,
+            ResolutionEntry resolved,
+            bool allow_none) override {
     if (resolved.nodes().length() == 1) {
       target_ = unwrap_reference(resolved.nodes()[0]);
       cursor_range_ = node->selection_range();
@@ -102,22 +111,18 @@ class FindReferencesHandler : public LspSelectionHandler {
     // Try to find a method that matches the virtual call selector.
     Symbol selector = node->selector();
     if (type.is_class()) {
-      auto klass = type.klass();
-      while (klass != null) {
-        // i == -1 iterates the class itself; i >= 0 iterates its mixins.
-        for (int i = -1; i < klass->mixins().length(); i++) {
-          auto current = i == -1 ? klass : klass->mixins()[i];
-          for (auto method : current->methods()) {
-            if (method->name() == selector &&
-                method->resolution_shape().accepts(node->shape())) {
-              target_ = method;
-              cursor_range_ = node->range();
-              return;
-            }
+      walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {
+        for (auto method : current->methods()) {
+          if (method->name() == selector &&
+              method->resolution_shape().accepts(node->shape())) {
+            target_ = method;
+            cursor_range_ = node->range();
+            return true;
           }
         }
-        klass = klass->super();
-      }
+        return false;
+      });
+      if (target_ != null) return;
     }
     // Fall back: search all classes for a matching method.
     for (auto klass : classes) {
@@ -131,13 +136,31 @@ class FindReferencesHandler : public LspSelectionHandler {
       }
     }
   }
-  void call_prefixed(ast::Dot* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override { call_static(node, resolved1, resolved2, candidates, scope, null); }
-  void call_class(ast::Dot* node, ir::Class* klass, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope) override;
+  void call_prefixed(ast::Dot* node,
+                     ir::Node* resolved1,
+                     ir::Node* resolved2,
+                     List<ir::Node*> candidates,
+                     IterableScope* scope) override {
+    call_static(node, resolved1, resolved2, candidates, scope, null);
+  }
+  void call_class(ast::Dot* node,
+                  ir::Class* klass,
+                  ir::Node* resolved1,
+                  ir::Node* resolved2,
+                  List<ir::Node*> candidates,
+                  IterableScope* scope) override;
 
-  void call_static(ast::Node* node, ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates, IterableScope* scope, ir::Method* surrounding) override;
+  void call_static(ast::Node* node,
+                   ir::Node* resolved1,
+                   ir::Node* resolved2,
+                   List<ir::Node*> candidates,
+                   IterableScope* scope,
+                   ir::Method* surrounding) override;
 
   void call_block(ast::Dot* node, ir::Node* ir_receiver) override {}
-  void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) override {
+  void call_static_named(ast::Node* name_node,
+                         ir::Node* ir_call_target,
+                         List<ir::Node*> candidates) override {
     if (ir_call_target == null || ir_call_target->is_Error()) return;
     if (!ir_call_target->is_ReferenceMethod()) return;
 
@@ -171,8 +194,15 @@ class FindReferencesHandler : public LspSelectionHandler {
       }
     }
   }
-  void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name, int module, int primitive, bool on_module) override {}
-  void field_storing_parameter(ast::Parameter* node, List<ir::Field*> fields, bool field_storing_is_allowed) override {
+  void call_primitive(ast::Node* node,
+                      Symbol module_name,
+                      Symbol primitive_name,
+                      int module,
+                      int primitive,
+                      bool on_module) override {}
+  void field_storing_parameter(ast::Parameter* node,
+                               List<ir::Field*> fields,
+                               bool field_storing_is_allowed) override {
     if (node->name()->is_LspSelection()) {
       auto name = node->name()->data();
       for (auto field : fields) {
@@ -184,7 +214,10 @@ class FindReferencesHandler : public LspSelectionHandler {
       }
     }
   }
-  void this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding) override {}
+  void this_(ast::Identifier* node,
+             ir::Class* enclosing_class,
+             IterableScope* scope,
+             ir::Method* surrounding) override {}
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override {
     handle_show_or_export(node, entry);
@@ -193,8 +226,13 @@ class FindReferencesHandler : public LspSelectionHandler {
     handle_show_or_export(node, entry);
   }
 
-  void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
-  void toitdoc_ref(ast::Node* node, List<ir::Node*> candidates, ToitdocScopeIterator* iterator, bool is_signature_toitdoc) override {
+  void return_label(ast::Node* node,
+                    int label_index,
+                    const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
+  void toitdoc_ref(ast::Node* node,
+                   List<ir::Node*> candidates,
+                   ToitdocScopeIterator* iterator,
+                   bool is_signature_toitdoc) override {
     // When the cursor is on a toitdoc reference like `$helper`, capture the
     // resolved target so that rename can proceed. Require exactly one
     // candidate for safety — rename is destructive, so we can't pick from
