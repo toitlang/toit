@@ -169,7 +169,7 @@ add-both-fixtures store/DocStore:
 test-empty-store:
   store := DocStore
   expect-equals 0 store.list-scopes.size
-  expect-equals 0 (store.search --query="anything").size
+  expect-equals 0 ((store.search --max-results=10 --query="anything")["results"] as List).size
   expect-equals 0 store.list-libraries.size
 
 test-add-and-list-scopes:
@@ -200,7 +200,7 @@ test-search-all-scopes:
   store := DocStore
   add-both-fixtures store
 
-  list-results := store.search --query="List"
+  list-results := (store.search --max-results=10 --query="List")["results"] as List
   expect list-results.size > 0
   found-list := false
   list-results.do:
@@ -208,7 +208,7 @@ test-search-all-scopes:
     if entry["name"] == "List": found-list = true
   expect found-list
 
-  client-results := store.search --query="Client"
+  client-results := (store.search --max-results=10 --query="Client")["results"] as List
   expect client-results.size > 0
   found-client := false
   client-results.do:
@@ -221,7 +221,7 @@ test-search-specific-scope:
   add-both-fixtures store
 
   // Search for "Client" in sdk scope should return empty.
-  sdk-results := store.search --query="Client" --scope="sdk"
+  sdk-results := (store.search --max-results=10 --query="Client" --scope="sdk")["results"] as List
   found-client := false
   sdk-results.do:
     entry := it as Map
@@ -229,7 +229,7 @@ test-search-specific-scope:
   expect-not found-client
 
   // Search for "Client" in mqtt scope should find it.
-  mqtt-results := store.search --query="Client" --scope="mqtt"
+  mqtt-results := (store.search --max-results=10 --query="Client" --scope="mqtt")["results"] as List
   expect mqtt-results.size > 0
   found-client = false
   mqtt-results.do:
@@ -293,5 +293,8 @@ test-search-max-results-across-scopes:
   add-both-fixtures store
 
   // Search broadly with max-results=1.
-  results := store.search --query="" --max-results=1
+  search-result := store.search --query="" --max-results=1
+  results := search-result["results"] as List
   expect results.size <= 1
+  // Total should reflect all matches.
+  expect (search-result["total"] as int) >= results.size

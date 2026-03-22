@@ -163,12 +163,11 @@ class McpServer:
   /**
   Writes a line followed by `\r\n` to the writer.
   */
+  static CRLF ::= #['\r', '\n']
+
   writeln_ line/string -> none:
     writer_.write line.to-byte-array
-    crlf := ByteArray 2
-    crlf[0] = '\r'
-    crlf[1] = '\n'
-    writer_.write crlf
+    writer_.write CRLF
 
 /**
 Internal error representation for JSON-RPC errors.

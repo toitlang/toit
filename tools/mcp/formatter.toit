@@ -56,16 +56,21 @@ class DocFormatter:
   /**
   Formats search results as Markdown.
 
-  The $results list contains maps with "name", "kind", "library", and
-    "summary" keys. The $query is shown in the heading.
+  The $search-result map has "results" (list of match maps with "name",
+    "kind", "library", "summary" keys) and "total" (total match count).
+  The $query is shown in the heading.
   */
-  static format-search-results results/List --query/string -> string:
+  static format-search-results search-result/Map --query/string -> string:
+    results := search-result["results"] as List
+    total := search-result["total"] as int
     lines := ["# Search Results for \"$query\""]
     if results.is-empty:
       lines.add ""
       lines.add "No results found."
       return lines.join "\n"
 
+    lines.add ""
+    lines.add "Showing $(results.size) of $total results."
     lines.add ""
     results.size.repeat: | i |
       entry := results[i] as Map

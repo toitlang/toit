@@ -21,6 +21,8 @@ import .formatter show DocFormatter
 import .server show McpServer
 import .store show DocStore
 
+DEFAULT-MAX-RESULTS ::= 10
+
 /**
 Creates an MCP server backed by the given $store.
 
@@ -81,13 +83,16 @@ create-mcp-server --store/DocStore --reader/io.Reader --writer/io.Writer
     },
     {
       "name": "search_docs",
-      "description": "Searches Toit documentation for classes, functions, globals, and methods matching a query. Use get_element to get full documentation for a result.",
+      "description": "Searches Toit documentation for classes, functions, globals, and methods matching a query. Use get_element to get full documentation for a result. Returns results with a total count.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "query": {"type": "string", "description": "Search term to match against element names"},
+          "query": {"type": "string", "description": "Search term to match against element names (or documentation if search_docs is true)"},
           "scope": {"type": "string", "description": "Restrict to a specific loaded source. Omit to search all."},
-          "max_results": {"type": "integer", "description": "Maximum number of results to return (default: 10)"},
+          "max_results": {"type": "integer", "description": "Maximum number of results to return (default: $DEFAULT-MAX-RESULTS)"},
+          "offset": {"type": "integer", "description": "Number of results to skip for paging (default: 0)"},
+          "exact": {"type": "boolean", "description": "If true, match element names exactly instead of substring match (default: false)"},
+          "search_docs": {"type": "boolean", "description": "If true, also search in documentation text (default: false)"},
         },
         "required": ["query"],
       },
@@ -124,15 +129,23 @@ create-mcp-server --store/DocStore --reader/io.Reader --writer/io.Writer
     "search_docs": :: | args/Map |
       query := args["query"] as string
       scope := args.get "scope"
-      max-results := args.get "max_results" --if-absent=: 10
-      DocFormatter.format-search-results
-          (store.search --query=query --scope=scope --max-results=max-results)
-          --query=query,
+      max-results := args.get "max_results" --if-absent=: DEFAULT-MAX-RESULTS
+      offset := args.get "offset" --if-absent=: 0
+      exact := (args.get "exact") == true
+      search-docs := (args.get "search_docs") == true
+      search-result := store.search
+          --query=query
+          --scope=scope
+          --max-results=max-results
+          --offset=offset
+          --exact=exact
+          --search-docs=search-docs
+      DocFormatter.format-search-results search-result --query=query,
     "get_element": :: | args/Map |
       library-path := args["library_path"] as string
       element := (args.get "element" --if-absent=: "") as string
       scope := args.get "scope"
-      include-inherited := (args.get "include_inherited" --if-absent=: false) == true
+      include-inherited := (args.get "include_inherited") == true
       result := store.get-element
           --library-path=library-path
           --element=element
@@ -152,15 +165,14 @@ Handles a load_documentation tool call.
 Loads documentation into the $store based on the source type in $args.
 */
 handle-load-documentation_ store/DocStore args/Map --loader/Lambda? -> string:
-  source := args["source"] as string
-  name := args.get "name"
-  path := args.get "path"
+  source/string := args["source"]
+  name/string? := args.get "name"
+  path/string? := args.get "path"
 
   if source == "file":
     if not path: return "Error: 'path' is required for source='file'."
-    path-str := path as string
-    label := name ? (name as string) : path-str
-    content := file.read-contents path-str
+    label := name or path
+    content := file.read-contents path
     doc-json := json-codec.decode content
     store.add --scope=label --json=doc-json
     return "Loaded documentation from file: $label"
@@ -168,12 +180,12 @@ handle-load-documentation_ store/DocStore args/Map --loader/Lambda? -> string:
   if not loader:
     return "Error: Documentation generation is not available in this context."
 
-  scope-label := ?
+  scope-label/string := ?
   if source == "sdk":
     scope-label = "sdk"
   else if source == "package":
     if not name: return "Error: 'name' is required for source='package'."
-    scope-label = name as string
+    scope-label = name
   else if source == "project":
     scope-label = "project"
   else:

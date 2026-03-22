@@ -49,10 +49,8 @@ class DocCache:
         ? (project-prefixed-key_ key --project-root=project-root)
         : (prefixed-key_ key)
     if not cache_.contains prefixed: return null
-    exception := catch:
-      content := file.read-contents (cache_.get-file-path prefixed)
-      return json.decode content
-    return null
+    content := file.read-contents (cache_.get-file-path prefixed)
+    return json.decode content
 
   /**
   Ensures an entry exists in the cache under the given $key.

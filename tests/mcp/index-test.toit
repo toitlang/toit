@@ -205,7 +205,8 @@ test-list-libraries:
 
 test-search-class-by-name:
   index := DocIndex (build-fixture-single-library)
-  results := index.search --query="List"
+  search-result := index.search --query="List"
+  results := search-result["results"] as List
 
   expect results.size > 0
   first := results[0] as Map
@@ -215,7 +216,7 @@ test-search-class-by-name:
 
 test-search-function-by-name:
   index := DocIndex (build-fixture-single-library)
-  results := index.search --query="sort"
+  results := (index.search --query="sort")["results"] as List
 
   expect results.size > 0
   found := false
@@ -228,7 +229,7 @@ test-search-function-by-name:
 
 test-search-method-by-name:
   index := DocIndex (build-fixture-single-library)
-  results := index.search --query="add"
+  results := (index.search --query="add")["results"] as List
 
   expect results.size > 0
   found := false
@@ -242,7 +243,7 @@ test-search-method-by-name:
 
 test-search-case-insensitive:
   index := DocIndex (build-fixture-single-library)
-  results := index.search --query="list"
+  results := (index.search --query="list")["results"] as List
 
   expect results.size > 0
   found := false
@@ -279,13 +280,17 @@ test-search-max-results:
   index := DocIndex fixture
   // Search with a broad query that matches many elements.
   // Use an empty string or a single common letter to get many results.
-  results := index.search --query="" --max-results=2
+  search-result := index.search --query="" --max-results=2
+  results := search-result["results"] as List
   expect results.size <= 2
+  // Total should reflect all matches, not just the returned results.
+  expect (search-result["total"] as int) >= results.size
 
 test-search-no-results:
   index := DocIndex (build-fixture-single-library)
-  results := index.search --query="nonexistent"
-  expect-equals 0 results.size
+  search-result := index.search --query="nonexistent"
+  expect-equals 0 (search-result["results"] as List).size
+  expect-equals 0 search-result["total"]
 
 test-get-element-class:
   index := DocIndex (build-fixture-single-library)

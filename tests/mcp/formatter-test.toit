@@ -22,6 +22,7 @@ main:
   test-format-search-results
   test-format-search-results-empty
   test-format-element-class
+  test-format-element-class-overloaded
   test-format-element-function
   test-format-toitdoc-text
   test-format-toitdoc-code
@@ -77,10 +78,12 @@ test-format-search-results:
     {"name": "Map", "kind": "class", "library": "core.collections", "summary": "A key-value mapping."},
   ]
 
-  output := DocFormatter.format-search-results results --query="collection"
+  output := DocFormatter.format-search-results {"results": results, "total": 2} --query="collection"
 
   expect-equals """
       # Search Results for "collection"
+
+      Showing 2 of 2 results.
 
       1. **List** (class) - core.collections
          A growable list.
@@ -90,7 +93,7 @@ test-format-search-results:
       output
 
 test-format-search-results-empty:
-  output := DocFormatter.format-search-results [] --query="xyz"
+  output := DocFormatter.format-search-results {"results": [], "total": 0} --query="xyz"
 
   expect-equals """
       # Search Results for "xyz"
@@ -136,6 +139,45 @@ test-format-element-class:
       ### remove (method)
 
       Removes the value from the list."""
+      output
+
+test-format-element-class-overloaded:
+  // Test that overloaded methods (same name, different signatures) are both shown.
+  element := {
+    "name": "List",
+    "kind": "class",
+    "library": "core.collections",
+    "toitdoc": make-toitdoc "A growable list.",
+    "members": [
+      {
+        "name": "add",
+        "kind": "method",
+        "toitdoc": make-toitdoc "Adds a single value.",
+      },
+      {
+        "name": "add",
+        "kind": "method",
+        "toitdoc": make-toitdoc "Adds all values from another collection.",
+      },
+    ],
+  }
+
+  output := DocFormatter.format-element element
+
+  expect-equals """
+      # class List
+
+      A growable list.
+
+      ## Members
+
+      ### add (method)
+
+      Adds a single value.
+
+      ### add (method)
+
+      Adds all values from another collection."""
       output
 
 test-format-element-function:

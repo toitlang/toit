@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import expect show *
 import encoding.json
+import expect show *
 import host.directory
 import host.file
 import host.pipe
@@ -14,53 +14,30 @@ import ...tools.mcp.lock-file-cache show LockFileCache
 import ...tools.mcp.mcp show create-mcp-server
 import ...tools.mcp.store show DocStore
 
-main:
-  test-load-and-search-package
+import .mcp-test-utils show *
 
-/** Encodes the given $msg as a Content-Length framed message. */
-frame-message msg/Map -> ByteArray:
-  payload := json.encode msg
-  header := "Content-Length: $(payload.size)\r\n\r\n"
-  buffer := io.Buffer
-  buffer.write header
-  buffer.write payload
-  return buffer.bytes
-
-/** Reads a single Content-Length framed response from the given $reader. */
-read-response reader/io.Reader -> Map:
-  content-length := -1
-  while true:
-    line := reader.read-line
-    if line == null: throw "Unexpected end of input"
-    if line == "":
-      break
-    if line.starts-with "Content-Length:":
-      content-length = int.parse (line.trim --left "Content-Length:").trim
-    else:
-      throw "Unexpected header: $line"
-  if content-length == -1: throw "Missing Content-Length header"
-  payload := reader.read-bytes content-length
-  return json.decode payload
+main args:
+  toit := args[0]
+  test-load-and-search-package --toit=toit
 
 /**
 Creates a loader lambda that calls `toit doc build` for a real package.
 */
-make-loader --project-root/string --lock-file-cache/LockFileCache -> Lambda:
-  return :: | source/string name/any path/any |
+make-loader --toit/string --project-root/string --lock-file-cache/LockFileCache -> Lambda:
+  return :: | source/string name/string? path/string? |
     tmp-dir := directory.mkdtemp "/tmp/toitdoc-e2e-"
     result/Map := {:}
     try:
       output := "$tmp-dir/toitdoc.json"
-      toit := "toit"
       args := [toit, "doc", "build", "-o", output]
 
       if source == "sdk":
         args.add-all ["--sdk", "--exclude-pkgs"]
       else if source == "package":
-        pkg-path := lock-file-cache.resolve-path --url=(name as string)
+        pkg-path := lock-file-cache.resolve-path --url=name
         args.add-all ["--package", "--exclude-sdk", "--exclude-pkgs", pkg-path]
       else if source == "project":
-        project-path := path ? (path as string) : project-root
+        project-path := path or project-root
         args.add-all ["--exclude-sdk", "--exclude-pkgs", project-path]
       else:
         throw "Unknown source: $source"
@@ -69,23 +46,26 @@ make-loader --project-root/string --lock-file-cache/LockFileCache -> Lambda:
       content := file.read-contents output
       result = json.decode content
     finally:
-      directory.rmdir --recursive tmp-dir
+      directory.rmdir --recursive --force tmp-dir
     result
 
 /**
 Tests loading real package documentation via the MCP server and verifying
   that responses contain valid file paths pointing to real .toit files.
 */
-test-load-and-search-package:
+test-load-and-search-package --toit/string:
   tmp-dir := directory.mkdtemp "/tmp/mcp-e2e-test-"
   try:
     // Set up a real project with the morse package.
-    pipe.run-program ["toit", "pkg", "init", "--project-root=$tmp-dir"]
-    pipe.run-program ["toit", "pkg", "install", "morse", "--project-root=$tmp-dir"]
+    pipe.run-program [toit, "pkg", "init", "--project-root=$tmp-dir"]
+    pipe.run-program [toit, "pkg", "install", "morse", "--project-root=$tmp-dir"]
 
     lock-file-cache := LockFileCache tmp-dir
     store := DocStore
-    loader := make-loader --project-root=tmp-dir --lock-file-cache=lock-file-cache
+    loader := make-loader
+        --toit=toit
+        --project-root=tmp-dir
+        --lock-file-cache=lock-file-cache
 
     // Build the MCP request sequence.
     input := io.Buffer

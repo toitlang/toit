@@ -25,8 +25,6 @@ class DocStore:
   /** Map from scope label to $DocIndex. */
   indexes_ /Map := {:}
 
-  constructor:
-
   /**
   Adds documentation from parsed toitdoc JSON with the given $scope label.
 
@@ -50,25 +48,31 @@ class DocStore:
   /**
   Searches across all loaded sources, or only within the given $scope.
 
-  Returns up to $max-results matches. Each match includes a "scope" key
-    identifying which source it came from.
-  */
-  search --query/string --scope/string?=null --max-results/int=10 -> List:
-    if scope:
-      index := indexes_.get scope
-      if not index: return []
-      results := index.search --query=query --max-results=max-results
-      results.do: | entry/Map | entry["scope"] = scope
-      return results
+  Returns a map with "results" (up to $max-results matches starting at
+    $offset, each with a "scope" key) and "total" (total matches across
+    all searched scopes).
 
-    result := []
-    indexes_.do: | label/string index/DocIndex |
-      if result.size >= max-results: return result
-      remaining := max-results - result.size
-      matches := index.search --query=query --max-results=remaining
+  If $exact is true, matches element names exactly (case-insensitive).
+  If $search-docs is true, also matches against documentation text.
+  */
+  search --query/string --scope/string?=null --max-results/int
+      --offset/int=0 --exact/bool=false --search-docs/bool=false -> Map:
+    scoped-indexes := resolve-indexes_ scope
+    all-results := []
+    total := 0
+    scoped-indexes.do: | label/string index/DocIndex |
+      search-result := index.search
+          --query=query
+          --max-results=int.MAX
+          --exact=exact
+          --search-docs=search-docs
+      total += search-result["total"]
+      matches := search-result["results"] as List
       matches.do: | entry/Map | entry["scope"] = label
-      result.add-all matches
-    return result
+      all-results.add-all matches
+    end := min (offset + max-results) all-results.size
+    results := offset >= all-results.size ? [] : all-results[offset..end]
+    return { "results": results, "total": total }
 
   /**
   Gets element documentation.
@@ -82,17 +86,8 @@ class DocStore:
   Returns the first match found, or null.
   */
   get-element --library-path/string --element/string="" --scope/string?=null --include-inherited/bool=false -> Map?:
-    if scope:
-      index := indexes_.get scope
-      if not index: return null
-      found := index.get-element
-          --library-path=library-path
-          --element=element
-          --include-inherited=include-inherited
-      if found: found["scope"] = scope
-      return found
-
-    indexes_.do: | label/string index/DocIndex |
+    scoped-indexes := resolve-indexes_ scope
+    scoped-indexes.do: | label/string index/DocIndex |
       found := index.get-element
           --library-path=library-path
           --element=element
@@ -108,16 +103,22 @@ class DocStore:
   Each entry includes a "scope" key identifying which source it came from.
   */
   list-libraries --scope/string?=null -> List:
-    if scope:
-      index := indexes_.get scope
-      if not index: return []
-      results := index.list-libraries
-      results.do: | entry/Map | entry["scope"] = scope
-      return results
-
+    scoped-indexes := resolve-indexes_ scope
     result := []
-    indexes_.do: | label/string index/DocIndex |
+    scoped-indexes.do: | label/string index/DocIndex |
       libs := index.list-libraries
       libs.do: | entry/Map | entry["scope"] = label
       result.add-all libs
     return result
+
+  /**
+  Returns the indexes to iterate for the given $scope.
+
+  If $scope is null, returns all indexes. If $scope is given, returns a
+    single-entry map with that scope's index, or an empty map if not found.
+  */
+  resolve-indexes_ scope/string? -> Map:
+    if not scope: return indexes_
+    index := indexes_.get scope
+    if not index: return {:}
+    return { scope: index }

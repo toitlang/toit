@@ -70,24 +70,38 @@ class DocIndex:
   /**
   Searches for elements matching the $query string.
 
-  Performs a case-insensitive substring match on element names.
-  Returns up to $max-results matches. Each match is a map with
-    "name", "kind", "library", and "summary" keys.
+  If $exact is true, matches element names exactly (case-insensitive).
+  Otherwise, performs a case-insensitive substring match on element names.
+  If $search-docs is true, also matches against documentation summaries.
+
+  Returns a map with "results" (list of up to $max-results matches starting
+    at $offset) and "total" (total number of matches).
+  Each match is a map with "name", "kind", "library", and "summary" keys.
   */
-  search --query/string --max-results/int=10 -> List:
+  search --query/string --max-results/int=10 --offset/int=0
+      --exact/bool=false --search-docs/bool=false -> Map:
     lower-query := query.to-ascii-lower
-    result := []
+    all-matches := []
     entries_.do: | entry/Map |
-      if result.size >= max-results: return result
       name := entry["name"]
-      if (name.to-ascii-lower.contains lower-query):
-        result.add {
+      matched := exact
+          ? (name.to-ascii-lower == lower-query)
+          : (name.to-ascii-lower.contains lower-query)
+      if not matched and search-docs:
+        summary := entry["summary"]
+        if summary is string:
+          matched = (summary as string).to-ascii-lower.contains lower-query
+      if matched:
+        all-matches.add {
           "name": name,
           "kind": entry["kind"],
           "library": entry["library"],
           "summary": entry["summary"],
         }
-    return result
+    total := all-matches.size
+    end := min (offset + max-results) total
+    result := offset >= total ? [] : all-matches[offset..end]
+    return { "results": result, "total": total }
 
   /**
   Retrieves full documentation for a specific element.
@@ -140,6 +154,16 @@ class DocIndex:
         }
         if kind == "class" or kind == "interface" or kind == "mixin":
           result["members"] = collect-class-members_ found --include-inherited=include-inherited
+        else if kind == "function":
+          // Collect all overloads of this function.
+          overloads := find-all-in-module_ module element-name
+          if overloads.size > 1:
+            result["overloads"] = overloads.map: | overload/Map |
+              {
+                "parameters": overload.get "parameters",
+                "toitdoc": overload.get "toitdoc",
+                "return_type": overload.get "return_type",
+              }
         return result
     return null
 
@@ -170,7 +194,7 @@ class DocIndex:
   Indexes all elements within a single module.
   */
   index-module_ module/Map library-path/string -> none:
-    INDEX-LIST ::= : | list/List kind/string |
+    LIST-INDEX-BLOCK ::= : | list/List kind/string |
       list.do: | entry/Map |
         if entry.get "is_private": continue.do
         entries_.add {
@@ -184,25 +208,25 @@ class DocIndex:
     // Classes, interfaces, mixins (both direct and exported).
     ["classes", "export_classes"].do: | key |
       list := module.get key
-      if list: INDEX-LIST.call list "class"
+      if list: LIST-INDEX-BLOCK.call list "class"
 
     ["interfaces", "export_interfaces"].do: | key |
       list := module.get key
-      if list: INDEX-LIST.call list "interface"
+      if list: LIST-INDEX-BLOCK.call list "interface"
 
     ["mixins", "export_mixins"].do: | key |
       list := module.get key
-      if list: INDEX-LIST.call list "mixin"
+      if list: LIST-INDEX-BLOCK.call list "mixin"
 
     // Functions.
     ["functions", "export_functions"].do: | key |
       list := module.get key
-      if list: INDEX-LIST.call list "function"
+      if list: LIST-INDEX-BLOCK.call list "function"
 
     // Globals.
     ["globals", "export_globals"].do: | key |
       list := module.get key
-      if list: INDEX-LIST.call list "global"
+      if list: LIST-INDEX-BLOCK.call list "global"
 
     // Index class members.
     ["classes", "export_classes", "interfaces", "export_interfaces",
@@ -285,6 +309,23 @@ class DocIndex:
     return current
 
   /**
+  Finds all entries with the given $name in a module.
+
+  Returns a list of matching JSON maps (for handling overloaded functions).
+  */
+  find-all-in-module_ module/Map name/string -> List:
+    result := []
+    KEYS ::= [
+      "functions", "export_functions",
+    ]
+    KEYS.do: | key |
+      list := module.get key
+      if list:
+        list.do: | entry/Map |
+          if entry["name"] == name: result.add entry
+    return result
+
+  /**
   Finds a named element (class, function, global, etc.) within a module.
 
   Returns the JSON map for the element, or null if not found.
@@ -313,28 +354,45 @@ class DocIndex:
     structure := cls.get "structure"
     if not structure: return null
 
+    // Collect all matches across all member kinds, since fields and methods
+    // share the same namespace.
+    all-matches := []
     MEMBER-KEYS ::= ["methods", "constructors", "factories", "statics", "fields"]
     MEMBER-KEYS.do: | key/string |
       list := structure.get key
-      if list:
-        list.do: | member/Map |
-          if member["name"] == member-name:
-            kind := ?
-            if key == "fields":
-              kind = "field"
-            else if key == "constructors" or key == "factories":
-              kind = "constructor"
-            else:
-              kind = "method"
-            return {
-              "name": "$(cls["name"]).$member-name",
-              "kind": kind,
-              "library": "",
-              "toitdoc": member.get "toitdoc",
-              "members": [],
-              "parameters": member.get "parameters",
-            }
-    return null
+      if not list: continue.do
+      kind := ?
+      if key == "fields":
+        kind = "field"
+      else if key == "constructors" or key == "factories":
+        kind = "constructor"
+      else:
+        kind = "method"
+      list.do: | member/Map |
+        if member["name"] == member-name:
+          all-matches.add { "member": member, "kind": kind }
+
+    if all-matches.is-empty: return null
+    first := (all-matches[0]["member"] as Map)
+    first-kind := all-matches[0]["kind"] as string
+    result := {
+      "name": "$(cls["name"]).$member-name",
+      "kind": first-kind,
+      "library": "",
+      "toitdoc": first.get "toitdoc",
+      "members": [],
+      "parameters": first.get "parameters",
+    }
+    if all-matches.size > 1:
+      result["overloads"] = all-matches.map: | match/Map |
+        member := match["member"] as Map
+        {
+          "kind": match["kind"],
+          "parameters": member.get "parameters",
+          "toitdoc": member.get "toitdoc",
+          "return_type": member.get "return_type",
+        }
+    return result
 
   /**
   Collects all members of a class into a list of member maps.

@@ -4,7 +4,6 @@
 
 import expect show *
 import io
-import encoding.json
 
 import ...tools.mcp.mcp show create-mcp-server
 import ...tools.mcp.store show DocStore
@@ -19,37 +18,14 @@ import ...tools.toitdoc.src.builder show
     DocSection
     DocText
 
+import .mcp-test-utils show *
+
 main:
   test-full-session
   test-scoped-search
   test-list-sources
   test-unknown-tool-integration
   test-search-no-results-integration
-
-/** Encodes the given $msg as a Content-Length framed message. */
-frame-message msg/Map -> ByteArray:
-  payload := json.encode msg
-  header := "Content-Length: $(payload.size)\r\n\r\n"
-  buffer := io.Buffer
-  buffer.write header
-  buffer.write payload
-  return buffer.bytes
-
-/** Reads a single Content-Length framed response from the given $reader. */
-read-response reader/io.Reader -> Map:
-  content-length := -1
-  while true:
-    line := reader.read-line
-    if line == null: throw "Unexpected end of input"
-    if line == "":
-      break
-    if line.starts-with "Content-Length:":
-      content-length = int.parse (line.trim --left "Content-Length:").trim
-    else:
-      throw "Unexpected header: $line"
-  if content-length == -1: throw "Missing Content-Length header"
-  payload := reader.read-bytes content-length
-  return json.decode payload
 
 /** Creates a toitdoc with a single text paragraph. */
 make-toitdoc text/string -> Toitdoc:

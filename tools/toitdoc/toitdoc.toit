@@ -200,6 +200,59 @@ compute-sdk-path --sdk-path/string? --toit/string? --ui/Ui -> string:
     return sdk-path
   throw "Couldn't determine SDK path"
 
+/**
+Builds toitdoc JSON for the given source.
+
+The $source is the path to either a directory of .toit files or a single
+  .toit file. For SDK docs, pass the SDK's lib/toit/lib directory.
+
+Returns the parsed toitdoc JSON as a $Map.
+*/
+build-toitdoc --toit/string --sdk-path/string --source/string
+    --for-sdk/bool=false --for-package/bool=false
+    --exclude-sdk/bool=false --exclude-pkgs/bool=false
+    --include-private/bool=false
+    --version/string?=null --pkg-name/string?=null -> Map:
+  root-path/string := ?
+  if file.is-directory source:
+    root-path = source
+  else:
+    root-path = fs.dirname source
+  root-path = fs.to-absolute root-path
+
+  if not fs.is-absolute toit:
+    toit = fs.to-absolute toit
+
+  sdk-uri := lsp.to-uri sdk-path
+  if not sdk-uri.ends-with "/": sdk-uri = "$sdk-uri/"
+
+  paths := collect-files source
+  uris := paths.map: lsp.to-uri (fs.to-absolute it)
+
+  documents := lsp.compute-summaries --uris=uris --toit=toit --sdk-path=sdk-path
+  project-uri := compute-project-uri uris --documents=documents
+  summaries := (documents.analyzed-documents-for --project-uri=project-uri).summaries
+
+  builder := DocsBuilder summaries
+      --project-uri=project-uri
+      --root-path=root-path
+      --sdk-uri=sdk-uri
+      --pkg-name=pkg-name
+      --version=version
+      --exclude-sdk=exclude-sdk
+      --exclude-pkgs=exclude-pkgs
+      --include-private=include-private
+      --is-sdk-doc=for-sdk
+
+  built-toitdoc := builder.build
+
+  if not exclude-pkgs: built-toitdoc["contains_pkgs"] = true
+  if not exclude-sdk: built-toitdoc["contains_sdk"] = true
+  if for-package: built-toitdoc["mode"] = "package"
+  if for-sdk: built-toitdoc["mode"] = "sdk"
+
+  return built-toitdoc
+
 toitdoc invocation/cli.Invocation --toit/string --sdk-path/string? --output/string -> none:
   for-package := invocation["package"] == true
   for-sdk := invocation["sdk"] == true

@@ -14,11 +14,8 @@
 // directory of this repository.
 
 import cli
-import encoding.json
 import host.directory
-import host.file
 import host.pipe
-import io
 import system
 
 import .cache show DocCache
@@ -40,6 +37,9 @@ build-command --toit-from-args/Lambda --sdk-path-from-args/Lambda -> cli.Command
 
         This command starts an MCP (Model Context Protocol) server that
         provides Toit SDK and package documentation to AI coding assistants.
+
+        The skills at https://github.com/toitlang/ai-instructions use this
+        MCP server to provide Toit documentation to AI coding assistants.
 
         To use with Claude Code, add to .claude/settings.json:
           {
@@ -85,10 +85,10 @@ run-mcp invocation/cli.Invocation --toit/string --sdk-path/string?:
   store := DocStore
   lock-file-caches := {:}  // Map from project-root to LockFileCache.
 
-  loader := :: | source/string name/any path/any |
+  loader := :: | source/string name/string? path/string? |
     // Use the path as project root for packages if provided,
     //   otherwise fall back to the default project root.
-    effective-root := path is string ? (path as string) : project-root
+    effective-root := path or project-root
     lock-file-cache := lock-file-caches.get effective-root
         --init=: LockFileCache effective-root
     generate-docs_ source name path
@@ -98,8 +98,8 @@ run-mcp invocation/cli.Invocation --toit/string --sdk-path/string?:
         --cache=cache
         --lock-file-cache=lock-file-cache
 
-  reader := io.Reader.adapt pipe.stdin
-  writer := io.Writer.adapt pipe.stdout
+  reader := pipe.stdin
+  writer := pipe.stdout
   server := create-mcp-server
       --store=store
       --reader=reader
@@ -113,7 +113,7 @@ Generates documentation for the given $source type.
 Checks the cache first for SDK and package sources.
 Returns the parsed toitdoc JSON.
 */
-generate-docs_ source/string name/any path/any
+generate-docs_ source/string name/string? path/string?
     --toit/string --sdk-path/string --project-root/string
     --cache/DocCache --lock-file-cache/LockFileCache -> Map:
   // Check cache for SDK and packages.
@@ -121,10 +121,10 @@ generate-docs_ source/string name/any path/any
   cache-project-root/string? := null
   if source == "sdk":
     cache-key = DocCache.sdk-key --version=system.vm-sdk-version
-  else if source == "package" and name is string:
-    version := lock-file-cache.resolve-version --url=(name as string)
+  else if source == "package" and name:
+    version := lock-file-cache.resolve-version --url=name
     if version:
-      cache-key = DocCache.package-key --id=(name as string) --version=version
+      cache-key = DocCache.package-key --id=name --version=version
       cache-project-root = project-root
 
   if cache-key:
@@ -134,8 +134,7 @@ generate-docs_ source/string name/any path/any
           --sdk-path=sdk-path
           --project-root=project-root
           --lock-file-cache=lock-file-cache
-    cached := cache.get --key=cache-key --project-root=cache-project-root
-    if cached: return cached
+    return cache.get --key=cache-key --project-root=cache-project-root
 
   return generate-toitdoc_ source name path
       --toit=toit
@@ -144,29 +143,34 @@ generate-docs_ source/string name/any path/any
       --lock-file-cache=lock-file-cache
 
 /**
-Runs `toit doc build` to generate toitdoc JSON for the given source.
+Generates toitdoc JSON for the given source using the toitdoc library directly.
 */
-generate-toitdoc_ source/string name/any path/any
+generate-toitdoc_ source/string name/string? path/string?
     --toit/string --sdk-path/string --project-root/string
     --lock-file-cache/LockFileCache -> Map:
-  tmp-dir := directory.mkdtemp "/tmp/toitdoc-mcp-"
-  try:
-    output := "$tmp-dir/toitdoc.json"
-    args := [toit, "doc", "build", "-o", output]
-
-    if source == "sdk":
-      args.add-all ["--sdk", "--exclude-pkgs"]
-    else if source == "package":
-      pkg-path := lock-file-cache.resolve-path --url=(name as string)
-      args.add-all ["--package", "--exclude-sdk", "--exclude-pkgs", pkg-path]
-    else if source == "project":
-      project-path := path ? (path as string) : project-root
-      args.add-all ["--exclude-sdk", "--exclude-pkgs", project-path]
-    else:
-      throw "Unknown source: $source"
-
-    pipe.run-program args
-    content := file.read-contents output
-    return json.decode content
-  finally:
-    directory.rmdir --recursive tmp-dir
+  if source == "sdk":
+    return toitdoc-module.build-toitdoc
+        --toit=toit
+        --sdk-path=sdk-path
+        --source="$sdk-path/lib/toit/lib"
+        --for-sdk
+        --exclude-pkgs
+  else if source == "package":
+    pkg-path := lock-file-cache.resolve-path --url=name
+    return toitdoc-module.build-toitdoc
+        --toit=toit
+        --sdk-path=sdk-path
+        --source=pkg-path
+        --for-package
+        --exclude-sdk
+        --exclude-pkgs
+  else if source == "project":
+    project-path := path or project-root
+    return toitdoc-module.build-toitdoc
+        --toit=toit
+        --sdk-path=sdk-path
+        --source=project-path
+        --exclude-sdk
+        --exclude-pkgs
+  else:
+    throw "Unknown source: $source"
