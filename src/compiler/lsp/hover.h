@@ -98,6 +98,8 @@ class HoverHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc) override;
 
+  void definition(ir::Node* ir_node, Source::Range name_range) override {}
+
   /// Retries deferred hover lookups after all modules are resolved.
   ///
   /// When `emit_hover` is called during resolution of the entry module,

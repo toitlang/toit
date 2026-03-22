@@ -239,6 +239,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                method->selection_range(),
                                                method->outline_range());
         ir_to_ast_map_[ir] = method;
+        if (method->name_or_dot()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, method->name_or_dot()->selection_range());
+        }
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
@@ -247,6 +250,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                   global->selection_range(),
                                   global->outline_range());
         ir_to_ast_map_[ir] = global;
+        if (global->name()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, global->name()->selection_range());
+        }
         globals.add(ir);
       } else if (auto klass = declaration->as_Class()) {
         check_class(klass);
@@ -262,6 +268,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
         ir::Class* ir = _new ir::Class(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
+        if (klass->name()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, klass->name()->selection_range());
+        }
         classes.add(ir);
       } else {
         UNREACHABLE();
@@ -1841,6 +1850,16 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
               UNREACHABLE();
           }
           ir_to_ast_map_[ir_method] = member;
+          if (member->name_or_dot()->is_LspSelection()) {
+            lsp_->selection_handler()->definition(ir_method, member->name_or_dot()->selection_range());
+          } else if (member->name_or_dot()->is_Dot()) {
+            auto* dot = member->name_or_dot()->as_Dot();
+            if (dot->name()->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_method, dot->name()->selection_range());
+            } else if (dot->receiver()->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_method, dot->receiver()->selection_range());
+            }
+          }
         } else {
           ASSERT(name_or_dot->is_Identifier());
           Symbol member_name = name_or_dot->as_Identifier()->data();
@@ -1855,6 +1874,9 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                                              position,
                                              ast_field->outline_range());
             ir_to_ast_map_[ir_global] = member;
+            if (name_or_dot->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_global, name_or_dot->selection_range());
+            }
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
             auto ir_field = _new ir::Field(member_name,
@@ -1863,6 +1885,9 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                                            ast_field->selection_range(),
                                            ast_field->outline_range());
             ir_to_ast_map_[ir_field] = member;
+            if (name_or_dot->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_field, name_or_dot->selection_range());
+            }
             fields.add(ir_field);
             auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position, outline_range);
             auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position, outline_range);

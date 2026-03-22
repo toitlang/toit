@@ -1355,6 +1355,8 @@ void MethodResolver::_resolve_parameters(
       }
       bool field_storing_is_allowed = method_->is_constructor() || method_->is_instance();
       lsp_->selection_handler()->field_storing_parameter(parameter, fields, field_storing_is_allowed);
+    } else if (parameter->name()->is_LspSelection()) {
+      lsp_->selection_handler()->definition(ir_parameter, parameter->name()->selection_range());
     }
 
     if (field_storing_parameters != null && parameter->is_field_storing()) {
@@ -1687,6 +1689,9 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                                       false,  // Not a block
                                       type,
                                       range);
+    if (ast_parameter->name()->is_LspSelection()) {
+      lsp_->selection_handler()->definition(local, ast_parameter->name()->selection_range());
+    }
     ir::Local* ir_handler_parameter = local;
     if (i == 0) {
       reason_local = local;
@@ -3553,6 +3558,9 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
       // the rename pipeline can extract the class name source range.
       (*ir_to_ast_map_)[ir_right] = ast_declaration->type();
     }
+  }
+  if (ast_declaration->name()->is_LspSelection()) {
+    lsp_->selection_handler()->definition(local, ast_declaration->name()->selection_range());
   }
   scope()->add(name, ResolutionEntry(local));
   return _new ir::AssignmentDefine(local, ir_right, ast_declaration->selection_range());

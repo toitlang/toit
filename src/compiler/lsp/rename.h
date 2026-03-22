@@ -242,6 +242,10 @@ class FindReferencesHandler : public LspSelectionHandler {
     target_ = unwrap_reference(candidates[0]);
     cursor_range_ = node->selection_range();
   }
+  void definition(ir::Node* ir_node, Source::Range name_range) override {
+    target_ = ir_node;
+    cursor_range_ = name_range;
+  }
 
   ir::Node* target() const { return target_; }
   /// Returns the source range at the cursor position (the usage site).

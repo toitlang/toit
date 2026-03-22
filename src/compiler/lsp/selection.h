@@ -143,6 +143,10 @@ class LspSelectionHandler {
                            ToitdocScopeIterator* iterator,
                            bool is_signature_toitdoc) = 0;
 
+  /// Called when the resolver creates an IR definition node and the cursor
+  /// is on the definition's name (i.e. the AST name is an LspSelection).
+  virtual void definition(ir::Node* ir_node, Source::Range name_range) = 0;
+
 
  protected:
   LspProtocol* protocol() { return protocol_; }

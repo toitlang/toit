@@ -1080,144 +1080,6 @@ void FindReferencesPipeline::setup_lsp_selection_handler() {
   lsp()->setup_find_references_handler(source_manager());
 }
 
-/// Finds the IR definition node at the given cursor position.
-///
-/// The LSP selection mechanism works by inserting a dot-marker at the cursor
-/// position, which the resolver handles as a synthetic call expression. This
-/// triggers handler callbacks (like `call_static`) at reference/usage sites.
-/// However, at definition sites (e.g., `foo x:` or `my-global := 42`), there
-/// is no call expression to resolve, so the handler callback is never invoked
-/// and no target is captured.
-///
-/// This function provides a fallback for that case: it iterates the program's
-/// top-level definitions (globals, methods, classes, and class fields) and
-/// finds the one whose name range contains the cursor position.
-static ir::Node* find_definition_at_cursor(ir::Program* program,
-                                           SourceManager* source_manager,
-                                           const char* cursor_path,
-                                           int cursor_line,     // 1-based
-                                           int cursor_column) { // 1-based
-  // Checks whether the given range's start location matches the cursor.
-  // Definition name ranges are typically short (a single identifier on one
-  // line), so we check that the cursor line matches the start line and that
-  // the cursor column falls between the start and end columns.
-  auto range_contains_cursor = [&](Source::Range range) -> bool {
-    if (!range.is_valid()) return false;
-    auto from = source_manager->compute_location(range.from());
-    if (!from.is_valid()) return false;
-    if (strcmp(from.source->absolute_path(), cursor_path) != 0) return false;
-    if (from.line_number != cursor_line) return false;
-    auto to = source_manager->compute_location(range.to());
-    // offset_in_line is 0-based; cursor_column is 1-based.
-    int cursor_col_0 = cursor_column - 1;
-    return cursor_col_0 >= from.offset_in_line && cursor_col_0 < to.offset_in_line;
-  };
-
-  // Check classes first — a default (synthesized) constructor or factory may
-  // share its range with the class definition, and we want to return the
-  // class rather than the constructor when the cursor is on the class name.
-  for (auto* klass : program->classes()) {
-    if (range_contains_cursor(klass->range())) return klass;
-    for (auto* field : klass->fields()) {
-      if (range_contains_cursor(field->range())) return field;
-    }
-    for (auto* method : klass->methods()) {
-      if (range_contains_cursor(method->range())) return method;
-    }
-    for (auto* constructor : klass->unnamed_constructors()) {
-      if (range_contains_cursor(constructor->range())) return constructor;
-    }
-    for (auto* factory : klass->factories()) {
-      if (range_contains_cursor(factory->range())) return factory;
-    }
-    if (klass->statics() != null) {
-      for (auto* node : klass->statics()->nodes()) {
-        if (node->is_Method() && range_contains_cursor(node->as_Method()->range())) {
-          return node;
-        }
-      }
-    }
-  }
-  // Check globals (ir::Global is a subtype of ir::Method).
-  for (auto* global : program->globals()) {
-    if (range_contains_cursor(global->range())) return global;
-  }
-  // Check top-level methods (functions).
-  for (auto* method : program->methods()) {
-    if (range_contains_cursor(method->range())) return method;
-  }
-  // Check locals and parameters in method bodies.
-  class DefinitionFinder : public ir::TraversingVisitor {
-   public:
-    DefinitionFinder(std::function<bool(Source::Range)> range_contains_cursor)
-        : range_contains_cursor_(std::move(range_contains_cursor)) {}
-
-    void visit_Method(ir::Method* node) override {
-      for (auto parameter : node->parameters()) {
-        if (range_contains_cursor_(parameter->range())) {
-          result_ = parameter;
-          return;
-        }
-      }
-      ir::TraversingVisitor::visit_Method(node);
-    }
-
-    void visit_Sequence(ir::Sequence* node) override {
-      if (result_ != null) return;
-      ir::TraversingVisitor::visit_Sequence(node);
-    }
-
-    void visit_AssignmentDefine(ir::AssignmentDefine* node) override {
-      if (range_contains_cursor_(node->local()->range())) {
-        result_ = node->local();
-        return;
-      }
-      ir::TraversingVisitor::visit_AssignmentDefine(node);
-    }
-
-    ir::Node* result() const { return result_; }
-
-   private:
-    std::function<bool(Source::Range)> range_contains_cursor_;
-    ir::Node* result_ = null;
-  };
-
-  DefinitionFinder finder(range_contains_cursor);
-  auto check_method = [&](ir::Method* method) -> ir::Node* {
-    if (method == null) return null;
-    method->accept(&finder);
-    return finder.result();
-  };
-
-  for (auto* method : program->methods()) {
-    if (auto* res = check_method(method)) return res;
-  }
-  for (auto* klass : program->classes()) {
-    for (auto* method : klass->methods()) {
-      if (auto* res = check_method(method)) return res;
-    }
-    for (auto* constructor : klass->unnamed_constructors()) {
-      if (auto* res = check_method(constructor)) return res;
-    }
-    for (auto* factory : klass->factories()) {
-      if (auto* res = check_method(factory)) return res;
-    }
-    // Also check named constructors/statics in the statics scope.
-    if (klass->statics() != null) {
-      for (auto* node : klass->statics()->nodes()) {
-        if (node->is_Method()) {
-          if (auto* res = check_method(node->as_Method())) return res;
-        }
-      }
-    }
-  }
-  for (auto* global : program->globals()) {
-    if (auto* res = check_method(global)) return res;
-  }
-
-  return null;
-}
-
 void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* program) {
   if (lsp() == null || !lsp()->has_selection_handler()) return;
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
@@ -1227,49 +1089,6 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
   // out of scope. This is needed for renaming symbols that appear in
   // show/export clauses of import statements.
   show_export_references_ = resolver->show_export_references();
-
-  // Fall back to scanning definitions if the cursor was on a definition site.
-  if (target == null) {
-    target = find_definition_at_cursor(
-        program, source_manager(), lsp_selection_path_, line_number_, column_number_);
-  }
-
-  // Check if the cursor is on the name part of a named constructor/factory.
-  // For `constructor.bar`, the IR range only covers "constructor", so
-  // find_definition_at_cursor won't match when the cursor is on "bar".
-  if (target == null) {
-    auto& ir_to_ast = resolver->ir_to_ast_map();
-    auto range_contains_cursor = [&](Source::Range range) -> bool {
-      if (!range.is_valid()) return false;
-      auto from = source_manager()->compute_location(range.from());
-      if (!from.is_valid()) return false;
-      if (strcmp(from.source->absolute_path(), lsp_selection_path_) != 0) return false;
-      if (from.line_number != line_number_) return false;
-      auto to = source_manager()->compute_location(range.to());
-      int cursor_col_0 = column_number_ - 1;
-      return cursor_col_0 >= from.offset_in_line && cursor_col_0 < to.offset_in_line;
-    };
-    for (auto* klass : program->classes()) {
-      if (klass->statics() == null) continue;
-      for (auto* node : klass->statics()->nodes()) {
-        if (!node->is_Method()) continue;
-        auto* method = node->as_Method();
-        if (!method->is_constructor() && !method->is_factory()) continue;
-        auto probe = ir_to_ast.find(method);
-        if (probe == ir_to_ast.end()) continue;
-        if (!probe->second->is_Method()) continue;
-        auto* ast_method = probe->second->as_Method();
-        if (ast_method->name_or_dot()->is_Dot()) {
-          auto name_range = ast_method->name_or_dot()->as_Dot()->name()->selection_range();
-          if (range_contains_cursor(name_range)) {
-            target = method;
-            break;
-          }
-        }
-      }
-      if (target != null) break;
-    }
-  }
 
   if (target != null) {
     auto& ir_to_ast = resolver->ir_to_ast_map();
@@ -1309,12 +1128,6 @@ void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* progra
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
 
-  // Fall back to scanning definitions if the cursor was on a definition site.
-  if (target == null) {
-    target = find_definition_at_cursor(
-        program, source_manager(), lsp_selection_path_, line_number_, column_number_);
-  }
-
   if (target != null) {
     // Use the cursor-site range (from the handler callback) so that the
     // prepareRename response points to the identifier at the cursor, not at
@@ -1322,40 +1135,6 @@ void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* progra
     // is directly on the definition (cursor_range is invalid).
     emit_prepare_rename(target, handler->cursor_range());
     // Never reached — emit_prepare_rename calls exit(0).
-  }
-
-  // Check if the cursor is on the name part of a named constructor/factory.
-  // For `constructor.bar`, the IR range only covers "constructor", so
-  // find_definition_at_cursor won't match when the cursor is on "bar".
-  // We use the resolver's ir_to_ast map to check the AST name range.
-  auto& ir_to_ast = resolver->ir_to_ast_map();
-  auto range_contains_cursor = [&](Source::Range range) -> bool {
-    if (!range.is_valid()) return false;
-    auto from = source_manager()->compute_location(range.from());
-    if (!from.is_valid()) return false;
-    if (strcmp(from.source->absolute_path(), lsp_selection_path_) != 0) return false;
-    if (from.line_number != line_number_) return false;
-    auto to = source_manager()->compute_location(range.to());
-    int cursor_col_0 = column_number_ - 1;
-    return cursor_col_0 >= from.offset_in_line && cursor_col_0 < to.offset_in_line;
-  };
-  for (auto* klass : program->classes()) {
-    if (klass->statics() == null) continue;
-    for (auto* node : klass->statics()->nodes()) {
-      if (!node->is_Method()) continue;
-      auto* method = node->as_Method();
-      if (!method->is_constructor() && !method->is_factory()) continue;
-      auto probe = ir_to_ast.find(method);
-      if (probe == ir_to_ast.end()) continue;
-      auto* ast_method = probe->second->as_Method();
-      if (ast_method->name_or_dot()->is_Dot()) {
-        auto name_range = ast_method->name_or_dot()->as_Dot()->name()->selection_range();
-        if (range_contains_cursor(name_range)) {
-          emit_prepare_rename(method, name_range);
-          // Never reached.
-        }
-      }
-    }
   }
 
   // If still not found, the cursor may be on a virtual call site.
