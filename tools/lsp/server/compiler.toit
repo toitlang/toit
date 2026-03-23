@@ -335,7 +335,9 @@ class Compiler:
     path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send the result we got.
-    run --project-uri=project-uri --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n$path\n": |reader /io.Reader|
+    run --project-uri=project-uri
+        --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n$path\n":
+      |reader /io.Reader|
       line := reader.read-line
       if not line: return null
       // The compiler emits the file path first, but prepareRename only

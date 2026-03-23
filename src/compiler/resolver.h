@@ -54,6 +54,27 @@ class Resolver {
                        int core_unit_index);
 
   ToitdocRegistry* toitdocs() { return toitdocs_; }
+
+  /// Maps IR nodes to their originating AST nodes.
+  ///
+  /// During resolution, most AST source-range information is discarded
+  /// as IR nodes record only essential positional data.  This map
+  /// preserves the AST nodes for the small set of cases where the
+  /// rename/reference visitor needs source ranges that the IR does not
+  /// carry — for example:
+  ///  - setter CallVirtual → AST Dot (to recover the property name range),
+  ///  - Typecheck → AST type expression (to recover the class-name range
+  ///    inside a type annotation like `x/Foo`),
+  ///  - Call with named arguments → AST Call (to recover the `--param`
+  ///    source range for named-argument rename),
+  ///  - field-storing parameters → AST field (to map constructors
+  ///    parameter back to the field declaration).
+  ///
+  /// Entries are inserted in resolver_method.cc at the point where each
+  /// IR node is created from its AST counterpart.  The map is then
+  /// moved into the rename pipeline (FindReferencesPipeline) before the
+  /// resolver is destroyed, so the visitor can look up AST ranges during
+  /// its IR traversal.
   UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
 
   /// A reference from a show/export clause to a resolved definition.
