@@ -367,6 +367,55 @@ class LspClient:
     if always-wait-for-idle: wait-for-idle
     return result
 
+  send-rename-request --path/string line column new-name/string -> any:
+    return send-rename-request --uri=(to-uri path) line column new-name
+
+  send-rename-request --uri/string line column new-name/string -> any:
+    result := connection_.request "textDocument/rename" {
+      "textDocument": {
+        "uri": uri,
+      },
+      "position": {
+        "line": line,
+        "character": column,
+      },
+      "newName": new-name,
+    }
+    if always-wait-for-idle: wait-for-idle
+    return result
+
+  send-prepare-rename-request --path/string line column -> any:
+    return send-prepare-rename-request --uri=(to-uri path) line column
+
+  send-prepare-rename-request --uri/string line column -> any:
+    result := connection_.request "textDocument/prepareRename" {
+      "textDocument": {
+        "uri": uri,
+      },
+      "position": {
+        "line": line,
+        "character": column,
+      },
+    }
+    if always-wait-for-idle: wait-for-idle
+    return result
+
+  send-hover-request --path/string line column -> any:
+    return send-hover-request --uri=(to-uri path) line column
+
+  send-hover-request --uri/string line column -> any:
+    result := connection_.request "textDocument/hover" {
+      "textDocument": {
+        "uri": uri
+      },
+      "position": {
+        "line": line,
+        "character": column,
+      }
+    }
+    if always-wait-for-idle: wait-for-idle
+    return result
+
   send-outline-request --path/string -> any: return send-outline-request --uri=(to-uri path)
 
   send-outline-request --uri/string -> any:
