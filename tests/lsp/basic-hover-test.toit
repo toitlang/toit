@@ -34,7 +34,7 @@ This is a method.
   */
 
   a.field
-  /*^
+  /*  ^
 This is a field.
   */
 
