@@ -198,7 +198,13 @@ test client/LspClient test-path/string:
           file-contents.do: |path fc|
             client.send-did-change --path=path fc
 
-          // Step 4: Send rename request.
+          // Step 4: Ask prepareRename for the original symbol name, then
+          //   send the rename request.
+          prepare-response := client.send-prepare-rename-request
+              --path=temp-path
+              test-line-index
+              column
+
           response := client.send-rename-request
               --path=temp-path
               test-line-index
@@ -210,11 +216,33 @@ test client/LspClient test-path/string:
             continue
 
           expect-not-null response
+          expect-not-null prepare-response
+          expected-name := prepare-response["placeholder"]
+
           changes := response["changes"]
           total-edits := 0
           changes.do: |uri edits|
+            path := client.to-path uri
+            fc := file-contents.get path
+            fc-lines := fc ? (fc.split "\n") : null
             edits.do: |edit|
               expect-equals "new-name" edit["newText"]
+              // Verify the edited range covers the original name.
+              if fc-lines:
+                start := edit["range"]["start"]
+                end := edit["range"]["end"]
+                start-line := start["line"]
+                start-char := start["character"]
+                end-line := end["line"]
+                end-char := end["character"]
+                if start-line == end-line:
+                  old-text := fc-lines[start-line][start-char..end-char]
+                  // In Toit, underscores and hyphens are interchangeable
+                  //   in identifiers. Normalize before comparing.
+                  normalized := old-text.replace --all "_" "-"
+                  if normalized != expected-name:
+                    print "ERROR: Edit at line $(start-line+1) covers '$old-text', expected '$expected-name'"
+                  expect-equals expected-name normalized
               total-edits++
           expect-equals expected-count total-edits
 
