@@ -11,8 +11,7 @@ my-global := 42
 
 use-it:
   return my-global
-/*
-         ^
+/*       ^
   my-global
 */
 

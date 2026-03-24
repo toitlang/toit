@@ -9,7 +9,6 @@ import gpio
 main:
   pin := gpio.Pin 18
   _ := pin.num
-/*
-           ^
+/*         ^
   0
 */

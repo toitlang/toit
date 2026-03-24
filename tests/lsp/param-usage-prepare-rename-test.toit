@@ -5,8 +5,7 @@
 // Test: parameter usage (not declaration)
 param-usage p1/int -> int:
   return p1 + 1
-/*
-         ^
+/*       ^
   p1
 */
 

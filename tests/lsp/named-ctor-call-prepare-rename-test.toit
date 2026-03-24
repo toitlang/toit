@@ -14,15 +14,13 @@ class MyClass:
 
 call-named-ctor:
   MyClass.create 42
-/*
-          ^
+/*        ^
   create
 */
 
 call-class:
   MyClass.create 42
-/*
-  ^
+/*^
   MyClass
 */
 

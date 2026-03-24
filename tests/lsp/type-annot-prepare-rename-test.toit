@@ -2,13 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Test: type annotation with class name
+// Test: type annotation with class name.
 class Foo:
   constructor:
 
 typed param/Foo:
-/*
-            ^
+/*          ^
   Foo
 */
   null

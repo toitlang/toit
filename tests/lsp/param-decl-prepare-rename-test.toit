@@ -4,8 +4,7 @@
 
 // Test: parameter p1 at declaration site
 param-test p1/int -> int:
-/*
-           ^
+/*         ^
   p1
 */
   return p1 + 1

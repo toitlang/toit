@@ -6,8 +6,7 @@
 class Foo:
   constructor:
   constructor.bar:
-/*
-              ^
+/*            ^
   bar
 */
 

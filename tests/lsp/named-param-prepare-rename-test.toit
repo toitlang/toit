@@ -4,15 +4,13 @@
 
 // Test: named args at declaration
 named-fun --my-flag/bool:
-/*
-             ^
+/*           ^
   my-flag
 */
   return my-flag
-/*
-         ^
+/*       ^
   my-flag
 */
 
 main:
-  named-fun --my-flag=true
+  named-fun --my-flag

@@ -266,8 +266,8 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 class FindReferencesPipeline : public LocationLanguageServerPipeline {
  public:
   FindReferencesPipeline(const char* find_references_path,
-                         int line_number,   // 1-based
-                         int column_number, // 1-based
+                         int line_number,    // 1-based.
+                         int column_number,  // 1-based.
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::find_references,
                                        find_references_path,
@@ -298,8 +298,8 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
 class PrepareRenamePipeline : public LocationLanguageServerPipeline {
  public:
   PrepareRenamePipeline(const char* path,
-                        int line_number,   // 1-based
-                        int column_number, // 1-based
+                        int line_number,    // 1-based.
+                        int column_number,  // 1-based.
                         const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::prepare_rename,
                                        path,
@@ -327,8 +327,8 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
 class HoverPipeline : public LocationLanguageServerPipeline {
  public:
   HoverPipeline(const char* hover_path,
-                int line_number,   // 1-based
-                int column_number, // 1-based
+                int line_number,    // 1-based.
+                int column_number,  // 1-based.
                 const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::hover,
                                        hover_path,
@@ -344,12 +344,16 @@ class HoverPipeline : public LocationLanguageServerPipeline {
   void post_resolve(Resolver* resolver, ir::Program* program) override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    // Retry emitting hover for nodes that had invalid ranges during
+    // resolution — cross-module targets may now be resolved.
     handler->finalize();
   }
 
   void post_type_check() override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    // Final attempt: type checking may have resolved ranges that were
+    // still unavailable after resolution (e.g., mixin forwarding stubs).
     handler->finalize();
   }
 
@@ -1144,7 +1148,10 @@ void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* progra
 }
 
 void PrepareRenamePipeline::post_type_check() {
-  if (lsp() == null || !lsp()->has_selection_handler()) { exit(0); return; }
+  if (lsp() == null || !lsp()->has_selection_handler()) {
+    exit(0);
+    return;
+  }
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
 

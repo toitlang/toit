@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Test: class name at static call site
+// Test: class name at static call site.
 class Foo:
   static bar -> int:
     return 42

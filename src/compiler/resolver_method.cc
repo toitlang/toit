@@ -2530,7 +2530,6 @@ ir::Expression* MethodResolver::resolve_error(ast::Node* node) {
 }
 
 void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_receiver) {
-  ASSERT(ast_dot->name()->is_LspSelection());
   ASSERT(!scope_->is_prefixed_identifier(ast_dot));
   ASSERT(!scope_->is_static_identifier(ast_dot));
   // We are not handling virtual call completions here.
