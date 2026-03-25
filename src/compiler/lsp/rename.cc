@@ -491,9 +491,16 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
   }
 
   if (matches) {
+    // Prefer the AST node's selection_range() over the IR node's range().
+    // The IR range may include prefix syntax (e.g., "--" for named
+    // parameters, "." for dot access), whereas the AST selection_range()
+    // gives the exact source range of the identifier.
     auto* ast_node = ir_to_ast_map_.lookup(node);
-    if (ast_node != null) emit_range(ast_node->selection_range());
-    else emit_range(node->range());
+    if (ast_node != null) {
+      emit_range(ast_node->selection_range());
+    } else {
+      emit_range(node->range());
+    }
   }
   TraversingVisitor::visit_Reference(node);
 }
@@ -593,6 +600,9 @@ void find_and_emit_all_references(
 
   // Refuse to rename SDK symbols — their source files are not user-editable.
   if (is_sdk_target(target, source_manager)) exit(0);
+
+  // Operators cannot be meaningfully renamed.
+  if (target->is_Method() && is_operator_name(target->as_Method()->name())) exit(0);
 
   // Refuse to rename symbols defined in non-path packages (e.g., git
   // dependencies). Only the entry package and local path packages are editable.

@@ -368,6 +368,9 @@ class Compiler:
       if not line: continue.run
 
       kind := int.parse line
+      // The hover protocol encodes the response kind as:
+      //   -1: toitdoc reference (path, start, end follow as separate lines)
+      //   >0: string content (kind = byte length of the payload)
       if kind == -1:
         ref-path := reader.read-line
         start := int.parse reader.read-line

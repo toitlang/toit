@@ -199,8 +199,8 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
  public:
   LocationLanguageServerPipeline(Kind kind,
                                  const char* path,
-                                 int line_number,   // 1-based
-                                 int column_number, // 1-based
+                                 int line_number,    // 1-based.
+                                 int column_number,  // 1-based.
                                  const PipelineConfiguration& configuration)
       : LanguageServerPipeline(kind, configuration)
       , lsp_selection_path_(path)
@@ -222,8 +222,8 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
 class CompletionPipeline : public LocationLanguageServerPipeline {
  public:
   CompletionPipeline(const char* completion_path,
-                     int line_number,   // 1-based
-                     int column_number, // 1-based
+                     int line_number,    // 1-based.
+                     int column_number,  // 1-based.
                      const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::completion,
                                        completion_path,
@@ -248,8 +248,8 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
  public:
   GotoDefinitionPipeline(const char* goto_definition_path,
-                         int line_number,   // 1-based
-                         int column_number, // 1-based
+                         int line_number,    // 1-based.
+                         int column_number,  // 1-based.
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
                                        goto_definition_path,
@@ -1170,6 +1170,9 @@ void PrepareRenamePipeline::emit_prepare_rename(ir::Node* target,
 
   // Refuse to rename SDK symbols — their source files are not user-editable.
   if (is_sdk_target(target, source_manager())) exit(0);
+
+  // Operators cannot be meaningfully renamed.
+  if (target->is_Method() && is_operator_name(target->as_Method()->name())) exit(0);
 
   auto from = source_manager()->compute_location(range.from());
   auto to = source_manager()->compute_location(range.to());
