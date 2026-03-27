@@ -94,13 +94,28 @@ class DocFormatter:
   static format-element element/Map -> string:
     name := element["name"]
     kind := element["kind"]
-    lines := ["# $kind $name"]
+    signature := format-signature_ (element.get "parameters")
+    header := signature != "" ? "# $kind $name $signature" : "# $kind $name"
+    lines := [header]
 
     toitdoc := element.get "toitdoc"
     doc := format-toitdoc toitdoc
     if doc != "":
       lines.add ""
       lines.add doc
+
+    overloads := element.get "overloads"
+    if overloads is List and (overloads as List).size > 1:
+      lines.add ""
+      lines.add "## Overloads"
+      (overloads as List).do: | overload/Map |
+        overload-sig := format-signature_ (overload.get "parameters")
+        lines.add ""
+        lines.add "### $name $overload-sig"
+        overload-doc := format-toitdoc (overload.get "toitdoc")
+        if overload-doc != "":
+          lines.add ""
+          lines.add overload-doc
 
     members := element.get "members"
     if members is List and not (members as List).is-empty:
@@ -113,8 +128,12 @@ class DocFormatter:
       (members as List).do: | member/Map |
         member-name := member["name"]
         member-kind := member["kind"]
+        member-sig := format-signature_ (member.get "parameters")
         lines.add ""
-        lines.add "### $member-name ($member-kind)"
+        if member-sig != "":
+          lines.add "### $member-name $member-sig ($member-kind)"
+        else:
+          lines.add "### $member-name ($member-kind)"
         member-doc := format-toitdoc (member.get "toitdoc")
         if member-doc != "":
           lines.add ""
@@ -174,8 +193,47 @@ class DocFormatter:
         lines.add ""
 
   /**
-  Renders a list of expressions into a single string.
+  Formats a parameter list into a Toit-style signature string.
+
+  Returns an empty string if $params is null or empty.
   */
+  static format-signature_ params -> string:
+    if params is not List: return ""
+    param-list := params as List
+    if param-list.is-empty: return ""
+    parts := []
+    param-list.do: | param |
+      if param is not Map: continue.do
+      p := param as Map
+      name := p["name"]
+      is-named := p.get "is_named"
+      is-block := p.get "is_block"
+      type-str := format-type_ (p.get "type")
+      if is-block == true:
+        parts.add "[--$name]"
+      else if is-named == true:
+        if type-str != "":
+          parts.add "--$name/$type-str"
+        else:
+          parts.add "--$name"
+      else:
+        if type-str != "":
+          parts.add "$name/$type-str"
+        else:
+          parts.add name
+    return parts.join " "
+
+  /** Formats a type JSON map into a type name string. */
+  static format-type_ type -> string:
+    if type is not Map: return ""
+    t := type as Map
+    if (t.get "is_any") == true: return "any"
+    if (t.get "is_none") == true: return "none"
+    ref := t.get "reference"
+    if ref is Map: return (ref as Map).get "name" --if-absent=: ""
+    return ""
+
+  /** Renders a list of expressions into a single string. */
   static render-expressions_ expressions/List -> string:
     parts := []
     expressions.do: | expr/DocExpression |

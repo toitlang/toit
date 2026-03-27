@@ -16,16 +16,9 @@ foreach(file ${MCP_TESTS})
     set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
   endif()
 
-  # E2E tests need the toit executable as an argument.
-  if("${file}" MATCHES "e2e")
-    set(TEST_ARGS $<TARGET_FILE:toit.run>)
-  else()
-    set(TEST_ARGS "")
-  endif()
-
   add_test(
     NAME ${TEST_EXPECTATION_NAME}
-    COMMAND $<TARGET_FILE:toit.run> "${TOIT_SDK_SOURCE_DIR}/${file}" ${TEST_ARGS}
+    COMMAND $<TARGET_FILE:toit.run> "${TOIT_SDK_SOURCE_DIR}/${file}" $<TARGET_FILE:toit.run>
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
 

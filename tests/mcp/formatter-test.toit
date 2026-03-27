@@ -142,7 +142,11 @@ test-format-element-class:
       output
 
 test-format-element-class-overloaded:
-  // Test that overloaded methods (same name, different signatures) are both shown.
+  // Test overloaded methods with types, named parameters, and blocks.
+  any-type := {"is_any": true, "is_none": false, "is_block": false}
+  int-type := {"is_any": false, "is_none": false, "is_block": false,
+      "reference": {"name": "int", "path": ["core"]}}
+
   element := {
     "name": "List",
     "kind": "class",
@@ -153,11 +157,36 @@ test-format-element-class-overloaded:
         "name": "add",
         "kind": "method",
         "toitdoc": make-toitdoc "Adds a single value.",
+        "parameters": [
+          {"name": "value", "is_named": false, "is_block": false, "type": any-type},
+        ],
       },
       {
         "name": "add",
         "kind": "method",
         "toitdoc": make-toitdoc "Adds all values from another collection.",
+        "parameters": [
+          {"name": "collection", "is_named": false, "is_block": false,
+              "type": {"is_any": false, "is_none": false, "is_block": false,
+                  "reference": {"name": "Collection", "path": ["core"]}}},
+        ],
+      },
+      {
+        "name": "sort",
+        "kind": "method",
+        "toitdoc": make-toitdoc "Sorts with a comparator.",
+        "parameters": [
+          {"name": "compare", "is_named": false, "is_block": true, "type": any-type},
+        ],
+      },
+      {
+        "name": "copy",
+        "kind": "method",
+        "toitdoc": make-toitdoc "Copies a range.",
+        "parameters": [
+          {"name": "from", "is_named": true, "is_block": false, "type": int-type},
+          {"name": "to", "is_named": true, "is_block": false, "type": int-type},
+        ],
       },
     ],
   }
@@ -171,13 +200,21 @@ test-format-element-class-overloaded:
 
       ## Members
 
-      ### add (method)
+      ### add value/any (method)
 
       Adds a single value.
 
-      ### add (method)
+      ### add collection/Collection (method)
 
-      Adds all values from another collection."""
+      Adds all values from another collection.
+
+      ### sort [--compare] (method)
+
+      Sorts with a comparator.
+
+      ### copy --from/int --to/int (method)
+
+      Copies a range."""
       output
 
 test-format-element-function:
