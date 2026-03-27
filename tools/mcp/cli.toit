@@ -98,12 +98,10 @@ run-mcp invocation/cli.Invocation --toit/string --sdk-path/string?:
         --cache=cache
         --lock-file-cache=lock-file-cache
 
-  reader := pipe.stdin
-  writer := pipe.stdout
   server := create-mcp-server
       --store=store
-      --reader=reader
-      --writer=writer
+      --reader=pipe.stdin.in
+      --writer=pipe.stdout.out
       --loader=loader
   server.run
 

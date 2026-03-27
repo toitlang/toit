@@ -88,8 +88,8 @@ class DocFormatter:
   /**
   Formats full element documentation as Markdown.
 
-  The $element map has "name", "kind", "library", "toitdoc", and "members"
-    keys.
+  The $element map has "name", "kind", "library", "toitdoc",
+    "overloads", "parameters", and "members" keys.
   */
   static format-element element/Map -> string:
     name := element["name"]
