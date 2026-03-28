@@ -16,22 +16,27 @@
 
 class Greeter:
   greet name/string -> string:
+/*@ Greeter.greet */
 /*
   ^
   3
+  [Greeter.greet, use-greeter.greet, main.greet]
 */
     return "hello $name"
 
 use-greeter g/Greeter:
   g.greet "world"
+/*  @ use-greeter.greet */
 
 // --- Ambiguous method name: two unrelated hierarchies define "run" ---
 
 class Processor:
   run -> none:
+/*@ Processor.run */
 /*
   ^
   3
+  [Processor.run, use-processor.run, main.run]
 */
     // does processing
 
@@ -41,10 +46,13 @@ class Timer:
 
 use-processor p/Processor:
   p.run
+/*  @ use-processor.run */
 
 main:
   greeter := Greeter
   greeter.greet "toit"
+/*        @ main.greet */
 
   processor := Processor
   processor.run
+/*          @ main.run */

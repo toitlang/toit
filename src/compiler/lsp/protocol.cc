@@ -78,12 +78,12 @@ LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) 
   return range_to_lsp_range(from_location, to_location);
 }
 
-void LspProtocolBase::print_lsp_location(const LspLocation& location) {
+void LspProtocolBase::write_location(const LspLocation& location) {
   this->printf("%s\n", location.path);
-  print_lsp_range(location.range);
+  write_range(location.range);
 }
 
-void LspProtocolBase::print_lsp_range(const LspRange& range) {
+void LspProtocolBase::write_range(const LspRange& range) {
   this->printf("%d\n%d\n", range.from_line, range.from_column);
   this->printf("%d\n%d\n", range.to_line, range.to_column);
 }
@@ -110,7 +110,7 @@ void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity,
                                   va_list& arguments) {
   this->printf("WITH POSITION\n");
   this->printf("%s\n", severity_to_lsp_severity(severity));
-  print_lsp_location(location);
+  write_location(location);
   this->printf(format, arguments);
   this->printf("\n*******************\n");
 }
@@ -124,7 +124,7 @@ void LspDiagnosticsProtocol::end_group() {
 }
 
 void LspGotoDefinitionProtocol::emit(const LspLocation& location) {
-  print_lsp_location(location);
+  write_location(location);
 }
 
 void LspCompletionProtocol::emit_prefix(const char* prefix) {
@@ -132,7 +132,7 @@ void LspCompletionProtocol::emit_prefix(const char* prefix) {
 }
 
 void LspCompletionProtocol::emit_prefix_range(const LspRange& range) {
-  print_lsp_range(range);
+  write_range(range);
 }
 
 void LspCompletionProtocol::emit(const std::string& name,

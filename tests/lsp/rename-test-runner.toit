@@ -24,7 +24,32 @@ import .lsp-client show LspClient run-client-test
 import expect show *
 import host.file
 import host.directory
+import .utils show *
 import fs
+
+parse-location-names line/string -> List:
+  open := line.index-of "["
+  close := line.index-of "]"
+  if open == -1 or close == -1 or close <= open:
+    throw "Expected location list like [foo, bar], got: '$line'"
+  comma-separated-list := line.copy (open + 1) close
+  if comma-separated-list == "": return []
+  return comma-separated-list.split ", "
+
+find-test-line-index lines/List marker-index/int -> int:
+  test-line-index := marker-index - 1
+  while test-line-index > 0:
+    candidate := lines[test-line-index].trim
+    if candidate == "*/":
+      test-line-index--
+      while test-line-index > 0 and not lines[test-line-index].trim.starts-with "/*":
+        test-line-index--
+      test-line-index--
+    else if candidate.starts-with "/*":
+      test-line-index--
+    else:
+      break
+  return test-line-index
 
 /**
 Finds all relative imports in $content (lines starting with `import .`)
@@ -137,7 +162,8 @@ main args:
 
   run-client-test args: test it test-path
 
-test client/LspClient test-path/string:
+test client/LspClient test-path/string -> none:
+  locations := extract-locations test-path
   // Step 1: Copy test files to temp directory.
   temp-dir := directory.mkdtemp "/tmp/lsp_rename_test-"
   try:
@@ -166,33 +192,34 @@ test client/LspClient test-path/string:
           // find the actual code line.  When multiple markers annotate the
           // same source line, only the first block's "i - 1" points to the
           // code line; subsequent blocks would point to a closing "*/".
-          test-line-index := i - 1
-          while test-line-index > 0 and lines[test-line-index].trim == "*/":
-            test-line-index--
-            while test-line-index > 0 and not (lines[test-line-index].starts-with "/*"):
-              test-line-index--
-            // Now at the opening "/*" of the earlier block; step before it.
-            test-line-index--
+          test-line-index := find-test-line-index lines i
           if i + 1 >= lines.size: continue
           next-line := lines[i + 1]
           if not next-line.contains "^": continue
           column := next-line.index-of "^"
           // Skip past the caret line.
           i += 2
-          // Read the expected reference count.
-          if i >= lines.size: continue
-          count-line := lines[i].trim
-          if count-line == "*/":
-            continue
-          expected-count := int.parse count-line
-          i++
+          expected-lines := []
           while i < lines.size and not lines[i].starts-with "*/":
+            expected-lines.add lines[i].trim
             i++
+
+          if expected-lines.is-empty:
+            continue
+
+          expected-count := int.parse expected-lines[0]
+          expected-location-names := expected-lines.size > 1
+              ? parse-location-names expected-lines[1]
+              : []
 
           // Step 3: Build fresh file contents map from the temp copies.
           file-contents := {:}
           path-map.do: |orig-p tmp-p|
             file-contents[tmp-p] = (file.read-contents orig-p).to-string
+
+          temp-to-original := {:}
+          path-map.do: |orig-p tmp-p|
+            temp-to-original[tmp-p] = orig-p
 
           // Ensure fresh content is sent to LSP.
           file-contents.do: |path fc|
@@ -221,8 +248,10 @@ test client/LspClient test-path/string:
 
           changes := response["changes"]
           total-edits := 0
+          actual-locations := []
           changes.do: |uri edits|
             path := client.to-path uri
+            source-path := temp-to-original[path]
             fc := file-contents.get path
             fc-lines := fc ? (fc.split "\n") : null
             edits.do: |edit|
@@ -243,8 +272,24 @@ test client/LspClient test-path/string:
                   if normalized != expected-name:
                     print "ERROR: Edit at line $(start-line+1) covers '$old-text', expected '$expected-name'"
                   expect-equals expected-name normalized
+                if source-path:
+                  actual-locations.add (Location source-path start-line start-char)
               total-edits++
           expect-equals expected-count total-edits
+
+          if not expected-location-names.is-empty:
+            expected-locations := expected-location-names.map: |name|
+              location := locations.get name
+              if not location:
+                throw "Unknown expected location '$name'"
+              location
+            if expected-locations.size != actual-locations.size:
+              print "ERROR: Expected locations $expected-locations but got $actual-locations"
+            expect-equals expected-locations.size actual-locations.size
+            expected-locations.do:
+              if not actual-locations.contains it:
+                print "ERROR: Missing expected location $it in $actual-locations"
+              expect (actual-locations.contains it)
 
           // Step 5: Apply all edits to in-memory file contents.
           apply-rename-edits response client file-contents

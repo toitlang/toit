@@ -196,6 +196,90 @@ static const char* source_path_for_range(const Source::Range& range,
   return source->absolute_path();
 }
 
+static bool range_matches_name(const Source::Range& range,
+                               const char* expected,
+                               SourceManager* source_manager) {
+  if (!range.is_valid() || expected == null) return false;
+  auto* source = source_manager->source_for_position(range.from());
+  if (source == null) return false;
+
+  int from = source->offset_in_source(range.from());
+  int to = source->offset_in_source(range.to());
+  if (from < 0 || to < from) return false;
+
+  const uint8* text = source->text();
+  int expected_len = static_cast<int>(strlen(expected));
+  if ((to - from) != expected_len) return false;
+
+  for (int i = 0; i < expected_len; i++) {
+    char actual = static_cast<char>(text[from + i]);
+    char wanted = expected[i];
+    if (actual == wanted) continue;
+    if ((actual == '_' && wanted == '-') || (actual == '-' && wanted == '_')) continue;
+    return false;
+  }
+  return true;
+}
+
+static Source::Range class_reference_range(ast::Expression* expression) {
+  if (expression == null) return Source::Range::invalid();
+  if (expression->is_Dot()) {
+    return expression->as_Dot()->name()->selection_range();
+  }
+  return expression->selection_range();
+}
+
+static bool is_identifier_char(char c) {
+  return (c >= 'a' && c <= 'z') ||
+         (c >= 'A' && c <= 'Z') ||
+         (c >= '0' && c <= '9') ||
+         c == '_' || c == '-';
+}
+
+static Source::Range find_identifier_on_same_line(Source::Range anchor,
+                                                  const char* name,
+                                                  SourceManager* source_manager,
+                                                  bool choose_last = false) {
+  if (!anchor.is_valid() || name == null) return Source::Range::invalid();
+  auto location = source_manager->compute_location(anchor.from());
+  if (!location.is_valid()) return Source::Range::invalid();
+
+  auto* source = location.source;
+  const uint8* text = source->text();
+  int source_size = source->size();
+  int line_start = location.line_offset;
+  int line_end = line_start;
+  while (line_end < source_size && text[line_end] != '\n' && text[line_end] != '\r') {
+    line_end++;
+  }
+
+  int name_len = static_cast<int>(strlen(name));
+  int match = -1;
+  for (int i = line_start; i + name_len <= line_end; i++) {
+    bool matches = true;
+    for (int j = 0; j < name_len; j++) {
+      if (text[i + j] != static_cast<uint8>(name[j])) {
+        matches = false;
+        break;
+      }
+    }
+    if (!matches) continue;
+    if (i > line_start && is_identifier_char(static_cast<char>(text[i - 1]))) continue;
+    if (i + name_len < line_end && is_identifier_char(static_cast<char>(text[i + name_len]))) continue;
+    match = i;
+    if (!choose_last) break;
+  }
+  if (match == -1) return Source::Range::invalid();
+  return source->range(match, match + name_len);
+}
+
+static bool class_uses_implicit_constructor_name(ir::Method* method) {
+  return method != null &&
+         (method->is_constructor() || method->is_factory()) &&
+         method->holder() != null &&
+         (method->name() == method->holder()->name() || method->name() == Symbols::constructor);
+}
+
 /// Returns whether a class defines an instance method with the given name
 /// and a shape that accepts the given call shape.
 static bool class_has_matching_method(ir::Class* klass,
@@ -491,18 +575,55 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
   }
 
   if (matches) {
+    auto* ast_node = ir_to_ast_map_.lookup(node);
+    if (target_class_ != null && node->is_ReferenceMethod()) {
+      auto* method = node->as_ReferenceMethod()->target();
+      bool uses_class_name = method->holder() == target_class_ &&
+                             ((method->is_constructor() || method->is_factory()) ||
+                              !method->is_instance());
+      if (!uses_class_name) {
+        return;
+      }
+      if (ast_node != null) {
+        auto emit_class_part = [&](ast::Node* candidate) {
+          if (candidate == null) return false;
+          if (candidate->is_Call()) candidate = candidate->as_Call()->target();
+          if (candidate->is_Dot()) {
+            auto* receiver = candidate->as_Dot()->receiver();
+            if (receiver->is_Identifier() || receiver->is_Dot()) {
+              auto range = receiver->is_Identifier()
+                  ? receiver->selection_range()
+                  : receiver->as_Dot()->name()->selection_range();
+              if (range_matches_name(range, target_class_->name().c_str(), source_manager_)) {
+                emit_range(range);
+                return true;
+              }
+            }
+          }
+          auto range = candidate->selection_range();
+          if (range_matches_name(range, target_class_->name().c_str(), source_manager_)) {
+            emit_range(range);
+            return true;
+          }
+          return false;
+        };
+        if (emit_class_part(ast_node)) {
+          return;
+        }
+      }
+      return;
+    }
+
     // Prefer the AST node's selection_range() over the IR node's range().
     // The IR range may include prefix syntax (e.g., "--" for named
     // parameters, "." for dot access), whereas the AST selection_range()
     // gives the exact source range of the identifier.
-    auto* ast_node = ir_to_ast_map_.lookup(node);
     if (ast_node != null) {
       emit_range(ast_node->selection_range());
     } else {
       emit_range(node->range());
     }
   }
-  TraversingVisitor::visit_Reference(node);
 }
 
 void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {
@@ -526,6 +647,35 @@ void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {
 
 void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
   auto* method = node->target()->target();
+  if (target_class_ != null && method->holder() == target_class_ && !method->is_instance()) {
+    auto* ast_node = ir_to_ast_map_.lookup(node);
+    auto* ast_target = ast_node;
+    bool emitted = false;
+    if (ast_target != null && ast_target->is_Call()) {
+      ast_target = ast_target->as_Call()->target();
+    }
+    if (ast_target != null) {
+      if (ast_target->is_Dot()) {
+        auto* receiver = ast_target->as_Dot()->receiver();
+        if (receiver->is_Identifier()) {
+          emit_range(receiver->selection_range());
+          emitted = true;
+        } else if (receiver->is_Dot()) {
+          emit_range(receiver->as_Dot()->name()->selection_range());
+          emitted = true;
+        }
+      } else if (range_matches_name(ast_target->selection_range(),
+                                    target_class_->name().c_str(),
+                                    source_manager_)) {
+        emit_range(ast_target->selection_range());
+        emitted = true;
+      }
+    }
+    if (!emitted && class_uses_implicit_constructor_name(method)) {
+      emit_range(node->range());
+    }
+  }
+
   // When renaming a named parameter, call sites using --param_name must
   // also be updated.  Check if this call targets the method that owns
   // the rename-target parameter.
@@ -671,8 +821,10 @@ void find_and_emit_all_references(
   // Identifier. Use its range instead.
   if (target->is_Method()) {
     auto* method = target->as_Method();
-    if ((method->is_constructor() || method->is_factory()) &&
-        method->holder() != null) {
+    if (class_uses_implicit_constructor_name(method)) {
+      definition_range = method->holder()->range();
+    } else if ((method->is_constructor() || method->is_factory()) &&
+               method->holder() != null) {
       auto* ast_node = ir_to_ast.lookup(target);
       if (ast_node != null && ast_node->is_Method()) {
         auto* name_or_dot = ast_node->as_Method()->name_or_dot();
@@ -755,7 +907,11 @@ void find_and_emit_all_references(
 
       if (klass->has_super() && klass->super() == target_class) {
         if (ast_class->super() != null) {
-          visitor.emit_range(ast_class->super()->selection_range());
+          auto range = find_identifier_on_same_line(ast_class->selection_range(),
+                                                    target_class->name().c_str(),
+                                                    source_manager,
+                                                    true);
+          visitor.emit_range(range.is_valid() ? range : class_reference_range(ast_class->super()));
         }
       }
 
@@ -763,7 +919,7 @@ void find_and_emit_all_references(
       auto ast_interfaces = ast_class->interfaces();
       for (int i = 0; i < ir_interfaces.length() && i < ast_interfaces.length(); i++) {
         if (ir_interfaces[i] == target_class) {
-          visitor.emit_range(ast_interfaces[i]->selection_range());
+          visitor.emit_range(class_reference_range(ast_interfaces[i]));
         }
       }
 
@@ -771,7 +927,7 @@ void find_and_emit_all_references(
       auto ast_mixins = ast_class->mixins();
       for (int i = 0; i < ir_mixins.length() && i < ast_mixins.length(); i++) {
         if (ir_mixins[i] == target_class) {
-          visitor.emit_range(ast_mixins[i]->selection_range());
+          visitor.emit_range(class_reference_range(ast_mixins[i]));
         }
       }
     }
@@ -784,7 +940,7 @@ void find_and_emit_all_references(
           auto* ast_param = ir_to_ast.lookup(param);
           if (ast_param != null && ast_param->is_Parameter()) {
             auto* ast_type = ast_param->as_Parameter()->type();
-            if (ast_type != null) visitor.emit_range(ast_type->selection_range());
+            if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
           }
         }
       }
@@ -793,7 +949,7 @@ void find_and_emit_all_references(
         auto* ast_method = ir_to_ast.lookup(method);
         if (ast_method != null && ast_method->is_Method()) {
           auto* ast_ret = ast_method->as_Method()->return_type();
-          if (ast_ret != null) visitor.emit_range(ast_ret->selection_range());
+          if (ast_ret != null) visitor.emit_range(class_reference_range(ast_ret));
         }
       }
     };
@@ -814,7 +970,7 @@ void find_and_emit_all_references(
           auto* ast_field = ir_to_ast.lookup(field);
           if (ast_field != null && ast_field->is_Field()) {
             auto* ast_type = ast_field->as_Field()->type();
-            if (ast_type != null) visitor.emit_range(ast_type->selection_range());
+            if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
           }
         }
       }

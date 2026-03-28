@@ -78,8 +78,8 @@ class LspProtocolBase {
   LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
-  void print_lsp_location(const LspLocation& location);
-  void print_lsp_range(const LspRange& range);
+  void write_location(const LspLocation& location);
+  void write_range(const LspRange& range);
 
   void printf(const char* format, va_list& arguments) {
     writer_->printf(format, arguments);
