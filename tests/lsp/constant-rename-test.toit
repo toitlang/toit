@@ -5,15 +5,19 @@
 // Test: renaming a constant should find definition and usages.
 MY-CONST ::= 100
 /*
+@ def
+*/
+/*
 ^
-  2
+  [def, usage]
 */
 
 use-const -> int:
   return MY-CONST
+/*       @ usage */
 /*
          ^
-  2
+  [def, usage]
 */
 
 main:

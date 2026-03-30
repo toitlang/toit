@@ -19,7 +19,6 @@ class Greeter:
 /*@ Greeter.greet */
 /*
   ^
-  3
   [Greeter.greet, use-greeter.greet, main.greet]
 */
     return "hello $name"
@@ -35,7 +34,6 @@ class Processor:
 /*@ Processor.run */
 /*
   ^
-  3
   [Processor.run, use-processor.run, main.run]
 */
     // does processing

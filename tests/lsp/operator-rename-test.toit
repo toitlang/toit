@@ -13,7 +13,7 @@ class Vec:
   operator + other/Vec -> Vec:
 /*
            ^
-  0
+  []
 */
     return Vec (x + other.x) (y + other.y)
 

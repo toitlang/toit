@@ -16,24 +16,28 @@
 
 class Animal:
   speak -> string:
+/*@ Animal.speak */
 /*
   ^
-  4
+  [Animal.speak, Dog.speak, call1, call2]
 */
     return "..."
 
 class Dog extends Animal:
   speak -> string:
+/*@ Dog.speak */
 /*
   ^
-  4
+  [Animal.speak, Dog.speak, call1, call2]
 */
     return "woof"
 
 call-it animal/Animal:
   animal.speak
+/*       @ call1 */
 
 main:
   dog := Dog
   dog.speak
+/*    @ call2 */
   call-it dog

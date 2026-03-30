@@ -64,7 +64,20 @@ extract-locations path -> Map/*<string, Location>*/:
           result[key] = value
 
     if line.starts-with "/*":
+      // Walk backward past any preceding marker/test-data blocks to find the
+      // actual code line.
       definition-line := i - 1
+      while definition-line > 0:
+        candidate := lines[definition-line].trim
+        if candidate == "*/":
+          definition-line--
+          while definition-line > 0 and not lines[definition-line].trim.starts-with "/*":
+            definition-line--
+          definition-line--
+        else if candidate.starts-with "/*":
+          definition-line--
+        else:
+          break
       if not line.contains "@":
         // This should only happen if we want to have a test/location at the
         // beginning of the line. (Or if this is the data for a test).

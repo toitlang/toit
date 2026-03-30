@@ -5,10 +5,12 @@
 // Test: renaming a top-level function across files.
 
 import .cross-file-function-rename-test-dep show helper-function
+/*                                               @ show */
 
 main:
   helper-function 42
+/*@ call */
 /*
   ^
-  3
+  [def, show, call]
 */

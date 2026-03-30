@@ -4,9 +4,10 @@
 
 // Test: renaming a class should find the definition and all usages.
 class MyClass:
+/*    @ def */
 /*
       ^
-  4
+  [def, return-type, make-call, instantiation]
 */
   field := 0
 
@@ -14,12 +15,15 @@ class MyClass:
     return field
 
 make -> MyClass:
+/*      @ return-type */
   return MyClass
+/*       @ make-call */
 
 main:
   obj := MyClass
+/*       @ instantiation */
 /*
          ^
-  4
+  [def, return-type, make-call, instantiation]
 */
   obj.member

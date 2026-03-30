@@ -4,14 +4,17 @@
 
 // Test: renaming a class from a return-type annotation.
 class Foo:
+/*    @ def */
   constructor:
 
 make -> Foo:
+/*      @ return-type */
 /*
          ^
-  3
+  [def, return-type, constructor]
 */
   return Foo
+/*       @ constructor */
 
 main:
   make

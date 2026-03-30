@@ -4,7 +4,8 @@
 
 class Settings:
   is-paused := false
+/*@ def */
 /*
   ^
-  3
+  [def, assign, read]
 */

@@ -98,7 +98,9 @@ class HoverHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc) override;
 
-  void definition(ir::Node* ir_node, Source::Range name_range) override {}
+  void definition(ir::Node* ir_node, Source::Range name_range) override {
+    emit_hover(ir_node, null);
+  }
 
   /// Retries deferred hover lookups after all modules are resolved.
   ///
@@ -111,9 +113,9 @@ class HoverHandler : public LspSelectionHandler {
   SourceManager* source_manager_;
   ToitdocRegistry* toitdocs_;
   ir::Node* deferred_node_ = null;
-  bool has_emitted_ = false;
 
   void emit_hover(ir::Node* node, const char* name);
+  void emit_hover_for_entry(ResolutionEntry entry);
 };
 
 } // namespace toit::compiler

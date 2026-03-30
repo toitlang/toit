@@ -5,4 +5,5 @@
 // Helper file for show-clause-rename-test.toit.
 
 class Visible:
+/*    @ def */
   value := 0

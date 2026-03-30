@@ -6,12 +6,14 @@ main:
   test "test"
 
 test param/string:
+/*   @ def */
 /*
       ^
-  2
+  [def, usage]
 */
   print param
+/*      @ usage */
 /*
           ^
-  2
+  [def, usage]
 */

@@ -26,10 +26,139 @@
 namespace toit {
 namespace compiler {
 
+// Unwraps an ir::Reference* node to its underlying definition.
+//
+// The resolver callbacks provide resolved nodes that may be wrapped in
+// ir::Reference nodes (ReferenceLocal, ReferenceGlobal, ReferenceMethod,
+// ReferenceClass). This function strips the wrapper to get the actual
+// definition node (Local, Global, Method, Class), which is needed for
+// pointer identity comparisons when searching for references.
+ir::Node* unwrap_reference(ir::Node* node) {
+  if (node == null) return null;
+  if (node->is_Reference()) return node->as_Reference()->target();
+  return node;
+}
+
+// Returns the name of the given target node as a C string.
+//
+// Supports Method, Class, Field, and Local nodes. Returns null for
+// unsupported node types.
+const char* target_name(ir::Node* target) {
+  if (target == null) return null;
+  if (target->is_Method()) return target->as_Method()->name().c_str();
+  if (target->is_Class()) return target->as_Class()->name().c_str();
+  if (target->is_Field()) return target->as_Field()->name().c_str();
+  if (target->is_Local()) return target->as_Local()->name().c_str();
+  return null;
+}
+
+// Returns the name range of the given target node.
+//
+// Supports Method, Class, Field, and Local nodes. Returns an invalid
+// range for unsupported node types.
+Source::Range target_range(ir::Node* target) {
+  if (target == null) return Source::Range::invalid();
+  if (target->is_Method()) return target->as_Method()->range();
+  if (target->is_Class()) return target->as_Class()->range();
+  if (target->is_Field()) return target->as_Field()->range();
+  if (target->is_Local()) return target->as_Local()->range();
+  return Source::Range::invalid();
+}
+
+// Returns whether the given target node is defined in the SDK.
+//
+// SDK symbols cannot be renamed because their source files are not
+// user-editable.
+bool is_sdk_target(ir::Node* target, SourceManager* source_manager) {
+  Source::Range range = target_range(target);
+  if (!range.is_valid()) return false;
+  auto* source = source_manager->source_for_position(range.from());
+  if (source == null) return false;
+  return source->package_id() == Package::SDK_PACKAGE_ID;
+}
+
+// Returns the package ID of the source file containing the given IR node.
+// Falls back to ERROR_PACKAGE_ID if the source cannot be determined.
+static std::string package_id_for_range(const Source::Range& range,
+                                        SourceManager* source_manager) {
+  if (!range.is_valid()) return Package::ERROR_PACKAGE_ID;
+  auto* source = source_manager->source_for_position(range.from());
+  if (source == null) return Package::ERROR_PACKAGE_ID;
+  return source->package_id();
+}
+
+// Returns the Source instance for the given IR range.
+// Returns null if the source cannot be determined.
+static Source* source_for_range(const Source::Range& range,
+                                SourceManager* source_manager) {
+  if (!range.is_valid()) return null;
+  return source_manager->source_for_position(range.from());
+}
+
+static bool range_matches_name(const Source::Range& range,
+                               const char* expected,
+                               SourceManager* source_manager) {
+  if (!range.is_valid() || expected == null) return false;
+  auto* source = source_manager->source_for_position(range.from());
+  if (source == null) return false;
+
+  int from = source->offset_in_source(range.from());
+  int to = source->offset_in_source(range.to());
+  if (from < 0 || to < from) return false;
+
+  const uint8* text = source->text();
+  int expected_len = static_cast<int>(strlen(expected));
+  if ((to - from) != expected_len) return false;
+
+  for (int i = 0; i < expected_len; i++) {
+    char actual = static_cast<char>(text[from + i]);
+    char wanted = expected[i];
+    if (actual == wanted) continue;
+    if ((actual == '_' && wanted == '-') || (actual == '-' && wanted == '_')) continue;
+    return false;
+  }
+  return true;
+}
+
+static Source::Range class_reference_range(ast::Expression* expression) {
+  if (expression == null) return Source::Range::invalid();
+  if (expression->is_Dot()) {
+    return expression->as_Dot()->name()->selection_range();
+  }
+  return expression->selection_range();
+}
+
+// Returns whether the method is an unnamed constructor or factory.
+// These use the class name at call sites (e.g., `MyObj 42`), so
+// when renaming the class, these methods' call sites must also be
+// updated.
+static bool is_unnamed_constructor_or_factory(ir::Method* method) {
+  return method != null &&
+         (method->is_constructor() || method->is_factory()) &&
+         method->holder() != null &&
+         method->name() == Symbols::constructor;
+}
+
+// Returns whether a class defines an instance method with the given name
+// and a shape that accepts the given call shape.
+static bool class_has_matching_method(ir::Class* klass,
+                                      Symbol name,
+                                      const CallShape& shape) {
+  for (auto method : klass->methods()) {
+    if (method->name() == name &&
+        method->resolution_shape().accepts(shape)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // VirtualCallFilter — determines whether a CallVirtual should be included
 // in rename results.  See find_and_emit_all_references for usage.
 // ---------------------------------------------------------------------------
+
+namespace {
 
 class VirtualCallFilter {
  public:
@@ -42,7 +171,7 @@ class VirtualCallFilter {
   void set_setter(ir::FieldStub* setter) { setter_ = setter; }
   bool is_active() const { return method_ != null; }
   ir::Method* method() const { return method_; }
-  const UnorderedSet<ir::Class*>& participating_classes() const {
+  const Set<ir::Class*>& participating_classes() const {
     return participating_classes_;
   }
 
@@ -51,7 +180,7 @@ class VirtualCallFilter {
       : method_(null)
       , setter_(null)
       , is_ambiguous_(false)
-      , target_source_path_(null)
+      , target_source_(null)
       , source_manager_(null) {}
 
   void compute_participating_classes(ir::Program* program);
@@ -59,10 +188,10 @@ class VirtualCallFilter {
 
   ir::Method* method_;
   ir::FieldStub* setter_;
-  UnorderedSet<ir::Class*> participating_classes_;
+  Set<ir::Class*> participating_classes_;
   bool is_ambiguous_;
   std::string target_package_id_;
-  const char* target_source_path_;
+  Source* target_source_;
   SourceManager* source_manager_;
 };
 
@@ -93,6 +222,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   ir::Node* target_;
   ir::Class* target_class_;
   Source::Range definition_range_;
+  bool definition_emitted_ = false;
   int target_name_len_;
   SourceManager* source_manager_;
   UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map_;
@@ -100,9 +230,65 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   const VirtualCallFilter& virtual_call_filter_;
 };
 
+}  // anonymous namespace
+
 // ---------------------------------------------------------------------------
 // FindReferencesHandler method implementations
 // ---------------------------------------------------------------------------
+
+void FindReferencesHandler::class_interface_or_mixin(ast::Node* node,
+                                                     IterableScope* scope,
+                                                     ir::Class* holder,
+                                                     ir::Node* resolved,
+                                                     bool needs_interface,
+                                                     bool needs_mixin) {
+  // Note: the resolver provides the bare ir::Class* here (not wrapped in a
+  // Reference), unlike call_static which passes Reference-wrapped nodes.
+  // We still unwrap for safety in case this changes in the future.
+  if (resolved) {
+    target_ = unwrap_reference(resolved);
+    cursor_range_ = node->selection_range();
+  }
+}
+
+void FindReferencesHandler::type(ast::Node* node,
+                                 IterableScope* scope,
+                                 ResolutionEntry resolved,
+                                 bool allow_none) {
+  if (resolved.nodes().length() == 1) {
+    target_ = unwrap_reference(resolved.nodes()[0]);
+    cursor_range_ = node->selection_range();
+  }
+}
+
+void FindReferencesHandler::call_virtual(ir::CallVirtual* node,
+                                         ir::Type type,
+                                         List<ir::Class*> classes) {
+  Symbol selector = node->selector();
+  if (type.is_class()) {
+    walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {
+      for (auto method : current->methods()) {
+        if (method->name() == selector &&
+            method->resolution_shape().accepts(node->shape())) {
+          target_ = method;
+          cursor_range_ = node->range();
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+  // Note: we intentionally do NOT fall back to searching all classes when
+  // type.is_any(). For rename, returning a wrong target would be destructive.
+}
+
+void FindReferencesHandler::call_prefixed(ast::Dot* node,
+                                          ir::Node* resolved1,
+                                          ir::Node* resolved2,
+                                          List<ir::Node*> candidates,
+                                          IterableScope* scope) {
+  call_static(node, resolved1, resolved2, candidates, scope, null);
+}
 
 void FindReferencesHandler::call_class(ast::Dot* node,
                                        ir::Class* klass,
@@ -153,11 +339,8 @@ void FindReferencesHandler::call_static(ast::Node* node,
     // redirected — the user wants to rename the constructor's own name.
     if (target->is_Method()) {
       auto* method = target->as_Method();
-      if ((method->is_constructor() || method->is_factory()) && method->holder() != null) {
-        auto holder_name = method->holder()->name();
-        if (method->name() == holder_name || method->name() == Symbols::constructor) {
-          target = method->holder();
-        }
+      if (is_unnamed_constructor_or_factory(method)) {
+        target = method->holder();
       }
     }
     target_ = target;
@@ -172,127 +355,94 @@ void FindReferencesHandler::call_static(ast::Node* node,
   }
 }
 
+void FindReferencesHandler::call_static_named(ast::Node* name_node,
+                                              ir::Node* ir_call_target,
+                                              List<ir::Node*> candidates) {
+  if (ir_call_target == null || ir_call_target->is_Error()) return;
+  if (!ir_call_target->is_ReferenceMethod()) return;
+
+  auto name = name_node->as_LspSelection()->data();
+  auto cursor_range = name_node->as_LspSelection()->selection_range();
+  auto* ir_method = ir_call_target->as_ReferenceMethod()->target();
+
+  // Try matching against the method's parameter list (available for
+  // same-module methods that have already been resolved).
+  for (auto parameter : ir_method->parameters()) {
+    if (parameter->name() == name) {
+      target_ = parameter;
+      cursor_range_ = cursor_range;
+      return;
+    }
+  }
+
+  // For cross-module methods the parameter list may not yet be populated
+  // at resolution time.  Fall back to checking the resolution shape which
+  // is always available.
+  auto shape = ir_method->resolution_shape();
+  for (int i = 0; i < shape.names().length(); i++) {
+    if (shape.names()[i] == name) {
+      // We don't have an ir::Parameter node for this cross-module
+      // parameter.  Create a temporary Local that carries the correct
+      // name and the call-site range so that emit_prepare_rename can
+      // produce a valid response.
+      target_ = _new ir::Local(name, true, false, cursor_range);
+      cursor_range_ = cursor_range;
+      return;
+    }
+  }
+}
+
+void FindReferencesHandler::field_storing_parameter(ast::Parameter* node,
+                                                    List<ir::Field*> fields,
+                                                    bool field_storing_is_allowed) {
+  if (node->name()->is_LspSelection()) {
+    auto name = node->name()->data();
+    for (auto field : fields) {
+      if (field->name() == name) {
+        target_ = field;
+        cursor_range_ = node->name()->selection_range();
+        return;
+      }
+    }
+  }
+}
+
+void FindReferencesHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  handle_show_or_export(node, entry);
+}
+
+void FindReferencesHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  handle_show_or_export(node, entry);
+}
+
+void FindReferencesHandler::toitdoc_ref(ast::Node* node,
+                                        List<ir::Node*> candidates,
+                                        ToitdocScopeIterator* iterator,
+                                        bool is_signature_toitdoc) {
+  // When the cursor is on a toitdoc reference like `$helper`, capture the
+  // resolved target so that rename can proceed. Require exactly one
+  // candidate for safety — rename is destructive, so we can't pick from
+  // ambiguous overloads.
+  if (candidates.length() != 1) return;
+  target_ = unwrap_reference(candidates[0]);
+  cursor_range_ = node->selection_range();
+}
+
+void FindReferencesHandler::definition(ir::Node* ir_node, Source::Range name_range) {
+  target_ = ir_node;
+  cursor_range_ = name_range;
+}
+
+void FindReferencesHandler::handle_show_or_export(ast::Node* node, ResolutionEntry entry) {
+  if (entry.nodes().length() == 1) {
+    target_ = unwrap_reference(entry.nodes()[0]);
+    cursor_range_ = node->selection_range();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // VirtualCallFilter
 // ---------------------------------------------------------------------------
-
-/// Returns the package ID of the source file containing the given IR node.
-/// Falls back to ERROR_PACKAGE_ID if the source cannot be determined.
-static std::string package_id_for_range(const Source::Range& range,
-                                        SourceManager* source_manager) {
-  if (!range.is_valid()) return Package::ERROR_PACKAGE_ID;
-  auto* source = source_manager->source_for_position(range.from());
-  if (source == null) return Package::ERROR_PACKAGE_ID;
-  return source->package_id();
-}
-
-/// Returns the absolute path of the source file containing the given IR range.
-/// Returns null if the source cannot be determined.
-static const char* source_path_for_range(const Source::Range& range,
-                                         SourceManager* source_manager) {
-  if (!range.is_valid()) return null;
-  auto* source = source_manager->source_for_position(range.from());
-  if (source == null) return null;
-  return source->absolute_path();
-}
-
-static bool range_matches_name(const Source::Range& range,
-                               const char* expected,
-                               SourceManager* source_manager) {
-  if (!range.is_valid() || expected == null) return false;
-  auto* source = source_manager->source_for_position(range.from());
-  if (source == null) return false;
-
-  int from = source->offset_in_source(range.from());
-  int to = source->offset_in_source(range.to());
-  if (from < 0 || to < from) return false;
-
-  const uint8* text = source->text();
-  int expected_len = static_cast<int>(strlen(expected));
-  if ((to - from) != expected_len) return false;
-
-  for (int i = 0; i < expected_len; i++) {
-    char actual = static_cast<char>(text[from + i]);
-    char wanted = expected[i];
-    if (actual == wanted) continue;
-    if ((actual == '_' && wanted == '-') || (actual == '-' && wanted == '_')) continue;
-    return false;
-  }
-  return true;
-}
-
-static Source::Range class_reference_range(ast::Expression* expression) {
-  if (expression == null) return Source::Range::invalid();
-  if (expression->is_Dot()) {
-    return expression->as_Dot()->name()->selection_range();
-  }
-  return expression->selection_range();
-}
-
-static bool is_identifier_char(char c) {
-  return (c >= 'a' && c <= 'z') ||
-         (c >= 'A' && c <= 'Z') ||
-         (c >= '0' && c <= '9') ||
-         c == '_' || c == '-';
-}
-
-static Source::Range find_identifier_on_same_line(Source::Range anchor,
-                                                  const char* name,
-                                                  SourceManager* source_manager,
-                                                  bool choose_last = false) {
-  if (!anchor.is_valid() || name == null) return Source::Range::invalid();
-  auto location = source_manager->compute_location(anchor.from());
-  if (!location.is_valid()) return Source::Range::invalid();
-
-  auto* source = location.source;
-  const uint8* text = source->text();
-  int source_size = source->size();
-  int line_start = location.line_offset;
-  int line_end = line_start;
-  while (line_end < source_size && text[line_end] != '\n' && text[line_end] != '\r') {
-    line_end++;
-  }
-
-  int name_len = static_cast<int>(strlen(name));
-  int match = -1;
-  for (int i = line_start; i + name_len <= line_end; i++) {
-    bool matches = true;
-    for (int j = 0; j < name_len; j++) {
-      if (text[i + j] != static_cast<uint8>(name[j])) {
-        matches = false;
-        break;
-      }
-    }
-    if (!matches) continue;
-    if (i > line_start && is_identifier_char(static_cast<char>(text[i - 1]))) continue;
-    if (i + name_len < line_end && is_identifier_char(static_cast<char>(text[i + name_len]))) continue;
-    match = i;
-    if (!choose_last) break;
-  }
-  if (match == -1) return Source::Range::invalid();
-  return source->range(match, match + name_len);
-}
-
-static bool class_uses_implicit_constructor_name(ir::Method* method) {
-  return method != null &&
-         (method->is_constructor() || method->is_factory()) &&
-         method->holder() != null &&
-         (method->name() == method->holder()->name() || method->name() == Symbols::constructor);
-}
-
-/// Returns whether a class defines an instance method with the given name
-/// and a shape that accepts the given call shape.
-static bool class_has_matching_method(ir::Class* klass,
-                                      Symbol name,
-                                      const CallShape& shape) {
-  for (auto method : klass->methods()) {
-    if (method->name() == name &&
-        method->resolution_shape().accepts(shape)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
                                            ir::Program* program,
@@ -318,7 +468,7 @@ VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
   // Determine the target method's source location metadata.
   auto holder_range = method->holder()->range();
   filter.target_package_id_ = package_id_for_range(holder_range, source_manager);
-  filter.target_source_path_ = source_path_for_range(holder_range, source_manager);
+  filter.target_source_ = source_for_range(holder_range, source_manager);
 
   filter.compute_participating_classes(program);
   filter.detect_ambiguity(program);
@@ -350,20 +500,14 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   // walk back down to find sibling branches — this ensures multi-path
   // hierarchies are fully covered.
   //
-  // Example: if I1 is extended by both I2 and I3, class A implements I2,
-  // class B implements I3, and all define foo(), Phase 1 finds A.
-  // Walking outward from A finds I2. Walking up from I2 finds I1 (which
-  // also declares foo). Walking down from I1 finds I3, and Phase 3 will
-  // then find B (which implements I3).
-  //
   // We iterate until no new interfaces/mixins are added.
   {
     bool changed = true;
     while (changed) {
       changed = false;
-      UnorderedSet<ir::Class*> to_add;
+      Set<ir::Class*> to_add;
       // Collect interfaces/mixins referenced by current participants.
-      for (auto* participant : participating_classes_.underlying_set()) {
+      for (auto* participant : participating_classes_) {
         auto check_connector = [&](ir::Class* connector) {
           if (participating_classes_.contains(connector)) return;
           if (!class_has_matching_method(connector, name, method_shape)) return;
@@ -384,7 +528,7 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
         if (!klass->is_interface() && !klass->is_mixin()) continue;
         if (!class_has_matching_method(klass, name, method_shape)) continue;
         // Check if any participating class implements/mixes in this class.
-        for (auto* participant : participating_classes_.underlying_set()) {
+        for (auto* participant : participating_classes_) {
           auto connectors = klass->is_interface()
               ? participant->interfaces()
               : participant->mixins();
@@ -397,7 +541,7 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
           if (to_add.contains(klass)) break;
         }
       }
-      for (auto* klass : to_add.underlying_set()) {
+      for (auto* klass : to_add) {
         participating_classes_.insert(klass);
         changed = true;
       }
@@ -481,9 +625,8 @@ bool VirtualCallFilter::should_include(ir::CallVirtual* node) const {
   if (call_source == null) return false;
 
   // Same source file: highest confidence — the call is almost certainly
-  // referencing the local hierarchy.
-  if (target_source_path_ != null &&
-      strcmp(call_source->absolute_path(), target_source_path_) == 0) {
+  // referencing the local hierarchy. Uses pointer comparison for efficiency.
+  if (target_source_ != null && call_source == target_source_) {
     return true;
   }
 
@@ -521,10 +664,18 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   // generates ReferenceLocal nodes at the parameter definition position
   // (e.g., for typed parameter checks), which would cause a double emission
   // if not filtered out.
-  if (definition_range_.is_valid() &&
+  // The definition is explicitly emitted once (in find_and_emit_all_references),
+  // so subsequent emissions with the same range are suppressed.
+  if (definition_emitted_ &&
+      definition_range_.is_valid() &&
       range.from() == definition_range_.from() &&
       range.to() == definition_range_.to()) {
     return;
+  }
+  if (definition_range_.is_valid() &&
+      range.from() == definition_range_.from() &&
+      range.to() == definition_range_.to()) {
+    definition_emitted_ = true;
   }
   auto from = source_manager_->compute_location(range.from());
   auto to = source_manager_->compute_location(range.to());
@@ -567,8 +718,7 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
     auto* method = node->as_ReferenceMethod()->target();
     if (method->holder() == target_class_ &&
         (method->is_constructor() || method->is_factory())) {
-      auto holder_name = target_class_->name();
-      if (method->name() == holder_name || method->name() == Symbols::constructor) {
+      if (is_unnamed_constructor_or_factory(method)) {
         matches = true;
       }
     }
@@ -671,14 +821,23 @@ void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
         emitted = true;
       }
     }
-    if (!emitted && class_uses_implicit_constructor_name(method)) {
-      emit_range(node->range());
+    if (!emitted && is_unnamed_constructor_or_factory(method)) {
+      // Only emit the node's range if it actually matches the class name in
+      // the source text.  Implicit super calls (e.g., synthesized by the
+      // compiler for classes that extend another without an explicit
+      // constructor) may have synthesized ranges that don't correspond to
+      // the class name.
+      if (range_matches_name(node->range(), target_class_->name().c_str(), source_manager_)) {
+        emit_range(node->range());
+      }
     }
   }
 
   // When renaming a named parameter, call sites using --param_name must
   // also be updated.  Check if this call targets the method that owns
   // the rename-target parameter.
+  // TODO: Consider renaming identically-named parameters across all overloads
+  // of a function, not just the overload that owns the target parameter.
   if (target_ != null && target_->is_Parameter()) {
     auto* target_param = target_->as_Parameter();
     for (auto* p : method->parameters()) {
@@ -728,6 +887,238 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
   }
   TraversingVisitor::visit_Typecheck(node);
 }
+
+// ---------------------------------------------------------------------------
+// Helper functions for find_and_emit_all_references
+// ---------------------------------------------------------------------------
+
+// Emits override/implementation definitions for virtual methods and fields.
+static void emit_override_definitions(
+    ir::Node* target,
+    ir::FieldStub* field_getter,
+    ir::FieldStub* field_setter,
+    const VirtualCallFilter& virtual_call_filter,
+    FindReferencesVisitor& visitor) {
+  if (!virtual_call_filter.is_active()) return;
+
+  auto* filter_method = virtual_call_filter.method();
+  auto filter_shape = filter_method->resolution_shape().to_plain_shape()
+                          .to_equivalent_call_shape();
+  for (auto* klass : virtual_call_filter.participating_classes()) {
+    for (auto* method : klass->methods()) {
+      if (method == target || method == field_getter || method == field_setter) continue;
+      bool shape_matches = method->resolution_shape().accepts(filter_shape);
+      if (!shape_matches && field_setter != null) {
+        auto setter_shape = field_setter->resolution_shape().to_plain_shape()
+                                .to_equivalent_call_shape();
+        shape_matches = method->resolution_shape().accepts(setter_shape);
+      }
+      if (method->name() == filter_method->name() && shape_matches) {
+        // For FieldStub overrides, emit the field's own range (the field
+        // definition name), not the synthetic getter/setter range.
+        if (method->is_FieldStub()) {
+          visitor.emit_range(method->as_FieldStub()->field()->range());
+        } else {
+          visitor.emit_range(method->range());
+        }
+      }
+    }
+  }
+}
+
+// Emits class hierarchy references (extends, implements, with clauses).
+static void emit_class_hierarchy_references(
+    ir::Class* target_class,
+    ir::Program* program,
+    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    FindReferencesVisitor& visitor) {
+  for (auto* klass : program->classes()) {
+    auto* ast_node = ir_to_ast.lookup(klass);
+    if (ast_node == null || !ast_node->is_Class()) continue;
+    auto* ast_class = ast_node->as_Class();
+
+    if (klass->has_super() && klass->super() == target_class) {
+      if (ast_class->super() != null) {
+        visitor.emit_range(class_reference_range(ast_class->super()));
+      }
+    }
+
+    auto ir_interfaces = klass->interfaces();
+    auto ast_interfaces = ast_class->interfaces();
+    ASSERT(ir_interfaces.length() == ast_interfaces.length());
+    for (int i = 0; i < ir_interfaces.length(); i++) {
+      if (ir_interfaces[i] == target_class) {
+        visitor.emit_range(class_reference_range(ast_interfaces[i]));
+      }
+    }
+
+    auto ir_mixins = klass->mixins();
+    auto ast_mixins = ast_class->mixins();
+    ASSERT(ir_mixins.length() == ast_mixins.length());
+    for (int i = 0; i < ir_mixins.length(); i++) {
+      if (ir_mixins[i] == target_class) {
+        visitor.emit_range(class_reference_range(ast_mixins[i]));
+      }
+    }
+  }
+}
+
+// Emits type annotation references for a class target.
+static void emit_type_annotation_references(
+    ir::Class* target_class,
+    ir::Program* program,
+    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    FindReferencesVisitor& visitor) {
+  auto scan_method_types = [&](ir::Method* method) {
+    for (auto* param : method->parameters()) {
+      if (param->type().is_class() && param->type().klass() == target_class) {
+        auto* ast_param = ir_to_ast.lookup(param);
+        if (ast_param != null && ast_param->is_Parameter()) {
+          auto* ast_type = ast_param->as_Parameter()->type();
+          if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
+        }
+      }
+    }
+    if (method->return_type().is_class() &&
+        method->return_type().klass() == target_class) {
+      auto* ast_method = ir_to_ast.lookup(method);
+      if (ast_method != null && ast_method->is_Method()) {
+        auto* ast_ret = ast_method->as_Method()->return_type();
+        if (ast_ret != null) visitor.emit_range(class_reference_range(ast_ret));
+      }
+    }
+  };
+
+  for (auto* klass : program->classes()) {
+    for (auto* method : klass->methods()) scan_method_types(method);
+    for (auto* ctor : klass->unnamed_constructors()) scan_method_types(ctor);
+    for (auto* factory : klass->factories()) scan_method_types(factory);
+    if (klass->statics() != null) {
+      for (auto* method : klass->statics()->nodes()) {
+        scan_method_types(method);
+      }
+    }
+
+    for (auto* field : klass->fields()) {
+      if (field->type().is_class() && field->type().klass() == target_class) {
+        auto* ast_field = ir_to_ast.lookup(field);
+        if (ast_field != null && ast_field->is_Field()) {
+          auto* ast_type = ast_field->as_Field()->type();
+          if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
+        }
+      }
+    }
+  }
+  // Global functions and global variables.
+  for (auto* method : program->methods()) scan_method_types(method);
+  for (auto* global : program->globals()) scan_method_types(global);
+}
+
+// Emits field-storing parameter references (e.g., `--.my-field` in constructors).
+static void emit_field_storing_references(
+    ir::Field* target_field,
+    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    FindReferencesVisitor& visitor) {
+  if (target_field->holder() == null) return;
+
+  auto check_method_for_field_storing = [&](ir::Method* method) {
+    for (auto* param : method->parameters()) {
+      if (param->name() == target_field->name()) {
+        auto* ast_param = ir_to_ast.lookup(param);
+        if (ast_param != null && ast_param->is_Parameter() &&
+            ast_param->as_Parameter()->is_field_storing()) {
+          visitor.emit_range(ast_param->selection_range());
+        }
+      }
+    }
+  };
+  for (auto* ctor : target_field->holder()->unnamed_constructors()) {
+    check_method_for_field_storing(ctor);
+  }
+  for (auto* factory : target_field->holder()->factories()) {
+    check_method_for_field_storing(factory);
+  }
+  // Named constructors are in statics.
+  if (target_field->holder()->statics() != null) {
+    for (auto* method : target_field->holder()->statics()->nodes()) {
+      if (method->is_constructor() || method->is_factory()) {
+        check_method_for_field_storing(method);
+      }
+    }
+  }
+}
+
+// Emits toitdoc reference ranges for the target.
+static void emit_toitdoc_references(
+    ir::Node* target,
+    ToitdocRegistry* toitdocs,
+    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    FindReferencesVisitor& visitor) {
+  toitdocs->for_each([&](void* key, Toitdoc<ir::Node*> ir_toitdoc) {
+    if (!ir_toitdoc.is_valid()) return;
+    auto ir_refs = ir_toitdoc.refs();
+
+    // Check if any ref in this toitdoc points to the target.
+    bool has_matching_ref = false;
+    for (int i = 0; i < ir_refs.length(); i++) {
+      auto* ref_target = ir_refs[i];
+      if (ref_target == null) continue;
+      // FieldStub → Field redirect.
+      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
+      if (ref_target == target) {
+        has_matching_ref = true;
+        break;
+      }
+    }
+    if (!has_matching_ref) return;
+
+    // Look up the AST node to get source ranges for the toitdoc refs.
+    auto* ir_node = static_cast<ir::Node*>(key);
+    auto probe = ir_to_ast.find(ir_node);
+    if (probe == ir_to_ast.end()) return;
+    auto* ast_node = probe->second;
+
+    // Get the AST toitdoc from the declaration.
+    Toitdoc<ast::Node*> ast_toitdoc = Toitdoc<ast::Node*>::invalid();
+    if (ast_node->is_Class()) {
+      ast_toitdoc = ast_node->as_Class()->toitdoc();
+    } else if (ast_node->is_Method()) {
+      ast_toitdoc = ast_node->as_Method()->toitdoc();
+    } else if (ast_node->is_Field()) {
+      ast_toitdoc = ast_node->as_Field()->toitdoc();
+    }
+    if (!ast_toitdoc.is_valid()) return;
+
+    auto ast_refs = ast_toitdoc.refs();
+    ASSERT(ast_refs.length() == ir_refs.length());
+
+    for (int i = 0; i < ir_refs.length(); i++) {
+      auto* ref_target = ir_refs[i];
+      if (ref_target == null) continue;
+      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
+      if (ref_target != target) continue;
+
+      auto* ast_ref_node = ast_refs[i];
+      if (!ast_ref_node->is_ToitdocReference()) continue;
+      auto* toitdoc_ref = ast_ref_node->as_ToitdocReference();
+
+      auto* ref_target_expr = toitdoc_ref->target();
+      if (ref_target_expr == null) continue;
+
+      // For Dot expressions (e.g., `$Class.method`), emit only the part
+      // that corresponds to the rename target.
+      if (ref_target_expr->is_Dot()) {
+        auto* dot = ref_target_expr->as_Dot();
+        // The resolver resolves `$Class.method` to the method, not the class.
+        // So a matching ref means we're renaming the method → emit the name part.
+        visitor.emit_range(dot->name()->selection_range());
+      } else {
+        visitor.emit_range(ref_target_expr->selection_range());
+      }
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // find_and_emit_all_references
 // ---------------------------------------------------------------------------
@@ -809,19 +1200,15 @@ void find_and_emit_all_references(
     virtual_call_filter.set_setter(field_setter);
   }
 
-  // Create the visitor for expression-level reference finding.
-  // The definition range is passed so the visitor can skip compiler-generated
-  // references that coincide with the definition site.
-  Source::Range definition_range = target_range(target);
-
   // For named constructors and factories, ir::Method::range() covers only the
   // "constructor" keyword (set from ast::Method::selection_range() during
   // resolution). The actual name (e.g., "my-named-ctor" in
   // "constructor.my-named-ctor") lives in the ast::Dot node's name()
   // Identifier. Use its range instead.
+  Source::Range definition_range = target_range(target);
   if (target->is_Method()) {
     auto* method = target->as_Method();
-    if (class_uses_implicit_constructor_name(method)) {
+    if (is_unnamed_constructor_or_factory(method)) {
       definition_range = method->holder()->range();
     } else if ((method->is_constructor() || method->is_factory()) &&
                method->holder() != null) {
@@ -840,265 +1227,38 @@ void find_and_emit_all_references(
       protocol, virtual_call_filter);
 
   // Emit the definition's own location.
-  if (definition_range.is_valid()) {
-    auto from = source_manager->compute_location(definition_range.from());
-    auto to = source_manager->compute_location(definition_range.to());
+  visitor.emit_range(definition_range);
 
-    int start_col = utf16_offset_in_line(from);
-    int end_col = utf16_offset_in_line(to);
+  // Override/implementation definitions.
+  emit_override_definitions(target, field_getter, field_setter,
+                            virtual_call_filter, visitor);
 
-    // Trim prefix syntax from the definition range, same as for reference
-    // ranges — e.g., "[block-param]" → "block-param".
-    if (name_len > 0 &&
-        from.line_number == to.line_number &&
-        (end_col - start_col) > name_len) {
-      start_col = end_col - name_len;
-    }
-
-    protocol->find_references()->emit(
-        from.source->absolute_path(),
-        from.line_number - 1, start_col,
-        to.line_number - 1, end_col);
-  }
-
-  // --- Override/implementation definitions ---
-  // When renaming a virtual method (or field), all definitions sharing the
-  // same name and shape in the participating class hierarchy must be renamed
-  // together to avoid breaking the program.
-  if (virtual_call_filter.is_active()) {
-    auto* filter_method = virtual_call_filter.method();
-    auto filter_shape = filter_method->resolution_shape().to_plain_shape()
-                            .to_equivalent_call_shape();
-    for (auto* klass : virtual_call_filter.participating_classes().underlying_set()) {
-      for (auto* method : klass->methods()) {
-        if (method == target || method == field_getter || method == field_setter) continue;
-        bool shape_matches = method->resolution_shape().accepts(filter_shape);
-        if (!shape_matches && field_setter != null) {
-          auto setter_shape = field_setter->resolution_shape().to_plain_shape()
-                                  .to_equivalent_call_shape();
-          shape_matches = method->resolution_shape().accepts(setter_shape);
-        }
-        if (method->name() == filter_method->name() && shape_matches) {
-          // For FieldStub overrides, emit the field's own range (the field
-          // definition name), not the synthetic getter/setter range.
-          if (method->is_FieldStub()) {
-            visitor.emit_range(method->as_FieldStub()->field()->range());
-          } else {
-            visitor.emit_range(method->range());
-          }
-        }
-      }
-    }
-  }
-
-  // --- Class-specific reference scanning ---
-  // When renaming a class, we must find all places the class name appears:
-  // extends/implements/with clauses, type annotations on parameters/return
-  // types/fields, constructor calls (handled by the visitor), and is/as
-  // checks (handled by the visitor).
+  // Class-specific reference scanning.
   if (target->is_Class()) {
     auto* target_class = target->as_Class();
-
-    // Hierarchy references: extends, implements, with clauses.
-    for (auto* klass : program->classes()) {
-      auto* ast_node = ir_to_ast.lookup(klass);
-      if (ast_node == null || !ast_node->is_Class()) continue;
-      auto* ast_class = ast_node->as_Class();
-
-      if (klass->has_super() && klass->super() == target_class) {
-        if (ast_class->super() != null) {
-          auto range = find_identifier_on_same_line(ast_class->selection_range(),
-                                                    target_class->name().c_str(),
-                                                    source_manager,
-                                                    true);
-          visitor.emit_range(range.is_valid() ? range : class_reference_range(ast_class->super()));
-        }
-      }
-
-      auto ir_interfaces = klass->interfaces();
-      auto ast_interfaces = ast_class->interfaces();
-      for (int i = 0; i < ir_interfaces.length() && i < ast_interfaces.length(); i++) {
-        if (ir_interfaces[i] == target_class) {
-          visitor.emit_range(class_reference_range(ast_interfaces[i]));
-        }
-      }
-
-      auto ir_mixins = klass->mixins();
-      auto ast_mixins = ast_class->mixins();
-      for (int i = 0; i < ir_mixins.length() && i < ast_mixins.length(); i++) {
-        if (ir_mixins[i] == target_class) {
-          visitor.emit_range(class_reference_range(ast_mixins[i]));
-        }
-      }
-    }
-
-    // Type annotations: scan parameter types, return types, and field types
-    // across every method and class in the program.
-    auto scan_method_types = [&](ir::Method* method) {
-      for (auto* param : method->parameters()) {
-        if (param->type().is_class() && param->type().klass() == target_class) {
-          auto* ast_param = ir_to_ast.lookup(param);
-          if (ast_param != null && ast_param->is_Parameter()) {
-            auto* ast_type = ast_param->as_Parameter()->type();
-            if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
-          }
-        }
-      }
-      if (method->return_type().is_class() &&
-          method->return_type().klass() == target_class) {
-        auto* ast_method = ir_to_ast.lookup(method);
-        if (ast_method != null && ast_method->is_Method()) {
-          auto* ast_ret = ast_method->as_Method()->return_type();
-          if (ast_ret != null) visitor.emit_range(class_reference_range(ast_ret));
-        }
-      }
-    };
-
-    for (auto* klass : program->classes()) {
-      for (auto* method : klass->methods()) scan_method_types(method);
-      for (auto* ctor : klass->unnamed_constructors()) scan_method_types(ctor);
-      for (auto* factory : klass->factories()) scan_method_types(factory);
-      // Statics (named constructors, static methods, static fields).
-      if (klass->statics() != null) {
-        for (auto* method : klass->statics()->nodes()) {
-          scan_method_types(method);
-        }
-      }
-
-      for (auto* field : klass->fields()) {
-        if (field->type().is_class() && field->type().klass() == target_class) {
-          auto* ast_field = ir_to_ast.lookup(field);
-          if (ast_field != null && ast_field->is_Field()) {
-            auto* ast_type = ast_field->as_Field()->type();
-            if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
-          }
-        }
-      }
-    }
-    // Global functions and global variables.
-    for (auto* method : program->methods()) scan_method_types(method);
-    for (auto* global : program->globals()) scan_method_types(global);
+    emit_class_hierarchy_references(target_class, program, ir_to_ast, visitor);
+    emit_type_annotation_references(target_class, program, ir_to_ast, visitor);
   }
 
-  // --- Field-specific reference scanning ---
+  // Field-specific reference scanning.
   if (target->is_Field()) {
-    auto* target_field = target->as_Field();
-    if (target_field->holder() != null) {
-      // Find field-storing parameters in constructors and factories.
-      // A field-storing parameter (e.g., `--my-field`) shares its name with
-      // the field and must be renamed when the field is renamed.
-      auto check_method_for_field_storing = [&](ir::Method* method) {
-        for (auto* param : method->parameters()) {
-          if (param->name() == target_field->name()) {
-            auto* ast_param = ir_to_ast.lookup(param);
-            if (ast_param != null && ast_param->is_Parameter() &&
-                ast_param->as_Parameter()->is_field_storing()) {
-              visitor.emit_range(ast_param->selection_range());
-            }
-          }
-        }
-      };
-      for (auto* ctor : target_field->holder()->unnamed_constructors()) {
-        check_method_for_field_storing(ctor);
-      }
-      for (auto* factory : target_field->holder()->factories()) {
-        check_method_for_field_storing(factory);
-      }
-      // Named constructors are in statics.
-      if (target_field->holder()->statics() != null) {
-        for (auto* method : target_field->holder()->statics()->nodes()) {
-          if (method->is_constructor() || method->is_factory()) {
-            check_method_for_field_storing(method);
-          }
-        }
-      }
-    }
+    emit_field_storing_references(target->as_Field(), ir_to_ast, visitor);
   }
 
-  // --- Show/export clause references ---
-  // When a symbol appears in an import's `show` clause or an `export`
-  // directive, the clause text must be updated when the symbol is renamed.
+  // Show/export clause references.
   for (const auto& ref : show_export_references) {
     if (unwrap_reference(ref.target) == target) {
       visitor.emit_range(ref.range);
     }
   }
 
-  // --- Toitdoc reference scanning ---
-  // When a toitdoc comment references the target via `$symbol`, that
-  // reference must be updated when the target is renamed.
-  toitdocs->for_each([&](void* key, Toitdoc<ir::Node*> ir_toitdoc) {
-    if (!ir_toitdoc.is_valid()) return;
-    auto ir_refs = ir_toitdoc.refs();
+  // Toitdoc reference scanning.
+  emit_toitdoc_references(target, toitdocs, ir_to_ast, visitor);
 
-    // Check if any ref in this toitdoc points to the target.
-    bool has_matching_ref = false;
-    for (int i = 0; i < ir_refs.length(); i++) {
-      auto* ref_target = ir_refs[i];
-      if (ref_target == null) continue;
-      // FieldStub → Field redirect (matching the FieldStub unwrapping above).
-      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
-      if (ref_target == target) {
-        has_matching_ref = true;
-        break;
-      }
-    }
-    if (!has_matching_ref) return;
-
-    // Look up the AST node to get source ranges for the toitdoc refs.
-    auto* ir_node = static_cast<ir::Node*>(key);
-    auto probe = ir_to_ast.find(ir_node);
-    if (probe == ir_to_ast.end()) return;
-    auto* ast_node = probe->second;
-
-    // Get the AST toitdoc from the declaration.
-    Toitdoc<ast::Node*> ast_toitdoc = Toitdoc<ast::Node*>::invalid();
-    if (ast_node->is_Class()) {
-      ast_toitdoc = ast_node->as_Class()->toitdoc();
-    } else if (ast_node->is_Method()) {
-      ast_toitdoc = ast_node->as_Method()->toitdoc();
-    } else if (ast_node->is_Field()) {
-      ast_toitdoc = ast_node->as_Field()->toitdoc();
-    }
-    if (!ast_toitdoc.is_valid()) return;
-
-    auto ast_refs = ast_toitdoc.refs();
-    ASSERT(ast_refs.length() == ir_refs.length());
-
-    for (int i = 0; i < ir_refs.length(); i++) {
-      auto* ref_target = ir_refs[i];
-      if (ref_target == null) continue;
-      if (ref_target->is_FieldStub()) ref_target = ref_target->as_FieldStub()->field();
-      if (ref_target != target) continue;
-
-      auto* ast_ref_node = ast_refs[i];
-      if (!ast_ref_node->is_ToitdocReference()) continue;
-      auto* toitdoc_ref = ast_ref_node->as_ToitdocReference();
-
-      auto* ref_target_expr = toitdoc_ref->target();
-      if (ref_target_expr == null) continue;
-
-      // For Dot expressions (e.g., `$Class.method`), emit only the part
-      // that corresponds to the rename target.
-      if (ref_target_expr->is_Dot()) {
-        auto* dot = ref_target_expr->as_Dot();
-        // The resolver resolves `$Class.method` to the method, not the class.
-        // So a matching ref means we're renaming the method → emit the name part.
-        visitor.emit_range(dot->name()->selection_range());
-      } else {
-        visitor.emit_range(ref_target_expr->selection_range());
-      }
-    }
-  });
-
-  // --- Expression-level references ---
-  // The visitor traverses all IR expression trees to find:
-  // - Static references (ReferenceMethod, ReferenceLocal, ReferenceGlobal)
-  // - Constructor calls for class targets (ReferenceMethod → holder class)
-  // - Virtual call sites (CallVirtual matching VirtualCallFilter)
-  // - IS/AS/local type checks for class targets (Typecheck nodes)
+  // Expression-level references (static, virtual, typechecks).
   visitor.visit(program);
   exit(0);
 }
+
 } // namespace toit::compiler
 } // namespace toit

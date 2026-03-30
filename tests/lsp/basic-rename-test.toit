@@ -4,23 +4,29 @@
 
 foo x:
 /*
+@ foo-def */
+/*
 ^
-  2
+  [foo-def, foo-call]
 */
   return x + 1
 
 bar y:
+/*
+@ bar-def */
   return y * 2
 
 main:
   foo 42
+/*@ foo-call */
 /*
   ^
-  2
+  [foo-def, foo-call]
 */
 
   bar 10
+/*@ bar-call */
 /*
   ^
-  2
+  [bar-def, bar-call]
 */

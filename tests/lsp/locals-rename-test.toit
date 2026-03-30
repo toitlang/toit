@@ -3,22 +3,26 @@
 // be found in the tests/LICENSE file.
 
 foo param/int:
+/*  @ param-def */
 /*
     ^
-    2
+    [param-def, param-usage]
 */
   return param + 1
+/*       @ param-usage */
 
 bar y:
   local-var := y * 2
+/*@ local-def */
 /*
   ^
-    2
+    [local-def, local-usage]
 */
   return local-var
+/*       @ local-usage */
 /*
          ^
-    2
+    [local-def, local-usage]
 */
 
 main:

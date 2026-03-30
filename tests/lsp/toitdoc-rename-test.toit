@@ -4,16 +4,19 @@
 
 // Test: renaming a symbol also updates $references in toitdoc comments.
 
-/// Uses $helper to do work.
-/// Also mentions $helper again.
+/// Uses $helper to do work. See also $helper.
+/*                                     @ toitdoc-ref2 */
+/*        @ toitdoc-ref1 */
 class MyWorker:
   run:
     helper
+/*  @ call */
 
   helper:
+/*@ def */
 /*
   ^
-  4
+  [def, call, toitdoc-ref1, toitdoc-ref2]
 */
     return 42
 

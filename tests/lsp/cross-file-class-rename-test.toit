@@ -3,11 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import .cross-file-class-rename-test-dep show Gadget
+/*                                            @ show */
 
 main:
   g := Gadget
+/*     @ use */
 /*
        ^
-  5
+  [def, type-param, type-return, ctor-call, show, use]
 */
   print g.value

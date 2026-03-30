@@ -5,15 +5,18 @@
 // Test: renaming a static method also updates $Class.method toitdoc references.
 
 /// See $Helper.compute for details.
+/*              @ toitdoc-ref */
 class User:
   run:
     Helper.compute
+/*         @ call */
 
 class Helper:
   static compute:
+/*       @ def */
 /*
          ^
-  3
+  [def, call, toitdoc-ref]
 */
     return 42
 

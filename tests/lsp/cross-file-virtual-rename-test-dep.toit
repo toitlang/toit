@@ -4,12 +4,14 @@
 
 class Animal:
   speak -> string:
+/*@ Animal.speak */
 /*
   ^
-  4
+  [Animal.speak, Dog.speak, virtual-call, direct-call]
 */
     return "..."
 
 class Dog extends Animal:
   speak -> string:
+/*@ Dog.speak */
     return "woof"

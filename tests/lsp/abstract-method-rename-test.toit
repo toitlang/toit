@@ -4,19 +4,22 @@
 
 interface Base:
   abstract-method
+/*@ abstract-def */
 /*
   ^
-  3
+  [abstract-def, impl, call]
 */
 
 class Impl implements Base:
   abstract-method:
+/*@ impl */
 /*
   ^
-  3
+  [abstract-def, impl, call]
 */
     return 42
 
 main:
   i := Impl
   i.abstract-method
+/*  @ call */

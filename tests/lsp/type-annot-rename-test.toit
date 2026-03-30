@@ -6,13 +6,17 @@
 // all usages including type annotations and return types.
 
 class Foo:
+/*    @ def */
 /*
       ^
-  4
+  [def, param-type, return-type, instantiation]
 */
 
 compute param/Foo -> Foo:
+/*            @ param-type */
+/*                   @ return-type */
   return param
 
 main:
   compute Foo
+/*        @ instantiation */

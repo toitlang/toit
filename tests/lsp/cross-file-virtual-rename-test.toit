@@ -6,12 +6,14 @@ import .cross-file-virtual-rename-test-dep show Animal Dog
 
 call-it animal/Animal:
   animal.speak
+/*       @ virtual-call */
 /*
          ^
-  4
+  [Animal.speak, Dog.speak, virtual-call, direct-call]
 */
 
 main:
   dog := Dog
   dog.speak
+/*    @ direct-call */
   call-it dog

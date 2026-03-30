@@ -9,15 +9,16 @@ Rename test runner that verifies rename correctness by:
 3. Applying all returned edits.
 4. Re-analyzing the modified files to check they still compile.
 
-Test markers use the same format as prepare-rename tests:
+Test markers use a caret to indicate the column and a list of expected
+location names (matching `/*@ name */` markers in the test files):
   some-identifier
   /*
     ^
-    expected-count
+    [loc-a, loc-b, loc-c]
   */
 
-The expected-count is the total number of edits across all files.
-A count of 0 means the rename should return null (not renamable).
+An empty list `[]` means the rename should return null (not renamable).
+The count is derived from the number of location names in the list.
 */
 
 import .lsp-client show LspClient run-client-test
@@ -46,6 +47,9 @@ find-test-line-index lines/List marker-index/int -> int:
         test-line-index--
       test-line-index--
     else if candidate.starts-with "/*":
+      test-line-index--
+    else if candidate.contains "@" and candidate.ends-with "*/":
+      // Multi-line marker continuation: `@ name */` on its own line.
       test-line-index--
     else:
       break
@@ -207,10 +211,8 @@ test client/LspClient test-path/string -> none:
           if expected-lines.is-empty:
             continue
 
-          expected-count := int.parse expected-lines[0]
-          expected-location-names := expected-lines.size > 1
-              ? parse-location-names expected-lines[1]
-              : []
+          expected-location-names := parse-location-names expected-lines[0]
+          expected-count := expected-location-names.size
 
           // Step 3: Build fresh file contents map from the temp copies.
           file-contents := {:}
@@ -247,7 +249,6 @@ test client/LspClient test-path/string -> none:
           expected-name := prepare-response["placeholder"]
 
           changes := response["changes"]
-          total-edits := 0
           actual-locations := []
           changes.do: |uri edits|
             path := client.to-path uri
@@ -274,22 +275,19 @@ test client/LspClient test-path/string -> none:
                   expect-equals expected-name normalized
                 if source-path:
                   actual-locations.add (Location source-path start-line start-char)
-              total-edits++
-          expect-equals expected-count total-edits
 
-          if not expected-location-names.is-empty:
-            expected-locations := expected-location-names.map: |name|
-              location := locations.get name
-              if not location:
-                throw "Unknown expected location '$name'"
-              location
-            if expected-locations.size != actual-locations.size:
-              print "ERROR: Expected locations $expected-locations but got $actual-locations"
-            expect-equals expected-locations.size actual-locations.size
-            expected-locations.do:
-              if not actual-locations.contains it:
-                print "ERROR: Missing expected location $it in $actual-locations"
-              expect (actual-locations.contains it)
+          expected-locations := expected-location-names.map: |name|
+            location := locations.get name
+            if not location:
+              throw "Unknown expected location '$name'"
+            location
+          if expected-locations.size != actual-locations.size:
+            print "ERROR: Expected locations $expected-locations but got $actual-locations"
+          expect-equals expected-locations.size actual-locations.size
+          expected-locations.do:
+            if not actual-locations.contains it:
+              print "ERROR: Missing expected location $it in $actual-locations"
+            expect (actual-locations.contains it)
 
           // Step 5: Apply all edits to in-memory file contents.
           apply-rename-edits response client file-contents

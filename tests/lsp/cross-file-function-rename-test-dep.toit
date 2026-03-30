@@ -6,7 +6,10 @@
 
 helper-function x/int -> int:
 /*
+@ def
+*/
+/*
   ^
-  3
+  [def, show, call]
 */
   return x + 1

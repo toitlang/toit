@@ -3,7 +3,14 @@
 // be found in the tests/LICENSE file.
 
 class Gadget:
+/*    @ def */
   value := 0
 
-helper x/Gadget -> Gadget:
+helper x/Gadget:
+/*       @ type-param */
   return x
+
+make-gadget -> Gadget:
+/*             @ type-return */
+  return Gadget
+/*       @ ctor-call */

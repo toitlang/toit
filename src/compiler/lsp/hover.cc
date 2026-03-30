@@ -31,6 +31,7 @@ void HoverHandler::import_path(const char* path,
   // No hover for import paths.
   // The import_path callback fires during import resolution, before all
   // files are loaded. Emitting here would disrupt the file-server protocol.
+  // TODO: Could be handled by a delayed callback, similar to the renaming.
 }
 
 void HoverHandler::class_interface_or_mixin(ast::Node* node,
@@ -68,17 +69,9 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
       }
       return false;
     });
-  } else if (type.is_any()) {
-    for (int i = 0; i < classes.length(); i++) {
-      ir::Class* klass = classes[i];
-      for (ir::MethodInstance* method : klass->methods()) {
-        if (method->name() == selector && method->resolution_shape().accepts(node->shape())) {
-          emit_hover(method, null);
-          return;
-        }
-      }
-    }
   }
+  // When the type is 'any', we intentionally don't search all classes.
+  // Picking an arbitrary match could show the wrong hover info.
 }
 
 void HoverHandler::call_prefixed(ast::Dot* node,
@@ -154,11 +147,7 @@ void HoverHandler::this_(ast::Identifier* node, ir::Class* enclosing_class, Iter
   emit_hover(enclosing_class, null);
 }
 
-void HoverHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
-  expord(node, entry, scope);
-}
-
-void HoverHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+void HoverHandler::emit_hover_for_entry(ResolutionEntry entry) {
   if (entry.kind() == ResolutionEntry::NODES) {
     if (entry.nodes().length() >= 1) {
       emit_hover(entry.nodes().first(), null);
@@ -166,6 +155,14 @@ void HoverHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* s
   } else if (entry.is_class()) {
     emit_hover(entry.klass(), null);
   }
+}
+
+void HoverHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  emit_hover_for_entry(entry);
+}
+
+void HoverHandler::expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
+  emit_hover_for_entry(entry);
 }
 
 void HoverHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
@@ -202,7 +199,7 @@ void HoverHandler::emit_hover(ir::Node* node, const char* name) {
   }
 
   if (!node_range.is_valid()) {
-    if (!has_emitted_ && deferred_node_ == null) {
+    if (deferred_node_ == null) {
       deferred_node_ = node;
     }
     return;
@@ -215,11 +212,11 @@ void HoverHandler::emit_hover(ir::Node* node, const char* name) {
   int end = location.source->offset_in_source(node_range.to());
 
   protocol()->hover()->emit_toitdoc_ref(location.source->absolute_path(), start, end);
-  has_emitted_ = true;
+  exit(0);
 }
 
 void HoverHandler::finalize() {
-  if (has_emitted_ || deferred_node_ == null) return;
+  if (deferred_node_ == null) return;
   emit_hover(deferred_node_, null);
 }
 

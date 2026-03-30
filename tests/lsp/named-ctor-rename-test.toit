@@ -4,14 +4,16 @@
 
 class A:
   constructor.my-named-ctor:
+/*            @ def */
 /*
                ^
-  2
+  [def, call]
 */
 
 main:
   a := A.my-named-ctor
+/*       @ call */
 /*
             ^
-  2
+  [def, call]
 */

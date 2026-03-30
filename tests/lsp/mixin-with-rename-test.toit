@@ -7,13 +7,15 @@ class Base:
   constructor:
 
 mixin Mix:
+/*    @ def */
   mix-method -> int:
     return 0
 
 class Child extends Base with Mix:
+/*                            @ with-usage */
 /*
                               ^
-  2
+  [def, with-usage]
 */
 
 main:
