@@ -11,6 +11,8 @@ class A:
   */
   field := 42
 
+  constructor:
+
   /**
   This is a method.
   */
