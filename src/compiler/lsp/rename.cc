@@ -153,11 +153,11 @@ static bool class_has_matching_method(ir::Class* klass,
   return false;
 }
 
-// VirtualCallFilter — determines whether a CallVirtual should be included
-// in rename results.  See find_and_emit_all_references for usage.
 
 namespace {
 
+// VirtualCallFilter — determines whether a CallVirtual should be included
+// in rename results.  See find_and_emit_all_references for usage.
 class VirtualCallFilter {
  public:
   static VirtualCallFilter build(ir::Node* target,
@@ -1108,7 +1108,6 @@ static void emit_toitdoc_references(
 }
 
 // find_and_emit_all_references
-
 void find_and_emit_all_references(
     ir::Node* target,
     ir::Program* program,
