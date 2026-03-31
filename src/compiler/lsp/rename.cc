@@ -153,10 +153,8 @@ static bool class_has_matching_method(ir::Class* klass,
   return false;
 }
 
-// ---------------------------------------------------------------------------
 // VirtualCallFilter — determines whether a CallVirtual should be included
 // in rename results.  See find_and_emit_all_references for usage.
-// ---------------------------------------------------------------------------
 
 namespace {
 
@@ -195,9 +193,7 @@ class VirtualCallFilter {
   SourceManager* source_manager_;
 };
 
-// ---------------------------------------------------------------------------
 // FindReferencesVisitor — traverses IR trees to find references to a target.
-// ---------------------------------------------------------------------------
 
 class FindReferencesVisitor : public ir::TraversingVisitor {
  public:
@@ -232,9 +228,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
 
 }  // anonymous namespace
 
-// ---------------------------------------------------------------------------
 // FindReferencesHandler method implementations
-// ---------------------------------------------------------------------------
 
 void FindReferencesHandler::class_interface_or_mixin(ast::Node* node,
                                                      IterableScope* scope,
@@ -440,9 +434,7 @@ void FindReferencesHandler::handle_show_or_export(ast::Node* node, ResolutionEnt
   }
 }
 
-// ---------------------------------------------------------------------------
 // VirtualCallFilter
-// ---------------------------------------------------------------------------
 
 VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
                                            ir::Program* program,
@@ -638,9 +630,7 @@ bool VirtualCallFilter::should_include(ir::CallVirtual* node) const {
   return false;
 }
 
-// ---------------------------------------------------------------------------
 // FindReferencesVisitor
-// ---------------------------------------------------------------------------
 
 FindReferencesVisitor::FindReferencesVisitor(ir::Node* target,
                                              Source::Range definition_range,
@@ -888,9 +878,7 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
   TraversingVisitor::visit_Typecheck(node);
 }
 
-// ---------------------------------------------------------------------------
 // Helper functions for find_and_emit_all_references
-// ---------------------------------------------------------------------------
 
 // Emits override/implementation definitions for virtual methods and fields.
 static void emit_override_definitions(
@@ -1119,9 +1107,7 @@ static void emit_toitdoc_references(
   });
 }
 
-// ---------------------------------------------------------------------------
 // find_and_emit_all_references
-// ---------------------------------------------------------------------------
 
 void find_and_emit_all_references(
     ir::Node* target,
