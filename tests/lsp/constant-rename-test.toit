@@ -6,16 +6,14 @@
 MY-CONST ::= 100
 /*
 @ def
-*/
-/*
 ^
   [def, usage]
 */
 
 use-const -> int:
   return MY-CONST
-/*       @ usage */
 /*
+         @ usage
          ^
   [def, usage]
 */

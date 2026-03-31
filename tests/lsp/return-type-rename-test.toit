@@ -8,8 +8,8 @@ class Foo:
   constructor:
 
 make -> Foo:
-/*      @ return-type */
 /*
+        @ return-type
          ^
   [def, return-type, constructor]
 */

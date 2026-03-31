@@ -3,14 +3,14 @@
 // be found in the tests/LICENSE file.
 
 test [block-param]:
-/*    @ def */
 /*
+      @ def
         ^
   [def, usage]
 */
   block-param.call
-/*@ usage */
 /*
+  @ usage
     ^
   [def, usage]
 */

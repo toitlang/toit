@@ -4,27 +4,27 @@
 
 interface I1:
 class MyClass extends Base implements I1:
-/*    @ def */
 /*
+      @ def
         ^
   [def, param-type, return-type, local, instantiation]
 */
 class Base:
 
 test type/MyClass -> MyClass:
-/*        @ param-type */
-/*                   @ return-type */
 /*
+          @ param-type
             ^
   [def, param-type, return-type, local, instantiation]
 */
 /*
+                     @ return-type
                        ^
   [def, param-type, return-type, local, instantiation]
 */
   t := MyClass
-/*     @ local */
 /*
+       @ local
          ^
   [def, param-type, return-type, local, instantiation]
 */

@@ -13,8 +13,8 @@ class User:
 
 class Helper:
   static compute:
-/*       @ def */
 /*
+         @ def
          ^
   [def, call, toitdoc-ref]
 */

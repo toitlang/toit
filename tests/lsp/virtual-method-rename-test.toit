@@ -16,8 +16,8 @@
 
 class Animal:
   speak -> string:
-/*@ Animal.speak */
 /*
+  @ Animal.speak
   ^
   [Animal.speak, Dog.speak, call1, call2]
 */
@@ -25,8 +25,8 @@ class Animal:
 
 class Dog extends Animal:
   speak -> string:
-/*@ Dog.speak */
 /*
+  @ Dog.speak
   ^
   [Animal.speak, Dog.speak, call1, call2]
 */

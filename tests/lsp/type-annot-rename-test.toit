@@ -6,8 +6,8 @@
 // all usages including type annotations and return types.
 
 class Foo:
-/*    @ def */
 /*
+      @ def
       ^
   [def, param-type, return-type, instantiation]
 */

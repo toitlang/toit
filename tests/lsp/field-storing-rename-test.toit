@@ -4,15 +4,15 @@
 
 class A:
   field/int
-/*@ def */
 /*
+  @ def
     ^
   [def, storing-param, usage]
 */
 
   constructor .field:
-/*             @ storing-param */
 /*
+               @ storing-param
                  ^
   [def, storing-param, usage]
 */
@@ -20,8 +20,8 @@ class A:
 main:
   a := A 42
   print a.field
-/*        @ usage */
 /*
+          @ usage
             ^
   [def, storing-param, usage]
 */

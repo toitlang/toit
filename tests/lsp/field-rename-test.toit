@@ -5,16 +5,16 @@
 // Test: renaming a field should find definition and usages.
 class Container:
   my-field := 0
-/*@ def */
 /*
+  @ def
   ^
   [def, getter, call]
 */
 
   read-it -> int:
     return my-field
-/*         @ getter */
 /*
+           @ getter
            ^
   [def, getter, call]
 */

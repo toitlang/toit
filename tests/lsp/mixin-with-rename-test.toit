@@ -12,8 +12,8 @@ mixin Mix:
     return 0
 
 class Child extends Base with Mix:
-/*                            @ with-usage */
 /*
+                              @ with-usage
                               ^
   [def, with-usage]
 */

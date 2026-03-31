@@ -4,8 +4,8 @@
 
 // Test: renaming a class also updates extends clauses.
 class Foo:
-/*    @ Foo */
 /*
+      @ Foo
       ^
   [Foo, Holder.extends.Foo, make.return.Foo, make.ctor.Foo]
 */

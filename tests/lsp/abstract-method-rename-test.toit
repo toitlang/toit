@@ -4,16 +4,16 @@
 
 interface Base:
   abstract-method
-/*@ abstract-def */
 /*
+  @ abstract-def
   ^
   [abstract-def, impl, call]
 */
 
 class Impl implements Base:
   abstract-method:
-/*@ impl */
 /*
+  @ impl
   ^
   [abstract-def, impl, call]
 */

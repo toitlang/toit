@@ -13,8 +13,8 @@ class MyWorker:
 /*  @ call */
 
   helper:
-/*@ def */
 /*
+  @ def
   ^
   [def, call, toitdoc-ref1, toitdoc-ref2]
 */

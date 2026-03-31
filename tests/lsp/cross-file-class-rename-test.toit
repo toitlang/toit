@@ -7,8 +7,8 @@ import .cross-file-class-rename-test-dep show Gadget
 
 main:
   g := Gadget
-/*     @ use */
 /*
+       @ use
        ^
   [def, type-param, type-return, ctor-call, show, use]
 */

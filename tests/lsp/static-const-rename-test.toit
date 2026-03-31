@@ -4,16 +4,16 @@
 
 class A:
   static MY-CONST ::= 42
-/*       @ def */
 /*
+         @ def
            ^
   [def, usage]
 */
 
 main:
   print A.MY-CONST
-/*        @ usage */
 /*
+          @ usage
             ^
   [def, usage]
 */

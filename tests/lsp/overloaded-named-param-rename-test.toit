@@ -8,8 +8,8 @@
 // NOT be renamed.
 
 foo --some-name/int:
-/*    @ int-def */
 /*
+      @ int-def
        ^
   [int-def, int-body, int-call]
 */
@@ -17,8 +17,8 @@ foo --some-name/int:
 /*       @ int-body */
 
 foo --some-name/string [--if-error]:
-/*    @ str-def */
 /*
+      @ str-def
        ^
   [str-def, str-body, str-call]
 */
@@ -28,14 +28,14 @@ foo --some-name/string [--if-error]:
 
 main:
   foo --some-name=42
-/*      @ int-call */
 /*
+        @ int-call
          ^
   [int-def, int-body, int-call]
 */
   foo --some-name="hello" --if-error=: "error"
-/*      @ str-call */
 /*
+        @ str-call
          ^
   [str-def, str-body, str-call]
 */

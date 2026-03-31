@@ -4,8 +4,8 @@
 
 class Animal:
   speak -> string:
-/*@ Animal.speak */
 /*
+  @ Animal.speak
   ^
   [Animal.speak, Dog.speak, virtual-call, direct-call]
 */

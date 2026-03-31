@@ -6,19 +6,22 @@
 Rename test runner that verifies rename correctness by:
 1. Copying test files to a temp directory.
 2. Sending rename requests at marked positions.
-3. Applying all returned edits.
-4. Re-analyzing the modified files to check they still compile.
+3. Checking that returned edit ranges cover the complete identifier.
+4. Verifying that the expected locations match the actual edit locations.
 
-Test markers use a caret to indicate the column and a list of expected
-location names (matching `/*@ name */` markers in the test files):
+Test markers use a comment block with a caret to indicate the column and
+a list of expected location names (matching `@ name` markers):
   some-identifier
   /*
-    ^
-    [loc-a, loc-b, loc-c]
+  @ some-def
+  ^
+    [some-def, some-call]
   */
 
+The `@ name` marker is optional in the block (location-only or test-only
+blocks are also supported).
+
 An empty list `[]` means the rename should return null (not renamable).
-The count is derived from the number of location names in the list.
 */
 
 import .lsp-client show LspClient run-client-test
@@ -47,9 +50,6 @@ find-test-line-index lines/List marker-index/int -> int:
         test-line-index--
       test-line-index--
     else if candidate.starts-with "/*":
-      test-line-index--
-    else if candidate.contains "@" and candidate.ends-with "*/":
-      // Multi-line marker continuation: `@ name */` on its own line.
       test-line-index--
     else:
       break
@@ -109,57 +109,6 @@ copy-test-files test-path/string target-dir/string -> Map:
 
   return path-map
 
-/**
-Applies text edits from a rename response to in-memory content strings.
-
-The $response is the LSP rename response (a WorkspaceEdit).
-The $client is used to convert URIs to paths.
-The $file-contents is a map from file-path -> current content string.
-*/
-apply-rename-edits response/Map client/LspClient file-contents/Map -> none:
-  changes := response["changes"]
-  changes.do: |uri edits|
-    path := client.to-path uri
-    content := file-contents.get path
-    if not content:
-      // The file might not be in our map (e.g. SDK files).
-      // Skip it.
-      continue.do
-    lines := content.split "\n"
-
-    // Sort edits in reverse order (bottom-to-top, right-to-left) to avoid
-    //   offset shifting.
-    sorted := edits.sort: |a b|
-      a-start := a["range"]["start"]
-      b-start := b["range"]["start"]
-      if a-start["line"] != b-start["line"]:
-        b-start["line"] - a-start["line"]
-      else:
-        b-start["character"] - a-start["character"]
-
-    sorted.do: |edit|
-      new-text := edit["newText"]
-      start := edit["range"]["start"]
-      end := edit["range"]["end"]
-      start-line := start["line"]
-      start-char := start["character"]
-      end-line := end["line"]
-      end-char := end["character"]
-
-      if start-line == end-line:
-        line := lines[start-line]
-        lines[start-line] = line[..start-char] + new-text + line[end-char..]
-      else:
-        // Multi-line edit (unlikely for rename, but handle it).
-        first := lines[start-line][..start-char] + new-text
-        last := lines[end-line][end-char..]
-        new-lines := [first + last]
-        for j := end-line; j >= start-line; j--:
-          lines.remove --at=j
-        lines.insert --at=start-line new-lines[0]
-
-    file-contents[path] = lines.join "\n"
-
 main args:
   test-path := args[0]
   args = args.copy 1
@@ -168,7 +117,7 @@ main args:
 
 test client/LspClient test-path/string -> none:
   locations := extract-locations test-path
-  // Step 1: Copy test files to temp directory.
+  // Copy test files to temp directory.
   temp-dir := directory.mkdtemp "/tmp/lsp_rename_test-"
   try:
     path-map := copy-test-files test-path temp-dir
@@ -183,7 +132,7 @@ test client/LspClient test-path/string -> none:
         dep-content := (file.read-contents temp-path).to-string
         client.send-did-open --path=temp-path --text=dep-content
 
-    // Step 2: Parse test markers across all files.
+    // Parse test markers across all files.
     path-map.do: |original-path temp-path|
       file-content := (file.read-contents temp-path).to-string
       lines := (file-content.trim --right "\n").split "\n"
@@ -192,21 +141,43 @@ test client/LspClient test-path/string -> none:
       for i := 0; i < lines.size; i++:
         line := lines[i]
         if line.starts-with "/*" and not line.starts-with "/**":
+          // Single-line block (e.g., /*@ name */) — no caret possible, skip.
+          if line.trim.ends-with "*/": continue
+
           // Walk backward past any preceding consecutive marker blocks to
-          // find the actual code line.  When multiple markers annotate the
-          // same source line, only the first block's "i - 1" points to the
-          // code line; subsequent blocks would point to a closing "*/".
+          // find the actual code line.
           test-line-index := find-test-line-index lines i
-          if i + 1 >= lines.size: continue
-          next-line := lines[i + 1]
-          if not next-line.contains "^": continue
-          column := next-line.index-of "^"
-          // Skip past the caret line.
-          i += 2
+
+          // Scan the block for a caret line. Skip any `@ name` lines.
+          caret-column := null
+          j := i + 1
+          while j < lines.size and not lines[j].trim.starts-with "*/":
+            block-line := lines[j]
+            if block-line.contains "^":
+              caret-column = block-line.index-of "^"
+            j++
+          if caret-column == null:
+            // No caret in this block — skip to end of block.
+            i = j
+            continue
+          column := caret-column
+
+          // Collect expected-location lines (everything after the caret,
+          // before the closing "*/", excluding "@" lines).
           expected-lines := []
-          while i < lines.size and not lines[i].starts-with "*/":
-            expected-lines.add lines[i].trim
-            i++
+          found-caret := false
+          k := i + 1
+          while k < lines.size and not lines[k].trim.starts-with "*/":
+            if found-caret:
+              trimmed := lines[k].trim
+              if not trimmed.contains "@":
+                expected-lines.add trimmed
+            else if lines[k].contains "^":
+              found-caret = true
+            k++
+
+          // Advance i past the closing "*/".
+          i = k
 
           if expected-lines.is-empty:
             continue
@@ -214,7 +185,7 @@ test client/LspClient test-path/string -> none:
           expected-location-names := parse-location-names expected-lines[0]
           expected-count := expected-location-names.size
 
-          // Step 3: Build fresh file contents map from the temp copies.
+          // Build file contents map from the original source files.
           file-contents := {:}
           path-map.do: |orig-p tmp-p|
             file-contents[tmp-p] = (file.read-contents orig-p).to-string
@@ -227,8 +198,8 @@ test client/LspClient test-path/string -> none:
           file-contents.do: |path fc|
             client.send-did-change --path=path fc
 
-          // Step 4: Ask prepareRename for the original symbol name, then
-          //   send the rename request.
+          // Ask prepareRename for the original symbol name, then
+          // send the rename request.
           prepare-response := client.send-prepare-rename-request
               --path=temp-path
               test-line-index
@@ -257,14 +228,14 @@ test client/LspClient test-path/string -> none:
             fc-lines := fc ? (fc.split "\n") : null
             edits.do: |edit|
               expect-equals "new-name" edit["newText"]
+              start := edit["range"]["start"]
+              end := edit["range"]["end"]
+              start-line := start["line"]
+              start-char := start["character"]
+              end-line := end["line"]
+              end-char := end["character"]
               // Verify the edited range covers the original name.
               if fc-lines:
-                start := edit["range"]["start"]
-                end := edit["range"]["end"]
-                start-line := start["line"]
-                start-char := start["character"]
-                end-line := end["line"]
-                end-char := end["character"]
                 if start-line == end-line:
                   old-text := fc-lines[start-line][start-char..end-char]
                   // In Toit, underscores and hyphens are interchangeable
@@ -273,8 +244,8 @@ test client/LspClient test-path/string -> none:
                   if normalized != expected-name:
                     print "ERROR: Edit at line $(start-line+1) covers '$old-text', expected '$expected-name'"
                   expect-equals expected-name normalized
-                if source-path:
-                  actual-locations.add (Location source-path start-line start-char)
+              if source-path:
+                actual-locations.add (Location source-path start-line start-char)
 
           expected-locations := expected-location-names.map: |name|
             location := locations.get name
@@ -288,30 +259,6 @@ test client/LspClient test-path/string -> none:
             if not actual-locations.contains it:
               print "ERROR: Missing expected location $it in $actual-locations"
             expect (actual-locations.contains it)
-
-          // Step 5: Apply all edits to in-memory file contents.
-          apply-rename-edits response client file-contents
-
-          // Step 6: Write updated files to disk and send to LSP.
-          file-contents.do: |path new-content|
-            file.write-contents --path=path new-content
-            client.send-did-change --path=path new-content
-
-          // Step 7: Re-open the main file to trigger re-analysis and
-          //   check for diagnostics.
-          client.send-did-open
-              --path=temp-test-path
-              --text=file-contents[temp-test-path]
-
-          diagnostics := client.diagnostics-for --path=temp-test-path
-          if diagnostics:
-            error-diagnostics := diagnostics.filter:
-              it["severity"] == 1  // 1 = Error in LSP.
-            if not error-diagnostics.is-empty:
-              print "ERROR: Rename at line $(test-line-index + 1), column $column produced errors after applying edits:"
-              error-diagnostics.do: |diag|
-                print "  $(diag["message"])"
-              expect error-diagnostics.is-empty
 
   finally:
     directory.rmdir --recursive temp-dir

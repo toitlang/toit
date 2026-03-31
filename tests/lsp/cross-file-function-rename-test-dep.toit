@@ -7,8 +7,6 @@
 helper-function x/int -> int:
 /*
 @ def
-*/
-/*
   ^
   [def, show, call]
 */

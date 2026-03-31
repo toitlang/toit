@@ -50,6 +50,18 @@ class ToitdocScopeIterator;
 class ToitdocRegistry;
 class Filesystem;
 
+/// Unwraps an ir::Reference* node to its underlying definition.
+ir::Node* unwrap_reference(ir::Node* node);
+
+/// Returns the name of the given target node as a C string.
+const char* target_name(ir::Node* target);
+
+/// Returns the name range of the given target node.
+Source::Range target_range(ir::Node* target);
+
+/// Returns whether the given target node is defined in the SDK.
+bool is_sdk_target(ir::Node* target, SourceManager* source_manager);
+
 /// For some operations, the LSP client sends the server a selection for which it
 /// wants information. This selection is given to the compiler which then detects
 /// it during the compilation process.

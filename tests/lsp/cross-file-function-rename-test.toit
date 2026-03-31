@@ -9,8 +9,8 @@ import .cross-file-function-rename-test-dep show helper-function
 
 main:
   helper-function 42
-/*@ call */
 /*
+  @ call
   ^
   [def, show, call]
 */

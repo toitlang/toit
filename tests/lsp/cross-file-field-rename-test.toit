@@ -7,8 +7,8 @@ import .cross-file-field-rename-test-dep show Settings
 main:
   s := Settings
   s.is-paused = true
-/*  @ assign */
 /*
+    @ assign
     ^
   [def, assign, read]
 */

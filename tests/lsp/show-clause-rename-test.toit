@@ -5,16 +5,16 @@
 // Test: renaming a class at the show clause should rename the class everywhere.
 
 import .show-clause-rename-test-dep show Visible
-/*                                       @ show */
 /*
+                                         @ show
                                          ^
   [def, show, use]
 */
 
 main:
   v := Visible
-/*     @ use */
 /*
+       @ use
        ^
   [def, show, use]
 */

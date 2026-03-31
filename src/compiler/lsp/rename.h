@@ -19,23 +19,10 @@
 
 #include "../set.h"
 #include "../token.h"
-#include "../package.h"
 #include "../resolver.h"
 
 namespace toit {
 namespace compiler {
-
-// Unwraps an ir::Reference* node to its underlying definition.
-ir::Node* unwrap_reference(ir::Node* node);
-
-// Returns the name of the given target node as a C string.
-const char* target_name(ir::Node* target);
-
-// Returns the name range of the given target node.
-Source::Range target_range(ir::Node* target);
-
-// Returns whether the given target node is defined in the SDK.
-bool is_sdk_target(ir::Node* target, SourceManager* source_manager);
 
 // TODO: It might be interesting to split the LSP handler in two: one that is
 // called early (during resolution), and then a later post-resolution (or even

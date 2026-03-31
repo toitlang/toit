@@ -6,8 +6,8 @@ import .cross-file-virtual-rename-test-dep show Animal Dog
 
 call-it animal/Animal:
   animal.speak
-/*       @ virtual-call */
 /*
+         @ virtual-call
          ^
   [Animal.speak, Dog.speak, virtual-call, direct-call]
 */

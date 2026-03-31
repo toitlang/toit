@@ -4,8 +4,8 @@
 
 // Test: renaming a class should find the definition and all usages.
 class MyClass:
-/*    @ def */
 /*
+      @ def
       ^
   [def, return-type, make-call, instantiation]
 */
@@ -21,8 +21,8 @@ make -> MyClass:
 
 main:
   obj := MyClass
-/*       @ instantiation */
 /*
+         @ instantiation
          ^
   [def, return-type, make-call, instantiation]
 */

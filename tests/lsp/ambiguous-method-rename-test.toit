@@ -16,8 +16,8 @@
 
 class Greeter:
   greet name/string -> string:
-/*@ Greeter.greet */
 /*
+  @ Greeter.greet
   ^
   [Greeter.greet, use-greeter.greet, main.greet]
 */
@@ -31,8 +31,8 @@ use-greeter g/Greeter:
 
 class Processor:
   run -> none:
-/*@ Processor.run */
 /*
+  @ Processor.run
   ^
   [Processor.run, use-processor.run, main.run]
 */

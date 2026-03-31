@@ -5,16 +5,15 @@
 // Test: renaming a global variable should find definition and usages.
 my-global := 42
 /*
-@ def */
-/*
+@ def
 ^
   [def, use1, use2]
 */
 
 use-it:
   return my-global
-/*       @ use1 */
 /*
+         @ use1
          ^
   [def, use1, use2]
 */
@@ -22,8 +21,8 @@ use-it:
 main:
   use-it
   x := my-global
-/*     @ use2 */
 /*
+       @ use2
        ^
   [def, use1, use2]
 */
