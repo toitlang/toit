@@ -113,11 +113,12 @@ class FindReferencesHandler : public LspSelectionHandler {
   void definition(ir::Node* ir_node, Source::Range name_range) override;
 
   ir::Node* target() const { return target_; }
-  // Returns the source range at the cursor position (the usage site).
-  // This is the range of the identifier the user clicked on, which may
-  // differ from target_range(target()) when the cursor is on a reference
-  // rather than the definition.  Used by prepareRename to return the
-  // correct range to the editor.
+  /// Returns the source range at the cursor position (the usage site).
+  ///
+  /// This is the range of the identifier the user clicked on, which may
+  /// differ from target_range(target()) when the cursor is on a reference
+  /// rather than the definition. Used by prepareRename to return the
+  /// correct range to the editor.
   Source::Range cursor_range() const { return cursor_range_; }
   SourceManager* source_manager() const { return source_manager_; }
 
@@ -129,15 +130,15 @@ class FindReferencesHandler : public LspSelectionHandler {
   Source::Range cursor_range_ = Source::Range::invalid();
 };
 
-// Finds all references to [target] in the program and emits them via
-// the protocol's find_references channel.
-//
-// This function handles all reference types: static references, virtual
-// call sites, class hierarchy references (extends/implements/with),
-// type annotations, field-storing parameters, show/export clauses,
-// and toitdoc references.
-//
-// Does not return — calls exit(0) after emitting all references.
+/// Finds all references to [target] in the program and emits them via
+/// the protocol's find_references channel.
+///
+/// This function handles all reference types: static references, virtual
+/// call sites, class hierarchy references (extends/implements/with),
+/// type annotations, field-storing parameters, show/export clauses,
+/// and toitdoc references.
+///
+/// Does not return — calls exit(0) after emitting all references.
 void find_and_emit_all_references(
     ir::Node* target,
     ir::Program* program,
