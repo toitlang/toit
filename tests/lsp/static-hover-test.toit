@@ -2,10 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .imported as imported
+import .imported show my-function
 
 main:
-  imported.my_function
-  /*       ^
-  Doc for my_function.
+  my-function
+  /* ^
+  Doc for my-function.
   */

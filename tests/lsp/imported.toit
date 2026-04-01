@@ -4,5 +4,5 @@
 
 /** Helper library for LSP tests. */
 
-/** Doc for my_function. */
-my_function:
+/** Doc for my-function. */
+my-function:
