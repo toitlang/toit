@@ -73,7 +73,7 @@ find-relative-imports content/string source-dir/string -> List:
       // Convert dots to path separators for parent-directory imports.
       parts := rest.split "."
       // Build the path relative to source-dir.
-      path := "$source-dir/$(parts.join "/").toit"
+      path := fs.to-slash "$source-dir/$(parts.join "/").toit"
       result.add path
   return result
 
@@ -97,9 +97,9 @@ copy-test-files test-path/string target-dir/string -> Map:
 
     // Use just the basename for all files (they are all siblings).
     basename := fs.basename current
-    target := "$target-dir/$basename"
+    target := fs.to-slash "$target-dir/$basename"
     file.copy --source=current --target=target
-    path-map[current] = target
+    path-map[fs.to-slash current] = target
 
     // Find imports in this file.
     content := (file.read-contents current).to-string
@@ -121,7 +121,7 @@ test client/LspClient test-path/string -> none:
   temp-dir := directory.mkdtemp "/tmp/lsp_rename_test-"
   try:
     path-map := copy-test-files test-path temp-dir
-    temp-test-path := path-map[test-path]
+    temp-test-path := path-map[fs.to-slash test-path]
 
     content := (file.read-contents temp-test-path).to-string
 
@@ -222,7 +222,7 @@ test client/LspClient test-path/string -> none:
           changes := response["changes"]
           actual-locations := []
           changes.do: |uri edits|
-            path := client.to-path uri
+            path := fs.to-slash (client.to-path uri)
             source-path := temp-to-original[path]
             fc := file-contents.get path
             fc-lines := fc ? (fc.split "\n") : null
