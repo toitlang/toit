@@ -215,6 +215,14 @@ test client/LspClient test-path/string -> none:
             expect-null response
             continue
 
+          if not response:
+            print "DEBUG: rename returned null for $temp-path line=$test-line-index col=$column"
+            print "DEBUG:   original-path=$original-path"
+            print "DEBUG:   expected-locations=$expected-location-names"
+            print "DEBUG:   prepare-response=$prepare-response"
+            lines-debug := (file.read-contents temp-path).to-string.split "\n"
+            if test-line-index < lines-debug.size:
+              print "DEBUG:   test-line='$(lines-debug[test-line-index])'"
           expect-not-null response
           expect-not-null prepare-response
           expected-name := prepare-response["placeholder"]
