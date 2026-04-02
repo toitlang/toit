@@ -73,9 +73,10 @@
 #elif defined(__EC618)
 #define TOIT_EC618
 #include "FreeRTOS.h"
-#if configSUPPORT_DYNAMIC_ALLOC_HEAP == 7
+// cmpctmalloc is enabled for EC618 via heap_7.c which shadows heap_6
+// at link time. We can't change configSUPPORT_DYNAMIC_ALLOC_HEAP in
+// the header because the prebuilt libfreertos.a asserts it's 6.
 #define TOIT_CMPCTMALLOC 1
-#endif
 // The PLAT SDK defines TRUE/FALSE macros that conflict with Toit's
 // token definitions and other code.
 #undef TRUE

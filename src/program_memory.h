@@ -168,7 +168,12 @@ class ProgramHeapMemory {
 
   void set_writable(ProgramBlock* block, bool value);
 
-  Mutex* mutex() const { return memory_mutex_; }
+  Mutex* mutex() {
+    if (!memory_mutex_) {
+      memory_mutex_ = OS::allocate_mutex(0, "Memory mutex");
+    }
+    return memory_mutex_;
+  }
 
   static ProgramHeapMemory* instance() { return &instance_; }
 

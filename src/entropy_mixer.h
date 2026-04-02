@@ -33,13 +33,19 @@ namespace toit {
 class EntropyMixer {
  public:
   EntropyMixer()
+#ifndef TOIT_EC618
     : mutex_(OS::allocate_mutex(4, "Entropy mutex")) {
     mbedtls_entropy_init(&context_);
+#else
+    // On EC618, static constructors run before FreeRTOS is started,
+    // so we can't allocate a mutex here. Defer to ensure_initialized().
+    : mutex_(null) {
+#endif
   }
 
   ~EntropyMixer() {
     mbedtls_entropy_free(&context_);
-    OS::dispose(mutex_);
+    if (mutex_) OS::dispose(mutex_);
   }
 
   void add_entropy_byte(int datum) {
@@ -48,11 +54,13 @@ class EntropyMixer {
   }
 
   void add_entropy(const uint8* data, size_t size) {
+    ensure_initialized();
     Locker locker(mutex_);
     mbedtls_entropy_update_manual(&context_, data, size);
   }
 
   bool get_entropy(uint8* data, size_t size) {
+    ensure_initialized();
     Locker locker(mutex_);
     int result = mbedtls_entropy_func(&context_, data, size);
     return result == 0;
@@ -61,6 +69,12 @@ class EntropyMixer {
   static EntropyMixer* instance() { return &instance_; }
 
  private:
+  void ensure_initialized() {
+    if (mutex_) return;
+    mutex_ = OS::allocate_mutex(4, "Entropy mutex");
+    mbedtls_entropy_init(&context_);
+  }
+
   mbedtls_entropy_context context_;
   Mutex* mutex_;
   static EntropyMixer instance_;

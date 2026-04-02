@@ -27,27 +27,9 @@ extern "C" {
   #include "cmsis_os2.h"
   #include "osasys.h"
   #include "rng.h"
-#ifdef TOIT_CMPCTMALLOC
-  // These are declared in portable.h but that header is included by
-  // FreeRTOS.h before configSUPPORT_DYNAMIC_ALLOC_HEAP is defined,
-  // so the #if guard doesn't work. Redeclare them here.
-  typedef struct {
-      size_t total_free_bytes;
-      size_t total_allocated_bytes;
-      size_t largest_free_block;
-      size_t minimum_free_bytes;
-      size_t allocated_blocks;
-      size_t free_blocks;
-      size_t total_blocks;
-      void  *lowest_address;
-      void  *highest_address;
-  } heap_stats_t;
-  typedef int (*tagged_memory_callback_t)(void*, void*, void*, size_t);
-  void vPortGetHeapStats(heap_stats_t *stats);
-  void vPortIterateAllocations(void*, void*, tagged_memory_callback_t, uint32_t);
-  void vPortSetHeapTag(void *tag);
-  void *vPortGetHeapTag(void);
-#endif
+  // heap_stats_t, tagged_memory_callback_t, vPortGetHeapStats,
+  // vPortIterateAllocations, vPortSetHeapTag, vPortGetHeapTag
+  // are now declared in portable.h (included via FreeRTOS.h).
 
   extern uint32_t SystemCoreClock;
   extern char end_ap_data;
