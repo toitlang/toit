@@ -118,7 +118,9 @@ main args:
 test client/LspClient test-path/string -> none:
   locations := extract-locations test-path
   // Copy test files to temp directory.
-  temp-dir := directory.mkdtemp "/tmp/lsp_rename_test-"
+  // Use a short prefix to keep paths under 128 characters, which avoids
+  //   a path-length issue in the LSP compiler on Windows.
+  temp-dir := directory.mkdtemp "/tmp/rn-"
   try:
     path-map := copy-test-files test-path temp-dir
     temp-test-path := path-map[fs.to-slash test-path]
@@ -132,9 +134,18 @@ test client/LspClient test-path/string -> none:
         dep-content := (file.read-contents temp-path).to-string
         client.send-did-open --path=temp-path --text=dep-content
 
+    // Build file contents map from the original source files (once).
+    file-contents := {:}
+    path-map.do: |orig-p tmp-p|
+      file-contents[tmp-p] = (file.read-contents orig-p).to-string
+
+    temp-to-original := {:}
+    path-map.do: |orig-p tmp-p|
+      temp-to-original[tmp-p] = orig-p
+
     // Parse test markers across all files.
     path-map.do: |original-path temp-path|
-      file-content := (file.read-contents temp-path).to-string
+      file-content := file-contents[temp-path]
       lines := (file-content.trim --right "\n").split "\n"
       lines = lines.map --in-place: it.trim --right "\r"
 
@@ -185,21 +196,6 @@ test client/LspClient test-path/string -> none:
           expected-location-names := parse-location-names expected-lines[0]
           expected-count := expected-location-names.size
 
-          // Build file contents map from the original source files.
-          file-contents := {:}
-          path-map.do: |orig-p tmp-p|
-            file-contents[tmp-p] = (file.read-contents orig-p).to-string
-
-          temp-to-original := {:}
-          path-map.do: |orig-p tmp-p|
-            temp-to-original[tmp-p] = orig-p
-
-          // Ensure fresh content is sent to LSP.
-          file-contents.do: |path fc|
-            client.send-did-change --path=path fc
-
-          // Ask prepareRename for the original symbol name, then
-          // send the rename request.
           prepare-response := client.send-prepare-rename-request
               --path=temp-path
               test-line-index
@@ -215,14 +211,6 @@ test client/LspClient test-path/string -> none:
             expect-null response
             continue
 
-          if not response:
-            print "DEBUG: rename returned null for $temp-path line=$test-line-index col=$column"
-            print "DEBUG:   original-path=$original-path"
-            print "DEBUG:   expected-locations=$expected-location-names"
-            print "DEBUG:   prepare-response=$prepare-response"
-            lines-debug := (file.read-contents temp-path).to-string.split "\n"
-            if test-line-index < lines-debug.size:
-              print "DEBUG:   test-line='$(lines-debug[test-line-index])'"
           expect-not-null response
           expect-not-null prepare-response
           expected-name := prepare-response["placeholder"]
@@ -249,8 +237,6 @@ test client/LspClient test-path/string -> none:
                   // In Toit, underscores and hyphens are interchangeable
                   //   in identifiers. Normalize before comparing.
                   normalized := old-text.replace --all "_" "-"
-                  if normalized != expected-name:
-                    print "ERROR: Edit at line $(start-line+1) covers '$old-text', expected '$expected-name'"
                   expect-equals expected-name normalized
               if source-path:
                 actual-locations.add (Location source-path start-line start-char)
@@ -260,12 +246,8 @@ test client/LspClient test-path/string -> none:
             if not location:
               throw "Unknown expected location '$name'"
             location
-          if expected-locations.size != actual-locations.size:
-            print "ERROR: Expected locations $expected-locations but got $actual-locations"
           expect-equals expected-locations.size actual-locations.size
           expected-locations.do:
-            if not actual-locations.contains it:
-              print "ERROR: Missing expected location $it in $actual-locations"
             expect (actual-locations.contains it)
 
   finally:
