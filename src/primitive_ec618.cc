@@ -129,7 +129,8 @@ PRIMITIVE(ota_write) {
 }
 
 PRIMITIVE(ota_end) {
-  ARGS(int, size);
+  ARGS(int, size, Object, expected);
+  USE(expected);
   if (!ota_active) FAIL(ALREADY_CLOSED);
 
   ota_active = false;
