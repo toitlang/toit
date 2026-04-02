@@ -429,7 +429,7 @@ namespace toit {
 #define MODULE_EC618(PRIMITIVE)              \
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
-  PRIMITIVE(ota_end, 1)                      \
+  PRIMITIVE(ota_end, 2)                      \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

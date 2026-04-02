@@ -81,7 +81,7 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 // EC618 AR entries.
-AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-firmware.bin"
+AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -152,6 +152,7 @@ build-command --create-esp32-only/bool=false -> cli.Command:
       ]
   if create-esp32-only:
     firmware-cmd.add (create-esp32-cmd --name="create")
+    firmware-cmd.add (create-ec618-cmd --name="create-ec618")
   else:
     firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
@@ -230,8 +231,8 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
       --word-size=WORD-SIZE-ESP32
   envelope.store output-path --ui=ui
 
-create-ec618-cmd -> cli.Command:
-  return cli.Command "ec618"
+create-ec618-cmd --name/string="ec618" -> cli.Command:
+  return cli.Command name
       --help="""
         Create a firmware envelope from an EC618 firmware binary.
 
