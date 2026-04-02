@@ -27,6 +27,7 @@ import .kebabify as kebabify
 import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
 import .system-message as system-message
+import .info as info
 import .toitdoc as toitdoc
 import .lsp.server.server as lsp
 import .snapshot as snapshot-lib
@@ -519,6 +520,10 @@ main args/List:
       --toit-from-args=toit-from-args
       --sdk-path-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
   root-command.add toitdoc-command
+
+  info-command := info.build-command
+      --sdk-dir-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
+  root-command.add info-command
 
   root-command.add system-message.build-command
 
