@@ -42,8 +42,14 @@ import .snapshot
 import .snapshot-to-image
 
 ENVELOPE-FORMAT-VERSION ::= 8
+ENVELOPE-FORMAT-VERSION-EC618 ::= 1000
 
 WORD-SIZE-ESP32 ::= 4
+WORD-SIZE-EC618 ::= 4
+
+// EC618 memory map constants (from mem_map.h).
+EC618-XIP-BASE_        ::= 0x00800000
+EC618-AP-LOAD-OFFSET_  ::= 0x00024000
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -73,6 +79,9 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
 
 // Host AR entries.
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
+
+// EC618 AR entries.
+AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-firmware.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -164,6 +173,7 @@ create-cmd -> cli.Command:
         Create a firmware envelope of the specified kind.
         """
   cmd.add (create-esp32-cmd --name="esp32")
+  cmd.add create-ec618-cmd
   cmd.add create-host-cmd
   return cmd
 
@@ -218,6 +228,52 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
+  envelope.store output-path --ui=ui
+
+create-ec618-cmd -> cli.Command:
+  return cli.Command "ec618"
+      --help="""
+        Create a firmware envelope from an EC618 firmware binary.
+
+        The firmware binary is the AP binary produced by the EC618 build.
+        """
+      --options=[
+        cli.Option "firmware.bin"
+            --help="Set the firmware binary."
+            --type="file"
+            --required,
+        cli.Option "system.snapshot"
+            --type="file"
+            --required,
+      ]
+      --run=:: create-envelope-ec618 it
+
+create-envelope-ec618 invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
+  input-path := invocation["firmware.bin"]
+
+  ui := invocation.cli.ui
+
+  firmware-bin-data := read-file input-path --ui=ui
+  system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
+  system-snapshot := SnapshotBundle system-snapshot-content
+
+  // For EC618, we include the raw firmware binary without stripping
+  // DROM extensions (no ESP32-style segment parsing needed).
+  entries := {
+    AR-ENTRY-EC618-FIRMWARE-BIN: firmware-bin-data,
+    SYSTEM-CONTAINER-NAME: system-snapshot-content,
+    AR-ENTRY-PROPERTIES: json.encode {
+      PROPERTY-CONTAINER-FLAGS: {
+        SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL,
+      },
+    },
+  }
+
+  envelope := Envelope.create entries
+      --sdk-version=system-snapshot.sdk-version
+      --kind=Envelope.KIND-EC618
+      --word-size=WORD-SIZE-EC618
   envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
@@ -690,6 +746,8 @@ extract invocation/cli.Invocation -> none:
     extract-esp32 invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
+  else if envelope.kind == Envelope.KIND-EC618:
+    extract-ec618 invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
@@ -861,6 +919,162 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
+extract-ec618 -> none
+    invocation/cli.Invocation
+    envelope/Envelope
+    --config-encoded/ByteArray:
+  output-path := invocation[OPTION-OUTPUT]
+  ui := invocation.cli.ui
+
+  format := invocation["format"]
+  if format != "binary" and format != "ubjson":
+    ui.abort "Unsupported format for EC618 envelope: '$format'"
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+
+  if format == "binary":
+    write-file output-path --ui=ui: it.write firmware-bin
+    return
+
+  parts := extract-parts-ec618 firmware-bin
+  output := {
+    "parts"  : parts,
+    "binary" : firmware-bin,
+  }
+  write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
+  containers := []
+  entries := envelope.entries
+  properties := entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+      --if-absent=: {:}
+  flags := get-flags envelope
+
+  has-system-image := entries.contains SYSTEM-CONTAINER-NAME
+  if has-system-image: containers.add null
+
+  non-system-images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
+      continue.do
+    assets-data := entries.get "+$name"
+    entry := extract-container name flags content --assets=assets-data --word-size=envelope.word-size
+    containers.add entry
+    non-system-images[name] = entry.id.to-byte-array
+
+  if has-system-image:
+    name := SYSTEM-CONTAINER-NAME
+    content := entries[name]
+    system-assets := {:}
+    if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
+    assets-encoded := assets.encode system-assets
+    containers[0] = extract-container name flags content --assets=assets-encoded --word-size=envelope.word-size
+
+  firmware-bin := entries.get AR-ENTRY-EC618-FIRMWARE-BIN
+  if not firmware-bin:
+    throw "cannot find $AR-ENTRY-EC618-FIRMWARE-BIN entry in envelope '$envelope.path'"
+
+  system-uuid/Uuid? := null
+  if properties.contains "uuid":
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
+  system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
+
+  return extract-binary-content-ec618
+      --binary-input=firmware-bin
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+
+extract-binary-content-ec618 -> ByteArray
+    --binary-input/ByteArray
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray:
+  binary-size := binary-input.size
+  image-count := containers.size
+  image-table := ByteArray 8 * image-count
+
+  // The extension is appended at the end of the binary. The
+  // XIP address of the extension start is the binary size
+  // plus the XIP base and AP load offset.
+  // EC618 XIP base: 0x00800000, AP load offset: 0x00024000.
+  extension-xip-addr := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_ + binary-size
+
+  table-address := extension-xip-addr + 5 * 4 + image-table.size
+  relocation-base := table-address
+  images := []
+  index := 0
+  containers.do: | container/ContainerEntry |
+    image-size := container.relocated-size
+
+    LITTLE-ENDIAN.put-uint32 image-table index * 8
+        relocation-base
+    LITTLE-ENDIAN.put-uint32 image-table index * 8 + 4
+        image-size
+    image-bits := container.relocate
+        --relocation-base=relocation-base
+        --system-uuid=system-uuid
+        --attach-assets
+    images.add image-bits
+    relocation-base += image-bits.size
+    index++
+
+  // Build the extension header.
+  extension-header := ByteArray 5 * 4
+  LITTLE-ENDIAN.put-uint32 extension-header (0 * 4) 0x98dfc301
+  LITTLE-ENDIAN.put-uint32 extension-header (3 * 4) image-count
+  extension := extension-header + image-table
+  images.do: extension += it
+
+  used-size := extension.size
+  config-size-bytes := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 config-size-bytes 0 config-encoded.size
+  extension += config-size-bytes
+  extension += config-encoded
+
+  // On EC618, the "free" field is not used — config follows used area
+  // directly. Set free-size to 0.
+  free-size := 0
+
+  // Update the extension header.
+  checksum := 0xb3147ee9
+  LITTLE-ENDIAN.put-uint32 extension (1 * 4) used-size
+  LITTLE-ENDIAN.put-uint32 extension (2 * 4) free-size
+  4.repeat: checksum ^= LITTLE-ENDIAN.uint32 extension (it * 4)
+  LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
+
+  // Patch the DromData in the binary with the extension address.
+  result := binary-input.copy
+  details-offset := find-details-offset-esp32 result
+  bundled-programs-table-address := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 bundled-programs-table-address 0 extension-xip-addr
+  result.replace (details-offset + 0) bundled-programs-table-address
+  result.replace (details-offset + 4) system-uuid.to-byte-array
+
+  // Append the extension to the binary.
+  return result + extension
+
+/**
+Extracts parts information from an EC618 firmware binary.
+*/
+extract-parts-ec618 firmware-bin/ByteArray -> List:
+  parts := []
+  details-offset := find-details-offset-esp32 firmware-bin
+  extension-addr := LITTLE-ENDIAN.uint32 firmware-bin details-offset
+  if extension-addr == 0:
+    parts.add { "type": "binary", "from": 0, "to": firmware-bin.size }
+    return parts
+
+  extension-offset := extension-addr - EC618-XIP-BASE_ - EC618-AP-LOAD-OFFSET_
+
+  parts.add { "type": "binary", "from": 0, "to": extension-offset }
+  if extension-offset < firmware-bin.size:
+    used := LITTLE-ENDIAN.uint32 firmware-bin extension-offset + 4
+    parts.add { "type": "images", "from": extension-offset, "to": extension-offset + used }
+    parts.add { "type": "config", "from": extension-offset + used, "to": firmware-bin.size }
+  return parts
+
 write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
   flash-size-string := flashing["flash_settings"]["flash_size"]
   if not flash-size-string.ends-with "MB":
@@ -1002,11 +1216,41 @@ find-esptool_ -> List:
       return ["python3", location.trim]
   throw "cannot find esptool"
 
+find-ectool_ -> string:
+  bin-extension := ?
+  bin-name := system.program-path
+  if platform == system.PLATFORM-WINDOWS:
+    bin-name = bin-name.replace --all "\\" "/"
+    bin-extension = ".exe"
+  else:
+    bin-extension = ""
+
+  if ectool-path := os.env.get "ECTOOL_PATH":
+    return ectool-path
+
+  // Look next to the firmware binary.
+  list := bin-name.split "/"
+  dir := list[..list.size - 1].join "/"
+  if dir != "":
+    ectool := "$dir/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+    // Also look in third_party/ectool/.
+    ectool = "$dir/../third_party/ectool/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+
+  // Try to find ectool in PATH.
+  ectool := "ectool$bin-extension"
+  catch:
+    pipe.backticks ectool "--version"
+    return ectool
+  throw "cannot find ectool"
+
 tool-cmd -> cli.Command:
   return cli.Command "tool"
       --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
+        ectool-cmd,
       ]
 
 esptool-cmd -> cli.Command:
@@ -1031,6 +1275,23 @@ esptool invocation/cli.Invocation -> none:
     ui.emit --result "Command: $esptool\nVersion: $version"
   else:
     ui.emit --result "$command\n$version"
+
+ectool-cmd -> cli.Command:
+  return cli.Command "ectool"
+      --help="Prints the path of the found ectool."
+      --examples=[
+        cli.Example "Print the path of the found ectool."
+            --arguments="-e ignored-envelope",
+      ]
+      --run=:: ectool-info it
+
+ectool-info invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  ectool := find-ectool_
+  if ui.wants-structured:
+    ui.emit --result {"command": ectool}
+  else:
+    ui.emit --result "Command: $ectool"
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
@@ -1088,8 +1349,12 @@ flash invocation/cli.Invocation -> none:
 
   envelope := Envelope.load input-path --ui=ui
 
+  if envelope.kind == Envelope.KIND-EC618:
+    flash-ec618 invocation envelope
+    return
+
   if envelope.kind != Envelope.KIND-ESP32:
-    ui.abort "Only ESP32 envelopes can be flashed."
+    ui.abort "Only ESP32 and EC618 envelopes can be flashed."
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
@@ -1141,6 +1406,30 @@ flash invocation/cli.Invocation -> none:
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
+
+flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
+  ui := invocation.cli.ui
+  config-path := invocation["config"]
+  port := invocation["port"]
+
+  config-encoded := ByteArray 0
+  if config-path:
+    config-encoded = read-file config-path --ui=ui
+    exception := catch: ubjson.decode config-encoded
+    if exception: config-encoded = ubjson.encode (json.decode config-encoded)
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    tmp-file := "$tmp/firmware.bin"
+    write-file tmp-file --ui=ui: it.write firmware-bin
+
+    ectool := find-ectool_
+    code := pipe.run-program [ectool, "flash", "--port", port, tmp-file]
+    if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES
@@ -1331,9 +1620,13 @@ show invocation/cli.Invocation -> none:
   ui := invocation.cli.ui
 
   envelope := Envelope.load input-path --ui=ui
-  kind-string := envelope.kind == Envelope.KIND-ESP32
-      ? Envelope.KIND-STRING-ESP32
-      : Envelope.KIND-STRING-HOST
+  kind-string := ?
+  if envelope.kind == Envelope.KIND-ESP32:
+    kind-string = Envelope.KIND-STRING-ESP32
+  else if envelope.kind == Envelope.KIND-EC618:
+    kind-string = Envelope.KIND-STRING-EC618
+  else:
+    kind-string = Envelope.KIND-STRING-HOST
 
   result := {
     "envelope-format-version": envelope.version_,
@@ -1345,6 +1638,8 @@ show invocation/cli.Invocation -> none:
     firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
     binary := Esp32Binary firmware-bin
     result["chip"] = binary.chip-name
+  else if envelope.kind == Envelope.KIND-EC618:
+    result["chip"] = "ec618"
 
   // Add the containers after the chip name for esthetical reasons.
   entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
@@ -1420,9 +1715,11 @@ class Envelope:
 
   static KIND-ESP32 ::= 0
   static KIND-HOST  ::= 1
+  static KIND-EC618 ::= 2
 
   static KIND-STRING-ESP32 ::= "esp32"
   static KIND-STRING-HOST  ::= "host"
+  static KIND-STRING-EC618 ::= "ec618"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1454,6 +1751,8 @@ class Envelope:
             kind = KIND-ESP32
           else if kind-string == KIND-STRING-HOST:
             kind = KIND-HOST
+          else if kind-string == KIND-STRING-EC618:
+            kind = KIND-EC618
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
@@ -1463,7 +1762,7 @@ class Envelope:
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = ENVELOPE-FORMAT-VERSION
+    version_ = kind == KIND-EC618 ? ENVELOPE-FORMAT-VERSION-EC618 : ENVELOPE-FORMAT-VERSION
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1480,6 +1779,8 @@ class Envelope:
         kind-string = KIND-STRING-ESP32
       else if kind == KIND-HOST:
         kind-string = KIND-STRING-HOST
+      else if kind == KIND-EC618:
+        kind-string = KIND-STRING-EC618
       else:
         throw "unsupported kind: $(kind)"
 
@@ -1501,8 +1802,8 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION, was $version"
+    if version != ENVELOPE-FORMAT-VERSION and version != ENVELOPE-FORMAT-VERSION-EC618:
+      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
     return version
 
 class RelocationInformation:

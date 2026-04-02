@@ -1,5 +1,7 @@
 # Porting the Toit Language to the EC618
 
+** IMPORTANT: this document sometimes wants to "replace" existing functionality. That's wrong. We want to *add* new support.
+
 This document guides a developer through reimplementing Toit language support
 for the EC618 cellular IoT module (Cortex-M3, FreeRTOS). The EC618 is a
 Cat.1bis LTE modem SoC designed by Eigencomm. It is the same silicon found
