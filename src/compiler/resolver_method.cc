@@ -3099,6 +3099,11 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       // 'x.foo 1 2'.
       // However, 'x.foo' is not statically resolved.
       // 'x' could be still be a class.
+      if (is_literal_super(ast_target->as_Dot()->receiver())) {
+        diagnostics()->report_warning(ast_target,
+            "'super.%s' calls '%s' on the result of 'super'; use '(super).%s' to make it explicit",
+            target_name.c_str(), target_name.c_str(), target_name.c_str());
+      }
       _visit_potential_call_dot(ast_target->as_Dot(),
                                 call_builder,
                                 named_lsp_selection);
