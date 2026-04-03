@@ -9,7 +9,8 @@ On Linux and BSD this maps to SO_REUSEPORT.
 On Windows this maps to SO_REUSEADDR, which already provides port-reuse
   semantics.
 
-Requires multicast routing to be configured on the CI runner.
+Requires multicast routing to be configured on the CI runner
+  (see the "Setup multicast route" step in CI).
 */
 
 import expect show *
@@ -72,7 +73,13 @@ test-multicast-send-receive network/net.Client:
       --reuse-port
       --loopback
 
-  sender := network.udp-open
+  // Use a multicast socket for sending so it goes out on the
+  // loopback interface where multicast routing is configured.
+  sender := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      0  // Ephemeral port — we don't receive on this socket.
+      --reuse-address
+      --loopback
 
   msg := "Hello Multicast"
   datagram := udp.Datagram
@@ -108,7 +115,13 @@ test-two-receivers network/net.Client:
       --reuse-port
       --loopback
 
-  sender := network.udp-open
+  // Use a multicast socket for sending so it goes out on the
+  // loopback interface where multicast routing is configured.
+  sender := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      0  // Ephemeral port.
+      --reuse-address
+      --loopback
 
   msg := "Reuse Port Test"
   datagram := udp.Datagram
