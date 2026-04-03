@@ -22,28 +22,25 @@
 
 #include "windows.h"
 
+// Custom getline implementation for Windows, mimicking POSIX getline(3).
+//
+// Reads a line from 'stream' into the buffer at '*lineptr' (of size '*n'),
+// growing it as needed. Returns the number of characters read (including the
+// newline), or (size_t)-1 on error/EOF. On error, '*lineptr' and '*n' are
+// left unchanged so the caller can still free the buffer.
 size_t getline(char** lineptr, size_t* n, FILE* stream) {
-    char* bufptr = NULL;
-    char* p = bufptr;
-    word size;
-    int c;
+    if (lineptr == NULL || stream == NULL || n == NULL) {
+        return -1;
+    }
 
-    if (lineptr == NULL) {
-        return -1;
-    }
-    if (stream == NULL) {
-        return -1;
-    }
-    if (n == NULL) {
-        return -1;
-    }
-    bufptr = *lineptr;
-    size = *n;
+    char* bufptr = *lineptr;
+    size_t size = *n;
 
-    c = fgetc(stream);
+    int c = fgetc(stream);
     if (c == EOF) {
         return -1;
     }
+
     if (bufptr == NULL) {
         bufptr = reinterpret_cast<char*>(malloc(128));
         if (bufptr == NULL) {
@@ -51,27 +48,35 @@ size_t getline(char** lineptr, size_t* n, FILE* stream) {
         }
         size = 128;
     }
-    p = bufptr;
-    while(c != EOF) {
-        if ((p - bufptr) > (size - 1)) {
-            size = size + 128;
-            bufptr = reinterpret_cast<char*>(realloc(bufptr, size));
-            if (bufptr == NULL) {
+
+    size_t pos = 0;
+    while (c != EOF) {
+        // Ensure room for this character plus a null terminator.
+        if (pos + 1 >= size) {
+            size_t new_size = size + 128;
+            char* new_buf = reinterpret_cast<char*>(realloc(bufptr, new_size));
+            if (new_buf == NULL) {
+                // On failure, realloc leaves the old block intact.
+                // Write back what we have so the caller can free it.
+                *lineptr = bufptr;
+                *n = size;
                 return -1;
             }
+            bufptr = new_buf;
+            size = new_size;
         }
-        *p++ = c;
+        bufptr[pos++] = c;
         if (c == '\n') {
             break;
         }
         c = fgetc(stream);
     }
 
-    *p++ = '\0';
+    bufptr[pos] = '\0';
     *lineptr = bufptr;
     *n = size;
 
-    return p - bufptr - 1;
+    return pos;
 }
 
 #endif
