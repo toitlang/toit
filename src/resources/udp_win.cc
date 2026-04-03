@@ -461,6 +461,11 @@ PRIMITIVE(get_option) {
     case UDP_REUSE_ADDRESS:
       return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
 
+    // Windows does not have SO_REUSEPORT. On Windows, SO_REUSEADDR already
+    // provides the port-reuse semantics that SO_REUSEPORT gives on Linux/BSD.
+    case UDP_REUSE_PORT:
+      return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -529,6 +534,12 @@ PRIMITIVE(set_option) {
       break;
 
     case UDP_REUSE_ADDRESS:
+      result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
+      break;
+
+    // Windows does not have SO_REUSEPORT. On Windows, SO_REUSEADDR already
+    // provides the port-reuse semantics that SO_REUSEPORT gives on Linux/BSD.
+    case UDP_REUSE_PORT:
       result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
       break;
 
