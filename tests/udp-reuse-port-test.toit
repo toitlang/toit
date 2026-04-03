@@ -9,13 +9,12 @@ On Linux and BSD this maps to SO_REUSEPORT.
 On Windows this maps to SO_REUSEADDR, which already provides port-reuse
   semantics.
 
-Note: this test only verifies socket creation and port binding.  Actual
-  multicast send/receive requires OS-level multicast routing which is not
-  configured on all CI runners.
+Requires multicast routing to be configured on the CI runner.
 */
 
 import expect show *
 import net
+import net.udp
 import net.modules.udp as impl
 
 MULTICAST-ADDRESS ::= net.IpAddress.parse "239.1.2.3"
@@ -23,7 +22,9 @@ MULTICAST-ADDRESS ::= net.IpAddress.parse "239.1.2.3"
 main:
   network := net.open
   try:
-    test-multicast-reuse-port network
+    test-reuse-port-binding network
+    test-multicast-send-receive network
+    test-two-receivers network
   finally:
     network.close
 
@@ -31,7 +32,7 @@ main:
 Tests that two multicast sockets can bind to the same port when
   reuse-port is enabled.
 */
-test-multicast-reuse-port network/net.Client:
+test-reuse-port-binding network/net.Client:
   port := 15432
 
   socket1 := impl.Socket.multicast network
@@ -56,3 +57,73 @@ test-multicast-reuse-port network/net.Client:
 
   socket2.close
   socket1.close
+
+/**
+Tests that a multicast message sent to the group is received by a
+  member socket with loopback enabled.
+*/
+test-multicast-send-receive network/net.Client:
+  port := 15433
+
+  receiver := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      port
+      --reuse-address
+      --reuse-port
+      --loopback
+
+  sender := network.udp-open
+
+  msg := "Hello Multicast"
+  datagram := udp.Datagram
+      msg.to-byte-array
+      net.SocketAddress MULTICAST-ADDRESS port
+
+  sender.send datagram
+
+  received := receiver.receive
+  expect-equals msg received.data.to-string
+
+  sender.close
+  receiver.close
+
+/**
+Tests that two sockets bound to the same multicast port (via
+  reuse-port) can both receive data sent to the group.
+*/
+test-two-receivers network/net.Client:
+  port := 15434
+
+  receiver1 := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      port
+      --reuse-address
+      --reuse-port
+      --loopback
+
+  receiver2 := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      port
+      --reuse-address
+      --reuse-port
+      --loopback
+
+  sender := network.udp-open
+
+  msg := "Reuse Port Test"
+  datagram := udp.Datagram
+      msg.to-byte-array
+      net.SocketAddress MULTICAST-ADDRESS port
+
+  sender.send datagram
+
+  // Both receivers should get the multicast message.
+  received1 := receiver1.receive
+  expect-equals msg received1.data.to-string
+
+  received2 := receiver2.receive
+  expect-equals msg received2.data.to-string
+
+  sender.close
+  receiver2.close
+  receiver1.close

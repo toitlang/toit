@@ -328,6 +328,18 @@ jobs:
         run: |
           strip -s build/host/sdk/bin/*
 
+      - name: Setup multicast route
+        if: env.DO_TESTS == 'true'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo ip link set lo up
+            sudo route add -net 224.0.0.0 netmask 240.0.0.0 dev lo
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            sudo ifconfig lo0 up
+            sudo route -n add -net 224.0.0.0/4 -interface lo0
+          fi
+
       # Test.
       - name: Test
         if: env.DO_TESTS == 'true'
