@@ -1355,12 +1355,17 @@ void MethodResolver::_resolve_parameters(
       }
       bool field_storing_is_allowed = method_->is_constructor() || method_->is_instance();
       lsp_->selection_handler()->field_storing_parameter(parameter, fields, field_storing_is_allowed);
+    } else if (parameter->name()->is_LspSelection()) {
+      lsp_->selection_handler()->definition(ir_parameter, parameter->name()->selection_range());
     }
 
     if (field_storing_parameters != null && parameter->is_field_storing()) {
       (*field_storing_parameters).insert(ir_parameter);
-      (*ir_to_ast_map_)[ir_parameter] = parameter;
     }
+    // Map all parameters to their AST nodes so that LSP features like
+    // prepareRename can extract the precise name range (excluding prefixes
+    // like `--` for named params or `[` for block params).
+    (*ir_to_ast_map_)[ir_parameter] = parameter;
 
     // Resolve the default values.
     if (seen_default_values_in_unnamed
@@ -1684,6 +1689,9 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                                       false,  // Not a block
                                       type,
                                       range);
+    if (ast_parameter->name()->is_LspSelection()) {
+      lsp_->selection_handler()->definition(local, ast_parameter->name()->selection_range());
+    }
     ir::Local* ir_handler_parameter = local;
     if (i == 0) {
       reason_local = local;
@@ -2522,7 +2530,6 @@ ir::Expression* MethodResolver::resolve_error(ast::Node* node) {
 }
 
 void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_receiver) {
-  ASSERT(ast_dot->name()->is_LspSelection());
   ASSERT(!scope_->is_prefixed_identifier(ast_dot));
   ASSERT(!scope_->is_static_identifier(ast_dot));
   // We are not handling virtual call completions here.
@@ -2575,6 +2582,26 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
                                             null,
                                             candidates,
                                             scope_);
+    } else if (class_entry.is_prefix()) {
+      auto prefix = class_entry.prefix();
+      auto name = ast_dot->name()->data();
+
+      UnorderedSet<ModuleScope*> visited;
+      auto resolved = prefix->lookup(name, &visited);
+
+      ir::Node* resolved_node = null;
+      List<ir::Node*> candidates;
+      if (resolved.kind() == ResolutionEntry::NODES) {
+        if (!resolved.nodes().is_empty()) {
+          resolved_node = resolved.nodes().first();
+        }
+        candidates = resolved.nodes();
+      }
+      lsp_->selection_handler()->call_prefixed(ast_dot,
+                                               resolved_node,
+                                               null,
+                                               candidates,
+                                               prefix);
     }
   }
 }
@@ -2583,18 +2610,15 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
 //   an identifier (or prefixed/static identifier).
 // In that case, the getter and setter might be different, which is why
 //   there are two IR targets.
+static bool contains_lsp_selection(ast::Node* node);
+
 void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
                                                  ir::Node* ir_target1,
                                                  ir::Node* ir_target2) {
-  ASSERT(ast_target->is_LspSelection() ||
-         (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection()));
-  // When it's a Dot, then we were able to identify the target.
-  // Either because it was just prefixed, or as a static in a class.
-  ASSERT(!ast_target->is_Dot() ||
-         (scope_->is_prefixed_identifier(ast_target) ||
-          scope_->is_static_identifier(ast_target)))
+  ASSERT(contains_lsp_selection(ast_target));
 
   auto candidates = _compute_target_candidates(ast_target, scope());
+
   if (ast_target->is_Identifier()) {
     lsp_->selection_handler()->call_static(ast_target,
                                            ir_target1,
@@ -2624,6 +2648,15 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
       class_entry = scope_->lookup_prefixed(receiver);
     }
     ir::Class* ir_class = class_entry.klass();
+    if (ir_class != null &&
+        (ast_dot->receiver()->is_LspSelection() ||
+         (ast_dot->receiver()->is_Dot() && ast_dot->receiver()->as_Dot()->name()->is_LspSelection()))) {
+      // The selection is on the class part of the static identifier.
+      // This is what the user expects when renaming a class in a static call.
+      if (ir_class->range().is_valid()) {
+        lsp_->selection_handler()->class_interface_or_mixin(ast_dot->receiver(), scope(), null, ir_class, false, false);
+      }
+    }
     lsp_->selection_handler()->call_class(ast_dot,
                                           ir_class,
                                           ir_target1,
@@ -2631,6 +2664,15 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
                                           candidates.nodes,
                                           scope_);
   }
+}
+
+static bool contains_lsp_selection(ast::Node* node) {
+  if (node->is_LspSelection()) return true;
+  if (node->is_Dot()) {
+    auto dot = node->as_Dot();
+    return contains_lsp_selection(dot->receiver()) || contains_lsp_selection(dot->name());
+  }
+  return false;
 }
 
 void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
@@ -2649,8 +2691,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
                                                  ir_target,
                                                  candidates.nodes);
   }
-  if (ast_target->is_LspSelection() ||
-      (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection())) {
+  if (contains_lsp_selection(ast_target)) {
     _handle_lsp_call_identifier(ast_target, ir_target, null);
   }
   if (!ir_target->is_Error() && target_name == Symbols::_) {
@@ -3021,12 +3062,14 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     target_name = ast_target->as_Dot()->name()->data();
   }
   bool has_positional_blocks = false;
+  bool has_named_arguments = false;
   ast::LspSelection* named_lsp_selection = null;
   CallBuilder call_builder(range);
   for (auto argument : ast_arguments) {
     Symbol name = Symbol::invalid();
     ir::Expression* ir_argument = null;
     if (argument->is_NamedArgument()) {
+      has_named_arguments = true;
       auto named = argument->as_NamedArgument();
       if (named->name()->is_LspSelection()) {
         named_lsp_selection = named->name()->as_LspSelection();
@@ -3121,6 +3164,28 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       all_ir_nodes.add(call_builder.arguments());
       push(_new ir::Error(ast_target->selection_range(), all_ir_nodes.build()));
     }
+  }
+
+  // Store AST call expression for calls with named arguments.
+  // This allows the rename visitor to recover the source ranges of
+  // named-argument tokens (e.g., "--param_name") at call sites.
+  // Only real Call nodes (not Index/IndexSlice) are mapped, since only
+  // user-written named arguments should participate in rename.
+  if (ir_to_ast_map_ != null && has_named_arguments && !stack_.empty() &&
+      potential_call->is_Call()) {
+    auto* ir_node = stack_.back();
+    // When block or lambda arguments are present, the call builder hoists
+    // them into temporaries and wraps the call in an ir::Sequence.  The
+    // rename visitor traverses the expression tree and encounters the
+    // ir::CallStatic (or ir::CallConstructor) inside that Sequence, not the
+    // Sequence itself.  Map the actual call node so the lookup succeeds.
+    if (ir_node->is_Sequence()) {
+      auto exprs = ir_node->as_Sequence()->expressions();
+      if (!exprs.is_empty() && exprs.last()->is_Call()) {
+        ir_node = exprs.last();
+      }
+    }
+    (*ir_to_ast_map_)[ir_node] = potential_call;
   }
 }
 
@@ -3358,6 +3423,10 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
                                      type,
                                      type_name,
                                      node->selection_range());
+  // Store the mapping from the IR Typecheck to the AST type node (the
+  // right-hand side of the is/as expression). This allows the rename
+  // pipeline to extract the exact source range of the class name.
+  (*ir_to_ast_map_)[ir_check] = ast_right;
   ir::Expression* result = ir_check;
   if (node->kind() == Token::IS_NOT) result = _new ir::Not(result, node->selection_range());
   return result;
@@ -3489,7 +3558,13 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
                                     type,
                                     type.klass()->name(),
                                     ast_declaration->selection_range());
+      // Store the mapping from the IR Typecheck to the AST type node so
+      // the rename pipeline can extract the class name source range.
+      (*ir_to_ast_map_)[ir_right] = ast_declaration->type();
     }
+  }
+  if (ast_declaration->name()->is_LspSelection()) {
+    lsp_->selection_handler()->definition(local, ast_declaration->name()->selection_range());
   }
   scope()->add(name, ResolutionEntry(local));
   return _new ir::AssignmentDefine(local, ir_right, ast_declaration->selection_range());
@@ -3775,28 +3850,41 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
     auto lhs = create_dot(ir_receiver, dot->name()->data());
     auto ir_rhs = resolve_expression(node->right(), "Can't assign block to instance member", true);
     auto args_list = list_of(ir_rhs);
-    return _new ir::CallVirtual(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
+    auto* call = _new ir::CallVirtual(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
+    // Map the setter CallVirtual to the AST name identifier so that the
+    // LSP rename visitor can retrieve the field name's source range (e.g.,
+    // "is-paused" in "s.is-paused = value") instead of the "=" operator.
+    (*ir_to_ast_map_)[call] = dot->name();
+    return call;
   }
 
   Symbol selector = dot->name()->data();
 
   auto tmp = create_temp(ir_receiver);
   auto no_args = List<ir::Expression*>();
-  auto old_value = store_old(
-      _new ir::CallVirtual(create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
-                                      selector),
-                           CallShape::for_instance_call_no_named(no_args),
-                           no_args,
-                           dot->selection_range()));
+  auto* getter_call = _new ir::CallVirtual(
+      create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
+                 selector),
+      CallShape::for_instance_call_no_named(no_args),
+      no_args,
+      dot->selection_range());
+  // Map compound getter/setter CallVirtual nodes to the AST name identifier
+  // so that the LSP rename visitor can find the field name's source range
+  // instead of using the operator range.
+  (*ir_to_ast_map_)[getter_call] = dot->name();
+  auto old_value = store_old(getter_call);
   auto new_value = _binary_operator(node, old_value);
   ASSERT(!new_value->is_block());
   auto new_value_args = list_of(new_value);
   // Note that we allow to assign blocks to fields, since getters may invoke them.
-  return _new ir::CallVirtual(create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
-                                         selector),
-                              CallShape::for_instance_setter(),
-                              new_value_args,
-                              dot->selection_range());
+  auto* setter_call = _new ir::CallVirtual(
+      create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
+                 selector),
+      CallShape::for_instance_setter(),
+      new_value_args,
+      dot->selection_range());
+  (*ir_to_ast_map_)[setter_call] = dot->name();
+  return setter_call;
 }
 
 ir::Expression* MethodResolver::_assign_index(ast::Binary* node,
@@ -3884,10 +3972,15 @@ ir::Expression* MethodResolver::_assign_instance_member(ast::Binary* node,
     ir_value = resolve_expression(node->right(), "Can't assign block to instance member", true);
   }
   auto new_value_args = list_of(ir_value);
-  return _new ir::CallVirtual(create_receiver(),
+  auto* setter_call = _new ir::CallVirtual(create_receiver(),
                               CallShape::for_instance_setter(),
                               new_value_args,
                               node->selection_range());
+  // Map the setter CallVirtual to the AST left-hand-side node so that the
+  // LSP rename visitor can retrieve the field name's source range (e.g.,
+  // "field" in "field = value") instead of the "=" operator.
+  (*ir_to_ast_map_)[setter_call] = node->left();
+  return setter_call;
 }
 
 bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,

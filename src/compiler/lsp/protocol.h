@@ -78,8 +78,8 @@ class LspProtocolBase {
   LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
-  void print_lsp_location(const LspLocation& location);
-  void print_lsp_range(const LspRange& range);
+  void write_location(const LspLocation& location);
+  void write_range(const LspRange& range);
 
   void printf(const char* format, va_list& arguments) {
     writer_->printf(format, arguments);
@@ -145,6 +145,32 @@ class LspSummaryProtocol : public LspProtocolBase {
             const ToitdocRegistry& toitdocs);
 };
 
+class LspHoverProtocol : public LspProtocolBase {
+ public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
+  void emit_toitdoc_ref(const char* path, int start, int end);
+  void emit_string(const char* content);
+};
+
+class LspFindReferencesProtocol : public LspProtocolBase {
+ public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
+  void emit(const char* path, int start_line, int start_col, int end_line, int end_col);
+};
+
+class LspPrepareRenameProtocol : public LspProtocolBase {
+ public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
+  void emit(const char* path, int start_line, int start_col,
+            int end_line, int end_col, const char* placeholder);
+};
+
 class LspSnapshotProtocol : public LspProtocolBase {
  public:
   // Inherit constructor.
@@ -185,7 +211,10 @@ class LspProtocol {
       , completion_(writer)
       , summary_(writer)
       , snapshot_(writer)
-      , semantic_(writer) {}
+      , semantic_(writer)
+      , hover_(writer)
+      , find_references_(writer)
+      , prepare_rename_(writer) {}
 
   LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
   LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }
@@ -193,6 +222,9 @@ class LspProtocol {
   LspSummaryProtocol* summary() { return &summary_; }
   LspSnapshotProtocol* snapshot() { return &snapshot_; }
   LspSemanticTokensProtocol* semantic() { return &semantic_; }
+  LspHoverProtocol* hover() { return &hover_; }
+  LspFindReferencesProtocol* find_references() { return &find_references_; }
+  LspPrepareRenameProtocol* prepare_rename() { return &prepare_rename_; }
 
  private:
   LspDiagnosticsProtocol diagnostics_;
@@ -201,6 +233,9 @@ class LspProtocol {
   LspSummaryProtocol summary_;
   LspSnapshotProtocol snapshot_;
   LspSemanticTokensProtocol semantic_;
+  LspHoverProtocol hover_;
+  LspFindReferencesProtocol find_references_;
+  LspPrepareRenameProtocol prepare_rename_;
 };
 
 } // namespace toit::compiler

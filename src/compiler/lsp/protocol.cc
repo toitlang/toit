@@ -15,15 +15,8 @@
 
 #include "protocol.h"
 
-#include <stdio.h>
-#include <functional>
-
 #include "protocol_summary.h"
 
-#include "../toitdoc_node.h"
-#include "../set.h"
-#include "../list.h"
-#include "../map.h"
 #include "../resolver_scope.h"
 
 #include "../../snapshot_bundle.h"
@@ -85,12 +78,12 @@ LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) 
   return range_to_lsp_range(from_location, to_location);
 }
 
-void LspProtocolBase::print_lsp_location(const LspLocation& location) {
+void LspProtocolBase::write_location(const LspLocation& location) {
   this->printf("%s\n", location.path);
-  print_lsp_range(location.range);
+  write_range(location.range);
 }
 
-void LspProtocolBase::print_lsp_range(const LspRange& range) {
+void LspProtocolBase::write_range(const LspRange& range) {
   this->printf("%d\n%d\n", range.from_line, range.from_column);
   this->printf("%d\n%d\n", range.to_line, range.to_column);
 }
@@ -117,7 +110,7 @@ void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity,
                                   va_list& arguments) {
   this->printf("WITH POSITION\n");
   this->printf("%s\n", severity_to_lsp_severity(severity));
-  print_lsp_location(location);
+  write_location(location);
   this->printf(format, arguments);
   this->printf("\n*******************\n");
 }
@@ -131,7 +124,7 @@ void LspDiagnosticsProtocol::end_group() {
 }
 
 void LspGotoDefinitionProtocol::emit(const LspLocation& location) {
-  print_lsp_location(location);
+  write_location(location);
 }
 
 void LspCompletionProtocol::emit_prefix(const char* prefix) {
@@ -139,7 +132,7 @@ void LspCompletionProtocol::emit_prefix(const char* prefix) {
 }
 
 void LspCompletionProtocol::emit_prefix_range(const LspRange& range) {
-  print_lsp_range(range);
+  write_range(range);
 }
 
 void LspCompletionProtocol::emit(const std::string& name,
@@ -180,7 +173,40 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
                token_modifiers);
 }
 
+void LspHoverProtocol::emit_toitdoc_ref(const char* path, int start, int end) {
+  this->printf("-1\n%s\n%d\n%d\n",
+               path == null ? "" : path,
+               start,
+               end);
+}
 
+void LspHoverProtocol::emit_string(const char* content) {
+  int length = content == null ? 0 : strlen(content);
+  this->printf("%d\n", length);
+  if (length > 0) {
+    this->write(reinterpret_cast<const uint8*>(content), length);
+  }
+}
+
+void LspFindReferencesProtocol::emit(const char* path, int start_line, int start_col, int end_line, int end_col) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col);
+}
+
+void LspPrepareRenameProtocol::emit(const char* path, int start_line, int start_col,
+                                    int end_line, int end_col, const char* placeholder) {
+  this->printf("%s\n%d\n%d\n%d\n%d\n%s\n",
+               path == null ? "" : path,
+               start_line,
+               start_col,
+               end_line,
+               end_col,
+               placeholder == null ? "" : placeholder);
+}
 
 } // namespace toit::compiler
 } // namespace toit
