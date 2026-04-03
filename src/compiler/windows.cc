@@ -15,20 +15,21 @@
 
 #include "../top.h"
 
-#ifdef TOIT_WINDOWS
-
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "windows.h"
 
-// Custom getline implementation for Windows, mimicking POSIX getline(3).
+// Custom getline implementation mimicking POSIX getline(3).
 //
 // Reads a line from 'stream' into the buffer at '*lineptr' (of size '*n'),
 // growing it as needed. Returns the number of characters read (including the
 // newline), or (size_t)-1 on error/EOF. On error, '*lineptr' and '*n' are
 // left unchanged so the caller can still free the buffer.
-size_t getline(char** lineptr, size_t* n, FILE* stream) {
+//
+// This is exposed as toit_getline so it can be tested on all platforms.
+// On Windows, the getline wrapper below delegates to it.
+size_t toit_getline(char** lineptr, size_t* n, FILE* stream) {
     if (lineptr == NULL || stream == NULL || n == NULL) {
         return -1;
     }
@@ -79,4 +80,8 @@ size_t getline(char** lineptr, size_t* n, FILE* stream) {
     return pos;
 }
 
+#ifdef TOIT_WINDOWS
+size_t getline(char** lineptr, size_t* n, FILE* stream) {
+    return toit_getline(lineptr, n, stream);
+}
 #endif

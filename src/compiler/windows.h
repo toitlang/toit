@@ -15,7 +15,12 @@
 
 #pragma once
 
+#include <stdio.h>
+
 #include "../top.h"
+
+// Portable implementation of POSIX getline(3), testable on all platforms.
+size_t toit_getline(char** lineptr, size_t* n, FILE* stream);
 
 #ifdef TOIT_WINDOWS
 size_t getline(char** lineptr, size_t* n, FILE* stream);
