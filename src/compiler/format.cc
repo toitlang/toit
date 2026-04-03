@@ -111,6 +111,7 @@ class FormattingVisitor : public Visitor {
 
   format::Document* format(Unit* unit) {
     cursor_ = 0;
+    comment_index_ = 0;
     ListBuilder<format::Document*> top_docs;
     docs_ = &top_docs;
     for (auto node : unit->imports()) node->accept(this);
@@ -124,10 +125,22 @@ class FormattingVisitor : public Visitor {
   Source* source_;
   List<Scanner::Comment> comments_;
   int cursor_ = 0;
+  int comment_index_ = 0;
   ListBuilder<format::Document*>* docs_ = null;
 
   int offset(Source::Position pos) {
     return source_->offset_in_source(pos);
+  }
+
+  /// Returns true if there are any comments whose start falls in [from, to).
+  bool has_comment_in_range(int from, int to) {
+    // Advance comment_index_ past comments before 'from'.
+    while (comment_index_ < comments_.length() &&
+           offset(comments_[comment_index_].range().from()) < from) {
+      comment_index_++;
+    }
+    if (comment_index_ >= comments_.length()) return false;
+    return offset(comments_[comment_index_].range().from()) < to;
   }
 
   /// Returns the byte offset where a node truly starts in the source.
@@ -310,6 +323,14 @@ class FormattingVisitor : public Visitor {
 
     if (!spans_lines) {
       // Already on one line — preserve original formatting.
+      node->left()->accept(this);
+      node->right()->accept(this);
+      return;
+    }
+
+    // If there are comments in the binary expression, don't reformat —
+    // comments would be lost when we skip the gap between operands.
+    if (has_comment_in_range(start, end)) {
       node->left()->accept(this);
       node->right()->accept(this);
       return;
