@@ -20,6 +20,7 @@
 #include "protocol.h"
 #include "completion.h"
 #include "goto_definition.h"
+#include "selection_range.h"
 #include "semantic.h"
 #include "hover.h"
 #include "rename.h"
@@ -86,11 +87,44 @@ class Lsp {
     emit_tokens(module, path, manager, protocol());
   }
 
+  bool should_emit_selection_ranges() const { return should_emit_selection_ranges_; }
+  void set_selection_range_request(const char* path,
+                                   const std::vector<std::pair<int, int>>& positions) {
+    should_emit_selection_ranges_ = true;
+    selection_range_path_ = path;
+    selection_range_positions_ = positions;
+  }
+
+  /// Walks the parsed AST units, finds the target file, and emits selection
+  /// ranges for each requested position.
+  ///
+  /// This only needs the parsed AST — no resolution or type-checking.
+  void emit_selection_ranges(const std::vector<ast::Unit*>& units,
+                             SourceManager* source_manager) {
+    for (auto* unit : units) {
+      if (unit->is_error_unit()) continue;
+      if (strcmp(unit->absolute_path(), selection_range_path_) == 0) {
+        compiler::emit_selection_ranges(unit,
+                                        selection_range_positions_,
+                                        source_manager,
+                                        protocol());
+        return;
+      }
+    }
+    // File not found among parsed units — emit empty results.
+    for (size_t i = 0; i < selection_range_positions_.size(); i++) {
+      protocol()->selection_range()->emit_range_count(0);
+    }
+  }
+
  private:
   LspProtocol* protocol_;
   LspSelectionHandler* selection_handler_ = null;
   bool needs_summary_ = false;
   bool should_emit_semantic_tokens_ = false;
+  bool should_emit_selection_ranges_ = false;
+  const char* selection_range_path_ = null;
+  std::vector<std::pair<int, int>> selection_range_positions_;
 };
 
 } // namespace toit::compiler

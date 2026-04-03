@@ -166,6 +166,13 @@ class Compiler {
   void lsp_semantic_tokens(const char* source_path,
                            const PipelineConfiguration& configuration);
 
+  /// Emits selection ranges for the given positions in the source_path.
+  ///
+  /// Only needs the parsed AST — does not resolve or type-check.
+  void lsp_selection_range(const char* source_path,
+                           const std::vector<std::pair<int, int>>& positions,
+                           const PipelineConfiguration& configuration);
+
   /// Compiles the given [source_path] into a source bundle.
   SnapshotBundle compile(const char* source_path,
                          const PipelineConfiguration& configuration);
