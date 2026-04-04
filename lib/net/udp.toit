@@ -85,7 +85,11 @@ interface MulticastSocket extends Socket:
   // Enable or disable reuse port.
   reuse-port= value/bool
 
-  // Adds the given $address to the multicast group.
+  /**
+  Joins the multicast group identified by $address.
+  After this call, the socket will receive messages sent to the given
+    multicast group.
+  */
   multicast-add-membership address/IpAddress
 
   /**
@@ -135,6 +139,8 @@ interface MulticastInterface:
     (if supported by the platform).
   If $loopback is true (the default), multicast packets sent from this
     socket are also delivered to receivers on the same host.
+  The $ttl is the multicast time-to-live (default 1, meaning
+    link-local only).
   */
   udp-open-multicast -> MulticastSocket
       --port/int?=null
