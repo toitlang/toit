@@ -26,11 +26,10 @@ extern "C" {
 
 namespace toit {
 
-// The flash registry uses a dedicated 384KB region between the AP image and
-// the FOTA area. Physical flash address 0x002A4000, accessible via XIP at
-// AP_FLASH_XIP_ADDR + 0x002A4000.
-static const uint32_t FLASH_REGISTRY_PHYSICAL_OFFSET = 0x002A4000;
-static const int FLASH_REGISTRY_SIZE = 384 * 1024;  // 384KB.
+// The flash registry uses the FDB region (0x3CC000–0x3DC000, 64KB) which
+// is outside the AP image area and not protected by sysROSpaceCheck.
+static const uint32_t FLASH_REGISTRY_PHYSICAL_OFFSET = 0x003CC000;
+static const int FLASH_REGISTRY_SIZE = 64 * 1024;  // 64KB.
 
 uint8* FlashRegistry::allocations_memory_ = null;
 
@@ -90,10 +89,18 @@ int FlashRegistry::erase_chunk(word offset, word size) {
 
 bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   uint32_t addr = FLASH_REGISTRY_PHYSICAL_OFFSET + offset;
-  return BSP_QSPI_Write_Safe(
-      const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(chunk)),
-      addr,
-      size) == QSPI_OK;
+  // BSP_QSPI_Write_Safe disables XIP during the write, so the source
+  // buffer must be in RAM (not flash). Copy to a stack/heap buffer first.
+  uint8_t small_buf[256];
+  uint8_t* ram_buf = small_buf;
+  if (static_cast<word>(size) > static_cast<word>(sizeof(small_buf))) {
+    ram_buf = static_cast<uint8_t*>(malloc(size));
+    if (!ram_buf) return false;
+  }
+  memcpy(ram_buf, chunk, size);
+  bool ok = BSP_QSPI_Write_Safe(ram_buf, addr, size) == QSPI_OK;
+  if (ram_buf != small_buf) free(ram_buf);
+  return ok;
 }
 
 bool FlashRegistry::erase_flash_registry() {
