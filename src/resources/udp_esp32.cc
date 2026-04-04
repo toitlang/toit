@@ -547,6 +547,17 @@ PRIMITIVE(get_option) {
       case UDP_MULTICAST_TTL:
         return Smi::from(capture.socket->upcb()->mcast_ttl);
 
+      case UDP_MULTICAST_IF: {
+        ip_addr_t addr = capture.socket->upcb()->multicast_ip;
+        ByteArray* result = capture.process->allocate_byte_array(4);
+        if (result == null) FAIL(ALLOCATION_FAILED);
+        ByteArray::Bytes bytes(result);
+        const ip4_addr_t* addr4 = ip_2_ip4(&addr);
+        uint32_t raw = ip4_addr_get_u32(addr4);
+        memcpy(bytes.address(), &raw, 4);
+        return result;
+      }
+
       case UDP_REUSE_ADDRESS:
         return BOOL(capture.socket->upcb()->so_options & SOF_REUSEADDR);
 
@@ -599,6 +610,22 @@ PRIMITIVE(set_option) {
         break;
       }
 
+      case UDP_MULTICAST_LEAVE: {
+        Blob bytes;
+        if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        if (bytes.length() != 4) {
+          FAIL(OUT_OF_BOUNDS);
+        }
+        ip_addr_t group_addr;
+        const uint8* a = bytes.address();
+        IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
+        err_t err = igmp_leavegroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
+        if (err != ERR_OK) return lwip_error(capture.process, err);
+        break;
+      }
+
       case UDP_MULTICAST_LOOPBACK: {
         // UDP_FLAGS_MULTICAST_LOOP matches the bit used by calls to udp_set_flags/udp_clear_flags.
         result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->flags, UDP_FLAGS_MULTICAST_LOOP);
@@ -609,6 +636,20 @@ PRIMITIVE(set_option) {
         if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
         int value = Smi::value(Smi::cast(capture.raw));
         capture.socket->upcb()->mcast_ttl = value;
+        break;
+      }
+
+      case UDP_MULTICAST_IF: {
+        Blob bytes;
+        if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+          FAIL(WRONG_OBJECT_TYPE);
+        }
+        if (bytes.length() != 4) {
+          FAIL(OUT_OF_BOUNDS);
+        }
+        ip_addr_t addr;
+        IP_ADDR4(&addr, bytes.address()[0], bytes.address()[1], bytes.address()[2], bytes.address()[3]);
+        capture.socket->upcb()->multicast_ip = addr;
         break;
       }
 

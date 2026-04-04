@@ -43,7 +43,7 @@ abstract class NetworkServiceClientBase extends ServiceClient implements Network
 
   udp-open-multicast -> int
       handle/int
-      address/ByteArray
+      address/ByteArray?
       port/int
       if-addr/ByteArray?
       reuse-address/bool
@@ -120,6 +120,24 @@ class NetworkResourceProxy extends ServiceResourceProxy:
   udp-open --port/int?=null -> udp.Socket:
     client ::= client_ as NetworkServiceClientBase
     socket ::= client.udp-open handle_ port
+    return UdpSocketResourceProxy_ client socket
+
+  udp-open-multicast -> udp.MulticastSocket
+      --port/int?=null
+      --if-addr/net.IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1:
+    client ::= client_ as NetworkServiceClientBase
+    socket ::= client.udp-open-multicast handle_
+        null  // No address — don't auto-join a group.
+        (port ? port : 0)
+        (if-addr ? if-addr.to-byte-array : null)
+        reuse-address
+        reuse-port
+        loopback
+        ttl
     return UdpSocketResourceProxy_ client socket
 
   udp-open-multicast -> udp.MulticastSocket
@@ -345,15 +363,30 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
       return udp-open client arguments[1]
     if index == NetworkService.UDP-OPEN-MULTICAST-INDEX:
       if not network_ is udp.MulticastInterface: throw "UNSUPPORTED"
-      socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
-          (net.IpAddress arguments[0])
-          arguments[1]
-          --if-addr=(arguments[2] ? net.IpAddress arguments[2] : null)
-          --reuse-address=arguments[3]
-          --reuse-port=arguments[4]
-          --loopback=arguments[5]
-          --ttl=arguments[6]
-      return ProxyingSocketResource_ this client socket
+      // arguments = [handle, address, port, if-addr, reuse-address, reuse-port, loopback, ttl]
+      // arguments[0] is the network handle (not needed here).
+      address := arguments[1]
+      if address:
+        // Deprecated path: auto-join a group.
+        socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
+            (net.IpAddress address)
+            arguments[2]
+            --if-addr=(arguments[3] ? net.IpAddress arguments[3] : null)
+            --reuse-address=arguments[4]
+            --reuse-port=arguments[5]
+            --loopback=arguments[6]
+            --ttl=arguments[7]
+        return ProxyingSocketResource_ this client socket
+      else:
+        // New path: no auto-join.
+        socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
+            --port=arguments[2]
+            --if-addr=(arguments[3] ? net.IpAddress arguments[3] : null)
+            --reuse-address=arguments[4]
+            --reuse-port=arguments[5]
+            --loopback=arguments[6]
+            --ttl=arguments[7]
+        return ProxyingSocketResource_ this client socket
     if index == NetworkService.UDP-CONNECT-INDEX:
       socket ::= convert-to-socket_ client arguments[0]
       return socket.connect (convert-to-socket-address_ arguments 1)
@@ -393,6 +426,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
         return socket.reuse-address
       if option == NetworkService.SOCKET-OPTION-UDP-REUSE-PORT:
         return socket.reuse-port
+      if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-IF:
+        return socket.multicast-interface.to-byte-array
       if option == NetworkService.SOCKET-OPTION-TCP-NO-DELAY:
         return socket.no-delay
     if index == NetworkService.SOCKET-SET-OPTION-INDEX:
@@ -404,6 +439,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
 
       if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-MEMBERSHIP:
         return socket.multicast-add-membership (net.IpAddress value)
+      if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-LEAVE:
+        return socket.multicast-leave-membership (net.IpAddress value)
       if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-LOOPBACK:
         return socket.multicast-loopback = value
       if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-TTL:
@@ -412,6 +449,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
         return socket.reuse-address = value
       if option == NetworkService.SOCKET-OPTION-UDP-REUSE-PORT:
         return socket.reuse-port = value
+      if option == NetworkService.SOCKET-OPTION-UDP-MULTICAST-IF:
+        return socket.multicast-interface = (net.IpAddress value)
       if option == NetworkService.SOCKET-OPTION-TCP-NO-DELAY:
         return socket.no-delay = value
     unreachable
@@ -546,6 +585,10 @@ class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket
     client ::= client_ as NetworkServiceClientBase
     client.socket-set-option handle_ NetworkService.SOCKET-OPTION-UDP-MULTICAST-MEMBERSHIP address.to-byte-array
 
+  multicast-leave-membership address/net.IpAddress:
+    client ::= client_ as NetworkServiceClientBase
+    client.socket-set-option handle_ NetworkService.SOCKET-OPTION-UDP-MULTICAST-LEAVE address.to-byte-array
+
   multicast-loopback -> bool:
     client ::= client_ as NetworkServiceClientBase
     return client.socket-get-option handle_ NetworkService.SOCKET-OPTION-UDP-MULTICAST-LOOPBACK
@@ -577,6 +620,15 @@ class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket
   reuse-port= value/bool:
     client ::= client_ as NetworkServiceClientBase
     client.socket-set-option handle_ NetworkService.SOCKET-OPTION-UDP-REUSE-PORT value
+
+  multicast-interface -> net.IpAddress:
+    client ::= client_ as NetworkServiceClientBase
+    return net.IpAddress
+        client.socket-get-option handle_ NetworkService.SOCKET-OPTION-UDP-MULTICAST-IF
+
+  multicast-interface= address/net.IpAddress:
+    client ::= client_ as NetworkServiceClientBase
+    client.socket-set-option handle_ NetworkService.SOCKET-OPTION-UDP-MULTICAST-IF address.to-byte-array
 
 class TcpSocketResourceProxy_ extends SocketResourceProxy_ implements tcp.Socket:
   constructor client/NetworkServiceClientBase handle/int:

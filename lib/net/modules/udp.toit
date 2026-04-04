@@ -23,6 +23,8 @@ TOIT-UDP-OPTION-MULTICAST-LOOPBACK   ::= 5
 TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
 TOIT-UDP-OPTION-REUSE-ADDRESS        ::= 7
 TOIT-UDP-OPTION-REUSE-PORT           ::= 8
+TOIT-UDP-OPTION-MULTICAST-IF         ::= 9
+TOIT-UDP-OPTION-MULTICAST-LEAVE      ::= 10
 
 
 class Socket implements udp.Socket udp.MulticastSocket:
@@ -50,13 +52,60 @@ class Socket implements udp.Socket udp.MulticastSocket:
       this.close
 
   /**
-  Constructs a new multicast UDP socket.
-  The $address is the multicast address to join.
-  The $port is the port to listen on.
-  The $if_addr is the IP address of the interface to join the group on.
-    If null, the default interface is used.
-  If $reuse_address is true (the default), the SO_REUSEADDR option is set.
-  If $reuse_port is true (not default), the SO_REUSEPORT option is set (if supported).
+  Constructs a multicast UDP socket.
+
+  The socket is configured for multicast communication but does not
+    automatically join any group. Call $multicast-add-membership to
+    join a group for receiving.
+
+  The $port is the local port to bind to. If null, the OS picks an
+    ephemeral port (typical for send-only sockets).
+  The $if-addr is the IP address of the interface to use for outgoing
+    multicast (IP_MULTICAST_IF). If null, the OS picks a default.
+  If $reuse-address is true (the default), the SO_REUSEADDR option is set.
+  If $reuse-port is true (not default), the SO_REUSEPORT option is set.
+  If $loopback is true (the default), multicast packets sent from this
+    socket are also delivered to receivers on the same host.
+  */
+  constructor.multicast .network_/net.Client
+      --port/int?=null
+      --if-addr/net.IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1:
+    group := udp-resource-group_
+    id := udp-create-socket_ group
+    state_ = ResourceState_ group id
+    add-finalizer this::
+      this.close
+
+    successful := false
+    try:
+      if reuse-address:
+        udp-set-option_ group id TOIT-UDP-OPTION-REUSE-ADDRESS true
+      if reuse-port:
+        udp-set-option_ group id TOIT-UDP-OPTION-REUSE-PORT true
+
+      udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-LOOPBACK loopback
+      udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-TTL ttl
+
+      if if-addr:
+        udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-IF if-addr.raw
+
+      bind-port := port ? port : 0
+      udp-bind-socket_ group id #[0,0,0,0] bind-port
+
+      successful = true
+    finally:
+      if not successful: close
+
+  /**
+  Deprecated. Use $(Socket.multicast --port --if-addr --reuse-address --reuse-port --loopback --ttl)
+    followed by $multicast-add-membership instead.
+
+  Constructs a multicast UDP socket, binds to $port, and automatically
+    joins the multicast group $address.
   */
   constructor.multicast .network_/net.Client
       address/net.IpAddress
@@ -82,8 +131,9 @@ class Socket implements udp.Socket udp.MulticastSocket:
       udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-LOOPBACK loopback
       udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-TTL ttl
 
-      // Bind to the port. For multicast we usually bind to 0.0.0.0 (any)
-      // for the address part when receiving, but the port is important.
+      if if-addr:
+        udp-set-option_ group id TOIT-UDP-OPTION-MULTICAST-IF if-addr.raw
+
       udp-bind-socket_ group id #[0,0,0,0] port
 
       // Join group.
@@ -145,6 +195,10 @@ class Socket implements udp.Socket udp.MulticastSocket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
 
+  multicast-leave-membership address/net.IpAddress:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LEAVE address.raw
+
   multicast-loopback -> bool:
     state := ensure-state_
     return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK
@@ -160,6 +214,22 @@ class Socket implements udp.Socket udp.MulticastSocket:
   multicast-ttl= value/int:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL value
+
+  /**
+  Returns the IP address of the interface used for outgoing multicast packets.
+  Returns the raw 4-byte address as a $ByteArray.
+  */
+  multicast-interface -> net.IpAddress:
+    state := ensure-state_
+    return net.IpAddress
+        udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-IF
+
+  /**
+  Sets the interface used for outgoing multicast packets to the given $address.
+  */
+  multicast-interface= address/net.IpAddress:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-IF address.raw
 
   reuse-address -> bool:
     state := ensure-state_
