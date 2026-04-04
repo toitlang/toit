@@ -22,4 +22,4 @@ dependencies:
     version: ^1.4.0
   tar:
     url: github.com/toitlang/pkg-tar
-    version: ^1.2.0
+    version: ^2.1.0
