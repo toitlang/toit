@@ -139,14 +139,15 @@ class Client extends NetworkResourceProxy implements Interface udp.MulticastInte
           --reuse-port=reuse-port
           --loopback=loopback
           --ttl=ttl
-    return udp-module.Socket.multicast this
-        address
-        port
+    socket := udp-module.Socket.multicast this
+        --port=port
         --if-addr=if-addr
         --reuse-address=reuse-address
         --reuse-port=reuse-port
         --loopback=loopback
         --ttl=ttl
+    socket.multicast-add-membership address
+    return socket
 
   tcp-connect host/string port/int -> tcp.Socket:
     ips := resolve host

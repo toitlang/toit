@@ -12,8 +12,8 @@ test-multicast-cow:
   port := 5353
 
   socket := udp_impl.Socket.multicast network
-      (net.IpAddress group)
-      port
-  
+      --port=port
+  socket.multicast-add-membership (net.IpAddress group)
+
   print "Successfully created multicast socket with COW address"
   socket.close

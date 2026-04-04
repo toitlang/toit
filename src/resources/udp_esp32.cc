@@ -548,12 +548,11 @@ PRIMITIVE(get_option) {
         return Smi::from(capture.socket->upcb()->mcast_ttl);
 
       case UDP_MULTICAST_IF: {
-        ip_addr_t addr = capture.socket->upcb()->multicast_ip;
+        ip4_addr_t addr4 = capture.socket->upcb()->mcast_ip4;
         ByteArray* result = capture.process->allocate_byte_array(4);
         if (result == null) FAIL(ALLOCATION_FAILED);
         ByteArray::Bytes bytes(result);
-        const ip4_addr_t* addr4 = ip_2_ip4(&addr);
-        uint32_t raw = ip4_addr_get_u32(addr4);
+        uint32_t raw = ip4_addr_get_u32(&addr4);
         memcpy(bytes.address(), &raw, 4);
         return result;
       }
@@ -647,9 +646,9 @@ PRIMITIVE(set_option) {
         if (bytes.length() != 4) {
           FAIL(OUT_OF_BOUNDS);
         }
-        ip_addr_t addr;
-        IP_ADDR4(&addr, bytes.address()[0], bytes.address()[1], bytes.address()[2], bytes.address()[3]);
-        capture.socket->upcb()->multicast_ip = addr;
+        ip4_addr_t addr4;
+        IP4_ADDR(&addr4, bytes.address()[0], bytes.address()[1], bytes.address()[2], bytes.address()[3]);
+        udp_set_multicast_netif_addr(capture.socket->upcb(), &addr4);
         break;
       }
 

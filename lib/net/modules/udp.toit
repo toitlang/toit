@@ -101,8 +101,9 @@ class Socket implements udp.Socket udp.MulticastSocket:
       if not successful: close
 
   /**
-  Deprecated. Use $(Socket.multicast --port --if-addr --reuse-address --reuse-port --loopback --ttl)
-    followed by $multicast-add-membership instead.
+  Deprecated. Use the named-args-only constructor
+    (without a positional address) followed by
+    $multicast-add-membership instead.
 
   Constructs a multicast UDP socket, binds to $port, and automatically
     joins the multicast group $address.

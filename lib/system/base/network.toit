@@ -366,27 +366,17 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
       // arguments = [handle, address, port, if-addr, reuse-address, reuse-port, loopback, ttl]
       // arguments[0] is the network handle (not needed here).
       address := arguments[1]
+      socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
+          --port=arguments[2]
+          --if-addr=(arguments[3] ? net.IpAddress arguments[3] : null)
+          --reuse-address=arguments[4]
+          --reuse-port=arguments[5]
+          --loopback=arguments[6]
+          --ttl=arguments[7]
       if address:
         // Deprecated path: auto-join a group.
-        socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
-            (net.IpAddress address)
-            arguments[2]
-            --if-addr=(arguments[3] ? net.IpAddress arguments[3] : null)
-            --reuse-address=arguments[4]
-            --reuse-port=arguments[5]
-            --loopback=arguments[6]
-            --ttl=arguments[7]
-        return ProxyingSocketResource_ this client socket
-      else:
-        // New path: no auto-join.
-        socket ::= (network_ as udp.MulticastInterface).udp-open-multicast
-            --port=arguments[2]
-            --if-addr=(arguments[3] ? net.IpAddress arguments[3] : null)
-            --reuse-address=arguments[4]
-            --reuse-port=arguments[5]
-            --loopback=arguments[6]
-            --ttl=arguments[7]
-        return ProxyingSocketResource_ this client socket
+        socket.multicast-add-membership (net.IpAddress address)
+      return ProxyingSocketResource_ this client socket
     if index == NetworkService.UDP-CONNECT-INDEX:
       socket ::= convert-to-socket_ client arguments[0]
       return socket.connect (convert-to-socket-address_ arguments 1)

@@ -12,16 +12,15 @@ PORT := 12345
 
 main:
   network := net.open
-  
-  // Create a listening socket for multicast.
-  // We use the implementation class directly for the multicast constructor.
+
+  // Create a listening socket for multicast using the new API.
   socket := impl.Socket.multicast network
-      MULTICAST-ADDRESS
-      PORT
+      --port=PORT
       --loopback
       --ttl=1
       --reuse-address
       --reuse-port
+  socket.multicast-add-membership MULTICAST-ADDRESS
 
   print "Socket created and bound to $PORT, joined $MULTICAST-ADDRESS"
 
@@ -39,9 +38,9 @@ main:
   print "Waiting to receive..."
   received := socket.receive
   print "Received: $(received.data.to-string)"
-  
+
   expect-equals msg received.data.to-string
-  
+
   // received.address is the SENDER address.
   print "Received from port: $(received.address.port)"
 
