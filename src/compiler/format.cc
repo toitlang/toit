@@ -35,6 +35,7 @@ class Printer {
   std::string print(Document* doc) {
     output_.clear();
     current_column_ = 0;
+    line_indent_ = 0;
     print_doc(doc, 0, false);
     return output_;
   }
@@ -42,6 +43,7 @@ class Printer {
  private:
   int break_width_;
   int current_column_;
+  int line_indent_;  // Indentation of the current line (column of first non-space char).
   std::string output_;
 
   void print_doc(Document* doc, int indent, bool broken) {
@@ -55,6 +57,11 @@ class Printer {
         auto pos = t.rfind('\n');
         if (pos != std::string::npos) {
           current_column_ = t.length() - pos - 1;
+          // Compute line_indent_: count leading spaces on the last line.
+          line_indent_ = 0;
+          for (size_t i = pos + 1; i < t.length() && t[i] == ' '; i++) {
+            line_indent_++;
+          }
         } else {
           current_column_ += t.length();
         }
@@ -66,6 +73,7 @@ class Printer {
           output_ += "\n";
           output_ += std::string(indent, ' ');
           current_column_ = indent;
+          line_indent_ = indent;
         } else {
           output_ += " ";
           current_column_ += 1;
@@ -82,8 +90,11 @@ class Printer {
       case Document::GROUP: {
         auto group = static_cast<Group*>(doc);
         bool should_break = group->flat_width() > break_width_;
+        // When a Group breaks, use the current line's indentation as base,
+        // so continuation lines indent relative to the statement start.
+        int group_indent = should_break ? line_indent_ : indent;
         for (auto child : group->children()) {
-          print_doc(child, indent, should_break);
+          print_doc(child, group_indent, should_break);
         }
         break;
       }
@@ -311,17 +322,49 @@ class FormattingVisitor : public Visitor {
     node->expression()->accept(this);
   }
 
-  void visit_Binary(Binary* node) override {
-    // Check if the binary expression spans multiple lines in the source.
-    int start = node_start(node->left());
-    int end = offset(node->full_range().to());
-    bool spans_lines = false;
+  /// Checks whether the source text in [from, to) contains a newline.
+  bool spans_multiple_lines(int from, int to) {
     auto src = source_->text();
-    for (int i = start; i < end; i++) {
-      if (src[i] == '\n') { spans_lines = true; break; }
+    for (int i = from; i < to; i++) {
+      if (src[i] == '\n') return true;
+    }
+    return false;
+  }
+
+  /// Collects a chain of binary operations with the same operator.
+  /// Handles both left-associative (`+`: chain is on the left) and
+  /// right-associative (`and`: chain is on the right) operators.
+  void collect_binary_chain(Binary* node,
+                            Token::Kind chain_op,
+                            std::vector<Expression*>& operands,
+                            std::vector<Token::Kind>& operators) {
+    auto left = node->left();
+    if (left->is_Binary() && left->as_Binary()->kind() == chain_op) {
+      collect_binary_chain(left->as_Binary(), chain_op, operands, operators);
+    } else {
+      operands.push_back(left);
+    }
+    operators.push_back(node->kind());
+    auto right = node->right();
+    if (right->is_Binary() && right->as_Binary()->kind() == chain_op) {
+      collect_binary_chain(right->as_Binary(), chain_op, operands, operators);
+    } else {
+      operands.push_back(right);
+    }
+  }
+
+  void visit_Binary(Binary* node) override {
+    // Don't reformat assignments — they are handled by the copy formatter.
+    if (Token::precedence(node->kind()) == PRECEDENCE_ASSIGNMENT) {
+      node->left()->accept(this);
+      node->right()->accept(this);
+      return;
     }
 
-    if (!spans_lines) {
+    int start = node_start(node->left());
+    int end = offset(node->full_range().to());
+
+    if (!spans_multiple_lines(start, end)) {
       // Already on one line — preserve original formatting.
       node->left()->accept(this);
       node->right()->accept(this);
@@ -336,27 +379,32 @@ class FormattingVisitor : public Visitor {
       return;
     }
 
-    // Multi-line binary. Try to flatten onto one line.
+    // Collect the chain: a + b - c → operands=[a, b, c], operators=[+, -].
+    std::vector<Expression*> operands;
+    std::vector<Token::Kind> operators;
+    collect_binary_chain(node, node->kind(), operands, operators);
+
+    // Build Document IR: Group(first, Indent(Line op second, Line op third, ...))
     emit_to(start);
-    int cursor_before = cursor_;
 
-    auto left_doc = build(node->left());
-    cursor_ = node_start(node->right());
-    auto right_doc = build(node->right());
+    auto first_doc = build(operands[0]);
 
-    std::string op_str(Token::symbol(node->kind()).c_str());
-    int flat_width = left_doc->flat_width() + 1 + op_str.length() + 1 + right_doc->flat_width();
-
-    if (flat_width < format::FLAT_WIDTH_MAX && flat_width <= 100) {
-      // Fits on one line — flatten.
-      docs_->add(left_doc);
-      docs_->add(new format::Text(" " + op_str + " "));
-      docs_->add(right_doc);
-    } else {
-      // Too wide to flatten. Preserve original formatting.
-      cursor_ = cursor_before;
-      emit_through(node);
+    ListBuilder<format::Document*> indent_children;
+    for (int i = 0; i < static_cast<int>(operators.size()); i++) {
+      std::string op_str(Token::symbol(operators[i]).c_str());
+      cursor_ = node_start(operands[i + 1]);
+      auto operand_doc = build(operands[i + 1]);
+      indent_children.add(new format::Line());
+      indent_children.add(new format::Text(op_str + " "));
+      indent_children.add(operand_doc);
     }
+
+    ListBuilder<format::Document*> group_children;
+    group_children.add(first_doc);
+    group_children.add(new format::Indent(
+        new format::Concat(indent_children.build())));
+
+    docs_->add(new format::Group(group_children.build()));
   }
 
   void visit_Call(Call* node) override {

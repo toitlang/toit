@@ -1,5 +1,18 @@
+foo a/int b/int c/int d/int -> int:
+  return a + b + c + d
+
 main:
   // Short binary expression on multiple lines should be flattened.
   x := 1 + 2
   // Short binary already on one line stays.
   y := 3 + 4
+  // Chain of binaries on multiple lines should be flattened.
+  z := 1 + 2 + 3
+  // Long chain that doesn't fit on one line should break with operators at start of line.
+  long := (foo 1 2 3 4)
+    + (foo 1 2 3 4)
+    + (foo 1 2 3 4)
+    + (foo 1 2 3 4)
+    + (foo 1 2 3 4)
+    + (foo 1 2 3 4)
+    + (foo 1 2 3 4)
