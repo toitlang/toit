@@ -20,6 +20,7 @@ import net.udp
 
 MULTICAST-ADDRESS ::= net.IpAddress.parse "239.1.2.3"
 LOOPBACK-ADDRESS  ::= net.IpAddress.parse "127.0.0.1"
+RECEIVE-TIMEOUT-MS ::= 5_000
 
 main:
   network := net.open
@@ -79,7 +80,7 @@ test-multicast-send-receive network/net.Client:
 
   sender.send datagram
 
-  received := receiver.receive
+  received := with-timeout --ms=RECEIVE-TIMEOUT-MS: receiver.receive
   expect-equals msg received.data.to-string
 
   sender.close
@@ -109,10 +110,10 @@ test-two-receivers network/net.Client:
   sender.send datagram
 
   // Both receivers should get the multicast message.
-  received1 := receiver1.receive
+  received1 := with-timeout --ms=RECEIVE-TIMEOUT-MS: receiver1.receive
   expect-equals msg received1.data.to-string
 
-  received2 := receiver2.receive
+  received2 := with-timeout --ms=RECEIVE-TIMEOUT-MS: receiver2.receive
   expect-equals msg received2.data.to-string
 
   sender.close
@@ -139,7 +140,7 @@ test-leave-membership network/net.Client:
   sender.send
       udp.Datagram msg1.to-byte-array (net.SocketAddress MULTICAST-ADDRESS port)
 
-  received := receiver.receive
+  received := with-timeout --ms=RECEIVE-TIMEOUT-MS: receiver.receive
   expect-equals msg1 received.data.to-string
 
   // Leave the group.
@@ -157,7 +158,7 @@ test-leave-membership network/net.Client:
   sender.send
       udp.Datagram unicast-msg.to-byte-array (net.SocketAddress LOOPBACK-ADDRESS port)
 
-  received2 := receiver.receive
+  received2 := with-timeout --ms=RECEIVE-TIMEOUT-MS: receiver.receive
   // We should get the unicast ping, not the multicast message.
   expect-equals unicast-msg received2.data.to-string
 
