@@ -270,6 +270,59 @@ class FormattingVisitor : public TraversingVisitor {
     }
   }
 
+  void visit_Call(Call* node) override {
+    int start = node_start(node);
+    int end = offset(node->full_range().to());
+
+    if (!spans_multiple_lines(start, end)) {
+      TraversingVisitor::visit_Call(node);
+      return;
+    }
+
+    if (has_comment_in_range(start, end)) {
+      TraversingVisitor::visit_Call(node);
+      return;
+    }
+
+    // Don't flatten calls with block/lambda arguments.
+    for (auto arg : node->arguments()) {
+      if (arg->is_Block() || arg->is_Lambda()) {
+        TraversingVisitor::visit_Call(node);
+        return;
+      }
+      // Named arguments can wrap blocks.
+      if (arg->is_NamedArgument()) {
+        auto named = arg->as_NamedArgument();
+        if (named->expression() != null &&
+            (named->expression()->is_Block() || named->expression()->is_Lambda())) {
+          TraversingVisitor::visit_Call(node);
+          return;
+        }
+      }
+    }
+
+    // Build document for target and all arguments, then try to flatten.
+    emit_to(start);
+
+    auto target_doc = build(node->target());
+
+    ListBuilder<format::Document*> group_children;
+    group_children.add(target_doc);
+
+    ListBuilder<format::Document*> args_children;
+    for (auto arg : node->arguments()) {
+      cursor_ = node_start(arg);
+      auto arg_doc = build(arg);
+      args_children.add(new format::Line());
+      args_children.add(arg_doc);
+    }
+
+    group_children.add(new format::Indent(
+        new format::Concat(args_children.build())));
+
+    docs_->add(new format::Group(group_children.build()));
+  }
+
   void visit_Binary(Binary* node) override {
     // Don't reformat assignments — they are handled by the copy formatter.
     if (Token::precedence(node->kind()) == PRECEDENCE_ASSIGNMENT) {
