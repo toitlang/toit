@@ -218,6 +218,25 @@ class FormattingVisitor : public TraversingVisitor {
     if (node->body() != null) node->body()->accept(this);
   }
 
+  // ==== Formatting helpers ====
+
+  /// Returns true if the expression needs parentheses when used as an
+  /// inline binary operand of the given operator.
+  ///
+  /// Operators parsed by parse_precedence() (arithmetic, comparison, etc.)
+  /// use parse_precedence(level+1) for same-line RHS, which doesn't handle
+  /// calls. So calls with arguments need parens.
+  ///
+  /// Operators parsed by parse_logical_spelled() (and, or) always parse
+  /// operands through parse_call(), so no parens needed.
+  bool needs_parens_as_operand(Expression* expr, Token::Kind op) {
+    if (op == Token::LOGICAL_AND || op == Token::LOGICAL_OR) return false;
+    if (expr->is_Call()) {
+      return expr->as_Call()->arguments().length() > 0;
+    }
+    return false;
+  }
+
   // ==== Formatting rules ====
 
   /// Checks whether the source text in [from, to) contains a newline.
@@ -282,6 +301,7 @@ class FormattingVisitor : public TraversingVisitor {
     // Build Document IR: Group(first, Indent(Line op second, Line op third, ...))
     emit_to(start);
 
+    bool first_parens = needs_parens_as_operand(operands[0], node->kind());
     auto first_doc = build(operands[0]);
 
     ListBuilder<format::Document*> indent_children;
@@ -289,13 +309,18 @@ class FormattingVisitor : public TraversingVisitor {
       std::string op_str(Token::symbol(operators[i]).c_str());
       cursor_ = node_start(operands[i + 1]);
       auto operand_doc = build(operands[i + 1]);
+      bool parens = needs_parens_as_operand(operands[i + 1], operators[i]);
       indent_children.add(new format::Line());
       indent_children.add(new format::Text(op_str + " "));
+      if (parens) indent_children.add(new format::Text("("));
       indent_children.add(operand_doc);
+      if (parens) indent_children.add(new format::Text(")"));
     }
 
     ListBuilder<format::Document*> group_children;
+    if (first_parens) group_children.add(new format::Text("("));
     group_children.add(first_doc);
+    if (first_parens) group_children.add(new format::Text(")"));
     group_children.add(new format::Indent(
         new format::Concat(indent_children.build())));
 

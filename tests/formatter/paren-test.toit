@@ -1,0 +1,18 @@
+foo x:
+  return x
+
+bar x y:
+  return x + y
+
+main:
+  // Call as binary operand needs parens when flattened.
+  x := 1 +
+    foo 3
+  // Call on both sides.
+  y := foo 1 +
+    foo 2
+  // No call — no parens needed.
+  z := 1 +
+    2
+  // Already on one line — no change.
+  a := 1 + (foo 3)
