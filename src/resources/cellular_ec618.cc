@@ -101,6 +101,9 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Ensure modem starts from a clean state.
+  appSetCFUN(0);
+
   CellularEventSource* event_source = CellularEventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
 

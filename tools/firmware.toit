@@ -928,10 +928,16 @@ extract-ec618 -> none
   ui := invocation.cli.ui
 
   format := invocation["format"]
-  if format != "binary" and format != "ubjson":
-    ui.abort "Unsupported format for EC618 envelope: '$format'"
+  if format != "binary" and format != "ubjson" and format != "image":
+    ui.abort "Unsupported format for EC618 envelope: '$format'. Use 'binary', 'image' (binpkg), or 'ubjson'."
 
   firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+
+  if format == "image":
+    // Produce a .binpkg (the EC618 flashable format).
+    binpkg := convert-to-binpkg firmware-bin
+    write-file output-path --ui=ui: it.write binpkg
+    return
 
   if format == "binary":
     write-file output-path --ui=ui: it.write firmware-bin
@@ -1421,16 +1427,41 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
 
   firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
 
+  binpkg := convert-to-binpkg firmware-bin
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    tmp-file := "$tmp/firmware.bin"
-    write-file tmp-file --ui=ui: it.write firmware-bin
+    binpkg-path := "$tmp/toit.binpkg"
+    write-file binpkg-path --ui=ui: it.write binpkg
 
     ectool := find-ectool_
-    code := pipe.run-program [ectool, "flash", "--port", port, tmp-file]
+    code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", "n", "-f", binpkg-path]
     if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
+
+/**
+Converts a raw AP firmware binary to .binpkg format.
+
+The binpkg format is:
+- 52-byte header (zero-filled)
+- 364-byte image header (app name, size, subsystem)
+- firmware binary data
+*/
+convert-to-binpkg firmware-bin/ByteArray --app-name/string="toit" -> ByteArray:
+  BINPKG-HEADER-SIZE ::= 52
+  IMAGE-HEADER-SIZE  ::= 364
+
+  binpkg-header := ByteArray BINPKG-HEADER-SIZE  // Zero-filled.
+
+  image-header := ByteArray IMAGE-HEADER-SIZE
+  // Write application name at offset 0.
+  image-header.replace 0 app-name.to-byte-array
+  // Write firmware binary size at offset 76.
+  LITTLE-ENDIAN.put-uint32 image-header 76 firmware-bin.size
+  // Write subsystem identifier at offset 336.
+  image-header.replace 336 "AP".to-byte-array
+
+  return binpkg-header + image-header + firmware-bin
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES

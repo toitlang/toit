@@ -235,19 +235,32 @@ $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 # EC618
 EC618_SDK = $(CURDIR)/third_party/luatos-soc-ec618
 EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f28701b1431e
+EC618_SYSTEM_ENTRY = $(CURDIR)/system/extensions/ec618/boot.toit
+EC618_ENVELOPE = $(BUILD)/ec618/firmware.envelope
+EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
 
 .PHONY: ec618
-ec618: check-env
+ec618: check-env host-tools
+	# Build the EC618 VM library.
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
 	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
-
-.PHONY: ec618-firmware
-ec618-firmware: ec618
+	# Build the firmware binary (bootloader + AP + CP) via xmake.
 	cd $(EC618_SDK) && rm -rf build && \
 		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake config -p cross -y && \
 		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
-	@echo "Firmware: $(EC618_SDK)/out/toit/toit.binpkg"
+	# Compile the system snapshot.
+	cd $(CURDIR)
+	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
+	# Create the firmware envelope.
+	rm -f $(EC618_ENVELOPE)
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) create ec618 \
+		--firmware.bin $(EC618_SDK)/out/toit/ap.bin \
+		--system.snapshot $(BUILD)/ec618/system.snapshot
+	# Extract the binpkg.
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
+	@echo "Envelope: $(EC618_ENVELOPE)"
+	@echo "Binpkg:   $(EC618_BINPKG)"
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
