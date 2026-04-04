@@ -17,7 +17,8 @@ import cli
 import host.pipe show print-to-stdout
 import host.directory
 import host.file
-import tar show Tar
+import io
+import tar
 import encoding.json as json
 import .compiler
 import .documents
@@ -88,14 +89,15 @@ write-repro
     --protocol       /FileServerProtocol
     --cwd-path       /string?
     --include-sdk    /bool:
-  writer := file.Stream.for-write repro-path
+  stream := file.Stream.for-write repro-path
+  writer := stream.out
   write-repro --writer=writer \
       --compiler-flags=compiler-flags --compiler-input=compiler-input --info=info \
       --protocol=protocol --cwd-path=cwd-path --include-sdk=include-sdk
   writer.close
 
 write-repro
-    --writer
+    --writer         /io.Writer
     --compiler-flags /List
     --compiler-input /string
     --info           /string
@@ -113,7 +115,7 @@ write-repro
   // We choose [].
   package-cache-paths := protocol.served-package-cache-paths or []
 
-  tar := Tar writer
+  tar-writer := tar.Writer writer
   protocol.served-files.do: |path file|
     if not include-sdk and path.starts-with sdk-path: continue.do
 
@@ -124,19 +126,18 @@ write-repro
       "has_content": file.content != null
     }
     content := file.content
-    if content: tar.add path content
+    if content: tar-writer.add path content
   protocol.served-directories.do: |path entries|
     meta["directories"][path] = entries
-  tar.add REPRO-COMPILER-FLAGS-PATH (compiler-flags.join "\n")
-  tar.add REPRO-COMPILER-INPUT-PATH compiler-input
-  tar.add REPRO-INFO-PATH info
-  tar.add REPRO-META-FILE-PATH (json.stringify meta)
-  tar.add REPRO-SDK-PATH-PATH sdk-path
-  tar.add REPRO-PACKAGE-CACHE-PATHS-PATH (package-cache-paths.join "\n")
-  tar.add REPRO-CWD-PATH-PATH (cwd-path or "/")
-  // There is ambiguity on whether we need to call `close_write` or `close`.
-  // As a consequence we don't close using the `tar`, but simply call close afterwards.
-  tar.close --no-close-writer
+  tar-writer.add REPRO-COMPILER-FLAGS-PATH (compiler-flags.join "\n")
+  tar-writer.add REPRO-COMPILER-INPUT-PATH compiler-input
+  tar-writer.add REPRO-INFO-PATH info
+  tar-writer.add REPRO-META-FILE-PATH (json.stringify meta)
+  tar-writer.add REPRO-SDK-PATH-PATH sdk-path
+  tar-writer.add REPRO-PACKAGE-CACHE-PATHS-PATH (package-cache-paths.join "\n")
+  tar-writer.add REPRO-CWD-PATH-PATH (cwd-path or "/")
+  // Note that we don't close the writer itself.
+  tar-writer.close
 
 create-archive project-uri/string? compiler-path/string entry-path/string out-path/string:
   cwd := directory.cwd
