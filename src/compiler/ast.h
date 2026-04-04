@@ -92,6 +92,10 @@ NODES(DECLARE)
 
 class TraversingVisitor : public Visitor {
  public:
+  /// Called for leaf nodes (no children to traverse).
+  /// Subclasses can override to handle all leaves uniformly.
+  virtual void visit_leaf(Node* node) {}
+
 #define DECLARE(name) virtual void visit_##name(name* node);
 NODES(DECLARE)
 #undef DECLARE

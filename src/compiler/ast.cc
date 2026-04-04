@@ -31,14 +31,14 @@ NODES(DECLARE)
 #undef DECLARE
 
 void TraversingVisitor::visit_Unit(Unit* node) {
-  for (int i = 0; i < node->declarations().length(); i++) {
-    node->declarations()[i]->accept(this);
-  }
+  for (auto import : node->imports()) import->accept(this);
+  for (auto exp : node->exports()) exp->accept(this);
+  for (auto decl : node->declarations()) decl->accept(this);
 }
 
-void TraversingVisitor::visit_Import(Import* node) {}
+void TraversingVisitor::visit_Import(Import* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_Export(Export* node) {}
+void TraversingVisitor::visit_Export(Export* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_Class(Class* node) {
   node->name()->accept(this);
@@ -68,9 +68,9 @@ void TraversingVisitor::visit_Method(Method* node) {
   }
 }
 
-void TraversingVisitor::visit_Expression(Expression* node) {}
+void TraversingVisitor::visit_Expression(Expression* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_Error(Error* node) {}
+void TraversingVisitor::visit_Error(Error* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_NamedArgument(NamedArgument* node) {
   node->name()->accept(this);
@@ -94,14 +94,14 @@ void TraversingVisitor::visit_Block(Block* node) {
   for (int i = 0; i < node->parameters().length(); i++) {
     node->parameters()[i]->accept(this);
   }
-  visit(node->body());
+  if (node->body() != null) node->body()->accept(this);
 }
 
 void TraversingVisitor::visit_Lambda(Lambda* node) {
   for (int i = 0; i < node->parameters().length(); i++) {
     node->parameters()[i]->accept(this);
   }
-  visit(node->body());
+  if (node->body() != null) node->body()->accept(this);
 }
 
 void TraversingVisitor::visit_Sequence(Sequence* node) {
@@ -111,8 +111,9 @@ void TraversingVisitor::visit_Sequence(Sequence* node) {
 }
 
 void TraversingVisitor::visit_DeclarationLocal(DeclarationLocal* node) {
-  visit(node->name());
-  visit(node->value());
+  node->name()->accept(this);
+  if (node->type() != null) node->type()->accept(this);
+  if (node->value() != null) node->value()->accept(this);
 }
 
 void TraversingVisitor::visit_If(If* node) {
@@ -135,10 +136,10 @@ void TraversingVisitor::visit_For(For* node) {
 
 void TraversingVisitor::visit_TryFinally(TryFinally* node) {
   node->body()->accept(this);
-  node->handler()->accept(this);
   for (auto parameter : node->handler_parameters()) {
     parameter->accept(this);
   }
+  node->handler()->accept(this);
 }
 
 void TraversingVisitor::visit_Return(Return* node) {
@@ -181,13 +182,13 @@ void TraversingVisitor::visit_IndexSlice(IndexSlice* node) {
   if (node->to() != null) node->to()->accept(this);
 }
 
-void TraversingVisitor::visit_Identifier(Identifier* node) {}
+void TraversingVisitor::visit_Identifier(Identifier* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_Nullable(Nullable* node) {
   node->type()->accept(this);
 }
 
-void TraversingVisitor::visit_LspSelection(LspSelection* node) {}
+void TraversingVisitor::visit_LspSelection(LspSelection* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_Parameter(Parameter* node) {
   node->name()->accept(this);
@@ -197,17 +198,17 @@ void TraversingVisitor::visit_Parameter(Parameter* node) {
   }
 }
 
-void TraversingVisitor::visit_LiteralNull(LiteralNull* node) {}
+void TraversingVisitor::visit_LiteralNull(LiteralNull* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) {}
+void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) {}
+void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_LiteralInteger(LiteralInteger* node) {}
+void TraversingVisitor::visit_LiteralInteger(LiteralInteger* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_LiteralCharacter(LiteralCharacter* node) {}
+void TraversingVisitor::visit_LiteralCharacter(LiteralCharacter* node) { visit_leaf(node); }
 
-void TraversingVisitor::visit_LiteralString(LiteralString* node) {}
+void TraversingVisitor::visit_LiteralString(LiteralString* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolation* node) {
   for (int i = 0; i < node->parts().length(); i++) {
@@ -221,8 +222,7 @@ void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolat
   }
 }
 
-void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) {
-}
+void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_LiteralList(LiteralList* node) {
   for (int i = 0; i < node->elements().length(); i++) {
@@ -256,7 +256,7 @@ void TraversingVisitor::visit_ToitdocReference(ToitdocReference* node) {
   }
 }
 
-void TraversingVisitor::visit_TokenNode(TokenNode* node) {}
+void TraversingVisitor::visit_TokenNode(TokenNode* node) { visit_leaf(node); }
 
 class AstPrinter : public Visitor {
  public:

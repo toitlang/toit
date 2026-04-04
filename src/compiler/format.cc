@@ -115,7 +115,7 @@ class Printer {
 /// specific formatting rules, the original source text (including whitespace
 /// and comments) is captured as Text nodes. For nodes with formatting rules
 /// (e.g., Binary), proper IR structure (Groups, Lines) is emitted.
-class FormattingVisitor : public Visitor {
+class FormattingVisitor : public TraversingVisitor {
  public:
   explicit FormattingVisitor(Source* source, List<Scanner::Comment> comments)
       : source_(source), comments_(comments) {}
@@ -125,9 +125,7 @@ class FormattingVisitor : public Visitor {
     comment_index_ = 0;
     ListBuilder<format::Document*> top_docs;
     docs_ = &top_docs;
-    for (auto node : unit->imports()) node->accept(this);
-    for (auto node : unit->exports()) node->accept(this);
-    for (auto node : unit->declarations()) node->accept(this);
+    unit->accept(this);
     emit_to(source_->size());
     return new format::Concat(top_docs.build());
   }
@@ -205,41 +203,11 @@ class FormattingVisitor : public Visitor {
     return new format::Concat(children);
   }
 
-  // ==== Leaf nodes: emit source text from cursor through end of node ====
+  // ==== Leaf nodes: handled uniformly via visit_leaf ====
 
-  void visit_Import(Import* node) override { emit_through(node); }
-  void visit_Export(Export* node) override { emit_through(node); }
-  void visit_Expression(Expression* node) override { emit_through(node); }
-  void visit_Error(Error* node) override { emit_through(node); }
-  void visit_Identifier(Identifier* node) override { emit_through(node); }
-  void visit_LspSelection(LspSelection* node) override { emit_through(node); }
-  void visit_LiteralNull(LiteralNull* node) override { emit_through(node); }
-  void visit_LiteralUndefined(LiteralUndefined* node) override { emit_through(node); }
-  void visit_LiteralBoolean(LiteralBoolean* node) override { emit_through(node); }
-  void visit_LiteralInteger(LiteralInteger* node) override { emit_through(node); }
-  void visit_LiteralCharacter(LiteralCharacter* node) override { emit_through(node); }
-  void visit_LiteralString(LiteralString* node) override { emit_through(node); }
-  void visit_LiteralFloat(LiteralFloat* node) override { emit_through(node); }
-  void visit_TokenNode(TokenNode* node) override { emit_through(node); }
+  void visit_leaf(Node* node) override { emit_through(node); }
 
-  // ==== Non-leaf nodes: recurse into children in source order ====
-  // These are "structural" — they just recurse so that formatting
-  // can kick in for children that have specific rules.
-
-  void visit_Class(Class* node) override {
-    node->name()->accept(this);
-    if (node->has_super()) node->super()->accept(this);
-    for (auto member : node->members()) member->accept(this);
-  }
-
-  void visit_Declaration(Declaration* node) override {
-    node->name_or_dot()->accept(this);
-  }
-
-  void visit_Field(Field* node) override {
-    visit_Declaration(node);
-    if (node->initializer() != null) node->initializer()->accept(this);
-  }
+  // ==== Overrides for nodes where source order differs from TraversingVisitor ====
 
   void visit_Method(Method* node) override {
     visit_Declaration(node);
@@ -250,77 +218,7 @@ class FormattingVisitor : public Visitor {
     if (node->body() != null) node->body()->accept(this);
   }
 
-  void visit_NamedArgument(NamedArgument* node) override {
-    node->name()->accept(this);
-    if (node->expression() != null) node->expression()->accept(this);
-  }
-
-  void visit_BreakContinue(BreakContinue* node) override {
-    if (node->label() != null) node->label()->accept(this);
-    if (node->value() != null) node->value()->accept(this);
-  }
-
-  void visit_Parenthesis(Parenthesis* node) override {
-    node->expression()->accept(this);
-  }
-
-  void visit_Block(Block* node) override {
-    for (int i = 0; i < node->parameters().length(); i++) {
-      node->parameters()[i]->accept(this);
-    }
-    if (node->body() != null) node->body()->accept(this);
-  }
-
-  void visit_Lambda(Lambda* node) override {
-    for (int i = 0; i < node->parameters().length(); i++) {
-      node->parameters()[i]->accept(this);
-    }
-    if (node->body() != null) node->body()->accept(this);
-  }
-
-  void visit_Sequence(Sequence* node) override {
-    for (auto expr : node->expressions()) expr->accept(this);
-  }
-
-  void visit_DeclarationLocal(DeclarationLocal* node) override {
-    node->name()->accept(this);
-    if (node->type() != null) node->type()->accept(this);
-    if (node->value() != null) node->value()->accept(this);
-  }
-
-  void visit_If(If* node) override {
-    node->expression()->accept(this);
-    node->yes()->accept(this);
-    if (node->no() != null) node->no()->accept(this);
-  }
-
-  void visit_While(While* node) override {
-    node->condition()->accept(this);
-    node->body()->accept(this);
-  }
-
-  void visit_For(For* node) override {
-    if (node->initializer() != null) node->initializer()->accept(this);
-    if (node->condition() != null) node->condition()->accept(this);
-    if (node->update() != null) node->update()->accept(this);
-    node->body()->accept(this);
-  }
-
-  void visit_TryFinally(TryFinally* node) override {
-    node->body()->accept(this);
-    for (auto parameter : node->handler_parameters()) {
-      parameter->accept(this);
-    }
-    node->handler()->accept(this);
-  }
-
-  void visit_Return(Return* node) override {
-    if (node->value() != null) node->value()->accept(this);
-  }
-
-  void visit_Unary(Unary* node) override {
-    node->expression()->accept(this);
-  }
+  // ==== Formatting rules ====
 
   /// Checks whether the source text in [from, to) contains a newline.
   bool spans_multiple_lines(int from, int to) {
@@ -356,8 +254,7 @@ class FormattingVisitor : public Visitor {
   void visit_Binary(Binary* node) override {
     // Don't reformat assignments — they are handled by the copy formatter.
     if (Token::precedence(node->kind()) == PRECEDENCE_ASSIGNMENT) {
-      node->left()->accept(this);
-      node->right()->accept(this);
+      TraversingVisitor::visit_Binary(node);
       return;
     }
 
@@ -366,16 +263,14 @@ class FormattingVisitor : public Visitor {
 
     if (!spans_multiple_lines(start, end)) {
       // Already on one line — preserve original formatting.
-      node->left()->accept(this);
-      node->right()->accept(this);
+      TraversingVisitor::visit_Binary(node);
       return;
     }
 
     // If there are comments in the binary expression, don't reformat —
     // comments would be lost when we skip the gap between operands.
     if (has_comment_in_range(start, end)) {
-      node->left()->accept(this);
-      node->right()->accept(this);
+      TraversingVisitor::visit_Binary(node);
       return;
     }
 
@@ -405,75 +300,6 @@ class FormattingVisitor : public Visitor {
         new format::Concat(indent_children.build())));
 
     docs_->add(new format::Group(group_children.build()));
-  }
-
-  void visit_Call(Call* node) override {
-    node->target()->accept(this);
-    for (auto arg : node->arguments()) arg->accept(this);
-  }
-
-  void visit_Dot(Dot* node) override {
-    node->receiver()->accept(this);
-    node->name()->accept(this);
-  }
-
-  void visit_Index(Index* node) override {
-    node->receiver()->accept(this);
-    for (auto arg : node->arguments()) arg->accept(this);
-  }
-
-  void visit_IndexSlice(IndexSlice* node) override {
-    node->receiver()->accept(this);
-    if (node->from() != null) node->from()->accept(this);
-    if (node->to() != null) node->to()->accept(this);
-  }
-
-  void visit_Nullable(Nullable* node) override {
-    node->type()->accept(this);
-  }
-
-  void visit_Parameter(Parameter* node) override {
-    node->name()->accept(this);
-    if (node->type() != null) node->type()->accept(this);
-    if (node->default_value() != null) node->default_value()->accept(this);
-  }
-
-  void visit_LiteralStringInterpolation(LiteralStringInterpolation* node) override {
-    for (int i = 0; i < node->parts().length(); i++) {
-      if (i != 0) {
-        node->expressions()[i - 1]->accept(this);
-        if (node->formats()[i - 1] != null) {
-          node->formats()[i - 1]->accept(this);
-        }
-      }
-      node->parts()[i]->accept(this);
-    }
-  }
-
-  void visit_LiteralList(LiteralList* node) override {
-    for (auto elem : node->elements()) elem->accept(this);
-  }
-
-  void visit_LiteralByteArray(LiteralByteArray* node) override {
-    for (auto elem : node->elements()) elem->accept(this);
-  }
-
-  void visit_LiteralSet(LiteralSet* node) override {
-    for (auto elem : node->elements()) elem->accept(this);
-  }
-
-  void visit_LiteralMap(LiteralMap* node) override {
-    for (int i = 0; i < node->keys().length(); i++) {
-      node->keys()[i]->accept(this);
-      node->values()[i]->accept(this);
-    }
-  }
-
-  void visit_ToitdocReference(ToitdocReference* node) override {
-    node->target()->accept(this);
-    for (auto parameter : node->parameters()) {
-      parameter->accept(this);
-    }
   }
 };
 
