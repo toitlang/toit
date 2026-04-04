@@ -141,12 +141,13 @@ main args/List:
 
   analyze-command := cli.Command "analyze"
       --help="""
-        Analyze the given Toit source file."""
+        Analyze the given Toit source files."""
       --options=compile-analyze-run-options + compile-analyze-options
       --rest=[
         cli.Option "source"
-          --help="The source file to analyze."
-          --required,
+          --help="The source files to analyze."
+          --required
+          --multi,
       ]
       --run=:: compile-or-analyze-or-run --command="analyze" it
   root-command.add analyze-command
@@ -572,12 +573,21 @@ run sdk-dir/string? tool/string args/List -> int:
 compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   ui := invocation.cli.ui
 
-  source := invocation["source"]
-  if not file.is-file source: ui.abort "Source file not found: $source"
-  source-contents := file.read-contents source
-  is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
-  if command != "run" and command != "compile" and is-snapshot:
-    ui.abort "Cannot $command a snapshot file"
+  sources/List := ?
+  is-snapshot := false
+  if command == "analyze":
+    sources = invocation["source"]
+    sources.do: | source |
+      if not file.is-file source: ui.abort "Source file not found: $source"
+      source-contents := file.read-contents source
+      if snapshot-lib.SnapshotBundle.is-bundle-content source-contents:
+        ui.abort "Cannot analyze a snapshot file"
+  else:
+    source := invocation["source"]
+    if not file.is-file source: ui.abort "Source file not found: $source"
+    source-contents := file.read-contents source
+    is-snapshot = snapshot-lib.SnapshotBundle.is-bundle-content source-contents
+    sources = [source]
 
   args := []
 
@@ -655,7 +665,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     // Just in case that's not true and we are running without asserts set the args to empty.
     args = []
 
-  args.add source
+  args.add-all sources
   if command == "run":
     args.add-all invocation["arg"]
 
