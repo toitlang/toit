@@ -338,6 +338,8 @@ jobs:
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             sudo ifconfig lo0 up
             sudo route -n add -net 224.0.0.0/4 -interface lo0 || true
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            route add 224.0.0.0 mask 240.0.0.0 127.0.0.1 || true
           fi
 
       # Test.

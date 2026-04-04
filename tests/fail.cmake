@@ -47,6 +47,9 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/cow-read-only-test-compiler.toit
     tests/uart-test.toit
   )
+  list(APPEND TOIT_FLAKY_TESTS
+    tests/udp-reuse-port-test.toit  # Multicast over loopback may not work on Windows CI.
+  )
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
