@@ -14,6 +14,7 @@
 # directory of this repository.
 
 .ONESHELL: # Run all lines of targets in one shell
+.NOTPARALLEL:
 .SHELLFLAGS += -e
 SHELL=bash
 

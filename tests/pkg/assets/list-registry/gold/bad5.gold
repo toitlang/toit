@@ -1,6 +1,6 @@
 OK
 [pkg, list, bad-registry5]
 Error: Description at /bad/desc.yaml is missing a hash.
-Warning: Skipping /bad/desc.yaml
+Warning: Skipping /bad/desc.yaml.
 bad-registry5 (bad-registry5 (local))
   No packages found.

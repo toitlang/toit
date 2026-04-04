@@ -21,6 +21,8 @@
 #include "completion.h"
 #include "goto_definition.h"
 #include "semantic.h"
+#include "hover.h"
+#include "rename.h"
 
 namespace toit {
 namespace compiler {
@@ -49,6 +51,17 @@ class Lsp {
   void setup_goto_definition_handler(SourceManager* source_manager) {
     ASSERT(selection_handler_ == null);
     selection_handler_ = _new GotoDefinitionHandler(source_manager, protocol());
+  }
+
+  void setup_hover_handler(SourceManager* source_manager,
+                           ToitdocRegistry* toitdocs) {
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new HoverHandler(source_manager, toitdocs, protocol());
+  }
+
+  void setup_find_references_handler(SourceManager* source_manager) {
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new FindReferencesHandler(source_manager, protocol());
   }
 
   bool has_selection_handler() const { return selection_handler_ != null; }

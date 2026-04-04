@@ -859,6 +859,17 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
   }
 
   if (name->as_Identifier()->data() == Symbols::op) {
+    // When the LSP selection marker lands on the operator token (e.g., the `+`
+    // in `operator +`), the scanner produces a spurious empty IDENTIFIER with
+    // `is_lsp_selection` set before the actual operator token. Skip it and
+    // propagate the selection flag to the operator name node.
+    bool operator_is_lsp_selection = false;
+    if (current_token() == Token::IDENTIFIER &&
+        current_state().scanner_state.is_lsp_selection() &&
+        current_token_data() == Symbols::empty_string) {
+      operator_is_lsp_selection = true;
+      consume();
+    }
     auto token = current_token();
     auto token_range = current_range();
     if (is_operator_token(token)) {
@@ -866,7 +877,11 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
       auto name_range = declaration_range.extend(current_range());
       if (token != Token::LBRACK) {
         consume();
-        name = NEW_NODE(Identifier(Token::symbol(token)), name_range);
+        if (operator_is_lsp_selection) {
+          name = NEW_NODE(LspSelection(Token::symbol(token)), name_range);
+        } else {
+          name = NEW_NODE(Identifier(Token::symbol(token)), name_range);
+        }
       } else {
         ASSERT(token == Token::LBRACK);
         consume();

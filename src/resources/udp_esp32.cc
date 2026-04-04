@@ -23,6 +23,8 @@
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
+#include <lwip/igmp.h>
+#include <lwip/timeouts.h>
 
 #include "../linked.h"
 #include "../resource.h"
@@ -80,6 +82,7 @@ class UdpSocket : public Resource {
   UdpSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
     , upcb_(upcb)
+    , send_blocked_(false)
     , buffered_bytes_(0) {
     // We can cope with this failing, just means we don't have
     // a spare packet object ready.
@@ -93,6 +96,7 @@ class UdpSocket : public Resource {
   }
 
   void tear_down() {
+    sys_untimeout(on_send_unblock, this);
     if (upcb_) {
       udp_recv(upcb_, null, null);
       udp_remove(upcb_);
@@ -114,6 +118,8 @@ class UdpSocket : public Resource {
   void on_recv(pbuf* p, const ip_addr_t* addr, u16_t port);
 
   void send_state();
+  void block_send();
+  void unblock_send();
 
   void set_recv();
 
@@ -142,12 +148,17 @@ class UdpSocket : public Resource {
   }
 
  private:
+  static void on_send_unblock(void* arg) {
+    unvoid_cast<UdpSocket*>(arg)->unblock_send();
+  }
+
   udp_pcb* upcb_;
   LinkedFifo<Packet> packets_;
   // This often contains a spare packet object, which reduces the frequency of
   // the unfortunate case where we have to drop a packet because we can't
   // allocate this little management struct.
   Packet* spare_packet_;
+  bool send_blocked_;
   int buffered_bytes_;
 };
 
@@ -206,13 +217,25 @@ void UdpSocket::set_recv() {
 }
 
 void UdpSocket::send_state() {
-  uint32_t state = UDP_WRITE;
+  uint32_t state = 0;
 
+  if (!send_blocked_) state |= UDP_WRITE;
   if (!packets_.is_empty()) state |= UDP_READ;
   if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
   LwipEventSource::instance()->set_state(this, state);
+}
+
+void UdpSocket::block_send() {
+  send_blocked_ = true;
+  sys_timeout(50, on_send_unblock, this);
+  send_state();
+}
+
+void UdpSocket::unblock_send() {
+  send_blocked_ = false;
+  send_state();
 }
 
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)
@@ -226,6 +249,58 @@ PRIMITIVE(init) {
 
   proxy->set_external_address(resource_group);
   return proxy;
+}
+
+PRIMITIVE(create_socket) {
+  ARGS(UdpResourceGroup, resource_group);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  CAPTURE2(UdpResourceGroup*, resource_group, Process*, process);
+
+  return resource_group->event_source()->call_on_thread([&]() -> Object* {
+    udp_pcb* upcb = udp_new();
+    if (upcb == null) FAIL(MALLOC_FAILED);
+    // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+    udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
+
+    UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
+    if (socket == null) {
+      udp_remove(upcb);
+      FAIL(MALLOC_FAILED);
+    }
+
+    udp_recv(upcb, UdpSocket::on_recv, socket);
+
+    proxy->set_external_address(socket);
+
+    capture.resource_group->register_resource(socket);
+    socket->send_state();
+
+    return proxy;
+  });
+}
+
+PRIMITIVE(bind_socket) {
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, address, int, port);
+
+  ip_addr_t addr;
+  if (address.length() == 4) {
+    const uint8_t* a = address.address();
+    IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
+  } else {
+    FAIL(OUT_OF_BOUNDS);
+  }
+
+  CAPTURE4(UdpSocket*, socket, ip_addr_t &, addr, int, port, Process*, process);
+
+  return resource_group->event_source()->call_on_thread([&]() -> Object* {
+    err_t err = udp_bind(capture.socket->upcb(), &capture.addr, capture.port);
+    if (err != ERR_OK) return lwip_error(capture.process, err);
+
+    return capture.process->null_object();
+  });
 }
 
 PRIMITIVE(bind) {
@@ -251,6 +326,8 @@ PRIMITIVE(bind) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
+    // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+    udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -351,7 +428,6 @@ PRIMITIVE(receive)  {
   });
 }
 
-
 PRIMITIVE(send) {
   ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
 
@@ -384,18 +460,31 @@ PRIMITIVE(send) {
   Object* result = resource_group->event_source()->call_on_thread([&]() -> Object* {
     pbuf* p = pbuf_alloc(PBUF_TRANSPORT, capture.to, PBUF_REF);
     if (p == NULL) {
-      return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+      // The pbuf pool is exhausted, not the Toit heap. Don't signal OOM
+      // (which would trigger futile GC). Instead, block sends briefly and
+      // let the Toit side retry after the pool frees up.
+      capture.socket->block_send();
+      return Smi::from(-1);
     }
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
-    if (is_byte_array(capture.address)) {
+    // Don't use is_byte_array() here: the address may be a CoW byte array
+    // (class tag INSTANCE_TAG, not BYTE_ARRAY_TAG).  The null check is the
+    // correct way to distinguish "has destination" from "use connected peer".
+    if (capture.address != capture.process->null_object()) {
       err = udp_sendto(capture.socket->upcb(), p, &capture.addr, capture.port);
     } else {
       err = udp_send(capture.socket->upcb(), p);
     }
     pbuf_free(p);
 
+    if (err == ERR_MEM) {
+      // ERR_MEM from udp_sendto/udp_send means lwip's internal buffer pools
+      // are exhausted, not the Toit heap. Retry after a short delay.
+      capture.socket->block_send();
+      return Smi::from(-1);
+    }
     if (err != ERR_OK) {
       return lwip_error(capture.process, err);
     }
@@ -452,10 +541,31 @@ PRIMITIVE(get_option) {
       case UDP_BROADCAST:
         return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
 
+      case UDP_MULTICAST_LOOPBACK:
+        return BOOL(capture.socket->upcb()->flags & UDP_FLAGS_MULTICAST_LOOP);
+
+      case UDP_MULTICAST_TTL:
+        return Smi::from(capture.socket->upcb()->mcast_ttl);
+
+      case UDP_REUSE_ADDRESS:
+        return BOOL(capture.socket->upcb()->so_options & SOF_REUSEADDR);
+
       default:
         FAIL(UNIMPLEMENTED);
     }
   });
+}
+
+static Object* set_bool_bit(Object* raw, Process* process, uint8_t& target, uint8_t mask) {
+  if (raw == process->true_object()) {
+    target |= mask;
+  } else if (raw == process->false_object()) {
+    target &= ~mask;
+  } else {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+
+  return null;
 }
 
 PRIMITIVE(set_option) {
@@ -467,20 +577,57 @@ PRIMITIVE(set_option) {
       Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
+    Object* result = null;
     switch (capture.option) {
       case UDP_BROADCAST:
-        if (capture.raw == capture.process->true_object()) {
-          capture.socket->upcb()->so_options |= SOF_BROADCAST;
-        } else if (capture.raw == capture.process->false_object()) {
-          capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
-        } else {
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_BROADCAST);
+        break;
+
+      case UDP_MULTICAST_MEMBERSHIP: {
+        Blob bytes;
+        if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
           FAIL(WRONG_OBJECT_TYPE);
         }
+        if (bytes.length() != 4) {
+          FAIL(OUT_OF_BOUNDS);
+        }
+        ip_addr_t group_addr;
+        const uint8* a = bytes.address();
+        IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
+        err_t err = igmp_joingroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
+        if (err != ERR_OK) return lwip_error(capture.process, err);
+        break;
+      }
+
+      case UDP_MULTICAST_LOOPBACK: {
+        // UDP_FLAGS_MULTICAST_LOOP matches the bit used by calls to udp_set_flags/udp_clear_flags.
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->flags, UDP_FLAGS_MULTICAST_LOOP);
+        break;
+      }
+
+      case UDP_MULTICAST_TTL: {
+        if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
+        int value = Smi::value(Smi::cast(capture.raw));
+        capture.socket->upcb()->mcast_ttl = value;
+        break;
+      }
+
+      // LwIP might not support SO_REUSEPORT distinct from SO_REUSEADDR, or it
+      // might be same bit. Often SOF_REUSEADDR is used for both. We'll map it
+      // to REUSEADDR if REUSEPORT isn't defined, or just use REUSEADDR. But for
+      // correctness, let's just do same as REUSEADDR if not explicitly
+      // different. Actually checking LwIP source, often SOF_REUSEADDR is
+      // enough.
+      case UDP_REUSE_PORT:
+      case UDP_REUSE_ADDRESS:
+        result = set_bool_bit(capture.raw, capture.process, capture.socket->upcb()->so_options, SOF_REUSEADDR);
         break;
 
       default:
         FAIL(UNIMPLEMENTED);
     }
+
+    if (result != null) return result;
 
     return capture.process->null_object();
   });

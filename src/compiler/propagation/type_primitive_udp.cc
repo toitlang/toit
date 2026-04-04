@@ -21,7 +21,9 @@ namespace compiler {
 MODULE_TYPES(udp, MODULE_UDP)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(create_socket)
 TYPE_PRIMITIVE_ANY(bind)
+TYPE_PRIMITIVE_ANY(bind_socket)
 TYPE_PRIMITIVE_ANY(connect)
 TYPE_PRIMITIVE_ANY(receive)
 TYPE_PRIMITIVE_ANY(send)
