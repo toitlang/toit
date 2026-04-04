@@ -22,6 +22,7 @@ import net.modules.udp as udp-module
 import net.udp
 
 import system
+import system.firmware
 import system.api.cellular show CellularService
 import system.api.network show NetworkService
 import system.services show ServiceResource
@@ -35,11 +36,13 @@ CELLULAR-ATTACHED_ ::= 2
 
 class CellularServiceProvider extends NetworkServiceProviderBase implements udp.Interface:
   state_/NetworkState ::= NetworkState
+  apn_/string? := null
 
   constructor:
     super "system/cellular/ec618" --major=0 --minor=1
         --tags=[NetworkService.TAG-CELLULAR]
     provides CellularService.SELECTOR --handler=this
+    catch: apn_ = firmware.config["cellular.apn"] as string
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == CellularService.CONNECT-INDEX:
@@ -50,7 +53,9 @@ class CellularServiceProvider extends NetworkServiceProviderBase implements udp.
     return connect client null
 
   connect client/int config/Map? -> List:
-    module := (state_.up: CellularModule this) as CellularModule
+    apn := apn_
+    if config: apn = config.get "cellular.apn" --if-absent=: apn
+    module := (state_.up: CellularModule this --apn=apn) as CellularModule
     succeeded := false
     try:
       resource := NetworkResource this client state_ --notifiable
@@ -85,12 +90,14 @@ class CellularModule implements NetworkModule:
 
   logger_/log.Logger ::= log.default.with-name "cellular"
   service/CellularServiceProvider
+  apn_/string?
 
   resource-group_ := ?
   events_/monitor.ResourceState_? := null
   address_/net.IpAddress? := null
 
-  constructor .service:
+  constructor .service --apn/string?=null:
+    apn_ = apn
     resource-group_ = cellular-init_
 
   address -> net.IpAddress:
@@ -98,6 +105,9 @@ class CellularModule implements NetworkModule:
 
   connect -> none:
     logger_.debug "connecting"
+    if apn_:
+      logger_.debug "setting APN" --tags={"apn": apn_}
+      cellular-configure_ resource-group_ apn_.to-byte-array
     resource := cellular-connect_ resource-group_
     events_ = monitor.ResourceState_ resource-group_ resource
     with-timeout CONNECT-TIMEOUT_:
@@ -136,6 +146,9 @@ cellular-init_:
 
 cellular-close_ resource-group:
   #primitive.cellular.close
+
+cellular-configure_ resource-group apn/ByteArray -> none:
+  #primitive.cellular.configure
 
 cellular-connect_ resource-group:
   #primitive.cellular.connect

@@ -434,6 +434,7 @@ namespace toit {
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(close, 1)                        \
+  PRIMITIVE(configure, 2)                    \
   PRIMITIVE(connect, 1)                      \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \

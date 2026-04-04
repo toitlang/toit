@@ -34,6 +34,9 @@ extern "C" {
   #endif
   #include "ps_lib_api.h"
   #include "networkmgr.h"
+  #include "cmips.h"
+
+  CmsRetId psSetCdgcont(UINT32 atHandle, CmiPsDefPdpDefinition* ctxInfo);
 }
 
 namespace toit {
@@ -119,6 +122,24 @@ PRIMITIVE(close) {
   appSetCFUN(0);
   group->tear_down();
   group_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(configure) {
+  ARGS(CellularResourceGroup, group, Blob, apn);
+  USE(group);
+  if (apn.length() == 0) return process->null_object();
+  if (apn.length() > CMI_PS_MAX_APN_LEN) FAIL(INVALID_ARGUMENT);
+
+  CmiPsDefPdpDefinition ctx = {};
+  ctx.cid = 0;
+  ctx.pdnType = CMI_PS_PDN_TYPE_IP_V4;
+  ctx.apnPresentType = CMI_UPDATE_WITH_NEW;
+  ctx.apnLength = apn.length();
+  memcpy(ctx.apnStr, apn.address(), apn.length());
+  CmsRetId ret = psSetCdgcont(0, &ctx);
+  if (ret != CMS_RET_SUCC) FAIL(ERROR);
+
   return process->null_object();
 }
 
