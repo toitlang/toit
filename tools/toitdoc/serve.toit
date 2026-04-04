@@ -65,7 +65,10 @@ serve docs-path/string --port/int --open-browser/bool --cli/Cli:
           decoder.out.close
           response.body.drain
           client.close
-      tar.extract --reader=decoder.in --directory=dir
+      try:
+        tar.extract --reader=decoder.in --directory=dir
+      finally:
+        decoder.in.close
 
       store.move dir
 
