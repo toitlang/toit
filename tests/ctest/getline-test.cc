@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "../../src/top.h"
-#include "../../src/compiler/getline.h"
+#include "../../src/compiler/windows.h"
 
 namespace toit {
 
@@ -26,7 +26,7 @@ static void test_simple_line() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 6) FATAL("expected 6, got %zd", (ssize_t)result);
   if (strcmp(line, "hello\n") != 0) FATAL("unexpected content: '%s'", line);
   if (n < 6) FATAL("buffer too small: %zd", (ssize_t)n);
@@ -42,7 +42,7 @@ static void test_line_without_newline() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 10) FATAL("expected 10, got %zd", (ssize_t)result);
   if (strcmp(line, "no newline") != 0) FATAL("unexpected content: '%s'", line);
 
@@ -55,8 +55,8 @@ static void test_empty_stream() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
-  // EOF on first read should return (size_t)-1.
+  size_t result = getline(&line, &n, f);
+  // EOF on first read should return -1.
   if (result != (size_t)-1) FATAL("expected -1 on empty stream, got %zd", (ssize_t)result);
 
   free(line);
@@ -70,20 +70,20 @@ static void test_multiple_lines() {
   char* line = NULL;
   size_t n = 0;
 
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 6) FATAL("line 1: expected 6, got %zd", (ssize_t)result);
   if (strcmp(line, "first\n") != 0) FATAL("line 1: unexpected '%s'", line);
 
-  result = toit_getline(&line, &n, f);
+  result = getline(&line, &n, f);
   if (result != 7) FATAL("line 2: expected 7, got %zd", (ssize_t)result);
   if (strcmp(line, "second\n") != 0) FATAL("line 2: unexpected '%s'", line);
 
-  result = toit_getline(&line, &n, f);
+  result = getline(&line, &n, f);
   if (result != 6) FATAL("line 3: expected 6, got %zd", (ssize_t)result);
   if (strcmp(line, "third\n") != 0) FATAL("line 3: unexpected '%s'", line);
 
   // EOF.
-  result = toit_getline(&line, &n, f);
+  result = getline(&line, &n, f);
   if (result != (size_t)-1) FATAL("expected -1 at EOF, got %zd", (ssize_t)result);
 
   free(line);
@@ -99,7 +99,7 @@ static void test_buffer_reuse() {
   const char* input = "short\n";
   FILE* f = make_stream(input, strlen(input));
 
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 6) FATAL("expected 6, got %zd", (ssize_t)result);
   if (strcmp(line, "short\n") != 0) FATAL("unexpected content: '%s'", line);
   // Buffer should still be at least 64 bytes (not shrunk).
@@ -111,8 +111,8 @@ static void test_buffer_reuse() {
 
 // This is the critical test: lines longer than 127 characters require the
 // buffer to grow beyond the initial 128-byte allocation. The original
-// implementation had a use-after-free here because the write pointer was
-// not updated after realloc.
+// Windows implementation had a use-after-free here because the write pointer
+// was not updated after realloc.
 static void test_long_line_triggers_realloc() {
   // Build a line of exactly 200 characters + newline.
   const int content_length = 200;
@@ -127,7 +127,7 @@ static void test_long_line_triggers_realloc() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != (size_t)(content_length + 1)) {
     FATAL("expected %d, got %zd", content_length + 1, (ssize_t)result);
   }
@@ -142,7 +142,8 @@ static void test_long_line_triggers_realloc() {
 }
 
 // Test the exact boundary: 127 content chars + newline = 128 bytes.
-// The old code had an off-by-one where the null terminator wrote past the end.
+// The old Windows code had an off-by-one where the null terminator wrote
+// past the end.
 static void test_exact_boundary_128() {
   const int content_length = 127;
   char input[content_length + 2];
@@ -156,7 +157,7 @@ static void test_exact_boundary_128() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != (size_t)(content_length + 1)) {
     FATAL("expected %d, got %zd", content_length + 1, (ssize_t)result);
   }
@@ -182,7 +183,7 @@ static void test_very_long_line() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != (size_t)(content_length + 1)) {
     FATAL("expected %d, got %zd", content_length + 1, (ssize_t)result);
   }
@@ -204,7 +205,7 @@ static void test_single_newline() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 1) FATAL("expected 1, got %zd", (ssize_t)result);
   if (line[0] != '\n') FATAL("expected newline char");
 
@@ -218,31 +219,10 @@ static void test_single_char() {
 
   char* line = NULL;
   size_t n = 0;
-  size_t result = toit_getline(&line, &n, f);
+  size_t result = getline(&line, &n, f);
   if (result != 1) FATAL("expected 1, got %zd", (ssize_t)result);
   if (line[0] != 'x') FATAL("expected 'x'");
   if (line[1] != '\0') FATAL("expected null terminator");
-
-  free(line);
-  fclose(f);
-}
-
-static void test_null_args() {
-  FILE* f = make_stream("x\n", 2);
-  char* line = NULL;
-  size_t n = 0;
-
-  // NULL lineptr.
-  size_t result = toit_getline(NULL, &n, f);
-  if (result != (size_t)-1) FATAL("expected -1 for NULL lineptr");
-
-  // NULL n.
-  result = toit_getline(&line, NULL, f);
-  if (result != (size_t)-1) FATAL("expected -1 for NULL n");
-
-  // NULL stream.
-  result = toit_getline(&line, &n, NULL);
-  if (result != (size_t)-1) FATAL("expected -1 for NULL stream");
 
   free(line);
   fclose(f);
@@ -259,7 +239,6 @@ int main(int argc, char** argv) {
   test_very_long_line();
   test_single_newline();
   test_single_char();
-  test_null_args();
   printf("All getline tests passed.\n");
   return 0;
 }
