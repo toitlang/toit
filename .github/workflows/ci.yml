@@ -262,6 +262,13 @@ jobs:
         run: |
           make enable-lto
 
+      # Floor the macOS deployment target so CI-produced binaries run on
+      # Monterey. Exported via GITHUB_ENV so it's visible to CMake's toolchain
+      # detection, the linker, and `go build` for toit.pkg.
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
+
       # Build using make.
       - name: Build sdk
         shell: bash

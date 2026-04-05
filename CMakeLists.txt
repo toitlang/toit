@@ -19,8 +19,6 @@ project(toit)
 
 include(tools/toit.cmake)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
-
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 set(TOIT_IS_CROSS FALSE)
