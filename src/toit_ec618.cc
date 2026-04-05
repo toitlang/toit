@@ -22,6 +22,7 @@
 extern "C" {
   #include "cmsis_os2.h"
   #include "slpman.h"
+  #include "plat_config.h"
 
   // C++ static initializers (captured in linker script).
   extern void (*__init_array_start[])(void);
@@ -56,6 +57,9 @@ static void start() {
   // Run C++ static initializers (the linker script must capture .init_array).
   run_static_initializers();
 
+  // On fault/assert: print exception info then reset (instead of looping).
+  BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_FAULT_ACTION, 1);
+
   // Vote against sleep1 during execution so the scheduler tick keeps running.
   slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);
   slpManPlatVoteDisableSleep(sleep_vote_handle, SLP_SLP1_STATE);
@@ -68,6 +72,8 @@ static void start() {
   FlashRegistry::set_up();
   OS::set_up();
   ObjectMemory::set_up();
+  extern void set_up_mbedtls_threading();
+  set_up_mbedtls_threading();
 
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   if (extension == null || extension->images() == 0) {

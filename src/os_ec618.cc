@@ -499,6 +499,47 @@ bool OS::set_real_time(struct timespec* time) {
   return OsaTimerSync(0, SET_LOCAL_TIME, t1, t2, t3) == 0;
 }
 
+// mbedTLS threading (MBEDTLS_THREADING_ALT) backed by FreeRTOS mutexes.
+extern "C" {
+  #include "mbedtls/threading.h"
+}
+
+static void toit_mbedtls_mutex_init(mbedtls_threading_mutex_t* mutex) {
+  mutex->mutex = xSemaphoreCreateMutex();
+  mutex->is_valid = mutex->mutex != nullptr;
+}
+
+static void toit_mbedtls_mutex_free(mbedtls_threading_mutex_t* mutex) {
+  if (mutex->is_valid) {
+    vSemaphoreDelete(mutex->mutex);
+    mutex->is_valid = 0;
+  }
+}
+
+static int toit_mbedtls_mutex_lock(mbedtls_threading_mutex_t* mutex) {
+  if (!mutex->is_valid) return MBEDTLS_ERR_THREADING_BAD_INPUT_DATA;
+  if (xSemaphoreTake(mutex->mutex, portMAX_DELAY) != pdTRUE) {
+    return MBEDTLS_ERR_THREADING_MUTEX_ERROR;
+  }
+  return 0;
+}
+
+static int toit_mbedtls_mutex_unlock(mbedtls_threading_mutex_t* mutex) {
+  if (!mutex->is_valid) return MBEDTLS_ERR_THREADING_BAD_INPUT_DATA;
+  if (xSemaphoreGive(mutex->mutex) != pdTRUE) {
+    return MBEDTLS_ERR_THREADING_MUTEX_ERROR;
+  }
+  return 0;
+}
+
+void set_up_mbedtls_threading() {
+  mbedtls_threading_set_alt(
+      toit_mbedtls_mutex_init,
+      toit_mbedtls_mutex_free,
+      toit_mbedtls_mutex_lock,
+      toit_mbedtls_mutex_unlock);
+}
+
 // Hardware RNG for mbedTLS entropy.
 extern "C" int mbedtls_hardware_poll(
     void* data, unsigned char* output, size_t len, size_t* olen) {

@@ -13,7 +13,7 @@ main:
   try:
     print "Network address: $network.address"
 
-    host := "example.com"
+    host := "www.google.com"
     port := 443
     print "Connecting to $host:$port..."
     tcp := network.tcp-connect host port
