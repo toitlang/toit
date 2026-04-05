@@ -23,6 +23,13 @@ extern "C" {
   #include "cmsis_os2.h"
   #include "slpman.h"
   #include "plat_config.h"
+  #include "apmu_external.h"
+
+  // From libcore_airm2m.a. Flips the PS stack into power-saver mode,
+  // which is required for the PMU to actually transition to SLP2 or
+  // HIBERNATE. slpManSetPmuSleepMode only sets a ceiling — it does not
+  // release the PS stack's sleep votes. main=3 is LUAT_PM_POWER_MODE_POWER_SAVER.
+  int soc_power_mode(uint8_t main, uint8_t sub);
 
   // C++ static initializers (captured in linker script).
   extern void (*__init_array_start[])(void);
@@ -154,6 +161,19 @@ static void start() {
   // Re-enable sleep voting and let FreeRTOS put the system to sleep.
   RtcMemory::on_deep_sleep_start();
   slpManPlatVoteEnableSleep(sleep_vote_handle, SLP_SLP1_STATE);
+
+  // On EC618, POWER_SAVER mode + deep-sleep timer only wakes reliably
+  // from HIBERNATE, not SLP2. Hibernation loses RAM, so the
+  // .toit.rtc.noinit section does not survive across deep sleep on this
+  // platform. RTC-like state that must persist across wake needs to be
+  // stored in flash.
+  // TODO: persist RtcMemory via flash-backed storage to survive hibernation.
+  apmuSetDeepestSleepMode(AP_STATE_HIBERNATE);
+
+  // Switch the PS stack to power-saver mode — this releases the PS
+  // stack's blocking votes so the PMU can actually transition to SLP2.
+  // Without this call, tickless idle can at best reach SLP1.
+  soc_power_mode(3, 0);
 
   // Enter idle loop — FreeRTOS tickless idle will enter deep sleep.
   while (true) {

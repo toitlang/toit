@@ -39,9 +39,16 @@ struct RtcData {
 
 // Place RTC data in a noinit section that is not zeroed on warm boot.
 // This section must be defined in the linker script in the ASMB (always-on SRAM) area.
-static RtcData rtc __attribute__((__section__(".toit.rtc.noinit")));
-static uint32 rtc_checksum __attribute__((__section__(".toit.rtc.noinit")));
-static uint8 rtc_user_data[RtcMemory::RTC_USER_DATA_SIZE] __attribute__((__section__(".toit.rtc.noinit")));
+// Explicit initializer + `used` attribute prevent the compiler from
+// emitting these as COMMON/BSS symbols (which would bypass the section
+// attribute and get zeroed by the startup BSS clear loop). The section
+// is NOLOAD in the linker script, so the initializer does not consume
+// flash — it just tells the compiler "this is .data-like", which makes
+// it honor the section attribute.
+static RtcData rtc __attribute__((used, section(".toit.rtc.noinit"))) = {};
+static uint32 rtc_checksum __attribute__((used, section(".toit.rtc.noinit"))) = 0;
+static uint8 rtc_user_data[RtcMemory::RTC_USER_DATA_SIZE]
+    __attribute__((used, section(".toit.rtc.noinit"))) = {};
 
 static uint32 compute_rtc_checksum() {
   uint32 vm_checksum = Utils::crc32(0x12345678, EmbeddedData::uuid(), UUID_SIZE);
