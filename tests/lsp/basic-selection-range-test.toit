@@ -4,14 +4,16 @@
 
 foo x:
 /*
+@foo-start
 ^
-[4:0]-[4:3]
-[4:0]-[10:10]
+[  ]
+[foo-start body-end]
 */
   return x
 /*
+          @body-end
   ^
-[10:2]-[10:8]
-[10:2]-[10:10]
-[4:0]-[10:10]
+  [     ]
+  [       ]
+  [foo-start body-end]
 */

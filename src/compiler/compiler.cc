@@ -2077,10 +2077,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (configuration_.parse_only) return Result::invalid();
 
-  // Selection ranges only need the parsed AST, not resolution or type-checking.
-  if (lsp() != null && lsp()->should_emit_selection_ranges()) {
-    lsp()->emit_selection_ranges(units, source_manager());
-    exit(0);
+  // Give the LSP a chance to handle parse-only requests (e.g. selection ranges).
+  if (lsp() != null) {
+    lsp()->parsed_units(units, source_manager());
   }
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);

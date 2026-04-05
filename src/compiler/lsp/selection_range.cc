@@ -17,8 +17,6 @@
 
 #include <algorithm>
 
-#include "../../utils.h"
-
 namespace toit {
 namespace compiler {
 
@@ -34,19 +32,7 @@ class SelectionRangeCollector : public ast::TraversingVisitor {
   /// Walks the AST unit and returns the collected ranges, sorted innermost first.
   std::vector<Source::Range> collect(ast::Unit* unit) {
     ranges_.clear();
-    // Visit the unit node itself (for the file-level range).
-    check_and_add(unit);
-    // Visit imports and exports (which TraversingVisitor::visit_Unit skips).
-    for (int i = 0; i < unit->imports().length(); i++) {
-      unit->imports()[i]->accept(this);
-    }
-    for (int i = 0; i < unit->exports().length(); i++) {
-      unit->exports()[i]->accept(this);
-    }
-    // Visit declarations (same as TraversingVisitor::visit_Unit).
-    for (int i = 0; i < unit->declarations().length(); i++) {
-      unit->declarations()[i]->accept(this);
-    }
+    unit->accept(this);
     return finalize();
   }
 
@@ -83,9 +69,6 @@ class SelectionRangeCollector : public ast::TraversingVisitor {
 
   // --- Visitor overrides ---
   // Each override calls check_and_add before recursing into children.
-  // We use a macro for the uniform cases and provide specialized
-  // implementations where the base TraversingVisitor skips children
-  // we want to visit.
 
 #define SELECTION_RANGE_OVERRIDE(name)                                \
   void visit_##name(ast::name* node) override {                       \
@@ -93,9 +76,9 @@ class SelectionRangeCollector : public ast::TraversingVisitor {
     TraversingVisitor::visit_##name(node);                            \
   }
 
-  // Unit is handled specially in collect(), so we skip the override.
-  // Import and Export need specialized handling below.
-
+  SELECTION_RANGE_OVERRIDE(Unit)
+  SELECTION_RANGE_OVERRIDE(Import)
+  SELECTION_RANGE_OVERRIDE(Export)
   SELECTION_RANGE_OVERRIDE(Class)
   SELECTION_RANGE_OVERRIDE(Declaration)
   SELECTION_RANGE_OVERRIDE(Field)
@@ -139,77 +122,7 @@ class SelectionRangeCollector : public ast::TraversingVisitor {
   SELECTION_RANGE_OVERRIDE(ToitdocReference)
 
 #undef SELECTION_RANGE_OVERRIDE
-
-  // Import: the base TraversingVisitor does nothing, but we want to visit
-  // import segments, prefix, and show identifiers.
-  void visit_Import(ast::Import* node) override {
-    check_and_add(node);
-    for (int i = 0; i < node->segments().length(); i++) {
-      node->segments()[i]->accept(this);
-    }
-    if (node->prefix() != null) {
-      node->prefix()->accept(this);
-    }
-    for (int i = 0; i < node->show_identifiers().length(); i++) {
-      node->show_identifiers()[i]->accept(this);
-    }
-  }
-
-  // Export: the base TraversingVisitor does nothing, but we want to visit
-  // the export identifiers.
-  void visit_Export(ast::Export* node) override {
-    check_and_add(node);
-    for (int i = 0; i < node->identifiers().length(); i++) {
-      node->identifiers()[i]->accept(this);
-    }
-  }
-
-  // Unit is handled in collect(), so the visitor override is a no-op.
-  void visit_Unit(ast::Unit* node) override {}
 };
-
-/// Converts a 1-based (line, column) pair to a Source::Position for the given source.
-///
-/// The column is in UTF-16 code units (as per the LSP specification), so
-/// multi-byte UTF-8 sequences that encode characters outside the BMP are
-/// counted as 2 UTF-16 code units (a surrogate pair).
-///
-/// Out-of-range positions are clamped to the end of the line or file rather
-/// than aborting.
-static Source::Position line_column_to_position(Source* source, int line, int utf16_column) {
-  const uint8* text = source->text();
-  int size = source->size();
-  int offset = 0;
-
-  // Skip to the correct line.
-  int current_line = 1;
-  while (current_line < line && offset < size) {
-    int c = text[offset++];
-    if (c == '\n' || c == '\r') {
-      int other = (c == '\n') ? '\r' : '\n';
-      if (offset < size && text[offset] == other) offset++;
-      current_line++;
-    }
-  }
-  if (offset >= size) {
-    return source->range(size, size).from();
-  }
-
-  // Advance within the line, counting UTF-16 code units.
-  for (int i = 1; i < utf16_column; i++) {
-    if (offset >= size || text[offset] == '\n' || text[offset] == '\r') {
-      // Column is past end of line; clamp.
-      break;
-    }
-    int nb_bytes = Utils::bytes_in_utf_8_sequence(text[offset]);
-    offset += nb_bytes;
-    // A 4-byte UTF-8 sequence encodes a supplementary character, which
-    // takes 2 UTF-16 code units (a surrogate pair).
-    if (nb_bytes > 3) i++;
-  }
-  if (offset > size) offset = size;
-  return source->range(offset, offset).from();
-}
 
 void emit_selection_ranges(ast::Unit* unit,
                            const std::vector<std::pair<int, int>>& positions,
@@ -224,7 +137,7 @@ void emit_selection_ranges(ast::Unit* unit,
     int line = pos.first;    // 1-based.
     int column = pos.second; // 1-based.
 
-    auto source_position = line_column_to_position(source, line, column);
+    auto source_position = SourceManager::line_column_to_position(source, line, column);
     Source::Range target(source_position);
 
     SelectionRangeCollector collector(target);
