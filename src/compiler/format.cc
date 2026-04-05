@@ -239,15 +239,6 @@ class FormattingVisitor : public TraversingVisitor {
 
   // ==== Formatting rules ====
 
-  /// Checks whether the source text in [from, to) contains a newline.
-  bool spans_multiple_lines(int from, int to) {
-    auto src = source_->text();
-    for (int i = from; i < to; i++) {
-      if (src[i] == '\n') return true;
-    }
-    return false;
-  }
-
   /// Collects a chain of binary operations with the same operator.
   /// Handles both left-associative (`+`: chain is on the left) and
   /// right-associative (`and`: chain is on the right) operators.
@@ -273,11 +264,6 @@ class FormattingVisitor : public TraversingVisitor {
   void visit_Call(Call* node) override {
     int start = node_start(node);
     int end = offset(node->full_range().to());
-
-    if (!spans_multiple_lines(start, end)) {
-      TraversingVisitor::visit_Call(node);
-      return;
-    }
 
     if (has_comment_in_range(start, end)) {
       TraversingVisitor::visit_Call(node);
@@ -332,12 +318,6 @@ class FormattingVisitor : public TraversingVisitor {
 
     int start = node_start(node->left());
     int end = offset(node->full_range().to());
-
-    if (!spans_multiple_lines(start, end)) {
-      // Already on one line — preserve original formatting.
-      TraversingVisitor::visit_Binary(node);
-      return;
-    }
 
     // If there are comments in the binary expression, don't reformat —
     // comments would be lost when we skip the gap between operands.
