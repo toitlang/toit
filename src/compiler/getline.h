@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2026 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,15 +13,13 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "../top.h"
 
-#ifdef TOIT_WINDOWS
-
-#include "getline.h"
-#include "windows.h"
-
-size_t getline(char** lineptr, size_t* n, FILE* stream) {
-    return toit_getline(lineptr, n, stream);
-}
-
-#endif
+// Portable implementation of POSIX getline(3), testable on all platforms.
+//
+// Reads a line from 'stream' into the buffer at '*lineptr' (of size '*n'),
+// growing it as needed. Returns the number of characters read (including the
+// newline), or (size_t)-1 on error/EOF.
+size_t toit_getline(char** lineptr, size_t* n, FILE* stream);

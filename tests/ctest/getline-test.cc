@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "../../src/top.h"
-#include "../../src/compiler/windows.h"
+#include "../../src/compiler/getline.h"
 
 namespace toit {
 
