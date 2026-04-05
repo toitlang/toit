@@ -53,6 +53,13 @@ static void run_static_initializers() {
 
 static uint8 sleep_vote_handle = 0;
 
+// Callback for deep sleep timer expiration. Must be registered for
+// slpManDeepSlpTimerStart to work. The ID is ignored — the wake-up
+// itself is the important part.
+static void deep_sleep_timer_cb(uint8_t id) {
+  (void)id;
+}
+
 static void start() {
   // Run C++ static initializers (the linker script must capture .init_array).
   run_static_initializers();
@@ -66,6 +73,12 @@ static void start() {
 
   // Set max sleep state to sleep2 (deep sleep with RAM preservation).
   slpManSetPmuSleepMode(true, SLP_SLP2_STATE, false);
+
+  // Register a wake-up callback for all deep sleep timers. Without this,
+  // slpManDeepSlpTimerStart silently fails.
+  for (uint8_t i = 0; i <= DEEPSLP_TIMER_ID6; i++) {
+    slpManDeepSlpTimerRegisterExpCb((slpManTimerID_e)i, deep_sleep_timer_cb);
+  }
 
   // Initialize subsystems.
   RtcMemory::set_up();
@@ -115,7 +128,7 @@ static void start() {
       int64 ms = exit_state.value;
       if (ms < MIN_MS) ms = MIN_MS;
       else if (ms > MAX_MS) ms = MAX_MS;
-      printf("[toit] INFO: entering deep sleep for %lldms\n", ms);
+      printf("[toit] INFO: entering deep sleep for %dms\n", static_cast<int>(ms));
       RtcMemory::adjust_wakeup_time_before_sleep(ms);
       slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, ms);
       break;
