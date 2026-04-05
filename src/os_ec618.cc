@@ -405,7 +405,8 @@ struct HeapReportAccumulator {
 
 static int accumulate_allocation(void* self, void* tag, void* address, size_t size) {
   auto acc = reinterpret_cast<HeapReportAccumulator*>(self);
-  int type = compute_allocation_type(reinterpret_cast<uword>(tag));
+  int type = compute_allocation_type(reinterpret_cast<word>(tag));
+  if (type < 0 || type >= NUMBER_OF_MALLOC_TAGS) type = UNKNOWN_MALLOC_TAG;
   acc->sizes[type] += size;
   acc->counts[type]++;
   return 0;
@@ -420,7 +421,9 @@ void OS::heap_summary_report(int max_pages, const char* marker, Process* process
 
   HeapReportAccumulator acc;
   memset(&acc, 0, sizeof(acc));
-  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  // Use UNLOCKED iteration: the cmpctmalloc lock on EC618 uses
+  // vTaskSuspendAll, which blocks the UART task used by printf below.
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED | ITERATE_UNLOCKED;
   vPortIterateAllocations(&acc, null, reinterpret_cast<tagged_memory_callback_t>(accumulate_allocation), flags);
 
   word total_size = 0;
