@@ -99,10 +99,7 @@ interface MulticastSocket extends Socket:
   */
   multicast-leave-membership address/IpAddress
 
-  /**
-  Returns the IP address of the interface used for outgoing multicast
-    packets.
-  */
+  /** The IP address of the interface used for outgoing multicast packets. */
   multicast-interface -> IpAddress
 
   /**

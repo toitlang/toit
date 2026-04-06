@@ -216,10 +216,7 @@ class Socket implements udp.Socket udp.MulticastSocket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL value
 
-  /**
-  Returns the IP address of the interface used for outgoing multicast packets.
-  Returns the raw 4-byte address as a $ByteArray.
-  */
+  /** The IP address of the interface used for outgoing multicast packets. */
   multicast-interface -> net.IpAddress:
     state := ensure-state_
     return net.IpAddress
