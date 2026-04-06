@@ -66,6 +66,8 @@ class Socket implements udp.Socket udp.MulticastSocket:
   If $reuse-port is true (not default), the SO_REUSEPORT option is set.
   If $loopback is true (the default), multicast packets sent from this
     socket are also delivered to receivers on the same host.
+  The $ttl is the multicast time-to-live (default 1, meaning
+    link-local only).
   */
   constructor.multicast .network_/net.Client
       --port/int?=null
@@ -216,15 +218,11 @@ class Socket implements udp.Socket udp.MulticastSocket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL value
 
-  /** The IP address of the interface used for outgoing multicast packets. */
   multicast-interface -> net.IpAddress:
     state := ensure-state_
     return net.IpAddress
         udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-IF
 
-  /**
-  Sets the interface used for outgoing multicast packets to the given $address.
-  */
   multicast-interface= address/net.IpAddress:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-IF address.raw
@@ -236,7 +234,7 @@ class Socket implements udp.Socket udp.MulticastSocket:
   reuse-address= value/bool:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-ADDRESS value
-  
+
   reuse-port -> bool:
     state := ensure-state_
     return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-REUSE-PORT

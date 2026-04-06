@@ -99,23 +99,10 @@ interface MulticastSocket extends Socket:
   */
   multicast-leave-membership address/IpAddress
 
-  /** The IP address of the interface used for outgoing multicast packets. */
+  // The IP address of the interface used for outgoing multicast packets.
   multicast-interface -> IpAddress
 
-  /**
-  Sets the interface used for outgoing multicast packets to the
-    given $address.
-
-  This corresponds to the IP_MULTICAST_IF socket option. When sending
-    to a multicast address, the OS needs to know which network interface
-    to use. If not set, the OS picks a default interface which may not
-    be the correct one (e.g. on macOS, a plain socket may fail to send
-    multicast without this being configured).
-
-  Common values:
-  - "127.0.0.1" for loopback (useful in tests).
-  - "0.0.0.0" to let the OS pick a default interface.
-  */
+  // Sets the interface used for outgoing multicast packets.
   multicast-interface= address/IpAddress
 
 interface MulticastInterface:

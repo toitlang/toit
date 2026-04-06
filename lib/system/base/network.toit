@@ -131,7 +131,7 @@ class NetworkResourceProxy extends ServiceResourceProxy:
       --ttl/int=1:
     client ::= client_ as NetworkServiceClientBase
     socket ::= client.udp-open-multicast handle_
-        null  // No address — don't auto-join a group.
+        null  // No address -- don't auto-join a group.
         (port ? port : 0)
         (if-addr ? if-addr.to-byte-array : null)
         reuse-address
