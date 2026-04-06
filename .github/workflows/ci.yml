@@ -155,7 +155,7 @@ jobs:
             elif [[ "$platform" == "windows" ]]; then
               echo 'CONTAINERS=[ "windows-latest" ]' >> $GITHUB_OUTPUT
             elif [[ "$platform" == "macos-arm" ]]; then
-              echo 'CONTAINERS=[ "macos-14" ]' >> $GITHUB_OUTPUT
+              echo 'CONTAINERS=[ "macos-latest" ]' >> $GITHUB_OUTPUT
             else
               echo "Unknown platform: $platform"
               exit 1
@@ -164,9 +164,7 @@ jobs:
           fi
 
           # ubuntu-22.04 so that we don't depend on a recent glibc.
-          # Use macos-14 instead of macos-latest: multicast over loopback is broken on macOS 15 runners.
-          # See https://github.com/actions/runner-images/issues/10924
-          echo 'CONTAINERS=[ "ubuntu-22.04", "macos-14", "windows-latest" ]' > $GITHUB_OUTPUT
+          echo 'CONTAINERS=[ "ubuntu-22.04", "macos-latest", "windows-latest" ]' > $GITHUB_OUTPUT
           if [[ "${{ env.DO_TESTS }}" == "true" ]]; then
             echo 'SHARDS=[1, 2, 3, 4, 5]' >> $GITHUB_OUTPUT
             echo 'EXTRA_INCLUDES=[{"container": "ubuntu-22.04", "shard": 6}, {"container": "ubuntu-22.04", "shard": 7}]' >> $GITHUB_OUTPUT
