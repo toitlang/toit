@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.189
+sdk: ^2.0.0-alpha.190
 prefixes:
   ar: pkg-ar
   certificate_roots: toit-cert-roots
@@ -53,8 +53,10 @@ packages:
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
-    version: 1.2.0
-    hash: fa4667de1073976a343f5816ddcea291e4cbf4ff
+    version: 2.1.0
+    hash: c9abee2219ec674a12a2e7cdc9cd7a74af875fe7
+    prefixes:
+      host: pkg-host
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate-roots

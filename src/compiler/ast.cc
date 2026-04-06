@@ -36,16 +36,20 @@ void TraversingVisitor::visit_Unit(Unit* node) {
   for (auto decl : node->declarations()) decl->accept(this);
 }
 
-void TraversingVisitor::visit_Import(Import* node) { visit_leaf(node); }
+void TraversingVisitor::visit_Import(Import* node) {
+  for (auto segment : node->segments()) segment->accept(this);
+  if (node->prefix() != null) node->prefix()->accept(this);
+  for (auto show : node->show_identifiers()) show->accept(this);
+}
 
-void TraversingVisitor::visit_Export(Export* node) { visit_leaf(node); }
+void TraversingVisitor::visit_Export(Export* node) {
+  for (auto expord : node->identifiers()) expord->accept(this);
+}
 
 void TraversingVisitor::visit_Class(Class* node) {
   node->name()->accept(this);
   if (node->has_super()) node->super()->accept(this);
-  for (int i = 0; i < node->members().length(); i++) {
-    node->members()[i]->accept(this);
-  }
+  for (auto member : node->members()) member->accept(this);
 }
 
 void TraversingVisitor::visit_Declaration(Declaration* node) {
@@ -60,12 +64,8 @@ void TraversingVisitor::visit_Field(Field* node) {
 void TraversingVisitor::visit_Method(Method* node) {
   visit_Declaration(node);
   if (node->return_type() != null) node->return_type()->accept(this);
-  for (int i = 0; i < node->parameters().length(); i++) {
-    node->parameters()[i]->accept(this);
-  }
-  if (node->body() != null) {
-    node->body()->accept(this);
-  }
+  for (auto parameter : node->parameters()) parameter->accept(this);
+  if (node->body() != null) node->body()->accept(this);
 }
 
 void TraversingVisitor::visit_Expression(Expression* node) { visit_leaf(node); }
@@ -78,12 +78,8 @@ void TraversingVisitor::visit_NamedArgument(NamedArgument* node) {
 }
 
 void TraversingVisitor::visit_BreakContinue(BreakContinue* node) {
-  if (node->label() != null) {
-    node->label()->accept(this);
-  }
-  if (node->value() != null) {
-    node->value()->accept(this);
-  }
+  if (node->label() != null) node->label()->accept(this);
+  if (node->value() != null) node->value()->accept(this);
 }
 
 void TraversingVisitor::visit_Parenthesis(Parenthesis* node) {
@@ -91,23 +87,17 @@ void TraversingVisitor::visit_Parenthesis(Parenthesis* node) {
 }
 
 void TraversingVisitor::visit_Block(Block* node) {
-  for (int i = 0; i < node->parameters().length(); i++) {
-    node->parameters()[i]->accept(this);
-  }
+  for (auto parameter : node->parameters()) parameter->accept(this);
   if (node->body() != null) node->body()->accept(this);
 }
 
 void TraversingVisitor::visit_Lambda(Lambda* node) {
-  for (int i = 0; i < node->parameters().length(); i++) {
-    node->parameters()[i]->accept(this);
-  }
+  for (auto parameter : node->parameters()) parameter->accept(this);
   if (node->body() != null) node->body()->accept(this);
 }
 
 void TraversingVisitor::visit_Sequence(Sequence* node) {
-  for (int i = 0; i < node->expressions().length(); i++) {
-    node->expressions()[i]->accept(this);
-  }
+  for (auto expression : node->expressions()) expression->accept(this);
 }
 
 void TraversingVisitor::visit_DeclarationLocal(DeclarationLocal* node) {
@@ -143,9 +133,7 @@ void TraversingVisitor::visit_TryFinally(TryFinally* node) {
 }
 
 void TraversingVisitor::visit_Return(Return* node) {
-  if (node->value() != null) {
-    node->value()->accept(this);
-  }
+  if (node->value() != null) node->value()->accept(this);
 }
 
 void TraversingVisitor::visit_Unary(Unary* node) {
@@ -159,9 +147,7 @@ void TraversingVisitor::visit_Binary(Binary* node) {
 
 void TraversingVisitor::visit_Call(Call* node) {
   node->target()->accept(this);
-  for (int i = 0; i < node->arguments().length(); i++) {
-    node->arguments()[i]->accept(this);
-  }
+  for (auto argument : node->arguments()) argument->accept(this);
 }
 
 void TraversingVisitor::visit_Dot(Dot* node) {
@@ -171,9 +157,7 @@ void TraversingVisitor::visit_Dot(Dot* node) {
 
 void TraversingVisitor::visit_Index(Index* node) {
   node->receiver()->accept(this);
-  for (int i = 0; i < node->arguments().length(); i++) {
-    node->arguments()[i]->accept(this);
-  }
+  for (auto argument : node->arguments()) argument->accept(this);
 }
 
 void TraversingVisitor::visit_IndexSlice(IndexSlice* node) {
@@ -225,21 +209,15 @@ void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolat
 void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) { visit_leaf(node); }
 
 void TraversingVisitor::visit_LiteralList(LiteralList* node) {
-  for (int i = 0; i < node->elements().length(); i++) {
-    node->elements()[i]->accept(this);
-  }
+  for (auto element : node->elements()) element->accept(this);
 }
 
 void TraversingVisitor::visit_LiteralByteArray(LiteralByteArray* node) {
-  for (int i = 0; i < node->elements().length(); i++) {
-    node->elements()[i]->accept(this);
-  }
+  for (auto element : node->elements()) element->accept(this);
 }
 
 void TraversingVisitor::visit_LiteralSet(LiteralSet* node) {
-  for (int i = 0; i < node->elements().length(); i++) {
-    node->elements()[i]->accept(this);
-  }
+  for (auto element : node->elements()) element->accept(this);
 }
 
 void TraversingVisitor::visit_LiteralMap(LiteralMap* node) {
