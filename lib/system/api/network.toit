@@ -41,8 +41,13 @@ interface NetworkService:
   The socket options can be read or written using $socket-get-option
     and $socket-set-option.
   */
-  static SOCKET-OPTION-UDP-BROADCAST /int ::= 0
-  static SOCKET-OPTION-TCP-NO-DELAY  /int ::= 100
+  static SOCKET-OPTION-UDP-BROADCAST            /int ::= 0
+  static SOCKET-OPTION-UDP-MULTICAST-MEMBERSHIP /int ::= 1
+  static SOCKET-OPTION-UDP-MULTICAST-LOOPBACK   /int ::= 2
+  static SOCKET-OPTION-UDP-MULTICAST-TTL        /int ::= 3
+  static SOCKET-OPTION-UDP-REUSE-ADDRESS        /int ::= 4
+  static SOCKET-OPTION-UDP-REUSE-PORT           /int ::= 5
+  static SOCKET-OPTION-TCP-NO-DELAY             /int ::= 100
 
   /**
   The notification constants are used as arguments to $ServiceResource.notify_
@@ -68,6 +73,17 @@ interface NetworkService:
 
   udp-open handle/int port/int? -> int
   static UDP-OPEN-INDEX /int ::= 100
+
+  udp-open-multicast -> int
+      handle/int
+      address/ByteArray
+      port/int
+      if-addr/ByteArray?
+      reuse-address/bool
+      reuse-port/bool
+      loopback/bool
+      ttl/int
+  static UDP-OPEN-MULTICAST-INDEX /int ::= 104
 
   udp-connect handle/int ip/ByteArray port/int -> none
   static UDP-CONNECT-INDEX /int ::= 101

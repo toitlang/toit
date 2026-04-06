@@ -14,6 +14,7 @@
 # directory of this repository.
 
 .ONESHELL: # Run all lines of targets in one shell
+.NOTPARALLEL:
 .SHELLFLAGS += -e
 SHELL=bash
 
@@ -144,6 +145,10 @@ FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 .PHONY: download-packages
 download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 	(cd $(BUILD)/$(TARGET) && ninja download_packages)
+
+.PHONY: download-bootstrap-packages
+download-bootstrap-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt
+	(cd $(BUILD)/$(TARGET) && ninja download_embedded_program_packages)
 
 .PHONY: rebuild-cmake
 rebuild-cmake:

@@ -40,6 +40,8 @@
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/rename.h"
+#include "lsp/selection_range.h"
 #include "lsp/fs_connection_socket.h"
 #include "lsp/fs_protocol.h"
 #include "lsp/multiplex_stdout.h"
@@ -51,6 +53,7 @@
 #include "parser.h"
 #include "propagation/type_database.h"
 #include "resolver.h"
+#include "resolver_scope.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
 #include "symbol_canonicalizer.h"
@@ -132,6 +135,13 @@ class Pipeline {
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
+  /// Called after parsing, before resolution.
+  ///
+  /// Subclasses that only need the parsed AST (e.g. SelectionRangePipeline)
+  /// can override this to act on the units and call exit(0).
+  virtual void parsed_units(const std::vector<ast::Unit*>& units);
+  virtual void post_resolve(Resolver* resolver, ir::Program* program);
+  virtual void post_type_check();
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
@@ -162,7 +172,6 @@ class Pipeline {
                        int core_unit_index,
                        bool quiet = false);
   void check_types_and_deprecations(ir::Program* program, bool quiet = false);
-  void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
 
@@ -171,8 +180,12 @@ class LanguageServerPipeline : public Pipeline {
   enum class Kind {
     analyze,
     semantic_tokens,
+    selection_range,
     completion,
     goto_definition,
+    find_references,
+    prepare_rename,
+    hover,
   };
 
   LanguageServerPipeline(Kind kind,
@@ -193,8 +206,8 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
  public:
   LocationLanguageServerPipeline(Kind kind,
                                  const char* path,
-                                 int line_number,   // 1-based
-                                 int column_number, // 1-based
+                                 int line_number,    // 1-based.
+                                 int column_number,  // 1-based.
                                  const PipelineConfiguration& configuration)
       : LanguageServerPipeline(kind, configuration)
       , lsp_selection_path_(path)
@@ -216,8 +229,8 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
 class CompletionPipeline : public LocationLanguageServerPipeline {
  public:
   CompletionPipeline(const char* completion_path,
-                     int line_number,   // 1-based
-                     int column_number, // 1-based
+                     int line_number,    // 1-based.
+                     int column_number,  // 1-based.
                      const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::completion,
                                        completion_path,
@@ -242,8 +255,8 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
  public:
   GotoDefinitionPipeline(const char* goto_definition_path,
-                         int line_number,   // 1-based
-                         int column_number, // 1-based
+                         int line_number,    // 1-based.
+                         int column_number,  // 1-based.
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
                                        goto_definition_path,
@@ -255,6 +268,136 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
   void setup_lsp_selection_handler();
 
   bool is_lsp_selection_identifier() { return false; }
+};
+
+class FindReferencesPipeline : public LocationLanguageServerPipeline {
+ public:
+  FindReferencesPipeline(const char* find_references_path,
+                         int line_number,    // 1-based.
+                         int column_number,  // 1-based.
+                         const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::find_references,
+                                       find_references_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() override;
+  void post_resolve(Resolver* resolver, ir::Program* program) override;
+  void post_type_check() override;
+
+  bool is_lsp_selection_identifier() override { return false; }
+
+ private:
+  // State saved during post_resolve for deferred use in post_type_check.
+  // When the cursor is on a virtual call site, the target is not available
+  // until after type checking (when the call_virtual callback fires).
+  ir::Program* program_ = null;
+  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
+
+  // Show/export clause references collected from the resolver.
+  // Each entry maps a resolved target definition to the source range
+  // of the show/export identifier that references it.
+  std::vector<Resolver::ShowExportReference> show_export_references_;
+};
+
+class PrepareRenamePipeline : public LocationLanguageServerPipeline {
+ public:
+  PrepareRenamePipeline(const char* path,
+                        int line_number,    // 1-based.
+                        int column_number,  // 1-based.
+                        const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::prepare_rename,
+                                       path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() override;
+  void post_resolve(Resolver* resolver, ir::Program* program) override;
+  void post_type_check() override;
+
+  bool is_lsp_selection_identifier() override { return false; }
+
+ private:
+  /// Emits the prepareRename response and exits.
+  ///
+  /// If [range_override] is valid, it is used instead of the target's own range.
+  /// This is needed for named constructors/factories where the IR range points
+  /// to the "constructor"/"factory" keyword but we want the name part (e.g., "bar").
+  void emit_prepare_rename(ir::Node* target,
+                           Source::Range range_override = Source::Range::invalid());
+};
+
+class HoverPipeline : public LocationLanguageServerPipeline {
+ public:
+  HoverPipeline(const char* hover_path,
+                int line_number,    // 1-based.
+                int column_number,  // 1-based.
+                const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::hover,
+                                       hover_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
+
+ protected:
+  void setup_lsp_selection_handler() override {
+    lsp()->setup_hover_handler(source_manager(), toitdocs());
+  }
+
+  void post_resolve(Resolver* resolver, ir::Program* program) override {
+    if (lsp() == null || !lsp()->has_selection_handler()) return;
+    auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    // Retry emitting hover for nodes that had invalid ranges during
+    // resolution — cross-module targets may now be resolved.
+    handler->finalize();
+  }
+
+  void post_type_check() override {
+    if (lsp() == null || !lsp()->has_selection_handler()) return;
+    auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
+    // Final attempt: type checking may have resolved ranges that were
+    // still unavailable after resolution (e.g., mixin forwarding stubs).
+    handler->finalize();
+  }
+
+  bool is_lsp_selection_identifier() override { return false; }
+};
+
+class SelectionRangePipeline : public LanguageServerPipeline {
+ public:
+  SelectionRangePipeline(const char* path,
+                         const std::vector<std::pair<int, int>>& positions,
+                         const PipelineConfiguration& configuration)
+      : LanguageServerPipeline(LanguageServerPipeline::Kind::selection_range, configuration)
+      , selection_range_path_(path)
+      , selection_range_positions_(positions) {}
+
+ protected:
+  void parsed_units(const std::vector<ast::Unit*>& units) override {
+    for (auto* unit : units) {
+      if (unit->is_error_unit()) continue;
+      if (strcmp(unit->absolute_path(), selection_range_path_) == 0) {
+        compiler::emit_selection_ranges(unit,
+                                        selection_range_positions_,
+                                        source_manager(),
+                                        lsp()->protocol());
+        exit(0);
+      }
+    }
+    // File not found among parsed units — emit empty results.
+    for (size_t i = 0; i < selection_range_positions_.size(); i++) {
+      lsp()->protocol()->selection_range()->emit_range_count(0);
+    }
+    exit(0);
+  }
+
+ private:
+  const char* selection_range_path_;
+  std::vector<std::pair<int, int>> selection_range_positions_;
 };
 
 class LineReader {
@@ -404,6 +547,21 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     configuration.diagnostics = &diagnostics;
     configuration.is_for_analysis = true;
     lsp_semantic_tokens(path, configuration);
+  } else if (strcmp("SELECTION RANGE", mode) == 0) {
+    const char* path = reader.next("path");
+    int position_count = reader.next_int("position count");
+    std::vector<std::pair<int, int>> positions;
+    positions.reserve(position_count);
+    for (int i = 0; i < position_count; i++) {
+      // Input is 0-based; convert to 1-based.
+      int line = 1 + reader.next_int("line number (0-based)");
+      int col  = 1 + reader.next_int("column number (0-based)");
+      positions.push_back({line, col});
+    }
+    NullDiagnostics diagnostics(&source_manager);
+    configuration.diagnostics = &diagnostics;
+    configuration.is_for_analysis = true;
+    lsp_selection_range(path, positions, configuration);
   } else {
     const char* path = reader.next("path");
     // We generally use 1-based line/column numbers.
@@ -415,8 +573,16 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
       lsp_complete(path, line_number, column_number, configuration);
     } else if (strcmp("GOTO DEFINITION", mode) == 0) {
       lsp_goto_definition(path, line_number, column_number, configuration);
+    } else if (strcmp("HOVER", mode) == 0) {
+      lsp_hover(path, line_number, column_number, configuration);
+    } else if (strcmp("REFERENCES", mode) == 0) {
+      const char* entry_path = reader.next("entry path");
+      lsp_references(path, entry_path, line_number, column_number, configuration);
+    } else if (strcmp("PREPARE RENAME", mode) == 0) {
+      const char* entry_path = reader.next("entry path");
+      lsp_prepare_rename(path, entry_path, line_number, column_number, configuration);
     } else {
-      FATAL("LANGUAGE SERVER ERROR - Mode not recognized");
+      FATAL("LANGUAGE SERVER ERROR - Mode not recognized: '%s'", mode);
     }
   }
 }
@@ -436,6 +602,38 @@ void Compiler::lsp_goto_definition(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
+
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_references(const char* source_path,
+                              const char* entry_path,
+                              int line_number,
+                              int column_number,
+                              const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  // source_path: the file containing the cursor (for LspSelection injection).
+  // entry_path: the compilation entry point (may differ for cross-file rename).
+  FindReferencesPipeline pipeline(source_path, line_number, column_number, configuration);
+  pipeline.run(ListBuilder<const char*>::build(entry_path), false);
+}
+
+void Compiler::lsp_prepare_rename(const char* source_path,
+                                  const char* entry_path,
+                                  int line_number,
+                                  int column_number,
+                                  const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  PrepareRenamePipeline pipeline(source_path, line_number, column_number, configuration);
+  pipeline.run(ListBuilder<const char*>::build(entry_path), false);
+}
+
+void Compiler::lsp_hover(const char* source_path,
+                         int line_number,
+                         int column_number,
+                         const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  HoverPipeline pipeline(source_path, line_number, column_number, configuration);
 
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
@@ -464,6 +662,14 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_selection_range(const char* source_path,
+                                   const std::vector<std::pair<int, int>>& positions,
+                                   const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  SelectionRangePipeline pipeline(source_path, positions, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -802,6 +1008,21 @@ void Pipeline::setup_lsp_selection_handler() {
   // Do nothing.
 }
 
+void Pipeline::parsed_units(const std::vector<ast::Unit*>& units) {
+  // Do nothing. Subclasses (like SelectionRangePipeline) can override
+  // to act on the parsed AST before resolution.
+}
+
+void Pipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+  // Do nothing. Subclasses (like HoverPipeline) can override
+  // to perform work after all modules have been resolved.
+}
+
+void Pipeline::post_type_check() {
+  // Do nothing. Subclasses (like HoverPipeline) can override
+  // to perform work after type checking completes.
+}
+
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
                                int entry_unit_index,
                                int core_unit_index,
@@ -809,11 +1030,12 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   // Resolve all units.
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
-  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
+  Resolver resolver(lsp(), source_manager(), diagnostics, &toitdoc_registry_);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
-  set_toitdocs(resolver.toitdocs());
+  // Call post_resolve while the resolver (and its ir_to_ast_map) is still alive.
+  post_resolve(&resolver, result);
   return result;
 }
 
@@ -924,6 +1146,123 @@ void CompletionPipeline::setup_lsp_selection_handler() {
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
   lsp()->setup_goto_definition_handler(source_manager());
+}
+
+void FindReferencesPipeline::setup_lsp_selection_handler() {
+  lsp()->setup_find_references_handler(source_manager());
+}
+
+void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+  if (lsp() == null || !lsp()->has_selection_handler()) return;
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  // Capture show/export reference data from the resolver before it goes
+  // out of scope. This is needed for renaming symbols that appear in
+  // show/export clauses of import statements.
+  show_export_references_ = resolver->show_export_references();
+
+  if (target != null) {
+    auto& ir_to_ast = resolver->ir_to_ast_map();
+    find_and_emit_all_references(target, program, source_manager(), ir_to_ast,
+                                 lsp()->protocol(), toitdocs(),
+                                 show_export_references_);
+    // Not reached — find_and_emit_all_references calls exit(0).
+  }
+
+  // Target not found during resolution. The cursor may be on a virtual call
+  // site whose target is only resolved during type checking (call_virtual
+  // callback). Save state and return to let type checking proceed.
+  program_ = program;
+  ir_to_ast_map_ = std::move(resolver->ir_to_ast_map());
+}
+
+void FindReferencesPipeline::post_type_check() {
+  if (lsp() == null || !lsp()->has_selection_handler()) { exit(0); return; }
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  if (target != null && program_ != null) {
+    find_and_emit_all_references(target, program_, source_manager(),
+                                 ir_to_ast_map_, lsp()->protocol(),
+                                 toitdocs(), show_export_references_);
+    // Not reached.
+  }
+  exit(0);
+}
+
+void PrepareRenamePipeline::setup_lsp_selection_handler() {
+  lsp()->setup_find_references_handler(source_manager());
+}
+
+void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+  if (lsp() == null || !lsp()->has_selection_handler()) return;
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  if (target != null) {
+    // Use the cursor-site range (from the handler callback) so that the
+    // prepareRename response points to the identifier at the cursor, not at
+    // the definition.  Falls back to the target's own range when the cursor
+    // is directly on the definition (cursor_range is invalid).
+    emit_prepare_rename(target, handler->cursor_range());
+    // Never reached — emit_prepare_rename calls exit(0).
+  }
+
+  // If still not found, the cursor may be on a virtual call site.
+  // Virtual calls are resolved during type-checking, so we return here
+  // to let the pipeline continue to the type-checker. The post_type_check
+  // method handles the result after type-checking.
+}
+
+void PrepareRenamePipeline::post_type_check() {
+  if (lsp() == null || !lsp()->has_selection_handler()) {
+    exit(0);
+    return;
+  }
+  auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
+  auto* target = handler->target();
+
+  if (target != null) {
+    emit_prepare_rename(target, handler->cursor_range());
+  }
+  exit(0);
+}
+
+void PrepareRenamePipeline::emit_prepare_rename(ir::Node* target,
+                                                 Source::Range range_override) {
+  const char* name = target_name(target);
+  Source::Range range = range_override.is_valid() ? range_override : target_range(target);
+
+  if (name == null || !range.is_valid()) exit(0);
+
+  // Refuse to rename SDK symbols — their source files are not user-editable.
+  if (is_sdk_target(target, source_manager())) exit(0);
+
+  // Operators cannot be meaningfully renamed.
+  if (target->is_Method() && is_operator_name(target->as_Method()->name())) exit(0);
+
+  auto from = source_manager()->compute_location(range.from());
+  auto to = source_manager()->compute_location(range.to());
+
+  int start_col = utf16_offset_in_line(from);
+  int end_col = utf16_offset_in_line(to);
+
+  // The source range may include prefix syntax that is not part of the
+  // renamable identifier — e.g., "--" for named parameters, "[" for block
+  // parameters, or "." for dot-access.  Adjust the start column so the
+  // emitted range covers exactly the name.
+  int name_len = static_cast<int>(strlen(name));
+  if (from.line_number == to.line_number && (end_col - start_col) > name_len) {
+    start_col = end_col - name_len;
+  }
+
+  lsp()->protocol()->prepare_rename()->emit(
+      from.source->absolute_path(),
+      from.line_number - 1, start_col,
+      to.line_number - 1, end_col,
+      name);
+  exit(0);
 }
 
 /// Returns the error-unit if the file can't be parsed.
@@ -1781,6 +2120,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (configuration_.parse_only) return Result::invalid();
 
+  // Give subclasses a chance to handle parse-only requests (e.g. selection ranges).
+  parsed_units(units);
+
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());
 
@@ -1789,6 +2131,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (Flags::print_ir_tree) ir_program->print(true);
 
   check_types_and_deprecations(ir_program);
+  post_type_check();
   check_definite_assignments_returns(ir_program, diagnostics());
 
   bool encountered_error = diagnostics()->encountered_error();
