@@ -220,6 +220,45 @@ class FormattingVisitor : public TraversingVisitor {
 
   // ==== Formatting helpers ====
 
+  /// Returns true if the source text in [from, to) contains a newline.
+  bool spans_multiple_lines(int from, int to) {
+    auto src = source_->text();
+    for (int i = from; i < to; i++) {
+      if (src[i] == '\n') return true;
+    }
+    return false;
+  }
+
+  /// Returns true if the node's source text contains a newline.
+  /// Such nodes cannot be safely moved to a new indentation by the formatter —
+  /// the internal line indentation would no longer match the new context.
+  bool node_spans_multiple_lines(Node* node) {
+    return spans_multiple_lines(node_start(node), offset(node->full_range().to()));
+  }
+
+  /// Returns true if the node cannot be safely moved to a new indentation.
+  /// Multi-line nodes whose internal line breaks we control (via our own IR)
+  /// are fine. Multi-line nodes with baked-in indentation (literals, blocks)
+  /// are not.
+  bool is_unmovable_multiline(Node* node) {
+    if (!node_spans_multiple_lines(node)) return false;
+    // Constructs we reformat — their multi-line form is produced by our
+    // own IR, not preserved verbatim.
+    if (node->is_Call()) return false;
+    if (node->is_Binary()) {
+      // Assignments are not reformatted.
+      if (Token::precedence(node->as_Binary()->kind()) == PRECEDENCE_ASSIGNMENT) return true;
+      return false;
+    }
+    // Transparent wrappers — we traverse into them, so inner content
+    // gets reformatted.
+    if (node->is_Parenthesis()) return false;
+    if (node->is_NamedArgument()) return false;
+    if (node->is_Unary()) return false;
+    // Everything else (literals, blocks, etc.) has baked-in indentation.
+    return true;
+  }
+
   /// Returns true if the expression needs parentheses when used as an
   /// inline binary operand of the given operator.
   ///
@@ -270,7 +309,9 @@ class FormattingVisitor : public TraversingVisitor {
       return;
     }
 
-    // Don't flatten calls with block/lambda arguments.
+    // Don't reformat calls with block/lambda arguments or with any argument
+    // whose source text spans multiple lines (e.g., multi-line list literals).
+    // Such arguments can't safely be moved to a new indentation.
     for (auto arg : node->arguments()) {
       if (arg->is_Block() || arg->is_Lambda()) {
         TraversingVisitor::visit_Call(node);
@@ -284,6 +325,10 @@ class FormattingVisitor : public TraversingVisitor {
           TraversingVisitor::visit_Call(node);
           return;
         }
+      }
+      if (is_unmovable_multiline(arg)) {
+        TraversingVisitor::visit_Call(node);
+        return;
       }
     }
 
@@ -330,6 +375,15 @@ class FormattingVisitor : public TraversingVisitor {
     std::vector<Expression*> operands;
     std::vector<Token::Kind> operators;
     collect_binary_chain(node, node->kind(), operands, operators);
+
+    // If any operand is an unmovable multi-line construct, we can't safely
+    // move it to a new indentation level. Bail out to copy formatter.
+    for (auto operand : operands) {
+      if (is_unmovable_multiline(operand)) {
+        TraversingVisitor::visit_Binary(node);
+        return;
+      }
+    }
 
     // Build Document IR: Group(first, Indent(Line op second, Line op third, ...))
     emit_to(start);

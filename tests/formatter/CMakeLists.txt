@@ -76,3 +76,15 @@ foreach(file ${TOIT_TESTS})
   )
   add_dependencies(update_formatter_gold ${generate_gold})
 endforeach()
+
+# Idempotency test over the whole standard library.
+add_test(
+  NAME tests/formatter/lib_idempotency
+  COMMAND ${CMAKE_COMMAND}
+      -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
+      "-DLIB_DIR=${TOIT_SDK_SOURCE_DIR}/lib"
+      "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/lib_idempotency.cmake"
+  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+)
+set_tests_properties(tests/formatter/lib_idempotency PROPERTIES TIMEOUT 300)

@@ -50,6 +50,27 @@ endif()
 # We expect the file to be rewritten.
 file(READ ${TMP_INPUT} FORMATTED_CONTENT)
 
+# Idempotency check: formatting the already-formatted output must produce
+# the same output. Format again and verify.
+execute_process(
+  COMMAND "${TOIT_COMPILE}" --format "${TMP_INPUT}"
+  OUTPUT_VARIABLE STDOUT2
+  ERROR_VARIABLE STDERR2
+  RESULT_VARIABLE EXIT_CODE2
+)
+if (NOT "${EXIT_CODE2}" EQUAL 0)
+  message(FATAL_ERROR "Second format failed with exit code ${EXIT_CODE2}. stderr: ${STDERR2}")
+endif()
+file(READ ${TMP_INPUT} FORMATTED_CONTENT2)
+if (NOT "${FORMATTED_CONTENT}" STREQUAL "${FORMATTED_CONTENT2}")
+  set(TMP_PASS1 ${TMP}/IDEMPOTENCY_PASS1_${RND})
+  set(TMP_PASS2 ${TMP}/IDEMPOTENCY_PASS2_${RND})
+  file(WRITE ${TMP_PASS1} "${FORMATTED_CONTENT}")
+  file(WRITE ${TMP_PASS2} "${FORMATTED_CONTENT2}")
+  execute_process(COMMAND diff -u ${TMP_PASS1} ${TMP_PASS2})
+  message(FATAL_ERROR "Formatter is not idempotent — second pass changed the output")
+endif()
+
 if ((DEFINED UPDATE_GOLD) OR (NOT "$ENV{TOIT_UPDATE_GOLD}" STREQUAL ""))
   file(WRITE ${GOLD} "${FORMATTED_CONTENT}")
 else()
