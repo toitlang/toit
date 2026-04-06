@@ -46,6 +46,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/zlib-deprecated-test.toit
     tests/cow-read-only-test-compiler.toit
     tests/uart-test.toit
+    tests/udp-reuse-port-test.toit  # Windows loopback adapter does not carry multicast traffic.
   )
 endif()
 
@@ -53,4 +54,12 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
   list(APPEND TOIT_FAILING_TESTS
     tests/uart-test.toit
   )
+  # Multicast over loopback is broken on macOS 15+ (Darwin kernel 24+).
+  # See https://github.com/actions/runner-images/issues/10924
+  # CI uses macos-14 where multicast works fine.
+  if ("${CMAKE_SYSTEM_VERSION}" VERSION_GREATER_EQUAL "24")
+    list(APPEND TOIT_FAILING_TESTS
+      tests/udp-reuse-port-test.toit
+    )
+  endif()
 endif()
