@@ -230,7 +230,17 @@ bool Parser::allowed_to_consume(Token::Kind token) {
   for (int i = stack.size() - 2; i > 0; i--) {
     // We only look at the constructs that are on the same line.
     auto level = stack.indentation_at(i);
-    if (level != top_indentation) break;
+    if (level != top_indentation) {
+      // A LOGICAL construct can span multiple indentation levels when
+      // operands continue on indented lines. Look through it to find
+      // the actual colon consumer (e.g., IF_CONDITION).
+      if (stack.kind_at(i) == IndentationStack::LOGICAL) {
+        top_indentation = level;
+        // Fall through to the switch below.
+      } else {
+        break;
+      }
+    }
 
     auto kind = stack.kind_at(i);
     switch (kind) {
