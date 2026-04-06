@@ -25,6 +25,9 @@ extern "C" {
   #include "plat_config.h"
   #include "apmu_external.h"
 
+  // From ps_lib_api.h — declared here to avoid pulling in networkmgr dependencies.
+  void appSetCFUN(int cfun);
+
   // From libcore_airm2m.a. Flips the PS stack into power-saver mode,
   // which is required for the PMU to actually transition to SLP2 or
   // HIBERNATE. slpManSetPmuSleepMode only sets a ceiling — it does not
@@ -162,17 +165,13 @@ static void start() {
   RtcMemory::on_deep_sleep_start();
   slpManPlatVoteEnableSleep(sleep_vote_handle, SLP_SLP1_STATE);
 
-  // On EC618, POWER_SAVER mode + deep-sleep timer only wakes reliably
-  // from HIBERNATE, not SLP2. Hibernation loses RAM, so the
-  // .toit.rtc.noinit section does not survive across deep sleep on this
-  // platform. RTC-like state that must persist across wake needs to be
-  // stored in flash.
-  // TODO: persist RtcMemory via flash-backed storage to survive hibernation.
+  // Disable the modem before sleeping. The PS stack holds votes that
+  // block sleep entry; appSetCFUN(0) releases them synchronously.
+  appSetCFUN(0);
+
   apmuSetDeepestSleepMode(AP_STATE_HIBERNATE);
 
-  // Switch the PS stack to power-saver mode — this releases the PS
-  // stack's blocking votes so the PMU can actually transition to SLP2.
-  // Without this call, tickless idle can at best reach SLP1.
+  // Switch the PS stack to power-saver mode.
   soc_power_mode(3, 0);
 
   // Enter idle loop — FreeRTOS tickless idle will enter deep sleep.
