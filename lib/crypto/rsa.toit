@@ -5,6 +5,7 @@
 import .sha
 import .sha1
 import ..io as io
+import monitor show ResourceState_
 import encoding.base64
 
 /**
@@ -124,7 +125,18 @@ class RsaKey:
   */
   static generate --bits/int=2048 -> RsaKeyPair:
     if bits != 1024 and bits != 2048 and bits != 3072 and bits != 4096: throw "INVALID_ARGUMENT"
-    pair := rsa-generate_ bits
+    pair := null
+    catch --trace=(: it != "UNIMPLEMENTED"):
+      group := rsa-generate-init_
+      resource-id := rsa-generate-start_ group bits
+      state := ResourceState_ group resource-id
+      state.wait
+      pair = rsa-generate-finish_ resource-id
+      state.dispose
+
+    if not pair:
+      pair = rsa-generate_ bits
+
     return RsaKeyPair
         RsaKey.internal_ pair[0] true
         RsaKey.internal_ pair[1] false
@@ -279,4 +291,15 @@ rsa-encrypt_ public-key-der/ByteArray data/ByteArray padding/int hash/int -> Byt
 // Primitive: decrypt data with a private key DER blob.
 rsa-decrypt_ private-key-der/ByteArray data/ByteArray padding/int hash/int -> ByteArray:
   #primitive.crypto.rsa-decrypt
-  
+
+/** Initializes a resource group for RSA key generation. */
+rsa-generate-init_ -> int:
+  #primitive.crypto.rsa-generate-init
+
+/** Starts the asynchronous RSA key generation. */
+rsa-generate-start_ group/int bits/int -> int:
+  #primitive.crypto.rsa-generate-start
+
+/** Finishes the asynchronous RSA key generation and returns the key pair. */
+rsa-generate-finish_ resource-id/int -> List:
+  #primitive.crypto.rsa-generate-finish

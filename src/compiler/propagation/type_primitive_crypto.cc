@@ -55,6 +55,9 @@ TYPE_PRIMITIVE_ANY(rsa_verify)
 TYPE_PRIMITIVE_ANY(rsa_generate)
 TYPE_PRIMITIVE_ANY(rsa_encrypt)
 TYPE_PRIMITIVE_ANY(rsa_decrypt)
+TYPE_PRIMITIVE_ANY(rsa_generate_init)
+TYPE_PRIMITIVE_ANY(rsa_generate_start)
+TYPE_PRIMITIVE_ANY(rsa_generate_finish)
 
 }  // namespace toit::compiler
 }  // namespace toit
