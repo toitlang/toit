@@ -42,6 +42,9 @@
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
+#include "vm.h"
+#include "scheduler.h"
+#include "os.h"
 
 #if (defined(MBEDTLS_CHACHAPOLY_C) && defined(MBEDTLS_CHACHA20_C)) || (defined(CONFIG_MBEDTLS_POLY1305_C) && defined(CONFIG_MBEDTLS_CHACHA20_C))
 #define SUPPORT_CHACHA20_POLY1305 1
@@ -759,6 +762,14 @@ PRIMITIVE(aes_ecb_close) {
 
 
 static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
+  Process* process = reinterpret_cast<Process*>(ctx);
+  if (process != null) {
+    // Reset the watchdog timer for this process.
+    // We take the scheduler lock to ensure 64-bit timestamp updates are atomic
+    // and safe against the scheduler tick reading them.
+    Locker locker(VM::current()->scheduler()->mutex());
+    process->set_run_timestamp(OS::get_monotonic_time());
+  }
 #ifdef TOIT_ESP32
   esp_fill_random(buffer, len);
 #else
@@ -790,7 +801,7 @@ static bool is_pem(Blob key) {
 // For private keys, an optional password blob may be supplied (length 0 = none).
 // Returns 0 on success, a non-zero mbedtls error code on failure.
 // The caller is responsible for calling mbedtls_pk_free on *pk in all cases.
-static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private) {
+static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private, Process* process) {
   // mbedtls_pk_parse_key / mbedtls_pk_parse_public_key require the buffer to
   // be null-terminated when the input is PEM. For DER, the null byte is
   // actually harmful if it's passed as part of the length.
@@ -820,7 +831,7 @@ static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob passwo
     ret = mbedtls_pk_parse_key(pk,
                                parse_buf, parse_len,
                                pwd, password.length(),
-                               rsa_rng, NULL);
+                               rsa_rng, process);
   } else {
     ret = mbedtls_pk_parse_public_key(pk, parse_buf, parse_len);
   }
@@ -885,7 +896,7 @@ PRIMITIVE(rsa_generate) {
     return tls_error(null, process, ret);
   }
 
-  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, NULL, bits, 65537);
+  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, process, bits, 65537);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -926,7 +937,7 @@ PRIMITIVE(rsa_sign) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -939,7 +950,7 @@ PRIMITIVE(rsa_sign) {
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
   ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
-                        sig, sizeof(sig), &actual_len, rsa_rng, NULL);
+                        sig, sizeof(sig), &actual_len, rsa_rng, process);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);
@@ -961,7 +972,7 @@ PRIMITIVE(rsa_verify) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -983,7 +994,7 @@ PRIMITIVE(rsa_get_private_key_der) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, key, password, true);
+  int ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1012,9 +1023,9 @@ PRIMITIVE(rsa_get_public_key_der) {
 
   // Try parsing as a private key first (which contains the public key).
   // If that fails, try as a public key.
-  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true, process);
   if (ret != 0) {
-    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false);
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
   }
   if (ret != 0) {
     mbedtls_pk_free(&pk);
@@ -1045,7 +1056,7 @@ PRIMITIVE(rsa_encrypt) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1068,7 +1079,7 @@ PRIMITIVE(rsa_encrypt) {
 
   size_t output_len = 0;
   ret = mbedtls_pk_encrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, process);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);
@@ -1086,7 +1097,7 @@ PRIMITIVE(rsa_decrypt) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1109,7 +1120,7 @@ PRIMITIVE(rsa_decrypt) {
 
   size_t output_len = 0;
   ret = mbedtls_pk_decrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, process);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);
