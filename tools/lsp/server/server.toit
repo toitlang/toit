@@ -160,6 +160,7 @@ class LspServer:
         "textDocument/hover":      (:: hover      (TextDocumentPositionParams  it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
+        "textDocument/selectionRange": (:: selection-range it),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
         "toit/reportIdle":         (:: report-idle),
@@ -230,6 +231,7 @@ class LspServer:
             --full  // Or should it be '{ "delta": false }' ?
         --experimental=Experimental --ubjson-rpc
         --rename-provider=RenameOptions true
+        --selection-range-provider
 
     return InitializationResult server-capabilities
 
@@ -397,6 +399,20 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+
+  selection-range params/Map -> List:
+    uri := translator.canonicalize params["textDocument"]["uri"]
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    positions := params["positions"]
+    range-lists := compiler_.selection-range
+        --project-uri=project-uri
+        uri
+        positions
+    return range-lists.map: | ranges/List? |
+      if not ranges or ranges.is-empty:
+        null
+      else:
+        build-selection-range_ ranges
 
   /**
   Adds to $result the transitive closure of URIs that depend on the given
@@ -717,6 +733,23 @@ class LspServer:
       changed-summary-documents.add-all rev-dep-result
 
     return changed-summary-documents
+
+  /**
+  Builds a SelectionRange linked-list from a flat list of ranges.
+
+  The ranges must be ordered innermost-first.
+  Returns a nested map structure where each entry has a "range" and
+    optionally a "parent" pointing to the next larger range.
+  */
+  static build-selection-range_ ranges/List -> Map:
+    result/Map? := null
+    // Fold from outermost to innermost to build the parent chain.
+    for i := ranges.size - 1; i >= 0; i--:
+      entry := {:}
+      entry["range"] = ranges[i].map_
+      if result: entry["parent"] = result
+      result = entry
+    return result
 
   send-diagnostics params/PushDiagnosticsParams -> none:
     connection_.send "textDocument/publishDiagnostics" params

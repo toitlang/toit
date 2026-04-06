@@ -31,14 +31,34 @@ NODES(DECLARE)
 #undef DECLARE
 
 void TraversingVisitor::visit_Unit(Unit* node) {
+  for (int i = 0; i < node->imports().length(); i++) {
+    node->imports()[i]->accept(this);
+  }
+  for (int i = 0; i < node->exports().length(); i++) {
+    node->exports()[i]->accept(this);
+  }
   for (int i = 0; i < node->declarations().length(); i++) {
     node->declarations()[i]->accept(this);
   }
 }
 
-void TraversingVisitor::visit_Import(Import* node) {}
+void TraversingVisitor::visit_Import(Import* node) {
+  for (int i = 0; i < node->segments().length(); i++) {
+    node->segments()[i]->accept(this);
+  }
+  if (node->prefix() != null) {
+    node->prefix()->accept(this);
+  }
+  for (int i = 0; i < node->show_identifiers().length(); i++) {
+    node->show_identifiers()[i]->accept(this);
+  }
+}
 
-void TraversingVisitor::visit_Export(Export* node) {}
+void TraversingVisitor::visit_Export(Export* node) {
+  for (int i = 0; i < node->identifiers().length(); i++) {
+    node->identifiers()[i]->accept(this);
+  }
+}
 
 void TraversingVisitor::visit_Class(Class* node) {
   node->name()->accept(this);
