@@ -24,6 +24,10 @@
 #include "uuid.h"
 
 extern "C" {
+  #include "slpman.h"
+}
+
+extern "C" {
   #include "cmsis_os2.h"
   #include "slpman.h"
 }
@@ -72,25 +76,17 @@ static void reset_rtc(const char* reason) {
 }
 
 void RtcMemory::set_up() {
-  slpManSlpState_t last_state = slpManGetLastSlpState();
-
-  switch (last_state) {
-    case SLP_SLP2_STATE:
-      // Warm boot from deep sleep (sleep2).
-      if (is_rtc_valid()) {
-        rtc.boot_count++;
-        update_rtc_checksum();
-      } else {
-        reset_rtc("invalid checksum after deep sleep");
-      }
-      break;
-
-    case SLP_ACTIVE_STATE:
-    case SLP_HIB_STATE:
-    default:
-      // Cold boot or hibernation wake — clear everything.
-      reset_rtc("cold boot or hibernation");
-      break;
+  // Use the CRC as the primary wake detector. If the checksum is valid,
+  // treat this as a warm boot regardless of what slpManGetLastSlpState
+  // reports — on EC618 with HIBERNATE wake, the API may report
+  // SLP_ACTIVE_STATE even though the data survived.
+  if (is_rtc_valid()) {
+    rtc.boot_count++;
+    update_rtc_checksum();
+    printf("[toit] DEBUG: RTC memory valid (boot %d)\n",
+           static_cast<int>(rtc.boot_count));
+  } else {
+    reset_rtc("cold boot or RTC invalid");
   }
 }
 
