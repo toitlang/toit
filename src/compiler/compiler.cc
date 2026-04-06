@@ -41,6 +41,7 @@
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
 #include "lsp/rename.h"
+#include "lsp/selection_range.h"
 #include "lsp/fs_connection_socket.h"
 #include "lsp/fs_protocol.h"
 #include "lsp/multiplex_stdout.h"
@@ -134,6 +135,11 @@ class Pipeline {
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
+  /// Called after parsing, before resolution.
+  ///
+  /// Subclasses that only need the parsed AST (e.g. SelectionRangePipeline)
+  /// can override this to act on the units and call exit(0).
+  virtual void parsed_units(const std::vector<ast::Unit*>& units);
   virtual void post_resolve(Resolver* resolver, ir::Program* program);
   virtual void post_type_check();
 
@@ -359,6 +365,39 @@ class HoverPipeline : public LocationLanguageServerPipeline {
   }
 
   bool is_lsp_selection_identifier() override { return false; }
+};
+
+class SelectionRangePipeline : public LanguageServerPipeline {
+ public:
+  SelectionRangePipeline(const char* path,
+                         const std::vector<std::pair<int, int>>& positions,
+                         const PipelineConfiguration& configuration)
+      : LanguageServerPipeline(LanguageServerPipeline::Kind::selection_range, configuration)
+      , selection_range_path_(path)
+      , selection_range_positions_(positions) {}
+
+ protected:
+  void parsed_units(const std::vector<ast::Unit*>& units) override {
+    for (auto* unit : units) {
+      if (unit->is_error_unit()) continue;
+      if (strcmp(unit->absolute_path(), selection_range_path_) == 0) {
+        compiler::emit_selection_ranges(unit,
+                                        selection_range_positions_,
+                                        source_manager(),
+                                        lsp()->protocol());
+        exit(0);
+      }
+    }
+    // File not found among parsed units — emit empty results.
+    for (size_t i = 0; i < selection_range_positions_.size(); i++) {
+      lsp()->protocol()->selection_range()->emit_range_count(0);
+    }
+    exit(0);
+  }
+
+ private:
+  const char* selection_range_path_;
+  std::vector<std::pair<int, int>> selection_range_positions_;
 };
 
 class LineReader {
@@ -629,9 +668,8 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
 void Compiler::lsp_selection_range(const char* source_path,
                                    const std::vector<std::pair<int, int>>& positions,
                                    const PipelineConfiguration& configuration) {
-  configuration.lsp->set_selection_range_request(source_path, positions);
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::selection_range, configuration);
+  SelectionRangePipeline pipeline(source_path, positions, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -968,6 +1006,11 @@ ast::Unit* Pipeline::parse(Source* source) {
 
 void Pipeline::setup_lsp_selection_handler() {
   // Do nothing.
+}
+
+void Pipeline::parsed_units(const std::vector<ast::Unit*>& units) {
+  // Do nothing. Subclasses (like SelectionRangePipeline) can override
+  // to act on the parsed AST before resolution.
 }
 
 void Pipeline::post_resolve(Resolver* resolver, ir::Program* program) {
@@ -2077,10 +2120,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (configuration_.parse_only) return Result::invalid();
 
-  // Give the LSP a chance to handle parse-only requests (e.g. selection ranges).
-  if (lsp() != null) {
-    lsp()->parsed_units(units, source_manager());
-  }
+  // Give subclasses a chance to handle parse-only requests (e.g. selection ranges).
+  parsed_units(units);
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());
