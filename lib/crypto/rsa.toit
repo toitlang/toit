@@ -127,12 +127,12 @@ class RsaKey:
     if bits != 1024 and bits != 2048 and bits != 3072 and bits != 4096: throw "INVALID_ARGUMENT"
     pair := null
     catch --trace=(: it != "UNIMPLEMENTED"):
-      group := rsa-generate-init_
-      resource-id := rsa-generate-start_ group bits
-      state := ResourceState_ group resource-id
-      state.wait
-      pair = rsa-generate-finish_ resource-id
-      state.dispose
+      resource := RsaGenerationResource_ bits
+      try:
+        resource.wait
+        pair = resource.finish
+      finally:
+        resource.close
 
     if not pair:
       pair = rsa-generate_ bits
@@ -292,14 +292,43 @@ rsa-encrypt_ public-key-der/ByteArray data/ByteArray padding/int hash/int -> Byt
 rsa-decrypt_ private-key-der/ByteArray data/ByteArray padding/int hash/int -> ByteArray:
   #primitive.crypto.rsa-decrypt
 
+class RsaGenerationResource_:
+  group_ := null
+  state_ := null
+
+  constructor bits/int:
+    group_ = rsa-generate-init_
+    add-finalizer this:: close
+    resource-id := rsa-generate-start_ group_ bits
+    state_ = ResourceState_ group_ resource-id
+
+  wait -> none:
+    state_.wait
+
+  finish -> List:
+    return rsa-generate-finish_ state_.resource
+
+  close:
+    if not group_: return
+    critical-do:
+      if state_: state_.dispose
+      state_ = null
+      rsa-generate-close_ group_
+      group_ = null
+      remove-finalizer this
+
 /** Initializes a resource group for RSA key generation. */
-rsa-generate-init_ -> int:
+rsa-generate-init_:
   #primitive.crypto.rsa-generate-init
 
 /** Starts the asynchronous RSA key generation. */
-rsa-generate-start_ group/int bits/int -> int:
+rsa-generate-start_ group bits/int:
   #primitive.crypto.rsa-generate-start
 
 /** Finishes the asynchronous RSA key generation and returns the key pair. */
-rsa-generate-finish_ resource-id/int -> List:
+rsa-generate-finish_ resource-id -> List:
   #primitive.crypto.rsa-generate-finish
+
+/** Closes the RSA generation resource group. */
+rsa-generate-close_ group -> none:
+  #primitive.crypto.rsa-generate-close

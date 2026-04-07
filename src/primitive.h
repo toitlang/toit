@@ -544,7 +544,8 @@ namespace toit {
   PRIMITIVE(rsa_decrypt, 4)                  \
   PRIMITIVE(rsa_generate_init, 0)            \
   PRIMITIVE(rsa_generate_start, 2)           \
-  PRIMITIVE(rsa_generate_finish, 1)          
+  PRIMITIVE(rsa_generate_finish, 1)          \
+  PRIMITIVE(rsa_generate_close, 1)
   
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
