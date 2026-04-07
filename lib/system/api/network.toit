@@ -47,6 +47,8 @@ interface NetworkService:
   static SOCKET-OPTION-UDP-MULTICAST-TTL        /int ::= 3
   static SOCKET-OPTION-UDP-REUSE-ADDRESS        /int ::= 4
   static SOCKET-OPTION-UDP-REUSE-PORT           /int ::= 5
+  static SOCKET-OPTION-UDP-MULTICAST-IF         /int ::= 6
+  static SOCKET-OPTION-UDP-MULTICAST-LEAVE      /int ::= 7
   static SOCKET-OPTION-TCP-NO-DELAY             /int ::= 100
 
   /**
@@ -76,7 +78,7 @@ interface NetworkService:
 
   udp-open-multicast -> int
       handle/int
-      address/ByteArray
+      address/ByteArray?
       port/int
       if-addr/ByteArray?
       reuse-address/bool
