@@ -1031,6 +1031,7 @@ PRIMITIVE(rsa_generate_finish) {
   if (resource->error() != 0) {
     int err = resource->error();
     resource->resource_group()->unregister_resource(resource);
+    resource_proxy->clear_external_address();
     return tls_error(null, process, err);
   }
 
@@ -1038,6 +1039,7 @@ PRIMITIVE(rsa_generate_finish) {
   ByteArray* pub_der = process->allocate_byte_array(resource->pub_len());
   if (!prv_der || !pub_der) {
     resource->resource_group()->unregister_resource(resource);
+    resource_proxy->clear_external_address();
     FAIL(ALLOCATION_FAILED);
   }
 
@@ -1056,6 +1058,13 @@ PRIMITIVE(rsa_generate_finish) {
   resource_proxy->clear_external_address();
 
   return pair;
+}
+
+PRIMITIVE(rsa_generate_close) {
+  ARGS(RsaGenerationResourceGroup, group);
+  group->tear_down();
+  group_proxy->clear_external_address();
+  return process->null_object();
 }
 
 #endif // CONFIG_TOIT_CRYPTO_EXTRA
