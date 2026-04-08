@@ -864,10 +864,17 @@ static void emit_override_definitions(
 }
 
 // Emits class hierarchy references (extends, implements, with clauses).
+//
+// After resolution, the IR interfaces/mixins lists are flattened to include
+// the full transitive closure (and deduplicated), so they no longer correspond
+// positionally to the AST lists.  We therefore match AST interface/mixin
+// expressions against target_class by name, guarded by a check that
+// target_class actually appears in the (flattened) IR list.
 static void emit_class_hierarchy_references(
     ir::Class* target_class,
     ir::Program* program,
     UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    SourceManager* source_manager,
     FindReferencesVisitor& visitor) {
   for (auto* klass : program->classes()) {
     auto* ast_node = ir_to_ast.lookup(klass);
@@ -880,21 +887,44 @@ static void emit_class_hierarchy_references(
       }
     }
 
+    // Check if target_class is in the flattened IR interfaces.
     auto ir_interfaces = klass->interfaces();
-    auto ast_interfaces = ast_class->interfaces();
-    ASSERT(ir_interfaces.length() == ast_interfaces.length());
+    bool has_target_interface = false;
     for (int i = 0; i < ir_interfaces.length(); i++) {
       if (ir_interfaces[i] == target_class) {
-        visitor.emit_range(class_reference_range(ast_interfaces[i]));
+        has_target_interface = true;
+        break;
+      }
+    }
+    if (has_target_interface) {
+      // The IR interfaces are flattened and don't correspond 1:1 with the AST.
+      // Scan the AST interfaces by name to find the source reference.
+      auto ast_interfaces = ast_class->interfaces();
+      for (int i = 0; i < ast_interfaces.length(); i++) {
+        auto range = class_reference_range(ast_interfaces[i]);
+        if (range_matches_name(range, target_class->name().c_str(), source_manager)) {
+          visitor.emit_range(range);
+        }
       }
     }
 
+    // Check if target_class is in the flattened IR mixins.
     auto ir_mixins = klass->mixins();
-    auto ast_mixins = ast_class->mixins();
-    ASSERT(ir_mixins.length() == ast_mixins.length());
+    bool has_target_mixin = false;
     for (int i = 0; i < ir_mixins.length(); i++) {
       if (ir_mixins[i] == target_class) {
-        visitor.emit_range(class_reference_range(ast_mixins[i]));
+        has_target_mixin = true;
+        break;
+      }
+    }
+    if (has_target_mixin) {
+      // Same as interfaces: the IR mixins are flattened.
+      auto ast_mixins = ast_class->mixins();
+      for (int i = 0; i < ast_mixins.length(); i++) {
+        auto range = class_reference_range(ast_mixins[i]);
+        if (range_matches_name(range, target_class->name().c_str(), source_manager)) {
+          visitor.emit_range(range);
+        }
       }
     }
   }
@@ -1173,7 +1203,7 @@ void find_and_emit_all_references(
   // Class-specific reference scanning.
   if (target->is_Class()) {
     auto* target_class = target->as_Class();
-    emit_class_hierarchy_references(target_class, program, ir_to_ast, visitor);
+    emit_class_hierarchy_references(target_class, program, ir_to_ast, source_manager, visitor);
     emit_type_annotation_references(target_class, program, ir_to_ast, visitor);
   }
 
