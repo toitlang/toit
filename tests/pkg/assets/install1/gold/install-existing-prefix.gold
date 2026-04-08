@@ -1,2 +1,3 @@
 OK
 [pkg, install, --local, --prefix=pkg1, pkg2]
+Package 'pkg2' installed with prefix 'pkg1'.
