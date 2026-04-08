@@ -169,6 +169,11 @@ static void start() {
   // block sleep entry; appSetCFUN(0) releases them synchronously.
   appSetCFUN(0);
 
+  // Use HIBERNATE for all deep sleep cases. SLP2 does not reliably
+  // preserve ASMB noinit data on this platform — the save/restore
+  // mechanism corrupts user data. HIBERNATE wakes reliably via the
+  // deep sleep timer after appSetCFUN(0) releases PS stack votes.
+  // RTC memory persistence requires flash-backed storage (TODO).
   apmuSetDeepestSleepMode(AP_STATE_HIBERNATE);
 
   // Switch the PS stack to power-saver mode.

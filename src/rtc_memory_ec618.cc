@@ -76,10 +76,12 @@ static void reset_rtc(const char* reason) {
 }
 
 void RtcMemory::set_up() {
-  // Use the CRC as the primary wake detector. If the checksum is valid,
-  // treat this as a warm boot regardless of what slpManGetLastSlpState
-  // reports — on EC618 with HIBERNATE wake, the API may report
-  // SLP_ACTIVE_STATE even though the data survived.
+  // Use the CRC as the primary wake detector.
+  uint32 expected = compute_rtc_checksum();
+  printf("[toit] DEBUG: rtc_checksum=0x%x expected=0x%x boot_count=%d\n",
+         static_cast<unsigned>(rtc_checksum),
+         static_cast<unsigned>(expected),
+         static_cast<int>(rtc.boot_count));
   if (is_rtc_valid()) {
     rtc.boot_count++;
     update_rtc_checksum();
