@@ -175,7 +175,7 @@ static void start() {
   // preserve ASMB noinit data on this platform — the save/restore
   // mechanism corrupts user data. HIBERNATE wakes reliably via the
   // deep sleep timer after appSetCFUN(0) releases PS stack votes.
-  // RTC memory persistence requires flash-backed storage (TODO).
+  // RTC memory is backed by flash (saved before sleep, restored on boot).
   apmuSetDeepestSleepMode(AP_STATE_HIBERNATE);
 
   // Switch the PS stack to power-saver mode.
