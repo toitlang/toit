@@ -1339,6 +1339,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           report_error(ast_mixin, "Not a mixin");
         } else {
           ir_mixins.add(ir_mixin);
+          class_hierarchy_references_.push_back({klass, ir_mixin, ast_mixin});
         }
       }
       klass->set_mixins(ir_mixins.build());
@@ -1354,6 +1355,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           report_error(ast_interface, "Not an interface");
         } else {
           ir_interfaces.add(ir_interface);
+          class_hierarchy_references_.push_back({klass, ir_interface, ast_interface});
         }
       }
       klass->set_interfaces(ir_interfaces.build());

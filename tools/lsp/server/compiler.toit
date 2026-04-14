@@ -352,6 +352,34 @@ class Compiler:
       }
     unreachable
 
+  /**
+  Requests selection ranges from the compiler for the given $positions.
+
+  Each position is a map with "line" and "character" keys (0-based).
+
+  Returns a list of results, one per position. Each result is a list of
+    ranges sorted innermost-first, or null if no ranges were found.
+  */
+  selection-range --project-uri/string? uri/string positions/List -> List:
+    path := translator.to-path uri --to-compiler
+    position-lines := positions.map: | pos/Map |
+      "$pos["line"]\n$pos["character"]"
+    input := "SELECTION RANGE\n$path\n$positions.size\n$(position-lines.join "\n")\n"
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      results := []
+      positions.size.repeat:
+        count-line := reader.read-line
+        if not count-line:
+          results.add null
+          return results
+        count := int.parse count-line
+        ranges := []
+        count.repeat:
+          ranges.add (read-range reader)
+        results.add (ranges.is-empty ? null : ranges)
+      return results
+    unreachable
+
   hover --project-uri/string? uri/string line-number/int column-number/int -> HoverDefinition?:
     path := translator.to-path uri --to-compiler
 
