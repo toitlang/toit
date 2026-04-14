@@ -19,8 +19,8 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.7.1
-    hash: 8376719abcede80c26dae3430da4ddd65de9e63f
+    version: 2.14.0
+    hash: ec895eedf75ad24f944a3c158e8b5c0624609b8a
     prefixes:
       desktop: pkg-desktop
       fs: pkg-fs
@@ -48,8 +48,8 @@ packages:
   pkg-http:
     url: github.com/toitlang/pkg-http
     name: http
-    version: 2.11.0
-    hash: d2cdc57270eaafe8df8d8403bf4ebf95415aa0fd
+    version: 2.12.0
+    hash: b68f3f4a3c26bfdff2beca4fb5ac7bc182f20270
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
@@ -78,5 +78,5 @@ packages:
   toit-semver:
     url: github.com/toitware/toit-semver
     name: semver
-    version: 1.1.1
-    hash: 74e61f2cbba360e8a13c004842bdc1a74c16c3c3
+    version: 1.2.0
+    hash: 7b862ca7b40601ae2a63ec6ffbacebb48c929e02
