@@ -300,6 +300,12 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
   // Each entry maps a resolved target definition to the source range
   // of the show/export identifier that references it.
   std::vector<Resolver::ShowExportReference> show_export_references_;
+
+  // Class hierarchy references (implements/with) collected from the resolver.
+  // Each entry maps a holder class and a resolved interface/mixin to the
+  // AST expression in the source clause.  Collected before the resolver's
+  // flattening passes destroy the 1:1 AST/IR correspondence.
+  std::vector<Resolver::ClassHierarchyReference> class_hierarchy_references_;
 };
 
 class PrepareRenamePipeline : public LocationLanguageServerPipeline {
@@ -1157,16 +1163,16 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
 
-  // Capture show/export reference data from the resolver before it goes
-  // out of scope. This is needed for renaming symbols that appear in
-  // show/export clauses of import statements.
+  // Capture resolver data before it goes out of scope.
   show_export_references_ = resolver->show_export_references();
+  class_hierarchy_references_ = resolver->class_hierarchy_references();
 
   if (target != null) {
     auto& ir_to_ast = resolver->ir_to_ast_map();
     find_and_emit_all_references(target, program, source_manager(), ir_to_ast,
                                  lsp()->protocol(), toitdocs(),
-                                 show_export_references_);
+                                 show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached — find_and_emit_all_references calls exit(0).
   }
 
@@ -1185,7 +1191,8 @@ void FindReferencesPipeline::post_type_check() {
   if (target != null && program_ != null) {
     find_and_emit_all_references(target, program_, source_manager(),
                                  ir_to_ast_map_, lsp()->protocol(),
-                                 toitdocs(), show_export_references_);
+                                 toitdocs(), show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached.
   }
   exit(0);
