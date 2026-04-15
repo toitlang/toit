@@ -439,6 +439,19 @@ class LspClient:
     if always-wait-for-idle: wait-for-idle
     return result
 
+  send-selection-range-request --path/string positions/List -> any:
+    return send-selection-range-request --uri=(to-uri path) positions
+
+  send-selection-range-request --uri/string positions/List -> any:
+    result := connection_.request "textDocument/selectionRange" {
+      "textDocument": {
+        "uri": uri,
+      },
+      "positions": positions,
+    }
+    if always-wait-for-idle: wait-for-idle
+    return result
+
   send-reset-crash-rate-limit -> none:
     connection_.send "toit/resetCrashRateLimit" null
 

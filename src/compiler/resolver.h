@@ -94,6 +94,27 @@ class Resolver {
     return show_export_references_;
   }
 
+  /// A resolved reference from an `implements` or `with` clause.
+  ///
+  /// During resolution, each AST expression in a class's `implements` or
+  /// `with` clause is resolved to an `ir::Class*`.  We record these
+  /// mappings before the resolver's flattening passes (`flatten_mixins`
+  /// and `check_interface_implementations_and_flatten`) replace the IR
+  /// interface/mixin lists with their transitive closures.  After
+  /// flattening, positional correspondence between the IR and AST lists
+  /// is lost, so the rename pipeline needs this explicit mapping to find
+  /// the source-level expressions for a given IR class.
+  struct ClassHierarchyReference {
+    ir::Class* holder;       // The class containing the implements/with clause.
+    ir::Class* target;       // The resolved interface or mixin.
+    ast::Expression* ast_node;  // The AST expression in the clause.
+  };
+
+  /// Returns all class hierarchy references collected during resolution.
+  const std::vector<ClassHierarchyReference>& class_hierarchy_references() const {
+    return class_hierarchy_references_;
+  }
+
  private:
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
@@ -102,6 +123,7 @@ class Resolver {
   UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
   std::vector<ir::AssignmentGlobal*> global_assignments_;
   std::vector<ShowExportReference> show_export_references_;
+  std::vector<ClassHierarchyReference> class_hierarchy_references_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 

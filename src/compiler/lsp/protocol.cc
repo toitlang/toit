@@ -208,5 +208,13 @@ void LspPrepareRenameProtocol::emit(const char* path, int start_line, int start_
                placeholder == null ? "" : placeholder);
 }
 
+void LspSelectionRangeProtocol::emit_range_count(int count) {
+  this->printf("%d\n", count);
+}
+
+void LspSelectionRangeProtocol::emit_range(const LspRange& range) {
+  write_range(range);
+}
+
 } // namespace toit::compiler
 } // namespace toit

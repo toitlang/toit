@@ -864,38 +864,39 @@ static void emit_override_definitions(
 }
 
 // Emits class hierarchy references (extends, implements, with clauses).
+//
+// For `extends` clauses, we use direct pointer comparison on the IR super
+// class (which is never flattened) and the corresponding AST expression.
+//
+// For `implements` and `with` clauses, we use the class_hierarchy_references
+// collected during resolution — before the flattening passes replaced the
+// IR interface/mixin lists with their transitive closures.  Each entry
+// maps an (ir::Class* holder, ir::Class* target) pair to the AST expression
+// in the source clause, giving us exact pointer-identity matching without
+// any text-based or positional heuristics.
 static void emit_class_hierarchy_references(
     ir::Class* target_class,
     ir::Program* program,
     UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    const std::vector<Resolver::ClassHierarchyReference>& class_hierarchy_references,
     FindReferencesVisitor& visitor) {
+  // Extends clauses: the super pointer is 1:1 and never flattened.
   for (auto* klass : program->classes()) {
-    auto* ast_node = ir_to_ast.lookup(klass);
-    if (ast_node == null || !ast_node->is_Class()) continue;
-    auto* ast_class = ast_node->as_Class();
-
     if (klass->has_super() && klass->super() == target_class) {
-      if (ast_class->super() != null) {
-        visitor.emit_range(class_reference_range(ast_class->super()));
+      auto* ast_node = ir_to_ast.lookup(klass);
+      if (ast_node != null && ast_node->is_Class()) {
+        auto* ast_class = ast_node->as_Class();
+        if (ast_class->super() != null) {
+          visitor.emit_range(class_reference_range(ast_class->super()));
+        }
       }
     }
+  }
 
-    auto ir_interfaces = klass->interfaces();
-    auto ast_interfaces = ast_class->interfaces();
-    ASSERT(ir_interfaces.length() == ast_interfaces.length());
-    for (int i = 0; i < ir_interfaces.length(); i++) {
-      if (ir_interfaces[i] == target_class) {
-        visitor.emit_range(class_reference_range(ast_interfaces[i]));
-      }
-    }
-
-    auto ir_mixins = klass->mixins();
-    auto ast_mixins = ast_class->mixins();
-    ASSERT(ir_mixins.length() == ast_mixins.length());
-    for (int i = 0; i < ir_mixins.length(); i++) {
-      if (ir_mixins[i] == target_class) {
-        visitor.emit_range(class_reference_range(ast_mixins[i]));
-      }
+  // Implements/with clauses: use the pre-flattening resolution data.
+  for (const auto& ref : class_hierarchy_references) {
+    if (ref.target == target_class) {
+      visitor.emit_range(class_reference_range(ref.ast_node));
     }
   }
 }
@@ -1064,7 +1065,8 @@ void find_and_emit_all_references(
     UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
-    const std::vector<Resolver::ShowExportReference>& show_export_references) {
+    const std::vector<Resolver::ShowExportReference>& show_export_references,
+    const std::vector<Resolver::ClassHierarchyReference>& class_hierarchy_references) {
   // When the target is a FieldStub (synthetic getter/setter), redirect to the
   // underlying Field. The user intends to rename the field, which requires
   // renaming all getter calls, setter calls, the field definition, and any
@@ -1173,7 +1175,8 @@ void find_and_emit_all_references(
   // Class-specific reference scanning.
   if (target->is_Class()) {
     auto* target_class = target->as_Class();
-    emit_class_hierarchy_references(target_class, program, ir_to_ast, visitor);
+    emit_class_hierarchy_references(target_class, program, ir_to_ast,
+                                    class_hierarchy_references, visitor);
     emit_type_annotation_references(target_class, program, ir_to_ast, visitor);
   }
 
