@@ -77,6 +77,7 @@ public:
   void do_close() override {
     CloseHandle(read_overlapped_.hEvent);
     CloseHandle(write_overlapped_.hEvent);
+    CloseHandle(comm_events_overlapped_.hEvent);
     CloseHandle(uart_);
   }
 
@@ -111,6 +112,10 @@ public:
   }
 
   bool send(const uint8* buffer, word length) {
+    // The caller must ensure that the previous write has completed before
+    // calling send again. If write_ready_ is false, the previous WriteFile
+    // is still using write_buffer_ and freeing it would be a use-after-free.
+    ASSERT(write_ready_);
     if (write_buffer_ != null) free(write_buffer_);
 
     write_ready_ = false;
@@ -145,6 +150,10 @@ public:
           DWORD errors;
           ClearCommError(uart_, &errors, NULL);
           state |= kErrorState;
+        }
+        if (event_mask_ & EV_TXEMPTY) {
+          // The hardware FIFO drained. Wake any flush() waiter.
+          state |= kWriteState;
         }
 
         if (!issue_comm_events_request()) {
@@ -344,7 +353,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(get_baud_rate) {
   ARGS(UartResource, uart_resource);
-  DCB dcb;
+  DCB dcb{};
+  dcb.DCBlength = sizeof(DCB);
 
   bool success = GetCommState(uart_resource->uart(), &dcb);
   if (!success) WINDOWS_ERROR;
@@ -355,6 +365,7 @@ PRIMITIVE(get_baud_rate) {
 PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart_resource, int, baud_rate);
   DCB dcb{};
+  dcb.DCBlength = sizeof(DCB);
   bool success = GetCommState(uart_resource->uart(), &dcb);
   if (!success) WINDOWS_ERROR;
 
@@ -383,7 +394,20 @@ PRIMITIVE(write) {
 }
 
 PRIMITIVE(wait_tx) {
-  FAIL(UNIMPLEMENTED); // TODO(mikkel), Use WaitEvent on EV_TXEMPTY
+  ARGS(UartResource, uart_resource);
+  if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
+  // If a WriteFile is still pending, the data hasn't even reached the OS
+  // output queue yet. Wait for the write completion (kWriteState) first.
+  if (!uart_resource->ready_for_write()) return BOOL(false);
+
+  DWORD errors;
+  COMSTAT comstat;
+  if (!ClearCommError(uart_resource->uart(), &errors, &comstat)) WINDOWS_ERROR;
+  // cbOutQue is the OS output queue. When it reaches 0 the kernel has handed
+  // the data to the driver; the EV_TXEMPTY notification is what tells us the
+  // hardware FIFO has fully drained, but for non-zero queue depths we just
+  // return false and let Toit wait for kWriteState.
+  return BOOL(comstat.cbOutQue == 0);
 }
 
 PRIMITIVE(read) {
@@ -394,7 +418,14 @@ PRIMITIVE(read) {
   if (!uart_resource->receive_read_response()) WINDOWS_ERROR;
 
   DWORD available = uart_resource->read_count();
-  if (available == 0) return process->null_object();
+  if (available == 0) {
+    // A 0-byte completion can happen on cancellation, device removal, or
+    // certain virtual COM driver behaviors. We must always re-arm the read,
+    // otherwise no future read_overlapped event will fire and Toit will
+    // wait forever on READ-STATE_.
+    if (!uart_resource->issue_read_request()) WINDOWS_ERROR;
+    return process->null_object();
+  }
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(available));
   if (array == null) FAIL(ALLOCATION_FAILED);
@@ -451,7 +482,8 @@ PRIMITIVE(get_control_flags) {
 }
 
 PRIMITIVE(errors) {
-  ARGS(IntResource, resource);
+  ARGS(UartResource, uart_resource);
+  USE(uart_resource);
   return Smi::from(0);
 }
 
