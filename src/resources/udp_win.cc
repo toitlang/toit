@@ -458,10 +458,28 @@ PRIMITIVE(get_option) {
     case UDP_MULTICAST_TTL:
       return get_int_option(socket, IPPROTO_IP, IP_MULTICAST_TTL, process);
 
+    case UDP_MULTICAST_IF: {
+      struct in_addr addr;
+      int len = sizeof(addr);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_IF,
+                     reinterpret_cast<char*>(&addr), &len) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      // Return the 4-byte address as a byte array.
+      ByteArray* result = process->allocate_byte_array(4);
+      if (result == null) FAIL(ALLOCATION_FAILED);
+      ByteArray::Bytes bytes(result);
+      memcpy(bytes.address(), &addr.s_addr, 4);
+      return result;
+    }
+
     case UDP_REUSE_ADDRESS:
       return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
 
-
+    // Windows does not have SO_REUSEPORT. On Windows, SO_REUSEADDR already
+    // provides the port-reuse semantics that SO_REUSEPORT gives on Linux/BSD.
+    case UDP_REUSE_PORT:
+      return get_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, process);
 
     default:
       FAIL(UNIMPLEMENTED);
@@ -522,6 +540,25 @@ PRIMITIVE(set_option) {
       break;
     }
 
+    case UDP_MULTICAST_LEAVE: {
+      Blob bytes;
+      if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (bytes.length() != 4) {
+        FAIL(OUT_OF_BOUNDS);
+      }
+      struct ip_mreq mreq;
+      memcpy(&mreq.imr_multiaddr.s_addr, bytes.address(), 4);
+      mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+      if (setsockopt(socket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+                     reinterpret_cast<char*>(&mreq),
+                     sizeof(mreq)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
     case UDP_MULTICAST_LOOPBACK:
       result = set_bool_option(socket, IPPROTO_IP, IP_MULTICAST_LOOP, raw, process);
       break;
@@ -530,7 +567,31 @@ PRIMITIVE(set_option) {
       result = set_int_option(socket, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
 
+    case UDP_MULTICAST_IF: {
+      Blob bytes;
+      if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (bytes.length() != 4) {
+        FAIL(OUT_OF_BOUNDS);
+      }
+      struct in_addr addr;
+      memcpy(&addr.s_addr, bytes.address(), 4);
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_IF,
+                     reinterpret_cast<const char*>(&addr),
+                     sizeof(addr)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
+    }
+
     case UDP_REUSE_ADDRESS:
+      result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
+      break;
+
+    // Windows does not have SO_REUSEPORT. On Windows, SO_REUSEADDR already
+    // provides the port-reuse semantics that SO_REUSEPORT gives on Linux/BSD.
+    case UDP_REUSE_PORT:
       result = set_bool_option(socket, SOL_SOCKET, SO_REUSEADDR, raw, process);
       break;
 

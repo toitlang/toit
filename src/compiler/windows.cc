@@ -23,55 +23,54 @@
 #include "windows.h"
 
 size_t getline(char** lineptr, size_t* n, FILE* stream) {
-    char* bufptr = NULL;
-    char* p = bufptr;
-    word size;
-    int c;
+  if (lineptr == NULL || stream == NULL || n == NULL) {
+    return -1;
+  }
 
-    if (lineptr == NULL) {
-        return -1;
-    }
-    if (stream == NULL) {
-        return -1;
-    }
-    if (n == NULL) {
-        return -1;
-    }
-    bufptr = *lineptr;
-    size = *n;
+  char* bufptr = *lineptr;
+  size_t size = *n;
 
-    c = fgetc(stream);
-    if (c == EOF) {
-        return -1;
-    }
+  int c = fgetc(stream);
+  if (c == EOF) {
+    return -1;
+  }
+
+  if (bufptr == NULL) {
+    bufptr = reinterpret_cast<char*>(malloc(128));
     if (bufptr == NULL) {
-        bufptr = reinterpret_cast<char*>(malloc(128));
-        if (bufptr == NULL) {
-            return -1;
-        }
-        size = 128;
+      return -1;
     }
-    p = bufptr;
-    while(c != EOF) {
-        if ((p - bufptr) > (size - 1)) {
-            size = size + 128;
-            bufptr = reinterpret_cast<char*>(realloc(bufptr, size));
-            if (bufptr == NULL) {
-                return -1;
-            }
-        }
-        *p++ = c;
-        if (c == '\n') {
-            break;
-        }
-        c = fgetc(stream);
+    size = 128;
+  }
+
+  size_t pos = 0;
+  while (c != EOF) {
+    // Ensure room for this character plus a null terminator.
+    if (pos + 1 >= size) {
+      size_t new_size = size + 128;
+      char* new_buf = reinterpret_cast<char*>(realloc(bufptr, new_size));
+      if (new_buf == NULL) {
+        // On failure, realloc leaves the old block intact.
+        // Write back what we have so the caller can free it.
+        *lineptr = bufptr;
+        *n = size;
+        return -1;
+      }
+      bufptr = new_buf;
+      size = new_size;
     }
+    bufptr[pos++] = c;
+    if (c == '\n') {
+      break;
+    }
+    c = fgetc(stream);
+  }
 
-    *p++ = '\0';
-    *lineptr = bufptr;
-    *n = size;
+  bufptr[pos] = '\0';
+  *lineptr = bufptr;
+  *n = size;
 
-    return p - bufptr - 1;
+  return pos;
 }
 
 #endif
