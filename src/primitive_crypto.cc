@@ -42,6 +42,10 @@
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
+#include "vm.h"
+#include "scheduler.h"
+#include "os.h"
+#include "event_sources/async_posix.h"
 
 #if (defined(MBEDTLS_CHACHAPOLY_C) && defined(MBEDTLS_CHACHA20_C)) || (defined(CONFIG_MBEDTLS_POLY1305_C) && defined(CONFIG_MBEDTLS_CHACHA20_C))
 #define SUPPORT_CHACHA20_POLY1305 1
@@ -758,7 +762,7 @@ PRIMITIVE(aes_ecb_close) {
 }
 
 
-static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
+static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
 #ifdef TOIT_ESP32
   esp_fill_random(buffer, len);
 #else
@@ -790,7 +794,7 @@ static bool is_pem(Blob key) {
 // For private keys, an optional password blob may be supplied (length 0 = none).
 // Returns 0 on success, a non-zero mbedtls error code on failure.
 // The caller is responsible for calling mbedtls_pk_free on *pk in all cases.
-static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private) {
+static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private, Process* process) {
   // mbedtls_pk_parse_key / mbedtls_pk_parse_public_key require the buffer to
   // be null-terminated when the input is PEM. For DER, the null byte is
   // actually harmful if it's passed as part of the length.
@@ -820,7 +824,7 @@ static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob passwo
     ret = mbedtls_pk_parse_key(pk,
                                parse_buf, parse_len,
                                pwd, password.length(),
-                               rsa_rng, NULL);
+                               rsa_rng, null);
   } else {
     ret = mbedtls_pk_parse_public_key(pk, parse_buf, parse_len);
   }
@@ -870,6 +874,199 @@ static ByteArray* rsa_export_der(mbedtls_pk_context* pk, Process* process, bool 
 static const int RSA_PADDING_PKCS1_V15 = 0;
 static const int RSA_PADDING_OAEP_V21  = 1;
 
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+
+class RsaGenerationEventSource : public AsyncEventSource {
+ public:
+  static RsaGenerationEventSource* instance() {
+    static RsaGenerationEventSource* instance = _new RsaGenerationEventSource();
+    return instance;
+  }
+ private:
+  RsaGenerationEventSource() : AsyncEventSource("RsaGeneration") {}
+};
+
+class RsaGenerationResourceGroup : public ResourceGroup {
+ public:
+  TAG(RsaGenerationResourceGroup);
+  explicit RsaGenerationResourceGroup(Process* process)
+      : ResourceGroup(process, RsaGenerationEventSource::instance()) {}
+
+ protected:
+  uint32 on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
+};
+
+class RsaGenerationResource : public Resource {
+ public:
+  TAG(RsaGenerationResource);
+  explicit RsaGenerationResource(RsaGenerationResourceGroup* group, int bits)
+      : Resource(group), bits_(bits) {}
+
+  ~RsaGenerationResource() {
+    delete thread_;
+    if (prv_buf_) free(prv_buf_);
+    if (pub_buf_) free(pub_buf_);
+  }
+
+  int bits() const { return bits_; }
+
+  void set_results(unsigned char* prv, size_t prv_len, unsigned char* pub, size_t pub_len) {
+    prv_buf_ = prv;
+    prv_len_ = prv_len;
+    pub_buf_ = pub;
+    pub_len_ = pub_len;
+  }
+
+  unsigned char* prv_buf() { return prv_buf_; }
+  size_t prv_len() { return prv_len_; }
+  unsigned char* pub_buf() { return pub_buf_; }
+  size_t pub_len() { return pub_len_; }
+
+  int error() const { return error_; }
+  void set_error(int error) { error_ = error; }
+
+  AsyncEventThread* thread() {
+    if (thread_ == null) {
+      thread_ = _new AsyncEventThread("RSA Gen", RsaGenerationEventSource::instance());
+      if (thread_) thread_->start();
+    }
+    return thread_;
+  }
+
+ private:
+  int bits_;
+  int error_ = 0;
+  unsigned char* prv_buf_ = null;
+  size_t prv_len_ = 0;
+  unsigned char* pub_buf_ = null;
+  size_t pub_len_ = 0;
+  AsyncEventThread* thread_ = null;
+};
+
+PRIMITIVE(rsa_generate_init) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  RsaGenerationResourceGroup* group = _new RsaGenerationResourceGroup(process);
+  if (group == null) FAIL(MALLOC_FAILED);
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(rsa_generate_start) {
+  ARGS(RsaGenerationResourceGroup, group, int, bits);
+  if (bits != 1024 && bits != 2048 && bits != 3072 && bits != 4096) FAIL(INVALID_ARGUMENT);
+
+  RsaGenerationResource* resource = _new RsaGenerationResource(group, bits);
+  if (!resource) FAIL(MALLOC_FAILED);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) {
+    delete resource;
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  AsyncEventThread* thread = resource->thread();
+  if (!thread) {
+    delete resource;
+    FAIL(MALLOC_FAILED);
+  }
+
+  bool success = thread->run(resource, [](Resource* r) {
+    RsaGenerationResource* res = static_cast<RsaGenerationResource*>(r);
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+    int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+    if (ret == 0) {
+      ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, res->bits(), 65537);
+    }
+
+    if (ret == 0) {
+      unsigned char* prv = (unsigned char*)malloc(RSA_PRV_DER_MAX_BYTES);
+      unsigned char* pub = (unsigned char*)malloc(RSA_PUB_DER_MAX_BYTES);
+      if (!prv || !pub) {
+        free(prv); free(pub);
+        ret = MBEDTLS_ERR_PK_ALLOC_FAILED;
+      } else {
+        int prv_len = mbedtls_pk_write_key_der(&pk, prv, RSA_PRV_DER_MAX_BYTES);
+        int pub_len = mbedtls_pk_write_pubkey_der(&pk, pub, RSA_PUB_DER_MAX_BYTES);
+        if (prv_len < 0 || pub_len < 0) {
+          ret = prv_len < 0 ? prv_len : pub_len;
+          free(prv); free(pub);
+        } else {
+          // mbedtls writes from the end. Move to start.
+          memmove(prv, prv + RSA_PRV_DER_MAX_BYTES - prv_len, prv_len);
+          memmove(pub, pub + RSA_PUB_DER_MAX_BYTES - pub_len, pub_len);
+
+          unsigned char* prv_resized = (unsigned char*)realloc(prv, prv_len);
+          if (prv_resized != null) prv = prv_resized;
+
+          unsigned char* pub_resized = (unsigned char*)realloc(pub, pub_len);
+          if (pub_resized != null) pub = pub_resized;
+
+          res->set_results(prv, prv_len, pub, pub_len);
+        }
+      }
+    }
+    mbedtls_pk_free(&pk);
+    res->set_error(ret);
+    return (word)1; // Indicate done.
+  });
+
+  if (!success) {
+    delete resource;
+    FAIL(INVALID_STATE);
+  }
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  return proxy;
+}
+
+PRIMITIVE(rsa_generate_finish) {
+  ARGS(RsaGenerationResource, resource);
+  if (resource->error() != 0) {
+    int err = resource->error();
+    resource->resource_group()->unregister_resource(resource);
+    resource_proxy->clear_external_address();
+    return tls_error(null, process, err);
+  }
+
+  ByteArray* prv_der = process->allocate_byte_array(resource->prv_len());
+  ByteArray* pub_der = process->allocate_byte_array(resource->pub_len());
+  if (!prv_der || !pub_der) {
+    resource->resource_group()->unregister_resource(resource);
+    resource_proxy->clear_external_address();
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  memcpy(ByteArray::Bytes(prv_der).address(), resource->prv_buf(), resource->prv_len());
+  memcpy(ByteArray::Bytes(pub_der).address(), resource->pub_buf(), resource->pub_len());
+
+  Array* pair = process->object_heap()->allocate_array(2, process->null_object());
+  if (pair == null) {
+    resource->resource_group()->unregister_resource(resource);
+    FAIL(ALLOCATION_FAILED);
+  }
+  pair->at_put(0, prv_der);
+  pair->at_put(1, pub_der);
+
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+
+  return pair;
+}
+
+PRIMITIVE(rsa_generate_close) {
+  ARGS(RsaGenerationResourceGroup, group);
+  group->tear_down();
+  group_proxy->clear_external_address();
+  return process->null_object();
+}
+
+#endif // CONFIG_TOIT_CRYPTO_EXTRA
+
 // rsa_generate returns [private_key_der, public_key_der] as a Toit Array.
 PRIMITIVE(rsa_generate) {
   ARGS(int, bits);
@@ -885,7 +1082,7 @@ PRIMITIVE(rsa_generate) {
     return tls_error(null, process, ret);
   }
 
-  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, NULL, bits, 65537);
+  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, bits, 65537);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -926,7 +1123,7 @@ PRIMITIVE(rsa_sign) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -939,7 +1136,7 @@ PRIMITIVE(rsa_sign) {
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
   ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
-                        sig, sizeof(sig), &actual_len, rsa_rng, NULL);
+                        sig, sizeof(sig), &actual_len, rsa_rng, null);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);
@@ -961,7 +1158,7 @@ PRIMITIVE(rsa_verify) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -983,7 +1180,7 @@ PRIMITIVE(rsa_get_private_key_der) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, key, password, true);
+  int ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1012,9 +1209,9 @@ PRIMITIVE(rsa_get_public_key_der) {
 
   // Try parsing as a private key first (which contains the public key).
   // If that fails, try as a public key.
-  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true, process);
   if (ret != 0) {
-    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false);
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
   }
   if (ret != 0) {
     mbedtls_pk_free(&pk);
@@ -1045,7 +1242,7 @@ PRIMITIVE(rsa_encrypt) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1068,7 +1265,7 @@ PRIMITIVE(rsa_encrypt) {
 
   size_t output_len = 0;
   ret = mbedtls_pk_encrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);
@@ -1086,7 +1283,7 @@ PRIMITIVE(rsa_decrypt) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) {
     mbedtls_pk_free(&pk);
     return tls_error(null, process, ret);
@@ -1109,7 +1306,7 @@ PRIMITIVE(rsa_decrypt) {
 
   size_t output_len = 0;
   ret = mbedtls_pk_decrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
   mbedtls_pk_free(&pk);
 
   if (ret != 0) return tls_error(null, process, ret);

@@ -5,6 +5,7 @@
 import .sha
 import .sha1
 import ..io as io
+import monitor show ResourceState_
 import encoding.base64
 
 /**
@@ -124,7 +125,18 @@ class RsaKey:
   */
   static generate --bits/int=2048 -> RsaKeyPair:
     if bits != 1024 and bits != 2048 and bits != 3072 and bits != 4096: throw "INVALID_ARGUMENT"
-    pair := rsa-generate_ bits
+    pair := null
+    catch --trace=(: it != "UNIMPLEMENTED"):
+      resource := RsaGenerationResource_ bits
+      try:
+        resource.wait
+        pair = resource.finish
+      finally:
+        resource.close
+
+    if not pair:
+      pair = rsa-generate_ bits
+
     return RsaKeyPair
         RsaKey.internal_ pair[0] true
         RsaKey.internal_ pair[1] false
@@ -279,4 +291,44 @@ rsa-encrypt_ public-key-der/ByteArray data/ByteArray padding/int hash/int -> Byt
 // Primitive: decrypt data with a private key DER blob.
 rsa-decrypt_ private-key-der/ByteArray data/ByteArray padding/int hash/int -> ByteArray:
   #primitive.crypto.rsa-decrypt
-  
+
+class RsaGenerationResource_:
+  group_ := null
+  state_ := null
+
+  constructor bits/int:
+    group_ = rsa-generate-init_
+    add-finalizer this:: close
+    resource-id := rsa-generate-start_ group_ bits
+    state_ = ResourceState_ group_ resource-id
+
+  wait -> none:
+    state_.wait
+
+  finish -> List:
+    return rsa-generate-finish_ state_.resource
+
+  close:
+    if not group_: return
+    critical-do:
+      if state_: state_.dispose
+      state_ = null
+      rsa-generate-close_ group_
+      group_ = null
+      remove-finalizer this
+
+/** Initializes a resource group for RSA key generation. */
+rsa-generate-init_:
+  #primitive.crypto.rsa-generate-init
+
+/** Starts the asynchronous RSA key generation. */
+rsa-generate-start_ group bits/int:
+  #primitive.crypto.rsa-generate-start
+
+/** Finishes the asynchronous RSA key generation and returns the key pair. */
+rsa-generate-finish_ resource-id -> List:
+  #primitive.crypto.rsa-generate-finish
+
+/** Closes the RSA generation resource group. */
+rsa-generate-close_ group -> none:
+  #primitive.crypto.rsa-generate-close
