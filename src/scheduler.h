@@ -147,8 +147,6 @@ class Scheduler {
   bool is_locked() const { return OS::is_locked(mutex_); }
   bool is_boot_process(Process* process) const { return boot_process_ == process; }
 
-  Mutex* mutex() const { return mutex_; }
-
   void iterate_process_chunks(void* context, process_chunk_callback_t callback);
 
  private:

@@ -996,18 +996,16 @@ PRIMITIVE(rsa_generate_start) {
           free(prv); free(pub);
         } else {
           // mbedtls writes from the end. Move to start.
-          unsigned char* prv_start = (unsigned char*)malloc(prv_len);
-          unsigned char* pub_start = (unsigned char*)malloc(pub_len);
-          if (!prv_start || !pub_start) {
-            free(prv_start); free(pub_start);
-            free(prv); free(pub);
-            ret = MBEDTLS_ERR_PK_ALLOC_FAILED;
-          } else {
-            memcpy(prv_start, prv + RSA_PRV_DER_MAX_BYTES - prv_len, prv_len);
-            memcpy(pub_start, pub + RSA_PUB_DER_MAX_BYTES - pub_len, pub_len);
-            res->set_results(prv_start, prv_len, pub_start, pub_len);
-            free(prv); free(pub);
-          }
+          memmove(prv, prv + RSA_PRV_DER_MAX_BYTES - prv_len, prv_len);
+          memmove(pub, pub + RSA_PUB_DER_MAX_BYTES - pub_len, pub_len);
+
+          unsigned char* prv_resized = (unsigned char*)realloc(prv, prv_len);
+          if (prv_resized != null) prv = prv_resized;
+
+          unsigned char* pub_resized = (unsigned char*)realloc(pub, pub_len);
+          if (pub_resized != null) pub = pub_resized;
+
+          res->set_results(prv, prv_len, pub, pub_len);
         }
       }
     }
