@@ -314,18 +314,18 @@ in `build/esp32/firmware.envelope`:
 make esp32
 ```
 
-If you want to flash the generated firmware on your device, you can use the `firmware`
-too. Internally, the `firmware` tool calls out to
-[esptool](https://github.com/espressif/esptool)
-so you need to install that one first.
-You can also set the environment variable `ESPTOOL_PATH` to point
-to a valid esptool (for example the one in the shipped esp-idf:
-`export ESPTOOL_PATH=$PWD/third_party/esp-idf/components/esptool_py/esptool/esptool.py`).
-Assuming your device is connected through `/dev/ttyUSB0`
-you can then flash a device as follows:
+For other chip variants use the corresponding make target. For example, for the ESP32-C6 which would generate in `build/esp32c6/firmware.envelope`:
 
 ``` sh
-build/host/sdk/lib/toit/tool firmware -e build/esp32/firmware.envelope \
+make esp32c6
+```
+
+If you want to flash the generated firmware on your device, you can use the `firmware`
+tool. Internally it calls the bundled esptool from the esp-idf submodule.
+You can override this with the `ESPTOOL_PATH` environment variable if you want to use a different version of esptool.
+
+``` sh
+build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
 
@@ -339,6 +339,39 @@ build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
 build/host/sdk/bin/toit tool firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
+
+### Flashing with Jaguar (live reloading)
+
+To run Jaguar on your locally built firmware, compile the Jaguar service snapshot
+using your SDK (so the versions match) and install it as a container before flashing.
+The Jaguar source lives in [toitlang/jaguar](https://github.com/toitlang/jaguar).
+Set `JAG_PATH` to its location, or leave it unset to default to `../jaguar`
+(i.e. checked out alongside this repo):
+
+``` sh
+JAG_PATH=${JAG_PATH:-../jaguar}
+
+# Install jaguar's dependencies and compile its service snapshot
+build/host/sdk/bin/toit pkg --project-root="$JAG_PATH" install
+build/host/sdk/bin/toit compile -O2 --snapshot \
+    -o /tmp/jaguar.snapshot "$JAG_PATH/src/jaguar.toit"
+
+# Add jaguar to the firmware envelope
+build/host/sdk/bin/toit tool firmware \
+    -e build/esp32c6/firmware.envelope \
+    container install -o /tmp/firmware-jaguar.envelope \
+    jaguar /tmp/jaguar.snapshot
+
+# Flash with WiFi credentials
+# echo '{ "wifi": { "wifi.ssid": "YourSSID", "wifi.password": "YourPassword" } }' > wifi.json
+build/host/sdk/bin/toit tool firmware \
+    -e /tmp/firmware-jaguar.envelope \
+    flash --config wifi.json --port /dev/ttyACM0 --baud 921600
+```
+
+> **Note:** The jaguar snapshot must be compiled with the same SDK version as the
+> firmware envelope. `jag flash` alone uses jag's pre-built snapshot which is pinned
+> to a release tag and will not match a local dev build's version suffix.
 
 ### Adding multiple containers
 
