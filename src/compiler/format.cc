@@ -280,6 +280,17 @@ class Formatter {
   }
 
   void emit_stmt(Expression* stmt, int indent) {
+    // Freeze rule: a statement that contains a multi-line `/* ... */`
+    // block comment is emitted as a verbatim leaf (Δ-shift only). The
+    // author probably aligned text visually with the `/*`; finer
+    // re-indent via the body-recursing dispatches would break that.
+    int stmt_from = pos(stmt->full_range().from());
+    int stmt_to = pos(stmt->full_range().to());
+    if (has_interior_multiline_block_comment(stmt_from, stmt_to)) {
+      emit_leaf(stmt, indent);
+      return;
+    }
+
     // Flat-test mode: try to emit every statement-position expression in
     // its flat form first. Only kicks in for expression kinds the flat
     // emitter knows how to render — which excludes If/While/For and
@@ -345,6 +356,25 @@ class Formatter {
       int cf = pos(cr.from());
       int ct = pos(cr.to());
       if (cf >= from && ct <= to) return true;
+    }
+    return false;
+  }
+
+  // Whether [from, to) contains a `/* ... */` comment that actually spans
+  // more than one source line. Line-spanning block comments freeze the
+  // enclosing statement: the author probably aligned something visually
+  // against the `/*`, and the safest behaviour is to reproduce the whole
+  // statement verbatim (Δ-shift only, no finer re-indent).
+  bool has_interior_multiline_block_comment(int from, int to) const {
+    for (int i = 0; i < comments_.length(); i++) {
+      auto c = comments_[i];
+      if (!c.is_multiline()) continue;  // skip '// ...'
+      int cf = pos(c.range().from());
+      int ct = pos(c.range().to());
+      if (cf < from || ct > to) continue;
+      for (int j = cf; j < ct; j++) {
+        if (text_[j] == '\n') return true;
+      }
     }
     return false;
   }

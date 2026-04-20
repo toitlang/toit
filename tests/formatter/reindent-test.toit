@@ -175,6 +175,25 @@ CASES ::= [
         """,
 
   Case
+      --label="multi-line block comment inside an if freezes the statement"
+      --input="""
+        main:
+              if true:
+                  x := 1
+                  /* block
+                     comment */
+                  y := 2
+        """
+      --expected="""
+        main:
+          if true:
+              x := 1
+              /* block
+                 comment */
+              y := 2
+        """,
+
+  Case
       --label="comments between body statements shift with the body"
       --input="""
         main:
