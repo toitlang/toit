@@ -57,6 +57,40 @@ CASES ::= [
           a + b * c
           a * b + c
         """,
+
+  Case
+      --label="unary and dot are emitted without extra whitespace"
+      --input="""
+        main:
+          foo := 0
+          a := 1
+          -a
+          not a
+          foo.bar
+        """
+      --expected="""
+        main:
+          foo := 0
+          a := 1
+          -a
+          not a
+          foo.bar
+        """,
+
+  Case
+      --label="unary over parenthesized binary keeps the parens"
+      --input="""
+        main:
+          a := 1
+          b := 2
+          -(a + b)
+        """
+      --expected="""
+        main:
+          a := 1
+          b := 2
+          -(a + b)
+        """,
 ]
 
 main args:

@@ -341,6 +341,12 @@ class Formatter {
       Binary* b = expr->as_Binary();
       return can_emit_flat(b->left()) && can_emit_flat(b->right());
     }
+    if (expr->is_Unary()) {
+      return can_emit_flat(expr->as_Unary()->expression());
+    }
+    if (expr->is_Dot()) {
+      return can_emit_flat(expr->as_Dot()->receiver());
+    }
     return false;
   }
 
@@ -371,6 +377,35 @@ class Formatter {
       out->append(" ");
       emit_expr_flat(b->right(), prec, out);
       if (parens) out->append(")");
+      return;
+    }
+    if (expr->is_Unary()) {
+      Unary* u = expr->as_Unary();
+      // Unary binds tighter than every binary operator — treat it as
+      // PRECEDENCE_POSTFIX for the purpose of wrapping the operand.
+      bool parens = PRECEDENCE_POSTFIX <= outer_prec && outer_prec != PRECEDENCE_NONE;
+      if (parens) out->append("(");
+      const char* op = Token::symbol(u->kind()).c_str();
+      if (u->prefix()) {
+        out->append(op);
+        // `not` is a keyword, separate with a space; punctuation operators stay glued.
+        if (u->kind() == Token::NOT) out->append(" ");
+        emit_expr_flat(u->expression(), PRECEDENCE_POSTFIX, out);
+      } else {
+        emit_expr_flat(u->expression(), PRECEDENCE_POSTFIX, out);
+        out->append(op);
+      }
+      if (parens) out->append(")");
+      return;
+    }
+    if (expr->is_Dot()) {
+      Dot* d = expr->as_Dot();
+      emit_expr_flat(d->receiver(), PRECEDENCE_POSTFIX, out);
+      out->append(".");
+      // Dot's name is an Identifier — append its source bytes directly.
+      int nfrom = pos(d->name()->full_range().from());
+      int nto = pos(d->name()->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + nfrom, nto - nfrom);
       return;
     }
     // Leaf: copy source bytes verbatim.
