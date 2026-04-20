@@ -78,9 +78,12 @@ static Shape shape_from_source_range(const uint8* text, int from, int to) {
 // depth in the tree. Horizontal layout within a statement is left verbatim;
 // continuation lines shift by the same delta as the statement's first line.
 //
-// Scope at M2: recursion into Class members and Method bodies only.
-// If/While/For/TryFinally/Lambda/Block bodies are treated as leaves (their
-// contents shift with the enclosing statement).
+// Currently recurses into Class members, Method bodies, If (with optional
+// else), While, For, and TryFinally. Block and Lambda bodies still ride
+// with their enclosing statement — they live inside expression position
+// (as Call arguments, typically), and re-indenting them needs the Call
+// emitter to hand off to a block-aware path. That's scheduled for the
+// always-flat layout work.
 class Formatter {
  public:
   Formatter(Unit* unit, List<Scanner::Comment> comments)
@@ -288,15 +291,40 @@ class Formatter {
     } else if (stmt->is_For()) {
       auto body = as_suite_body(stmt->as_For()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
+    } else if (stmt->is_TryFinally()) {
+      if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
-    // TryFinally is intentionally left as a leaf. The pattern would be the
-    // same as emit_if (two suites, a continuation header), but the parser
-    // sometimes sets a body expression's full_range to end before the
-    // closing bracket of its last sub-expression (seen with multi-line
-    // LiteralList inside `return [...]`). That makes the
-    // find_next_significant scan for the `finally:` keyword trip on the
-    // `]` and re-indent it. Needs an AST-side fix before this is safe.
     emit_leaf(stmt, indent);
+  }
+
+  bool emit_try_finally(TryFinally* tf, int indent) {
+    auto body = tf->body() == null
+        ? List<Expression*>()
+        : tf->body()->expressions();
+    auto handler = tf->handler() == null
+        ? List<Expression*>()
+        : tf->handler()->expressions();
+    if (body.is_empty() || handler.is_empty()) return false;
+
+    int node_start = pos(tf->full_range().from());
+    int node_end = pos(tf->full_range().to());
+    int body_first_line_start = find_line_start(pos(body.first()->full_range().from()));
+    if (body_first_line_start <= node_start) return false;
+
+    emit_range_reindent(node_start, body_first_line_start, indent);
+    for (auto expr : body) {
+      emit_stmt(expr, indent + INDENT_STEP);
+    }
+
+    int handler_first_line_start =
+        find_line_start(pos(handler.first()->full_range().from()));
+    emit_continuation_header(handler_first_line_start, indent);
+    for (auto expr : handler) {
+      emit_stmt(expr, indent + INDENT_STEP);
+    }
+
+    advance_to(node_end);
+    return true;
   }
 
   // Emits an If at `indent`, including its else branch if present.
