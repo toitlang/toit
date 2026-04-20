@@ -75,6 +75,7 @@ class Node;
   V(LiteralSet)                 \
   V(LiteralMap)                 \
   V(ToitdocReference)           \
+  V(TokenNode)                  \
 
 #define DECLARE(name) class name;
 NODES(DECLARE)
@@ -198,13 +199,15 @@ class Import : public Node {
          List<Identifier*> segments,
          Identifier* prefix,
          List<Identifier*> show_identifiers,
-         bool show_all)
+         bool show_all,
+         List<TokenNode*> tokens)
       : is_relative_(is_relative)
       , dot_outs_(dot_outs)
       , segments_(segments)
       , prefix_(prefix)
       , show_identifiers_(show_identifiers)
       , show_all_(show_all)
+      , tokens_(tokens)
       , unit_(null) {
     // Can't have a prefix with show.
     ASSERT(prefix == null || show_identifiers.is_empty());
@@ -232,6 +235,8 @@ class Import : public Node {
 
   bool show_all() const { return show_all_; }
 
+  List<TokenNode*> tokens() const { return tokens_; }
+
   Unit* unit() const { return unit_; }
   void set_unit(Unit* unit) { unit_ = unit; }
 
@@ -244,6 +249,7 @@ class Import : public Node {
   Identifier* prefix_;
   List<Identifier*> show_identifiers_;
   bool show_all_;
+  List<TokenNode*> tokens_;
   Unit* unit_;
 };
 
@@ -1136,6 +1142,37 @@ class ToitdocReference : public Node {
   bool is_setter_;
   List<Parameter*> parameters_;
   Source::Range closing_paren_ = Source::Range::invalid();
+};
+
+/// A token is a node that represents a scanner token.
+/// These tokens aren't relevant to resolution as their effect are
+/// recorded differently. For example a 'static' keyword is simply added as a
+/// boolean to other nodes.
+/// However, in some cases (formatting, or semantic tokens in the LSP) we want
+/// to have the position of each input token, as they can interact with
+/// comments.
+/// Token nodes are not traversed in the standard traversing visitor.
+class TokenNode : public Node {
+ public:
+  explicit TokenNode(Token::Kind token)
+      : token_(token), symbol_(Symbol::invalid()) {}
+
+  explicit TokenNode(Symbol symbol)
+      : token_(Token::INVALID), symbol_(symbol) {}
+
+  IMPLEMENTS(TokenNode)
+
+  Token::Kind token() const {
+    ASSERT(token_ != Token::INVALID);
+    return token_;
+  }
+  Symbol symbol() const {
+    ASSERT(symbol_.is_valid());
+    return symbol_;
+  }
+ private:
+  Token::Kind token_;
+  Symbol symbol_;
 };
 
 #undef IMPLEMENTS
