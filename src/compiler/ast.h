@@ -820,7 +820,9 @@ class Index : public Expression {
   }
 
   Source::Range full_range() const override {
-    return selection_range().extend(closing_range_);
+    return selection_range()
+        .extend(receiver_->full_range())
+        .extend(closing_range_);
   }
 
  private:
@@ -848,7 +850,9 @@ class IndexSlice : public Expression {
   }
 
   Source::Range full_range() const override {
-    return selection_range().extend(closing_range_);
+    return selection_range()
+        .extend(receiver_->full_range())
+        .extend(closing_range_);
   }
 
  private:

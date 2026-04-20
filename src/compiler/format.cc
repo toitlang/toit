@@ -222,10 +222,9 @@ class Formatter {
     emit_leaf(stmt, indent);
   }
 
-  // The parser sets a few nodes' full_range to exclude parts of their source
-  // span (Index/IndexSlice drop the receiver). Rather than work around
-  // those cases, we conservatively accept only nodes whose full_range is
-  // known to cover every byte of their source text.
+  // Conservatively accept only nodes whose full_range is known to cover
+  // every byte of their source text. Composite nodes are reliable iff all
+  // of their sub-ranges are reliable.
   bool has_reliable_full_range(Node* node) const {
     if (node->is_Identifier()) return true;
     if (node->is_LiteralNull()) return true;
@@ -235,11 +234,40 @@ class Formatter {
     if (node->is_LiteralCharacter()) return true;
     if (node->is_LiteralFloat()) return true;
     if (node->is_LiteralString()) return true;
-    if (node->is_NamedArgument()) {
-      NamedArgument* na = node->as_NamedArgument();
-      if (na->expression() == null) return true;
-      return has_reliable_full_range(na->expression());
+
+    if (node->is_Parenthesis()) {
+      return has_reliable_full_range(node->as_Parenthesis()->expression());
     }
+    if (node->is_Unary()) {
+      return has_reliable_full_range(node->as_Unary()->expression());
+    }
+    if (node->is_Return()) {
+      auto value = node->as_Return()->value();
+      return value == null || has_reliable_full_range(value);
+    }
+    if (node->is_NamedArgument()) {
+      auto expr = node->as_NamedArgument()->expression();
+      return expr == null || has_reliable_full_range(expr);
+    }
+    if (node->is_Dot()) {
+      return has_reliable_full_range(node->as_Dot()->receiver());
+    }
+    if (node->is_Index()) {
+      Index* idx = node->as_Index();
+      if (!has_reliable_full_range(idx->receiver())) return false;
+      for (auto arg : idx->arguments()) {
+        if (!has_reliable_full_range(arg)) return false;
+      }
+      return true;
+    }
+    if (node->is_IndexSlice()) {
+      IndexSlice* slice = node->as_IndexSlice();
+      if (!has_reliable_full_range(slice->receiver())) return false;
+      if (slice->from() != null && !has_reliable_full_range(slice->from())) return false;
+      if (slice->to() != null && !has_reliable_full_range(slice->to())) return false;
+      return true;
+    }
+
     return false;
   }
 

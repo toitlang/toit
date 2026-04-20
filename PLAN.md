@@ -1,112 +1,99 @@
 # Toit Formatter — Plan
 
-## Goals
+## Goals (unchanged)
 
 - **Correctness**: formatter never changes semantics.
 - **Idempotence**: `format(format(x)) == format(x)`.
 - **No hard line limit**: soft width heuristics per node kind, deeper nodes may go further right.
 - **No backtracking**: inside-out layout. Each subtree decides its own shape from its own content and a local node-kind heuristic; parents don't pass budgets down.
 
-"Experiment-ready" is the first milestone we actually ship — a formatter that is correct and idempotent, even if aesthetically rough. Heuristic tuning comes after.
+## Architecture (recap)
 
-## Architecture
+- **Shape** `{first_line_width, max_width, height}` — already in place. A parent only sees a shape, never a budget from above.
+- **Frozen subtrees** report their shape from preserved source. Parents don't distinguish.
+- **Co-walked comments**: sorted comment list advances in lockstep with the AST walk. No sidecar data structure. (Not yet implemented beyond verbatim passthrough.)
+- **Vocabulary**: "suite" / "indented region" for what other languages call a code block. "Block" in Toit means a closure.
 
-### Inside-out layout via shape abstraction
+## Done (M0–M5)
 
-Each subtree computes its own layout and reports a **shape**:
+- **M0**: `format_unit` is an identity; ctest harness exists under `tests/formatter/`.
+- **M1**: `Formatter` class walks top-level nodes; output byte-identical to input.
+- **M2**: indentation recomputed from AST nesting for `Class` members and `Method` bodies. Δ-shifted continuation lines. Control-flow bodies still ride with their enclosing statement.
+- **M3**: `Shape` struct + `shape_from_source_range` infrastructure.
+- **M4**: first real layout decision — flat `Call` emitted with canonical single-space separators. Verbatim-equality check retired; idempotence remains the permanent invariant.
+- **M5**: dogfooded over all 144 files under `lib/`. Fixed two correctness bugs (Block-argument spacing, Index/IndexSlice receiver drop). Test corpus expanded to the full `lib/` tree.
 
-```
-shape := { first_line_width, max_width, height }
-```
+## Tiers ahead
 
-(`last_line_width` omitted for now — Toit's indentation model rarely continues on the same line after a multi-line chunk. Add if a real case demands it.)
+Tiers are ordered by a mix of frequency-in-code, blast radius, and unblocks-later. Each tier is a small group of commits, not one.
 
-Parents use child shapes to pick their own flat-vs-broken layout. No budget passed downward. Per-node-kind soft-width thresholds decide when a node prefers broken over flat.
+### Tier 1 — expand the safe set (low risk, opens coverage)
 
-### Frozen subtrees are ordinary shapes
+Goal: more Calls become canonicalizable without touching the layout logic.
 
-A frozen subtree (see Comments) reports its shape computed from preserved source rather than from layout logic. Parents don't know or care about the difference.
+- Add `Dot`, `Unary`, `Parenthesis`, `Return`, `LiteralStringInterpolation` to `has_reliable_full_range`. Verify each case empirically (their `full_range` actually covers the full source span).
+- `Parameter` and `NamedArgument` as arguments, where applicable.
+- Fix the `Index` / `IndexSlice` AST bug (full_range excludes the receiver). Cleaner than carrying the workaround forward — Tier 3 will hit these expressions constantly.
 
-### Co-walked comments, no sidecar
+### Tier 2 — close the indentation hole
 
-Comments are already sorted by position. The formatter walks the AST in source order with a cursor into the sorted comment list. No map, no parallel CST class hierarchy. On each node visit:
+Goal: every indented region gets re-indented, not just class/method bodies.
 
-1. Drain comments before node start → leading trivia.
-2. Scan comments within node range for multi-line block comment → if present, mark as freeze boundary.
-3. Otherwise dispatch normally; child nodes handle their own interior comments.
-4. After node end, drain comments adjacent to last token → trailing trivia.
+- Recurse into `If` / `While` / `For` / `TryFinally` body suites the same way `Method` already does.
+- Recurse into `Block` and `Lambda` bodies. `list.do: | x | body` is one of the most common idioms; getting blocks right unblocks a lot of real code.
+- `Sequence` itself becomes the generic "suite" emitter that every body-bearing node calls into.
 
-Optional precomputation: a `set<ast::Node*>` of frozen nodes, populated by a prepass over comments. Start lazy; add if profiling warrants.
+### Tier 3 — always-flat mode with paren insertion
 
-## Comments
+Goal: nail paren correctness in isolation, before any width heuristic can muddy it.
 
-Four cases:
+- Build flat emission for every expression kind: `Binary`, `Dot`, broken `Call` → flat, collection literals, etc. Assume infinite width — the only decision per composite is "do I need parens around this child to keep the re-parse semantically equal."
+- Expose an `--flat-test` CLI flag (or similar) that forces always-flat mode. Used by tests, not by default.
+- **Ship a structural AST-equivalence check** (parse S, parse format(S), compare modulo trivia/parens). This is the only real validation that always-flat preserves semantics — without it we're flying blind.
+- Run over the whole `lib/` tree under `--flat-test`. Every file must round-trip through AST-equivalence. This establishes the paren rules are correct.
+- Keep `--flat-test` in CI permanently. Any future regression in paren handling gets caught immediately, independent of layout heuristics.
 
-1. **End-of-line** (`// ...`): attach as trailing trivia of the line's statement-equivalent. The line's horizontal layout is locked (no reflow across the line boundary); indentation can still shift.
+### Tier 4 — width-based flat/broken decisions
 
-2. **Multi-line block** (`/* ... */` with `/*` and `*/` on different source lines): **freezes the enclosing statement-equivalent**. Emit verbatim; shift all interior lines by the same Δ when the enclosing suite re-indents. (Clamp Δ at column 0.)
+Goal: produce actually pleasant output. Paren correctness already nailed down by Tier 3.
 
-3. **Single-line inline** (`/*...*/` on one line):
-   - Attached to only one side (no space on that side): attach to that node.
-   - Attached to neither (space on both sides): pick leading-of-next by default.
-   - Attached to both (no space either side, e.g. `a/*c*/b`): render verbatim, preserve spacing.
+- Introduce per-node soft-width thresholds. Flat if it fits, broken if it doesn't.
+- Broken-form emissions: canonical continuation indent (+4 for Call args, operator-aligned for Binary chains, etc.).
+- When transitioning flat→broken, drop parens that the indentation now disambiguates.
+- Start thresholds generous, dogfood, tune. Don't start with "I bet 80 is right."
 
-4. **Standalone multi-line** (multi-line block with no code on the `/*` line or the `*/` line): does not affect code formatting. Attaches as **leading trivia of the next sibling at the comment's own indent level**, searching outward if no such sibling. Interior lines shift with the attached node's suite.
+### Tier 5 — collection literals and polish
 
-## Parens
+- `LiteralList`, `LiteralMap`, `LiteralSet`, `LiteralByteArray`: flat/broken with the width framework from Tier 4.
+- `DeclarationLocal` (`x := expr`, `x/T ::= expr`) — mostly benefits from what the RHS does.
+- Specials (`TokenNode`, `Error`, `LspSelection`, `ToitdocReference`, toitdoc comments): punt unless they surface a real bug.
 
-Moving an expression may require inserting or removing parens (e.g. `foo (bar 499)` vs `foo\n    bar 499`). Rules:
+## Orthogonal workstreams (schedule into the tiers above)
 
-- Paren insertion/removal is **semantic**: driven by AST node kind and target position, not by width math.
-- Width estimation **ignores** parens. If we're off by two characters, a line is slightly too long or short — acceptable since there's no hard limit.
+### Multi-line block-comment freeze
 
-## Statement-equivalent unit
+Lands **before Tier 4**. Width-driven breaking interacts with frozen spans; easier to lock down freeze semantics first. Rules (from the brainstorm):
 
-Toit does not have statements per se. The freeze unit (and the "one logical line" unit for EOL comments) is the **top-level item in a suite**: whatever expression or declaration occupies one primary indent slot. We'll refine this if specific cases push back.
+1. A multi-line `/* ... */` freezes the enclosing statement-equivalent. Emit that whole unit verbatim; shift all interior lines by the re-indent Δ, clamped at column 0.
+2. Single-line inline `/*...*/`: attach to the side with no whitespace; if both/neither, lean leading-of-next.
+3. Standalone multi-line: leading trivia of the next sibling at the comment's own indent level, searching outward.
+4. EOL `//` comments: trailing trivia of their line's statement-equivalent; lock that line's horizontal layout.
 
-"Block" in Toit means a closure-like construct — do not use the word for indented regions. Prefer "suite" or "indented region."
+### Comment co-walk
 
-## Correctness harness
+Currently the formatter emits inter-node bytes verbatim, which handles comments by accident. Once Tier 3 starts reformatting aggressively, we need an explicit cursor into `scanner.comments()` that advances with the AST walk, routing each comment through the attachment rules above. Land alongside Tier 3.
 
-Build before any formatting logic. For every test input `S`:
+### AST-equivalence check
 
-1. Parse `S` → AST₁
-2. `format(S)` → `S'`
-3. Parse `S'` → AST₂
-4. Assert AST₁ ≡ AST₂ modulo trivia. (The equivalence check must treat `foo (bar 499)` and `foo\n    bar 499` as equal at the AST level — it checks semantics, not source.)
-5. `format(S')` → `S''`; assert `S' == S''` byte-for-byte.
+**Tier 3 hard requirement.** Must treat `foo (bar 499)` and `foo\n    bar 499` as equal (skip `Parenthesis` wrappers). Implement once; it's the safety net for every subsequent layout change.
 
-Run over the core libraries in CI from M1 onward. Every subsequent change is gated on it staying green. Idempotence failures are signals that the inside-out invariant is broken somewhere — treat them as architectural bugs, not output tweaks.
+### Index / IndexSlice AST bug
 
-## Milestones
+Fix in Tier 1. Cleaner than dragging the workaround into Tier 3.
 
-### M0 — Correctness harness
+## Scope markers / where to stop (unchanged)
 
-Test runner that takes a Toit source file and performs the five-step check above. At this stage `format` can be the identity function — the harness just needs to exist and pass trivially. Wire it into CI over the core libraries.
-
-### M1 — Verbatim round-trip
-
-`format_unit` re-emits the input source byte-for-byte, trivia included. Pins down the comment co-walk mechanics before layout touches anything. Harness passes trivially at this stage too, but now on a real code path.
-
-### M2 — Indentation-only pass
-
-Recompute indentation from suite nesting; leave horizontal layout alone. Harness does real work now: step 4 catches accidental token drops, step 5 catches indentation inconsistencies. Small enough surface area that breakage is diagnosable.
-
-### M3 — Shape abstraction + layout for one node kind
-
-Pick the node that dominates Toit code — likely `Call` — and implement shape computation + flat/broken decisions end-to-end for it. Everything else stays verbatim. This is where the architecture earns its keep or doesn't.
-
-### M4 — Expand to all node kinds
-
-Roll out shape + layout for the remaining AST nodes (expressions, control flow `If`/`While`/`For`/`TryFinally`, declarations, literals, string interpolation, type annotations, etc.). Paren insertion/removal lands here. Freeze logic for multi-line block comments lands here.
-
-### M5 — Dogfood on core libraries
-
-Run on real code. Collect ugly cases. Tune per-node heuristics. No architectural changes at this stage — if something needs backtracking, something was wrong earlier.
-
-## Scope markers / where to stop
-
-- Don't build CST classes parallel to AST classes. Dispatch on AST kind directly.
-- Don't build a standalone trivia-attachment pass outside the formatter yet. LSP can extract it later if needed.
+- Don't build CST classes parallel to AST classes. Dispatch on AST kind.
+- Don't build a standalone trivia-attachment pass outside the formatter yet. LSP can extract it later.
 - Don't add `last_line_width` until a real case demands it.
-- Don't add backtracking. Ever. If a layout decision seems to need it, the node's heuristic is wrong.
+- Don't add backtracking. If a layout decision seems to need it, the node's heuristic is wrong.
