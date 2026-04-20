@@ -280,6 +280,13 @@ class Formatter {
   }
 
   void emit_stmt(Expression* stmt, int indent) {
+    // Flat-test mode: try to emit every statement-position expression in
+    // its flat form first. Only kicks in for expression kinds the flat
+    // emitter knows how to render — which excludes If/While/For and
+    // Calls with Block/Lambda arguments, so the body-recursing dispatches
+    // below still run for those.
+    if (options_.force_flat && emit_stmt_flat(stmt, indent)) return;
+
     if (stmt->is_Call()) {
       emit_call(stmt->as_Call(), indent);
       return;
@@ -295,7 +302,6 @@ class Formatter {
     } else if (stmt->is_TryFinally()) {
       if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
-    if (options_.force_flat && emit_stmt_flat(stmt, indent)) return;
     emit_leaf(stmt, indent);
   }
 
