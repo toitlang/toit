@@ -835,7 +835,11 @@ class Formatter {
       prev_end = pos(arg->full_range().to());
     }
 
-    advance_to(line_start);
+    int original_indent = call_start - line_start;
+    int delta = indent - original_indent;
+    // Shift preceding trivia (blank lines, standalone comments) by the
+    // same delta we're about to apply to this call's first line.
+    emit_with_indent_shift(source_cursor_, line_start, delta);
     output_.append(indent, ' ');
 
     int target_start = pos(target->full_range().from());
@@ -885,8 +889,10 @@ class Formatter {
     int original_indent = from - line_start;
     int delta = indent - original_indent;
 
-    // Emit up to the start of the line (trivia from previous decl / comments).
-    advance_to(line_start);
+    // Shift any preceding trivia (blank lines, standalone comments) by the
+    // same delta we're about to apply to this statement. Keeps comment
+    // lines between body statements aligned with the body's new indent.
+    emit_with_indent_shift(source_cursor_, line_start, delta);
     // Replace original indent with canonical.
     emit_spaces(indent);
     source_cursor_ = from;

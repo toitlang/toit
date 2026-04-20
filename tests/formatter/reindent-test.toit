@@ -175,6 +175,23 @@ CASES ::= [
         """,
 
   Case
+      --label="comments between body statements shift with the body"
+      --input="""
+        main:
+          if true:
+              print 1
+              // middle comment
+              print 2
+        """
+      --expected="""
+        main:
+          if true:
+            print 1
+            // middle comment
+            print 2
+        """,
+
+  Case
       --label="well-formed input is unchanged"
       --input="""
         class Foo:
