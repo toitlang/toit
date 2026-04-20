@@ -24,6 +24,7 @@
 #include "format.h"
 #include "ast.h"
 #include "sources.h"
+#include "token.h"
 
 namespace toit {
 namespace compiler {
@@ -84,12 +85,13 @@ static Shape shape_from_source_range(const uint8* text, int from, int to) {
 // positions still ride with their enclosing statement.
 class Formatter {
  public:
-  Formatter(Unit* unit, List<Scanner::Comment> comments)
+  Formatter(Unit* unit, List<Scanner::Comment> comments, FormatOptions options)
       : unit_(unit)
       , source_(unit->source())
       , text_(unit->source()->text())
       , size_(unit->source()->size())
-      , comments_(comments) {}
+      , comments_(comments)
+      , options_(options) {}
 
   uint8* take_output(int* size_out) {
     *size_out = output_.size();
@@ -123,6 +125,7 @@ class Formatter {
   const uint8* text_;
   int size_;
   List<Scanner::Comment> comments_;
+  FormatOptions options_;
   std::string output_;
   int source_cursor_ = 0;
   std::unordered_map<Node*, Shape> shapes_;
@@ -292,7 +295,88 @@ class Formatter {
     } else if (stmt->is_TryFinally()) {
       if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
+    if (options_.force_flat && emit_stmt_flat(stmt, indent)) return;
     emit_leaf(stmt, indent);
+  }
+
+  // Flat-mode emission of a statement-position expression. Re-indents the
+  // first line to `indent` and writes the expression's canonical flat
+  // form, with parens inserted around nested expressions where necessary
+  // to keep the re-parsed AST equivalent.
+  //
+  // Returns false when we don't know how to flatten this expression
+  // safely — the caller falls back to verbatim leaf emission.
+  bool emit_stmt_flat(Expression* stmt, int indent) {
+    if (!can_emit_flat(stmt)) return false;
+
+    int start = pos(stmt->full_range().from());
+    int end = pos(stmt->full_range().to());
+    int line_start = find_line_start(start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, start)) return false;
+
+    advance_to(line_start);
+    emit_spaces(indent);
+    source_cursor_ = end;
+
+    std::string buffer;
+    emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
+    output_.append(buffer);
+    return true;
+  }
+
+  // Whether we have a flat-form implementation for this expression kind.
+  // Conservative — returns false for anything that would require
+  // sub-renderings we haven't built yet.
+  bool can_emit_flat(Expression* expr) const {
+    if (expr == null) return false;
+    expr = peel_parens(expr);
+    if (expr->is_Identifier() || expr->is_LiteralNull()
+        || expr->is_LiteralUndefined() || expr->is_LiteralBoolean()
+        || expr->is_LiteralInteger() || expr->is_LiteralCharacter()
+        || expr->is_LiteralFloat() || expr->is_LiteralString()) {
+      return has_reliable_full_range(expr);
+    }
+    if (expr->is_Binary()) {
+      Binary* b = expr->as_Binary();
+      return can_emit_flat(b->left()) && can_emit_flat(b->right());
+    }
+    return false;
+  }
+
+  static Expression* peel_parens(Expression* e) {
+    while (e != null && e->is_Parenthesis()) {
+      e = e->as_Parenthesis()->expression();
+    }
+    return e;
+  }
+
+  // Appends the flat form of `expr` to `out`. `outer_prec` is the
+  // precedence of the enclosing operator (PRECEDENCE_NONE at the top
+  // level) — sub-expressions with strictly lower precedence get wrapped
+  // in parens. Equal-precedence wrapping is intentionally aggressive
+  // (always wrap) because preserving left/right associativity by rule
+  // would require per-kind details; over-paren is AST-safe since
+  // ast_equivalent strips Parenthesis wrappers.
+  void emit_expr_flat(Expression* expr, int outer_prec, std::string* out) {
+    expr = peel_parens(expr);
+    if (expr->is_Binary()) {
+      Binary* b = expr->as_Binary();
+      int prec = Token::precedence(b->kind());
+      bool parens = prec <= outer_prec && outer_prec != PRECEDENCE_NONE;
+      if (parens) out->append("(");
+      emit_expr_flat(b->left(), prec, out);
+      out->append(" ");
+      out->append(Token::symbol(b->kind()).c_str());
+      out->append(" ");
+      emit_expr_flat(b->right(), prec, out);
+      if (parens) out->append(")");
+      return;
+    }
+    // Leaf: copy source bytes verbatim.
+    int from = pos(expr->full_range().from());
+    int to = pos(expr->full_range().to());
+    out->append(reinterpret_cast<const char*>(text_) + from, to - from);
   }
 
   bool emit_try_finally(TryFinally* tf, int indent) {
@@ -600,8 +684,9 @@ class Formatter {
 
 uint8* format_unit(Unit* unit,
                    List<Scanner::Comment> comments,
-                   int* formatted_size) {
-  Formatter formatter(unit, comments);
+                   int* formatted_size,
+                   FormatOptions options) {
+  Formatter formatter(unit, comments, options);
   formatter.format();
   return formatter.take_output(formatted_size);
 }

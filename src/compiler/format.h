@@ -25,9 +25,18 @@ namespace ast {
 class Unit;
 }
 
+struct FormatOptions {
+  // When true, forces every expression encountered as a statement to be
+  // emitted in its always-flat form (target + canonical spacing + paren
+  // insertion where the AST requires it). Used exclusively by CI to
+  // validate paren correctness; never the default.
+  bool force_flat = false;
+};
+
 uint8* format_unit(ast::Unit* unit,
                    List<Scanner::Comment> comments,
-                   int* formatted_size);
+                   int* formatted_size,
+                   FormatOptions options = {});
 
 } // namespace toit::compiler
 } // namespace toit

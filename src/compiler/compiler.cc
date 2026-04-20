@@ -996,8 +996,11 @@ void Compiler::format(const char* source_path,
   Parser parser(source, &scanner, &diagnostics, needs_token_nodes=true);
   ast::Unit* unit = parser.parse_unit();
   bool original_had_error = diagnostics.encountered_error();
+  FormatOptions format_options;
+  const char* flat_test = getenv("TOIT_FORMAT_FLAT_TEST");
+  format_options.force_flat = flat_test != null && strcmp(flat_test, "1") == 0;
   int formatted_size;
-  uint8* formatted = format_unit(unit, scanner.comments(), &formatted_size);
+  uint8* formatted = format_unit(unit, scanner.comments(), &formatted_size, format_options);
 
   // If the input parsed cleanly, re-parse the formatted output and check
   // that it's semantically equivalent. This is the safety net against a
