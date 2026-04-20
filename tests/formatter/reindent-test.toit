@@ -105,6 +105,29 @@ CASES ::= [
         """,
 
   Case
+      --label="else-if chain re-indents with its parent if"
+      --input="""
+        class Foo:
+          constructor:
+              if true:
+                print 1
+              else if false:
+                print 2
+              else:
+                print 3
+        """
+      --expected="""
+        class Foo:
+          constructor:
+            if true:
+              print 1
+            else if false:
+              print 2
+            else:
+              print 3
+        """,
+
+  Case
       --label="while body over-indented"
       --input="""
         main:

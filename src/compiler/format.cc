@@ -327,12 +327,17 @@ class Formatter {
     return true;
   }
 
-  // Emits an If at `indent`, including its else branch if present.
-  // Returns false if the structure can't be handled (inline body, empty
-  // body); the caller should fall back to leaf.
+  // Emits an If at `indent`, including any else-if chain and a final else
+  // branch. Returns false if the initial yes body can't be handled (inline
+  // body, empty body); the caller should fall back to leaf.
+  //
+  // Parser shape: `else if ...` is If.no = inner If (not a Sequence). So
+  // we walk the .no chain while it's an If, and treat each inner If's
+  // header as a continuation header spanning until its own body's first
+  // line — that way `else if cond:` shares a line with its keyword and
+  // gets re-indented as a single unit.
   bool emit_if(If* if_node, int indent) {
     auto yes_body = as_suite_body(if_node->yes());
-    auto no_body = as_suite_body(if_node->no());
     if (yes_body.is_empty()) return false;
 
     int node_start = pos(if_node->full_range().from());
@@ -345,11 +350,32 @@ class Formatter {
       emit_stmt(expr, indent + INDENT_STEP);
     }
 
-    if (!no_body.is_empty()) {
-      int no_first_line_start = find_line_start(pos(no_body.first()->full_range().from()));
-      emit_continuation_header(no_first_line_start, indent);
-      for (auto expr : no_body) {
+    // Walk the else-if chain. Each step re-indents the `else if cond:`
+    // keyword line and recurses into its yes body.
+    If* cur = if_node;
+    while (cur->no() != null && cur->no()->is_If()) {
+      If* next = cur->no()->as_If();
+      auto next_yes = as_suite_body(next->yes());
+      if (next_yes.is_empty()) break;  // fall through to verbatim tail
+      int next_body_line_start =
+          find_line_start(pos(next_yes.first()->full_range().from()));
+      emit_continuation_header(next_body_line_start, indent);
+      for (auto expr : next_yes) {
         emit_stmt(expr, indent + INDENT_STEP);
+      }
+      cur = next;
+    }
+
+    // Final else branch (a Sequence, not an If), if any.
+    if (cur->no() != null && !cur->no()->is_If()) {
+      auto final_no = as_suite_body(cur->no());
+      if (!final_no.is_empty()) {
+        int no_first_line_start =
+            find_line_start(pos(final_no.first()->full_range().from()));
+        emit_continuation_header(no_first_line_start, indent);
+        for (auto expr : final_no) {
+          emit_stmt(expr, indent + INDENT_STEP);
+        }
       }
     }
 
