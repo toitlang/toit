@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "../top.h"
@@ -32,6 +33,46 @@ using namespace ast;
 namespace {
 
 static const int INDENT_STEP = 2;
+
+// The shape of an already-rendered subtree. Parents use this to decide
+// flat-vs-broken layouts without re-measuring. Inside-out: a parent only
+// sees a shape, never a budget from above.
+//
+// `last_line_width` is intentionally omitted — Toit's indentation model
+// rarely continues on the same line after a multi-line chunk. Add if a
+// real case demands it.
+struct Shape {
+  int first_line_width = 0;
+  int max_width = 0;
+  int height = 1;
+
+  bool is_single_line() const { return height == 1; }
+};
+
+// Measures the shape of the given byte range as if it were emitted verbatim.
+// Used as the initial shape for every node (M3) until per-node shape
+// computation lands (M4).
+static Shape shape_from_source_range(const uint8* text, int from, int to) {
+  Shape s;
+  int line_w = 0;
+  bool have_first = false;
+  for (int i = from; i < to; i++) {
+    if (text[i] == '\n') {
+      if (!have_first) {
+        s.first_line_width = line_w;
+        have_first = true;
+      }
+      if (line_w > s.max_width) s.max_width = line_w;
+      s.height++;
+      line_w = 0;
+    } else {
+      line_w++;
+    }
+  }
+  if (!have_first) s.first_line_width = line_w;
+  if (line_w > s.max_width) s.max_width = line_w;
+  return s;
+}
 
 // Walks the AST, re-indenting statement-equivalents based on their nesting
 // depth in the tree. Horizontal layout within a statement is left verbatim;
@@ -83,6 +124,7 @@ class Formatter {
   List<Scanner::Comment> comments_;
   std::string output_;
   int source_cursor_ = 0;
+  std::unordered_map<Node*, Shape> shapes_;
 
   int pos(Source::Position p) const { return source_->offset_in_source(p); }
 
@@ -173,8 +215,20 @@ class Formatter {
   }
 
   void emit_stmt(Expression* stmt, int indent) {
-    // M2: leaves (no deeper recursion into If/While/For/etc).
+    // M3: compute shape for Calls so M4 can use it for layout decisions.
+    // Output is still verbatim (delta-shifted) — the decision code comes
+    // later. We record into `shapes_` to exercise the computation on real
+    // code without changing behavior.
+    if (stmt->is_Call()) {
+      record_shape(stmt);
+    }
     emit_leaf(stmt, indent);
+  }
+
+  void record_shape(Node* node) {
+    int from = pos(node->full_range().from());
+    int to = pos(node->full_range().to());
+    shapes_[node] = shape_from_source_range(text_, from, to);
   }
 
   // Re-indent the first line of this node to `indent`, delta-shifting any
