@@ -35,6 +35,7 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_lsp.h"
+#include "ast_equivalence.h"
 #include "format.h"
 #include "lambda.h"
 #include "list.h"
@@ -994,8 +995,43 @@ void Compiler::format(const char* source_path,
   bool needs_token_nodes;
   Parser parser(source, &scanner, &diagnostics, needs_token_nodes=true);
   ast::Unit* unit = parser.parse_unit();
+  bool original_had_error = diagnostics.encountered_error();
   int formatted_size;
   uint8* formatted = format_unit(unit, scanner.comments(), &formatted_size);
+
+  // If the input parsed cleanly, re-parse the formatted output and check
+  // that it's semantically equivalent. This is the safety net against a
+  // formatter bug silently changing meaning. Skip the check when the
+  // input already had errors — the re-parse would also have errors and
+  // the equivalence comparison is meaningless over broken trees.
+  //
+  // Disable with TOIT_FORMAT_NO_VERIFY=1 for debugging bad output.
+  const char* no_verify = getenv("TOIT_FORMAT_NO_VERIFY");
+  if (!original_had_error && (no_verify == null || strcmp(no_verify, "1") != 0)) {
+    Source* verify_source = source_manager.load_from_memory(
+        std::string(source_path) + "<formatted>",
+        formatted,
+        formatted_size);
+    AnalysisDiagnostics verify_diag(&source_manager,
+                                    show_package_warnings=false,
+                                    print_diagnostics_on_stdout=false);
+    SymbolCanonicalizer verify_symbols;
+    Scanner verify_scanner(verify_source, &verify_symbols, &verify_diag);
+    Parser verify_parser(verify_source, &verify_scanner, &verify_diag, needs_token_nodes=true);
+    ast::Unit* verify_unit = verify_parser.parse_unit();
+    if (verify_diag.encountered_error()) {
+      fprintf(stderr, "toit format: formatter produced output with parse errors; refusing to write %s\n",
+              out_path);
+      free(formatted);
+      exit(1);
+    }
+    if (!ast_equivalent(unit, verify_unit)) {
+      fprintf(stderr, "toit format: formatter changed meaning; refusing to write %s\n",
+              out_path);
+      free(formatted);
+      exit(1);
+    }
+  }
 
   // TODO(florian): if the out_path is different we should check whether the
   // file exists, and, if yes, if the content has changed.

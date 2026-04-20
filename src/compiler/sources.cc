@@ -195,6 +195,18 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
   };
 }
 
+Source* SourceManager::load_from_memory(const std::string& virtual_path,
+                                        const uint8* bytes,
+                                        int size) {
+  // Scanner callers expect the buffer to be null-terminated (read_content
+  // returns a null-terminated buffer; callers rely on it). Copy so we can
+  // append the terminator without touching the caller's buffer.
+  uint8* owned = unvoid_cast<uint8*>(malloc(size + 1));
+  memcpy(owned, bytes, size);
+  owned[size] = 0;
+  return register_source(virtual_path, Package::invalid(), virtual_path, owned, size);
+}
+
 SourceManagerSource* SourceManager::register_source(const std::string& absolute_path,
                                                     const Package& package,
                                                     const std::string& error_path,

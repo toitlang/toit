@@ -29,7 +29,9 @@ foreach(file ${FORMATTER_TESTS})
       NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit> ${TOIT_SDK_SOURCE_DIR}
       )
-    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    # The formatter tests (especially round-trip) invoke `toit format` many
+    # times over lib/, which can exceed DEFAULT_TIMEOUT.
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     if ("${test_name}" IN_LIST TOIT_FAILING_TESTS)
       set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
