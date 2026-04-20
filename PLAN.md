@@ -95,6 +95,16 @@ Fix in Tier 1. Cleaner than dragging the workaround into Tier 3.
 
 During Tier 4 development: if a statement is one line in input and one line in output, its paren count must not increase. That's an unambiguous bug signal — no layout change happened, so there's no excuse for new parens. Anything involving multi-line reformatting is context-dependent and not worth automating; eyeball those during dogfooding. Temporary ratchet — retire it once paren rules are tight enough to keep it green.
 
+### Heuristics driven by `lib/`
+
+When a layout decision has multiple AST-equivalent options, pick the form dominant in `lib/`. Measured at development time (not at format time — runtime measurement risks idempotence loss from feedback loops), baked into the rule as a constant. Decision procedure:
+
+1. **Clear majority in `lib/`** (~70%+ one way) → match it.
+2. **Ambiguous** (~40/60 or closer) → simpler rule wins. Formatter becomes predictable; `lib/` converges toward the choice as it gets re-run.
+3. **Human review of the final diff** catches edge cases the dumb-frequency heuristic misses.
+
+This is how the existing single-space flat-Call rule was derived (lib/ is overwhelmingly single-space), and it's how future paren / line-break thresholds should be set.
+
 ## Scope markers / where to stop (unchanged)
 
 - Don't build CST classes parallel to AST classes. Dispatch on AST kind.
