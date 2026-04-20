@@ -473,6 +473,20 @@ class Formatter {
       Shape s = shape_from_source_range(text_, from, to);
       return s.is_single_line();
     }
+    if (expr->is_BreakContinue()) {
+      auto v = expr->as_BreakContinue()->value();
+      return v == null || can_emit_flat(v);
+    }
+    if (expr->is_Return()) {
+      auto v = expr->as_Return()->value();
+      return v == null || can_emit_flat(v);
+    }
+    if (expr->is_DeclarationLocal()) {
+      DeclarationLocal* d = expr->as_DeclarationLocal();
+      if (d->type() != null && !can_emit_flat(d->type())) return false;
+      if (d->value() != null && !can_emit_flat(d->value())) return false;
+      return true;
+    }
     return false;
   }
 
@@ -639,6 +653,49 @@ class Formatter {
     if (expr->is_Nullable()) {
       emit_expr_flat(expr->as_Nullable()->type(), PRECEDENCE_POSTFIX, out);
       out->append("?");
+      return;
+    }
+    if (expr->is_BreakContinue()) {
+      BreakContinue* bc = expr->as_BreakContinue();
+      out->append(bc->is_break() ? "break" : "continue");
+      if (bc->label() != null) {
+        out->append(".");
+        int lfrom = pos(bc->label()->full_range().from());
+        int lto = pos(bc->label()->full_range().to());
+        out->append(reinterpret_cast<const char*>(text_) + lfrom, lto - lfrom);
+      }
+      if (bc->value() != null) {
+        out->append(" ");
+        // The value is parsed as a full expression, no outer operator —
+        // use PRECEDENCE_NONE so `break a + b` stays unwrapped.
+        emit_expr_flat(bc->value(), PRECEDENCE_NONE, out);
+      }
+      return;
+    }
+    if (expr->is_Return()) {
+      Return* r = expr->as_Return();
+      out->append("return");
+      if (r->value() != null) {
+        out->append(" ");
+        emit_expr_flat(r->value(), PRECEDENCE_NONE, out);
+      }
+      return;
+    }
+    if (expr->is_DeclarationLocal()) {
+      DeclarationLocal* d = expr->as_DeclarationLocal();
+      int nfrom = pos(d->name()->full_range().from());
+      int nto = pos(d->name()->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + nfrom, nto - nfrom);
+      if (d->type() != null) {
+        out->append("/");
+        emit_expr_flat(d->type(), PRECEDENCE_POSTFIX, out);
+      }
+      if (d->value() != null) {
+        out->append(" ");
+        out->append(Token::symbol(d->kind()).c_str());
+        out->append(" ");
+        emit_expr_flat(d->value(), PRECEDENCE_NONE, out);
+      }
       return;
     }
     // Leaf: copy source bytes verbatim.

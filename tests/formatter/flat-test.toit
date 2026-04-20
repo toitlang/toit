@@ -143,6 +143,43 @@ CASES ::= [
         """,
 
   Case
+      --label="break / continue / return keep unparenthesized values"
+      --input="""
+        main:
+          i := 0
+          while i < 10:
+            if i == 5:
+              break
+            if i > 3:
+              continue
+            i++
+          return 42
+
+        foo x/int -> int:
+          return x + 1
+
+        bar:
+          return
+        """
+      --expected="""
+        main:
+          i := 0
+          while i < 10:
+            if i == 5:
+              break
+            if i > 3:
+              continue
+            i++
+          return 42
+
+        foo x/int -> int:
+          return x + 1
+
+        bar:
+          return
+        """,
+
+  Case
       --label="expressions with interior comments stay verbatim"
       --input="""
         main:
