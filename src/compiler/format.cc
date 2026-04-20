@@ -222,6 +222,27 @@ class Formatter {
     emit_leaf(stmt, indent);
   }
 
+  // The parser sets a few nodes' full_range to exclude parts of their source
+  // span (Index/IndexSlice drop the receiver). Rather than work around
+  // those cases, we conservatively accept only nodes whose full_range is
+  // known to cover every byte of their source text.
+  bool has_reliable_full_range(Node* node) const {
+    if (node->is_Identifier()) return true;
+    if (node->is_LiteralNull()) return true;
+    if (node->is_LiteralUndefined()) return true;
+    if (node->is_LiteralBoolean()) return true;
+    if (node->is_LiteralInteger()) return true;
+    if (node->is_LiteralCharacter()) return true;
+    if (node->is_LiteralFloat()) return true;
+    if (node->is_LiteralString()) return true;
+    if (node->is_NamedArgument()) {
+      NamedArgument* na = node->as_NamedArgument();
+      if (na->expression() == null) return true;
+      return has_reliable_full_range(na->expression());
+    }
+    return false;
+  }
+
   void emit_call(Call* call, int indent) {
     int from = pos(call->full_range().from());
     int to = pos(call->full_range().to());
@@ -240,10 +261,20 @@ class Formatter {
 
   // Emits `target arg1 arg2 ...` with single-space separators. Returns false
   // (and emits nothing) if the call is not safe to canonicalize — i.e. there
-  // is any non-whitespace content between consecutive tokens (comments), or
-  // the call does not start on its own line.
+  // is any non-whitespace content between consecutive tokens (comments), the
+  // call does not start on its own line, or the target or any argument has
+  // a full_range we can't trust as a contiguous source span.
   bool try_emit_call_flat_canonical(Call* call, int indent) {
     Expression* target = call->target();
+    // Guard against AST nodes whose full_range does not cover their complete
+    // source span (Index/IndexSlice exclude the receiver, for example).
+    // Limit canonicalization to targets and args whose full_range is known
+    // to be reliable.
+    if (!has_reliable_full_range(target)) return false;
+    for (auto arg : call->arguments()) {
+      if (!has_reliable_full_range(arg)) return false;
+    }
+
     int call_start = pos(call->full_range().from());
     int call_end = pos(call->full_range().to());
     int line_start = find_line_start(call_start);
@@ -268,7 +299,12 @@ class Formatter {
                    target_end - target_start);
 
     for (auto arg : call->arguments()) {
-      output_.push_back(' ');
+      // A Block argument begins with ':' and must stay glued to the
+      // preceding token. Otherwise `foo: body` becomes `foo : body` which
+      // parses differently (or fails to parse).
+      if (!arg->is_Block()) {
+        output_.push_back(' ');
+      }
       int arg_start = pos(arg->full_range().from());
       int arg_end = pos(arg->full_range().to());
       output_.append(reinterpret_cast<const char*>(text_) + arg_start,
