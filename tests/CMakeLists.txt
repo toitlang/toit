@@ -175,6 +175,7 @@ add_subdirectory(strip)
 add_subdirectory(pkg)
 add_subdirectory(envelope)
 add_subdirectory(toitdoc)
+add_subdirectory(formatter)
 add_subdirectory(dependencies)
 
 # Add the pi-tests so that its packages are downloaded.

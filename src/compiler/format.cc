@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Toit contributors.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include "../top.h"
@@ -24,12 +26,15 @@ namespace compiler {
 
 using namespace ast;
 
-/// Formats the given unit and returns the formatted version.
-/// The returned string must be freed.
 uint8* format_unit(Unit* unit,
                    List<Scanner::Comment> comments,
                    int* formatted_size) {
-  // TODO.
+  Source* source = unit->source();
+  int size = source->size();
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  memcpy(buffer, source->text(), size);
+  *formatted_size = size;
+  return buffer;
 }
 
 } // namespace toit::compiler
