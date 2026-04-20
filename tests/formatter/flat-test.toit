@@ -124,6 +124,25 @@ CASES ::= [
         """,
 
   Case
+      --label="calls with various args keep their shapes"
+      --input="""
+        main:
+          foo
+          foo 1 2
+          foo "hello" 42
+          foo (1 + 2)
+          foo.bar 1
+        """
+      --expected="""
+        main:
+          foo
+          foo 1 2
+          foo "hello" 42
+          foo (1 + 2)
+          foo.bar 1
+        """,
+
+  Case
       --label="unary over parenthesized binary keeps the parens"
       --input="""
         main:

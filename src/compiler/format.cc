@@ -390,6 +390,17 @@ class Formatter {
       }
       return true;
     }
+    if (expr->is_Call()) {
+      Call* c = expr->as_Call();
+      if (!can_emit_flat(c->target())) return false;
+      for (auto arg : c->arguments()) {
+        // Block/Lambda args aren't flattenable — they'd need their
+        // bodies emitted and those span multiple lines by definition.
+        if (arg->is_Block() || arg->is_Lambda()) return false;
+        if (!can_emit_flat(arg)) return false;
+      }
+      return true;
+    }
     return false;
   }
 
@@ -519,6 +530,26 @@ class Formatter {
         emit_expr_flat(m->values()[i], PRECEDENCE_NONE, out);
       }
       out->append("}");
+      return;
+    }
+    if (expr->is_Call()) {
+      Call* c = expr->as_Call();
+      // Wrap the whole call when the enclosing context binds tighter —
+      // a Call at PRECEDENCE_CALL inside, say, an Index's brackets is
+      // fine (PRECEDENCE_NONE), but a Call inside another Call's arg
+      // list needs parens to not merge into that list.
+      bool parens = PRECEDENCE_CALL <= outer_prec
+          && outer_prec != PRECEDENCE_NONE;
+      if (parens) out->append("(");
+      emit_expr_flat(c->target(), PRECEDENCE_POSTFIX, out);
+      for (auto arg : c->arguments()) {
+        out->append(" ");
+        // Wrap arguments at POSTFIX so Binary/Unary/Call get parenthesized
+        // — without that, `foo a + b` would re-parse as `Binary(+, Call(foo, [a]), b)`
+        // instead of `Call(foo, [Binary(+, a, b)])`.
+        emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
+      }
+      if (parens) out->append(")");
       return;
     }
     // Leaf: copy source bytes verbatim.
