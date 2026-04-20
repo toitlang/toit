@@ -2,17 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Formats every .toit file under lib/ and asserts idempotence (permanent
-// invariant). Verbatim equality with the input no longer holds — the
-// formatter canonicalizes spacing and indentation — so we only check that
-// a second format produces the same output as the first.
+// Mirrors lib/ into a tmp directory (preserving structure so relative
+// imports still resolve in case we ever want to re-add an analyze
+// check), formats every .toit file in place, and asserts idempotence:
+// running format twice produces the same bytes as running it once.
 //
-// We don't run `toit analyze` on the formatted file as a secondary check:
-// copying to a tmp dir breaks relative imports and would produce false
-// positives. A corrupting bug in the formatter has two ways to show up
-// here anyway — either the formatter crashes, or idempotence fails
-// because the broken output triggers a different format path on the
-// second pass.
+// Verbatim equality with the input no longer holds (the formatter
+// canonicalizes spacing and indentation), so we don't check that.
+//
+// A real semantic safety net (structural AST equivalence between input
+// and output) is still pending — see PLAN.md's Tier 3.
 
 import expect show *
 import host.directory
@@ -30,6 +29,7 @@ check-format toit-exe/ToitExecutable src-path/string label/string:
     print "IDEMPOTENCE FAILURE ($label)"
     expect false --message="formatter not idempotent on $label"
 
+
 // Walks `dir` recursively and calls `block` with every .toit file path.
 walk-toit-files dir/string [block]:
   stream := directory.DirectoryStream dir
@@ -44,6 +44,23 @@ walk-toit-files dir/string [block]:
   finally:
     stream.close
 
+// Recursively mirrors `src-dir` to `dst-dir`, copying file contents
+// verbatim. Creates intermediate directories as needed.
+mirror-tree src-dir/string dst-dir/string:
+  directory.mkdir --recursive dst-dir
+  stream := directory.DirectoryStream src-dir
+  try:
+    while entry := stream.next:
+      if entry == "." or entry == "..": continue
+      src-path := "$src-dir/$entry"
+      dst-path := "$dst-dir/$entry"
+      if file.is-directory src-path:
+        mirror-tree src-path dst-path
+      else:
+        file.write-contents --path=dst-path (file.read-contents src-path)
+  finally:
+    stream.close
+
 main args:
   toit-exe := ToitExecutable args
   if args.size < 2:
@@ -53,12 +70,10 @@ main args:
   lib-root := "$repo-root/lib"
 
   with-tmp-dir: | tmp-dir/string |
+    mirror-tree lib-root "$tmp-dir/lib"
     count := 0
-    walk-toit-files lib-root: | source-path/string |
-      relative := source-path[(lib-root.size + 1)..]
-      tmp-path := "$tmp-dir/$(relative.replace --all "/" "_")"
-      contents := file.read-contents source-path
-      file.write-contents --path=tmp-path contents
-      check-format toit-exe tmp-path relative
+    walk-toit-files "$tmp-dir/lib": | src-path/string |
+      relative := src-path[(tmp-dir.size + 1)..]
+      check-format toit-exe src-path relative
       count++
     print "round-trip-test: $count files OK"
