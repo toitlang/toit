@@ -88,6 +88,23 @@ CASES ::= [
         """,
 
   Case
+      --label="if-else with both branches over-indented"
+      --input="""
+        main:
+          if true:
+              print 1
+          else:
+              print 2
+        """
+      --expected="""
+        main:
+          if true:
+            print 1
+          else:
+            print 2
+        """,
+
+  Case
       --label="while body over-indented"
       --input="""
         main:

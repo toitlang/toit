@@ -230,20 +230,58 @@ class Formatter {
     return List<Expression*>();
   }
 
+  // Returns the offset of the first non-trivia byte in [from, limit), or
+  // `limit` if none found. Skips whitespace, newlines, line comments
+  // (// ...), and block comments (/* ... */).
+  int find_next_significant(int from, int limit) const {
+    while (from < limit) {
+      uint8 c = text_[from];
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        from++;
+        continue;
+      }
+      if (c == '/' && from + 1 < limit) {
+        uint8 next = text_[from + 1];
+        if (next == '/') {
+          while (from < limit && text_[from] != '\n') from++;
+          continue;
+        }
+        if (next == '*') {
+          from += 2;
+          while (from + 1 < limit
+                 && !(text_[from] == '*' && text_[from + 1] == '/')) {
+            from++;
+          }
+          if (from + 1 < limit) from += 2;
+          else from = limit;
+          continue;
+        }
+      }
+      return from;
+    }
+    return limit;
+  }
+
+  // Emits bytes from source_cursor_ through to `next_body_line_start`, with
+  // the line containing the keyword (e.g. `else:` or `finally:`) re-indented
+  // to `indent`. Used to re-indent the header of a second suite following
+  // the first (if/else, try/finally).
+  void emit_continuation_header(int next_body_line_start, int indent) {
+    int keyword_start = find_next_significant(source_cursor_, next_body_line_start);
+    if (keyword_start < next_body_line_start) {
+      emit_range_reindent(keyword_start, next_body_line_start, indent);
+    } else {
+      advance_to(next_body_line_start);
+    }
+  }
+
   void emit_stmt(Expression* stmt, int indent) {
     if (stmt->is_Call()) {
       emit_call(stmt->as_Call(), indent);
       return;
     }
     if (stmt->is_If()) {
-      If* if_node = stmt->as_If();
-      // Only recurse for single-body Ifs (no else). Multi-body Ifs need to
-      // re-indent the `else:` line too, which requires scanning for a
-      // keyword that is not in the AST. Leaves a follow-up.
-      if (if_node->no() == null) {
-        auto body = as_suite_body(if_node->yes());
-        if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
-      }
+      if (emit_if(stmt->as_If(), indent)) return;
     } else if (stmt->is_While()) {
       auto body = as_suite_body(stmt->as_While()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
@@ -252,6 +290,36 @@ class Formatter {
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     }
     emit_leaf(stmt, indent);
+  }
+
+  // Emits an If at `indent`, including its else branch if present.
+  // Returns false if the structure can't be handled (inline body, empty
+  // body); the caller should fall back to leaf.
+  bool emit_if(If* if_node, int indent) {
+    auto yes_body = as_suite_body(if_node->yes());
+    auto no_body = as_suite_body(if_node->no());
+    if (yes_body.is_empty()) return false;
+
+    int node_start = pos(if_node->full_range().from());
+    int node_end = pos(if_node->full_range().to());
+    int yes_first_line_start = find_line_start(pos(yes_body.first()->full_range().from()));
+    if (yes_first_line_start <= node_start) return false;
+
+    emit_range_reindent(node_start, yes_first_line_start, indent);
+    for (auto expr : yes_body) {
+      emit_stmt(expr, indent + INDENT_STEP);
+    }
+
+    if (!no_body.is_empty()) {
+      int no_first_line_start = find_line_start(pos(no_body.first()->full_range().from()));
+      emit_continuation_header(no_first_line_start, indent);
+      for (auto expr : no_body) {
+        emit_stmt(expr, indent + INDENT_STEP);
+      }
+    }
+
+    advance_to(node_end);
+    return true;
   }
 
   // Conservatively accept only nodes whose full_range is known to cover
