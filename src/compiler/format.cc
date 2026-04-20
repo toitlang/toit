@@ -362,6 +362,34 @@ class Formatter {
       if (slice->to() != null && !can_emit_flat(slice->to())) return false;
       return true;
     }
+    if (expr->is_LiteralList()) {
+      for (auto e : expr->as_LiteralList()->elements()) {
+        if (!can_emit_flat(e)) return false;
+      }
+      return true;
+    }
+    if (expr->is_LiteralByteArray()) {
+      for (auto e : expr->as_LiteralByteArray()->elements()) {
+        if (!can_emit_flat(e)) return false;
+      }
+      return true;
+    }
+    if (expr->is_LiteralSet()) {
+      for (auto e : expr->as_LiteralSet()->elements()) {
+        if (!can_emit_flat(e)) return false;
+      }
+      return true;
+    }
+    if (expr->is_LiteralMap()) {
+      LiteralMap* m = expr->as_LiteralMap();
+      for (auto k : m->keys()) {
+        if (!can_emit_flat(k)) return false;
+      }
+      for (auto v : m->values()) {
+        if (!can_emit_flat(v)) return false;
+      }
+      return true;
+    }
     return false;
   }
 
@@ -379,6 +407,18 @@ class Formatter {
   // (always wrap) because preserving left/right associativity by rule
   // would require per-kind details; over-paren is AST-safe since
   // ast_equivalent strips Parenthesis wrappers.
+  void emit_element_list(List<Expression*> elements,
+                         const char* open,
+                         const char* close,
+                         std::string* out) {
+    out->append(open);
+    for (int i = 0; i < elements.length(); i++) {
+      if (i > 0) out->append(", ");
+      emit_expr_flat(elements[i], PRECEDENCE_NONE, out);
+    }
+    out->append(close);
+  }
+
   void emit_expr_flat(Expression* expr, int outer_prec, std::string* out) {
     expr = peel_parens(expr);
     if (expr->is_Binary()) {
@@ -450,6 +490,35 @@ class Formatter {
         emit_expr_flat(slice->to(), PRECEDENCE_NONE, out);
       }
       out->append("]");
+      return;
+    }
+    if (expr->is_LiteralList()) {
+      emit_element_list(expr->as_LiteralList()->elements(), "[", "]", out);
+      return;
+    }
+    if (expr->is_LiteralByteArray()) {
+      emit_element_list(expr->as_LiteralByteArray()->elements(), "#[", "]", out);
+      return;
+    }
+    if (expr->is_LiteralSet()) {
+      emit_element_list(expr->as_LiteralSet()->elements(), "{", "}", out);
+      return;
+    }
+    if (expr->is_LiteralMap()) {
+      LiteralMap* m = expr->as_LiteralMap();
+      // Empty map is `{:}` — `{}` would parse as a Set literal instead.
+      if (m->keys().is_empty()) {
+        out->append("{:}");
+        return;
+      }
+      out->append("{");
+      for (int i = 0; i < m->keys().length(); i++) {
+        if (i > 0) out->append(", ");
+        emit_expr_flat(m->keys()[i], PRECEDENCE_NONE, out);
+        out->append(": ");
+        emit_expr_flat(m->values()[i], PRECEDENCE_NONE, out);
+      }
+      out->append("}");
       return;
     }
     // Leaf: copy source bytes verbatim.

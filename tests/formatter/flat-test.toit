@@ -78,6 +78,29 @@ CASES ::= [
         """,
 
   Case
+      --label="collection literals in flat form"
+      --input="""
+        main:
+          [1, 2, 3]
+          [1 + 2, 3 * 4]
+          {1, 2, 3}
+          {"a": 1, "b": 2}
+          #[0x01, 0x02, 0xff]
+          []
+          {:}
+        """
+      --expected="""
+        main:
+          [1, 2, 3]
+          [1 + 2, 3 * 4]
+          {1, 2, 3}
+          {"a": 1, "b": 2}
+          #[0x01, 0x02, 0xff]
+          []
+          {:}
+        """,
+
+  Case
       --label="index and slice flat forms"
       --input="""
         main:
