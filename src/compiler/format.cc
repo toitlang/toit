@@ -329,9 +329,12 @@ class Formatter {
     int start = pos(stmt->full_range().from());
     int end = pos(stmt->full_range().to());
     // Flat emission is built from AST fields, which don't carry trivia.
-    // Any comment that lives strictly inside the expression would be
-    // silently dropped — fall back to verbatim for those.
-    if (has_interior_comment(start, end)) return false;
+    // Any comment that would be affected by horizontal reshaping — in
+    // the statement's byte range, OR on the same line as its last token
+    // (trailing EOL comments) — locks the layout. Per the brainstorm
+    // rule: a line with an EOL `//` can only have its indentation
+    // changed, never be split or collapsed.
+    if (has_line_locking_comment(start, end)) return false;
 
     int line_start = find_line_start(start);
     if (line_start < source_cursor_) return false;
@@ -347,15 +350,30 @@ class Formatter {
     return true;
   }
 
-  // Whether any Scanner::Comment has a range fully within [from, to).
+  // Whether any Scanner::Comment sits in a position that would be
+  // affected by horizontally reshaping the statement [from, to). That's:
+  //
+  // (a) any comment whose range starts inside [from, to) — interior
+  //     comments that would be silently dropped by AST-only emission,
+  //     including inline `/*...*/` between tokens and `//` on continuation
+  //     lines of a broken statement.
+  //
+  // (b) any comment whose range starts *after* `to` but *before* the end
+  //     of the line that `to` sits on — a trailing EOL `//` or inline
+  //     `/*...*/` after the last token of a single-line statement.
+  //     Collapsing or splitting such a line would move the comment
+  //     relative to the tokens it was describing.
+  //
   // Linear scan — comments_ is usually short; can move to a bsearch if
   // profiling ever cares.
-  bool has_interior_comment(int from, int to) const {
+  bool has_line_locking_comment(int from, int to) const {
+    // Extend `to` to the end of the line it sits on — catches trailing
+    // same-line comments.
+    int line_end = to;
+    while (line_end < size_ && text_[line_end] != '\n') line_end++;
     for (int i = 0; i < comments_.length(); i++) {
-      auto cr = comments_[i].range();
-      int cf = pos(cr.from());
-      int ct = pos(cr.to());
-      if (cf >= from && ct <= to) return true;
+      int cf = pos(comments_[i].range().from());
+      if (cf >= from && cf < line_end) return true;
     }
     return false;
   }
@@ -913,6 +931,10 @@ class Formatter {
 
     int call_start = pos(call->full_range().from());
     int call_end = pos(call->full_range().to());
+    // A line with an EOL comment (`//` or `/*...*/` after the last token)
+    // can only have its indentation changed — not its internal spacing.
+    // Fall back to verbatim.
+    if (has_line_locking_comment(call_start, call_end)) return false;
     int line_start = find_line_start(call_start);
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, call_start)) return false;

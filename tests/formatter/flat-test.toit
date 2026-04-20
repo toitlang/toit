@@ -180,6 +180,23 @@ CASES ::= [
         """,
 
   Case
+      --label="line with trailing // comment is not reshaped"
+      --input="""
+        main:
+          foo  bar // keep comment and its spacing
+          a := 1
+          b := 2
+          x := a + b // end comment
+        """
+      --expected="""
+        main:
+          foo  bar // keep comment and its spacing
+          a := 1
+          b := 2
+          x := a + b // end comment
+        """,
+
+  Case
       --label="expressions with interior comments stay verbatim"
       --input="""
         main:
