@@ -145,6 +145,23 @@ CASES ::= [
         """,
 
   Case
+      --label="trailing block body over-indented"
+      --input="""
+        main:
+          list := [1, 2, 3]
+          list.do: | x |
+              print x
+              print x + 1
+        """
+      --expected="""
+        main:
+          list := [1, 2, 3]
+          list.do: | x |
+            print x
+            print x + 1
+        """,
+
+  Case
       --label="flat call multi-space is canonicalized"
       --input="""
         main:

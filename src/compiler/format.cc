@@ -79,11 +79,9 @@ static Shape shape_from_source_range(const uint8* text, int from, int to) {
 // continuation lines shift by the same delta as the statement's first line.
 //
 // Currently recurses into Class members, Method bodies, If (with optional
-// else), While, For, and TryFinally. Block and Lambda bodies still ride
-// with their enclosing statement — they live inside expression position
-// (as Call arguments, typically), and re-indenting them needs the Call
-// emitter to hand off to a block-aware path. That's scheduled for the
-// always-flat layout work.
+// else-if chain and final else), While, For, TryFinally, and the body of
+// a Call's trailing Block or Lambda argument. Blocks / Lambdas in other
+// positions still ride with their enclosing statement.
 class Formatter {
  public:
   Formatter(Unit* unit, List<Scanner::Comment> comments)
@@ -438,14 +436,50 @@ class Formatter {
     Shape source_shape = shape_from_source_range(text_, from, to);
     shapes_[call] = source_shape;
 
-    // M4 decision: preserve source layout (flat stays flat, broken stays
-    // broken) but canonicalize flat-form spacing to a single space between
-    // tokens. Broken form stays verbatim — continuation-indent
-    // canonicalization lands later.
-    if (source_shape.is_single_line() && try_emit_call_flat_canonical(call, indent)) {
+    if (source_shape.is_single_line()) {
+      if (try_emit_call_flat_canonical(call, indent)) return;
+      emit_leaf(call, indent);
       return;
     }
+
+    // Multi-line Call. If the last argument is a Block or Lambda with a
+    // multi-line body, recurse into that body so its statements re-indent
+    // to the Call's indent + INDENT_STEP. Typical Toit idiom:
+    //   list.do: | x |
+    //     print x
+    if (!call->arguments().is_empty()) {
+      Expression* last = call->arguments().last();
+      Sequence* body = null;
+      if (last->is_Block()) body = last->as_Block()->body();
+      else if (last->is_Lambda()) body = last->as_Lambda()->body();
+      if (body != null && !body->expressions().is_empty()) {
+        if (emit_call_with_trailing_suite(call, body->expressions(), indent)) {
+          return;
+        }
+      }
+    }
     emit_leaf(call, indent);
+  }
+
+  // For `foo arg: | params | body...`, emits the Call's header up to the
+  // body's first line, recurses each body expression at indent +
+  // INDENT_STEP, then emits any trailing bytes of the Call. Returns false
+  // if the body shares a line with the Call's start (inline body).
+  bool emit_call_with_trailing_suite(Call* call,
+                                     List<Expression*> body,
+                                     int indent) {
+    int call_start = pos(call->full_range().from());
+    int call_end = pos(call->full_range().to());
+    int body_first_line_start =
+        find_line_start(pos(body.first()->full_range().from()));
+    if (body_first_line_start <= call_start) return false;
+
+    emit_range_reindent(call_start, body_first_line_start, indent);
+    for (auto expr : body) {
+      emit_stmt(expr, indent + INDENT_STEP);
+    }
+    advance_to(call_end);
+    return true;
   }
 
   // Emits `target arg1 arg2 ...` with single-space separators. Returns false
