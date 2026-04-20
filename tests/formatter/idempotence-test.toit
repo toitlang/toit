@@ -47,12 +47,14 @@ SNIPPETS ::= [
   """,
 ]
 
-check-idempotent toit-exe/ToitExecutable src-path/string label/string:
+check-format toit-exe/ToitExecutable src-path/string label/string:
   original := (file.read-contents src-path).to-string
   toit-exe.backticks ["format", src-path]
   once := (file.read-contents src-path).to-string
   toit-exe.backticks ["format", src-path]
   twice := (file.read-contents src-path).to-string
+
+  // Idempotence: format(format(S)) == format(S).  Permanent invariant.
   if once != twice:
     print "IDEMPOTENCE FAILURE ($label):"
     print "--- original ---"
@@ -63,6 +65,17 @@ check-idempotent toit-exe/ToitExecutable src-path/string label/string:
     print twice
     expect false --message="formatter not idempotent on $label"
 
+  // Verbatim round-trip: format(S) == S.  Only holds while the formatter
+  // does no real transformations (M1). Remove this check at M2 when
+  // indentation starts changing.
+  if original != once:
+    print "VERBATIM FAILURE ($label):"
+    print "--- original ---"
+    print original
+    print "--- after format ---"
+    print once
+    expect false --message="formatter is not verbatim on $label"
+
 main args:
   toit-exe := ToitExecutable args
 
@@ -70,4 +83,4 @@ main args:
     SNIPPETS.size.repeat: | i/int |
       src-path := "$tmp-dir/snippet-$(i).toit"
       file.write-contents --path=src-path SNIPPETS[i]
-      check-idempotent toit-exe src-path "snippet-$(i)"
+      check-format toit-exe src-path "snippet-$(i)"
