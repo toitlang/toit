@@ -3,8 +3,9 @@
 // be found in the tests/LICENSE file.
 
 // Formats a curated corpus of real Toit sources and asserts idempotence
-// (permanent invariant) plus, while the formatter is still verbatim, exact
-// byte equality with the input. Remove the verbatim check at M2.
+// (permanent invariant). Verbatim equality with the input no longer holds
+// — the formatter canonicalizes spacing and indentation — so we only check
+// that a second format produces the same output as the first.
 
 import expect show *
 import host.file
@@ -34,10 +35,6 @@ check-format toit-exe/ToitExecutable src-path/string label/string:
   if once != twice:
     print "IDEMPOTENCE FAILURE ($label)"
     expect false --message="formatter not idempotent on $label"
-
-  if original != once:
-    print "VERBATIM FAILURE ($label)"
-    expect false --message="formatter is not verbatim on $label"
 
 main args:
   toit-exe := ToitExecutable args

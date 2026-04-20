@@ -73,6 +73,19 @@ CASES ::= [
         """,
 
   Case
+      --label="flat call multi-space is canonicalized"
+      --input="""
+        main:
+          print  "hello"
+          foo  bar   baz
+        """
+      --expected="""
+        main:
+          print "hello"
+          foo bar baz
+        """,
+
+  Case
       --label="well-formed input is unchanged"
       --input="""
         class Foo:

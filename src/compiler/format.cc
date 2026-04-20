@@ -215,20 +215,68 @@ class Formatter {
   }
 
   void emit_stmt(Expression* stmt, int indent) {
-    // M3: compute shape for Calls so M4 can use it for layout decisions.
-    // Output is still verbatim (delta-shifted) — the decision code comes
-    // later. We record into `shapes_` to exercise the computation on real
-    // code without changing behavior.
     if (stmt->is_Call()) {
-      record_shape(stmt);
+      emit_call(stmt->as_Call(), indent);
+      return;
     }
     emit_leaf(stmt, indent);
   }
 
-  void record_shape(Node* node) {
-    int from = pos(node->full_range().from());
-    int to = pos(node->full_range().to());
-    shapes_[node] = shape_from_source_range(text_, from, to);
+  void emit_call(Call* call, int indent) {
+    int from = pos(call->full_range().from());
+    int to = pos(call->full_range().to());
+    Shape source_shape = shape_from_source_range(text_, from, to);
+    shapes_[call] = source_shape;
+
+    // M4 decision: preserve source layout (flat stays flat, broken stays
+    // broken) but canonicalize flat-form spacing to a single space between
+    // tokens. Broken form stays verbatim — continuation-indent
+    // canonicalization lands later.
+    if (source_shape.is_single_line() && try_emit_call_flat_canonical(call, indent)) {
+      return;
+    }
+    emit_leaf(call, indent);
+  }
+
+  // Emits `target arg1 arg2 ...` with single-space separators. Returns false
+  // (and emits nothing) if the call is not safe to canonicalize — i.e. there
+  // is any non-whitespace content between consecutive tokens (comments), or
+  // the call does not start on its own line.
+  bool try_emit_call_flat_canonical(Call* call, int indent) {
+    Expression* target = call->target();
+    int call_start = pos(call->full_range().from());
+    int call_end = pos(call->full_range().to());
+    int line_start = find_line_start(call_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, call_start)) return false;
+
+    int prev_end = pos(target->full_range().to());
+    for (auto arg : call->arguments()) {
+      int arg_start = pos(arg->full_range().from());
+      for (int i = prev_end; i < arg_start; i++) {
+        if (text_[i] != ' ' && text_[i] != '\t') return false;
+      }
+      prev_end = pos(arg->full_range().to());
+    }
+
+    advance_to(line_start);
+    output_.append(indent, ' ');
+
+    int target_start = pos(target->full_range().from());
+    int target_end = pos(target->full_range().to());
+    output_.append(reinterpret_cast<const char*>(text_) + target_start,
+                   target_end - target_start);
+
+    for (auto arg : call->arguments()) {
+      output_.push_back(' ');
+      int arg_start = pos(arg->full_range().from());
+      int arg_end = pos(arg->full_range().to());
+      output_.append(reinterpret_cast<const char*>(text_) + arg_start,
+                     arg_end - arg_start);
+    }
+
+    source_cursor_ = call_end;
+    return true;
   }
 
   // Re-indent the first line of this node to `indent`, delta-shifting any

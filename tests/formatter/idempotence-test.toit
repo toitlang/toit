@@ -65,17 +65,6 @@ check-format toit-exe/ToitExecutable src-path/string label/string:
     print twice
     expect false --message="formatter not idempotent on $label"
 
-  // Verbatim round-trip: format(S) == S.  Only holds while the formatter
-  // does no real transformations (M1). Remove this check at M2 when
-  // indentation starts changing.
-  if original != once:
-    print "VERBATIM FAILURE ($label):"
-    print "--- original ---"
-    print original
-    print "--- after format ---"
-    print once
-    expect false --message="formatter is not verbatim on $label"
-
 main args:
   toit-exe := ToitExecutable args
 
