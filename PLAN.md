@@ -91,6 +91,10 @@ Currently the formatter emits inter-node bytes verbatim, which handles comments 
 
 Fix in Tier 1. Cleaner than dragging the workaround into Tier 3.
 
+### One-line-paren invariant (Tier 4 aesthetic guard)
+
+During Tier 4 development: if a statement is one line in input and one line in output, its paren count must not increase. That's an unambiguous bug signal — no layout change happened, so there's no excuse for new parens. Anything involving multi-line reformatting is context-dependent and not worth automating; eyeball those during dogfooding. Temporary ratchet — retire it once paren rules are tight enough to keep it green.
+
 ## Scope markers / where to stop (unchanged)
 
 - Don't build CST classes parallel to AST classes. Dispatch on AST kind.
