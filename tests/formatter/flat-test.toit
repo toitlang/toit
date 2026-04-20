@@ -143,6 +143,27 @@ CASES ::= [
         """,
 
   Case
+      --label="named arguments round-trip flat"
+      --input="""
+        main:
+          foo --flag
+          foo --no-flag
+          foo --key=42
+          a := 1
+          b := 2
+          foo --key=(a + b)
+        """
+      --expected="""
+        main:
+          foo --flag
+          foo --no-flag
+          foo --key=42
+          a := 1
+          b := 2
+          foo --key=(a + b)
+        """,
+
+  Case
       --label="unary over parenthesized binary keeps the parens"
       --input="""
         main:

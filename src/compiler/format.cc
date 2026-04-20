@@ -407,6 +407,24 @@ class Formatter {
       }
       return true;
     }
+    if (expr->is_NamedArgument()) {
+      NamedArgument* na = expr->as_NamedArgument();
+      return na->expression() == null || can_emit_flat(na->expression());
+    }
+    if (expr->is_Nullable()) {
+      return can_emit_flat(expr->as_Nullable()->type());
+    }
+    if (expr->is_LiteralStringInterpolation()) {
+      // Interpolated strings are intricate to reconstruct (the `$ident` /
+      // `$(expr)` / format-spec forms live in the source bytes, not the
+      // AST fields directly). Treat as flat-emittable only when the
+      // whole thing sits on a single line — then the fallback verbatim
+      // emission covers it.
+      int from = pos(expr->full_range().from());
+      int to = pos(expr->full_range().to());
+      Shape s = shape_from_source_range(text_, from, to);
+      return s.is_single_line();
+    }
     return false;
   }
 
@@ -556,6 +574,23 @@ class Formatter {
         emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
       }
       if (parens) out->append(")");
+      return;
+    }
+    if (expr->is_NamedArgument()) {
+      NamedArgument* na = expr->as_NamedArgument();
+      out->append(na->inverted() ? "--no-" : "--");
+      int nfrom = pos(na->name()->full_range().from());
+      int nto = pos(na->name()->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + nfrom, nto - nfrom);
+      if (na->expression() != null) {
+        out->append("=");
+        emit_expr_flat(na->expression(), PRECEDENCE_POSTFIX, out);
+      }
+      return;
+    }
+    if (expr->is_Nullable()) {
+      emit_expr_flat(expr->as_Nullable()->type(), PRECEDENCE_POSTFIX, out);
+      out->append("?");
       return;
     }
     // Leaf: copy source bytes verbatim.
