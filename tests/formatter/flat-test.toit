@@ -143,6 +143,23 @@ CASES ::= [
         """,
 
   Case
+      --label="expressions with interior comments stay verbatim"
+      --input="""
+        main:
+          foo
+              a
+              /* comment */
+              b
+        """
+      --expected="""
+        main:
+          foo
+              a
+              /* comment */
+              b
+        """,
+
+  Case
       --label="named arguments round-trip flat"
       --input="""
         main:

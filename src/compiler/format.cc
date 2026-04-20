@@ -317,6 +317,11 @@ class Formatter {
 
     int start = pos(stmt->full_range().from());
     int end = pos(stmt->full_range().to());
+    // Flat emission is built from AST fields, which don't carry trivia.
+    // Any comment that lives strictly inside the expression would be
+    // silently dropped — fall back to verbatim for those.
+    if (has_interior_comment(start, end)) return false;
+
     int line_start = find_line_start(start);
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, start)) return false;
@@ -329,6 +334,19 @@ class Formatter {
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
     output_.append(buffer);
     return true;
+  }
+
+  // Whether any Scanner::Comment has a range fully within [from, to).
+  // Linear scan — comments_ is usually short; can move to a bsearch if
+  // profiling ever cares.
+  bool has_interior_comment(int from, int to) const {
+    for (int i = 0; i < comments_.length(); i++) {
+      auto cr = comments_[i].range();
+      int cf = pos(cr.from());
+      int ct = pos(cr.to());
+      if (cf >= from && ct <= to) return true;
+    }
+    return false;
   }
 
   // Whether we have a flat-form implementation for this expression kind.
