@@ -2869,7 +2869,7 @@ Source::Range Parser::peek_range() {
     }
     return source_->range(state.scanner_state.from, shortened_to);
   }
-  return current_range();
+  return source_->range(state.scanner_state.from, state.scanner_state.to);
 }
 
 Source::Range Parser::current_range_safe() {
