@@ -620,19 +620,23 @@ class Formatter {
     }
     if (expr->is_Call()) {
       Call* c = expr->as_Call();
-      // Wrap the whole call when the enclosing context binds tighter —
-      // a Call at PRECEDENCE_CALL inside, say, an Index's brackets is
-      // fine (PRECEDENCE_NONE), but a Call inside another Call's arg
-      // list needs parens to not merge into that list.
-      bool parens = PRECEDENCE_CALL <= outer_prec
-          && outer_prec != PRECEDENCE_NONE;
+      // Call in Toit is greedy: once parsed as a Call, it keeps
+      // absorbing subsequent tokens (including binary operators) into
+      // its argument list until the end of the expression. So any time
+      // we emit a Call that isn't at the top of a statement — anything
+      // where outer_prec != PRECEDENCE_NONE — we have to wrap it in
+      // parens, otherwise the enclosing binary/unary/call context would
+      // be silently pulled into the Call on re-parse.
+      bool parens = outer_prec != PRECEDENCE_NONE;
       if (parens) out->append("(");
       emit_expr_flat(c->target(), PRECEDENCE_POSTFIX, out);
       for (auto arg : c->arguments()) {
         out->append(" ");
-        // Wrap arguments at POSTFIX so Binary/Unary/Call get parenthesized
-        // — without that, `foo a + b` would re-parse as `Binary(+, Call(foo, [a]), b)`
-        // instead of `Call(foo, [Binary(+, a, b)])`.
+        // Wrap arguments that themselves have binary/unary structure —
+        // again, Call absorbs across binary operators, so `foo a + b`
+        // parses as `Call(foo, [Binary(+, a, b)])`. When the AST wants
+        // `Binary(+, Call(foo, [a]), b)` we must write `foo a + b` as
+        // `(foo a) + b`; when the AST wants the former, no wrap needed.
         emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
       }
       if (parens) out->append(")");
