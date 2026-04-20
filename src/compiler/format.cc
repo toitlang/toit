@@ -191,33 +191,65 @@ class Formatter {
   }
 
   void emit_method(Method* method, int indent) {
-    int node_start = pos(method->full_range().from());
-    int node_end = pos(method->full_range().to());
-    auto exprs = method->body()->expressions();
-    int first_expr_start = pos(exprs.first()->full_range().from());
-    int first_expr_line_start = find_line_start(first_expr_start);
-
-    // If the first body expression shares a line with the method header
-    // (inline body like `foo: return 42`), we can't split the header from
-    // the body — emit the whole thing as a leaf.
-    if (first_expr_line_start <= node_start) {
+    if (!emit_with_suite(method, method->body()->expressions(), indent)) {
       emit_leaf(method, indent);
-      return;
     }
+  }
 
-    emit_range_reindent(node_start, first_expr_line_start, indent);
+  // Emits `node` at `indent`: bytes from node_start up to the first body
+  // expression's line start (with the header's first line re-indented to
+  // `indent`), then each body expression at indent + INDENT_STEP, then any
+  // trailing bytes up to node_end. Returns false if the body is empty or
+  // shares a line with the header (inline, e.g. `foo: return 42`); the
+  // caller should fall back to verbatim emission.
+  bool emit_with_suite(Node* node,
+                       List<Expression*> body,
+                       int indent) {
+    if (body.is_empty()) return false;
+    int node_start = pos(node->full_range().from());
+    int node_end = pos(node->full_range().to());
+    int first_body_start = pos(body.first()->full_range().from());
+    int first_body_line_start = find_line_start(first_body_start);
+    if (first_body_line_start <= node_start) return false;
 
-    for (auto expr : exprs) {
+    emit_range_reindent(node_start, first_body_line_start, indent);
+    for (auto expr : body) {
       emit_stmt(expr, indent + INDENT_STEP);
     }
-
     advance_to(node_end);
+    return true;
+  }
+
+  // Returns the expressions of `expr` when it's a Sequence, or an empty list
+  // otherwise. The caller can use `is_empty()` to detect both "not a
+  // Sequence" and "empty Sequence."
+  List<Expression*> as_suite_body(Expression* expr) const {
+    if (expr != null && expr->is_Sequence()) {
+      return expr->as_Sequence()->expressions();
+    }
+    return List<Expression*>();
   }
 
   void emit_stmt(Expression* stmt, int indent) {
     if (stmt->is_Call()) {
       emit_call(stmt->as_Call(), indent);
       return;
+    }
+    if (stmt->is_If()) {
+      If* if_node = stmt->as_If();
+      // Only recurse for single-body Ifs (no else). Multi-body Ifs need to
+      // re-indent the `else:` line too, which requires scanning for a
+      // keyword that is not in the AST. Leaves a follow-up.
+      if (if_node->no() == null) {
+        auto body = as_suite_body(if_node->yes());
+        if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
+      }
+    } else if (stmt->is_While()) {
+      auto body = as_suite_body(stmt->as_While()->body());
+      if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
+    } else if (stmt->is_For()) {
+      auto body = as_suite_body(stmt->as_For()->body());
+      if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     }
     emit_leaf(stmt, indent);
   }

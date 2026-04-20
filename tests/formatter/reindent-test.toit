@@ -73,6 +73,38 @@ CASES ::= [
         """,
 
   Case
+      --label="if body over-indented"
+      --input="""
+        main:
+          if true:
+              print 1
+              print 2
+        """
+      --expected="""
+        main:
+          if true:
+            print 1
+            print 2
+        """,
+
+  Case
+      --label="while body over-indented"
+      --input="""
+        main:
+          i := 0
+          while i < 3:
+              print i
+              i++
+        """
+      --expected="""
+        main:
+          i := 0
+          while i < 3:
+            print i
+            i++
+        """,
+
+  Case
       --label="flat call multi-space is canonicalized"
       --input="""
         main:
