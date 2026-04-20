@@ -289,6 +289,13 @@ class Formatter {
       auto body = as_suite_body(stmt->as_For()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     }
+    // TryFinally is intentionally left as a leaf. The pattern would be the
+    // same as emit_if (two suites, a continuation header), but the parser
+    // sometimes sets a body expression's full_range to end before the
+    // closing bracket of its last sub-expression (seen with multi-line
+    // LiteralList inside `return [...]`). That makes the
+    // find_next_significant scan for the `finally:` keyword trip on the
+    // `]` and re-indent it. Needs an AST-side fix before this is safe.
     emit_leaf(stmt, indent);
   }
 
