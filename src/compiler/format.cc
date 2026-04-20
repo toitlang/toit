@@ -347,6 +347,21 @@ class Formatter {
     if (expr->is_Dot()) {
       return can_emit_flat(expr->as_Dot()->receiver());
     }
+    if (expr->is_Index()) {
+      Index* idx = expr->as_Index();
+      if (!can_emit_flat(idx->receiver())) return false;
+      for (auto arg : idx->arguments()) {
+        if (!can_emit_flat(arg)) return false;
+      }
+      return true;
+    }
+    if (expr->is_IndexSlice()) {
+      IndexSlice* slice = expr->as_IndexSlice();
+      if (!can_emit_flat(slice->receiver())) return false;
+      if (slice->from() != null && !can_emit_flat(slice->from())) return false;
+      if (slice->to() != null && !can_emit_flat(slice->to())) return false;
+      return true;
+    }
     return false;
   }
 
@@ -406,6 +421,35 @@ class Formatter {
       int nfrom = pos(d->name()->full_range().from());
       int nto = pos(d->name()->full_range().to());
       out->append(reinterpret_cast<const char*>(text_) + nfrom, nto - nfrom);
+      return;
+    }
+    if (expr->is_Index()) {
+      Index* idx = expr->as_Index();
+      emit_expr_flat(idx->receiver(), PRECEDENCE_POSTFIX, out);
+      out->append("[");
+      bool first = true;
+      for (auto arg : idx->arguments()) {
+        if (!first) out->append(", ");
+        // Inside `[...]` the precedence context is reset — no outer
+        // operator can pull expressions apart across the brackets.
+        emit_expr_flat(arg, PRECEDENCE_NONE, out);
+        first = false;
+      }
+      out->append("]");
+      return;
+    }
+    if (expr->is_IndexSlice()) {
+      IndexSlice* slice = expr->as_IndexSlice();
+      emit_expr_flat(slice->receiver(), PRECEDENCE_POSTFIX, out);
+      out->append("[");
+      if (slice->from() != null) {
+        emit_expr_flat(slice->from(), PRECEDENCE_NONE, out);
+      }
+      out->append("..");
+      if (slice->to() != null) {
+        emit_expr_flat(slice->to(), PRECEDENCE_NONE, out);
+      }
+      out->append("]");
       return;
     }
     // Leaf: copy source bytes verbatim.

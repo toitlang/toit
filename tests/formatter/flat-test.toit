@@ -78,6 +78,29 @@ CASES ::= [
         """,
 
   Case
+      --label="index and slice flat forms"
+      --input="""
+        main:
+          arr := [1, 2, 3, 4, 5]
+          arr[0]
+          arr[1, 2]
+          arr[1..3]
+          arr[..2]
+          arr[1..]
+          arr[..]
+        """
+      --expected="""
+        main:
+          arr := [1, 2, 3, 4, 5]
+          arr[0]
+          arr[1, 2]
+          arr[1..3]
+          arr[..2]
+          arr[1..]
+          arr[..]
+        """,
+
+  Case
       --label="unary over parenthesized binary keeps the parens"
       --input="""
         main:
