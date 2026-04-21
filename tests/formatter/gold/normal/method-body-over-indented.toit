@@ -1,0 +1,6 @@
+class Foo:
+  bar:
+      return 42
+
+main:
+  print 1

@@ -1,0 +1,3 @@
+main:
+  print  "hello"
+  foo  bar   baz
