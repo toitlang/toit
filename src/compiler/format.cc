@@ -44,6 +44,10 @@ static const int CALL_CONTINUATION_STEP = 4;
 // first cut; will be tuned (and likely made per-node-kind) once dogfooding
 // surfaces real pressure. Artemis measurements: 99.5% of lines <= 100 cols.
 static const int MAX_LINE_WIDTH = 100;
+// Always-break thresholds. Aggregates with this many or more elements —
+// independent of width — are emitted broken, because config-call-style
+// shapes lose their readability when crammed onto one line.
+static const int NAMED_ARG_BREAK_THRESHOLD = 4;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -466,6 +470,11 @@ class Formatter {
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, start)) return false;
 
+    // Always-break: a Call anywhere inside this statement with too many
+    // NamedArguments can't be flattened — the broken form is the canonical
+    // shape for config-call-style invocations.
+    if (max_width >= 0 && has_many_named_arg_call(stmt)) return false;
+
     // Render first so we can bail on width before committing any output.
     std::string buffer;
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
@@ -655,6 +664,50 @@ class Formatter {
     int p = Token::precedence(k);
     return p == PRECEDENCE_AND || p == PRECEDENCE_OR
         || p == PRECEDENCE_ASSIGNMENT;
+  }
+
+  // Whether `e` contains (anywhere in the expression tree) a Call whose
+  // NamedArgument count hits NAMED_ARG_BREAK_THRESHOLD — the always-break
+  // signal for config-call shapes.
+  bool has_many_named_arg_call(Expression* e) const {
+    if (e == null) return false;
+    if (e->is_Call()) {
+      auto c = e->as_Call();
+      int named_count = 0;
+      for (auto a : c->arguments()) {
+        if (a->is_NamedArgument()) named_count++;
+      }
+      if (named_count >= NAMED_ARG_BREAK_THRESHOLD) return true;
+      if (has_many_named_arg_call(c->target())) return true;
+      for (auto a : c->arguments()) {
+        if (has_many_named_arg_call(a)) return true;
+      }
+      return false;
+    }
+    if (e->is_Parenthesis()) {
+      return has_many_named_arg_call(e->as_Parenthesis()->expression());
+    }
+    if (e->is_Unary()) {
+      return has_many_named_arg_call(e->as_Unary()->expression());
+    }
+    if (e->is_Binary()) {
+      auto b = e->as_Binary();
+      return has_many_named_arg_call(b->left())
+          || has_many_named_arg_call(b->right());
+    }
+    if (e->is_NamedArgument()) {
+      return has_many_named_arg_call(e->as_NamedArgument()->expression());
+    }
+    if (e->is_Return()) {
+      return has_many_named_arg_call(e->as_Return()->value());
+    }
+    if (e->is_DeclarationLocal()) {
+      return has_many_named_arg_call(e->as_DeclarationLocal()->value());
+    }
+    if (e->is_BreakContinue()) {
+      return has_many_named_arg_call(e->as_BreakContinue()->value());
+    }
+    return false;
   }
 
   static bool is_bitwise_binary(Token::Kind k) {
@@ -1162,7 +1215,13 @@ class Formatter {
                                int indent) {
     Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
     if (!outer_shape.is_single_line()) return false;
-    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
+    bool too_wide = indent + outer_shape.first_line_width > MAX_LINE_WIDTH;
+    int named_count = 0;
+    for (auto arg : call->arguments()) {
+      if (arg->is_NamedArgument()) named_count++;
+    }
+    bool many_named = named_count >= NAMED_ARG_BREAK_THRESHOLD;
+    if (!too_wide && !many_named) return false;
 
     if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
@@ -1281,6 +1340,16 @@ class Formatter {
   // a full_range we can't trust as a contiguous source span.
   bool try_emit_call_flat_canonical(Call* call, int indent) {
     Expression* target = call->target();
+    // Always-break threshold: a Call with many named arguments is a
+    // config-call shape that reads per-line, so reject flat here and let
+    // the broken-form paths take over even if the flat form would fit.
+    {
+      int named_count = 0;
+      for (auto arg : call->arguments()) {
+        if (arg->is_NamedArgument()) named_count++;
+      }
+      if (named_count >= NAMED_ARG_BREAK_THRESHOLD) return false;
+    }
     // Guard against AST nodes whose full_range does not cover their complete
     // source span (Index/IndexSlice exclude the receiver, for example).
     // Limit canonicalization to targets and args whose full_range is known
