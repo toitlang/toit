@@ -448,6 +448,10 @@ class Formatter {
     // synthesised per-line broken form.
     if (try_emit_stmt_force_broken_collection(stmt, indent)) return;
 
+    // Too-wide Binary chain gets split across lines at operator
+    // boundaries.
+    if (try_emit_binary_forced_broken(stmt, indent)) return;
+
     emit_leaf(stmt, indent);
   }
 
@@ -766,6 +770,64 @@ class Formatter {
       }
     }
     return null;
+  }
+
+  // Walks a same-operator Binary chain and collects its operands in
+  // left-to-right order. Stops at the first child of the chain's own
+  // kind that is wrapped in Parenthesis or that uses a different
+  // operator — those nodes become single operands.
+  void flatten_binary_chain(Binary* b, Token::Kind op,
+                            std::vector<Expression*>* operands) const {
+    if (is_right_assoc_binary(op)) {
+      operands->push_back(b->left());
+      Expression* r = b->right();
+      if (r != null && !r->is_Parenthesis()
+          && r->is_Binary() && r->as_Binary()->kind() == op) {
+        flatten_binary_chain(r->as_Binary(), op, operands);
+      } else {
+        operands->push_back(r);
+      }
+    } else {
+      Expression* l = b->left();
+      if (l != null && !l->is_Parenthesis()
+          && l->is_Binary() && l->as_Binary()->kind() == op) {
+        flatten_binary_chain(l->as_Binary(), op, operands);
+      } else {
+        operands->push_back(l);
+      }
+      operands->push_back(b->right());
+    }
+  }
+
+  // For a statement shaped as `<binary>`, `return <binary>`,
+  // `x := <binary>` or `x = <binary>`, returns the Binary that should be
+  // force-broken (its chain distributed across lines) when the stmt is
+  // over the width budget. Returns null if there's nothing broken-breakable
+  // at the top (e.g. the value is a Call, a literal, an assignment, etc.).
+  Binary* find_force_break_binary(Expression* stmt) const {
+    Expression* v = null;
+    if (stmt->is_Return()) {
+      v = stmt->as_Return()->value();
+    } else if (stmt->is_DeclarationLocal()) {
+      v = stmt->as_DeclarationLocal()->value();
+    } else if (stmt->is_Binary()) {
+      auto b = stmt->as_Binary();
+      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT) {
+        v = b->right();
+      } else {
+        v = stmt;  // bare Binary stmt.
+      }
+    } else {
+      v = stmt;
+    }
+    while (v != null && v->is_Parenthesis()) {
+      v = v->as_Parenthesis()->expression();
+    }
+    if (v == null || !v->is_Binary()) return null;
+    if (Token::precedence(v->as_Binary()->kind()) == PRECEDENCE_ASSIGNMENT) {
+      return null;  // don't mess with nested assignments
+    }
+    return v->as_Binary();
   }
 
   static bool is_bitwise_binary(Token::Kind k) {
@@ -1207,6 +1269,16 @@ class Formatter {
       return true;
     }
 
+    // Binary and Call are intentionally omitted. Their source bytes are
+    // complete, but treating them as "safe to flatten" trips Toit's
+    // greedy-Call parsing: e.g. a broken `writer.write-byte\n  to-lower
+    // -case-hex X & mask` is Call(write-byte, [Binary(&, Call(hex, [X]),
+    // mask)]), but `writer.write-byte to-lower-case-hex X & mask` re-
+    // parses as something structurally different. Downstream code can
+    // still copy the source bytes of a Binary/Call operand — it just
+    // shouldn't go through this predicate when a re-parse would shift
+    // the AST.
+
     return false;
   }
 
@@ -1310,6 +1382,68 @@ class Formatter {
       source_cursor_ = arg_end;
     }
     advance_to(outer_end);
+    return true;
+  }
+
+  // Synthesises an operator-leading broken form for a too-wide Binary
+  // chain:
+  //
+  //   x := foo            (instead of `x := foo + bar + baz + qux`)
+  //       + bar
+  //       + baz
+  //       + qux
+  //
+  // The wrapper prefix (`x := ` / `return ` / `x = ` / nothing) plus the
+  // chain's first operand share the first line at `indent`. Each
+  // subsequent operand sits on its own continuation line at
+  // `indent + CALL_CONTINUATION_STEP`, preceded by the chain's operator.
+  // Only fires when the source is a single line whose rendered width
+  // exceeds MAX_LINE_WIDTH — already-broken source is preserved by the
+  // verbatim emit_leaf path.
+  bool try_emit_binary_forced_broken(Expression* stmt, int indent) {
+    Binary* root = find_force_break_binary(stmt);
+    if (root == null) return false;
+
+    int outer_start = pos(stmt->full_range().from());
+    int outer_end = pos(stmt->full_range().to());
+    Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
+    if (!outer_shape.is_single_line()) return false;
+    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
+
+    if (has_line_locking_comment(outer_start, outer_end)) return false;
+
+    int outer_line_start = find_line_start(outer_start);
+    if (outer_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+
+    Token::Kind op = root->kind();
+    std::vector<Expression*> operands;
+    flatten_binary_chain(root, op, &operands);
+    if (operands.size() < 2) return false;
+
+    // Safety: every operand must have a reliable full_range so we can
+    // copy source bytes verbatim.
+    for (auto operand : operands) {
+      if (!has_reliable_full_range(operand)) return false;
+    }
+
+    // First line: wrapper bytes + first operand, re-indented to `indent`.
+    int first_operand_end = pos(operands[0]->full_range().to());
+    emit_range_reindent(outer_start, first_operand_end, indent);
+
+    int continuation_indent = indent + CALL_CONTINUATION_STEP;
+    for (size_t i = 1; i < operands.size(); i++) {
+      int op_start = pos(operands[i]->full_range().from());
+      int op_end = pos(operands[i]->full_range().to());
+      output_.push_back('\n');
+      output_.append(continuation_indent, ' ');
+      output_.append(Token::symbol(op).c_str());
+      output_.push_back(' ');
+      output_.append(reinterpret_cast<const char*>(text_) + op_start,
+                     op_end - op_start);
+    }
+
+    source_cursor_ = outer_end;
     return true;
   }
 

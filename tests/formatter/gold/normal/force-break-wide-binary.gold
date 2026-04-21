@@ -1,0 +1,29 @@
+main:
+  // Too-wide Binary chain: break between operands at indent + 4, operator
+  // leads each continuation line. Wrapper prefix (e.g. `x :=`) stays with
+  // the first operand on the first line.
+  x := long_addend_alpha
+      + long_addend_beta
+      + long_addend_gamma
+      + long_addend_delta
+      + long_addend_eps
+  return long_addend_alpha
+      + long_addend_beta
+      + long_addend_gamma
+      + long_addend_delta
+      + long_addend_eps
+  long_addend_alpha
+      + long_addend_beta
+      + long_addend_gamma
+      + long_addend_delta
+      + long_addend_epsilonnn
+
+  // Short chain that fits: stays flat.
+  short := 1 + 2 + 3
+
+long_addend_alpha := 0
+long_addend_beta := 0
+long_addend_gamma := 0
+long_addend_delta := 0
+long_addend_eps := 0
+long_addend_epsilonnn := 0
