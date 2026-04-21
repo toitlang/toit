@@ -1,0 +1,10 @@
+class Holder:
+  data/int := 0
+
+  update x y:
+    data = foo
+      x
+      y
+
+foo x y:
+  return x + y

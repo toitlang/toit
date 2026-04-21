@@ -348,6 +348,22 @@ class Formatter {
         }
       }
     }
+    // `x = <broken-call>`, `x += <broken-call>`, etc. Same pattern as the
+    // DeclarationLocal case: the Call is the RHS of an assignment Binary.
+    if (stmt->is_Binary()) {
+      Binary* b = stmt->as_Binary();
+      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
+          && b->right() != null && b->right()->is_Call()) {
+        Call* call = b->right()->as_Call();
+        if (try_canonicalize_broken_call_in_range(
+                call,
+                pos(b->full_range().from()),
+                pos(b->full_range().to()),
+                indent)) {
+          return;
+        }
+      }
+    }
 
     emit_leaf(stmt, indent);
   }
