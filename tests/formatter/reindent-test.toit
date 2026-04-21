@@ -226,6 +226,48 @@ CASES ::= [
         """,
 
   Case
+      --label="return-wrapped broken call canonicalizes continuation"
+      --input="""
+        foo x y:
+          return x
+
+        bar:
+          return foo
+            a
+            b
+        """
+      --expected="""
+        foo x y:
+          return x
+
+        bar:
+          return foo
+              a
+              b
+        """,
+
+  Case
+      --label="local-decl RHS broken call canonicalizes continuation"
+      --input="""
+        foo x y:
+          return x
+
+        main:
+          x := foo
+            a
+            b
+        """
+      --expected="""
+        foo x y:
+          return x
+
+        main:
+          x := foo
+              a
+              b
+        """,
+
+  Case
       --label="well-formed input is unchanged"
       --input="""
         class Foo:

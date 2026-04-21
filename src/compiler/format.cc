@@ -318,6 +318,37 @@ class Formatter {
     } else if (stmt->is_TryFinally()) {
       if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
+
+    // `return <broken-call>` and `x := <broken-call>` should canonicalize
+    // the continuation indent of the wrapped Call's args to indent+4, the
+    // same as a bare statement-position broken Call.
+    if (stmt->is_Return()) {
+      auto ret = stmt->as_Return();
+      if (ret->value() != null && ret->value()->is_Call()) {
+        Call* call = ret->value()->as_Call();
+        if (try_canonicalize_broken_call_in_range(
+                call,
+                pos(ret->full_range().from()),
+                pos(ret->full_range().to()),
+                indent)) {
+          return;
+        }
+      }
+    }
+    if (stmt->is_DeclarationLocal()) {
+      auto decl = stmt->as_DeclarationLocal();
+      if (decl->value() != null && decl->value()->is_Call()) {
+        Call* call = decl->value()->as_Call();
+        if (try_canonicalize_broken_call_in_range(
+                call,
+                pos(decl->full_range().from()),
+                pos(decl->full_range().to()),
+                indent)) {
+          return;
+        }
+      }
+    }
+
     emit_leaf(stmt, indent);
   }
 
@@ -898,58 +929,66 @@ class Formatter {
     // args that sit on their own line. Preserves the source's decision
     // about which args share the target's line vs go on continuation
     // lines; only fixes the indent of the continuation lines themselves.
-    if (try_emit_call_broken_canonical(call, indent)) return;
+    int call_start = pos(call->full_range().from());
+    int call_end = pos(call->full_range().to());
+    if (try_canonicalize_broken_call_in_range(call, call_start, call_end, indent)) return;
     emit_leaf(call, indent);
   }
 
-  // For a multi-line Call whose continuation args live on their own lines,
-  // re-indents those lines to `indent + CALL_CONTINUATION_STEP`.
+  // Canonicalizes the continuation indent of a broken Call's args to
+  // `indent + CALL_CONTINUATION_STEP`. The Call may be the whole
+  // statement (outer_start/end = call's range) OR wrapped in Return /
+  // DeclarationLocal (outer_start/end = the wrapper's range), in which
+  // case the wrapper's first line is emitted at `indent` alongside the
+  // Call's target.
+  //
   // Returns false if guards fail (line-locking comments, unreliable
   // full_range, no arg on its own line, etc.); caller falls back to leaf.
-  bool try_emit_call_broken_canonical(Call* call, int indent) {
-    int call_start = pos(call->full_range().from());
-    int call_end = pos(call->full_range().to());
-    if (has_line_locking_comment(call_start, call_end)) return false;
+  bool try_canonicalize_broken_call_in_range(Call* call,
+                                             int outer_start,
+                                             int outer_end,
+                                             int indent) {
+    if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
     for (auto arg : call->arguments()) {
       if (arg->is_Block() || arg->is_Lambda()) return false;
       if (!has_reliable_full_range(arg)) return false;
     }
 
-    int call_line_start = find_line_start(call_start);
-    if (call_line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(call_line_start, call_start)) return false;
+    int outer_line_start = find_line_start(outer_start);
+    if (outer_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
 
-    // Find the first arg that sits on a line different from the call's
-    // target line. If none, this "broken" call is really single-line
-    // (shouldn't happen given source_shape.is_single_line() check above,
-    // but guard anyway).
+    // Find the first arg on a line different from the outer's first line.
+    // If none, this isn't really a broken call and we have nothing to do.
     int first_break = -1;
     for (int i = 0; i < call->arguments().length(); i++) {
       int arg_line = find_line_start(
           pos(call->arguments()[i]->full_range().from()));
-      if (arg_line > call_line_start) {
+      if (arg_line > outer_line_start) {
         first_break = i;
         break;
       }
     }
     if (first_break < 0) return false;
 
-    // Emit the call's first line (target + any same-line args) at `indent`.
+    // Emit the outer's first line at `indent`. For a bare Call this is
+    // just the target (+ any same-line args); for Return / DeclLocal the
+    // wrapper tokens come first.
     int break_line_start = find_line_start(
         pos(call->arguments()[first_break]->full_range().from()));
-    emit_range_reindent(call_start, break_line_start, indent);
+    emit_range_reindent(outer_start, break_line_start, indent);
 
     // Re-indent each continuation arg.
     int continuation_indent = indent + CALL_CONTINUATION_STEP;
     for (int i = first_break; i < call->arguments().length(); i++) {
       auto arg = call->arguments()[i];
-      int arg_start = pos(arg->full_range().from());
-      int arg_end = pos(arg->full_range().to());
-      emit_range_reindent(arg_start, arg_end, continuation_indent);
+      emit_range_reindent(pos(arg->full_range().from()),
+                          pos(arg->full_range().to()),
+                          continuation_indent);
     }
 
-    advance_to(call_end);
+    advance_to(outer_end);
     return true;
   }
 
