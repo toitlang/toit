@@ -2,9 +2,10 @@ class Holder:
   data/int := 0
 
   update x y:
-    data = foo
-      x
-      y
+    data = some_function_with_a_fairly_long_name
+      a_moderately_long_first_argument_name
+      another_moderately_long_argument_name
+      and_a_third_similarly_long_argument
 
 foo x y:
   return x + y

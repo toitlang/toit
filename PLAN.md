@@ -65,6 +65,19 @@
 - Same for `return <broken-call>`, `x := <broken-call>`, `x = <broken-call>` / `x += ...` etc. (all assignment-kind Binaries).
 - Same for `Method` parameters on continuation lines (`constructor\n    --.id`).
 
+### Tier 4 (started) — flat-if-fits for `Call`
+
+- `MAX_LINE_WIDTH = 100` (first cut; per-node thresholds will come if dogfooding demands it).
+- `try_emit_call_flat_canonical` now accepts multi-line source: it collapses to the flat form when the flat width fits under the threshold, target + every arg are each single-line in source, and the gap between tokens contains only whitespace (spaces / tabs / newlines — any other byte, e.g. a comment, still blocks).
+- Multi-line source over the threshold falls through to the existing broken paths (trailing-suite recursion, broken-continuation canonicalization, verbatim leaf).
+
+### Tier 4 (started) — flat-if-fits for other expressions (via `emit_stmt_flat`)
+
+- `emit_stmt_flat` now takes a `max_width` param. Renders the flat form into a buffer, width-checks, and only commits (trivia + indent + buffer) if it fits. `max_width < 0` preserves the force-flat behaviour used by CI.
+- Wired into `emit_stmt` for every statement kind the flat emitter handles except bare `Call` (which keeps its source-byte flat path) and control-flow (`If`/`While`/`For`/`TryFinally`). Binary, Dot, Unary, Index, literals, and the `Return`/`DeclarationLocal` wrappers around them now collapse when their flat form fits.
+- Trivia handling aligned with `emit_leaf`: preceding comments/blank lines are Δ-shifted rather than copied verbatim, so the wrapping stays consistent with the stmt's new indent.
+- Binary paren rule in `emit_expr_flat` is now associativity-aware (Toit parses `and`/`or` and assignment ops right-assoc; everything else left-assoc). Same-precedence chains no longer over-paren (`a + b + c` stays `a + b + c`); explicit user grouping is preserved.
+
 ### Testing
 
 - Gold-file tests under `tests/formatter/gold/normal/` and `tests/formatter/gold/flat/`. One `.toit` input + one `.gold` expected output per case.
@@ -77,7 +90,7 @@
 
 Goal: produce actually pleasant output. Paren correctness already nailed down by Tier 3.
 
-- **Per-node soft-width thresholds.** Flat if it fits, broken if it doesn't. Start thresholds generous, dogfood, tune. Don't start with "I bet 80 is right." Artemis measurements: 99.5% of lines ≤ 100 cols, 99.9% ≤ 120 cols; max 221. A first cut around 100 looks reasonable but needs dogfooding.
+- **Per-node soft-width thresholds.** One global `MAX_LINE_WIDTH = 100` wired for `Call` (see "flat-if-fits for Call" above). Per-node differentiation can wait until dogfooding shows a node kind needing its own number. Artemis measurements: 99.5% of lines ≤ 100 cols, 99.9% ≤ 120 cols; max 221.
 - **Broken-form emission for `Binary` chains** — operator-aligned or breakable at operator boundaries. Not yet implemented.
 - **Nested broken Calls** — `return foo (bar\n  arg)` where the inner `bar` Call's continuation indent should be relative to the inner's line, not the outer statement's indent.
 - **Drop parens that the indentation now disambiguates** when transitioning flat → broken. The over-parens that Tier 3.2 sprinkles liberally become unnecessary once a break pins structure visually.

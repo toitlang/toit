@@ -39,6 +39,11 @@ static const int INDENT_STEP = 2;
 // CALL_CONTINUATION_STEP`. Matches the Toit convention observed in the
 // reference corpus.
 static const int CALL_CONTINUATION_STEP = 4;
+// Soft width threshold for flat-if-fits decisions. A node's flat form is
+// preferred when its rendered width does not exceed this value. Generous
+// first cut; will be tuned (and likely made per-node-kind) once dogfooding
+// surfaces real pressure. Artemis measurements: 99.5% of lines <= 100 cols.
+static const int MAX_LINE_WIDTH = 100;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -365,7 +370,18 @@ class Formatter {
     // emitter knows how to render — which excludes If/While/For and
     // Calls with Block/Lambda arguments, so the body-recursing dispatches
     // below still run for those.
-    if (options_.force_flat && emit_stmt_flat(stmt, indent)) return;
+    if (options_.force_flat && emit_stmt_flat(stmt, indent, -1)) return;
+
+    // Normal-mode flat-if-fits. Bare Call has its own source-byte flat
+    // path (try_emit_call_flat_canonical, less paren-happy), and control-
+    // flow nodes aren't flat-emittable, so skip those here — the rest
+    // (Binary, Dot, Unary, Index, literals, Return/DeclLocal wrapping
+    // these, etc.) benefit from collapsing when the flat form fits.
+    if (!stmt->is_Call() && !stmt->is_If() && !stmt->is_While()
+        && !stmt->is_For() && !stmt->is_TryFinally()
+        && emit_stmt_flat(stmt, indent, MAX_LINE_WIDTH)) {
+      return;
+    }
 
     if (stmt->is_Call()) {
       emit_call(stmt->as_Call(), indent);
@@ -439,7 +455,11 @@ class Formatter {
   //
   // Returns false when we don't know how to flatten this expression
   // safely — the caller falls back to verbatim leaf emission.
-  bool emit_stmt_flat(Expression* stmt, int indent) {
+  // Flat-if-fits emission. `max_width < 0` means unlimited (force_flat CI
+  // mode where we just care about AST equivalence). `max_width >= 0` caps
+  // the rendered width to the given column; too-wide output returns false
+  // and caller falls back to broken/verbatim paths.
+  bool emit_stmt_flat(Expression* stmt, int indent, int max_width) {
     if (!can_emit_flat(stmt)) return false;
 
     int start = pos(stmt->full_range().from());
@@ -456,12 +476,18 @@ class Formatter {
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, start)) return false;
 
-    advance_to(line_start);
-    emit_spaces(indent);
-    source_cursor_ = end;
-
+    // Render first so we can bail on width before committing any output.
     std::string buffer;
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
+    if (max_width >= 0 && indent + static_cast<int>(buffer.size()) > max_width) {
+      return false;
+    }
+
+    int original_indent = start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    source_cursor_ = end;
     output_.append(buffer);
     return true;
   }
@@ -631,6 +657,16 @@ class Formatter {
     return e;
   }
 
+  // Toit's parser groups `a and b and c` as `a and (b and c)` (parser.cc
+  // explicitly notes logical operations are right-associative). Assignment
+  // ops (`=`, `:=`, `+=`, ...) are likewise right-assoc. Everything else
+  // (arithmetic, comparison, bit ops, shift) is left-assoc.
+  static bool is_right_assoc_binary(Token::Kind k) {
+    int p = Token::precedence(k);
+    return p == PRECEDENCE_AND || p == PRECEDENCE_OR
+        || p == PRECEDENCE_ASSIGNMENT;
+  }
+
   // Appends the flat form of `expr` to `out`. `outer_prec` is the
   // precedence of the enclosing operator (PRECEDENCE_NONE at the top
   // level) — sub-expressions with strictly lower precedence get wrapped
@@ -657,11 +693,18 @@ class Formatter {
       int prec = Token::precedence(b->kind());
       bool parens = prec <= outer_prec && outer_prec != PRECEDENCE_NONE;
       if (parens) out->append("(");
-      emit_expr_flat(b->left(), prec, out);
+      // Associativity: same-precedence children don't need parens on the
+      // side the operator associates towards (right for right-assoc, left
+      // for left-assoc). On the opposite side they do, to preserve the
+      // AST's grouping.
+      bool right_assoc = is_right_assoc_binary(b->kind());
+      int left_prec = right_assoc ? prec : (prec - 1);
+      int right_prec = right_assoc ? (prec - 1) : prec;
+      emit_expr_flat(b->left(), left_prec, out);
       out->append(" ");
       out->append(Token::symbol(b->kind()).c_str());
       out->append(" ");
-      emit_expr_flat(b->right(), prec, out);
+      emit_expr_flat(b->right(), right_prec, out);
       if (parens) out->append(")");
       return;
     }
@@ -992,8 +1035,13 @@ class Formatter {
     Shape source_shape = shape_from_source_range(text_, from, to);
     shapes_[call] = source_shape;
 
+    // Flat-if-fits. For a single-line source this always wins when guards
+    // pass. For a multi-line source it wins only when the flat form's
+    // measured width stays within MAX_LINE_WIDTH — otherwise we fall through
+    // to the broken paths below.
+    if (try_emit_call_flat_canonical(call, indent)) return;
+
     if (source_shape.is_single_line()) {
-      if (try_emit_call_flat_canonical(call, indent)) return;
       emit_leaf(call, indent);
       return;
     }
@@ -1128,14 +1176,35 @@ class Formatter {
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, call_start)) return false;
 
-    int prev_end = pos(target->full_range().to());
+    // Target must be single-line in source — a multi-line target (e.g. a
+    // Dot chain already broken across lines) can't be flattened here.
+    int target_start = pos(target->full_range().from());
+    int target_end = pos(target->full_range().to());
+    if (!shape_from_source_range(text_, target_start, target_end).is_single_line()) {
+      return false;
+    }
+
+    int flat_width = indent + (target_end - target_start);
+    int prev_end = target_end;
     for (auto arg : call->arguments()) {
       int arg_start = pos(arg->full_range().from());
+      int arg_end = pos(arg->full_range().to());
+      // Gap between tokens may contain only spaces, tabs, or newlines.
+      // Newlines mean the source was broken across lines; we'll collapse
+      // them. Anything else (comments, other chars) blocks flat emission.
       for (int i = prev_end; i < arg_start; i++) {
-        if (text_[i] != ' ' && text_[i] != '\t') return false;
+        uint8 c = text_[i];
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') return false;
       }
-      prev_end = pos(arg->full_range().to());
+      // Each arg must itself be single-line in source — otherwise its
+      // internal layout would be destroyed by the flat copy.
+      if (!shape_from_source_range(text_, arg_start, arg_end).is_single_line()) {
+        return false;
+      }
+      flat_width += (arg->is_Block() ? 0 : 1) + (arg_end - arg_start);
+      prev_end = arg_end;
     }
+    if (flat_width > MAX_LINE_WIDTH) return false;
 
     int original_indent = call_start - line_start;
     int delta = indent - original_indent;
@@ -1144,8 +1213,6 @@ class Formatter {
     emit_with_indent_shift(source_cursor_, line_start, delta);
     output_.append(indent, ' ');
 
-    int target_start = pos(target->full_range().from());
-    int target_end = pos(target->full_range().to());
     output_.append(reinterpret_cast<const char*>(text_) + target_start,
                    target_end - target_start);
 
