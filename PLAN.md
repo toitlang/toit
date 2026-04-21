@@ -65,21 +65,23 @@
 - Same for `return <broken-call>`, `x := <broken-call>`, `x = <broken-call>` / `x += ...` etc. (all assignment-kind Binaries).
 - Same for `Method` parameters on continuation lines (`constructor\n    --.id`).
 
-### Tier 4 (started) — flat-if-fits for `Call`
+### Tier 4 (started) — pure-AST flat-if-fits
+
+Formatter output is a function of the AST and a width budget. Input line
+breaks and paren counts are ignored — two source files with the same AST
+produce the same output, so authors don't have to "pre-format" their code.
 
 - `MAX_LINE_WIDTH = 100` (first cut; per-node thresholds will come if dogfooding demands it).
-- `try_emit_call_flat_canonical` now accepts multi-line source: it collapses to the flat form when the flat width fits under the threshold, target + every arg are each single-line in source, and the gap between tokens contains only whitespace (spaces / tabs / newlines — any other byte, e.g. a comment, still blocks).
-- Multi-line source over the threshold falls through to the existing broken paths (trailing-suite recursion, broken-continuation canonicalization, verbatim leaf).
-- **Named-argument preservation**: a multi-line Call source with two or more `NamedArgument` args stays broken. `provides X\n    --handler=this\n    --priority=P` is the canonical config-call shape; authors break it per-line deliberately, so we don't collapse it into a dense one-liner.
-- **Collection-literal preservation**: a multi-line `LiteralList`/`Map`/`Set`/`ByteArray` with two or more elements stays broken. Same reasoning as for named args — a per-line layout is the deliberate choice for aggregate literals.
+- `try_emit_call_flat_canonical` accepts multi-line source and collapses to flat when the width fits, the target and every arg are each single-line in source, and the gap between tokens contains only whitespace. (The single-line-in-source guard is the only shape check left — it's about byte copy safety, not style.)
+- `emit_stmt_flat` takes a `max_width` param and renders via `emit_expr_flat` into a buffer. Wired into `emit_stmt` for every flat-emittable statement kind except bare `Call` (which keeps its source-byte flat path) and control-flow (`If`/`While`/`For`/`TryFinally`).
+- Preceding trivia (blank lines, standalone comments) is Δ-shifted consistently with the stmt's new indent, not copied verbatim.
 
-### Tier 4 (started) — flat-if-fits for other expressions (via `emit_stmt_flat`)
+Paren rules in `emit_expr_flat`:
 
-- `emit_stmt_flat` now takes a `max_width` param. Renders the flat form into a buffer, width-checks, and only commits (trivia + indent + buffer) if it fits. `max_width < 0` preserves the force-flat behaviour used by CI.
-- Wired into `emit_stmt` for every statement kind the flat emitter handles except bare `Call` (which keeps its source-byte flat path) and control-flow (`If`/`While`/`For`/`TryFinally`). Binary, Dot, Unary, Index, literals, and the `Return`/`DeclarationLocal` wrappers around them now collapse when their flat form fits.
-- Trivia handling aligned with `emit_leaf`: preceding comments/blank lines are Δ-shifted rather than copied verbatim, so the wrapping stays consistent with the stmt's new indent.
-- Binary paren rule in `emit_expr_flat` is now associativity-aware (Toit parses `and`/`or` and assignment ops right-assoc; everything else left-assoc). Same-precedence chains no longer over-paren (`a + b + c` stays `a + b + c`); explicit user grouping is preserved.
-- **Paren-preservation guard**: flat is rejected if the rendered buffer has more `(` than the source range. Authors who split an expression specifically to avoid parens (`Point3f\n  x + ox\n  y + oy\n  z + oz`) keep their broken form instead of being collapsed into `Point3f (x + ox) (y + oy) (z + oz)`. Spot-checked across `lib/`: 144 files, 46 produce diffs, zero paren regressions; total `(` drops 2354 → 2226 (collapse drops redundant parens), total lines drop 44008 → 43922.
+- **Associativity-aware**: `and`/`or` and assignment ops are right-assoc, everything else left-assoc. Same-precedence chains (`a + b + c`) no longer over-paren.
+- **ASSIGN-RHS at NONE**: the right side of an assignment-precedence Binary is a stmt-level boundary, so it recurses at `PRECEDENCE_NONE` rather than `prec-1`. `x := foo a b c` stays that way instead of becoming `x := (foo a b c)`.
+- **Parenthesis preservation**: Parenthesis AST nodes wrapping non-trivial sub-expressions (Binary / Unary / Call / Dot / Index …) are preserved. `(a + b) * c` stays grouped. `(x)` around a bare identifier / literal still peels as pure noise.
+- **Bitwise clarity**: whenever a bitwise op (`<<`, `>>`, `>>>`, `&`, `|`, `^`) meets a different op across a Binary/Binary boundary, the child gets parens even if the source didn't have them. Readers don't trust the precedence table past `+`/`-`/`*`/`/`, so the formatter makes the grouping explicit. Same op on both sides reads unambiguously as a chain and stays unwrapped.
 
 ### Testing
 
@@ -93,11 +95,12 @@
 
 Goal: produce actually pleasant output. Paren correctness already nailed down by Tier 3.
 
-- **Per-node soft-width thresholds.** One global `MAX_LINE_WIDTH = 100` wired for `Call` (see "flat-if-fits for Call" above). Per-node differentiation can wait until dogfooding shows a node kind needing its own number. Artemis measurements: 99.5% of lines ≤ 100 cols, 99.9% ≤ 120 cols; max 221.
+- **Per-node soft-width thresholds.** One global `MAX_LINE_WIDTH = 100` wired for the flat-if-fits decision. Per-node differentiation (and specific "always break N-or-more-element" rules for aggregate literals / named-arg Calls / Method signatures) is the next tuning step — pick thresholds from the reference corpus. Artemis measurements: 99.5% of lines ≤ 100 cols, 99.9% ≤ 120 cols; max 221.
 - **Broken-form emission for `Binary` chains** — operator-aligned or breakable at operator boundaries. Not yet implemented.
 - **Nested broken Calls** — `return foo (bar\n  arg)` where the inner `bar` Call's continuation indent should be relative to the inner's line, not the outer statement's indent.
-- **Drop parens that the indentation now disambiguates** when transitioning flat → broken. The over-parens that Tier 3.2 sprinkles liberally become unnecessary once a break pins structure visually.
-- ~~**One-line-paren invariant** as a development-time guard~~ — superseded by the always-on paren-preservation guard in `emit_stmt_flat` (see above). Instead of a dev-time tripwire, the rule now directly gates flat-if-fits, so we never *produce* extra parens in the first place.
+- **Method signature layout**: when parameters wrap, the `-> Type` return annotation stays on the first line with the method name.
+- ~~**Drop parens that the indentation now disambiguates** when transitioning flat → broken.~~ — Tier 3.2's Call/Unary paren rules are already precise (only wrap when AST requires it); the bitwise-clarity rule adds some for readability. Nothing left to drop on break.
+- ~~**One-line-paren invariant** as a development-time guard.~~ — Obsolete under pure-AST: the formatter doesn't read source paren counts at all, so there's no invariant to police. Paren insertion/removal is decided by the AST-shape rules above.
 
 ### Tier 5 — collection literals and polish
 

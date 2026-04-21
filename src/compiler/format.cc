@@ -482,24 +482,6 @@ class Formatter {
     if (max_width >= 0 && indent + static_cast<int>(buffer.size()) > max_width) {
       return false;
     }
-    // Paren-preservation: if collapsing to flat would introduce open-parens
-    // that weren't in the source, the author almost certainly split the
-    // expression across lines specifically to avoid those parens. Stay
-    // broken (emit_leaf fallback) rather than trade newlines for parens.
-    if (max_width >= 0) {
-      int src_lparens = 0;
-      for (int i = start; i < end; i++) if (text_[i] == '(') src_lparens++;
-      int buf_lparens = 0;
-      for (char c : buffer) if (c == '(') buf_lparens++;
-      if (buf_lparens > src_lparens) return false;
-    }
-    // Collection-literal readability: a multi-line source `LiteralList` /
-    // `Map` / `Set` / `ByteArray` with two or more elements is a
-    // deliberately-broken aggregate (`[\n  a,\n  b,\n]`). Collapsing it
-    // hides the per-line structure the author chose for legibility.
-    if (max_width >= 0 && has_multi_line_structured_aggregate(stmt)) {
-      return false;
-    }
 
     int original_indent = start - line_start;
     int delta = indent - original_indent;
@@ -675,116 +657,6 @@ class Formatter {
     return e;
   }
 
-  // Recursively scans for a "stay broken" signal in the AST — a
-  // `LiteralList` / `Map` / `Set` / `ByteArray` with >= 2 elements, or a
-  // `Call` with >= 2 named arguments — whose source span crosses multiple
-  // lines. These aggregate shapes are formatted per-line deliberately,
-  // and collapsing them hides the layout the author chose for legibility.
-  bool has_multi_line_structured_aggregate(Expression* e) const {
-    if (e == null) return false;
-    auto multi_line = [this](int from, int to) {
-      return !shape_from_source_range(text_, from, to).is_single_line();
-    };
-    if (e->is_LiteralList()) {
-      auto l = e->as_LiteralList();
-      if (l->elements().length() >= 2
-          && multi_line(pos(l->full_range().from()), pos(l->full_range().to()))) {
-        return true;
-      }
-      for (auto x : l->elements()) {
-        if (has_multi_line_structured_aggregate(x)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralByteArray()) {
-      auto b = e->as_LiteralByteArray();
-      if (b->elements().length() >= 2
-          && multi_line(pos(b->full_range().from()), pos(b->full_range().to()))) {
-        return true;
-      }
-      for (auto x : b->elements()) {
-        if (has_multi_line_structured_aggregate(x)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralSet()) {
-      auto s = e->as_LiteralSet();
-      if (s->elements().length() >= 2
-          && multi_line(pos(s->full_range().from()), pos(s->full_range().to()))) {
-        return true;
-      }
-      for (auto x : s->elements()) {
-        if (has_multi_line_structured_aggregate(x)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralMap()) {
-      auto m = e->as_LiteralMap();
-      if (m->keys().length() >= 2
-          && multi_line(pos(m->full_range().from()), pos(m->full_range().to()))) {
-        return true;
-      }
-      for (auto k : m->keys()) {
-        if (has_multi_line_structured_aggregate(k)) return true;
-      }
-      for (auto v : m->values()) {
-        if (has_multi_line_structured_aggregate(v)) return true;
-      }
-      return false;
-    }
-    // Recurse through the kinds that can contain other expressions so a
-    // nested collection literal is still detected.
-    if (e->is_Parenthesis()) {
-      return has_multi_line_structured_aggregate(
-          e->as_Parenthesis()->expression());
-    }
-    if (e->is_Unary()) {
-      return has_multi_line_structured_aggregate(
-          e->as_Unary()->expression());
-    }
-    if (e->is_Binary()) {
-      auto b = e->as_Binary();
-      return has_multi_line_structured_aggregate(b->left())
-          || has_multi_line_structured_aggregate(b->right());
-    }
-    if (e->is_Call()) {
-      auto c = e->as_Call();
-      int named_count = 0;
-      for (auto a : c->arguments()) {
-        if (a->is_NamedArgument()) named_count++;
-      }
-      if (named_count >= 2) {
-        int from = pos(c->full_range().from());
-        int to = pos(c->full_range().to());
-        if (!shape_from_source_range(text_, from, to).is_single_line()) {
-          return true;
-        }
-      }
-      if (has_multi_line_structured_aggregate(c->target())) return true;
-      for (auto a : c->arguments()) {
-        if (has_multi_line_structured_aggregate(a)) return true;
-      }
-      return false;
-    }
-    if (e->is_NamedArgument()) {
-      return has_multi_line_structured_aggregate(
-          e->as_NamedArgument()->expression());
-    }
-    if (e->is_Return()) {
-      return has_multi_line_structured_aggregate(
-          e->as_Return()->value());
-    }
-    if (e->is_DeclarationLocal()) {
-      return has_multi_line_structured_aggregate(
-          e->as_DeclarationLocal()->value());
-    }
-    if (e->is_BreakContinue()) {
-      return has_multi_line_structured_aggregate(
-          e->as_BreakContinue()->value());
-    }
-    return false;
-  }
-
   // Toit's parser groups `a and b and c` as `a and (b and c)` (parser.cc
   // explicitly notes logical operations are right-associative). Assignment
   // ops (`=`, `:=`, `+=`, ...) are likewise right-assoc. Everything else
@@ -793,6 +665,48 @@ class Formatter {
     int p = Token::precedence(k);
     return p == PRECEDENCE_AND || p == PRECEDENCE_OR
         || p == PRECEDENCE_ASSIGNMENT;
+  }
+
+  static bool is_bitwise_binary(Token::Kind k) {
+    int p = Token::precedence(k);
+    return p == PRECEDENCE_BIT_SHIFT
+        || p == PRECEDENCE_BIT_AND
+        || p == PRECEDENCE_BIT_OR
+        || p == PRECEDENCE_BIT_XOR;
+  }
+
+  // Whether a Binary whose operator is `child_kind`, sitting directly
+  // beneath a Binary whose operator is `parent_kind`, should be wrapped
+  // in clarifying parens even if precedence/associativity don't require
+  // it. Rule of thumb: once bitwise operators enter the mix, readers
+  // stop trusting the precedence table, so make the grouping explicit.
+  static bool needs_bitwise_clarity(Token::Kind parent_kind,
+                                    Token::Kind child_kind) {
+    bool parent_bw = is_bitwise_binary(parent_kind);
+    bool child_bw = is_bitwise_binary(child_kind);
+    if (!parent_bw && !child_bw) return false;
+    // Same operator on both sides (e.g. `a & b & c`) reads unambiguously
+    // as a chain — no parens needed.
+    if (parent_kind == child_kind) return false;
+    return true;
+  }
+
+  // Emits a Binary's child operand with the usual flat-form rules, plus
+  // the bitwise-clarity override: when a bitwise op meets a different
+  // op across a Binary/Binary boundary, wrap the child in parens. User-
+  // provided Parenthesis wrappers go through emit_expr_flat unchanged.
+  void emit_binary_child(Expression* child, int outer_prec,
+                         Token::Kind parent_kind, std::string* out) {
+    if (child != null && !child->is_Parenthesis() && child->is_Binary()) {
+      Token::Kind child_kind = child->as_Binary()->kind();
+      if (needs_bitwise_clarity(parent_kind, child_kind)) {
+        out->append("(");
+        emit_expr_flat(child, PRECEDENCE_NONE, out);
+        out->append(")");
+        return;
+      }
+    }
+    emit_expr_flat(child, outer_prec, out);
   }
 
   // Appends the flat form of `expr` to `out`. `outer_prec` is the
@@ -814,8 +728,40 @@ class Formatter {
     out->append(close);
   }
 
+  // Whether the inner of a Parenthesis wrapper is "trivial" enough that
+  // the parens add nothing — a bare identifier or literal. For those, `(x)`
+  // → `x`. Anything with structure (Binary, Unary, Call, Index, etc.) is
+  // treated as the author's explicit grouping and preserved.
+  static bool is_trivial_inner(Expression* e) {
+    if (e == null) return false;
+    return e->is_Identifier()
+        || e->is_LiteralNull()
+        || e->is_LiteralUndefined()
+        || e->is_LiteralBoolean()
+        || e->is_LiteralInteger()
+        || e->is_LiteralCharacter()
+        || e->is_LiteralFloat()
+        || e->is_LiteralString();
+  }
+
   void emit_expr_flat(Expression* expr, int outer_prec, std::string* out) {
-    expr = peel_parens(expr);
+    // Preserve user-provided grouping parens around non-trivial sub-
+    // expressions. This keeps clarifying parens the author wrote
+    // deliberately — most importantly for bitwise operators mixed with
+    // other ops (`(byte >> 4) & mask`), where users typically don't
+    // remember the precedence table. `(x)` around a bare identifier /
+    // literal is still peeled as pure noise.
+    while (expr != null && expr->is_Parenthesis()) {
+      Expression* inner = expr->as_Parenthesis()->expression();
+      if (is_trivial_inner(peel_parens(inner))) {
+        expr = peel_parens(inner);
+      } else {
+        out->append("(");
+        emit_expr_flat(inner, PRECEDENCE_NONE, out);
+        out->append(")");
+        return;
+      }
+    }
     if (expr->is_Binary()) {
       Binary* b = expr->as_Binary();
       int prec = Token::precedence(b->kind());
@@ -834,11 +780,11 @@ class Formatter {
       // defensive parens that `outer_prec != NONE` would normally force.
       // (`x = foo a b` stays `x = foo a b`, not `x = (foo a b)`.)
       if (prec == PRECEDENCE_ASSIGNMENT) right_prec = PRECEDENCE_NONE;
-      emit_expr_flat(b->left(), left_prec, out);
+      emit_binary_child(b->left(), left_prec, b->kind(), out);
       out->append(" ");
       out->append(Token::symbol(b->kind()).c_str());
       out->append(" ");
-      emit_expr_flat(b->right(), right_prec, out);
+      emit_binary_child(b->right(), right_prec, b->kind(), out);
       if (parens) out->append(")");
       return;
     }
@@ -1318,19 +1264,6 @@ class Formatter {
       return false;
     }
 
-    // Named-argument readability: a multi-line source with two or more
-    // NamedArgument args is the idiomatic config-call shape
-    // (`provides X\n    --a=v1\n    --b=v2`). Authors break these per-line
-    // deliberately even when they'd fit; collapsing them trades layout for
-    // a dense one-liner. Keep the broken form.
-    Shape source_shape = shape_from_source_range(text_, call_start, call_end);
-    if (!source_shape.is_single_line()) {
-      int named_count = 0;
-      for (auto arg : call->arguments()) {
-        if (arg->is_NamedArgument()) named_count++;
-      }
-      if (named_count >= 2) return false;
-    }
 
     int flat_width = indent + (target_end - target_start);
     int prev_end = target_end;
