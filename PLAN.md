@@ -70,6 +70,7 @@
 - `MAX_LINE_WIDTH = 100` (first cut; per-node thresholds will come if dogfooding demands it).
 - `try_emit_call_flat_canonical` now accepts multi-line source: it collapses to the flat form when the flat width fits under the threshold, target + every arg are each single-line in source, and the gap between tokens contains only whitespace (spaces / tabs / newlines — any other byte, e.g. a comment, still blocks).
 - Multi-line source over the threshold falls through to the existing broken paths (trailing-suite recursion, broken-continuation canonicalization, verbatim leaf).
+- **Named-argument preservation**: a multi-line Call source with two or more `NamedArgument` args stays broken. `provides X\n    --handler=this\n    --priority=P` is the canonical config-call shape; authors break it per-line deliberately, so we don't collapse it into a dense one-liner.
 
 ### Tier 4 (started) — flat-if-fits for other expressions (via `emit_stmt_flat`)
 

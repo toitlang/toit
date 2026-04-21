@@ -1195,6 +1195,20 @@ class Formatter {
       return false;
     }
 
+    // Named-argument readability: a multi-line source with two or more
+    // NamedArgument args is the idiomatic config-call shape
+    // (`provides X\n    --a=v1\n    --b=v2`). Authors break these per-line
+    // deliberately even when they'd fit; collapsing them trades layout for
+    // a dense one-liner. Keep the broken form.
+    Shape source_shape = shape_from_source_range(text_, call_start, call_end);
+    if (!source_shape.is_single_line()) {
+      int named_count = 0;
+      for (auto arg : call->arguments()) {
+        if (arg->is_NamedArgument()) named_count++;
+      }
+      if (named_count >= 2) return false;
+    }
+
     int flat_width = indent + (target_end - target_start);
     int prev_end = target_end;
     for (auto arg : call->arguments()) {
