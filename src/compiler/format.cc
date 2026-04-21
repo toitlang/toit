@@ -482,6 +482,17 @@ class Formatter {
     if (max_width >= 0 && indent + static_cast<int>(buffer.size()) > max_width) {
       return false;
     }
+    // Paren-preservation: if collapsing to flat would introduce open-parens
+    // that weren't in the source, the author almost certainly split the
+    // expression across lines specifically to avoid those parens. Stay
+    // broken (emit_leaf fallback) rather than trade newlines for parens.
+    if (max_width >= 0) {
+      int src_lparens = 0;
+      for (int i = start; i < end; i++) if (text_[i] == '(') src_lparens++;
+      int buf_lparens = 0;
+      for (char c : buffer) if (c == '(') buf_lparens++;
+      if (buf_lparens > src_lparens) return false;
+    }
 
     int original_indent = start - line_start;
     int delta = indent - original_indent;

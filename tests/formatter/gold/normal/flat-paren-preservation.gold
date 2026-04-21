@@ -1,0 +1,19 @@
+helper:
+  // AST-reconstructed flat would need parens around each Binary arg of the
+  // Call — source has none, so stay broken.
+  return Point3f
+      x + other_x
+      y + other_y
+      z + other_z
+
+main:
+  // Flat form keeps the original paren count (zero added). Collapse.
+  sum := 1 + 2 + 3
+  // Source paren is redundant (`>>` binds tighter than `&`); collapse
+  // drops it.
+  mask := byte >> 4 & 0xF
+
+Point3f x y z:
+  return x
+
+byte := 0

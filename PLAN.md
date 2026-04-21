@@ -77,6 +77,7 @@
 - Wired into `emit_stmt` for every statement kind the flat emitter handles except bare `Call` (which keeps its source-byte flat path) and control-flow (`If`/`While`/`For`/`TryFinally`). Binary, Dot, Unary, Index, literals, and the `Return`/`DeclarationLocal` wrappers around them now collapse when their flat form fits.
 - Trivia handling aligned with `emit_leaf`: preceding comments/blank lines are Δ-shifted rather than copied verbatim, so the wrapping stays consistent with the stmt's new indent.
 - Binary paren rule in `emit_expr_flat` is now associativity-aware (Toit parses `and`/`or` and assignment ops right-assoc; everything else left-assoc). Same-precedence chains no longer over-paren (`a + b + c` stays `a + b + c`); explicit user grouping is preserved.
+- **Paren-preservation guard**: flat is rejected if the rendered buffer has more `(` than the source range. Authors who split an expression specifically to avoid parens (`Point3f\n  x + ox\n  y + oy\n  z + oz`) keep their broken form instead of being collapsed into `Point3f (x + ox) (y + oy) (z + oz)`. Spot-checked across `lib/`: 144 files, 46 produce diffs, zero paren regressions; total `(` drops 2354 → 2226 (collapse drops redundant parens), total lines drop 44008 → 43922.
 
 ### Testing
 
@@ -94,7 +95,7 @@ Goal: produce actually pleasant output. Paren correctness already nailed down by
 - **Broken-form emission for `Binary` chains** — operator-aligned or breakable at operator boundaries. Not yet implemented.
 - **Nested broken Calls** — `return foo (bar\n  arg)` where the inner `bar` Call's continuation indent should be relative to the inner's line, not the outer statement's indent.
 - **Drop parens that the indentation now disambiguates** when transitioning flat → broken. The over-parens that Tier 3.2 sprinkles liberally become unnecessary once a break pins structure visually.
-- **One-line-paren invariant** as a development-time guard: a statement that was one line in input and one line in output must not have more parens. Catches width-driven rules that over-paren in the wrong direction. Retire once it's stably green.
+- ~~**One-line-paren invariant** as a development-time guard~~ — superseded by the always-on paren-preservation guard in `emit_stmt_flat` (see above). Instead of a dev-time tripwire, the rule now directly gates flat-if-fits, so we never *produce* extra parens in the first place.
 
 ### Tier 5 — collection literals and polish
 
