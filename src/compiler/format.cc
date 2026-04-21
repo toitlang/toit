@@ -259,16 +259,83 @@ class Formatter {
         find_line_start(pos(body_exprs.first()->full_range().from()));
     if (body_first_line_start <= method_line_start) return false;
 
-    int break_line_start = find_line_start(
-        pos(method->parameters()[first_break]->full_range().from()));
-    emit_range_reindent(method_start, break_line_start, indent);
-
     int continuation_indent = indent + CALL_CONTINUATION_STEP;
-    for (int i = first_break; i < method->parameters().length(); i++) {
-      auto param = method->parameters()[i];
-      emit_range_reindent(pos(param->full_range().from()),
-                          pos(param->full_range().to()),
-                          continuation_indent);
+    Expression* return_type = method->return_type();
+
+    if (return_type != null && has_reliable_full_range(return_type)) {
+      // Wrapped-param method with a return type: keep `-> Type` on the
+      // first line next to the name (and any same-line params); put `:`
+      // at the end of the last continuation param.
+      //
+      // Compute "end of the first-line content": if the source already
+      // has `-> Type` on the method's first line, we stop at the `->`
+      // position so we don't double-emit the arrow below. Otherwise we
+      // stop at the first newline. Either way, strip trailing spaces so
+      // `" -> "` appends cleanly. Using the raw line range (rather than
+      // the last first-line param's full_range) handles block-param
+      // brackets and similar syntactic decorations that sit outside the
+      // AST node's range.
+      int first_newline = method_start;
+      while (first_newline < size_ && text_[first_newline] != '\n') {
+        first_newline++;
+      }
+      int arrow_on_first_line = -1;
+      for (int i = method_start; i + 1 < first_newline; i++) {
+        if (text_[i] == '-' && text_[i + 1] == '>') {
+          arrow_on_first_line = i;
+          break;
+        }
+      }
+      int first_line_content_end = arrow_on_first_line >= 0
+                                 ? arrow_on_first_line
+                                 : first_newline;
+      while (first_line_content_end > method_start
+             && (text_[first_line_content_end - 1] == ' '
+                 || text_[first_line_content_end - 1] == '\t')) {
+        first_line_content_end--;
+      }
+
+      emit_range_reindent(method_start, first_line_content_end, indent);
+      output_.append(" -> ");
+      int rt_start = pos(return_type->full_range().from());
+      int rt_end = pos(return_type->full_range().to());
+      output_.append(reinterpret_cast<const char*>(text_) + rt_start,
+                     rt_end - rt_start);
+      source_cursor_ = rt_end;
+
+      for (int i = first_break; i < method->parameters().length(); i++) {
+        auto param = method->parameters()[i];
+        int p_start = pos(param->full_range().from());
+        int p_end = pos(param->full_range().to());
+        output_.push_back('\n');
+        output_.append(continuation_indent, ' ');
+        output_.append(reinterpret_cast<const char*>(text_) + p_start,
+                       p_end - p_start);
+        source_cursor_ = p_end;
+      }
+      output_.push_back(':');
+      // Advance past the source's header-closing `:` so the upcoming
+      // advance_to(body_first_line_start) doesn't double-emit it. Scan
+      // inclusive of source_cursor_: the `:` often sits flush against
+      // the last param, i.e. at position source_cursor_ itself.
+      int colon_pos = body_first_line_start - 1;
+      while (colon_pos >= source_cursor_ && text_[colon_pos] != ':') {
+        colon_pos--;
+      }
+      if (colon_pos >= source_cursor_ && text_[colon_pos] == ':') {
+        source_cursor_ = colon_pos + 1;
+      }
+    } else {
+      int break_line_start = find_line_start(
+          pos(method->parameters()[first_break]->full_range().from()));
+      emit_range_reindent(method_start, break_line_start, indent);
+
+      for (int i = first_break; i < method->parameters().length(); i++) {
+        auto param = method->parameters()[i];
+        emit_range_reindent(pos(param->full_range().from()),
+                            pos(param->full_range().to()),
+                            continuation_indent);
+      }
     }
 
     // Remainder of the header — return type annotation if any, `:`, newline
@@ -1267,6 +1334,9 @@ class Formatter {
       if (slice->from() != null && !has_reliable_full_range(slice->from())) return false;
       if (slice->to() != null && !has_reliable_full_range(slice->to())) return false;
       return true;
+    }
+    if (node->is_Nullable()) {
+      return has_reliable_full_range(node->as_Nullable()->type());
     }
 
     // Binary and Call are intentionally omitted. Their source bytes are
