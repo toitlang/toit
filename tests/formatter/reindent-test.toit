@@ -211,6 +211,21 @@ CASES ::= [
         """,
 
   Case
+      --label="broken call args canonicalize to +4 continuation indent"
+      --input="""
+        main:
+          foo
+            arg1
+            arg2
+        """
+      --expected="""
+        main:
+          foo
+              arg1
+              arg2
+        """,
+
+  Case
       --label="well-formed input is unchanged"
       --input="""
         class Foo:

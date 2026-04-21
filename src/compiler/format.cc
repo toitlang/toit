@@ -34,6 +34,11 @@ using namespace ast;
 namespace {
 
 static const int INDENT_STEP = 2;
+// Continuation indent for a broken Call's arguments. Args on their own line
+// (not sharing the target's line) sit at `statement_indent +
+// CALL_CONTINUATION_STEP`. Matches the Toit convention observed in the
+// reference corpus.
+static const int CALL_CONTINUATION_STEP = 4;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -889,7 +894,63 @@ class Formatter {
         }
       }
     }
+    // No trailing block: try to canonicalize the continuation indent of
+    // args that sit on their own line. Preserves the source's decision
+    // about which args share the target's line vs go on continuation
+    // lines; only fixes the indent of the continuation lines themselves.
+    if (try_emit_call_broken_canonical(call, indent)) return;
     emit_leaf(call, indent);
+  }
+
+  // For a multi-line Call whose continuation args live on their own lines,
+  // re-indents those lines to `indent + CALL_CONTINUATION_STEP`.
+  // Returns false if guards fail (line-locking comments, unreliable
+  // full_range, no arg on its own line, etc.); caller falls back to leaf.
+  bool try_emit_call_broken_canonical(Call* call, int indent) {
+    int call_start = pos(call->full_range().from());
+    int call_end = pos(call->full_range().to());
+    if (has_line_locking_comment(call_start, call_end)) return false;
+    if (!has_reliable_full_range(call->target())) return false;
+    for (auto arg : call->arguments()) {
+      if (arg->is_Block() || arg->is_Lambda()) return false;
+      if (!has_reliable_full_range(arg)) return false;
+    }
+
+    int call_line_start = find_line_start(call_start);
+    if (call_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(call_line_start, call_start)) return false;
+
+    // Find the first arg that sits on a line different from the call's
+    // target line. If none, this "broken" call is really single-line
+    // (shouldn't happen given source_shape.is_single_line() check above,
+    // but guard anyway).
+    int first_break = -1;
+    for (int i = 0; i < call->arguments().length(); i++) {
+      int arg_line = find_line_start(
+          pos(call->arguments()[i]->full_range().from()));
+      if (arg_line > call_line_start) {
+        first_break = i;
+        break;
+      }
+    }
+    if (first_break < 0) return false;
+
+    // Emit the call's first line (target + any same-line args) at `indent`.
+    int break_line_start = find_line_start(
+        pos(call->arguments()[first_break]->full_range().from()));
+    emit_range_reindent(call_start, break_line_start, indent);
+
+    // Re-indent each continuation arg.
+    int continuation_indent = indent + CALL_CONTINUATION_STEP;
+    for (int i = first_break; i < call->arguments().length(); i++) {
+      auto arg = call->arguments()[i];
+      int arg_start = pos(arg->full_range().from());
+      int arg_end = pos(arg->full_range().to());
+      emit_range_reindent(arg_start, arg_end, continuation_indent);
+    }
+
+    advance_to(call_end);
+    return true;
   }
 
   // For `foo arg: | params | body...`, emits the Call's header up to the
