@@ -71,6 +71,7 @@
 - `try_emit_call_flat_canonical` now accepts multi-line source: it collapses to the flat form when the flat width fits under the threshold, target + every arg are each single-line in source, and the gap between tokens contains only whitespace (spaces / tabs / newlines — any other byte, e.g. a comment, still blocks).
 - Multi-line source over the threshold falls through to the existing broken paths (trailing-suite recursion, broken-continuation canonicalization, verbatim leaf).
 - **Named-argument preservation**: a multi-line Call source with two or more `NamedArgument` args stays broken. `provides X\n    --handler=this\n    --priority=P` is the canonical config-call shape; authors break it per-line deliberately, so we don't collapse it into a dense one-liner.
+- **Collection-literal preservation**: a multi-line `LiteralList`/`Map`/`Set`/`ByteArray` with two or more elements stays broken. Same reasoning as for named args — a per-line layout is the deliberate choice for aggregate literals.
 
 ### Tier 4 (started) — flat-if-fits for other expressions (via `emit_stmt_flat`)
 

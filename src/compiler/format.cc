@@ -493,6 +493,13 @@ class Formatter {
       for (char c : buffer) if (c == '(') buf_lparens++;
       if (buf_lparens > src_lparens) return false;
     }
+    // Collection-literal readability: a multi-line source `LiteralList` /
+    // `Map` / `Set` / `ByteArray` with two or more elements is a
+    // deliberately-broken aggregate (`[\n  a,\n  b,\n]`). Collapsing it
+    // hides the per-line structure the author chose for legibility.
+    if (max_width >= 0 && has_multi_line_multi_element_collection(stmt)) {
+      return false;
+    }
 
     int original_indent = start - line_start;
     int delta = indent - original_indent;
@@ -666,6 +673,103 @@ class Formatter {
       e = e->as_Parenthesis()->expression();
     }
     return e;
+  }
+
+  // Recursively scans for a `LiteralList` / `Map` / `Set` / `ByteArray`
+  // whose source span crosses multiple lines and which has at least two
+  // elements — the "stay broken" signal for aggregate literals.
+  bool has_multi_line_multi_element_collection(Expression* e) const {
+    if (e == null) return false;
+    auto multi_line = [this](int from, int to) {
+      return !shape_from_source_range(text_, from, to).is_single_line();
+    };
+    if (e->is_LiteralList()) {
+      auto l = e->as_LiteralList();
+      if (l->elements().length() >= 2
+          && multi_line(pos(l->full_range().from()), pos(l->full_range().to()))) {
+        return true;
+      }
+      for (auto x : l->elements()) {
+        if (has_multi_line_multi_element_collection(x)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralByteArray()) {
+      auto b = e->as_LiteralByteArray();
+      if (b->elements().length() >= 2
+          && multi_line(pos(b->full_range().from()), pos(b->full_range().to()))) {
+        return true;
+      }
+      for (auto x : b->elements()) {
+        if (has_multi_line_multi_element_collection(x)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralSet()) {
+      auto s = e->as_LiteralSet();
+      if (s->elements().length() >= 2
+          && multi_line(pos(s->full_range().from()), pos(s->full_range().to()))) {
+        return true;
+      }
+      for (auto x : s->elements()) {
+        if (has_multi_line_multi_element_collection(x)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralMap()) {
+      auto m = e->as_LiteralMap();
+      if (m->keys().length() >= 2
+          && multi_line(pos(m->full_range().from()), pos(m->full_range().to()))) {
+        return true;
+      }
+      for (auto k : m->keys()) {
+        if (has_multi_line_multi_element_collection(k)) return true;
+      }
+      for (auto v : m->values()) {
+        if (has_multi_line_multi_element_collection(v)) return true;
+      }
+      return false;
+    }
+    // Recurse through the kinds that can contain other expressions so a
+    // nested collection literal is still detected.
+    if (e->is_Parenthesis()) {
+      return has_multi_line_multi_element_collection(
+          e->as_Parenthesis()->expression());
+    }
+    if (e->is_Unary()) {
+      return has_multi_line_multi_element_collection(
+          e->as_Unary()->expression());
+    }
+    if (e->is_Binary()) {
+      auto b = e->as_Binary();
+      return has_multi_line_multi_element_collection(b->left())
+          || has_multi_line_multi_element_collection(b->right());
+    }
+    if (e->is_Call()) {
+      auto c = e->as_Call();
+      if (has_multi_line_multi_element_collection(c->target())) return true;
+      for (auto a : c->arguments()) {
+        if (has_multi_line_multi_element_collection(a)) return true;
+      }
+      return false;
+    }
+    if (e->is_NamedArgument()) {
+      return has_multi_line_multi_element_collection(
+          e->as_NamedArgument()->expression());
+    }
+    if (e->is_Return()) {
+      return has_multi_line_multi_element_collection(
+          e->as_Return()->value());
+    }
+    if (e->is_DeclarationLocal()) {
+      return has_multi_line_multi_element_collection(
+          e->as_DeclarationLocal()->value());
+    }
+    if (e->is_BreakContinue()) {
+      return has_multi_line_multi_element_collection(
+          e->as_BreakContinue()->value());
+    }
+    return false;
   }
 
   // Toit's parser groups `a and b and c` as `a and (b and c)` (parser.cc
