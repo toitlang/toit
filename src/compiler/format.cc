@@ -399,49 +399,39 @@ class Formatter {
       if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
 
-    // `return <broken-call>` and `x := <broken-call>` should canonicalize
-    // the continuation indent of the wrapped Call's args to indent+4, the
-    // same as a bare statement-position broken Call.
+    // `return <call>` / `x := <call>` / `x = <call>` wrappers: either
+    // canonicalize the continuation indent of an already-broken Call, or
+    // synthesize a break when the whole wrapper exceeds MAX_LINE_WIDTH on
+    // a single line.
     if (stmt->is_Return()) {
       auto ret = stmt->as_Return();
       if (ret->value() != null && ret->value()->is_Call()) {
         Call* call = ret->value()->as_Call();
-        if (try_canonicalize_broken_call_in_range(
-                call,
-                pos(ret->full_range().from()),
-                pos(ret->full_range().to()),
-                indent)) {
-          return;
-        }
+        int start = pos(ret->full_range().from());
+        int end = pos(ret->full_range().to());
+        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
+        if (emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
     if (stmt->is_DeclarationLocal()) {
       auto decl = stmt->as_DeclarationLocal();
       if (decl->value() != null && decl->value()->is_Call()) {
         Call* call = decl->value()->as_Call();
-        if (try_canonicalize_broken_call_in_range(
-                call,
-                pos(decl->full_range().from()),
-                pos(decl->full_range().to()),
-                indent)) {
-          return;
-        }
+        int start = pos(decl->full_range().from());
+        int end = pos(decl->full_range().to());
+        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
+        if (emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
-    // `x = <broken-call>`, `x += <broken-call>`, etc. Same pattern as the
-    // DeclarationLocal case: the Call is the RHS of an assignment Binary.
     if (stmt->is_Binary()) {
       Binary* b = stmt->as_Binary();
       if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
           && b->right() != null && b->right()->is_Call()) {
         Call* call = b->right()->as_Call();
-        if (try_canonicalize_broken_call_in_range(
-                call,
-                pos(b->full_range().from()),
-                pos(b->full_range().to()),
-                indent)) {
-          return;
-        }
+        int start = pos(b->full_range().from());
+        int end = pos(b->full_range().to());
+        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
+        if (emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
 
@@ -1122,6 +1112,12 @@ class Formatter {
     if (try_emit_call_flat_canonical(call, indent)) return;
 
     if (source_shape.is_single_line()) {
+      // Source is one line but flat-if-fits rejected it — typically
+      // because the rendered width exceeds MAX_LINE_WIDTH. Synthesize a
+      // broken form: target on the first line, each arg at indent + 4.
+      int call_start = pos(call->full_range().from());
+      int call_end = pos(call->full_range().to());
+      if (emit_call_forced_broken(call, call_start, call_end, indent)) return;
       emit_leaf(call, indent);
       return;
     }
@@ -1150,6 +1146,54 @@ class Formatter {
     int call_end = pos(call->full_range().to());
     if (try_canonicalize_broken_call_in_range(call, call_start, call_end, indent)) return;
     emit_leaf(call, indent);
+  }
+
+  // Synthesises a broken form for a single-line Call whose rendered width
+  // exceeds `MAX_LINE_WIDTH`. The outer prefix (e.g. `return `, `x := `)
+  // and the Call's target stay on the first line at `indent`; every
+  // argument moves to its own line at `indent + CALL_CONTINUATION_STEP`.
+  //
+  // Only fires when the source is one line AND that line is over budget.
+  // Returns false otherwise or when the usual safety guards (comments,
+  // unreliable ranges, Block / Lambda args) reject canonicalisation.
+  bool emit_call_forced_broken(Call* call,
+                               int outer_start,
+                               int outer_end,
+                               int indent) {
+    Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
+    if (!outer_shape.is_single_line()) return false;
+    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
+
+    if (has_line_locking_comment(outer_start, outer_end)) return false;
+    if (!has_reliable_full_range(call->target())) return false;
+    if (call->arguments().is_empty()) return false;
+    for (auto arg : call->arguments()) {
+      if (arg->is_Block() || arg->is_Lambda()) return false;
+      if (!has_reliable_full_range(arg)) return false;
+    }
+
+    int outer_line_start = find_line_start(outer_start);
+    if (outer_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+
+    // First line: outer prefix + call target. `emit_range_reindent`
+    // re-indents that span to `indent` and leaves `source_cursor_` at
+    // the target's end.
+    int target_end = pos(call->target()->full_range().to());
+    emit_range_reindent(outer_start, target_end, indent);
+
+    int continuation_indent = indent + CALL_CONTINUATION_STEP;
+    for (auto arg : call->arguments()) {
+      int arg_start = pos(arg->full_range().from());
+      int arg_end = pos(arg->full_range().to());
+      output_.push_back('\n');
+      output_.append(continuation_indent, ' ');
+      output_.append(reinterpret_cast<const char*>(text_) + arg_start,
+                     arg_end - arg_start);
+      source_cursor_ = arg_end;
+    }
+    advance_to(outer_end);
+    return true;
   }
 
   // Canonicalizes the continuation indent of a broken Call's args to

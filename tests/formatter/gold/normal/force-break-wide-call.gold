@@ -1,0 +1,44 @@
+main:
+  // Bare Call over MAX_LINE_WIDTH: each arg force-broken onto its own
+  // line at indent + 4. Source was one line; formatter synthesises the
+  // breaks because the flat form doesn't fit.
+  register_event_handler_with_a_very_long_name
+      aaaaaaaaaaa
+      bbbbbbbbbbb
+      ccccccccccc
+      ddddddddddd
+      eeeeee
+
+  // Return(Call) — wrapper stays on the first line with the target.
+  return register_event_handler_with_a_very_long_name
+      aaaaaaaaaaa
+      bbbbbbbbbbb
+      ccccccccccc
+      ddddddddddd
+
+  // DeclarationLocal(Call).
+  r := register_event_handler_with_a_very_long_name
+      aaaaaaaaaaa
+      bbbbbbbbbbb
+      ccccccccccc
+      ddddddddddd
+      eeee
+
+  // Assignment Binary whose RHS is a Call.
+  r = register_event_handler_with_a_very_long_name
+      aaaaaaaaaaa
+      bbbbbbbbbbb
+      ccccccccccc
+      ddddddddddd
+      eeeee
+
+  // Fits under the threshold: stays flat.
+  short_call a b c
+
+register_event_handler_with_a_very_long_name a b c d -> any:
+  return null
+
+short_call a b c -> any:
+  return null
+
+r := 0
