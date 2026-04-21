@@ -200,9 +200,73 @@ class Formatter {
   }
 
   void emit_method(Method* method, int indent) {
+    if (try_emit_method_canonical(method, indent)) return;
     if (!emit_with_suite(method, method->body()->expressions(), indent)) {
       emit_leaf(method, indent);
     }
+  }
+
+  // If a Method has parameters on their own continuation lines (rather
+  // than all on the method's first line), re-indent each continuation
+  // parameter to `indent + CALL_CONTINUATION_STEP`. Then recurse into the
+  // body at indent + INDENT_STEP.
+  //
+  // Returns false if there are no continuation parameters, or guards
+  // fail — caller falls back to emit_with_suite (which handles the
+  // all-params-on-one-line case).
+  bool try_emit_method_canonical(Method* method, int indent) {
+    if (method->body() == null || method->body()->expressions().is_empty()) {
+      return false;
+    }
+    int method_start = pos(method->full_range().from());
+    int method_end = pos(method->full_range().to());
+    if (has_line_locking_comment(method_start, method_end)) return false;
+    for (auto param : method->parameters()) {
+      if (!has_reliable_full_range(param)) return false;
+    }
+
+    int method_line_start = find_line_start(method_start);
+    if (method_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(method_line_start, method_start)) return false;
+
+    int first_break = -1;
+    for (int i = 0; i < method->parameters().length(); i++) {
+      int param_line =
+          find_line_start(pos(method->parameters()[i]->full_range().from()));
+      if (param_line > method_line_start) {
+        first_break = i;
+        break;
+      }
+    }
+    if (first_break < 0) return false;
+
+    auto body_exprs = method->body()->expressions();
+    int body_first_line_start =
+        find_line_start(pos(body_exprs.first()->full_range().from()));
+    if (body_first_line_start <= method_line_start) return false;
+
+    int break_line_start = find_line_start(
+        pos(method->parameters()[first_break]->full_range().from()));
+    emit_range_reindent(method_start, break_line_start, indent);
+
+    int continuation_indent = indent + CALL_CONTINUATION_STEP;
+    for (int i = first_break; i < method->parameters().length(); i++) {
+      auto param = method->parameters()[i];
+      emit_range_reindent(pos(param->full_range().from()),
+                          pos(param->full_range().to()),
+                          continuation_indent);
+    }
+
+    // Remainder of the header — return type annotation if any, `:`, newline
+    // — is emitted verbatim up to the first body line.
+    advance_to(body_first_line_start);
+
+    for (auto expr : body_exprs) {
+      emit_stmt(expr, indent + INDENT_STEP);
+    }
+
+    advance_to(method_end);
+    return true;
   }
 
   // Emits `node` at `indent`: bytes from node_start up to the first body
@@ -890,6 +954,15 @@ class Formatter {
     if (node->is_NamedArgument()) {
       auto expr = node->as_NamedArgument()->expression();
       return expr == null || has_reliable_full_range(expr);
+    }
+    if (node->is_Parameter()) {
+      Parameter* p = node->as_Parameter();
+      if (p->type() != null && !has_reliable_full_range(p->type())) return false;
+      if (p->default_value() != null
+          && !has_reliable_full_range(p->default_value())) {
+        return false;
+      }
+      return true;
     }
     if (node->is_Dot()) {
       return has_reliable_full_range(node->as_Dot()->receiver());
