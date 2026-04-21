@@ -6,6 +6,12 @@ main:
       --handler=this
       --priority=PRIORITY-PREFERRED
 
+  // Same rule applies when the Call is wrapped in a DeclarationLocal
+  // (goes through emit_stmt_flat instead of the bare-Call flat path).
+  result := service
+      --handler=this
+      --priority=PRIORITY-PREFERRED
+
   // Single named arg: still collapses when it fits.
   service
       --handler=this
