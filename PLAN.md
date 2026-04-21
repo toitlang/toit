@@ -95,7 +95,7 @@ Paren rules in `emit_expr_flat`:
 
 Goal: produce actually pleasant output. Paren correctness already nailed down by Tier 3.
 
-- **Per-node soft-width thresholds.** One global `MAX_LINE_WIDTH = 100` wired for the flat-if-fits decision. Per-node differentiation (and specific "always break N-or-more-element" rules for aggregate literals / named-arg Calls / Method signatures) is the next tuning step — pick thresholds from the reference corpus. Artemis measurements: 99.5% of lines ≤ 100 cols, 99.9% ≤ 120 cols; max 221.
+- **Per-node soft-width thresholds.** `MAX_LINE_WIDTH = 100` (flat-if-fits); always-break thresholds `NAMED_ARG_BREAK_THRESHOLD = 4` (Calls with >= N NamedArguments break regardless of width) and `COLLECTION_BREAK_THRESHOLD = 5` (List/Map/Set with >= N elements break regardless of width — ByteArray left to width only). Force-break for too-wide Calls is in. Remaining threshold tuning is corpus-driven and cheap to revisit.
 - **Broken-form emission for `Binary` chains** — operator-aligned or breakable at operator boundaries. Not yet implemented.
 - **Nested broken Calls** — `return foo (bar\n  arg)` where the inner `bar` Call's continuation indent should be relative to the inner's line, not the outer statement's indent.
 - **Method signature layout**: when parameters wrap, the `-> Type` return annotation stays on the first line with the method name.

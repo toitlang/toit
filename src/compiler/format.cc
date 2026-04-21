@@ -48,6 +48,11 @@ static const int MAX_LINE_WIDTH = 100;
 // independent of width — are emitted broken, because config-call-style
 // shapes lose their readability when crammed onto one line.
 static const int NAMED_ARG_BREAK_THRESHOLD = 4;
+// Collection literals (List / Map / Set) with this many or more elements
+// always break into the per-line form. ByteArrays rely on width alone —
+// `#[0x01, 0x02, 0x03, 0x04, 0x05]` is still legible flat, and longer
+// ones are handled by the width rule.
+static const int COLLECTION_BREAK_THRESHOLD = 5;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -439,6 +444,10 @@ class Formatter {
       }
     }
 
+    // Many-element collection literal as the stmt's value gets a
+    // synthesised per-line broken form.
+    if (try_emit_stmt_force_broken_collection(stmt, indent)) return;
+
     emit_leaf(stmt, indent);
   }
 
@@ -474,6 +483,9 @@ class Formatter {
     // NamedArguments can't be flattened — the broken form is the canonical
     // shape for config-call-style invocations.
     if (max_width >= 0 && has_many_named_arg_call(stmt)) return false;
+    // Always-break: a many-element collection literal as the stmt's value
+    // gets its own per-line form rendered by try_emit_stmt_force_broken_collection.
+    if (max_width >= 0 && find_force_break_collection(stmt) != null) return false;
 
     // Render first so we can bail on width before committing any output.
     std::string buffer;
@@ -708,6 +720,52 @@ class Formatter {
       return has_many_named_arg_call(e->as_BreakContinue()->value());
     }
     return false;
+  }
+
+  // Whether `e` is a LiteralList / Set / Map at or above the always-break
+  // element-count threshold. ByteArray is excluded — `#[0x01, 0x02, 0x03,
+  // 0x04, 0x05]` reads fine as one line and longer ones are already caught
+  // by width rules.
+  static bool is_many_element_collection(Expression* e) {
+    if (e == null) return false;
+    if (e->is_LiteralList()) {
+      return e->as_LiteralList()->elements().length()
+          >= COLLECTION_BREAK_THRESHOLD;
+    }
+    if (e->is_LiteralSet()) {
+      return e->as_LiteralSet()->elements().length()
+          >= COLLECTION_BREAK_THRESHOLD;
+    }
+    if (e->is_LiteralMap()) {
+      return e->as_LiteralMap()->keys().length()
+          >= COLLECTION_BREAK_THRESHOLD;
+    }
+    return false;
+  }
+
+  // For a statement shaped as `<collection>`, `return <collection>`,
+  // `x := <collection>` or `x = <collection>`, returns the collection
+  // sub-expression when it is a many-element aggregate. Returns null
+  // otherwise. Parenthesis-wrapped collections are not handled here —
+  // they fall through to the verbatim emit_leaf path.
+  Expression* find_force_break_collection(Expression* stmt) const {
+    if (is_many_element_collection(stmt)) return stmt;
+    if (stmt->is_Return()) {
+      auto v = stmt->as_Return()->value();
+      if (is_many_element_collection(v)) return v;
+    }
+    if (stmt->is_DeclarationLocal()) {
+      auto v = stmt->as_DeclarationLocal()->value();
+      if (is_many_element_collection(v)) return v;
+    }
+    if (stmt->is_Binary()) {
+      auto b = stmt->as_Binary();
+      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
+          && is_many_element_collection(b->right())) {
+        return b->right();
+      }
+    }
+    return null;
   }
 
   static bool is_bitwise_binary(Token::Kind k) {
@@ -1252,6 +1310,83 @@ class Formatter {
       source_cursor_ = arg_end;
     }
     advance_to(outer_end);
+    return true;
+  }
+
+  // Synthesises a broken form for a statement whose value is a many-
+  // element collection literal:
+  //
+  //   x := [             (not `x := [a, b, c, d, e]`)
+  //     a,
+  //     b,
+  //     ...
+  //   ]
+  //
+  // The wrapper bytes (`x := ` / `return ` / nothing for a bare stmt) and
+  // the opening bracket stay on the first line; each element gets its
+  // own line at indent + INDENT_STEP; the closing bracket lines up with
+  // the stmt's indent. Element contents are rendered flat via
+  // emit_expr_flat — nested too-wide content isn't further broken here,
+  // but the outer per-line structure makes that the rare case.
+  bool try_emit_stmt_force_broken_collection(Expression* stmt, int indent) {
+    Expression* coll = find_force_break_collection(stmt);
+    if (coll == null) return false;
+
+    int outer_start = pos(stmt->full_range().from());
+    int outer_end = pos(stmt->full_range().to());
+    if (has_line_locking_comment(outer_start, outer_end)) return false;
+
+    int outer_line_start = find_line_start(outer_start);
+    if (outer_line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+
+    int coll_start = pos(coll->full_range().from());
+    int open_len = coll->is_LiteralByteArray() ? 2 : 1;  // `#[` vs `[`/`{`
+    int after_open = coll_start + open_len;
+
+    // Emit wrapper prefix + opening bracket, re-indented to `indent`.
+    emit_range_reindent(outer_start, after_open, indent);
+
+    // Render each element on its own line with trailing comma. Keys and
+    // values live on the same line for Maps — the break is one entry per
+    // line, not key and value on separate lines.
+    int element_indent = indent + INDENT_STEP;
+    auto emit_element = [&](Expression* e) {
+      output_.push_back('\n');
+      output_.append(element_indent, ' ');
+      std::string buf;
+      emit_expr_flat(e, PRECEDENCE_NONE, &buf);
+      output_.append(buf);
+      output_.push_back(',');
+    };
+    if (coll->is_LiteralList()) {
+      for (auto e : coll->as_LiteralList()->elements()) emit_element(e);
+    } else if (coll->is_LiteralSet()) {
+      for (auto e : coll->as_LiteralSet()->elements()) emit_element(e);
+    } else if (coll->is_LiteralMap()) {
+      auto m = coll->as_LiteralMap();
+      for (int i = 0; i < m->keys().length(); i++) {
+        output_.push_back('\n');
+        output_.append(element_indent, ' ');
+        std::string kb;
+        emit_expr_flat(m->keys()[i], PRECEDENCE_NONE, &kb);
+        std::string vb;
+        emit_expr_flat(m->values()[i], PRECEDENCE_NONE, &vb);
+        output_.append(kb);
+        output_.append(": ");
+        output_.append(vb);
+        output_.push_back(',');
+      }
+    }
+
+    // Closing bracket.
+    output_.push_back('\n');
+    output_.append(indent, ' ');
+    char close_char = coll->is_LiteralMap() || coll->is_LiteralSet()
+                    ? '}' : ']';
+    output_.push_back(close_char);
+
+    source_cursor_ = outer_end;
     return true;
   }
 
