@@ -40,12 +40,16 @@ static const int INDENT_STEP = 2;
 // reference corpus.
 static const int CALL_CONTINUATION_STEP = 4;
 // Soft width threshold for flat-if-fits decisions. A node's flat form is
-// preferred when its rendered width does not exceed this value. Generous
-// first cut; will be tuned (and likely made per-node-kind) once dogfooding
-// surfaces real pressure. Artemis measurements: 99.5% of lines <= 100 cols.
-// Width is the only heuristic — short N-arg / N-element forms stay flat,
-// long ones break. No count-based always-break rules.
+// preferred when its rendered width does not exceed this value.
 static const int MAX_LINE_WIDTH = 100;
+// Tighter threshold for Calls with two or more NamedArguments — the
+// config-call shape. Authors routinely break these per-line before the
+// standard 100-col limit because each `--option=value` reads as an
+// entry in a structured options block.
+static const int NAMED_ARG_CALL_WIDTH = 80;
+// Minimum NamedArgument count at which the tighter threshold kicks in.
+// With fewer args the config-call pattern doesn't apply.
+static const int NAMED_ARG_CALL_MIN = 2;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -448,7 +452,7 @@ class Formatter {
     // these, etc.) benefit from collapsing when the flat form fits.
     if (!stmt->is_Call() && !stmt->is_If() && !stmt->is_While()
         && !stmt->is_For() && !stmt->is_TryFinally()
-        && emit_stmt_flat(stmt, indent, MAX_LINE_WIDTH)) {
+        && emit_stmt_flat(stmt, indent, stmt_width_budget(stmt))) {
       return;
     }
 
@@ -739,6 +743,52 @@ class Formatter {
     return e != null
         && (e->is_LiteralList() || e->is_LiteralSet()
             || e->is_LiteralMap() || e->is_LiteralByteArray());
+  }
+
+  // Config-call heuristic: a Call with three or more NamedArguments gets
+  // a tighter width budget. Breaking such Calls per-line is a legibility
+  // win in its own right (each option on its own line), not a space-
+  // saving compromise — so even flat forms that would fit under the
+  // standard 100-col limit get broken when they cross the config-call
+  // threshold.
+  static int named_arg_count(Call* c) {
+    int n = 0;
+    for (auto a : c->arguments()) if (a->is_NamedArgument()) n++;
+    return n;
+  }
+
+  static bool is_config_call(Call* c) {
+    return named_arg_count(c) >= NAMED_ARG_CALL_MIN;
+  }
+
+  static int call_width_budget(Call* c) {
+    return is_config_call(c) ? NAMED_ARG_CALL_WIDTH : MAX_LINE_WIDTH;
+  }
+
+  // Effective width budget for this statement. Defaults to MAX_LINE_WIDTH
+  // but tightens to NAMED_ARG_CALL_WIDTH when the stmt's value (or a
+  // wrapper chain around it) ends in a config-call Call. Walks through
+  // Return, DeclarationLocal, and assignment Binary wrappers but doesn't
+  // recurse into Call args, Binary operands, or collection elements —
+  // a config-call sitting deep inside some other expression doesn't
+  // tighten the outer stmt's budget.
+  int stmt_width_budget(Expression* stmt) const {
+    Expression* v = stmt;
+    if (stmt->is_Return()) v = stmt->as_Return()->value();
+    else if (stmt->is_DeclarationLocal()) v = stmt->as_DeclarationLocal()->value();
+    else if (stmt->is_Binary()) {
+      auto b = stmt->as_Binary();
+      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT) {
+        v = b->right();
+      }
+    }
+    while (v != null && v->is_Parenthesis()) {
+      v = v->as_Parenthesis()->expression();
+    }
+    if (v != null && v->is_Call() && is_config_call(v->as_Call())) {
+      return NAMED_ARG_CALL_WIDTH;
+    }
+    return MAX_LINE_WIDTH;
   }
 
   // For a statement shaped as `<collection>`, `return <collection>`,
@@ -1328,6 +1378,10 @@ class Formatter {
     if (node->is_Nullable()) {
       return has_reliable_full_range(node->as_Nullable()->type());
     }
+    if (node->is_LiteralList() || node->is_LiteralSet()
+        || node->is_LiteralMap() || node->is_LiteralByteArray()) {
+      return true;
+    }
 
     // Binary and Call are intentionally omitted. Their source bytes are
     // complete, but treating them as "safe to flatten" trips Toit's
@@ -1405,7 +1459,8 @@ class Formatter {
                                int indent) {
     Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
     if (!outer_shape.is_single_line()) return false;
-    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
+    int budget = call_width_budget(call);
+    if (indent + outer_shape.first_line_width <= budget) return false;
 
     if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
@@ -1720,7 +1775,7 @@ class Formatter {
       flat_width += (arg->is_Block() ? 0 : 1) + (arg_end - arg_start);
       prev_end = arg_end;
     }
-    if (flat_width > MAX_LINE_WIDTH) return false;
+    if (flat_width > call_width_budget(call)) return false;
 
     int original_indent = call_start - line_start;
     int delta = indent - original_indent;
