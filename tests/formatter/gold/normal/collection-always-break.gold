@@ -1,5 +1,5 @@
 main:
-  // 5+ elements: always broken.
+  // 4+ elements: always broken.
   items := [
     1,
     2,
@@ -7,21 +7,19 @@ main:
     4,
     5,
   ]
-  // 5-entry Map: broken per entry.
+  // 4-entry Map: broken per entry.
   config := {
     "a": 1,
     "b": 2,
     "c": 3,
     "d": 4,
-    "e": 5,
   }
-  // 5-element Set: broken.
+  // 4-element Set: broken.
   set := {
     1,
     2,
     3,
     4,
-    5,
   }
   // Return wrapper works the same way.
   r := pick_one
@@ -34,8 +32,8 @@ main:
   ]
 
 main2:
-  // 4 elements: still flat when it fits.
-  a := [1, 2, 3, 4]
+  // 3 elements: still flat when it fits.
+  a := [1, 2, 3]
   b := {"x": 1, "y": 2}
   c := {10, 20}
   d := [1, 2]

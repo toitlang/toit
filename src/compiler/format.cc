@@ -52,7 +52,7 @@ static const int NAMED_ARG_BREAK_THRESHOLD = 4;
 // always break into the per-line form. ByteArrays rely on width alone —
 // `#[0x01, 0x02, 0x03, 0x04, 0x05]` is still legible flat, and longer
 // ones are handled by the width rule.
-static const int COLLECTION_BREAK_THRESHOLD = 5;
+static const int COLLECTION_BREAK_THRESHOLD = 4;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -554,9 +554,11 @@ class Formatter {
     // NamedArguments can't be flattened — the broken form is the canonical
     // shape for config-call-style invocations.
     if (max_width >= 0 && has_many_named_arg_call(stmt)) return false;
-    // Always-break: a many-element collection literal as the stmt's value
-    // gets its own per-line form rendered by try_emit_stmt_force_broken_collection.
-    if (max_width >= 0 && find_force_break_collection(stmt) != null) return false;
+    // Always-break: any many-element collection literal in the AST blocks
+    // flat. If it sits at the stmt's value, try_emit_stmt_force_broken_
+    // collection renders it; if it sits deeper (e.g. as a Call arg), the
+    // verbatim emit_leaf fallback preserves an already-broken source.
+    if (max_width >= 0 && has_many_element_collection_anywhere(stmt)) return false;
 
     // Render first so we can bail on width before committing any output.
     std::string buffer;
@@ -747,6 +749,88 @@ class Formatter {
     int p = Token::precedence(k);
     return p == PRECEDENCE_AND || p == PRECEDENCE_OR
         || p == PRECEDENCE_ASSIGNMENT;
+  }
+
+  // Whether `e` contains (anywhere in the expression tree) a
+  // LiteralList / Map / Set at or above the element-count threshold.
+  // Used to reject flat-if-fits for wrapping statements so the aggregate
+  // doesn't get crammed onto a single line when it sits deep in the AST
+  // (e.g. as a Call arg). Broken emission for the nested case is still
+  // handled by the surrounding node's verbatim fallback when the source
+  // is already multi-line.
+  bool has_many_element_collection_anywhere(Expression* e) const {
+    if (e == null) return false;
+    if (is_many_element_collection(e)) return true;
+    if (e->is_Parenthesis()) {
+      return has_many_element_collection_anywhere(
+          e->as_Parenthesis()->expression());
+    }
+    if (e->is_Unary()) {
+      return has_many_element_collection_anywhere(
+          e->as_Unary()->expression());
+    }
+    if (e->is_Binary()) {
+      auto b = e->as_Binary();
+      return has_many_element_collection_anywhere(b->left())
+          || has_many_element_collection_anywhere(b->right());
+    }
+    if (e->is_Call()) {
+      auto c = e->as_Call();
+      if (has_many_element_collection_anywhere(c->target())) return true;
+      for (auto a : c->arguments()) {
+        if (has_many_element_collection_anywhere(a)) return true;
+      }
+      return false;
+    }
+    if (e->is_NamedArgument()) {
+      return has_many_element_collection_anywhere(
+          e->as_NamedArgument()->expression());
+    }
+    if (e->is_Return()) {
+      return has_many_element_collection_anywhere(e->as_Return()->value());
+    }
+    if (e->is_DeclarationLocal()) {
+      return has_many_element_collection_anywhere(
+          e->as_DeclarationLocal()->value());
+    }
+    if (e->is_BreakContinue()) {
+      return has_many_element_collection_anywhere(
+          e->as_BreakContinue()->value());
+    }
+    if (e->is_Dot()) {
+      return has_many_element_collection_anywhere(e->as_Dot()->receiver());
+    }
+    if (e->is_Index()) {
+      auto idx = e->as_Index();
+      if (has_many_element_collection_anywhere(idx->receiver())) return true;
+      for (auto a : idx->arguments()) {
+        if (has_many_element_collection_anywhere(a)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralList()) {
+      for (auto x : e->as_LiteralList()->elements()) {
+        if (has_many_element_collection_anywhere(x)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralSet()) {
+      for (auto x : e->as_LiteralSet()->elements()) {
+        if (has_many_element_collection_anywhere(x)) return true;
+      }
+      return false;
+    }
+    if (e->is_LiteralMap()) {
+      auto m = e->as_LiteralMap();
+      for (auto k : m->keys()) {
+        if (has_many_element_collection_anywhere(k)) return true;
+      }
+      for (auto v : m->values()) {
+        if (has_many_element_collection_anywhere(v)) return true;
+      }
+      return false;
+    }
+    return false;
   }
 
   // Whether `e` contains (anywhere in the expression tree) a Call whose
