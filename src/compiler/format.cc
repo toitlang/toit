@@ -43,16 +43,9 @@ static const int CALL_CONTINUATION_STEP = 4;
 // preferred when its rendered width does not exceed this value. Generous
 // first cut; will be tuned (and likely made per-node-kind) once dogfooding
 // surfaces real pressure. Artemis measurements: 99.5% of lines <= 100 cols.
+// Width is the only heuristic — short N-arg / N-element forms stay flat,
+// long ones break. No count-based always-break rules.
 static const int MAX_LINE_WIDTH = 100;
-// Always-break thresholds. Aggregates with this many or more elements —
-// independent of width — are emitted broken, because config-call-style
-// shapes lose their readability when crammed onto one line.
-static const int NAMED_ARG_BREAK_THRESHOLD = 3;
-// Collection literals (List / Map / Set) with this many or more elements
-// always break into the per-line form. ByteArrays rely on width alone —
-// `#[0x01, 0x02, 0x03, 0x04, 0x05]` is still legible flat, and longer
-// ones are handled by the width rule.
-static const int COLLECTION_BREAK_THRESHOLD = 4;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -550,16 +543,6 @@ class Formatter {
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, start)) return false;
 
-    // Always-break: a Call anywhere inside this statement with too many
-    // NamedArguments can't be flattened — the broken form is the canonical
-    // shape for config-call-style invocations.
-    if (max_width >= 0 && has_many_named_arg_call(stmt)) return false;
-    // Always-break: any many-element collection literal in the AST blocks
-    // flat. If it sits at the stmt's value, try_emit_stmt_force_broken_
-    // collection renders it; if it sits deeper (e.g. as a Call arg), the
-    // verbatim emit_leaf fallback preserves an already-broken source.
-    if (max_width >= 0 && has_many_element_collection_anywhere(stmt)) return false;
-
     // Render first so we can bail on width before committing any output.
     std::string buffer;
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
@@ -751,172 +734,31 @@ class Formatter {
         || p == PRECEDENCE_ASSIGNMENT;
   }
 
-  // Whether `e` contains (anywhere in the expression tree) a
-  // LiteralList / Map / Set at or above the element-count threshold.
-  // Used to reject flat-if-fits for wrapping statements so the aggregate
-  // doesn't get crammed onto a single line when it sits deep in the AST
-  // (e.g. as a Call arg). Broken emission for the nested case is still
-  // handled by the surrounding node's verbatim fallback when the source
-  // is already multi-line.
-  bool has_many_element_collection_anywhere(Expression* e) const {
-    if (e == null) return false;
-    if (is_many_element_collection(e)) return true;
-    if (e->is_Parenthesis()) {
-      return has_many_element_collection_anywhere(
-          e->as_Parenthesis()->expression());
-    }
-    if (e->is_Unary()) {
-      return has_many_element_collection_anywhere(
-          e->as_Unary()->expression());
-    }
-    if (e->is_Binary()) {
-      auto b = e->as_Binary();
-      return has_many_element_collection_anywhere(b->left())
-          || has_many_element_collection_anywhere(b->right());
-    }
-    if (e->is_Call()) {
-      auto c = e->as_Call();
-      if (has_many_element_collection_anywhere(c->target())) return true;
-      for (auto a : c->arguments()) {
-        if (has_many_element_collection_anywhere(a)) return true;
-      }
-      return false;
-    }
-    if (e->is_NamedArgument()) {
-      return has_many_element_collection_anywhere(
-          e->as_NamedArgument()->expression());
-    }
-    if (e->is_Return()) {
-      return has_many_element_collection_anywhere(e->as_Return()->value());
-    }
-    if (e->is_DeclarationLocal()) {
-      return has_many_element_collection_anywhere(
-          e->as_DeclarationLocal()->value());
-    }
-    if (e->is_BreakContinue()) {
-      return has_many_element_collection_anywhere(
-          e->as_BreakContinue()->value());
-    }
-    if (e->is_Dot()) {
-      return has_many_element_collection_anywhere(e->as_Dot()->receiver());
-    }
-    if (e->is_Index()) {
-      auto idx = e->as_Index();
-      if (has_many_element_collection_anywhere(idx->receiver())) return true;
-      for (auto a : idx->arguments()) {
-        if (has_many_element_collection_anywhere(a)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralList()) {
-      for (auto x : e->as_LiteralList()->elements()) {
-        if (has_many_element_collection_anywhere(x)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralSet()) {
-      for (auto x : e->as_LiteralSet()->elements()) {
-        if (has_many_element_collection_anywhere(x)) return true;
-      }
-      return false;
-    }
-    if (e->is_LiteralMap()) {
-      auto m = e->as_LiteralMap();
-      for (auto k : m->keys()) {
-        if (has_many_element_collection_anywhere(k)) return true;
-      }
-      for (auto v : m->values()) {
-        if (has_many_element_collection_anywhere(v)) return true;
-      }
-      return false;
-    }
-    return false;
-  }
-
-  // Whether `e` contains (anywhere in the expression tree) a Call whose
-  // NamedArgument count hits NAMED_ARG_BREAK_THRESHOLD — the always-break
-  // signal for config-call shapes.
-  bool has_many_named_arg_call(Expression* e) const {
-    if (e == null) return false;
-    if (e->is_Call()) {
-      auto c = e->as_Call();
-      int named_count = 0;
-      for (auto a : c->arguments()) {
-        if (a->is_NamedArgument()) named_count++;
-      }
-      if (named_count >= NAMED_ARG_BREAK_THRESHOLD) return true;
-      if (has_many_named_arg_call(c->target())) return true;
-      for (auto a : c->arguments()) {
-        if (has_many_named_arg_call(a)) return true;
-      }
-      return false;
-    }
-    if (e->is_Parenthesis()) {
-      return has_many_named_arg_call(e->as_Parenthesis()->expression());
-    }
-    if (e->is_Unary()) {
-      return has_many_named_arg_call(e->as_Unary()->expression());
-    }
-    if (e->is_Binary()) {
-      auto b = e->as_Binary();
-      return has_many_named_arg_call(b->left())
-          || has_many_named_arg_call(b->right());
-    }
-    if (e->is_NamedArgument()) {
-      return has_many_named_arg_call(e->as_NamedArgument()->expression());
-    }
-    if (e->is_Return()) {
-      return has_many_named_arg_call(e->as_Return()->value());
-    }
-    if (e->is_DeclarationLocal()) {
-      return has_many_named_arg_call(e->as_DeclarationLocal()->value());
-    }
-    if (e->is_BreakContinue()) {
-      return has_many_named_arg_call(e->as_BreakContinue()->value());
-    }
-    return false;
-  }
-
-  // Whether `e` is a LiteralList / Set / Map at or above the always-break
-  // element-count threshold. ByteArray is excluded — `#[0x01, 0x02, 0x03,
-  // 0x04, 0x05]` reads fine as one line and longer ones are already caught
-  // by width rules.
-  static bool is_many_element_collection(Expression* e) {
-    if (e == null) return false;
-    if (e->is_LiteralList()) {
-      return e->as_LiteralList()->elements().length()
-          >= COLLECTION_BREAK_THRESHOLD;
-    }
-    if (e->is_LiteralSet()) {
-      return e->as_LiteralSet()->elements().length()
-          >= COLLECTION_BREAK_THRESHOLD;
-    }
-    if (e->is_LiteralMap()) {
-      return e->as_LiteralMap()->keys().length()
-          >= COLLECTION_BREAK_THRESHOLD;
-    }
-    return false;
+  // Is `e` a collection literal (List / Map / Set / ByteArray)?
+  static bool is_collection_literal(Expression* e) {
+    return e != null
+        && (e->is_LiteralList() || e->is_LiteralSet()
+            || e->is_LiteralMap() || e->is_LiteralByteArray());
   }
 
   // For a statement shaped as `<collection>`, `return <collection>`,
   // `x := <collection>` or `x = <collection>`, returns the collection
-  // sub-expression when it is a many-element aggregate. Returns null
-  // otherwise. Parenthesis-wrapped collections are not handled here —
-  // they fall through to the verbatim emit_leaf path.
+  // sub-expression. Returns null otherwise. Parenthesis-wrapped
+  // collections aren't handled here — they fall through to verbatim.
   Expression* find_force_break_collection(Expression* stmt) const {
-    if (is_many_element_collection(stmt)) return stmt;
+    if (is_collection_literal(stmt)) return stmt;
     if (stmt->is_Return()) {
       auto v = stmt->as_Return()->value();
-      if (is_many_element_collection(v)) return v;
+      if (is_collection_literal(v)) return v;
     }
     if (stmt->is_DeclarationLocal()) {
       auto v = stmt->as_DeclarationLocal()->value();
-      if (is_many_element_collection(v)) return v;
+      if (is_collection_literal(v)) return v;
     }
     if (stmt->is_Binary()) {
       auto b = stmt->as_Binary();
       if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
-          && is_many_element_collection(b->right())) {
+          && is_collection_literal(b->right())) {
         return b->right();
       }
     }
@@ -1563,13 +1405,7 @@ class Formatter {
                                int indent) {
     Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
     if (!outer_shape.is_single_line()) return false;
-    bool too_wide = indent + outer_shape.first_line_width > MAX_LINE_WIDTH;
-    int named_count = 0;
-    for (auto arg : call->arguments()) {
-      if (arg->is_NamedArgument()) named_count++;
-    }
-    bool many_named = named_count >= NAMED_ARG_BREAK_THRESHOLD;
-    if (!too_wide && !many_named) return false;
+    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
 
     if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
@@ -1686,6 +1522,15 @@ class Formatter {
 
     int outer_start = pos(stmt->full_range().from());
     int outer_end = pos(stmt->full_range().to());
+    // Only synthesise a per-line broken form when the stmt is currently
+    // a single line wider than MAX_LINE_WIDTH. Short collections stay
+    // flat; already-broken source is preserved by the verbatim leaf
+    // fallback (emit_stmt_flat rejected for width, we'd spuriously
+    // break otherwise).
+    Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
+    if (!outer_shape.is_single_line()) return false;
+    if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
+
     if (has_line_locking_comment(outer_start, outer_end)) return false;
 
     int outer_line_start = find_line_start(outer_start);
@@ -1827,16 +1672,6 @@ class Formatter {
   // a full_range we can't trust as a contiguous source span.
   bool try_emit_call_flat_canonical(Call* call, int indent) {
     Expression* target = call->target();
-    // Always-break threshold: a Call with many named arguments is a
-    // config-call shape that reads per-line, so reject flat here and let
-    // the broken-form paths take over even if the flat form would fit.
-    {
-      int named_count = 0;
-      for (auto arg : call->arguments()) {
-        if (arg->is_NamedArgument()) named_count++;
-      }
-      if (named_count >= NAMED_ARG_BREAK_THRESHOLD) return false;
-    }
     // Guard against AST nodes whose full_range does not cover their complete
     // source span (Index/IndexSlice exclude the receiver, for example).
     // Limit canonicalization to targets and args whose full_range is known
