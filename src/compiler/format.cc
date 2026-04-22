@@ -551,7 +551,6 @@ class Formatter {
     int line_start = find_line_start(start);
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, start)) return false;
-
     // Render first so we can bail on width before committing any output.
     std::string buffer;
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
@@ -741,6 +740,53 @@ class Formatter {
     int p = Token::precedence(k);
     return p == PRECEDENCE_AND || p == PRECEDENCE_OR
         || p == PRECEDENCE_ASSIGNMENT;
+  }
+
+  // Toit naming convention: type / class / constructor identifiers are
+  // CamelCase (uppercase first letter). A receiver of Dot / Index /
+  // IndexSlice that looks like a constructor gets parenthesised so the
+  // reader sees `(Point).foo` rather than `Point.foo` — the latter
+  // looks like static-member access, whereas the parenthesised form
+  // makes the instance invocation explicit. For the purposes of this
+  // rule a Parenthesis-wrapped receiver counts as already parenthesised
+  // and is peeled before the uppercase check.
+  bool receiver_needs_ctor_parens(Expression* e) const {
+    while (e != null && e->is_Parenthesis()) {
+      e = e->as_Parenthesis()->expression();
+    }
+    if (e == null || !e->is_Identifier()) return false;
+    int from = pos(e->as_Identifier()->full_range().from());
+    int to = pos(e->as_Identifier()->full_range().to());
+    if (from >= to) return false;
+    char c = text_[from];
+    return c >= 'A' && c <= 'Z';
+  }
+
+  // Renders the receiver of a Dot / Index / IndexSlice. Preserves any
+  // source Parenthesis wrapping a non-trivial inner expression and adds
+  // parens around bare constructor-shaped Identifiers.
+  void emit_receiver(Expression* recv, std::string* out) {
+    if (recv == null) return;
+    // Constructor heuristic — wrap Identifier(UpperCase) in parens.
+    if (recv->is_Identifier() && receiver_needs_ctor_parens(recv)) {
+      out->append("(");
+      emit_expr_flat(recv, PRECEDENCE_NONE, out);
+      out->append(")");
+      return;
+    }
+    // Source-provided Parenthesis — keep them, even around a trivial
+    // inner (this is where constructors already wrapped in source live).
+    if (recv->is_Parenthesis()) {
+      out->append("(");
+      Expression* inner = recv->as_Parenthesis()->expression();
+      while (inner != null && inner->is_Parenthesis()) {
+        inner = inner->as_Parenthesis()->expression();
+      }
+      emit_expr_flat(inner, PRECEDENCE_NONE, out);
+      out->append(")");
+      return;
+    }
+    emit_expr_flat(recv, PRECEDENCE_POSTFIX, out);
   }
 
   // Is `e` a collection literal (List / Map / Set / ByteArray)?
@@ -1060,7 +1106,7 @@ class Formatter {
     }
     if (expr->is_Dot()) {
       Dot* d = expr->as_Dot();
-      emit_expr_flat(d->receiver(), PRECEDENCE_POSTFIX, out);
+      emit_receiver(d->receiver(), out);
       out->append(".");
       // Dot's name is an Identifier — append its source bytes directly.
       int nfrom = pos(d->name()->full_range().from());
@@ -1070,7 +1116,7 @@ class Formatter {
     }
     if (expr->is_Index()) {
       Index* idx = expr->as_Index();
-      emit_expr_flat(idx->receiver(), PRECEDENCE_POSTFIX, out);
+      emit_receiver(idx->receiver(), out);
       out->append("[");
       bool first = true;
       for (auto arg : idx->arguments()) {
@@ -1085,7 +1131,7 @@ class Formatter {
     }
     if (expr->is_IndexSlice()) {
       IndexSlice* slice = expr->as_IndexSlice();
-      emit_expr_flat(slice->receiver(), PRECEDENCE_POSTFIX, out);
+      emit_receiver(slice->receiver(), out);
       out->append("[");
       if (slice->from() != null) {
         emit_expr_flat(slice->from(), PRECEDENCE_NONE, out);
@@ -1471,8 +1517,12 @@ class Formatter {
     if (!has_reliable_full_range(call->target())) return false;
     if (call->arguments().is_empty()) return false;
     for (auto arg : call->arguments()) {
+      // Byte-copy is safe for any arg whose range covers its bytes.
+      // Block / Lambda args contain multi-line bodies that can't be
+      // single-lined onto a continuation. Interpolated strings have
+      // flaky range coverage, so skip those conservatively.
       if (arg->is_Block() || arg->is_Lambda()) return false;
-      if (!has_reliable_full_range(arg)) return false;
+      if (arg->is_LiteralStringInterpolation()) return false;
     }
 
     int outer_line_start = find_line_start(outer_start);
@@ -1487,15 +1537,85 @@ class Formatter {
 
     int continuation_indent = indent + CALL_CONTINUATION_STEP;
     for (auto arg : call->arguments()) {
-      int arg_start = pos(arg->full_range().from());
-      int arg_end = pos(arg->full_range().to());
       output_.push_back('\n');
       output_.append(continuation_indent, ' ');
-      output_.append(reinterpret_cast<const char*>(text_) + arg_start,
-                     arg_end - arg_start);
-      source_cursor_ = arg_end;
+      emit_arg_bytes_or_recurse(arg, continuation_indent, MAX_LINE_WIDTH);
+      source_cursor_ = pos(arg->full_range().to());
     }
     advance_to(outer_end);
+    return true;
+  }
+
+  // Emits a Call argument at the current output position (which the
+  // caller has just filled to `line_col`). Normally copies source bytes,
+  // but if the arg is a too-wide `Parenthesis(Call)`, drops the parens
+  // and emits the inner Call broken at this column — each continuation
+  // line of the outer Call IS one arg, so `foo (bar a b)` parenthesised
+  // around a single arg becomes redundant once we're already breaking:
+  //
+  //     foo
+  //         bar
+  //             a
+  //             b
+  //
+  // not the `foo\n    (bar\n        a\n        b)` form. Parens are only
+  // needed in Binary-operand contexts (`foo 1 + (bar a b)`) where greedy
+  // Call would absorb differently.
+  void emit_arg_bytes_or_recurse(Expression* arg, int line_col,
+                                 int budget) {
+    int arg_start = pos(arg->full_range().from());
+    int arg_end = pos(arg->full_range().to());
+    Shape s = shape_from_source_range(text_, arg_start, arg_end);
+    // Fits flat at this column — just copy.
+    if (s.is_single_line() && line_col + s.first_line_width <= budget) {
+      output_.append(reinterpret_cast<const char*>(text_) + arg_start,
+                     arg_end - arg_start);
+      return;
+    }
+    // Parenthesis-wrapped Call that doesn't fit flat — emit the inner
+    // Call broken at this column, WITHOUT the parens. Each continuation
+    // line of the surrounding Call is one arg, so the parens become
+    // redundant structure.
+    Expression* inner = arg;
+    while (inner != null && inner->is_Parenthesis()) {
+      inner = inner->as_Parenthesis()->expression();
+    }
+    if (arg->is_Parenthesis() && inner != null && inner->is_Call()
+        && can_byte_copy_call(inner->as_Call())) {
+      emit_call_broken_inline(inner->as_Call(), line_col, budget);
+      return;
+    }
+    // Fallback: verbatim byte copy, even if it overruns the budget.
+    output_.append(reinterpret_cast<const char*>(text_) + arg_start,
+                   arg_end - arg_start);
+  }
+
+  // Inner-Call force-break. Target sits on the current output line (we
+  // assume the caller has just opened a `(` or is continuing an outer
+  // Call's broken form), args break to a continuation line at
+  // `target_col + CALL_CONTINUATION_STEP`. No newline before the target.
+  void emit_call_broken_inline(Call* call, int target_col, int budget) {
+    int t_start = pos(call->target()->full_range().from());
+    int t_end = pos(call->target()->full_range().to());
+    output_.append(reinterpret_cast<const char*>(text_) + t_start,
+                   t_end - t_start);
+    int inner_continuation = target_col + CALL_CONTINUATION_STEP;
+    for (auto a : call->arguments()) {
+      output_.push_back('\n');
+      output_.append(inner_continuation, ' ');
+      emit_arg_bytes_or_recurse(a, inner_continuation, budget);
+    }
+  }
+
+  // Guard: inner Call is safe to byte-copy (same checks emit_call_forced_
+  // broken applies at the top level).
+  bool can_byte_copy_call(Call* call) const {
+    if (!has_reliable_full_range(call->target())) return false;
+    if (call->arguments().is_empty()) return false;
+    for (auto a : call->arguments()) {
+      if (a->is_Block() || a->is_Lambda()) return false;
+      if (a->is_LiteralStringInterpolation()) return false;
+    }
     return true;
   }
 
@@ -1535,10 +1655,15 @@ class Formatter {
     flatten_binary_chain(root, op, &operands);
     if (operands.size() < 2) return false;
 
-    // Safety: every operand must have a reliable full_range so we can
-    // copy source bytes verbatim.
+    // Safety: operand bytes are copied verbatim. Reject the kinds whose
+    // full_range doesn't actually cover the source span (Block / Lambda
+    // bodies, and the flaky LiteralStringInterpolation). Other AST kinds
+    // — including Call and Binary sub-expressions — are safe because
+    // the break boundaries are explicit (newline + operator + operand).
     for (auto operand : operands) {
-      if (!has_reliable_full_range(operand)) return false;
+      if (operand == null) return false;
+      if (operand->is_Block() || operand->is_Lambda()) return false;
+      if (operand->is_LiteralStringInterpolation()) return false;
     }
 
     // First line: wrapper bytes + first operand, re-indented to `indent`.
