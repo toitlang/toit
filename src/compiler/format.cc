@@ -304,6 +304,11 @@ class Formatter {
         auto param = method->parameters()[i];
         int p_start = pos(param->full_range().from());
         int p_end = pos(param->full_range().to());
+        // Block-parameter brackets — `[--on-absent]` — sit just outside
+        // Parameter's full_range. Extend the emission range to include
+        // an adjacent `[` and/or `]` so they survive the rewrite.
+        if (p_start > 0 && text_[p_start - 1] == '[') p_start--;
+        if (p_end < size_ && text_[p_end] == ']') p_end++;
         output_.push_back('\n');
         output_.append(continuation_indent, ' ');
         output_.append(reinterpret_cast<const char*>(text_) + p_start,
