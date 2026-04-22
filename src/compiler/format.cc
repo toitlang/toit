@@ -1241,23 +1241,34 @@ class Formatter {
       bool parens = outer_prec != PRECEDENCE_NONE;
       if (parens) out->append("(");
       emit_expr_flat(c->target(), PRECEDENCE_POSTFIX, out);
+      // Opinionated rule for Binary args (whether the source wrote them
+      // bare or wrapped in Parenthesis): single-arg Call emits the
+      // Binary bare (`ByteArray end - start`), multi-arg Call wraps the
+      // Binary so argument boundaries stay visible (`foo (a + b) c d`).
+      // Low-precedence right-assoc ops (`and`, `or`, assignment) and
+      // Binaries that embed a Call always need parens for AST safety.
+      bool multi_arg = c->arguments().length() >= 2;
       for (auto arg : c->arguments()) {
         out->append(" ");
-        // Defensive parens around Binary args are only needed when the
-        // Binary (1) embeds a Call that would otherwise be absorbed, or
-        // (2) uses a low-precedence right-assoc operator like `and` /
-        // `or`, which greedily consumes everything to its right up to
-        // the end of the expression and would eat later args if left
-        // unwrapped. Plain `a + b` or `a & mask` at arg position re-
-        // parses the same with or without parens, so drop them there.
-        if (arg->is_Binary()) {
-          Token::Kind k = arg->as_Binary()->kind();
+        // Peel Parenthesis to find the real shape of the arg. Users may
+        // have written `(a + b)` or just `a + b` in source; the
+        // formatter picks one rendering regardless.
+        Expression* inner = arg;
+        while (inner != null && inner->is_Parenthesis()) {
+          inner = inner->as_Parenthesis()->expression();
+        }
+        if (inner != null && inner->is_Binary()) {
+          Token::Kind k = inner->as_Binary()->kind();
           int p = Token::precedence(k);
-          bool absorbs_to_end = (p <= PRECEDENCE_ASSIGNMENT);
-          if (absorbs_to_end || contains_call(arg)) {
-            emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
+          bool must_paren = (p <= PRECEDENCE_ASSIGNMENT)
+                         || contains_call(inner)
+                         || multi_arg;
+          if (must_paren) {
+            out->append("(");
+            emit_expr_flat(inner, PRECEDENCE_NONE, out);
+            out->append(")");
           } else {
-            emit_expr_flat(arg, PRECEDENCE_NONE, out);
+            emit_expr_flat(inner, PRECEDENCE_NONE, out);
           }
         } else {
           emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
