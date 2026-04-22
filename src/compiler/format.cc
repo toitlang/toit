@@ -47,7 +47,7 @@ static const int MAX_LINE_WIDTH = 100;
 // Always-break thresholds. Aggregates with this many or more elements —
 // independent of width — are emitted broken, because config-call-style
 // shapes lose their readability when crammed onto one line.
-static const int NAMED_ARG_BREAK_THRESHOLD = 4;
+static const int NAMED_ARG_BREAK_THRESHOLD = 3;
 // Collection literals (List / Map / Set) with this many or more elements
 // always break into the per-line form. ByteArrays rely on width alone —
 // `#[0x01, 0x02, 0x03, 0x04, 0x05]` is still legible flat, and longer
