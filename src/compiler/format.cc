@@ -915,6 +915,12 @@ class Formatter {
     bool parent_bw = is_bitwise_binary(parent_kind);
     bool child_bw = is_bitwise_binary(child_kind);
     if (!parent_bw && !child_bw) return false;
+    // ASSIGN is a statement-level boundary — its RHS doesn't need
+    // defensive bitwise parens (`x = a & b` reads fine, no need for
+    // `x = (a & b)`).
+    if (Token::precedence(parent_kind) == PRECEDENCE_ASSIGNMENT) {
+      return false;
+    }
     // Same operator on both sides (e.g. `a & b & c`) reads unambiguously
     // as a chain — no parens needed.
     if (parent_kind == child_kind) return false;
