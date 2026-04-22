@@ -1110,9 +1110,13 @@ class Formatter {
     }
     if (expr->is_Unary()) {
       Unary* u = expr->as_Unary();
-      // Unary binds tighter than every binary operator — treat it as
-      // PRECEDENCE_POSTFIX for the purpose of wrapping the operand.
-      bool parens = PRECEDENCE_POSTFIX <= outer_prec && outer_prec != PRECEDENCE_NONE;
+      // Only the keyword `not` requires defensive parens in a non-NONE
+      // context: `foo not x` is a parse error (Toit forbids `not` there),
+      // while `foo (not x)` is fine. Every other unary operator is a
+      // tight punctuation token (`-x`, `~x`, `x++`, `x--`), which binds
+      // to its operand and doesn't collide with Toit's greedy Call. So
+      // `foo -x y` parses as `Call(foo, [-x, y])` unchanged.
+      bool parens = (u->kind() == Token::NOT && outer_prec != PRECEDENCE_NONE);
       if (parens) out->append("(");
       const char* op = Token::symbol(u->kind()).c_str();
       if (u->prefix()) {
