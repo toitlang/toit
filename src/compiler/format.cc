@@ -981,6 +981,36 @@ class Formatter {
     return v->as_Binary();
   }
 
+  // Whether `e` contains a Call anywhere in its expression tree. Used
+  // to decide whether a Binary arg of an outer Call needs defensive
+  // parens — if the Binary embeds a Call, greedy Call parsing would
+  // absorb that inner target into the outer Call's arg list instead.
+  static bool contains_call(Expression* e) {
+    if (e == null) return false;
+    if (e->is_Call()) return true;
+    if (e->is_Parenthesis()) {
+      return contains_call(e->as_Parenthesis()->expression());
+    }
+    if (e->is_Unary()) return contains_call(e->as_Unary()->expression());
+    if (e->is_Binary()) {
+      auto b = e->as_Binary();
+      return contains_call(b->left()) || contains_call(b->right());
+    }
+    if (e->is_Dot()) return contains_call(e->as_Dot()->receiver());
+    if (e->is_Index()) {
+      auto idx = e->as_Index();
+      if (contains_call(idx->receiver())) return true;
+      for (auto a : idx->arguments()) {
+        if (contains_call(a)) return true;
+      }
+      return false;
+    }
+    if (e->is_NamedArgument()) {
+      return contains_call(e->as_NamedArgument()->expression());
+    }
+    return false;
+  }
+
   static bool is_bitwise_binary(Token::Kind k) {
     int p = Token::precedence(k);
     return p == PRECEDENCE_BIT_SHIFT
@@ -1213,12 +1243,25 @@ class Formatter {
       emit_expr_flat(c->target(), PRECEDENCE_POSTFIX, out);
       for (auto arg : c->arguments()) {
         out->append(" ");
-        // Wrap arguments that themselves have binary/unary structure —
-        // again, Call absorbs across binary operators, so `foo a + b`
-        // parses as `Call(foo, [Binary(+, a, b)])`. When the AST wants
-        // `Binary(+, Call(foo, [a]), b)` we must write `foo a + b` as
-        // `(foo a) + b`; when the AST wants the former, no wrap needed.
-        emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
+        // Defensive parens around Binary args are only needed when the
+        // Binary (1) embeds a Call that would otherwise be absorbed, or
+        // (2) uses a low-precedence right-assoc operator like `and` /
+        // `or`, which greedily consumes everything to its right up to
+        // the end of the expression and would eat later args if left
+        // unwrapped. Plain `a + b` or `a & mask` at arg position re-
+        // parses the same with or without parens, so drop them there.
+        if (arg->is_Binary()) {
+          Token::Kind k = arg->as_Binary()->kind();
+          int p = Token::precedence(k);
+          bool absorbs_to_end = (p <= PRECEDENCE_ASSIGNMENT);
+          if (absorbs_to_end || contains_call(arg)) {
+            emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
+          } else {
+            emit_expr_flat(arg, PRECEDENCE_NONE, out);
+          }
+        } else {
+          emit_expr_flat(arg, PRECEDENCE_POSTFIX, out);
+        }
       }
       if (parens) out->append(")");
       return;
