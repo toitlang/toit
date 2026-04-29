@@ -603,6 +603,7 @@ class Formatter {
       auto body = as_suite_body(stmt->as_For()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_TryFinally()) {
+      if (try_emit_try_finally_canonical(stmt->as_TryFinally(), indent)) return;
       if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
 
@@ -1405,6 +1406,64 @@ class Formatter {
     int from = pos(expr->full_range().from());
     int to = pos(expr->full_range().to());
     out->append(reinterpret_cast<const char*>(text_) + from, to - from);
+  }
+
+  // Canonical broken-form emission for TryFinally, from AST. Same
+  // shape as the if/else broken-synth: try / finally always emit
+  // broken (per-stmt body and handler), regardless of source layout.
+  // Inline `try: foo finally: bar` is never produced — three semantic
+  // chunks on one line is hard to read, like `if A: a else: b`.
+  bool try_emit_try_finally_canonical(TryFinally* tf, int indent) {
+    auto body = tf->body() == null
+        ? List<Expression*>()
+        : tf->body()->expressions();
+    auto handler = tf->handler() == null
+        ? List<Expression*>()
+        : tf->handler()->expressions();
+    if (body.is_empty() || handler.is_empty()) return false;
+
+    int node_start = pos(tf->full_range().from());
+    int node_end = pos(tf->full_range().to());
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+
+    for (auto e : body) {
+      if (!can_emit_flat(e)) return false;
+    }
+    for (auto e : handler) {
+      if (!can_emit_flat(e)) return false;
+    }
+
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+
+    int body_indent = indent + INDENT_STEP;
+    output_.append(indent, ' ');
+    output_.append("try:");
+    for (auto e : body) {
+      output_.push_back('\n');
+      output_.append(body_indent, ' ');
+      std::string buf;
+      emit_expr_flat(e, PRECEDENCE_NONE, &buf);
+      output_.append(buf);
+    }
+    output_.push_back('\n');
+    output_.append(indent, ' ');
+    output_.append("finally:");
+    for (auto e : handler) {
+      output_.push_back('\n');
+      output_.append(body_indent, ' ');
+      std::string buf;
+      emit_expr_flat(e, PRECEDENCE_NONE, &buf);
+      output_.append(buf);
+    }
+    source_cursor_ = node_end;
+    return true;
   }
 
   bool emit_try_finally(TryFinally* tf, int indent) {
