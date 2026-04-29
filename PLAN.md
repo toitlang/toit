@@ -127,11 +127,14 @@ Also fixed in this round: the `not Call` paren bug. `not` is parsed via `parse_n
 
 Done for Method bodies too. `try_emit_method_body_canonical` runs before the existing emit_method chain; same inline-vs-broken logic. Header bytes (up to and including `:`) are taken verbatim from source; body is rendered from AST. Bails when the header is multi-line (wrapped params — let `try_emit_method_canonical` handle), or when broken-synth would emit a too-wide body line (let `emit_with_suite` handle).
 
+Done for Call's trailing block-arg too. `try_emit_call_trailing_block_inline` runs in emit_call before `emit_call_with_trailing_suite`. For a Call whose last argument is a Block / Lambda with single-stmt parameter-less body, renders inline `<call header>: <body_stmt>` (or `:: ` for Lambda) when fits, otherwise broken. Source-inline `list.do: it.print` was already handled by `try_emit_call_flat_canonical`; this fills the symmetric broken→inline direction.
+
 Still open in 7.a:
 
 - **For.** `for init; cond; update: body` header is more involved than If/While (three sub-expressions + semicolons). Skipped for now; source-shape-preserving via the existing path.
-- **Call's trailing block-arg with single-stmt body** (`list.do: it.print` vs `list.do:\n  it.print`).
-- **Method body when source-inline + body too wide for body_indent.** Currently bails to leaf which preserves source-inline. Determinism gap for the rare inline-source-with-too-wide-body case.
+- **Wrapped Calls with trailing block** (`x := catch: body`, `return list.do: it.print`). The Block-arg early-bail in `try_canonicalize_broken_call_in_range` / `emit_call_forced_broken` means wrapped trailing-block Calls fall through to leaf — source-preserving, determinism gap.
+- **Method body when source-inline + body too wide for body_indent.** Bails to leaf, preserves source-inline.
+- **Block parameters in trailing block-arg** (`list.do: | x | x.print` style).
 
 #### 7.b — broken-Call arg distribution
 
