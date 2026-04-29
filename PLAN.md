@@ -110,28 +110,35 @@ Done. `LiteralList` / `LiteralSet` / `LiteralMap` / `LiteralByteArray` get a per
 - Three Toit-driven tests for corpus-level coverage: `idempotence-test`, `round-trip-test` (normal mode over every `lib/` file), `flat-dogfood-test` (flat mode over every `lib/` file).
 - Manual dogfood against `artemis/src` (74 files, ~1500 lines of diff vs source) used to surface paren / break-decision regressions; all current diff is intentional pure-AST behaviour (broken-by-style maps that fit flat get collapsed).
 
-## Tiers ahead
-
 ### Tier 7 — close the determinism gaps (primary goal)
 
 Today the formatter is a function of (AST + width + source layout). The remaining source-layout dependencies are the ones to eliminate, modulo the comment-induced freezes that are explicit escape hatches.
 
-#### 7.a — control-flow inline-vs-broken (done for `If` / `While`, no `else`)
+#### 7.a — control-flow inline-vs-broken
 
-`try_emit_if_canonical` and `try_emit_while_canonical` run before the existing source-shape-preserving emit_if / emit_with_suite. Each tries the inline form first (single-stmt body, no comments, no else, all flat-emittable, fits `INLINE_CONTROL_FLOW_WIDTH`); falls through to a broken-synth path when source had it inline but the canonical form is broken; otherwise lets the existing broken emitter handle it. Result: `if cond: body` and `if cond:\n  body` produce the same output for the same AST.
+Done for `If` (with full else / else-if chain handling) and `While`. `try_emit_if_canonical` walks the chain (else-if continues via `If.no = inner If`, final else via `If.no = Sequence`), then either:
 
-Also fixed in this round: the `not Call` paren bug. `not` is parsed via `parse_not_spelled` → `parse_call` directly (no precedence climbing on the operand), so `not foo a b` doesn't need parens. Unary handler now passes `PRECEDENCE_NONE` to the operand for `Token::NOT` (vs. `PRECEDENCE_POSTFIX` for the punctuation unaries that go through `parse_precedence`).
+- Inline form `if cond: body` when there's no else, the body is single-stmt and flat-emittable, and the rendered total fits `INLINE_CONTROL_FLOW_WIDTH = 60`. Inline forms with else aren't a shape the formatter produces (`if A: a else: b` packs three semantic chunks — strictly less readable than broken).
+- Broken form (each branch + body on its own lines) emitted from AST otherwise, regardless of source layout.
+
+`try_emit_while_canonical` is the same shape (no else clause to handle).
+
+Also fixed in this round: the `not Call` paren bug. `not` is parsed via `parse_not_spelled` → `parse_call` directly, so `not foo a b` doesn't need parens. Unary handler passes `PRECEDENCE_NONE` to the operand for `Token::NOT`.
 
 Still open in 7.a:
 
-- **`if cond: body else: other` chains.** Currently neither inline nor broken-synth handles else clauses; source-inline-with-else stays inline (preserved verbatim), source-broken-with-else stays broken. Determinism gap.
 - **For.** `for init; cond; update: body` header is more involved than If/While (three sub-expressions + semicolons). Skipped for now; source-shape-preserving via the existing path.
-- **Method body when single-stmt** (`foo: return 42` vs `foo:\n  return 42`). Same kind of inline-vs-broken decision; not yet canonicalised.
-- **Call's trailing block-arg with single-stmt body** (`list.do: it.print` vs `list.do:\n  it.print`). Same.
+- **Method body when single-stmt** (`foo: return 42` vs `foo:\n  return 42`).
+- **Call's trailing block-arg with single-stmt body** (`list.do: it.print` vs `list.do:\n  it.print`).
 
 #### 7.b — broken-Call arg distribution
 
-`try_canonicalize_broken_call_in_range` preserves which args sit on the target's line vs. continuation lines, so `foo a\n    b c` and `foo a b\n    c` differ for the same AST. Rule to enforce: a broken Call puts every arg on its own continuation line at `indent + CALL_CONTINUATION_STEP` (the form `emit_call_forced_broken` already produces). No partial-on-target-line distribution.
+Done. `try_canonicalize_broken_call_in_range` now puts every arg on its own continuation line at `indent + CALL_CONTINUATION_STEP`, regardless of how the source distributed args between the target's line and continuation lines. Two safety fallbacks remain:
+
+- **Multi-line arg in source.** `emit_arg_bytes_or_recurse` byte-copies and can't re-indent a multi-line arg's continuation lines — they'd land at the wrong column (caught in `lib/system/api/service_discovery.toit`). Falls back to source-distribution emission.
+- **Wrapper broke before the Call's target** (`x :=\n  Call`). Args at `outer_indent + CALL_CONTINUATION_STEP` would land at the same column as the target on its continuation line; parser treats them as sibling stmts (caught in `lib/tls/session.toit`). Resolving cleanly needs to render wrapper + target on one line first; for now, fall back.
+
+Note: Toit's parser groups continuation-line positional args into a nested Call (`f a b\n  c d` is `Call(f, [a, b, Call(c, [d])])`), so source positional-arg breaks aren't AST-equivalent to the single-line form anyway. Named-arg continuations don't have that issue and are the main case that benefits from canonicalisation.
 
 #### 7.c — verbatim-fallback audit
 
