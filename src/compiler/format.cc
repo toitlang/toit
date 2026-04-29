@@ -1743,6 +1743,8 @@ class Formatter {
     };
     if (coll->is_LiteralList()) {
       for (auto e : coll->as_LiteralList()->elements()) emit_element(e);
+    } else if (coll->is_LiteralByteArray()) {
+      for (auto e : coll->as_LiteralByteArray()->elements()) emit_element(e);
     } else if (coll->is_LiteralSet()) {
       for (auto e : coll->as_LiteralSet()->elements()) emit_element(e);
     } else if (coll->is_LiteralMap()) {
