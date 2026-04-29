@@ -742,40 +742,15 @@ class Formatter {
         || p == PRECEDENCE_ASSIGNMENT;
   }
 
-  // Toit naming convention: type / class / constructor identifiers are
-  // CamelCase (uppercase first letter). A receiver of Dot / Index /
-  // IndexSlice that looks like a constructor gets parenthesised so the
-  // reader sees `(Point).foo` rather than `Point.foo` — the latter
-  // looks like static-member access, whereas the parenthesised form
-  // makes the instance invocation explicit. For the purposes of this
-  // rule a Parenthesis-wrapped receiver counts as already parenthesised
-  // and is peeled before the uppercase check.
-  bool receiver_needs_ctor_parens(Expression* e) const {
-    while (e != null && e->is_Parenthesis()) {
-      e = e->as_Parenthesis()->expression();
-    }
-    if (e == null || !e->is_Identifier()) return false;
-    int from = pos(e->as_Identifier()->full_range().from());
-    int to = pos(e->as_Identifier()->full_range().to());
-    if (from >= to) return false;
-    char c = text_[from];
-    return c >= 'A' && c <= 'Z';
-  }
-
   // Renders the receiver of a Dot / Index / IndexSlice. Preserves any
-  // source Parenthesis wrapping a non-trivial inner expression and adds
-  // parens around bare constructor-shaped Identifiers.
+  // source Parenthesis around the receiver — that's the author's
+  // explicit `(Foo).bar` (instance access on a class object) — but
+  // doesn't synthesise parens around bare Identifier receivers. Without
+  // a resolver we can't tell `Foo.bar` (named constructor / static
+  // call) from `(Foo).bar` (method on the class object), so we honour
+  // what the source had.
   void emit_receiver(Expression* recv, std::string* out) {
     if (recv == null) return;
-    // Constructor heuristic — wrap Identifier(UpperCase) in parens.
-    if (recv->is_Identifier() && receiver_needs_ctor_parens(recv)) {
-      out->append("(");
-      emit_expr_flat(recv, PRECEDENCE_NONE, out);
-      out->append(")");
-      return;
-    }
-    // Source-provided Parenthesis — keep them, even around a trivial
-    // inner (this is where constructors already wrapped in source live).
     if (recv->is_Parenthesis()) {
       out->append("(");
       Expression* inner = recv->as_Parenthesis()->expression();
@@ -1073,6 +1048,14 @@ class Formatter {
       // defensive parens that `outer_prec != NONE` would normally force.
       // (`x = foo a b` stays `x = foo a b`, not `x = (foo a b)`.)
       if (prec == PRECEDENCE_ASSIGNMENT) right_prec = PRECEDENCE_NONE;
+      // `or` / `and` parse each operand through parse_logical_spelled
+      // → parse_not_spelled → parse_call directly (no Pratt climbing),
+      // so both sides are stmt-level boundaries: a bare Call on either
+      // side parses unambiguously, no defensive parens needed.
+      if (prec == PRECEDENCE_OR || prec == PRECEDENCE_AND) {
+        left_prec = PRECEDENCE_NONE;
+        right_prec = PRECEDENCE_NONE;
+      }
       emit_binary_child(b->left(), left_prec, b->kind(), out);
       out->append(" ");
       out->append(Token::symbol(b->kind()).c_str());
@@ -1096,7 +1079,16 @@ class Formatter {
         out->append(op);
         // `not` is a keyword, separate with a space; punctuation operators stay glued.
         if (u->kind() == Token::NOT) out->append(" ");
-        emit_expr_flat(u->expression(), PRECEDENCE_POSTFIX, out);
+        // `not` is parsed via parse_not_spelled → parse_call directly,
+        // so its operand is at a stmt-level boundary — a Call there
+        // doesn't need defensive parens (`not foo a b`, not
+        // `not (foo a b)`). Other prefix unaries (`-x`, `~x`) go
+        // through parse_precedence(PRECEDENCE_POSTFIX), so their
+        // operand stays at POSTFIX.
+        int operand_prec = (u->kind() == Token::NOT)
+                         ? PRECEDENCE_NONE
+                         : PRECEDENCE_POSTFIX;
+        emit_expr_flat(u->expression(), operand_prec, out);
       } else {
         emit_expr_flat(u->expression(), PRECEDENCE_POSTFIX, out);
         out->append(op);
