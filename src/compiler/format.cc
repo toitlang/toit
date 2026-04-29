@@ -234,79 +234,109 @@ class Formatter {
   // body's first byte. Returns -1 if not found, or if the search range
   // contains a newline (header is multi-line in source — caller
   // should bail).
-  int find_method_header_colon(int method_start, int body_start) const {
-    for (int i = method_start; i < body_start; i++) {
-      if (text_[i] == '\n') return -1;
-      if (text_[i] == ':') return i;
+  // Locates the body-separator `:` between `node_start` and the
+  // body's first byte. Returns -1 if not found, or if the search range
+  // contains a newline (header is multi-line in source — caller
+  // should bail).
+  //
+  // Skips `:=` (DEFINE), `::=` (DEFINE_FINAL), and `::` (DOUBLE_COLON /
+  // Lambda), which contain `:` but aren't body separators. The
+  // For init `i := 0` is the typical case that surfaces this.
+  int find_node_header_colon(int node_start, int body_start) const {
+    for (int i = node_start; i < body_start; i++) {
+      uint8 c = text_[i];
+      if (c == '\n') return -1;
+      if (c != ':') continue;
+      uint8 next = (i + 1 < body_start) ? text_[i + 1] : 0;
+      if (next == '=') continue;  // `:=`
+      if (next == ':') {
+        i++;  // skip second `:`
+        if (i + 1 < body_start && text_[i + 1] == '=') i++;  // `::=`
+        continue;
+      }
+      return i;
     }
     return -1;
   }
 
-  // Method-body inline-vs-broken canonicalisation. Single-stmt body
-  // becomes inline `header: body` when it fits
-  // INLINE_CONTROL_FLOW_WIDTH, otherwise broken `header:\n  body`.
-  // Bails when the header is multi-line (wrapped params); leaves
-  // those to `try_emit_method_canonical`.
-  bool try_emit_method_body_canonical(Method* method, int indent) {
-    if (method->body() == null) return false;
-    auto body = method->body()->expressions();
+  // Inline-vs-broken canonicalisation for a node with a single-stmt
+  // body separated from a complex header by `:`. Used by Method bodies
+  // and `for init; cond; update: body` — both have headers too varied
+  // to render from AST, so the header is byte-copied verbatim
+  // (must be single-line) and only the body is rendered from AST.
+  //
+  // Inline `header: body` when the rendered total fits
+  // INLINE_CONTROL_FLOW_WIDTH; broken `header:\n  body` when inline
+  // doesn't fit but the body itself fits at body_indent under
+  // MAX_LINE_WIDTH; otherwise bails (caller falls back to the
+  // existing source-shape-preserving path).
+  bool try_emit_byte_header_body_canonical(int node_start, int node_end,
+                                           List<Expression*> body,
+                                           int indent) {
     if (body.length() != 1) return false;
     Expression* body_stmt = body.first();
     if (!can_emit_flat(body_stmt)) return false;
 
-    int method_start = pos(method->full_range().from());
-    int method_end = pos(method->full_range().to());
-    if (has_line_locking_comment(method_start, method_end)) return false;
-    if (has_interior_multiline_block_comment(method_start, method_end)) return false;
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
 
-    int line_start = find_line_start(method_start);
+    int line_start = find_line_start(node_start);
     if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, method_start)) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
 
     int body_start = pos(body_stmt->full_range().from());
-    int colon_pos = find_method_header_colon(method_start, body_start);
+    int colon_pos = find_node_header_colon(node_start, body_start);
     if (colon_pos < 0) return false;  // header multi-line, bail.
+    int header_len = colon_pos - node_start;
 
-    int header_len = colon_pos - method_start;  // bytes up to (but not including) `:`
-
-    // Inline render: header + ": " + body. Width-checked against
-    // INLINE_CONTROL_FLOW_WIDTH.
     std::string body_buf;
     emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
     int inline_total = indent + header_len + 2 + static_cast<int>(body_buf.size());
-    int original_indent = method_start - line_start;
+    int original_indent = node_start - line_start;
     int delta = indent - original_indent;
 
     if (inline_total <= INLINE_CONTROL_FLOW_WIDTH) {
       emit_with_indent_shift(source_cursor_, line_start, delta);
       emit_spaces(indent);
-      output_.append(reinterpret_cast<const char*>(text_) + method_start, header_len);
+      output_.append(reinterpret_cast<const char*>(text_) + node_start, header_len);
       output_.append(": ");
       output_.append(body_buf);
-      source_cursor_ = method_end;
+      source_cursor_ = node_end;
       return true;
     }
 
-    // Broken-synth path: header + ":\n" + body_indent + body_buf.
-    // Only fires when the body itself fits at body_indent — otherwise
-    // the synth would emit a too-wide body line. Bail in that case
-    // and let emit_with_suite / emit_stmt handle the body with its
-    // own break logic (only fully canonical for source-broken; source-
-    // inline + too-wide body is a remaining determinism gap).
     int body_indent = indent + INDENT_STEP;
     if (body_indent + static_cast<int>(body_buf.size()) > MAX_LINE_WIDTH) {
       return false;
     }
-
     emit_with_indent_shift(source_cursor_, line_start, delta);
     emit_spaces(indent);
-    output_.append(reinterpret_cast<const char*>(text_) + method_start, header_len);
+    output_.append(reinterpret_cast<const char*>(text_) + node_start, header_len);
     output_.push_back(':');
     output_.push_back('\n');
     output_.append(body_indent, ' ');
     output_.append(body_buf);
-    source_cursor_ = method_end;
+    source_cursor_ = node_end;
     return true;
+  }
+
+  bool try_emit_method_body_canonical(Method* method, int indent) {
+    if (method->body() == null) return false;
+    return try_emit_byte_header_body_canonical(
+        pos(method->full_range().from()),
+        pos(method->full_range().to()),
+        method->body()->expressions(),
+        indent);
+  }
+
+  bool try_emit_for_canonical(For* f, int indent) {
+    auto body = as_suite_body(f->body());
+    if (body.is_empty()) return false;
+    return try_emit_byte_header_body_canonical(
+        pos(f->full_range().from()),
+        pos(f->full_range().to()),
+        body,
+        indent);
   }
 
   // If a Method has parameters on their own continuation lines (rather
@@ -569,6 +599,7 @@ class Formatter {
       auto body = as_suite_body(stmt->as_While()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_For()) {
+      if (try_emit_for_canonical(stmt->as_For(), indent)) return;
       auto body = as_suite_body(stmt->as_For()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_TryFinally()) {
