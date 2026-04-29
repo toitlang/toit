@@ -1,9 +1,10 @@
 # Toit Formatter — Plan
 
-## Goals (unchanged)
+## Goals
 
 - **Correctness**: formatter never changes semantics.
 - **Idempotence**: `format(format(x)) == format(x)`.
+- **Determinism (primary goal going forward)**: output is a function of (AST + width budget). Two AST-equivalent inputs with different layouts must produce byte-identical output. The only allowed escape hatches are comment-induced freezes — multi-line `/* ... */` freezes the enclosing statement, and EOL `//` (or inline `/*...*/` after the last token) locks that line's horizontal layout. Everything else is up to the formatter, not the source.
 - **No hard line limit**: soft width heuristics per node kind, deeper nodes may go further right.
 - **No backtracking**: inside-out layout. Each subtree decides its own shape from its own content and a local node-kind heuristic; parents don't pass budgets down.
 
@@ -14,6 +15,7 @@
 - **Comments**: currently byte-adjacent (survive by sitting next to the code they describe); `has_interior_comment` / `has_line_locking_comment` / `has_interior_multiline_block_comment` guard against reshaping that would displace them. A full co-walk with AST-routed comments is still future work — land when Tier 4 width decisions surface cases byte-adjacency can't handle.
 - **Vocabulary**: "suite" / "indented region" for what other languages call a code block. "Block" in Toit means a closure.
 - **Canonical indents**: `INDENT_STEP = 2` (body suites, control-flow, block/lambda bodies) and `CALL_CONTINUATION_STEP = 4` (broken-call args, method param continuations). Two constants; the distinction matches the dominant convention in the reference corpus.
+- **Width budgets**: `MAX_LINE_WIDTH = 100` (general flat-vs-broken), `NAMED_ARG_CALL_WIDTH = 80` (Calls with ≥2 NamedArguments — config-call shape), `INLINE_CONTROL_FLOW_WIDTH = 60` (`if cond: body` / `while cond: body`). The tighter inline-control-flow budget exists because packing two semantic chunks (header + body) on one line is harder to read at high width — the eye has to mentally split before processing each part.
 
 ## Done
 
@@ -59,13 +61,13 @@
 - EOL `//` and inline `/*...*/` after the last token of a line lock that line against horizontal reshaping. `has_line_locking_comment` is checked by both flat emission and by `try_emit_call_flat_canonical`.
 - Inter-statement trivia (blank lines, standalone comments between body expressions) shifts with the body's Δ. Implemented by routing the leading-trivia portion of `emit_range_reindent` / `try_emit_call_flat_canonical` through `emit_with_indent_shift` instead of a verbatim `advance_to`.
 
-### Tier 4 (started) — canonical continuation indents
+### Tier 4 — canonical continuation indents
 
 - Statement-position broken `Call` args re-indented to `indent + CALL_CONTINUATION_STEP` (4).
 - Same for `return <broken-call>`, `x := <broken-call>`, `x = <broken-call>` / `x += ...` etc. (all assignment-kind Binaries).
 - Same for `Method` parameters on continuation lines (`constructor\n    --.id`).
 
-### Tier 4 (started) — pure-AST flat-if-fits
+### Tier 4 — pure-AST flat-if-fits
 
 Formatter output is a function of the AST and a width budget. Input line
 breaks and paren counts are ignored — two source files with the same AST
@@ -83,35 +85,71 @@ Paren rules in `emit_expr_flat`:
 - **Parenthesis preservation**: Parenthesis AST nodes wrapping non-trivial sub-expressions (Binary / Unary / Call / Dot / Index …) are preserved. `(a + b) * c` stays grouped. `(x)` around a bare identifier / literal still peels as pure noise.
 - **Bitwise clarity**: whenever a bitwise op (`<<`, `>>`, `>>>`, `&`, `|`, `^`) meets a different op across a Binary/Binary boundary, the child gets parens even if the source didn't have them. Readers don't trust the precedence table past `+`/`-`/`*`/`/`, so the formatter makes the grouping explicit. Same op on both sides reads unambiguously as a chain and stays unwrapped.
 
+### Tier 4 — width-based flat/broken decisions
+
+Done. Goal was: produce actually pleasant output once paren correctness is nailed down.
+
+- **Soft-width thresholds.** `MAX_LINE_WIDTH = 100` for the general flat-vs-broken decision. Config-call shapes — Calls with two or more `NamedArgument` args — get a tighter `NAMED_ARG_CALL_WIDTH = 80` budget. Short `foo --a=1 --b=2` stays flat under both; long `provides X --handler=this --priority=P` crosses 80 and breaks, while the same shape would have stayed flat under the 100-col general limit.
+- **Broken-form emission for `Binary` chains** — when a Binary-rooted stmt is one line and over MAX_LINE_WIDTH, its same-operator chain is flattened (`flatten_binary_chain`, assoc-aware) and each operand emits on its own continuation line at `indent + CALL_CONTINUATION_STEP` with the operator leading.
+- **Nested broken Calls** — when a Call's Parenthesis-wrapped arg doesn't fit flat on its continuation line, `emit_arg_bytes_or_recurse` opens `(`, then calls `emit_call_broken_inline` which places the inner target on the current line and each inner arg at `target_col + CALL_CONTINUATION_STEP`. Recursive — handles nested Parenthesis(Call) all the way down. Bails to verbatim when the inner Call has Block/Lambda args or an interpolated-string arg (unsafe ranges).
+- **Method signature layout** — when parameters wrap, the `-> Type` return annotation is placed on the first line with the method name (and any same-line parameters), and the header-closing `:` ends up flush with the last continuation param.
+
+### Tier 5 — collection literals
+
+Done. `LiteralList` / `LiteralSet` / `LiteralMap` / `LiteralByteArray` get a per-element broken form when the single-line render exceeds `MAX_LINE_WIDTH` (and the wrapper is a bare stmt / Return / DeclLocal / assignment Binary). Each element on its own line at `indent + INDENT_STEP`, trailing comma, closing bracket flush with the stmt's indent.
+
+### Tier 6 — paren rules driven by artemis dogfood
+
+- **No synthesised constructor-receiver parens.** Without a resolver the formatter can't tell `Foo.bar` (named constructor / static call) from `(Foo).bar` (instance method on the class object). It honours what the source had: bare Identifier receiver stays bare, source-provided Parenthesis around a receiver is preserved. The earlier "uppercase-first ⇒ wrap" heuristic was wrong for Toit's `Type.member` syntax (which is the static / named-constructor form, not the rare instance-on-class-object form).
+- **`or` / `and` Binary children parsed at NONE.** `parse_logical_spelled` parses each operand via `parse_call` directly (no Pratt climbing), so both sides are stmt-level boundaries. The Binary handler in `emit_expr_flat` sets both `left_prec` and `right_prec` to `PRECEDENCE_NONE` for `or` / `and` — bare Calls on either side stay bare (`a or foo b c`, not `a or (foo b c)`).
+
 ### Testing
 
 - Gold-file tests under `tests/formatter/gold/normal/` and `tests/formatter/gold/flat/`. One `.toit` input + one `.gold` expected output per case.
 - `ninja update_formatter_gold` regenerates. Also checks idempotence (re-format of gold-matching output).
 - Three Toit-driven tests for corpus-level coverage: `idempotence-test`, `round-trip-test` (normal mode over every `lib/` file), `flat-dogfood-test` (flat mode over every `lib/` file).
+- Manual dogfood against `artemis/src` (74 files, ~1500 lines of diff vs source) used to surface paren / break-decision regressions; all current diff is intentional pure-AST behaviour (broken-by-style maps that fit flat get collapsed).
 
 ## Tiers ahead
 
-### Tier 4 (remainder) — width-based flat/broken decisions
+### Tier 7 — close the determinism gaps (primary goal)
 
-Goal: produce actually pleasant output. Paren correctness already nailed down by Tier 3.
+Today the formatter is a function of (AST + width + source layout). The remaining source-layout dependencies are the ones to eliminate, modulo the comment-induced freezes that are explicit escape hatches.
 
-- **Soft-width thresholds.** `MAX_LINE_WIDTH = 100` for the general flat-vs-broken decision. Config-call shapes — Calls with two or more `NamedArgument` args — get a tighter `NAMED_ARG_CALL_WIDTH = 80` budget: per-line is a legibility win for these, so the formatter breaks earlier. Short `foo --a=1 --b=2` still stays flat under both thresholds; long `provides X --handler=this --priority=P` crosses 80 and breaks, while the same shape would have stayed flat under the 100-col general limit.
-- ~~**Broken-form emission for `Binary` chains**~~ — done for the simple case: when a Binary-rooted stmt is one line and over MAX_LINE_WIDTH, its same-operator chain is flattened (`flatten_binary_chain`, assoc-aware) and each operand emits on its own continuation line at `indent + CALL_CONTINUATION_STEP` with the operator leading. Bails out when an operand would need deeper structural awareness (e.g. a Parenthesis-wrapped Binary, or a Call whose greedy-parse flattening would shift the AST) — those keep the verbatim leaf path.
-- ~~**Nested broken Calls**~~ — done. When a Call's Parenthesis-wrapped arg doesn't fit flat on its continuation line, `emit_arg_bytes_or_recurse` opens `(`, then calls `emit_call_broken_inline` which places the inner target on the current line and each inner arg at `target_col + CALL_CONTINUATION_STEP`. Recursive — handles nested Parenthesis(Call) all the way down. Bails to verbatim when the inner Call has Block/Lambda args or an interpolated-string arg (unsafe ranges).
-- ~~**Method signature layout**~~ — done. When parameters wrap, the `-> Type` return annotation is placed on the first line with the method name (and any same-line parameters), and the header-closing `:` ends up flush with the last continuation param. Also handles the case where the source already has `-> Type` on the first line.
-- ~~**Drop parens that the indentation now disambiguates** when transitioning flat → broken.~~ — Tier 3.2's Call/Unary paren rules are already precise (only wrap when AST requires it); the bitwise-clarity rule adds some for readability. Nothing left to drop on break.
-- ~~**One-line-paren invariant** as a development-time guard.~~ — Obsolete under pure-AST: the formatter doesn't read source paren counts at all, so there's no invariant to police. Paren insertion/removal is decided by the AST-shape rules above.
+#### 7.a — control-flow inline-vs-broken (done for `If` / `While`, no `else`)
 
-### Tier 5 — collection literals and polish
+`try_emit_if_canonical` and `try_emit_while_canonical` run before the existing source-shape-preserving emit_if / emit_with_suite. Each tries the inline form first (single-stmt body, no comments, no else, all flat-emittable, fits `INLINE_CONTROL_FLOW_WIDTH`); falls through to a broken-synth path when source had it inline but the canonical form is broken; otherwise lets the existing broken emitter handle it. Result: `if cond: body` and `if cond:\n  body` produce the same output for the same AST.
 
-- `LiteralList` / `Map` / `Set` / `ByteArray` broken forms with the width framework.
-- Whatever else shows up during dogfooding that nothing else covers.
+Also fixed in this round: the `not Call` paren bug. `not` is parsed via `parse_not_spelled` → `parse_call` directly (no precedence climbing on the operand), so `not foo a b` doesn't need parens. Unary handler now passes `PRECEDENCE_NONE` to the operand for `Token::NOT` (vs. `PRECEDENCE_POSTFIX` for the punctuation unaries that go through `parse_precedence`).
+
+Still open in 7.a:
+
+- **`if cond: body else: other` chains.** Currently neither inline nor broken-synth handles else clauses; source-inline-with-else stays inline (preserved verbatim), source-broken-with-else stays broken. Determinism gap.
+- **For.** `for init; cond; update: body` header is more involved than If/While (three sub-expressions + semicolons). Skipped for now; source-shape-preserving via the existing path.
+- **Method body when single-stmt** (`foo: return 42` vs `foo:\n  return 42`). Same kind of inline-vs-broken decision; not yet canonicalised.
+- **Call's trailing block-arg with single-stmt body** (`list.do: it.print` vs `list.do:\n  it.print`). Same.
+
+#### 7.b — broken-Call arg distribution
+
+`try_canonicalize_broken_call_in_range` preserves which args sit on the target's line vs. continuation lines, so `foo a\n    b c` and `foo a b\n    c` differ for the same AST. Rule to enforce: a broken Call puts every arg on its own continuation line at `indent + CALL_CONTINUATION_STEP` (the form `emit_call_forced_broken` already produces). No partial-on-target-line distribution.
+
+#### 7.c — verbatim-fallback audit
+
+Every `emit_leaf` exit is a place source layout leaks through. Walk each node kind in `emit_stmt` / `emit_call` / etc. and decide: render from AST, or document the leak as comment-induced.
+
+### Tier 8 — whatever the next dogfood pass surfaces (after Tier 7)
+
+Re-run artemis after determinism is closed; remaining patterns will be true heuristic gaps (where the AST-driven choice disagrees with the corpus majority) rather than source-leakage.
 
 ## Orthogonal workstreams
 
+### Resolver integration
+
+Some layout decisions need name resolution: the constructor-vs-static-call distinction is the obvious one (`Foo.bar` could be either, and the right paren rule depends on which). Land a resolver pass before format emission; in error-zones (where resolution fails) fall back to the conservative "honour what the source had" rule.
+
 ### Comment co-walk (proper routing)
 
-Byte-adjacency + the interior/line-locking guards cover the cases we've hit so far. Once Tier 4 starts moving tokens across lines (flat→broken or broken→flat), an explicit cursor into `scanner.comments()` that advances with the AST walk will be needed — route each comment to its attachment point instead of relying on where its bytes sit. Land when a concrete regression forces it; don't build speculatively.
+Byte-adjacency + the interior/line-locking guards cover the cases we've hit so far. Once flat→broken or broken→flat starts moving tokens across lines for cases the current guards miss, an explicit cursor into `scanner.comments()` that advances with the AST walk will be needed — route each comment to its attachment point instead of relying on where its bytes sit. Land when a concrete regression forces it; don't build speculatively.
 
 Brainstorm rules (for reference when it lands):
 

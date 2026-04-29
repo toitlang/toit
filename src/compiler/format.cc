@@ -50,6 +50,13 @@ static const int NAMED_ARG_CALL_WIDTH = 80;
 // Minimum NamedArgument count at which the tighter threshold kicks in.
 // With fewer args the config-call pattern doesn't apply.
 static const int NAMED_ARG_CALL_MIN = 2;
+// Tighter threshold for inlined control flow — `if cond: body`,
+// `while cond: body`. Inline packs two semantic chunks (header +
+// body) on one line; the eye has to visually split before processing
+// each part, so it pays to keep the combined width small. Anything
+// over this budget breaks to the multi-line form even when the
+// general 100-col limit would still allow it.
+static const int INLINE_CONTROL_FLOW_WIDTH = 60;
 
 // The shape of an already-rendered subtree. Parents use this to decide
 // flat-vs-broken layouts without re-measuring. Inside-out: a parent only
@@ -466,8 +473,14 @@ class Formatter {
       return;
     }
     if (stmt->is_If()) {
+      // Inline / broken-synth canonicalisation runs before emit_if so
+      // that source-broken short Ifs become inline and source-inline
+      // long Ifs become broken — output is a function of (AST + width),
+      // not of the source's choice of layout.
+      if (try_emit_if_canonical(stmt->as_If(), indent)) return;
       if (emit_if(stmt->as_If(), indent)) return;
     } else if (stmt->is_While()) {
+      if (try_emit_while_canonical(stmt->as_While(), indent)) return;
       auto body = as_suite_body(stmt->as_While()->body());
       if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_For()) {
@@ -1306,6 +1319,173 @@ class Formatter {
 
     advance_to(node_end);
     return true;
+  }
+
+  // Common preflight for control-flow inline / broken-synth: the node
+  // must start its own line (no source_cursor_ overrun), have no
+  // comments anywhere in its range, and have a flat-emittable
+  // condition. Returns false if any check fails. Sets `*line_start_out`
+  // to the start of the source line containing `node_start`.
+  bool can_canonicalize_control_flow(int node_start,
+                                     int node_end,
+                                     Expression* condition,
+                                     int* line_start_out) const {
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+    if (condition != null && !can_emit_flat(condition)) return false;
+    *line_start_out = line_start;
+    return true;
+  }
+
+  // Renders `<header><body>` as one line. Caller provides the header
+  // (`if cond: ` / `while cond: ` / `for ...: `) and the single body
+  // statement. Returns false when the body isn't flat-emittable or the
+  // resulting line exceeds MAX_LINE_WIDTH.
+  bool try_emit_control_flow_inline(int node_start, int node_end,
+                                    int line_start,
+                                    const std::string& header,
+                                    Expression* body_stmt,
+                                    int indent) {
+    if (!can_emit_flat(body_stmt)) return false;
+    std::string buf = header;
+    emit_expr_flat(body_stmt, PRECEDENCE_NONE, &buf);
+    if (indent + static_cast<int>(buf.size()) > INLINE_CONTROL_FLOW_WIDTH) {
+      return false;
+    }
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    source_cursor_ = node_end;
+    output_.append(buf);
+    return true;
+  }
+
+  // Synthesises `<header>\n  <body>...` when source had it inline but
+  // the inline form doesn't fit. Body stmts must all be flat-emittable —
+  // we render each via emit_expr_flat at body_indent. Returns false if
+  // any body stmt isn't flat-emittable; caller falls back to leaf.
+  bool try_emit_control_flow_broken_synth(int node_start, int node_end,
+                                          int line_start,
+                                          const std::string& header,
+                                          List<Expression*> body,
+                                          int indent) {
+    for (auto expr : body) {
+      if (!can_emit_flat(expr)) return false;
+    }
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    output_.append(indent, ' ');
+    output_.append(header);
+    int body_indent = indent + INDENT_STEP;
+    for (auto expr : body) {
+      output_.push_back('\n');
+      output_.append(body_indent, ' ');
+      std::string body_buf;
+      emit_expr_flat(expr, PRECEDENCE_NONE, &body_buf);
+      output_.append(body_buf);
+    }
+    source_cursor_ = node_end;
+    return true;
+  }
+
+  // Top-level dispatch for an If with no `else` clause: try inline,
+  // then broken-synth (when source was inline but inline form too
+  // wide), then fall through to emit_if (handles source-broken).
+  bool try_emit_if_canonical(If* if_node, int indent) {
+    if (if_node->no() != null) return false;
+    auto yes_body = as_suite_body(if_node->yes());
+    if (yes_body.is_empty()) return false;
+
+    int node_start = pos(if_node->full_range().from());
+    int node_end = pos(if_node->full_range().to());
+    int line_start = 0;
+    if (!can_canonicalize_control_flow(node_start, node_end,
+                                       if_node->expression(), &line_start)) {
+      return false;
+    }
+
+    std::string header;
+    header.append("if ");
+    emit_expr_flat(if_node->expression(), PRECEDENCE_NONE, &header);
+    header.append(": ");
+
+    // Inline path — fires regardless of source shape.
+    if (yes_body.length() == 1) {
+      int saved_cursor = source_cursor_;
+      size_t saved_output = output_.size();
+      if (try_emit_control_flow_inline(node_start, node_end, line_start,
+                                       header, yes_body.first(), indent)) {
+        return true;
+      }
+      // Roll back any partial state from the inline attempt (none was
+      // committed past the buffer width check, but reset to be safe).
+      source_cursor_ = saved_cursor;
+      output_.resize(saved_output);
+    }
+
+    // Broken-synth — only when source was inline (otherwise emit_if
+    // handles it). Header without trailing space: `if cond:` then
+    // newline + body.
+    int yes_first_line_start = find_line_start(pos(yes_body.first()->full_range().from()));
+    if (yes_first_line_start <= node_start) {
+      std::string broken_header;
+      broken_header.append("if ");
+      emit_expr_flat(if_node->expression(), PRECEDENCE_NONE, &broken_header);
+      broken_header.append(":");
+      if (try_emit_control_flow_broken_synth(node_start, node_end, line_start,
+                                             broken_header, yes_body, indent)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Same as try_emit_if_canonical but for While.
+  bool try_emit_while_canonical(While* w, int indent) {
+    auto body = as_suite_body(w->body());
+    if (body.is_empty()) return false;
+
+    int node_start = pos(w->full_range().from());
+    int node_end = pos(w->full_range().to());
+    int line_start = 0;
+    if (!can_canonicalize_control_flow(node_start, node_end,
+                                       w->condition(), &line_start)) {
+      return false;
+    }
+
+    std::string header;
+    header.append("while ");
+    emit_expr_flat(w->condition(), PRECEDENCE_NONE, &header);
+    header.append(": ");
+
+    if (body.length() == 1) {
+      int saved_cursor = source_cursor_;
+      size_t saved_output = output_.size();
+      if (try_emit_control_flow_inline(node_start, node_end, line_start,
+                                       header, body.first(), indent)) {
+        return true;
+      }
+      source_cursor_ = saved_cursor;
+      output_.resize(saved_output);
+    }
+
+    int body_first_line_start = find_line_start(pos(body.first()->full_range().from()));
+    if (body_first_line_start <= node_start) {
+      std::string broken_header;
+      broken_header.append("while ");
+      emit_expr_flat(w->condition(), PRECEDENCE_NONE, &broken_header);
+      broken_header.append(":");
+      if (try_emit_control_flow_broken_synth(node_start, node_end, line_start,
+                                             broken_header, body, indent)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Emits an If at `indent`, including any else-if chain and a final else
