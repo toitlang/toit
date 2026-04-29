@@ -2024,21 +2024,31 @@ class Formatter {
     return true;
   }
 
-  // Canonicalizes the continuation indent of a broken Call's args to
-  // `indent + CALL_CONTINUATION_STEP`. The Call may be the whole
-  // statement (outer_start/end = call's range) OR wrapped in Return /
-  // DeclarationLocal (outer_start/end = the wrapper's range), in which
-  // case the wrapper's first line is emitted at `indent` alongside the
-  // Call's target.
+  // Emits a multi-line Call in canonical broken form: target (and any
+  // outer wrapper bytes — `return ` / `x := ` / nothing) on the first
+  // line at `indent`, then every argument on its own continuation line
+  // at `indent + CALL_CONTINUATION_STEP`. Source distribution of args
+  // across lines is ignored — the output depends only on (AST + width).
+  //
+  // Falls back to source-distribution-preserving emission when any arg
+  // is itself multi-line in source. emit_arg_bytes_or_recurse can only
+  // byte-copy; multi-line args need indent-shifting on their
+  // continuation lines, which the per-arg path doesn't apply.
+  //
+  // The Call may be the whole statement (outer_start/end = call's
+  // range) or wrapped in Return / DeclarationLocal / assignment
+  // Binary (outer_start/end = the wrapper's range).
   //
   // Returns false if guards fail (line-locking comments, unreliable
-  // full_range, no arg on its own line, etc.); caller falls back to leaf.
+  // full_range, the call isn't actually broken in source, etc.);
+  // caller falls back to leaf.
   bool try_canonicalize_broken_call_in_range(Call* call,
                                              int outer_start,
                                              int outer_end,
                                              int indent) {
     if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
+    if (call->arguments().is_empty()) return false;
     for (auto arg : call->arguments()) {
       if (arg->is_Block() || arg->is_Lambda()) return false;
       if (!has_reliable_full_range(arg)) return false;
@@ -2048,8 +2058,63 @@ class Formatter {
     if (outer_line_start < source_cursor_) return false;
     if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
 
-    // Find the first arg on a line different from the outer's first line.
-    // If none, this isn't really a broken call and we have nothing to do.
+    // Skip when the source is single-line — that's `try_emit_call_flat_
+    // canonical`'s territory (or `emit_call_forced_broken` if the flat
+    // form was too wide). This function only runs for already-broken
+    // source.
+    Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
+    if (outer_shape.is_single_line()) return false;
+
+    // Per-arg canonical emission requires every arg to be single-line
+    // in source — emit_arg_bytes_or_recurse byte-copies, and a
+    // multi-line arg's continuation lines wouldn't be re-indented to
+    // the new column. Fall back to the source-distribution-preserving
+    // path when any arg is multi-line.
+    bool all_args_single_line = true;
+    for (auto arg : call->arguments()) {
+      Shape s = shape_from_source_range(text_,
+                                        pos(arg->full_range().from()),
+                                        pos(arg->full_range().to()));
+      if (!s.is_single_line()) { all_args_single_line = false; break; }
+    }
+
+    // Per-arg canonical also requires wrapper + target to fit on one
+    // line in source (i.e. the wrapper didn't already break before
+    // its Call target). If the source has `x :=\n  Call`, putting
+    // args at `outer_indent + CALL_CONTINUATION_STEP` would land them
+    // at the same column as the target, and the parser would treat
+    // each as a sibling stmt instead of a continuation argument.
+    // Resolving that needs rendering the wrapper + target on one
+    // line, which the per-arg path doesn't do today; fall back to the
+    // source-distribution path.
+    int target_start = pos(call->target()->full_range().from());
+    bool wrapper_target_one_line =
+        find_line_start(target_start) == outer_line_start;
+
+    if (all_args_single_line && wrapper_target_one_line) {
+      // First line: outer prefix bytes + call target, re-indented to
+      // `indent`. Cursor lands at target's end.
+      int target_end = pos(call->target()->full_range().to());
+      emit_range_reindent(outer_start, target_end, indent);
+
+      int continuation_indent = indent + CALL_CONTINUATION_STEP;
+      for (auto arg : call->arguments()) {
+        output_.push_back('\n');
+        output_.append(continuation_indent, ' ');
+        emit_arg_bytes_or_recurse(arg, continuation_indent, MAX_LINE_WIDTH);
+        source_cursor_ = pos(arg->full_range().to());
+      }
+      advance_to(outer_end);
+      return true;
+    }
+
+    // Source-distribution-preserving fallback: re-indents the args'
+    // continuation lines but leaves the source's choice of which args
+    // sit on the target's line vs. continuation lines intact. Used
+    // when some arg is multi-line in source (e.g. a multi-line list
+    // literal) — that arg needs indent-shifting via
+    // `emit_range_reindent`, which requires the arg to start on its
+    // own line, so we can't unilaterally promote it to a continuation.
     int first_break = -1;
     for (int i = 0; i < call->arguments().length(); i++) {
       int arg_line = find_line_start(
@@ -2061,14 +2126,10 @@ class Formatter {
     }
     if (first_break < 0) return false;
 
-    // Emit the outer's first line at `indent`. For a bare Call this is
-    // just the target (+ any same-line args); for Return / DeclLocal the
-    // wrapper tokens come first.
     int break_line_start = find_line_start(
         pos(call->arguments()[first_break]->full_range().from()));
     emit_range_reindent(outer_start, break_line_start, indent);
 
-    // Re-indent each continuation arg.
     int continuation_indent = indent + CALL_CONTINUATION_STEP;
     for (int i = first_break; i < call->arguments().length(); i++) {
       auto arg = call->arguments()[i];
@@ -2076,7 +2137,6 @@ class Formatter {
                           pos(arg->full_range().to()),
                           continuation_indent);
     }
-
     advance_to(outer_end);
     return true;
   }
