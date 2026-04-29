@@ -73,7 +73,8 @@ kill $SERVER 2>/dev/null; wait 2>/dev/null
 ```
 
 Build the SDK with debug info first (`-O0 -g`) so backtraces are useful;
-otherwise gdb shows raw addresses only.
+otherwise gdb shows raw addresses only. See `make debug`. You might need to
+delete `build/host` first.
 
 ## From repro to minimal test
 
@@ -90,7 +91,7 @@ may depend on subtle textual conditions (leading indentation, missing
 preceding declarations). Two tactics that help reduce:
 
 - Try the same snippet through the *non-LSP* path:
-  `toit.compile --analyze /tmp/min.toit`. If it crashes there too, the bug
+  `toit analyze --analyze /tmp/min.toit`. If it crashes there too, the bug
   isn't LSP-specific and the test belongs in `tests/negative/`.
 - If you need LSP-only behaviour to crash, write the test in
   `tests/lsp/` and drive it with `LspClient` (see
@@ -114,15 +115,3 @@ Then run the single test:
 ```
 (cd build/host && ctest -R '<name>' --output-on-failure)
 ```
-
-## Common crash patterns seen so far
-
-- `type_check.cc` ASSERT on `is_valid()` of a receiver/value type:
-  the type checker is visiting a node whose target's
-  `return_type()` hasn't been computed yet (e.g. an `AssignmentGlobal`
-  inside the global's own initializer, or after a cyclic-type error).
-  Fix is usually to short-circuit the type check when the receiver type
-  is invalid, mirroring how `visit_ReferenceGlobal` already does.
-
-- `Killed after timeout` in `<info>`: ignore. These are CI overload, not
-  real bugs.
