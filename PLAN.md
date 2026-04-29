@@ -151,7 +151,18 @@ Note: Toit's parser groups continuation-line positional args into a nested Call 
 
 #### 7.c — verbatim-fallback audit
 
-Every `emit_leaf` exit is a place source layout leaks through. Walk each node kind in `emit_stmt` / `emit_call` / etc. and decide: render from AST, or document the leak as comment-induced.
+`try / finally` now canonicalised (always broken, never inline). `try_emit_try_finally_canonical` runs before `emit_try_finally`; renders `try:\n  body\nfinally:\n  handler` from AST regardless of source layout, when all body and handler stmts are flat-emittable.
+
+Determinism experiments (formatting two AST-equivalent inputs and diffing) confirm parity for: bare Calls, wrapped Calls, Binary chains, collection literals, Method bodies, If/else/else-if chains, While, For, trailing block-arg with parameter-less single-stmt body, and try/finally.
+
+Remaining gaps surfaced by the audit:
+
+- **Top-level decl internal whitespace** — Import / Export / Field declarations go through `emit_leaf` (verbatim). `import     foo` and `import foo` produce different output. Same for `static N ::=    5` vs `static N ::= 5`. Each needs an AST render.
+- **Class headers with `extends` / `implements`** — `class Foo extends Bar implements I1 I2:` (single line) and the broken-across-lines variant produce different output.
+- **Block-arg with parameters** — `list.do: | x y | body` (single-stmt) and the broken variants aren't canonicalised. `try_emit_call_trailing_block_inline` skips when params are non-empty.
+- **Method body when source-inline + body too wide** — bails to leaf, preserves source-inline (rare).
+- **Wrapped Calls with trailing block** — `x := catch: body`, `return list.do: it.print`. Block-arg early-bail in `try_canonicalize_broken_call_in_range` / `emit_call_forced_broken` means these fall through to leaf — source-preserving.
+- **String literals in Method/For headers** — colon-finder doesn't track string state, so a `:` inside a header string would be mis-identified as the body separator. Latent.
 
 ### Tier 8 — whatever the next dogfood pass surfaces (after Tier 7)
 
