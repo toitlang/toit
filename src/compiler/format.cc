@@ -218,10 +218,95 @@ class Formatter {
   }
 
   void emit_method(Method* method, int indent) {
+    // Single-stmt body: inline-vs-broken is a width decision, not a
+    // source-shape decision. Tries inline first, then a broken-synth
+    // for the source-was-inline-but-too-wide case. Both bail when the
+    // method header itself is multi-line in source (wrapped params),
+    // letting `try_emit_method_canonical` re-indent the params.
+    if (try_emit_method_body_canonical(method, indent)) return;
     if (try_emit_method_canonical(method, indent)) return;
     if (!emit_with_suite(method, method->body()->expressions(), indent)) {
       emit_leaf(method, indent);
     }
+  }
+
+  // Locates the body-separator `:` between `method_start` and the
+  // body's first byte. Returns -1 if not found, or if the search range
+  // contains a newline (header is multi-line in source — caller
+  // should bail).
+  int find_method_header_colon(int method_start, int body_start) const {
+    for (int i = method_start; i < body_start; i++) {
+      if (text_[i] == '\n') return -1;
+      if (text_[i] == ':') return i;
+    }
+    return -1;
+  }
+
+  // Method-body inline-vs-broken canonicalisation. Single-stmt body
+  // becomes inline `header: body` when it fits
+  // INLINE_CONTROL_FLOW_WIDTH, otherwise broken `header:\n  body`.
+  // Bails when the header is multi-line (wrapped params); leaves
+  // those to `try_emit_method_canonical`.
+  bool try_emit_method_body_canonical(Method* method, int indent) {
+    if (method->body() == null) return false;
+    auto body = method->body()->expressions();
+    if (body.length() != 1) return false;
+    Expression* body_stmt = body.first();
+    if (!can_emit_flat(body_stmt)) return false;
+
+    int method_start = pos(method->full_range().from());
+    int method_end = pos(method->full_range().to());
+    if (has_line_locking_comment(method_start, method_end)) return false;
+    if (has_interior_multiline_block_comment(method_start, method_end)) return false;
+
+    int line_start = find_line_start(method_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, method_start)) return false;
+
+    int body_start = pos(body_stmt->full_range().from());
+    int colon_pos = find_method_header_colon(method_start, body_start);
+    if (colon_pos < 0) return false;  // header multi-line, bail.
+
+    int header_len = colon_pos - method_start;  // bytes up to (but not including) `:`
+
+    // Inline render: header + ": " + body. Width-checked against
+    // INLINE_CONTROL_FLOW_WIDTH.
+    std::string body_buf;
+    emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
+    int inline_total = indent + header_len + 2 + static_cast<int>(body_buf.size());
+    int original_indent = method_start - line_start;
+    int delta = indent - original_indent;
+
+    if (inline_total <= INLINE_CONTROL_FLOW_WIDTH) {
+      emit_with_indent_shift(source_cursor_, line_start, delta);
+      emit_spaces(indent);
+      output_.append(reinterpret_cast<const char*>(text_) + method_start, header_len);
+      output_.append(": ");
+      output_.append(body_buf);
+      source_cursor_ = method_end;
+      return true;
+    }
+
+    // Broken-synth path: header + ":\n" + body_indent + body_buf.
+    // Only fires when the body itself fits at body_indent — otherwise
+    // the synth would emit a too-wide body line. Bail in that case
+    // and let emit_with_suite / emit_stmt handle the body with its
+    // own break logic (only fully canonical for source-broken; source-
+    // inline + too-wide body is a remaining determinism gap).
+    int body_indent = indent + INDENT_STEP;
+    if (body_indent + static_cast<int>(body_buf.size()) > MAX_LINE_WIDTH) {
+      return false;
+    }
+
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(reinterpret_cast<const char*>(text_) + method_start, header_len);
+    output_.push_back(':');
+    output_.push_back('\n');
+    output_.append(body_indent, ' ');
+    output_.append(body_buf);
+    source_cursor_ = method_end;
+    return true;
   }
 
   // If a Method has parameters on their own continuation lines (rather

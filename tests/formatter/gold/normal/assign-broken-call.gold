@@ -7,5 +7,4 @@ class Holder:
         another_moderately_long_argument_name
         and_a_third_similarly_long_argument
 
-foo x y:
-  return x + y
+foo x y: return x + y

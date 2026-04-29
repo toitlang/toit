@@ -7,8 +7,6 @@ main:
   // A Binary RHS (no Call) still renders without parens.
   w := 1 + 2 * 3
 
-compute a b c -> any:
-  return null
+compute a b c -> any: return null
 
-other-call a b c -> any:
-  return null
+other-call a b c -> any: return null

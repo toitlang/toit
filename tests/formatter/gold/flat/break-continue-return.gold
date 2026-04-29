@@ -6,8 +6,6 @@ main:
     i++
   return 42
 
-foo x/int -> int:
-  return x + 1
+foo x/int -> int: return x + 1
 
-bar:
-  return
+bar: return

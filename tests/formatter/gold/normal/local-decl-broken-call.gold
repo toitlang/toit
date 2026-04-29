@@ -1,5 +1,4 @@
-foo x y:
-  return x
+foo x y: return x
 
 main:
   x := some_function_with_a_fairly_long_name

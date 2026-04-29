@@ -38,7 +38,6 @@ main:
 register_event_handler_with_a_very_long_name a b c d -> any:
   return null
 
-short_call a b c -> any:
-  return null
+short_call a b c -> any: return null
 
 r := 0

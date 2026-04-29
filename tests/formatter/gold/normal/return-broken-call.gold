@@ -1,5 +1,4 @@
-foo x y:
-  return x
+foo x y: return x
 
 bar:
   return some_function_with_a_fairly_long_name
