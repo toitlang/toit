@@ -1393,56 +1393,134 @@ class Formatter {
     return true;
   }
 
-  // Top-level dispatch for an If with no `else` clause: try inline,
-  // then broken-synth (when source was inline but inline form too
-  // wide), then fall through to emit_if (handles source-broken).
+  struct IfBranch {
+    Expression* cond;          // null for the final else branch
+    List<Expression*> body;
+  };
+
+  // Walks an if/else-if/else chain. The parser represents `else if X` as
+  // If.no = inner If (not a Sequence), and a final `else` as If.no =
+  // Sequence. Returns true if every branch has a non-empty body; out is
+  // populated left-to-right.
+  bool collect_if_chain(If* head, std::vector<IfBranch>* out) const {
+    auto first_body = as_suite_body(head->yes());
+    if (first_body.is_empty()) return false;
+    out->push_back({head->expression(), first_body});
+
+    Expression* tail = head->no();
+    while (tail != null) {
+      if (tail->is_If()) {
+        If* n = tail->as_If();
+        auto y = as_suite_body(n->yes());
+        if (y.is_empty()) return false;
+        out->push_back({n->expression(), y});
+        tail = n->no();
+      } else {
+        auto y = as_suite_body(tail);
+        if (y.is_empty()) return false;
+        out->push_back({nullptr, y});
+        tail = nullptr;
+      }
+    }
+    return true;
+  }
+
+  // Top-level dispatch for an If, including else-if chains and a final
+  // else. Tries inline first (all branches single-stmt + flat-emittable
+  // and fits INLINE_CONTROL_FLOW_WIDTH), then a broken-synth from AST
+  // (all branch body stmts must be flat-emittable). Returns false to
+  // fall through to emit_if when nothing here applies.
   bool try_emit_if_canonical(If* if_node, int indent) {
-    if (if_node->no() != null) return false;
-    auto yes_body = as_suite_body(if_node->yes());
-    if (yes_body.is_empty()) return false;
+    std::vector<IfBranch> chain;
+    if (!collect_if_chain(if_node, &chain)) return false;
 
     int node_start = pos(if_node->full_range().from());
     int node_end = pos(if_node->full_range().to());
     int line_start = 0;
     if (!can_canonicalize_control_flow(node_start, node_end,
-                                       if_node->expression(), &line_start)) {
+                                       /*condition=*/nullptr, &line_start)) {
       return false;
     }
-
-    std::string header;
-    header.append("if ");
-    emit_expr_flat(if_node->expression(), PRECEDENCE_NONE, &header);
-    header.append(": ");
-
-    // Inline path — fires regardless of source shape.
-    if (yes_body.length() == 1) {
-      int saved_cursor = source_cursor_;
-      size_t saved_output = output_.size();
-      if (try_emit_control_flow_inline(node_start, node_end, line_start,
-                                       header, yes_body.first(), indent)) {
-        return true;
-      }
-      // Roll back any partial state from the inline attempt (none was
-      // committed past the buffer width check, but reset to be safe).
-      source_cursor_ = saved_cursor;
-      output_.resize(saved_output);
-    }
-
-    // Broken-synth — only when source was inline (otherwise emit_if
-    // handles it). Header without trailing space: `if cond:` then
-    // newline + body.
-    int yes_first_line_start = find_line_start(pos(yes_body.first()->full_range().from()));
-    if (yes_first_line_start <= node_start) {
-      std::string broken_header;
-      broken_header.append("if ");
-      emit_expr_flat(if_node->expression(), PRECEDENCE_NONE, &broken_header);
-      broken_header.append(":");
-      if (try_emit_control_flow_broken_synth(node_start, node_end, line_start,
-                                             broken_header, yes_body, indent)) {
-        return true;
+    // Every cond and every body stmt must render flat.
+    for (auto& b : chain) {
+      if (b.cond != nullptr && !can_emit_flat(b.cond)) return false;
+      for (auto stmt : b.body) {
+        if (!can_emit_flat(stmt)) return false;
       }
     }
-    return false;
+
+    // Inline render — only for `if cond: body` (no else / else-if).
+    // Inline forms with else aren't a shape the formatter produces;
+    // `if A: a else: b` packs three semantic chunks on one line and is
+    // strictly less readable than the broken form, however short.
+    bool inline_eligible = chain.size() == 1 && chain[0].body.length() == 1;
+    if (inline_eligible) {
+      std::string buf;
+      for (size_t i = 0; i < chain.size(); i++) {
+        if (i == 0) {
+          buf.append("if ");
+          emit_expr_flat(chain[i].cond, PRECEDENCE_NONE, &buf);
+          buf.append(": ");
+        } else if (chain[i].cond != nullptr) {
+          buf.append(" else if ");
+          emit_expr_flat(chain[i].cond, PRECEDENCE_NONE, &buf);
+          buf.append(": ");
+        } else {
+          buf.append(" else: ");
+        }
+        emit_expr_flat(chain[i].body.first(), PRECEDENCE_NONE, &buf);
+      }
+      if (indent + static_cast<int>(buf.size()) <= INLINE_CONTROL_FLOW_WIDTH) {
+        int original_indent = node_start - line_start;
+        int delta = indent - original_indent;
+        emit_with_indent_shift(source_cursor_, line_start, delta);
+        emit_spaces(indent);
+        source_cursor_ = node_end;
+        output_.append(buf);
+        return true;
+      }
+    }
+
+    // Broken-synth — emit each branch on its own lines from AST. This
+    // overrides emit_if even when source was already broken, so that a
+    // broken if/else chain produces deterministic output regardless of
+    // exactly how the source was laid out.
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+
+    int body_indent = indent + INDENT_STEP;
+    for (size_t i = 0; i < chain.size(); i++) {
+      if (i == 0) {
+        output_.append(indent, ' ');
+        output_.append("if ");
+        std::string cb;
+        emit_expr_flat(chain[i].cond, PRECEDENCE_NONE, &cb);
+        output_.append(cb);
+        output_.push_back(':');
+      } else {
+        output_.push_back('\n');
+        output_.append(indent, ' ');
+        if (chain[i].cond != nullptr) {
+          output_.append("else if ");
+          std::string cb;
+          emit_expr_flat(chain[i].cond, PRECEDENCE_NONE, &cb);
+          output_.append(cb);
+          output_.push_back(':');
+        } else {
+          output_.append("else:");
+        }
+      }
+      for (auto stmt : chain[i].body) {
+        output_.push_back('\n');
+        output_.append(body_indent, ' ');
+        std::string sb;
+        emit_expr_flat(stmt, PRECEDENCE_NONE, &sb);
+        output_.append(sb);
+      }
+    }
+    source_cursor_ = node_end;
+    return true;
   }
 
   // Same as try_emit_if_canonical but for While.
