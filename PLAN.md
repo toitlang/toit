@@ -125,11 +125,13 @@ Done for `If` (with full else / else-if chain handling) and `While`. `try_emit_i
 
 Also fixed in this round: the `not Call` paren bug. `not` is parsed via `parse_not_spelled` → `parse_call` directly, so `not foo a b` doesn't need parens. Unary handler passes `PRECEDENCE_NONE` to the operand for `Token::NOT`.
 
+Done for Method bodies too. `try_emit_method_body_canonical` runs before the existing emit_method chain; same inline-vs-broken logic. Header bytes (up to and including `:`) are taken verbatim from source; body is rendered from AST. Bails when the header is multi-line (wrapped params — let `try_emit_method_canonical` handle), or when broken-synth would emit a too-wide body line (let `emit_with_suite` handle).
+
 Still open in 7.a:
 
 - **For.** `for init; cond; update: body` header is more involved than If/While (three sub-expressions + semicolons). Skipped for now; source-shape-preserving via the existing path.
-- **Method body when single-stmt** (`foo: return 42` vs `foo:\n  return 42`).
 - **Call's trailing block-arg with single-stmt body** (`list.do: it.print` vs `list.do:\n  it.print`).
+- **Method body when source-inline + body too wide for body_indent.** Currently bails to leaf which preserves source-inline. Determinism gap for the rare inline-source-with-too-wide-body case.
 
 #### 7.b — broken-Call arg distribution
 
