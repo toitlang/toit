@@ -129,12 +129,16 @@ Done for Method bodies too. `try_emit_method_body_canonical` runs before the exi
 
 Done for Call's trailing block-arg too. `try_emit_call_trailing_block_inline` runs in emit_call before `emit_call_with_trailing_suite`. For a Call whose last argument is a Block / Lambda with single-stmt parameter-less body, renders inline `<call header>: <body_stmt>` (or `:: ` for Lambda) when fits, otherwise broken. Source-inline `list.do: it.print` was already handled by `try_emit_call_flat_canonical`; this fills the symmetric broken→inline direction.
 
+Done for For too. `try_emit_for_canonical` shares `try_emit_byte_header_body_canonical` with the Method-body path: both have headers too varied to render from AST (For has init/cond/update + semicolons), so the header is byte-copied verbatim up to the body separator `:`, body rendered from AST. The colon-finder skips `:=`, `::`, and `::=` (so `for i := 0; ...:` finds the right colon).
+
 Still open in 7.a:
 
-- **For.** `for init; cond; update: body` header is more involved than If/While (three sub-expressions + semicolons). Skipped for now; source-shape-preserving via the existing path.
 - **Wrapped Calls with trailing block** (`x := catch: body`, `return list.do: it.print`). The Block-arg early-bail in `try_canonicalize_broken_call_in_range` / `emit_call_forced_broken` means wrapped trailing-block Calls fall through to leaf — source-preserving, determinism gap.
 - **Method body when source-inline + body too wide for body_indent.** Bails to leaf, preserves source-inline.
 - **Block parameters in trailing block-arg** (`list.do: | x | x.print` style).
+- **String literals in headers** (`foo x="hello: world": ...`). The colon-finder doesn't track string state, so a `:` inside a header string would be mis-identified as the body separator. Latent bug; Toit headers rarely contain strings.
+
+Bonus fix in this round: `Compiler::format` was skipping the file write when the formatted size matched the source size, even if the bytes differed (`&&` instead of `||` in the change check). Same-size-different-content cases were silently no-ops.
 
 #### 7.b — broken-Call arg distribution
 
