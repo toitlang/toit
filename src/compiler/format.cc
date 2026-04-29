@@ -1816,6 +1816,11 @@ class Formatter {
       if (last->is_Block()) body = last->as_Block()->body();
       else if (last->is_Lambda()) body = last->as_Lambda()->body();
       if (body != null && !body->expressions().is_empty()) {
+        // Determinism: source-broken `list.do:\n  it.print` collapses to
+        // inline `list.do: it.print` when the rendered total fits
+        // INLINE_CONTROL_FLOW_WIDTH. Otherwise the existing trailing-suite
+        // path emits the broken form.
+        if (try_emit_call_trailing_block_inline(call, indent)) return;
         if (emit_call_with_trailing_suite(call, body->expressions(), indent)) {
           return;
         }
@@ -2223,6 +2228,86 @@ class Formatter {
                           continuation_indent);
     }
     advance_to(outer_end);
+    return true;
+  }
+
+  // For `list.do: it.print` style: a Call whose last argument is a
+  // Block / Lambda with a single-stmt, parameter-less body. Renders
+  // inline `<call header>: <body_stmt>` (or `:: ` for Lambda) when
+  // the result fits INLINE_CONTROL_FLOW_WIDTH. Returns false to let
+  // emit_call_with_trailing_suite handle the broken form otherwise.
+  //
+  // The "call header" is the source bytes from the Call's start up
+  // to (but not including) the Block/Lambda's `:` token, which is
+  // the Block's full_range start. That includes the target plus any
+  // non-block args.
+  bool try_emit_call_trailing_block_inline(Call* call, int indent) {
+    if (call->arguments().is_empty()) return false;
+    Expression* last = call->arguments().last();
+    Sequence* body = nullptr;
+    List<Parameter*> params;
+    bool is_lambda = false;
+    if (last->is_Block()) {
+      body = last->as_Block()->body();
+      params = last->as_Block()->parameters();
+    } else if (last->is_Lambda()) {
+      body = last->as_Lambda()->body();
+      params = last->as_Lambda()->parameters();
+      is_lambda = true;
+    } else {
+      return false;
+    }
+    if (body == nullptr) return false;
+    auto exprs = body->expressions();
+    if (exprs.length() != 1) return false;
+    if (!params.is_empty()) return false;  // skip block params for now.
+    Expression* body_stmt = exprs.first();
+    if (!can_emit_flat(body_stmt)) return false;
+
+    int call_start = pos(call->full_range().from());
+    int call_end = pos(call->full_range().to());
+    if (has_line_locking_comment(call_start, call_end)) return false;
+    if (has_interior_multiline_block_comment(call_start, call_end)) return false;
+
+    int line_start = find_line_start(call_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, call_start)) return false;
+
+    // Header bytes from call_start to the `:` token (= block's
+    // full_range start). Must be single-line — otherwise the call
+    // header has its own break and inline doesn't apply.
+    int block_start = pos(last->full_range().from());
+    if (block_start <= call_start) return false;
+    for (int i = call_start; i < block_start; i++) {
+      if (text_[i] == '\n') return false;
+    }
+    int header_len = block_start - call_start;
+
+    // Also: every other arg (non-block) must be reliable for byte-copy.
+    // The byte range call_start..block_start covers them all, and
+    // we're copying it verbatim, so we need them to be source-faithful.
+    for (auto arg : call->arguments()) {
+      if (arg == last) continue;
+      if (!has_reliable_full_range(arg)) return false;
+    }
+    if (!has_reliable_full_range(call->target())) return false;
+
+    const char* sep = is_lambda ? ":: " : ": ";
+    int sep_len = is_lambda ? 3 : 2;
+
+    std::string body_buf;
+    emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
+    int total = indent + header_len + sep_len + static_cast<int>(body_buf.size());
+    if (total > INLINE_CONTROL_FLOW_WIDTH) return false;
+
+    int original_indent = call_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(reinterpret_cast<const char*>(text_) + call_start, header_len);
+    output_.append(sep);
+    output_.append(body_buf);
+    source_cursor_ = call_end;
     return true;
   }
 
