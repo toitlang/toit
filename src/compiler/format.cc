@@ -203,7 +203,60 @@ class Formatter {
     if (node->is_Export()) {
       if (try_emit_export_canonical(node->as_Export(), indent)) return;
     }
+    if (node->is_Field()) {
+      if (try_emit_field_canonical(node->as_Field(), indent)) return;
+    }
     emit_leaf(node, indent);
+  }
+
+  // Renders a Field declaration from AST with single canonical
+  // spacing. Form:
+  //
+  //   [static] [abstract] name [/Type] [(:= | ::=) initializer]
+  //
+  // Operator is `::=` for is_final, `:=` otherwise. A field with a
+  // type but no initializer omits the operator entirely
+  // (`x/int`).
+  bool try_emit_field_canonical(Field* field, int indent) {
+    int node_start = pos(field->full_range().from());
+    int node_end = pos(field->full_range().to());
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+    if (field->name() == nullptr) return false;
+    if (!has_reliable_full_range(field->name())) return false;
+    // Type and initializer go through emit_expr_flat — byte-copying
+    // a type like `io.Writer?` would only get `?` (Nullable doesn't
+    // override full_range to cover the inner type).
+    if (field->type() != nullptr && !can_emit_flat(field->type())) return false;
+    if (field->initializer() != nullptr && !can_emit_flat(field->initializer())) {
+      return false;
+    }
+
+    std::string buf;
+    if (field->is_static()) buf.append("static ");
+    if (field->is_abstract()) buf.append("abstract ");
+    int n_start = pos(field->name()->full_range().from());
+    int n_end = pos(field->name()->full_range().to());
+    buf.append(reinterpret_cast<const char*>(text_) + n_start, n_end - n_start);
+    if (field->type() != nullptr) {
+      buf.push_back('/');
+      emit_expr_flat(field->type(), PRECEDENCE_POSTFIX, &buf);
+    }
+    if (field->initializer() != nullptr) {
+      buf.append(field->is_final() ? " ::= " : " := ");
+      emit_expr_flat(field->initializer(), PRECEDENCE_NONE, &buf);
+    }
+
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(buf);
+    source_cursor_ = node_end;
+    return true;
   }
 
   // Renders an Import declaration from AST. Form:
