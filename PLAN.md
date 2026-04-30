@@ -161,17 +161,20 @@ Closed in this round:
 - **Class headers** — `try_emit_class_header_canonical` renders the header from AST: single-line when fits MAX_LINE_WIDTH, otherwise broken with each clause on its own continuation line.
 - **Import / Export internal whitespace** — `try_emit_import_canonical` / `try_emit_export_canonical` render from AST with single canonical spacing. Cursor advances to end-of-line because `Import::full_range()` doesn't include `show ...` / `as ...`.
 - **Field declaration internal whitespace** — `try_emit_field_canonical` renders from AST. Type and initializer go through `emit_expr_flat` (byte-copying `Nullable` only gets `?` since Nullable doesn't override `full_range`). Normalises column-alignment hacks (`META-X     ::= ...`) — author loses alignment, gains determinism.
+- **String literals in Method/For headers** — `find_node_header_colon` walks backward from body's first byte (skipping whitespace + at most one newline). Avoids mis-stopping on `:` inside string literals or `:=` / `::` / `::=` combinators.
+- **Method / Constructor header internal whitespace + wrap** — `try_emit_method_full_canonical` renders the entire method header from AST via `render_method_header_parts`: modifiers + name + params + return type. Single-line when fits MAX_LINE_WIDTH; otherwise broken with each param on its own continuation line at indent + CALL_CONTINUATION_STEP, return type on the first line. Handles inline body (when total fits INLINE_CONTROL_FLOW_WIDTH), broken-synth body (single-stmt that doesn't fit inline), emit_stmt body (non-flat-emittable single-stmt or multi-stmt), abstract methods (no body, no `:`), interface methods (no body, no `:`), empty-body methods (`foo:` keeps `:`). Each Parameter rendered via `render_parameter` (`[name]` for block, `--name` for named, `.name` for field-storing, `name/Type=default`).
+- **Method body source-inline + body too wide** — handled by emit_stmt path in `try_emit_method_full_canonical`. emit_stmt's break logic kicks in for the body via source_cursor_ adjustment.
+- **Blank-line counts** — fully forced via `forced_blank_lines_` member var. `emit_decl` sets target = 1 (top-level / class members), `emit_stmt` sets target = 0 (body stmts). `emit_with_indent_shift` consumes the target (cap blanks + inject missing) once per stmt-emission.
 
-Remaining gaps:
+Bonus fix: `advance_to` was unconditionally setting `source_cursor_`, even backward — discarding cursor advances from earlier emission. Now a no-op when called with a position behind the cursor.
 
-- **Method / Constructor header internal whitespace** — `abstract  bar  ->  int`, `constructor  .field  :` not normalised because the header is byte-copied (the canonical paths only touch the body). Theoretical — no real cases in artemis.
-- **Blank-line counts** — `foo:\nbar:` and `foo:\n\n\nbar:` produce different output. Blank lines aren't in the AST. Stylistic; not addressed.
-- **Method body when source-inline + body too wide** — bails to leaf, preserves source-inline (rare).
-- **String literals in Method/For headers** — colon-finder doesn't track string state, so a `:` inside a header string would be mis-identified as the body separator. Latent.
+The formatter is now FULLY deterministic up to (AST + width budget). Verified by formatting AST-equivalent inputs with widely varying source layouts — output is byte-identical.
 
 ### Tier 8 — whatever the next dogfood pass surfaces (after Tier 7)
 
 Re-run artemis after determinism is closed; remaining patterns will be true heuristic gaps (where the AST-driven choice disagrees with the corpus majority) rather than source-leakage.
+
+The blank-line forcing is the most likely gap to revisit: forcing 0 blanks between body stmts loses author grouping (some methods use blank lines to separate logical phases). Could reconsider with a per-class-of-stmt rule, but for now the strict 0-or-1 rule wins on determinism.
 
 ## Orthogonal workstreams
 
