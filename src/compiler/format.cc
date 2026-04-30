@@ -617,6 +617,7 @@ class Formatter {
         Call* call = ret->value()->as_Call();
         int start = pos(ret->full_range().from());
         int end = pos(ret->full_range().to());
+        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
         if (emit_call_forced_broken(call, start, end, indent)) return;
       }
@@ -627,6 +628,7 @@ class Formatter {
         Call* call = decl->value()->as_Call();
         int start = pos(decl->full_range().from());
         int end = pos(decl->full_range().to());
+        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
         if (emit_call_forced_broken(call, start, end, indent)) return;
       }
@@ -638,6 +640,7 @@ class Formatter {
         Call* call = b->right()->as_Call();
         int start = pos(b->full_range().from());
         int end = pos(b->full_range().to());
+        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
         if (emit_call_forced_broken(call, start, end, indent)) return;
       }
@@ -1910,7 +1913,9 @@ class Formatter {
         // inline `list.do: it.print` when the rendered total fits
         // INLINE_CONTROL_FLOW_WIDTH. Otherwise the existing trailing-suite
         // path emits the broken form.
-        if (try_emit_call_trailing_block_inline(call, indent)) return;
+        int bare_start = pos(call->full_range().from());
+        int bare_end = pos(call->full_range().to());
+        if (try_emit_call_trailing_block_inline(call, bare_start, bare_end, indent)) return;
         if (emit_call_with_trailing_suite(call, body->expressions(), indent)) {
           return;
         }
@@ -2331,7 +2336,10 @@ class Formatter {
   // to (but not including) the Block/Lambda's `:` token, which is
   // the Block's full_range start. That includes the target plus any
   // non-block args.
-  bool try_emit_call_trailing_block_inline(Call* call, int indent) {
+  bool try_emit_call_trailing_block_inline(Call* call,
+                                           int outer_start,
+                                           int outer_end,
+                                           int indent) {
     if (call->arguments().is_empty()) return false;
     Expression* last = call->arguments().last();
     Sequence* body = nullptr;
@@ -2356,27 +2364,28 @@ class Formatter {
       if (!has_reliable_full_range(p)) return false;
     }
 
-    int call_start = pos(call->full_range().from());
-    int call_end = pos(call->full_range().to());
-    if (has_line_locking_comment(call_start, call_end)) return false;
-    if (has_interior_multiline_block_comment(call_start, call_end)) return false;
+    if (has_line_locking_comment(outer_start, outer_end)) return false;
+    if (has_interior_multiline_block_comment(outer_start, outer_end)) return false;
 
-    int line_start = find_line_start(call_start);
+    int line_start = find_line_start(outer_start);
     if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, call_start)) return false;
+    if (!is_leading_whitespace(line_start, outer_start)) return false;
 
-    // Header bytes from call_start to the `:` token (= block's
-    // full_range start). Must be single-line — otherwise the call
-    // header has its own break and inline doesn't apply.
+    // Header bytes from outer_start to the `:` token (= block's
+    // full_range start). Must be single-line — otherwise the wrapper
+    // or call header has its own break and inline doesn't apply.
+    // For a bare Call, outer_start == call_start. For a wrapped Call
+    // (Return / DeclLocal / assignment Binary), outer_start is the
+    // wrapper's start and the byte range includes the wrapper tokens.
     int block_start = pos(last->full_range().from());
-    if (block_start <= call_start) return false;
-    for (int i = call_start; i < block_start; i++) {
+    if (block_start <= outer_start) return false;
+    for (int i = outer_start; i < block_start; i++) {
       if (text_[i] == '\n') return false;
     }
-    int header_len = block_start - call_start;
+    int header_len = block_start - outer_start;
 
     // Also: every other arg (non-block) must be reliable for byte-copy.
-    // The byte range call_start..block_start covers them all, and
+    // The byte range outer_start..block_start covers them all, and
     // we're copying it verbatim, so we need them to be source-faithful.
     for (auto arg : call->arguments()) {
       if (arg == last) continue;
@@ -2410,15 +2419,15 @@ class Formatter {
               + static_cast<int>(body_buf.size());
     if (total > INLINE_CONTROL_FLOW_WIDTH) return false;
 
-    int original_indent = call_start - line_start;
+    int original_indent = outer_start - line_start;
     int delta = indent - original_indent;
     emit_with_indent_shift(source_cursor_, line_start, delta);
     emit_spaces(indent);
-    output_.append(reinterpret_cast<const char*>(text_) + call_start, header_len);
+    output_.append(reinterpret_cast<const char*>(text_) + outer_start, header_len);
     output_.append(sep);
     output_.append(params_buf);
     output_.append(body_buf);
-    source_cursor_ = call_end;
+    source_cursor_ = outer_end;
     return true;
   }
 
