@@ -197,7 +197,122 @@ class Formatter {
         return;
       }
     }
+    if (node->is_Import()) {
+      if (try_emit_import_canonical(node->as_Import(), indent)) return;
+    }
+    if (node->is_Export()) {
+      if (try_emit_export_canonical(node->as_Export(), indent)) return;
+    }
     emit_leaf(node, indent);
+  }
+
+  // Renders an Import declaration from AST. Form:
+  //
+  //   import [.+] segment.segment.segment [as Prefix | show * | show I1 I2 ...]
+  //
+  // Single canonical spacing: `import` + space + path + (optional clause
+  // with single spaces). Source whitespace inside the import is
+  // normalised away.
+  bool try_emit_import_canonical(Import* imp, int indent) {
+    int node_start = pos(imp->full_range().from());
+    int node_end = pos(imp->full_range().to());
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+    for (auto seg : imp->segments()) {
+      if (!has_reliable_full_range(seg)) return false;
+    }
+    if (imp->prefix() != nullptr && !has_reliable_full_range(imp->prefix())) {
+      return false;
+    }
+    for (auto id : imp->show_identifiers()) {
+      if (!has_reliable_full_range(id)) return false;
+    }
+
+    auto bytes = [&](Node* n) -> std::string {
+      int s = pos(n->full_range().from());
+      int t = pos(n->full_range().to());
+      return std::string(reinterpret_cast<const char*>(text_) + s, t - s);
+    };
+
+    std::string buf = "import ";
+    if (imp->is_relative()) {
+      // Leading dots: `.` for current package + one extra `.` per dot_out.
+      buf.append(imp->dot_outs() + 1, '.');
+    }
+    for (int i = 0; i < imp->segments().length(); i++) {
+      if (i > 0) buf.push_back('.');
+      buf.append(bytes(imp->segments()[i]));
+    }
+    if (imp->prefix() != nullptr) {
+      buf.append(" as ");
+      buf.append(bytes(imp->prefix()));
+    } else if (imp->show_all()) {
+      buf.append(" show *");
+    } else if (!imp->show_identifiers().is_empty()) {
+      buf.append(" show");
+      for (auto id : imp->show_identifiers()) {
+        buf.push_back(' ');
+        buf.append(bytes(id));
+      }
+    }
+
+    // `Import::full_range()` doesn't include the `show *` / `show ...`
+    // / `as ...` portion of the source — it ends at the last segment /
+    // prefix / show-identifier. Advance source_cursor_ past whatever
+    // remains on the line (`show *`, trailing whitespace, etc.) so we
+    // don't emit it twice.
+    int line_end = node_end;
+    while (line_end < size_ && text_[line_end] != '\n') line_end++;
+
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(buf);
+    source_cursor_ = line_end;
+    return true;
+  }
+
+  // Renders an Export declaration: `export *` or `export I1 I2 ...`.
+  bool try_emit_export_canonical(Export* exp, int indent) {
+    int node_start = pos(exp->full_range().from());
+    int node_end = pos(exp->full_range().to());
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+    for (auto id : exp->identifiers()) {
+      if (!has_reliable_full_range(id)) return false;
+    }
+
+    std::string buf = "export";
+    if (exp->export_all()) {
+      buf.append(" *");
+    } else {
+      for (auto id : exp->identifiers()) {
+        buf.push_back(' ');
+        int s = pos(id->full_range().from());
+        int t = pos(id->full_range().to());
+        buf.append(reinterpret_cast<const char*>(text_) + s, t - s);
+      }
+    }
+
+    // Like Import: advance past anything remaining on the line that
+    // wasn't covered by Export::full_range() (`*` etc.).
+    int line_end = node_end;
+    while (line_end < size_ && text_[line_end] != '\n') line_end++;
+
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(buf);
+    source_cursor_ = line_end;
+    return true;
   }
 
   void emit_class(Class* klass, int indent) {
