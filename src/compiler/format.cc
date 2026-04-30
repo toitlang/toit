@@ -2350,9 +2350,11 @@ class Formatter {
     if (body == nullptr) return false;
     auto exprs = body->expressions();
     if (exprs.length() != 1) return false;
-    if (!params.is_empty()) return false;  // skip block params for now.
     Expression* body_stmt = exprs.first();
     if (!can_emit_flat(body_stmt)) return false;
+    for (auto p : params) {
+      if (!has_reliable_full_range(p)) return false;
+    }
 
     int call_start = pos(call->full_range().from());
     int call_end = pos(call->full_range().to());
@@ -2382,12 +2384,30 @@ class Formatter {
     }
     if (!has_reliable_full_range(call->target())) return false;
 
+    // Render block params as `| p1 p2 ... | `. Each param is byte-
+    // copied from its full_range — this preserves type annotations
+    // and any other syntactic decoration.
+    std::string params_buf;
+    if (!params.is_empty()) {
+      params_buf.append("| ");
+      for (int i = 0; i < params.length(); i++) {
+        if (i > 0) params_buf.push_back(' ');
+        int p_start = pos(params[i]->full_range().from());
+        int p_end = pos(params[i]->full_range().to());
+        params_buf.append(reinterpret_cast<const char*>(text_) + p_start,
+                          p_end - p_start);
+      }
+      params_buf.append(" | ");
+    }
+
     const char* sep = is_lambda ? ":: " : ": ";
     int sep_len = is_lambda ? 3 : 2;
 
     std::string body_buf;
     emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
-    int total = indent + header_len + sep_len + static_cast<int>(body_buf.size());
+    int total = indent + header_len + sep_len
+              + static_cast<int>(params_buf.size())
+              + static_cast<int>(body_buf.size());
     if (total > INLINE_CONTROL_FLOW_WIDTH) return false;
 
     int original_indent = call_start - line_start;
@@ -2396,6 +2416,7 @@ class Formatter {
     emit_spaces(indent);
     output_.append(reinterpret_cast<const char*>(text_) + call_start, header_len);
     output_.append(sep);
+    output_.append(params_buf);
     output_.append(body_buf);
     source_cursor_ = call_end;
     return true;
