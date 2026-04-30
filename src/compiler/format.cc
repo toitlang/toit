@@ -518,28 +518,45 @@ class Formatter {
   // contains a newline (header is multi-line in source — caller
   // should bail).
   // Locates the body-separator `:` between `node_start` and the
-  // body's first byte. Returns -1 if not found, or if the search range
-  // contains a newline (header is multi-line in source — caller
-  // should bail).
+  // body's first byte. Returns -1 if not found, or if the header
+  // (everything between `node_start` and the colon) spans multiple
+  // lines.
   //
-  // Skips `:=` (DEFINE), `::=` (DEFINE_FINAL), and `::` (DOUBLE_COLON /
-  // Lambda), which contain `:` but aren't body separators. The
-  // For init `i := 0` is the typical case that surfaces this.
+  // Walks backward from `body_start`: the body separator `:` is the
+  // last `:` before the body, modulo trailing whitespace (and a
+  // single newline + indent for source-broken bodies). This avoids
+  // misidentifying `:` inside string literals or `:=` / `::` / `::=`
+  // combinators in the header. After finding the colon, we verify
+  // the header itself (`node_start..colon_pos`) is single-line,
+  // since the byte-header canonical emits the header bytes verbatim
+  // and would otherwise emit a multi-line span on what should be
+  // one line.
   int find_node_header_colon(int node_start, int body_start) const {
-    for (int i = node_start; i < body_start; i++) {
+    int i = body_start - 1;
+    bool seen_newline = false;
+    int colon_pos = -1;
+    while (i >= node_start) {
       uint8 c = text_[i];
-      if (c == '\n') return -1;
-      if (c != ':') continue;
-      uint8 next = (i + 1 < body_start) ? text_[i + 1] : 0;
-      if (next == '=') continue;  // `:=`
-      if (next == ':') {
-        i++;  // skip second `:`
-        if (i + 1 < body_start && text_[i + 1] == '=') i++;  // `::=`
+      if (c == ' ' || c == '\t' || c == '\r') {
+        i--;
         continue;
       }
-      return i;
+      if (c == '\n') {
+        if (seen_newline) return -1;  // body more than one line below
+        seen_newline = true;
+        i--;
+        continue;
+      }
+      if (c == ':') { colon_pos = i; break; }
+      return -1;  // unexpected non-whitespace before body
     }
-    return -1;
+    if (colon_pos < 0) return -1;
+    // Header must be single-line: no newlines between node_start and
+    // colon_pos.
+    for (int j = node_start; j < colon_pos; j++) {
+      if (text_[j] == '\n') return -1;
+    }
+    return colon_pos;
   }
 
   // Inline-vs-broken canonicalisation for a node with a single-stmt
