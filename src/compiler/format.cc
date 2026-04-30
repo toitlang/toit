@@ -544,16 +544,20 @@ class Formatter {
     if (line_start < source_cursor_) return false;
     if (!is_leading_whitespace(line_start, node_start)) return false;
 
-    std::string header;
-    if (!render_method_header(method, &header)) return false;
+    MethodHeaderParts parts;
+    if (!render_method_header_parts(method, &parts)) return false;
 
-    bool header_single_line_fits = (indent + static_cast<int>(header.size())) <= MAX_LINE_WIDTH;
-    if (!header_single_line_fits) {
-      // TODO: render broken-header form (params on continuation lines).
-      // For now, fall back so try_emit_method_canonical can re-indent
-      // the source's wrapped params.
-      return false;
+    // Single-line header attempt: name [params...] [-> Type].
+    std::string single_line_header = parts.name_with_modifiers;
+    for (auto& p : parts.params) {
+      single_line_header.push_back(' ');
+      single_line_header.append(p);
     }
+    single_line_header.append(parts.return_type_part);
+
+    bool header_single_line_fits =
+        (indent + static_cast<int>(single_line_header.size())) <= MAX_LINE_WIDTH;
+    int continuation_indent = indent + CALL_CONTINUATION_STEP;
 
     Sequence* body_seq = method->body();
     bool has_body = body_seq != nullptr && !body_seq->expressions().is_empty();
@@ -573,9 +577,12 @@ class Formatter {
         Expression* body_stmt = body.first();
         if (can_emit_flat(body_stmt)) {
           emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
-          int inline_total = indent + static_cast<int>(header.size()) + 2
-                           + static_cast<int>(body_buf.size());
-          path = (inline_total <= INLINE_CONTROL_FLOW_WIDTH)
+          int inline_total = indent + static_cast<int>(single_line_header.size())
+                           + 2 + static_cast<int>(body_buf.size());
+          // Inline body requires single-line header — putting body on
+          // the same line as a broken-header's last param reads weird.
+          path = (header_single_line_fits
+                  && inline_total <= INLINE_CONTROL_FLOW_WIDTH)
               ? INLINE_BODY : BROKEN_SYNTH_BODY;
         } else {
           // Source-byte path via emit_stmt — needs body on its own line.
@@ -592,12 +599,28 @@ class Formatter {
       }
     }
 
-    // Commit: emit header.
+    // Commit: emit leading trivia + indent.
     int original_indent = node_start - line_start;
     int delta = indent - original_indent;
     emit_with_indent_shift(source_cursor_, line_start, delta);
     emit_spaces(indent);
-    output_.append(header);
+
+    // Emit the header. Single-line if fits MAX_LINE_WIDTH; otherwise
+    // broken with each param on its own continuation line at indent +
+    // CALL_CONTINUATION_STEP. Return type stays on the first line
+    // alongside the name (matching the existing convention in
+    // `try_emit_method_canonical`).
+    if (header_single_line_fits) {
+      output_.append(single_line_header);
+    } else {
+      output_.append(parts.name_with_modifiers);
+      output_.append(parts.return_type_part);
+      for (auto& p : parts.params) {
+        output_.push_back('\n');
+        output_.append(continuation_indent, ' ');
+        output_.append(p);
+      }
+    }
 
     switch (path) {
       case ABSTRACT:
@@ -698,48 +721,64 @@ class Formatter {
     return true;
   }
 
-  // Renders the method header (everything before the body separator
-  // `:`) into `out`. Form:
-  //
-  //   [abstract ] [static ] (name|Type.named) [params] [-> ReturnType]
-  //
-  // Setter methods get `=` appended to the name. Returns false on
-  // any unreliable range so caller can fall back.
-  bool render_method_header(Method* method, std::string* out) {
+  struct MethodHeaderParts {
+    std::string name_with_modifiers;  // `[abstract ] [static ] name[=]`
+    std::vector<std::string> params;  // each rendered Parameter
+    std::string return_type_part;     // `` or ` -> Type` (with leading space)
+  };
+
+  // Renders method header components. Returns false on any unreliable
+  // range. Caller assembles single-line or broken from the parts.
+  bool render_method_header_parts(Method* method, MethodHeaderParts* out) {
     if (method->name_or_dot() == nullptr) return false;
-    if (method->is_abstract()) out->append("abstract ");
-    if (method->is_static()) out->append("static ");
+    if (method->is_abstract()) out->name_with_modifiers.append("abstract ");
+    if (method->is_static()) out->name_with_modifiers.append("static ");
     Expression* name_or_dot = method->name_or_dot();
     if (name_or_dot->is_Dot()) {
       Dot* d = name_or_dot->as_Dot();
       if (!has_reliable_full_range(d->receiver())) return false;
       if (!has_reliable_full_range(d->name())) return false;
-      // d->receiver() is `Type` (Identifier), d->name() is `named`.
       int rs = pos(d->receiver()->full_range().from());
       int re = pos(d->receiver()->full_range().to());
-      out->append(reinterpret_cast<const char*>(text_) + rs, re - rs);
-      out->push_back('.');
+      out->name_with_modifiers.append(reinterpret_cast<const char*>(text_) + rs, re - rs);
+      out->name_with_modifiers.push_back('.');
       int ns = pos(d->name()->full_range().from());
       int ne = pos(d->name()->full_range().to());
-      out->append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
+      out->name_with_modifiers.append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
     } else if (name_or_dot->is_Identifier()) {
       if (!has_reliable_full_range(name_or_dot)) return false;
       int ns = pos(name_or_dot->full_range().from());
       int ne = pos(name_or_dot->full_range().to());
-      out->append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
+      out->name_with_modifiers.append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
     } else {
       return false;
     }
-    if (method->is_setter()) out->push_back('=');
+    if (method->is_setter()) out->name_with_modifiers.push_back('=');
     for (auto p : method->parameters()) {
-      out->push_back(' ');
-      if (!render_parameter(p, out)) return false;
+      std::string buf;
+      if (!render_parameter(p, &buf)) return false;
+      out->params.push_back(std::move(buf));
     }
     if (method->return_type() != nullptr) {
       if (!can_emit_flat(method->return_type())) return false;
-      out->append(" -> ");
-      emit_expr_flat(method->return_type(), PRECEDENCE_POSTFIX, out);
+      out->return_type_part.append(" -> ");
+      emit_expr_flat(method->return_type(), PRECEDENCE_POSTFIX, &out->return_type_part);
     }
+    return true;
+  }
+
+  // Renders the method header (everything before the body separator
+  // `:`) into `out` as a single line. Returns false on unreliable
+  // ranges; caller can fall back.
+  bool render_method_header(Method* method, std::string* out) {
+    MethodHeaderParts parts;
+    if (!render_method_header_parts(method, &parts)) return false;
+    out->append(parts.name_with_modifiers);
+    for (auto& p : parts.params) {
+      out->push_back(' ');
+      out->append(p);
+    }
+    out->append(parts.return_type_part);
     return true;
   }
 
