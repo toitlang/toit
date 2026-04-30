@@ -968,17 +968,22 @@ SnapshotBundle Compiler::compile(const char* source_path,
 /// The line number should be 1-based.
 /// The column number should be 1-based.
 ///
-/// Aborts the program if the file is not big enough.
+/// If the requested position is past the end of the file (or past the end of
+/// the requested line), the offset is clamped to the closest valid position.
+/// LSP clients can legitimately send positions that don't align with the
+/// server's view of the buffer (e.g. a stale request after a buffer edit), so
+/// we must not abort.
 static int compute_source_offset(const uint8* source, int line_number, int utf16_column_number) {
   int offset = 0;
   int line = 1;  // The line number of the offset position.
   // Skip to the correct line first.
   while (line < line_number) {
-    int c = source[offset++];
+    int c = source[offset];
     if (c == '\0') {
-      // Didn't find enough lines.
-      UNREACHABLE();
+      // Didn't find enough lines -- clamp to end of file.
+      return offset;
     }
+    offset++;
     if (c == 10 || c == 13) {
       int other = (c == 10) ? 13 : 10;
       if (source[offset] == other) offset++;
@@ -987,16 +992,16 @@ static int compute_source_offset(const uint8* source, int line_number, int utf16
   }
   // Advance in the same line.
   //  [offset] is pointing to the first character of the line.
-  // Note that we don't look whether we hit another new-line character. We
-  //  just assume that the client sent us a correct request.
-  // However, we need to convert the utf-16 column number to utf-8 offsets.
-  // Also we don't want to accidentally access invalid memory.
+  // We need to convert the utf-16 column number to utf-8 offsets, and stop
+  // at the end of the line (or end of file) instead of walking past it.
   for (int i = 1; i < utf16_column_number; i++) {
-    if (source[offset] == '\0') {
-      // Didn't find enough characters.
-      UNREACHABLE();
+    int c = source[offset];
+    if (c == '\0' || c == 10 || c == 13) {
+      // Reached end of line / end of file before consuming the requested
+      // number of UTF-16 code units -- clamp.
+      break;
     }
-    int nb_bytes = Utils::bytes_in_utf_8_sequence(source[offset]);
+    int nb_bytes = Utils::bytes_in_utf_8_sequence(c);
     offset += nb_bytes;
     // If the UTF-8 sequence takes more than 3 bytes, it is encoded as surrogate pair in UTF-16.
     if (nb_bytes > 3) i++;
