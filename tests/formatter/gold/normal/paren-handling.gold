@@ -18,9 +18,15 @@ main:
   explicit := (byte >> 4) & 0xf
 
 a := 0
+
 b := 0
+
 c := 0
+
 z := 0
+
 byte := 0
+
 offset := 0
+
 count := 0

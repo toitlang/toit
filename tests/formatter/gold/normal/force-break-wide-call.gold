@@ -8,14 +8,12 @@ main:
       ccccccccccc
       ddddddddddd
       eeeeee
-
   // Return(Call) — wrapper stays on the first line with the target.
   return register_event_handler_with_a_very_long_name
       aaaaaaaaaaa
       bbbbbbbbbbb
       ccccccccccc
       ddddddddddd
-
   // DeclarationLocal(Call).
   r := register_event_handler_with_a_very_long_name
       aaaaaaaaaaa
@@ -23,7 +21,6 @@ main:
       ccccccccccc
       ddddddddddd
       eeee
-
   // Assignment Binary whose RHS is a Call.
   r = register_event_handler_with_a_very_long_name
       aaaaaaaaaaa
@@ -31,7 +28,6 @@ main:
       ccccccccccc
       ddddddddddd
       eeeee
-
   // Fits under the threshold: stays flat.
   short_call a b c
 
