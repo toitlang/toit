@@ -198,15 +198,14 @@ class Formatter {
         return;
       }
       // No body. Two distinct cases:
-      //   - `abstract foo -> int` (is_abstract=true): no `:` separator,
-      //     truly abstract. Safe to AST-render the header.
+      //   - `abstract foo -> int` (is_abstract=true): no `:` separator.
       //   - `foo:` (is_abstract=false): `:` separator with empty body.
-      //     The source's `:` and trailing whitespace are load-bearing
-      //     for the parser (they help disambiguate sibling vs body).
-      //     Fall through to emit_leaf to preserve source verbatim.
-      if (method->is_abstract()) {
-        if (try_emit_method_full_canonical(method, indent)) return;
-      }
+      // The source's blank lines after `:` are load-bearing — the
+      // parser uses them to decide whether the next sibling is a
+      // body stmt or a class member. The canonical handles this by
+      // advancing source_cursor_ to right after the source's `:`,
+      // not to node_end (which would consume the blank line).
+      if (try_emit_method_full_canonical(method, indent)) return;
     }
     if (node->is_Import()) {
       if (try_emit_import_canonical(node->as_Import(), indent)) return;
@@ -623,20 +622,33 @@ class Formatter {
     }
 
     switch (path) {
-      case ABSTRACT:
-        // `abstract foo -> int` (no body) emits just header. A
-        // non-abstract method with no body (`foo:`) keeps the `:`
-        // separator to remain syntactically distinguishable.
-        if (!method->is_abstract()) {
+      case ABSTRACT: {
+        // Three sub-cases for "no body":
+        //   - `abstract foo -> int` (regular class): is_abstract=true,
+        //     body_seq=null → no `:` separator.
+        //   - `foo -> int` in `interface Foo:`: is_abstract=false,
+        //     body_seq=null → no `:` separator.
+        //   - `foo:` (with empty body): is_abstract=false,
+        //     body_seq=Sequence(empty) → keeps `:` separator.
+        bool has_colon_separator = (body_seq != nullptr);
+        if (has_colon_separator) {
           output_.push_back(':');
-          // Advance source_cursor_ past the source's `:` so we don't
-          // emit it twice in the next stmt's leading trivia.
-          int colon = node_end;
-          while (colon < size_ && text_[colon] != ':' && text_[colon] != '\n') {
-            colon++;
+          // Advance source_cursor_ to right after the source's `:`.
+          // node_end can be PAST the `:` (extending into trailing
+          // whitespace/newlines because empty Sequence's range
+          // depends on the next token). Scan backward from node_end
+          // skipping whitespace/newlines to find the `:`, then put
+          // source_cursor_ at `:` + 1 — leaves blank lines after
+          // `:` intact for the next stmt's trivia emit (which the
+          // parser uses to disambiguate sibling vs body).
+          int i = node_end - 1;
+          while (i >= node_start
+                 && (text_[i] == ' ' || text_[i] == '\t'
+                     || text_[i] == '\n' || text_[i] == '\r')) {
+            i--;
           }
-          source_cursor_ = (colon < size_ && text_[colon] == ':')
-                         ? colon + 1
+          source_cursor_ = (i >= node_start && text_[i] == ':')
+                         ? i + 1
                          : node_end;
         } else {
           source_cursor_ = node_end;
@@ -651,6 +663,7 @@ class Formatter {
           }
         }
         return true;
+      }
       case INLINE_BODY:
         output_.append(": ");
         output_.append(body_buf);
