@@ -159,10 +159,13 @@ Closed in this round:
 - **Block-arg with parameters** — `try_emit_call_trailing_block_inline` now renders `| x y |` from each Parameter's source bytes (preserves type annotations).
 - **Wrapped Calls with trailing block** — `try_emit_call_trailing_block_inline` parameterised on outer_start / outer_end so `x := catch: body`, `return list.do: it.print`, `decl := list.do: ...` all canonicalise the same way as the bare Call case.
 - **Class headers** — `try_emit_class_header_canonical` renders the header from AST: single-line when fits MAX_LINE_WIDTH, otherwise broken with each clause on its own continuation line.
+- **Import / Export internal whitespace** — `try_emit_import_canonical` / `try_emit_export_canonical` render from AST with single canonical spacing. Cursor advances to end-of-line because `Import::full_range()` doesn't include `show ...` / `as ...`.
+- **Field declaration internal whitespace** — `try_emit_field_canonical` renders from AST. Type and initializer go through `emit_expr_flat` (byte-copying `Nullable` only gets `?` since Nullable doesn't override `full_range`). Normalises column-alignment hacks (`META-X     ::= ...`) — author loses alignment, gains determinism.
 
 Remaining gaps:
 
-- **Top-level decl internal whitespace** — Import / Export / Field declarations go through `emit_leaf` (verbatim). `import     foo` and `import foo` produce different output. Same for `static N ::=    5` vs `static N ::= 5`. The artemis dogfood doesn't surface real cases of weird import whitespace, but field whitespace IS used for column-alignment (`META-X     ::= ...`) — normalising it loses that alignment. Stylistic trade-off; deferred.
+- **Method / Constructor header internal whitespace** — `abstract  bar  ->  int`, `constructor  .field  :` not normalised because the header is byte-copied (the canonical paths only touch the body). Theoretical — no real cases in artemis.
+- **Blank-line counts** — `foo:\nbar:` and `foo:\n\n\nbar:` produce different output. Blank lines aren't in the AST. Stylistic; not addressed.
 - **Method body when source-inline + body too wide** — bails to leaf, preserves source-inline (rare).
 - **String literals in Method/For headers** — colon-finder doesn't track string state, so a `:` inside a header string would be mis-identified as the body separator. Latent.
 
