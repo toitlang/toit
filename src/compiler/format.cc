@@ -206,15 +206,130 @@ class Formatter {
     int first_member_line_start =
         find_line_start(pos(klass->members().first()->full_range().from()));
 
-    // Header: re-indent and emit bytes up to (but not including) the first
-    // member's leading whitespace. The member's own emit will rewrite that.
-    emit_range_reindent(node_start, first_member_line_start, indent);
+    // Try canonical AST-driven header (single-line if fits, broken
+    // per-clause otherwise). Falls back to the verbatim re-indent path
+    // when guards fail (comments, unreliable ranges).
+    if (try_emit_class_header_canonical(klass, indent, first_member_line_start)) {
+      // members and trailing bytes still emitted below.
+    } else {
+      // Header: re-indent and emit bytes up to (but not including) the
+      // first member's leading whitespace. The member's own emit will
+      // rewrite that.
+      emit_range_reindent(node_start, first_member_line_start, indent);
+    }
 
     for (auto member : klass->members()) {
       emit_decl(member, indent + INDENT_STEP);
     }
 
     advance_to(node_end);
+  }
+
+  // Renders a class / interface / monitor / mixin header from AST.
+  // Single-line `[abstract] (class|...) Name [extends S] [with M...]
+  // [implements I...]:` when it fits MAX_LINE_WIDTH; otherwise broken
+  // with each clause on its own continuation line at indent +
+  // CALL_CONTINUATION_STEP.
+  //
+  // Returns false when guards fail; caller falls back to verbatim
+  // re-indent of the header bytes. Advances source_cursor_ to
+  // `first_member_line_start` on success (so the members loop runs
+  // unchanged in either path).
+  bool try_emit_class_header_canonical(Class* klass, int indent,
+                                       int first_member_line_start) {
+    int node_start = pos(klass->full_range().from());
+    if (klass->name() == nullptr) return false;
+    if (has_line_locking_comment(node_start, first_member_line_start)) return false;
+    if (has_interior_multiline_block_comment(node_start, first_member_line_start)) {
+      return false;
+    }
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+    if (!has_reliable_full_range(klass->name())) return false;
+    if (klass->super() != nullptr && !has_reliable_full_range(klass->super())) {
+      return false;
+    }
+    for (auto i : klass->interfaces()) {
+      if (!has_reliable_full_range(i)) return false;
+    }
+    for (auto m : klass->mixins()) {
+      if (!has_reliable_full_range(m)) return false;
+    }
+
+    // First-line prefix: `[abstract] (class|interface|monitor|mixin) Name`.
+    std::string prefix;
+    if (klass->has_abstract_modifier()) prefix.append("abstract ");
+    switch (klass->kind()) {
+      case Class::CLASS: prefix.append("class "); break;
+      case Class::INTERFACE: prefix.append("interface "); break;
+      case Class::MONITOR: prefix.append("monitor "); break;
+      case Class::MIXIN: prefix.append("mixin "); break;
+    }
+    int n_start = pos(klass->name()->full_range().from());
+    int n_end = pos(klass->name()->full_range().to());
+    prefix.append(reinterpret_cast<const char*>(text_) + n_start, n_end - n_start);
+
+    // Render each clause as a separate string.
+    auto render_expr_bytes = [&](Expression* e) -> std::string {
+      int s = pos(e->full_range().from());
+      int t = pos(e->full_range().to());
+      return std::string(reinterpret_cast<const char*>(text_) + s, t - s);
+    };
+
+    std::string extends_clause;
+    if (klass->super() != nullptr) {
+      extends_clause = "extends " + render_expr_bytes(klass->super());
+    }
+    std::string with_clause;
+    if (!klass->mixins().is_empty()) {
+      with_clause = "with";
+      for (auto m : klass->mixins()) {
+        with_clause += " " + render_expr_bytes(m);
+      }
+    }
+    std::string implements_clause;
+    if (!klass->interfaces().is_empty()) {
+      implements_clause = "implements";
+      for (auto i : klass->interfaces()) {
+        implements_clause += " " + render_expr_bytes(i);
+      }
+    }
+
+    // Try single-line render: prefix + clauses (space-separated) + ":".
+    std::string single = prefix;
+    if (!extends_clause.empty()) single += " " + extends_clause;
+    if (!with_clause.empty()) single += " " + with_clause;
+    if (!implements_clause.empty()) single += " " + implements_clause;
+    single += ":";
+    bool single_fits = indent + static_cast<int>(single.size()) <= MAX_LINE_WIDTH;
+
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+
+    if (single_fits) {
+      output_.append(single);
+    } else {
+      // Broken form: prefix on first line, each clause on its own
+      // continuation line at indent + CALL_CONTINUATION_STEP, `:` at
+      // the end of the last clause.
+      output_.append(prefix);
+      int continuation = indent + CALL_CONTINUATION_STEP;
+      auto append_clause = [&](const std::string& clause) {
+        output_.push_back('\n');
+        output_.append(continuation, ' ');
+        output_.append(clause);
+      };
+      if (!extends_clause.empty()) append_clause(extends_clause);
+      if (!with_clause.empty()) append_clause(with_clause);
+      if (!implements_clause.empty()) append_clause(implements_clause);
+      output_.push_back(':');
+    }
+    output_.push_back('\n');
+    source_cursor_ = first_member_line_start;
+    return true;
   }
 
   void emit_method(Method* method, int indent) {
