@@ -12,12 +12,7 @@ bar a b c d: return a + b + c + d
 one := 1
 
 test-call-arg:
-  foo
-      bar
-          really-long-arg-name-one
-          really-long-arg-name-two
-          really-long-arg-name-three
-          and-one-more-arg
+  foo (bar really-long-arg-name-one really-long-arg-name-two really-long-arg-name-three and-one-more-arg)
 
 test-binary-operand:
   // Here the outer expression is Binary(+, one, Paren(Call(bar ...))).

@@ -1,7 +1,4 @@
 class Foo:
   id/int
   name/string
-  constructor
-      --.id
-      --.name:
-    print "hi"
+  constructor --.id --.name: print "hi"

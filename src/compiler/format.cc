@@ -162,6 +162,7 @@ class Formatter {
   }
 
   void advance_to(int to) {
+    if (to <= source_cursor_) return;
     emit_source(source_cursor_, to);
     source_cursor_ = to;
   }
@@ -195,6 +196,16 @@ class Formatter {
       if (method->body() != null && !method->body()->expressions().is_empty()) {
         emit_method(method, indent);
         return;
+      }
+      // No body. Two distinct cases:
+      //   - `abstract foo -> int` (is_abstract=true): no `:` separator,
+      //     truly abstract. Safe to AST-render the header.
+      //   - `foo:` (is_abstract=false): `:` separator with empty body.
+      //     The source's `:` and trailing whitespace are load-bearing
+      //     for the parser (they help disambiguate sibling vs body).
+      //     Fall through to emit_leaf to preserve source verbatim.
+      if (method->is_abstract()) {
+        if (try_emit_method_full_canonical(method, indent)) return;
       }
     }
     if (node->is_Import()) {
@@ -501,11 +512,11 @@ class Formatter {
   }
 
   void emit_method(Method* method, int indent) {
-    // Single-stmt body: inline-vs-broken is a width decision, not a
-    // source-shape decision. Tries inline first, then a broken-synth
-    // for the source-was-inline-but-too-wide case. Both bail when the
-    // method header itself is multi-line in source (wrapped params),
-    // letting `try_emit_method_canonical` re-indent the params.
+    // Render header + body fully from AST when possible (handles
+    // single-stmt body inline-vs-broken, multi-stmt body, and
+    // header normalisation). Falls back to the source-shape-
+    // preserving paths when AST render can't cover the case.
+    if (try_emit_method_full_canonical(method, indent)) return;
     if (try_emit_method_body_canonical(method, indent)) return;
     if (try_emit_method_canonical(method, indent)) return;
     if (!emit_with_suite(method, method->body()->expressions(), indent)) {
@@ -513,10 +524,225 @@ class Formatter {
     }
   }
 
+  // Renders a method (header + body) entirely from AST. Header gets
+  // canonical single-spacing. Single-line if it fits MAX_LINE_WIDTH;
+  // otherwise the parameters wrap to continuation lines (with the
+  // `-> Type` annotation on the first line per existing convention).
+  // Body emits inline `: body` if total fits INLINE_CONTROL_FLOW_WIDTH;
+  // single-stmt broken `header:\n  body`; multi-stmt broken via
+  // emit_stmt recursion. Abstract methods omit the body.
+  //
+  // Returns false on any unreliable range or layout shape that this
+  // path doesn't cover (multi-stmt source-inline body, etc.) so the
+  // caller can fall back to the source-shape-preserving path.
+  bool try_emit_method_full_canonical(Method* method, int indent) {
+    int node_start = pos(method->full_range().from());
+    int node_end = pos(method->full_range().to());
+    if (has_line_locking_comment(node_start, node_end)) return false;
+    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
+    int line_start = find_line_start(node_start);
+    if (line_start < source_cursor_) return false;
+    if (!is_leading_whitespace(line_start, node_start)) return false;
+
+    std::string header;
+    if (!render_method_header(method, &header)) return false;
+
+    bool header_single_line_fits = (indent + static_cast<int>(header.size())) <= MAX_LINE_WIDTH;
+    if (!header_single_line_fits) {
+      // TODO: render broken-header form (params on continuation lines).
+      // For now, fall back so try_emit_method_canonical can re-indent
+      // the source's wrapped params.
+      return false;
+    }
+
+    Sequence* body_seq = method->body();
+    bool has_body = body_seq != nullptr && !body_seq->expressions().is_empty();
+    auto body = has_body ? body_seq->expressions() : List<Expression*>();
+
+    // Pre-flight: decide which sub-path applies BEFORE touching
+    // output_ or source_cursor_, so a bail doesn't leave partial
+    // emission. Values populated below describe the chosen path.
+    enum Path { ABSTRACT, INLINE_BODY, BROKEN_SYNTH_BODY,
+                EMIT_STMT_BODY, MULTI_STMT_BODY };
+    Path path = ABSTRACT;
+    int body_indent = indent + INDENT_STEP;
+    std::string body_buf;
+    int body_first_line_start = -1;
+    if (has_body) {
+      if (body.length() == 1) {
+        Expression* body_stmt = body.first();
+        if (can_emit_flat(body_stmt)) {
+          emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
+          int inline_total = indent + static_cast<int>(header.size()) + 2
+                           + static_cast<int>(body_buf.size());
+          path = (inline_total <= INLINE_CONTROL_FLOW_WIDTH)
+              ? INLINE_BODY : BROKEN_SYNTH_BODY;
+        } else {
+          // Source-byte path via emit_stmt — needs body on its own line.
+          body_first_line_start =
+              find_line_start(pos(body_stmt->full_range().from()));
+          if (body_first_line_start <= node_start) return false;
+          path = EMIT_STMT_BODY;
+        }
+      } else {
+        body_first_line_start =
+            find_line_start(pos(body.first()->full_range().from()));
+        if (body_first_line_start <= node_start) return false;
+        path = MULTI_STMT_BODY;
+      }
+    }
+
+    // Commit: emit header.
+    int original_indent = node_start - line_start;
+    int delta = indent - original_indent;
+    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_spaces(indent);
+    output_.append(header);
+
+    switch (path) {
+      case ABSTRACT:
+        // `abstract foo -> int` (no body) emits just header. A
+        // non-abstract method with no body (`foo:`) keeps the `:`
+        // separator to remain syntactically distinguishable.
+        if (!method->is_abstract()) {
+          output_.push_back(':');
+          // Advance source_cursor_ past the source's `:` so we don't
+          // emit it twice in the next stmt's leading trivia.
+          int colon = node_end;
+          while (colon < size_ && text_[colon] != ':' && text_[colon] != '\n') {
+            colon++;
+          }
+          source_cursor_ = (colon < size_ && text_[colon] == ':')
+                         ? colon + 1
+                         : node_end;
+        } else {
+          source_cursor_ = node_end;
+          // Block params: their closing `]` sits just past the
+          // param's full_range. Advance past it so it doesn't
+          // re-emit in subsequent trivia.
+          if (!method->parameters().is_empty()
+              && method->parameters().last()->is_block()
+              && source_cursor_ < size_
+              && text_[source_cursor_] == ']') {
+            source_cursor_++;
+          }
+        }
+        return true;
+      case INLINE_BODY:
+        output_.append(": ");
+        output_.append(body_buf);
+        source_cursor_ = node_end;
+        return true;
+      case BROKEN_SYNTH_BODY:
+        // Body line may exceed MAX_LINE_WIDTH when body itself is
+        // wide; accepted for determinism.
+        output_.push_back(':');
+        output_.push_back('\n');
+        output_.append(body_indent, ' ');
+        output_.append(body_buf);
+        source_cursor_ = node_end;
+        return true;
+      case EMIT_STMT_BODY:
+        output_.push_back(':');
+        output_.push_back('\n');
+        source_cursor_ = body_first_line_start;
+        emit_stmt(body.first(), body_indent);
+        source_cursor_ = node_end;
+        return true;
+      case MULTI_STMT_BODY:
+        output_.push_back(':');
+        output_.push_back('\n');
+        source_cursor_ = body_first_line_start;
+        for (auto stmt : body) {
+          emit_stmt(stmt, body_indent);
+        }
+        source_cursor_ = node_end;
+        return true;
+    }
+    return true;
+  }
+
   // Locates the body-separator `:` between `method_start` and the
   // body's first byte. Returns -1 if not found, or if the search range
   // contains a newline (header is multi-line in source — caller
   // should bail).
+  // Renders a single Parameter (block / lambda or method/constructor
+  // signature parameter) into `out`. Form:
+  //
+  //   [`[`] [`--`] [`.`] name [`/`Type] [`=`default] [`]`]
+  //
+  // The `[ ... ]` brackets surround block parameters (`is_block`).
+  // `--` for named, `.` for field-storing constructor params.
+  bool render_parameter(Parameter* p, std::string* out) {
+    if (p->name() == nullptr) return false;
+    if (!has_reliable_full_range(p->name())) return false;
+    if (p->type() != nullptr && !can_emit_flat(p->type())) return false;
+    if (p->default_value() != nullptr && !can_emit_flat(p->default_value())) {
+      return false;
+    }
+    if (p->is_block()) out->push_back('[');
+    if (p->is_named()) out->append("--");
+    if (p->is_field_storing()) out->push_back('.');
+    int n_start = pos(p->name()->full_range().from());
+    int n_end = pos(p->name()->full_range().to());
+    out->append(reinterpret_cast<const char*>(text_) + n_start, n_end - n_start);
+    if (p->type() != nullptr) {
+      out->push_back('/');
+      emit_expr_flat(p->type(), PRECEDENCE_POSTFIX, out);
+    }
+    if (p->default_value() != nullptr) {
+      out->push_back('=');
+      emit_expr_flat(p->default_value(), PRECEDENCE_POSTFIX, out);
+    }
+    if (p->is_block()) out->push_back(']');
+    return true;
+  }
+
+  // Renders the method header (everything before the body separator
+  // `:`) into `out`. Form:
+  //
+  //   [abstract ] [static ] (name|Type.named) [params] [-> ReturnType]
+  //
+  // Setter methods get `=` appended to the name. Returns false on
+  // any unreliable range so caller can fall back.
+  bool render_method_header(Method* method, std::string* out) {
+    if (method->name_or_dot() == nullptr) return false;
+    if (method->is_abstract()) out->append("abstract ");
+    if (method->is_static()) out->append("static ");
+    Expression* name_or_dot = method->name_or_dot();
+    if (name_or_dot->is_Dot()) {
+      Dot* d = name_or_dot->as_Dot();
+      if (!has_reliable_full_range(d->receiver())) return false;
+      if (!has_reliable_full_range(d->name())) return false;
+      // d->receiver() is `Type` (Identifier), d->name() is `named`.
+      int rs = pos(d->receiver()->full_range().from());
+      int re = pos(d->receiver()->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + rs, re - rs);
+      out->push_back('.');
+      int ns = pos(d->name()->full_range().from());
+      int ne = pos(d->name()->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
+    } else if (name_or_dot->is_Identifier()) {
+      if (!has_reliable_full_range(name_or_dot)) return false;
+      int ns = pos(name_or_dot->full_range().from());
+      int ne = pos(name_or_dot->full_range().to());
+      out->append(reinterpret_cast<const char*>(text_) + ns, ne - ns);
+    } else {
+      return false;
+    }
+    if (method->is_setter()) out->push_back('=');
+    for (auto p : method->parameters()) {
+      out->push_back(' ');
+      if (!render_parameter(p, out)) return false;
+    }
+    if (method->return_type() != nullptr) {
+      if (!can_emit_flat(method->return_type())) return false;
+      out->append(" -> ");
+      emit_expr_flat(method->return_type(), PRECEDENCE_POSTFIX, out);
+    }
+    return true;
+  }
+
   // Locates the body-separator `:` between `node_start` and the
   // body's first byte. Returns -1 if not found, or if the header
   // (everything between `node_start` and the colon) spans multiple
