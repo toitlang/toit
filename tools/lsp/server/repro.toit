@@ -203,8 +203,8 @@ main args:
             --default=0,
       ]
       --rest=[
-        cli.Option "archive"
-            --type="file"
+        cli.OptionPath "archive"
+            --extensions=[".tar"]
             --required,
       ]
       --run=:: serve it["archive"] it["port"]
@@ -213,14 +213,12 @@ main args:
   create-cmd := cli.Command "create"
       --help="Create a repro."
       --rest=[
-        cli.Option "compiler-path"
-            --type="file"
+        cli.OptionPath "compiler-path"
             --required,
-        cli.Option "entry-path"
-            --type="file"
+        cli.OptionPath "entry-path"
+            --extensions=[".toit"]
             --required,
-        cli.Option "out-path"
-            --type="file"
+        cli.OptionPath "out-path"
             --required,
       ]
       --run=:: create-archive null it["compiler-path"] it["entry-path"] it["out-path"]

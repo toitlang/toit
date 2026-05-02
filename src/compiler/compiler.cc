@@ -300,6 +300,12 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
   // Each entry maps a resolved target definition to the source range
   // of the show/export identifier that references it.
   std::vector<Resolver::ShowExportReference> show_export_references_;
+
+  // Class hierarchy references (implements/with) collected from the resolver.
+  // Each entry maps a holder class and a resolved interface/mixin to the
+  // AST expression in the source clause.  Collected before the resolver's
+  // flattening passes destroy the 1:1 AST/IR correspondence.
+  std::vector<Resolver::ClassHierarchyReference> class_hierarchy_references_;
 };
 
 class PrepareRenamePipeline : public LocationLanguageServerPipeline {
@@ -962,17 +968,22 @@ SnapshotBundle Compiler::compile(const char* source_path,
 /// The line number should be 1-based.
 /// The column number should be 1-based.
 ///
-/// Aborts the program if the file is not big enough.
+/// If the requested position is past the end of the file (or past the end of
+/// the requested line), the offset is clamped to the closest valid position.
+/// LSP clients can legitimately send positions that don't align with the
+/// server's view of the buffer (e.g. a stale request after a buffer edit), so
+/// we must not abort.
 static int compute_source_offset(const uint8* source, int line_number, int utf16_column_number) {
   int offset = 0;
   int line = 1;  // The line number of the offset position.
   // Skip to the correct line first.
   while (line < line_number) {
-    int c = source[offset++];
+    int c = source[offset];
     if (c == '\0') {
-      // Didn't find enough lines.
-      UNREACHABLE();
+      // Didn't find enough lines -- clamp to end of file.
+      return offset;
     }
+    offset++;
     if (c == 10 || c == 13) {
       int other = (c == 10) ? 13 : 10;
       if (source[offset] == other) offset++;
@@ -981,16 +992,16 @@ static int compute_source_offset(const uint8* source, int line_number, int utf16
   }
   // Advance in the same line.
   //  [offset] is pointing to the first character of the line.
-  // Note that we don't look whether we hit another new-line character. We
-  //  just assume that the client sent us a correct request.
-  // However, we need to convert the utf-16 column number to utf-8 offsets.
-  // Also we don't want to accidentally access invalid memory.
+  // We need to convert the utf-16 column number to utf-8 offsets, and stop
+  // at the end of the line (or end of file) instead of walking past it.
   for (int i = 1; i < utf16_column_number; i++) {
-    if (source[offset] == '\0') {
-      // Didn't find enough characters.
-      UNREACHABLE();
+    int c = source[offset];
+    if (c == '\0' || c == 10 || c == 13) {
+      // Reached end of line / end of file before consuming the requested
+      // number of UTF-16 code units -- clamp.
+      break;
     }
-    int nb_bytes = Utils::bytes_in_utf_8_sequence(source[offset]);
+    int nb_bytes = Utils::bytes_in_utf_8_sequence(c);
     offset += nb_bytes;
     // If the UTF-8 sequence takes more than 3 bytes, it is encoded as surrogate pair in UTF-16.
     if (nb_bytes > 3) i++;
@@ -1157,16 +1168,16 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
 
-  // Capture show/export reference data from the resolver before it goes
-  // out of scope. This is needed for renaming symbols that appear in
-  // show/export clauses of import statements.
+  // Capture resolver data before it goes out of scope.
   show_export_references_ = resolver->show_export_references();
+  class_hierarchy_references_ = resolver->class_hierarchy_references();
 
   if (target != null) {
     auto& ir_to_ast = resolver->ir_to_ast_map();
     find_and_emit_all_references(target, program, source_manager(), ir_to_ast,
                                  lsp()->protocol(), toitdocs(),
-                                 show_export_references_);
+                                 show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached — find_and_emit_all_references calls exit(0).
   }
 
@@ -1185,7 +1196,8 @@ void FindReferencesPipeline::post_type_check() {
   if (target != null && program_ != null) {
     find_and_emit_all_references(target, program_, source_manager(),
                                  ir_to_ast_map_, lsp()->protocol(),
-                                 toitdocs(), show_export_references_);
+                                 toitdocs(), show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached.
   }
   exit(0);

@@ -146,7 +146,8 @@ void find_and_emit_all_references(
     UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
-    const std::vector<Resolver::ShowExportReference>& show_export_references);
+    const std::vector<Resolver::ShowExportReference>& show_export_references,
+    const std::vector<Resolver::ClassHierarchyReference>& class_hierarchy_references);
 
 } // namespace toit::compiler
 } // namespace toit

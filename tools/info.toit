@@ -55,9 +55,9 @@ build-command --sdk-dir-from-args/Lambda -> cli.Command:
             toit info pkg --output-format=json | jq -r '.packages | keys[]'
           """
       --options=[
-        cli.Option "project-root"
+        cli.OptionPath "project-root"
             --help="Path to the project root that contains the package.lock file."
-            --type="dir",
+            --directory,
         cli.Option "package"
             --help="Show imports from a specific package's perspective.",
       ]
