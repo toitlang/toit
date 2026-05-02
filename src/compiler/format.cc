@@ -1185,39 +1185,11 @@ class Formatter {
     // canonicalize the continuation indent of an already-broken Call, or
     // synthesize a break when the whole wrapper exceeds MAX_LINE_WIDTH on
     // a single line.
-    if (stmt->is_Return()) {
-      auto ret = stmt->as_Return();
-      if (ret->value() != null && ret->value()->is_Call()) {
-        Call* call = ret->value()->as_Call();
-        int start = pos(ret->full_range().from());
-        int end = pos(ret->full_range().to());
-        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
-        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (try_emit_call_forced_broken(call, start, end, indent)) return;
-      }
-    }
-    if (stmt->is_DeclarationLocal()) {
-      auto decl = stmt->as_DeclarationLocal();
-      if (decl->value() != null && decl->value()->is_Call()) {
-        Call* call = decl->value()->as_Call();
-        int start = pos(decl->full_range().from());
-        int end = pos(decl->full_range().to());
-        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
-        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (try_emit_call_forced_broken(call, start, end, indent)) return;
-      }
-    }
-    if (stmt->is_Binary()) {
-      Binary* b = stmt->as_Binary();
-      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
-          && b->right() != null && b->right()->is_Call()) {
-        Call* call = b->right()->as_Call();
-        int start = pos(b->full_range().from());
-        int end = pos(b->full_range().to());
-        if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
-        if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (try_emit_call_forced_broken(call, start, end, indent)) return;
-      }
+    WrappedCall wc = find_wrapped_call(stmt);
+    if (wc.call != nullptr) {
+      if (try_emit_call_trailing_block_inline(wc.call, wc.outer_start, wc.outer_end, indent)) return;
+      if (try_canonicalize_broken_call_in_range(wc.call, wc.outer_start, wc.outer_end, indent)) return;
+      if (try_emit_call_forced_broken(wc.call, wc.outer_start, wc.outer_end, indent)) return;
     }
 
     // Many-element collection literal as the stmt's value gets a
@@ -1498,26 +1470,63 @@ class Formatter {
     return is_config_call(c) ? NAMED_ARG_CALL_WIDTH : MAX_LINE_WIDTH;
   }
 
-  // Effective width budget for this statement. Defaults to MAX_LINE_WIDTH
-  // but tightens to NAMED_ARG_CALL_WIDTH when the stmt's value (or a
-  // wrapper chain around it) ends in a config-call Call. Walks through
-  // Return, DeclarationLocal, and assignment Binary wrappers but doesn't
-  // recurse into Call args, Binary operands, or collection elements —
-  // a config-call sitting deep inside some other expression doesn't
-  // tighten the outer stmt's budget.
-  int stmt_width_budget(Expression* stmt) const {
-    Expression* v = stmt;
-    if (stmt->is_Return()) v = stmt->as_Return()->value();
-    else if (stmt->is_DeclarationLocal()) v = stmt->as_DeclarationLocal()->value();
-    else if (stmt->is_Binary()) {
+  // Unwraps `Return` / `DeclarationLocal` / assignment-`Binary` wrappers
+  // and returns the wrapped value. For bare values (including a
+  // non-assignment Binary stmt) returns `stmt` itself. Does NOT peel
+  // `Parenthesis` — callers who want the underlying value should chain
+  // `peel_parens`.
+  Expression* unwrap_stmt_value(Expression* stmt) const {
+    if (stmt == null) return null;
+    if (stmt->is_Return()) return stmt->as_Return()->value();
+    if (stmt->is_DeclarationLocal()) return stmt->as_DeclarationLocal()->value();
+    if (stmt->is_Binary()) {
       auto b = stmt->as_Binary();
       if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT) {
-        v = b->right();
+        return b->right();
       }
     }
-    while (v != null && v->is_Parenthesis()) {
-      v = v->as_Parenthesis()->expression();
-    }
+    return stmt;
+  }
+
+  // A statement's wrapped Call: `return foo a b`, `x := foo a b`,
+  // `x = foo a b`. `call` is null when the stmt isn't a recognized
+  // wrapper or its value isn't a Call. `outer_start`/`outer_end` cover
+  // the wrapper's full range so per-arg / forced-broken emitters can
+  // re-indent the wrapper prefix together with the Call.
+  //
+  // Bare Calls don't go through this — `emit_stmt` dispatches them to
+  // `emit_call` earlier.
+  struct WrappedCall {
+    Call* call;
+    int outer_start;
+    int outer_end;
+  };
+  WrappedCall find_wrapped_call(Expression* stmt) const {
+    WrappedCall out;
+    out.call = nullptr;
+    bool is_wrapper = stmt->is_Return()
+                   || stmt->is_DeclarationLocal()
+                   || (stmt->is_Binary()
+                       && Token::precedence(stmt->as_Binary()->kind())
+                          == PRECEDENCE_ASSIGNMENT);
+    if (!is_wrapper) return out;
+    Expression* v = unwrap_stmt_value(stmt);
+    if (v == null || !v->is_Call()) return out;
+    out.call = v->as_Call();
+    out.outer_start = pos(stmt->full_range().from());
+    out.outer_end = pos(stmt->full_range().to());
+    return out;
+  }
+
+  // Effective width budget for this statement. Defaults to MAX_LINE_WIDTH
+  // but tightens to NAMED_ARG_CALL_WIDTH when the stmt's value ends in a
+  // config-call Call. Walks through Return, DeclarationLocal, and
+  // assignment Binary wrappers but doesn't recurse into Call args,
+  // Binary operands, or collection elements — a config-call sitting
+  // deep inside some other expression doesn't tighten the outer stmt's
+  // budget.
+  int stmt_width_budget(Expression* stmt) const {
+    Expression* v = peel_parens(unwrap_stmt_value(stmt));
     if (v != null && v->is_Call() && is_config_call(v->as_Call())) {
       return NAMED_ARG_CALL_WIDTH;
     }
@@ -1529,23 +1538,8 @@ class Formatter {
   // sub-expression. Returns null otherwise. Parenthesis-wrapped
   // collections aren't handled here — they fall through to verbatim.
   Expression* find_force_break_collection(Expression* stmt) const {
-    if (is_collection_literal(stmt)) return stmt;
-    if (stmt->is_Return()) {
-      auto v = stmt->as_Return()->value();
-      if (is_collection_literal(v)) return v;
-    }
-    if (stmt->is_DeclarationLocal()) {
-      auto v = stmt->as_DeclarationLocal()->value();
-      if (is_collection_literal(v)) return v;
-    }
-    if (stmt->is_Binary()) {
-      auto b = stmt->as_Binary();
-      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT
-          && is_collection_literal(b->right())) {
-        return b->right();
-      }
-    }
-    return null;
+    Expression* v = unwrap_stmt_value(stmt);
+    return is_collection_literal(v) ? v : null;
   }
 
   // Walks a same-operator Binary chain and collects its operands in
@@ -1581,24 +1575,7 @@ class Formatter {
   // over the width budget. Returns null if there's nothing broken-breakable
   // at the top (e.g. the value is a Call, a literal, an assignment, etc.).
   Binary* find_force_break_binary(Expression* stmt) const {
-    Expression* v = null;
-    if (stmt->is_Return()) {
-      v = stmt->as_Return()->value();
-    } else if (stmt->is_DeclarationLocal()) {
-      v = stmt->as_DeclarationLocal()->value();
-    } else if (stmt->is_Binary()) {
-      auto b = stmt->as_Binary();
-      if (Token::precedence(b->kind()) == PRECEDENCE_ASSIGNMENT) {
-        v = b->right();
-      } else {
-        v = stmt;  // bare Binary stmt.
-      }
-    } else {
-      v = stmt;
-    }
-    while (v != null && v->is_Parenthesis()) {
-      v = v->as_Parenthesis()->expression();
-    }
+    Expression* v = peel_parens(unwrap_stmt_value(stmt));
     if (v == null || !v->is_Binary()) return null;
     if (Token::precedence(v->as_Binary()->kind()) == PRECEDENCE_ASSIGNMENT) {
       return null;  // don't mess with nested assignments
