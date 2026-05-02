@@ -13,15 +13,10 @@
 
 class Foo:
   field-untyped ::= 1
-
   field-typed/int := 0
-
   static const ::= "hello"
-
   decl-only/int
 
   // Nullable types.
-
   buffer/string?
-
   buffer-init/string? := null

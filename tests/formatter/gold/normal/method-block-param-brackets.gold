@@ -7,6 +7,5 @@ pod-for_ --local/string? --remote/string? --fleet/int [--on-absent] -> bool:
 
 // Block param without a return type: falls through to the original
 // rewrite path (no `-> Type` to move). Still needs brackets preserved.
-
 each items/List [--handler]:
   items.do: | x | handler.call x

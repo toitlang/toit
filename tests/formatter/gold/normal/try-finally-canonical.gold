@@ -9,21 +9,23 @@ main:
     foo
   finally:
     bar
+
   // Source-inline: forced to broken.
   try:
     foo
   finally:
     bar
+
   // Mixed source layouts: both halves canonicalised.
   try:
     foo
   finally:
     bar
+
   try:
     foo
   finally:
     bar
 
 foo: return null
-
 bar: return null

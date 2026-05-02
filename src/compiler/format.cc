@@ -151,13 +151,6 @@ class Formatter {
   FormatOptions options_;
   std::string output_;
   int source_cursor_ = 0;
-  // Target blank-line count for the NEXT trivia emit. -1 means "no
-  // target, just cap consecutive blanks at MAX_BLANK_LINES". Set by
-  // emit_decl (= 1, between top-level decls / class members) and
-  // emit_stmt (= 0, between body stmts). Consumed and reset to -1 by
-  // the next emit_with_indent_shift call so that within-stmt
-  // continuation re-indents don't accidentally inject blank lines.
-  int forced_blank_lines_ = -1;
   std::unordered_map<Node*, Shape> shapes_;
 
   int pos(Source::Position p) const { return source_->offset_in_source(p); }
@@ -194,11 +187,6 @@ class Formatter {
 
   // Dispatch: emit a declaration, recursing into Class and Method bodies.
   void emit_decl(Node* node, int indent) {
-    // Top-level / class-member separator: 1 blank line before this
-    // decl. Consumed by the first emit_with_indent_shift inside the
-    // dispatch, so within-decl trivia (e.g. method body re-indents)
-    // isn't affected.
-    forced_blank_lines_ = 1;
     if (node->is_Class() && !node->as_Class()->members().is_empty()) {
       emit_class(node->as_Class(), indent);
       return;
@@ -1144,8 +1132,6 @@ class Formatter {
   }
 
   void emit_stmt(Expression* stmt, int indent) {
-    // Body-stmt separator: 0 blank lines before this stmt.
-    forced_blank_lines_ = 0;
     // Freeze rule: a statement that contains a multi-line `/* ... */`
     // block comment is emitted as a verbatim leaf (Δ-shift only). The
     // author probably aligned text visually with the `/*`; finer
@@ -3165,25 +3151,29 @@ class Formatter {
   }
 
   void emit_with_indent_shift(int from, int to, int delta) {
-    // Caps consecutive blank-line runs to MAX_BLANK_LINES, and if a
-    // caller set `forced_blank_lines_ >= 0`, also forces exactly that
-    // many blank lines (injecting extras at end if source had fewer).
-    // Caller-set value is consumed: only the FIRST emit_with_indent_shift
-    // in a stmt's emission honours it, so internal continuation re-
-    // indents within the same stmt don't accidentally inject blanks.
+    // Caps consecutive blank-line runs to MAX_BLANK_LINES. After each
+    // `\n` we look ahead at the next line:
+    //   - at end of [from, to) → just emit `\n`; caller appends the
+    //     canonical indent for the next stmt.
+    //   - next non-ws byte is `\n` → blank line; emit `\n + ws` if
+    //     under the cap, else skip the whole line.
+    //   - next non-ws byte is content (e.g. a comment) → continuation
+    //     line; emit `\n + (ws + delta)` and reset the blank-run
+    //     counter.
+    //
+    // Forcing an exact blank-line count (e.g. always 0 between body
+    // stmts, always 1 between top-level decls) was tried and ruled
+    // out — losing author-intent grouping inside method bodies was
+    // worse than keeping a single bit of source-shape dependency.
     static const int MAX_BLANK_LINES = 1;
-    int forced = forced_blank_lines_;
-    forced_blank_lines_ = -1;  // consume
-    int cap = (forced >= 0) ? forced : MAX_BLANK_LINES;
     int i = from;
-    int blanks_emitted = 0;
-    bool at_end_seen = false;
+    int blank_run = 0;
     while (i < to) {
       uint8 c = text_[i];
       i++;
       if (c != '\n') {
         output_.push_back(c);
-        if (c != ' ' && c != '\t' && c != '\r') blanks_emitted = 0;
+        if (c != ' ' && c != '\t' && c != '\r') blank_run = 0;
         continue;
       }
       int ws = 0;
@@ -3194,18 +3184,10 @@ class Formatter {
       if (at_end) {
         output_.push_back('\n');
         i += ws;
-        at_end_seen = true;
-        // Force-fill any missing blanks: caller wants exactly `forced`
-        // blank lines and the source had fewer.
-        if (forced >= 0) {
-          while (blanks_emitted < forced) {
-            output_.push_back('\n');
-            blanks_emitted++;
-          }
-        }
+        blank_run = 0;
       } else if (next_is_blank) {
-        blanks_emitted++;
-        if (blanks_emitted <= cap) {
+        blank_run++;
+        if (blank_run <= MAX_BLANK_LINES) {
           output_.push_back('\n');
           output_.append(reinterpret_cast<const char*>(text_) + i, ws);
         }
@@ -3215,7 +3197,7 @@ class Formatter {
         int new_ws = std::max(0, ws + delta);
         output_.append(new_ws, ' ');
         i += ws;
-        blanks_emitted = 0;
+        blank_run = 0;
       }
     }
     source_cursor_ = to;

@@ -18,6 +18,7 @@ main:
       --host=server-config-host
       --port=server-config-port
       --path=server-config-path
+
   // Source-flat with the same AST: too wide for flat, so canonical
   // breaks per-arg.
   http-client.post-request-bytes
@@ -27,11 +28,7 @@ main:
       --path=server-config-path
 
 http-client := null
-
 encoded := null
-
 server-config-host := null
-
 server-config-port := null
-
 server-config-path := null

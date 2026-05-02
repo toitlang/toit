@@ -8,9 +8,7 @@
 // otherwise absorb trailing tokens into the inner's arg list.
 
 foo x: return x
-
 bar a b c d: return a + b + c + d
-
 one := 1
 
 test-call-arg:
@@ -24,11 +22,7 @@ test-binary-operand:
       + (bar really-long-arg-name-one really-long-arg-name-two really-long-arg-name-three last-arg)
 
 really-long-arg-name-one := 0
-
 really-long-arg-name-two := 0
-
 really-long-arg-name-three := 0
-
 and-one-more-arg := 0
-
 last-arg := 0
