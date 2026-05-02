@@ -164,11 +164,11 @@ Closed in this round:
 - **String literals in Method/For headers** — `find_node_header_colon` walks backward from body's first byte (skipping whitespace + at most one newline). Avoids mis-stopping on `:` inside string literals or `:=` / `::` / `::=` combinators.
 - **Method / Constructor header internal whitespace + wrap** — `try_emit_method_full_canonical` renders the entire method header from AST via `render_method_header_parts`: modifiers + name + params + return type. Single-line when fits MAX_LINE_WIDTH; otherwise broken with each param on its own continuation line at indent + CALL_CONTINUATION_STEP, return type on the first line. Handles inline body (when total fits INLINE_CONTROL_FLOW_WIDTH), broken-synth body (single-stmt that doesn't fit inline), emit_stmt body (non-flat-emittable single-stmt or multi-stmt), abstract methods (no body, no `:`), interface methods (no body, no `:`), empty-body methods (`foo:` keeps `:`). Each Parameter rendered via `render_parameter` (`[name]` for block, `--name` for named, `.name` for field-storing, `name/Type=default`).
 - **Method body source-inline + body too wide** — handled by emit_stmt path in `try_emit_method_full_canonical`. emit_stmt's break logic kicks in for the body via source_cursor_ adjustment.
-- **Blank-line counts** — capped at 1 in `emit_with_indent_shift` (multi-blank-line runs collapse to a single blank line). The author's 0-vs-1-blank-line choice is preserved, since forcing a fixed count lost too much intent (compact field lists, intentional grouping inside method bodies). One bit of source-shape dependency remains here.
+- **Blank-line counts** — preserved verbatim (with continuation-line delta-shift). Forcing a fixed count and even capping at 1 lost too much author intent (compact field lists, intentional grouping inside method bodies). Blank lines are explicitly not part of the determinism target.
 
 Bonus fix: `advance_to` was unconditionally setting `source_cursor_`, even backward — discarding cursor advances from earlier emission. Now a no-op when called with a position behind the cursor.
 
-Output is a function of (AST + width + author's 0-vs-1 blank-line choice). The blank-line bit is the only remaining source-shape dependency.
+Output is a function of (AST + width + author's blank-line layout). Blank lines are the only remaining source-shape dependency.
 
 ### Tier 8 — whatever the next dogfood pass surfaces (after Tier 7)
 

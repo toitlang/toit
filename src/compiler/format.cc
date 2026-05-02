@@ -3151,54 +3151,24 @@ class Formatter {
   }
 
   void emit_with_indent_shift(int from, int to, int delta) {
-    // Caps consecutive blank-line runs to MAX_BLANK_LINES. After each
-    // `\n` we look ahead at the next line:
-    //   - at end of [from, to) → just emit `\n`; caller appends the
-    //     canonical indent for the next stmt.
-    //   - next non-ws byte is `\n` → blank line; emit `\n + ws` if
-    //     under the cap, else skip the whole line.
-    //   - next non-ws byte is content (e.g. a comment) → continuation
-    //     line; emit `\n + (ws + delta)` and reset the blank-run
-    //     counter.
-    //
-    // Forcing an exact blank-line count (e.g. always 0 between body
-    // stmts, always 1 between top-level decls) was tried and ruled
-    // out — losing author-intent grouping inside method bodies was
-    // worse than keeping a single bit of source-shape dependency.
-    static const int MAX_BLANK_LINES = 1;
     int i = from;
-    int blank_run = 0;
     while (i < to) {
       uint8 c = text_[i];
+      output_.push_back(c);
       i++;
-      if (c != '\n') {
-        output_.push_back(c);
-        if (c != ' ' && c != '\t' && c != '\r') blank_run = 0;
-        continue;
-      }
+      if (c != '\n') continue;
+
       int ws = 0;
       while (i + ws < to && text_[i + ws] == ' ') ws++;
-      bool at_end = (i + ws >= to);
-      bool next_is_blank = !at_end && (text_[i + ws] == '\n');
-
-      if (at_end) {
-        output_.push_back('\n');
-        i += ws;
-        blank_run = 0;
-      } else if (next_is_blank) {
-        blank_run++;
-        if (blank_run <= MAX_BLANK_LINES) {
-          output_.push_back('\n');
-          output_.append(reinterpret_cast<const char*>(text_) + i, ws);
-        }
-        i += ws;
+      bool is_blank = (i + ws >= to || text_[i + ws] == '\n');
+      if (is_blank) {
+        // Keep blank lines blank (don't manufacture indent on them).
+        output_.append(reinterpret_cast<const char*>(text_) + i, ws);
       } else {
-        output_.push_back('\n');
         int new_ws = std::max(0, ws + delta);
         output_.append(new_ws, ' ');
-        i += ws;
-        blank_run = 0;
       }
+      i += ws;
     }
     source_cursor_ = to;
   }
