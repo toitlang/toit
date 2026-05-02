@@ -17,7 +17,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "../top.h"
@@ -74,8 +73,6 @@ struct Shape {
 };
 
 // Measures the shape of the given byte range as if it were emitted verbatim.
-// Used as the initial shape for every node (M3) until per-node shape
-// computation lands (M4).
 static Shape shape_from_source_range(const uint8* text, int from, int to) {
   Shape s;
   int line_w = 0;
@@ -151,7 +148,6 @@ class Formatter {
   FormatOptions options_;
   std::string output_;
   int source_cursor_ = 0;
-  std::unordered_map<Node*, Shape> shapes_;
 
   int pos(Source::Position p) const { return source_->offset_in_source(p); }
 
@@ -518,7 +514,7 @@ class Formatter {
     if (try_emit_method_full_canonical(method, indent)) return;
     if (try_emit_method_body_canonical(method, indent)) return;
     if (try_emit_method_canonical(method, indent)) return;
-    if (!emit_with_suite(method, method->body()->expressions(), indent)) {
+    if (!try_emit_with_suite(method, method->body()->expressions(), indent)) {
       emit_leaf(method, indent);
     }
   }
@@ -923,7 +919,7 @@ class Formatter {
   // body at indent + INDENT_STEP.
   //
   // Returns false if there are no continuation parameters, or guards
-  // fail — caller falls back to emit_with_suite (which handles the
+  // fail — caller falls back to try_emit_with_suite (which handles the
   // all-params-on-one-line case).
   bool try_emit_method_canonical(Method* method, int indent) {
     if (method->body() == null || method->body()->expressions().is_empty()) {
@@ -1058,7 +1054,7 @@ class Formatter {
   // trailing bytes up to node_end. Returns false if the body is empty or
   // shares a line with the header (inline, e.g. `foo: return 42`); the
   // caller should fall back to verbatim emission.
-  bool emit_with_suite(Node* node,
+  bool try_emit_with_suite(Node* node,
                        List<Expression*> body,
                        int indent) {
     if (body.is_empty()) return false;
@@ -1166,23 +1162,23 @@ class Formatter {
       return;
     }
     if (stmt->is_If()) {
-      // Inline / broken-synth canonicalisation runs before emit_if so
+      // Inline / broken-synth canonicalisation runs before try_emit_if so
       // that source-broken short Ifs become inline and source-inline
       // long Ifs become broken — output is a function of (AST + width),
       // not of the source's choice of layout.
       if (try_emit_if_canonical(stmt->as_If(), indent)) return;
-      if (emit_if(stmt->as_If(), indent)) return;
+      if (try_emit_if(stmt->as_If(), indent)) return;
     } else if (stmt->is_While()) {
       if (try_emit_while_canonical(stmt->as_While(), indent)) return;
       auto body = as_suite_body(stmt->as_While()->body());
-      if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
+      if (!body.is_empty() && try_emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_For()) {
       if (try_emit_for_canonical(stmt->as_For(), indent)) return;
       auto body = as_suite_body(stmt->as_For()->body());
-      if (!body.is_empty() && emit_with_suite(stmt, body, indent)) return;
+      if (!body.is_empty() && try_emit_with_suite(stmt, body, indent)) return;
     } else if (stmt->is_TryFinally()) {
       if (try_emit_try_finally_canonical(stmt->as_TryFinally(), indent)) return;
-      if (emit_try_finally(stmt->as_TryFinally(), indent)) return;
+      if (try_emit_try_finally(stmt->as_TryFinally(), indent)) return;
     }
 
     // `return <call>` / `x := <call>` / `x = <call>` wrappers: either
@@ -1197,7 +1193,7 @@ class Formatter {
         int end = pos(ret->full_range().to());
         if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (emit_call_forced_broken(call, start, end, indent)) return;
+        if (try_emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
     if (stmt->is_DeclarationLocal()) {
@@ -1208,7 +1204,7 @@ class Formatter {
         int end = pos(decl->full_range().to());
         if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (emit_call_forced_broken(call, start, end, indent)) return;
+        if (try_emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
     if (stmt->is_Binary()) {
@@ -1220,7 +1216,7 @@ class Formatter {
         int end = pos(b->full_range().to());
         if (try_emit_call_trailing_block_inline(call, start, end, indent)) return;
         if (try_canonicalize_broken_call_in_range(call, start, end, indent)) return;
-        if (emit_call_forced_broken(call, start, end, indent)) return;
+        if (try_emit_call_forced_broken(call, start, end, indent)) return;
       }
     }
 
@@ -2047,7 +2043,7 @@ class Formatter {
     return true;
   }
 
-  bool emit_try_finally(TryFinally* tf, int indent) {
+  bool try_emit_try_finally(TryFinally* tf, int indent) {
     auto body = tf->body() == null
         ? List<Expression*>()
         : tf->body()->expressions();
@@ -2185,7 +2181,7 @@ class Formatter {
   // else. Tries inline first (all branches single-stmt + flat-emittable
   // and fits INLINE_CONTROL_FLOW_WIDTH), then a broken-synth from AST
   // (all branch body stmts must be flat-emittable). Returns false to
-  // fall through to emit_if when nothing here applies.
+  // fall through to try_emit_if when nothing here applies.
   bool try_emit_if_canonical(If* if_node, int indent) {
     std::vector<IfBranch> chain;
     if (!collect_if_chain(if_node, &chain)) return false;
@@ -2238,7 +2234,7 @@ class Formatter {
     }
 
     // Broken-synth — emit each branch on its own lines from AST. This
-    // overrides emit_if even when source was already broken, so that a
+    // overrides try_emit_if even when source was already broken, so that a
     // broken if/else chain produces deterministic output regardless of
     // exactly how the source was laid out.
     int original_indent = node_start - line_start;
@@ -2331,7 +2327,7 @@ class Formatter {
   // header as a continuation header spanning until its own body's first
   // line — that way `else if cond:` shares a line with its keyword and
   // gets re-indented as a single unit.
-  bool emit_if(If* if_node, int indent) {
+  bool try_emit_if(If* if_node, int indent) {
     auto yes_body = as_suite_body(if_node->yes());
     if (yes_body.is_empty()) return false;
 
@@ -2457,7 +2453,6 @@ class Formatter {
     int from = pos(call->full_range().from());
     int to = pos(call->full_range().to());
     Shape source_shape = shape_from_source_range(text_, from, to);
-    shapes_[call] = source_shape;
 
     // Flat-if-fits. For a single-line source this always wins when guards
     // pass. For a multi-line source it wins only when the flat form's
@@ -2471,7 +2466,7 @@ class Formatter {
       // broken form: target on the first line, each arg at indent + 4.
       int call_start = pos(call->full_range().from());
       int call_end = pos(call->full_range().to());
-      if (emit_call_forced_broken(call, call_start, call_end, indent)) return;
+      if (try_emit_call_forced_broken(call, call_start, call_end, indent)) return;
       emit_leaf(call, indent);
       return;
     }
@@ -2494,7 +2489,7 @@ class Formatter {
         int bare_start = pos(call->full_range().from());
         int bare_end = pos(call->full_range().to());
         if (try_emit_call_trailing_block_inline(call, bare_start, bare_end, indent)) return;
-        if (emit_call_with_trailing_suite(call, body->expressions(), indent)) {
+        if (try_emit_call_with_trailing_suite(call, body->expressions(), indent)) {
           return;
         }
       }
@@ -2517,7 +2512,7 @@ class Formatter {
   // Only fires when the source is one line AND that line is over budget.
   // Returns false otherwise or when the usual safety guards (comments,
   // unreliable ranges, Block / Lambda args) reject canonicalisation.
-  bool emit_call_forced_broken(Call* call,
+  bool try_emit_call_forced_broken(Call* call,
                                int outer_start,
                                int outer_end,
                                int indent) {
@@ -2822,7 +2817,7 @@ class Formatter {
     if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
 
     // Skip when the source is single-line — that's `try_emit_call_flat_
-    // canonical`'s territory (or `emit_call_forced_broken` if the flat
+    // canonical`'s territory (or `try_emit_call_forced_broken` if the flat
     // form was too wide). This function only runs for already-broken
     // source.
     Shape outer_shape = shape_from_source_range(text_, outer_start, outer_end);
@@ -2908,7 +2903,7 @@ class Formatter {
   // Block / Lambda with a single-stmt, parameter-less body. Renders
   // inline `<call header>: <body_stmt>` (or `:: ` for Lambda) when
   // the result fits INLINE_CONTROL_FLOW_WIDTH. Returns false to let
-  // emit_call_with_trailing_suite handle the broken form otherwise.
+  // try_emit_call_with_trailing_suite handle the broken form otherwise.
   //
   // The "call header" is the source bytes from the Call's start up
   // to (but not including) the Block/Lambda's `:` token, which is
@@ -3013,7 +3008,7 @@ class Formatter {
   // body's first line, recurses each body expression at indent +
   // INDENT_STEP, then emits any trailing bytes of the Call. Returns false
   // if the body shares a line with the Call's start (inline body).
-  bool emit_call_with_trailing_suite(Call* call,
+  bool try_emit_call_with_trailing_suite(Call* call,
                                      List<Expression*> body,
                                      int indent) {
     int call_start = pos(call->full_range().from());
