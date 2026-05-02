@@ -48,6 +48,17 @@ abstract class NetworkServiceProviderBase extends ServiceProvider
 
   udp-open handle/int port/int? -> int:
     unreachable
+
+  udp-open-multicast -> int
+      handle/int
+      address/ByteArray
+      port/int
+      if-addr/ByteArray?
+      reuse-address/bool
+      reuse-port/bool
+      loopback/bool
+      ttl/int:
+    unreachable
   udp-connect handle/int ip/ByteArray port/int -> none:
     unreachable
   udp-receive handle/int -> List:
