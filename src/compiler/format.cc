@@ -181,6 +181,57 @@ class Formatter {
     return true;
   }
 
+  // Optional preflight checks for `setup_canonical`. The cursor /
+  // leading-whitespace checks are always run; only the comment guards
+  // are switchable. Wrapper-range emitters and `emit_stmt_flat` skip
+  // `GUARD_INTERIOR_MULTILINE` because their dispatch caller (`emit_stmt`)
+  // has already short-circuited multi-line-block-comment statements via
+  // the freeze rule.
+  enum GuardFlags : int {
+    GUARD_NONE = 0,
+    GUARD_LINE_LOCKING = 1 << 0,
+    GUARD_INTERIOR_MULTILINE = 1 << 1,
+    GUARD_ALL = GUARD_LINE_LOCKING | GUARD_INTERIOR_MULTILINE,
+  };
+
+  // Result of the canonical-emission preflight. `ok` is true when the
+  // caller may proceed: the line owning `node_start` is fully under our
+  // control (cursor hasn't passed it, leading bytes are pure whitespace)
+  // and any requested comment guards passed. `delta` and `original_indent`
+  // are pre-computed for the caller's `emit_with_indent_shift` /
+  // `emit_spaces` calls.
+  struct CanonicalContext {
+    int node_start;
+    int node_end;
+    int line_start;
+    int original_indent;
+    int delta;
+    bool ok;
+  };
+
+  CanonicalContext setup_canonical(int node_start, int node_end, int indent,
+                                   GuardFlags flags = GUARD_ALL) const {
+    CanonicalContext c;
+    c.ok = false;
+    c.node_start = node_start;
+    c.node_end = node_end;
+    if ((flags & GUARD_LINE_LOCKING)
+        && has_line_locking_comment(node_start, node_end)) {
+      return c;
+    }
+    if ((flags & GUARD_INTERIOR_MULTILINE)
+        && has_interior_multiline_block_comment(node_start, node_end)) {
+      return c;
+    }
+    c.line_start = find_line_start(node_start);
+    if (c.line_start < source_cursor_) return c;
+    if (!is_leading_whitespace(c.line_start, node_start)) return c;
+    c.original_indent = node_start - c.line_start;
+    c.delta = indent - c.original_indent;
+    c.ok = true;
+    return c;
+  }
+
   // Dispatch: emit a declaration, recursing into Class and Method bodies.
   void emit_decl(Node* node, int indent) {
     if (node->is_Class() && !node->as_Class()->members().is_empty()) {
@@ -226,11 +277,8 @@ class Formatter {
   bool try_emit_field_canonical(Field* field, int indent) {
     int node_start = pos(field->full_range().from());
     int node_end = pos(field->full_range().to());
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
     if (field->name() == nullptr) return false;
     if (!has_reliable_full_range(field->name())) return false;
     // Type and initializer go through emit_expr_flat — byte-copying
@@ -256,9 +304,7 @@ class Formatter {
       emit_expr_flat(field->initializer(), PRECEDENCE_NONE, &buf);
     }
 
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     output_.append(buf);
     source_cursor_ = node_end;
@@ -275,11 +321,8 @@ class Formatter {
   bool try_emit_import_canonical(Import* imp, int indent) {
     int node_start = pos(imp->full_range().from());
     int node_end = pos(imp->full_range().to());
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
     for (auto seg : imp->segments()) {
       if (!has_reliable_full_range(seg)) return false;
     }
@@ -326,9 +369,7 @@ class Formatter {
     int line_end = node_end;
     while (line_end < size_ && text_[line_end] != '\n') line_end++;
 
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     output_.append(buf);
     source_cursor_ = line_end;
@@ -339,11 +380,8 @@ class Formatter {
   bool try_emit_export_canonical(Export* exp, int indent) {
     int node_start = pos(exp->full_range().from());
     int node_end = pos(exp->full_range().to());
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
     for (auto id : exp->identifiers()) {
       if (!has_reliable_full_range(id)) return false;
     }
@@ -365,9 +403,7 @@ class Formatter {
     int line_end = node_end;
     while (line_end < size_ && text_[line_end] != '\n') line_end++;
 
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     output_.append(buf);
     source_cursor_ = line_end;
@@ -413,13 +449,8 @@ class Formatter {
                                        int first_member_line_start) {
     int node_start = pos(klass->full_range().from());
     if (klass->name() == nullptr) return false;
-    if (has_line_locking_comment(node_start, first_member_line_start)) return false;
-    if (has_interior_multiline_block_comment(node_start, first_member_line_start)) {
-      return false;
-    }
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, first_member_line_start, indent);
+    if (!ctx.ok) return false;
     if (!has_reliable_full_range(klass->name())) return false;
     if (klass->super() != nullptr && !has_reliable_full_range(klass->super())) {
       return false;
@@ -478,9 +509,7 @@ class Formatter {
     single += ":";
     bool single_fits = indent + static_cast<int>(single.size()) <= MAX_LINE_WIDTH;
 
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
 
     if (single_fits) {
@@ -533,11 +562,8 @@ class Formatter {
   bool try_emit_method_full_canonical(Method* method, int indent) {
     int node_start = pos(method->full_range().from());
     int node_end = pos(method->full_range().to());
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
 
     MethodHeaderParts parts;
     if (!render_method_header_parts(method, &parts)) return false;
@@ -595,9 +621,7 @@ class Formatter {
     }
 
     // Commit: emit leading trivia + indent.
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
 
     // Emit the header. Single-line if fits MAX_LINE_WIDTH; otherwise
@@ -851,12 +875,8 @@ class Formatter {
     Expression* body_stmt = body.first();
     if (!can_emit_flat(body_stmt)) return false;
 
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
 
     int body_start = pos(body_stmt->full_range().from());
     int colon_pos = find_node_header_colon(node_start, body_start);
@@ -866,11 +886,9 @@ class Formatter {
     std::string body_buf;
     emit_expr_flat(body_stmt, PRECEDENCE_NONE, &body_buf);
     int inline_total = indent + header_len + 2 + static_cast<int>(body_buf.size());
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
 
     if (inline_total <= INLINE_CONTROL_FLOW_WIDTH) {
-      emit_with_indent_shift(source_cursor_, line_start, delta);
+      emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
       emit_spaces(indent);
       output_.append(reinterpret_cast<const char*>(text_) + node_start, header_len);
       output_.append(": ");
@@ -883,7 +901,7 @@ class Formatter {
     if (body_indent + static_cast<int>(body_buf.size()) > MAX_LINE_WIDTH) {
       return false;
     }
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     output_.append(reinterpret_cast<const char*>(text_) + node_start, header_len);
     output_.push_back(':');
@@ -1225,11 +1243,8 @@ class Formatter {
     // (trailing EOL comments) — locks the layout. Per the brainstorm
     // rule: a line with an EOL `//` can only have its indentation
     // changed, never be split or collapsed.
-    if (has_line_locking_comment(start, end)) return false;
-
-    int line_start = find_line_start(start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, start)) return false;
+    auto ctx = setup_canonical(start, end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
     // Render first so we can bail on width before committing any output.
     std::string buffer;
     emit_expr_flat(stmt, PRECEDENCE_NONE, &buffer);
@@ -1237,9 +1252,7 @@ class Formatter {
       return false;
     }
 
-    int original_indent = start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     source_cursor_ = end;
     output_.append(buffer);
@@ -1978,12 +1991,8 @@ class Formatter {
 
     int node_start = pos(tf->full_range().from());
     int node_end = pos(tf->full_range().to());
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
 
     for (auto e : body) {
       if (!can_emit_flat(e)) return false;
@@ -1992,9 +2001,7 @@ class Formatter {
       if (!can_emit_flat(e)) return false;
     }
 
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
 
     int body_indent = indent + INDENT_STEP;
     output_.append(indent, ' ');
@@ -2047,25 +2054,6 @@ class Formatter {
     }
 
     advance_to(node_end);
-    return true;
-  }
-
-  // Common preflight for control-flow inline / broken-synth: the node
-  // must start its own line (no source_cursor_ overrun), have no
-  // comments anywhere in its range, and have a flat-emittable
-  // condition. Returns false if any check fails. Sets `*line_start_out`
-  // to the start of the source line containing `node_start`.
-  bool can_canonicalize_control_flow(int node_start,
-                                     int node_end,
-                                     Expression* condition,
-                                     int* line_start_out) const {
-    if (has_line_locking_comment(node_start, node_end)) return false;
-    if (has_interior_multiline_block_comment(node_start, node_end)) return false;
-    int line_start = find_line_start(node_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, node_start)) return false;
-    if (condition != null && !can_emit_flat(condition)) return false;
-    *line_start_out = line_start;
     return true;
   }
 
@@ -2165,11 +2153,8 @@ class Formatter {
 
     int node_start = pos(if_node->full_range().from());
     int node_end = pos(if_node->full_range().to());
-    int line_start = 0;
-    if (!can_canonicalize_control_flow(node_start, node_end,
-                                       /*condition=*/nullptr, &line_start)) {
-      return false;
-    }
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
     // Every cond and every body stmt must render flat.
     for (auto& b : chain) {
       if (b.cond != nullptr && !can_emit_flat(b.cond)) return false;
@@ -2200,9 +2185,7 @@ class Formatter {
         emit_expr_flat(chain[i].body.first(), PRECEDENCE_NONE, &buf);
       }
       if (indent + static_cast<int>(buf.size()) <= INLINE_CONTROL_FLOW_WIDTH) {
-        int original_indent = node_start - line_start;
-        int delta = indent - original_indent;
-        emit_with_indent_shift(source_cursor_, line_start, delta);
+        emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
         emit_spaces(indent);
         source_cursor_ = node_end;
         output_.append(buf);
@@ -2214,9 +2197,7 @@ class Formatter {
     // overrides try_emit_if even when source was already broken, so that a
     // broken if/else chain produces deterministic output regardless of
     // exactly how the source was laid out.
-    int original_indent = node_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
 
     int body_indent = indent + INDENT_STEP;
     for (size_t i = 0; i < chain.size(); i++) {
@@ -2259,11 +2240,9 @@ class Formatter {
 
     int node_start = pos(w->full_range().from());
     int node_end = pos(w->full_range().to());
-    int line_start = 0;
-    if (!can_canonicalize_control_flow(node_start, node_end,
-                                       w->condition(), &line_start)) {
-      return false;
-    }
+    auto ctx = setup_canonical(node_start, node_end, indent);
+    if (!ctx.ok) return false;
+    if (w->condition() != null && !can_emit_flat(w->condition())) return false;
 
     std::string header;
     header.append("while ");
@@ -2273,7 +2252,7 @@ class Formatter {
     if (body.length() == 1) {
       int saved_cursor = source_cursor_;
       size_t saved_output = output_.size();
-      if (try_emit_control_flow_inline(node_start, node_end, line_start,
+      if (try_emit_control_flow_inline(node_start, node_end, ctx.line_start,
                                        header, body.first(), indent)) {
         return true;
       }
@@ -2287,7 +2266,7 @@ class Formatter {
       broken_header.append("while ");
       emit_expr_flat(w->condition(), PRECEDENCE_NONE, &broken_header);
       broken_header.append(":");
-      if (try_emit_control_flow_broken_synth(node_start, node_end, line_start,
+      if (try_emit_control_flow_broken_synth(node_start, node_end, ctx.line_start,
                                              broken_header, body, indent)) {
         return true;
       }
@@ -2498,7 +2477,6 @@ class Formatter {
     int budget = call_width_budget(call);
     if (indent + outer_shape.first_line_width <= budget) return false;
 
-    if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
     if (call->arguments().is_empty()) return false;
     for (auto arg : call->arguments()) {
@@ -2510,9 +2488,8 @@ class Formatter {
       if (arg->is_LiteralStringInterpolation()) return false;
     }
 
-    int outer_line_start = find_line_start(outer_start);
-    if (outer_line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+    auto ctx = setup_canonical(outer_start, outer_end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
 
     // First line: outer prefix + call target. `emit_range_reindent`
     // re-indents that span to `indent` and leaves `source_cursor_` at
@@ -2629,11 +2606,8 @@ class Formatter {
     if (!outer_shape.is_single_line()) return false;
     if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
 
-    if (has_line_locking_comment(outer_start, outer_end)) return false;
-
-    int outer_line_start = find_line_start(outer_start);
-    if (outer_line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+    auto ctx = setup_canonical(outer_start, outer_end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
 
     Token::Kind op = root->kind();
     std::vector<Expression*> operands;
@@ -2701,11 +2675,8 @@ class Formatter {
     if (!outer_shape.is_single_line()) return false;
     if (indent + outer_shape.first_line_width <= MAX_LINE_WIDTH) return false;
 
-    if (has_line_locking_comment(outer_start, outer_end)) return false;
-
-    int outer_line_start = find_line_start(outer_start);
-    if (outer_line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+    auto ctx = setup_canonical(outer_start, outer_end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
 
     int coll_start = pos(coll->full_range().from());
     int open_len = coll->is_LiteralByteArray() ? 2 : 1;  // `#[` vs `[`/`{`
@@ -2781,7 +2752,6 @@ class Formatter {
                                              int outer_start,
                                              int outer_end,
                                              int indent) {
-    if (has_line_locking_comment(outer_start, outer_end)) return false;
     if (!has_reliable_full_range(call->target())) return false;
     if (call->arguments().is_empty()) return false;
     for (auto arg : call->arguments()) {
@@ -2789,9 +2759,8 @@ class Formatter {
       if (!has_reliable_full_range(arg)) return false;
     }
 
-    int outer_line_start = find_line_start(outer_start);
-    if (outer_line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(outer_line_start, outer_start)) return false;
+    auto ctx = setup_canonical(outer_start, outer_end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
 
     // Skip when the source is single-line — that's `try_emit_call_flat_
     // canonical`'s territory (or `try_emit_call_forced_broken` if the flat
@@ -2824,7 +2793,7 @@ class Formatter {
     // source-distribution path.
     int target_start = pos(call->target()->full_range().from());
     bool wrapper_target_one_line =
-        find_line_start(target_start) == outer_line_start;
+        find_line_start(target_start) == ctx.line_start;
 
     if (all_args_single_line && wrapper_target_one_line) {
       // First line: outer prefix bytes + call target, re-indented to
@@ -2854,7 +2823,7 @@ class Formatter {
     for (int i = 0; i < call->arguments().length(); i++) {
       int arg_line = find_line_start(
           pos(call->arguments()[i]->full_range().from()));
-      if (arg_line > outer_line_start) {
+      if (arg_line > ctx.line_start) {
         first_break = i;
         break;
       }
@@ -2914,12 +2883,8 @@ class Formatter {
       if (!has_reliable_full_range(p)) return false;
     }
 
-    if (has_line_locking_comment(outer_start, outer_end)) return false;
-    if (has_interior_multiline_block_comment(outer_start, outer_end)) return false;
-
-    int line_start = find_line_start(outer_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, outer_start)) return false;
+    auto ctx = setup_canonical(outer_start, outer_end, indent);
+    if (!ctx.ok) return false;
 
     // Header bytes from outer_start to the `:` token (= block's
     // full_range start). Must be single-line — otherwise the wrapper
@@ -2969,9 +2934,7 @@ class Formatter {
               + static_cast<int>(body_buf.size());
     if (total > INLINE_CONTROL_FLOW_WIDTH) return false;
 
-    int original_indent = outer_start - line_start;
-    int delta = indent - original_indent;
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     emit_spaces(indent);
     output_.append(reinterpret_cast<const char*>(text_) + outer_start, header_len);
     output_.append(sep);
@@ -3023,10 +2986,8 @@ class Formatter {
     // A line with an EOL comment (`//` or `/*...*/` after the last token)
     // can only have its indentation changed — not its internal spacing.
     // Fall back to verbatim.
-    if (has_line_locking_comment(call_start, call_end)) return false;
-    int line_start = find_line_start(call_start);
-    if (line_start < source_cursor_) return false;
-    if (!is_leading_whitespace(line_start, call_start)) return false;
+    auto ctx = setup_canonical(call_start, call_end, indent, GUARD_LINE_LOCKING);
+    if (!ctx.ok) return false;
 
     // Target must be single-line in source — a multi-line target (e.g. a
     // Dot chain already broken across lines) can't be flattened here.
@@ -3059,11 +3020,9 @@ class Formatter {
     }
     if (flat_width > call_width_budget(call)) return false;
 
-    int original_indent = call_start - line_start;
-    int delta = indent - original_indent;
     // Shift preceding trivia (blank lines, standalone comments) by the
     // same delta we're about to apply to this call's first line.
-    emit_with_indent_shift(source_cursor_, line_start, delta);
+    emit_with_indent_shift(source_cursor_, ctx.line_start, ctx.delta);
     output_.append(indent, ' ');
 
     output_.append(reinterpret_cast<const char*>(text_) + target_start,
