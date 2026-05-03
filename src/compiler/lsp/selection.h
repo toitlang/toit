@@ -50,6 +50,18 @@ class ToitdocScopeIterator;
 class ToitdocRegistry;
 class Filesystem;
 
+/// Unwraps an ir::Reference* node to its underlying definition.
+ir::Node* unwrap_reference(ir::Node* node);
+
+/// Returns the name of the given target node as a C string.
+const char* target_name(ir::Node* target);
+
+/// Returns the name range of the given target node.
+Source::Range target_range(ir::Node* target);
+
+/// Returns whether the given target node is defined in the SDK.
+bool is_sdk_target(ir::Node* target, SourceManager* source_manager);
+
 /// For some operations, the LSP client sends the server a selection for which it
 /// wants information. This selection is given to the compiler which then detects
 /// it during the compilation process.
@@ -143,6 +155,10 @@ class LspSelectionHandler {
                            ToitdocScopeIterator* iterator,
                            bool is_signature_toitdoc) = 0;
 
+  /// Called when the resolver creates an IR definition node and the cursor
+  /// is on the definition's name (i.e. the AST name is an LspSelection).
+  virtual void definition(ir::Node* ir_node, Source::Range name_range) = 0;
+
 
  protected:
   LspProtocol* protocol() { return protocol_; }
@@ -150,6 +166,35 @@ class LspSelectionHandler {
  private:
   LspProtocol* protocol_;
 };
+
+/// Walks up the class hierarchy starting from [start_class], visiting the class
+/// itself and its mixins at each level.
+///
+/// At each step, calls [callback(current_class)] for the class and each of its mixins.
+/// If the callback returns true, the walk stops early.
+///
+/// When an interface or mixin has no super class, falls back to fallback_classes[0]
+/// (typically Object) to include inherited methods from the root class.
+///
+/// This pattern is used by both the hover handler (to find the method to display)
+/// and the completion handler (to enumerate completable methods).
+template<typename Callback>
+void walk_class_hierarchy(ir::Class* start_class,
+                          List<ir::Class*> fallback_classes,
+                          Callback callback) {
+  auto* klass = start_class;
+  while (klass != null) {
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto* current = i == -1 ? klass : klass->mixins()[i];
+      if (callback(current)) return;
+    }
+    if (klass->super() == null && (klass->is_interface() || klass->is_mixin())) {
+      klass = fallback_classes.length() > 0 ? fallback_classes[0] : null;
+    } else {
+      klass = klass->super();
+    }
+  }
+}
 
 } // namespace toit::compiler
 } // namespace toit

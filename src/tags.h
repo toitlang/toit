@@ -67,7 +67,7 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
-  fn(MbedTlsSocket)                     \
+  fn(MbedTlsSocket)                                              
 
 // When adding a class make sure that they all are subclasses of
 // the BleCallbackResource. If it isn't update the Min/MaxTag below.

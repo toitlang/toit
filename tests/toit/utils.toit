@@ -28,37 +28,24 @@ class ForkResult:
       --.exit-code:
 
 class ToitExecutable:
-  toit-run_/string
-  toit-bin-src_/string
-  sdk-dir_/string
+  toit-exe_/string
 
   constructor args/List:
-    toit-run_ = args[0]
-    toit-bin-src_ = args[1]
-    sdk-dir_ = args[2]
+    toit-exe_ = args[0]
 
-  backticks --with-test-sdk/bool=true args/List:
-    full-command := [toit_run_, toit-bin-src_]
-    if with-test-sdk:
-      full-command += ["--sdk-dir", sdk-dir_]
-    full-command += args
+  backticks args/List:
+    full-command := [toit-exe_] + args
     result := pipe.backticks full-command
     if system.platform == system.PLATFORM-WINDOWS:
       return result.replace --all "\r\n" "\n"
     return result
 
-  run --with-test-sdk/bool=true args/List -> int:
-    full-command := [toit_run_, toit-bin-src_]
-    if with-test-sdk:
-      full-command += ["--sdk-dir", sdk-dir_]
-    full-command += args
+  run args/List -> int:
+    full-command := [toit-exe_] + args
     return pipe.run-program full-command
 
-  fork --with-test-sdk/bool=true args/List -> ForkResult:
-    full-command := [toit_run_, toit-bin-src_]
-    if with-test-sdk:
-      full-command += ["--sdk-dir", sdk-dir_]
-    full-command += args
+  fork args/List -> ForkResult:
+    full-command := [toit-exe_] + args
     process := pipe.fork
         --use-path
         --create-stdout
