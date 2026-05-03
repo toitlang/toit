@@ -229,10 +229,14 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+  // On S2/S3, 'touch_pad_config' must be called while the FSM is stopped, and
+  // 'touch_pad_set_fsm_mode' only selects the mode - the FSM must be started
+  // explicitly with 'touch_pad_fsm_start' before 'touch_pad_read_raw_data'
+  // returns fresh values.
+  touch_pad_fsm_stop();
   esp_err_t err = touch_pad_config(pad);
-  if (err == ESP_OK) {
-    err = touch_pad_set_thresh(pad, threshold);
-  }
+  if (err == ESP_OK) err = touch_pad_set_thresh(pad, threshold);
+  if (err == ESP_OK) err = touch_pad_fsm_start();
 #else
   esp_err_t err = touch_pad_config(pad, threshold);
 #endif

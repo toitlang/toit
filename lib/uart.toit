@@ -235,14 +235,11 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   read_ -> ByteArray?:
     while true:
-      state-bits := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       if not uart_: return null
-      if state-bits & ERROR-STATE_ != 0:
-        state_.clear-state ERROR-STATE_
-      else if state-bits & READ-STATE_ != 0:
-        data := uart-read_ uart_
-        if data and data.size > 0: return data
-        state_.clear-state READ-STATE_
+      state_.clear-state READ-STATE_ | ERROR-STATE_
+      data := uart-read_ uart_
+      if data and data.size > 0: return data
+      state_.wait-for-state READ-STATE_ | ERROR-STATE_
 
   /**
   Flushes the output buffer, waiting until all written data has been transmitted.
@@ -257,21 +254,18 @@ class Port extends Object with io.InMixin implements reader.Reader:
   flush_ -> none:
     while true:
       if not uart_: throw "CLOSED"
+      state_.clear-state WRITE-STATE_ | ERROR-STATE_
       flushed := uart-wait-tx_ uart_
       if flushed: return
-      yield
+      state_.wait-for-state WRITE-STATE_ | ERROR_STATE_
 
   try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
-    while true:
-      s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
-      if not uart_: throw "CLOSED"
-      written := uart-write_ uart_ data from to break-length
-      if written < to - from:
-        // Not everything was written, clear write flag and try again.
-        state_.clear-state WRITE-STATE_
-        if written == 0: continue
+    if not uart_: throw "CLOSED"
+    state_.clear-state WRITE-STATE_ | ERROR-STATE_
+    return uart-write_ uart_ data from to break-length
 
-      return written
+  wait-for-more-room_ -> none:
+    state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
   /**
   Number of encountered errors.
@@ -385,7 +379,7 @@ class UartWriter extends io.Writer:
     while not is-closed_:
       from += try-write data from to --break-length=break-length --flush=flush
       if from >= to: return data-size
-      yield
+      wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
@@ -410,6 +404,10 @@ class UartWriter extends io.Writer:
 
   flush -> none:
     port_.flush_
+
+  wait-for-more-room_ -> none:
+    port_.wait-for-more-room_
+
 
 resource-group_ ::= uart-init_
 
