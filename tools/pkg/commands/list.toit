@@ -42,7 +42,7 @@ class ListCommand extends PkgCommand:
     registry-packages := registries.list-packages
     if name-or-path:
       if registry-packages.contains name-or-path:
-        registry-packages.filter --in-place: | k v | k == name-or-path
+        registry-packages.filter --in-place: | key _ | key == name-or-path
       else:
         // If the name-or-path is not a registry, we assume it is a path to a registry.
         // We try to load the registry from that path.
@@ -78,11 +78,11 @@ class ListCommand extends PkgCommand:
   If $allow-extra-fields, then allows dependencies and environment keys too.
   */
   static verbose-description description/Description --allow-extra-fields/bool=false -> Map:
-    filtered := description.content.filter: | k _ |
-      if k == Description.NAME-KEY_: continue.filter false
+    filtered := description.content.filter: | key _ |
+      if key == Description.NAME-KEY_: continue.filter false
       if allow-extra-fields: continue.filter true
-      if k == Description.DEPENDENCIES-KEY_: continue.filter false
-      if k == Description.ENVIRONMENT-KEY_: continue.filter false
+      if key == Description.DEPENDENCIES-KEY_: continue.filter false
+      if key == Description.ENVIRONMENT-KEY_: continue.filter false
       true
     return { description.name : filtered }
 
@@ -96,10 +96,9 @@ class ListCommand extends PkgCommand:
       ui.emit-list --result descriptions
       return
 
-    if ui.wants-human:
-      if descriptions.is-empty:
-        ui.emit --result "$(indent)No packages found."
-        return
+    if ui.wants-human and descriptions.is-empty:
+      ui.emit --result "$(indent)No packages found."
+      return
 
     // From now on the "plain" and "human" output are the same.
     // If we are not verbose, we just print the name and version of each package.
