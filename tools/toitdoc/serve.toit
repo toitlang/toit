@@ -17,12 +17,12 @@ import certificate-roots
 import cli show Cli DirectoryStore
 import desktop
 import host.file
-import host.pipe
 import http
 import http.server
 import log
 import net
-import system
+import tar
+import zlib
 
 TOITDOC_WEB_VERSION ::= "v1.0.0"
 TOITDOC_WEB_URI ::= "https://github.com/toitware/web-toitdocs/releases/download/$TOITDOC_WEB_VERSION/build.tar.gz"
@@ -50,26 +50,25 @@ serve docs-path/string --port/int --open-browser/bool --cli/Cli:
 
   web-dir := cache.get-directory-path "toitdoc/$TOITDOC-WEB-VERSION": | store/DirectoryStore |
     store.with-tmp-directory: | dir/string |
-      if system.platform == system.PLATFORM-WINDOWS:
-        ui.abort "Serving toitdocs is not supported on Windows."
       certificate-roots.install-all-trusted-roots
       network := net.open
       client := http.Client network
       response := client.get --uri=TOITDOC-WEB-URI
       if response.status-code != 200:
         ui.abort "Failed to download web-toitdocs."
-      local-path := "$dir/build.tar.gz"
-      local := file.Stream.for-write local-path
+      decoder := zlib.GzipDecoder
+      task::
+        try:
+          while chunk := response.body.read:
+            decoder.out.write chunk
+        finally:
+          decoder.out.close
+          response.body.drain
+          client.close
       try:
-        local.out.write-from response.body
+        tar.extract --reader=decoder.in --directory=dir
       finally:
-        local.close
-        response.body.drain
-        client.close
-
-      // TODO(florian): implement tar.gz extraction in Toit.
-      pipe.run-program "tar" "-xzf" local-path "-C" dir
-      file.delete local-path
+        decoder.in.close
 
       store.move dir
 
@@ -86,8 +85,7 @@ serve docs-path/string --port/int --open-browser/bool --cli/Cli:
 
   if open-browser: desktop.open-browser url
 
-  // TODO(florian): we want to base the logger on the UI.
-  server := http.Server --max-tasks=20 --logger=(log.default.with-level log.WARN_LEVEL)
+  server := http.Server --max-tasks=20 --logger=ui.logger
   server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
     resource := request.query.resource
     resource-path/string := ?
