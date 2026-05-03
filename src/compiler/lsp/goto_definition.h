@@ -90,6 +90,8 @@ class GotoDefinitionHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
+  void definition(ir::Node* ir_node, Source::Range name_range) override {}
+
   static void import_path(const char* resolved, LspProtocol* protocol);
 
  private:
