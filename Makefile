@@ -14,6 +14,7 @@
 # directory of this repository.
 
 .ONESHELL: # Run all lines of targets in one shell
+.NOTPARALLEL:
 .SHELLFLAGS += -e
 SHELL=bash
 
@@ -144,6 +145,10 @@ FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 .PHONY: download-packages
 download-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt host-tools
 	(cd $(BUILD)/$(TARGET) && ninja download_packages)
+
+.PHONY: download-bootstrap-packages
+download-bootstrap-packages: check-env $(BUILD)/$(TARGET)/CMakeCache.txt
+	(cd $(BUILD)/$(TARGET) && ninja download_embedded_program_packages)
 
 .PHONY: rebuild-cmake
 rebuild-cmake:
@@ -298,12 +303,22 @@ clean:
 
 INSTALL_SRC_ARCH := $(TARGET)
 
-.PHONY: install-sdk install
+.PHONY: install-sdk install-completions install
 install-sdk:
 	# The DESTDIR is passed as environment variable and picked up by cmake.
 	cmake --install "$(BUILD)/$(TARGET)" --prefix "$(prefix)"
 
-install: install-sdk
+install-completions:
+	mkdir -p "$(DESTDIR)$(prefix)/share/bash-completion/completions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit bash > "$(DESTDIR)$(prefix)/share/bash-completion/completions/toit"
+	mkdir -p "$(DESTDIR)$(prefix)/share/zsh/site-functions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit zsh > "$(DESTDIR)$(prefix)/share/zsh/site-functions/_toit"
+	mkdir -p "$(DESTDIR)$(prefix)/share/fish/vendor_completions.d"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit fish > "$(DESTDIR)$(prefix)/share/fish/vendor_completions.d/toit.fish"
+	mkdir -p "$(DESTDIR)$(prefix)/share/powershell/completions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit powershell > "$(DESTDIR)$(prefix)/share/powershell/completions/toit.ps1"
+
+install: install-sdk install-completions
 
 
 # TESTS (host)
