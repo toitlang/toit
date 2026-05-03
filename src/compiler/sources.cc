@@ -299,5 +299,40 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
   return result;
 }
 
+Source::Position SourceManager::line_column_to_position(Source* source, int line, int utf16_column) {
+  const uint8* text = source->text();
+  int size = source->size();
+  int offset = 0;
+
+  // Skip to the correct line.
+  int current_line = 1;
+  while (current_line < line && offset < size) {
+    int c = text[offset++];
+    if (c == '\n' || c == '\r') {
+      int other = (c == '\n') ? '\r' : '\n';
+      if (offset < size && text[offset] == other) offset++;
+      current_line++;
+    }
+  }
+  if (offset >= size) {
+    return source->range(size, size).from();
+  }
+
+  // Advance within the line, counting UTF-16 code units.
+  for (int i = 1; i < utf16_column; i++) {
+    if (offset >= size || text[offset] == '\n' || text[offset] == '\r') {
+      // Column is past end of line; clamp.
+      break;
+    }
+    int nb_bytes = Utils::bytes_in_utf_8_sequence(text[offset]);
+    offset += nb_bytes;
+    // A 4-byte UTF-8 sequence encodes a supplementary character, which
+    // takes 2 UTF-16 code units (a surrogate pair).
+    if (nb_bytes > 3) i++;
+  }
+  if (offset > size) offset = size;
+  return source->range(offset, offset).from();
+}
+
 } // namespace toit::compiler
 } // namespace toit

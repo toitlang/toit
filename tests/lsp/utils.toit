@@ -63,20 +63,55 @@ extract-locations path -> Map/*<string, Location>*/:
           assert: not result.contains key or result[key] == value
           result[key] = value
 
-    if line.starts-with "/*":
+    if line.starts-with "/*" and not line.starts-with "/**":
+      // Walk backward past any preceding marker/test-data blocks to find the
+      // actual code line.
       definition-line := i - 1
-      if not line.contains "@":
-        // This should only happen if we want to have a test/location at the
-        // beginning of the line. (Or if this is the data for a test).
-        i++
-        line = lines[i]
-      if not line.contains "@": continue
+      while definition-line > 0:
+        candidate := lines[definition-line].trim
+        if candidate == "*/":
+          definition-line--
+          while definition-line > 0 and not lines[definition-line].trim.starts-with "/*":
+            definition-line--
+          definition-line--
+        else if candidate.starts-with "/*":
+          definition-line--
+        else:
+          break
 
-      if line.ends-with "*/": line = line.trim --right "*/"
-      line = line.trim
-      column := line.index-of "@"
+      // Scan the block (which may be single-line or multi-line) for a line
+      // containing "@".
+      at-line := null
+      if line.contains "@":
+        at-line = line
+      else:
+        // Multi-line block: scan forward through the block for an "@" line.
+        j := i + 1
+        while j < lines.size:
+          block-line := lines[j]
+          if block-line.contains "@":
+            at-line = block-line
+            break
+          if block-line.trim.starts-with "*/" or block-line.trim.ends-with "*/":
+            break
+          j++
+        // Advance i past the closing "*/".
+        while i < lines.size:
+          if lines[i].trim.starts-with "*/" or lines[i].trim.ends-with "*/":
+            break
+          i++
 
-      name := line.copy (column + 2)
+      if at-line == null: continue
+
+      // Determine the column from the raw line (before trimming).
+      // For single-line blocks like `/*@ name */`, the @ column in the
+      // original line IS the identifier column.
+      // For multi-line blocks, the @ is on its own line with indentation
+      // encoding the column.
+      if at-line.ends-with "*/": at-line = at-line.trim --right "*/"
+      column := at-line.index-of "@"
+
+      name := at-line[column + 2..].trim
       assert: not result.contains name
       result[name] = Location path definition-line column
   return result

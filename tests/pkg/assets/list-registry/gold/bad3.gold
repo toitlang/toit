@@ -1,6 +1,6 @@
 OK
 [pkg, list, bad-registry3]
 Error: Description at /bad/desc.yaml is missing a version.
-Warning: Skipping /bad/desc.yaml
+Warning: Skipping /bad/desc.yaml.
 bad-registry3 (bad-registry3 (local))
   No packages found.
