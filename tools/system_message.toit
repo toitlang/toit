@@ -61,8 +61,9 @@ build-command --use-old-api/bool=false -> cli.Command:
   message-option := cli.Option "message" --short-name="m" --required
         --help="The base64-encoded message from the device."
   options := [
-    cli.Option "snapshot" --short-name="s"
-        --help="The snapshot file of the program that produced the message.",
+    cli.OptionPath "snapshot" --short-name="s"
+        --help="The snapshot file of the program that produced the message."
+        --extensions=[".snapshot"],
     cli.Option "uuid" --short-name="u"
         --help="UUID of the snapshot that produced the message. Deprecated."
         --hidden=(not use-old-api),

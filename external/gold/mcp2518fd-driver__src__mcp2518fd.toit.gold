@@ -1,0 +1,3 @@
+mcp2518fd-driver/src/driver.toit:472:77: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
+          if flags & ~KNOWN-FLAGS_ != 0: throw "UNEXPECTED FLAGS: 0x$(flags.stringify 16)"
+                                                                            ^~~~~~~~~
