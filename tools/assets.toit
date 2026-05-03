@@ -28,10 +28,9 @@ OPTION-ASSETS       ::= "assets"
 OPTION-OUTPUT       ::= "output"
 OPTION-OUTPUT-SHORT ::= "o"
 
-option-output ::= cli.Option OPTION-OUTPUT
+option-output ::= cli.OptionPath OPTION-OUTPUT
     --short-name=OPTION-OUTPUT-SHORT
     --help="Set the output assets file."
-    --type="file"
 
 main arguments/List:
   root-cmd := build-command
@@ -54,10 +53,9 @@ build-command -> cli.Command:
               print decoded["my-asset"]
         """
       --options=[
-        cli.Option OPTION-ASSETS
+        cli.OptionPath OPTION-ASSETS
             --short-name="e"
             --help="The assets to work on."
-            --type="file"
             --required
       ]
   cmd.add create-cmd
@@ -89,8 +87,7 @@ add-cmd -> cli.Command:
       --rest=[
         cli.Option "name"
             --required,
-        cli.Option "path"
-            --type="file"
+        cli.OptionPath "path"
             --required
       ]
       --run=:: add-asset it
@@ -122,10 +119,9 @@ get-cmd -> cli.Command:
         cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
             --default="auto"
             --help="The encoding format.",
-        cli.Option "output"
+        cli.OptionPath "output"
             --short-name="o"
             --help="The name of the output file."
-            --type="file"
             --required,
       ]
       --rest=[
