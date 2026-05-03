@@ -10,7 +10,7 @@ import encoding.base64 as base64
 import monitor
 import host.pipe
 import io
-import tar show Tar
+import tar
 
 import .lsp-client show LspClient run-client-test
 import .utils

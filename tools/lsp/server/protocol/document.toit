@@ -203,3 +203,32 @@ class TextEdit extends MapWrapper:
       --new-text/string:
     map_["range"]    = range.map_
     map_["newText"]  = new-text
+
+/** Parameters for `textDocument/rename`. */
+class RenameParams extends MapWrapper:
+  constructor json-map/Map: super json-map
+
+  /** The text document. */
+  text-document -> TextDocumentIdentifier:
+    return at_ "textDocument": TextDocumentIdentifier it
+
+  /** The position inside the text document. */
+  position -> Position:
+    return at_ "position": Position.from-map it
+
+  /** The new name of the symbol. */
+  new-name -> string:
+    return at_ "newName"
+
+/**
+A workspace edit represents changes to many resources managed in the workspace.
+*/
+class WorkspaceEdit extends MapWrapper:
+  /**
+  Creates a workspace edit from a map of URI to list of $TextEdit.
+  */
+  constructor --changes/Map/*<string, List<TextEdit>>*/:
+    result := {:}
+    changes.do: |uri/string edits/List|
+      result[uri] = edits.map: it.map_
+    map_["changes"] = result
