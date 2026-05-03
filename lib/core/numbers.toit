@@ -1105,6 +1105,7 @@ abstract class int extends num:
     integer.
   The integer is treated as an unsigned 64 bit number.  Thus
     it returns 0 if called on a negative integer.
+
   # Examples
   ```
   (0x00FF).count-leading-zeros  // => 56
@@ -1122,6 +1123,7 @@ abstract class int extends num:
     integer.
   The integer is treated as an unsigned 64 bit number.
     Thus it returns 1 if called on -2.
+
   # Examples
   ```
   (0b101000).count-trailing-zeros   // => 3
@@ -1142,9 +1144,10 @@ abstract class int extends num:
   Returns the number of ones in the binary representation of the integer.
   The integer is treated as a 64 bit number.
     Thus it returns 64 if called on -1.
+
   # Examples
   ```
-  (0b101101).population-count  // => 2
+  (0b100001).population-count  // => 2
   (0b101100).population-count  // => 3
   (0b101110).population-count  // => 4
   (0b101111).population-count  // => 5
@@ -1162,6 +1165,7 @@ abstract class int extends num:
   Returns 1 if the number is odd, zero if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns 0 if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => 0
@@ -1182,6 +1186,7 @@ abstract class int extends num:
   Returns false if the number is odd, true if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns false if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => true
@@ -1202,6 +1207,7 @@ abstract class int extends num:
   Returns true if the number is odd, false if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns true if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => false

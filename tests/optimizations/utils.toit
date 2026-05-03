@@ -7,7 +7,6 @@ import ...tools.lsp.server.client show with-lsp-client LspClient
 import host.directory
 import host.file
 import host.pipe
-import tar show Tar
 import encoding.base64 as base64
 
 run args/List --entry-path/string sources/Map={:} -> SnapshotBundle:

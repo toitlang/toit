@@ -1,6 +1,6 @@
 OK
 [pkg, list, bad-registry]
 Error: Description at /bad/desc.yaml is missing a url.
-Warning: Skipping /bad/desc.yaml
+Warning: Skipping /bad/desc.yaml.
 bad-registry (bad-registry (local))
   No packages found.
