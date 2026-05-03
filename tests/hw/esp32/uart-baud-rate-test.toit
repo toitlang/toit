@@ -15,7 +15,7 @@ import uart
 import .test
 import .variants
 
-// Not that RX1 goes to TX2 and TX1 goes to RX2.
+// Note that RX1 goes to TX2 and TX1 goes to RX2.
 RX1 ::= Variant.CURRENT.uart-baud-rate-in2
 TX1 ::= Variant.CURRENT.uart-baud-rate-out1
 
