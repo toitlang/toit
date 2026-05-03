@@ -4,6 +4,7 @@
 
 import encoding.tison
 import io
+import .ip-address
 import .socket-address
 
 interface Interface:
@@ -53,8 +54,98 @@ interface Socket:
   // should not exceed this value.
   mtu -> int
 
-  // Returns true if broadcast is enabled.
+  // Whether broadcast is enabled.
   broadcast -> bool
 
   // Enable or disable broadcast messages.
   broadcast= value/bool
+
+interface MulticastSocket extends Socket:
+  // Whether multicast loopback is enabled.
+  multicast-loopback -> bool
+
+  // Enable or disable multicast loopback.
+  multicast-loopback= value/bool
+
+  // Returns the multicast TTL.
+  multicast-ttl -> int
+
+  // Sets the multicast TTL.
+  multicast-ttl= value/int
+
+  // Whether reuse address is enabled.
+  reuse-address -> bool
+
+  // Enable or disable reuse address.
+  reuse-address= value/bool
+
+  // Whether reuse port is enabled.
+  reuse-port -> bool
+
+  // Enable or disable reuse port.
+  reuse-port= value/bool
+
+  /**
+  Joins the multicast group identified by $address.
+  After this call, the socket will receive messages sent to the given
+    multicast group.
+  */
+  multicast-add-membership address/IpAddress
+
+  /**
+  Leaves the multicast group identified by $address.
+  After this call, the socket will no longer receive messages sent
+    to the given multicast group.
+  */
+  multicast-leave-membership address/IpAddress
+
+  // The IP address of the interface used for outgoing multicast packets.
+  multicast-interface -> IpAddress
+
+  // Sets the interface used for outgoing multicast packets.
+  multicast-interface= address/IpAddress
+
+interface MulticastInterface:
+  /**
+  Opens a UDP socket configured for multicast.
+
+  The returned socket is ready for multicast communication but does not
+    automatically join any group. Use $MulticastSocket.multicast-add-membership
+    to join a group for receiving, or simply send to a multicast address for
+    sending.
+
+  The $port is the local port to bind to. If null, the OS picks an
+    ephemeral port (typical for send-only sockets).
+  The $if-addr is the IP address of the interface to use for outgoing
+    multicast. If null, the OS picks a default interface.
+  If $reuse-address is true (the default), the SO_REUSEADDR option is set.
+  If $reuse-port is true (not default), the SO_REUSEPORT option is set
+    (if supported by the platform).
+  If $loopback is true (the default), multicast packets sent from this
+    socket are also delivered to receivers on the same host.
+  The $ttl is the multicast time-to-live (default 1, meaning
+    link-local only).
+  */
+  udp-open-multicast -> MulticastSocket
+      --port/int?=null
+      --if-addr/IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1
+
+  /**
+  Deprecated. Use $(udp-open-multicast --port --if-addr --reuse-address --reuse-port --loopback --ttl)
+    followed by $MulticastSocket.multicast-add-membership instead.
+
+  Opens a UDP multicast socket, binds to $port, and automatically joins
+    the multicast group $address.
+  */
+  udp-open-multicast -> MulticastSocket
+      address/IpAddress
+      port/int
+      --if-addr/IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1

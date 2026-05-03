@@ -361,6 +361,7 @@ class ServerCapabilities extends MapWrapper:
       --folding-range-provider   /any                          = null /* bool | FoldingRangeProviderOptions | (FoldingRangeProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
       --execute-command-provider /ExecuteCommandOptions?       = null
       --semantic-tokens-provider /SemanticTokensOptions?       = null
+      --selection-range-provider /bool?                        = null
       --workspace                /WorkspaceServerCapabilities? = null
       --experimental             /Experimental?                = null:
     map_["textDocumentSync"]       = text-document-sync
@@ -385,5 +386,6 @@ class ServerCapabilities extends MapWrapper:
     map_["foldingRangeProvider"]   = folding-range-provider
     map_["executeCommandProvider"] = execute-command-provider
     map_["semanticTokensProvider"] = semantic-tokens-provider
+    map_["selectionRangeProvider"] = selection-range-provider
     map_["workspace"]              = workspace
     map_["experimental"]           = experimental

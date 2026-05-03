@@ -102,6 +102,8 @@ class CompletionHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
+  void definition(ir::Node* ir_node, Source::Range name_range) override {}
+
  private:
   void complete_static_ids(IterableScope* scope, ir::Method* surrounding);
   void complete_named_args(ir::Method* method);

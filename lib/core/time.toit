@@ -802,19 +802,19 @@ class Time implements Comparable:
     cases. The flag should *not* be used otherwise.
   */
   constructor.local --year/int --month/int --day/int --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0 --dst/bool?=null:
-    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=false --dst=dst
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --no-is-utc --dst=dst
 
   /** Variant of $(Time.local --year --month --day --h --m --s --ms --us --ns --dst). */
   constructor.local year/int month/int day/int h/int=0 m/int=0 s/int=0 --ms/int=0 --us/int=0 --ns/int=0 --dst/bool?=null:
-    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=false --dst=dst
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --no-is-utc --dst=dst
 
   /** Constructs a time instance in UTC from the given parameters. */
   constructor.utc --year/int --month/int --day/int --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
-    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=true
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc
 
   /** Variant of $(Time.utc --year --month --day --h --m --s --ms --us --ns) */
   constructor.utc year/int month/int day/int h/int=0 m/int=0 s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
-    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=true
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc
 
   /**
   Constructs a time instance in local time or UTC.
@@ -1082,7 +1082,7 @@ class Time implements Comparable:
   Decomposes this time to a human-friendly version using UTC.
   */
   utc -> TimeInfo:
-    if not utc_: utc_ = TimeInfo.__ this --is-utc=true
+    if not utc_: utc_ = TimeInfo.__ this --is-utc
     return utc_
 
   /**
