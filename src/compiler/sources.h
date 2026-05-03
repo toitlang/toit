@@ -241,6 +241,17 @@ class SourceManager {
   Source* source_for_position(Source::Position position) const;
   Source::Location compute_location(Source::Position position) const;
 
+  /// Converts a 1-based (line, column) pair to a Source::Position for the
+  /// given source.
+  ///
+  /// The column is in UTF-16 code units (as per the LSP specification), so
+  /// multi-byte UTF-8 sequences that encode characters outside the BMP are
+  /// counted as 2 UTF-16 code units (a surrogate pair).
+  ///
+  /// Out-of-range positions are clamped to the end of the line or file rather
+  /// than aborting.
+  static Source::Position line_column_to_position(Source* source, int line, int utf16_column);
+
   const char* library_root();
 
   // Virtual files are not stored on the disk and can only be provided
