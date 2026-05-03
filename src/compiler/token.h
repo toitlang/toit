@@ -306,6 +306,33 @@ ENTRY_POINTS(E)
   }
 };
 
+/// Returns whether the given symbol is an operator name.
+///
+/// Operator methods (like +, -, [], []=, etc.) cannot be meaningfully renamed
+/// by the user, and must be treated specially by the resolver.
+inline bool is_operator_name(Symbol name) {
+  return name == Token::symbol(Token::EQ) ||
+      name == Token::symbol(Token::LT) ||
+      name == Token::symbol(Token::LTE) ||
+      name == Token::symbol(Token::GTE) ||
+      name == Token::symbol(Token::GT) ||
+      name == Token::symbol(Token::ADD) ||
+      name == Token::symbol(Token::SUB) ||
+      name == Token::symbol(Token::MUL) ||
+      name == Token::symbol(Token::DIV) ||
+      name == Token::symbol(Token::MOD) ||
+      name == Token::symbol(Token::BIT_NOT) ||
+      name == Token::symbol(Token::BIT_AND) ||
+      name == Token::symbol(Token::BIT_OR) ||
+      name == Token::symbol(Token::BIT_XOR) ||
+      name == Token::symbol(Token::BIT_SHR) ||
+      name == Token::symbol(Token::BIT_USHR) ||
+      name == Token::symbol(Token::BIT_SHL) ||
+      name == Symbols::index ||
+      name == Symbols::index_put ||
+      name == Symbols::index_slice;
+}
+
 
 } // namespace toit::compiler
 } // namespace toit
