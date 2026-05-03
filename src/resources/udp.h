@@ -25,9 +25,16 @@ enum UdpState {
 };
 
 enum UdpOption {
-  UDP_PORT        = 1,
-  UDP_ADDRESS     = 2,
-  UDP_BROADCAST   = 3,
+  UDP_PORT                 = 1,
+  UDP_ADDRESS              = 2,
+  UDP_BROADCAST            = 3,
+  UDP_MULTICAST_MEMBERSHIP = 4,
+  UDP_MULTICAST_LOOPBACK   = 5,
+  UDP_MULTICAST_TTL        = 6,
+  UDP_REUSE_ADDRESS        = 7,
+  UDP_REUSE_PORT           = 8,
+  UDP_MULTICAST_IF         = 9,
+  UDP_MULTICAST_LEAVE      = 10,
 };
 
 } // namespace toit
