@@ -14,7 +14,7 @@ import io
 import system
 import system show platform
 import ar show *
-import tar show *
+import tar
 
 do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
   tmp-path := "$tmp-dir/c_generated.a"
@@ -30,10 +30,10 @@ do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
       --create-stdin
       generator-path
       args
-  tar := Tar process.stdin.out
+  tar-writer := tar.Writer process.stdin.out
   file-mapping.do: |name content|
-    tar.add name content
-  tar.close --no-close-writer
+    tar-writer.add name content
+  tar-writer.close
   process.stdin.close
   exit-value := process.wait
   expect-equals null

@@ -1,0 +1,14 @@
+tests/negative/super-dot-warn-test.toit:14:17: warning: 'super.foo' calls 'foo' on the result of 'super'; use '(super).foo' to make it explicit
+    return super.foo + 1
+                ^~~~
+tests/negative/super-dot-warn-test.toit:18:17: warning: 'super.bar' calls 'bar' on the result of 'super'; use '(super).bar' to make it explicit
+    return super.bar x
+                ^~~~
+tests/negative/super-dot-warn-test.toit:18:12: error: Argument mismatch for 'bar'
+Too few arguments provided
+    return super.bar x
+           ^~~~~
+tests/negative/super-dot-warn-test.toit:22:12: error: Unresolved identifier: 'gee'
+    return super
+           ^~~~~
+Compilation failed
