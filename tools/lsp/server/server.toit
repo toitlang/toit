@@ -33,6 +33,7 @@ import .protocol.initialization
 import .protocol.message
 import .protocol.server-capabilities
 import .protocol.semantic-tokens
+import .protocol.hover
 import .protocol-toit
 
 import .compiler
@@ -43,6 +44,7 @@ import .rpc
 import .uri-path-translator as translator
 import .utils
 import .verbose
+import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
 DEFAULT-TIMEOUT-MS ::= 10_000
@@ -150,11 +152,15 @@ class LspServer:
         "textDocument/didOpen":    (:: did-open   (DidOpenTextDocumentParams   it)),
         "textDocument/didChange":  (:: did-change (DidChangeTextDocumentParams it)),
         "textDocument/didSave":    (:: did-save   (DidSaveTextDocumentParams   it)),
-        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams   it)),
+        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams  it)),
         "textDocument/completion": (:: completion (CompletionParams it )),
         "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
+        "textDocument/rename":     (:: rename (RenameParams it)),
+        "textDocument/prepareRename": (:: prepare-rename (TextDocumentPositionParams it)),
+        "textDocument/hover":      (:: hover      (TextDocumentPositionParams  it)),
         "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
+        "textDocument/selectionRange": (:: selection-range it),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
         "toit/reportIdle":         (:: report-idle),
@@ -207,22 +213,25 @@ class LspServer:
       if params.capabilities.experimental.ubjson-rpc: connection_.enable-ubjson
 
     server-capabilities := ServerCapabilities
-        --completion-provider= CompletionOptions
-            --resolve-provider=   false
-            --trigger-characters= [".", "-", "\$"]
-        --definition-provider=      true
-        --document-symbol-provider= true
+        --completion-provider=CompletionOptions
+            --no-resolve-provider
+            --trigger-characters=[".", "-", "\$"]
+        --definition-provider
+        --hover-provider
+        --document-symbol-provider
         --text-document-sync= TextDocumentSyncOptions
             --open-close
-            --change= TextDocumentSyncKind.full
-            --save=   SaveOptions --no-include-text
-        --semantic-tokens-provider= SemanticTokensOptions
-            --legend= SemanticTokensLegend
-                --token-types= Compiler.SEMANTIC-TOKEN-TYPES
-                --token-modifiers= Compiler.SEMANTIC-TOKEN-MODIFIERS
+            --change=TextDocumentSyncKind.full
+            --save=SaveOptions --no-include-text
+        --semantic-tokens-provider=SemanticTokensOptions
+            --legend=SemanticTokensLegend
+                --token-types=Compiler.SEMANTIC-TOKEN-TYPES
+                --token-modifiers=Compiler.SEMANTIC-TOKEN-MODIFIERS
             --no-range
-            --full= true  // Or should it be '{ "delta": false }' ?
+            --full  // Or should it be '{ "delta": false }' ?
         --experimental=Experimental --ubjson-rpc
+        --rename-provider=RenameOptions true
+        --selection-range-provider
 
     return InitializationResult server-capabilities
 
@@ -348,6 +357,154 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+
+  rename params/RenameParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    new-name := params.new-name
+
+    // Find all compilation entry points that include this file in their
+    // import graph. This is necessary for cross-file rename: when the
+    // cursor is in a dependency file, we must compile from the importing
+    // ("root") files to discover references in those files.
+    entry-uris := compilation-entry-points-for_ --project-uri=project-uri --target-uri=uri
+
+    // Collect references from all entry points, deduplicating locations
+    // that appear in multiple compilations (e.g., the definition in
+    // a shared dependency file).
+    all-references := []
+    seen := {}
+    entry-uris.do: | entry-uri |
+      references := compiler_.find-references
+          --project-uri=project-uri
+          --entry-uri=entry-uri
+          uri
+          params.position.line
+          params.position.character
+      references.do: | location/Location |
+        key := "$location.uri:$(location.range.start.line):$(location.range.start.character):$(location.range.end.line):$(location.range.end.character)"
+        if not seen.contains key:
+          seen.add key
+          all-references.add location
+
+    if all-references.is-empty: return null
+    // Group TextEdits by URI.
+    changes := {:}
+    all-references.do: | location/Location |
+      edits := changes.get location.uri --init=: []
+      edits.add (TextEdit --range=location.range --new-text=new-name)
+    return WorkspaceEdit --changes=changes
+
+  prepare-rename params/TextDocumentPositionParams -> any:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+
+  selection-range params/Map -> List:
+    uri := translator.canonicalize params["textDocument"]["uri"]
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    positions := params["positions"]
+    range-lists := compiler_.selection-range
+        --project-uri=project-uri
+        uri
+        positions
+    return range-lists.map: | ranges/List? |
+      if not ranges or ranges.is-empty:
+        null
+      else:
+        build-selection-range_ ranges
+
+  /**
+  Adds to $result the transitive closure of URIs that depend on the given
+    $start-uris (via reverse-deps), including the $start-uris themselves.
+
+  URIs already present in $result are treated as visited and their
+    reverse-deps are not re-traversed. This means callers can seed $result
+    with previously-visited URIs to avoid redundant work across multiple
+    invocations.
+  */
+  add-transitive-reverse-deps_ --analyzed/AnalyzedDocuments --start-uris/Collection --result/Set -> none:
+    queue := []
+    start-uris.do: | uri |
+      if not result.contains uri:
+        result.add uri
+        queue.add uri
+    while not queue.is-empty:
+      current := queue.remove-last
+      document := analyzed.get --uri=current
+      if not document: continue
+      document.reverse-deps.do: | dep-uri |
+        if not result.contains dep-uri:
+          result.add dep-uri
+          queue.add dep-uri
+
+  /**
+  Finds the minimal set of compilation entry points that together cover all
+    files which transitively import $target-uri.
+
+  When the cursor is in a dependency file, the compiler must be invoked from
+    the importing ("root") files to discover call-site references in those
+    files. This method uses $add-transitive-reverse-deps_ to walk the
+    reverse-dependency graph upward from $target-uri to find those roots.
+
+  If $target-uri has no reverse dependencies (i.e., it is itself a top-level
+    entry point), the result is a list containing just $target-uri.
+  */
+  compilation-entry-points-for_ --project-uri/string --target-uri/string -> List:
+    analyzed := documents_.analyzed-documents-for --project-uri=project-uri
+
+    // Collect the transitive closure of files that import the target, walking
+    // up through reverse dependencies.
+    closure := {}
+    add-transitive-reverse-deps_ --analyzed=analyzed --start-uris=[target-uri] --result=closure
+
+    // Among the closure, find roots — files not imported by any other file
+    // in the closure. These are the minimal compilation entry points.
+    imported := {}
+    closure.do: | closure-uri |
+      document := analyzed.get --uri=closure-uri
+      if document and document.summary:
+        document.summary.dependencies.do: | dep-uri |
+          if closure.contains dep-uri:
+            imported.add dep-uri
+
+    roots := []
+    closure.do: | closure-uri |
+      if not imported.contains closure-uri:
+        roots.add closure-uri
+
+    if roots.is-empty: return [ target-uri ]
+    return roots
+
+  hover params/TextDocumentPositionParams -> Hover?:
+    uri := translator.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+
+    definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    if not definition: return null
+
+    if definition.text:
+      return Hover --contents=definition.text
+
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+    element-uri := translator.to-uri definition.path --from-compiler
+
+    document := analyzed-documents.get --uri=element-uri
+    if not document or not document.summary: return null
+
+    element := ?
+    if definition.start == 0 and definition.end == 0:
+      element = document.summary
+    else:
+      element = document.summary.element-at --start=definition.start --end=definition.end
+    if not element: return null
+
+    toitdoc := element.toitdoc
+    if not toitdoc: return null
+
+    visitor := ToitdocMarkdownVisitor
+    visitor.visit-Contents toitdoc
+    return Hover --contents=visitor.build
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator.canonicalize params.text-document.uri
@@ -507,33 +664,27 @@ class LspServer:
         report-diagnostics-documents.add summary-uri
 
     // All reverse dependencies of changed documents need to have their diagnostics printed.
+    // We add all transitive dependencies, as it's hard to track implicit exports.
+    // For example, the return type of a method, requires all users of the method
+    //   to check whether a member call of the result is now allowed or not.
+    //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+    //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+    //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+    //     the 'foo' method now requires an additional parameter.
+    //
+    // This can happen multiple layers down.
+    // Note that we do this only if the summary of the initial file changes. As such, we
+    //   usually don't analyze everything.
+    //
+    // We will also remove files that are in a different project-root. During the
+    //   reverse dependency creation we add them (so we don't end up in an infinite
+    //   recursion), but they will be removed just afterwards.
     changed-summary-documents.do:
       document := analyzed-documents.get-existing --uri=it
-
-      // Local lambda that transitively adds reverse dependencies.
-      // We add all transitive dependencies, as it's hard to track implicit exports.
-      // For example, the return type of a method, requires all users of the method
-      //   to check whether a member call of the result is now allowed or not.
-      //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
-      //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
-      //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
-      //     the 'foo' method now requires an additional parameter.
-      //
-      // This can be happen multiple layers down.
-      // Note that we do this only if the summary of the initial file changes. As such, we
-      //   usually don't analyze everything.
-      //
-      // We will also remove files that are in a different project-root. During the
-      //   reverse dependency creation we add them (so we don't end up in an infinite
-      //   recursion), but they will be removed just afterwards.
-      add-rev-deps := null
-      add-rev-deps = :: |rev-dep-uri|
-        if not report-diagnostics-documents.contains rev-dep-uri:
-          report-diagnostics-documents.add rev-dep-uri
-          rev-document := analyzed-documents.get-existing --uri=rev-dep-uri
-          rev-document.reverse-deps.do: add-rev-deps.call it
-
-      document.reverse-deps.do: add-rev-deps.call it
+      add-transitive-reverse-deps_
+          --analyzed=analyzed-documents
+          --start-uris=document.reverse-deps
+          --result=report-diagnostics-documents
 
     // Remove the documents that are not in the same project-root, or are in
     // .packages (assuming we don't want them).
@@ -582,6 +733,23 @@ class LspServer:
       changed-summary-documents.add-all rev-dep-result
 
     return changed-summary-documents
+
+  /**
+  Builds a SelectionRange linked-list from a flat list of ranges.
+
+  The ranges must be ordered innermost-first.
+  Returns a nested map structure where each entry has a "range" and
+    optionally a "parent" pointing to the next larger range.
+  */
+  static build-selection-range_ ranges/List -> Map:
+    result/Map? := null
+    // Fold from outermost to innermost to build the parent chain.
+    for i := ranges.size - 1; i >= 0; i--:
+      entry := {:}
+      entry["range"] = ranges[i].map_
+      if result: entry["parent"] = result
+      result = entry
+    return result
 
   send-diagnostics params/PushDiagnosticsParams -> none:
     connection_.send "textDocument/publishDiagnostics" params

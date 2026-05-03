@@ -28,8 +28,6 @@ namespace compiler {
 
 namespace {
 
-using namespace ir;
-
 // This list must be kept in sync with the one in compiler.toit.
 enum class TokenType {
   NAMESPACE = 0,
@@ -54,9 +52,10 @@ struct SemanticToken {
   int modifiers;
 };
 
-class TokenVisitor : public TraversingVisitor {
+class TokenVisitor : public ir::TraversingVisitor {
  public:
-  TokenVisitor(const char* path, SourceManager* manager) : path_(path), manager_(manager) {}
+  TokenVisitor(const char* path, SourceManager* manager)
+      : path_(path), manager_(manager) {}
 
   void visit_ast_import(ast::Import* import, Module* module) {
     auto prefix = import->prefix();
@@ -84,6 +83,14 @@ class TokenVisitor : public TraversingVisitor {
           break;
       }
     }
+  }
+
+  void visit_Class(ir::Class* node) override {
+    bool is_definition = true;
+    emit_token(node->range(), node, is_definition);
+    // TODO(florian): emit tokens for interfaces, super and mixins.
+    // TODO(florian): emit tokens for keywords.
+    // TODO(florian): run through the class elements.
   }
 
   std::vector<SemanticToken> tokens() const { return tokens_; }
@@ -145,7 +152,11 @@ void emit_tokens(Module* module, const char* path, SourceManager* manager, LspPr
     visitor.visit_ast_import(prefixed.import, module);
   }
 
-  // TODO(florian): run through the classes, globals and methods.
+  for (auto cls : module->classes()) {
+    visitor.visit_Class(cls);
+  }
+
+  // TODO(florian): run through the globals and methods.
 
   auto tokens = visitor.tokens();
 
@@ -176,4 +187,3 @@ void emit_tokens(Module* module, const char* path, SourceManager* manager, LspPr
 
 } // namespace toit::compiler
 } // namespace toit
-

@@ -29,12 +29,18 @@ TEST-BYTES := ByteArray 4096:
   b := it & 0xFF
   b == 0 ? it >> 8 : b
 
-check-read-data data/ByteArray:
+MAX-ERRORS ::= 10
+
+check-read-data iteration/int data/ByteArray:
+  errors := 0
   expect-equals TEST-BYTES.size data.size
   if TEST-BYTES != data:
     for i := 0; i < TEST-BYTES.size; i++:
       if TEST-BYTES[i] != data[i]:
-        print "Mismatch at $i: $TEST-BYTES[i] != $data[i]"
+        print "Mismatch at $iteration-$i: $TEST-BYTES[i] != $data[i]"
         print TEST-BYTES[max 0 (i - 3)..min data.size (i + 3)]
         print data[max 0 (i - 3)..min data.size (i + 3)]
+        errors++
+        if errors >= MAX-ERRORS:
+          throw "Too many errors"
   expect-equals TEST-BYTES data
