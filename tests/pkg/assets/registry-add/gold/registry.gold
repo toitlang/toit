@@ -55,7 +55,7 @@ test-reg2 (<[*WORKING-DIR*]>/registry2 (local))
 OK
 [pkg, registry, add, --local, bad-registry, bad_registry]
 Error: Description at /desc.yaml is missing a url.
-Warning: Skipping /desc.yaml
+Warning: Skipping /desc.yaml.
 ==================
 // It's OK to add the same registry with the same name again
 ==================

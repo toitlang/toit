@@ -577,11 +577,16 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto global = node->global();
     check_deprecated(node->range(), global);
     auto right_type = visit(node->right());
-    if (global->return_type().is_any() && right_type.is_none()) {
+    auto receiver_type = global->return_type();
+    // The receiver type can be invalid when the assignment lives inside the
+    // global's own initializer (the type hasn't been computed yet) or when
+    // type inference for the global failed (e.g. a cyclic type dependency).
+    if (!receiver_type.is_valid()) return right_type;
+    if (receiver_type.is_any() && right_type.is_none()) {
       // TODO(florian): check that 'none' types aren't used.
       // report_error(node->right()->range(), "Can't use value of type 'none'");
     } else {
-      check(node->range(), global->return_type(), right_type);
+      check(node->range(), receiver_type, right_type);
     }
     return right_type;
   }
