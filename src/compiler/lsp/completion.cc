@@ -123,47 +123,25 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
   auto klass = type.klass();
   if (is_for_named) {
     auto selector = node->selector();
-    while (klass != null) {
-      for (int i = -1; i < klass->mixins().length(); i++) {
-        auto current = i == -1
-            ? klass
-            : klass->mixins()[i];
-        for (auto method : current->methods()) {
-          if (method->name() == selector) {
-            complete_named_args(method);
-          }
+    walk_class_hierarchy(klass, classes, [&](ir::Class* current) -> bool {
+      for (auto method : current->methods()) {
+        if (method->name() == selector) {
+          complete_named_args(method);
         }
       }
-      if (klass->super() == null &&
-          (klass->is_interface() || klass->is_mixin())) {
-        // Add the Object methods, which every object has.
-        klass = classes[0];
-      } else {
-        klass = klass->super();
-      }
-    }
+      return false;
+    });
     terminate();
   }
 
-  while (klass != null) {
-    for (int i = -1; i < klass->mixins().length(); i++) {
-      auto current = i == -1
-          ? klass
-          : klass->mixins()[i];
-      auto class_source = source_manager_->source_for_position(current->range().from());
-      auto class_package = class_source->package_id();
-      for (auto method : current->methods()) {
-        complete_method(method, class_package);
-      }
+  walk_class_hierarchy(klass, classes, [&](ir::Class* current) -> bool {
+    auto class_source = source_manager_->source_for_position(current->range().from());
+    auto class_package = class_source->package_id();
+    for (auto method : current->methods()) {
+      complete_method(method, class_package);
     }
-    if (klass->super() == null &&
-        (klass->is_interface() || klass->is_mixin())) {
-      // Add the Object methods, which every object has.
-      klass = classes[0];
-    } else {
-      klass = klass->super();
-    }
-  }
+    return false;
+  });
   terminate();
 }
 
