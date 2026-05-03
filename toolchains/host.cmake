@@ -15,6 +15,8 @@
 
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}" CACHE STRING "The system name for the host toolchain")
 
+set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures for Mac OS X" FORCE)
+
 set(CMAKE_C_FLAGS_DEBUG "-O1 -g $ENV{LOCAL_CFLAGS}" CACHE STRING "c Debug flags")
 set(CMAKE_CXX_FLAGS_DEBUG "-O1 -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os $ENV{LOCAL_CFLAGS}" CACHE STRING "c Release flags")

@@ -123,13 +123,15 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
       ASSERT(module == entry_module);
       // Immediately print the tokens.
       // The function should exit, thus aborting the remaining resolutions.
-      lsp_->emit_semantic_tokens(module, entry_module->unit()->absolute_path(), source_manager_);
+      lsp_->emit_semantic_tokens(module,
+                                 entry_module->unit()->absolute_path(),
+                                 source_manager_);
       UNREACHABLE();
     }
   }
 
   if (lsp_ != null && lsp_->needs_summary()) {
-    lsp_->emit_summary(modules, core_index, toitdocs_);
+    lsp_->emit_summary(modules, core_index, *toitdocs_);
   }
 
   // Run through the modules again, and report deprecation warnings for imports.
@@ -237,6 +239,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                method->selection_range(),
                                                method->outline_range());
         ir_to_ast_map_[ir] = method;
+        if (method->name_or_dot()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, method->name_or_dot()->selection_range());
+        }
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
@@ -245,6 +250,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                   global->selection_range(),
                                   global->outline_range());
         ir_to_ast_map_[ir] = global;
+        if (global->name()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, global->name()->selection_range());
+        }
         globals.add(ir);
       } else if (auto klass = declaration->as_Class()) {
         check_class(klass);
@@ -260,6 +268,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
         ir::Class* ir = _new ir::Class(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
+        if (klass->name()->is_LspSelection()) {
+          lsp_->selection_handler()->definition(ir, klass->name()->selection_range());
+        }
         classes.add(ir);
       } else {
         UNREACHABLE();
@@ -946,6 +957,16 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
       } else {
         scope->non_prefixed_imported()->add(name, resolved_entry);
         if (export_all) exported_identifiers_map[name] = resolved_entry;
+        // Collect show references for the rename pipeline.
+        // Each show identifier in the source resolves to a definition in the
+        // imported module. Record the mapping so rename can find these.
+        for (auto ast_id : prefix.show_identifiers) {
+          if (ast_id->data() == name) {
+            for (auto node : resolved_entry.nodes()) {
+              show_export_references_.push_back({node, ast_id->selection_range()});
+            }
+          }
+        }
       }
 
       if (module == lsp_module && name == lsp_name) {
@@ -979,6 +1000,13 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
             // We could invoke the lsp-handler here, but we need to handle the case where
             // the entry isn't resolved anyway.
             lsp_resolution_entry = resolved;
+          }
+          // Collect export references for the rename pipeline.
+          if (!resolved.is_empty()) {
+            auto* export_node = find_export_node(module, exported);
+            for (auto node : resolved.nodes()) {
+              show_export_references_.push_back({node, export_node->selection_range()});
+            }
           }
         }
       }
@@ -1311,6 +1339,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           report_error(ast_mixin, "Not a mixin");
         } else {
           ir_mixins.add(ir_mixin);
+          class_hierarchy_references_.push_back({klass, ir_mixin, ast_mixin});
         }
       }
       klass->set_mixins(ir_mixins.build());
@@ -1326,6 +1355,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           report_error(ast_interface, "Not an interface");
         } else {
           ir_interfaces.add(ir_interface);
+          class_hierarchy_references_.push_back({klass, ir_interface, ast_interface});
         }
       }
       klass->set_interfaces(ir_interfaces.build());
@@ -1446,29 +1476,6 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
     klass->replace_interfaces(List<ir::Class*>());
     klass->replace_mixins(List<ir::Class*>());
   }
-}
-
-static bool is_operator_name(Symbol name) {
-  return name == Token::symbol(Token::EQ) ||
-      name == Token::symbol(Token::LT) ||
-      name == Token::symbol(Token::LTE) ||
-      name == Token::symbol(Token::GTE) ||
-      name == Token::symbol(Token::GT) ||
-      name == Token::symbol(Token::ADD) ||
-      name == Token::symbol(Token::SUB) ||
-      name == Token::symbol(Token::MUL) ||
-      name == Token::symbol(Token::DIV) ||
-      name == Token::symbol(Token::MOD) ||
-      name == Token::symbol(Token::BIT_NOT) ||
-      name == Token::symbol(Token::BIT_AND) ||
-      name == Token::symbol(Token::BIT_OR) ||
-      name == Token::symbol(Token::BIT_XOR) ||
-      name == Token::symbol(Token::BIT_SHR) ||
-      name == Token::symbol(Token::BIT_USHR) ||
-      name == Token::symbol(Token::BIT_SHL) ||
-      name == Symbols::index ||
-      name == Symbols::index_put ||
-      name == Symbols::index_slice;
 }
 
 static bool is_valid_operator_shape(Symbol name, const ResolutionShape& shape) {
@@ -1845,6 +1852,16 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
               UNREACHABLE();
           }
           ir_to_ast_map_[ir_method] = member;
+          if (member->name_or_dot()->is_LspSelection()) {
+            lsp_->selection_handler()->definition(ir_method, member->name_or_dot()->selection_range());
+          } else if (member->name_or_dot()->is_Dot()) {
+            auto* dot = member->name_or_dot()->as_Dot();
+            if (dot->name()->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_method, dot->name()->selection_range());
+            } else if (dot->receiver()->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_method, dot->receiver()->selection_range());
+            }
+          }
         } else {
           ASSERT(name_or_dot->is_Identifier());
           Symbol member_name = name_or_dot->as_Identifier()->data();
@@ -1859,6 +1876,9 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                                              position,
                                              ast_field->outline_range());
             ir_to_ast_map_[ir_global] = member;
+            if (name_or_dot->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_global, name_or_dot->selection_range());
+            }
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
             auto ir_field = _new ir::Field(member_name,
@@ -1867,6 +1887,9 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
                                            ast_field->selection_range(),
                                            ast_field->outline_range());
             ir_to_ast_map_[ir_field] = member;
+            if (name_or_dot->is_LspSelection()) {
+              lsp_->selection_handler()->definition(ir_field, name_or_dot->selection_range());
+            }
             fields.add(ir_field);
             auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position, outline_range);
             auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position, outline_range);
@@ -2343,7 +2366,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                      lsp_,
                                      ir_to_ast_map_,
                                      diagnostics());
-      toitdocs_.set_toitdoc(method, toitdoc);
+      toitdocs_->set_toitdoc(method, toitdoc);
       method->set_deprecation(extract_deprecation_message(toitdoc));
     }
   }
@@ -2375,7 +2398,7 @@ void Resolver::resolve_field(ir::Field* field,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(field, toitdoc);
+    toitdocs_->set_toitdoc(field, toitdoc);
     field->set_deprecation(extract_deprecation_message(toitdoc));
   }
 }
@@ -2478,7 +2501,7 @@ void Resolver::resolve_fill_module(Module* module,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(module, toitdoc);
+    toitdocs_->set_toitdoc(module, toitdoc);
     module->set_deprecation(extract_deprecation_message(toitdoc));
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
@@ -2565,7 +2588,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                    lsp_,
                                    ir_to_ast_map_,
                                    diagnostics());
-    toitdocs_.set_toitdoc(klass, toitdoc);
+    toitdocs_->set_toitdoc(klass, toitdoc);
     klass->set_deprecation(extract_deprecation_message(toitdoc));
   }
 
