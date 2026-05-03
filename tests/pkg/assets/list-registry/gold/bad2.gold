@@ -1,6 +1,6 @@
 OK
 [pkg, list, bad-registry2]
 Error: Description at /bad/desc.yaml is missing a name.
-Warning: Skipping /bad/desc.yaml
+Warning: Skipping /bad/desc.yaml.
 bad-registry2 (bad-registry2 (local))
   No packages found.
