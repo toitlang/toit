@@ -57,7 +57,7 @@ main args:
   parameters/cli.Parameters? := null
   parser := cli.Command "replay"
       --rest=[
-          cli.Option "debug-file" --required
+          cli.OptionPath "debug-file" --required
       ]
       --options=[
           cli.Flag "print-out" --default=false,

@@ -1,6 +1,6 @@
 OK
 [pkg, list, bad-registry4]
 Error: Description at /bad/desc.yaml has an invalid version: '1.0.bad.0.4'.
-Warning: Skipping /bad/desc.yaml
+Warning: Skipping /bad/desc.yaml.
 bad-registry4 (bad-registry4 (local))
   No packages found.
