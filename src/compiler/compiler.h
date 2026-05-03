@@ -128,12 +128,49 @@ class Compiler {
                            int column_number,
                            const PipelineConfiguration& configuration);
 
+  /// Finds the hover information for the identifier at the given location.
+  ///
+  /// This mode does not run the program or generates any snapshots. It simply
+  /// prints out the found information.
+  void lsp_hover(const char* source_path,
+                 int line_number,
+                 int column_number,
+                 const PipelineConfiguration& configuration);
+
+  /// Finds all references for the identifier at the given location.
+  ///
+  /// @param source_path  The file containing the cursor (LspSelection target).
+  /// @param entry_path   The compilation entry point (may differ for cross-file
+  ///                     rename when the cursor file is a dependency).
+  void lsp_references(const char* source_path,
+                      const char* entry_path,
+                      int line_number,
+                      int column_number,
+                      const PipelineConfiguration& configuration);
+
+  /// Checks whether the symbol at the given location can be renamed.
+  ///
+  /// If so, prints the symbol's range and name. Otherwise, produces
+  /// no output.
+  void lsp_prepare_rename(const char* source_path,
+                          const char* entry_path,
+                          int line_number,
+                          int column_number,
+                          const PipelineConfiguration& configuration);
+
   /// Compiles the given program and sends the snapshot to the server.
   void lsp_snapshot(const char* source_path,
                     const PipelineConfiguration& configuration);
 
   /// Emits semantic tokens for the given source_path.
   void lsp_semantic_tokens(const char* source_path,
+                           const PipelineConfiguration& configuration);
+
+  /// Emits selection ranges for the given positions in the source_path.
+  ///
+  /// Only needs the parsed AST — does not resolve or type-check.
+  void lsp_selection_range(const char* source_path,
+                           const std::vector<std::pair<int, int>>& positions,
                            const PipelineConfiguration& configuration);
 
   /// Compiles the given [source_path] into a source bundle.

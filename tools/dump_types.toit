@@ -18,7 +18,6 @@
 import cli
 import encoding.base64 as base64
 import encoding.json
-import host.file
 import host.pipe
 import .snapshot
 
@@ -32,12 +31,12 @@ main args:
       Then use the generated snapshot and types for this tool.
       """
       --options=[
-        cli.Option "snapshot" --required --short-name="s"
+        cli.OptionInFile "snapshot" --required --short-name="s"
             --help="The snapshot file for the program."
-            --type="file",
-        cli.Option "types" --required --short-name="t"
+            --extensions=[".snapshot"],
+        cli.OptionInFile "types" --required --short-name="t"
             --help="The collected types in a JSON file."
-            --type="file",
+            --extensions=[".json"],
         cli.Flag "sdk"
             --help="Show types for the sdk."
             --default=false,
@@ -48,8 +47,10 @@ main args:
   command.run args
 
 decode-types invocation/cli.Invocation -> none:
-  snapshot-content := file.read-contents invocation["snapshot"]
-  types-content := file.read-contents invocation["types"]
+  snapshot-in/cli.InFile := invocation["snapshot"]
+  types-in/cli.InFile := invocation["types"]
+  snapshot-content := snapshot-in.read-contents
+  types-content := types-in.read-contents
   types := json.decode types-content
   show-types types snapshot-content
       --sdk=invocation["sdk"]
