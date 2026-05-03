@@ -29,7 +29,7 @@ main args/List:
 build-command -> cli.Command:
   cmd := cli.Command "stacktrace"
       --help="Decode an ESP-IDF backtrace message from the UART console."
-      --rest=[cli.Option --required ELF-FILE --type="path"]
+      --rest=[cli.OptionPath --required ELF-FILE --extensions=[".elf"]]
       --options=[
           cli.Flag "disassemble" --short-name="d",
           cli.Option "objdump" --default=OBJDUMP,
