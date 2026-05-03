@@ -16,6 +16,7 @@
 import cli
 import cli show Ui
 import fs
+import host.directory
 import host.file
 import host.pipe
 import system
@@ -27,6 +28,7 @@ import .kebabify as kebabify
 import .snapshot-to-image as snapshot-to-image
 import .stacktrace as stacktrace
 import .system-message as system-message
+import .info as info
 import .toitdoc as toitdoc
 import .lsp.server.server as lsp
 import .snapshot as snapshot-lib
@@ -57,14 +59,62 @@ main args/List:
     print system.vm-sdk-version
     return
 
-  root-command := cli.Command "toit"
-      --help="The Toit command line tool."
-      --options=[
-        cli.Option "sdk-dir"
-            --help="Path to the SDK root."
-            --type="dir"
-            --hidden,
+  sdk-dir-option := cli.OptionPath "sdk-dir"
+      --help="Path to the SDK root."
+      --directory
+      --hidden
+
+  // Late-binding reference so the default command's callback can
+  // re-dispatch through the root command group.
+  root-ref/cli.CommandGroup? := null
+
+  // The default command handles direct file arguments like `toit foo.toit`.
+  // It is part of the CommandGroup below. In practice, this command's
+  // run callback is usually not invoked because we intercept toit-source
+  // arguments early (see below) and rewrite them to `run -- <args>`. The
+  // early interception is needed so that `toit foo.toit -- arg` forwards
+  // the `--` to the program rather than having the CLI parser consume it.
+  // However, the callback *is* reached when the early interception doesn't
+  // fire, for example `toit -- foo.toit arg1 arg2`, or when the first
+  // argument isn't a known command and isn't a Toit source file.
+  default-command := cli.Command "default"
+      --rest=[
+        cli.OptionPath "source"
+            --help="The Toit source or snapshot file to run."
+            --extensions=[".toit", ".snapshot"]
+            --required,
+        cli.Option "arg"
+            --help="Argument to pass to the program."
+            --multi,
       ]
+      --dash-dash-is-rest
+      --run=:: | invocation/cli.Invocation |
+        source := invocation["source"]
+        rest-args := invocation["arg"]
+        // With --dash-dash-is-rest, a leading `--` is not consumed as
+        // a separator but becomes the source value. Skip it and take
+        // the actual source from the remaining args.
+        if source == "--":
+          if rest-args.is-empty:
+            invocation.cli.ui.abort "Missing source file after '--'"
+          source = rest-args[0]
+          rest-args = rest-args[1..]
+        if not is-toit-source source:
+          invocation.cli.ui.abort "Unknown command or invalid source file: '$source'"
+        // This path is reached when the early interception (which
+        // rewrites `toit foo.toit` to `toit run -- foo.toit`) does
+        // not fire. For example, `toit -- foo.toit arg1 arg2`.
+        root-ref.run ["run", "--"] + [source] + rest-args
+
+  commands-command := cli.Command "commands"
+      --options=[sdk-dir-option]
+
+  root-command := cli.CommandGroup "toit"
+      --help="The Toit command line tool."
+      --default=default-command
+      --default-title="Run"
+      --commands=commands-command
+  root-ref = root-command
 
   toitc-from-args := :: | invocation/cli.Invocation |
       sdk-dir := invocation["sdk-dir"]
@@ -85,16 +135,16 @@ main args/List:
       ]
       --run=:: | invocation/cli.Invocation |
         invocation.cli.ui.emit --result system.vm-sdk-version
-  root-command.add version-command
+  commands-command.add version-command
 
   compile-analyze-run-options := [
     cli.Flag "show-package-warnings"
         --help="Show warnings from packages.",
     cli.Flag "Werror" --short-name="Werror"
         --help="Treat warnings as errors.",
-    cli.Option "project-root"
+    cli.OptionPath "project-root"
         --help="Path to the project root. Any package.lock file must be in that folder."
-        --type="dir",
+        --directory,
     cli.Option "X" --short-name="X"
         --help="Provide a compiler flag."
         --hidden
@@ -128,27 +178,30 @@ main args/List:
       --help="Runs the given Toit source or snapshot file."
       --options=compile-analyze-run-options + compile-run-options
       --rest=[
-        cli.Option "source"
+        cli.OptionPath "source"
           --help="The source file to run."
+          --extensions=[".toit"]
           --required,
         cli.Option "arg"
           --help="Argument to pass to the program."
           --multi,
       ]
       --run=:: compile-or-analyze-or-run --command="run" it
-  root-command.add run-command
+  commands-command.add run-command
 
   analyze-command := cli.Command "analyze"
       --help="""
-        Analyze the given Toit source file."""
+        Analyze the given Toit source files."""
       --options=compile-analyze-run-options + compile-analyze-options
       --rest=[
-        cli.Option "source"
-          --help="The source file to analyze."
-          --required,
+        cli.OptionPath "source"
+          --help="The source files to analyze."
+          --extensions=[".toit"]
+          --required
+          --multi,
       ]
       --run=:: compile-or-analyze-or-run --command="analyze" it
-  root-command.add analyze-command
+  commands-command.add analyze-command
 
   compile-command := cli.Command "compile"
       --help="""
@@ -159,39 +212,40 @@ main args/List:
         cli.Flag "strip"
             --help="Strip the output of debug information.",
         cli.Option "os"
-            // TODO(florian): find valid values depending on which vessels exist.
-            --help="Set the target OS for cross compilation.",
+            --help="Set the target OS for cross compilation."
+            --completion=:: | context/cli.CompletionContext | complete-cross-os context,
         cli.Option "arch"
-            // TODO(florian): find valid values depending on which vessels exist.
-            --help="Set the target architecture for cross compilation.",
-        cli.Option "vessels-root"
+            --help="Set the target architecture for cross compilation."
+            --completion=:: | context/cli.CompletionContext | complete-cross-arch context,
+        cli.OptionPath "vessels-root"
             --help="Path to the vessels root."
-            --type="dir",
-        cli.Option "output" --short-name="o"
+            --directory,
+        cli.OptionPath "output" --short-name="o"
             --help="Set the output file name."
             --required,
       ]
       --rest=[
-        cli.Option "source"
+        cli.OptionPath "source"
           --help="The source file to compile."
+          --extensions=[".toit"]
           --required,
       ]
       --run=:: compile-or-analyze-or-run --command="compile" it
-  root-command.add compile-command
+  commands-command.add compile-command
 
   pkg-command := cli.Command "pkg"
       --help="Manage packages."
       --options=[
-        cli.Option "project-root"
+        cli.OptionPath "project-root"
             --help="Path to the project root that contains the package.{yaml|lock} file."
-            --type="dir",
+            --directory,
         cli.Option "sdk-version"
             --help="The SDK version to resolve dependencies against.",
         cli.Flag "auto-sync"
             --help="Automatically synchronize registries."
             --default=true,
       ]
-  root-command.add pkg-command
+  commands-command.add pkg-command
 
   pkg-clean-command := cli.Command "clean"
       --help="""
@@ -225,9 +279,9 @@ main args/List:
             --help="Allow local dependencies and don't report them.",
         cli.Flag "disallow-local-deps"
             --help="Always disallow local dependencies and report them.",
-        cli.Option "out-dir"
+        cli.OptionPath "out-dir"
             --help="The directory to write the description file to."
-            --type="dir",
+            --directory,
         cli.Flag "verbose"
             --help="Show more information.",
       ]
@@ -494,7 +548,7 @@ main args/List:
   tool-command := cli.Command "tool"
       --aliases=["tools"]
       --help="Run a tool."
-  root-command.add tool-command
+  commands-command.add tool-command
 
   tool-command.add toitp.build-command
   tool-command.add firmware.build-command
@@ -518,9 +572,13 @@ main args/List:
   toitdoc-command := toitdoc.build-command
       --toit-from-args=toit-from-args
       --sdk-path-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
-  root-command.add toitdoc-command
+  commands-command.add toitdoc-command
 
-  root-command.add system-message.build-command
+  info-command := info.build-command
+      --sdk-dir-from-args=:: | invocation/cli.Invocation | invocation["sdk-dir"]
+  commands-command.add info-command
+
+  commands-command.add system-message.build-command
 
   assert:
     // Run the CLI package checks.
@@ -536,6 +594,82 @@ main args/List:
     args = ["run", "--"] + args
 
   root-command.run args
+
+/**
+Resolves the vessels root directory based on the completion $context.
+
+Looks for an explicit --vessels-root option, otherwise derives the vessels
+  directory from --sdk-dir (if given) or from the binary's own location.
+Returns null if no directory can be determined.
+*/
+vessels-root-from-context context/cli.CompletionContext -> string?:
+  seen := context.seen-options
+  vessels-root-values := seen.get "vessels-root"
+  if vessels-root-values and not vessels-root-values.is-empty:
+    return vessels-root-values.last
+  sdk-dir-values := seen.get "sdk-dir"
+  sdk-dir/string? := null
+  if sdk-dir-values and not sdk-dir-values.is-empty:
+    sdk-dir = sdk-dir-values.last
+  else:
+    our-dir := fs.dirname system.program-path
+    sdk-dir = fs.join our-dir ".."
+  return fs.join sdk-dir "lib" "toit" "vessels"
+
+/**
+Lists the direct subdirectories of $dir.
+
+Returns an empty list if $dir does not exist or cannot be read.
+*/
+list-subdirs dir/string -> List:
+  if not file.is-directory dir: return []
+  result := []
+  exception := catch:
+    stream := directory.DirectoryStream dir
+    try:
+      while entry := stream.next:
+        path := fs.join dir entry
+        if file.is-directory path: result.add entry
+    finally:
+      stream.close
+  return result
+
+/**
+Completion callback for the `--os` option of `toit compile`.
+
+Suggests the OS names for which vessels are installed.
+*/
+complete-cross-os context/cli.CompletionContext -> List:
+  vessels-root := vessels-root-from-context context
+  if not vessels-root: return []
+  result := []
+  (list-subdirs vessels-root).do: | os/string |
+    if os.starts-with context.prefix: result.add (cli.CompletionCandidate os)
+  return result
+
+/**
+Completion callback for the `--arch` option of `toit compile`.
+
+Suggests architectures for which vessels are installed. If an `--os`
+  has already been provided, restricts to its architectures; otherwise
+  returns architectures across all known OSes.
+*/
+complete-cross-arch context/cli.CompletionContext -> List:
+  vessels-root := vessels-root-from-context context
+  if not vessels-root: return []
+  os-values := context.seen-options.get "os"
+  os-list/List := ?
+  if os-values and not os-values.is-empty:
+    os-list = [os-values.last]
+  else:
+    os-list = list-subdirs vessels-root
+  archs := {}
+  os-list.do: | os/string |
+    (list-subdirs (fs.join vessels-root os)).do: archs.add it
+  result := []
+  archs.do: | arch/string |
+    if arch.starts-with context.prefix: result.add (cli.CompletionCandidate arch)
+  return result
 
 tool-path sdk-dir/string? tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
@@ -567,12 +701,21 @@ run sdk-dir/string? tool/string args/List -> int:
 compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   ui := invocation.cli.ui
 
-  source := invocation["source"]
-  if not file.is-file source: ui.abort "Source file not found: $source"
-  source-contents := file.read-contents source
-  is-snapshot := snapshot-lib.SnapshotBundle.is-bundle-content source-contents
-  if command != "run" and command != "compile" and is-snapshot:
-    ui.abort "Cannot $command a snapshot file"
+  sources/List := ?
+  is-snapshot := false
+  if command == "analyze":
+    sources = invocation["source"]
+    sources.do: | source |
+      if not file.is-file source: ui.abort "Source file not found: $source"
+      source-contents := file.read-contents source
+      if snapshot-lib.SnapshotBundle.is-bundle-content source-contents:
+        ui.abort "Cannot analyze a snapshot file"
+  else:
+    source := invocation["source"]
+    if not file.is-file source: ui.abort "Source file not found: $source"
+    source-contents := file.read-contents source
+    is-snapshot = snapshot-lib.SnapshotBundle.is-bundle-content source-contents
+    sources = [source]
 
   args := []
 
@@ -650,7 +793,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     // Just in case that's not true and we are running without asserts set the args to empty.
     args = []
 
-  args.add source
+  args.add-all sources
   if command == "run":
     args.add-all invocation["arg"]
 
