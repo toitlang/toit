@@ -171,3 +171,33 @@ main:
     false or true
       and id: false or false
   expect-equals false x
+
+  // Multi-line if with or/and, colon on continuation line.
+  x = false
+  if id false
+      or id true: x = true
+  expect x
+
+  x = false
+  if id true
+      and id true: x = true
+  expect x
+
+  // Condition is false.
+  x = true
+  if id false
+      and id true: x = false
+  expect x
+
+  // Multiple continuation lines.
+  x = false
+  if id false
+      or id false
+      or id true: x = true
+  expect x
+
+  // Multi-line while with or.
+  y := 0
+  while y < 1
+      or y == 5: y++
+  expect-equals 1 y

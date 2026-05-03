@@ -1,0 +1,10 @@
+tests/negative/global-init-self-assign-test.toit:14:42: error: Can't access global 'some-global' while initializing it
+some-global := just-block: some-global = some-global
+                                         ^~~~~~~~~~~
+tests/negative/global-init-self-assign-test.toit:14:1: error: Cyclic type dependency
+some-global := just-block: some-global = some-global
+^~~~~~~~~~~
+tests/negative/global-init-self-assign-test.toit:15:1: error: Cyclic type dependency
+some-global2 := store-lambda:: some-global2 = some-global2
+^~~~~~~~~~~~
+Compilation failed

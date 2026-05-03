@@ -107,7 +107,7 @@ with-tmp-dir [block]:
     directory.rmdir --recursive dir
 
 run-toit toit-exe/string args/List --ui/cli.Ui:
-  ui.emit --verbose "Running $toit-exe $args"
+  ui.emit --verbose "Running $toit-exe $args."
   exit-code := pipe.run-program [toit-exe] + args
   if exit-code != 0:
     throw "Failed to run Toit"
@@ -173,7 +173,7 @@ run-test invocation/cli.Invocation:
           board1.running-container.get
           board2.run-test
 
-        ui.emit --verbose "Waiting for all tests to be done"
+        ui.emit --verbose "Waiting for all tests to be done."
         board1.all-tests-done.get
         log "Board1 done"
         if board2:
@@ -267,16 +267,16 @@ class TestDevice:
   connect-network:
     log "Connecting to $name"
     // Reset the device.
-    ui.emit --verbose "Resetting $name"
+    ui.emit --verbose "Resetting $name."
     port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS true
     is-active = true
     sleep --ms=500
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
 
-    ui.emit --verbose "Waiting for $name to be ready"
+    ui.emit --verbose "Waiting for $name to be ready."
     ready-latch.get
-    ui.emit --verbose "Device $name is ready"
+    ui.emit --verbose "Device $name is ready."
 
     lines/List := collected-output.split "\n"
     lines.map --in-place: it.trim
@@ -285,7 +285,7 @@ class TestDevice:
     parts := host-port-line.split ":"
     network_ = net.open
     socket_ = network_.tcp-connect parts[0] (int.parse parts[1])
-    ui.emit --info "Connected to $host-port-line"
+    ui.emit --info "Connected to $host-port-line."
 
   disconnect-network:
     if socket_: socket_.close

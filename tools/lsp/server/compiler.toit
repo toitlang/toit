@@ -28,6 +28,13 @@ import .utils
 import .verbose
 import .multiplex
 
+class HoverDefinition:
+  path /string
+  start /int
+  end /int
+  text /string?
+  constructor --.path --.start --.end --.text=null:
+
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
   diagnostics-without-position / List/*<string>*/ ::= ?
@@ -288,6 +295,134 @@ class Compiler:
 
       return definitions
     unreachable
+
+  /**
+  Finds all references for the identifier at the given cursor position.
+
+  The $uri, $line-number, and $column-number specify the cursor position
+  (where the LspSelection marker is injected).
+
+  The optional $entry-uri specifies the compilation entry point. When the
+  cursor file is a dependency imported by another file, the entry point
+  must be set to the importing file so that the compilation includes both
+  files and can find cross-file references. When null, the cursor file
+  itself is used as the entry point.
+  */
+  find-references --project-uri/string? --entry-uri/string?=null uri/string line-number/int column-number/int -> List/*<Location>*/:
+    path := translator.to-path uri --to-compiler
+    entry-path := entry-uri != null
+        ? (translator.to-path entry-uri --to-compiler)
+        : path
+    // We don't care if the compiler crashed.
+    // Just send the references we got.
+    run --project-uri=project-uri
+        --compiler-input="REFERENCES\n$path\n$line-number\n$column-number\n$entry-path\n":
+      |reader /io.Reader|
+      references := []
+
+      while true:
+        line := reader.read-line
+        if line == null: break
+        location := Location
+          --uri= translator.to-uri line --from-compiler
+          --range= read-range reader
+        references.add location
+
+      return references
+    unreachable
+
+  prepare-rename --project-uri/string? uri/string line-number/int column-number/int -> Map?:
+    path := translator.to-path uri --to-compiler
+    // We don't care if the compiler crashed.
+    // Just send the result we got.
+    run --project-uri=project-uri
+        --compiler-input="PREPARE RENAME\n$path\n$line-number\n$column-number\n$path\n":
+      |reader /io.Reader|
+      line := reader.read-line
+      if not line: return null
+      // The compiler emits the file path first, but prepareRename only
+      // needs the range and placeholder. We still consume the path line
+      // to advance the reader.
+      range := read-range reader
+      placeholder := reader.read-line
+      if not placeholder: return null
+      return {
+        "range": range.map_,
+        "placeholder": placeholder,
+      }
+    unreachable
+
+  /**
+  Requests selection ranges from the compiler for the given $positions.
+
+  Each position is a map with "line" and "character" keys (0-based).
+
+  Returns a list of results, one per position. Each result is a list of
+    ranges sorted innermost-first, or null if no ranges were found.
+  */
+  selection-range --project-uri/string? uri/string positions/List -> List:
+    path := translator.to-path uri --to-compiler
+    position-lines := positions.map: | pos/Map |
+      "$pos["line"]\n$pos["character"]"
+    input := "SELECTION RANGE\n$path\n$positions.size\n$(position-lines.join "\n")\n"
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      results := []
+      positions.size.repeat:
+        count-line := reader.read-line
+        if not count-line:
+          results.add null
+          return results
+        count := int.parse count-line
+        ranges := []
+        count.repeat:
+          ranges.add (read-range reader)
+        results.add (ranges.is-empty ? null : ranges)
+      return results
+    unreachable
+
+  hover --project-uri/string? uri/string line-number/int column-number/int -> HoverDefinition?:
+    path := translator.to-path uri --to-compiler
+
+    input := """
+      HOVER
+      $path
+      $line-number
+      $column-number
+      """
+    result/HoverDefinition? := null
+
+    run --project-uri=project-uri --compiler-input=input: | reader/io.Reader |
+      line := reader.read-line
+      if not line: continue.run
+
+      kind := int.parse line
+      // The hover protocol encodes the response kind as:
+      //   -1: toitdoc reference (path, start, end follow as separate lines)
+      //   >0: string content (kind = byte length of the payload)
+      if kind == -1:
+        ref-path := reader.read-line
+        start := int.parse reader.read-line
+        end := int.parse reader.read-line
+        result = HoverDefinition --path=ref-path --start=start --end=end
+      else if kind > 0:
+        payload := reader.read-string kind
+        lines := payload.split "\n"
+        if lines.size < 3: continue.run
+
+        start := int.parse lines[1]
+        end   := int.parse lines[2]
+
+        // Extract text only if it exists and isn't just an empty string.
+        text := null
+        if lines.size > 3 and lines[3] != "":
+          text = (lines[3..].join "\n").trim
+
+        result = HoverDefinition
+            --path=lines[0]
+            --start=start
+            --end=end
+            --text=text
+    return result
 
   parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.
