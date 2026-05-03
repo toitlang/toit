@@ -58,7 +58,7 @@ class Adler32 extends Checksum:
   */
   // Needed to avoid missing implementation error.
   get -> ByteArray:
-    return get --destructive=true
+    return get --destructive
 
   /**
   Returns the current checksum.

@@ -18,8 +18,6 @@ file(GLOB ASSERT_TESTS "assert*-test.toit")
 
 include(fail.cmake OPTIONAL)
 
-set(TEST_SDK_DIR "${CMAKE_BINARY_DIR}/sdk")
-set(TOIT_BIN_SOURCE "${TOIT_SDK_SOURCE_DIR}/tools/toit.toit")
 
 set(ASSERT_IS_OVERRIDDEN FALSE)
 if (DEFINED ENV{TOIT_ASSERT_OVERRIDE})
@@ -43,7 +41,7 @@ foreach(file ${TOIT_BIN_TESTS})
 
     add_test(
       NAME ${TEST_EXPECTATION_NAME}
-      COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> ${TOIT_BIN_SOURCE} ${TEST_SDK_DIR}
+      COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit>
       )
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     if ("${toit_bin_test_name}" IN_LIST TOIT_FAILING_TESTS)
