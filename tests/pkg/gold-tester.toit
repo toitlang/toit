@@ -82,6 +82,9 @@ class GoldTester:
   working-dir -> string:
     return working-dir_
 
+  port -> int:
+    return port_
+
   package-cache-path pkg-suffix/string --version/string -> string:
     bytes := file.read-contents "$working-dir_/.packages/contents.json"
     packages := json.decode bytes

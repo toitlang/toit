@@ -220,6 +220,16 @@ class Project:
   ensure-downloaded url/string version/SemanticVersion -> Map
       --cached-contents/Map?=null
       --hash/string:
+    e := catch:
+      return ensure-downloaded_ url version
+          --cached-contents=cached-contents
+          --hash=hash
+    ui_.abort "Failed to download package '$url@$version': $e"
+    unreachable
+
+  ensure-downloaded_ url/string version/SemanticVersion -> Map
+      --cached-contents/Map?
+      --hash/string:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
     if cached-contents.contains url and

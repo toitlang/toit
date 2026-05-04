@@ -97,6 +97,11 @@ class Registries:
         if urls.size == 1:
           return search-results[0][1]
 
+      // If there is a full match, return that.
+      search-results.do:
+        if it[1].url == search-string:
+          return it[1]
+
       registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
       ui_.abort "Multiple packages found for '$search-string' $registry-info"
 
