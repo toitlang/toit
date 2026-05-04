@@ -1,0 +1,50 @@
+OK
+[pkg, init]
+==================
+// No package installed yet.
+==================
+exec main.toit
+
+STDERR---
+main.toit:5:8: error: Package for prefix 'pkg4-pre' not found
+import pkg4-pre.pkg4
+       ^~~~~~~~
+main.toit:8:14: error: Unresolved identifier: 'identify'
+  print pkg4.identify
+             ^~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+exec main2.toit
+
+STDERR---
+main2.toit:5:8: error: Package for prefix 'pkg1' not found
+import pkg1
+       ^~~~
+main2.toit:8:14: error: Unresolved identifier: 'identify'
+  print pkg1.identify
+             ^~~~~~~~
+Compilation failed
+Exit Code: 1
+==================
+// Install pkg4 for 'main.toit', creating/updating a lock file.
+==================
+OK
+[pkg, install, pkg4, --prefix=pkg4_pre]
+Package 'pkg4@4.9.9' installed with prefix 'pkg4'.
+==================
+// main.toit should work now.
+==================
+exec main.toit
+pkg4-4.9.9
+Exit Code: 0
+==================
+OK
+[pkg, install, pkg1]
+Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+// main2.toit should also work now.
+==================
+exec main2.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0
