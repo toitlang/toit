@@ -74,6 +74,10 @@ class Project:
       --empty-lock-file/bool=false
       --ui/cli.Ui:
     ui_ = ui
+
+    if config.lock-file-exists and not config.specification-file-exists:
+      ui.abort "Project has a lock-file, but no specification file."
+
     if config.specification-file-exists:
       specification = ProjectSpecification.load this --ui=ui
     else:
