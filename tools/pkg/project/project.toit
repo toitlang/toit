@@ -113,7 +113,12 @@ class Project:
     solve_ --update-everything --registries=registries
     save
 
-  install -> none:
+  install --recompute/True --registries/Registries -> none:
+    solve_ --no-update-everything --registries=registries
+    save
+    lock-file.install
+
+  install --recompute/bool=false -> none:
     lock-file.install
 
   clean -> none:
