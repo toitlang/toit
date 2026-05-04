@@ -60,11 +60,11 @@ Exit Code: 1
 ==================
 OK
 [pkg, install, --prefix=pre1, foo]
-Package 'foo@1.2.3' installed with prefix 'foo'.
+Package 'foo@1.2.3' installed with prefix 'pre1'.
 ==================
 OK
 [pkg, install, --prefix=pre2, bar]
-Package 'bar@2.0.1' installed with prefix 'bar'.
+Package 'bar@2.0.1' installed with prefix 'pre2'.
 ==================
 // Execution should succeed now
 ==================

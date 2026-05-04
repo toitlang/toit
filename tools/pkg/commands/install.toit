@@ -28,29 +28,32 @@ class InstallCommand extends PkgProjectCommand:
   static PREFIX    ::= "prefix"
   static LOCAL     ::= "local"
   static RECOMPUTE ::= "recompute"
-  static REST      ::= "package"
+  static REST      ::= "package|path"
 
   prefix/string? := null
-  package/string?
+  packages/List
   local/bool
   recompute/bool
 
   constructor invocation/cli.Invocation:
     prefix = invocation[PREFIX]
 
-    package = invocation[REST]
+    packages = invocation[REST]
     local = invocation[LOCAL]
     recompute = invocation[RECOMPUTE]
 
     cli := invocation.cli
 
-    if not package and local:
-      cli.ui.abort "Can not specify local without a package"
+    if local and packages.size != 1:
+      cli.ui.abort "The '--local' flag requires exactly one path argument."
 
-    if not package and prefix:
-      cli.ui.abort "Can not specify a prefix without a package."
+    if prefix:
+      if packages.is-empty:
+        cli.ui.abort "Can not specify a prefix without a package."
+      else if packages.size > 1:
+        cli.ui.abort "Can not specify multiple packages with '--prefix'."
 
-    if package and recompute:
+    if recompute and not packages.is-empty:
       cli.ui.abort "Recompute can only be specified with no other arguments."
 
     config := project-configuration-from-cli invocation
@@ -59,7 +62,7 @@ class InstallCommand extends PkgProjectCommand:
     super invocation
 
   execute:
-    if not package:
+    if packages.is-empty:
       project.install --recompute=recompute --registries=registries
     else if not local:
       execute-remote
@@ -67,18 +70,28 @@ class InstallCommand extends PkgProjectCommand:
       execute-local
 
   execute-remote:
-    remote-package := registries.search package
-    if not prefix: prefix = remote-package.name
+    assert: not packages.is-empty
 
-    if project.specification.has-package prefix:
-      error "Project already has a package with prefix '$prefix'."
+    remote-packages := []
+    prefixes := []
+    packages.do:
+      description := registries.search it
+      package-prefix := prefix or description.name
+      if project.specification.has-package package-prefix:
+        error "Project already has a package with prefix '$package-prefix'."
+      remote-packages.add description
+      prefixes.add package-prefix
 
-    project.install-remote prefix remote-package --registries=registries
-    id := "$remote-package.name@$remote-package.version"
-    name := remote-package.name
-    ui.emit --info "Package '$id' installed with prefix '$name'."
+    remote-packages.size.repeat: | i/int |
+      remote-package := remote-packages[i]
+      package-prefix := prefixes[i]
+      project.install-remote package-prefix remote-package --registries=registries
+      id := "$remote-package.name@$remote-package.version"
+      ui.emit --info "Package '$id' installed with prefix '$package-prefix'."
 
   execute-local:
+    assert: packages.size == 1
+    package := packages[0]
     specification-name := "$package/$Specification.FILE-NAME"
     src-directory := "$package/src"
     if not file.is-file specification-name:
@@ -166,7 +179,7 @@ class InstallCommand extends PkgProjectCommand:
                   """,
           ]
           --rest=[
-              cli.Option REST
+              cli.Option --multi REST
           ]
           --options=[
               cli.Flag LOCAL
