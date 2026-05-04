@@ -181,8 +181,12 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_dependencies(build_tools toit_run_image)
 endif()
 
+target_include_directories(toit_core PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+  target_link_libraries(toit_core PRIVATE gpiod::gpiod)
   target_link_libraries(toit_vm PRIVATE gpiod::gpiod)
 
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
@@ -334,6 +338,8 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
   if (NOT ${TOIT_IS_CROSS})
+    add_custom_target(download_embedded_program_packages)
+
     # Prepare the pkg install for the embedded programs.
     set(embedded_program_dirs)
 
@@ -374,9 +380,13 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
         # something that exists, as the current bin-dir might not exist yet.
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       )
+
+      string(MD5 dir_hash "${embedded_program_dir}")
+      add_custom_target(download_embedded_program_packages_${dir_hash} DEPENDS "${package_timestamp}")
+      add_dependencies(download_embedded_program_packages download_embedded_program_packages_${dir_hash})
+
     endforeach()
   endif()
-
 
   foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
     set(embedded_source "${EMBEDDED_PROGRAM_SOURCE_${embedded_program}}")
@@ -401,7 +411,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       add_custom_command(
         OUTPUT "${embedded_snapshot}"
         DEPFILE "${embedded_dep}"
-        DEPENDS "${embedded_packages_timestamp}" "${embedded_source}"
+        DEPENDS "${embedded_packages_timestamp}" "${embedded_source}" "$<TARGET_FILE:toit.compile>"
         COMMAND ${CMAKE_COMMAND} -E env
             ASAN_OPTIONS=detect_leaks=false
             TOIT_PACKAGE_CACHE_PATHS="${embedded_packages_dir}"

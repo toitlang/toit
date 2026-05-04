@@ -14,8 +14,7 @@ Error: Multiple packages found for 'pkg1'
 ==================
 OK
 [pkg, install, localhost:<[*PORT*]>/pkg/pkg1]
-Warning: The latest version of package 'localhost:<[*PORT*]>/pkg/pkg1' has changed its name to 'pkg1'.
-Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'localhost:<[*PORT*]>/pkg/pkg1'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
 ==================
 // Ambiguous pkg2
 ==================
@@ -38,8 +37,7 @@ pkg2:
 ==================
 OK
 [pkg, install, localhost:<[*PORT*]>/pkg/pkg2]
-Warning: The latest version of package 'localhost:<[*PORT*]>/pkg/pkg2' has changed its name to 'pkg2'.
-Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'localhost:<[*PORT*]>/pkg/pkg2'.
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'pkg2'.
 ==================
 // Ambiguous 'ambiguous'
 ==================

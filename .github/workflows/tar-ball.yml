@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository without submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
           fetch-depth: 0  # Fetch all history so the archive has correct metadata.
@@ -70,6 +70,11 @@ jobs:
             git archive --format=tar --prefix="$prefix/third_party/esp-idf/$path/" HEAD . | tar x -C ${{ github.workspace }}
           done
 
+          # Download bootstrap packages.
+          cd "${{github.workspace}}/$prefix"
+          make download-bootstrap-packages
+          rm -rf build
+
           cd ${{ github.workspace }}
           echo "set(TOIT_GIT_VERSION \"$version\")" > "$prefix/version.cmake"
           cp third_party/esp-idf/LICENSE ${prefix}third_party/esp-idf/LICENSE
@@ -80,7 +85,7 @@ jobs:
           echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Upload tarball to artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.create-tarball.outputs.archive_path }}
           name: ${{ steps.create-tarball.outputs.archive_name }}
@@ -109,12 +114,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download tarball from artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
 
@@ -164,7 +169,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download tarball from artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
@@ -214,7 +219,7 @@ jobs:
           fi
 
       - name: Upload debian package to artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: toit-debian
           path: "*.deb"
@@ -238,7 +243,7 @@ jobs:
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Ssh
         env:

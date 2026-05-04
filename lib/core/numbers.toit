@@ -545,17 +545,30 @@ abstract class num implements Comparable:
   See $int.parse and $float.parse.
   */
   static parse data/io.Data -> num:
-    return parse data --on-error=: throw it
+    return parse data --if-error=: throw it
+
+  /** Deprecated. Use $(parse data [--if-error]) instead. */
+  static parse data/io.Data [--on-error] -> num?:
+    return parse data --if-error=on-error
 
   /**
   Variant of $(parse data).
 
-  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data [--on-error] -> num?:
-    return int.parse data --on-error=:
-      return float.parse data --on-error=:
-        return on-error.call PARSE-ERR_
+  static parse data/io.Data [--if-error] -> num?:
+    return int.parse data --if-error=:
+      return float.parse data --if-error=:
+        return if-error.call PARSE-ERR_
+
+  /**
+  Converts this number to a well-defined string.
+  */
+  abstract to-string -> string
+
+  /** See $super. */
+  stringify -> string:
+    return to-string
 
 /**
 A 64 bit integer.
@@ -649,27 +662,31 @@ abstract class int extends num:
   ```
   */
   static parse data/io.Data --radix/int?=null -> int:
-    return parse_ data 0 data.byte-size --radix=radix --on-error=: throw it
+    return parse_ data 0 data.byte-size --radix=radix --if-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
   static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null -> int:
-    return parse_ data from to --radix=radix --on-error=: throw it
+    return parse_ data from to --radix=radix --if-error=: throw it
+
+  /** Deprecated. Use $(parse data --radix [--if-error]) instead. */
+  static parse data/io.Data --radix/int?=null [--on-error] -> int?:
+    return parse_ data 0 data.byte-size --radix=radix --if-error=on-error
 
   /**
   Variant of $(parse data from to --radix).
 
-  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data --radix/int?=null [--on-error] -> int?:
-    return parse_ data 0 data.byte-size --radix=radix --on-error=on-error
+  static parse data/io.Data --radix/int?=null [--if-error] -> int?:
+    return parse_ data 0 data.byte-size --radix=radix --if-error=if-error
 
   /**
-  Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
+  Deprecated. Use $(parse data --radix [--if-error]) with a slice instead.
   */
   static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null [--on-error] -> int?:
-    return parse_ data from to --radix=radix --on-error=on-error
+    return parse_ data from to --radix=radix --if-error=on-error
 
-  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--on-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--if-error] -> int?:
     negative := false
     if radix == null:
       radix = 10
@@ -681,12 +698,12 @@ abstract class int extends num:
           radix = 16
           from += 2
           if byte2 == '-':
-            return on-error.call PARSE-ERR_
+            return if-error.call PARSE-ERR_
         else if byte0 == '0' and (byte1 == 'b' or byte1 == 'B'):
           radix = 2
           from += 2
           if byte2 == '-':
-            return on-error.call PARSE-ERR_
+            return if-error.call PARSE-ERR_
         else if to - from > 3:
           byte3 := data.byte-at from + 3
           if byte0 == '-' and byte1 == '0' and (byte2 == 'x' or byte2 == 'X'):
@@ -694,20 +711,20 @@ abstract class int extends num:
             radix = 16
             from += 3
             if byte3 == '-':
-              return on-error.call PARSE-ERR_
+              return if-error.call PARSE-ERR_
           else if byte0 == '-' and byte1 == '0' and (byte2 == 'b' or byte2 == 'B'):
             negative = true
             radix = 2
             from += 3
             if byte3 == '-':
-              return on-error.call PARSE-ERR_
+              return if-error.call PARSE-ERR_
 
     if radix == 10:
-      return parse-10_ data from to --on-error=on-error
+      return parse-10_ data from to --if-error=if-error
     else if radix == 16:
-      return parse-16_ data from to --negative=negative --on-error=on-error
+      return parse-16_ data from to --negative=negative --if-error=if-error
     else:
-      return parse-generic-radix_ radix data from to --negative=negative --on-error=on-error
+      return parse-generic-radix_ radix data from to --negative=negative --if-error=if-error
 
   static char-to-int_ c/int -> int:
     if '0' <= c <= '9': return c - '0'
@@ -715,7 +732,7 @@ abstract class int extends num:
     else if 'a' <= c <= 'z': return 10 + c - 'a'
     throw PARSE-ERR_
 
-  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--on-error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--if-error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max-num := (min radix 10) + '0' - 1
@@ -727,7 +744,7 @@ abstract class int extends num:
     max-int64-div-radix := (to - from > 12) ? MAX / radix : MAX
     max-last-char := MAX-INT64-LAST-CHARS_[radix]
 
-    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --if-error=if-error: | char result is-last negative |
       value := 0
 
       if result > max-int64-div-radix or (result == max-int64-div-radix and (char-to-int_ char) > max-last-char):
@@ -737,7 +754,7 @@ abstract class int extends num:
             return int.MIN
           else if result == max-int64-div-radix + 1:
             return int.MIN
-        return on-error.call RANGE-ERR_
+        return if-error.call RANGE-ERR_
 
       if '0' <= char <= max-num:
         value = char - '0'
@@ -746,39 +763,39 @@ abstract class int extends num:
       else if radix > 10 and 'A' <= char <= max-char-C:
         value = 10 + char - 'A'
       else:
-        return on-error.call PARSE-ERR_
+        return if-error.call PARSE-ERR_
       result *= radix
       result += value
       continue.generic-parser_ result
 
-  static parse-10_ data/io.Data from/int to/int [--on-error] -> int?:
+  static parse-10_ data/io.Data from/int to/int [--if-error] -> int?:
     #primitive.core.int-parse:
       if it == "WRONG_BYTES_TYPE":
-        return parse-10_ (ByteArray.from data) from to --on-error=on-error
+        return parse-10_ (ByteArray.from data) from to --if-error=if-error
       else:
-        return generic-parser_ data from to --negative=false --on-error=on-error: | char result is-last negative |
-          if not '0' <= char <= '9': return on-error.call PARSE-ERR_
+        return generic-parser_ data from to --negative=false --if-error=if-error: | char result is-last negative |
+          if not '0' <= char <= '9': return if-error.call PARSE-ERR_
           // The max int64 ends with a '7' and the min int64 ends with an '8'
           if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
             if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
               return int.MIN
-            return on-error.call RANGE-ERR_
+            return if-error.call RANGE-ERR_
           continue.generic-parser_ result * 10 + char - '0'
 
-  static generic-parser_ data from/int to/int --negative/bool [--on-error] [parse-char] -> int?:
+  static generic-parser_ data from/int to/int --negative/bool [--if-error] [parse-char] -> int?:
     result := 0
     underscore := false
     size := to - from
-    if size == 0: return on-error.call PARSE-ERR_
+    if size == 0: return if-error.call PARSE-ERR_
     size.repeat:
       char := data[from + it]
       if char == '-':
-        if it != 0 or size == 1: return on-error.call PARSE-ERR_
-        if negative: return on-error.call PARSE-ERR_
+        if it != 0 or size == 1: return if-error.call PARSE-ERR_
+        if negative: return if-error.call PARSE-ERR_
         negative = true
       else if char == '_' and not underscore:
         if is-invalid-underscore_ it size negative:
-          return on-error.call PARSE-ERR_
+          return if-error.call PARSE-ERR_
         else:
           underscore = true
       else:
@@ -792,16 +809,16 @@ abstract class int extends num:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
-  static parse-16_ data from/int to/int --negative/bool [--on-error] -> int?:
+  static parse-16_ data from/int to/int --negative/bool [--if-error] -> int?:
     max-int64-div-radix := MAX / 16
 
-    return generic-parser_ data from to --negative=negative --on-error=on-error: | char result is-last negative |
+    return generic-parser_ data from to --negative=negative --if-error=if-error: | char result is-last negative |
       if result > max-int64-div-radix or (result == max-int64-div-radix and char > 'f'):
         if negative and is-last and char == '0' and result == max-int64-div-radix + 1:
             return int.MIN
-        return on-error.call RANGE-ERR_
+        return if-error.call RANGE-ERR_
 
-      value := hex-char-to-value char --on-error=(: on-error.call PARSE-ERR_)
+      value := hex-char-to-value char --if-error=(: if-error.call PARSE-ERR_)
       result <<= 4
       result |= value
       continue.generic-parser_ result
@@ -951,6 +968,10 @@ abstract class int extends num:
   35.stringify 36 // => z
   ```
   */
+  to-string --radix/int -> string:
+    #primitive.core.int64-to-string
+
+  /** Deprecated. Use $(to-string --radix) instead. */
   stringify radix/int -> string:
     #primitive.core.int64-to-string
 
@@ -959,6 +980,10 @@ abstract class int extends num:
 
   Treats the number as an unsigned 64-bit integer.
   */
+  to-string --uint64/True -> string:
+    return stringify-uint64_ this
+
+  /** Deprecated. Use $(to-string --uint64) instead. */
   stringify --uint64/True -> string:
     return stringify-uint64_ this
 
@@ -1080,6 +1105,7 @@ abstract class int extends num:
     integer.
   The integer is treated as an unsigned 64 bit number.  Thus
     it returns 0 if called on a negative integer.
+
   # Examples
   ```
   (0x00FF).count-leading-zeros  // => 56
@@ -1097,6 +1123,7 @@ abstract class int extends num:
     integer.
   The integer is treated as an unsigned 64 bit number.
     Thus it returns 1 if called on -2.
+
   # Examples
   ```
   (0b101000).count-trailing-zeros   // => 3
@@ -1117,9 +1144,10 @@ abstract class int extends num:
   Returns the number of ones in the binary representation of the integer.
   The integer is treated as a 64 bit number.
     Thus it returns 64 if called on -1.
+
   # Examples
   ```
-  (0b101101).population-count  // => 2
+  (0b100001).population-count  // => 2
   (0b101100).population-count  // => 3
   (0b101110).population-count  // => 4
   (0b101111).population-count  // => 5
@@ -1137,6 +1165,7 @@ abstract class int extends num:
   Returns 1 if the number is odd, zero if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns 0 if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => 0
@@ -1157,6 +1186,7 @@ abstract class int extends num:
   Returns false if the number is odd, true if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns false if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => true
@@ -1177,6 +1207,7 @@ abstract class int extends num:
   Returns true if the number is odd, false if the number is even.
   The integer is treated as a 64 bit number.
     Thus it returns true if called on -1.
+
   # Examples
   ```
   (0b101101).parity  // => false
@@ -1281,7 +1312,7 @@ class SmallInteger_ extends int:
     #primitive.core.smi-shift-left
 
   /** See $super. */
-  stringify -> string:
+  to-string -> string:
     #primitive.core.smi-to-string-base-10
 
   /** See $super. */
@@ -1411,9 +1442,9 @@ class LargeInteger_ extends int:
   operator << number-of-bits -> int:
     #primitive.core.large-integer-shift-left
 
-  /** Se $super. */
-  stringify -> string:
-    return stringify 10
+  /** See $super. */
+  to-string -> string:
+    return to-string --radix=10
 
   /** See $super */
   to-int -> int: return this
@@ -1510,27 +1541,31 @@ class float extends num:
   ```
   */
   static parse data/io.Data -> float:
-    return parse_ data 0 data.byte-size --on-error=: throw it
+    return parse_ data 0 data.byte-size --if-error=: throw it
+
+  /** Deprecated. Use $(parse data [--if-error]) instead. */
+  static parse data/io.Data [--on-error] -> float?:
+    return parse data --if-error=on-error
 
   /**
   Variant of $(parse data).
 
-  If the data can't be parsed correctly, returns the result of calling the $on-error block.
+  If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data [--on-error] -> float?:
-    return parse_ data 0 data.byte-size --on-error=on-error
+  static parse data/io.Data [--if-error] -> float?:
+    return parse_ data 0 data.byte-size --if-error=if-error
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
   static parse data/io.Data from/int to/int=data.byte-size -> float:
-    return parse_ data from to --on-error=: throw it
+    return parse_ data from to --if-error=: throw it
 
-  static parse_ data/io.Data from/int to/int [--on-error] -> float?:
+  static parse_ data/io.Data from/int to/int [--if-error] -> float?:
     #primitive.core.float-parse:
-      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to --on-error=on-error
-      if it == "ERROR": return on-error.call "FLOAT_PARSING_ERROR"
-      return on-error.call it
+      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to --if-error=if-error
+      if it == "ERROR": return if-error.call "FLOAT_PARSING_ERROR"
+      return if-error.call it
 
   /**
   Returns the sign of this instance.
@@ -1665,13 +1700,19 @@ class float extends num:
   /**
   See $super.
 
-  If $precision is null format "%.20lg" in C++ is used.
+  If $precision is null, the shortest correct string is returned.
   If $precision is an integer format "%.*lf" in C++ is used.
 
   # Errors
   The $precision must be an integer in range [0..64] or null.
   */
-  stringify precision=null -> string:
+  to-string --precision/int?=null -> string:
+    if precision and not 0 <= precision <= 64:
+      throw "OUT_OF_RANGE"
+    #primitive.core.float-to-string
+
+  /** Deprecated. Use $(to-string --precision) instead. */
+  stringify precision -> string:
     #primitive.core.float-to-string
 
   /**

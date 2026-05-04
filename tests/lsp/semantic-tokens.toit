@@ -40,3 +40,33 @@ import core show List
   class
   abstract, defaultLibrary
 */
+
+class SomeOtherClass:
+/*    ^~~~~~~~~~~~~~
+  class
+  definition
+*/
+
+abstract class AnotherAbstractClass:
+/*             ^~~~~~~~~~~~~~~~~~~~
+  class
+  abstract, definition
+*/
+
+interface AnotherInterface:
+/*        ^~~~~~~~~~~~~~~~
+  interface
+  abstract, definition
+*/
+
+mixin SomeMixin:
+/*    ^~~~~~~~~
+  class
+  definition
+*/
+
+monitor SomeMonitor:
+/*      ^~~~~~~~~~~
+  class
+  definition
+*/

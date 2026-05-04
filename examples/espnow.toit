@@ -15,7 +15,7 @@ import esp32.espnow
 PMK ::= espnow.Key.from-string "pmk1234567890123"
 
 main:
-  service := espnow.Service.station --key=PMK --channel=1
+  service := espnow.Service --key=PMK --channel=1
   service.add-peer espnow.BROADCAST-ADDRESS
   task:: send-task service
   task:: receive-task service
@@ -24,9 +24,7 @@ send-task service/espnow.Service:
   count := 0
   while true:
     buffer := "hello $count"
-    service.send
-        buffer.to-byte-array
-        --address=espnow.BROADCAST-ADDRESS
+    service.send buffer --address=espnow.BROADCAST-ADDRESS
     print "Send datagram: \"$buffer\""
 
     count++
