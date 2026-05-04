@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/missing-license]
+Error: Missing LICENSE file.
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/missing-license]
+Error: Missing LICENSE file.

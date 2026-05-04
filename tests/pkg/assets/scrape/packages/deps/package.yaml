@@ -1,0 +1,10 @@
+name: name-from-spec
+description: desc-from-spec
+license: MIT
+dependencies:
+  morse:
+    url: github.com/toitware/toit-morse
+    version: 1.0.2
+  morse_tutorial:
+    url: github.com/toitware/toit-morse-tutorial
+    version: 1.0.0

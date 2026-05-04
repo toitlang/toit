@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/empty-dir]
+Error: No 'src' directory in package.
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/empty-dir]
+Error: No 'src' directory in package.

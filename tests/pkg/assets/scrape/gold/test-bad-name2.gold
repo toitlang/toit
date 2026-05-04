@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/bad-name2]
+Error: Invalid package name '0bad-name'.
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/bad-name2]
+Error: Invalid package name '0bad-name'.
