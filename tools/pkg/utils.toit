@@ -14,6 +14,8 @@
 // directory of this repository.
 
 import encoding.url
+import host.file
+import host.directory
 import fs
 import system
 
@@ -101,3 +103,33 @@ escape-path path/string -> string:
     // a space would normally not be escaped.
     escaped-path = "$escaped-path#20"
   return escaped-path
+
+/**
+Makes the given $path read-only.
+
+If $recursive is true and $path is a directory, makes all files and
+  directories within $path read-only as well.
+*/
+make-read-only_ --recursive/bool path/string -> none:
+  if not recursive or file.is-file path:
+    stat := file.stat path
+    if not stat:
+      return
+    mode := stat[file.ST-MODE]
+    if system.platform == system.PLATFORM-WINDOWS:
+      read-only-bit := file.WINDOWS-FILE-ATTRIBUTE-READONLY
+      if (mode & read-only-bit) != 0: return
+      file.chmod path (mode | read-only-bit)
+      return
+    write-bits := 0b010_010_010
+    if (mode & write-bits) == 0: return
+    file.chmod path (mode & ~write-bits)
+    return
+
+  // If it's not a directory, just ignore it.
+  if not file.is-directory path: return
+
+  stream := directory.DirectoryStream path
+  while child := stream.next:
+    make-read-only_ --recursive (fs.join path child)
+  make-read-only_ --no-recursive path

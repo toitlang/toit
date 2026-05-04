@@ -5,6 +5,8 @@
 import expect show *
 import host.file
 import fs
+import system
+
 import .gold-tester
 
 main args:
@@ -47,3 +49,15 @@ test tester/GoldTester:
 
   readme-path := fs.join tester.working-dir ".packages" "README.md"
   expect (file.is-file readme-path)
+
+  foo-path := tester.package-cache-path "pkg/foo" --version="1.2.3"
+  yaml-path := fs.join foo-path "package.yaml"
+  expect (file.is-file yaml-path)
+  stat := file.stat yaml-path
+  expect-not-null stat
+  mode := stat[file.ST-MODE]
+  if system.platform == system.PLATFORM-WINDOWS:
+    expect (mode & file.WINDOWS-FILE-ATTRIBUTE-READONLY) != 0
+  else:
+    write-bits := 0b010_010_010
+    expect-equals 0 (mode & write-bits)
