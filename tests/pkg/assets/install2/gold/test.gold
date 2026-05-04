@@ -3,9 +3,9 @@
 exec main.toit
 
 STDERR---
-<[*WORKING-DIR*]>/package.lock:6:10: error: Package 'http://localhost:<[*PORT*]>/pkg/pkg1-1.0.0' not found
-    url: 'http://localhost:<[*PORT*]>/pkg/pkg1'
-         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<[*WORKING-DIR*]>/package.lock:6:10: error: Package 'localhost:<[*PORT*]>/pkg/pkg1-1.0.0' not found
+    url: 'localhost:<[*PORT*]>/pkg/pkg1'
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~
 main.toit:5:8: error: Package 'pkg1' for prefix 'pkg1' not found
 import pkg1
        ^~~~
@@ -26,7 +26,7 @@ prefixes:
 
 packages:
   pkg1:
-    url: 'http://localhost:<[*PORT*]>/pkg/pkg1'
+    url: 'localhost:<[*PORT*]>/pkg/pkg1'
     version: 1.0.0
     hash: <[*HASH*]>
 ==================

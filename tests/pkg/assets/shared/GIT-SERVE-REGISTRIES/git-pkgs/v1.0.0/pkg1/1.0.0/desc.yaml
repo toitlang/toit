@@ -1,8 +1,8 @@
 name: pkg1
 description: git-package 1
-url: http://localhost:<[*PORT*]>/pkg/pkg1
+url: localhost:<[*PORT*]>/pkg/pkg1
 version: 1.0.0
 dependencies:
-  - url: 'http://localhost:<[*PORT*]>/pkg/pkg2'
+  - url: 'localhost:<[*PORT*]>/pkg/pkg2'
     version: ^2.1.3
 hash: deadbeef1234567890abcdef1234567890abcdef
