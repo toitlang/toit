@@ -1,3 +1,0 @@
-cellular/src/modules/quectel/quectel.toit:493:21: warning: Deprecated 'int.stringify'. Use 'to-string --radix' instead
-    hex-mask:= mask.stringify 16
-                    ^~~~~~~~~

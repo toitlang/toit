@@ -88,9 +88,17 @@ static bool is_restricted_pin(int num) {
 }
 #elif CONFIG_IDF_TARGET_ESP32S3
 static bool is_restricted_pin(int num) {
-  // Pins 26-32 are used for flash, and pins 33-37 are used for
-  // octal flash or octal PSRAM.
-  return 26 <= num && num <= 37;
+  // Pins 26-32 are used for standard 4-wire SPI flash[cite: 495, 652].
+  if (26 <= num && num <= 32) return true;
+
+  // Pins 33-37 are used ONLY when Octal SPI is active.
+#if defined(CONFIG_SPIRAM_MODE_OCT) || \
+    defined(CONFIG_ESP32S3_FLASH_MODE_OPI) || \
+    defined(CONFIG_ESPTOOLPY_FLASHMODE_OPI)
+  if (33 <= num && num <= 37) return true;
+#endif
+
+  return false;
 }
 #elif CONFIG_IDF_TARGET_ESP32S2
 static bool is_restricted_pin(int num) {

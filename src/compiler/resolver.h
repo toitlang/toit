@@ -42,25 +42,88 @@ class Resolver {
  public:
   Resolver(Lsp* lsp,
            SourceManager* source_manager,
-           Diagnostics* diagnostics)
+           Diagnostics* diagnostics,
+           ToitdocRegistry* toitdocs)
       : source_manager_(source_manager)
       , diagnostics_(diagnostics)
-      , lsp_(lsp) {}
+      , lsp_(lsp)
+      , toitdocs_(toitdocs) {}
 
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index);
 
-  ToitdocRegistry toitdocs() { return toitdocs_; }
+  ToitdocRegistry* toitdocs() { return toitdocs_; }
+
+  /// Maps IR nodes to their originating AST nodes.
+  ///
+  /// During resolution, most AST source-range information is discarded
+  /// as IR nodes record only essential positional data.  This map
+  /// preserves the AST nodes for the small set of cases where the
+  /// rename/reference visitor needs source ranges that the IR does not
+  /// carry — for example:
+  ///  - setter CallVirtual → AST Dot (to recover the property name range),
+  ///  - Typecheck → AST type expression (to recover the class-name range
+  ///    inside a type annotation like `x/Foo`),
+  ///  - Call with named arguments → AST Call (to recover the `--param`
+  ///    source range for named-argument rename),
+  ///  - field-storing parameters → AST field (to map constructors
+  ///    parameter back to the field declaration).
+  ///
+  /// Entries are inserted in resolver_method.cc at the point where each
+  /// IR node is created from its AST counterpart.  The map is then
+  /// moved into the rename pipeline (FindReferencesPipeline) before the
+  /// resolver is destroyed, so the visitor can look up AST ranges during
+  /// its IR traversal.
+  UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
+
+  /// A reference from a show/export clause to a resolved definition.
+  ///
+  /// During resolution, each `import ... show Foo` and `export Foo`
+  /// clause resolves the identifier to an ir::Node* target. We collect
+  /// these mappings so that the rename pipeline can find show/export
+  /// references to a given definition without needing access to the
+  /// module infrastructure (which is local to the resolver).
+  struct ShowExportReference {
+    ir::Node* target;       // The resolved definition (e.g., ir::Class*).
+    Source::Range range;     // The source range of the identifier in the show/export clause.
+  };
+
+  /// Returns all show/export references collected during resolution.
+  const std::vector<ShowExportReference>& show_export_references() const {
+    return show_export_references_;
+  }
+
+  /// A resolved reference from an `implements` or `with` clause.
+  ///
+  /// During resolution, each AST expression in a class's `implements` or
+  /// `with` clause is resolved to an `ir::Class*`.  We record these
+  /// mappings before the resolver's flattening passes (`flatten_mixins`
+  /// and `check_interface_implementations_and_flatten`) replace the IR
+  /// interface/mixin lists with their transitive closures.  After
+  /// flattening, positional correspondence between the IR and AST lists
+  /// is lost, so the rename pipeline needs this explicit mapping to find
+  /// the source-level expressions for a given IR class.
+  struct ClassHierarchyReference {
+    ir::Class* holder;       // The class containing the implements/with clause.
+    ir::Class* target;       // The resolved interface or mixin.
+    ast::Expression* ast_node;  // The AST expression in the clause.
+  };
+
+  /// Returns all class hierarchy references collected during resolution.
+  const std::vector<ClassHierarchyReference>& class_hierarchy_references() const {
+    return class_hierarchy_references_;
+  }
 
  private:
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
-  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
-  ToitdocRegistry toitdocs_;
-  std::vector<ir::AssignmentGlobal*> global_assignments_;
-
   Lsp* lsp_;
+  ToitdocRegistry* toitdocs_;
+  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
+  std::vector<ir::AssignmentGlobal*> global_assignments_;
+  std::vector<ShowExportReference> show_export_references_;
+  std::vector<ClassHierarchyReference> class_hierarchy_references_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 
