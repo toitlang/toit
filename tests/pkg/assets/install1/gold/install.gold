@@ -43,3 +43,25 @@ Package 'pkg3' installed with prefix 'pkg3_modified'.
 exec main3.toit
 hello from pkg3_modified
 Exit Code: 0
+==================
+== package.yaml
+dependencies:
+  pkg:
+    path: pkg
+  prepkg:
+    path: pkg2
+  pkg3_modified:
+    path: pkg3
+==================
+== package.lock
+prefixes:
+  pkg: pkg
+  prepkg: pkg2
+  pkg3_modified: pkg3
+packages:
+  pkg:
+    path: pkg
+  pkg2:
+    path: pkg2
+  pkg3:
+    path: pkg3

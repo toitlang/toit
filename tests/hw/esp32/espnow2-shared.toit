@@ -28,8 +28,8 @@ Connect as described in the variants file.
 */
 
 PMK ::= espnow.Key.from-string Variant.CURRENT.espnow-password
-RX ::= Variant.CURRENT.board-connection-pin1
-TX ::= Variant.CURRENT.board-connection-pin2
+RX1 ::= Variant.CURRENT.board-connection-pin1
+TX2 ::= Variant.CURRENT.board-connection-pin1
 BAUD-RATE ::= 115200
 
 END-TOKEN ::= "<END>"
@@ -48,9 +48,9 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
-  port := uart.Port --rx=(gpio.Pin RX) --tx=null --baud-rate=BAUD-RATE
+  port := uart.Port --rx=(gpio.Pin RX1) --tx=null --baud-rate=BAUD-RATE
   other-bytes := port.in.read-bytes 6  // Read MAC address of other board.
   other-address := espnow.Address other-bytes
   print "Other address: $other-address"
@@ -72,10 +72,10 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  port := uart.Port --rx=null --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE
+  port := uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
   port.out.write --flush esp32.mac-address
 
-  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
+  service ::= espnow.Service --key=PMK --channel=CHANNEL
 
   service.add-peer espnow.BROADCAST-ADDRESS
   service.send --address=espnow.BROADCAST-ADDRESS #['h', 'i']

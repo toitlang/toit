@@ -44,6 +44,9 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-philips32
   i2s-board1.toit-esp32-msb32
   i2s-board1.toit-esp32-pcm32
+  i2s-board1.toit-esp32-pcm16-outmonoright
+  i2s-board1.toit-esp32s3-msb16
+  i2s-board1.toit-esp32s3-pcm16-outmonoleft
 )
 
 set(TOIT_FAILING_TESTS

@@ -174,6 +174,20 @@ static void start() {
     }
   }
 
+#ifdef SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
+  // Work around https://github.com/espressif/esp-idf/issues/16192.
+  // Some RTC pins have pull-ups and pull-downs enabled by default, which
+  // aren't cleared after v5.1.1.
+  // Clear them now.
+  for (int i = 0; i < SOC_GPIO_PIN_COUNT; i++) {
+    gpio_num_t pin = static_cast<gpio_num_t>(i);
+    if (rtc_gpio_is_valid_gpio(pin)) {
+      rtc_gpio_deinit(pin);
+      rtc_gpio_pullup_dis(pin);
+      rtc_gpio_pulldown_dis(pin);
+    }
+  }
+#endif
   RtcMemory::on_deep_sleep_start();
   esp_deep_sleep_start();
 }

@@ -112,6 +112,8 @@ abstract class Variant:
 
   abstract ble6-service -> string
 
+  abstract ble7-service -> string
+
   /**
   The ESP-NOW channel and password.
 
@@ -381,7 +383,7 @@ On board 1 connect as follows:
 
 - IO25 (DAC1) - IO33 with 330Ohm
 
-- IO13 (also connected with board2) - IO17 (also connected with board2) with 5KOhm.
+- IO13 (also connected with board2) - IO17 (also connected with board2) with 5KOhm.  xx
 
 - The following pins in a row: GND - IO21 - IO19 - IO18
   * IO21 to GND with a 1MOhm resistor.
@@ -394,8 +396,8 @@ Pins IO4 and IO2 are used for touch tests.
 On board2:
 - IO19 -> HC-SR04 Echo. Ideally through a voltage divider or an LED.
 - IO18 -> HC-SR04 Trig
-- IO14 -> DHT11 Data
-- IO15 -> DS18B20 Data
+- IO15 -> DHT11 Data
+- IO14 -> DS18B20 Data
 - IO32 -> bme280 SCL (yellow)
 - IO33 -> bme280 SDA (blue)
 
@@ -453,6 +455,8 @@ class Esp32 extends Variant:
 
   ble6-service ::= "eede145e-b6a6-4d61-8156-ed10d5b75903"
 
+  ble7-service ::= "2c099659-d917-41a2-955d-18a4966b54c8"
+
   espnow-channel ::= 1
   espnow-password ::= "pmk-esp32-123456"
 
@@ -462,9 +466,9 @@ class Esp32 extends Variant:
   board2-hc-sr04-trigger-pin ::= 18
   board2-hc-sr04-echo-pin ::= 19
 
-  board2-ds18b20-pin ::= 15
+  board2-ds18b20-pin ::= 14
 
-  board2-dht11-pin ::= 14
+  board2-dht11-pin ::= 15
 
   board-connection-pin1 ::= 22
   board-connection-pin2 ::= 23
@@ -553,6 +557,8 @@ class Esp32s3 extends Variant:
   ble5-service ::= "ef738562-e999-482d-88a1-16ea26fa18d3"
 
   ble6-service ::= "eed6e6d2-6f4f-46e4-9ed2-116515189eba"
+
+  ble7-service ::= "0c9b0be3-1612-447d-ba1e-ab7293a3c795"
 
   espnow-channel ::= 5
   espnow-password ::= "pmk-esp32s3-1234"

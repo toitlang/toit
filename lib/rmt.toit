@@ -14,6 +14,15 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 
 $Signals represent a collection of signals to be sent by the RMT controller.
 
+# Hardware differences
+
+The ESP32 has 8 RMT channels, each of which can be configured for input or output.
+The ESP32C3 and ESP32C6 each have 2 TX and 2 RX channels.
+The ESP32S2 and ESP32S3 each have 4 TX and 4 RX channels.
+
+The number of bytes per memory block is 256 on the ESP32 and ESP32S2. It is
+  192 on the ESP32C3, ESP32C6, and ESP32S3.
+
 # Examples
 
 ## Pulse
@@ -751,6 +760,12 @@ class In extends Channel_:
   /** Whether the channel has started reading with $start-reading. */
   is-reading_ /bool := false
 
+  /**
+  The resolution of this channel.
+  The frequency of the clock that the RMT controller uses to sample the input signal.
+  */
+  resolution/int
+
   /** The number of memory-blocks. */
   memory-blocks_/int
 
@@ -773,6 +788,7 @@ class In extends Channel_:
       --memory-blocks/int=1:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
 
+    this.resolution = resolution
     memory-blocks_ = memory-blocks
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
@@ -838,7 +854,7 @@ class In extends Channel_:
       result := rmt-receive_ resource_
       if result:
         is-reading_ = false
-        return Signals.from-bytes result
+        return Signals.from-bytes result --resolution=resolution
       // No data yet.
       state_.wait-for-state READ-STATE_
 

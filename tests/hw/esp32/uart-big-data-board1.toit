@@ -23,17 +23,17 @@ main:
 test:
   port/uart.Port := ?
   if platform == system.PLATFORM-FREERTOS:
-    port = uart.Port --rx=(gpio.Pin RX) --tx=null --baud-rate=BAUD-RATE
+    port = uart.Port --rx=(gpio.Pin RX1) --tx=null --baud-rate=BAUD-RATE
   else:
     port = uart.Port UART-PATH --baud-rate=BAUD-RATE
 
   data := #[]
-  TEST-ITERATIONS.repeat:
+  TEST-ITERATIONS.repeat: | iteration |
     while true:
       chunk := port.in.read
       data += chunk
       if data.size >= TEST-BYTES.size:
-        check-read-data data[..TEST-BYTES.size]
+        check-read-data iteration data[..TEST-BYTES.size]
         data = data[TEST-BYTES.size..]
         break
 

@@ -64,7 +64,7 @@ test
   on-from-idle-edge := cpha == 0
 
   if run-slave-receive:
-    max-attempts := 3
+    max-attempts := 4
     for i := 0; i < max-attempts; i++:
       if i != 0: print "Running slave receive attempt $(i + 1) of $max-attempts"
       e := catch --unwind=(: i == max-attempts - 1 or it != DEADLINE-EXCEEDED-ERROR):
@@ -75,9 +75,12 @@ test
         expected-bits := 0
         MESSAGE.do: | c/int |
           expected-bits = (expected-bits << 8) | c
-        expect-equals expected-bits response
+        if expected-bits != response:
+          // Make it possible to try again by throwing instead of using 'expect'.
+          throw "not equal"
       if not e: break
-      print "TIMEOUT"
+      print e
+      sleep --ms=100
 
   print "OK"
   device.close

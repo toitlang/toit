@@ -22,13 +22,13 @@ DATA1 ::= Variant.CURRENT.board-connection-pin4
 DATA2 ::= Variant.CURRENT.board-connection-pin4
 
 CLK1 ::= Variant.CURRENT.board-connection-pin1
-CLK2 ::= Variant.CURRENT.board-connection-pin2
+CLK2 ::= Variant.CURRENT.board-connection-pin1
 
 WS1 ::= Variant.CURRENT.board-connection-pin3
 WS2 ::= Variant.CURRENT.board-connection-pin3
 
 MCLK1 ::= Variant.CURRENT.board-connection-pin2
-MCLK2 ::= Variant.CURRENT.board-connection-pin1
+MCLK2 ::= Variant.CURRENT.board-connection-pin2
 
 SLOW-SAMPLE-RATE ::= 3_000
 FAST-SAMPLE-RATE ::= 70_000

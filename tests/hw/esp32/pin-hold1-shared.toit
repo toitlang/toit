@@ -20,6 +20,6 @@ the WiFi unnecessarily:
 import .variants
 
 PIN-OUT ::= Variant.CURRENT.board-connection-pin1
-PIN-IN ::= Variant.CURRENT.board-connection-pin2
+PIN-IN ::= Variant.CURRENT.board-connection-pin1
 
 PIN-FREE-AND-UNUSED ::= Variant.CURRENT.unconnected-pin1

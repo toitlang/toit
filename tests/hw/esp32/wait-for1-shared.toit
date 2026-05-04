@@ -13,8 +13,10 @@ import gpio
 
 import .variants
 
-PIN-IN ::= Variant.CURRENT.board-connection-pin1
-PIN-OUT ::= Variant.CURRENT.board-connection-pin2
+PIN-IN1 ::= Variant.CURRENT.board-connection-pin1
+PIN-OUT1 ::= Variant.CURRENT.board-connection-pin2
+PIN-IN2 ::= Variant.CURRENT.board-connection-pin2
+PIN-OUT2 ::= Variant.CURRENT.board-connection-pin1
 
 ITERATIONS ::= 10_000
 MEDIUM-PULSE-ITERATIONS ::= 50

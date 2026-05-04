@@ -158,7 +158,7 @@ class GoldTester:
 
     outputs.map --in-place: | output/string |
       normalized := normalize output
-            // Replace all hash values.
+      // Replace all hash values.
       hash-index := -1
       while true:
         hash-index = normalized.index-of "hash: " (hash-index + 1)
@@ -176,6 +176,7 @@ class GoldTester:
     else:
       expected-content := (file.read-contents gold-file).to-string
       expected-content = expected-content.replace --all "\r" ""
+      actual = actual.replace --all "\r" ""
       expect-equals expected-content actual
 
   toit command/string args -> RunResult_:

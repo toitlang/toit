@@ -23,7 +23,7 @@ main:
 test:
   port/uart.Port := ?
   if platform == system.PLATFORM-FREERTOS:
-    port = uart.Port --rx=null --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE
+    port = uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
   else:
     port = uart.Port UART-PATH --baud-rate=BAUD-RATE
 

@@ -20,6 +20,7 @@ import encoding.yaml
 import fs
 import host.directory
 import host.file
+import io
 
 import .lsp-exports as lsp
 import .serve
@@ -71,15 +72,13 @@ build-command --sdk-path-from-args/Lambda --toit-from-args/Lambda -> cli.Command
         at https://github.com/toitware/web-toitdocs.
         """
       --options=[
-        cli.Option "output"
+        cli.OptionOutFile "output"
             --short-name="o"
             --help="Output JSON file."
-            --type="file"
             --required,
       ]
       --rest=[
-        cli.Option "source"
-            --type="file|dir"
+        cli.OptionPath "source"
             --help="Source directory or file. Defaults to the current directory.",
       ]
       --run=::
@@ -106,8 +105,7 @@ build-command --sdk-path-from-args/Lambda --toit-from-args/Lambda -> cli.Command
             --default=true,
       ]
       --rest=[
-        cli.Option "source"
-            --type="file|dir"
+        cli.OptionPath "source"
             --help="Source directory or file. Defaults to the current directory.",
       ]
       --examples=[
@@ -200,7 +198,7 @@ compute-sdk-path --sdk-path/string? --toit/string? --ui/Ui -> string:
     return sdk-path
   throw "Couldn't determine SDK path"
 
-toitdoc invocation/cli.Invocation --toit/string --sdk-path/string? --output/string -> none:
+toitdoc invocation/cli.Invocation --toit/string --sdk-path/string? -> ByteArray:
   for-package := invocation["package"] == true
   for-sdk := invocation["sdk"] == true
   version := invocation["version"]
@@ -302,12 +300,12 @@ toitdoc invocation/cli.Invocation --toit/string --sdk-path/string? --output/stri
   if for-package: built-toitdoc["mode"] = "package"
   if for-sdk: built-toitdoc["mode"] = "sdk"
 
-  file.write-contents --path=output (json.encode built-toitdoc)
+  return json.encode built-toitdoc
 
 toitdoc-build invocation/cli.Invocation --toit/string --sdk-path/string?:
-  output := invocation["output"]
-
-  toitdoc invocation --toit=toit --sdk-path=sdk-path --output=output
+  output/cli.OutFile := invocation["output"]
+  encoded := toitdoc invocation --toit=toit --sdk-path=sdk-path
+  output.do: | writer/io.Writer | writer.write encoded
 
 toitdoc-serve invocation/cli.Invocation --toit/string --sdk-path/string?:
   port := invocation["port"]
@@ -317,7 +315,8 @@ toitdoc-serve invocation/cli.Invocation --toit/string --sdk-path/string?:
   try:
     output := "$tmp-dir/toitdoc.json"
 
-    toitdoc invocation --toit=toit --sdk-path=sdk-path --output=output
+    encoded := toitdoc invocation --toit=toit --sdk-path=sdk-path
+    file.write-contents --path=output encoded
     serve output --port=port --open-browser=open-browser --cli=invocation.cli
   finally:
     directory.rmdir --recursive tmp-dir
