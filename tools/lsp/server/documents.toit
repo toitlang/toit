@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import host.file
-import tar show *
+import tar
 
 import .project-uri
 import .summary
@@ -141,10 +141,10 @@ class Documents:
       writer.close
 
   write-as-tar writer -> none:
-    tar := Tar writer
+    tar-writer := tar.Writer writer
     opened-documents_.do: |uri entry/OpenedDocument|
-      tar.add (translator.to-path entry.uri) entry.content
-    tar.close --no-close-writer
+      tar-writer.add (translator.to-path entry.uri) entry.content
+    tar-writer.close
 
 /**
 Keeps track of analyzed documents.

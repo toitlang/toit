@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET) && defined(CONFIG_ETH_USE_SPI_ETHERNET)
 
 #include <esp_eth.h>
 #include <esp_mac.h>
@@ -318,6 +318,7 @@ PRIMITIVE(init_spi) {
     .cs_ena_posttrans = 0,
     .clock_speed_hz   = frequency,
     .input_delay_ns   = 0,
+    .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
     .spics_io_num     = cs,
     .flags            = 0,
     .queue_size       = 1,
@@ -467,4 +468,4 @@ PRIMITIVE(set_hostname) {
 
 } // namespace toit
 
-#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET) && defined(CONFIG_ETH_USE_SPI_ETHERNET)

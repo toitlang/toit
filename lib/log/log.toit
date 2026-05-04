@@ -12,9 +12,10 @@ Logging support.
 
 Each application has a default logger, $default, that is global to the
   application. By default it is set to log all messages at $DEBUG-LEVEL.
+  To log all messages including trace, set the level to $TRACE-LEVEL.
 
-Messages on the default logger are created by calling $log, $debug,
-  $info, $warn, $error or $fatal. The same functions exist as
+Messages on the default logger are created by calling $log, $trace,
+  $debug, $info, $warn, $error or $fatal. The same functions exist as
   methods on the $Logger class as well.
 
 Instead of creating strings that contain context relevant information,
@@ -46,8 +47,8 @@ import log
 class Connectivity:
   logger_/log.Logger
 
-  constructor --logger/log.Logger=(log.default.with-name "connectivity"):
-    logger_ = logger
+  constructor --logger/log.Logger=log.default:
+    logger_ = logger.with-name "connectivity"
 ```
 */
 
@@ -68,6 +69,14 @@ Includes the given $tags in the log message.
 */
 log level/int message/string --tags/Map?=null -> none:
   default_.log level message --tags=tags
+
+/**
+Logs the $message to the default logger at trace level ($TRACE-LEVEL).
+
+Includes the given $tags in the log message.
+*/
+trace message/string --tags/Map?=null -> none:
+  default_.log TRACE-LEVEL message --tags=tags
 
 /**
 Logs the $message to the default logger at debug level ($DEBUG-LEVEL).
@@ -194,6 +203,14 @@ class Logger:
     merge-tags_ tags keys_ values_: | keys/List? values/List? |
       target_.log level message names_ keys values
     if level == FATAL-LEVEL: throw "FATAL"
+
+  /**
+  Logs the $message at trace level ($TRACE-LEVEL).
+
+  Includes the given $tags in the log message.
+  */
+  trace message/string --tags/Map?=null -> none:
+    log TRACE-LEVEL message --tags=tags
 
   /**
   Logs the $message at debug level ($DEBUG-LEVEL).

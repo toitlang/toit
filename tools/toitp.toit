@@ -85,7 +85,7 @@ print-bytecodes program/Program:
   methods/List := ?
   suffix := ?
   absolute-bci := -1
-  if not filter.is-empty: absolute-bci = int.parse filter --on-error=: -1
+  if not filter.is-empty: absolute-bci = int.parse filter --if-error=: -1
   if absolute-bci >= 0:
     methods = [program.method-from-absolute-bci absolute-bci]
     suffix = " (only printing methods containing absolute bci $absolute-bci)"
@@ -140,12 +140,13 @@ build-command -> cli.Command:
           Inspect a Toit snapshot.
           """
 
-  snapshot-option := cli.Option "snapshot"
+  snapshot-option := cli.OptionPath "snapshot"
       --help="The snapshot to inspect."
-      --type="file"
+      --extensions=[".snapshot"]
       --required
   filter-option := cli.Option "filter"
       --help="Only print elements matching the filter pattern."
+      --completion=:: | context/cli.CompletionContext | complete-filter context
   filter-help := """
           The optional filter pattern is a glob pattern, where '*' matches any sequence of
           characters and '?' matches any single character. The filter is case-sensitive."""
@@ -321,11 +322,52 @@ build-command -> cli.Command:
 
   return snapshot-command
 
+/**
+Completion callback for the `filter` argument.
+
+Loads the snapshot provided as the first positional argument and
+  returns the program elements (classes, methods, literals, ...) that
+  the current subcommand iterates over, filtered by the completion prefix.
+*/
+complete-filter context/cli.CompletionContext -> List:
+  print-on-stderr_ "COMPLETING"
+  seen := context.seen-options
+  snapshot-values := seen.get "snapshot"
+  if not snapshot-values or snapshot-values.is-empty: return []
+  snapshot-path := snapshot-values.first
+  program/Program? := null
+  catch:
+    snapshot := SnapshotBundle.from-file snapshot-path
+    program = snapshot.decode
+  if not program: return []
+  command-name := context.command.name
+  names := {}
+  if command-name == "classes":
+    program.class-tags.size.repeat: | id/int |
+      names.add (program.class-name-for id)
+  else if command-name == "literals":
+    program.literals.do: | literal | names.add literal.stringify
+  else if command-name == "primitive-table":
+    program.primitive-table.size.repeat: | module-index/int |
+      module := program.primitive-table[module-index]
+      module.primitives.size.repeat: | primitive-index/int |
+        names.add (program.primitive-name module-index primitive-index)
+  else:
+    // "method-table", "method-sizes", "bytecodes", "callers", "dispatch-table".
+    program.do --method-infos: | method-info/MethodInfo |
+      names.add method-info.name
+  prefix := context.prefix
+  result := []
+  names.do: | name/string |
+    if name.starts-with prefix:
+      result.add (cli.CompletionCandidate name)
+  return result
+
 main args:
   parameters/cli.Parameters? := null
   parser := cli.Command "toitp"
       --rest=[
-          cli.Option "snapshot" --type="file" --required,
+          cli.OptionPath "snapshot" --extensions=[".snapshot"] --required,
           cli.Option "filter",
       ]
       --options=[

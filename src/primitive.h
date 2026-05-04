@@ -284,7 +284,9 @@ namespace toit {
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create_socket, 1)                \
   PRIMITIVE(bind, 3)                         \
+  PRIMITIVE(bind_socket, 4)                  \
   PRIMITIVE(connect, 4)                      \
   PRIMITIVE(receive, 3)                      \
   PRIMITIVE(send, 7)                         \
@@ -533,7 +535,14 @@ namespace toit {
   PRIMITIVE(aead_get_tag_size, 1)            \
   PRIMITIVE(aead_finish, 1)                  \
   PRIMITIVE(aead_verify, 3)                  \
-
+  PRIMITIVE(rsa_generate, 1)                 \
+  PRIMITIVE(rsa_sign, 3)                     \
+  PRIMITIVE(rsa_verify, 4)                   \
+  PRIMITIVE(rsa_get_private_key_der, 2)      \
+  PRIMITIVE(rsa_get_public_key_der, 1)       \
+  PRIMITIVE(rsa_encrypt, 4)                  \
+  PRIMITIVE(rsa_decrypt, 4)
+  
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
 
@@ -701,6 +710,7 @@ namespace toit {
   PRIMITIVE(realpath, 1)                     \
   PRIMITIVE(cwd, 0)                          \
   PRIMITIVE(read_file_content_posix, 2)      \
+  PRIMITIVE(update_times, 5)                 \
 
 #define MODULE_PIPE(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
@@ -770,7 +780,7 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 3)                       \
+  PRIMITIVE(create, 5)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
