@@ -335,6 +335,20 @@ PRIMITIVE(get_option) {
     case UDP_MULTICAST_TTL:
       return get_int_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, process);
 
+    case UDP_MULTICAST_IF: {
+      struct in_addr addr;
+      socklen_t len = sizeof(addr);
+      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &addr, &len) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      // Return the 4-byte address as a byte array.
+      ByteArray* result = process->allocate_byte_array(4);
+      if (result == null) FAIL(ALLOCATION_FAILED);
+      ByteArray::Bytes bytes(result);
+      memcpy(bytes.address(), &addr.s_addr, 4);
+      return result;
+    }
+
     case UDP_REUSE_ADDRESS:
       return get_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, process);
 
@@ -396,6 +410,23 @@ PRIMITIVE(set_option) {
       break;
     }
 
+    case UDP_MULTICAST_LEAVE: {
+      Blob bytes;
+      if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (bytes.length() != 4) {
+        FAIL(OUT_OF_BOUNDS);
+      }
+      struct ip_mreq mreq;
+      memcpy(&mreq.imr_multiaddr.s_addr, bytes.address(), 4);
+      mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+      if (setsockopt(fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
     case UDP_MULTICAST_LOOPBACK:
       result = set_bool_option(fd, IPPROTO_IP, IP_MULTICAST_LOOP, raw, process);
       break;
@@ -403,6 +434,22 @@ PRIMITIVE(set_option) {
     case UDP_MULTICAST_TTL:
       result = set_int_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, raw, process);
       break;
+
+    case UDP_MULTICAST_IF: {
+      Blob bytes;
+      if (!raw->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
+        FAIL(WRONG_OBJECT_TYPE);
+      }
+      if (bytes.length() != 4) {
+        FAIL(OUT_OF_BOUNDS);
+      }
+      struct in_addr addr;
+      memcpy(&addr.s_addr, bytes.address(), 4);
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &addr, sizeof(addr)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
 
     case UDP_REUSE_ADDRESS:
       result = set_bool_option(fd, SOL_SOCKET, SO_REUSEADDR, raw, process);

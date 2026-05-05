@@ -74,6 +74,10 @@ class Project:
       --empty-lock-file/bool=false
       --ui/cli.Ui:
     ui_ = ui
+
+    if config.lock-file-exists and not config.specification-file-exists:
+      ui.abort "Project has a lock-file, but no specification file."
+
     if config.specification-file-exists:
       specification = ProjectSpecification.load this --ui=ui
     else:
@@ -113,7 +117,10 @@ class Project:
     solve_ --update-everything --registries=registries
     save
 
-  install -> none:
+  install --recompute/bool --registries/Registries -> none:
+    if recompute or not lock-file:
+      solve_ --no-update-everything --registries=registries
+      save
     lock-file.install
 
   clean -> none:
@@ -185,6 +192,8 @@ class Project:
 
   /** The directory within the cache where the given package is cached. */
   relative-cached-repository-dir_ url/string version/SemanticVersion -> string:
+    url = url.trim --left "http://"
+    url = url.trim --left "https://"
     return escape-path "$url/$version"
 
   /** The full path of the directory within the cache where the given package is cached. */
@@ -211,9 +220,21 @@ class Project:
   ensure-downloaded url/string version/SemanticVersion -> Map
       --cached-contents/Map?=null
       --hash/string:
+    e := catch:
+      return ensure-downloaded_ url version
+          --cached-contents=cached-contents
+          --hash=hash
+    ui_.abort "Failed to download package '$url@$version': $e"
+    unreachable
+
+  ensure-downloaded_ url/string version/SemanticVersion -> Map
+      --cached-contents/Map?
+      --hash/string:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
-    if cached-contents.contains url and cached-contents[url].contains version-string:
+    if cached-contents.contains url and
+        cached-contents[url].contains version-string and
+        file.is-directory "$packages-cache-dir/$cached-contents[url][version-string]":
       return cached-contents
     cached-repository-dir := cached-repository-dir_ url version
     relative-dir := relative-cached-repository-dir_ url version
@@ -231,6 +252,7 @@ class Project:
         hash = version-hash
       download_ url version --destination=cached-repository-dir --hash=hash
       file.write-contents hash --path=repo-toit-git-path
+      make-read-only_ --recursive cached-repository-dir
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents
     return cached-contents

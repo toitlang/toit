@@ -31,7 +31,8 @@ class Repository:
   capabilities/Map
 
   constructor .url:
-    if not url.contains "://": url = "https://$url"
+    if not url.contains "://":
+      url = url.starts-with "localhost" ? "http://$url" : "https://$url"
     capabilities = protocol_.load-capabilities url
 
   clone --binary ref-hash/string -> ByteArray:

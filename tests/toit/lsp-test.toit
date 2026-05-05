@@ -12,12 +12,10 @@ import ...tools.lsp.server.client show with-lsp-client LspClient
 main args:
   toit-exe := ToitExecutable args
 
-  toit-run := args[0]
-  toit-exe-src := args[1]
-  sdk-dir := args[2]
+  toit-binary := args[0]
 
-  server-cmd := toit-run
-  server-args := [toit-exe-src, "tool", "lsp", "--sdk-dir", sdk-dir]
+  server-cmd := toit-binary
+  server-args := ["tool", "lsp"]
   client := LspClient.start
       server-cmd
       server-args

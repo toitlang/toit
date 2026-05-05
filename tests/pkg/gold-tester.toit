@@ -33,7 +33,7 @@ with-tmp-dir [block]:
   try:
     block.call tmp-dir
   finally:
-    directory.rmdir --recursive tmp-dir
+    directory.rmdir --force --recursive tmp-dir
 
 class RunResult_:
   stdout/string
@@ -82,6 +82,17 @@ class GoldTester:
   working-dir -> string:
     return working-dir_
 
+  port -> int:
+    return port_
+
+  package-cache-path pkg-suffix/string --version/string -> string:
+    bytes := file.read-contents "$working-dir_/.packages/contents.json"
+    packages := json.decode bytes
+    packages.do: | pkg-name/string pkg-info/Map |
+      if pkg-name.ends-with pkg-suffix:
+        return fs.join working-dir_ ".packages" pkg-info[version]
+    unreachable
+
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
     // In lock files, the ':' is replaced with '_'.
@@ -128,6 +139,9 @@ class GoldTester:
       else if command == "package.lock":
         lock-content := file.read-contents "$working-dir_/package.lock"
         outputs.add "== package.lock\n$lock-content.to-string"
+      else if command == "package.yaml":
+        yaml-content := file.read-contents "$working-dir_/package.yaml"
+        outputs.add "== package.yaml\n$yaml-content.to-string"
       else if command == "pkg":
         test-ui := TestUi --quiet=false
         cli := Cli "pkg" --ui=test-ui

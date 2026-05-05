@@ -1,0 +1,5 @@
+name: pkg1
+description: same name as pkg1 from shared registry
+url: example.com/pkg1
+version: 1.0.0
+hash: 9876543210

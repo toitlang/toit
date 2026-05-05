@@ -60,6 +60,8 @@ void AsyncEventThread::entry() {
     { Unlocker unlocker(locker);
       result = func(resource);
     }
+    // We released the lock. Something could have stopped the thread.
+    if (state_ == STOPPED) return;
     // Switch to idle state_ before we call the event handler. The other thread might
     // want to run a new function immediately, and might enter the 'run' below before we
     // leave the Unlocker scope.

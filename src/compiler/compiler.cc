@@ -41,6 +41,7 @@
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
 #include "lsp/rename.h"
+#include "lsp/selection_range.h"
 #include "lsp/fs_connection_socket.h"
 #include "lsp/fs_protocol.h"
 #include "lsp/multiplex_stdout.h"
@@ -134,6 +135,11 @@ class Pipeline {
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
   virtual void setup_lsp_selection_handler();
+  /// Called after parsing, before resolution.
+  ///
+  /// Subclasses that only need the parsed AST (e.g. SelectionRangePipeline)
+  /// can override this to act on the units and call exit(0).
+  virtual void parsed_units(const std::vector<ast::Unit*>& units);
   virtual void post_resolve(Resolver* resolver, ir::Program* program);
   virtual void post_type_check();
 
@@ -174,6 +180,7 @@ class LanguageServerPipeline : public Pipeline {
   enum class Kind {
     analyze,
     semantic_tokens,
+    selection_range,
     completion,
     goto_definition,
     find_references,
@@ -293,6 +300,12 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
   // Each entry maps a resolved target definition to the source range
   // of the show/export identifier that references it.
   std::vector<Resolver::ShowExportReference> show_export_references_;
+
+  // Class hierarchy references (implements/with) collected from the resolver.
+  // Each entry maps a holder class and a resolved interface/mixin to the
+  // AST expression in the source clause.  Collected before the resolver's
+  // flattening passes destroy the 1:1 AST/IR correspondence.
+  std::vector<Resolver::ClassHierarchyReference> class_hierarchy_references_;
 };
 
 class PrepareRenamePipeline : public LocationLanguageServerPipeline {
@@ -358,6 +371,39 @@ class HoverPipeline : public LocationLanguageServerPipeline {
   }
 
   bool is_lsp_selection_identifier() override { return false; }
+};
+
+class SelectionRangePipeline : public LanguageServerPipeline {
+ public:
+  SelectionRangePipeline(const char* path,
+                         const std::vector<std::pair<int, int>>& positions,
+                         const PipelineConfiguration& configuration)
+      : LanguageServerPipeline(LanguageServerPipeline::Kind::selection_range, configuration)
+      , selection_range_path_(path)
+      , selection_range_positions_(positions) {}
+
+ protected:
+  void parsed_units(const std::vector<ast::Unit*>& units) override {
+    for (auto* unit : units) {
+      if (unit->is_error_unit()) continue;
+      if (strcmp(unit->absolute_path(), selection_range_path_) == 0) {
+        compiler::emit_selection_ranges(unit,
+                                        selection_range_positions_,
+                                        source_manager(),
+                                        lsp()->protocol());
+        exit(0);
+      }
+    }
+    // File not found among parsed units — emit empty results.
+    for (size_t i = 0; i < selection_range_positions_.size(); i++) {
+      lsp()->protocol()->selection_range()->emit_range_count(0);
+    }
+    exit(0);
+  }
+
+ private:
+  const char* selection_range_path_;
+  std::vector<std::pair<int, int>> selection_range_positions_;
 };
 
 class LineReader {
@@ -507,6 +553,21 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     configuration.diagnostics = &diagnostics;
     configuration.is_for_analysis = true;
     lsp_semantic_tokens(path, configuration);
+  } else if (strcmp("SELECTION RANGE", mode) == 0) {
+    const char* path = reader.next("path");
+    int position_count = reader.next_int("position count");
+    std::vector<std::pair<int, int>> positions;
+    positions.reserve(position_count);
+    for (int i = 0; i < position_count; i++) {
+      // Input is 0-based; convert to 1-based.
+      int line = 1 + reader.next_int("line number (0-based)");
+      int col  = 1 + reader.next_int("column number (0-based)");
+      positions.push_back({line, col});
+    }
+    NullDiagnostics diagnostics(&source_manager);
+    configuration.diagnostics = &diagnostics;
+    configuration.is_for_analysis = true;
+    lsp_selection_range(path, positions, configuration);
   } else {
     const char* path = reader.next("path");
     // We generally use 1-based line/column numbers.
@@ -607,6 +668,14 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+}
+
+void Compiler::lsp_selection_range(const char* source_path,
+                                   const std::vector<std::pair<int, int>>& positions,
+                                   const PipelineConfiguration& configuration) {
+  ASSERT(configuration.diagnostics != null);
+  SelectionRangePipeline pipeline(source_path, positions, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -899,17 +968,22 @@ SnapshotBundle Compiler::compile(const char* source_path,
 /// The line number should be 1-based.
 /// The column number should be 1-based.
 ///
-/// Aborts the program if the file is not big enough.
+/// If the requested position is past the end of the file (or past the end of
+/// the requested line), the offset is clamped to the closest valid position.
+/// LSP clients can legitimately send positions that don't align with the
+/// server's view of the buffer (e.g. a stale request after a buffer edit), so
+/// we must not abort.
 static int compute_source_offset(const uint8* source, int line_number, int utf16_column_number) {
   int offset = 0;
   int line = 1;  // The line number of the offset position.
   // Skip to the correct line first.
   while (line < line_number) {
-    int c = source[offset++];
+    int c = source[offset];
     if (c == '\0') {
-      // Didn't find enough lines.
-      UNREACHABLE();
+      // Didn't find enough lines -- clamp to end of file.
+      return offset;
     }
+    offset++;
     if (c == 10 || c == 13) {
       int other = (c == 10) ? 13 : 10;
       if (source[offset] == other) offset++;
@@ -918,16 +992,16 @@ static int compute_source_offset(const uint8* source, int line_number, int utf16
   }
   // Advance in the same line.
   //  [offset] is pointing to the first character of the line.
-  // Note that we don't look whether we hit another new-line character. We
-  //  just assume that the client sent us a correct request.
-  // However, we need to convert the utf-16 column number to utf-8 offsets.
-  // Also we don't want to accidentally access invalid memory.
+  // We need to convert the utf-16 column number to utf-8 offsets, and stop
+  // at the end of the line (or end of file) instead of walking past it.
   for (int i = 1; i < utf16_column_number; i++) {
-    if (source[offset] == '\0') {
-      // Didn't find enough characters.
-      UNREACHABLE();
+    int c = source[offset];
+    if (c == '\0' || c == 10 || c == 13) {
+      // Reached end of line / end of file before consuming the requested
+      // number of UTF-16 code units -- clamp.
+      break;
     }
-    int nb_bytes = Utils::bytes_in_utf_8_sequence(source[offset]);
+    int nb_bytes = Utils::bytes_in_utf_8_sequence(c);
     offset += nb_bytes;
     // If the UTF-8 sequence takes more than 3 bytes, it is encoded as surrogate pair in UTF-16.
     if (nb_bytes > 3) i++;
@@ -943,6 +1017,11 @@ ast::Unit* Pipeline::parse(Source* source) {
 
 void Pipeline::setup_lsp_selection_handler() {
   // Do nothing.
+}
+
+void Pipeline::parsed_units(const std::vector<ast::Unit*>& units) {
+  // Do nothing. Subclasses (like SelectionRangePipeline) can override
+  // to act on the parsed AST before resolution.
 }
 
 void Pipeline::post_resolve(Resolver* resolver, ir::Program* program) {
@@ -1089,16 +1168,16 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* progr
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
 
-  // Capture show/export reference data from the resolver before it goes
-  // out of scope. This is needed for renaming symbols that appear in
-  // show/export clauses of import statements.
+  // Capture resolver data before it goes out of scope.
   show_export_references_ = resolver->show_export_references();
+  class_hierarchy_references_ = resolver->class_hierarchy_references();
 
   if (target != null) {
     auto& ir_to_ast = resolver->ir_to_ast_map();
     find_and_emit_all_references(target, program, source_manager(), ir_to_ast,
                                  lsp()->protocol(), toitdocs(),
-                                 show_export_references_);
+                                 show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached — find_and_emit_all_references calls exit(0).
   }
 
@@ -1117,7 +1196,8 @@ void FindReferencesPipeline::post_type_check() {
   if (target != null && program_ != null) {
     find_and_emit_all_references(target, program_, source_manager(),
                                  ir_to_ast_map_, lsp()->protocol(),
-                                 toitdocs(), show_export_references_);
+                                 toitdocs(), show_export_references_,
+                                 class_hierarchy_references_);
     // Not reached.
   }
   exit(0);
@@ -2051,6 +2131,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   }
 
   if (configuration_.parse_only) return Result::invalid();
+
+  // Give subclasses a chance to handle parse-only requests (e.g. selection ranges).
+  parsed_units(units);
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());
