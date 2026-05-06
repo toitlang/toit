@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2018 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -1558,6 +1558,73 @@ PRIMITIVE(ec_get_public_key_der) {
     if (export_ret != 0) return tls_error(null, process, export_ret);
     FAIL(ALLOCATION_FAILED);
   }
+  return result;
+}
+
+PRIMITIVE(ec_compute_shared_secret) {
+  ARGS(Blob, private_key_der, Blob, public_key_der);
+
+  mbedtls_pk_context pk_prv, pk_pub;
+  mbedtls_pk_init(&pk_prv);
+  mbedtls_pk_init(&pk_pub);
+
+  int ret = rsa_parse_key_from_blob(&pk_prv, private_key_der, Blob(), true);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    return tls_error(null, process, ret);
+  }
+
+  ret = rsa_parse_key_from_blob(&pk_pub, public_key_der, Blob(), false);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    return tls_error(null, process, ret);
+  }
+
+  if (!mbedtls_pk_can_do(&pk_prv, MBEDTLS_PK_ECKEY) || !mbedtls_pk_can_do(&pk_pub, MBEDTLS_PK_ECKEY)) {
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  mbedtls_ecp_keypair *ec_prv = mbedtls_pk_ec(pk_prv);
+  mbedtls_ecp_keypair *ec_pub = mbedtls_pk_ec(pk_pub);
+
+  if (ec_prv->grp.id == MBEDTLS_ECP_DP_NONE || ec_prv->grp.id != ec_pub->grp.id) {
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  mbedtls_ecp_point R;
+  mbedtls_ecp_point_init(&R);
+
+  ret = mbedtls_ecp_mul(&ec_prv->grp, &R, &ec_prv->d, &ec_pub->Q, rsa_rng, NULL);
+  if (ret != 0) {
+    mbedtls_ecp_point_free(&R);
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    return tls_error(null, process, ret);
+  }
+
+  size_t glen = (ec_prv->grp.pbits + 7) / 8;
+  ByteArray* result = process->allocate_byte_array(glen);
+  if (result == null) {
+    mbedtls_ecp_point_free(&R);
+    mbedtls_pk_free(&pk_prv);
+    mbedtls_pk_free(&pk_pub);
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  ret = mbedtls_mpi_write_binary(&R.X, ByteArray::Bytes(result).address(), glen);
+  
+  mbedtls_ecp_point_free(&R);
+  mbedtls_pk_free(&pk_prv);
+  mbedtls_pk_free(&pk_pub);
+
+  if (ret != 0) return tls_error(null, process, ret);
+
   return result;
 }
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2022 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -64,6 +64,7 @@ TYPE_PRIMITIVE_ANY(ec_sign)
 TYPE_PRIMITIVE_ANY(ec_verify)
 TYPE_PRIMITIVE_ANY(ec_get_private_key_der)
 TYPE_PRIMITIVE_ANY(ec_get_public_key_der)
+TYPE_PRIMITIVE_ANY(ec_compute_shared_secret)
 
 }  // namespace toit::compiler
 }  // namespace toit
