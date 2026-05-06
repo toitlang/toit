@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import .ec
 
 export *
 

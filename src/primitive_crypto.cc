@@ -29,6 +29,8 @@
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
+#include "mbedtls/ecdsa.h"
+#include "mbedtls/ecp.h"
 
 #include "aes.h"
 #include "objects.h"
@@ -1115,6 +1117,172 @@ PRIMITIVE(rsa_decrypt) {
   if (ret != 0) return tls_error(null, process, ret);
 
   result->resize_external(process, output_len);
+  return result;
+}
+
+PRIMITIVE(ec_generate_key) {
+  ARGS(String, curve_name_string);
+
+  // Curve names are short (e.g. "prime256v1" = 10 chars), 64 bytes is sufficient.
+  char curve_name[64];
+  String::Bytes bytes(curve_name_string);
+  if (bytes.length() >= sizeof(curve_name)) FAIL(INVALID_ARGUMENT);
+  memcpy(curve_name, bytes.address(), bytes.length());
+  curve_name[bytes.length()] = '\0';
+
+  const mbedtls_ecp_curve_info* info = mbedtls_ecp_curve_info_from_name(curve_name);
+  if (info == null) FAIL(INVALID_ARGUMENT);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+
+  ret = mbedtls_ecp_gen_key(info->grp_id, mbedtls_pk_ec(pk), rsa_rng, null);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+
+  int prv_ret, pub_ret;
+  ByteArray* prv_der = rsa_export_der(&pk, process, true, &prv_ret);
+  ByteArray* pub_der = null;
+  if (prv_der != null) {
+    pub_der = rsa_export_der(&pk, process, false, &pub_ret);
+  }
+  mbedtls_pk_free(&pk);
+
+  if (prv_der == null) {
+    if (prv_ret != 0) return tls_error(null, process, prv_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
+  if (pub_der == null) {
+    if (pub_ret != 0) return tls_error(null, process, pub_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  Array* pair = process->object_heap()->allocate_array(2, process->null_object());
+  if (pair == null) FAIL(ALLOCATION_FAILED);
+  pair->at_put(0, prv_der);
+  pair->at_put(1, pub_der);
+  return pair;
+}
+
+PRIMITIVE(ec_sign) {
+  ARGS(Blob, private_key_der, Blob, digest, int, hash_algo_id);
+
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+    mbedtls_pk_free(&pk);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
+  size_t actual_len = 0;
+  ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
+                        sig, sizeof(sig), &actual_len, rsa_rng, null);
+  mbedtls_pk_free(&pk);
+
+  if (ret != 0) return tls_error(null, process, ret);
+
+  ByteArray* result = process->allocate_byte_array(actual_len);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  memcpy(ByteArray::Bytes(result).address(), sig, actual_len);
+  return result;
+}
+
+PRIMITIVE(ec_verify) {
+  ARGS(Blob, public_key_der, Blob, digest, Blob, signature, int, hash_algo_id);
+
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+    mbedtls_pk_free(&pk);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  ret = mbedtls_pk_verify(&pk, md_alg, digest.address(), digest.length(), signature.address(), signature.length());
+  mbedtls_pk_free(&pk);
+
+  return BOOL(ret == 0);
+}
+
+PRIMITIVE(ec_get_private_key_der) {
+  ARGS(Blob, key, Blob, password);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+
+  int ret = rsa_parse_key_from_blob(&pk, key, password, true);
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+    mbedtls_pk_free(&pk);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  int export_ret;
+  ByteArray* result = rsa_export_der(&pk, process, true, &export_ret);
+  mbedtls_pk_free(&pk);
+
+  if (result == null) {
+    if (export_ret != 0) return tls_error(null, process, export_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
+  return result;
+}
+
+PRIMITIVE(ec_get_public_key_der) {
+  ARGS(Blob, key);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+
+  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true);
+  if (ret != 0) {
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false);
+  }
+  if (ret != 0) {
+    mbedtls_pk_free(&pk);
+    return tls_error(null, process, ret);
+  }
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+    mbedtls_pk_free(&pk);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  int export_ret;
+  ByteArray* result = rsa_export_der(&pk, process, false, &export_ret);
+  mbedtls_pk_free(&pk);
+
+  if (result == null) {
+    if (export_ret != 0) return tls_error(null, process, export_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
   return result;
 }
 }
