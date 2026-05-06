@@ -59,6 +59,11 @@ TYPE_PRIMITIVE_ANY(rsa_generate_init)
 TYPE_PRIMITIVE_ANY(rsa_generate_start)
 TYPE_PRIMITIVE_ANY(rsa_generate_finish)
 TYPE_PRIMITIVE_ANY(rsa_generate_close)
+TYPE_PRIMITIVE_ANY(ec_generate_key)
+TYPE_PRIMITIVE_ANY(ec_sign)
+TYPE_PRIMITIVE_ANY(ec_verify)
+TYPE_PRIMITIVE_ANY(ec_get_private_key_der)
+TYPE_PRIMITIVE_ANY(ec_get_public_key_der)
 
 }  // namespace toit::compiler
 }  // namespace toit
