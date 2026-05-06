@@ -43,4 +43,52 @@ main:
       print "  Parse Public: FAILED"
       throw "Parse Public failed"
 
+    // Test ECDH
+    print "  Testing ECDH..."
+    key-pair-b := ec.EcKeyPair.generate --curve=curve
+    secret-a := key-pair.compute-shared-secret key-pair-b.public-key
+    secret-b := key-pair-b.compute-shared-secret key-pair.public-key
+    if secret-a == secret-b:
+      print "    Shared secret: MATCH (size: $secret-a.size)"
+    else:
+      print "    Shared secret: MISMATCH"
+      throw "ECDH mismatch"
+
+    // Test ECIES
+    print "  Testing ECIES..."
+    msg := "Sensitive Information ($curve)"
+    ciphertext := ec.Ecies.encrypt msg key-pair.public-key --curve=curve
+    print "    Ciphertext size: $ciphertext.size"
+    
+    decrypted := key-pair.decrypt-ecies ciphertext
+    if decrypted.to-string == msg:
+      print "    ECIES: SUCCESS"
+    else:
+      print "    ECIES: FAILED"
+      throw "ECIES decryption failed"
+      
+    // Test tampering
+    print "    Testing tampering detection..."
+    
+    // 1. Tamper with tag (last bytes)
+    tampered-tag := ciphertext.copy
+    tampered-tag[tampered-tag.size - 1] ^= 0xFF
+    if (catch: key-pair.decrypt-ecies tampered-tag) != ec.Ecies.AUTHENTICATION-FAILURE:
+      throw "Failed to detect tag tampering"
+      
+    // 2. Tamper with ciphertext
+    tampered-ct := ciphertext.copy
+    tampered-ct[ciphertext.size - 17] ^= 0xFF // Just before the tag
+    if (catch: key-pair.decrypt-ecies tampered-ct) != ec.Ecies.AUTHENTICATION-FAILURE:
+      throw "Failed to detect ciphertext tampering"
+      
+    // 3. Tamper with nonce
+    tampered-nonce := ciphertext.copy
+    der-len := (ciphertext[0] << 8) | ciphertext[1]
+    tampered-nonce[2 + der-len] ^= 0xFF
+    if (catch: key-pair.decrypt-ecies tampered-nonce) != ec.Ecies.AUTHENTICATION-FAILURE:
+      throw "Failed to detect nonce tampering"
+      
+    print "      Tampering Detection: SUCCESS"
+
   print "\nAll EC tests passed!"
