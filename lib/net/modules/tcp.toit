@@ -77,9 +77,14 @@ class TcpSocket_:
       return failure.call "NOT_CONNECTED"
     if (state-bits & error-bits) == 0:
       return state
-    error := tcp-error_ (tcp-error-number_ state.resource)
+    error-number := tcp-error-number_ state.resource
     close
-    return failure.call error
+    if error-number == 0:
+      // The kernel can signal an error event without setting errno (notably
+      // on a clean close from the peer). Surface it as a recognizable close
+      // event rather than the misleading "Success" string from strerror(0).
+      return failure.call "Connection closed"
+    return failure.call (tcp-error_ error-number)
 
   ensure-state_:
     if state_: return state_
