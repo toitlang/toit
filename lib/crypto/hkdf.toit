@@ -15,22 +15,21 @@ Derives a key using HKDF-SHA256.
 The $ikm is the input keying material.
 The $salt is optional.
 The $info is optional context information.
-The $length is the desired length of the output key.
+The $size is the desired size of the output key in bytes.
 */
-hkdf-sha256 --ikm/ByteArray --salt/ByteArray?=null --info/ByteArray?=null --length/int -> ByteArray:
-  return hkdf --ikm=ikm --salt=salt --info=info --length=length: HmacSha256 it
+hkdf-sha256 --ikm/ByteArray --salt/ByteArray?=null --info/ByteArray?=null --size/int -> ByteArray:
+  return hkdf --ikm=ikm --salt=salt --info=info --size=size: HmacSha256 it
 
 /**
 Generic HKDF implementation.
 The $hasher-creator is a lambda that creates an HMAC object for a given key.
+The $size is the desired size of the output key in bytes.
 */
-hkdf --ikm/ByteArray --salt/ByteArray? --info/ByteArray? --length/int [hasher-creator] -> ByteArray:
-  // Step 1: Extract
+hkdf --ikm/ByteArray --salt/ByteArray? --info/ByteArray? --size/int [hasher-creator] -> ByteArray:
   prk := hkdf-extract --ikm=ikm --salt=salt:
     hasher-creator.call it
   
-  // Step 2: Expand
-  return hkdf-expand --prk=prk --info=info --length=length:
+  return hkdf-expand --prk=prk --info=info --size=size:
     hasher-creator.call it
 
 /**
@@ -45,13 +44,14 @@ hkdf-extract --ikm/ByteArray --salt/ByteArray? [hasher-creator] -> ByteArray:
 
 /**
 HKDF-Expand step.
+The $size is the desired size of the output key in bytes.
 */
-hkdf-expand --prk/ByteArray --info/ByteArray? --length/int [hasher-creator] -> ByteArray:
+hkdf-expand --prk/ByteArray --info/ByteArray? --size/int [hasher-creator] -> ByteArray:
   hash-len := prk.size
-  if length > 255 * hash-len: throw "OUT_OF_RANGE"
+  if size > 255 * hash-len: throw "OUT_OF_RANGE"
   
-  n := (length + hash-len - 1) / hash-len
-  okm := ByteArray length
+  n := (size + hash-len - 1) / hash-len
+  okm := ByteArray size
   
   t := #[]
   info-bytes := info or #[]
@@ -63,7 +63,7 @@ hkdf-expand --prk/ByteArray --info/ByteArray? --length/int [hasher-creator] -> B
     hmac.add (ByteArray 1: i + 1)
     t = hmac.get
     
-    copy-len := min hash-len (length - i * hash-len)
+    copy-len := min hash-len (size - i * hash-len)
     okm.replace (i * hash-len) t 0 copy-len
     
   return okm
