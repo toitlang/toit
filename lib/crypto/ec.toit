@@ -64,15 +64,22 @@ class EcKeyPair:
 
   /**
   Generates a new EC key pair for the given $curve.
-  Common curves: "secp256r1", "secp384r1", "secp521r1".
+  Common curves: CURVE-SECP256R1, CURVE-SECP384R1, CURVE-SECP521R1.
   */
-  static generate --curve/string="secp256r1" -> EcKeyPair:
+  static generate --curve/string=EcKey.CURVE-SECP256R1 -> EcKeyPair:
     pair := ec-generate-key_ curve
     return EcKeyPair
         EcKey.internal_ pair[0] true
         EcKey.internal_ pair[1] false
 
 class EcKey:
+  /** Named constant for the "secp256r1" curve. */
+  static CURVE-SECP256R1 ::= "secp256r1"
+  /** Named constant for the "secp384r1" curve. */
+  static CURVE-SECP384R1 ::= "secp384r1"
+  /** Named constant for the "secp521r1" curve. */
+  static CURVE-SECP521R1 ::= "secp521r1"
+
   /** Produces a 20-byte digest. */
   static SHA-1 ::= 1
   /** Default. Produces a 32-byte digest. */
@@ -98,8 +105,8 @@ class EcKey:
   The $key must be DER or PEM.
   The $password is optional and used for encrypted keys.
   */
-  static parse-private key/io.Data --password/string?="" -> EcKey:
-    der := ec-get-private-key-der_ key (password or "")
+  static parse-private key/io.Data --password/string="" -> EcKey:
+    der := ec-get-private-key-der_ key password
     return EcKey.internal_ der true
 
   /**
@@ -206,7 +213,7 @@ class Ecies:
 
   The $curve must match the curve of the $recipient-public-key.
   */
-  static encrypt message/io.Data recipient-public-key/EcKey --curve/string="secp256r1" -> ByteArray:
+  static encrypt message/io.Data recipient-public-key/EcKey --curve/string=EcKey.CURVE-SECP256R1 -> ByteArray:
     // 1. Generate ephemeral key pair.
     ephemeral := EcKeyPair.generate --curve=curve
     
@@ -218,7 +225,7 @@ class Ecies:
     derived := hkdf-sha256
         --ikm=shared-secret
         --info=ephemeral.public-key.der
-        --length=16 + 12
+        --size=16 + 12
     
     aes-key := derived[0..16]
     nonce := derived[16..28]
@@ -262,7 +269,7 @@ class Ecies:
     derived := hkdf-sha256
         --ikm=shared-secret
         --info=ephemeral-der
-        --length=16 + 12
+        --size=16 + 12
     
     aes-key := derived[0..16]
     // Note: We don't strictly need to derive the nonce for decryption if we already have it in the message,
