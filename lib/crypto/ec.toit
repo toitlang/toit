@@ -220,22 +220,23 @@ class Ecies:
     // 2. ECDH
     shared-secret := ephemeral.compute-shared-secret recipient-public-key
     
-    // 3. HKDF (derives 16 bytes for AES-128 key and 12 bytes for GCM nonce)
-    // The ephemeral public key is used as part of the info to bind the derivation to this message.
+    // 3. HKDF - derives 16 bytes for AES-128 key only.
+    // Nonce is random and transmitted in the wire format.
     derived := hkdf-sha256
         --ikm=shared-secret
         --info=ephemeral.public-key.der
-        --size=16 + 12
+        --size=16
     
     aes-key := derived[0..16]
-    nonce := derived[16..28]
+
+    // 4. Random nonce, travels in wire.
+    nonce := ByteArray 12: random 0 256
     
-    // 4. AES-GCM Encryption
+    // 5. AES-GCM Encryption
     gcm := AesGcm.encryptor aes-key nonce
     ciphertext-with-tag := gcm.encrypt message
     
-    // 5. Build output: [2-byte DER length] [DER] [12-byte nonce] [ciphertext + tag]
-    // The length is stored as 2 bytes in big-endian format.
+    // 6. Wire: [2-byte DER length][DER][nonce 12][ciphertext+tag]
     der-size := ephemeral.public-key.size
     out := ByteArray 2 + der-size + 12 + ciphertext-with-tag.size
     out[0] = der-size >> 8
@@ -258,28 +259,22 @@ class Ecies:
     
     ephemeral-der := ciphertext[2 .. 2 + der-size]
     ephemeral-pub := EcKey.parse-public ephemeral-der
-    
-    nonce := ciphertext[2 + der-size .. 2 + der-size + 12]
+    nonce     := ciphertext[2 + der-size .. 2 + der-size + 12]
     encrypted := ciphertext[2 + der-size + 12 ..]
     
     // 2. ECDH
     shared-secret := recipient-private-key.compute-shared-secret ephemeral-pub
     
-    // 3. HKDF
+    // 3. HKDF - derives 16 bytes for AES-128 key only.
     derived := hkdf-sha256
         --ikm=shared-secret
         --info=ephemeral-der
-        --size=16 + 12
+        --size=16
     
     aes-key := derived[0..16]
-    // Note: We don't strictly need to derive the nonce for decryption if we already have it in the message,
-    // but we check it matches just in case (or just use the one from the message).
-    // The standard ECIES often includes the ephemeral key in the KDF info.
     
     // 4. AES-GCM Decryption
     gcm := AesGcm.decryptor aes-key nonce
-    // This will throw "INVALID_SIGNATURE" if the tag is wrong (MAC failure).
-    // We use the static constant for semantic clarity.
     return gcm.decrypt encrypted
 
 // Primitives
