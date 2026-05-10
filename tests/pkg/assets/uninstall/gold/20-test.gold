@@ -1,10 +1,10 @@
 OK
 [pkg, install, pkg1]
-Package 'pkg1@1.0.0' installed with prefix 'pkg1'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
 ==================
 OK
 [pkg, install, pkg2]
-Package 'pkg2@2.4.2' installed with prefix 'pkg2'.
+Package 'localhost:<[*PORT*]>/pkg/pkg2@2.4.2' installed with prefix 'pkg2'.
 ==================
 == package.yaml
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
     version: ^1.0.0
   pkg2:
     url: localhost:<[*PORT*]>/pkg/pkg2
-    version: ^2.4.2
+    version: ^2.0.0
 ==================
 == package.lock
 prefixes:
@@ -57,7 +57,7 @@ dependencies: {}
 ==================
 OK
 [pkg, install, --prefix, foo, pkg1]
-Package 'pkg1@1.0.0' installed with prefix 'foo'.
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'foo'.
 ==================
 // Can't uninstall with package name.
 ==================

@@ -1,10 +1,10 @@
 OK
 [pkg, install, many]
-Package 'many@3.0.2' installed with prefix 'many'.
+Package 'localhost:<[*PORT*]>/pkg/many@3.0.2' installed with prefix 'many'.
 ==================
 Aborted
 [pkg, install, many@99]
-Error: Package 'many' exists but not with version '99' in any registry.
+Error: Package 'many' exists, but no version satisfies the constraint '99'.
 ==================
 Aborted
 [pkg, install, many@1]
@@ -12,7 +12,7 @@ Error: Project already has a package with prefix 'many'.
 ==================
 OK
 [pkg, install, --prefix=foo, many@1.0]
-Package 'many@1.0.1' installed with prefix 'foo'.
+Package 'localhost:<[*PORT*]>/pkg/many@1.0.1' installed with prefix 'foo'.
 ==================
 == package.lock
 prefixes:
@@ -21,7 +21,7 @@ prefixes:
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
     url: localhost:<[*PORT*]>/pkg/many
-    version: 1.1.0
+    version: 1.0.1
     hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
     url: localhost:<[*PORT*]>/pkg/many
@@ -32,14 +32,14 @@ packages:
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.2
+    version: ^3.0.0
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^1.0.1
+    version: ">=1.0.0,<1.1.0"
 ==================
 OK
 [pkg, install, --prefix=gee, many@1]
-Package 'many@1.1.0' installed with prefix 'gee'.
+Package 'localhost:<[*PORT*]>/pkg/many@1.0.1' installed with prefix 'gee'.
 ==================
 == package.lock
 prefixes:
@@ -49,7 +49,7 @@ prefixes:
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
     url: localhost:<[*PORT*]>/pkg/many
-    version: 1.1.0
+    version: 1.0.1
     hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
     url: localhost:<[*PORT*]>/pkg/many
@@ -60,13 +60,13 @@ packages:
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.2
+    version: ^3.0.0
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^1.0.1
+    version: ">=1.0.0,<1.1.0"
   gee:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^1.1.0
+    version: ">=1.0.0,<2.0.0"
 ==================
 // These should fail as they are not valid versions.
 ==================
@@ -76,4 +76,4 @@ Error: Missing version after '@' in 'many@'.
 ==================
 Aborted
 [pkg, install, --prefix=bad2, many@not_a-version]
-Error: Invalid version constraint 'not_a-version' for 'many': Parse error, expected a numeric value at position 0.
+Error: Invalid version constraint 'not_a-version' in 'many@not_a-version': Parse error, expected a numeric value at position 0

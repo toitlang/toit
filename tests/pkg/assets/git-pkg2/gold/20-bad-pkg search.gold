@@ -22,4 +22,4 @@ foo:
 ==================
 Aborted
 [pkg, install, --prefix=pre3, foo]
-Error: Multiple packages found for 'foo' in all registries.
+Error: Multiple packages found for 'foo'

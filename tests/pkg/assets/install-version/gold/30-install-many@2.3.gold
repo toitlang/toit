@@ -3,7 +3,7 @@ OK
 ==================
 OK
 [pkg, install, many@2.3]
-Package 'many@2.3.8' installed with prefix 'many'.
+Package 'localhost:<[*PORT*]>/pkg/many@2.3.8' installed with prefix 'many'.
 ==================
 == package.lock
 prefixes:
@@ -18,4 +18,4 @@ packages:
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^2.3.8
+    version: ">=2.3.0,<2.4.0"

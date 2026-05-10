@@ -73,39 +73,37 @@ class Registries:
   constructor.filled .registries/Map --ui/cli.Ui:
     ui_ = ui
 
-  search --registry-name/string?=null search-string/string -> Description:
+  /**
+  Searches for the given $search-string in the registry.
+
+  Aborts if no package or multiple packages match the search string.
+
+  Returns the single description with the highest version of the matching package.
+  */
+  search -> Description
+      --registry-name/string?=null
+      search-string/string
+      [--if-absent]
+      [--if-ambiguous]:
     search-results := search_ registry-name search-string
     if search-results.size == 1:
       return search-results[0][1]
 
-    if search-results.is-empty:
-      registry-info := registry-name != null ? "in registry $registry-name." : "in any registry."
-      if search-string.contains "@":
-        search-string-split := search-string.split "@"
-        search-name-suffix := search-string-split[0]
-        search-version-prefix := search-string-split[1]
-        package-exists := not (search_ registry-name search-name-suffix).is-empty
-        if package-exists:
-          ui_.abort "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
-      ui_.abort "Package '$search-string' not found $registry-info"
-    else:
-      if not registry-name:
-        // Test for the same package appearing in multiple registries.
-        urls := {}
-        search-results.do:
-          urls.add it[1].url
-        if urls.size == 1:
-          return search-results[0][1]
-
-      // If there is a full match, return that.
+    if search-results.is-empty: return if-absent.call
+    if not registry-name:
+      // Test for the same package appearing in multiple registries.
+      urls := {}
       search-results.do:
-        if it[1].url == search-string:
-          return it[1]
+        urls.add it[1].url
+      if urls.size == 1:
+        return search-results[0][1]
 
-      registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
-      ui_.abort "Multiple packages found for '$search-string' $registry-info"
+    // If there is a full match, return that.
+    search-results.do:
+      if it[1].url == search-string:
+        return it[1]
 
-    unreachable
+    return if-ambiguous.call
 
   /**
   Searches for the given $search-string in all registries.
@@ -288,21 +286,18 @@ abstract class Registry:
   retrieve-descriptions url/string -> List?:
     return description-cache.get-descriptions url
 
-  search search-string/string -> List:
-    search-version-constraint/Constraint? := null
-    if search-string.contains "@":
-      split := search-string.split "@"
-      search-string = split[0]
-      search-version-str := split[1]
-      if search-version-str == "":
-        ui_.abort "Missing version after '@' in '$search-string@'."
-      e := catch:
-        search-version-constraint = Constraint.parse-range search-version-str
-      if e:
-        ui_.abort "Invalid version constraint '$search-version-str' for '$search-string': $e."
+  /**
+  Searches for the given $search-string in the registry.
 
+  A description matches if the name is the same, or if the url ends with
+    the search string.
+
+  Returns a list of pairs, where each pair is a list containing the
+    registry name and the description with the highest version.
+  */
+  search search-string/string -> List:
     // Initially maps urls to list of descriptions.
-    search-result := description-cache.search search-string search-version-constraint
+    search-result := description-cache.search search-string
 
     // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
@@ -314,7 +309,15 @@ abstract class Registry:
     // Now maps from url to one description.
     return search-result.values
 
-  search --free-text search-string/string -> List:
+  /**
+  Searches for the given $search-string in the registry.
+
+  Returns a list of descriptions that match the search string.
+
+  A description matches if the $search-string is a substring of the
+    name, description or url. The search is case-insensitive.
+  */
+  search --free-text/True search-string/string -> List:
     search-string = search-string.to-ascii-lower
     return list-all-descriptions.filter: | description/Description |
       description.matches-free-text search-string
