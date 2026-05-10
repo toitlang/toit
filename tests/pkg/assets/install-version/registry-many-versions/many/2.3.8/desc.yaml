@@ -1,0 +1,5 @@
+name: many
+description: Many versions
+url: localhost:<[*PORT*]>/pkg/many
+version: 2.3.8
+hash: deadbeef1234567890abcdef1234567890abcdef

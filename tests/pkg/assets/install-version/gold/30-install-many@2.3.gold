@@ -1,0 +1,21 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, many@2.3]
+Package 'many@2.3.8' installed with prefix 'many'.
+==================
+== package.lock
+prefixes:
+  many: localhost_<[*PORT*]>/pkg/many-2
+packages:
+  localhost_<[*PORT*]>/pkg/many-2:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: 2.3.8
+    hash: <[*HASH*]>
+==================
+== package.yaml
+dependencies:
+  many:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^2.3.8

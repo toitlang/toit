@@ -1,0 +1,79 @@
+OK
+[pkg, install, many]
+Package 'many@3.0.2' installed with prefix 'many'.
+==================
+Aborted
+[pkg, install, many@99]
+Error: Package 'many' exists but not with version '99' in any registry.
+==================
+Aborted
+[pkg, install, many@1]
+Error: Project already has a package with prefix 'many'.
+==================
+OK
+[pkg, install, --prefix=foo, many@1.0]
+Package 'many@1.0.1' installed with prefix 'foo'.
+==================
+== package.lock
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/many-1
+  many: localhost_<[*PORT*]>/pkg/many-3
+packages:
+  localhost_<[*PORT*]>/pkg/many-1:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: 1.1.0
+    hash: <[*HASH*]>
+  localhost_<[*PORT*]>/pkg/many-3:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: 3.0.2
+    hash: <[*HASH*]>
+==================
+== package.yaml
+dependencies:
+  many:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^3.0.2
+  foo:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^1.0.1
+==================
+OK
+[pkg, install, --prefix=gee, many@1]
+Package 'many@1.1.0' installed with prefix 'gee'.
+==================
+== package.lock
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/many-1
+  gee: localhost_<[*PORT*]>/pkg/many-1
+  many: localhost_<[*PORT*]>/pkg/many-3
+packages:
+  localhost_<[*PORT*]>/pkg/many-1:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: 1.1.0
+    hash: <[*HASH*]>
+  localhost_<[*PORT*]>/pkg/many-3:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: 3.0.2
+    hash: <[*HASH*]>
+==================
+== package.yaml
+dependencies:
+  many:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^3.0.2
+  foo:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^1.0.1
+  gee:
+    url: localhost:<[*PORT*]>/pkg/many
+    version: ^1.1.0
+==================
+// These should fail as they are not valid versions.
+==================
+Aborted
+[pkg, install, --prefix=bad1, many@]
+Error: Missing version after '@' in 'many@'.
+==================
+Aborted
+[pkg, install, --prefix=bad2, many@not_a-version]
+Error: Invalid version constraint 'not_a-version' for 'many': Parse error, expected a numeric value at position 0.
