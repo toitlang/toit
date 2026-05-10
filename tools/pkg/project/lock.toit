@@ -173,7 +173,7 @@ class LockFile:
   save:
     content := to-map_
     if content.is-empty:
-      file.write-contents "# Toit Package File." --path=file-name
+      file.write-contents "# Toit Package File.\n" --path=file-name
     else:
       file.write-contents --path=file-name
           yaml.encode content
@@ -184,36 +184,27 @@ class LockFile:
 
   update --remove-prefix/string:
     name := prefixes[remove-prefix]
+    prefixes.remove remove-prefix
 
-    // Build package=to-retain, mapping package name to package
     packages-by-name := {:}
     packages.do: | package/Package | packages-by-name[package.name] = package
 
+    retained := {}
+    queue := Deque
 
-    packages-to-remove := {}
-    new-packages-to-remove :=  { name }
-    // Calculate the transitive closure through prefixes from the name.
-    while not new-packages-to-remove.is-empty:
-      next := {}
-      new-packages-to-remove.do: | name |
-        package := packages-by-name[name]
-        next.add-all package.prefixes.values
-      next.remove-all packages-to-remove
-      packages-to-remove.add-all next
-      new-packages-to-remove = next
+    prefixes.do --values: | retained-package-name/string |
+      retained.add retained-package-name
+      queue.add retained-package-name
 
-    // Make sure that no retained package has a dependency on the packages-to-remove.
-    while true:
-      illegal-removed-packages := {}
-      packages.do: | package/Package |
-        if packages-to-remove.contains package.name: continue.do
-        package.prefixes.values.do:
-          if packages-to-remove.contains it:
-            illegal-removed-packages.add it
-      if illegal-removed-packages.is-empty: break
-      packages-to-remove.remove-all illegal-removed-packages
+    while not queue.is-empty:
+      retained-package-name := queue.remove-first
+      package := packages-by-name[retained-package-name]
+      package.prefixes.do --values: | retained-package-name/string |
+        if not retained.contains retained-package-name:
+          retained.add retained-package-name
+          queue.add retained-package-name
 
-    packages.filter --in-place: not packages-to-remove.contains it.name
+    packages.filter --in-place: retained.contains it.name
 
   repository-packages -> List:
     return (packages.filter : it is RepositoryPackage)
