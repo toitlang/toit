@@ -1,0 +1,17 @@
+OK
+[pkg, describe, <[*WORKING-DIR*]>/packages/kebab-name]
+kebab-name:
+  description: desc from spec.
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
+==================
+OK
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/kebab-name]
+kebab-name:
+  description: desc from spec.
+  version: <Not scraped for local paths>
+  url: <Not scraped for local paths>
+  hash: <Not scraped for local paths>
+  license: MIT
