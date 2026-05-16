@@ -467,7 +467,13 @@ class AssetsBuilder:
         continue
       copy-path --source=path --target="$working-dir/$name"
 
-with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
+with-gold-tester args/List
+    --with-git-pkg-registry/bool=false
+    --with-default-registry/bool=false
+    [block]:
+  if with-default-registry and with-git-pkg-registry:
+    throw "Unimplemented - cannot use both git and default registries at the same time."
+
   toit-exe := args[0]
 
   source-location := system.program-path
@@ -494,7 +500,8 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
               "ref-hash": "HEAD",
           }
       }
-    file.write-contents --path=registry-cache-file registry-content
+    if not with-default-registry:
+      file.write-contents --path=registry-cache-file registry-content
     os.env["TOIT_PKG_CACHE_DIR"] = registry-cache-dir
 
     http-dir := "$tmp-dir/HTTP-SERVE"
