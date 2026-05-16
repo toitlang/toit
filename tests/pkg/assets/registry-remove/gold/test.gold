@@ -1,0 +1,59 @@
+// Should only contain the 'toit' registry.
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+│ toit git github.com/toitware/registry │
+└┴┴┘
+==================
+OK
+[pkg, registry, remove, toit]
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+└┴┴┘
+==================
+OK
+[pkg, registry, add, test-reg1, http://localhost:<[*PORT*]>/registry/git-pkgs]
+==================
+OK
+[pkg, registry, add, --local, test-reg2, <[*WORKING-DIR*]>/registry]
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+│ test-reg1 git http://localhost:<[*PORT*]>/registry/git-pkgs │
+│ test-reg2 local <[*WORKING-DIR*]>/registry │
+└┴┴┘
+==================
+Aborted
+[pkg, registry, remove, non-existant]
+Error: Registry non-existant does not exist.
+==================
+OK
+[pkg, registry, remove, test-reg1]
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+│ test-reg2 local <[*WORKING-DIR*]>/registry │
+└┴┴┘
+==================
+OK
+[pkg, registry, remove, test-reg2]
+==================
+OK
+[pkg, registry, list]
+┌┬┬┐
+│ Name Type Url/Path │
+├┼┼┤
+└┴┴┘
