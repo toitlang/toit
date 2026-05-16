@@ -39,9 +39,8 @@ class ProjectConfiguration:
   cwd_/string
   ui_/cli.Ui
   sdk-version/SemanticVersion
-  auto-sync/bool
 
-  constructor --project-root/string? --cwd/string --.sdk-version --.auto-sync/bool --ui/cli.Ui:
+  constructor --project-root/string? --cwd/string --.sdk-version --ui/cli.Ui:
     project-root_ = project-root
     cwd_ = cwd
     ui_ = ui

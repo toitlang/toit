@@ -16,9 +16,11 @@
 import system
 
 import cli
+import fs
 
 import ..pkg
 import ..registry
+import ..registry.local
 
 import .base_
 
@@ -26,10 +28,12 @@ class RegistryCommand extends PkgCommand:
   static LOCAL     ::= "local"
   static NAME      ::= "name"
   static LOCATION   ::= "location"
+  static CLEAR-CACHE ::= "clear-cache"
 
   local/bool := false
   url/string? := null
   name/string? := null
+  clear-cache/bool := false
 
   constructor.add invocation/cli.Invocation:
     local = invocation[LOCAL]
@@ -44,16 +48,34 @@ class RegistryCommand extends PkgCommand:
 
   constructor.sync invocation/cli.Invocation:
     name = invocation[NAME]
+    clear-cache = invocation[CLEAR-CACHE]
     super invocation
 
   constructor.list invocation/cli.Invocation:
     super invocation
 
   add:
+    url-or-path := url
     if local:
-      registries.add --local name url
+      url-or-path = fs.to-absolute url-or-path
+
+    if registries.registries.contains name:
+      registry/Registry := registries.registries[name]
+      if registry is LocalRegistry:
+        local-registry := registry as LocalRegistry
+        if local-registry.path == url-or-path:
+          // Already exists with the same path.
+          return
+      else:
+        git-registry := registry as GitRegistry
+        if git-registry.url == url-or-path:
+          // Already exists with the same URL.
+          return
+      ui.abort "Registry $name already exists with a different URL or path."
+    if local:
+      registries.add --local name url-or-path
     else:
-      registries.add --git name url
+      registries.add --git name url-or-path
 
   remove:
     registries.remove name
@@ -63,9 +85,9 @@ class RegistryCommand extends PkgCommand:
 
   sync:
     if not name:
-      registries.sync
+      registries.sync --clear-cache=clear-cache
     else:
-      registries.sync --name=name
+      registries.sync --name=name --clear-cache=clear-cache
 
   static CLI-COMMAND ::=
       cli.Command "registry"
@@ -133,6 +155,11 @@ class RegistryCommand extends PkgCommand:
                         If no argument is given, synchronizes all registries.
                         If an argument is given, only that registry is synchronized.
                         """
+                    --options=[
+                        cli.Flag CLEAR-CACHE
+                            --help="Clear the cache before synchronizing."
+                            --default=false
+                      ]
                     --rest=[
                         cli.Option "name"
                             --help="Name of the registry"

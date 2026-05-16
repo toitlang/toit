@@ -61,7 +61,7 @@ class TestRegistry extends reg.Registry:
   type -> string: return "test"
   content -> FileSystemView: unreachable
   to-map -> Map: unreachable
-  sync: // Do nothing.
+  sync --clear-cache/bool: // Do nothing.
   stringify -> string: return "test-reg"
   to-string -> string: return "test-reg"
 
@@ -70,7 +70,7 @@ test-ui/TestUi? := null
 make-registries pkgs/List -> reg.Registries:
   registry := TestRegistry pkgs
   test-ui = TestUi
-  return reg.Registries.filled { registry.name: registry } --ui=test-ui
+  return reg.Registries.filled { registry.name: registry } --ui=test-ui --no-auto-sync
 
 find-solution solve-for/Description registries/reg.Registries -> Solution?
     --sdk-version/SemanticVersion=(SemanticVersion.parse "1.999.0")
