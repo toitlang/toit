@@ -137,7 +137,7 @@ test-registries source-dir/string:
   test-ui.reset
 
   expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" abs-path
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" (fs.to-absolute "foo")
   expect-ui-throw test-ui "Registry abc does not exist." : test-registries.remove "abc"
 
   test-registries.add --git "toit2" "github.com/toitware/registry"

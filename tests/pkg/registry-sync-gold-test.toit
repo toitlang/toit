@@ -131,3 +131,7 @@ test tester/GoldTester:
         ["pkg", "list"],
       ]
     expect-not (file.is-file "$registry-cache-path/dummy")
+
+  tester.gold "99-registry-sync-bad" [
+    ["pkg", "registry", "sync", "bad"],
+  ]
