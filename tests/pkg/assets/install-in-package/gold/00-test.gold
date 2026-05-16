@@ -19,20 +19,20 @@ prefixes:
   foo: localhost_<[*PORT*]>/pkg/foo-1
 packages:
   localhost_<[*PORT*]>/pkg/bar-2:
+    hash: <[*HASH*]>
     prefixes:
       foo: localhost_<[*PORT*]>/pkg/foo-1
       sub: localhost_<[*PORT*]>/pkg/sub-3
     url: localhost:<[*PORT*]>/pkg/bar
     version: 2.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/foo
     version: 1.2.3
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/sub-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/sub
     version: 3.1.4
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
