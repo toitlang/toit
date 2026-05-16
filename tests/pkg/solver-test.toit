@@ -277,7 +277,7 @@ test-fail-sdk-version:
   expect-null solution
   output := test-ui.stdout-messages
   expect-equals 1 output.size
-  expect-equals "Warning: No version of 'b' satisfies constraint '>=1.0.0,<2.0.0' with SDK version '1.0.5'\n" output[0]
+  expect-equals "Warning: No version of 'b' satisfies constraint '^1.0.0' with SDK version '1.0.5'\n" output[0]
 
   a170 = make-pkg "a-1.7.0" ["b ^1.0.0"] --min-sdk=v110
   registries = make-registries [a170, b140, b160, b180]

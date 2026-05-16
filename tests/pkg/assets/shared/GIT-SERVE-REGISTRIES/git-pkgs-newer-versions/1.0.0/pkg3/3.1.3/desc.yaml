@@ -1,0 +1,5 @@
+name: pkg3
+description: git-package 3
+url: localhost:<[*PORT*]>/pkg/pkg3
+version: 3.1.3
+hash: deadbeef1234567890abcdef1234567890abcdef

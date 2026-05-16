@@ -32,10 +32,10 @@ packages:
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.0
+    version: ^3.0.2
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<1.1.0"
+    version: ~1.0.1
 ==================
 OK
 [pkg, install, --prefix=gee, many@1]
@@ -60,13 +60,13 @@ packages:
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.0
+    version: ^3.0.2
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<1.1.0"
+    version: ~1.0.1
   gee:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<2.0.0"
+    version: ^1.0.1
 ==================
 // These should fail as they are not valid versions.
 ==================

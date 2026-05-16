@@ -110,13 +110,16 @@ class Project:
     assert: prefixes.size == remotes.size
     assert: prefixes.size == constraints.size
     remotes.size.repeat: | i/int |
-      prefix := prefixes[i]
-      remote := remotes[i]
-      constraint := constraints[i]
-      constraint-str := constraint ? constraint.to-string : "^$(same-major-version_ remote.version)"
+      prefix/string := prefixes[i]
+      remote/Description := remotes[i]
+      constraint/Constraint? := constraints[i]
+      constraint-str := constraint ? constraints[i].to-string : "^$(same-major-version_ remote.version)"
       specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint=constraint-str
     solution := solve-and-download_ --no-update-everything --registries=registries
+    specification.update-remote-dependencies solution
+
     save
+
     result := []
     remotes.size.repeat: | i/int |
       remote/Description := remotes[i]
@@ -139,7 +142,8 @@ class Project:
 
   install-local prefix/string path/string --registries/Registries -> none:
     specification.add-local-dependency prefix path
-    solve-and-download_ --no-update-everything --registries=registries
+    solution := solve-and-download_ --no-update-everything --registries=registries
+    specification.update-remote-dependencies solution
     save
 
   uninstall prefix/string -> none:
@@ -148,7 +152,8 @@ class Project:
     save
 
   update --registries/Registries -> none:
-    solve-and-download_ --update-everything --registries=registries
+    solution := solve-and-download_ --update-everything --registries=registries
+    specification.update-remote-dependencies solution
     save
 
   install --recompute/bool --registries/Registries -> none:
@@ -156,7 +161,8 @@ class Project:
       lock-file.install
       return
 
-    solve-and-download_ --no-update-everything --registries=registries
+    solution := solve-and-download_ --no-update-everything --registries=registries
+    specification.update-remote-dependencies solution
     save
 
   clean -> none:
