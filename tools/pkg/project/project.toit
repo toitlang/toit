@@ -88,6 +88,27 @@ class Project:
     else if empty-lock-file:
       lock-file = LockFile specification
 
+    if config.lock-file-exists:
+      assert: config.specification-file-exists
+      // Check that the two files are (mostly) in sync.
+      only-in-lock-file := []
+      only-in-specification := []
+      dependencies := specification.dependencies
+      prefixes := lock-file.prefixes
+      specification.dependencies.do --keys: | prefix/string |
+        if not prefixes.contains prefix:
+          only-in-specification.add prefix
+      prefixes.do --keys: | prefix/string |
+        if not dependencies.contains prefix:
+          only-in-lock-file.add prefix
+
+      if not only-in-lock-file.is-empty or not only-in-specification.is-empty:
+        if not only-in-lock-file.is-empty:
+          ui_.emit --warning "The following prefixes are only in package.lock: $(only-in-lock-file.join ", ")"
+        if not only-in-specification.is-empty:
+          ui_.emit --warning "The following prefixes are only in package.yaml: $(only-in-specification.join ", ")"
+        ui_.abort "The package.yaml file and package.lock file are not in sync."
+
   root -> string:
     return config.root
 
