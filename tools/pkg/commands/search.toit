@@ -26,11 +26,9 @@ import .base_
 import .list
 
 class SearchCommand extends PkgCommand:
-  verbose/bool
   search-string/string
 
   constructor invocation/cli.Invocation:
-    verbose = invocation[VERBOSE-OPTION]
     search-string = invocation[NAME-OPTION]
     super invocation
 
@@ -50,7 +48,7 @@ class SearchCommand extends PkgCommand:
       else:
         if version > old.version:
           url-to-description[description.url] = description
-    ListCommand.list-descriptions url-to-description.values --verbose=verbose --ui=ui
+    ListCommand.list-descriptions url-to-description.values --ui=ui
 
   static CLI-COMMAND ::=
       cli.Command "search"
@@ -65,13 +63,6 @@ class SearchCommand extends PkgCommand:
                   --help="The name to search for."
                   --required
           ]
-          --options=[
-              cli.Flag VERBOSE-OPTION
-                  --short-name="v"
-                  --help="Show more information."
-                  --default=false
-          ]
           --run=:: (SearchCommand it).execute
 
-  static VERBOSE-OPTION ::= "verbose"
   static NAME-OPTION    ::= "name"
