@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_POSIX)
+#if defined(TOIT_POSIX) || defined(TOIT_ESP32)
 
 #include "async_posix.h"
 

@@ -280,6 +280,11 @@ void Thread::run() {
   thread_start(void_cast(this));
 }
 
+void Thread::cancel() {
+  // No-op on ESP32. The thread will check for STOPPED state after
+  // completing its current work item.
+}
+
 void Thread::join() {
   ASSERT(handle_ != null);
   auto thread = reinterpret_cast<ThreadData*>(handle_);
