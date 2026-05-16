@@ -1514,6 +1514,7 @@ PRIMITIVE(float_to_string) {
     }
   }
   const char* buffer;
+  char* allocated_buffer = null;
   if (precision == process->null_object()) {
     if (receiver == 0.0) {
       if (is_negative) {
@@ -1531,9 +1532,12 @@ PRIMITIVE(float_to_string) {
     if (!is_smi(precision)) FAIL(WRONG_OBJECT_TYPE);
     word prec = Smi::value(precision);
     if (prec < 0 || prec > 64) FAIL(OUT_OF_BOUNDS);
-    buffer = safe_double_print(format, prec, receiver);
+    allocated_buffer = safe_double_print(format, prec, receiver);
+    if (allocated_buffer == null) FAIL(MALLOC_FAILED);
+    buffer = allocated_buffer;
   }
   Object* result = process->allocate_string(buffer);
+  free(allocated_buffer);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 }
