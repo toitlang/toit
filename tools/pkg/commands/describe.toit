@@ -158,7 +158,12 @@ class DescribeCommand extends PkgCommand:
     if not version.starts-with "v":
       error "Version must start with 'v', for example 'v1.0.0'."
     parsed := SemanticVersion.parse version --on-error=: error "Invalid version '$version': $it"
-    url := url-path
+    // Force the URL to be lowercase.
+    // This avoids issues with case-insensitive file systems, and with
+    // projects that have been registered with different casing. It also
+    // protects against DNS resolvers that don't handle mixed-case host
+    // names reliably.
+    url := url-path.to-ascii-lower
     git := Repository url
     ref-hash/string? := null
     e := catch:
@@ -168,10 +173,6 @@ class DescribeCommand extends PkgCommand:
     if not ref-hash:
       error "Tag $version not found in repository '$url'"
 
-    // Force the URL to be lowercase.
-    // This avoids issues with case-insensitive file systems, and with
-    // projects that have been registered with different casing.
-    url = url.to-ascii-lower
     url = url.trim --right ".git"
     url = url.trim --left "https://"
 
