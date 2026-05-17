@@ -1,0 +1,9 @@
+OK
+[pkg, registry, add, --local, test-reg, <[*WORKING-DIR*]>/reg-with-hidden]
+==================
+// Should be empty and ignore the hidden folder.
+==================
+OK
+[pkg, list]
+test-reg (<[*WORKING-DIR*]>/reg-with-hidden (local))
+  No packages found.

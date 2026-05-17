@@ -1,0 +1,26 @@
+// Add git registry.
+==================
+OK
+[pkg, registry, add, test-reg, http://localhost:<[*PORT*]>/registry/git-pkgs]
+==================
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+exec main.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0
+==================
+// Adding the registry again has no effect.
+==================
+OK
+[pkg, registry, add, test-reg, http://localhost:<[*PORT*]>/registry/git-pkgs]
+==================
+// Adding the registry with a different value doesn't work.
+==================
+Aborted
+[pkg, registry, add, test-reg, different-url]
+Error: Registry test-reg already exists with a different URL or path.
