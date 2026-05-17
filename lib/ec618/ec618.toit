@@ -141,6 +141,12 @@ class Ec618:
   Set $tx-disabled or $rx-disabled to leave the corresponding pad free
     for general-purpose IO; address it via $gpio with the appropriate
     GPIO number.
+
+  Note: UART0 is normally the print/console UART of the Toit firmware;
+    constructing this with the default config will fail with
+    "ALREADY_IN_USE" unless the firmware was built with
+    CONFIG_TOIT_EC618_PRINT_UART=0 or the redirect was pointed at a
+    different controller via CONFIG_TOIT_EC618_PRINT_UART_ID.
   */
   static uart0
       --mapping/int=0
@@ -175,11 +181,6 @@ class Ec618:
     RTS=GPIO16 and CTS=GPIO17. UART1 also has a fixed alternate CTS pad
     on GPIO11; if your module exposes only that one, pass $mapping equal
     to 1 along with $cts-enabled.
-
-  Note: UART1 is normally the print/console UART of the Toit firmware;
-    constructing this with the default config will fail with
-    "ALREADY_IN_USE" unless the firmware was built with
-    CONFIG_TOIT_EC618_PRINT_UART=0.
   */
   static uart1
       --mapping/int=0

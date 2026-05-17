@@ -119,9 +119,11 @@ class Port extends Object with io.InMixin implements reader.Reader:
     debug "unilog" stream. The Toit firmware quiets unilog on startup
     (`CONFIG_TOIT_EC618_DISABLE_UNILOG`), but the BROM banner cannot be
     suppressed — it goes out PAD30 (GPIO15) at every reset.
-  - UART1 is the print/console UART of the Toit firmware in the default
-    build. Construct it from the application only when the firmware was
-    built with `CONFIG_TOIT_EC618_PRINT_UART=0`.
+  - UART0 is the print/console UART of the Toit firmware in the default
+    build (controlled by `CONFIG_TOIT_EC618_PRINT_UART_ID`). Construct
+    it from the application only when the firmware was built with
+    `CONFIG_TOIT_EC618_PRINT_UART=0`, or when the redirect was pointed
+    at a different controller.
   - UART1 is the only UART that can wake the chip from deep sleep. On
     UART1 the bauds 600, 1200, 2400, 4800 and 9600 retain full data
     across a sleep wakeup; other bauds only wake the chip and the first
