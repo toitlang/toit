@@ -430,8 +430,10 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   range.address = reinterpret_cast<void*>(0x3fca0000);
   range.size = 384 * KB;
 #elif CONFIG_IDF_TARGET_ESP32P4
-  range.address = reinterpret_cast<void*>(0x4ff00000);
-  range.size = 0x4ff3afc0 - 0x4ff00000;
+  // HP L2MEM spans SOC_DRAM_LOW..SOC_DRAM_HIGH (768 KB), with the
+  // top CONFIG_CACHE_L2_CACHE_SIZE bytes used by the L2 cache.
+  range.address = reinterpret_cast<void*>(SOC_DRAM_LOW);
+  range.size = SOC_DRAM_HIGH - CONFIG_CACHE_L2_CACHE_SIZE - SOC_DRAM_LOW;
 #else
   //                           DRAM range            IRAM range
   // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
