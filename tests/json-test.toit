@@ -37,6 +37,13 @@ test-stringify:
   expect-equals "0.0" (json.stringify 0.0)
   expect-equals "-0.00001" (json.stringify -0.00001)
 
+  expect-throw "INVALID_JSON_NUMBER": json.stringify float.NAN
+  expect-throw "INVALID_JSON_NUMBER": json.stringify float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.stringify -float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.encode float.NAN
+  expect-throw "INVALID_JSON_NUMBER": json.encode float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.encode -float.INFINITY
+
   expect-equals "true" (json.stringify true)
   expect-equals "false" (json.stringify false)
   expect-equals "null" (json.stringify null)

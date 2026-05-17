@@ -172,6 +172,8 @@ class Encoder extends EncoderBase_:
     writer_.write-byte '"'
 
   encode-number_ number:
+    if number is float and not number.is-finite:
+      throw "INVALID_JSON_NUMBER"
     str := number.to-string
     writer_.write str
 
