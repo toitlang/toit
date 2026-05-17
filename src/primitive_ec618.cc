@@ -143,6 +143,17 @@ PRIMITIVE(ota_end) {
   return process->null_object();
 }
 
+PRIMITIVE(print_uart_id) {
+  // Returns the UART id (0/1/2) the firmware redirects `print` to, or -1
+  // if the redirect was disabled at build time. This lets test programs
+  // adapt to whichever firmware variant is loaded without rebuilding.
+#if CONFIG_TOIT_EC618_PRINT_UART
+  return Smi::from(CONFIG_TOIT_EC618_PRINT_UART_ID);
+#else
+  return Smi::from(-1);
+#endif
+}
+
 }  // namespace toit
 
 #else  // !TOIT_EC618
@@ -158,6 +169,7 @@ MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 PRIMITIVE(ota_begin) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(ota_write) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(ota_end)   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 

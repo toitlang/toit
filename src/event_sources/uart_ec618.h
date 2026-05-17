@@ -33,15 +33,28 @@ namespace toit {
 struct Event {
   enum Type {
     STOP = 0,
-    UART,
+    UART_0,
+    UART_1,
+    UART_2,
     GPIO_NUM_0,
     // GPIO_NUM_1 through GPIO_NUM_31 follow sequentially.
   };
   Type type;
   word data;
 
+  // Sub-event encoded in `data` for UART_* events.
+  enum UartKind {
+    UART_KIND_RX = 0,
+    UART_KIND_TX_DONE = 1,
+    UART_KIND_ERROR = 2,
+  };
+
   static Type gpio_type(int pin) {
     return static_cast<Type>(GPIO_NUM_0 + pin);
+  }
+
+  static Type uart_type(int id) {
+    return static_cast<Type>(UART_0 + id);
   }
 };
 

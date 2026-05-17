@@ -39,7 +39,6 @@ namespace toit {
   M(esp32,   MODULE_ESP32)                   \
   M(ec618,   MODULE_EC618)                   \
   M(cellular,MODULE_CELLULAR)                \
-  M(uart_ec618, MODULE_UART_EC618)           \
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
@@ -430,6 +429,7 @@ namespace toit {
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \
+  PRIMITIVE(print_uart_id, 0)                \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \
@@ -440,12 +440,6 @@ namespace toit {
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 2)                       \
   PRIMITIVE(get_cell_info, 0)                \
-
-#define MODULE_UART_EC618(PRIMITIVE)         \
-  PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 1)                       \
-  PRIMITIVE(close, 2)                        \
-  PRIMITIVE(read, 1)                         \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \

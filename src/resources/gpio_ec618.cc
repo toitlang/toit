@@ -22,30 +22,40 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "pad_table_ec618.h"
 
 extern "C" {
+  #include "driver_gpio.h"
   #include "gpio.h"
   #include "ic.h"
 }
 
 namespace toit {
 
-// GPIO port/pin decomposition: port = pin / 16, pin_index = pin % 16.
-static uint32_t to_port(int pin) { return pin >> 4; }
-static uint16_t to_pin_index(int pin) { return pin & 0xf; }
-static uint16_t to_pin_mask(int pin) { return 1 << (pin & 0xf); }
+// Pin numbers from Toit are PAD indices on the EC618. Each PAD has its
+// own iomux configuration; multiple PADs may share a GPIO controller bit
+// (e.g. PAD22 and PAD26 are both GPIO11). Plain-GPIO read/write goes
+// through the controller bit, while iomux affects the physical pad.
+
+// GPIO controller bit decomposition: port = bit / 16, index = bit % 16.
+static uint32_t to_port(int gpio_bit) { return gpio_bit >> 4; }
+static uint16_t to_pin_index(int gpio_bit) { return gpio_bit & 0xf; }
+static uint16_t to_pin_mask(int gpio_bit) { return 1 << (gpio_bit & 0xf); }
 
 class GpioResource : public EventResource {
  public:
   TAG(GpioResource);
-  GpioResource(ResourceGroup* group, int pin)
-    : EventResource(group, Event::gpio_type(pin))
-    , pin_(pin) {}
+  GpioResource(ResourceGroup* group, int pad, int gpio_bit)
+    : EventResource(group, Event::gpio_type(gpio_bit))
+    , pad_(pad)
+    , gpio_bit_(gpio_bit) {}
 
-  int pin() const { return pin_; }
+  int pad() const { return pad_; }
+  int gpio_bit() const { return gpio_bit_; }
 
  private:
-  int pin_;
+  int pad_;
+  int gpio_bit_;
 };
 
 class GpioResourceGroup : public ResourceGroup {
@@ -62,13 +72,13 @@ static void gpio_isr_handler() {
     if (flags == 0) continue;
     for (int bit = 0; bit < 16; bit++) {
       if (flags & (1 << bit)) {
-        int pin = (port << 4) | bit;
+        int gpio_bit = (port << 4) | bit;
         // Disable further interrupts on this pin (level-triggered would
         // re-trigger immediately otherwise).
         GPIO_interruptConfig(port, bit, GPIO_INTERRUPT_DISABLED);
         static uint32_t counter = 0;
         UartQcx216EventSource::send_event_from_isr(
-            Event::gpio_type(pin), counter++);
+            Event::gpio_type(gpio_bit), counter++);
       }
     }
     GPIO_clearInterruptFlags(port, flags);
@@ -103,14 +113,16 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(use) {
-  ARGS(GpioResourceGroup, group, int, num, bool, allow_restricted);
+  ARGS(GpioResourceGroup, group, int, pad, bool, allow_restricted);
   USE(allow_restricted);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (num < 0 || num > 31) FAIL(OUT_OF_RANGE);
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
 
-  GpioResource* resource = _new GpioResource(group, num);
+  GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(resource);
@@ -120,17 +132,26 @@ PRIMITIVE(use) {
 
 PRIMITIVE(unuse) {
   ARGS(GpioResourceGroup, group, GpioResource, resource);
-  int pin = resource->pin();
-  GPIO_interruptConfig(to_port(pin), to_pin_index(pin), GPIO_INTERRUPT_DISABLED);
+  int gpio_bit = resource->gpio_bit();
+  GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), GPIO_INTERRUPT_DISABLED);
   group->unregister_resource(resource);
   resource_proxy->clear_external_address();
   return process->null_object();
 }
 
 PRIMITIVE(config) {
-  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input,
+  ARGS(int, pad, bool, pull_up, bool, pull_down, bool, input,
        bool, output, bool, open_drain, int, value);
   USE(pull_up); USE(pull_down); USE(open_drain);
+
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+
+  // Switch the pad's iomux to plain-GPIO (function 0). Without this, the
+  // pad would stay in whatever role a previous peripheral left it in, and
+  // the controller bit's reads/writes would have no effect on the wire.
+  GPIO_IomuxEC618(pad, 0, 0, 0);
 
   GpioPinConfig_t config;
   memset(&config, 0, sizeof(config));
@@ -140,33 +161,39 @@ PRIMITIVE(config) {
   } else {
     config.pinDirection = GPIO_DIRECTION_INPUT;
   }
-  GPIO_pinConfig(to_port(num), to_pin_index(num), &config);
+  GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
 
   return process->null_object();
 }
 
 PRIMITIVE(get) {
-  ARGS(int, num);
-  return Smi::from(GPIO_pinRead(to_port(num), to_pin_index(num)) ? 1 : 0);
+  ARGS(int, pad);
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  return Smi::from(GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0);
 }
 
 PRIMITIVE(set) {
-  ARGS(int, num, int, value);
-  uint16_t mask = to_pin_mask(num);
-  GPIO_pinWrite(to_port(num), mask, value ? mask : 0);
+  ARGS(int, pad, int, value);
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  uint16_t mask = to_pin_mask(gpio_bit);
+  GPIO_pinWrite(to_port(gpio_bit), mask, value ? mask : 0);
   return process->null_object();
 }
 
 PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
-  int pin = resource->pin();
+  int gpio_bit = resource->gpio_bit();
   if (enable) {
     GpioInterruptConfig_e int_config = value
         ? GPIO_INTERRUPT_HIGH_LEVEL
         : GPIO_INTERRUPT_LOW_LEVEL;
-    GPIO_interruptConfig(to_port(pin), to_pin_index(pin), int_config);
+    GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), int_config);
   } else {
-    GPIO_interruptConfig(to_port(pin), to_pin_index(pin), GPIO_INTERRUPT_DISABLED);
+    GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), GPIO_INTERRUPT_DISABLED);
   }
   static uint32_t counter = 0;
   return Smi::from((counter++) & 0x3FFFFFFF);

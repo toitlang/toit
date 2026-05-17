@@ -51,6 +51,11 @@ set(PLAT_PREBUILD "${EC618_PLAT_DIR}/prebuild")
 # --- Compiler flags ---
 set(EC618_CPU_FLAGS "-mcpu=cortex-m3 -mthumb")
 
+# Force-include the Toit-owned config header into every translation unit.
+# The xmake-side build adds the same -include in project/toit/xmake.lua so
+# both halves of the binary agree on CONFIG_TOIT_EC618_* values.
+set(EC618_CONFIG_HEADER "${CMAKE_CURRENT_LIST_DIR}/ec618/ec618_config.h")
+
 set(EC618_COMMON_FLAGS
   "${EC618_CPU_FLAGS} \
   -nostartfiles \
@@ -60,7 +65,8 @@ set(EC618_COMMON_FLAGS
   -fdata-sections \
   -fno-isolate-erroneous-paths-dereference \
   -freorder-blocks-algorithm=stc \
-  -gdwarf-2"
+  -gdwarf-2 \
+  -include ${EC618_CONFIG_HEADER}"
 )
 
 set(CMAKE_C_FLAGS_INIT "${EC618_COMMON_FLAGS}")
@@ -84,6 +90,8 @@ include_directories(SYSTEM
   "${EC618_PLAT_DIR}/driver/hal/ec618/ap/inc"
   "${EC618_PLAT_DIR}/driver/hal/common/inc"
   "${EC618_PLAT_DIR}/driver/board/${EC618_TARGET}/inc"
+  "${EC618_PLAT_DIR}/core/common/include"
+  "${EC618_PLAT_DIR}/core/driver/include"
   "${PLAT_FREERTOS}/inc"
   "${PLAT_FREERTOS}"
   "${PLAT_FREERTOS}/CMSIS/ap/inc"
