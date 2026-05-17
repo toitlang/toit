@@ -66,18 +66,24 @@ class GoldTester:
   toit-exec_/string
   should-update_/bool
   port_/int
+  registry-cache-dir_/string
+  git-roots_/Map
 
   constructor
       --toit-exe/string
       --gold-dir/string
       --working-dir/string
+      --registry-cache-dir/string
       --should-update/bool
-      --port/int:
+      --port/int
+      --git-roots/Map:
     toit-exec_ = toit-exe
     gold-dir_ = gold-dir
     working-dir_ = working-dir
+    registry-cache-dir_ = registry-cache-dir
     should-update_ = should-update
     port_ = port
+    git-roots_ = git-roots
 
   working-dir -> string:
     return working-dir_
@@ -92,6 +98,37 @@ class GoldTester:
       if pkg-name.ends-with pkg-suffix:
         return fs.join working-dir_ ".packages" pkg-info[version]
     unreachable
+
+  delete-registry-cache name/string -> none:
+    with-registry-cache_ name: | cache/Cache key/string |
+      expect (cache.contains key)
+      cache.remove key
+
+  has-registry-cache name/string -> bool:
+    with-registry-cache_ name: | cache/Cache key/string |
+      return cache.contains key
+    unreachable
+
+  registry-cache-path name/string -> string:
+    with-registry-cache_ name: | cache/Cache key/string |
+      return cache.get-directory-path key: unreachable
+    unreachable
+
+  with-registry-cache_ name/string [block]:
+    cache := Cache --app-name="toit_pkg" --path=registry-cache-dir_
+    registry-data := cache.get "registries.yaml": unreachable
+    registries := yaml.decode registry-data
+    entry := registries[name]
+    if not entry["type"] == "git":
+      throw "UNIMPLEMENTED"
+    // The key-format might change in the future, but it would be easily detected
+    // by the 'expect' below.
+    key := "registry/git/$(entry["url"])"
+    block.call cache key
+
+  git-registry-path name/string -> string:
+    registries-root := git-roots_[AssetsBuilder.HTTP-REGISTRY-PREFIX]
+    return fs.join registries-root name
 
   normalize str/string -> string:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
@@ -124,7 +161,7 @@ class GoldTester:
       result[target-index++] = c
     return result[..target-index].to-string
 
-  gold name/string commands/List:
+  run commands/List -> List:
     outputs := []
     commands.do: | command-line/List |
       command := command-line.first
@@ -143,10 +180,18 @@ class GoldTester:
         yaml-content := file.read-contents "$working-dir_/package.yaml"
         outputs.add "== package.yaml\n$yaml-content.to-string"
       else if command == "pkg":
-        test-ui := TestUi --quiet=false
+        pkg-args := command-line[1..]  // Drop the "pkg"
+        has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
+        if not has-project-root:
+          pkg-args = ["--project-root=$working-dir_"] + pkg-args
+        ui-level := Ui.NORMAL-LEVEL
+        if (pkg-args.any: it == "--verbose"):
+          ui-level = Ui.VERBOSE-LEVEL
+          pkg-args.remove "--verbose"
+        test-ui := TestUi --quiet=false --level=ui-level
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
-          pkg.main --cli=cli ["--project-root=$working-dir_"] + command-line[1..]
+          pkg.main --cli=cli pkg-args
         exit-status := e ? "Aborted" : "OK"
         if e and e is not TestAbort:
           print-on-stderr_ "Command failed: $e"
@@ -168,6 +213,10 @@ class GoldTester:
         normalized = normalized[..hash-index] + "hash: <[*HASH*]>" + normalized[newline-index..]
       normalized
 
+    return outputs
+
+  gold name/string commands/List:
+    outputs := run commands
     gold-file := "$gold-dir_/$(name).gold"
     actual := outputs.join "==================\n"
     if should-update_:
@@ -422,7 +471,13 @@ class AssetsBuilder:
         continue
       copy-path --source=path --target="$working-dir/$name"
 
-with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
+with-gold-tester args/List
+    --with-git-pkg-registry/bool=false
+    --with-default-registry/bool=false
+    [block]:
+  if with-default-registry and with-git-pkg-registry:
+    throw "Unimplemented - cannot use both git and default registries at the same time."
+
   toit-exe := args[0]
 
   source-location := system.program-path
@@ -449,7 +504,8 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
               "ref-hash": "HEAD",
           }
       }
-    file.write-contents --path=registry-cache-file registry-content
+    if not with-default-registry:
+      file.write-contents --path=registry-cache-file registry-content
     os.env["TOIT_PKG_CACHE_DIR"] = registry-cache-dir
 
     http-dir := "$tmp-dir/HTTP-SERVE"
@@ -465,5 +521,7 @@ with-gold-tester args/List --with-git-pkg-registry/bool=false [block]:
           --toit-exe=toit-exe
           --gold-dir=gold-dir
           --working-dir=tmp-dir
+          --registry-cache-dir=registry-cache-dir
           --should-update=(os.env.get "UPDATE_GOLD") != null
+          --git-roots=git-roots
       block.call tester

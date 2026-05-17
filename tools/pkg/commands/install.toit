@@ -15,6 +15,7 @@
 
 import cli
 import host.file
+import host.os
 import fs
 
 import ..constraints
@@ -45,6 +46,9 @@ class InstallCommand extends PkgProjectCommand:
     recompute = invocation[RECOMPUTE]
 
     cli := invocation.cli
+
+    if os.env.contains "TOIT_PACKAGE_INSTALL_PATH":
+      cli.ui.abort "The environment variable 'TOIT_PACKAGE_INSTALL_PATH' is no longer supported."
 
     if local and packages.size != 1:
       cli.ui.abort "The '--local' flag requires exactly one path argument."

@@ -29,7 +29,8 @@ import ..constraints
 import ..utils
 import .cache
 
-// registries ::= Registries
+export LocalRegistry
+export GitRegistry
 
 // TODO(florian): move this cache global to a better place. It is used by many other libraries.
 cache ::= Cache --app-name="toit_pkg"
@@ -41,10 +42,12 @@ This class groups all registries and provides a common interface for them.
 */
 class Registries:
   registries := {:}
+  should-sync_/bool := ?
   ui_/cli.Ui
 
-  constructor --ui/cli.Ui:
+  constructor --ui/cli.Ui --auto-sync/bool:
     ui_ = ui
+    should-sync_ = auto-sync
     encoded-registries := cache.get "registries.yaml": | store/FileStore |
       default-registry := {
         "toit": {
@@ -70,8 +73,12 @@ class Registries:
       else:
         ui_.abort "Registry $name has an unknown type '$type'"
 
-  constructor.filled .registries/Map --ui/cli.Ui:
+  constructor.filled .registries/Map --ui/cli.Ui --auto-sync/bool:
     ui_ = ui
+    should-sync_ = auto-sync
+
+  auto-sync_ -> none:
+    if should-sync_: sync --no-clear-cache
 
   /**
   Searches for the given $search-string in the registry.
@@ -85,6 +92,7 @@ class Registries:
       search-string/string
       [--if-absent]
       [--if-ambiguous]:
+    auto-sync_
     search-results := search_ registry-name search-string
     if search-results.size == 1:
       return search-results[0][1]
@@ -111,6 +119,7 @@ class Registries:
   Returns a list of all descriptions that matches.
   */
   search --free-text search-string/string -> List:
+    auto-sync_
     result := []
     registries.do: | name registry/Registry |
       result.add-all
@@ -149,6 +158,7 @@ class Registries:
   The descriptions are sorted by version in descending order.
   */
   retrieve-descriptions url/string -> List:
+    auto-sync_
     seen-versions := {}
     result := []
     registries.do --values: | registry/Registry |
@@ -169,6 +179,7 @@ class Registries:
   The versions are sorted in descending order.
   */
   retrieve-versions url/string -> List:
+    auto-sync_
     all-versions := {}
     registries.do --values: | registry/Registry |
       if registry-versions := registry.retrieve-versions url:
@@ -186,12 +197,12 @@ class Registries:
     return result
 
   add --local/True name/string path/string:
+    if not fs.is-absolute path: throw "Path $path must be absolute"
     if not file.is-directory path: ui_.abort "Path $path is not a directory."
-    abs-path := fs.to-absolute path
-    add_ name (LocalRegistry name abs-path --ui=ui_)
+    add_ name (LocalRegistry name path --ui=ui_)
 
   add --git/True name/string url/string:
-    add_ name (GitRegistry name url null --ui=ui_)
+    add_ name (GitRegistry name url --ui=ui_)
 
   add_ name/string registry/Registry:
     if registries.contains name:
@@ -199,7 +210,7 @@ class Registries:
       if old-registry == registry: return
       ui_.abort "Registry $name already exists."
     registries[name] = registry
-    registry.sync  // To check that the url is valid.
+    registry.sync --no-clear-cache  // To check that the url is valid.
     registry.description-cache  // To report broken descriptions.
     registries[name] = registry
     save_
@@ -221,16 +232,18 @@ class Registries:
     ui_.emit-table --result --header={"name": "Name", "type": "Type", "path": "Url/Path"} data
 
   list-packages -> Map:
+    auto-sync_
     return registries.map: | name registry/Registry |
       { "registry" : registry, "descriptions": registry.list-all-descriptions }
 
-  sync:
-    registries.do --values: it.sync
+  sync --clear-cache/bool:
+    registries.do --values: | registry/Registry | registry.sync --clear-cache=clear-cache
     save_
+    should-sync_ = false
 
-  sync --name/string:
-    registry := registries.get name --if-absent=: ui_.abort "Registry $name does not exist"
-    registry.sync
+  sync --name/string --clear-cache/bool:
+    registry/Registry := registries.get name --if-absent=: ui_.abort "Registry $name does not exist"
+    registry.sync --clear-cache=clear-cache
     save_
 
   save_:
@@ -257,7 +270,7 @@ abstract class Registry:
   abstract type -> string
   abstract content -> FileSystemView
   abstract to-map -> Map
-  abstract sync
+  abstract sync --clear-cache/bool -> none
   abstract to-string -> string
 
   description-cache -> DescriptionUrlCache:

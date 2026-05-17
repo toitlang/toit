@@ -20,22 +20,22 @@ prefixes:
   many: localhost_<[*PORT*]>/pkg/many-3
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 1.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 3.0.2
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.0
+    version: ^3.0.2
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<1.1.0"
+    version: ~1.0.1
 ==================
 OK
 [pkg, install, --prefix=gee, many@1]
@@ -48,25 +48,25 @@ prefixes:
   many: localhost_<[*PORT*]>/pkg/many-3
 packages:
   localhost_<[*PORT*]>/pkg/many-1:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 1.0.1
-    hash: <[*HASH*]>
   localhost_<[*PORT*]>/pkg/many-3:
+    hash: <[*HASH*]>
     url: localhost:<[*PORT*]>/pkg/many
     version: 3.0.2
-    hash: <[*HASH*]>
 ==================
 == package.yaml
 dependencies:
   many:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ^3.0.0
+    version: ^3.0.2
   foo:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<1.1.0"
+    version: ~1.0.1
   gee:
     url: localhost:<[*PORT*]>/pkg/many
-    version: ">=1.0.0,<2.0.0"
+    version: ^1.0.1
 ==================
 // These should fail as they are not valid versions.
 ==================

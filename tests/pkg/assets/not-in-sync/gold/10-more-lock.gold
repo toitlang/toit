@@ -1,0 +1,6 @@
+// Should error, as the lock file has more entries
+==================
+Aborted
+[pkg, install, pkg3]
+Warning: The following prefixes are only in package.lock: pkg1, pkg2
+Error: The package.yaml file and package.lock file are not in sync.

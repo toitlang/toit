@@ -1,0 +1,15 @@
+OK
+[pkg, install]
+==================
+== package.lock
+prefixes:
+  bar: path
+  foo: xxx
+  gee: slash
+packages:
+  path-2:
+    path: /c:/some/abs/path
+  slash-2:
+    path: /c:/some/other/abs/path/with/slash/
+  xxx:
+    path: xxx
