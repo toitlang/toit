@@ -252,7 +252,7 @@ abstract class Specification:
     if validate: validate_
 
   static parse_ bytes/ByteArray --ui/cli.Ui -> Map?:
-    decoded := yaml.decode bytes --on-error=: | error/string |
+    decoded := yaml.decode bytes --if-error=: | error/string |
       ui.abort "Invalid specification file content: $error."
     if decoded == null:
       str := bytes.to-string

@@ -349,7 +349,7 @@ abstract class DnsClientBase_ implements DnsClient:
     and the more funky record types needed for mDNS.
   */
   decode-and-cache-response_ query/DnsQuery_ response/ByteArray --mdns/bool=false -> List?:
-    decoded := decode-packet response --error-name=query.name
+    decoded := decode-packet response --error-name=query.name --mdns=mdns
 
     // Check for expected response, but mask out the authoritative bit
     // and the recursion available bit, which we do not care about.
@@ -613,7 +613,7 @@ find-in-cache top-cache/Map name type/int -> List?:
 Decodes a DNS packet.
 The $error-name is only used for error messages.
 */
-decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
+decode-packet packet/ByteArray --error-name/string?=null --mdns/bool=false -> DecodedPacket:
   response := packet
   reader := io.Reader response
   received-id    := reader.big-endian.read-uint16
@@ -627,6 +627,10 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
   if error != ERROR-NONE:
     detail := ERROR-NAMES.get error --if-absent=: "error code $error"
     throw (DnsException "Server responded: $detail" --name=error-name)
+
+  if mdns:
+    // RFC 6762 requires receivers to ignore these flag bits in mDNS packets.
+    status-bits &= ~0x0070
 
   result := DecodedPacket --id=received-id --status-bits=status-bits
 
