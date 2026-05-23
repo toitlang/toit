@@ -32,10 +32,17 @@ test-stringify:
   expect-equals "\"\\u0001\"" (json.stringify "\x01")
 
   expect-equals "5" (json.stringify 5)
-  expect-equals "5.00" (json.stringify 5.0)
+  expect-equals "5.0" (json.stringify 5.0)
   expect-equals "0" (json.stringify 0)
-  expect-equals "0.00" (json.stringify 0.0)
-  expect-equals "-0.00" (json.stringify -0.00001)
+  expect-equals "0.0" (json.stringify 0.0)
+  expect-equals "-0.00001" (json.stringify -0.00001)
+
+  expect-throw "INVALID_JSON_NUMBER": json.stringify float.NAN
+  expect-throw "INVALID_JSON_NUMBER": json.stringify float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.stringify -float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.encode float.NAN
+  expect-throw "INVALID_JSON_NUMBER": json.encode float.INFINITY
+  expect-throw "INVALID_JSON_NUMBER": json.encode -float.INFINITY
 
   expect-equals "true" (json.stringify true)
   expect-equals "false" (json.stringify false)

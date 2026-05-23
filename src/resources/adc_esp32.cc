@@ -106,6 +106,38 @@ static int get_adc1_channel(int pin) {
   }
 }
 
+#elif CONFIG_IDF_TARGET_ESP32P4
+
+#define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT
+
+static int get_adc1_channel(int pin) {
+  switch (pin) {
+    case 16: return ADC_CHANNEL_0;
+    case 17: return ADC_CHANNEL_1;
+    case 18: return ADC_CHANNEL_2;
+    case 19: return ADC_CHANNEL_3;
+    case 20: return ADC_CHANNEL_4;
+    case 21: return ADC_CHANNEL_5;
+    case 22: return ADC_CHANNEL_6;
+    case 23: return ADC_CHANNEL_7;
+    default: return -1;
+  }
+}
+
+static int get_adc2_channel(int pin) {
+  // Note that the latest version of the ESP-IDF doesn't have a second channel
+  // anymore, but merges both ADCs into one.
+  switch (pin) {
+    case 49: return ADC_CHANNEL_0;
+    case 50: return ADC_CHANNEL_1;
+    case 51: return ADC_CHANNEL_2;
+    case 52: return ADC_CHANNEL_3;
+    case 53: return ADC_CHANNEL_4;
+    case 54: return ADC_CHANNEL_5;
+    default: return -1;
+  }
+}
+
 #elif CONFIG_IDF_TARGET_ESP32S2
 
 #define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT

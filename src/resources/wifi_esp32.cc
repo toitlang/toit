@@ -35,7 +35,7 @@
 #include "../event_sources/system_esp32.h"
 
 namespace toit {
-#if defined(CONFIG_TOIT_ENABLE_WIFI)
+#if defined(CONFIG_TOIT_ENABLE_WIFI) && (!defined(CONFIG_IDF_TARGET_ESP32P4))
 enum {
   WIFI_CONNECTED    = 1 << 0,
   WIFI_IP_ASSIGNED  = 1 << 1,
@@ -812,7 +812,7 @@ PRIMITIVE(ap_info) {
 
   return ap_array;
 }
-#endif // CONFIG_TOIT_ENABLE_WIFI
+#endif // CONFIG_TOIT_ENABLE_WIFI && !CONFIG_IDF_TARGET_ESP32P4
 } // namespace toit
 
 #endif // TOIT_ESP32
