@@ -37,16 +37,14 @@ namespace toit {
 // firmware. Only the extension data (snapshots, config) changes. The OTA
 // skip the prefix and write only the changed portion.
 
-// Globals checked by toit_ec618.cc after VM shutdown.
+// Global flag checked by toit_ec618.cc after VM shutdown.
 bool ota_updated = false;
-uint32_t ota_total_size = 0;     // Total firmware size (from..to).
-uint8_t ota_expected_checksum[32] = {0};
-bool ota_has_checksum = false;
 
 static bool ota_active = false;
 static uint32_t ota_fota_offset = 0;    // Current write position in FOTA region.
 static uint32_t ota_prefix_size = 0;    // Bytes to skip (unchanged prefix).
 static uint32_t ota_written = 0;        // Total bytes written so far.
+static uint32_t ota_total_size = 0;     // Total firmware size (from..to).
 
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
@@ -132,21 +130,12 @@ PRIMITIVE(ota_write) {
 
 PRIMITIVE(ota_end) {
   ARGS(int, size, Object, expected);
+  USE(expected);
   if (!ota_active) FAIL(ALREADY_CLOSED);
 
   ota_active = false;
 
   if (size > 0) {
-    // Store the expected checksum if provided.
-    ota_has_checksum = false;
-    if (is_byte_array(expected)) {
-      ByteArray* array = ByteArray::cast(expected);
-      ByteArray::Bytes bytes(array);
-      if (bytes.length() == sizeof(ota_expected_checksum)) {
-        memcpy(ota_expected_checksum, bytes.address(), sizeof(ota_expected_checksum));
-        ota_has_checksum = true;
-      }
-    }
     // Signal to toit_ec618.cc that an OTA update was staged.
     ota_updated = true;
   }

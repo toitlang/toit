@@ -21,8 +21,6 @@
 
 extern "C" {
   #include "cmsis_os2.h"
-  #include "flash_rt.h"
-  #include "mem_map.h"
   #include "slpman.h"
   #include "plat_config.h"
   #include "apmu_external.h"
@@ -56,32 +54,6 @@ extern "C" {
 #include "third_party/dartino/gc_metadata.h"
 
 namespace toit {
-
-// RAII guard that temporarily permits flash writes to a region inside the
-// AP image area. The platform's sysROSpaceCheck (overridden in
-// sys_ro_override.c) consults toit_ap_image_modify_start/end to decide
-// whether a write is allowed.
-class AllowFirmwareModifications {
- public:
-  AllowFirmwareModifications(uint32_t start, uint32_t end) {
-    extern uint32_t toit_ap_image_modify_start;
-    extern uint32_t toit_ap_image_modify_end;
-    saved_start_ = toit_ap_image_modify_start;
-    saved_end_ = toit_ap_image_modify_end;
-    toit_ap_image_modify_start = start;
-    toit_ap_image_modify_end = end;
-  }
-  ~AllowFirmwareModifications() {
-    extern uint32_t toit_ap_image_modify_start;
-    extern uint32_t toit_ap_image_modify_end;
-    toit_ap_image_modify_start = saved_start_;
-    toit_ap_image_modify_end = saved_end_;
-  }
-
- private:
-  uint32_t saved_start_;
-  uint32_t saved_end_;
-};
 
 static void run_static_initializers() {
   for (void (**fn)(void) = __init_array_start; fn < __init_array_end; fn++) {
@@ -149,88 +121,13 @@ static void start() {
 
   // Check if an OTA update was staged during execution.
   extern bool ota_updated;
-  extern uint32_t ota_total_size;
-  extern uint8_t ota_expected_checksum[32];
-  extern bool ota_has_checksum;
   if (ota_updated) {
     ota_updated = false;
     printf("[toit] INFO: OTA update staged — committing\n");
-
-    // Compute prefix size: the region from image start to the embedded
-    // data extension, which was not written during OTA.
-    const EmbeddedDataExtension* ext = EmbeddedData::extension();
-    uint32_t image_start = AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR;
-    uint32_t prefix_size = reinterpret_cast<uint32_t>(ext) - image_start;
-    uint32_t extension_size = ota_total_size - prefix_size;
-
-    // The last 32 bytes of the image are the SHA-256 checksum.
-    // The hash covers everything before the checksum.
-    static const uint32_t CHECKSUM_SIZE = Sha::HASH_LENGTH_256;
-    uint32_t data_size = extension_size - CHECKSUM_SIZE;
-
-    // Compute SHA-256 over (prefix from active image + new extension from FOTA).
-    Sha sha(null, 256);
-
-    // Hash the prefix — it's XIP-mapped, so we can read it directly.
-    const uint8_t* prefix_ptr = reinterpret_cast<const uint8_t*>(image_start);
-    sha.add(prefix_ptr, prefix_size);
-
-    // Hash the extension from the FOTA region via RAM buffer.
-    // BSP_QSPI_Read_Safe disables XIP, so the buffer must be in RAM.
-    static const uint32_t BUF_SIZE = 4096;
-    uint8_t buf[BUF_SIZE];
-    for (uint32_t off = 0; off < data_size; off += BUF_SIZE) {
-      uint32_t chunk = data_size - off;
-      if (chunk > BUF_SIZE) chunk = BUF_SIZE;
-      BSP_QSPI_Read_Safe(buf, FLASH_FOTA_REGION_START + off, chunk);
-      sha.add(buf, chunk);
-    }
-
-    uint8_t computed_hash[CHECKSUM_SIZE];
-    sha.get(computed_hash);
-
-    // Read the expected checksum from the tail of the FOTA data.
-    uint8_t stored_hash[CHECKSUM_SIZE];
-    BSP_QSPI_Read_Safe(stored_hash, FLASH_FOTA_REGION_START + data_size, CHECKSUM_SIZE);
-
-    if (memcmp(computed_hash, stored_hash, CHECKSUM_SIZE) != 0) {
-      printf("[toit] ERROR: OTA SHA-256 mismatch — aborting commit\n");
-      // Don't copy corrupted firmware. Fall through to normal sleep/reboot.
-    } else {
-      // If the caller provided a checksum, verify it too.
-      if (ota_has_checksum &&
-          memcmp(computed_hash, ota_expected_checksum, CHECKSUM_SIZE) != 0) {
-        printf("[toit] ERROR: OTA checksum does not match expected — aborting commit\n");
-      } else {
-        // Copy FOTA extension data into the active image region.
-        uint32_t dest_start = AP_FLASH_LOAD_ADDR + prefix_size;
-        {
-          AllowFirmwareModifications guard(dest_start, dest_start + extension_size);
-
-          // Erase destination pages (4KB sectors).
-          uint32_t erase_size = (extension_size + 0xFFF) & ~0xFFF;
-          for (uint32_t off = 0; off < erase_size; off += 0x1000) {
-            BSP_QSPI_Erase_Safe(dest_start + off, 0x1000);
-          }
-
-          // Copy in chunks via RAM buffer.
-          for (uint32_t off = 0; off < extension_size; off += BUF_SIZE) {
-            uint32_t chunk = extension_size - off;
-            if (chunk > BUF_SIZE) chunk = BUF_SIZE;
-            BSP_QSPI_Read_Safe(buf, FLASH_FOTA_REGION_START + off, chunk);
-            BSP_QSPI_Write_Safe(buf, dest_start + off, chunk);
-          }
-        }
-
-        // Print the verification hash for the update initiator.
-        printf("[toit] INFO: OTA commit complete, SHA-256: ");
-        for (uint32_t i = 0; i < CHECKSUM_SIZE; i++) {
-          printf("%02x", computed_hash[i]);
-        }
-        printf("\n");
-      }
-    }
-
+    // The OTA commit (verifying SHA-256 and copying from FOTA to active
+    // image) is a complex operation that will be implemented when the
+    // firmware tooling is ready. For now, just log and reboot.
+    // TODO: Implement FOTA → active image copy with SHA-256 verification.
     RtcMemory::invalidate();
     slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, 1000);
     // Fall through to sleep.
