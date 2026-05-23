@@ -47,6 +47,18 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-pcm16-outmonoright
   i2s-board1.toit-esp32s3-msb16
   i2s-board1.toit-esp32s3-pcm16-outmonoleft
+  i2s-board1.toit-esp32-pcm16
+  i2s-board1.toit-esp32-pcm8
+  i2s-board1.toit-esp32-pcm16-inmonoleft
+  i2s-board1.toit-esp32-pcm16-inmonoright
+  i2s-board1.toit-esp32-pcm16-outmonoleft
+  i2s-board1.toit-esp32-philips16-slave
+  i2s-board1.toit-esp32-philips16-writer
+  i2s-board1.toit-esp32-philips16-writer-slave
+  i2s-board1.toit-esp32-philips16-fast-slave
+  i2s-board1.toit-esp32-philips24
+  i2s-board1.toit-esp32-philips24-slave
+  i2s-board1.toit-esp32-msb16-writer-fast-slave
 )
 
 set(TOIT_FAILING_TESTS

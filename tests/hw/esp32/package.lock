@@ -1,6 +1,7 @@
 sdk: ^2.0.0-alpha.180
 prefixes:
   bme280: bme280-driver
+  bmp280: bmp280-driver
   dhtxx: toit-dhtxx
   ds18b20: toit-ds18b20
   hc_sr04: toit-hc-sr04
@@ -10,6 +11,11 @@ packages:
     name: bme280
     version: 1.1.0
     hash: e2220d286aad8bbb78e27ffcbf558cbec0e1c687
+  bmp280-driver:
+    url: github.com/harshkc03/bmp280-driver
+    name: bmp280
+    version: 1.0.0
+    hash: 17824b46f0fd5b9355e616de4bb5603dd6e9f6eb
   toit-1-wire:
     url: github.com/toitware/toit-1-wire
     name: one_wire

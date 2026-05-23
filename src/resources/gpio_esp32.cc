@@ -44,6 +44,7 @@ GPIO summary:
 - Esp32: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html
 - Esp32c3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html
 - Esp32c6: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-reference/peripherals/gpio.html
+- Esp32p4: https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/gpio.html
 - Esp32s2: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s2/api-reference/peripherals/gpio.html
 - Esp32s3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/gpio.html
 */
@@ -58,6 +59,11 @@ static ResourcePool<int, -1> gpio_pins(
     20, 21
 #elif CONFIG_IDF_TARGET_ESP32C6
     20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+#elif CONFIG_IDF_TARGET_ESP32P4
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+    50, 51, 52, 53, 54
 #elif CONFIG_IDF_TARGET_ESP32S3
     20, 21, 26, 27, 28, 29,
     30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
@@ -85,6 +91,11 @@ static bool is_restricted_pin(int num) {
 static bool is_restricted_pin(int num) {
   // Pins 24-30 are used for flash and PSRAM.
   return 24 <= num && num <= 30;
+}
+#elif CONFIG_IDF_TARGET_ESP32P4
+static bool is_restricted_pin(int num) {
+  // TODO(floitsch): are there restricted pins on the P4?
+  return false;
 }
 #elif CONFIG_IDF_TARGET_ESP32S3
 static bool is_restricted_pin(int num) {

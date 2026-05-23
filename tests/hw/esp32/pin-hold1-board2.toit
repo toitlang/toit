@@ -30,7 +30,7 @@ main:
 
 test:
   port := uart.Port
-      --rx=gpio.Pin PIN-IN
+      --rx=gpio.Pin PIN-IN2
       --tx=gpio.Pin PIN-FREE-AND-UNUSED
       --baud-rate=115200
 
@@ -51,30 +51,30 @@ test:
         value.call
 
 test-step1:
-  pin-out := gpio.Pin PIN-OUT --output
+  pin-out := gpio.Pin PIN-OUT2 --output
   // Test that a pin-hold prevents any further changes.
   pin-out.set 1
-  hold PIN-OUT
+  hold PIN-OUT2
   10.repeat:
     pin-out.set 0
     sleep --ms=10
     pin-out.set 1
     sleep --ms=10
   pin-out.set 0
-  unhold PIN-OUT
+  unhold PIN-OUT2
   pin-out.close
 
 test-step2 requested-state/int:
-  pin-out := gpio.Pin PIN-OUT --output
+  pin-out := gpio.Pin PIN-OUT2 --output
   // Test that a pin-hold with enabled-hold-deepsleep keeps the pin in
   // the requested state.
   pin-out.set requested-state
-  hold PIN-OUT
+  hold PIN-OUT2
   enable-hold-deepsleep
   esp32.deep-sleep (Duration --ms=300)
 
 test-reset:
   // Reset the device.
   disable-hold-deepsleep
-  unhold PIN-OUT
+  unhold PIN-OUT2
   esp32.deep-sleep Duration.ZERO
