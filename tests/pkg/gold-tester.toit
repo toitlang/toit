@@ -161,7 +161,7 @@ class GoldTester:
       result[target-index++] = c
     return result[..target-index].to-string
 
-  run commands/List -> List:
+  run --set-project-root/bool=true commands/List -> List:
     outputs := []
     commands.do: | command-line/List |
       command := command-line.first
@@ -188,7 +188,7 @@ class GoldTester:
       else if command == "pkg":
         pkg-args := command-line[1..]  // Drop the "pkg"
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
-        if not has-project-root:
+        if not has-project-root and set-project-root:
           pkg-args = ["--project-root=$working-dir_"] + pkg-args
         ui-level := Ui.NORMAL-LEVEL
         if (pkg-args.any: it == "--verbose"):
@@ -225,8 +225,8 @@ class GoldTester:
 
     return outputs
 
-  gold name/string commands/List:
-    outputs := run commands
+  gold --set-project-root/bool=true name/string commands/List:
+    outputs := run --set-project-root=set-project-root commands
     gold-file := "$gold-dir_/$(name).gold"
     actual := outputs.join "==================\n"
     if should-update_:
