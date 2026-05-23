@@ -328,8 +328,29 @@ PRIMITIVE(create) {
 
   int id = preset.uart_id;
 
-  // Collision with the print UART: refuse to hand the controller to the
-  // application, otherwise writes interleave with printf output.
+  // Refuse to hand out the controller that's currently carrying the
+  // firmware's print stream.
+  //
+  // Belt-and-suspenders, not load-bearing: a quick experiment with this
+  // check disabled showed that interleaved use of the same UART by
+  // `printf` (CMSIS Driver_USART<id>->SendPolling, the print path) and
+  // by Toit's UART API (Uart_TxTaskSafe, after a fresh Uart_BaseInitEx)
+  // produces clean, in-order output — neither side corrupts the other.
+  // Re-initialising the controller from underneath the print path does
+  // not break it on this chip / PLAT.
+  //
+  // We still refuse the open because:
+  //   - The user almost never wants their data interleaved with [toit]
+  //     log lines on the same wire.
+  //   - We only verified TX; concurrent RX (both paths racing for the
+  //     same incoming bytes) and heavy/bursty loads were not tested.
+  //   - It surfaces the situation as an exception instead of producing
+  //     mysterious mixed output at runtime.
+  //
+  // A user who really needs the print UART for application data should
+  // rebuild with CONFIG_TOIT_EC618_PRINT_UART_ID pointing at a
+  // different controller, or with CONFIG_TOIT_EC618_PRINT_UART=0 to
+  // disable the print redirect entirely.
 #if CONFIG_TOIT_EC618_PRINT_UART
   if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) FAIL(ALREADY_IN_USE);
 #endif
@@ -357,6 +378,11 @@ PRIMITIVE(create) {
                   to_plat_parity(parity),
                   to_plat_stop_bits(stop_bits),
                   uart_cb);
+
+  // Drop any bytes that were already in the RX buffer when we opened
+  // the controller — they come from before the application asked for
+  // this UART, not from data the application is supposed to see.
+  Uart_RxBufferClear(id);
 
   uart_states[id].in_use = true;
   uart_states[id].baud_rate = baud_rate;
@@ -408,8 +434,12 @@ PRIMITIVE(write) {
     if (de_bit >= 0) GPIO_Output(de_bit, 1);
   }
 
-  int written = Uart_TxTaskSafe(id, data.address() + from, to - from);
-  if (written < 0) written = 0;
+  // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
+  // status code, not a byte count. On success the full request was
+  // accepted; on failure nothing was written.
+  int len = to - from;
+  int status = Uart_TxTaskSafe(id, data.address() + from, len);
+  int written = (status == 0) ? len : 0;
   return Primitive::integer(written, process);
 }
 
