@@ -42,6 +42,17 @@
 // unilog stream already comes out UART0, so consolidating Toit's `print`
 // onto the same channel keeps all debug output on one wire, and leaves
 // UART1 (the AT-style "user" port on most modules) free by default.
+//
+// Known issue with _ID=1: setting print to UART1 produces one garbled
+// line at the start of every cold-boot ("boot.rom"-shaped fragment).
+// Diagnosis: our SetPrintUart path is the only project in the PLAT that
+// initialises Driver_USART1 directly via the CMSIS USART API; every
+// other example uses unilog. The CMSIS init flushes some chip-level TX
+// state that's normally invisible because nothing else triggers it.
+// ARM_USART_ABORT_SEND in SetPrintUart reduces the noise from many
+// bytes to one, but the remaining byte is in the shift register and we
+// have not found a way to kill it from software. A warm reset is clean.
+// Pick _ID=0 or _ID=2, or set CONFIG_TOIT_EC618_PRINT_UART=0, to avoid.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_ID
 #define CONFIG_TOIT_EC618_PRINT_UART_ID 0
 #endif

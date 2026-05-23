@@ -181,6 +181,15 @@ class Ec618:
     RTS=GPIO16 and CTS=GPIO17. UART1 also has a fixed alternate CTS pad
     on GPIO11; if your module exposes only that one, pass $mapping equal
     to 1 along with $cts-enabled.
+
+  Note on UART1 as the print UART: if the firmware was built with
+    CONFIG_TOIT_EC618_PRINT_UART_ID=1 (so Toit's `print` is routed
+    here), every cold-boot starts with a single garbled line on UART1
+    before the first real output. The chip leaves some TX state on
+    UART1 that we cannot fully drain from software. This is cosmetic
+    and only happens on cold boot — a warm reset is clean. See
+    toolchains/ec618/ec618_config.h for the details and how to choose a
+    different print UART.
   */
   static uart1
       --mapping/int=0
