@@ -54,6 +54,17 @@ Pins 0-7 are RTC pins and can be used in deep-sleep.
 For chip variants without an in-package flash, GPIO14 is not led out to any
   chip pins.
 
+# ESP32P4
+The ESP32P4 has 55 physical pins (0-54). Each pin can be used as
+  a general-purpose pin, or be connected to a peripheral.
+
+Pins 34-38 are strapping pins.
+Pins 24-25 are JTAG pins, and should not be used if JTAG support is needed.
+Pins 16-23, 49-54 are ADC pins of channel 1.
+Pins 51-54 are analog comparator pins.
+Pins 0-15 are RTC pins and can be used in deep-sleep.
+Pins 2-15 can be used as touch sensor pins.
+
 # ESP32S2
 The ESP32S2 has 43 physical pins (0-21, 26-46). Each pin can be used as
   a general-purpose pin, or be connected to a peripheral.
