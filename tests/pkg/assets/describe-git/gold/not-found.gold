@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, https://toit.io/testing/not_exist, v1.0.0]
+Error: Failed to contact repository 'https://toit.io/testing/not_exist': Invalid repository https://toit.io/testing/not_exist, Method Not Allowed
+==================
+Aborted
+[pkg, describe, github.com/toitware/toit-morse, v99.0.0]
+Error: Tag v99.0.0 not found in repository 'github.com/toitware/toit-morse'

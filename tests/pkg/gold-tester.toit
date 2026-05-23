@@ -179,6 +179,12 @@ class GoldTester:
       else if command == "package.yaml":
         yaml-content := file.read-contents "$working-dir_/package.yaml"
         outputs.add "== package.yaml\n$yaml-content.to-string"
+      else if command == "cat":
+        if not file.is-file command-line[1]:
+          outputs.add "== cat $command-line[1]\nFile not found"
+        else:
+          contents := file.read-contents command-line[1]
+          outputs.add "== cat $command-line[1]\n$contents.to-string-non-throwing"
       else if command == "pkg":
         pkg-args := command-line[1..]  // Drop the "pkg"
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import certificate-roots
 import cli.test show TestUi
 import encoding.yaml
 import expect show *
@@ -22,6 +23,7 @@ verify-ref package ref:
   expect-equals ref lock["packages"][package]["hash"]
 
 main:
+  certificate-roots.install-all-trusted-roots
   with-test-registry: | tmp-dir |
     project-dir = "$tmp-dir/project-test-root"
 
