@@ -20,7 +20,7 @@ main:
 test:
   port := uart.Port
       --rx=gpio.Pin PIN-FREE-AND-UNUSED
-      --tx=gpio.Pin PIN-OUT
+      --tx=gpio.Pin PIN-OUT1
       --baud-rate=115200
 
   channel := monitor.Channel 1
@@ -37,7 +37,7 @@ test:
         port.out.write instruction
       sleep --ms=1_000
 
-  pin-in := gpio.Pin PIN-IN --input --pull-down
+  pin-in := gpio.Pin PIN-IN1 --input --pull-down
 
   channel.send "TEST-STEP-01"
   pin-in.wait-for 1

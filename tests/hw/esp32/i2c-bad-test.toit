@@ -27,6 +27,7 @@ test:
       --sda=gpio.Pin SDA-PIN
       --scl=gpio.Pin SCL-PIN
       --frequency=100_000
+      --pull-up
 
   device := bus.device 123
 
