@@ -135,6 +135,8 @@ class GoldTester:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
     // In lock files, the ':' is replaced with '_'.
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
+    // On Windows, disk paths in contents.json escape ':' as '#3A'.
+    str = str.replace --all "localhost#3A$port_" "localhost:<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
     str = str.replace --all "\\" "/"
     // When printing tables, the width of the columns may vary.
