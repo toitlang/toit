@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Toitware ApS.
+// Copyright (C) 2018 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,22 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "../top.h"
+// Toit ESP32 top level, derived from ESP-IDF Hello World example.
 
-#if defined(TOIT_ESP32) && (!defined(CONFIG_IDF_TARGET_ESP32P4))
-#if defined(CONFIG_TOIT_ENABLE_WIFI) || defined(CONFIG_TOIT_ENABLE_ESPNOW)
+extern void toit_start();
 
-#include "wifi_espnow_esp32.h"
-#include "../resource_pool.h"
-
-namespace toit {
-
-// Only allow one instance of WiFi or ESPNow running.
-ResourcePool<int, kInvalidWifiEspnow> wifi_espnow_pool(
-  0
-);
-
-} // namespace toit
-
-#endif // CONFIG_TOIT_ENABLE_WIFI || CONFIG_TOIT_ENABLE_ESPNOW
-#endif // TOIT_ESP32 && !CONFIG_IDF_TARGET_ESP32P4
+void app_main() {
+  toit_start();
+}
