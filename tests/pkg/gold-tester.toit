@@ -134,6 +134,8 @@ class GoldTester:
     str = str.replace --all "localhost:$port_" "localhost:<[*PORT*]>"
     // In lock files, the ':' is replaced with '_'.
     str = str.replace --all "localhost_$port_" "localhost_<[*PORT*]>"
+    // On Windows, disk paths in contents.json escape ':' as '#3A'.
+    str = str.replace --all "localhost#3A$port_" "localhost:<[*PORT*]>"
     str = str.replace --all "$working-dir_" "<[*WORKING-DIR*]>"
     str = str.replace --all "\\" "/"
     // When printing tables, the width of the columns may vary.
@@ -185,6 +187,14 @@ class GoldTester:
         else:
           contents := file.read-contents command-line[1]
           outputs.add "== cat $command-line[1]\n$contents.to-string-non-throwing"
+      else if command == "contents.json":
+        contents-path := "$working-dir_/.packages/contents.json"
+        if not file.is-file contents-path:
+          outputs.add "== contents.json\nFile not found"
+        else:
+          json-content := file.read-contents contents-path
+          as-yaml := yaml.stringify (json.decode json-content)
+          outputs.add "== contents.json\n$as-yaml"
       else if command == "pkg":
         pkg-args := command-line[1..]  // Drop the "pkg"
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
@@ -327,8 +337,8 @@ run-git-http-backend --prefix/string --root/string request/http.RequestIncoming 
         if colon-index == -1:
           print-on-stderr_ "Ignoring invalid header line: $line"
           continue
-        key := line[0..colon-index - 1]
-        value := line[colon-index + 1..]
+        key := line[0..colon-index]
+        value := line[colon-index + 1..].trim
         writer.headers.add key value
 
       writer.write-headers 200
