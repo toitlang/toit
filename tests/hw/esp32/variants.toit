@@ -539,7 +539,11 @@ class Esp32s3 extends Variant:
   connected1-pin1 ::= 19
   connected1-pin2 ::= 21
 
-  restricted-pin ::= 33
+  // Pins 26-32 are always restricted on s3 (4-wire flash). Pins 33-37 are
+  // only restricted when octal SPI/PSRAM is used; our envelope is DIO, so
+  // pin 33 (the original choice) is *not* restricted at runtime — pick a
+  // pin in the always-restricted range instead.
+  restricted-pin ::= 28
 
   touch-pin1 ::= 6
   touch-pin2 ::= 7
