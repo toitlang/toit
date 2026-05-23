@@ -45,30 +45,23 @@ class Description:
   */
   constructor .content --path/string --ui/cli.Ui:
     if not content.contains NAME-KEY_:
-      ui.emit --error "Description at $path is missing a name."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path is missing a name."
     if not content.contains URL-KEY_:
-      ui.emit --error "Description at $path is missing a url."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path is missing a url."
     url := content[URL-KEY_]
     if url is not string:
-      ui.emit --error "Description at $path has an invalid url: $url."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path has an invalid url: $url."
     if url == "":
-      ui.emit --error "Description at $path has an empty url."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path has an empty url."
     if not content.contains VERSION-KEY_:
-      ui.emit --error "Description at $path is missing a version."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path is missing a version."
     version := content[VERSION-KEY_]
     e := catch:
       SemanticVersion.parse version
     if e:
-      ui.emit --error "Description at $path has an invalid version: '$version'."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path has an invalid version: '$version'."
     if not content.contains HASH-KEY_:
-      ui.emit --error "Description at $path is missing a hash."
-      throw "INVALID_DESCRIPTION"
+      ui.abort "Description at $path is missing a hash."
 
   // A constructor that is primarily used for testing.
   constructor.for-testing_

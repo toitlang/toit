@@ -34,18 +34,25 @@ import .list
 
 
 NOT-SCRAPED-STRING ::= "<Not scraped for local paths>"
+NOT-SCRAPED-VERSION-STRING ::= "v0.0.0"  // We need a valid version.
 
 class DescribeCommand extends PkgCommand:
-  url-path/string? := ?
+  url-path/string?
   version/string?
   out-dir/string?
+  warn-local-deps/bool
   allow-local-deps/bool
 
   constructor invocation/cli.Invocation:
     url-path = invocation[URL-PATH-OPTION]
     version = invocation[VERSION-OPTION]
     out-dir = invocation[OUT-DIR-OPTION]
-    allow-local-deps = invocation[ALLOW-LOCAL-DEPS]
+    if invocation.parameters.was-provided ALLOW_LOCAL_DEPS:
+      warn-local-deps = false
+      allow-local-deps = invocation[ALLOW_LOCAL_DEPS]
+    else:
+      warn-local-deps = true
+      allow-local-deps = true
     super invocation
 
   execute:
@@ -61,7 +68,6 @@ class DescribeCommand extends PkgCommand:
       --hash/string
       --version/string
       --url/string :
-    // check for src directory
     if not check-src-dir.call:
       error "No 'src' directory in package."
 
@@ -69,8 +75,12 @@ class DescribeCommand extends PkgCommand:
     if not specification:
       error "Missing package.yaml file."
 
-    if not specification.description:
-      warning "Automatic name/description extraction from README has been removed."
+    if not specification.has-name:
+      warning "Automatic name extraction from README has been removed."
+      error "Missing name"
+
+    if not specification.has-description:
+      warning "Automatic description extraction from README has been removed."
       error "Missing description"
 
     license := specification.license
@@ -78,26 +88,35 @@ class DescribeCommand extends PkgCommand:
       if not validate-license-id license:
         warning "Unknown SDIX license-ID: '$license'"
     else:
-      license-content := load-license-file.call
+      license-content/ByteArray? := load-license-file.call
       if not license-content:
-        warning "Missing LICENSE file."
-      else:
-        license = guess-license license-content.to-string
-        if not license:
-          warning "Unknown license in 'LICENSE' file"
+        error "Missing LICENSE file."
 
-    if not allow-local-deps and not specification.local-dependencies.is-empty:
-      warning "Package has local dependencies."
+      license-str := license-content.to-string-non-throwing
+      if license-str.trim == "":
+        error "Empty LICENSE file."
+
+      license = guess-license license-str
+      if not license:
+        error "Unknown license in 'LICENSE' file"
+      ui.emit --verbose "Using license '$license' from 'LICENSE' file."
+
+    if not specification.local-dependencies.is-empty:
+      if warn-local-deps:
+        warning "Package has local dependencies."
+      else if not allow-local-deps:
+        error "Package has local dependencies."
 
     description := {
       Description.DESCRIPTION-KEY_: specification.description,
       Description.NAME-KEY_: specification.name,
       Description.VERSION-KEY_: version,
-      Description.URL-KEY_: url-path,
-      Description.HASH-KEY_: hash
+      Description.URL-KEY_: url,
+      Description.HASH-KEY_: hash,
     }
 
-    if license: description[Description.LICENSE-KEY_] = license
+    if license:
+      description[Description.LICENSE-KEY_] = license
 
     if not specification.registry-dependencies.is-empty:
       dependencies := specification.registry-dependencies.values.map: | package-dependency/PackageDependency |
@@ -114,24 +133,28 @@ class DescribeCommand extends PkgCommand:
 
 
   execute-local:
-    if not url-path: url-path = directory.cwd
+    path := url-path
+    if not path: path = directory.cwd
     if out-dir:
       error "The --out-dir flag requires a URL and version"
 
-    src := "$url-path/src"
+    src := "$path/src"
+    license-path := "$path/LICENSE"
+    spec-path := Specification.file-name path
     description := build-description
       --check-src-dir=: file.is-directory src
-      --load-specification=: file.is-file (Specification.file-name url-path) and ExternalSpecification --dir=url-path --ui=ui
-      --load-license-file=: file.is-file "LICENSE" and file.read-contents "LICENSE"
+      --load-specification=: file.is-file spec-path ? ExternalSpecification --dir=path --ui=ui : null
+      --load-license-file=: file.is-file license-path ? file.read-contents license-path : null
       --hash=NOT-SCRAPED-STRING
-      --version=NOT-SCRAPED-STRING
+      --version=NOT-SCRAPED-VERSION-STRING
       --url=NOT-SCRAPED-STRING
 
-    output description
+    output --local description
 
   execute-remote:
-    if url-path.starts-with "https://": url-path = url-path[8..]
-    git := Repository url-path
+    url := url-path
+    if url.starts-with "https://": url = url[8..]
+    git := Repository url
     ref-hash := git.refs.get "refs/tags/v$version"
     if not ref-hash:
       error "Tag v$version not found for version '$version'"
@@ -146,18 +169,23 @@ class DescribeCommand extends PkgCommand:
       --load-license-file=: file-view.get "LICENSE"
       --hash=ref-hash
       --version=version
-      --url=url-path
+      --url=url
 
     if not out-dir:
-      output description
+      output --no-local description
     else:
-      output-path := "$out-dir/packages/$url-path/$version"
+      output-path := "$out-dir/packages/$url/$version"
       directory.mkdir --recursive output-path
       file.write-contents --path="$output-path/desc.yaml" (yaml.encode description)
 
-  output description/Description:
+  output --local/bool description/Description:
     output-map := ListCommand.verbose-description description --allow-extra-fields
-    print (yaml.stringify output-map)
+    if local:
+      name := output-map.keys.first
+      output-map[name][Description.VERSION-KEY_] = NOT-SCRAPED-STRING
+      output-map[name][Description.URL-KEY_] = NOT-SCRAPED-STRING
+      output-map[name][Description.HASH-KEY_] = NOT-SCRAPED-STRING
+    ui.emit-map --result output-map
 
   static CLI-COMMAND ::=
       cli.Command "describe"

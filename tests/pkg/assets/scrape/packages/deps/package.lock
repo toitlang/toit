@@ -1,0 +1,10 @@
+prefixes:
+  morse: toit-morse
+  morse_tutorial: toit-morse-tutorial
+packages:
+  toit-morse:
+    url: github.com/toitware/toit-morse
+    version: 1.0.2
+  toit-morse-tutorial:
+    url: github.com/toitware/toit-morse-tutorial
+    version: 1.0.0

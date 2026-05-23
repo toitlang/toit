@@ -1,0 +1,6 @@
+name: name-from-spec
+description: desc from spec
+license: MIT
+dependencies:
+  foo:
+    path: some/path
