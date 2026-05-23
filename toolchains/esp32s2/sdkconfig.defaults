@@ -1,5 +1,5 @@
 # This file was generated using idf.py save-defconfig. It can be edited manually.
-# Espressif IoT Development Framework (ESP-IDF) 5.4.1 Project Minimal Configuration
+# Espressif IoT Development Framework (ESP-IDF) 5.4.2 Project Minimal Configuration
 #
 CONFIG_IDF_TARGET="esp32s2"
 CONFIG_BOOTLOADER_LOG_LEVEL_ERROR=y
@@ -17,6 +17,7 @@ CONFIG_UART_ISR_IN_IRAM=y
 CONFIG_ETH_SPI_ETHERNET_DM9051=y
 CONFIG_ETH_SPI_ETHERNET_W5500=y
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
+CONFIG_PERIPH_CTRL_FUNC_IN_IRAM=y
 CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=n
 CONFIG_ESP_PHY_REDUCE_TX_POWER=y
 CONFIG_SPIRAM=y
