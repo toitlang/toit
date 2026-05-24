@@ -2662,7 +2662,9 @@ PRIMITIVE(firmware_map) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  uint8* start = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR);
+  // AP_FLASH_LOAD_ADDR is already XIP-mapped (the linker uses it as the
+  // .text origin), so it must not be combined with AP_FLASH_XIP_ADDR.
+  uint8* start = reinterpret_cast<uint8*>(AP_FLASH_LOAD_ADDR);
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   if (extension == null) FAIL(ERROR);
   // Compute end from config data (which follows the used area on EC618).

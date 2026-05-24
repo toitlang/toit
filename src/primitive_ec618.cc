@@ -55,11 +55,12 @@ PRIMITIVE(ota_begin) {
 
   // Compute the prefix size — the region from AP image start to the
   // embedded data extension, which doesn't change during OTA.
+  // AP_FLASH_LOAD_ADDR is already XIP-mapped (the linker uses it as the
+  // .text origin), so it must not be combined with AP_FLASH_XIP_ADDR.
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   if (extension == null) FAIL(ERROR);
   uint32_t extension_addr = reinterpret_cast<uint32_t>(extension);
-  uint32_t image_start = AP_FLASH_XIP_ADDR + AP_FLASH_LOAD_ADDR;
-  ota_prefix_size = extension_addr - image_start;
+  ota_prefix_size = extension_addr - AP_FLASH_LOAD_ADDR;
 
   ota_total_size = to - from;
   ota_written = 0;
