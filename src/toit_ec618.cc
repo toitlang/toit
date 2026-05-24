@@ -23,6 +23,7 @@ extern "C" {
   #include "cmsis_os2.h"
   #include "flash_rt.h"
   #include "mem_map.h"
+  #include "reset.h"
   #include "slpman.h"
   #include "plat_config.h"
   #include "apmu_external.h"
@@ -172,9 +173,115 @@ static void deep_sleep_timer_cb(uint8_t id) {
   (void)id;
 }
 
+// On a HardFault, dump the exception frame + Cortex-M3 fault status
+// registers over printf, drain the UART, and trigger a system reset.
+// The SDK's HardFault handler is a static symbol pointed to from the
+// .isr_vector table, so we can't replace it by linker symbol; instead
+// we install a RAM-resident vector table via VTOR relocation and patch
+// entry 3 with our handler. Without this, the SDK's handler resets the
+// chip immediately with no visible information, leaving silent reboots.
+
+extern "C" __attribute__((used))
+void toit_hardfault_dump(uint32_t* frame, uint32_t exc_return) {
+  volatile uint32_t* const SCB_CFSR  = reinterpret_cast<uint32_t*>(0xE000ED28);
+  volatile uint32_t* const SCB_HFSR  = reinterpret_cast<uint32_t*>(0xE000ED2C);
+  volatile uint32_t* const SCB_MMFAR = reinterpret_cast<uint32_t*>(0xE000ED34);
+  volatile uint32_t* const SCB_BFAR  = reinterpret_cast<uint32_t*>(0xE000ED38);
+  printf("\n[HARDFAULT]\n");
+  printf("  PC =0x%08x  LR =0x%08x  PSR=0x%08x\n",
+         static_cast<unsigned>(frame[6]),
+         static_cast<unsigned>(frame[5]),
+         static_cast<unsigned>(frame[7]));
+  printf("  R0 =0x%08x  R1 =0x%08x  R2 =0x%08x  R3 =0x%08x  R12=0x%08x\n",
+         static_cast<unsigned>(frame[0]),
+         static_cast<unsigned>(frame[1]),
+         static_cast<unsigned>(frame[2]),
+         static_cast<unsigned>(frame[3]),
+         static_cast<unsigned>(frame[4]));
+  printf("  EXC_RETURN=0x%08x\n", static_cast<unsigned>(exc_return));
+  printf("  CFSR =0x%08x  HFSR=0x%08x\n",
+         static_cast<unsigned>(*SCB_CFSR),
+         static_cast<unsigned>(*SCB_HFSR));
+  printf("  MMFAR=0x%08x  BFAR=0x%08x\n",
+         static_cast<unsigned>(*SCB_MMFAR),
+         static_cast<unsigned>(*SCB_BFAR));
+  // Busy-wait so the UART can drain the dump before we reset — the
+  // scheduler is not trustworthy from a fault context.
+  for (volatile uint32_t i = 0; i < 2000000; i++) { /* spin */ }
+  // SCB->AIRCR = VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2).
+  volatile uint32_t* const SCB_AIRCR = reinterpret_cast<uint32_t*>(0xE000ED0C);
+  *SCB_AIRCR = (0x05FAu << 16) | (1u << 2);
+  while (1) { /* unreachable */ }
+}
+
+extern "C" __attribute__((naked, used))
+void toit_hardfault_entry(void) {
+  __asm volatile (
+    "tst lr, #4              \n"  // EXC_RETURN bit 2: 0=MSP, 1=PSP
+    "ite eq                  \n"
+    "mrseq r0, msp           \n"
+    "mrsne r0, psp           \n"
+    "mov  r1, lr             \n"
+    "b    toit_hardfault_dump \n"
+  );
+}
+
+// RAM-resident vector table (256-byte aligned, room for all 80 vectors
+// the SDK's table holds — we just copy and patch).
+static __attribute__((aligned(256))) uint32_t toit_ram_vectors[80];
+
+static void install_hardfault_dumper() {
+  volatile uint32_t* const SCB_VTOR = reinterpret_cast<uint32_t*>(0xE000ED08);
+  const uint32_t* current = reinterpret_cast<const uint32_t*>(*SCB_VTOR);
+  for (size_t i = 0; i < sizeof(toit_ram_vectors) / sizeof(toit_ram_vectors[0]); i++) {
+    toit_ram_vectors[i] = current[i];
+  }
+  // Patch HardFault (vector index 3). C function pointer is already
+  // thumb-tagged.
+  extern void toit_hardfault_entry(void);
+  toit_ram_vectors[3] = reinterpret_cast<uint32_t>(&toit_hardfault_entry);
+  *SCB_VTOR = reinterpret_cast<uint32_t>(toit_ram_vectors);
+}
+
+static const char* last_reset_name(LastResetState_e s) {
+  switch (s) {
+    case LAST_RESET_POR:       return "POR";
+    case LAST_RESET_NORMAL:    return "NORMAL(sleep)";
+    case LAST_RESET_SWRESET:   return "SWRESET";
+    case LAST_RESET_HARDFAULT: return "HARDFAULT";
+    case LAST_RESET_ASSERT:    return "ASSERT";
+    case LAST_RESET_WDTSW:     return "WDTSW";
+    case LAST_RESET_WDTHW:     return "WDTHW";
+    case LAST_RESET_LOCKUP:    return "LOCKUP";
+    case LAST_RESET_AONWDT:    return "AONWDT";
+    case LAST_RESET_BATLOW:    return "BATLOW";
+    case LAST_RESET_TEMPHI:    return "TEMPHI";
+    case LAST_RESET_FOTA:      return "FOTA";
+    case LAST_RESET_CPRESET:   return "CPRESET";
+    default:                   return "UNKNOWN";
+  }
+}
+
 static void start() {
   // Run C++ static initializers (the linker script must capture .init_array).
   run_static_initializers();
+
+  // Log the previous reset reason. After a HardFault dump-and-reset
+  // (see toit_hardfault_dump below) this prints "ap=HARDFAULT", but it
+  // also catches watchdog/lockup/assert/POR resets that bypass our
+  // handler.
+  {
+    LastResetState_e ap = LAST_RESET_UNKNOWN;
+    LastResetState_e cp = LAST_RESET_UNKNOWN;
+    ResetStateGet(&ap, &cp);
+    printf("[toit] INFO: last reset ap=%s cp=%s\n",
+           last_reset_name(ap), last_reset_name(cp));
+  }
+
+  // Install a RAM-resident vector table so we can intercept HardFault,
+  // print a register dump, and reset cleanly — otherwise the SDK
+  // silently resets the chip with no diagnostic output.
+  install_hardfault_dumper();
 
   // Vote against sleep1 during execution so the scheduler tick keeps running.
   slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);

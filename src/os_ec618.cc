@@ -305,6 +305,7 @@ void OS::dispose(ConditionVariable* condition) { delete condition; }
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
+  // aligned_alloc → newlib _memalign_r → __wrap__memalign_r → cmpct.
   void* allocation = aligned_alloc(TOIT_PAGE_SIZE, size);
   return allocation;
 }
