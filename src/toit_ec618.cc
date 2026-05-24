@@ -89,21 +89,42 @@ class AllowFirmwareModifications {
 // already been hashed and validated by ota_end; this step is a plain
 // erase-then-copy with no further verification. Returns true on success.
 static bool perform_ota_commit() {
-  extern uint32_t ota_commit_prefix_size;
-  extern uint32_t ota_commit_extension_size;
+  extern uint32_t ota_commit_size;
+
+  // Re-derive the prefix length from the running image instead of carrying
+  // it forward as separate state. ota_write recorded ota_commit_size as the
+  // total image size; everything past the prefix lives in FOTA.
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  if (extension == null) {
+    printf("[toit] ERROR: OTA commit: embedded extension is null\n");
+    return false;
+  }
+  const uint32_t prefix_size =
+      reinterpret_cast<uint32_t>(extension) - AP_FLASH_LOAD_ADDR;
+  if (ota_commit_size <= prefix_size) {
+    printf("[toit] ERROR: OTA commit: image too small for prefix\n");
+    return false;
+  }
+  const uint32_t extension_size = ota_commit_size - prefix_size;
+
+  // ota_write pads the staged tail to a 16-byte boundary, so the FOTA
+  // region holds round-up(extension_size, 16) bytes. The copy below has to
+  // move the same span over to the active image, because
+  // BSP_QSPI_Write_Safe also requires 16-byte-aligned writes.
+  const uint32_t SEGMENT = 16;
+  const uint32_t SECTOR = 0x1000;
+  const uint32_t aligned_size = (extension_size + SEGMENT - 1) & ~(SEGMENT - 1);
 
   // sysROSpaceCheck and BSP_QSPI_*_Safe both work in physical (non-XIP)
   // flash offsets, so convert from the XIP base.
   const uint32_t ap_image_physical = AP_FLASH_LOAD_ADDR - AP_FLASH_XIP_ADDR;
-  const uint32_t dest_physical = ap_image_physical + ota_commit_prefix_size;
-  const uint32_t extension_size = ota_commit_extension_size;
+  const uint32_t dest_physical = ap_image_physical + prefix_size;
 
-  AllowFirmwareModifications guard(dest_physical, dest_physical + extension_size);
+  AllowFirmwareModifications guard(dest_physical, dest_physical + aligned_size);
 
-  // Erase the destination 4KB sectors. Round up so a partial last sector is
-  // also erased before being partially written.
-  const uint32_t SECTOR = 0x1000;
-  const uint32_t erase_size = (extension_size + SECTOR - 1) & ~(SECTOR - 1);
+  // Erase the destination 4 KB sectors covering the staged area, rounding
+  // up so a partial final sector is also erased before being written.
+  const uint32_t erase_size = (aligned_size + SECTOR - 1) & ~(SECTOR - 1);
   for (uint32_t off = 0; off < erase_size; off += SECTOR) {
     if (BSP_QSPI_Erase_Safe(dest_physical + off, SECTOR) != QSPI_OK) {
       printf("[toit] ERROR: OTA erase failed at 0x%08x\n",
@@ -112,13 +133,15 @@ static bool perform_ota_commit() {
     }
   }
 
-  // Copy via RAM buffer. BSP_QSPI_Read_Safe / Write_Safe disable XIP for the
-  // duration of the call, so both the source and destination must live in
-  // RAM. The Safe wrappers handle XIP toggling internally.
+  // Copy via RAM buffer. BSP_QSPI_Read_Safe / Write_Safe disable XIP for
+  // the duration of the call, so both the source and destination must live
+  // in RAM. The Safe wrappers handle XIP toggling internally. Chunks are
+  // sized in segment-aligned multiples so the trailing partial write is
+  // also segment-aligned.
   static const uint32_t BUF_SIZE = 4096;
   uint8_t buf[BUF_SIZE];
-  for (uint32_t off = 0; off < extension_size; off += BUF_SIZE) {
-    uint32_t chunk = extension_size - off;
+  for (uint32_t off = 0; off < aligned_size; off += BUF_SIZE) {
+    uint32_t chunk = aligned_size - off;
     if (chunk > BUF_SIZE) chunk = BUF_SIZE;
     if (BSP_QSPI_Read_Safe(buf, FLASH_FOTA_REGION_START + off, chunk) != QSPI_OK) {
       printf("[toit] ERROR: OTA read failed at 0x%08x\n",

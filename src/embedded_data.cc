@@ -41,7 +41,13 @@ const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   void* end = reinterpret_cast<void*>(reinterpret_cast<uint32>(pointer) + size);
   if (end > &_rodata_reserved_end) FATAL("rodata reservation too small");
 #elif defined(TOIT_EC618)
-  // On EC618, the free field is not used (config follows used area directly).
+  // On EC618, the free field is not used: the config data is written
+  // immediately after the "used" area, and the header still validates
+  // its own checksum without referring to free. A non-zero free here
+  // means we're not looking at a Toit-produced extension; reject it so
+  // config() doesn't dereference whatever happens to sit at
+  // header + used.
+  if (header[HEADER_INDEX_FREE] != 0) return null;
 #endif
   return reinterpret_cast<const EmbeddedDataExtension*>(header);
 }
@@ -72,7 +78,16 @@ List<uint8> EmbeddedDataExtension::config() const {
   uword address = reinterpret_cast<uword>(header) + used;
   uword size = *reinterpret_cast<const uint32*>(address);
   if (size == 0 || size == 0xffffffff) return List<uint8>();
-  uint8* data = reinterpret_cast<uint8*>(address + sizeof(uint32));
+  // Clamp size against the end of the AP image region. Without this,
+  // a garbage size at header+used would let the caller (e.g.,
+  // firmware_map) return a proxy that walks out of the addressable
+  // flash window.
+  uword image_end = AP_FLASH_LOAD_ADDR + AP_FLASH_LOAD_SIZE;
+  uword config_start = address + sizeof(uint32);
+  if (config_start >= image_end) return List<uint8>();
+  uword max_size = image_end - config_start;
+  if (size > max_size) return List<uint8>();
+  uint8* data = reinterpret_cast<uint8*>(config_start);
   return List<uint8>(data, size);
 #else
   uint32 free = header[HEADER_INDEX_FREE];
