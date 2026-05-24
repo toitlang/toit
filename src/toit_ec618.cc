@@ -121,11 +121,14 @@ static bool perform_ota_commit() {
   const uint32_t ap_image_physical = AP_FLASH_LOAD_ADDR - AP_FLASH_XIP_ADDR;
   const uint32_t dest_physical = ap_image_physical + prefix_size;
 
-  AllowFirmwareModifications guard(dest_physical, dest_physical + aligned_size);
-
-  // Erase the destination 4 KB sectors covering the staged area, rounding
-  // up so a partial final sector is also erased before being written.
+  // Erase whole sectors covering the staged area, rounding up so a partial
+  // final sector is fully erased before being written. The writable window
+  // must span the *erase* footprint, not just the copy footprint — otherwise
+  // sysROSpaceCheck rejects the final sector's tail byte and BSP_QSPI_Erase_Safe
+  // hangs in its assertion-failure path (it disables interrupts and busy-loops
+  // instead of returning a status).
   const uint32_t erase_size = (aligned_size + SECTOR - 1) & ~(SECTOR - 1);
+  AllowFirmwareModifications guard(dest_physical, dest_physical + erase_size);
   for (uint32_t off = 0; off < erase_size; off += SECTOR) {
     if (BSP_QSPI_Erase_Safe(dest_physical + off, SECTOR) != QSPI_OK) {
       printf("[toit] ERROR: OTA erase failed at 0x%08x\n",

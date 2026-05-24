@@ -109,6 +109,14 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
 
   commit checksum/ByteArray? -> none:
     flush
+    // The aligned `flush` above leaves the trailing 0..15 unaligned
+    // bytes in buffer_. ota_write pads those to the segment size with
+    // zeros in flash, but the lib must still hand them over so the
+    // primitive's logical byte counter reaches the total declared at
+    // ota_begin (ota_end's size check requires exact equality).
+    if fullness_ > 0:
+      written_ = ota-write_ buffer_[..fullness_]
+      fullness_ = 0
     ota-end_ written_ checksum
     buffer_ = null
 

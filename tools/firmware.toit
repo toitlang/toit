@@ -998,13 +998,20 @@ extract-binary-content-ec618 -> ByteArray
     --containers/List
     --system-uuid/Uuid
     --config-encoded/ByteArray:
-  binary-size := binary-input.size
+  // Pad the AP binary up to a 4 KB boundary before appending the extension.
+  // This forces the prefix size (= padded-binary size = extension - load-addr)
+  // to be a multiple of both FLASH_SECTOR_SIZE (4 KB, required for the OTA
+  // commit's destination erase) and FLASH_SEGMENT_SIZE (16 B, so ota_write
+  // never needs to straddle the prefix boundary mid-segment).
+  EC618-FLASH-SECTOR-SIZE_ ::= 4096
+  padded-binary := pad binary-input EC618-FLASH-SECTOR-SIZE_
+  binary-size := padded-binary.size
   image-count := containers.size
   image-table := ByteArray 8 * image-count
 
-  // The extension is appended at the end of the binary. The
-  // XIP address of the extension start is the binary size
-  // plus the XIP base and AP load offset.
+  // The extension is appended at the end of the (padded) binary. The
+  // XIP address of the extension start is the padded binary size plus
+  // the XIP base and AP load offset.
   // EC618 XIP base: 0x00800000, AP load offset: 0x00024000.
   extension-xip-addr := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_ + binary-size
 
@@ -1052,7 +1059,7 @@ extract-binary-content-ec618 -> ByteArray
   LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
 
   // Patch the DromData in the binary with the extension address.
-  result := binary-input.copy
+  result := padded-binary.copy
   details-offset := find-details-offset-esp32 result
   bundled-programs-table-address := ByteArray 4
   LITTLE-ENDIAN.put-uint32 bundled-programs-table-address 0 extension-xip-addr
@@ -1060,12 +1067,26 @@ extract-binary-content-ec618 -> ByteArray
   result.replace (details-offset + 4) system-uuid.to-byte-array
 
   // Append the extension to the binary.
-  return result + extension
+  result += extension
+
+  // Append a SHA-256 trailer over the whole image. The runtime
+  // (primitive_core.cc::firmware_map and primitive_ec618.cc::ota_end)
+  // both assume the last 32 bytes of the image are this digest:
+  // firmware_map adds SHA256_SIZE to the reported size and ota_end
+  // reads the 32-byte trailer to compare against the freshly
+  // re-computed hash. Without this append, ota_end always rejects
+  // the staged image with INVALID_ARGUMENT.
+  result += crypto.sha256 result
+  return result
 
 /**
 Extracts parts information from an EC618 firmware binary.
+
+The image ends with a 32-byte SHA-256 trailer that
+extract-binary-content-ec618 appends; report it as a separate part.
 */
 extract-parts-ec618 firmware-bin/ByteArray -> List:
+  SHA256-SIZE ::= 32
   parts := []
   details-offset := find-details-offset-esp32 firmware-bin
   extension-addr := LITTLE-ENDIAN.uint32 firmware-bin details-offset
@@ -1078,8 +1099,10 @@ extract-parts-ec618 firmware-bin/ByteArray -> List:
   parts.add { "type": "binary", "from": 0, "to": extension-offset }
   if extension-offset < firmware-bin.size:
     used := LITTLE-ENDIAN.uint32 firmware-bin extension-offset + 4
+    config-end := firmware-bin.size - SHA256-SIZE
     parts.add { "type": "images", "from": extension-offset, "to": extension-offset + used }
-    parts.add { "type": "config", "from": extension-offset + used, "to": firmware-bin.size }
+    parts.add { "type": "config", "from": extension-offset + used, "to": config-end }
+    parts.add { "type": "checksum", "from": config-end, "to": firmware-bin.size }
   return parts
 
 write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:

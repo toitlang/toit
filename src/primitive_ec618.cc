@@ -58,6 +58,23 @@ static bool ota_active = false;
 static uint32_t ota_written = 0;     // Logical bytes seen by ota_write so far.
 static uint32_t ota_total_size = 0;  // Image size declared via ota_begin.
 
+// Set once the caller submits a non-segment-aligned chunk to ota_write; that
+// chunk must be the very last one. Any subsequent write is rejected.
+static bool ota_unaligned_tail_seen = false;
+
+// Lazy sector erase: bytes in [FLASH_FOTA_REGION_START, ota_erased_until)
+// are guaranteed to be in the erased (0xff) state. Always sector-aligned.
+static uint32_t ota_erased_until = 0;
+
+// The tool pads the AP binary up to FLASH_SECTOR_SIZE before appending the
+// extension, so the prefix size is always sector-aligned (and therefore
+// segment-aligned). FOTA reads/writes only make sense when the staging
+// region is sector-aligned to begin with.
+static_assert(FLASH_FOTA_REGION_START % FLASH_SECTOR_SIZE == 0,
+              "FOTA region must start at a sector boundary");
+static_assert(FLASH_SECTOR_SIZE % FLASH_SEGMENT_SIZE == 0,
+              "sector size must be a multiple of segment size");
+
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
 // The unchanged-prefix length is the offset from the start of the active
@@ -84,16 +101,46 @@ PRIMITIVE(ota_begin) {
   // ota_prefix_size() can find the AP-image/extension boundary.
   if (EmbeddedData::extension() == null) FAIL(ERROR);
 
-  ota_total_size = to - from;
+  const uint32_t total = static_cast<uint32_t>(to - from);
+  const uint32_t prefix = ota_prefix_size();
+  // The tool pads the AP binary to a sector boundary; if the running image
+  // doesn't satisfy that, our segment-alignment assumptions break.
+  if (prefix % FLASH_SECTOR_SIZE != 0) FAIL(ERROR);
+  // The extension (post-prefix) is everything we'll stage into FOTA, and
+  // FOTA has a hard size cap. ota_end will also pad the unaligned tail up
+  // to a full segment, so include that in the bound.
+  if (total <= prefix) FAIL(INVALID_ARGUMENT);
+  const uint32_t staged_aligned =
+      ((total - prefix) + FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
+  if (staged_aligned > FLASH_FOTA_REGION_LEN) FAIL(OUT_OF_BOUNDS);
+
+  ota_total_size = total;
   ota_written = 0;
+  ota_erased_until = FLASH_FOTA_REGION_START;
+  ota_unaligned_tail_seen = false;
   ota_active = true;
   return process->null_object();
+}
+
+// Erase whichever 4 KB sectors are needed so that
+// [FLASH_FOTA_REGION_START, target) is fully erased. Sectors are erased at
+// most once. Returns false on QSPI error.
+static bool ota_ensure_erased_until(uint32_t target) {
+  while (ota_erased_until < target) {
+    if (BSP_QSPI_Erase_Safe(ota_erased_until, FLASH_SECTOR_SIZE) != QSPI_OK) {
+      return false;
+    }
+    ota_erased_until += FLASH_SECTOR_SIZE;
+  }
+  return true;
 }
 
 PRIMITIVE(ota_write) {
   PRIVILEGED;
   ARGS(Blob, bytes);
   if (!ota_active) FAIL(ALREADY_CLOSED);
+  // Once a sub-segment tail has been accepted, no further data may come.
+  if (ota_unaligned_tail_seen) FAIL(ALREADY_CLOSED);
 
   const uint8_t* data = bytes.address();
   const uint32_t length = bytes.length();
@@ -105,82 +152,64 @@ PRIMITIVE(ota_write) {
   }
 
   const uint32_t prefix = ota_prefix_size();
+  // ota_begin validated that prefix is sector-aligned (and therefore segment-
+  // aligned). The Toit-side writer flushes in PAGE_SIZE-aligned chunks until
+  // the final remainder in commit, so chunks straddling the prefix boundary
+  // are also segment-aligned on both sides.
   uint32_t pos = 0;
+  if (ota_written + pos < prefix) {
+    uint32_t skip = prefix - (ota_written + pos);
+    if (skip > length - pos) skip = length - pos;
+    pos += skip;
+  }
 
-  while (pos < length) {
-    const uint32_t global_pos = ota_written + pos;
+  // Everything from here on is extension data that has to land in FOTA.
+  uint32_t fota_offset = fota_offset_for(ota_written + pos, prefix);
+  const uint32_t payload = length - pos;
 
-    // Anything that falls inside the unchanged prefix is skipped — it is
-    // already in the active image and does not need re-writing.
-    if (global_pos < prefix) {
-      uint32_t skip = prefix - global_pos;
-      if (skip > length - pos) skip = length - pos;
-      pos += skip;
-      continue;
-    }
-
-    // Bytes past this point are the changed extension. Stage them into the
-    // FOTA region.
-    uint32_t fota_offset = fota_offset_for(global_pos, prefix);
-    uint32_t to_write = length - pos;
-
-    // The total number of FOTA bytes we'll occupy, rounded up to the
-    // segment size so we can pad a sub-segment tail with zeros.
-    uint32_t aligned_write =
-        (to_write + FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
-    if (fota_offset + aligned_write > FLASH_FOTA_REGION_END) {
+  // Non-final chunks must be segment-aligned in length; the only exception
+  // is the very last tail (after which ota_end fires). Detect it here and
+  // latch the flag so subsequent calls are rejected.
+  if (payload % FLASH_SEGMENT_SIZE != 0) {
+    if (ota_written + length != ota_total_size) {
       ota_active = false;
-      FAIL(OUT_OF_BOUNDS);
+      FAIL(INVALID_ARGUMENT);
     }
+    ota_unaligned_tail_seen = true;
+  }
 
-    // Erase whichever 4 KB sectors will be touched. The first sector is
-    // erased when we cross its base; trailing sectors are erased as the
-    // write straddles them.
-    if ((fota_offset & (FLASH_SECTOR_SIZE - 1)) == 0) {
-      if (BSP_QSPI_Erase_Safe(fota_offset, FLASH_SECTOR_SIZE) != QSPI_OK) {
-        FAIL(HARDWARE_ERROR);
-      }
+  // Write segment-aligned bytes straight through. We stage via a RAM segment
+  // because the source may be external (e.g. firmware.map proxy into XIP)
+  // and BSP_QSPI_Write_Safe disables XIP for the duration of the call.
+  const uint32_t segment_count = payload / FLASH_SEGMENT_SIZE;
+  uint8_t segment[FLASH_SEGMENT_SIZE];
+  for (uint32_t i = 0; i < segment_count; i++) {
+    memcpy(segment, data + pos, FLASH_SEGMENT_SIZE);
+    if (!ota_ensure_erased_until(fota_offset + FLASH_SEGMENT_SIZE)) {
+      ota_active = false;
+      FAIL(HARDWARE_ERROR);
     }
-    {
-      uint32_t write_end = fota_offset + aligned_write;
-      uint32_t next_sector =
-          (fota_offset + FLASH_SECTOR_SIZE) & ~(FLASH_SECTOR_SIZE - 1);
-      while (next_sector < write_end) {
-        if (BSP_QSPI_Erase_Safe(next_sector, FLASH_SECTOR_SIZE) != QSPI_OK) {
-          FAIL(HARDWARE_ERROR);
-        }
-        next_sector += FLASH_SECTOR_SIZE;
-      }
+    if (BSP_QSPI_Write_Safe(segment, fota_offset, FLASH_SEGMENT_SIZE) != QSPI_OK) {
+      ota_active = false;
+      FAIL(HARDWARE_ERROR);
     }
+    pos += FLASH_SEGMENT_SIZE;
+    fota_offset += FLASH_SEGMENT_SIZE;
+  }
 
-    // BSP_QSPI_Write_Safe disables XIP for the duration of the call, so the
-    // source must live in RAM (the caller's buffer might be an external
-    // byte array backed by XIP flash — e.g. the firmware.map proxy).
-    // Stage one segment at a time through a small stack-only buffer. This
-    // keeps RAM use bounded and also lets us pad the final sub-segment
-    // tail with zeros without touching the caller's data.
-    uint8_t segment[FLASH_SEGMENT_SIZE];
-    while (pos < length) {
-      uint32_t remaining = length - pos;
-      if (remaining >= FLASH_SEGMENT_SIZE) {
-        memcpy(segment, data + pos, FLASH_SEGMENT_SIZE);
-        if (BSP_QSPI_Write_Safe(segment, fota_offset, FLASH_SEGMENT_SIZE)
-            != QSPI_OK) {
-          FAIL(HARDWARE_ERROR);
-        }
-        fota_offset += FLASH_SEGMENT_SIZE;
-        pos += FLASH_SEGMENT_SIZE;
-      } else {
-        // Final sub-segment tail: pad with zeros into a clean segment.
-        memset(segment, 0, FLASH_SEGMENT_SIZE);
-        memcpy(segment, data + pos, remaining);
-        if (BSP_QSPI_Write_Safe(segment, fota_offset, FLASH_SEGMENT_SIZE)
-            != QSPI_OK) {
-          FAIL(HARDWARE_ERROR);
-        }
-        pos += remaining;
-        // Stop the inner loop; the outer while exits naturally.
-      }
+  // Sub-segment tail (only reachable on the very last call): zero-pad and
+  // write as a final segment.
+  const uint32_t tail = length - pos;
+  if (tail > 0) {
+    memset(segment, 0, FLASH_SEGMENT_SIZE);
+    memcpy(segment, data + pos, tail);
+    if (!ota_ensure_erased_until(fota_offset + FLASH_SEGMENT_SIZE)) {
+      ota_active = false;
+      FAIL(HARDWARE_ERROR);
+    }
+    if (BSP_QSPI_Write_Safe(segment, fota_offset, FLASH_SEGMENT_SIZE) != QSPI_OK) {
+      ota_active = false;
+      FAIL(HARDWARE_ERROR);
     }
   }
 

@@ -2667,16 +2667,19 @@ PRIMITIVE(firmware_map) {
   uint8* start = reinterpret_cast<uint8*>(AP_FLASH_LOAD_ADDR);
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   if (extension == null) FAIL(ERROR);
-  // Compute end from config data (which follows the used area on EC618).
-  // Add 32 bytes for the trailing SHA256 checksum.
+  // EC618 extension layout written by tools/firmware.toit:
+  //   [header (20B)] [image_table] [images]            <- "used" area
+  //   [config_size (4B)] [config_encoded]              <- 4-byte size + payload
+  //   [sha256 trailer (32B)]                           <- whole-image digest
+  // The 4-byte config_size field is always present even when the
+  // config payload is empty, so we add it unconditionally.
   static const int SHA256_SIZE = 32;
   List<uint8> config = extension->config();
-  uword end;
-  if (config.is_empty()) {
-    end = reinterpret_cast<uword>(extension) + extension->total_size() + SHA256_SIZE;
-  } else {
-    end = reinterpret_cast<uword>(config.data()) + config.length() + SHA256_SIZE;
-  }
+  uword end = reinterpret_cast<uword>(extension)
+            + extension->total_size()      // header + image_table + images
+            + sizeof(uint32)               // config_size field
+            + config.length()              // config payload (0 when empty)
+            + SHA256_SIZE;                 // SHA-256 trailer
   uword size = end - reinterpret_cast<uword>(start);
   proxy->set_external_address(size, start);
   return proxy;
