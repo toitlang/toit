@@ -116,8 +116,8 @@ test tester/GoldTester:
     // Download the registry.
     tester.run [["pkg", "list"]]
     registry-cache-path := tester.registry-cache-path "git-pkgs"
-    expect (file.is-directory registry-cache-path)
-    file.write-contents --path="$registry-cache-path/dummy" "foobar"
+    expect (file.is-file registry-cache-path)
+    file.write-contents --path=registry-cache-path "" // Corrupt the cache.
     if i == 0:
       tester.gold "80-sync-clear-cache" [
         ["pkg", "sync", "--clear-cache"],
@@ -130,7 +130,8 @@ test tester/GoldTester:
         ["// Should simply list the packages."],
         ["pkg", "list"],
       ]
-    expect-not (file.is-file "$registry-cache-path/dummy")
+    new-contents := file.read-contents registry-cache-path
+    expect-not new-contents.is-empty
 
   tester.gold "99-registry-sync-bad" [
     ["pkg", "registry", "sync", "bad"],
