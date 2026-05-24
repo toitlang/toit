@@ -17,3 +17,6 @@ dependencies:
   http:
     url: github.com/toitlang/pkg-http
     version: ^2.12.0
+  lockfile:
+    url: github.com/toitware/toit-lockfile
+    version: ^1.0.0

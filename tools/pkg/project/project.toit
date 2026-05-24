@@ -19,6 +19,7 @@ import cli
 import cli.cache show Cache
 import encoding.json
 import encoding.yaml
+import lockfile as fs-lock
 import system
 import fs
 
@@ -67,8 +68,10 @@ class Project:
   specification/ProjectSpecification? := null
   lock-file/LockFile? := null
   ui_/cli.Ui
+  owns-fs-lock_/bool := false
 
   static PACKAGES-CACHE ::= ".packages"
+  static FS-LOCK ::= ".lock"
   static CONTENTS-JSON ::= "contents.json"
   static README-MD ::= "README.md"
 
@@ -111,6 +114,17 @@ class Project:
           ui_.emit --warning "The following prefixes are only in package.yaml: $(only-in-specification.join ", ")"
         ui_.abort "The package.yaml file and package.lock file are not in sync."
 
+  with-package-cache-lock_ [block]:
+    assert: not owns-fs-lock_
+    ensure-packages-cache-dir_
+    fs-lock.with-lock packages-fs-lock-path_:
+      owns-fs-lock_ = true
+      try:
+        token := Object
+        block.call token
+      finally:
+        owns-fs-lock_ = false
+
   root -> string:
     return config.root
 
@@ -130,6 +144,21 @@ class Project:
   Returns a list of the installed versions.
   */
   install-remote --prefixes/List --remotes/List --constraints/List --registries/Registries -> List:
+    with-package-cache-lock_: | fs-lock-token |
+      return install-remote_
+          --prefixes=prefixes
+          --remotes=remotes
+          --constraints=constraints
+          --registries=registries
+          --fs-lock-token=fs-lock-token
+    unreachable
+
+  install-remote_ -> List
+      --prefixes/List
+      --remotes/List
+      --constraints/List
+      --registries/Registries
+      --fs-lock-token/Object:
     assert: prefixes.size == remotes.size
     assert: prefixes.size == constraints.size
     remotes.size.repeat: | i/int |
@@ -138,7 +167,10 @@ class Project:
       constraint/Constraint? := constraints[i]
       constraint-str := constraint ? constraints[i].to-string : "^$(same-major-version_ remote.version)"
       specification.add-remote-dependency --prefix=prefix --url=remote.url --constraint=constraint-str
-    solution := solve-and-download_ --no-update-everything --registries=registries
+    solution := solve-and-download_
+        --no-update-everything
+        --registries=registries
+        --fs-lock-token=fs-lock-token
     specification.update-remote-dependencies solution
 
     save
@@ -164,10 +196,14 @@ class Project:
     return result
 
   install-local prefix/string path/string --registries/Registries -> none:
-    specification.add-local-dependency prefix path
-    solution := solve-and-download_ --no-update-everything --registries=registries
-    specification.update-remote-dependencies solution
-    save
+    with-package-cache-lock_: | fs-lock-token |
+      specification.add-local-dependency prefix path
+      solution := solve-and-download_
+          --no-update-everything
+          --registries=registries
+          --fs-lock-token=fs-lock-token
+      specification.update-remote-dependencies solution
+      save
 
   uninstall prefix/string -> none:
     specification.remove-dependency prefix
@@ -175,18 +211,29 @@ class Project:
     save
 
   update --registries/Registries -> none:
-    solution := solve-and-download_ --update-everything --registries=registries
-    specification.update-remote-dependencies solution
-    save
+    with-package-cache-lock_: | fs-lock-token |
+      solution := solve-and-download_
+          --update-everything
+          --registries=registries
+          --fs-lock-token=fs-lock-token
+      specification.update-remote-dependencies solution
+      save
 
   install --recompute/bool --registries/Registries -> none:
-    if not recompute and lock-file:
-      lock-file.install
+    if not recompute and lock-file and lock-file.is-downloaded:
       return
 
-    solution := solve-and-download_ --no-update-everything --registries=registries
-    specification.update-remote-dependencies solution
-    save
+    with-package-cache-lock_: | fs-lock-token |
+      if not recompute and lock-file:
+        lock-file.install --fs-lock-token=fs-lock-token
+        return
+
+      solution := solve-and-download_
+          --no-update-everything
+          --registries=registries
+          --fs-lock-token=fs-lock-token
+      specification.update-remote-dependencies solution
+      save
 
   clean-dir_ path/string to-keep/Map -> none:
     stream := directory.DirectoryStream path
@@ -207,6 +254,10 @@ class Project:
       stream.close
 
   clean -> none:
+    with-package-cache-lock_: | fs-lock-token |
+      clean_ --fs-lock-token=fs-lock-token
+
+  clean_ --fs-lock-token/Object -> none:
     contents := cached-repository-contents_
     repository-packages := lock-file.repository-packages
 
@@ -224,7 +275,7 @@ class Project:
 
     // Write the new contents.
     // Even if we fail to delete some directory, this information should still be valid.
-    write-cached-repository-contents_ new-contents
+    write-cached-repository-contents_ new-contents --fs-lock-token=fs-lock-token
 
     to-keep := {:}
     to-keep-paths.do: | path/string |
@@ -234,11 +285,15 @@ class Project:
         parent = parent.get segment --init=(: {:})
     to-keep[README-MD] = {:}
     to-keep[CONTENTS-JSON] = {:}
+    to-keep[FS-LOCK] = {:}
 
     clean-dir_ "$packages-cache-dir" to-keep
 
   packages-cache-dir -> string:
     return "$config.root/$PACKAGES-CACHE"
+
+  packages-fs-lock-path_ -> string:
+    return "$config.root/$PACKAGES-CACHE/$FS-LOCK"
 
   ensure-packages-cache-dir_ -> none:
     dir := packages-cache-dir
@@ -268,7 +323,10 @@ class Project:
 
   Updates the lock-file with the solution, but does not save it.
   */
-  solve-and-download_ --update-everything/bool --registries/Registries -> Solution:
+  solve-and-download_ -> Solution
+      --update-everything/bool
+      --registries/Registries
+      --fs-lock-token/Object:
     dependencies := specification.collect-registry-dependencies
     min-sdk := specification.compute-min-sdk-version
     solver := Solver registries --sdk-version=sdk-version --ui=ui_
@@ -280,16 +338,25 @@ class Project:
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:
       ui_.abort "Unable to resolve dependencies"
-    ensure-downloaded_ --solution=solution --registries=registries
+    ensure-downloaded_
+        --solution=solution
+        --registries=registries
+        --fs-lock-token=fs-lock-token
     builder := LockFileBuilder --solution=solution --project=this --ui=ui_
     lock-file = builder.build --registries=registries
     return solution
 
-  ensure-downloaded_ --solution/Solution --registries/Registries -> none:
+  ensure-downloaded_ -> none
+      --solution/Solution
+      --registries/Registries
+      --fs-lock-token/Object:
     cached-contents := cached-repository-contents_
     solution.packages.do: | url/string versions/List |
       versions.do:
-        cached-contents = ensure-downloaded url it --cached-contents=cached-contents --registries=registries
+        cached-contents = ensure-downloaded url it
+            --cached-contents=cached-contents
+            --registries=registries
+            --fs-lock-token=fs-lock-token
 
   /** The directory within the cache where the given package is cached. */
   relative-cached-repository-dir_ url/string version/SemanticVersion -> string:
@@ -307,30 +374,45 @@ class Project:
       return {:}
     return json.decode (file.read-contents contents-path)
 
-  write-cached-repository-contents_ contents/Map -> none:
+  write-cached-repository-contents_ contents/Map --fs-lock-token/Object -> none:
     contents-path := "$packages-cache-dir/$CONTENTS-JSON"
     file.write-contents (json.encode contents) --path=contents-path
 
-  ensure-downloaded url/string version/SemanticVersion --cached-contents/Map?=null --registries/Registries -> Map:
+  is-downloaded url/string version/SemanticVersion --hash/string -> bool:
+    // TODO(floitsch): don't read the contents every time.
+    cached-contents := cached-repository-contents_
+    version-string := version.to-string
+    return cached-contents.contains url and
+        cached-contents[url].contains version-string and
+        file.is-directory "$packages-cache-dir/$cached-contents[url][version-string]"
+
+  ensure-downloaded url/string version/SemanticVersion -> Map
+      --cached-contents/Map?=null
+      --registries/Registries
+      --fs-lock-token/Object:
     description := registries.retrieve-description url version
     hash := description.ref-hash
     return ensure-downloaded url version
       --cached-contents=cached-contents
       --hash=hash
+      --fs-lock-token=fs-lock-token
 
   ensure-downloaded url/string version/SemanticVersion -> Map
       --cached-contents/Map?=null
-      --hash/string:
+      --hash/string
+      --fs-lock-token/Object:
     e := catch:
       return ensure-downloaded_ url version
           --cached-contents=cached-contents
           --hash=hash
+          --fs-lock-token=fs-lock-token
     ui_.abort "Failed to download package '$url@$version': $e"
     unreachable
 
   ensure-downloaded_ url/string version/SemanticVersion -> Map
       --cached-contents/Map?
-      --hash/string:
+      --hash/string
+      --fs-lock-token/Object:
     if not cached-contents: cached-contents = cached-repository-contents_
     version-string := version.to-string
     if cached-contents.contains url and
@@ -351,14 +433,22 @@ class Project:
         if not version-hash:
           throw "Tag v$version not found for package '$url'"
         hash = version-hash
-      download_ url version --destination=cached-repository-dir --hash=hash
+      download_ url version
+          --destination=cached-repository-dir
+          --hash=hash
+          --fs-lock-token=fs-lock-token
       file.write-contents hash --path=repo-toit-git-path
       make-read-only_ --recursive cached-repository-dir
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
-    write-cached-repository-contents_ cached-contents
+    write-cached-repository-contents_ cached-contents --fs-lock-token=fs-lock-token
     return cached-contents
 
-  download_ url/string version/SemanticVersion --destination/string --hash/string -> none:
+  download_  -> none
+      url/string
+      version/SemanticVersion
+      --destination/string
+      --hash/string
+      --fs-lock-token/Object:
     ui_.emit --verbose "Downloading package $url@$version."
     ensure-packages-cache-dir_
     directory.mkdir --recursive destination
