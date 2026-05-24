@@ -1,0 +1,44 @@
+OK
+[pkg, registry, add, --local, test-reg, registry]
+==================
+OK
+[pkg, list, --verbose]
+test-reg (<[*WORKING-DIR*]>/registry (local))
+  bar:
+    description: Description of bar. bar-desc.
+    version: 2.0.1
+    license: MIT
+    url: localhost:<[*PORT*]>/pkg/bar
+    hash: <[*HASH*]>
+  
+  foo:
+    description: Description of foo. foo-desc.
+    version: 1.1.0
+    url: localhost:<[*PORT*]>/pkg/foo
+    hash: <[*HASH*]>
+    license: MIT
+  
+  foo:
+    description: Description of foo. foo-desc.
+    version: 1.2.3
+    url: localhost:<[*PORT*]>/pkg/foo
+    hash: <[*HASH*]>
+    license: MIT
+  
+  sub:
+    description: Description of sub. sub-desc
+    version: 2.0.0
+    license: MIT
+    url: localhost:<[*PORT*]>/pkg/sub
+    hash: <[*HASH*]>
+  
+  sub:
+    description: Description of sub. sub-desc
+    version: 3.1.4
+    license: MIT
+    url: localhost:<[*PORT*]>/pkg/sub
+    hash: <[*HASH*]>
+  
+==================
+OK
+[pkg, init]
