@@ -21,6 +21,7 @@
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
+#include "sha.h"
 
 extern "C" {
   #include "flash_rt.h"
@@ -37,8 +38,11 @@ namespace toit {
 // firmware. Only the extension data (snapshots, config) changes. The OTA
 // skip the prefix and write only the changed portion.
 
-// Global flag checked by toit_ec618.cc after VM shutdown.
+// Set by ota_end after successful SHA-256 verification, consumed by the
+// post-shutdown commit step in toit_ec618.cc.
 bool ota_updated = false;
+uint32_t ota_commit_prefix_size = 0;     // Active-image offset to write into.
+uint32_t ota_commit_extension_size = 0;  // Bytes to copy out of FOTA region.
 
 static bool ota_active = false;
 static uint32_t ota_fota_offset = 0;    // Current write position in FOTA region.
@@ -131,15 +135,81 @@ PRIMITIVE(ota_write) {
 
 PRIMITIVE(ota_end) {
   ARGS(int, size, Object, expected);
-  USE(expected);
   if (!ota_active) FAIL(ALREADY_CLOSED);
 
   ota_active = false;
 
-  if (size > 0) {
-    // Signal to toit_ec618.cc that an OTA update was staged.
-    ota_updated = true;
+  if (size <= 0) {
+    // Caller is just clearing OTA state without committing.
+    return process->null_object();
   }
+
+  // The Toit firmware writer reports the total image size it produced.
+  // Anything other than the size it announced via ota_begin would indicate
+  // a truncated upload.
+  if (static_cast<uint32_t>(size) != ota_total_size) FAIL(INVALID_ARGUMENT);
+  if (ota_total_size <= ota_prefix_size + Sha::HASH_LENGTH_256) {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  // Image layout: [prefix | extension | sha256(image_without_trailer)].
+  // The extension landed in FOTA at FLASH_FOTA_REGION_START; the prefix is
+  // still in the active image's XIP mapping.
+  uint32_t extension_size = ota_total_size - ota_prefix_size;          // incl. trailer
+  uint32_t extension_data_size = extension_size - Sha::HASH_LENGTH_256;
+
+  Blob expected_checksum;
+  bool has_expected = expected->byte_content(
+      process->program(), &expected_checksum, STRINGS_OR_BYTE_ARRAYS);
+  if (has_expected && expected_checksum.length() != Sha::HASH_LENGTH_256) {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  Sha sha(null, 256);
+
+  // Hash the prefix straight out of XIP — it still holds the running image.
+  // AP_FLASH_LOAD_ADDR is the XIP-mapped base.
+  const uint8_t* prefix_ptr = reinterpret_cast<const uint8_t*>(AP_FLASH_LOAD_ADDR);
+  sha.add(prefix_ptr, ota_prefix_size);
+
+  // Hash the staged extension via a RAM buffer. BSP_QSPI_Read_Safe disables
+  // XIP for the duration of the read, so the destination must be in RAM.
+  static const uint32_t HASH_BUF_SIZE = 1024;
+  uint8_t hash_buf[HASH_BUF_SIZE];
+  for (uint32_t off = 0; off < extension_data_size; off += HASH_BUF_SIZE) {
+    uint32_t chunk = extension_data_size - off;
+    if (chunk > HASH_BUF_SIZE) chunk = HASH_BUF_SIZE;
+    if (BSP_QSPI_Read_Safe(hash_buf, FLASH_FOTA_REGION_START + off, chunk) != QSPI_OK) {
+      FAIL(HARDWARE_ERROR);
+    }
+    sha.add(hash_buf, chunk);
+  }
+
+  uint8_t computed[Sha::HASH_LENGTH_256];
+  sha.get(computed);
+
+  uint8_t stored[Sha::HASH_LENGTH_256];
+  if (BSP_QSPI_Read_Safe(stored,
+                         FLASH_FOTA_REGION_START + extension_data_size,
+                         Sha::HASH_LENGTH_256) != QSPI_OK) {
+    FAIL(HARDWARE_ERROR);
+  }
+  int diff = 0;
+  for (int i = 0; i < Sha::HASH_LENGTH_256; i++) diff |= computed[i] ^ stored[i];
+  if (diff != 0) FAIL(INVALID_ARGUMENT);
+
+  if (has_expected) {
+    diff = 0;
+    for (int i = 0; i < Sha::HASH_LENGTH_256; i++) {
+      diff |= computed[i] ^ expected_checksum.address()[i];
+    }
+    if (diff != 0) FAIL(INVALID_ARGUMENT);
+  }
+
+  // All checks passed — hand off to the post-shutdown commit step.
+  ota_commit_prefix_size = ota_prefix_size;
+  ota_commit_extension_size = extension_size;
+  ota_updated = true;
 
   return process->null_object();
 }
