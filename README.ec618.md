@@ -93,3 +93,38 @@ Completed:
 - Toit system extensions: boot, cellular, firmware, storage (section 20)
 - Firmware tooling: envelope creation, extraction, binpkg format (section 23)
 - Build pipeline: `make ec618` produces a ready-to-flash binpkg
+- Phase 2 of the dual-slot OTA design (`docs/ota-dual-slot-plan.md`):
+  PLAT jump table prototype — every VM→PLAT call is routed through a
+  flash-resident `g_plat_jt[]` via `--wrap` + naked Thumb-2 stubs.
+
+## PLAT jump-table regeneration
+
+The list of PLAT symbols the VM reaches is captured in
+[tools/plat_jt_ldflags.lua](tools/plat_jt_ldflags.lua). If you change
+the VM in a way that adds or removes a PLAT call, regenerate the
+header, source, and xmake.lua block with:
+
+```sh
+# 1. Snapshot the current VM->PLAT call set.
+python3 tools/extract_plat_jt_symbols.py \
+    third_party/luatos-soc-ec618/build/toit/toit.elf \
+    third_party/luatos-soc-ec618/build/toit/toit_debug.map \
+    --strip-wrap > tools/plat_jt_ldflags.lua.symbols
+
+# 2. Regenerate the table + stubs + xmake.lua marker block.
+python3 tools/gen_plat_jt.py \
+    tools/plat_jt_ldflags.lua.symbols \
+    third_party/luatos-soc-ec618/project/toit/inc/plat_jt.h \
+    third_party/luatos-soc-ec618/project/toit/src/plat_jt.c \
+    tools/plat_jt_ldflags.lua \
+    third_party/luatos-soc-ec618/xmake.lua
+
+# 3. Rebuild.
+make ec618
+```
+
+The extractor must be run against a `toit.elf` that was built *without*
+new wraps (so the BL targets are the underlying PLAT symbols, not
+already-rewritten `__wrap_*` entries). The `--strip-wrap` flag is a
+convenience for spot-checking; the canonical workflow is to take the
+snapshot before adding any new entries.
