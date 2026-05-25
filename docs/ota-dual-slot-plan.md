@@ -468,3 +468,80 @@ typical VM change).
 - Firmware service: `system/extensions/ec618/firmware.toit`
 - Linker map: `third_party/luatos-soc-ec618/build/toit/toit_debug.map`
 - Porting guide OTA section: `docs/porting-guide.md` section 19
+
+## Implementation Status (2026-05-25)
+
+### Phase 2 prototype landed: every VM→PLAT call goes through a jump table
+
+The "jump table / PLT stubs" half of Option B is implemented end-to-end
+for the current binary and validated on hardware.
+
+**What ships:**
+- `tools/gen_plat_jt.py` — generator that takes a list of PLAT symbols
+  the VM reaches, and emits matching jump-table data, per-symbol stubs,
+  and `--wrap=` ldflags. It also rewrites the marker block in
+  `third_party/luatos-soc-ec618/xmake.lua`.
+- `tools/plat_jt_ldflags.lua` — generated symbol list, version-controlled
+  so the build is reproducible without re-running the analysis.
+- `third_party/luatos-soc-ec618/project/toit/inc/plat_jt.h` — generated
+  slot enum + `extern const g_plat_jt[]`.
+- `third_party/luatos-soc-ec618/project/toit/src/plat_jt.c` — generated
+  jump-table contents + per-symbol naked-Thumb-2 stubs.
+
+**How it works:**
+- `--wrap=<sym>` on every PLAT symbol the VM reaches. The linker rewrites
+  the VM's `bl <sym>` into `bl __wrap_<sym>`. The original symbol stays
+  reachable to PLAT itself as `__real_<sym>`.
+- Each `__wrap_<sym>` is a 16-byte naked Thumb-2 stub: `movw/movt` to
+  load `&g_plat_jt[slot]`, `ldr` the function pointer, `bx` tail-call.
+  Type-agnostic: r0–r3 + stack are already laid out by the caller, so
+  the tail-call preserves the original signature exactly.
+- `g_plat_jt[]` is `const` so it lives in `.rodata` (flash) at a fixed
+  link-time address. That matters because PLAT startup calls `memcpy`
+  *before* `.data` is copied to RAM — a RAM-resident jump table would
+  crash on the very first instruction.
+- A volatile load in the wrapper would defeat constant-folding for the
+  pointer-followed-then-called pattern in C; the asm stubs sidestep that
+  concern entirely.
+
+**What was validated on the EC618:**
+- 169 unique PLAT symbols routed through `g_plat_jt[]` — 3769 `bl`
+  call-sites across both PLAT and VM (PLAT's own libc calls get wrapped
+  too, which is harmless and saves a duplicate code path).
+- Text grew by ~3 KB total (169 × 16-byte stub + 676-byte table).
+- Toit boots cleanly, `BSP_CustomInit` runs, the system reaches the
+  `[toit] INFO: running on EC618 @ 204MHz` print. Watchdog still trips
+  after the boot prints because no Toit container is installed in the
+  envelope used for testing — same as before the prototype.
+
+**Drift from this doc's original analysis:**
+The original "207 unique / 1656 BL instructions" came from an earlier
+snapshot. Re-running the analysis on the current `toit.elf` gives 169
+unique / 915 calls. Reproduce with:
+```
+arm-none-eabi-objdump -d -j .text third_party/luatos-soc-ec618/build/toit/toit.elf | \
+    awk '/\tbl\t/ { ... }'  # see tools/gen_plat_jt.py development notes
+```
+The categorisation also shifted: `swLogPrintf` is no longer called from
+VM in the current build, allocator + libc string ops + iprintf dominate.
+
+**What is *not* yet done (Phase 1, 3, 4, 5):**
+- Linker script split: PLAT and VM still occupy a single contiguous
+  `.text`. `g_plat_jt` lives at whatever address the linker picks; the
+  production design wants it at a fixed address so VM slot images can
+  be linked independently of PLAT layout.
+- Dual VM slots: still a single VM image. No A/B switching.
+- Slot manager: `toit_main.c` still has the unconditional `toit_start()`
+  call. No active-slot byte in the flash registry.
+- OTA tooling: ectool-based flash still ships the whole image. No
+  VM-only OTA path.
+- Symbol-list regeneration: today the list is captured by a one-off
+  analysis. A `make` target (or CI step) should run the objdump+awk
+  pipeline so the symbol list never gets stale relative to the VM.
+
+**Next concrete step:** decide whether to keep the wrap approach for
+production (it's global — wraps PLAT's own calls too) or switch to a
+post-link `objcopy --redefine-syms` pass that touches only VM objects.
+The wrap approach is simpler and the runtime cost is negligible; the
+objcopy approach gives a cleaner factoring once we split the linker
+script.
