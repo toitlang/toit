@@ -545,3 +545,190 @@ post-link `objcopy --redefine-syms` pass that touches only VM objects.
 The wrap approach is simpler and the runtime cost is negligible; the
 objcopy approach gives a cleaner factoring once we split the linker
 script.
+
+### Phases 1, 3, 4 landed (2026-05-27, commit `dd78fe4e` + submodule `52797be`)
+
+Flash layout actually shipped (XIP addresses):
+- `0x848000-0x990000` PLAT `.text` (~1.27 MB used, ~50 KB headroom)
+- `0x990000-0x991000` `.jt_data` (4 KB; holds `g_plat_jt[]`)
+- `0x991000-0x9F1000` `.vm_a` (384 KB, slot A)
+- `0x9F1000-0xA51000` `.vm_b` (384 KB, slot B)
+- `0xA51000-0xA52000` `.slot_marker` (4 KB; one byte: `'A'` or `'B'`)
+- `0xA52000-0xAA4000` extension (~328 KB)
+
+Linker script (`PLAT/core/ld/ec618_0h00_flash.c`):
+- `.text` excludes `libtoit_vm.a / libmbedtls*.a` so PLAT and VM
+  occupy disjoint flash ranges.
+- `.vm_a` / `.vm_b` are sibling sections placed at fixed XIP
+  addresses (`addr :` prefix, not `>FLASH_AREA` with a counter —
+  the latter just stacks slots back-to-back at the end of PLAT).
+- A build-time `-DTOIT_VM_SLOT_B` flips which slot the VM lands in;
+  the unselected slot keeps its base/end symbols but emits no
+  bytes, leaving a sector-aligned hole the splice step fills.
+- VM-side `.init_array` is captured into the slot
+  (`__vm_init_array_start/end`); PLAT-side static initialisers stay
+  in `.load_dram_shared` so PLAT's own startup is unchanged.
+
+Slot dispatcher (`project/toit/src/toit_main.c`):
+- Reads `.slot_marker` (defaults to `'A'` on a fresh build).
+- Each slot's first word is a `.vm_entry` function pointer
+  (defined in `src/toit_ec618.cc`); the linker emits each slot's
+  own `toit_start` address there. The dispatcher tail-calls
+  through it — no fixed-offset entry symbol needed inside the
+  slot.
+
+Build pipeline:
+1. `make ec618` — slot A link pass; envelope create patches slot
+   A's `DromData` with the extension XIP address + uuid.
+2. `toit … extract --format binary -o ap_a_patched.bin`
+3. `TOIT_VM_SLOT_B=1 xmake build` from
+   `third_party/luatos-soc-ec618` — slot B link pass, raw output.
+4. `tools/splice_dual_slot.py --slot-a ap_a_patched.bin
+   --slot-b out/toit/ap.bin --output ap_dual.bin --active-slot A`
+   — overwrites the slot-B file region with the second link pass
+   and copies slot A's patched `DromData` into slot B's so both
+   slots resolve the embedded program at the same XIP address.
+
+Validated on `quirky-plenty` (`/dev/ttyUSB1`):
+- Active byte `'A'` → `[toit] INFO: booting VM slot A` →
+  slot A's `toit_start` runs → `running on EC618 @ 204MHz`.
+- Active byte `'B'` → same flow for slot B
+  (`toit_start` at `0xa12bc8` vs slot A's `0x9b2bc8`).
+
+Drift from the original layout in this doc:
+- JT origin bumped from `0x150000` → `0x990000` to sit just past
+  PLAT in the AP image's XIP range. The "0x15…" addresses in the
+  original layout sketch were illustrative.
+- VM slots placed at `0x991000` / `0x9F1000`, not `0x150400` /
+  `0x1B0400` — same reason.
+
+### Phase 3 footnote: the two link passes are byte-identical outside the slot
+
+Comparing the slot-A region from the slot-A build against the
+slot-B region from the slot-B build (apples-to-apples, same 384 KB):
+
+| Encoding | Count | Slot-dependent? |
+|---|---|---|
+| `BL` within slot (VM→VM) | 4,723 | No (both ends move) |
+| `BL` to PLAT `__wrap_*` stubs | 915 | **Yes** |
+| `movw` standalone (small constants) | 113 | No (16-bit immediates only) |
+| `movt` | 0 | — |
+| `movw/movt` address-loading pairs | 0 | — |
+
+Total diff: ~2,866 bytes out of 393,216 (0.73 %). Of those:
+- ~1,885 are pure 32-bit absolute pointers
+  (`slot_A_value + 0x60000 == slot_B_value`).
+- ~970 are the BL encoding deltas from those 915 wrappers.
+- A handful are PLAT-side static-const tables in
+  `.load_dram_shared` that hold pointers to VM symbols; these
+  aren't load-bearing for slot dispatch (they're vtable-like
+  references the active VM never reads from the wrong slot), so
+  the splice keeps PLAT from the slot-A build for the prototype.
+
+The current splice approach ships *both* link passes inside the
+same flashed image, which is fine for initial flashing but
+doesn't address how a future OTA delivers a new VM without
+knowing the device's active slot.
+
+## Phase 5 design: relocatable OTA payload
+
+The OTA path can't reasonably ship two pre-linked images per
+release (storage doubles, transport doubles, server has to know
+which slot the device is on). The chosen design is a
+**single relocatable image** the device patches as it writes.
+
+### Step 1 — kill the BL-to-PLAT relocations
+
+Move `plat_jt.o` (the `__wrap_*` stubs) from `libtoit.a`/`.text`
+into each slot section. One-line addition in
+`PLAT/core/ld/ec618_0h00_flash.c`:
+
+```ld
+.vm_a TOIT_VM_A_ORIGIN :
+{
+    __vm_a_start = .;
+    KEEP(*(.vm_entry))
+    *libtoit.a:plat_jt.o(.text*)        /* new */
+    /* … existing __vm_init_array_* + libtoit_vm.a / libmbedtls.a … */
+}
+```
+Mirror in `.vm_b`. Each slot now carries its own copy of the 169
+stubs (~2 KB per slot, ~4 KB total). The wrappers' `movw/movt`
+operands still reference the single `g_plat_jt[]` at the fixed
+`.jt_data` address, so the duplicated stub bytes are
+byte-identical between the two slots; only the wrappers' *base
+addresses* differ. The 915 VM→PLAT BLs now land on slot-local
+stubs and their encoded offsets become slot-independent. After
+this change the only slot-dependent bytes left in the slot are
+the ~1,885 absolute 32-bit pointers.
+
+### Step 2 — magic-prefix pointer rewriting
+
+Link the VM at a deliberately-chosen "magic" base address chosen
+so that **no other 32-bit word in the image has the same upper
+13 bits**. The slot is 384 KB = 0x60000 bytes, so each
+slot-local pointer occupies the lower 19 bits and we have 13
+bits "above" to use as a marker. There are 2¹³ = 8,192
+candidate prefixes and the VM is ~64 K 32-bit words — easy to
+find a safe one because populated upper-13-bit values cluster
+heavily around real address regions (XIP, RAM) and small
+constants.
+
+Build-time tool:
+1. Tentatively link the VM at slot A's address.
+2. Histogram the upper 13 bits of every 32-bit word in the
+   slot region.
+3. Pick the smallest unused 13-bit prefix `P`.
+4. Re-link at `B = P << 19`.
+5. Ship: image bytes + `B` (4 bytes of metadata).
+
+Device-side patcher (called from the OTA write path):
+```c
+for each 32-bit word w at offset o in the OTA stream:
+    if ((w >> 19) == P) {
+        w = dest_slot_base | (w & 0x7FFFF);
+    }
+    write w to dest_slot + o
+```
+Bandwidth overhead: 4 bytes per release. Patcher overhead: one
+extra load + compare + conditional rewrite per 4 bytes of
+image. The shipped OTA image is *not* directly runnable — its
+pointers live in the fake address range — but it doesn't need
+to be; the device only ever sees the patched version.
+
+### Step 3 — UART transport (current rig)
+
+`quirky-plenty` exposes the EC618's UART1 on `/dev/ttyUSB1`,
+which is also the print UART. Either:
+- relax the `ALREADY_IN_USE` check in
+  `src/resources/uart_ec618.cc:355` for this UART, or
+- set `CONFIG_TOIT_EC618_PRINT_UART=0` while the OTA container
+  is the only running app.
+
+Toit-side: a small container reads `<header><image bytes>` off
+UART1 (header carries `B` and the image size + SHA-256),
+streams chunks through the magic-prefix rewriter, writes to the
+inactive slot via new `slot_write` / `slot_erase` primitives
+(both backed by `BSP_QSPI_*_Safe` inside the existing
+`AllowFirmwareModifications` guard — see
+[[feedback_ec618_bsp_qspi_hang_on_reject]]), verifies SHA, then
+rewrites `.slot_marker` and reboots.
+
+### Step 4 — host transport
+
+Host script reads the relocatable image + `B` from the build
+output and streams them down `/dev/ttyUSB1` with a tiny framing
+protocol (length-prefixed; SHA-256 trailer for the device to
+verify against). Same machine that runs `jag run` for the
+ESP32-C6 power/boot strap can run this.
+
+### What we are *not* building
+
+- `-mword-relocations` on the VM build. Verified that GCC isn't
+  using `movw/movt` for any 32-bit address loads in the current
+  VM (0 `movt` instructions in the slot disassembly), so we
+  don't need to force literal-pool loads.
+- Full PIC. With the BL stubs moved into the slot and the
+  pointer relocation handled by the magic-prefix scan, the
+  remaining cost is roughly one prefix check per 4 bytes of OTA
+  payload — already acceptable.
