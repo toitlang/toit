@@ -54,7 +54,10 @@
 // have not found a way to kill it from software. A warm reset is clean.
 // Pick _ID=0 or _ID=2, or set CONFIG_TOIT_EC618_PRINT_UART=0, to avoid.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_ID
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
+// Temporarily 1 (UART1) on this rig so quirky-plenty's /dev/ttyUSB1 sees
+// Toit print output during dual-slot OTA bring-up. Revert to 0 once the
+// OTA path stops needing the same cable for image transfer.
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.

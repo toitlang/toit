@@ -42,9 +42,13 @@ extern "C" {
   // release the PS stack's sleep votes. main=3 is LUAT_PM_POWER_MODE_POWER_SAVER.
   int soc_power_mode(uint8_t main, uint8_t sub);
 
-  // C++ static initializers (captured in linker script).
-  extern void (*__init_array_start[])(void);
-  extern void (*__init_array_end[])(void);
+  // VM-side C++ static initializers. The linker script splits the
+  // init_array between PLAT (.load_dram_shared, used by PLAT startup)
+  // and the active VM slot. Each slot's run_static_initializers()
+  // iterates only its own slot's init_array, so PLAT does not have to
+  // know which slot is active.
+  extern void (*__vm_init_array_start[])(void);
+  extern void (*__vm_init_array_end[])(void);
 }
 
 #include "embedded_data.h"
@@ -162,7 +166,7 @@ static bool perform_ota_commit() {
 }
 
 static void run_static_initializers() {
-  for (void (**fn)(void) = __init_array_start; fn < __init_array_end; fn++) {
+  for (void (**fn)(void) = __vm_init_array_start; fn < __vm_init_array_end; fn++) {
     (*fn)();
   }
 }
@@ -405,5 +409,14 @@ static void start() {
 extern "C" void toit_start() {
   toit::start();
 }
+
+// Slot entry pointer. Lives at the very start of the VM slot (.vm_entry
+// is placed first inside .vm_a / .vm_b by the linker script). The
+// PLAT-side dispatcher in toit_main.c reads this word from the active
+// slot's base address and tail-calls through it. The linker handles the
+// Thumb-bit on the relocation for us, so the value the dispatcher reads
+// is directly usable as a function pointer.
+extern "C" __attribute__((section(".vm_entry"), used))
+void (* const toit_vm_entry)(void) = &toit_start;
 
 #endif  // TOIT_EC618

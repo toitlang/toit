@@ -58,6 +58,10 @@ SOURCE_TEMPLATE = """\
 
 {externs}
 
+// Placed at a fixed flash address (see ec618_0h00_flash.c, .jt_data
+// section) so dual-linked VM slots resolve to the same g_plat_jt[]
+// regardless of which slot's image they were linked from.
+__attribute__((section(".jt_data"), used))
 void *const g_plat_jt[PLAT_JT_COUNT] = {{
 {table_init}
 }};
