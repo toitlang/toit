@@ -732,3 +732,102 @@ ESP32-C6 power/boot strap can run this.
   pointer relocation handled by the magic-prefix scan, the
   remaining cost is roughly one prefix check per 4 bytes of OTA
   payload — already acceptable.
+
+## Phase 5 status (2026-05-29): dual-slot OTA works over UART
+
+The dual-slot OTA over UART works end-to-end: boot slot A → erase slot B
+→ write 384 KB → swap the marker → reboot into slot B (verified
+`INFO -> active=B`). Getting there fixed three things: the receiver's
+hand-rolled reader dropped buffered bytes (use the buffered `io.Reader`
+API — `read-byte` / `big-endian.read-uint32` / `read-bytes`); the host
+streamer throttled itself with `pyserial read(64)` blocking the full
+timeout (read `in_waiting` instead); and the chip reset a few seconds
+after the modem came up (see RESOLVED below).
+
+Writing the AP-image (slot) region needs firmware program/erase mode
+(`fotaNvmNfsPeInit(1)`, exposed as `slot.program-mode`): `sysROSpaceCheck`
+(`project/toit/src/sys_ro_override.c`) treats the AP image
+`[0x24000,0x304000)` as protected firmware, so the receiver opens it for
+writes the same way the SDK's own full-OTA does (it writes into
+`0x214000` after `fotaNvmNfsPeInit(1)`). The receiver brackets the slot
+erase/write with `program-mode 1 … 0`.
+
+The receiver currently turns the modem off (`appSetCFUN(0)`) for the
+flash window. That was a workaround for the chip reset; with a matching
+CP image (see RESOLVED) the modem can stay on, so it is no longer
+required — left in place only because the modem-off path is the one that
+has been validated end-to-end.
+
+## RESOLVED (2026-05-29): the "modem-on ~4 s flash deadline" was a MISMATCHED CP IMAGE
+
+**The entire modem-on reset — including the ~4 s "flash-lock deadline" that
+blocked Phase 5 — was caused by the device running a CP (modem-core) image
+that does not match our AP PLAT.** The Toit flash path
+(`tools/firmware.toit` `flash-ec618`) burns with `--burn_cp n` and
+`convert-to-binpkg` produces an AP-only package, so the CP was never
+flashed by us — the device kept the factory AT-firmware CP. A mismatched
+CP resets the whole chip (POR/POR) ~4–4.6 s after the modem is enabled.
+
+### Proof (on quirky-plenty, separate clean 5 V supply)
+
+| Condition | CP image | Result |
+|---|---|---|
+| `appSetCFUN(1)` alone, no flash/net | factory (mismatched) | POR at ~4.4 s, every boot |
+| `appSetCFUN(1)` alone, no flash/net | matched `cp-demo-flash.bin` | **survives >15 s, clean deep sleep** |
+| `net.open` (attach) | matched | **attaches, `ip=10.x`, stable 30 s** |
+| flash read loop (lock+XIP-off) + live cellular download | matched | **9 600 reads / >20 s while downloading 976 KB, no reset** |
+
+The flash read loop is the same op (`BSP_QSPI_Read_Safe`, lock + XIP-off)
+that reset the chip at ~4.1 s / 6 500 reads in the earlier "lock isolator"
+test. With a matched CP it runs indefinitely. So:
+
+- The "~4 s flash-lock / XIP-off deadline" does **not** exist.
+- "CP-busy vs idle", "AON watchdog", brownout, AP deep sleep, CP paging
+  starvation — all **wrong**. Ruled out directly: clean separate 5 V
+  supply (no change), `slpManSetPmuSleepMode(IDLE)` cap (no change), AON
+  wdt already stopped in `bsp_custom.c`.
+- The earlier "modem-off makes flash work" finding is explained: modem
+  off ⇒ CP off ⇒ a mismatched CP can't reset the chip.
+
+### How to flash a matched CP
+
+The full merged package (BL+AP+`cp-demo-flash.bin`) is produced by the
+xmake `fcelf` step at `third_party/luatos-soc-ec618/out/toit/toit.binpkg`
+(~2.86 MB vs the ~2.28 MB AP-only). Flash it with the CP zone enabled:
+
+```
+ectool burn --burn_bl y --burn_ap y --burn_cp y -f \
+    third_party/luatos-soc-ec618/out/toit/toit.binpkg
+```
+
+(see `dev/ec618-rig/flash-full.sh`). After that, AP-only re-flashes
+(`toit … flash`, `--burn_cp n`) keep the matched CP in place.
+
+One wrinkle: the **first** boot after any AP-only re-flash still PORs once
+at ~5 s (a one-time CP/PS re-sync to the changed AP), then every
+subsequent boot is stable. RTC memory also goes from perpetually
+"invalid / garbage boot_count" (a downstream symptom of the resets) to
+valid once the CP matches.
+
+### Consequences for the OTA design
+
+- **The modem-off / reboot-apply fallbacks are unnecessary.** With a
+  matched CP the slot can be written **directly, modem-on, during a live
+  cellular download** — exactly like the SDK's `example_full_ota`.
+- **Production fix:** the Toit flash/provisioning path must flash a
+  matched CP at least once (add a `--burn_cp y` / full-package flow).
+  VM-only OTA never changes PLAT, so the CP stays matched across OTAs;
+  the CP only needs re-flashing when PLAT changes (full UART reflash).
+- Still worth confirming next session: a real per-sector **erase+write**
+  loop modem-on (reads already pass; erase/write hold XIP off longer per
+  op but share the same mechanism).
+
+### Rig automation added (gitignored `dev/ec618-rig/`)
+
+`boot-high.toit` / `boot-run.toit` (power-cycle into boot-ROM / normal),
+`flash-and-run.sh` (AP-only flash + timestamped capture),
+`build-install-flash.sh` (envelope → install container → flash → capture),
+`flash-full.sh` (full BL+AP+CP flash). `export
+ECTOOL_PATH=/home/flo/.pyenv/versions/3.8.18/bin/ectool`. UART is now
+`/dev/ttyUSB0`. ectool waits ≤120 s for the USB-boot COM, so start it
+BEFORE triggering boot mode.
