@@ -256,6 +256,7 @@ ec618: check-env host-tools
 	rm -f $(EC618_ENVELOPE)
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) create ec618 \
 		--firmware.bin $(EC618_SDK)/out/toit/ap.bin \
+		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
 		--system.snapshot $(BUILD)/ec618/system.snapshot
 	# Extract the binpkg.
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image

@@ -82,6 +82,10 @@ AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 
 // EC618 AR entries.
 AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
+// The CP (modem-core) image. Bundled so `flash` can program a matching
+// CP — a mismatched CP resets the chip a few seconds after the modem is
+// enabled. See docs/ota-dual-slot-plan.md "RESOLVED (2026-05-29)".
+AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -240,9 +244,12 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
         """
       --options=[
         cli.Option "firmware.bin"
-            --help="Set the firmware binary."
+            --help="Set the firmware binary (the AP image)."
             --type="file"
             --required,
+        cli.Option "cp.bin"
+            --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
+            --type="file",
         cli.Option "system.snapshot"
             --type="file"
             --required,
@@ -270,6 +277,9 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
       },
     },
   }
+
+  cp-path := invocation["cp.bin"]
+  if cp-path: entries[AR-ENTRY-EC618-CP-BIN] = read-file cp-path --ui=ui
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
@@ -934,8 +944,10 @@ extract-ec618 -> none
   firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
 
   if format == "image":
-    // Produce a .binpkg (the EC618 flashable format).
-    binpkg := convert-to-binpkg firmware-bin
+    // Produce a .binpkg (the EC618 flashable format), including the CP
+    // (modem-core) zone when the envelope carries one.
+    cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+    binpkg := convert-to-binpkg firmware-bin --cp=cp
     write-file output-path --ui=ui: it.write binpkg
     return
 
@@ -1450,41 +1462,55 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
 
   firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
 
-  binpkg := convert-to-binpkg firmware-bin
+  // Program the CP (modem-core) image when the envelope carries one. A CP
+  // that does not match the AP PLAT resets the chip a few seconds after the
+  // modem is enabled, so flashing the matching CP is the default.
+  // TODO(florian): add a command-line flag to skip the CP burn (e.g. for
+  // faster iteration when the CP is known to already match).
+  cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+  burn-cp := cp ? "y" : "n"
+
+  binpkg := convert-to-binpkg firmware-bin --cp=cp
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
     binpkg-path := "$tmp/toit.binpkg"
     write-file binpkg-path --ui=ui: it.write binpkg
 
     ectool := find-ectool_
-    code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", "n", "-f", binpkg-path]
+    code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", burn-cp, "-f", binpkg-path]
     if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
 
 /**
-Converts a raw AP firmware binary to .binpkg format.
+Builds one .binpkg zone record: a 364-byte image header followed by the
+zone's data.
 
-The binpkg format is:
-- 52-byte header (zero-filled)
-- 364-byte image header (app name, size, subsystem)
-- firmware binary data
+The image header carries the application $name at offset 0, the data size
+at offset 76, and the subsystem identifier ($subsystem, e.g. "AP" or "CP")
+at offset 336. ectool burns each zone to a fixed address derived from the
+subsystem, so the other header fields can stay zero.
 */
-convert-to-binpkg firmware-bin/ByteArray --app-name/string="toit" -> ByteArray:
-  BINPKG-HEADER-SIZE ::= 52
-  IMAGE-HEADER-SIZE  ::= 364
-
-  binpkg-header := ByteArray BINPKG-HEADER-SIZE  // Zero-filled.
-
+binpkg-zone --name/string --subsystem/string data/ByteArray -> ByteArray:
+  IMAGE-HEADER-SIZE ::= 364
   image-header := ByteArray IMAGE-HEADER-SIZE
-  // Write application name at offset 0.
-  image-header.replace 0 app-name.to-byte-array
-  // Write firmware binary size at offset 76.
-  LITTLE-ENDIAN.put-uint32 image-header 76 firmware-bin.size
-  // Write subsystem identifier at offset 336.
-  image-header.replace 336 "AP".to-byte-array
+  image-header.replace 0 name.to-byte-array
+  LITTLE-ENDIAN.put-uint32 image-header 76 data.size
+  image-header.replace 336 subsystem.to-byte-array
+  return image-header + data
 
-  return binpkg-header + image-header + firmware-bin
+/**
+Converts a raw AP firmware binary to .binpkg format, optionally appending
+a CP (modem-core) zone.
+
+The binpkg format is a 52-byte (zero-filled) file header followed by one
+or more zones, each a 364-byte image header plus the zone's data.
+*/
+convert-to-binpkg firmware-bin/ByteArray --cp/ByteArray?=null --app-name/string="toit" -> ByteArray:
+  BINPKG-HEADER-SIZE ::= 52
+  result := (ByteArray BINPKG-HEADER-SIZE) + (binpkg-zone --name=app-name --subsystem="AP" firmware-bin)
+  if cp: result += binpkg-zone --name="cp" --subsystem="CP" cp
+  return result
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES
