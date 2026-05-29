@@ -430,6 +430,12 @@ namespace toit {
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \
   PRIMITIVE(print_uart_id, 0)                \
+  PRIMITIVE(slot_active, 0)                  \
+  PRIMITIVE(slot_inactive_erase, 1)          \
+  PRIMITIVE(slot_inactive_write, 2)          \
+  PRIMITIVE(slot_swap_and_reset, 0)          \
+  PRIMITIVE(slot_program_mode, 1)            \
+  PRIMITIVE(modem_set_function, 1)           \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

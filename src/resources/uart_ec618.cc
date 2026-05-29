@@ -351,7 +351,12 @@ PRIMITIVE(create) {
   // rebuild with CONFIG_TOIT_EC618_PRINT_UART_ID pointing at a
   // different controller, or with CONFIG_TOIT_EC618_PRINT_UART=0 to
   // disable the print redirect entirely.
-#if CONFIG_TOIT_EC618_PRINT_UART
+  //
+  // CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE escapes this check; the
+  // OTA-over-UART path on quirky-plenty needs to receive on the same
+  // wire that's also carrying print output. We've observed it working
+  // in practice (TX and RX paths don't fight on this chip).
+#if CONFIG_TOIT_EC618_PRINT_UART && !CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
   if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) FAIL(ALREADY_IN_USE);
 #endif
 

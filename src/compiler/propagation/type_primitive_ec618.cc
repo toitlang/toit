@@ -24,6 +24,12 @@ TYPE_PRIMITIVE_ANY(ota_begin)
 TYPE_PRIMITIVE_ANY(ota_write)
 TYPE_PRIMITIVE_ANY(ota_end)
 TYPE_PRIMITIVE_INT(print_uart_id)
+TYPE_PRIMITIVE_INT(slot_active)
+TYPE_PRIMITIVE_ANY(slot_inactive_erase)
+TYPE_PRIMITIVE_ANY(slot_inactive_write)
+TYPE_PRIMITIVE_ANY(slot_swap_and_reset)
+TYPE_PRIMITIVE_ANY(slot_program_mode)
+TYPE_PRIMITIVE_INT(modem_set_function)
 
 }  // namespace compiler
 }  // namespace toit

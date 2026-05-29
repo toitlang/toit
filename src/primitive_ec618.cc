@@ -28,6 +28,28 @@
 extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
+
+  // From ps_lib_api.h. CFUN=0 turns the modem off (RF + PS stack) — the
+  // bulk of CP (cellular-processor) activity. The dual-slot OTA turns it
+  // off during the flash (the modem_set_function primitive).
+  int appSetCFUN(int fun);
+
+  // From the SDK FOTA layer (luat_flash_ctrl_fw_sectors -> this). Must be
+  // set (1) around any erase/write into the protected AP-image region;
+  // it is the mode the SDK FOTA uses to write firmware there while the
+  // system runs (the slot_program_mode primitive).
+  void fotaNvmNfsPeInit(unsigned char isSmall);
+
+  // Writable window for flash operations against the AP image, consulted
+  // by sysROSpaceCheck (overridden in sys_ro_override.c).
+  extern uint32_t toit_ap_image_modify_start;
+  extern uint32_t toit_ap_image_modify_end;
+
+  // Linker-script symbols bracketing each VM slot and the active-slot
+  // marker. Declared as arrays so referring to them gives their address.
+  extern uint8_t __vm_a_start[];
+  extern uint8_t __vm_b_start[];
+  extern const volatile uint8_t toit_active_slot;
 }
 
 namespace toit {
@@ -311,6 +333,175 @@ PRIMITIVE(print_uart_id) {
 #endif
 }
 
+// Dual-slot OTA primitives. The current build dispatches between
+// .vm_a (slot A) and .vm_b (slot B) based on .slot_marker; these
+// primitives let a Toit container receive a new VM image, write it
+// into whichever slot isn't currently active, and atomically switch.
+
+// Size of one VM slot, mirrored from the linker script. Bounds-checked
+// here so a buggy Toit caller can't run off the end of slot B into the
+// marker region (or further into the extension data).
+static const uint32_t SLOT_SIZE = 0x60000;
+
+// XIP address of the active-slot marker. The marker byte lives in its
+// own 4 KB flash sector that's erase-then-write at swap time.
+static const uint32_t SLOT_MARKER_XIP = 0x00A51000;
+
+// Returns the VM slot region the dispatcher (toit_main.c) will boot
+// from on next reset — 'A' or 'B' as ASCII bytes.
+PRIMITIVE(slot_active) {
+  return Smi::from(toit_active_slot);
+}
+
+// Returns the XIP address of whichever slot is NOT currently active.
+// That's where slot_inactive_write deposits new bytes.
+static uint32_t inactive_slot_base() {
+  if (toit_active_slot == 'B') {
+    return reinterpret_cast<uint32_t>(__vm_a_start);
+  }
+  return reinterpret_cast<uint32_t>(__vm_b_start);
+}
+
+// Erase a single 4 KB sector inside the inactive slot. Caller passes
+// the sector's offset within the slot (must be sector-aligned). The
+// host walks the slot one sector at a time so each call returns
+// quickly enough to keep the PLAT watchdog from firing — a
+// whole-slot erase would block ~7 s and reset the chip.
+PRIMITIVE(slot_inactive_erase) {
+  // Not PRIVILEGED while the dual-slot OTA receiver is a regular app
+  // container. Lock down once the OTA path moves into the system
+  // process (firmware service).
+  ARGS(int, offset);
+  if (offset < 0 || (offset % FLASH_SECTOR_SIZE) != 0) FAIL(INVALID_ARGUMENT);
+  if (static_cast<uint32_t>(offset) >= SLOT_SIZE) FAIL(OUT_OF_BOUNDS);
+
+  const uint32_t base_xip = inactive_slot_base();
+  const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
+  const uint32_t dest = base_phys + static_cast<uint32_t>(offset);
+
+  uint32_t saved_start = toit_ap_image_modify_start;
+  uint32_t saved_end = toit_ap_image_modify_end;
+  toit_ap_image_modify_start = base_phys;
+  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+
+  int rc = BSP_QSPI_Erase_Safe(dest, FLASH_SECTOR_SIZE);
+
+  toit_ap_image_modify_start = saved_start;
+  toit_ap_image_modify_end = saved_end;
+
+  if (rc != QSPI_OK) {
+    printf("[toit] ERROR: slot erase failed at 0x%08x rc=%d\n",
+           static_cast<unsigned>(dest), rc);
+    FAIL(QUOTA_EXCEEDED);
+  }
+  return process->null_object();
+}
+
+// Write `bytes` to the inactive slot at `offset`. Caller is responsible
+// for `slot_inactive_erase` first and for keeping offset + length within
+// SLOT_SIZE. Length must be a multiple of FLASH_SEGMENT_SIZE (16 B) —
+// BSP_QSPI_Write_Safe requires segment-aligned writes.
+PRIMITIVE(slot_inactive_write) {
+  // See slot_inactive_erase about PRIVILEGED.
+  ARGS(int, offset, Blob, bytes);
+
+  if (offset < 0) FAIL(INVALID_ARGUMENT);
+  if (bytes.length() % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
+  const uint32_t off = static_cast<uint32_t>(offset);
+  if (off % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
+  if (off > SLOT_SIZE || bytes.length() > SLOT_SIZE - off) FAIL(OUT_OF_BOUNDS);
+
+  const uint32_t base_xip = inactive_slot_base();
+  const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
+  const uint32_t dest = base_phys + off;
+
+  uint32_t saved_start = toit_ap_image_modify_start;
+  uint32_t saved_end = toit_ap_image_modify_end;
+  toit_ap_image_modify_start = base_phys;
+  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+
+  // BSP_QSPI_Write_Safe disables XIP for the duration of the call. The
+  // source must live in RAM — Blob::address() yields a process-heap
+  // pointer, which is in MSMB RAM.
+  int rc = BSP_QSPI_Write_Safe(
+      const_cast<uint8_t*>(bytes.address()), dest, bytes.length());
+
+  toit_ap_image_modify_start = saved_start;
+  toit_ap_image_modify_end = saved_end;
+
+  if (rc != QSPI_OK) {
+    printf("[toit] ERROR: slot write failed at 0x%08x rc=%d\n",
+           static_cast<unsigned>(dest), rc);
+    FAIL(QUOTA_EXCEEDED);
+  }
+  return process->null_object();
+}
+
+// Flip the .slot_marker byte to point at the freshly-written slot, then
+// trigger a system reset. Returns only if the marker write fails;
+// otherwise the chip resets and execution does not return.
+PRIMITIVE(slot_swap_and_reset) {
+  // See slot_inactive_erase about PRIVILEGED.
+  const uint8_t new_slot = (toit_active_slot == 'B') ? 'A' : 'B';
+  const uint32_t marker_phys = SLOT_MARKER_XIP - AP_FLASH_XIP_ADDR;
+  // Sector-aligned marker region: erase the whole 4 KB sector and write
+  // the new byte at offset 0. Segment-aligned 16-byte payload (the
+  // marker plus 15 bytes of 0xFF padding) so BSP_QSPI_Write_Safe is
+  // happy.
+  uint8_t segment[FLASH_SEGMENT_SIZE];
+  memset(segment, 0xff, sizeof(segment));
+  segment[0] = new_slot;
+
+  uint32_t saved_start = toit_ap_image_modify_start;
+  uint32_t saved_end = toit_ap_image_modify_end;
+  toit_ap_image_modify_start = marker_phys;
+  toit_ap_image_modify_end = marker_phys + FLASH_SECTOR_SIZE;
+
+  bool ok = true;
+  if (BSP_QSPI_Erase_Safe(marker_phys, FLASH_SECTOR_SIZE) != QSPI_OK) {
+    printf("[toit] ERROR: slot marker erase failed\n");
+    ok = false;
+  } else if (BSP_QSPI_Write_Safe(segment, marker_phys, sizeof(segment)) != QSPI_OK) {
+    printf("[toit] ERROR: slot marker write failed\n");
+    ok = false;
+  }
+
+  toit_ap_image_modify_start = saved_start;
+  toit_ap_image_modify_end = saved_end;
+
+  if (!ok) FAIL(QUOTA_EXCEEDED);
+
+  printf("[toit] INFO: slot marker set to '%c' — rebooting\n", new_slot);
+  // SCB->AIRCR: VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2). Drain
+  // print first so the message reaches the wire.
+  for (volatile uint32_t i = 0; i < 200000; i++) { /* spin */ }
+  volatile uint32_t* const SCB_AIRCR = reinterpret_cast<uint32_t*>(0xE000ED0C);
+  *SCB_AIRCR = (0x05FAu << 16) | (1u << 2);
+  while (1) { /* unreachable */ }
+}
+
+// Enter (on != 0) or leave the SDK's firmware-sector program/erase mode
+// (fotaNvmNfsPeInit / luat_flash_ctrl_fw_sectors). REQUIRED around any
+// erase/write into the protected AP-image region (the inactive slot):
+// without it those ops disrupt the CP and reset the chip almost
+// immediately. The SDK's own FOTA sets this before writing firmware into
+// that region.
+PRIMITIVE(slot_program_mode) {
+  ARGS(int, on);
+  fotaNvmNfsPeInit(on ? 1 : 0);
+  return process->null_object();
+}
+
+// Set modem functionality via appSetCFUN (0 = off). The dual-slot OTA
+// turns the modem off for the duration of the flash, because sustained
+// AP flash+UART activity with the modem on resets the chip after a few
+// seconds (a CP real-time deadline — see docs/ota-dual-slot-plan.md).
+// Returns the SDK result code.
+PRIMITIVE(modem_set_function) {
+  ARGS(int, fun);
+  return Smi::from(appSetCFUN(fun));
+}
+
 }  // namespace toit
 
 #else  // !TOIT_EC618
@@ -327,6 +518,12 @@ PRIMITIVE(ota_begin) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(ota_write) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(ota_end)   { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_swap_and_reset) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 
