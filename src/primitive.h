@@ -433,7 +433,10 @@ namespace toit {
   PRIMITIVE(slot_active, 0)                  \
   PRIMITIVE(slot_inactive_erase, 1)          \
   PRIMITIVE(slot_inactive_write, 2)          \
-  PRIMITIVE(slot_swap_and_reset, 0)          \
+  PRIMITIVE(slot_stage_and_reset, 0)         \
+  PRIMITIVE(slot_mark_valid, 0)              \
+  PRIMITIVE(slot_mark_invalid_and_reset, 0)  \
+  PRIMITIVE(slot_trial, 0)                   \
   PRIMITIVE(slot_program_mode, 1)            \
   PRIMITIVE(modem_set_function, 1)           \
 

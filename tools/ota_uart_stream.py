@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Drive the EC618 uart-ota receiver over /dev/ttyUSB1.
+"""Drive the EC618 uart-ota receiver over /dev/ttyUSB0 (UART1).
 
 Protocol (host -> device, byte-oriented):
-    'P'                    ping       -> 'P'
-    'I'                    info       -> 'A' or 'B'
-    'E'                    erase      -> 'K' (ok) or 'X' (fail)
+    'P'                    ping        -> 'P'
+    'I'                    info        -> 'A' or 'B' (running slot)
+    'T'                    trial?      -> 'Y' or 'N'
+    'E'                    erase       -> 'K' (ok) or 'X' (fail)
     'W'<off:4 BE><len:4 BE>            -> 'R' then send <len> bytes -> 'K' or 'X'
-    'S'                    swap+reset -> 'K' (and the device reboots)
+    'S'                    stage+reset -> 'K' (device reboots into the trial slot)
+    'V'                    validate    -> 'K' (cancels rollback; no reset)
+    'N'                    invalidate  -> 'K' (device reboots, rolls back)
+
+Trial-boot flow: after STAGE the device reboots and runs the new slot on
+trial. This script then reconnects, confirms it is the trial slot, and
+(unless --no-validate) sends VALIDATE to make it permanent. With
+--no-validate the device is left unconfirmed, so the next reset rolls it
+back — the rollback demonstration.
 
 The device interleaves human-readable `[ota] ...\\n` status lines on
 the same UART; we drain those before reading each ack so they don't
@@ -131,10 +140,60 @@ class Device:
         self._port.write(data)
         self._port.flush()
 
+    def drain(self, quiet: float = 0.4):
+        """Discard all buffered input until the wire is quiet for `quiet`
+        seconds. Used after a ping handshake to flush the burst of 'P'
+        replies the device emits for the many pings it buffered while
+        booting — otherwise the next command's ack reads a stale 'P'."""
+        self._buf = bytearray()
+        end = time.monotonic() + quiet
+        while time.monotonic() < end:
+            n = self._port.in_waiting
+            if n:
+                self._port.read(n)
+                end = time.monotonic() + quiet
+            else:
+                time.sleep(0.02)
+
     def expect(self, cmd_name: str, want: bytes, *, timeout: float):
         got = self.read_ack(timeout)
         if got != want:
             raise SystemExit(f"{cmd_name}: expected {want!r}, got {got!r}")
+
+
+def handshake(dev: "Device") -> bytes:
+    """PING until the device answers, then return its running slot via INFO.
+    Tolerates the boot banner and a freshly-reset device."""
+    time.sleep(1.0)  # Let the boot-rom banner pass.
+    for attempt in range(1, 31):
+        dev.write(b"P")
+        try:
+            b = dev.read_ack(timeout=1.5)
+        except TimeoutError:
+            continue
+        if b == b"P":
+            print(f"[host] ping ok on attempt {attempt}", file=sys.stderr)
+            break
+        print(f"[host] ping #{attempt}: got {b!r}", file=sys.stderr)
+    else:
+        sys.exit("never got ping response")
+
+    # Flush the backlog of 'P' replies (the device buffered every ping it
+    # received while booting and answers them all once the receiver runs).
+    dev.drain()
+    dev.write(b"I")
+    active = dev.read_ack(timeout=5)
+    if active not in (b"A", b"B"):
+        sys.exit(f"bad INFO response: {active!r}")
+    return active
+
+
+def query_trial(dev: "Device") -> bool:
+    dev.write(b"T")
+    t = dev.read_ack(timeout=5)
+    if t not in (b"Y", b"N"):
+        sys.exit(f"bad TRIAL response: {t!r}")
+    return t == b"Y"
 
 
 def main():
@@ -142,7 +201,7 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--slot-a", required=True, type=Path)
     parser.add_argument("--slot-b", required=True, type=Path)
-    parser.add_argument("--port", default="/dev/ttyUSB1")
+    parser.add_argument("--port", default="/dev/ttyUSB0")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--chunk", type=int, default=4096,
                         help="bytes per WRITE command (must be %16 == 0)")
@@ -152,6 +211,9 @@ def main():
     parser.add_argument("--save-payload", type=Path)
     parser.add_argument("--no-stream", action="store_true",
                         help="only build the payload, don't talk to the device")
+    parser.add_argument("--no-validate", action="store_true",
+                        help="stage the trial but do NOT validate it; the next "
+                             "reset will roll back (rollback demonstration)")
     args = parser.parse_args()
 
     if args.chunk % 16 != 0:
@@ -172,29 +234,8 @@ def main():
         # it eats them; we just keep calling that function until the
         # device sends a real protocol byte in response to PING.
         print("[host] waiting for device to boot, then pinging", file=sys.stderr)
-        # Sleep briefly to let the boot rom banner pass; then drain
-        # any pending status lines from the boot path.
-        time.sleep(1.0)
-        # Send PING; the function below will skip past banner lines.
-        for attempt in range(1, 21):
-            dev.write(b"P")
-            try:
-                b = dev.read_ack(timeout=1.5)
-            except TimeoutError:
-                continue
-            if b == b"P":
-                print(f"[host] ping ok on attempt {attempt}", file=sys.stderr)
-                break
-            print(f"[host] ping #{attempt}: got {b!r}", file=sys.stderr)
-        else:
-            sys.exit("never got ping response")
-
-        # Which slot is active?
-        dev.write(b"I")
-        active = dev.read_ack(timeout=5)
-        print(f"[host] active slot = {active!r}", file=sys.stderr)
-        if active not in (b"A", b"B"):
-            sys.exit(f"bad INFO response: {active!r}")
+        active = handshake(dev)
+        print(f"[host] running slot = {active!r}", file=sys.stderr)
 
         # Erase the inactive slot. Single 'E' command drives the
         # device's sector-by-sector erase loop, which prints `[ota]
@@ -235,12 +276,34 @@ def main():
                 print(f"[host] wrote {offset}/{size} ({rate:.1f} KB/s)",
                       file=sys.stderr)
 
-        print(f"[host] payload written (SHA={sha.hex()[:16]}…); sending SWAP",
+        target = b"B" if active == b"A" else b"A"
+        print(f"[host] payload written (SHA={sha.hex()[:16]}…); sending STAGE",
               file=sys.stderr)
         dev.write(b"S")
-        dev.expect("SWAP", b"K", timeout=5)
-        print("[host] SWAP acked — device should boot from the other slot now",
+        dev.expect("STAGE", b"K", timeout=5)
+        print(f"[host] STAGE acked — device reboots into trial slot {target!r}",
               file=sys.stderr)
+
+        # The device has reset. Reconnect and confirm we are on the trial.
+        print("[host] reconnecting to the trial boot", file=sys.stderr)
+        running = handshake(dev)
+        on_trial = query_trial(dev)
+        print(f"[host] after reboot: running slot={running!r} trial={on_trial}",
+              file=sys.stderr)
+        if running != target:
+            sys.exit(f"expected to boot trial slot {target!r}, got {running!r}")
+        if not on_trial:
+            sys.exit("device does not report being on trial after STAGE")
+
+        if args.no_validate:
+            print("[host] --no-validate: leaving slot unconfirmed. The NEXT "
+                  "reset (power-cycle) will roll back to the previous slot.",
+                  file=sys.stderr)
+        else:
+            dev.write(b"V")
+            dev.expect("VALIDATE", b"K", timeout=10)
+            print(f"[host] VALIDATE acked — slot {running!r} is now permanent",
+                  file=sys.stderr)
     finally:
         dev.close()
 

@@ -81,6 +81,8 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/../src/third_party/mbedtls_ec618"
 
 # --- Include directories from the PLAT SDK ---
 include_directories(SYSTEM
+  # Toit-owned PLAT-side headers shared with the VM (slot_marker.h).
+  "${EC618_PLAT_DIR}/../project/toit/inc"
   "${PLAT_BOARD}/common/inc"
   "${PLAT_BOARD}/ap/inc"
   "${PLAT_DEVICE}/board/common/ARMCM3/inc"

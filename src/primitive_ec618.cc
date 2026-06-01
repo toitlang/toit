@@ -28,6 +28,7 @@
 extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
+  #include "slot_marker.h"
 
   // From ps_lib_api.h. CFUN=0 turns the modem off (RF + PS stack) — the
   // bulk of CP (cellular-processor) activity. The dual-slot OTA turns it
@@ -45,11 +46,14 @@ extern "C" {
   extern uint32_t toit_ap_image_modify_start;
   extern uint32_t toit_ap_image_modify_end;
 
-  // Linker-script symbols bracketing each VM slot and the active-slot
-  // marker. Declared as arrays so referring to them gives their address.
+  // Linker-script symbols bracketing each VM slot. Declared as arrays so
+  // referring to them gives their address.
   extern uint8_t __vm_a_start[];
   extern uint8_t __vm_b_start[];
-  extern const volatile uint8_t toit_active_slot;
+
+  // The slot the dispatcher (toit_main.c) actually booted ('A'/'B') — set
+  // before the VM runs. This, not the raw marker, is "the slot I run from".
+  extern uint8_t toit_booted_slot;
 }
 
 namespace toit {
@@ -343,20 +347,22 @@ PRIMITIVE(print_uart_id) {
 // marker region (or further into the extension data).
 static const uint32_t SLOT_SIZE = 0x60000;
 
-// XIP address of the active-slot marker. The marker byte lives in its
-// own 4 KB flash sector that's erase-then-write at swap time.
-static const uint32_t SLOT_MARKER_XIP = 0x00A51000;
-
-// Returns the VM slot region the dispatcher (toit_main.c) will boot
-// from on next reset — 'A' or 'B' as ASCII bytes.
+// Returns the VM slot the runtime is currently executing from — 'A' or 'B'
+// as ASCII bytes. This is the slot the dispatcher booted, which during a
+// trial is the pending slot (not the marker's known-good `active`).
 PRIMITIVE(slot_active) {
-  return Smi::from(toit_active_slot);
+  return Smi::from(toit_booted_slot);
 }
 
-// Returns the XIP address of whichever slot is NOT currently active.
-// That's where slot_inactive_write deposits new bytes.
+// The slot that is NOT the one we are running from (the OTA target).
+static uint8_t inactive_slot() {
+  return (toit_booted_slot == 'B') ? 'A' : 'B';
+}
+
+// Returns the XIP base address of the inactive slot — where
+// slot_inactive_write deposits new bytes.
 static uint32_t inactive_slot_base() {
-  if (toit_active_slot == 'B') {
+  if (inactive_slot() == 'A') {
     return reinterpret_cast<uint32_t>(__vm_a_start);
   }
   return reinterpret_cast<uint32_t>(__vm_b_start);
@@ -437,47 +443,86 @@ PRIMITIVE(slot_inactive_write) {
   return process->null_object();
 }
 
-// Flip the .slot_marker byte to point at the freshly-written slot, then
-// trigger a system reset. Returns only if the marker write fails;
-// otherwise the chip resets and execution does not return.
-PRIMITIVE(slot_swap_and_reset) {
-  // See slot_inactive_erase about PRIVILEGED.
-  const uint8_t new_slot = (toit_active_slot == 'B') ? 'A' : 'B';
-  const uint32_t marker_phys = SLOT_MARKER_XIP - AP_FLASH_XIP_ADDR;
-  // Sector-aligned marker region: erase the whole 4 KB sector and write
-  // the new byte at offset 0. Segment-aligned 16-byte payload (the
-  // marker plus 15 bytes of 0xFF padding) so BSP_QSPI_Write_Safe is
-  // happy.
-  uint8_t segment[FLASH_SEGMENT_SIZE];
-  memset(segment, 0xff, sizeof(segment));
-  segment[0] = new_slot;
-
-  uint32_t saved_start = toit_ap_image_modify_start;
-  uint32_t saved_end = toit_ap_image_modify_end;
-  toit_ap_image_modify_start = marker_phys;
-  toit_ap_image_modify_end = marker_phys + FLASH_SECTOR_SIZE;
-
-  bool ok = true;
-  if (BSP_QSPI_Erase_Safe(marker_phys, FLASH_SECTOR_SIZE) != QSPI_OK) {
-    printf("[toit] ERROR: slot marker erase failed\n");
-    ok = false;
-  } else if (BSP_QSPI_Write_Safe(segment, marker_phys, sizeof(segment)) != QSPI_OK) {
-    printf("[toit] ERROR: slot marker write failed\n");
-    ok = false;
-  }
-
-  toit_ap_image_modify_start = saved_start;
-  toit_ap_image_modify_end = saved_end;
-
-  if (!ok) FAIL(QUOTA_EXCEEDED);
-
-  printf("[toit] INFO: slot marker set to '%c' — rebooting\n", new_slot);
-  // SCB->AIRCR: VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2). Drain
-  // print first so the message reaches the wire.
+// Triggers a system reset; does not return. Drains the print FIFO first so
+// the preceding status line reaches the wire.
+[[noreturn]] static void ec618_system_reset() {
   for (volatile uint32_t i = 0; i < 200000; i++) { /* spin */ }
+  // SCB->AIRCR: VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2).
   volatile uint32_t* const SCB_AIRCR = reinterpret_cast<uint32_t*>(0xE000ED0C);
   *SCB_AIRCR = (0x05FAu << 16) | (1u << 2);
   while (1) { /* unreachable */ }
+}
+
+// Stage the freshly-written inactive slot as a trial and reset into it. The
+// known-good `active` is left as the slot we are running from; only a later
+// slot_mark_valid promotes the trial. On the next boot the dispatcher
+// (toit_main.c) consumes the trial (NEW -> PENDING_VERIFY) before running
+// the new VM, so a crash loop automatically rolls back.
+//
+// Assumes the caller already holds firmware program/erase mode (the OTA
+// receiver enables it around the slot erase/write, exactly like the slot_*
+// flash primitives above). Returns only if the marker write fails.
+PRIMITIVE(slot_stage_and_reset) {
+  // See slot_inactive_erase about PRIVILEGED.
+  if (!slot_marker_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+    printf("[toit] ERROR: slot stage (marker write) failed\n");
+    FAIL(QUOTA_EXCEEDED);
+  }
+  printf("[toit] INFO: staged slot %c for trial — rebooting\n", inactive_slot());
+  ec618_system_reset();
+}
+
+// Confirm the slot we are running from: promote it to the known-good
+// `active` and clear the trial. Cancels the automatic rollback. Returns
+// normally (no reset). Self-brackets program/erase mode because it is
+// called during normal operation, not inside the OTA flash flow.
+PRIMITIVE(slot_mark_valid) {
+  // See slot_inactive_erase about PRIVILEGED.
+  fotaNvmNfsPeInit(1);
+  bool ok = slot_marker_write(toit_booted_slot, 0, SLOT_STATE_NONE);
+  fotaNvmNfsPeInit(0);
+  if (!ok) {
+    printf("[toit] ERROR: slot validate (marker write) failed\n");
+    FAIL(QUOTA_EXCEEDED);
+  }
+  printf("[toit] INFO: slot %c validated\n", toit_booted_slot);
+  return process->null_object();
+}
+
+// Reject the slot we are running from and reset back to the known-good
+// slot (esp-idf's mark_app_invalid_rollback_and_reboot). Reads the record
+// to learn which slot is the known-good `active` to fall back to. Returns
+// only if the marker write fails.
+PRIMITIVE(slot_mark_invalid_and_reset) {
+  // See slot_inactive_erase about PRIVILEGED.
+  slot_record rec;
+  slot_marker_read(&rec);
+  // If we are the pending trial, fall back to the record's active; otherwise
+  // (already the active slot) there is nothing to roll back to but the
+  // other slot, so target it.
+  uint8_t fallback = (rec.pending == toit_booted_slot) ? rec.active : inactive_slot();
+
+  fotaNvmNfsPeInit(1);
+  bool ok = slot_marker_write(fallback, 0, SLOT_STATE_NONE);
+  fotaNvmNfsPeInit(0);
+  if (!ok) {
+    printf("[toit] ERROR: slot invalidate (marker write) failed\n");
+    FAIL(QUOTA_EXCEEDED);
+  }
+  printf("[toit] INFO: slot %c rejected — rolling back to %c\n",
+         toit_booted_slot, fallback);
+  ec618_system_reset();
+}
+
+// True if the slot we are running from is an unconfirmed trial — i.e. the
+// dispatcher booted it as `pending` and it is awaiting validation. The app
+// uses this to know it must call slot_mark_valid (or it will roll back on
+// the next reset).
+PRIMITIVE(slot_trial) {
+  slot_record rec;
+  slot_marker_read(&rec);
+  bool trial = (rec.pending != 0) && (rec.pending == toit_booted_slot);
+  return BOOL(trial);
 }
 
 // Enter (on != 0) or leave the SDK's firmware-sector program/erase mode
@@ -521,7 +566,10 @@ PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(slot_swap_and_reset) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_stage_and_reset) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_mark_valid) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_mark_invalid_and_reset) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_trial) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
 

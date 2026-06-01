@@ -831,3 +831,91 @@ valid once the CP matches.
 ECTOOL_PATH=/home/flo/.pyenv/versions/3.8.18/bin/ectool`. UART is now
 `/dev/ttyUSB0`. ectool waits ≤120 s for the USB-boot COM, so start it
 BEFORE triggering boot mode.
+
+## Trial boot + automatic rollback (esp-idf-style)
+
+The one-shot slot swap is replaced with esp-idf's trial/rollback model: a
+newly written slot **runs once on trial** and must **explicitly confirm
+itself**, otherwise the boot dispatcher **rolls back** to the previous good
+slot. The whole mechanism is power-fail-safe down to individual torn flash
+writes.
+
+### Power-fail-safe marker record (the `otadata` analogue)
+
+`.slot_marker` grew from one sector to **two** (`0xA51000-0xA53000`). Each
+sector holds a 16-byte record with a monotonic `seq` and a CRC-32:
+
+```
+magic 'TS' | version | state | seq | active | pending | pad | crc32
+```
+
+- **read** picks the valid (magic+CRC) record with the higher `seq`;
+- **write** rewrites only the sector that does *not* hold the current valid
+  record, so the live record always survives an interrupted erase/write.
+
+Both ends use one shared module,
+`third_party/luatos-soc-ec618/project/toit/src/slot_marker.{c,h}` (in PLAT,
+also on the VM include path via `toolchains/ec618.cmake`). Reads are plain
+XIP loads (safe at early boot); writes go through `BSP_QSPI_*_Safe` with the
+`sysROSpaceCheck` modify-window set internally. A host unit test
+(`tools/slot_marker_test/`) exercises the ping-pong, a torn 8-of-16-byte
+write, and an erase-then-crash, asserting the previous record always wins.
+
+`active` = last known-good slot; `pending` = slot on trial (0 = none);
+`state` = NEW (staged, not yet booted) → PENDING_VERIFY (booted once,
+unconfirmed). Fresh/erased flash reads as "no record" → default slot A,
+matching the old single-byte behaviour.
+
+### Dispatcher state machine (`toit_main.c`)
+
+`toit_main.c` is our "bootloader": PLAT-side, runs before the VM, only
+changes on a full UART reflash. On boot:
+
+- `pending == 0` → boot `active` (pure reads, **no early-boot flash**).
+- `pending`, state NEW → persist PENDING_VERIFY **before** running the VM
+  (consumes the trial so a crash loop can't retry forever), then boot
+  `pending`. If that consume-write fails, fail safe to `active`.
+- `pending`, state PENDING_VERIFY → the prior trial never confirmed → clear
+  `pending` and boot `active` (rollback).
+
+It also `toit_booted_slot` (RAM global) = the slot actually entered, and a
+`slot_entry_ok()` sanity check (first word is a Thumb pointer inside the
+slot) falls back to the other slot if the chosen one looks unwritten.
+
+### Toit API + primitives
+
+`lib/ec618/slot.toit` / `MODULE_EC618`:
+
+- `stage-and-reset` — write `{active=running, pending=inactive, NEW}` and
+  reset (active **unchanged**; only validate promotes). Replaces
+  `swap-and-reset`.
+- `validate` — `{active=running, pending=0}`; cancels the rollback.
+- `mark-invalid-and-reset` — roll back to the record's `active` now.
+- `trial -> bool` — is the running slot an unconfirmed trial?
+- `active` now returns the *running* slot (`toit_booted_slot`).
+
+Program/erase mode: `stage-and-reset` rides the receiver's already-enabled
+session (kept on through stage); `validate` / `mark-invalid` / the
+dispatcher self-bracket `fotaNvmNfsPeInit(1/0)` because they run outside the
+OTA flash flow. No nested enables anywhere.
+
+### UART receiver + host driver
+
+`uart-ota.toit` adds `T` (trial?), `V` (validate), `N` (invalidate); `S` is
+now stage (was swap). `tools/ota_uart_stream.py` streams the payload, sends
+`S`, reconnects to the trial boot, confirms `trial=Y`, then sends `V` —
+or, with `--no-validate`, leaves it unconfirmed to demonstrate the
+next-reset rollback.
+
+### User-chosen semantics
+
+- Validation is an **explicit** Toit call (`slot.validate`); booting cleanly
+  is not enough.
+- An unconfirmed-but-running image is **not** force-rebooted; it rolls back
+  on the **next reset** (pure esp-idf default, no watchdog deadline).
+
+### Out of scope (separate future work)
+
+A general partition table and making the VM slots independently
+built/flashed from PLAT — neither is required for trial-boot/rollback, which
+is entirely PLAT-side.

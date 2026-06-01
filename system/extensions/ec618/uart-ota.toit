@@ -58,9 +58,12 @@ import uart
 
 CMD-PING       ::= 'P'
 CMD-INFO       ::= 'I'
+CMD-TRIAL      ::= 'T'
 CMD-ERASE      ::= 'E'
 CMD-WRITE      ::= 'W'
-CMD-SWAP       ::= 'S'
+CMD-STAGE      ::= 'S'   // Stage the written slot as a trial + reset.
+CMD-VALIDATE   ::= 'V'   // Confirm the running slot (cancel rollback).
+CMD-INVALIDATE ::= 'N'   // Reject the running slot + reset (rollback now).
 ACK-OK         ::= 'K'
 ACK-READY      ::= 'R'
 ACK-ERROR      ::= 'X'
@@ -96,11 +99,14 @@ loop reader/io.Reader out/io.Writer -> none:
     // byte of a chunk, which dropped the 8-byte header the host sends
     // together with the 'W' command.)
     cmd-byte := reader.read-byte
-    if      cmd-byte == CMD-PING:  ping  out
-    else if cmd-byte == CMD-INFO:  info  out
-    else if cmd-byte == CMD-ERASE: erase out
-    else if cmd-byte == CMD-WRITE: write reader out
-    else if cmd-byte == CMD-SWAP:  swap  out
+    if      cmd-byte == CMD-PING:       ping  out
+    else if cmd-byte == CMD-INFO:       info  out
+    else if cmd-byte == CMD-TRIAL:      trial-info out
+    else if cmd-byte == CMD-ERASE:      erase out
+    else if cmd-byte == CMD-WRITE:      write reader out
+    else if cmd-byte == CMD-STAGE:      stage out
+    else if cmd-byte == CMD-VALIDATE:   validate out
+    else if cmd-byte == CMD-INVALIDATE: invalidate out
     else:
       out.write "[ota] unknown cmd 0x$(%02x cmd-byte); continuing\n"
 
@@ -110,7 +116,13 @@ ping out/io.Writer -> none:
 info out/io.Writer -> none:
   byte := slot.active
   out.write (ByteArray 1 --initial=byte)
-  out.write "[ota] INFO: active=$(string.from-rune byte)\n"
+  out.write "[ota] INFO: active=$(string.from-rune byte) trial=$slot.trial\n"
+
+// Reports whether the running slot is an unconfirmed trial: 'Y' or 'N'.
+trial-info out/io.Writer -> none:
+  byte := slot.trial ? 'Y' : 'N'
+  out.write (ByteArray 1 --initial=byte)
+  out.write "[ota] TRIAL: $(string.from-rune byte)\n"
 
 // No bulk-erase phase: a 96-sector back-to-back erase is ~3.6 s of
 // uninterrupted flash, which (modem on) starves the CP past its ~3.7 s
@@ -152,9 +164,29 @@ write reader/io.Reader out/io.Writer -> none:
   out.write "[ota] WRITE: ok\n"
   out.write #[ACK-OK]
 
-swap out/io.Writer -> none:
-  out.write "[ota] SWAP: flipping marker and resetting\n"
+// Stage the written slot as a trial and reset into it. Program/erase mode
+// is kept ON (enabled in main) so the marker write rides the same enabled
+// session as the slot writes — no separate program-mode toggle here.
+stage out/io.Writer -> none:
+  out.write "[ota] STAGE: marking inactive slot for trial and resetting\n"
   out.write #[ACK-OK]
-  slot.program-mode 0
-  // swap-and-reset does not return — the device resets here.
-  slot.swap-and-reset
+  // stage-and-reset does not return — the device resets here.
+  slot.stage-and-reset
+
+// Confirm the running slot. Returns normally (no reset), so the receiver
+// keeps serving commands afterwards.
+validate out/io.Writer -> none:
+  e := catch: slot.validate
+  if e:
+    out.write "[ota] VALIDATE: failed: $e\n"
+    out.write #[ACK-ERROR]
+    return
+  out.write "[ota] VALIDATE: confirmed slot $(string.from-rune slot.active)\n"
+  out.write #[ACK-OK]
+
+// Reject the running slot and reset back to the previous slot.
+invalidate out/io.Writer -> none:
+  out.write "[ota] INVALIDATE: rejecting running slot and rolling back\n"
+  out.write #[ACK-OK]
+  // mark-invalid-and-reset does not return — the device resets here.
+  slot.mark-invalid-and-reset

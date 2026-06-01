@@ -14,16 +14,18 @@
 // directory of this repository.
 
 /**
-EC618 dual-slot OTA helpers.
+EC618 dual-slot OTA helpers with esp-idf-style trial boot + rollback.
 
 The EC618 AP image carries two VM slots — `.vm_a` and `.vm_b`, each
-384 KB at fixed XIP addresses. A 1-byte marker (`.slot_marker`) picks
-which slot the PLAT dispatcher in `toit_main.c` boots into on next
-reset.
+384 KB at fixed XIP addresses. A power-fail-safe record (`.slot_marker`,
+two flash sectors) tracks which slot is the known-good one and which, if
+any, is on trial. The PLAT dispatcher in `toit_main.c` reads it on every
+boot.
 
-These helpers let a Toit container write a new VM image into the slot
-that is currently inactive and then atomically swap the active-slot
-byte. The typical OTA flow:
+A newly written slot is *staged* as a trial rather than activated
+outright. On the next boot the dispatcher runs it once; the new image
+must $validate itself, otherwise the next reset automatically rolls back
+to the previous good slot. The typical OTA flow:
 
   // Erase the whole inactive slot, one sector at a time so the
   // PLAT watchdog can tick between calls.
@@ -37,7 +39,15 @@ byte. The typical OTA flow:
   while bytes := read-next-chunk:
     slot.write-inactive off bytes
     off += bytes.size
-  slot.swap-and-reset              // does not return
+  slot.stage-and-reset             // does not return; boots the new slot on trial
+
+After the reboot the new image runs. Once it has confirmed itself healthy
+(e.g. cellular reattached, backend reachable) it must call:
+
+  slot.validate                    // cancels the rollback; promotes the trial
+
+If it never validates, the next reset rolls back to the previous slot.
+$trial reports whether the running image is an unconfirmed trial.
 */
 
 /** Active-slot marker byte ('A' or 'B'). */
@@ -48,9 +58,9 @@ SLOT-B ::= 'B'
 SLOT-SIZE ::= 0x60000
 
 /**
-Returns the active-slot byte the dispatcher will use on next boot.
-Equal to either $SLOT-A or $SLOT-B; reads the value the current cold
-boot found in `.slot_marker`.
+Returns the slot the runtime is currently executing from ($SLOT-A or
+$SLOT-B). During a trial this is the slot under test, not necessarily
+the known-good one recorded in `.slot_marker`.
 */
 active -> int:
   #primitive.ec618.slot-active
@@ -71,25 +81,55 @@ erase-inactive-sector offset/int -> none:
 Writes $bytes into the inactive slot at $offset.
 
 Both $offset and $bytes.size must be multiples of 16 (the flash
-segment size). Call $erase-inactive first; flash NOR cells can only
-go 1 → 0 in a single write, so writing into a non-erased region
+segment size). Call $erase-inactive-sector first; flash NOR cells can
+only go 1 → 0 in a single write, so writing into a non-erased region
 silently produces garbage.
 */
 write-inactive offset/int bytes/ByteArray -> none:
   #primitive.ec618.slot-inactive-write
 
 /**
-Flips the active-slot marker (`A` → `B` or `B` → `A`) and resets the
-chip so it boots from the freshly-written slot. Does not return; on
-next boot the slot dispatcher reads the new marker value and calls
-through that slot's entry pointer.
+Stages the freshly-written inactive slot as a trial and resets the chip
+so it boots into that slot. Does not return.
 
-Caller is expected to have written and verified a valid VM image
-into the inactive slot first. Swapping into an unflashed slot will
-hard-fault on the next boot.
+The known-good slot is left unchanged; the new slot boots *on trial*.
+The dispatcher records that it has run the trial once, so a crashing or
+hanging image is automatically rolled back on the next reset. The new
+image must call $validate to keep the change permanent.
+
+Caller is expected to have written and verified a valid VM image into
+the inactive slot first, and to already hold $program-mode (the receiver
+enables it around the slot erase/write).
 */
-swap-and-reset -> none:
-  #primitive.ec618.slot-swap-and-reset
+stage-and-reset -> none:
+  #primitive.ec618.slot-stage-and-reset
+
+/**
+Confirms the slot the runtime is running from: promotes it to the
+known-good slot and cancels the pending rollback. Call this once the new
+image has verified it is healthy. Returns normally (no reset).
+
+A no-op-equivalent when not running a trial (it simply re-asserts the
+current slot as known-good).
+*/
+validate -> none:
+  #primitive.ec618.slot-mark-valid
+
+/**
+Rejects the slot the runtime is running from and resets back to the
+previous known-good slot (esp-idf's invalid-rollback-and-reboot). Use
+when the running image detects it cannot function. Does not return.
+*/
+mark-invalid-and-reset -> none:
+  #primitive.ec618.slot-mark-invalid-and-reset
+
+/**
+Whether the running image is an unconfirmed trial — staged by a previous
+$stage-and-reset and not yet confirmed (see $validate). If true, the
+image must call $validate or it will be rolled back on the next reset.
+*/
+trial -> bool:
+  #primitive.ec618.slot-trial
 
 /**
 Enters ($on != 0) or leaves the firmware-sector program/erase mode.
