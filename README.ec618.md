@@ -105,11 +105,13 @@ the VM in a way that adds or removes a PLAT call, regenerate the
 header, source, and xmake.lua block with:
 
 ```sh
-# 1. Snapshot the current VM->PLAT call set.
+# 1. Snapshot the current VM->PLAT call set from the VM archives'
+#    relocations (the names the compiler emitted — wrap-state independent).
 python3 tools/extract_plat_jt_symbols.py \
     third_party/luatos-soc-ec618/build/toit/toit.elf \
-    third_party/luatos-soc-ec618/build/toit/toit_debug.map \
-    --strip-wrap > tools/plat_jt_ldflags.lua.symbols
+    build/ec618/src/libtoit_vm.a \
+    build/ec618/mbedtls/library/libmbed*.a \
+    > tools/plat_jt_ldflags.lua.symbols
 
 # 2. Regenerate the table + stubs + xmake.lua marker block.
 python3 tools/gen_plat_jt.py \
@@ -123,8 +125,15 @@ python3 tools/gen_plat_jt.py \
 make ec618
 ```
 
-The extractor must be run against a `toit.elf` that was built *without*
-new wraps (so the BL targets are the underlying PLAT symbols, not
-already-rewritten `__wrap_*` entries). The `--strip-wrap` flag is a
-convenience for spot-checking; the canonical workflow is to take the
-snapshot before adding any new entries.
+The extractor reads the VM archives' object **relocations** (call targets),
+so it works on any build regardless of which `--wrap` flags are active, and
+it yields the *referenced* names (e.g. `printf`, not the link-resolved
+`iprintf`) — the only names `--wrap` can intercept. If a rebuild fails with
+`undefined reference to ...` from `plat_jt.o(.jt_data)`, that symbol is a
+dead/host-only reference with no PLAT definition; add it to `DEFAULT_EXCLUDE`
+in the extractor (or pass `--exclude`).
+
+For position independence (dual-slot relocate-on-write), every VM→PLAT call
+must go through `g_plat_jt[]` so the slot-A and slot-B images differ only in
+absolute data pointers (handled by the relocation table), not in `BL`
+encodings. Verify with the A/B slot diff after a both-passes build.
