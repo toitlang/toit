@@ -163,3 +163,23 @@ linker script changes, so it is a fast re-link), relocates the slot-A image to
 slot B, and asserts the result is byte-identical to the slot-B link. That
 byte-identity check is the guard against `--emit-relocs` dropping a relocation;
 if it fails, the relocation model is incomplete and the build stops.
+
+### Dual-slot flashable image
+
+[tools/ec618/build-dual-image.toit](tools/ec618/build-dual-image.toit) produces
+a flashable AP image with **both** slots populated — slot B is the slot-A image
+**relocated** (`+0x60000`), not a second link pass. It replaces the old
+`tools/splice_dual_slot.py` (which spliced a second link). After `make ec618`:
+
+```sh
+toit tool firmware -e build/ec618/firmware.envelope extract --format binary -o ap.bin
+toit run --project-root tools tools/ec618/build-dual-image.toit -- \
+    --slot-a=ap.bin --reloc=build/ec618/slot-reloc.bin --out=ap-dual.bin
+```
+
+The image boots slot A by default; the device stages slot B as a trial via the
+normal OTA/`slot.stage-and-reset` path. `DromData.extension` is a fixed,
+out-of-slot address, so it is copied verbatim into slot B by the relocation — no
+per-slot patching needed. The relocation logic is shared with the device via
+[tools/ec618/slot-reloc.toit](tools/ec618/slot-reloc.toit), which mirrors
+`src/slot_reloc_ec618.{h,cc}`.
