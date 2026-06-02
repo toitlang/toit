@@ -198,6 +198,19 @@ split-whitespace str/string -> List:
     result.add (string.from-runes current)
   return result
 
+// TODO(ec618): "generous" jump table. The table currently holds ONLY the
+// PLAT symbols the *current* VM happens to call. But the jump table is the
+// immutable-PLAT <-> OTA'able-VM ABI: a future VM (OTA'd without reflashing
+// PLAT) can only reach PLAT functions that already have a slot here at
+// PLAT-build time. To future-proof the ABI we'd want a curated "always
+// include" set of likely-useful PLAT API functions (luat_*/BSP_*/GPIO_*/...),
+// merged in below in addition to the relocation-derived set, bounded by the
+// .jt_data region (4 KB ~= 1024 entries) and the per-slot stub budget
+// (16 B/entry/slot). Adding an entry for a function PLAT *already* links is
+// cheap (one stub + 4 B, no PLAT growth); adding one that isn't linked pulls
+// it in (PLAT growth) — hence the "if they aren't too big" filter. Deferred:
+// needs a decision on which API surface and the size budget.
+
 /** Derives the final, sorted symbol list for the jump table. */
 extract-symbols --objdump/string --nm/string --elf/string --archives/List --excludes/List -> List:
   targets := call-targets objdump archives

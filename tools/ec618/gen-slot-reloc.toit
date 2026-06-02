@@ -1,0 +1,365 @@
+// Copyright (C) 2026 Toit contributors.
+
+// Build the EC618 dual-slot relocation table from the slot-A link.
+//
+// The Toit firmware is a single position-independent image that the device
+// localizes to whichever slot it writes (relocate-on-write). Slot A and slot
+// B are 0x60000 apart, so the two images differ ONLY in:
+//
+//   1. ABS32 data pointers that point INTO the slot (vtables, const pointer
+//      tables, .init_array, the .vm_entry word, ...). They move with the
+//      slot, so the device adds `delta = dest_base - link_base` to each.
+//   2. The handful of Thumb BL branches that ESCAPE the slot to a fixed PLAT
+//      address (the `__wrap_time` shim). Their source moves but their target
+//      is fixed, so the device subtracts `delta` from the branch immediate.
+//
+// Everything else is already slot-independent: within-slot BL/B.W branches
+// (source and target move together) and the movw/movt loads of the fixed
+// `g_plat_jt[]` address (see tools/ec618/check-slot-pic.toit, which proves no
+// code branch escapes the slot except `__wrap_time`).
+//
+// This tool reads the retained input relocations from `toit.elf` (linked with
+// `-Wl,--emit-relocs`), classifies them, and emits a compact delta-encoded
+// table. When given a slot-B link (`--verify-slot-b`) it PROVES the table is
+// complete and correct: it relocates the slot-A image to slot B and asserts
+// the result is byte-identical to the independent slot-B link. That check is
+// the guard against `--emit-relocs` dropping a relocation.
+
+import cli
+import io show Buffer LITTLE-ENDIAN
+import host.file
+import host.pipe
+
+// Reloc-table artifact magic: "SRL1" (Slot ReLoc, version 1).
+MAGIC ::= #['S', 'R', 'L', '1']
+
+// Default XIP address of `ap.bin` byte 0 (AP_FLASH_LOAD_ADDR in the linker
+// script). Used to map a relocation's virtual address to a file offset.
+DEFAULT-AP-LOAD-ADDR ::= 0x824000
+
+// Structural slot-boundary symbols denote FIXED flash addresses (the slot
+// reservation geometry the dual-slot dispatcher reads), not moving image
+// content. A reference to one is numerically inside the slot yet must NOT be
+// relocated, so it is excluded from the ABS32 set.
+FIXED-SLOT-SYMBOLS ::= {
+  "__vm_a_start", "__vm_a_end",
+  "__vm_b_start", "__vm_b_end",
+}
+
+// Relocations storing a 32-bit absolute address. Relocated when the stored
+// pointer lands inside the slot.
+ABS32-TYPES ::= {"R_ARM_ABS32", "R_ARM_TARGET1"}
+
+// PC-relative Thumb/ARM branch relocations. Relocated ONLY when the branch
+// escapes the slot to a fixed target; within-slot branches are unchanged
+// because the source and the target move by the same delta.
+BRANCH-TYPES ::= {
+  "R_ARM_THM_CALL", "R_ARM_CALL",
+  "R_ARM_THM_JUMP24", "R_ARM_JUMP24",
+  "R_ARM_THM_PC22",
+}
+
+// movw/movt absolute-address loads. The VM build uses `-mslow-flash-data`, so
+// addresses materialize via movw/movt; every current one targets the fixed
+// `g_plat_jt[]`, so none need relocation. An in-slot target would require
+// device-side movw/movt re-encoding (unimplemented) — the tool fails loudly.
+MOVW-MOVT-TYPES ::= {
+  "R_ARM_THM_MOVW_ABS_NC", "R_ARM_THM_MOVT_ABS",
+  "R_ARM_MOVW_ABS_NC", "R_ARM_MOVT_ABS",
+}
+
+/** One relocation record parsed from `readelf -r`. */
+class Reloc:
+  offset/int       // The virtual address the relocation patches.
+  type/string      // The R_ARM_* relocation type.
+  sym-value/int    // The target symbol's resolved address.
+  sym-name/string  // The target symbol's name (may be truncated/empty).
+
+  constructor .offset .type .sym-value .sym-name:
+
+main args:
+  cmd := cli.Command "gen-slot-reloc"
+      --help="""
+        Extracts the EC618 dual-slot relocation table from the slot-A link
+        (toit.elf built with -Wl,--emit-relocs) and writes it to --out.
+
+        With --verify-slot-b it proves the table by relocating the slot-A
+        image to slot B and asserting byte-identity with the slot-B link.
+        """
+      --options=[
+        cli.Option "readelf"
+            --help="The arm readelf binary."
+            --default="arm-none-eabi-readelf",
+        cli.Option "nm"
+            --help="The arm nm binary."
+            --default="arm-none-eabi-nm",
+        cli.Option "ap-load-addr"
+            --help="XIP address of ap.bin byte 0 (hex or decimal)."
+            --default="0x824000",
+        cli.Option "elf"
+            --help="The slot-A toit.elf (linked with --emit-relocs)."
+            --required,
+        cli.Option "ap"
+            --help="The slot-A ap.bin (flat binary)."
+            --required,
+        cli.Option "out"
+            --help="The output reloc-table artifact path."
+            --required,
+        cli.Option "verify-slot-b"
+            --help="A slot-B ap.bin to byte-identity-check against.",
+      ]
+      --run=:: run it
+  cmd.run args
+
+run invocation/cli.Invocation -> none:
+  readelf := invocation["readelf"]
+  nm := invocation["nm"]
+  elf := invocation["elf"]
+  ap-path := invocation["ap"]
+  out-path := invocation["out"]
+  verify-path := invocation["verify-slot-b"]
+  ap-load-addr := parse-int invocation["ap-load-addr"]
+
+  // Slot geometry straight from the linker symbols.
+  syms := slot-symbols nm elf
+  link-base := syms.get "__vm_a_start"
+  vm-a-end := syms.get "__vm_a_end"
+  slot-b-base := syms.get "__vm_b_start"
+  if link-base == null or vm-a-end == null or slot-b-base == null:
+    pipe.print-to-stderr "missing __vm_a_start/__vm_a_end/__vm_b_start in $elf"
+    exit 1
+  if link-base == vm-a-end:
+    pipe.print-to-stderr "slot A is empty — expected the slot-A link (built without TOIT_VM_SLOT_B)"
+    exit 1
+  slot-size := slot-b-base - link-base
+  body-size := vm-a-end - link-base
+  delta := slot-size  // Relocating the link-base (slot A) image to slot B.
+  hi := link-base + slot-size
+
+  ap-a := file.read-contents ap-path
+  relocs := read-relocs readelf elf ".rel.vm_a"
+  if relocs.is-empty:
+    pipe.print-to-stderr "no .rel.vm_a relocations in $elf (was it linked with -Wl,--emit-relocs?)"
+    exit 1
+
+  abs32 := []  // Slot-relative offsets of ABS32 words to add `delta` to.
+  thmbl := []  // Slot-relative offsets of escaping branches to re-encode.
+  relocs.do: | r/Reloc |
+    rel-off := r.offset - link-base
+    if ABS32-TYPES.contains r.type:
+      word := LITTLE-ENDIAN.uint32 ap-a (r.offset - ap-load-addr)
+      if link-base <= word and word < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
+        abs32.add rel-off
+    else if BRANCH-TYPES.contains r.type:
+      if not (link-base <= r.sym-value and r.sym-value < hi):
+        thmbl.add rel-off
+    else if MOVW-MOVT-TYPES.contains r.type:
+      if link-base <= r.sym-value and r.sym-value < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
+        throw "unsupported in-slot movw/movt at 0x$(%x r.offset) -> $r.sym-name; extend gen-slot-reloc + the device relocator"
+    else:
+      throw "unknown relocation type $r.type at 0x$(%x r.offset) -> $r.sym-name"
+  abs32.sort --in-place
+  thmbl.sort --in-place
+
+  table := encode-table
+      --link-base=link-base
+      --slot-size=slot-size
+      --body-size=body-size
+      --abs32=abs32
+      --thmbl=thmbl
+  file.write-contents --path=out-path table
+
+  print "Slot reloc table: $abs32.size ABS32 + $thmbl.size branch reloc(s), $table.size bytes."
+  print "  link-base=0x$(%x link-base) slot-size=0x$(%x slot-size) body=0x$(%x body-size)"
+  print "  -> $out-path"
+
+  if verify-path:
+    ap-b := file.read-contents verify-path
+    ok := verify
+        --ap-a=ap-a
+        --ap-b=ap-b
+        --slot-a-file=(link-base - ap-load-addr)
+        --slot-b-file=(slot-b-base - ap-load-addr)
+        --body-size=body-size
+        --abs32=abs32
+        --thmbl=thmbl
+        --delta=delta
+    if not ok:
+      pipe.print-to-stderr "Byte-identity FAILED: the relocation table is incomplete or wrong."
+      exit 1
+    print "Byte-identity OK: relocated slot A == slot-B link ($verify-path)."
+
+/**
+Reads the relocation records of $section from `$readelf -r $elf`.
+
+Returns a list of $Reloc. Only data lines (whose type starts with `R_ARM`) are
+  kept, so the column header and blank lines are skipped automatically.
+*/
+read-relocs readelf/string elf/string section/string -> List:
+  relocs := []
+  // `-W` (wide) avoids truncating the relocation type column
+  // (e.g. R_ARM_THM_MOVW_ABS_NC would otherwise become R_ARM_THM_MOVW_AB).
+  out := pipe.backticks [readelf, "-r", "-W", elf]
+  in-section := false
+  out.split "\n": | line/string |
+    if line.starts-with "Relocation section":
+      in-section = line.contains "'$section'"
+      continue.split
+    if not in-section: continue.split
+    parts := split-whitespace line
+    if parts.size < 4: continue.split
+    type := parts[2]
+    if not type.starts-with "R_ARM": continue.split
+    offset := int.parse parts[0] --radix=16
+    sym-value := int.parse parts[3] --radix=16
+    sym-name := parts.size > 4 ? parts[4] : ""
+    relocs.add (Reloc offset type sym-value sym-name)
+  return relocs
+
+/** Reads the slot-boundary symbol addresses from `$nm $elf`. */
+slot-symbols nm/string elf/string -> Map:
+  result := {:}
+  out := pipe.backticks [nm, elf]
+  out.split "\n": | line/string |
+    parts := split-whitespace line
+    if parts.size < 3: continue.split
+    name := parts.last
+    if name == "__vm_a_start" or name == "__vm_a_end" \
+        or name == "__vm_b_start" or name == "__vm_b_end":
+      result[name] = int.parse parts[0] --radix=16
+  return result
+
+/**
+Encodes the reloc-table artifact.
+
+The header is `MAGIC` followed by $link-base, $slot-size and $body-size and the
+  two counts (all little-endian uint32). The $abs32 and $thmbl offset lists
+  (slot-relative, ascending) follow as delta-encoded unsigned LEB128 varints.
+*/
+encode-table --link-base/int --slot-size/int --body-size/int --abs32/List --thmbl/List -> ByteArray:
+  buffer := Buffer
+  buffer.write MAGIC
+  le := buffer.little-endian
+  le.write-uint32 link-base
+  le.write-uint32 slot-size
+  le.write-uint32 body-size
+  le.write-uint32 abs32.size
+  le.write-uint32 thmbl.size
+  write-varint-deltas buffer abs32
+  write-varint-deltas buffer thmbl
+  return buffer.bytes
+
+/** Writes the ascending $offsets as delta-encoded unsigned LEB128 varints. */
+write-varint-deltas buffer/Buffer offsets/List -> none:
+  previous := 0
+  offsets.do: | offset/int |
+    write-varint buffer (offset - previous)
+    previous = offset
+
+/** Writes $value to $buffer as an unsigned LEB128 varint. */
+write-varint buffer/Buffer value/int -> none:
+  while true:
+    b := value & 0x7f
+    value >>= 7
+    if value != 0:
+      buffer.write-byte (b | 0x80)
+    else:
+      buffer.write-byte b
+      return
+
+/**
+Relocates the slot content of $bytes in place by $delta.
+
+$base is the file offset of the slot's first byte within $bytes; the $abs32 and
+  $thmbl offsets are slot-relative. Each ABS32 word gains $delta; each escaping
+  branch immediate loses $delta (its source moved by $delta but its fixed
+  target did not).
+*/
+apply-reloc bytes/ByteArray base/int abs32/List thmbl/List delta/int -> none:
+  abs32.do: | offset/int |
+    p := base + offset
+    word := LITTLE-ENDIAN.uint32 bytes p
+    LITTLE-ENDIAN.put-uint32 bytes p ((word + delta) & 0xffffffff)
+  thmbl.do: | offset/int |
+    p := base + offset
+    imm := thumb-branch-imm bytes p
+    put-thumb-branch-imm bytes p (imm - delta)
+
+/**
+Relocates the slot-A image to slot B and checks byte-identity with $ap-b.
+
+Returns whether the relocated slot-A content equals the slot-B link's content
+  over $body-size bytes. Reports the first mismatch to stderr on failure.
+*/
+verify --ap-a/ByteArray --ap-b/ByteArray --slot-a-file/int --slot-b-file/int \
+    --body-size/int --abs32/List --thmbl/List --delta/int -> bool:
+  region := ap-a.copy slot-a-file (slot-a-file + body-size)
+  apply-reloc region 0 abs32 thmbl delta
+  body-size.repeat: | i/int |
+    if region[i] != ap-b[slot-b-file + i]:
+      pipe.print-to-stderr "  first mismatch at slot offset 0x$(%x i): relocated=0x$(%x region[i]) slot-B=0x$(%x ap-b[slot-b-file + i])"
+      return false
+  return true
+
+/**
+Decodes the signed branch immediate of a Thumb-2 BL/B.W at $offset in $bytes.
+
+The 4-byte instruction is two little-endian halfwords. The immediate is the
+  PC-relative offset (relative to the instruction address + 4).
+*/
+thumb-branch-imm bytes/ByteArray offset/int -> int:
+  lo := LITTLE-ENDIAN.uint16 bytes offset
+  hi := LITTLE-ENDIAN.uint16 bytes (offset + 2)
+  s := (lo >> 10) & 1
+  imm10 := lo & 0x3ff
+  j1 := (hi >> 13) & 1
+  j2 := (hi >> 11) & 1
+  imm11 := hi & 0x7ff
+  i1 := (j1 ^ s) ^ 1  // NOT(J1 XOR S).
+  i2 := (j2 ^ s) ^ 1  // NOT(J2 XOR S).
+  imm := (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1)
+  // Sign-extend the 25-bit value.
+  if (imm & 0x01000000) != 0: imm -= 0x02000000
+  return imm
+
+/**
+Writes a Thumb-2 BL/B.W at $offset in $bytes with signed branch immediate $imm.
+
+Preserves the opcode bits (BL vs B.W), so a re-encoded branch keeps its kind.
+*/
+put-thumb-branch-imm bytes/ByteArray offset/int imm/int -> none:
+  imm &= 0x01ffffff
+  s := (imm >> 24) & 1
+  i1 := (imm >> 23) & 1
+  i2 := (imm >> 22) & 1
+  imm10 := (imm >> 12) & 0x3ff
+  imm11 := (imm >> 1) & 0x7ff
+  j1 := (i1 ^ 1) ^ s  // NOT(I1) XOR S.
+  j2 := (i2 ^ 1) ^ s  // NOT(I2) XOR S.
+  lo-old := LITTLE-ENDIAN.uint16 bytes offset
+  hi-old := LITTLE-ENDIAN.uint16 bytes (offset + 2)
+  lo := (lo-old & 0xf800) | (s << 10) | imm10
+  hi := (hi-old & 0xd000) | (j1 << 13) | (j2 << 11) | imm11
+  LITTLE-ENDIAN.put-uint16 bytes offset lo
+  LITTLE-ENDIAN.put-uint16 bytes (offset + 2) hi
+
+/** Parses an integer that may be hex (`0x`-prefixed) or decimal. */
+parse-int s/string -> int:
+  if s.starts-with "0x" or s.starts-with "0X":
+    return int.parse s[2..] --radix=16
+  return int.parse s
+
+/** Splits a string on runs of whitespace, dropping empty tokens. */
+split-whitespace str/string -> List:
+  result := []
+  current := []
+  str.do: | c/int |
+    if c == ' ' or c == '\t':
+      if not current.is-empty:
+        result.add (string.from-runes current)
+        current = []
+    else:
+      current.add c
+  if not current.is-empty:
+    result.add (string.from-runes current)
+  return result

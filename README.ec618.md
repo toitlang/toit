@@ -137,3 +137,29 @@ pointers (handled by the relocation table), never in `BL` encodings.
 disassembles the VM slot and fails the build if any branch escapes the slot
 into PLAT (other than the sanctioned `__wrap_time`). A new escape means a
 VM→PLAT call was added without regenerating the jump table.
+
+### Slot relocation table
+
+The VM is linked **once** (at slot A's base). The few words that differ
+between a slot-A and a slot-B image are captured in a relocation table by
+[tools/ec618/gen-slot-reloc.toit](tools/ec618/gen-slot-reloc.toit), which reads
+the input relocations retained in `toit.elf` (the toit link adds
+`-Wl,--emit-relocs`) and classifies them:
+
+- **ABS32 pointers into the slot** (vtables, const pointer tables,
+  `.init_array`, `.vm_entry`): the device adds `delta = dest_base − link_base`
+  to each word. References to the *fixed* slot-boundary symbols
+  (`__vm_a_start`/`__vm_b_start`/…) are excluded — they name fixed regions, not
+  moving content.
+- **Branches that escape the slot** (the `__wrap_time` shim): the device
+  subtracts `delta` from the Thumb BL immediate.
+
+Everything else is already slot-independent (within-slot branches; `movw/movt`
+loads of the fixed `g_plat_jt[]`). The table is delta-encoded (~2 KB) and
+written to `build/ec618/slot-reloc.bin`.
+
+`make ec618` **proves** the table on every build: it re-links slot B (only the
+linker script changes, so it is a fast re-link), relocates the slot-A image to
+slot B, and asserts the result is byte-identical to the slot-B link. That
+byte-identity check is the guard against `--emit-relocs` dropping a relocation;
+if it fails, the relocation model is incomplete and the build stops.

@@ -266,8 +266,30 @@ ec618: check-env host-tools
 		--system.snapshot $(BUILD)/ec618/system.snapshot
 	# Extract the binpkg.
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
+	# Build + verify the dual-slot relocation table. The slot-B link differs
+	# from slot A only in the linker script, so it is a fast re-link that
+	# yields an independent reference: gen-slot-reloc relocates the slot-A
+	# image to slot B and proves the result is byte-identical to the slot-B
+	# link — the guard that no --emit-relocs relocation was dropped. Done last
+	# (the envelope/binpkg are built from slot A first); the slot-B link
+	# leaves build/toit in slot-B state, which the next build's `rm -rf build`
+	# clears.
+	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618/toit-slot-a.elf
+	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-a.bin
+	cd $(EC618_SDK) && rm -f build/toit/toit.elf build/toit/ap.bin build/toit/toit.bin && \
+		TOIT_VM_SLOT_B=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
+	cd $(CURDIR)
+	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-b.bin
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--ap=$(BUILD)/ec618/ap-slot-a.bin \
+		--out=$(BUILD)/ec618/slot-reloc.bin \
+		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
 	@echo "Envelope: $(EC618_ENVELOPE)"
 	@echo "Binpkg:   $(EC618_BINPKG)"
+	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
