@@ -464,7 +464,7 @@ PRIMITIVE(stat) {
 const long kToitNow = (1l << 30) - 1l;  // Special value for now.
 const long kToitNoTime = (1l << 30) - 2l;  // Special value for no time change.
 
-static void fill_time(FILETIME* time, int s, int ns, const FILETIME& current_time) {
+static void fill_time(FILETIME* time, int64 s, int ns, const FILETIME& current_time) {
   if (ns == kToitNoTime) {
     time->dwLowDateTime = 0;
     time->dwHighDateTime = 0;
@@ -483,7 +483,9 @@ static void fill_time(FILETIME* time, int s, int ns, const FILETIME& current_tim
 }
 
 PRIMITIVE(update_times) {
-  ARGS(WindowsPath, path, int, atime_sec, int, atime_nsec, int, mtime_sec, int, mtime_nsec);
+  // Seconds-since-epoch exceed Smi range on 32-bit hosts (Smi max is ~1.07e9,
+  // current epoch is ~1.78e9), so we take them as int64.
+  ARGS(WindowsPath, path, int64, atime_sec, int, atime_nsec, int64, mtime_sec, int, mtime_nsec);
   if (atime_nsec == kToitNow || atime_nsec == kToitNoTime) {
     if (atime_sec != 0) FAIL(INVALID_ARGUMENT);
   }
