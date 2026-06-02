@@ -392,10 +392,16 @@ static void slot_reloc_clear() {
   slot_reloc_delta = 0;
 }
 
-// Arm relocate-on-write with the new image's reloc table. The table is copied
-// (the Blob is transient) and parsed; the destination-slot displacement is
-// derived from the table's link base. While armed, slot_inactive_write
-// relocates the canonical bytes it is given onto the inactive slot.
+// Arm relocate-on-write with the new image's reloc table, and lay that table
+// down as the inactive slot's tail trailer. The table is copied (the Blob is
+// transient) and parsed; the destination-slot displacement is derived from the
+// table's link base. While armed, slot_inactive_write relocates the canonical
+// bytes it is given onto the inactive slot.
+//
+// The trailer (`[ table ][ size : last word ]`, see src/slot_reloc_ec618.h)
+// goes at the very tail so the image, once it boots as the active slot, can
+// recover its own table to un-relocate reads. The caller must already have
+// erased the slot and be holding program mode (same as slot_inactive_write).
 PRIMITIVE(slot_reloc_begin) {
   // See slot_inactive_erase about PRIVILEGED.
   ARGS(Blob, table);
@@ -411,6 +417,37 @@ PRIMITIVE(slot_reloc_begin) {
   const uint32_t dest_base = inactive_slot_base();
   slot_reloc_delta = static_cast<int32_t>(dest_base) -
                      static_cast<int32_t>(slot_reloc_table.link_base);
+
+  // Build the tail trailer (one segment-aligned block ending at the slot's
+  // last byte, so the size word is the slot's last word) and write it.
+  const uint32_t block_size = (static_cast<uint32_t>(length) + 4 +
+                               FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
+  if (slot_reloc_table.body_size + block_size > SLOT_SIZE) {
+    free(copy);
+    FAIL(OUT_OF_BOUNDS);  // Body and trailer would overlap.
+  }
+  uint8_t* block = unvoid_cast<uint8_t*>(malloc(block_size));
+  if (block == null) { free(copy); FAIL(MALLOC_FAILED); }
+  if (!slot_reloc_build_trailer(copy, length, block, block_size)) {
+    free(block);
+    free(copy);
+    FAIL(INVALID_ARGUMENT);
+  }
+  const uint32_t base_phys = dest_base - AP_FLASH_XIP_ADDR;
+  uint32_t saved_start = toit_ap_image_modify_start;
+  uint32_t saved_end = toit_ap_image_modify_end;
+  toit_ap_image_modify_start = base_phys;
+  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+  int rc = BSP_QSPI_Write_Safe(block, base_phys + SLOT_SIZE - block_size, block_size);
+  toit_ap_image_modify_start = saved_start;
+  toit_ap_image_modify_end = saved_end;
+  free(block);
+  if (rc != QSPI_OK) {
+    free(copy);
+    printf("[toit] ERROR: slot trailer write failed rc=%d\n", rc);
+    FAIL(QUOTA_EXCEEDED);
+  }
+
   slot_reloc_blob = copy;
   slot_reloc_armed = true;
   return process->null_object();

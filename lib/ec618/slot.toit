@@ -90,7 +90,8 @@ write-inactive offset/int bytes/ByteArray -> none:
 
 /**
 Arms relocate-on-write with the new image's relocation $table (the "SRL1"
-  artifact built by tools/ec618/gen-slot-reloc.toit).
+  artifact built by tools/ec618/gen-slot-reloc.toit), and writes that table as
+  the inactive slot's tail trailer.
 
 The firmware is one position-independent image linked at slot A's base. While
   armed, $write-inactive relocates the CANONICAL bytes it is given onto the
@@ -99,8 +100,12 @@ The firmware is one position-independent image linked at slot A's base. While
   Relocating onto slot A is a no-op (it already sits at the link base); onto
   slot B the words are shifted by the slot displacement.
 
-Call $reloc-end when the write completes. Chunks passed to $write-inactive
-  must be sector-aligned while armed so no relocation site straddles a chunk.
+The table is also stored at the slot's tail (with its size as the slot's last
+  word) so that, once this image boots as the active slot, the VM can recover
+  its own table to un-relocate firmware reads. Call this AFTER erasing the slot
+  and while holding $program-mode (the trailer is written immediately). Call
+  $reloc-end when the write completes. Chunks passed to $write-inactive must be
+  sector-aligned while armed so no relocation site straddles a chunk.
 */
 reloc-begin table/ByteArray -> none:
   #primitive.ec618.slot-reloc-begin
