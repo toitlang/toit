@@ -111,6 +111,21 @@ tool (place the extension in-slot; merge the post-link relocations into the
 SRL1 table) plus the dual-image builder. `firmware.map`'s read-path change is
 separate (and still needed).
 
+> **TODO / future (delta-OTA):** option A bakes containers at slot-A addresses
+> and merges their pointer sites into the SRL1 (delta-shift). The cost: when the
+> VM body grows and shifts a container, that container's canonical bytes change,
+> so delta-OTA re-transmits it **even if it's unchanged**. Keeping bundled
+> containers in their **native position-independent bitmask form** instead —
+> exactly like programs-partition containers (`ImageOutputStream` /
+> `RelocationBits`), baked to the in-slot address by the device's image
+> relocator, with the bitmap stored in the relocation trailer — makes an
+> unchanged container's canonical bytes position-independent, so delta-OTA skips
+> it. We start with A because it's one uniform mechanism and matches the ESP32
+> firmware-image shape; the bitmask approach is a worthwhile later optimization
+> for stable bundled apps over cellular delta-OTA. (The VM body can't use bits —
+> it has Thumb branches that aren't single-word pointers — so this only applies
+> to the container pointers.)
+
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
 `firmware.map` ([primitive_core.cc:2655](../src/primitive_core.cc#L2655),

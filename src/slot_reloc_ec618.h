@@ -33,6 +33,21 @@
 // `delta = dest_slot_base - link_base` (0 when the image already sits at the
 // link base, +/- slot_size otherwise). The module is pure (no VM/PLAT deps) so
 // it is unit-tested on the host (tools/slot_reloc_test/).
+//
+// This sparse offset+type table covers the VM body AND (once containers move
+// in-slot) the bundled containers' pointer sites, which the envelope tool
+// converts from each container's relocation bitmap and merges in (option A —
+// one uniform mechanism, matching the ESP32 firmware-image shape). The VM body
+// needs this format because it has Thumb branches (not single-word pointers)
+// that a per-word bitmap can't express.
+//
+// TODO(delta-OTA): bundled containers are pure pointer words, so they could
+// instead keep their native position-independent bitmap form (like programs-
+// partition images, baked by ImageOutputStream/RelocationBits) rather than
+// being baked at slot-A addresses and delta-shifted here. That would keep an
+// unchanged container's canonical bytes position-independent, so delta-OTA
+// skips re-sending it when the VM body grows and shifts it. See
+// docs/ota-relocation-convergence.md.
 
 #ifndef TOIT_SRC_SLOT_RELOC_EC618_H_
 #define TOIT_SRC_SLOT_RELOC_EC618_H_
