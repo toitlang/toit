@@ -76,31 +76,40 @@ ever overflow, we grow `SLOT_SIZE` (both slots) and shift `.slot_marker`.
 
 ## What is relocated, and what is not
 
-- **VM body pointers** (1903 ABS32 into the slot + 2 `__wrap_time` branches):
-  the SRL1 table from `toit.elf` (`--emit-relocs`). Already handled.
-- **Container image *contents***: Toit images carry their own relocation
-  (applied by the image loader when a `Program` is set up), so their bytes are
-  base-relative and do **not** need SRL1 relocation.
-- **Pointers *to* the extension/containers** (today: `DromData.extension` and
-  the image table's absolute `{address, size}` entries, written post-link by
-  `tools/firmware.toit`): these point into the slot and so *are* slot-specific.
-  They are **not** in `toit.elf`, so the SRL1 table does not cover them.
+**Decision: option A — one relocatable image, one SRL1 table.** Treat the whole
+slot (VM body + bundled extension + container images) as a single relocatable
+unit, with one SRL1 table covering every absolute pointer that lands in the
+slot. This is the natural (and only correct) fit because of how EC618 runs
+bundled containers:
 
-  **Recommended fix — make container addressing slot-relative (option B):**
-  store the extension at a fixed offset within the slot and have the VM compute
-  its address as `active_slot_base + EXTENSION_OFFSET` at runtime; store image
-  table entries as **offsets from the extension base**, resolved at runtime.
-  Then there are *zero* absolute container pointers in flash — nothing extra to
-  relocate, and `firmware.map` math is slot-relative. Touches
-  `src/embedded_data.{h,cc}` (resolve offsets against the active slot base) and
-  `tools/firmware.toit` (emit offsets, not absolute addresses).
+> **Finding:** `EmbeddedDataExtension::image(n).program` is used **directly
+> from flash** ([embedded_data.cc:65](../src/embedded_data.cc#L65)) — bundled
+> container images run **XIP at their build-time-relocated absolute addresses**
+> (`tools/firmware.toit` does `container.relocate --relocation-base=<absolute>`).
+> There is no load-time relocation. So once a container moves into the slot, its
+> internal absolute pointers are slot-specific and MUST be relocated when the
+> slot moves — exactly like the VM body's ABS32 pointers.
 
-  Alternative (option A): keep absolute addresses and have `tools/firmware.toit`
-  **append** the post-link pointer sites to the SRL1 table so the device
-  relocate-on-write fixes them too. Less invasive to the VM, but spreads
-  relocation knowledge into the envelope tool and keeps absolute pointers.
+So the earlier "make addressing slot-relative" idea (option B) does not work for
+the image *contents*: an XIP-run image can't be "computed slot-relative", its
+pointers have to be relocated regardless. Option A handles everything uniformly:
 
-  → Proposing **B** (true position independence; simpler device + read path).
+- **VM body pointers** (1903 ABS32 + 2 `__wrap_time` branches): the SRL1 table
+  from `toit.elf` (`--emit-relocs`). Already handled.
+- **In-slot extension/container pointers** — the image-table entries,
+  `DromData.extension`, and each container image's own relocation sites (from
+  `container.relocation-information`). These are written post-link by
+  `tools/firmware.toit`, which therefore **extends the SRL1 table** with their
+  offsets (only those whose value lands in the slot — same in-slot test as the
+  VM body). The device's existing relocate-on-write / un-relocate-on-read then
+  fixes them with no special cases.
+
+**Big simplification: no VM changes for container addressing.** `embedded_data`
+keeps reading absolute pointers — they are simply *correct for the active slot*
+because they were relocated to it on write. The work is entirely in the envelope
+tool (place the extension in-slot; merge the post-link relocations into the
+SRL1 table) plus the dual-image builder. `firmware.map`'s read-path change is
+separate (and still needed).
 
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
@@ -205,14 +214,21 @@ the slot layout check.
 
 ## Proposed increments (each reviewable, hardware-testable where noted)
 
-1. **Slot-relative container addressing** (option B): `embedded_data` resolves
-   the extension + image table against the active slot base; `tools/firmware.toit`
-   emits offsets. Verifiable: boots + runs containers from slot A unchanged.
-2. **`firmware.map` → active slot + un-relocate-on-read**: read path returns the
-   canonical slot. Verifiable: `firmware.map` SHA on slot A == server SHA.
-3. **Containers into the slot**: envelope/builder place the extension inside the
-   slot; build-time fit check; initial-image builder produces both slots.
-   **Hardware:** flash dual image, boot A, run.
+1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`): from slot-A
+   `ap.bin` + the SRL1 table, relocate slot A → slot B and write both slots'
+   tail trailers + the active-slot marker. Current layout (extension still after
+   the AP image). **Hardware:** flash the relocate-built dual image, boot A, and
+   boot B via the marker — proves relocation yields a *bootable* slot B, not
+   just byte-identity.
+2. **Containers into the slot, option A**: `tools/firmware.toit` places the
+   extension inside each slot (after the VM body) and **extends the SRL1 table**
+   with the in-slot post-link pointers (image table, `DromData.extension`, each
+   container's relocation sites); build-time fit check; the builder relocates the
+   whole slot. No `embedded_data` change. **Hardware:** flash dual image, boot A,
+   run bundled containers; boot B, run them too.
+3. **`firmware.map` → active slot + un-relocate-on-read**: read path returns the
+   canonical slot (VM + extension), un-relocated. Verifiable: `firmware.map` SHA
+   on slot A == server SHA; on slot B == same SHA.
 4. **`FirmwareWriter` → slot; drop FOTA**: re-point the provider, delete
    `ota_begin/write/end` + copy-back, restore `PRIVILEGED`. **Hardware:** OTA a
    canonical image → relocate-on-write → trial-boot B → validate; rollback path.
@@ -234,8 +250,10 @@ re-placeholder them). Orthogonal to this convergence — a focused follow-up.
 
 ## Open decisions for you
 
-- **Container addressing** — option B (slot-relative, recommended) vs A (extend
-  the reloc table with post-link pointers)? Note: this is for **bundled**
+- **Container addressing** — RESOLVED to **option A** (one SRL1 table covers the
+  whole slot; the envelope tool merges in the post-link pointers). Forced by the
+  finding that bundled containers run XIP from build-time-relocated absolute
+  addresses (option B is infeasible for XIP-run images). For **bundled**
   (in-slot) containers only; externally installed containers live in the
   separate FlashRegistry / FDB region (`0x3CC000`) at fixed addresses and are
   unaffected by slot relocation.
