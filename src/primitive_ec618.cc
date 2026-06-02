@@ -17,6 +17,7 @@
 
 #ifdef TOIT_EC618
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "embedded_data.h"
@@ -24,6 +25,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "sha.h"
+#include "slot_reloc_ec618.h"
 
 extern "C" {
   #include "flash_rt.h"
@@ -368,6 +370,58 @@ static uint32_t inactive_slot_base() {
   return reinterpret_cast<uint32_t>(__vm_b_start);
 }
 
+// Relocate-on-write context. The OTA receiver streams the CANONICAL
+// (link-base) image; slot_reloc_begin arms relocation with that image's reloc
+// table (the "SRL1" artifact, see src/slot_reloc_ec618.h), and
+// slot_inactive_write relocates each chunk onto the destination slot before
+// the flash write — so the relocation is invisible to the (architecture-
+// agnostic) Toit firmware code. `slot_reloc_delta = dest_slot_base - link_base`
+// is 0 when the canonical image lands in slot A (no work) and +/- SLOT_SIZE
+// for slot B.
+static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL1 table bytes.
+static SlotRelocTable slot_reloc_table;
+static int32_t slot_reloc_delta = 0;
+static bool slot_reloc_armed = false;
+
+static void slot_reloc_clear() {
+  if (slot_reloc_blob != null) {
+    free(slot_reloc_blob);
+    slot_reloc_blob = null;
+  }
+  slot_reloc_armed = false;
+  slot_reloc_delta = 0;
+}
+
+// Arm relocate-on-write with the new image's reloc table. The table is copied
+// (the Blob is transient) and parsed; the destination-slot displacement is
+// derived from the table's link base. While armed, slot_inactive_write
+// relocates the canonical bytes it is given onto the inactive slot.
+PRIMITIVE(slot_reloc_begin) {
+  // See slot_inactive_erase about PRIVILEGED.
+  ARGS(Blob, table);
+  slot_reloc_clear();
+  int length = table.length();
+  uint8_t* copy = unvoid_cast<uint8_t*>(malloc(length));
+  if (copy == null) FAIL(MALLOC_FAILED);
+  memcpy(copy, table.address(), length);
+  if (!slot_reloc_parse(copy, length, &slot_reloc_table)) {
+    free(copy);
+    FAIL(INVALID_ARGUMENT);
+  }
+  const uint32_t dest_base = inactive_slot_base();
+  slot_reloc_delta = static_cast<int32_t>(dest_base) -
+                     static_cast<int32_t>(slot_reloc_table.link_base);
+  slot_reloc_blob = copy;
+  slot_reloc_armed = true;
+  return process->null_object();
+}
+
+// Disarm relocate-on-write and release the table. Idempotent.
+PRIMITIVE(slot_reloc_end) {
+  slot_reloc_clear();
+  return process->null_object();
+}
+
 // Erase a single 4 KB sector inside the inactive slot. Caller passes
 // the sector's offset within the slot (must be sector-aligned). The
 // host walks the slot one sector at a time so each call returns
@@ -421,19 +475,41 @@ PRIMITIVE(slot_inactive_write) {
   const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
   const uint32_t dest = base_phys + off;
 
+  // When relocate-on-write is armed (and the destination is not the link
+  // slot), relocate the canonical bytes onto the destination slot in a RAM
+  // scratch copy before writing — NOR flash is written once per erase, so the
+  // bytes must already be relocated when the sector is programmed. The
+  // receiver writes sector-sized, sector-aligned chunks, so no reloc patch
+  // site straddles a chunk boundary; slot_reloc_apply rejects a straddle.
+  const uint8_t* source = bytes.address();
+  uint8_t* relocated = null;
+  if (slot_reloc_armed && slot_reloc_delta != 0) {
+    relocated = unvoid_cast<uint8_t*>(malloc(bytes.length()));
+    if (relocated == null) FAIL(MALLOC_FAILED);
+    memcpy(relocated, bytes.address(), bytes.length());
+    if (!slot_reloc_apply(&slot_reloc_table, relocated, off, bytes.length(),
+                          slot_reloc_delta, SLOT_RELOC_TO_SLOT)) {
+      free(relocated);
+      FAIL(INVALID_ARGUMENT);
+    }
+    source = relocated;
+  }
+
   uint32_t saved_start = toit_ap_image_modify_start;
   uint32_t saved_end = toit_ap_image_modify_end;
   toit_ap_image_modify_start = base_phys;
   toit_ap_image_modify_end = base_phys + SLOT_SIZE;
 
   // BSP_QSPI_Write_Safe disables XIP for the duration of the call. The
-  // source must live in RAM — Blob::address() yields a process-heap
-  // pointer, which is in MSMB RAM.
+  // source must live in RAM — both Blob::address() (a process-heap pointer)
+  // and the relocation scratch are in MSMB RAM.
   int rc = BSP_QSPI_Write_Safe(
-      const_cast<uint8_t*>(bytes.address()), dest, bytes.length());
+      const_cast<uint8_t*>(source), dest, bytes.length());
 
   toit_ap_image_modify_start = saved_start;
   toit_ap_image_modify_end = saved_end;
+
+  if (relocated != null) free(relocated);
 
   if (rc != QSPI_OK) {
     printf("[toit] ERROR: slot write failed at 0x%08x rc=%d\n",
@@ -566,6 +642,8 @@ PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_reloc_begin) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_reloc_end) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_stage_and_reset) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_mark_valid) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_mark_invalid_and_reset) { FAIL(UNIMPLEMENTED); }

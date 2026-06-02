@@ -89,6 +89,27 @@ write-inactive offset/int bytes/ByteArray -> none:
   #primitive.ec618.slot-inactive-write
 
 /**
+Arms relocate-on-write with the new image's relocation $table (the "SRL1"
+  artifact built by tools/ec618/gen-slot-reloc.toit).
+
+The firmware is one position-independent image linked at slot A's base. While
+  armed, $write-inactive relocates the CANONICAL bytes it is given onto the
+  destination slot (the VM does the byte-level relocation in C++), so the
+  caller only ever streams canonical image bytes — relocation is invisible.
+  Relocating onto slot A is a no-op (it already sits at the link base); onto
+  slot B the words are shifted by the slot displacement.
+
+Call $reloc-end when the write completes. Chunks passed to $write-inactive
+  must be sector-aligned while armed so no relocation site straddles a chunk.
+*/
+reloc-begin table/ByteArray -> none:
+  #primitive.ec618.slot-reloc-begin
+
+/** Disarms relocate-on-write and releases the table. Idempotent. */
+reloc-end -> none:
+  #primitive.ec618.slot-reloc-end
+
+/**
 Stages the freshly-written inactive slot as a trial and resets the chip
 so it boots into that slot. Does not return.
 
