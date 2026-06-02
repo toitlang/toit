@@ -287,6 +287,13 @@ ec618: check-env host-tools
 		--ap=$(BUILD)/ec618/ap-slot-a.bin \
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
+	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
+	# on the chip) against the same slot-B link: relocate slot A == slot B and
+	# un-relocate slot B == slot A, both whole-body and sector-chunked. The
+	# Toit check above proves the table/model; this proves the C++ that
+	# consumes it (read-back un-relocation included).
+	$(CXX) -Wall -Wextra -O2 -I src tools/slot_reloc_test/test.cc src/slot_reloc_ec618.cc -o $(BUILD)/ec618/slot_reloc_test
+	$(BUILD)/ec618/slot_reloc_test $(BUILD)/ec618/ap-slot-a.bin $(BUILD)/ec618/ap-slot-b.bin $(BUILD)/ec618/slot-reloc.bin
 	@echo "Envelope: $(EC618_ENVELOPE)"
 	@echo "Binpkg:   $(EC618_BINPKG)"
 	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"
