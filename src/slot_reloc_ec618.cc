@@ -123,6 +123,24 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   return true;
 }
 
+bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table) {
+  if (slot_size < SRL1_HEADER_SIZE + 4) return false;
+  uint32_t n = load_le32(slot + slot_size - 4);
+  // An erased tail reads as 0xffffffff; reject that and any implausible size.
+  if (n < SRL1_HEADER_SIZE || n > slot_size - 4) return false;
+  return slot_reloc_parse(slot + slot_size - 4 - n, n, table);
+}
+
+bool slot_reloc_build_trailer(const uint8_t* table_blob, uint32_t len,
+                              uint8_t* out, uint32_t out_size) {
+  if (out_size < len + 4) return false;
+  uint32_t pad = out_size - len - 4;
+  for (uint32_t i = 0; i < pad; i++) out[i] = 0xff;  // Leave the lead as erased.
+  for (uint32_t i = 0; i < len; i++) out[pad + i] = table_blob[i];
+  store_le32(out + pad + len, len);                  // Size in the last word.
+  return true;
+}
+
 // Applies one delta-encoded offset stream to the window. `word_delta` is added
 // to ABS32 words / branch immediates as appropriate. Returns false if a patch
 // site straddles the window boundary.

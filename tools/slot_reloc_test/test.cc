@@ -114,6 +114,25 @@ static void test_straddle() {
   CHECK(!slot_reloc_apply(&t, buf + 0x22, 0x22, BODY - 0x22, SIZE, SLOT_RELOC_TO_SLOT), "straddle at window start rejected");
 }
 
+static void test_trailer() {
+  // Build an SRL1 blob, lay it down as a tail trailer in a slot buffer, and
+  // recover it from the slot's last word.
+  std::vector<uint8_t> blob = build_table(0x991000, 0x60000, 0x100, {0x10, 0x20}, {0x40});
+  const uint32_t SLOT = 0x10000;
+  std::vector<uint8_t> slot(SLOT, 0xff);  // Erased flash.
+  uint32_t region = ((blob.size() + 4) + 15) & ~15u;  // 16-align the block.
+  CHECK(slot_reloc_build_trailer(blob.data(), blob.size(), slot.data() + SLOT - region, region),
+        "build trailer");
+  uint32_t last = slot[SLOT - 4] | (slot[SLOT - 3] << 8) | (slot[SLOT - 2] << 16) |
+                  ((uint32_t)slot[SLOT - 1] << 24);
+  CHECK(last == blob.size(), "last word == table size");
+  SlotRelocTable t;
+  CHECK(slot_reloc_parse_trailer(slot.data(), SLOT, &t), "parse trailer from tail");
+  CHECK(t.abs32_count == 2 && t.thmbl_count == 1, "trailer table counts");
+  std::vector<uint8_t> erased(SLOT, 0xff);
+  CHECK(!slot_reloc_parse_trailer(erased.data(), SLOT, &t), "erased tail -> no table");
+}
+
 static uint8_t* read_file(const char* path, size_t* len) {
   FILE* f = fopen(path, "rb");
   if (f == nullptr) return nullptr;
@@ -187,6 +206,8 @@ int main(int argc, char** argv) {
   test_synthetic();
   printf("window straddle rejection\n");
   test_straddle();
+  printf("self-locating tail trailer\n");
+  test_trailer();
   if (argc >= 4) {
     printf("real artifacts (slot-B link cross-check)\n");
     test_real(argv[1], argv[2], argv[3]);

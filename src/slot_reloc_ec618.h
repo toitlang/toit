@@ -65,6 +65,24 @@ struct SlotRelocTable {
 // the magic, sizes and varint streams are well-formed.
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table);
 
+// Locates and parses the reloc table stored at the TAIL of a slot. It rides
+// there as `[ SRL1 table (N bytes) ][ N : uint32 little-endian ]`, with N the
+// slot's very last word — so it is variable-size and self-locating: read the
+// last word, then the N bytes before it. The running VM uses this to recover
+// its active slot's table and un-relocate reads. `slot` points at the slot
+// base (XIP); `slot_size` is the slot reservation. Returns false when no valid
+// table is present (e.g. an erased tail reads as 0xffffffff).
+bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table);
+
+// Serializes `table_blob` (an "SRL1" blob of `len` bytes) plus its trailing
+// size word into `out`, padded at the FRONT to `out_size` so the result is
+// written as the last `out_size` bytes of the slot (the size word lands in the
+// slot's last word). `out_size` must be >= len + 4. Returns false otherwise.
+// Used by the write path to lay down the tail trailer in one segment-aligned
+// block; the leading pad bytes are left as 0xff (erased flash).
+bool slot_reloc_build_trailer(const uint8_t* table_blob, uint32_t len,
+                              uint8_t* out, uint32_t out_size);
+
 // Applies the table to the window `[window_off, window_off + window_len)` of
 // the slot body, in place in `buf` (where `buf[0]` is body offset
 // `window_off`). `delta` is `dest_slot_base - link_base`; `dir` selects
