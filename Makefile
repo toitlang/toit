@@ -251,6 +251,12 @@ ec618: check-env host-tools
 		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
 	# Compile the system snapshot.
 	cd $(CURDIR)
+	# Verify the VM slot is position-independent (every VM->PLAT call goes
+	# through the jump table) — required for the dual-slot relocate-on-write OTA.
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-pic.toit -- \
+		--objdump=$(EC618_GCC_PATH)/bin/arm-none-eabi-objdump \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		$(EC618_SDK)/build/toit/toit.elf
 	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
 	# Create the firmware envelope.
 	rm -f $(EC618_ENVELOPE)
