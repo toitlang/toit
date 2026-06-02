@@ -153,7 +153,11 @@ static const int INT64_SIZE = sizeof(int64);
 
 static const int TOIT_PAGE_SIZE_LOG2_64 = 15;  // Page size 32kB.
 static const int TOIT_PAGE_SIZE_LOG2_32 = 12;  // Page size 4kB.
-#ifdef BUILD_64
+// On devices the page size determines the per-stack/per-object cap, and we
+// keep it small to fit constrained memory. On 32-bit host builds we have
+// plenty of memory, so use the larger 64-bit page size to give Toit stacks
+// the same headroom as the 64-bit build.
+#if defined(BUILD_64) || !defined(TOIT_FREERTOS)
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_64;
 #else
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_32;
