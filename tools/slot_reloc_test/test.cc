@@ -1,22 +1,25 @@
 // Copyright (C) 2026 Toit contributors.
 //
-// Host unit test for src/slot_reloc_ec618.cc — the EC618 dual-slot relocation
-// core. Proves:
-//   - the "SRL1" table parses and the ABS32 / Thumb-branch transforms are
-//     exact and invertible (relocate then un-relocate is the identity);
-//   - a patch site straddling a window boundary is rejected;
-//   - relocating in sector-sized windows matches a single whole-body window
-//     (the device writes the slot one sector at a time).
+// Build-integration GOLD CHECK for src/slot_reloc_ec618.cc — the EC618
+// dual-slot relocation core (the C++ that runs on the chip). Given the actual
+// build artifacts (build/ec618/ap-slot-{a,b}.bin and slot-reloc.bin), it proves
+// the device relocator handles the REAL ~1900-entry table byte-identically
+// against the independent slot-B link:
+//   - relocate slot A == slot B link (whole-body and sector-chunked, the way
+//     the device writes the slot);
+//   - un-relocate slot B == slot A link (the read path).
 //
-// With three extra arguments — ap_a.bin ap_b.bin slot-reloc.bin (the build's
-// build/ec618/ap-slot-{a,b}.bin and slot-reloc.bin) — it also runs the gold
-// check against the independent slot-B link: relocate slot A == slot B, and
-// un-relocate slot B == slot A, whole-body and sector-chunked.
+// This complements the Toit-side byte-identity proof in gen-slot-reloc.toit
+// (--verify-slot-b): that proves the table/model, this proves the C++ that
+// consumes it. The self-contained UNIT tests for the relocation transforms,
+// the tail trailer, and SlotFirmware live in
+// tests/ctest/ec618-slot-reloc-test.cc.
 //
-// Build + run (synthetic only):
+// Build + run (from `make ec618`):
 //   g++ -Wall -Wextra -O2 -I src tools/slot_reloc_test/test.cc
-//       src/slot_reloc_ec618.cc -o /tmp/slot_reloc_test && /tmp/slot_reloc_test
-// With real artifacts: append ap-slot-a.bin ap-slot-b.bin slot-reloc.bin.
+//       src/slot_reloc_ec618.cc -o slot_reloc_test
+//   slot_reloc_test build/ec618/ap-slot-a.bin build/ec618/ap-slot-b.bin
+//       build/ec618/slot-reloc.bin
 
 #include <stdint.h>
 #include <stdio.h>
@@ -37,155 +40,6 @@ static int g_failures = 0;
 #define CHECK(cond, msg) do { \
   if (cond) { printf("  ok: %s\n", msg); } \
   else { printf("  FAIL: %s\n", msg); g_failures++; } } while (0)
-
-// Appends `value` to `out` as an unsigned LEB128 varint.
-static void put_varint(std::vector<uint8_t>* out, uint32_t value) {
-  for (;;) {
-    uint8_t b = value & 0x7f;
-    value >>= 7;
-    if (value != 0) { out->push_back(b | 0x80); }
-    else { out->push_back(b); return; }
-  }
-}
-
-static void put_le32(std::vector<uint8_t>* out, uint32_t v) {
-  out->push_back(v); out->push_back(v >> 8); out->push_back(v >> 16); out->push_back(v >> 24);
-}
-
-// Builds an "SRL1" blob from ascending ABS32 / branch offset lists.
-static std::vector<uint8_t> build_table(uint32_t link_base, uint32_t slot_size, uint32_t body_size,
-                                        const std::vector<uint32_t>& abs32,
-                                        const std::vector<uint32_t>& thmbl) {
-  std::vector<uint8_t> t;
-  t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('1');
-  put_le32(&t, link_base); put_le32(&t, slot_size); put_le32(&t, body_size);
-  put_le32(&t, abs32.size()); put_le32(&t, thmbl.size());
-  uint32_t prev = 0;
-  for (uint32_t o : abs32) { put_varint(&t, o - prev); prev = o; }
-  prev = 0;
-  for (uint32_t o : thmbl) { put_varint(&t, o - prev); prev = o; }
-  return t;
-}
-
-static void test_synthetic() {
-  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x100, DELTA = SIZE;
-  // One ABS32 pointer into the slot at offset 0x10; one Thumb BL at 0x40.
-  std::vector<uint8_t> table = build_table(LINK, SIZE, BODY, {0x10}, {0x40});
-  SlotRelocTable t;
-  CHECK(slot_reloc_parse(table.data(), table.size(), &t), "table parses");
-  CHECK(t.link_base == LINK && t.slot_size == SIZE && t.body_size == BODY, "header fields");
-  CHECK(t.abs32_count == 1 && t.thmbl_count == 1, "counts");
-
-  uint8_t buf[BODY];
-  memset(buf, 0, sizeof(buf));
-  // ABS32 word points at LINK + 0x80 (inside the slot).
-  uint32_t ptr = LINK + 0x80;
-  buf[0x10] = ptr; buf[0x11] = ptr >> 8; buf[0x12] = ptr >> 16; buf[0x13] = ptr >> 24;
-  // A real Thumb-2 BL: __wrap_time call from the live image (bytes f7 ff fc d2,
-  // at 0x9b4e4a -> 0x86246c). Its absolute value is irrelevant here; we only
-  // check the transform is exact and invertible.
-  buf[0x40] = 0xf7; buf[0x41] = 0xff; buf[0x42] = 0xfc; buf[0x43] = 0xd2;
-  uint8_t original[BODY];
-  memcpy(original, buf, BODY);
-
-  CHECK(slot_reloc_apply(&t, buf, 0, BODY, DELTA, SLOT_RELOC_TO_SLOT), "relocate ok");
-  uint32_t got = buf[0x10] | (buf[0x11] << 8) | (buf[0x12] << 16) | ((uint32_t)buf[0x13] << 24);
-  CHECK(got == ptr + DELTA, "ABS32 += delta");
-  CHECK(memcmp(buf + 0x40, original + 0x40, 4) != 0, "BL changed");
-
-  CHECK(slot_reloc_apply(&t, buf, 0, BODY, DELTA, SLOT_RELOC_TO_CANONICAL), "un-relocate ok");
-  CHECK(memcmp(buf, original, BODY) == 0, "relocate then un-relocate is identity");
-
-  // delta == 0 is a no-op.
-  uint8_t z[BODY]; memcpy(z, original, BODY);
-  CHECK(slot_reloc_apply(&t, z, 0, BODY, 0, SLOT_RELOC_TO_SLOT), "delta 0 ok");
-  CHECK(memcmp(z, original, BODY) == 0, "delta 0 leaves bytes untouched");
-}
-
-static void test_straddle() {
-  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x100;
-  std::vector<uint8_t> table = build_table(LINK, SIZE, BODY, {0x20}, {});
-  SlotRelocTable t;
-  slot_reloc_parse(table.data(), table.size(), &t);
-  uint8_t buf[BODY]; memset(buf, 0, sizeof(buf));
-  // A window ending at 0x22 splits the 4-byte ABS32 at 0x20 -> must be rejected.
-  CHECK(!slot_reloc_apply(&t, buf, 0x00, 0x22, SIZE, SLOT_RELOC_TO_SLOT), "straddle at window end rejected");
-  // A window starting at 0x22 splits it from the other side.
-  CHECK(!slot_reloc_apply(&t, buf + 0x22, 0x22, BODY - 0x22, SIZE, SLOT_RELOC_TO_SLOT), "straddle at window start rejected");
-}
-
-static void test_trailer() {
-  // Build an SRL1 blob, lay it down as a tail trailer in a slot buffer, and
-  // recover it from the slot's last word.
-  std::vector<uint8_t> blob = build_table(0x991000, 0x60000, 0x100, {0x10, 0x20}, {0x40});
-  const uint32_t SLOT = 0x10000;
-  std::vector<uint8_t> slot(SLOT, 0xff);  // Erased flash.
-  uint32_t region = ((blob.size() + 4) + 15) & ~15u;  // 16-align the block.
-  CHECK(slot_reloc_build_trailer(blob.data(), blob.size(), slot.data() + SLOT - region, region),
-        "build trailer");
-  uint32_t last = slot[SLOT - 4] | (slot[SLOT - 3] << 8) | (slot[SLOT - 2] << 16) |
-                  ((uint32_t)slot[SLOT - 1] << 24);
-  CHECK(last == blob.size(), "last word == table size");
-  SlotRelocTable t;
-  CHECK(slot_reloc_parse_trailer(slot.data(), SLOT, &t), "parse trailer from tail");
-  CHECK(t.abs32_count == 2 && t.thmbl_count == 1, "trailer table counts");
-  std::vector<uint8_t> erased(SLOT, 0xff);
-  CHECK(!slot_reloc_parse_trailer(erased.data(), SLOT, &t), "erased tail -> no table");
-}
-
-// SlotFirmware presents a slot's CANONICAL image (table-first, un-relocated).
-// Build a slot A (canonical) and slot B (relocated +SIZE) that share a tail
-// trailer, and check both views yield byte-identical canonical images — even
-// across a Thumb-branch site at a 2-aligned offset that straddles a 4-byte
-// boundary (the case a fixed word window in `at` would miss).
-static void test_slot_firmware() {
-  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x80, SLOT = 0x2000;
-  std::vector<uint8_t> blob = build_table(LINK, SIZE, BODY, {0x10}, {0x42});
-  while (blob.size() & 3) blob.push_back(0);  // Pad so the canonical body aligns.
-
-  // Physical slot A (link base): an ABS32 pointer at 0x10, a Thumb BL at the
-  // 2-aligned 0x42 (spans [0x42, 0x46), straddling the 0x44 boundary).
-  std::vector<uint8_t> a(SLOT, 0xff);
-  memset(a.data(), 0, BODY);
-  uint32_t ptr = LINK + 0x40;
-  a[0x10] = ptr; a[0x11] = ptr >> 8; a[0x12] = ptr >> 16; a[0x13] = ptr >> 24;
-  a[0x42] = 0xf7; a[0x43] = 0xff; a[0x44] = 0xfc; a[0x45] = 0xd2;
-  uint32_t region = blob.size() + 4;
-  memcpy(a.data() + SLOT - region, blob.data(), blob.size());
-  a[SLOT-4] = blob.size(); a[SLOT-3] = blob.size() >> 8;
-  a[SLOT-2] = blob.size() >> 16; a[SLOT-1] = blob.size() >> 24;
-
-  // Physical slot B: slot A relocated by +SIZE (the tail trailer is unchanged).
-  std::vector<uint8_t> b = a;
-  SlotRelocTable t; slot_reloc_parse(blob.data(), blob.size(), &t);
-  slot_reloc_apply(&t, b.data(), 0, BODY, SIZE, SLOT_RELOC_TO_SLOT);
-
-  SlotFirmware fa, fb;
-  CHECK(fa.open(a.data(), LINK, SLOT), "slotfw open A");
-  CHECK(fb.open(b.data(), LINK + SIZE, SLOT), "slotfw open B");
-  CHECK(fa.canonical_size() == fb.canonical_size(), "slotfw canonical size A == B");
-  uint32_t n = fa.canonical_size();
-  CHECK(n == 4 + blob.size() + BODY, "slotfw canonical size value");
-
-  int diff = 0;
-  for (uint32_t i = 0; i < n; i++) if (fa.at(i) != fb.at(i)) diff++;
-  CHECK(diff == 0, "slotfw canonical A == B (incl. straddling branch)");
-
-  uint32_t bo = 4 + blob.size();
-  int bad_body = 0;
-  for (uint32_t k = 0; k < BODY; k++) if (fa.at(bo + k) != a[k]) bad_body++;
-  CHECK(bad_body == 0, "slotfw slot-A canonical body == physical");
-
-  std::vector<uint8_t> blk(BODY);
-  CHECK(fb.copy(bo, bo + BODY, blk.data()), "slotfw copy body block");
-  int bad_copy = 0;
-  for (uint32_t k = 0; k < BODY; k++) if (blk[k] != fb.at(bo + k)) bad_copy++;
-  CHECK(bad_copy == 0, "slotfw copy == at over body");
-
-  std::vector<uint8_t> erased(SLOT, 0xff);
-  SlotFirmware bad;
-  CHECK(!bad.open(erased.data(), LINK, SLOT), "slotfw rejects erased tail");
-}
 
 static uint8_t* read_file(const char* path, size_t* len) {
   FILE* f = fopen(path, "rb");
@@ -256,20 +110,13 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
 }
 
 int main(int argc, char** argv) {
-  printf("synthetic relocate/un-relocate\n");
-  test_synthetic();
-  printf("window straddle rejection\n");
-  test_straddle();
-  printf("self-locating tail trailer\n");
-  test_trailer();
-  printf("SlotFirmware canonical read (table-first, un-relocated)\n");
-  test_slot_firmware();
-  if (argc >= 4) {
-    printf("real artifacts (slot-B link cross-check)\n");
-    test_real(argv[1], argv[2], argv[3]);
-  } else {
-    printf("(skipping real-artifact check; pass ap_a.bin ap_b.bin slot-reloc.bin to enable)\n");
+  if (argc < 4) {
+    printf("usage: %s ap-slot-a.bin ap-slot-b.bin slot-reloc.bin\n", argv[0]);
+    printf("(the self-contained unit tests live in tests/ctest/ec618-slot-reloc-test.cc)\n");
+    return 2;
   }
+  printf("real artifacts (slot-B link cross-check)\n");
+  test_real(argv[1], argv[2], argv[3]);
   printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED",
          g_failures, g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;
