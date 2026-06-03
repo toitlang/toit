@@ -82,17 +82,10 @@ class DescriptionUrlCache:
         path = "$path/$name"
         description/Description? := null
         decoded/any := null
-        contents/any := null
-        get-e := catch:
-          contents = content.get entry
-        if get-e:
-          ui.emit --error "Failed to read $path: $get-e."
-          ui.emit --warning "Skipping $path."
-          continue.do
         e := catch:
-          decoded = yaml.decode contents
+          decoded = yaml.decode (content.get entry)
         if e:
-          ui.emit --error "Failed to decode $path as YAML: $e ($(describe-contents_ contents))."
+          ui.emit --error "Failed to decode $path as YAML."
           ui.emit --warning "Skipping $path."
           continue.do
         if decoded is not Map:
@@ -119,20 +112,6 @@ class DescriptionUrlCache:
   add_ description/Description:
     cache/DescriptionVersionCache := cache_.get description.url --init=(: DescriptionVersionCache)
     cache.add_ description
-
-  /**
-  Returns a short, human-readable description of $contents for diagnostics.
-
-  Used when reporting decode failures, so the next failure tells us whether
-    we saw an empty file, a truncated file, binary garbage, or the wrong type.
-  */
-  static describe-contents_ contents/any -> string:
-    if contents == null: return "null"
-    if contents is not ByteArray: return "type=$(contents.stringify)"
-    bytes/ByteArray := contents
-    head-size := min bytes.size 64
-    head-snippet := bytes[..head-size].to-string-non-throwing
-    return "ByteArray size=$bytes.size head=$head-snippet"
 
 
 /**
