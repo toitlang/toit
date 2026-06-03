@@ -965,7 +965,18 @@ extract-ec618 -> none
     return
 
   if format == "binary":
-    write-file output-path --ui=ui: it.write firmware-bin
+    // The OTA payload: the active slot's CANONICAL firmware (table-first,
+    // [ size ][ table ][ VM body + extension ]) — the exact bytes firmware.map
+    // returns and the device FirmwareWriter consumes (relocate-on-write). This
+    // matches the standard contract where `extract --format binary` is the
+    // image that is OTA'd. The flashable whole-AP image is the 'image'/binpkg
+    // format. Falls back to the raw AP for legacy envelopes without a table.
+    reloc-table/SlotRelocTable? := envelope.entries.get AR-ENTRY-EC618-RELOC
+        --if-present=: SlotRelocTable.parse it
+    output := reloc-table
+        ? (ec618-canonical-firmware firmware-bin reloc-table)
+        : firmware-bin
+    write-file output-path --ui=ui: it.write output
     return
 
   parts := extract-parts-ec618 firmware-bin
@@ -974,6 +985,29 @@ extract-ec618 -> none
     "binary" : firmware-bin,
   }
   write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+/**
+Builds the EC618 CANONICAL firmware image from the in-slot AP binary $ap and the
+  base relocation $table (geometry). The canonical image is table-first
+
+    [ table-size : u32 ][ SRL1 table (merged) ][ VM body + extension ]
+
+— the exact bytes firmware.map returns and the device FirmwareWriter consumes
+  (relocate-on-write). The merged table and the populated front are read from
+  slot A, which sits at the link base, so its body is already canonical
+  (delta 0).
+*/
+ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
+  load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
+  slot-a-file := table.link-base - load-xip
+  size-pos := slot-a-file + table.slot-size - 4
+  table-length := LITTLE-ENDIAN.uint32 ap size-pos
+  table-bytes := ap.copy (size-pos - table-length) size-pos
+  populated := (SlotRelocTable.parse table-bytes).body-size
+  body := ap.copy slot-a-file (slot-a-file + populated)
+  size-word := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 size-word 0 table-length
+  return size-word + table-bytes + body
 
 extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   containers := []
