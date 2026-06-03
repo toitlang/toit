@@ -54,8 +54,8 @@ $trial reports whether the running image is an unconfirmed trial.
 SLOT-A ::= 'A'
 SLOT-B ::= 'B'
 
-/** Size of one VM slot, in bytes (384 KB). */
-SLOT-SIZE ::= 0x60000
+/** Size of one VM slot, in bytes (768 KB). */
+SLOT-SIZE ::= 0xC0000
 
 /**
 Returns the slot the runtime is currently executing from ($SLOT-A or

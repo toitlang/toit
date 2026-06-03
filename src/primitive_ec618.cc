@@ -88,7 +88,7 @@ PRIMITIVE(print_uart_id) {
 // Size of one VM slot, mirrored from the linker script. Bounds-checked
 // here so a buggy Toit caller can't run off the end of slot B into the
 // marker region (or further into the extension data).
-static const uint32_t SLOT_SIZE = 0x60000;
+static const uint32_t SLOT_SIZE = 0xC0000;  // 768 KB; mirrors TOIT_VM_SLOT_SIZE.
 
 // Returns the VM slot the runtime is currently executing from — 'A' or 'B'
 // as ASCII bytes. This is the slot the dispatcher booted, which during a
