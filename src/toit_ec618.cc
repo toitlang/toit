@@ -67,104 +67,6 @@ extern "C" {
 
 namespace toit {
 
-// RAII guard that temporarily opens a write window inside the AP image
-// area. The platform's sysROSpaceCheck override (sys_ro_override.c) consults
-// toit_ap_image_modify_{start,end} to decide whether a write is allowed; the
-// addresses are physical (non-XIP) flash offsets.
-class AllowFirmwareModifications {
- public:
-  AllowFirmwareModifications(uint32_t start, uint32_t end) {
-    saved_start_ = toit_ap_image_modify_start;
-    saved_end_ = toit_ap_image_modify_end;
-    toit_ap_image_modify_start = start;
-    toit_ap_image_modify_end = end;
-  }
-  ~AllowFirmwareModifications() {
-    toit_ap_image_modify_start = saved_start_;
-    toit_ap_image_modify_end = saved_end_;
-  }
-
- private:
-  uint32_t saved_start_;
-  uint32_t saved_end_;
-};
-
-// Copies the staged firmware in FLASH_FOTA_REGION into the active image
-// area, replacing the bytes after the unchanged prefix. The contents have
-// already been hashed and validated by ota_end; this step is a plain
-// erase-then-copy with no further verification. Returns true on success.
-static bool perform_ota_commit() {
-  extern uint32_t ota_commit_size;
-
-  // Re-derive the prefix length from the running image instead of carrying
-  // it forward as separate state. ota_write recorded ota_commit_size as the
-  // total image size; everything past the prefix lives in FOTA.
-  const EmbeddedDataExtension* extension = EmbeddedData::extension();
-  if (extension == null) {
-    printf("[toit] ERROR: OTA commit: embedded extension is null\n");
-    return false;
-  }
-  const uint32_t prefix_size =
-      reinterpret_cast<uint32_t>(extension) - AP_FLASH_LOAD_ADDR;
-  if (ota_commit_size <= prefix_size) {
-    printf("[toit] ERROR: OTA commit: image too small for prefix\n");
-    return false;
-  }
-  const uint32_t extension_size = ota_commit_size - prefix_size;
-
-  // ota_write pads the staged tail to a 16-byte boundary, so the FOTA
-  // region holds round-up(extension_size, 16) bytes. The copy below has to
-  // move the same span over to the active image, because
-  // BSP_QSPI_Write_Safe also requires 16-byte-aligned writes.
-  const uint32_t SEGMENT = 16;
-  const uint32_t SECTOR = 0x1000;
-  const uint32_t aligned_size = (extension_size + SEGMENT - 1) & ~(SEGMENT - 1);
-
-  // sysROSpaceCheck and BSP_QSPI_*_Safe both work in physical (non-XIP)
-  // flash offsets, so convert from the XIP base.
-  const uint32_t ap_image_physical = AP_FLASH_LOAD_ADDR - AP_FLASH_XIP_ADDR;
-  const uint32_t dest_physical = ap_image_physical + prefix_size;
-
-  // Erase whole sectors covering the staged area, rounding up so a partial
-  // final sector is fully erased before being written. The writable window
-  // must span the *erase* footprint, not just the copy footprint — otherwise
-  // sysROSpaceCheck rejects the final sector's tail byte and BSP_QSPI_Erase_Safe
-  // hangs in its assertion-failure path (it disables interrupts and busy-loops
-  // instead of returning a status).
-  const uint32_t erase_size = (aligned_size + SECTOR - 1) & ~(SECTOR - 1);
-  AllowFirmwareModifications guard(dest_physical, dest_physical + erase_size);
-  for (uint32_t off = 0; off < erase_size; off += SECTOR) {
-    if (BSP_QSPI_Erase_Safe(dest_physical + off, SECTOR) != QSPI_OK) {
-      printf("[toit] ERROR: OTA erase failed at 0x%08x\n",
-             static_cast<unsigned>(dest_physical + off));
-      return false;
-    }
-  }
-
-  // Copy via RAM buffer. BSP_QSPI_Read_Safe / Write_Safe disable XIP for
-  // the duration of the call, so both the source and destination must live
-  // in RAM. The Safe wrappers handle XIP toggling internally. Chunks are
-  // sized in segment-aligned multiples so the trailing partial write is
-  // also segment-aligned.
-  static const uint32_t BUF_SIZE = 4096;
-  uint8_t buf[BUF_SIZE];
-  for (uint32_t off = 0; off < aligned_size; off += BUF_SIZE) {
-    uint32_t chunk = aligned_size - off;
-    if (chunk > BUF_SIZE) chunk = BUF_SIZE;
-    if (BSP_QSPI_Read_Safe(buf, FLASH_FOTA_REGION_START + off, chunk) != QSPI_OK) {
-      printf("[toit] ERROR: OTA read failed at 0x%08x\n",
-             static_cast<unsigned>(FLASH_FOTA_REGION_START + off));
-      return false;
-    }
-    if (BSP_QSPI_Write_Safe(buf, dest_physical + off, chunk) != QSPI_OK) {
-      printf("[toit] ERROR: OTA write failed at 0x%08x\n",
-             static_cast<unsigned>(dest_physical + off));
-      return false;
-    }
-  }
-  return true;
-}
-
 static void run_static_initializers() {
   for (void (**fn)(void) = __vm_init_array_start; fn < __vm_init_array_end; fn++) {
     (*fn)();
@@ -335,20 +237,9 @@ static void start() {
   OS::tear_down();
   FlashRegistry::tear_down();
 
-  // Check if an OTA update was staged during execution.
-  extern bool ota_updated;
-  if (ota_updated) {
-    ota_updated = false;
-    printf("[toit] INFO: OTA update staged — committing\n");
-    if (perform_ota_commit()) {
-      printf("[toit] INFO: OTA commit complete — rebooting\n");
-    } else {
-      printf("[toit] ERROR: OTA commit failed — active image may be corrupt\n");
-    }
-    RtcMemory::invalidate();
-    slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, 1000);
-    // Fall through to sleep.
-  }
+  // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
+  // and reboots into it through firmware.upgrade; the slot marker + dispatcher
+  // (toit_main.c) handle trial boot and rollback. No post-shutdown copy step.
 
   switch (exit_state.reason) {
     case Scheduler::EXIT_DEEP_SLEEP: {

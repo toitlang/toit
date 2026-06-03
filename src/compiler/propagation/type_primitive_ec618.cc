@@ -20,9 +20,6 @@ namespace compiler {
 
 MODULE_TYPES(ec618, MODULE_EC618)
 
-TYPE_PRIMITIVE_ANY(ota_begin)
-TYPE_PRIMITIVE_ANY(ota_write)
-TYPE_PRIMITIVE_ANY(ota_end)
 TYPE_PRIMITIVE_INT(print_uart_id)
 TYPE_PRIMITIVE_INT(slot_active)
 TYPE_PRIMITIVE_ANY(slot_inactive_erase)

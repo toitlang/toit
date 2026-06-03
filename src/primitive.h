@@ -426,9 +426,6 @@ namespace toit {
   PRIMITIVE(pm_locks_dump, 0)                \
 
 #define MODULE_EC618(PRIMITIVE)              \
-  PRIMITIVE(ota_begin, 2)                    \
-  PRIMITIVE(ota_write, 1)                    \
-  PRIMITIVE(ota_end, 2)                      \
   PRIMITIVE(print_uart_id, 0)                \
   PRIMITIVE(slot_active, 0)                  \
   PRIMITIVE(slot_inactive_erase, 1)          \
