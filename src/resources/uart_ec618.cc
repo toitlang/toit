@@ -82,6 +82,16 @@ class UartResourceGroup : public ResourceGroup {
     int id = uart_res->uart_id();
     UartState& state = uart_states[id];
     if (state.in_use) {
+#if CONFIG_TOIT_EC618_PRINT_UART
+      // The print UART shares the controller with printf/monitor output;
+      // Uart_DeInit tears down that print path and can block (the OTA-over-UART
+      // close-hang). Leave the controller running — the print path keeps it.
+      if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) {
+        state.in_use = false;
+        state.de_pad = -1;
+        return;
+      }
+#endif
       Uart_DeInit(id);
       state.in_use = false;
       state.de_pad = -1;

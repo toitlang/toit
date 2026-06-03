@@ -65,7 +65,13 @@ extern "C" {
 #include "vm.h"
 #include "third_party/dartino/gc_metadata.h"
 
+#include "slot_marker.h"
+
 namespace toit {
+
+// Defined in primitive_ec618.cc. Hard Cortex-M reset (SCB SYSRESETREQ); does
+// not return. Used to reboot into a freshly staged VM slot.
+[[noreturn]] void ec618_system_reset();
 
 static void run_static_initializers() {
   for (void (**fn)(void) = __vm_init_array_start; fn < __vm_init_array_end; fn++) {
@@ -231,15 +237,31 @@ static void start() {
     create_and_start_external_message_handlers(&vm);
     int group_id = vm.scheduler()->next_group_id();
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
+
+    printf("[toit] INFO: VM exited (reason=%d)\n", static_cast<int>(exit_state.reason));
+
+    // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
+    // and asks to reboot into it through firmware.upgrade, which exits the VM via
+    // deep sleep. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a
+    // slot (marker state NEW — the analogue of ESP32's boot partition changing),
+    // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
+    // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
+    // — before the VM destructor and OS::tear_down() — because EC618's external
+    // handler teardown can block; a firmware-update reset needs no clean shutdown.
+    {
+      slot_record marker;
+      slot_marker_read(&marker);
+      if (marker.state == SLOT_STATE_NEW) {
+        printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
+               marker.pending);
+        ec618_system_reset();  // Does not return.
+      }
+    }
   }
 
   GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
-
-  // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
-  // and reboots into it through firmware.upgrade; the slot marker + dispatcher
-  // (toit_main.c) handle trial boot and rollback. No post-shutdown copy step.
 
   switch (exit_state.reason) {
     case Scheduler::EXIT_DEEP_SLEEP: {
