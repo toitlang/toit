@@ -7,7 +7,7 @@
 // tools (the gen-slot-reloc byte-identity proof, the dual-image builder) share
 // this one Toit implementation so the host and device never diverge.
 
-import io show LITTLE-ENDIAN
+import io show Buffer LITTLE-ENDIAN
 
 /** Relocation direction for $SlotRelocTable.apply. */
 TO-SLOT ::= 1        // Canonical (link-base) image -> a destination slot.
@@ -79,6 +79,57 @@ class SlotRelocTable:
       imm := thumb-branch-imm bytes p
       put-thumb-branch-imm bytes p (imm + branch-delta)
 
+  /**
+  Serializes this table to the "SRL1" wire format (the inverse of
+    $SlotRelocTable.parse).
+
+  The header is $MAGIC followed by $link-base, $slot-size, $body-size and the
+    two counts (all little-endian uint32); the $abs32-offsets and $thmbl-offsets
+    lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128
+    varints. Mirrors `encode-table` in tools/ec618/gen-slot-reloc.toit.
+  */
+  to-bytes -> ByteArray:
+    buffer := Buffer
+    buffer.write MAGIC
+    le := buffer.little-endian
+    le.write-uint32 link-base
+    le.write-uint32 slot-size
+    le.write-uint32 body-size
+    le.write-uint32 abs32-offsets.size
+    le.write-uint32 thmbl-offsets.size
+    write-varint-deltas buffer abs32-offsets
+    write-varint-deltas buffer thmbl-offsets
+    return buffer.bytes
+
+  /**
+  Returns a copy of this table extended with the in-slot extension pointers.
+
+  The bundled extension (container images, the image table, the patched
+    `DromData.extension`) is laid out inside the slot after the VM body, so its
+    absolute pointers move with the slot exactly like the VM body's ABS32
+    pointers. $extra-abs32 holds their slot-relative offsets; they are merged
+    into $abs32-offsets (sorted, de-duplicated) so the device's single
+    relocate-on-write / un-relocate-on-read pass fixes the whole slot uniformly
+    (option A, see docs/ota-relocation-convergence.md).
+
+  $populated-size becomes the new $body-size: the populated front of the slot
+    (VM body + extension), i.e. where the free region and tail trailer begin.
+    The branch ($thmbl-offsets) set is unchanged — the extension has no
+    slot-escaping branches, only data pointers.
+  */
+  merge-extension --extra-abs32/List --populated-size/int -> SlotRelocTable:
+    merged := abs32-offsets + extra-abs32
+    merged.sort --in-place
+    deduped := []
+    merged.do: | offset/int |
+      if deduped.is-empty or deduped.last != offset: deduped.add offset
+    return SlotRelocTable
+        --link-base=link-base
+        --slot-size=slot-size
+        --body-size=populated-size
+        --abs32-offsets=deduped
+        --thmbl-offsets=thmbl-offsets
+
 /** Reads an unsigned LEB128 varint at $pos in $bytes; returns `[value, next-pos]`. */
 read-varint bytes/ByteArray pos/int -> List:
   value := 0
@@ -88,6 +139,24 @@ read-varint bytes/ByteArray pos/int -> List:
     value |= (b & 0x7f) << shift
     if (b & 0x80) == 0: return [value, pos]
     shift += 7
+
+/** Writes the ascending $offsets to $buffer as delta-encoded unsigned LEB128 varints. */
+write-varint-deltas buffer/Buffer offsets/List -> none:
+  previous := 0
+  offsets.do: | offset/int |
+    write-varint buffer (offset - previous)
+    previous = offset
+
+/** Writes $value to $buffer as an unsigned LEB128 varint. */
+write-varint buffer/Buffer value/int -> none:
+  while true:
+    b := value & 0x7f
+    value >>= 7
+    if value != 0:
+      buffer.write-byte (b | 0x80)
+    else:
+      buffer.write-byte b
+      return
 
 /**
 Decodes the signed branch immediate of a Thumb-2 BL/B.W at $offset in $bytes.
