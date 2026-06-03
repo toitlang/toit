@@ -101,10 +101,8 @@ on:
 env:
   TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
   DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
-  # TEMP: floitsch/debug-ci-failure runs the full scheduled test set so we can
-  # reproduce the intermittent pkg gold-test flake seen in nightly CI.
-  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' || github.ref_name == 'floitsch/debug-ci-failure' }}
-  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' || github.event.inputs.run-hw-tests == 'true' || github.ref_name == 'floitsch/debug-ci-failure' }}
+  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' }}
+  DO_HW_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' || github.event.inputs.run-hw-tests == 'true' }}
   DO_TESTS: ${{ github.event.inputs.tests != 'none' }}
   SIGN_MACOS: ${{ github.event.inputs.sign == 'macos' || github.event.inputs.sign == 'macos+windows' }}
   SIGN_WINDOWS: ${{ github.event.inputs.sign == 'windows' || github.event.inputs.sign == 'macos+windows' }}
