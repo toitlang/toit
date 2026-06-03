@@ -438,10 +438,15 @@ static void slot_reloc_clear() {
 //
 // The trailer (`[ table ][ size : last word ]`, see src/slot_reloc_ec618.h)
 // goes at the very tail so the image, once it boots as the active slot, can
-// recover its own table to un-relocate reads. The caller must already have
-// erased the slot and be holding program mode (same as slot_inactive_write).
+// recover its own table to un-relocate reads. The caller must be holding
+// program mode (same as slot_inactive_write); the trailer's tail sectors are
+// erased here, so the caller does NOT erase them.
+//
+// OTA write ordering: the body is written front-to-back AFTER this call, with a
+// lazy per-sector erase. To keep that erase from clobbering the trailer, the
+// body and the trailer must live in DISJOINT flash sectors — enforced below.
 PRIMITIVE(slot_reloc_begin) {
-  // See slot_inactive_erase about PRIVILEGED.
+  PRIVILEGED;
   ARGS(Blob, table);
   slot_reloc_clear();
   int length = table.length();
@@ -456,13 +461,20 @@ PRIMITIVE(slot_reloc_begin) {
   slot_reloc_delta = static_cast<int32_t>(dest_base) -
                      static_cast<int32_t>(slot_reloc_table.link_base);
 
-  // Build the tail trailer (one segment-aligned block ending at the slot's
-  // last byte, so the size word is the slot's last word) and write it.
+  // The trailer is one segment-aligned block ending at the slot's last byte
+  // (so the size word is the slot's last word). Its sectors must not overlap
+  // the body's sectors, since the body's lazy erase would otherwise erase the
+  // trailer that this call writes.
   const uint32_t block_size = (static_cast<uint32_t>(length) + 4 +
                                FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
-  if (slot_reloc_table.body_size + block_size > SLOT_SIZE) {
+  if (block_size > SLOT_SIZE) { free(copy); FAIL(OUT_OF_BOUNDS); }
+  const uint32_t trailer_first_sector =
+      (SLOT_SIZE - block_size) & ~(FLASH_SECTOR_SIZE - 1);
+  const uint32_t body_sectors_end =
+      (slot_reloc_table.body_size + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1);
+  if (body_sectors_end > trailer_first_sector) {
     free(copy);
-    FAIL(OUT_OF_BOUNDS);  // Body and trailer would overlap.
+    FAIL(OUT_OF_BOUNDS);  // Body and trailer would share a sector.
   }
   uint8_t* block = unvoid_cast<uint8_t*>(malloc(block_size));
   if (block == null) { free(copy); FAIL(MALLOC_FAILED); }
@@ -476,7 +488,15 @@ PRIMITIVE(slot_reloc_begin) {
   uint32_t saved_end = toit_ap_image_modify_end;
   toit_ap_image_modify_start = base_phys;
   toit_ap_image_modify_end = base_phys + SLOT_SIZE;
-  int rc = BSP_QSPI_Write_Safe(block, base_phys + SLOT_SIZE - block_size, block_size);
+  // Erase the trailer's sectors, then write the block into them.
+  int rc = QSPI_OK;
+  for (uint32_t s = trailer_first_sector; s < SLOT_SIZE; s += FLASH_SECTOR_SIZE) {
+    rc = BSP_QSPI_Erase_Safe(base_phys + s, FLASH_SECTOR_SIZE);
+    if (rc != QSPI_OK) break;
+  }
+  if (rc == QSPI_OK) {
+    rc = BSP_QSPI_Write_Safe(block, base_phys + SLOT_SIZE - block_size, block_size);
+  }
   toit_ap_image_modify_start = saved_start;
   toit_ap_image_modify_end = saved_end;
   free(block);
@@ -493,6 +513,7 @@ PRIMITIVE(slot_reloc_begin) {
 
 // Disarm relocate-on-write and release the table. Idempotent.
 PRIMITIVE(slot_reloc_end) {
+  PRIVILEGED;
   slot_reloc_clear();
   return process->null_object();
 }
@@ -503,9 +524,7 @@ PRIMITIVE(slot_reloc_end) {
 // quickly enough to keep the PLAT watchdog from firing — a
 // whole-slot erase would block ~7 s and reset the chip.
 PRIMITIVE(slot_inactive_erase) {
-  // Not PRIVILEGED while the dual-slot OTA receiver is a regular app
-  // container. Lock down once the OTA path moves into the system
-  // process (firmware service).
+  PRIVILEGED;  // The OTA writer runs in the system (firmware service) process.
   ARGS(int, offset);
   if (offset < 0 || (offset % FLASH_SECTOR_SIZE) != 0) FAIL(INVALID_ARGUMENT);
   if (static_cast<uint32_t>(offset) >= SLOT_SIZE) FAIL(OUT_OF_BOUNDS);
@@ -537,7 +556,7 @@ PRIMITIVE(slot_inactive_erase) {
 // SLOT_SIZE. Length must be a multiple of FLASH_SEGMENT_SIZE (16 B) —
 // BSP_QSPI_Write_Safe requires segment-aligned writes.
 PRIMITIVE(slot_inactive_write) {
-  // See slot_inactive_erase about PRIVILEGED.
+  PRIVILEGED;
   ARGS(int, offset, Blob, bytes);
 
   if (offset < 0) FAIL(INVALID_ARGUMENT);
@@ -614,7 +633,7 @@ PRIMITIVE(slot_inactive_write) {
 // receiver enables it around the slot erase/write, exactly like the slot_*
 // flash primitives above). Returns only if the marker write fails.
 PRIMITIVE(slot_stage_and_reset) {
-  // See slot_inactive_erase about PRIVILEGED.
+  PRIVILEGED;
   if (!slot_marker_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
     printf("[toit] ERROR: slot stage (marker write) failed\n");
     FAIL(QUOTA_EXCEEDED);
@@ -623,12 +642,26 @@ PRIMITIVE(slot_stage_and_reset) {
   ec618_system_reset();
 }
 
+// Stage the freshly-written inactive slot as a trial WITHOUT resetting. The
+// standard FirmwareWriter.commit calls this; the reboot into the trial happens
+// later, when the system calls firmware.upgrade. Same marker write as
+// slot_stage_and_reset, minus the reset. Returns normally.
+PRIMITIVE(slot_stage) {
+  PRIVILEGED;
+  if (!slot_marker_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+    printf("[toit] ERROR: slot stage (marker write) failed\n");
+    FAIL(QUOTA_EXCEEDED);
+  }
+  printf("[toit] INFO: staged slot %c for trial\n", inactive_slot());
+  return process->null_object();
+}
+
 // Confirm the slot we are running from: promote it to the known-good
 // `active` and clear the trial. Cancels the automatic rollback. Returns
 // normally (no reset). Self-brackets program/erase mode because it is
 // called during normal operation, not inside the OTA flash flow.
 PRIMITIVE(slot_mark_valid) {
-  // See slot_inactive_erase about PRIVILEGED.
+  PRIVILEGED;
   fotaNvmNfsPeInit(1);
   bool ok = slot_marker_write(toit_booted_slot, 0, SLOT_STATE_NONE);
   fotaNvmNfsPeInit(0);
@@ -645,7 +678,7 @@ PRIMITIVE(slot_mark_valid) {
 // to learn which slot is the known-good `active` to fall back to. Returns
 // only if the marker write fails.
 PRIMITIVE(slot_mark_invalid_and_reset) {
-  // See slot_inactive_erase about PRIVILEGED.
+  PRIVILEGED;
   slot_record rec;
   slot_marker_read(&rec);
   // If we are the pending trial, fall back to the record's active; otherwise
@@ -683,6 +716,7 @@ PRIMITIVE(slot_trial) {
 // immediately. The SDK's own FOTA sets this before writing firmware into
 // that region.
 PRIMITIVE(slot_program_mode) {
+  PRIVILEGED;
   ARGS(int, on);
   fotaNvmNfsPeInit(on ? 1 : 0);
   return process->null_object();
@@ -720,6 +754,7 @@ PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_reloc_begin) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_reloc_end) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_stage_and_reset) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_stage) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_mark_valid) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_mark_invalid_and_reset) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_trial) { FAIL(UNIMPLEMENTED); }

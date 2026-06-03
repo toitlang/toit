@@ -1127,9 +1127,17 @@ extract-binary-in-slot-ec618_ -> ByteArray
   table-bytes := pad merged.to-bytes 4
 
   // Fit check: [ VM body ][ extension ][ free ][ SRL1 table ][ size:u32 ].
+  // The OTA write path (slot_reloc_begin) lays the trailer in its own tail
+  // sectors and streams the body front-to-back with a lazy per-sector erase, so
+  // the body and the trailer must occupy DISJOINT 4 KB sectors — otherwise the
+  // body's erase would clobber the trailer. Enforce the same sector-disjoint
+  // bound at build time so every buildable image is also OTA-writable.
   trailer-size := table-bytes.size + 4
-  if populated + trailer-size > slot-size:
-    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + reloc trailer 0x$(%x trailer-size) exceeds slot 0x$(%x slot-size)"
+  EC618-SECTOR_ ::= 0x1000
+  block-size := round-up trailer-size 16              // Segment-aligned trailer block.
+  trailer-first-sector := (slot-size - block-size) / EC618-SECTOR_ * EC618-SECTOR_
+  if (round-up populated EC618-SECTOR_) > trailer-first-sector:
+    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + reloc trailer 0x$(%x trailer-size) does not leave the trailer its own sector(s) in slot 0x$(%x slot-size)"
 
   // Write the extension after the VM body, and the tail trailer so the size
   // word is the slot's last word (self-locating, see slot_reloc_parse_trailer).

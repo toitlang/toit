@@ -131,6 +131,17 @@ stage-and-reset -> none:
   #primitive.ec618.slot-stage-and-reset
 
 /**
+Stages the freshly-written inactive slot as a trial WITHOUT resetting.
+
+Like $stage-and-reset but returns normally instead of rebooting — the reboot
+  into the trial is triggered separately (the standard firmware flow stages in
+  `FirmwareWriter.commit` and reboots later in `firmware.upgrade`). Caller must
+  already hold $program-mode and have written + verified the slot.
+*/
+stage -> none:
+  #primitive.ec618.slot-stage
+
+/**
 Confirms the slot the runtime is running from: promotes it to the
 known-good slot and cancels the pending rollback. Call this once the new
 image has verified it is healthy. Returns normally (no reset).

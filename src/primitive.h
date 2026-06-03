@@ -436,6 +436,7 @@ namespace toit {
   PRIMITIVE(slot_reloc_begin, 1)             \
   PRIMITIVE(slot_reloc_end, 0)               \
   PRIMITIVE(slot_stage_and_reset, 0)         \
+  PRIMITIVE(slot_stage, 0)                   \
   PRIMITIVE(slot_mark_valid, 0)              \
   PRIMITIVE(slot_mark_invalid_and_reset, 0)  \
   PRIMITIVE(slot_trial, 0)                   \

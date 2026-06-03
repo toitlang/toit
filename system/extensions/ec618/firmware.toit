@@ -18,8 +18,11 @@ import system.services show ServiceProvider ServiceResource
 import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 import ec618
+import ec618.slot
 
+import crypto.sha256 show Sha256
 import encoding.ubjson
+import io show Buffer LITTLE-ENDIAN
 
 class FirmwareServiceProvider extends FirmwareServiceProviderBase:
   config_/Map ::= {:}
@@ -28,22 +31,27 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     catch: config_ = ubjson.decode firmware-embedded-config_
     super "system/firmware/ec618" --major=0 --minor=1
 
-  // EC618 has no dual-partition scheme, so validation is never pending.
+  // A freshly written slot boots on trial; the running image must validate
+  // itself or the next reset rolls back. So validation is pending exactly when
+  // the runtime is executing an unconfirmed trial.
   is-validation-pending -> bool:
-    return false
+    return slot.trial
 
-  // EC618 has no dual-partition scheme, so rollback is not possible.
+  // While on an unconfirmed trial the previous (known-good) slot is the
+  // rollback target. Once validated the old slot may be overwritten by a later
+  // update, so we only advertise rollback during the trial window.
   is-rollback-possible -> bool:
-    return false
+    return slot.trial
 
   validate -> bool:
+    slot.validate
     return true
 
   rollback -> none:
-    // Not supported on EC618.
+    slot.mark-invalid-and-reset  // Does not return — resets to the good slot.
 
   upgrade -> none:
-    // Trigger a reboot to apply the update.
+    // The new slot was staged by FirmwareWriter_.commit; reboot into it.
     ec618.deep-sleep (Duration --ms=10)
 
   config-ubjson -> ByteArray:
@@ -53,8 +61,7 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     return config_.get key
 
   content -> ByteArray?:
-    // Return null to let the caller use the firmware content
-    // provided by the underlying system.
+    // Return null so the caller maps the running firmware via firmware.map.
     return null
 
   uri -> string?:
@@ -64,77 +71,133 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     return FirmwareWriter_ this client from to
 
 /**
-The $FirmwareWriter_ uses the OTA support of the EC618 to update
-  the firmware image. After writing and committing the firmware,
-  a reboot (via deep sleep) applies the update.
+Writes a new firmware image to the INACTIVE VM slot via relocate-on-write.
+
+The stream is the standard CANONICAL firmware image, table-first:
+
+  [ table-size : u32 ][ SRL1 reloc table ][ VM body + extension ]
+
+The writer accumulates the leading `[ size ][ table ]` and arms relocation
+  ($slot.reloc-begin, which also lays the slot's self-locating tail trailer),
+  then streams the body+extension into the slot — the VM relocates each chunk
+  onto the destination slot transparently, so this code never sees slot
+  addresses. $commit verifies the canonical SHA-256 and stages the slot as a
+  trial; `firmware.upgrade` reboots into it, and the new image must
+  `firmware.validate` or the next reset rolls back.
+
+Runs in the system (firmware service) process, so it may call the PRIVILEGED
+  slot primitives.
 */
 class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
-  static REQUIRED-WRITE-ALIGNMENT ::= 16
-  static PAGE-SIZE ::= 4096
+  static SECTOR ::= slot.SECTOR-SIZE  // 4 KB erase unit.
+  static SEGMENT ::= 16               // Flash write granularity.
 
-  buffer_/ByteArray? := ByteArray PAGE-SIZE
+  // Header phase: accumulate [ size:4 ][ table:N ] before arming relocation.
+  header_/Buffer? := Buffer
+  header-length_/int := 0
+  table-length_/int := -1             // N; known once 4 bytes are in.
+  armed_/bool := false
+
+  // Body phase: buffer a sector, flush it whole, lazily erase ahead of writes.
+  body_/ByteArray := ByteArray SECTOR
   fullness_/int := 0
-  written_/int := ?
+  slot-offset_/int := 0               // Next body offset within the slot.
+  erased-until_/int := 0              // Sectors [0, erased-until_) are erased.
+
+  sha_/Sha256 := Sha256               // Over the whole canonical image.
+  staged_/bool := false
 
   constructor provider/ServiceProvider client/int from/int to/int:
-    ota-begin_ from to
-    written_ = from
+    // Firmware-sector program/erase mode is required for any write into the
+    // protected AP-image region (the inactive slot). The modem stays on — with
+    // a matched CP the flash is CP-safe, and a cellular OTA needs the link up.
+    slot.program-mode 1
     super provider client
 
   write bytes/ByteArray -> int:
-    return write_ bytes.size: | index from to |
-      buffer_.replace index bytes from to
+    sha_.add bytes
+    consume_ bytes 0 bytes.size
+    return bytes.size
 
   pad size/int value/int -> int:
-    return write_ size: | index from to |
-      buffer_.fill --from=index --to=(index + to - from) value
+    chunk := ByteArray (min size SECTOR)
+    chunk.fill value
+    remaining := size
+    while remaining > 0:
+      n := min remaining chunk.size
+      sha_.add chunk 0 n
+      consume_ chunk 0 n
+      remaining -= n
+    return size
 
-  write_ size [block] -> int:
-    fullness-flush := (round-up (written_ + 1) PAGE-SIZE) - written_
-    return List.chunk-up 0 size (fullness-flush - fullness_) PAGE-SIZE: | from to |
-      block.call fullness_ from to
-      fullness_ += to - from
-      if fullness_ == fullness-flush:
-        unflushed := flush
-        assert: unflushed == 0
-        fullness-flush = PAGE-SIZE
+  // Routes `bytes[from..to)`: header bytes accumulate until the table is
+  // complete (then relocation is armed), everything after is body.
+  consume_ bytes/ByteArray from/int to/int -> none:
+    while from < to and not armed_:
+      header_.write-byte bytes[from]
+      from++
+      header-length_++
+      if header-length_ == 4:
+        table-length_ = LITTLE-ENDIAN.uint32 header_.bytes 0
+      else if table-length_ >= 0 and header-length_ == 4 + table-length_:
+        full := header_.bytes
+        slot.reloc-begin full[4 .. 4 + table-length_]
+        armed_ = true
+        header_ = null
+    if from < to: write-body_ bytes from to
 
+  write-body_ bytes/ByteArray from/int to/int -> none:
+    while from < to:
+      n := min (body_.size - fullness_) (to - from)
+      body_.replace fullness_ bytes from (from + n)
+      fullness_ += n
+      from += n
+      if fullness_ == body_.size: flush-full-sector_
+
+  // Writes one full (sector-aligned) sector and advances. Sector alignment
+  // guarantees no relocation site straddles the write window.
+  flush-full-sector_ -> none:
+    ensure-erased_ (slot-offset_ + SECTOR)
+    slot.write-inactive slot-offset_ body_
+    slot-offset_ += SECTOR
+    fullness_ = 0
+
+  ensure-erased_ end/int -> none:
+    target := round-up end SECTOR
+    while erased-until_ < target:
+      slot.erase-inactive-sector erased-until_
+      erased-until_ += SECTOR
+
+  // Only full sectors are written eagerly; the sub-sector remainder is held and
+  // written by $commit. So flush just reports the still-buffered byte count.
   flush -> int:
-    flushable := round-down fullness_ REQUIRED-WRITE-ALIGNMENT
-    if flushable == 0: return 0
-    written_ = ota-write_ buffer_[..flushable]
-    buffer_.replace 0 buffer_ flushable fullness_
-    fullness_ -= flushable
     return fullness_
 
   commit checksum/ByteArray? -> none:
-    flush
-    // The aligned `flush` above leaves the trailing 0..15 unaligned
-    // bytes in buffer_. ota_write pads those to the segment size with
-    // zeros in flash, but the lib must still hand them over so the
-    // primitive's logical byte counter reaches the total declared at
-    // ota_begin (ota_end's size check requires exact equality).
+    if not armed_: throw "firmware: incomplete image (no relocation table)"
+    // Write the final sub-sector remainder, padded to the segment size. The pad
+    // lands in the slot's free region (past the populated bytes) and is not part
+    // of the canonical image.
     if fullness_ > 0:
-      written_ = ota-write_ buffer_[..fullness_]
+      padded := round-up fullness_ SEGMENT
+      body_.fill --from=fullness_ --to=padded 0
+      ensure-erased_ (slot-offset_ + padded)
+      slot.write-inactive slot-offset_ body_[..padded]
+      slot-offset_ += fullness_
       fullness_ = 0
-    ota-end_ written_ checksum
-    buffer_ = null
+    digest := sha_.get
+    if checksum and checksum != digest:
+      slot.reloc-end
+      throw "firmware: checksum mismatch"
+    slot.reloc-end
+    slot.stage  // Stage as a trial; firmware.upgrade reboots into it.
+    staged_ = true
 
   on-closed -> none:
-    if not buffer_: return
-    ota-end_ 0 null
-    buffer_ = null
+    if not staged_: slot.reloc-end
+    slot.program-mode 0
 
 // ----------------------------------------------------------------------------
-
-ota-begin_ from/int to/int -> none:
-  #primitive.ec618.ota-begin
-
-ota-write_ bytes/ByteArray -> int:
-  #primitive.ec618.ota-write
-
-ota-end_ size/int checksum/ByteArray? -> none:
-  #primitive.ec618.ota-end
 
 firmware-embedded-config_ -> any:
   #primitive.programs-registry.config
