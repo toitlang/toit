@@ -158,6 +158,27 @@ Everything else is already slot-independent (within-slot branches; `movw/movt`
 loads of the fixed `g_plat_jt[]`). The table is delta-encoded (~2 KB) and
 written to `build/ec618/slot-reloc.bin`.
 
+The bundled extension (system snapshot + any installed container images, the
+image table, the config) lives **inside** the slot, after the VM body:
+
+```
+__vm_a_start ─┐
+  [ VM body ]            code + rodata + .init_array + .vm_entry
+  [ extension ]          image table + container images + config
+  [ free ]
+  [ SRL1 table ]         the MERGED table (VM body + extension pointers)
+  [ size : u32 ]         the slot's last word — locates the table
+__vm_a_start + 0x60000 ─┘
+```
+
+`tools/firmware.toit` (`extract` with the envelope's `\$ec618-reloc.bin`) places
+the extension there and **extends** the SRL1 table with the extension's absolute
+pointers — the image-table program addresses, each container image's internal
+pointers (read from its relocation bitmap), and the patched `DromData.extension`.
+So the slot is one relocatable unit (option A): the device relocates the VM body
+and the bundled containers in a single pass. A build-time fit check guarantees
+`VM body + extension + table + 4 ≤ 0x60000`.
+
 `make ec618` **proves** the table on every build: it re-links slot B (only the
 linker script changes, so it is a fast re-link), relocates the slot-A image to
 slot B, and asserts the result is byte-identical to the slot-B link. That
@@ -177,9 +198,11 @@ toit run --project-root tools tools/ec618/build-dual-image.toit -- \
     --slot-a=ap.bin --reloc=build/ec618/slot-reloc.bin --out=ap-dual.bin
 ```
 
-The image boots slot A by default; the device stages slot B as a trial via the
-normal OTA/`slot.stage-and-reset` path. `DromData.extension` is a fixed,
-out-of-slot address, so it is copied verbatim into slot B by the relocation — no
-per-slot patching needed. The relocation logic is shared with the device via
-[tools/ec618/slot-reloc.toit](tools/ec618/slot-reloc.toit), which mirrors
-`src/slot_reloc_ec618.{h,cc}`.
+The image boots slot A by default (or pass `--active-slot=A|B` to pre-set the
+marker); the device otherwise stages slot B as a trial via the normal
+OTA/`slot.stage-and-reset` path. `build-dual-image` reads the **merged** table
+from slot A's tail and relocates the **whole** slot — the VM body *and* the
+in-slot extension — so `DromData.extension`, the image table, and every bundled
+container pointer shift into slot B. The relocation logic is shared with the
+device via [tools/ec618/slot-reloc.toit](tools/ec618/slot-reloc.toit), which
+mirrors `src/slot_reloc_ec618.{h,cc}`.

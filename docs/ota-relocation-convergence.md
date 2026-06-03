@@ -1,8 +1,11 @@
 # EC618 OTA: converging on `system.firmware` (design for review)
 
-Status: **proposal**. The relocation engine + storage format are built and proven
-(see commits up to `cce8ce5c`); this document is the plan for the remaining
-*read + convergence* phase. Nothing here is implemented yet.
+Status: **in progress**. The relocation engine + storage format are built and
+proven (commits up to `cce8ce5c`). Increments **#1 (dual-image builder)** and
+**#2 (bundled containers into the slot, option A)** are now implemented and
+hardware-validated on quirky-plenty (slot A and the relocated slot B both reach
+`running on EC618 @ 204MHz` and run the in-slot system container). The remaining
+*read + write convergence* (#3–#5) is described below.
 
 ## Goal
 
@@ -229,18 +232,19 @@ the slot layout check.
 
 ## Proposed increments (each reviewable, hardware-testable where noted)
 
-1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`): from slot-A
-   `ap.bin` + the SRL1 table, relocate slot A → slot B and write both slots'
-   tail trailers + the active-slot marker. Current layout (extension still after
-   the AP image). **Hardware:** flash the relocate-built dual image, boot A, and
-   boot B via the marker — proves relocation yields a *bootable* slot B, not
-   just byte-identity.
-2. **Containers into the slot, option A**: `tools/firmware.toit` places the
-   extension inside each slot (after the VM body) and **extends the SRL1 table**
-   with the in-slot post-link pointers (image table, `DromData.extension`, each
-   container's relocation sites); build-time fit check; the builder relocates the
-   whole slot. No `embedded_data` change. **Hardware:** flash dual image, boot A,
-   run bundled containers; boot B, run them too.
+1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`) — **DONE.**
+   From slot-A `ap.bin` + the SRL1 table, relocate slot A → slot B and write the
+   active-slot marker. **Hardware:** the relocate-built dual image boots both
+   slots — proven a *bootable* slot B, not just byte-identity.
+2. **Containers into the slot, option A** — **DONE + HW-validated.**
+   `tools/firmware.toit` places the extension inside the slot (after the VM body)
+   and **extends the SRL1 table** with the in-slot post-link pointers (image
+   table, `DromData.extension`, each container's relocation-bitmap sites); the
+   merged table rides at the slot tail; build-time fit check; `build-dual-image`
+   relocates the whole slot. No `embedded_data` change. **Hardware:** slot A and
+   relocated slot B both reach `running on EC618` and run the in-slot system
+   container stably. NOTE: this makes `firmware.map`'s EC618 range stale and the
+   old FOTA path non-functional until #3/#4 (neither is boot-load-bearing).
 3. **`firmware.map` → active slot + un-relocate-on-read**: read path returns the
    canonical slot (VM + extension), un-relocated. Verifiable: `firmware.map` SHA
    on slot A == server SHA; on slot B == same SHA.
