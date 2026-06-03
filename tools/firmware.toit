@@ -37,6 +37,7 @@ import partition-table show *
 import tar
 
 import ..system.extensions.host.run-image-boot-sh
+import .ec618.slot-reloc show SlotRelocTable
 import .image
 import .snapshot
 import .snapshot-to-image
@@ -86,6 +87,12 @@ AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
 // CP — a mismatched CP resets the chip a few seconds after the modem is
 // enabled. See docs/ota-dual-slot-plan.md "RESOLVED (2026-05-29)".
 AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
+// The "SRL1" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
+// from the slot-A link). Carried in the envelope so `extract` can place the
+// bundled extension inside the VM slot and relocate it with the VM body
+// (option A; see docs/ota-relocation-convergence.md). When absent, the
+// extension is appended after the AP image (legacy out-of-slot layout).
+AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -250,6 +257,9 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
         cli.Option "cp.bin"
             --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
             --type="file",
+        cli.Option "reloc.bin"
+            --help="Set the dual-slot relocation table (slot-reloc.bin), enabling the in-slot extension layout."
+            --type="file",
         cli.Option "system.snapshot"
             --type="file"
             --required,
@@ -280,6 +290,9 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
 
   cp-path := invocation["cp.bin"]
   if cp-path: entries[AR-ENTRY-EC618-CP-BIN] = read-file cp-path --ui=ui
+
+  reloc-path := invocation["reloc.bin"]
+  if reloc-path: entries[AR-ENTRY-EC618-RELOC] = read-file reloc-path --ui=ui
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
@@ -999,18 +1012,32 @@ extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
+  reloc-table/SlotRelocTable? := entries.get AR-ENTRY-EC618-RELOC
+      --if-present=: SlotRelocTable.parse it
+
   return extract-binary-content-ec618
       --binary-input=firmware-bin
       --containers=containers
       --system-uuid=system-uuid
       --config-encoded=config-encoded
+      --reloc-table=reloc-table
 
 extract-binary-content-ec618 -> ByteArray
     --binary-input/ByteArray
     --containers/List
     --system-uuid/Uuid
-    --config-encoded/ByteArray:
-  // Pad the AP binary up to a 4 KB boundary before appending the extension.
+    --config-encoded/ByteArray
+    --reloc-table/SlotRelocTable?:
+  if reloc-table:
+    return extract-binary-in-slot-ec618_
+        --binary-input=binary-input
+        --containers=containers
+        --system-uuid=system-uuid
+        --config-encoded=config-encoded
+        --reloc-table=reloc-table
+
+  // Legacy out-of-slot layout (envelopes built without a relocation table):
+  // pad the AP binary up to a 4 KB boundary and append the extension after it.
   // This forces the prefix size (= padded-binary size = extension - load-addr)
   // to be a multiple of both FLASH_SECTOR_SIZE (4 KB, required for the OTA
   // commit's destination erase) and FLASH_SEGMENT_SIZE (16 B, so ota_write
@@ -1018,26 +1045,141 @@ extract-binary-content-ec618 -> ByteArray
   EC618-FLASH-SECTOR-SIZE_ ::= 4096
   padded-binary := pad binary-input EC618-FLASH-SECTOR-SIZE_
   binary-size := padded-binary.size
-  image-count := containers.size
-  image-table := ByteArray 8 * image-count
 
   // The extension is appended at the end of the (padded) binary. The
   // XIP address of the extension start is the padded binary size plus
   // the XIP base and AP load offset.
   // EC618 XIP base: 0x00800000, AP load offset: 0x00024000.
   extension-xip-addr := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_ + binary-size
+  extension := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
 
-  table-address := extension-xip-addr + 5 * 4 + image-table.size
-  relocation-base := table-address
+  result := padded-binary.copy
+  patch-drom-extension-ec618_ result --extension-xip-addr=extension-xip-addr --system-uuid=system-uuid
+
+  // Append the extension to the binary.
+  result += extension.bytes
+
+  // Append a SHA-256 trailer over the whole image. The runtime
+  // (primitive_core.cc::firmware_map and primitive_ec618.cc::ota_end)
+  // both assume the last 32 bytes of the image are this digest:
+  // firmware_map adds SHA256_SIZE to the reported size and ota_end
+  // reads the 32-byte trailer to compare against the freshly
+  // re-computed hash. Without this append, ota_end always rejects
+  // the staged image with INVALID_ARGUMENT.
+  result += crypto.sha256 result
+  return result
+
+/**
+Produces the EC618 AP image with the bundled extension placed INSIDE the VM
+  slot (option A; see docs/ota-relocation-convergence.md).
+
+The slot is laid out as `[ VM body ][ extension ][ free ][ SRL1 table ][ size ]`,
+  where `size` (the slot's last word) locates the table. The extension's
+  absolute pointers (the image-table program addresses, each container image's
+  internal pointers, and the patched `DromData.extension`) are merged into the
+  $reloc-table so the device relocates the whole slot uniformly on write and
+  un-relocates it on read. A build-time fit check guarantees the slot is not
+  overflowed.
+*/
+extract-binary-in-slot-ec618_ -> ByteArray
+    --binary-input/ByteArray
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --reloc-table/SlotRelocTable:
+  load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
+  link-base := reloc-table.link-base
+  slot-size := reloc-table.slot-size
+  vm-body := reloc-table.body-size  // The VM body is the populated slot front.
+  slot-file := link-base - load-xip  // File offset of the slot's first byte.
+
+  if vm-body % 4 != 0: throw "EC618 VM body size 0x$(%x vm-body) is not word-aligned"
+
+  // The extension sits right after the VM body, still inside the slot.
+  extension-xip-addr := link-base + vm-body
+  extension := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+
+  result := binary-input.copy
+  details-offset := find-details-offset-esp32 result
+  if details-offset < slot-file or details-offset >= slot-file + vm-body:
+    throw "EC618 DromData at file 0x$(%x details-offset) is outside the VM slot"
+  patch-drom-extension-ec618_ result --extension-xip-addr=extension-xip-addr --system-uuid=system-uuid
+
+  // Merge the extension's absolute pointers into the slot relocation table, as
+  // slot-relative offsets. DromData.extension lives in the VM body; the
+  // image-table and container pointers live in the extension at `vm-body + ..`.
+  extra-abs32 := [details-offset - slot-file]
+  extension.pointer-offsets.do: | offset/int | extra-abs32.add (vm-body + offset)
+  populated := vm-body + extension.bytes.size
+  merged := reloc-table.merge-extension --extra-abs32=extra-abs32 --populated-size=populated
+  table-bytes := merged.to-bytes
+
+  // Fit check: [ VM body ][ extension ][ free ][ SRL1 table ][ size:u32 ].
+  trailer-size := table-bytes.size + 4
+  if populated + trailer-size > slot-size:
+    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + reloc trailer 0x$(%x trailer-size) exceeds slot 0x$(%x slot-size)"
+
+  // Write the extension after the VM body, and the tail trailer so the size
+  // word is the slot's last word (self-locating, see slot_reloc_parse_trailer).
+  result.replace (slot-file + vm-body) extension.bytes
+  result.replace (slot-file + slot-size - trailer-size) table-bytes
+  size-word := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 size-word 0 table-bytes.size
+  result.replace (slot-file + slot-size - 4) size-word
+
+  // Whole-image SHA-256 trailer (kept until the read path moves to the
+  // canonical per-slot hash in convergence #3).
+  result += crypto.sha256 result
+  return result
+
+/** The bundled EC618 extension bytes plus the offsets of the pointers it holds. */
+class Ec618Extension_:
+  bytes/ByteArray
+  // Extension-relative byte offsets of the absolute pointers the extension
+  // holds (image-table program addresses + each container's internal pointers).
+  pointer-offsets/List
+
+  constructor .bytes .pointer-offsets:
+
+/**
+Builds the EC618 embedded-data extension to live at $extension-xip-addr.
+
+The extension is `[ header (20B) ][ image table ][ container images ]
+  [ config-size (4B) ][ config ]`. Returns the bytes together with the
+  extension-relative offsets of every absolute pointer they contain, so the
+  in-slot layout can relocate the extension with the VM body.
+*/
+build-ec618-extension -> Ec618Extension_
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --extension-xip-addr/int:
+  image-count := containers.size
+  image-table := ByteArray 8 * image-count
+  header-size := 5 * 4
+  pointer-offsets := []
+
+  relocation-base := extension-xip-addr + header-size + image-table.size
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
     image-size := container.relocated-size
-
-    LITTLE-ENDIAN.put-uint32 image-table index * 8
-        relocation-base
-    LITTLE-ENDIAN.put-uint32 image-table index * 8 + 4
-        image-size
+    LITTLE-ENDIAN.put-uint32 image-table (index * 8) relocation-base
+    LITTLE-ENDIAN.put-uint32 image-table (index * 8 + 4) image-size
+    // The image-table program-address word is an absolute pointer into the slot.
+    pointer-offsets.add (header-size + index * 8)
+    // The container image's own internal pointers, at the image's position.
+    container-offset := relocation-base - extension-xip-addr
+    (container-pointer-offsets container.relocatable --word-size=WORD-SIZE-EC618).do: | offset/int |
+      pointer-offsets.add (container-offset + offset)
     image-bits := container.relocate
         --relocation-base=relocation-base
         --system-uuid=system-uuid
@@ -1046,8 +1188,7 @@ extract-binary-content-ec618 -> ByteArray
     relocation-base += image-bits.size
     index++
 
-  // Build the extension header.
-  extension-header := ByteArray 5 * 4
+  extension-header := ByteArray header-size
   LITTLE-ENDIAN.put-uint32 extension-header (0 * 4) 0x98dfc301
   LITTLE-ENDIAN.put-uint32 extension-header (3 * 4) image-count
   extension := extension-header + image-table
@@ -1059,37 +1200,50 @@ extract-binary-content-ec618 -> ByteArray
   extension += config-size-bytes
   extension += config-encoded
 
-  // On EC618, the "free" field is not used — config follows used area
-  // directly. Set free-size to 0.
+  // On EC618, the "free" field is not used — config follows the used area.
   free-size := 0
-
-  // Update the extension header.
   checksum := 0xb3147ee9
   LITTLE-ENDIAN.put-uint32 extension (1 * 4) used-size
   LITTLE-ENDIAN.put-uint32 extension (2 * 4) free-size
   4.repeat: checksum ^= LITTLE-ENDIAN.uint32 extension (it * 4)
   LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
+  return Ec618Extension_ extension pointer-offsets
 
-  // Patch the DromData in the binary with the extension address.
-  result := padded-binary.copy
+/** Patches the DromData in $result with the $extension-xip-addr and $system-uuid. */
+patch-drom-extension-ec618_ result/ByteArray --extension-xip-addr/int --system-uuid/Uuid -> none:
   details-offset := find-details-offset-esp32 result
   bundled-programs-table-address := ByteArray 4
   LITTLE-ENDIAN.put-uint32 bundled-programs-table-address 0 extension-xip-addr
   result.replace (details-offset + 0) bundled-programs-table-address
   result.replace (details-offset + 4) system-uuid.to-byte-array
 
-  // Append the extension to the binary.
-  result += extension
+/**
+Returns the relocated-image byte offsets of every pointer word in $relocatable.
 
-  // Append a SHA-256 trailer over the whole image. The runtime
-  // (primitive_core.cc::firmware_map and primitive_ec618.cc::ota_end)
-  // both assume the last 32 bytes of the image are this digest:
-  // firmware_map adds SHA256_SIZE to the reported size and ota_end
-  // reads the 32-byte trailer to compare against the freshly
-  // re-computed hash. Without this append, ota_end always rejects
-  // the staged image with INVALID_ARGUMENT.
-  result += crypto.sha256 result
-  return result
+The relocatable image is a sequence of chunks, each a one-word relocation mask
+  followed by `$word-size * 8` data words; bit i of the mask marks data word i
+  as a pointer (the value the device shifts when the slot moves). The relocated
+  image that $ContainerEntry.relocate emits is the data words concatenated (the
+  masks dropped), so a pointer in chunk c at bit i lands at relocated offset
+  `c * (word-size*8*word-size) + i*word-size`.
+*/
+container-pointer-offsets relocatable/ByteArray --word-size/int -> List:
+  offsets := []
+  word-bits := word-size * 8
+  chunk-size := (word-bits + 1) * word-size
+  relocated-word := 0
+  pos := 0
+  while pos < relocatable.size:
+    end := min (pos + chunk-size) relocatable.size
+    mask/int := word-size == 4
+        ? LITTLE-ENDIAN.uint32 relocatable pos
+        : LITTLE-ENDIAN.int64 relocatable pos
+    data-words := (end - pos - word-size) / word-size
+    data-words.repeat: | i/int |
+      if (mask & (1 << i)) != 0: offsets.add (relocated-word + i * word-size)
+    relocated-word += data-words * word-size
+    pos = end
+  return offsets
 
 /**
 Extracts parts information from an EC618 firmware binary.

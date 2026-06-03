@@ -245,41 +245,32 @@ ec618: check-env host-tools
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
 	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
-	# Build the firmware binary (bootloader + AP + CP) via xmake.
+	# Build the slot-A firmware (bootloader + AP + CP) via xmake.
 	cd $(EC618_SDK) && rm -rf build && \
 		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake config -p cross -y && \
 		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
-	# Compile the system snapshot.
 	cd $(CURDIR)
-	# Verify the VM slot is position-independent (every VM->PLAT call goes
-	# through the jump table) — required for the dual-slot relocate-on-write OTA.
+	# Verify the slot-A VM image is position-independent (every VM->PLAT call
+	# goes through the jump table) — required for the relocate-on-write OTA.
 	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-pic.toit -- \
 		--objdump=$(EC618_GCC_PATH)/bin/arm-none-eabi-objdump \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		$(EC618_SDK)/build/toit/toit.elf
-	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
-	# Create the firmware envelope.
-	rm -f $(EC618_ENVELOPE)
-	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) create ec618 \
-		--firmware.bin $(EC618_SDK)/out/toit/ap.bin \
-		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
-		--system.snapshot $(BUILD)/ec618/system.snapshot
-	# Extract the binpkg.
-	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
-	# Build + verify the dual-slot relocation table. The slot-B link differs
-	# from slot A only in the linker script, so it is a fast re-link that
-	# yields an independent reference: gen-slot-reloc relocates the slot-A
-	# image to slot B and proves the result is byte-identical to the slot-B
-	# link — the guard that no --emit-relocs relocation was dropped. Done last
-	# (the envelope/binpkg are built from slot A first); the slot-B link
-	# leaves build/toit in slot-B state, which the next build's `rm -rf build`
-	# clears.
+	# Save the slot-A artifacts: the envelope is built from these, and the
+	# slot-B relink below overwrites build/toit.
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618/toit-slot-a.elf
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-a.bin
+	# Re-link slot B (linker script only, a fast re-link) as an independent
+	# byte-identity oracle for the relocation table.
 	cd $(EC618_SDK) && rm -f build/toit/toit.elf build/toit/ap.bin build/toit/toit.bin && \
 		TOIT_VM_SLOT_B=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
 	cd $(CURDIR)
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-b.bin
+	# Build + verify the dual-slot relocation table. gen-slot-reloc relocates
+	# the slot-A image to slot B and proves byte-identity with the slot-B link
+	# — the guard that no --emit-relocs relocation was dropped. Runs BEFORE the
+	# envelope so the bundled extension can be placed inside the VM slot and
+	# relocated with the VM body (carried into the envelope via --reloc.bin).
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-reloc.toit -- \
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
@@ -288,12 +279,22 @@ ec618: check-env host-tools
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
 	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
-	# on the chip) against the same slot-B link: relocate slot A == slot B and
-	# un-relocate slot B == slot A, both whole-body and sector-chunked. The
-	# Toit check above proves the table/model; this proves the C++ that
-	# consumes it (read-back un-relocation included).
+	# on the chip): relocate slot A == slot B and un-relocate slot B == slot A,
+	# both whole-body and sector-chunked.
 	$(CXX) -Wall -Wextra -O2 -I src tools/slot_reloc_test/test.cc src/slot_reloc_ec618.cc -o $(BUILD)/ec618/slot_reloc_test
 	$(BUILD)/ec618/slot_reloc_test $(BUILD)/ec618/ap-slot-a.bin $(BUILD)/ec618/ap-slot-b.bin $(BUILD)/ec618/slot-reloc.bin
+	# Compile the system snapshot.
+	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
+	# Create the firmware envelope from the slot-A AP image + matching CP + the
+	# reloc table (which moves the bundled extension inside the VM slot).
+	rm -f $(EC618_ENVELOPE)
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) create ec618 \
+		--firmware.bin $(BUILD)/ec618/ap-slot-a.bin \
+		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
+		--reloc.bin $(BUILD)/ec618/slot-reloc.bin \
+		--system.snapshot $(BUILD)/ec618/system.snapshot
+	# Extract the binpkg (the extension now lives inside slot A).
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
 	@echo "Envelope: $(EC618_ENVELOPE)"
 	@echo "Binpkg:   $(EC618_BINPKG)"
 	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"

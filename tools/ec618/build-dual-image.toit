@@ -8,11 +8,18 @@
 // One link, one source image; slot B is produced by relocation.
 //
 // Input is the envelope-extracted AP binary (slot A populated, slot B
-// reserved) plus the SRL1 table (build/ec618/slot-reloc.bin). The output has
-// both slots populated and boots slot A by default (the slot marker reads as
-// "no valid record" until the device stages a trial). DromData.extension is a
-// fixed, out-of-slot address, so the relocation copies it verbatim into slot B
-// — no DromData patching needed (unlike the splice).
+// reserved) plus the SRL1 table (build/ec618/slot-reloc.bin, used only for the
+// slot geometry). The output has both slots populated and boots slot A by
+// default (the slot marker reads as "no valid record" until the device stages
+// a trial).
+//
+// The bundled extension now lives INSIDE the slot (after the VM body), and the
+// MERGED relocation table — VM body + extension pointers — rides at the slot's
+// tail (`[ table ][ size : last word ]`, written by tools/firmware.toit). So
+// this tool relocates the WHOLE slot: it reads the merged table from slot A's
+// tail, copies the entire slot A region into slot B, and applies the table.
+// DromData.extension and the bundled container pointers are in-slot pointers,
+// so the relocation shifts them into slot B too (option A).
 
 import cli
 import io show LITTLE-ENDIAN
@@ -47,34 +54,51 @@ main args:
 
 run invocation/cli.Invocation -> none:
   ap-a := file.read-contents invocation["slot-a"]
-  table := SlotRelocTable.parse (file.read-contents invocation["reloc"])
+  geometry := SlotRelocTable.parse (file.read-contents invocation["reloc"])
   ap-load-addr := parse-int invocation["ap-load-addr"]
 
-  slot-a-file := table.link-base - ap-load-addr
-  slot-b-file := table.link-base + table.slot-size - ap-load-addr
-  body := table.body-size
+  link-base := geometry.link-base
+  slot-size := geometry.slot-size
+  slot-a-file := link-base - ap-load-addr
+  slot-b-file := link-base + slot-size - ap-load-addr
 
-  if slot-b-file + body > ap-a.size:
-    pipe.print-to-stderr "input too small: slot B region [0x$(%x slot-b-file), +0x$(%x body)) exceeds the $(ap-a.size)-byte image"
+  if slot-b-file + slot-size > ap-a.size:
+    pipe.print-to-stderr "input too small: slot B region [0x$(%x slot-b-file), +0x$(%x slot-size)) exceeds the $(ap-a.size)-byte image"
     exit 1
 
-  // Copy slot A into the (reserved) slot-B region, then relocate it there.
+  // The merged relocation table (VM body + in-slot extension pointers) rides
+  // at slot A's tail: the slot's last word is the table size, the table the
+  // bytes before it. Read it back to drive the relocation.
+  size-word-pos := slot-a-file + slot-size - 4
+  table-size := LITTLE-ENDIAN.uint32 ap-a size-word-pos
+  if table-size <= 0 or table-size > slot-size:
+    pipe.print-to-stderr "slot A has no in-slot relocation trailer (table size 0x$(%x table-size)); was the envelope built with --reloc.bin?"
+    exit 1
+  table := SlotRelocTable.parse (ap-a.copy (size-word-pos - table-size) size-word-pos)
+  if table.link-base != link-base or table.slot-size != slot-size:
+    pipe.print-to-stderr "slot A tail table geometry (0x$(%x table.link-base)/0x$(%x table.slot-size)) disagrees with $invocation["reloc"]"
+    exit 1
+
+  // Copy the WHOLE slot A region (VM body + extension + free + tail table) into
+  // the reserved slot-B region, then relocate slot B's body+extension. The tail
+  // table bytes are slot-independent (slot-relative offsets, link-base unchanged)
+  // and lie beyond the populated front, so `apply` leaves them untouched.
   out := ap-a.copy
-  out.replace slot-b-file ap-a slot-a-file (slot-a-file + body)
-  table.apply out --base=slot-b-file --delta=table.slot-size --direction=TO-SLOT
+  out.replace slot-b-file ap-a slot-a-file (slot-a-file + slot-size)
+  table.apply out --base=slot-b-file --delta=slot-size --direction=TO-SLOT
 
   // The two-sector slot marker sits right after slot B.
   active-slot/string? := invocation["active-slot"]
   if active-slot != null:
     if active-slot != "A" and active-slot != "B": throw "--active-slot must be A or B"
-    marker-file := (table.link-base + 2 * table.slot-size) - ap-load-addr
+    marker-file := (link-base + 2 * slot-size) - ap-load-addr
     out.replace marker-file (marker-record active-slot[0])
 
   file.write-contents --path=invocation["out"] out
 
-  print "Dual-slot image: slot A canonical, slot B relocated (+0x$(%x table.slot-size))."
-  print "  slot A @ file 0x$(%x slot-a-file), slot B @ file 0x$(%x slot-b-file), body 0x$(%x body)"
-  print "  $table.abs32-offsets.size ABS32 + $table.thmbl-offsets.size branch reloc(s) applied"
+  print "Dual-slot image: slot A canonical, slot B relocated (+0x$(%x slot-size))."
+  print "  slot A @ file 0x$(%x slot-a-file), slot B @ file 0x$(%x slot-b-file), populated 0x$(%x table.body-size)"
+  print "  $table.abs32-offsets.size ABS32 + $table.thmbl-offsets.size branch reloc(s) applied (incl. in-slot extension)"
   if active-slot != null: print "  active-slot marker set to '$active-slot'"
   print "  -> $invocation["out"] ($out.size bytes)"
 
