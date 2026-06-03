@@ -1120,7 +1120,11 @@ extract-binary-in-slot-ec618_ -> ByteArray
   extension.pointer-offsets.do: | offset/int | extra-abs32.add (vm-body + offset)
   populated := vm-body + extension.bytes.size
   merged := reloc-table.merge-extension --extra-abs32=extra-abs32 --populated-size=populated
-  table-bytes := merged.to-bytes
+  // Pad the table to a word so the canonical image's body (which follows
+  // [ size:u32 ][ table ]) starts on a 4-byte boundary. The device read path
+  // (SlotFirmware) un-relocates the body word-by-word and so needs that
+  // alignment; the SRL1 parser ignores the trailing pad bytes.
+  table-bytes := pad merged.to-bytes 4
 
   // Fit check: [ VM body ][ extension ][ free ][ SRL1 table ][ size:u32 ].
   trailer-size := table-bytes.size + 4

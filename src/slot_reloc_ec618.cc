@@ -18,6 +18,8 @@
 
 #include "slot_reloc_ec618.h"
 
+#include <string.h>
+
 namespace toit {
 
 static const uint8_t SRL1_MAGIC[4] = {'S', 'R', 'L', '1'};
@@ -182,6 +184,117 @@ bool slot_reloc_apply(const SlotRelocTable* table,
   if (!apply_stream(table->thmbl_varints, table->end, table->thmbl_count,
                     buf, window_off, window_end, branch_delta, /*is_branch=*/true)) {
     return false;
+  }
+  return true;
+}
+
+bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t slot_size) {
+  valid_ = false;
+  if (slot_size < SRL1_HEADER_SIZE + 4) return false;
+  uint32_t n = load_le32(slot + slot_size - 4);
+  // An erased tail reads as 0xffffffff; reject that and any implausible size.
+  if (n < SRL1_HEADER_SIZE || n > slot_size - 4) return false;
+  // The builder pads the table to a word so the canonical body (at 4 + N)
+  // starts on a 4-byte boundary — required for word-granular un-relocation.
+  if ((n & 3) != 0) return false;
+  const uint8_t* blob = slot + slot_size - 4 - n;
+  if (!slot_reloc_parse(blob, n, &table_)) return false;
+  slot_ = slot;
+  slot_size_ = slot_size;
+  table_blob_ = blob;
+  table_len_ = n;
+  populated_ = table_.body_size;
+  delta_ = static_cast<int32_t>(slot_base_addr) - static_cast<int32_t>(table_.link_base);
+  canonical_size_ = 4 + table_len_ + populated_;
+  valid_ = true;
+  return true;
+}
+
+void SlotFirmware::unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) const {
+  if (delta_ == 0) return;  // Slot already at the link base: canonical as-is.
+  // ABS32 words move WITH the slot, so un-relocating subtracts the slot delta;
+  // branches to a fixed target move AGAINST it, so theirs adds it.
+  uint32_t word_delta = static_cast<uint32_t>(-delta_);
+  int32_t branch_delta = delta_;
+
+  // ABS32 sites: 4-byte words at 4-aligned offsets, fully contained in [wf, wt)
+  // because both bounds are word-aligned. Modify in place in `buf`.
+  const uint8_t* p = table_.abs32_varints;
+  uint32_t off = 0;
+  for (uint32_t i = 0; i < table_.abs32_count; i++) {
+    uint32_t step;
+    p = decode_varint(p, table_.thmbl_varints, &step);
+    if (p == nullptr) return;
+    off += step;
+    if (off >= wt) break;            // Ascending: nothing more in the window.
+    if (off < wf) continue;
+    uint8_t* q = buf + (off - wf);
+    store_le32(q, load_le32(q) + word_delta);
+  }
+
+  // Thumb-branch sites: 4 bytes at 2-aligned offsets, so they can straddle the
+  // window bounds. Re-encode each from the FULL site in the slot and copy only
+  // the bytes that fall inside [wf, wt).
+  p = table_.thmbl_varints;
+  off = 0;
+  for (uint32_t i = 0; i < table_.thmbl_count; i++) {
+    uint32_t step;
+    p = decode_varint(p, table_.end, &step);
+    if (p == nullptr) return;
+    off += step;
+    if (off >= wt) break;            // Site starts at/after the window end.
+    if (off + 4 <= wf) continue;     // Site ends at/before the window start.
+    uint8_t site[4];
+    memcpy(site, slot_ + off, 4);
+    thumb_branch_encode(site, thumb_branch_decode(site) + branch_delta);
+    uint32_t lo = off > wf ? off : wf;
+    uint32_t hi = (off + 4) < wt ? (off + 4) : wt;
+    for (uint32_t k = lo; k < hi; k++) buf[k - wf] = site[k - off];
+  }
+}
+
+uint8_t SlotFirmware::at(uint32_t index) const {
+  if (index < 4) {
+    return static_cast<uint8_t>(table_len_ >> (index * 8));  // Size word (LE).
+  }
+  if (index < body_off()) {
+    return table_blob_[index - 4];                           // Table bytes.
+  }
+  // Body: un-relocate the containing 4-byte window (which may also pick up a
+  // straddling branch site from the neighbouring word) and extract the byte.
+  uint32_t body = index - body_off();
+  uint32_t word_off = body & ~static_cast<uint32_t>(3);
+  uint8_t word[4];
+  memcpy(word, slot_ + word_off, 4);
+  unrelocate_window(word, word_off, word_off + 4);
+  return word[body & 3];
+}
+
+bool SlotFirmware::copy(uint32_t from, uint32_t to, uint8_t* dest) const {
+  if (from > to || to > canonical_size_) return false;
+  uint32_t pos = from;
+  uint32_t d = 0;
+  // Size-word region [0, 4): the little-endian table length.
+  if (pos < 4) {
+    uint32_t end = to < 4 ? to : 4;
+    for (; pos < end; pos++) dest[d++] = static_cast<uint8_t>(table_len_ >> (pos * 8));
+  }
+  // Table region [4, body_off): the slot-independent reloc table bytes.
+  if (pos < body_off() && pos < to) {
+    uint32_t end = to < body_off() ? to : body_off();
+    memcpy(dest + d, table_blob_ + (pos - 4), end - pos);
+    d += end - pos;
+    pos = end;
+  }
+  // Body region [body_off, canonical_size): physical body, un-relocated. The
+  // window must be word-aligned (the block-copy caller guarantees this; single
+  // bytes go through `at`); straddling branch sites are handled per byte.
+  if (pos < to) {
+    uint32_t body_from = pos - body_off();
+    uint32_t body_to = to - body_off();
+    if ((body_from & 3) != 0 || (body_to & 3) != 0) return false;
+    memcpy(dest + d, slot_ + body_from, body_to - body_from);
+    unrelocate_window(dest + d, body_from, body_to);
   }
   return true;
 }

@@ -133,6 +133,60 @@ static void test_trailer() {
   CHECK(!slot_reloc_parse_trailer(erased.data(), SLOT, &t), "erased tail -> no table");
 }
 
+// SlotFirmware presents a slot's CANONICAL image (table-first, un-relocated).
+// Build a slot A (canonical) and slot B (relocated +SIZE) that share a tail
+// trailer, and check both views yield byte-identical canonical images — even
+// across a Thumb-branch site at a 2-aligned offset that straddles a 4-byte
+// boundary (the case a fixed word window in `at` would miss).
+static void test_slot_firmware() {
+  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x80, SLOT = 0x2000;
+  std::vector<uint8_t> blob = build_table(LINK, SIZE, BODY, {0x10}, {0x42});
+  while (blob.size() & 3) blob.push_back(0);  // Pad so the canonical body aligns.
+
+  // Physical slot A (link base): an ABS32 pointer at 0x10, a Thumb BL at the
+  // 2-aligned 0x42 (spans [0x42, 0x46), straddling the 0x44 boundary).
+  std::vector<uint8_t> a(SLOT, 0xff);
+  memset(a.data(), 0, BODY);
+  uint32_t ptr = LINK + 0x40;
+  a[0x10] = ptr; a[0x11] = ptr >> 8; a[0x12] = ptr >> 16; a[0x13] = ptr >> 24;
+  a[0x42] = 0xf7; a[0x43] = 0xff; a[0x44] = 0xfc; a[0x45] = 0xd2;
+  uint32_t region = blob.size() + 4;
+  memcpy(a.data() + SLOT - region, blob.data(), blob.size());
+  a[SLOT-4] = blob.size(); a[SLOT-3] = blob.size() >> 8;
+  a[SLOT-2] = blob.size() >> 16; a[SLOT-1] = blob.size() >> 24;
+
+  // Physical slot B: slot A relocated by +SIZE (the tail trailer is unchanged).
+  std::vector<uint8_t> b = a;
+  SlotRelocTable t; slot_reloc_parse(blob.data(), blob.size(), &t);
+  slot_reloc_apply(&t, b.data(), 0, BODY, SIZE, SLOT_RELOC_TO_SLOT);
+
+  SlotFirmware fa, fb;
+  CHECK(fa.open(a.data(), LINK, SLOT), "slotfw open A");
+  CHECK(fb.open(b.data(), LINK + SIZE, SLOT), "slotfw open B");
+  CHECK(fa.canonical_size() == fb.canonical_size(), "slotfw canonical size A == B");
+  uint32_t n = fa.canonical_size();
+  CHECK(n == 4 + blob.size() + BODY, "slotfw canonical size value");
+
+  int diff = 0;
+  for (uint32_t i = 0; i < n; i++) if (fa.at(i) != fb.at(i)) diff++;
+  CHECK(diff == 0, "slotfw canonical A == B (incl. straddling branch)");
+
+  uint32_t bo = 4 + blob.size();
+  int bad_body = 0;
+  for (uint32_t k = 0; k < BODY; k++) if (fa.at(bo + k) != a[k]) bad_body++;
+  CHECK(bad_body == 0, "slotfw slot-A canonical body == physical");
+
+  std::vector<uint8_t> blk(BODY);
+  CHECK(fb.copy(bo, bo + BODY, blk.data()), "slotfw copy body block");
+  int bad_copy = 0;
+  for (uint32_t k = 0; k < BODY; k++) if (blk[k] != fb.at(bo + k)) bad_copy++;
+  CHECK(bad_copy == 0, "slotfw copy == at over body");
+
+  std::vector<uint8_t> erased(SLOT, 0xff);
+  SlotFirmware bad;
+  CHECK(!bad.open(erased.data(), LINK, SLOT), "slotfw rejects erased tail");
+}
+
 static uint8_t* read_file(const char* path, size_t* len) {
   FILE* f = fopen(path, "rb");
   if (f == nullptr) return nullptr;
@@ -208,6 +262,8 @@ int main(int argc, char** argv) {
   test_straddle();
   printf("self-locating tail trailer\n");
   test_trailer();
+  printf("SlotFirmware canonical read (table-first, un-relocated)\n");
+  test_slot_firmware();
   if (argc >= 4) {
     printf("real artifacts (slot-B link cross-check)\n");
     test_real(argv[1], argv[2], argv[3]);

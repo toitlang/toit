@@ -2609,6 +2609,16 @@ static spi_flash_mmap_handle_t firmware_mmap_handle;
 static bool firmware_is_mapped = false;
 #endif
 
+#ifdef TOIT_EC618
+// Canonical active-slot firmware view, implemented in primitive_ec618.cc. The
+// dual-slot relocation is hidden here: firmware.map reads the running slot as
+// its un-relocated, table-first canonical image so the SHA and delta-OTA are
+// slot-independent.
+uint32_t ec618_active_firmware_open(uint8** base_out);
+uint8 ec618_active_firmware_at(uint32 index);
+bool ec618_active_firmware_copy(uint32 from, uint32 to, uint8* dest);
+#endif
+
 PRIMITIVE(firmware_map) {
   ARGS(Object, bytes);
 #if defined(TOIT_ESP32)
@@ -2657,31 +2667,18 @@ PRIMITIVE(firmware_map) {
     return bytes;
   }
 
-  // On EC618, the firmware is directly accessible via XIP. Create a proxy
-  // from the AP image start to the end of the extension (config + SHA256).
+  // On EC618 the firmware is the active VM slot. firmware.map presents it as its
+  // CANONICAL image — table-first and un-relocated — so the SHA and delta-OTA
+  // are the same regardless of which slot is live; the dual-slot relocation is
+  // hidden in SlotFirmware (primitive_ec618.cc / slot_reloc_ec618.*). The proxy
+  // carries the slot's XIP base as a valid-but-unread external address; the
+  // firmware_mapping_at/copy primitives read canonical bytes through the view.
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  // AP_FLASH_LOAD_ADDR is already XIP-mapped (the linker uses it as the
-  // .text origin), so it must not be combined with AP_FLASH_XIP_ADDR.
-  uint8* start = reinterpret_cast<uint8*>(AP_FLASH_LOAD_ADDR);
-  const EmbeddedDataExtension* extension = EmbeddedData::extension();
-  if (extension == null) FAIL(ERROR);
-  // EC618 extension layout written by tools/firmware.toit:
-  //   [header (20B)] [image_table] [images]            <- "used" area
-  //   [config_size (4B)] [config_encoded]              <- 4-byte size + payload
-  //   [sha256 trailer (32B)]                           <- whole-image digest
-  // The 4-byte config_size field is always present even when the
-  // config payload is empty, so we add it unconditionally.
-  static const int SHA256_SIZE = 32;
-  List<uint8> config = extension->config();
-  uword end = reinterpret_cast<uword>(extension)
-            + extension->total_size()      // header + image_table + images
-            + sizeof(uint32)               // config_size field
-            + config.length()              // config payload (0 when empty)
-            + SHA256_SIZE;                 // SHA-256 trailer
-  uword size = end - reinterpret_cast<uword>(start);
-  proxy->set_external_address(size, start);
+  uint8* base = null;
+  uint32 canonical_size = ec618_active_firmware_open(&base);
+  if (canonical_size == 0) FAIL(ERROR);
+  proxy->set_external_address(canonical_size, base);
   return proxy;
 #else
   return bytes;
@@ -2708,6 +2705,11 @@ PRIMITIVE(firmware_mapping_at) {
   word size = Smi::value(receiver->at(2));
   if (index < 0 || index >= size) FAIL(OUT_OF_BOUNDS);
 
+#ifdef TOIT_EC618
+  // The canonical byte is computed by the active-slot view (un-relocated),
+  // not read from the proxy's external address.
+  return Smi::from(ec618_active_firmware_at(static_cast<uint32>(offset + index)));
+#else
   Blob input;
   if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
     FAIL(WRONG_OBJECT_TYPE);
@@ -2720,6 +2722,7 @@ PRIMITIVE(firmware_mapping_at) {
   const uint32* words = reinterpret_cast<const uint32*>(input.address());
   uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
   return Smi::from(shifted & 0xff);
+#endif
 }
 
 PRIMITIVE(firmware_mapping_copy) {
@@ -2731,6 +2734,19 @@ PRIMITIVE(firmware_mapping_copy) {
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
 
+  ByteArray::Bytes output(into);
+  word bytes = to - from;
+  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
+
+#ifdef TOIT_EC618
+  // Copy canonical (un-relocated) bytes through the active-slot view. The
+  // window is word-aligned (checked above), so the body sub-window is too.
+  if (!ec618_active_firmware_copy(static_cast<uint32>(from + offset),
+                                  static_cast<uint32>(to + offset),
+                                  output.address() + index)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+#else
   Blob input;
   if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
     FAIL(WRONG_OBJECT_TYPE);
@@ -2739,10 +2755,8 @@ PRIMITIVE(firmware_mapping_copy) {
   // Firmware is potentially mapped into memory that only allow word
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.
-  ByteArray::Bytes output(into);
-  word bytes = to - from;
-  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
+#endif
   return Smi::from(index + bytes);
 }
 

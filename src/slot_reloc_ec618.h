@@ -113,6 +113,81 @@ bool slot_reloc_apply(const SlotRelocTable* table,
                       uint8_t* buf, uint32_t window_off, uint32_t window_len,
                       int32_t delta, SlotRelocDir dir);
 
+// A read-only view that presents the CANONICAL firmware image of a slot and
+// un-relocates its body on the fly. The canonical image is table-first:
+//
+//   [ table_size : u32 ][ SRL1 table ][ VM body + extension ]
+//
+// while the physical slot stores it tail-first:
+//
+//   [ VM body + extension ][ free ][ SRL1 table ][ table_size : last word ].
+//
+// SlotFirmware maps a canonical offset to its physical source and applies
+// `slot_reloc_apply(..., TO_CANONICAL)` to the body, so every reader (the
+// integrity SHA, firmware.map, delta-OTA) sees the same link-base bytes
+// regardless of which slot is live — and so that SHA covers the reloc table.
+//
+// LAYOUT INDEPENDENCE: the only board-specific inputs are the slot's read
+// pointer, its logical base address, and its reservation size, all passed to
+// `open`. The self-locating tail-trailer convention and the table-first
+// canonical framing are shared by every ARM board using this relocation scheme;
+// a board with different slot geometry constructs SlotFirmware with its own
+// base/size and reuses the reconstruction + relocation engine unchanged. No
+// EC618 constants (XIP base, load address, slot size) appear here.
+//
+// The view borrows the slot bytes (e.g. an XIP pointer) and the parsed table
+// points into them, so the slot must stay mapped for the view's lifetime.
+class SlotFirmware {
+ public:
+  SlotFirmware() : valid_(false), slot_(nullptr), slot_size_(0),
+                   table_blob_(nullptr), table_len_(0), populated_(0),
+                   delta_(0), canonical_size_(0) {}
+
+  // Opens a view over the slot whose bytes are at `slot` and whose logical base
+  // address is `slot_base_addr` (equal to `slot` on an XIP board), with
+  // reservation `slot_size`. Parses the self-locating tail trailer to recover
+  // the table and computes `delta = slot_base_addr - link_base`. Returns false
+  // when no valid trailer is present or the table is not word-aligned (the
+  // builder pads it so the canonical body starts on a 4-byte boundary).
+  bool open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t slot_size);
+
+  bool is_valid() const { return valid_; }
+
+  // Size of the canonical image: 4 + table_len + populated.
+  uint32_t canonical_size() const { return canonical_size_; }
+
+  // Returns the single canonical byte at `index` (must be < canonical_size()).
+  uint8_t at(uint32_t index) const;
+
+  // Copies canonical bytes [from, to) into `dest`. The body portion of the
+  // window must be 4-byte aligned (a block copy from FirmwareMapping guarantees
+  // this); single bytes go through `at`. Returns false on a misaligned body
+  // window (a reloc site would straddle it) or an out-of-range request.
+  bool copy(uint32_t from, uint32_t to, uint8_t* dest) const;
+
+ private:
+  // Canonical region starts: [0,4) size word, [4, body_off) table, [body_off,..) body.
+  uint32_t body_off() const { return 4 + table_len_; }
+
+  // Un-relocates a body window [wf, wt) in place (TO_CANONICAL). `buf[0]` is body
+  // offset `wf`; `wf`/`wt` are 4-byte aligned. ABS32 words are word-aligned and
+  // fully contained; Thumb-branch sites are 2-aligned and may straddle `wf`/`wt`,
+  // so each is re-encoded from the full 4 bytes in the slot and only its
+  // in-window bytes are written. A no-op when the slot already sits at the link
+  // base (delta == 0).
+  void unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) const;
+
+  bool valid_;
+  const uint8_t* slot_;        // Physical slot bytes (body+extension at offset 0).
+  uint32_t slot_size_;
+  SlotRelocTable table_;       // Parsed tail table (points into `slot_`).
+  const uint8_t* table_blob_;  // Raw table bytes inside the slot tail.
+  uint32_t table_len_;         // Table length N (the canonical table region size).
+  uint32_t populated_;         // Body + extension size (table_.body_size).
+  int32_t delta_;              // slot_base_addr - link_base.
+  uint32_t canonical_size_;    // 4 + table_len_ + populated_.
+};
+
 }  // namespace toit
 
 #endif  // TOIT_SRC_SLOT_RELOC_EC618_H_

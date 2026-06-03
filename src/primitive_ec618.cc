@@ -370,6 +370,44 @@ static uint32_t inactive_slot_base() {
   return reinterpret_cast<uint32_t>(__vm_b_start);
 }
 
+// Returns the XIP base address of the slot the runtime booted from.
+static uint32_t active_slot_base() {
+  return (toit_booted_slot == 'B') ? reinterpret_cast<uint32_t>(__vm_b_start)
+                                   : reinterpret_cast<uint32_t>(__vm_a_start);
+}
+
+// Active-slot canonical firmware view (convergence #3 read path). firmware.map
+// presents the running slot as its CANONICAL image (table-first, un-relocated)
+// through SlotFirmware, so the integrity SHA and delta-OTA see the same bytes
+// regardless of which slot is live. The helpers below back the firmware_map /
+// firmware_mapping_at / firmware_mapping_copy core primitives
+// (src/primitive_core.cc) on the EC618 target. The view borrows the slot's XIP
+// bytes, which stay mapped, so it survives between calls.
+static SlotFirmware g_active_firmware;
+
+// Opens the view over the running slot and returns its canonical size (0 on
+// failure). `*base_out` receives the slot's XIP base, used only so the firmware
+// proxy carries a valid (if unread) external address.
+uint32_t ec618_active_firmware_open(uint8_t** base_out) {
+  uint32_t base = active_slot_base();
+  *base_out = reinterpret_cast<uint8_t*>(base);
+  if (!g_active_firmware.open(reinterpret_cast<const uint8_t*>(base), base, SLOT_SIZE)) {
+    return 0;
+  }
+  return g_active_firmware.canonical_size();
+}
+
+// Reads one canonical byte. `index` is already absolute (offset + local index).
+uint8_t ec618_active_firmware_at(uint32_t index) {
+  return g_active_firmware.at(index);
+}
+
+// Copies canonical bytes [from, to) into `dest`. Returns whether it succeeded
+// (false on a misaligned body window — the caller copies word-aligned blocks).
+bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
+  return g_active_firmware.copy(from, to, dest);
+}
+
 // Relocate-on-write context. The OTA receiver streams the CANONICAL
 // (link-base) image; slot_reloc_begin arms relocation with that image's reloc
 // table (the "SRL1" artifact, see src/slot_reloc_ec618.h), and
