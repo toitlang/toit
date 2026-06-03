@@ -248,11 +248,23 @@ the slot layout check.
 3. **`firmware.map` → active slot + un-relocate-on-read**: read path returns the
    canonical slot (VM + extension), un-relocated. Verifiable: `firmware.map` SHA
    on slot A == server SHA; on slot B == same SHA.
-4. **`FirmwareWriter` → slot; drop FOTA**: re-point the provider, delete
-   `ota_begin/write/end` + copy-back, restore `PRIVILEGED`. **Hardware:** OTA a
-   canonical image → relocate-on-write → trial-boot B → validate; rollback path.
+4. **`FirmwareWriter` → slot; drop FOTA** — **DONE + HW-validated.** The standard
+   FirmwareWriter streams the canonical image to the inactive slot via
+   relocate-on-write (`slot.reloc-begin` + `slot.write-inactive`), `commit`
+   verifies the canonical SHA + `slot.stage` (no reset), and the provider maps
+   `validate`/`rollback`/`is-validation-pending` to the slot marker. New
+   `slot_stage` primitive; `slot_reloc_begin` made OTA-write-safe (body & trailer
+   in disjoint sectors + tail erase); `PRIVILEGED` restored; FOTA
+   `ota_begin/write/end` + `perform_ota_commit` deleted. **Hardware (self-OTA
+   container):** boot A → relocate-on-write ~390 KB into slot B → stage →
+   `firmware.upgrade` → trial-boot B → running → `validate` → steady state ✓;
+   and a refused trial → automatic rollback to slot A ✓. Bonus: the ~390 KB write
+   ran modem-on with no reset, and an OTA interrupted by the post-flash POR
+   safely retried. Optional later: fold the write-path statics into the slot
+   abstraction.
 5. **Host transport in Toit** + docs; retire `splice_dual_slot.py` /
-   `ota_uart_stream.py`.
+   `ota_uart_stream.py` / the legacy `uart-ota.toit` receiver + the legacy
+   out-of-slot extension path.
 
 ## Future: drop the runtime jump table (Flavor B — TODO)
 
