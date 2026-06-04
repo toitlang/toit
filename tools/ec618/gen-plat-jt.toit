@@ -96,6 +96,14 @@ SOURCE-TEMPLATE ::= """\
 
 #include "plat_jt.h"
 
+// Many table entries are libc/libm/compiler builtins (abort, memcpy, sin, ...).
+// We declare each as `extern void *<sym>` only to take its address for the
+// jump table — never to call it — so the builtin/non-function and any
+// signedness mismatch is intentional and harmless. `&<sym>` still resolves to
+// the real PLAT function (thumb bit intact), exactly as the old `&__real_<sym>`
+// did under -Wl,--wrap.
+#pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
+
 {{externs}}
 
 // Placed at a fixed flash address (see ec618_0h00_flash.c, .jt_data
@@ -277,6 +285,9 @@ main args:
         cli.Option "ldflags"
             --help="The output ldflags .lua fragment path."
             --required,
+        cli.Option "redefine"
+            --help="The output `objcopy --redefine-syms` map path (VM archive rewrite)."
+            --required,
         cli.Option "xmake"
             --help="The xmake.lua to patch."
             --required,
@@ -300,6 +311,7 @@ run invocation/cli.Invocation -> none:
   header-path := invocation["header"]
   source-path := invocation["source"]
   ldflags-path := invocation["ldflags"]
+  redefine-path := invocation["redefine"]
   xmake-path := invocation["xmake"]
   excludes := invocation["exclude"]
   archives := invocation["archive"]
@@ -315,24 +327,49 @@ run invocation/cli.Invocation -> none:
     pipe.print-to-stderr "no symbols found in input"
     exit 1
 
+  // Wrapping strategy (the "wrap only the VM" model — see Option M in
+  // docs/ota-relocation-convergence.md): the VM-side calls must reach the
+  // in-slot stubs (for position independence), but PLAT/RAM-resident code must
+  // NOT — a PLAT call to an in-slot stub faults if that slot is the one being
+  // erased during a B->A OTA. `-Wl,--wrap` is global (it rewrites PLAT's calls
+  // too), so instead the build `objcopy --redefine-syms`-rewrites only the VM
+  // archives' references `<sym> -> __wrap_<sym>`, and the final link drops the
+  // `--wrap`. PLAT then keeps calling the real symbols directly. The jump table
+  // therefore references the REAL symbols (`&<sym>`), not `--wrap`'s `__real_`.
+  //
+  // EXCEPTION: the manual libc time shims live in PLAT (__wrap.c) at fixed
+  // addresses, reached by the VM via `--wrap=time` -> `__wrap_time`. They are
+  // not in-slot, so they are not part of the hazard; those `__wrap_*` entries
+  // keep the `--wrap` + `__real_` mechanism untouched.
   slot-enum-lines := []
   externs-lines := []
   table-init-lines := []
   stubs-lines := []
   ldflags-lines := []
+  redefine-lines := []  // `objcopy --redefine-syms` map: `<sym> __wrap_<sym>`.
   symbols.size.repeat: | i/int |
     s := symbols[i]
+    keep-wrap := s.starts-with "__wrap_"
     slot-enum-lines.add "    PLAT_JT_$s = $i,"
-    externs-lines.add "extern void *__real_$s;"
-    table-init-lines.add "    [PLAT_JT_$s] = &__real_$s,"
     stubs-lines.add "PLAT_STUB($s, $i)"
-    ldflags-lines.add "add_ldflags(\" -Wl,--wrap=$s \", {force = true})"
+    if keep-wrap:
+      externs-lines.add "extern void *__real_$s;"
+      table-init-lines.add "    [PLAT_JT_$s] = &__real_$s,"
+      ldflags-lines.add "add_ldflags(\" -Wl,--wrap=$s \", {force = true})"
+    else:
+      // Reference the real PLAT symbol directly; the VM archive is rewritten to
+      // call `__wrap_$s` (the stub) via objcopy, so the real `$s` is reached
+      // only by PLAT and by this table entry.
+      externs-lines.add "extern void *$s;"
+      table-init-lines.add "    [PLAT_JT_$s] = &$s,"
+      redefine-lines.add "$s __wrap_$s"
 
   slot-enum := slot-enum-lines.join "\n"
   externs := externs-lines.join "\n"
   table-init := table-init-lines.join "\n"
   stubs := stubs-lines.join "\n"
   ldflags := ldflags-lines.join "\n"
+  redefine := redefine-lines.join "\n"
 
   header := HEADER-TEMPLATE.replace "{{slot_enum}}" slot-enum
   source := SOURCE-TEMPLATE.replace "{{externs}}" externs
@@ -343,10 +380,12 @@ run invocation/cli.Invocation -> none:
   file.write-contents --path=header-path header
   file.write-contents --path=source-path source
   file.write-contents --path=ldflags-path ldflags-fragment
+  file.write-contents --path=redefine-path "$redefine\n"
   patch-xmake xmake-path ldflags
 
-  print "Generated $symbols.size stubs."
+  print "Generated $symbols.size stubs ($redefine-lines.size objcopy-rewritten, $ldflags-lines.size kept --wrap)."
   print "  header:   $header-path"
   print "  source:   $source-path"
   print "  ldflags:  $ldflags-path"
+  print "  redefine: $redefine-path"
   print "  xmake.lua: patched"
