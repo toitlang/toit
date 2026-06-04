@@ -96,36 +96,54 @@ static void deep_sleep_timer_cb(uint8_t id) {
 // entry 3 with our handler. Without this, the SDK's handler resets the
 // chip immediately with no visible information, leaving silent reboots.
 
+// The fault path emits via putchar() rather than printf(): printf pulls in
+// vfprintf and its integer formatter, a lot of code to run from a fault context
+// while diagnosing a possibly mis-relocated slot. putchar is on the VM->PLAT
+// wrap list (tools/ec618/plat_jt_ldflags.lua), so it routes through the slot's
+// jump-table stub and stays position-independent in either slot.
+static void hf_puts(const char* s) {
+  while (*s != '\0') putchar(*s++);
+}
+
+static void hf_hex(uint32_t v) {
+  for (int shift = 28; shift >= 0; shift -= 4) {
+    int nibble = (v >> shift) & 0xf;
+    putchar(nibble < 10 ? '0' + nibble : 'a' + nibble - 10);
+  }
+}
+
 extern "C" __attribute__((used))
 void toit_hardfault_dump(uint32_t* frame, uint32_t exc_return) {
-  volatile uint32_t* const SCB_CFSR  = reinterpret_cast<uint32_t*>(0xE000ED28);
-  volatile uint32_t* const SCB_HFSR  = reinterpret_cast<uint32_t*>(0xE000ED2C);
-  volatile uint32_t* const SCB_MMFAR = reinterpret_cast<uint32_t*>(0xE000ED34);
-  volatile uint32_t* const SCB_BFAR  = reinterpret_cast<uint32_t*>(0xE000ED38);
-  printf("\n[HARDFAULT]\n");
-  printf("  PC =0x%08x  LR =0x%08x  PSR=0x%08x\n",
-         static_cast<unsigned>(frame[6]),
-         static_cast<unsigned>(frame[5]),
-         static_cast<unsigned>(frame[7]));
-  printf("  R0 =0x%08x  R1 =0x%08x  R2 =0x%08x  R3 =0x%08x  R12=0x%08x\n",
-         static_cast<unsigned>(frame[0]),
-         static_cast<unsigned>(frame[1]),
-         static_cast<unsigned>(frame[2]),
-         static_cast<unsigned>(frame[3]),
-         static_cast<unsigned>(frame[4]));
-  printf("  EXC_RETURN=0x%08x\n", static_cast<unsigned>(exc_return));
-  printf("  CFSR =0x%08x  HFSR=0x%08x\n",
-         static_cast<unsigned>(*SCB_CFSR),
-         static_cast<unsigned>(*SCB_HFSR));
-  printf("  MMFAR=0x%08x  BFAR=0x%08x\n",
-         static_cast<unsigned>(*SCB_MMFAR),
-         static_cast<unsigned>(*SCB_BFAR));
-  // Busy-wait so the UART can drain the dump before we reset — the
-  // scheduler is not trustworthy from a fault context.
+  const uint32_t cfsr  = *reinterpret_cast<volatile uint32_t*>(0xE000ED28);
+  const uint32_t hfsr  = *reinterpret_cast<volatile uint32_t*>(0xE000ED2C);
+  const uint32_t mmfar = *reinterpret_cast<volatile uint32_t*>(0xE000ED34);
+  const uint32_t bfar  = *reinterpret_cast<volatile uint32_t*>(0xE000ED38);
+  // The exception stacked R0-R3, R12, LR, PC, PSR at `frame`. Validate that the
+  // pointer lands in one of the two SRAM windows before dereferencing it: a
+  // corrupt / overflowed stack would otherwise double-fault right here and lock
+  // up — the exact silent hang this dump exists to replace.
+  const uintptr_t f = reinterpret_cast<uintptr_t>(frame);
+  const bool frame_ok =
+      (f >= 0x00000100 && f + 32u <= 0x00010000) ||   // ASMB 64 KB
+      (f >= 0x00400000 && f + 32u <= 0x00540000);     // MSMB 1.25 MB
+  const uint32_t pc  = frame_ok ? frame[6] : 0;
+  const uint32_t lr  = frame_ok ? frame[5] : 0;
+  const uint32_t psr = frame_ok ? frame[7] : 0;
+  hf_puts("\n[HARDFAULT] PC="); hf_hex(pc);
+  hf_puts(" LR=");              hf_hex(lr);
+  hf_puts(" PSR=");             hf_hex(psr);
+  hf_puts(frame_ok ? "\n" : " (bad frame)\n");
+  hf_puts("  EXC_RETURN=");     hf_hex(exc_return);
+  hf_puts(" CFSR=");            hf_hex(cfsr);
+  hf_puts(" HFSR=");            hf_hex(hfsr);
+  hf_puts(" MMFAR=");           hf_hex(mmfar);
+  hf_puts(" BFAR=");            hf_hex(bfar);
+  hf_puts("\n  resetting (a faulting trial slot rolls back on the next boot)\n");
+  // Let the UART drain, then reset. Resetting (rather than spinning) is what
+  // lets the dispatcher roll a crashing TRIAL slot back to the known-good one.
   for (volatile uint32_t i = 0; i < 2000000; i++) { /* spin */ }
   // SCB->AIRCR = VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2).
-  volatile uint32_t* const SCB_AIRCR = reinterpret_cast<uint32_t*>(0xE000ED0C);
-  *SCB_AIRCR = (0x05FAu << 16) | (1u << 2);
+  *reinterpret_cast<volatile uint32_t*>(0xE000ED0C) = (0x05FAu << 16) | (1u << 2);
   while (1) { /* unreachable */ }
 }
 
