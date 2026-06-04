@@ -1141,6 +1141,21 @@ extract-binary-in-slot-ec618_ -> ByteArray
       --config-encoded=config-encoded
       --extension-xip-addr=extension-xip-addr
 
+  // Self-check the extension relocation (the analog of gen-slot-reloc's
+  // --verify-slot-b, but for the bundled extension which that check does NOT
+  // cover): build the SAME extension at slot B's address and confirm that
+  // relocating the slot-A extension by the slot displacement reproduces it
+  // byte-for-byte. Any differing word is an address-dependent value that
+  // `pointer-offsets` failed to capture (or captured at the wrong offset) — it
+  // would leave a slot-A pointer in slot B and make the firmware service run
+  // from the wrong slot. See docs/ota-relocation-convergence.md.
+  verify-ec618-extension-relocation_ extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+      --slot-size=slot-size
+
   result := binary-input.copy
   details-offset := find-details-offset-esp32 result
   if details-offset < slot-file or details-offset >= slot-file + vm-body:
@@ -1254,6 +1269,54 @@ build-ec618-extension -> Ec618Extension_
   4.repeat: checksum ^= LITTLE-ENDIAN.uint32 extension (it * 4)
   LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
   return Ec618Extension_ extension pointer-offsets
+
+/**
+Verifies the bundled extension relocates cleanly: builds the SAME extension one
+  slot displacement up (at $extension-xip-addr + $slot-size) and asserts that
+  relocating $ext-a's bytes by $slot-size — adding the displacement to every
+  word in ext-a's pointer-offsets — reproduces it byte-for-byte.
+
+Any differing word is an address-dependent value the pointer set missed (or
+  placed at the wrong offset). Such a word stays pointing into slot A after
+  relocate-on-write, so an image running in slot B resolves it back into slot A
+  — exactly the failure where the firmware service ran slot A's primitives.
+*/
+verify-ec618-extension-relocation_ ext-a/Ec618Extension_
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --extension-xip-addr/int
+    --slot-size/int -> none:
+  ext-b := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=(extension-xip-addr + slot-size)
+  bytes-a := ext-a.bytes
+  bytes-b := ext-b.bytes
+  if bytes-a.size != bytes-b.size:
+    print "[ext-verify] FAIL: size differs A=$bytes-a.size B=$bytes-b.size"
+    return
+  relocated := bytes-a.copy
+  offsets := {}
+  ext-a.pointer-offsets.do: | off/int |
+    offsets.add off
+    LITTLE-ENDIAN.put-uint32 relocated off ((LITTLE-ENDIAN.uint32 relocated off) + slot-size)
+  diffs := 0
+  reported := 0
+  (bytes-a.size / 4).repeat: | i/int |
+    off := i * 4
+    vr := LITTLE-ENDIAN.uint32 relocated off
+    vb := LITTLE-ENDIAN.uint32 bytes-b off
+    if vr != vb:
+      diffs++
+      if reported < 40:
+        va := LITTLE-ENDIAN.uint32 bytes-a off
+        print "[ext-verify] DIFF ext-off=0x$(%x off): A=0x$(%x va) reloc=0x$(%x vr) B=0x$(%x vb) in-pointer-offsets=$(offsets.contains off)"
+        reported++
+  if diffs != 0:
+    throw "[ext-verify] extension relocation INCOMPLETE: $diffs differing words — pointer-offsets missed/misaligned an address-dependent value (see DIFFs above); a slot-A pointer would survive into slot B"
+  print "[ext-verify] OK: extension relocates cleanly ($(ext-a.pointer-offsets.size) pointers, $bytes-a.size bytes)"
 
 /** Patches the DromData in $result with the $extension-xip-addr and $system-uuid. */
 patch-drom-extension-ec618_ result/ByteArray --extension-xip-addr/int --system-uuid/Uuid -> none:
