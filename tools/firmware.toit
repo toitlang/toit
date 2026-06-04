@@ -37,7 +37,7 @@ import partition-table show *
 import tar
 
 import ..system.extensions.host.run-image-boot-sh
-import .ec618.slot-reloc show SlotRelocTable
+import .ec618.slot-reloc show SlotRelocTable TO-SLOT TO-CANONICAL
 import .image
 import .snapshot
 import .snapshot-to-image
@@ -51,6 +51,12 @@ WORD-SIZE-EC618 ::= 4
 // EC618 memory map constants (from mem_map.h).
 EC618-XIP-BASE_        ::= 0x00800000
 EC618-AP-LOAD-OFFSET_  ::= 0x00024000
+// Slot A's XIP flash address (TOIT_VM_A_ORIGIN in the linker script). The VM is
+// LINKED at the neutral reloc-table.link-base (NEITHER slot), so this slot-A
+// flash address is no longer the same as the link base: it is where the
+// (relocated) slot-A image physically lives and boots. Used to place/read the
+// slot within the AP image and to compute the slot-A relocation displacement.
+EC618-VM-SLOT-A-XIP_   ::= 0x00991000
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -993,18 +999,25 @@ Builds the EC618 CANONICAL firmware image from the in-slot AP binary $ap and the
     [ table-size : u32 ][ SRL1 table (merged) ][ VM body + extension ]
 
 — the exact bytes firmware.map returns and the device FirmwareWriter consumes
-  (relocate-on-write). The merged table and the populated front are read from
-  slot A, which sits at the link base, so its body is already canonical
-  (delta 0).
+  (relocate-on-write). The body in $ap lives in slot A (relocated to slot A's
+  flash address), so it is UN-relocated back to the canonical (link-base) domain
+  here, the inverse of the relocate in extract-binary-in-slot-ec618_.
 */
 ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
   load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
-  slot-a-file := table.link-base - load-xip
+  slot-a-file := EC618-VM-SLOT-A-XIP_ - load-xip
   size-pos := slot-a-file + table.slot-size - 4
   table-length := LITTLE-ENDIAN.uint32 ap size-pos
   table-bytes := ap.copy (size-pos - table-length) size-pos
-  populated := (SlotRelocTable.parse table-bytes).body-size
+  merged := SlotRelocTable.parse table-bytes
+  populated := merged.body-size
   body := ap.copy slot-a-file (slot-a-file + populated)
+  // Un-relocate the slot-A body back to canonical (link-base) so the device's
+  // relocate-on-write lands it in whichever slot it is OTA'd to.
+  merged.apply body
+      --base=0
+      --delta=(EC618-VM-SLOT-A-XIP_ - merged.link-base)
+      --direction=TO-CANONICAL
   size-word := ByteArray 4
   LITTLE-ENDIAN.put-uint32 size-word 0 table-length
   return size-word + table-bytes + body
@@ -1129,7 +1142,10 @@ extract-binary-in-slot-ec618_ -> ByteArray
   link-base := reloc-table.link-base
   slot-size := reloc-table.slot-size
   vm-body := reloc-table.body-size  // The VM body is the populated slot front.
-  slot-file := link-base - load-xip  // File offset of the slot's first byte.
+  // The image is linked at the neutral link-base, but slot A lives at its own
+  // flash address; the body is placed/built canonically (link-base-relative)
+  // and relocated to slot A at the end so it boots in place.
+  slot-file := EC618-VM-SLOT-A-XIP_ - load-xip  // File offset of slot A's first byte.
 
   if vm-body % 4 != 0: throw "EC618 VM body size 0x$(%x vm-body) is not word-aligned"
 
@@ -1195,6 +1211,16 @@ extract-binary-in-slot-ec618_ -> ByteArray
   size-word := ByteArray 4
   LITTLE-ENDIAN.put-uint32 size-word 0 table-bytes.size
   result.replace (slot-file + slot-size - 4) size-word
+
+  // The body + extension were built CANONICALLY (link-base-relative). Relocate
+  // the whole slot to slot A's flash address so the flashed image boots in
+  // place. delta is 0 only if the link base is set back to slot A; here it is
+  // non-zero, so slot A is relocated for real (exercising the same path as a
+  // slot-B OTA). The trailer (table + size word) is metadata and untouched.
+  merged.apply result
+      --base=slot-file
+      --delta=(EC618-VM-SLOT-A-XIP_ - link-base)
+      --direction=TO-SLOT
 
   // Whole-image SHA-256 trailer (kept until the read path moves to the
   // canonical per-slot hash in convergence #3).

@@ -68,7 +68,8 @@ static bool relocate_chunked(const SlotRelocTable* t, const uint8_t* src, uint8_
   return true;
 }
 
-static void test_real(const char* ap_a_path, const char* ap_b_path, const char* table_path) {
+static void test_real(const char* ap_a_path, const char* ap_b_path, const char* table_path,
+                      uint32_t slot_a_flash, uint32_t slot_b_flash) {
   size_t a_len = 0, b_len = 0, t_len = 0;
   uint8_t* ap_a = read_file(ap_a_path, &a_len);
   uint8_t* ap_b = read_file(ap_b_path, &b_len);
@@ -80,11 +81,16 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
   CHECK(slot_reloc_parse(tbl, t_len, &t), "real table parses");
 
   uint32_t body = t.body_size;
-  int32_t delta = static_cast<int32_t>(t.slot_size);  // Slot A -> slot B.
-  uint32_t slot_a_file = t.link_base - AP_LOAD_ADDR;
-  uint32_t slot_b_file = t.link_base + t.slot_size - AP_LOAD_ADDR;
-  const uint8_t* slot_a = ap_a + slot_a_file;
-  const uint8_t* slot_b = ap_b + slot_b_file;
+  // The image is LINKED at t.link_base (the neutral canonical base, NEITHER
+  // slot). ap_a (the slot-A link) holds the canonical body at slot A's flash
+  // file offset; ap_b (the slot-B link) is the oracle at slot B's address. The
+  // device adds `dest_slot_base - link_base`, so the canonical-to-slot-B delta
+  // is non-zero even though slot A also relocates now.
+  int32_t delta = static_cast<int32_t>(slot_b_flash - t.link_base);
+  uint32_t slot_a_file = slot_a_flash - AP_LOAD_ADDR;
+  uint32_t slot_b_file = slot_b_flash - AP_LOAD_ADDR;
+  const uint8_t* slot_a = ap_a + slot_a_file;  // The canonical (link-base) body.
+  const uint8_t* slot_b = ap_b + slot_b_file;  // The slot-B oracle.
 
   std::vector<uint8_t> work(body);
 
@@ -110,13 +116,16 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
 }
 
 int main(int argc, char** argv) {
-  if (argc < 4) {
-    printf("usage: %s ap-slot-a.bin ap-slot-b.bin slot-reloc.bin\n", argv[0]);
+  if (argc < 6) {
+    printf("usage: %s ap-slot-a.bin ap-slot-b.bin slot-reloc.bin slot-a-flash slot-b-flash\n", argv[0]);
+    printf("  slot-a-flash/slot-b-flash: the slots' XIP flash addresses (hex, e.g. 0x991000 0xA51000)\n");
     printf("(the self-contained unit tests live in tests/ctest/ec618-slot-reloc-test.cc)\n");
     return 2;
   }
+  uint32_t slot_a_flash = static_cast<uint32_t>(strtoul(argv[4], nullptr, 0));
+  uint32_t slot_b_flash = static_cast<uint32_t>(strtoul(argv[5], nullptr, 0));
   printf("real artifacts (slot-B link cross-check)\n");
-  test_real(argv[1], argv[2], argv[3]);
+  test_real(argv[1], argv[2], argv[3], slot_a_flash, slot_b_flash);
   printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED",
          g_failures, g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;

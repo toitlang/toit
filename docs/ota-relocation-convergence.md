@@ -38,7 +38,10 @@ There are two views of the firmware, and the distinction matters for the SHA.
 
 **Canonical image** — what the server builds and ships, what the user can hash
 themselves, what the SHA covers and what delta-OTA diffs. In the link-base
-domain (slot A), table-first:
+domain — the image is linked once at a **neutral base** (`__vm_link_base`,
+0x01000000) that is NEITHER slot, so EVERY slot (including slot A) is relocated
+to its flash address; slot A is not a privileged "delta 0" canonical — table-
+first:
 
 ```
 [ table_size : u32 ][ SRL1 reloc table ][ VM body ][ extension ]
@@ -56,13 +59,15 @@ with the table moved to the tail so the VM body keeps the slot origin (no
 linker/boot change) and the table is self-locating from the last word:
 
 ```
-__vm_a_start (= link base, 0x991000) ─┐
+__vm_a_start = 0x991000  (slot A flash addr; the image is linked at the
+                          neutral __vm_link_base and relocated to here) ─┐
   [ VM body (relocated) ]  code + rodata + .init_array + .vm_entry
   [ extension           ]  bundled container images + image table + config
   [ free                ]
   [ SRL1 reloc table    ]  (variable)
   [ table_size : u32    ]  the slot's last word (self-locating)
-__vm_a_start + SLOT_SIZE (0x9f1000) ──┘     (slot B identical, +0x60000)
+__vm_a_start + SLOT_SIZE ──────────────────────────────────────────────┘
+                                            (slot B identical, +SLOT_SIZE)
 ```
 
 The device reconstructs the canonical image (and its SHA) from the physical

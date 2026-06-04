@@ -54,6 +54,9 @@ extern "C" {
   extern uint8_t toit_booted_slot;
   extern uint32_t __vm_a_start[];
   extern uint32_t __vm_b_start[];
+  // The neutral base the VM image is linked at (NEITHER slot). The shared .data
+  // slot pointers are link-base-relative, so they relocate to the booted slot.
+  extern uint32_t __vm_link_base[];
 
   // Generated table (toit_data_reloc.c): RAM addresses of the writable .data
   // words that hold VM-slot pointers, fixed up per-slot in start().
@@ -206,18 +209,20 @@ static const char* last_reset_name(LastResetState_e s) {
 }
 
 // The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
-// fixed flash image — the LINK slot's (slot A's) data-init — and the per-slot
-// SRL1 relocation only ever touches the slot itself, never this shared RAM. So
-// every VM-slot pointer that lives in .data — the interpreter's computed-goto
-// dispatch_table and the per-module *_primitives_ tables (see
-// toit_data_reloc.c) — is baked at slot A. When we boot a DIFFERENT slot those
-// words point into slot A, so the interpreter would run slot A's code (and an
-// OTA writing slot A would erase the code it is executing). Shift them by the
-// slot displacement here, before any static initializer or the interpreter
-// reads them. delta == 0 on the link slot, so this is a no-op there. This
+// fixed flash image — the data-init linked at the neutral __vm_link_base — and
+// the per-slot SRL1 relocation only ever touches the slot itself, never this
+// shared RAM. So every VM-slot pointer that lives in .data — the interpreter's
+// computed-goto dispatch_table and the per-module *_primitives_ tables (see
+// toit_data_reloc.c) — is baked at the link base. On EVERY boot they point at
+// the link base, not the booted slot, so the interpreter would run the wrong
+// code (and an OTA writing the booted slot could erase code it is executing).
+// Shift them by the slot displacement here, before any static initializer or
+// the interpreter reads them. Because the link base is NEITHER slot, delta is
+// non-zero on both slot A and slot B (the slot-A relocation is no longer a
+// no-op); it is only zero if the link base is set back to a real slot. This
 // function itself touches no .data slot pointer, so it is safe to run first.
 static void relocate_data_slot_pointers() {
-  const uint32_t link_base = reinterpret_cast<uint32_t>(__vm_a_start);
+  const uint32_t link_base = reinterpret_cast<uint32_t>(__vm_link_base);
   const uint32_t active_base = (toit_booted_slot == 'B')
       ? reinterpret_cast<uint32_t>(__vm_b_start)
       : reinterpret_cast<uint32_t>(__vm_a_start);

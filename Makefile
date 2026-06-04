@@ -300,10 +300,14 @@ ec618: check-env host-tools
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
 	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
-	# on the chip): relocate slot A == slot B and un-relocate slot B == slot A,
-	# both whole-body and sector-chunked.
+	# on the chip): relocate canonical == slot B and un-relocate slot B ==
+	# canonical, both whole-body and sector-chunked. The slot flash addresses are
+	# read from the link symbols (the image is linked at the neutral base, so the
+	# slots are no longer at the link base).
 	$(CXX) -Wall -Wextra -O2 -I src tools/slot_reloc_test/test.cc src/slot_reloc_ec618.cc -o $(BUILD)/ec618/slot_reloc_test
-	$(BUILD)/ec618/slot_reloc_test $(BUILD)/ec618/ap-slot-a.bin $(BUILD)/ec618/ap-slot-b.bin $(BUILD)/ec618/slot-reloc.bin
+	$(BUILD)/ec618/slot_reloc_test $(BUILD)/ec618/ap-slot-a.bin $(BUILD)/ec618/ap-slot-b.bin $(BUILD)/ec618/slot-reloc.bin \
+		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_a_start"{print $$1}') \
+		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_b_start"{print $$1}')
 	# Compile the system snapshot.
 	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
 	# Create the firmware envelope from the slot-A AP image + matching CP + the

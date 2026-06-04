@@ -33,7 +33,9 @@ DATA-SECTIONS ::= {".load_dram_shared", ".load_dram_bsp"}
 // Structural slot-boundary symbols are FIXED flash addresses (slot geometry),
 // not moving image content — a .data word holding one must NOT be relocated.
 // Matches gen-slot-reloc.toit's FIXED-SLOT-SYMBOLS.
-FIXED-SLOT-SYMBOLS ::= {"__vm_a_start", "__vm_a_end", "__vm_b_start", "__vm_b_end"}
+FIXED-SLOT-SYMBOLS ::= {"__vm_a_start", "__vm_a_end", "__vm_b_start", "__vm_b_end",
+    // Link-domain markers are FIXED addresses too (see gen-slot-reloc.toit).
+    "__vm_link_base", "__vm_link_end"}
 
 main args:
   cmd := cli.Command "gen-data-reloc"

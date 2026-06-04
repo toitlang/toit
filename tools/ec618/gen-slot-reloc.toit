@@ -44,6 +44,12 @@ DEFAULT-AP-LOAD-ADDR ::= 0x824000
 FIXED-SLOT-SYMBOLS ::= {
   "__vm_a_start", "__vm_a_end",
   "__vm_b_start", "__vm_b_end",
+  // The link-domain markers are FIXED addresses too: the VM references
+  // __vm_link_base to recover the (build-time) link base at runtime, and it must
+  // read the same value in EVERY slot. __vm_link_base == the link base, so its
+  // value falls inside [link-base, hi) and would otherwise be (wrongly)
+  // relocated like an in-slot pointer.
+  "__vm_link_base", "__vm_link_end",
 }
 
 // Relocations storing a 32-bit absolute address. Relocated when the stored
@@ -120,21 +126,29 @@ run invocation/cli.Invocation -> none:
   verify-path := invocation["verify-slot-b"]
   ap-load-addr := parse-int invocation["ap-load-addr"]
 
-  // Slot geometry straight from the linker symbols.
+  // The image is LINKED at the neutral __vm_link_base (the canonical VMA, NEITHER
+  // slot) and lives in the flash at slot A's address __vm_a_start (the LMA). The
+  // two differ, so a relocation's virtual address (its slot-relative offset) maps
+  // to a DIFFERENT file offset within ap.bin. The device adds
+  // `delta = dest_slot_base - link_base` to each ABS32 word; with link_base != a
+  // slot that is non-zero for BOTH slots, so slot A relocates too.
   syms := slot-symbols nm elf
-  link-base := syms.get "__vm_a_start"
-  vm-a-end := syms.get "__vm_a_end"
-  slot-b-base := syms.get "__vm_b_start"
-  if link-base == null or vm-a-end == null or slot-b-base == null:
-    pipe.print-to-stderr "missing __vm_a_start/__vm_a_end/__vm_b_start in $elf"
+  link-base := syms.get "__vm_link_base"
+  link-end := syms.get "__vm_link_end"
+  slot-a-flash := syms.get "__vm_a_start"
+  slot-b-flash := syms.get "__vm_b_start"
+  if link-base == null or link-end == null or slot-a-flash == null or slot-b-flash == null:
+    pipe.print-to-stderr "missing __vm_link_base/__vm_link_end/__vm_a_start/__vm_b_start in $elf"
     exit 1
-  if link-base == vm-a-end:
-    pipe.print-to-stderr "slot A is empty — expected the slot-A link (built without TOIT_VM_SLOT_B)"
+  if link-base == link-end:
+    pipe.print-to-stderr "VM body is empty — expected the slot-A link (built without TOIT_VM_SLOT_B)"
     exit 1
-  slot-size := slot-b-base - link-base
-  body-size := vm-a-end - link-base
-  delta := slot-size  // Relocating the link-base (slot A) image to slot B.
-  hi := link-base + slot-size
+  slot-size := slot-b-flash - slot-a-flash
+  body-size := link-end - link-base
+  hi := link-base + slot-size  // Link-domain upper bound for "points into the slot".
+  // Maps a relocation's virtual address to its file offset within ap.bin
+  // (slot-relative offset + slot A's flash file offset).
+  slot-a-file := slot-a-flash - ap-load-addr
 
   ap-a := file.read-contents ap-path
   relocs := read-relocs readelf elf ".rel.vm_a"
@@ -147,7 +161,7 @@ run invocation/cli.Invocation -> none:
   relocs.do: | r/Reloc |
     rel-off := r.offset - link-base
     if ABS32-TYPES.contains r.type:
-      word := LITTLE-ENDIAN.uint32 ap-a (r.offset - ap-load-addr)
+      word := LITTLE-ENDIAN.uint32 ap-a (slot-a-file + rel-off)
       if link-base <= word and word < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
         abs32.add rel-off
     else if BRANCH-TYPES.contains r.type:
@@ -170,7 +184,8 @@ run invocation/cli.Invocation -> none:
   file.write-contents --path=out-path table
 
   print "Slot reloc table: $abs32.size ABS32 + $thmbl.size branch reloc(s), $table.size bytes."
-  print "  link-base=0x$(%x link-base) slot-size=0x$(%x slot-size) body=0x$(%x body-size)"
+  print "  link-base=0x$(%x link-base) slot-a=0x$(%x slot-a-flash) slot-b=0x$(%x slot-b-flash) slot-size=0x$(%x slot-size) body=0x$(%x body-size)"
+  print "  delta(A)=0x$(%x ((slot-a-flash - link-base) & 0xffffffff)) delta(B)=0x$(%x ((slot-b-flash - link-base) & 0xffffffff))"
   print "  -> $out-path"
 
   if verify-path:
@@ -178,16 +193,16 @@ run invocation/cli.Invocation -> none:
     ok := verify
         --ap-a=ap-a
         --ap-b=ap-b
-        --slot-a-file=(link-base - ap-load-addr)
-        --slot-b-file=(slot-b-base - ap-load-addr)
+        --slot-a-file=slot-a-file
+        --slot-b-file=(slot-b-flash - ap-load-addr)
         --body-size=body-size
         --abs32=abs32
         --thmbl=thmbl
-        --delta=delta
+        --delta=(slot-b-flash - link-base)
     if not ok:
       pipe.print-to-stderr "Byte-identity FAILED: the relocation table is incomplete or wrong."
       exit 1
-    print "Byte-identity OK: relocated slot A == slot-B link ($verify-path)."
+    print "Byte-identity OK: canonical body relocated to slot B == slot-B link ($verify-path)."
 
 /**
 Reads the relocation records of $section from `$readelf -r $elf`.
@@ -225,7 +240,8 @@ slot-symbols nm/string elf/string -> Map:
     if parts.size < 3: continue.split
     name := parts.last
     if name == "__vm_a_start" or name == "__vm_a_end" \
-        or name == "__vm_b_start" or name == "__vm_b_end":
+        or name == "__vm_b_start" or name == "__vm_b_end" \
+        or name == "__vm_link_base" or name == "__vm_link_end":
       result[name] = int.parse parts[0] --radix=16
   return result
 

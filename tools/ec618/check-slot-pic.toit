@@ -96,9 +96,12 @@ run invocation/cli.Invocation -> none:
 /**
 Returns the populated VM slot range as a two-element list `[lo, hi]`.
 
-Prefers the `__vm_a_start`/`__vm_a_end` symbols; if that range is empty (start
-  equals end), falls back to `__vm_b_start`/`__vm_b_end`. Reads addresses (the
-  1st field, hex) from `$nm $elf`.
+Prefers the `__vm_link_base`/`__vm_link_end` symbols (the link-domain VMA the
+  slot-A image's code actually lives at — NOT __vm_a_start, which is slot A's
+  flash address with no code at it in the ELF); if that range is empty (start
+  equals end), falls back to `__vm_b_start`/`__vm_b_end` (the slot-B oracle link,
+  which is linked directly at slot B). Reads addresses (the 1st field, hex) from
+  `$nm $elf`.
 */
 slot-range nm/string elf/string -> List:
   symbols := {:}
@@ -107,12 +110,12 @@ slot-range nm/string elf/string -> List:
     parts := split-whitespace line
     if parts.size < 2: continue.split
     name := parts.last
-    if name == "__vm_a_start" or name == "__vm_a_end" \
+    if name == "__vm_link_base" or name == "__vm_link_end" \
         or name == "__vm_b_start" or name == "__vm_b_end":
       symbols[name] = int.parse parts[0] --radix=16
 
-  a-start := symbols.get "__vm_a_start"
-  a-end := symbols.get "__vm_a_end"
+  a-start := symbols.get "__vm_link_base"
+  a-end := symbols.get "__vm_link_end"
   if a-start != null and a-end != null and a-start != a-end:
     return [a-start, a-end]
 
