@@ -272,6 +272,14 @@ ec618: check-env host-tools
 	# Save the slot-A artifacts: the envelope is built from these, and the
 	# slot-B relink below overwrites build/toit.
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618/toit-slot-a.elf
+	# Verify the checked-in shared-.data slot-pointer table (compiled into the
+	# VM as src/toit_data_reloc.c, applied at boot by relocate_data_slot_pointers)
+	# still matches the linker's .rel.load_dram_* -> .vm_a records. Regenerate
+	# with `gen-data-reloc.toit --elf=... --out=src/toit_data_reloc.c` if stale.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--out=$(CURDIR)/src/toit_data_reloc.c --check
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-a.bin
 	# Re-link slot B (linker script only, a fast re-link) as an independent
 	# byte-identity oracle for the relocation table.

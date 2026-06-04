@@ -49,6 +49,16 @@ extern "C" {
   // know which slot is active.
   extern void (*__vm_init_array_start[])(void);
   extern void (*__vm_init_array_end[])(void);
+
+  // Slot geometry + the slot the dispatcher booted (set in toit_main.c).
+  extern uint8_t toit_booted_slot;
+  extern uint32_t __vm_a_start[];
+  extern uint32_t __vm_b_start[];
+
+  // Generated table (toit_data_reloc.c): RAM addresses of the writable .data
+  // words that hold VM-slot pointers, fixed up per-slot in start().
+  extern const uint32_t toit_data_reloc[];
+  extern const uint32_t toit_data_reloc_count;
 }
 
 #include "embedded_data.h"
@@ -195,7 +205,36 @@ static const char* last_reset_name(LastResetState_e s) {
   }
 }
 
+// The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
+// fixed flash image — the LINK slot's (slot A's) data-init — and the per-slot
+// SRL1 relocation only ever touches the slot itself, never this shared RAM. So
+// every VM-slot pointer that lives in .data — the interpreter's computed-goto
+// dispatch_table and the per-module *_primitives_ tables (see
+// toit_data_reloc.c) — is baked at slot A. When we boot a DIFFERENT slot those
+// words point into slot A, so the interpreter would run slot A's code (and an
+// OTA writing slot A would erase the code it is executing). Shift them by the
+// slot displacement here, before any static initializer or the interpreter
+// reads them. delta == 0 on the link slot, so this is a no-op there. This
+// function itself touches no .data slot pointer, so it is safe to run first.
+static void relocate_data_slot_pointers() {
+  const uint32_t link_base = reinterpret_cast<uint32_t>(__vm_a_start);
+  const uint32_t active_base = (toit_booted_slot == 'B')
+      ? reinterpret_cast<uint32_t>(__vm_b_start)
+      : reinterpret_cast<uint32_t>(__vm_a_start);
+  const int32_t delta = static_cast<int32_t>(active_base) -
+                        static_cast<int32_t>(link_base);
+  if (delta == 0) return;
+  for (uint32_t i = 0; i < toit_data_reloc_count; i++) {
+    uint32_t* p = reinterpret_cast<uint32_t*>(toit_data_reloc[i]);
+    *p = static_cast<uint32_t>(*p + delta);
+  }
+}
+
 static void start() {
+  // Fix the shared-.data VM-slot pointers for the booted slot BEFORE anything
+  // (static constructors, the interpreter) reads them.
+  relocate_data_slot_pointers();
+
   // Run C++ static initializers (the linker script must capture .init_array).
   run_static_initializers();
 

@@ -129,6 +129,50 @@ separate (and still needed).
 > it has Thumb branches that aren't single-word pointers — so this only applies
 > to the container pointers.)
 
+## Relocation completeness: THREE regions (2026-06-04)
+
+The image is linked once at slot A's base, so slot A is the "canonical" image
+and `delta == 0` when writing slot A. The trap (Florian): a slot pointer that is
+**missed** by relocation stays at its slot-A value, which on slot A is *valid* —
+so A→B always works, reads on B "work", and only **B→A** (the one direction that
+erases slot A) explodes. Three regions hold slot pointers; the original design
+only relocated the first, so B→A hard-faulted until all three were covered:
+
+1. **VM body** (`.vm_a`) — the SRL1 table (`--emit-relocs`), applied
+   relocate-on-write. Verified by `gen-slot-reloc --verify-slot-b` (byte-identity
+   against an independent slot-B link).
+2. **In-slot extension** — pointer-offsets merged into the SRL1 table by
+   `tools/firmware.toit`. `--verify-slot-b` does **not** cover it, so a new
+   `[ext-verify]` self-check (`verify-ec618-extension-relocation_`) builds the
+   extension at slot B too and asserts `relocate(A) == B` byte-for-byte. (This is
+   exactly Florian's debug method: build an independent slot-B image and diff
+   `relocate(A)` against it — any difference is a missed/misaligned pointer.)
+3. **Shared writable `.data`** (`.load_dram_shared`) — the interpreter's
+   computed-goto `dispatch_table` and the per-module `*_primitives_` pointers.
+   PLAT loads this RAM **once** from a fixed flash image (the link slot's
+   data-init), and the per-slot SRL1 relocation never touches it, so these ~141
+   words are slot-A forever. On a slot-B boot the interpreter therefore ran
+   slot-A code, and a B→A OTA self-erased the code it was executing. Fix:
+   `tools/ec618/gen-data-reloc.toit` extracts the linker's
+   `.rel.load_dram_* → .vm_a` records into `src/toit_data_reloc.c`;
+   `relocate_data_slot_pointers()` (toit_ec618.cc `start()`) adds
+   `active_slot_base − link_base` to each word at boot, before any static
+   initializer or the interpreter runs (no-op on the link slot). `make ec618`
+   guards staleness with `gen-data-reloc.toit --check`.
+
+A separate, related hazard (Option M): the in-slot `__wrap_<sym>` jump-table
+stubs are reached by **PLAT/RAM-resident code** too (because `-Wl,--wrap` is
+global), resolved to the absolute slot-A copy — so a context switch mid-B→A-erase
+calls an erased stub → undefined-instruction fault. Fixed by wrapping **only the
+VM archive** (`objcopy --redefine-syms`) and dropping `--wrap` from the final
+link, so PLAT calls the real functions and never branches into a slot. The VM
+still calls its in-slot stubs, so the SRL1 table is unchanged.
+
+> **The clean future direction (Florian):** relocate **every** slot from a
+> neutral base — no slot is "canonical". Then a missed/misaligned relocation
+> fails loudly on slot A too, and "no word in slot B may point into slot A"
+> becomes a hard, checkable invariant instead of a latent B→A-only fault.
+
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
 `firmware.map` ([primitive_core.cc:2655](../src/primitive_core.cc#L2655),
