@@ -215,11 +215,16 @@ PRIMITIVE(slot_reloc_begin) {
   if (block_size > SLOT_SIZE) { free(copy); FAIL(OUT_OF_BOUNDS); }
   const uint32_t trailer_first_sector =
       (SLOT_SIZE - block_size) & ~(FLASH_SECTOR_SIZE - 1);
-  const uint32_t body_sectors_end =
-      (slot_reloc_table.body_size + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1);
-  if (body_sectors_end > trailer_first_sector) {
+  // The populated front is body + extension (body_size) PLUS the verbatim VM
+  // .data init image that rides after it (data_size) — both are streamed
+  // front-to-back with a lazy per-sector erase, so the whole front must clear
+  // the trailer's sectors.
+  const uint32_t front = slot_reloc_table.body_size + slot_reloc_table.data_size;
+  const uint32_t front_sectors_end =
+      (front + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1);
+  if (front_sectors_end > trailer_first_sector) {
     free(copy);
-    FAIL(OUT_OF_BOUNDS);  // Body and trailer would share a sector.
+    FAIL(OUT_OF_BOUNDS);  // Body + .data and trailer would share a sector.
   }
   uint8_t* block = unvoid_cast<uint8_t*>(malloc(block_size));
   if (block == null) { free(copy); FAIL(MALLOC_FAILED); }

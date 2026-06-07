@@ -99,6 +99,14 @@ AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
 // (option A; see docs/ota-relocation-convergence.md). When absent, the
 // extension is appended after the AP image (legacy out-of-slot layout).
 AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
+// The VM's writable-.data init image (the per-slot data region, built by
+// tools/ec618/gen-slot-reloc.toit alongside the reloc table). Each firmware
+// carries its OWN .data so an A!=B OTA boots correct VM state: the bytes ride
+// inside the slot after the VM body+extension (verbatim, never relocated), and
+// the device copies the active slot's copy to __vm_data_start at boot. Its size
+// must equal the reloc table's data_size. See docs/ota-contract.md. (The AR
+// name must stay <=16 chars, like the other entries.)
+AR-ENTRY-EC618-VM-DATA ::= "\$ec618-data.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -266,6 +274,9 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
         cli.Option "reloc.bin"
             --help="Set the dual-slot relocation table (slot-reloc.bin), enabling the in-slot extension layout."
             --type="file",
+        cli.Option "data.bin"
+            --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot."
+            --type="file",
         cli.Option "system.snapshot"
             --type="file"
             --required,
@@ -299,6 +310,9 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
 
   reloc-path := invocation["reloc.bin"]
   if reloc-path: entries[AR-ENTRY-EC618-RELOC] = read-file reloc-path --ui=ui
+
+  data-path := invocation["data.bin"]
+  if data-path: entries[AR-ENTRY-EC618-VM-DATA] = read-file data-path --ui=ui
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
@@ -1018,9 +1032,12 @@ ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
       --base=0
       --delta=(EC618-VM-SLOT-A-XIP_ - merged.link-base)
       --direction=TO-CANONICAL
+  // The VM .data init image rides verbatim after the populated front (slot
+  // offset `populated`); it carries no relocations, so it is appended unchanged.
+  data := ap.copy (slot-a-file + populated) (slot-a-file + populated + merged.data-size)
   size-word := ByteArray 4
   LITTLE-ENDIAN.put-uint32 size-word 0 table-length
-  return size-word + table-bytes + body
+  return size-word + table-bytes + body + data
 
 extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
   containers := []
@@ -1061,6 +1078,7 @@ extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
 
   reloc-table/SlotRelocTable? := entries.get AR-ENTRY-EC618-RELOC
       --if-present=: SlotRelocTable.parse it
+  vm-data/ByteArray? := entries.get AR-ENTRY-EC618-VM-DATA
 
   return extract-binary-content-ec618
       --binary-input=firmware-bin
@@ -1068,13 +1086,15 @@ extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
       --system-uuid=system-uuid
       --config-encoded=config-encoded
       --reloc-table=reloc-table
+      --vm-data=vm-data
 
 extract-binary-content-ec618 -> ByteArray
     --binary-input/ByteArray
     --containers/List
     --system-uuid/Uuid
     --config-encoded/ByteArray
-    --reloc-table/SlotRelocTable?:
+    --reloc-table/SlotRelocTable?
+    --vm-data/ByteArray?:
   if reloc-table:
     return extract-binary-in-slot-ec618_
         --binary-input=binary-input
@@ -1082,6 +1102,7 @@ extract-binary-content-ec618 -> ByteArray
         --system-uuid=system-uuid
         --config-encoded=config-encoded
         --reloc-table=reloc-table
+        --vm-data=vm-data
 
   // Legacy out-of-slot layout (envelopes built without a relocation table):
   // pad the AP binary up to a 4 KB boundary and append the extension after it.
@@ -1124,20 +1145,25 @@ extract-binary-content-ec618 -> ByteArray
 Produces the EC618 AP image with the bundled extension placed INSIDE the VM
   slot (option A; see docs/ota-relocation-convergence.md).
 
-The slot is laid out as `[ VM body ][ extension ][ free ][ SRL1 table ][ size ]`,
+The slot is laid out as
+  `[ VM body ][ extension ][ VM .data init ][ free ][ SRL1 table ][ size ]`,
   where `size` (the slot's last word) locates the table. The extension's
   absolute pointers (the image-table program addresses, each container image's
   internal pointers, and the patched `DromData.extension`) are merged into the
   $reloc-table so the device relocates the whole slot uniformly on write and
-  un-relocates it on read. A build-time fit check guarantees the slot is not
-  overflowed.
+  un-relocates it on read. The $vm-data init image (the per-slot data region)
+  rides verbatim right after the extension — it is never relocated (it holds no
+  slot pointers the SRL1 table covers; the device fixes its slot pointers in RAM
+  at boot), so it sits past the relocatable populated front (`body_size`). A
+  build-time fit check guarantees the slot is not overflowed.
 */
 extract-binary-in-slot-ec618_ -> ByteArray
     --binary-input/ByteArray
     --containers/List
     --system-uuid/Uuid
     --config-encoded/ByteArray
-    --reloc-table/SlotRelocTable:
+    --reloc-table/SlotRelocTable
+    --vm-data/ByteArray?:
   load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
   link-base := reloc-table.link-base
   slot-size := reloc-table.slot-size
@@ -1185,28 +1211,42 @@ extract-binary-in-slot-ec618_ -> ByteArray
   extension.pointer-offsets.do: | offset/int | extra-abs32.add (vm-body + offset)
   populated := vm-body + extension.bytes.size
   merged := reloc-table.merge-extension --extra-abs32=extra-abs32 --populated-size=populated
+
+  // The per-slot VM .data init image rides verbatim after the populated front
+  // (body + extension), at slot offset `populated`. Its size is fixed by the
+  // reloc table's data_size (set by gen-slot-reloc from __vm_data_start/_end);
+  // the carried bytes must match exactly so the device's boot-time copy and the
+  // canonical framing agree. `merged.body-size == populated`, so the slot reloc
+  // never touches this region.
+  data-size := merged.data-size
+  if data-size > 0 and (vm-data == null or vm-data.size != data-size):
+    throw "EC618 reloc table wants 0x$(%x data-size) bytes of VM .data but the envelope carries $(vm-data == null ? "none" : "0x$(%x vm-data.size)") ($AR-ENTRY-EC618-VM-DATA / --data.bin)"
   // Pad the table to a word so the canonical image's body (which follows
   // [ size:u32 ][ table ]) starts on a 4-byte boundary. The device read path
   // (SlotFirmware) un-relocates the body word-by-word and so needs that
   // alignment; the SRL1 parser ignores the trailing pad bytes.
   table-bytes := pad merged.to-bytes 4
 
-  // Fit check: [ VM body ][ extension ][ free ][ SRL1 table ][ size:u32 ].
+  // Fit check: [ VM body ][ extension ][ VM .data ][ free ][ SRL1 table ][ size ].
   // The OTA write path (slot_reloc_begin) lays the trailer in its own tail
-  // sectors and streams the body front-to-back with a lazy per-sector erase, so
-  // the body and the trailer must occupy DISJOINT 4 KB sectors — otherwise the
-  // body's erase would clobber the trailer. Enforce the same sector-disjoint
-  // bound at build time so every buildable image is also OTA-writable.
+  // sectors and streams the body+extension+.data front-to-back with a lazy
+  // per-sector erase, so the populated front and the trailer must occupy
+  // DISJOINT 4 KB sectors — otherwise the front's erase would clobber the
+  // trailer. Enforce the same sector-disjoint bound at build time so every
+  // buildable image is also OTA-writable.
+  front := populated + data-size  // body + extension + .data init.
   trailer-size := table-bytes.size + 4
   EC618-SECTOR_ ::= 0x1000
   block-size := round-up trailer-size 16              // Segment-aligned trailer block.
   trailer-first-sector := (slot-size - block-size) / EC618-SECTOR_ * EC618-SECTOR_
-  if (round-up populated EC618-SECTOR_) > trailer-first-sector:
-    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + reloc trailer 0x$(%x trailer-size) does not leave the trailer its own sector(s) in slot 0x$(%x slot-size)"
+  if (round-up front EC618-SECTOR_) > trailer-first-sector:
+    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + .data 0x$(%x data-size) + reloc trailer 0x$(%x trailer-size) does not leave the trailer its own sector(s) in slot 0x$(%x slot-size)"
 
-  // Write the extension after the VM body, and the tail trailer so the size
-  // word is the slot's last word (self-locating, see slot_reloc_parse_trailer).
+  // Write the extension after the VM body, the .data init after the extension,
+  // and the tail trailer so the size word is the slot's last word (self-locating,
+  // see slot_reloc_parse_trailer).
   result.replace (slot-file + vm-body) extension.bytes
+  if data-size > 0: result.replace (slot-file + populated) vm-data
   result.replace (slot-file + slot-size - trailer-size) table-bytes
   size-word := ByteArray 4
   LITTLE-ENDIAN.put-uint32 size-word 0 table-bytes.size

@@ -308,6 +308,7 @@ ec618: check-env host-tools
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--ap=$(BUILD)/ec618/ap-slot-a.bin \
 		--out=$(BUILD)/ec618/slot-reloc.bin \
+		--data-out=$(BUILD)/ec618/slot-data.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
 	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
 	# on the chip): relocate canonical == slot B and un-relocate slot B ==
@@ -327,6 +328,7 @@ ec618: check-env host-tools
 		--firmware.bin $(BUILD)/ec618/ap-slot-a.bin \
 		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
 		--reloc.bin $(BUILD)/ec618/slot-reloc.bin \
+		--data.bin $(BUILD)/ec618/slot-data.bin \
 		--system.snapshot $(BUILD)/ec618/system.snapshot
 	# Extract the binpkg (the extension now lives inside slot A).
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image

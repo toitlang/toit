@@ -27,21 +27,27 @@ class SlotRelocTable:
   link-base/int
   slot-size/int
   body-size/int
+  // Size of the VM's writable .data init image that rides in the slot after the
+  // body+extension (verbatim, NOT relocated — the device copies it into RAM at
+  // boot and relocate_data_slot_pointers fixes the slot pointers there). Lets an
+  // OTA carry each firmware's own .data. 0 for legacy tables.
+  data-size/int
   abs32-offsets/List
   thmbl-offsets/List
 
-  constructor --.link-base --.slot-size --.body-size --.abs32-offsets --.thmbl-offsets:
+  constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets:
 
   /** Parses an "SRL1" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
   constructor.parse blob/ByteArray:
-    if blob.size < 24: throw "SRL1 table too small"
+    if blob.size < 28: throw "SRL1 table too small"
     4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL1 magic"
     link-base = LITTLE-ENDIAN.uint32 blob 4
     slot-size = LITTLE-ENDIAN.uint32 blob 8
     body-size = LITTLE-ENDIAN.uint32 blob 12
     abs32-count := LITTLE-ENDIAN.uint32 blob 16
     thmbl-count := LITTLE-ENDIAN.uint32 blob 20
-    pos := 24
+    data-size = LITTLE-ENDIAN.uint32 blob 24
+    pos := 28
     abs32 := []
     previous := 0
     abs32-count.repeat:
@@ -97,6 +103,7 @@ class SlotRelocTable:
     le.write-uint32 body-size
     le.write-uint32 abs32-offsets.size
     le.write-uint32 thmbl-offsets.size
+    le.write-uint32 data-size
     write-varint-deltas buffer abs32-offsets
     write-varint-deltas buffer thmbl-offsets
     return buffer.bytes
@@ -127,6 +134,7 @@ class SlotRelocTable:
         --link-base=link-base
         --slot-size=slot-size
         --body-size=populated-size
+        --data-size=data-size
         --abs32-offsets=deduped
         --thmbl-offsets=thmbl-offsets
 

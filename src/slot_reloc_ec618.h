@@ -68,7 +68,10 @@ enum SlotRelocDir {
 struct SlotRelocTable {
   uint32_t link_base;            // Slot base the image was linked at.
   uint32_t slot_size;            // Slot reservation / spacing.
-  uint32_t body_size;            // Populated slot bytes.
+  uint32_t body_size;            // Populated slot bytes (VM body + extension).
+  uint32_t data_size;            // VM .data init image riding after the body
+                                 // (verbatim, never relocated; copied to RAM at
+                                 // boot). 0 for legacy tables.
   uint32_t abs32_count;          // Number of ABS32 entries.
   uint32_t thmbl_count;          // Number of Thumb-branch-escape entries.
   const uint8_t* abs32_varints;  // Delta-varint stream of ABS32 offsets.
@@ -116,11 +119,16 @@ bool slot_reloc_apply(const SlotRelocTable* table,
 // A read-only view that presents the CANONICAL firmware image of a slot and
 // un-relocates its body on the fly. The canonical image is table-first:
 //
-//   [ table_size : u32 ][ SRL1 table ][ VM body + extension ]
+//   [ table_size : u32 ][ SRL1 table ][ VM body + extension ][ VM .data init ]
 //
 // while the physical slot stores it tail-first:
 //
-//   [ VM body + extension ][ free ][ SRL1 table ][ table_size : last word ].
+//   [ VM body + ext ][ VM .data init ][ free ][ SRL1 table ][ table_size : word ].
+//
+// The VM .data init image (`data_size` bytes) rides verbatim right after the
+// body in BOTH framings; it is never relocated (it holds no slot pointers that
+// the SRL1 table covers — those are fixed up in RAM at boot, see
+// toit_data_reloc.c), so the body-window machinery streams it through unchanged.
 //
 // SlotFirmware maps a canonical offset to its physical source and applies
 // `slot_reloc_apply(..., TO_CANONICAL)` to the body, so every reader (the
@@ -153,7 +161,7 @@ class SlotFirmware {
 
   bool is_valid() const { return valid_; }
 
-  // Size of the canonical image: 4 + table_len + populated.
+  // Size of the canonical image: 4 + table_len + populated + data_size.
   uint32_t canonical_size() const { return canonical_size_; }
 
   // Returns the single canonical byte at `index` (must be < canonical_size()).
@@ -185,7 +193,7 @@ class SlotFirmware {
   uint32_t table_len_;         // Table length N (the canonical table region size).
   uint32_t populated_;         // Body + extension size (table_.body_size).
   int32_t delta_;              // slot_base_addr - link_base.
-  uint32_t canonical_size_;    // 4 + table_len_ + populated_.
+  uint32_t canonical_size_;    // 4 + table_len_ + populated_ + table_.data_size.
 };
 
 }  // namespace toit

@@ -23,7 +23,7 @@
 namespace toit {
 
 static const uint8_t SRL1_MAGIC[4] = {'S', 'R', 'L', '1'};
-static const size_t SRL1_HEADER_SIZE = 24;  // magic + 5 little-endian uint32s.
+static const size_t SRL1_HEADER_SIZE = 28;  // magic + 6 little-endian uint32s.
 
 static uint32_t load_le32(const uint8_t* p) {
   return static_cast<uint32_t>(p[0]) |
@@ -106,6 +106,7 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   table->body_size = load_le32(blob + 12);
   table->abs32_count = load_le32(blob + 16);
   table->thmbl_count = load_le32(blob + 20);
+  table->data_size = load_le32(blob + 24);
   table->end = blob + len;
   const uint8_t* p = blob + SRL1_HEADER_SIZE;
   table->abs32_varints = p;
@@ -205,7 +206,11 @@ bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t s
   table_len_ = n;
   populated_ = table_.body_size;
   delta_ = static_cast<int32_t>(slot_base_addr) - static_cast<int32_t>(table_.link_base);
-  canonical_size_ = 4 + table_len_ + populated_;
+  // The verbatim VM .data init image rides physically right after the body
+  // (slot offset `populated_`, length `data_size`) and canonically right after
+  // the body region. It carries no reloc sites, so the body-window machinery in
+  // copy()/at() streams it through untouched — only canonical_size_ grows.
+  canonical_size_ = 4 + table_len_ + populated_ + table_.data_size;
   valid_ = true;
   return true;
 }

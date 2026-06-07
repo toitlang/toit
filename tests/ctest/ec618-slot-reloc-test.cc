@@ -44,14 +44,17 @@ static void put_le32(std::vector<uint8_t>* out, uint32_t v) {
   out->push_back(v); out->push_back(v >> 8); out->push_back(v >> 16); out->push_back(v >> 24);
 }
 
-// Builds an "SRL1" blob from ascending ABS32 / branch offset lists.
+// Builds an "SRL1" blob from ascending ABS32 / branch offset lists. `data_size`
+// is the verbatim VM .data init image that rides after the body (0 = none).
 static std::vector<uint8_t> build_table(uint32_t link_base, uint32_t slot_size, uint32_t body_size,
                                         const std::vector<uint32_t>& abs32,
-                                        const std::vector<uint32_t>& thmbl) {
+                                        const std::vector<uint32_t>& thmbl,
+                                        uint32_t data_size = 0) {
   std::vector<uint8_t> t;
   t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('1');
   put_le32(&t, link_base); put_le32(&t, slot_size); put_le32(&t, body_size);
   put_le32(&t, abs32.size()); put_le32(&t, thmbl.size());
+  put_le32(&t, data_size);
   uint32_t prev = 0;
   for (uint32_t o : abs32) { put_varint(&t, o - prev); prev = o; }
   prev = 0;
@@ -182,6 +185,55 @@ static void test_slot_firmware() {
   CHECK(!bad.open(erased.data(), LINK, SLOT), "slotfw rejects erased tail");
 }
 
+// The VM .data init image rides verbatim after the body: it is NOT relocated
+// (even a word that looks like an in-slot pointer), so it reads back identically
+// in slot A and slot B, and canonical_size accounts for it.
+static void test_slot_firmware_data() {
+  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x40, DATA = 0x20, SLOT = 0x2000;
+  std::vector<uint8_t> blob = build_table(LINK, SIZE, BODY, {0x10}, {}, DATA);
+  while (blob.size() & 3) blob.push_back(0);
+
+  // Physical slot A: [ body (BODY) ][ .data (DATA) ][ free ][ table ][ size ].
+  std::vector<uint8_t> a(SLOT, 0xff);
+  memset(a.data(), 0, BODY + DATA);
+  uint32_t ptr = LINK + 0x30;  // ABS32 in the body -> relocated.
+  a[0x10] = ptr; a[0x11] = ptr >> 8; a[0x12] = ptr >> 16; a[0x13] = ptr >> 24;
+  // A word in the .data region that LOOKS like an in-slot pointer; it must stay
+  // verbatim (the body reloc table has no entry there, so it is never touched).
+  uint32_t data_ptr = LINK + 0x10;
+  a[BODY + 0] = data_ptr; a[BODY + 1] = data_ptr >> 8;
+  a[BODY + 2] = data_ptr >> 16; a[BODY + 3] = data_ptr >> 24;
+  uint32_t region = blob.size() + 4;
+  memcpy(a.data() + SLOT - region, blob.data(), blob.size());
+  a[SLOT-4] = blob.size(); a[SLOT-3] = blob.size() >> 8;
+  a[SLOT-2] = blob.size() >> 16; a[SLOT-1] = blob.size() >> 24;
+
+  // Physical slot B: relocate ONLY the body window; the .data stays as-is.
+  std::vector<uint8_t> b = a;
+  SlotRelocTable t; slot_reloc_parse(blob.data(), blob.size(), &t);
+  slot_reloc_apply(&t, b.data(), 0, BODY, SIZE, SLOT_RELOC_TO_SLOT);
+
+  SlotFirmware fa, fb;
+  CHECK(fa.open(a.data(), LINK, SLOT), "slotfw+data open A");
+  CHECK(fb.open(b.data(), LINK + SIZE, SLOT), "slotfw+data open B");
+  CHECK(fa.canonical_size() == 4 + blob.size() + BODY + DATA, "canonical size includes data_size");
+
+  uint32_t n = fa.canonical_size();
+  int diff = 0;
+  for (uint32_t i = 0; i < n; i++) if (fa.at(i) != fb.at(i)) diff++;
+  CHECK(diff == 0, "canonical A == B across body + verbatim .data");
+
+  // The .data bytes read back verbatim (NOT shifted by the slot delta).
+  uint32_t data_off = 4 + blob.size() + BODY;
+  uint32_t got = fa.at(data_off) | (fa.at(data_off+1) << 8) |
+                 (fa.at(data_off+2) << 16) | ((uint32_t)fa.at(data_off+3) << 24);
+  CHECK(got == data_ptr, "at(): .data pointer-looking word is verbatim (un-relocated)");
+  std::vector<uint8_t> blk(DATA);
+  CHECK(fb.copy(data_off, data_off + DATA, blk.data()), "copy() spans the .data region");
+  uint32_t cgot = blk[0] | (blk[1] << 8) | (blk[2] << 16) | ((uint32_t)blk[3] << 24);
+  CHECK(cgot == data_ptr, "copy(): .data is verbatim in slot B too");
+}
+
 int main(int, char**) {
   // The VM library this links against guards the global `new`; allow the
   // std::vector allocations this test uses (matches the other ctests).
@@ -194,6 +246,8 @@ int main(int, char**) {
   test_trailer();
   printf("SlotFirmware canonical read (table-first, un-relocated)\n");
   test_slot_firmware();
+  printf("SlotFirmware verbatim VM .data region\n");
+  test_slot_firmware_data();
   printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED",
          g_failures, g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;

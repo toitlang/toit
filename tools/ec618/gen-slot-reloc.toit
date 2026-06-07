@@ -111,6 +111,9 @@ main args:
         cli.Option "out"
             --help="The output reloc-table artifact path."
             --required,
+        cli.Option "data-out"
+            --help="Output path for the extracted VM .data init image (the per-slot data region, slot-data.bin)."
+            --required,
         cli.Option "verify-slot-b"
             --help="A slot-B ap.bin to byte-identity-check against.",
       ]
@@ -123,6 +126,7 @@ run invocation/cli.Invocation -> none:
   elf := invocation["elf"]
   ap-path := invocation["ap"]
   out-path := invocation["out"]
+  data-out-path := invocation["data-out"]
   verify-path := invocation["verify-slot-b"]
   ap-load-addr := parse-int invocation["ap-load-addr"]
 
@@ -175,10 +179,35 @@ run invocation/cli.Invocation -> none:
   abs32.sort --in-place
   thmbl.sort --in-place
 
+  // Extract the VM's writable-.data init image (the per-slot data region). It is
+  // bracketed in .load_dram_shared by __vm_data_start/_end (VMA); its bytes live
+  // in ap.bin at the section's LOAD base plus the same in-section offset. The
+  // image holds link-base slot pointers — carried per-slot, copied to RAM at
+  // boot, then fixed up by relocate_data_slot_pointers (see docs/ota-contract.md).
+  vm-data-start := syms.get "__vm_data_start"
+  vm-data-end := syms.get "__vm_data_end"
+  dram-vma := syms.get "Image\$\$LOAD_DRAM_SHARED\$\$Base"
+  dram-lma := syms.get "Load\$\$LOAD_DRAM_SHARED\$\$Base"
+  if vm-data-start == null or vm-data-end == null or dram-vma == null or dram-lma == null:
+    pipe.print-to-stderr "missing __vm_data_start/_end or .load_dram_shared load/image base in $elf (linker .data bracket present?)"
+    exit 1
+  data-size := vm-data-end - vm-data-start
+  if data-size < 0 or (data-size & 3) != 0:
+    pipe.print-to-stderr "VM .data range [0x$(%x vm-data-start), 0x$(%x vm-data-end)) is empty or not word-aligned"
+    exit 1
+  vm-data-lma := dram-lma + (vm-data-start - dram-vma)
+  vm-data-file := vm-data-lma - ap-load-addr
+  if vm-data-file < 0 or vm-data-file + data-size > ap-a.size:
+    pipe.print-to-stderr "VM .data init [ap file 0x$(%x vm-data-file), +0x$(%x data-size)) exceeds ap.bin ($ap-a.size bytes)"
+    exit 1
+  vm-data := ap-a.copy vm-data-file (vm-data-file + data-size)
+  file.write-contents --path=data-out-path vm-data
+
   table := encode-table
       --link-base=link-base
       --slot-size=slot-size
       --body-size=body-size
+      --data-size=data-size
       --abs32=abs32
       --thmbl=thmbl
   file.write-contents --path=out-path table
@@ -186,6 +215,7 @@ run invocation/cli.Invocation -> none:
   print "Slot reloc table: $abs32.size ABS32 + $thmbl.size branch reloc(s), $table.size bytes."
   print "  link-base=0x$(%x link-base) slot-a=0x$(%x slot-a-flash) slot-b=0x$(%x slot-b-flash) slot-size=0x$(%x slot-size) body=0x$(%x body-size)"
   print "  delta(A)=0x$(%x ((slot-a-flash - link-base) & 0xffffffff)) delta(B)=0x$(%x ((slot-b-flash - link-base) & 0xffffffff))"
+  print "  VM .data init: 0x$(%x data-size) bytes @ ap file 0x$(%x vm-data-file) -> $data-out-path"
   print "  -> $out-path"
 
   if verify-path:
@@ -231,7 +261,18 @@ read-relocs readelf/string elf/string section/string -> List:
     relocs.add (Reloc offset type sym-value sym-name)
   return relocs
 
-/** Reads the slot-boundary symbol addresses from `$nm $elf`. */
+// Symbols read from the link: the slot/link geometry, plus the VM .data bracket
+// (__vm_data_start/_end) and the .load_dram_shared section's VMA/LMA bases, used
+// to extract the VM's writable-.data init image from ap.bin (the per-slot data
+// region — see docs/ota-contract.md).
+WANTED-SYMBOLS ::= {
+  "__vm_a_start", "__vm_a_end", "__vm_b_start", "__vm_b_end",
+  "__vm_link_base", "__vm_link_end",
+  "__vm_data_start", "__vm_data_end",
+  "Load\$\$LOAD_DRAM_SHARED\$\$Base", "Image\$\$LOAD_DRAM_SHARED\$\$Base",
+}
+
+/** Reads the wanted symbol addresses (see $WANTED-SYMBOLS) from `$nm $elf`. */
 slot-symbols nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]
@@ -239,20 +280,21 @@ slot-symbols nm/string elf/string -> Map:
     parts := split-whitespace line
     if parts.size < 3: continue.split
     name := parts.last
-    if name == "__vm_a_start" or name == "__vm_a_end" \
-        or name == "__vm_b_start" or name == "__vm_b_end" \
-        or name == "__vm_link_base" or name == "__vm_link_end":
+    if WANTED-SYMBOLS.contains name:
       result[name] = int.parse parts[0] --radix=16
   return result
 
 /**
 Encodes the reloc-table artifact.
 
-The header is `MAGIC` followed by $link-base, $slot-size and $body-size and the
-  two counts (all little-endian uint32). The $abs32 and $thmbl offset lists
-  (slot-relative, ascending) follow as delta-encoded unsigned LEB128 varints.
+The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the two
+  counts and $data-size (all little-endian uint32). The $abs32 and $thmbl offset
+  lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128
+  varints. $data-size is the verbatim VM .data init image that rides after the
+  body (0 when no .data region is carried). Mirrors `SlotRelocTable.to-bytes` in
+  tools/ec618/slot-reloc.toit and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
 */
-encode-table --link-base/int --slot-size/int --body-size/int --abs32/List --thmbl/List -> ByteArray:
+encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --abs32/List --thmbl/List -> ByteArray:
   buffer := Buffer
   buffer.write MAGIC
   le := buffer.little-endian
@@ -261,6 +303,7 @@ encode-table --link-base/int --slot-size/int --body-size/int --abs32/List --thmb
   le.write-uint32 body-size
   le.write-uint32 abs32.size
   le.write-uint32 thmbl.size
+  le.write-uint32 data-size
   write-varint-deltas buffer abs32
   write-varint-deltas buffer thmbl
   return buffer.bytes

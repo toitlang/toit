@@ -18,6 +18,7 @@
 #ifdef TOIT_EC618
 
 #include <stdio.h>
+#include <string.h>  // memcpy (active-slot VM .data load).
 
 extern "C" {
   #include "cmsis_os2.h"
@@ -58,6 +59,13 @@ extern "C" {
   // slot pointers are link-base-relative, so they relocate to the booted slot.
   extern uint32_t __vm_link_base[];
 
+  // The VM's writable-.data init image lives in RAM at [__vm_data_start,
+  // __vm_data_end) (the linker bracket inside .load_dram_shared). PLAT loads it
+  // from the base LMA at startup; load_active_slot_vm_data() overwrites it with
+  // the ACTIVE slot's own per-slot copy before the slot pointers are relocated.
+  extern uint8_t __vm_data_start[];
+  extern uint8_t __vm_data_end[];
+
   // Generated table (toit_data_reloc.c): RAM addresses of the writable .data
   // words that hold VM-slot pointers, fixed up per-slot in start().
   extern const uint32_t toit_data_reloc[];
@@ -79,6 +87,7 @@ extern "C" {
 #include "third_party/dartino/gc_metadata.h"
 
 #include "slot_marker.h"
+#include "slot_reloc_ec618.h"
 
 namespace toit {
 
@@ -221,6 +230,41 @@ static const char* last_reset_name(LastResetState_e s) {
 // non-zero on both slot A and slot B (the slot-A relocation is no longer a
 // no-op); it is only zero if the link base is set back to a real slot. This
 // function itself touches no .data slot pointer, so it is safe to run first.
+// Loads the ACTIVE slot's OWN VM .data init image over the base-loaded RAM.
+//
+// PLAT loads .load_dram_shared once from the base image's fixed LMA — i.e. slot
+// A's VM .data. But the VM's writable .data (dispatch_table, *_primitives_, and
+// any mutable VM globals) differs between firmware builds, so a slot-B firmware
+// that differs from slot A would boot with slot A's values and fault (the
+// A!=B OTA bug). Each slot now ships its OWN .data init image, carried verbatim
+// right after its body+extension (slot offset == body_size; see
+// slot_reloc_ec618.h / docs/ota-contract.md). Copy the booted slot's copy into
+// [__vm_data_start, __vm_data_end) BEFORE relocate_data_slot_pointers() shifts
+// the (still link-base) slot pointers. A no-op for legacy images with no data
+// region (data_size == 0).
+static void load_active_slot_vm_data() {
+  const uint8_t* active = reinterpret_cast<const uint8_t*>(
+      (toit_booted_slot == 'B') ? __vm_b_start : __vm_a_start);
+  const uint32_t slot_size = reinterpret_cast<uint32_t>(__vm_b_start) -
+                             reinterpret_cast<uint32_t>(__vm_a_start);
+  SlotRelocTable table;
+  if (!slot_reloc_parse_trailer(active, slot_size, &table)) {
+    printf("[toit] WARN: active slot has no reloc trailer; VM .data not per-slot\n");
+    return;
+  }
+  if (table.data_size == 0) return;  // Legacy image: the base-loaded .data stands.
+  const uint32_t expected = reinterpret_cast<uint32_t>(__vm_data_end) -
+                            reinterpret_cast<uint32_t>(__vm_data_start);
+  if (table.data_size != expected) {
+    // A build inconsistency: refuse to copy rather than overrun the .data region.
+    printf("[toit] ERROR: VM .data size mismatch carried=0x%x linker=0x%x — skipping copy\n",
+           static_cast<unsigned>(table.data_size), static_cast<unsigned>(expected));
+    return;
+  }
+  // The .data init rides at slot offset body_size (right after body+extension).
+  memcpy(__vm_data_start, active + table.body_size, table.data_size);
+}
+
 static void relocate_data_slot_pointers() {
   const uint32_t link_base = reinterpret_cast<uint32_t>(__vm_link_base);
   const uint32_t active_base = (toit_booted_slot == 'B')
@@ -236,8 +280,10 @@ static void relocate_data_slot_pointers() {
 }
 
 static void start() {
-  // Fix the shared-.data VM-slot pointers for the booted slot BEFORE anything
-  // (static constructors, the interpreter) reads them.
+  // Load the booted slot's OWN VM .data init image (overriding the base image's
+  // slot-A copy), THEN fix that .data's VM-slot pointers for the booted slot —
+  // both BEFORE anything (static constructors, the interpreter) reads .data.
+  load_active_slot_vm_data();
   relocate_data_slot_pointers();
 
   // Run C++ static initializers (the linker script must capture .init_array).
