@@ -178,6 +178,42 @@ still calls its in-slot stubs, so the SRL1 table is unchanged.
 > fails loudly on slot A too, and "no word in slot B may point into slot A"
 > becomes a hard, checkable invariant instead of a latent B→A-only fault.
 
+## Completeness, the fourth concern: the FIXED side (2026-06-07)
+
+The three regions above are all places that **do** get relocated. The dual
+invariant — the one nothing checked — is the **fixed** side: PLAT `.text`, the
+jump table, `.init`/`.fini`, every allocated section the device loads once at its
+link address and **never** relocates. A pointer into the slot from any of those
+is fixed at link time, so after OTA it resolves to the wrong slot — or, with the
+neutral base, an unmapped `0x01xxxxxx` VMA — the same invisible class of fault,
+on the side no relocation can rescue. A whole-ELF relocation scan (every
+allocated section, which words resolve into the slot's link range) found two:
+
+- **VM static constructors leaked out of the slot.** The PLAT `.text` rule used
+  `*(.init*)`, and the glob `.init*` matches `.init_array` too — so PLAT `.text`
+  **stole** the VM archives' `.init_array` before the `.vm_a` `KEEP` could claim
+  it. Net: `__vm_init_array` was empty, `run_static_initializers()` ran nothing
+  (the 6 `_GLOBAL__sub_I_*` constructors — `ec618_primitives_`,
+  `flash_primitives_`, `GcMetadata`, `EntropyMixer`, `MbedTlsResourceGroup`,
+  `ProgramUsage` — never ran, masked only because those globals tolerated it),
+  and the leaked init_array pointers sat in fixed PLAT memory aiming into the
+  slot. Fix: `EXCLUDE_FILE` the VM archives from `*(.init*)` (mirroring the
+  `.text`/`.rodata` rules), so the init_array lands in the slot, runs via
+  `run_static_initializers()`, and is relocated by the SRL1 table — whose ABS32
+  count rose by exactly those 6 (1907 → 1913).
+- **`operator new(nothrow)` reached from fixed code.** PLAT-resident
+  `__cxa_thread_atexit` (libstdc++) calls the slot's `operator new`. That path is
+  dead (the VM registers no `thread_local` with a non-trivial destructor, so
+  `__cxa_thread_atexit` is never invoked), so it is allow-listed rather than
+  relocated — PLAT cannot be relocated. If it ever goes live it must be
+  eliminated (e.g. a VM-side `__cxa_thread_atexit` stub), not allow-widened.
+
+`tools/ec618/check-slot-refs.toit` makes this a hard build-time invariant
+(`make ec618`): it reads the retained relocations and **fails** if any allocated,
+non-relocated section references the slot, except the allow-set. It is the exact
+dual of `check-slot-pic.toit` (which guards slot→outside escapes). HW: slot A
+boots with the constructors now running + 4/4 A↔B OTA soak.
+
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
 `firmware.map` ([primitive_core.cc:2655](../src/primitive_core.cc#L2655),

@@ -269,6 +269,16 @@ ec618: check-env host-tools
 		--objdump=$(EC618_GCC_PATH)/bin/arm-none-eabi-objdump \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		$(EC618_SDK)/build/toit/toit.elf
+	# Verify the inverse: no FIXED (non-relocated) section points into the slot.
+	# The device relocates only the slot body (.vm_a, via the SRL1 table) and the
+	# shared .data (.load_dram_*, at boot); a pointer into the slot from anywhere
+	# else is fixed at link time and resolves to an unmapped (neutral-base) address
+	# after OTA — the invisible fault the relocation design fights, on the side no
+	# relocation can rescue.
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-refs.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		$(EC618_SDK)/build/toit/toit.elf
 	# Save the slot-A artifacts: the envelope is built from these, and the
 	# slot-B relink below overwrites build/toit.
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618/toit-slot-a.elf
