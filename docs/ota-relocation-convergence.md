@@ -214,6 +214,26 @@ non-relocated section references the slot, except the allow-set. It is the exact
 dual of `check-slot-pic.toit` (which guards slot→outside escapes). HW: slot A
 boots with the constructors now running + 4/4 A↔B OTA soak.
 
+### The jump table is the VM↔PLAT ABI — keep it generous (2026-06-07)
+
+The flip side of "no fixed word may point into the slot" is how the slot reaches
+the fixed side: every VM→PLAT call goes through `g_plat_jt[]`, a `const` table at
+a FIXED flash address (`.jt_data`). It is baked at PLAT-build time and — because
+the whole point of dual-slot OTA is that PLAT is NOT reflashed — effectively
+FROZEN: a future firmware OTA'd into a slot can only reach PLAT functions that
+already have a table entry. So `tools/ec618/gen-plat-jt.toit` includes, in
+addition to the symbols the current VM calls (derived from the VM archives' call
+relocations), a curated "always-include" API surface of likely-useful PLAT
+functions — `BSP_`/`GPIO_`/peripheral drivers/`slpMan`/power/clock/flash/RTC/
+`luat_`/`__aeabi_` plus libc/libm — restricted to functions PLAT already DEFINES.
+Exposing an already-linked function is cheap (a 4 B table slot + a 16 B in-slot
+stub, no PLAT growth); the modem/USB/IP stack internals (`Cerrc*`/`Asn*`/`usb*`/
+`tcp`…) are deliberately excluded. Bound: `.jt_data` is 4 KB ≈ 1024 entries; the
+table is 456 (181 relocation-derived + the curated set). Indices come from sorting
+the final set, so changing the set reshuffles them — a future firmware must be
+built against the SAME `plat_jt.h` that matches the flashed `g_plat_jt[]`. HW:
+boots + 4/4 A↔B OTA soak.
+
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
 `firmware.map` ([primitive_core.cc:2655](../src/primitive_core.cc#L2655),

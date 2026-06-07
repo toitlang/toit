@@ -35,6 +35,49 @@ TOOL-NAME ::= "tools/ec618/gen-plat-jt.toit"
 // `-Wl,--wrap=time`, so the jump table routes `__wrap_time`, not `time`.
 MANUAL-WRAP ::= {"clock", "localtime", "gmtime", "time"}
 
+// "Generous" jump table (the immutable-PLAT <-> OTA'able-VM ABI). The table
+// is baked into fixed PLAT at flash time and FROZEN: a future VM OTA'd into a
+// slot (no PLAT reflash) can only reach PLAT functions that ALREADY have an
+// entry. So in addition to the relocation-derived set (what the CURRENT VM
+// calls) we always include a curated hardware/system + libc/libm API surface,
+// restricted to symbols PLAT already DEFINES (so no PLAT growth — only a 4 B
+// table slot + a 16 B in-slot stub each, bounded by .jt_data = 4 KB ~ 1024).
+// The cellular/USB/IP stack internals (Cerrc*/Asn*/Cemm*/usb*/tcp/...) are
+// deliberately excluded — they are not API a future firmware would call.
+//
+// Prefix matches (peripheral / power / system / board control):
+ALWAYS-INCLUDE-PREFIXES ::= [
+  "BSP_",
+  "Driver_", "ARM_",                                   // CMSIS driver interfaces.
+  "GPIO", "gpio", "Pad", "pad", "PAD",                 // GPIO + pinmux.
+  "I2C", "SPI", "UART", "USART", "ADC", "PWM",         // Peripheral drivers.
+  "DMA", "TIMER", "Timer", "HAL_",
+  "slpMan", "soc_", "PM_", "clk", "Clock", "clock", "CLOCK",  // Sleep / power / clock.
+  "GPR", "pwr", "PWR", "Power", "power",
+  "WDT", "wdt", "Wdt", "RTC", "rtc", "Rtc",            // Watchdog / RTC.
+  "Flash", "flash", "QSPI", "qspi", "FDB", "fdb", "EF_",  // Flash / registry.
+  "luat_",                                             // LuatOS convenience API.
+  "__aeabi_",                                          // ARM EABI runtime (soft float / int helpers).
+]
+
+// Exact matches: libc/libm functions a future firmware is likely to call but
+// the current VM may not (so they are absent from the relocation-derived set).
+// Listed explicitly rather than by `mem`/`str` prefix to avoid pinning
+// unrelated internal symbols.
+ALWAYS-INCLUDE-EXACT ::= {
+  "memcpy", "memmove", "memset", "memcmp", "memchr",
+  "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strncat",
+  "strchr", "strrchr", "strstr", "strtok", "strtol", "strtoul", "strtod",
+  "strspn", "strcspn", "strpbrk", "strerror",
+  "snprintf", "vsnprintf", "sprintf", "vsprintf", "sscanf", "vsscanf",
+  "malloc", "free", "calloc", "realloc", "abs", "labs",
+  "atoi", "atol", "atof", "qsort", "bsearch", "rand", "srand",
+  "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+  "sinh", "cosh", "tanh", "exp", "exp2", "log", "log2", "log10",
+  "pow", "sqrt", "cbrt", "ceil", "floor", "round", "trunc",
+  "fabs", "fmod", "ldexp", "frexp", "modf", "hypot", "copysign", "fmin", "fmax",
+}
+
 // References with no PLAT definition — present only as dead, GC'd refs. A
 // table entry would emit an undefined `__real_*`. Add here if a build fails
 // with "undefined reference to ..." from plat_jt.o(.jt_data).
@@ -206,18 +249,60 @@ split-whitespace str/string -> List:
     result.add (string.from-runes current)
   return result
 
-// TODO(ec618): "generous" jump table. The table currently holds ONLY the
-// PLAT symbols the *current* VM happens to call. But the jump table is the
-// immutable-PLAT <-> OTA'able-VM ABI: a future VM (OTA'd without reflashing
-// PLAT) can only reach PLAT functions that already have a slot here at
-// PLAT-build time. To future-proof the ABI we'd want a curated "always
-// include" set of likely-useful PLAT API functions (luat_*/BSP_*/GPIO_*/...),
-// merged in below in addition to the relocation-derived set, bounded by the
-// .jt_data region (4 KB ~= 1024 entries) and the per-slot stub budget
-// (16 B/entry/slot). Adding an entry for a function PLAT *already* links is
-// cheap (one stub + 4 B, no PLAT growth); adding one that isn't linked pulls
-// it in (PLAT growth) — hence the "if they aren't too big" filter. Deferred:
-// needs a decision on which API surface and the size budget.
+/** Whether $name belongs to the curated "always-include" API surface. */
+matches-always-include name/string -> bool:
+  if ALWAYS-INCLUDE-EXACT.contains name: return true
+  ALWAYS-INCLUDE-PREFIXES.do: | prefix/string |
+    if name.starts-with prefix: return true
+  return false
+
+/**
+Returns the curated "always-include" PLAT API symbols actually defined in $elf.
+
+Reads `$nm --defined-only $elf` and keeps every STRONG global function (`T`)
+  whose address falls OUTSIDE the VM slot `[$lo, $hi)` (so it is a fixed PLAT
+  symbol, not VM/slot code) and whose name $matches-always-include. These are
+  merged into the relocation-derived set so the frozen jump-table ABI covers
+  PLAT functions a future firmware may call even if the current VM does not.
+*/
+plat-api-functions nm/string elf/string lo/int hi/int -> Set:
+  result := {}
+  out := pipe.backticks [nm, "--defined-only", elf]
+  out.split "\n": | line/string |
+    parts := split-whitespace line
+    if parts.size < 3: continue.split
+    addr := int.parse parts[0] --radix=16 --if-error=: continue.split
+    if parts[1] != "T": continue.split          // Strong global functions only.
+    name := parts[2]
+    if lo <= addr and addr < hi: continue.split  // Skip the VM slot itself.
+    if matches-always-include name: result.add name
+  return result
+
+/**
+Returns the VM slot link range `[lo, hi]` from `$nm $elf`.
+
+Prefers `__vm_link_base`/`__vm_link_end` (the neutral link VMA the slot image's
+  code lives at); falls back to `__vm_b_start`/`__vm_b_end`. Mirrors
+  check-slot-pic.toit / check-slot-refs.toit.
+*/
+slot-range nm/string elf/string -> List:
+  symbols := {:}
+  out := pipe.backticks [nm, elf]
+  out.split "\n": | line/string |
+    parts := split-whitespace line
+    if parts.size < 2: continue.split
+    name := parts.last
+    if name == "__vm_link_base" or name == "__vm_link_end" \
+        or name == "__vm_b_start" or name == "__vm_b_end":
+      symbols[name] = int.parse parts[0] --radix=16
+  a-start := symbols.get "__vm_link_base"
+  a-end := symbols.get "__vm_link_end"
+  if a-start != null and a-end != null and a-start != a-end: return [a-start, a-end]
+  b-start := symbols.get "__vm_b_start"
+  b-end := symbols.get "__vm_b_end"
+  if b-start != null and b-end != null: return [b-start, b-end]
+  if a-start != null and a-end != null: return [a-start, a-end]
+  return [0, 0]
 
 /** Derives the final, sorted symbol list for the jump table. */
 extract-symbols --objdump/string --nm/string --elf/string --archives/List --excludes/List -> List:
@@ -238,6 +323,17 @@ extract-symbols --objdump/string --nm/string --elf/string --archives/List --excl
     // back, so don't filter those.
     if s.starts-with "_Z" and not (elf-defined.contains s): continue.do
     result.add (MANUAL-WRAP.contains s ? "__wrap_$s" : s)
+
+  // Merge the curated "always-include" API surface (the generous ABI). Each is
+  // a fixed PLAT function already defined in the elf, so it adds only a table
+  // slot + an in-slot stub — never wrapped (none are in MANUAL-WRAP) and never
+  // VM-defined (filtered by the slot range).
+  range := slot-range nm elf
+  generous := plat-api-functions nm elf range[0] range[1]
+  generous.do: | s/string |
+    if vm-defined.contains s: continue.do
+    if exclude.contains s: continue.do
+    result.add s
 
   sorted := []
   sorted.add-all result
