@@ -11,28 +11,34 @@ tracks what's left.
 
 ## 1. Unimplemented Features
 
-### OTA Commit (blocking for OTA)
+### OTA — DONE (dual-slot VM OTA via `system.firmware`)
 
-The OTA primitives (`ota_begin`, `ota_write`, `ota_end`) work and stage a new
-firmware image in the FOTA flash region. However, the **commit step** — copying
-the staged image from FOTA to the active AP region with SHA-256 verification —
-is a placeholder.
+> **Updated 2026-06-07.** This section originally described a FOTA-staging,
+> single-image OTA with a placeholder commit step. That approach was **dropped**.
+> The EC618 now does **dual-slot VM OTA on the standard `system.firmware` API**,
+> implemented and hardware-validated (A↔B soaks pass both directions). The old
+> `ota_begin`/`ota_write`/`ota_end` + FOTA copy-back are deleted, and the 512 KB
+> FOTA region was reclaimed into the second VM slot.
 
-- **File**: `src/toit_ec618.cc:124-133`
-- **Current behavior**: Logs "OTA update staged", invalidates RTC, reboots.
-  Does NOT copy the firmware.
-- **What's needed**: Implement the FOTA → active image copy described in
-  porting guide section 19:
-  1. Compute unmodified prefix size (from `AP_FLASH_LOAD_ADDR` to embedded
-     data extension start).
-  2. Read prefix + new extension from FOTA region into a RAM buffer.
-  3. Compute SHA-256 over the combined image; verify against the checksum at
-     the image tail.
-  4. Use `AllowFirmwareModifications` guard to permit writes to the active
-     image region (`toit_ap_image_modify_start`/`end`).
-  5. Erase target flash and copy via RAM buffer (can't do flash-to-flash).
-- **Reference**: The ESP32 port uses dual partitions; EC618 uses single-image
-  with FOTA staging. The `Sha` class in `src/sha.h` is already available.
+The firmware is **two 768 KB VM slots** (A/B). OTA is a single
+position-independent image relocated to whichever slot it is written to:
+
+- **Write**: the standard `FirmwareWriter`
+  (`system/extensions/ec618/firmware.toit`) streams the canonical, table-first
+  image to the **inactive** slot via relocate-on-write (`slot.reloc-begin` +
+  `slot.write-inactive`); `commit` verifies the canonical SHA-256 and stages a
+  trial.
+- **Read**: `firmware.map` presents the active slot's **canonical** (un-relocated)
+  image via `SlotFirmware` — slot-independent, so the integrity SHA matches on
+  either slot.
+- **Trial / rollback**: esp-idf-style — a freshly written slot boots once on
+  trial; the running image must `firmware.validate`, else the next reset rolls
+  back. Backed by the power-fail-safe `.slot_marker` (ping-ponged seq+CRC).
+
+There is no copy-into-active step to brick on power loss. See
+[ota-relocation-convergence.md](ota-relocation-convergence.md) for the full
+design + status. **Remaining:** Artemis delta-apply (the canonical read path it
+needs is done) and deleting the dead legacy Python OTA tooling.
 
 ### GPIO Pull-up/Pull-down and Open-drain
 

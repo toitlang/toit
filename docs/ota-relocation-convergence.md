@@ -1,11 +1,25 @@
-# EC618 OTA: converging on `system.firmware` (design for review)
+# EC618 OTA: converging on `system.firmware` (design + status)
 
-Status: **in progress**. The relocation engine + storage format are built and
-proven (commits up to `cce8ce5c`). Increments **#1 (dual-image builder)** and
-**#2 (bundled containers into the slot, option A)** are now implemented and
-hardware-validated on quirky-plenty (slot A and the relocated slot B both reach
-`running on EC618 @ 204MHz` and run the in-slot system container). The remaining
-*read + write convergence* (#3–#5) is described below.
+Status: **shipped.** The relocation engine, storage format, and the full
+`system.firmware` convergence are implemented and hardware-validated on
+quirky-plenty (slot A and the relocated slot B both reach `running on EC618 @
+204MHz`; A↔B OTA soaks pass in both directions). All five increments below are
+done — see the increment list:
+
+- **#1** dual-image builder, **#2** bundled containers into the slot,
+- **#3** `firmware.map` un-relocate-on-read, **#4** `FirmwareWriter`
+  relocate-on-write (+ FOTA path deleted), and
+- **#5** host transport: the live path is the standard Jaguar / `system.firmware`
+  flow (write **and** read are canonical-domain). The legacy Python
+  `splice_dual_slot.py` / `ota_uart_stream.py` and the `uart-ota.toit` receiver
+  remain checked in only as **dead code, pending deletion**.
+
+So the EC618 uses the standard `system.firmware` API end to end — `FirmwareWriter`
+(relocate-on-write) going in and `firmware.map` (un-relocate-on-read) coming out —
+exactly like the ESP32, with the dual-slot relocation hidden in the EC618 C++.
+The prose below is the design rationale, written forward-looking but now
+implemented. The one item still open is end-to-end **Artemis delta-apply**, which
+*uses* the canonical read path (#3) but is not yet wired.
 
 ## Goal
 
@@ -350,9 +364,16 @@ the slot layout check.
    relocated slot B both reach `running on EC618` and run the in-slot system
    container stably. NOTE: this makes `firmware.map`'s EC618 range stale and the
    old FOTA path non-functional until #3/#4 (neither is boot-load-bearing).
-3. **`firmware.map` → active slot + un-relocate-on-read**: read path returns the
-   canonical slot (VM + extension), un-relocated. Verifiable: `firmware.map` SHA
-   on slot A == server SHA; on slot B == same SHA.
+3. **`firmware.map` → active slot + un-relocate-on-read** — **DONE + HW-validated.**
+   The read path returns the canonical slot (VM + extension), un-relocated, via
+   `SlotFirmware` (`src/slot_reloc_ec618.{h,cc}`) wired through
+   `ec618_active_firmware_open/at/copy` into `firmware.map` (primitive_core.cc,
+   EC618 branch). `unrelocate_window` is straddle-safe (Thumb-branch sites are
+   2-aligned and can cross a 4-byte boundary, so each is re-encoded from the full
+   4 bytes). **Hardware:** a bundled container SHA-256s `firmware.map` at boot and
+   prints the SAME canonical hash on slot A and slot B — `firmware.map` is
+   slot-independent on real silicon (integrity SHA + Artemis delta-OTA match
+   regardless of the live slot).
 4. **`FirmwareWriter` → slot; drop FOTA** — **DONE + HW-validated.** The standard
    FirmwareWriter streams the canonical image to the inactive slot via
    relocate-on-write (`slot.reloc-begin` + `slot.write-inactive`), `commit`
@@ -367,9 +388,14 @@ the slot layout check.
    ran modem-on with no reset, and an OTA interrupted by the post-flash POR
    safely retried. Optional later: fold the write-path statics into the slot
    abstraction.
-5. **Host transport in Toit** + docs; retire `splice_dual_slot.py` /
-   `ota_uart_stream.py` / the legacy `uart-ota.toit` receiver + the legacy
-   out-of-slot extension path.
+5. **Host transport + docs** — **DONE (cleanup pending).** The live OTA transport
+   is the standard `system.firmware` path driven by Jaguar (`jag firmware update`
+   over HTTP/WiFi or UART), and any future `system.firmware` transport (cellular)
+   reuses the same canonical artifact. The legacy Python `splice_dual_slot.py` /
+   `ota_uart_stream.py` and the `uart-ota.toit` receiver + the out-of-slot
+   extension path are superseded; they remain checked in only as dead code, to be
+   deleted (checked-in scripts must be Toit, and the build must not depend on
+   Python).
 
 ## Future: drop the runtime jump table (Flavor B — TODO)
 

@@ -1219,6 +1219,17 @@ establishing a cellular connection.
 
 ## 19. OTA Firmware Updates
 
+> **SUPERSEDED (2026-06-07).** This section documents the *original* FOTA-staging
+> OTA (single AP image, `ota_begin`/`ota_write`/`ota_end` → FOTA region →
+> copy-into-active on commit). That approach has been **replaced** by dual-slot
+> VM OTA on the standard `system.firmware` API: two 768 KB VM slots, one
+> position-independent image relocated per slot (relocate-on-write via
+> `FirmwareWriter`, un-relocate-on-read via `firmware.map`), esp-idf-style
+> trial+rollback on the `.slot_marker`. The `ota_begin/write/end` primitives and
+> the FOTA region described below are gone. See
+> [ota-relocation-convergence.md](ota-relocation-convergence.md) for the current
+> design. The text below is kept for historical context.
+
 ### New File: `src/primitive_ec618.cc`
 
 Implements the OTA (Over-The-Air) update primitives:
