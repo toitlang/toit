@@ -59,10 +59,13 @@
 // have not found a way to kill it from software. A warm reset is clean.
 // Pick _ID=0 or _ID=2, or set CONFIG_TOIT_EC618_PRINT_UART=0, to avoid.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_ID
-// Temporarily 1 (UART1) on this rig so quirky-plenty's /dev/ttyUSB1 sees
-// Toit print output during dual-slot OTA bring-up. Revert to 0 once the
-// OTA path stops needing the same cable for image transfer.
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
+// UART0 — the conventional debug port (TX=GPIO15, RX=GPIO14) and the only
+// port broken out on the mini-jag test rig. The mini-jag agent opens the
+// same controller (tests/hw/esp-tester/mini-jag.toit, via Ec618.uart0), so
+// `print` output and the control protocol share one wire; that reuse needs
+// CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE below. UART0 also avoids the
+// garbled cold-boot line that _ID=1 produces (see note above).
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.

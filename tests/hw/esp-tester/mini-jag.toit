@@ -123,14 +123,14 @@ run-test:
 // ----------------------------------------------------------------------------
 // EC618 resident agent.
 //
-// The agent owns UART1 (the shared print UART) and serves the request/ack
+// The agent owns UART0 (the shared print UART) and serves the request/ack
 // protocol from $shared. It never reboots itself: a test runs as a child
 // container whose `print` output streams back on the same wire, and once it
 // exits the agent loops back to listening — ready for the next test or a
 // firmware OTA. See shared.toit for the wire format.
 
 main-ec618:
-  port := ec618.Ec618.uart1 --baud-rate=115200
+  port := ec618.Ec618.uart0 --baud-rate=115200
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason

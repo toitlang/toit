@@ -29,8 +29,8 @@ The harness supports two very different targets:
 
 ## EC618 usage
 
-The EC618's UART1 is both the console and the control channel; connect it to a
-host serial port (e.g. `/dev/ttyUSB0`). Flashing goes over the chip's boot ROM,
+The EC618's UART0 is both the console and the control channel; connect it to a
+host serial port (e.g. `/dev/ttyUSB1`). Flashing goes over the chip's boot ROM,
 which requires power-cycling the board into download mode (board-specific) while
 `setup` runs; `ECTOOL_PATH` must point at `ectool`.
 
