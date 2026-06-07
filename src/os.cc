@@ -31,6 +31,7 @@
 extern "C" {
   #include "cmsis_os2.h"
   #include "osasys.h"
+  #include "slpman.h"  // slpManAonWdtFeed (VM-liveness watchdog).
 }
 #endif
 
@@ -114,6 +115,25 @@ void OS::reset_monotonic_time() {
   }
 
   monotonic_adjustment = timestamp;
+}
+
+void OS::feed_watchdog() {
+#if defined(TOIT_EC618) && CONFIG_TOIT_EC618_VM_WATCHDOG
+  // The EC618 keeps its always-on (AON) hardware watchdog running as a VM
+  // liveness guard (see CONFIG_TOIT_EC618_VM_WATCHDOG). The scheduler loop
+  // calls this every iteration; if the VM wedges (a stuck primitive, a
+  // scheduler/GC deadlock) the loop stops cycling, the feed stops, and the AON
+  // watchdog resets the device (~27s) so it recovers. The deep-sleep path stops
+  // the watchdog explicitly before hibernating (see toit_ec618.cc), so a clean
+  // shutdown is not killed. Throttle to once per second so we touch the
+  // hardware sparingly.
+  static int64 last_feed_us = 0;
+  int64 now = get_monotonic_time();
+  if (now - last_feed_us >= 1000000LL) {
+    last_feed_us = now;
+    slpManAonWdtFeed();
+  }
+#endif
 }
 
 #ifdef TOIT_EC618

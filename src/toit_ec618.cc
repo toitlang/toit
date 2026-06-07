@@ -373,6 +373,15 @@ static void start() {
   // Switch the PS stack to power-saver mode.
   soc_power_mode(3, 0);
 
+#if CONFIG_TOIT_EC618_VM_WATCHDOG
+  // Stop the VM-liveness watchdog now that we are about to hibernate cleanly.
+  // It is kept running during execution (fed by the scheduler) and stopped
+  // here so it does not fire during deep sleep; a fresh boot on wake re-arms
+  // it automatically (it is always-on at start). Doing this last — after the
+  // teardown above — means a wedged shutdown is still caught by the watchdog.
+  slpManAonWdtStop();
+#endif
+
   // Enter idle loop — FreeRTOS tickless idle will enter deep sleep.
   while (true) {
     osDelay(10000);

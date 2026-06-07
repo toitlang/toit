@@ -99,4 +99,23 @@
 #define CONFIG_TOIT_EC618_DISABLE_UNILOG 1
 #endif
 
+// VM-liveness watchdog. When enabled (default), the always-on (AON) hardware
+// watchdog is kept running and fed from the Toit scheduler loop
+// (OS::feed_watchdog). If the VM wedges with the CPU busy — a stuck primitive,
+// a scheduler/GC deadlock — the scheduler stops cycling, the feed stops, and
+// the device is reset (~27 s) so it recovers instead of hanging forever. The
+// AON timeout is fixed in hardware (~27 s, no configuration API) and the AON
+// is gated while the chip sleeps, so it guards busy hangs, not idle sleep, and
+// never disturbs a legitimately sleeping device.
+//
+// Note: on this chip the AON reset is reported as RESET-POWER-ON, not AONWDT
+// (the reset reason is not preserved), and it may clear RTC memory like a cold
+// boot. The cost is one watchdog kick per second from the scheduler.
+//
+// When disabled, BSP_CustomInit stops the AON watchdog at boot (the original
+// behavior) and the scheduler feed becomes a no-op.
+#ifndef CONFIG_TOIT_EC618_VM_WATCHDOG
+#define CONFIG_TOIT_EC618_VM_WATCHDOG 1
+#endif
+
 #endif  // TOIT_EC618_CONFIG_H_
