@@ -19,6 +19,7 @@ import ec618
 import ec618.slot
 import ec618.watchdog
 import system.firmware
+import uart
 
 import .shared
 
@@ -123,14 +124,27 @@ run-test:
 // ----------------------------------------------------------------------------
 // EC618 resident agent.
 //
-// The agent owns UART0 (the shared print UART) and serves the request/ack
-// protocol from $shared. It never reboots itself: a test runs as a child
-// container whose `print` output streams back on the same wire, and once it
-// exits the agent loops back to listening — ready for the next test or a
-// firmware OTA. See shared.toit for the wire format.
+// The agent owns the print UART (whichever controller the firmware redirects
+// `print` to) and serves the request/ack protocol from $shared. It never
+// reboots itself: a test runs as a child container whose `print` output streams
+// back on the same wire, and once it exits the agent loops back to listening —
+// ready for the next test or a firmware OTA. See shared.toit for the wire
+// format.
+
+// Opens the UART the firmware redirects `print` to, so the agent's control
+// channel and the test's print output ride one wire. Which controller that is
+// depends on CONFIG_TOIT_EC618_PRINT_UART_ID; we follow it rather than
+// hardcoding, so a rig that breaks out a different UART only needs the build
+// config changed (test rig uses UART0, the quirky-plenty dev rig uses UART1).
+open-control-uart -> uart.Port:
+  id := ec618.print-uart-id
+  if id == 0: return ec618.Ec618.uart0 --baud-rate=115200
+  if id == 1: return ec618.Ec618.uart1 --baud-rate=115200
+  if id == 2: return ec618.Ec618.uart2 --baud-rate=115200
+  throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
 
 main-ec618:
-  port := ec618.Ec618.uart0 --baud-rate=115200
+  port := open-control-uart
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason

@@ -59,13 +59,13 @@
 // have not found a way to kill it from software. A warm reset is clean.
 // Pick _ID=0 or _ID=2, or set CONFIG_TOIT_EC618_PRINT_UART=0, to avoid.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_ID
-// UART0 — the conventional debug port (TX=GPIO15, RX=GPIO14) and the only
-// port broken out on the mini-jag test rig. The mini-jag agent opens the
-// same controller (tests/hw/esp-tester/mini-jag.toit, via Ec618.uart0), so
-// `print` output and the control protocol share one wire; that reuse needs
-// CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE below. UART0 also avoids the
-// garbled cold-boot line that _ID=1 produces (see note above).
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
+// Which UART carries `print` + the mini-jag control protocol. This is
+// rig-specific: the quirky-plenty dev rig breaks out UART1, the modest-affair
+// test rig breaks out UART0 (set this to 0 there). The mini-jag agent follows
+// this value (via ec618.print-uart-id), so a rig switch only changes this line
+// — not the agent. The shared wire needs CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
+// below. (Known cosmetic issue with _ID=1: one garbled line on cold boot.)
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.
