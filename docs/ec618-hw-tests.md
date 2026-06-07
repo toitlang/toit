@@ -136,6 +136,45 @@ few `luat_*` calls still in the glue.
   voltage). The full **DAC→ADC tracking test** (`adc-{ec618,esp32}.toit`,
   written) still needs the **test rig** (the dev-rig ESP32-C6 has no DAC).
 
+## OTA bug — ROOT CAUSE FOUND (2026-06-07)
+
+**The VM's writable `.data` init lives in the fixed PLAT flash region, not in the
+slots, and the OTA never updates it.** Linker
+([ec618_0h00_flash.c:270-285](../third_party/luatos-soc-ec618/PLAT/core/ld/ec618_0h00_flash.c#L270))
+puts `*(.data*)` (incl. the VM's) in `.load_dram_shared` `>MSMB_AREA AT>FLASH_AREA`
+— so its flash init image is in the **fixed base**, copied once by PLAT to a
+single shared RAM `.data`. The slots (`.vm_a`/`.vm_b`) hold the VM's
+`.text`/`.rodata`/`.init_array`. The OTA rewrites a **slot**; it never touches
+the base `.data` init. The shared `.data` holds pointers *into* the slot (the
+interpreter dispatch table, per-module primitive tables) which
+`relocate_data_slot_pointers` shifts to the booted slot at boot.
+
+So an OTA only boots if the new firmware's `.data` is byte-identical to the
+**last full-flashed** firmware's. A firmware whose `.data` differs (a new global,
+an extra primitive-table entry — e.g. adding ADC: 141→142 slot pointers) runs the
+new slot code against the **old** `.data` → corrupt dispatch/primitive tables →
+`run_boot_program` wedges → AON watchdog (~27 s) → rollback.
+
+Reproduced on the dev rig:
+
+| Running fw | OTA'd fw | Target slot | Result |
+|---|---|---|---|
+| ADC | ADC | B | ✅ boots + validates |
+| ADC | ADC | A | ✅ boots + validates |
+| ADC | **no-ADC** | A | ❌ wedges in `run_boot_program` → rollback |
+
+(`FAULT_ACTION` was ruled out; full flash always works because it rewrites the
+base `.data`.)
+
+**Fix (in progress):** give the VM `.data` a **per-slot LMA inside the slot** so
+the OTA carries it, and **copy it from the booting slot at boot** (before
+`relocate_data_slot_pointers`). `gen-slot-reloc` (`.rel.vm_a` only) and the boot
+`.data`-pointer relocation stay as-is. Touch points: the linker (`.vm_data`
+section — VMA in `MSMB_AREA`, LMA appended to the slot, excluded from PLAT's
+`.data` copy and `.bss` zero), a boot copy from the booting slot's `.vm_data`
+LMA, regenerate `toit_data_reloc.c`, and confirm the envelope extract + device
+relocate-on-write include the appended bytes.
+
 ## Known issues
 1. **OTA into slot B faults (suspected dual-slot relocate-on-write bug).** After
    an OTA, slot B's VM **starts** (`booting VM slot B`, `@ 204MHz`) then
