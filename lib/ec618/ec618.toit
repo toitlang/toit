@@ -33,9 +33,11 @@ helpers on $Ec618:
 - $Ec618.pad to address a physical pad directly when you know the number.
 - $Ec618.uart0, $Ec618.uart1, $Ec618.uart2 for fully-configured
   $uart.Port instances.
+- $Ec618.adc0, $Ec618.adc1 for the two analog ADC inputs (AIO3/AIO4).
 */
 
 import gpio show Pin
+import gpio.adc
 import uart
 
 /**
@@ -371,3 +373,22 @@ class Ec618:
         --stop-bits=stop-bits
         --parity=parity
         --mode=mode
+
+  /**
+  Opens ADC channel 0 — the EC618's AIO3 input (the board's "ADC0").
+
+  The EC618's application ADC inputs are dedicated analog channels (AIO3/AIO4),
+    not GPIO pads, so they are addressed by channel rather than by a $Pin (see
+    $adc.Adc.channel). $max-voltage selects the smallest internal range that
+    covers it (up to 3.8 V) for the best resolution; null uses the widest range.
+  */
+  static adc0 --max-voltage/float?=null -> adc.Adc:
+    return adc.Adc.channel 0 --max-voltage=max-voltage
+
+  /**
+  Opens ADC channel 1 — the EC618's AIO4 input (the board's "ADC1").
+
+  See $adc0; only the channel differs.
+  */
+  static adc1 --max-voltage/float?=null -> adc.Adc:
+    return adc.Adc.channel 1 --max-voltage=max-voltage

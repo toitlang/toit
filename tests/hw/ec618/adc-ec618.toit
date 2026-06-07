@@ -21,10 +21,13 @@ DACs are already swinging):
 
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 /dev/ttyUSB1 tests/hw/ec618/adc-ec618.toit
+      --port-board1 <ec618-uart0-port> tests/hw/ec618/adc-ec618.toit
+
+(--port-board1 is the EC618's UART0 port — the CH340 adapter; the /dev/ttyUSBN
+number swaps between sessions, so identify it by chip. See docs/ec618-hw-tests.md.)
 */
 
-import ec618.adc show Adc
+import gpio.adc show Adc
 
 CHANNELS ::= [0, 1]
 SAMPLE-COUNT ::= 60
@@ -35,7 +38,8 @@ main:
   tracked := {:}  // channel -> bool
   CHANNELS.do: | ch/int |
     // Widest range (up to 3.8 V) so the divided-down DAC swing never clips.
-    adc := Adc ch
+    // EC618 ADC is channel-addressed (0 -> AIO3, 1 -> AIO4), not pin-addressed.
+    adc := Adc.channel ch
     first := adc.get --samples=8
     min := first
     max := first
