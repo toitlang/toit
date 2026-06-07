@@ -1,0 +1,89 @@
+# EC618 hardware tests
+
+Hardware-in-the-loop tests for the EC618. Some run standalone on the EC618 (via
+the mini-jag tester); others need a second board to drive/observe signals.
+
+For the dual-board tests the second board is an **ESP32** running Jaguar, wired
+to the EC618 as described below. Each dual-board test is split in two files:
+
+- `<name>-ec618.toit` — runs on the EC618 (the device under test), launched with
+  the mini-jag tester over serial.
+- `<name>-esp32.toit` — runs on the ESP32 (the helper that drives or checks the
+  signal), launched with Jaguar over WiFi.
+
+## Boards and ports
+
+| Board | Bridge | Serial port | Driven by |
+|-------|--------|-------------|-----------|
+| EC618 (device under test) | CH340 | `/dev/ttyUSB1` (= EC618 UART0, console + mini-jag control) | `tests/hw/esp-tester/tester.toit run --chip ec618` |
+| ESP32 (helper, `modest-affair`) | CP2102N | `/dev/ttyUSB0` (console) | `jag run ... --device modest-affair` |
+
+## Wiring (ESP32 GPIO ↔ EC618 board pin)
+
+The EC618 module's silkscreen / datasheet pin *labels* (e.g. `GPIO22`,
+`NET_STATUS`) are **Air780-module names and do not match the EC618 GPIO
+controller-bit numbers** that the `ec618` Toit library uses. So the physical
+pad behind each board pin has to be confirmed **experimentally** (toggle it,
+see which ESP32 pin moves). Two board pins are even labelled "GPIO11" and two
+"GPIO10": that is because one GPIO controller bit can surface on two pads (e.g.
+GPIO11 = PAD26 *and* PAD22), which is the clue for telling them apart.
+
+```
+ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidate)
+---------   ----------------------------------   ---------------------------------
+25 (DAC1) -> [voltage divider] -> ADC0 (pin 3)    ADC ch0  (~1.8 V max; see ADC tests)
+26 (DAC2) -> [voltage divider] -> ADC1 (pin 4)    ADC ch1  (one ADC pin may be dead)
+27        -> 05  (GPIO11, uart2_txd)              PAD26  (GPIO11 primary)   [confirmed]
+14        -> 06  (GPIO10, uart2_rxd)              PAD25  (GPIO10 primary)
+13        -> 09  (GPIO22, MAIN_DTR)               ?
+33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)      ?
+32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)    ?
+23        -> 12  (GPIO01, PWM10)                  ?
+22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)    ?
+21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     PAD22  (GPIO11 alt)
+19        -> 18  (GPIO24, MAIN_RI, PWM01)         ?
+18        -> 22  (I2C0_SDA)                       I2C0 SDA
+17        -> 23  (I2C0_SCL)                       I2C0 SCL
+ 2        -> 27  (GPIO27, NET_STATUS, PWM04)      ?
+ 4        -> 30  (UART1_TXD)                       UART1 TX (PAD34)
+16        -> 31  (GPIO18, UART1_RXD, PWM14)        UART1 RX (PAD33)
+```
+
+Notes:
+- EC618 IO is ~1.8 V; the ESP32 (3.3 V) reads it as a valid logic high, so
+  EC618→ESP32 GPIO works directly (no level shifter). The reverse direction
+  (3.3 V into the EC618) should go through a divider — only the ADC lines have
+  one, so prefer EC618→ESP32 unless a pin is known to be 3.3 V tolerant.
+- The ADC inputs are limited to ~1.8 V; the ESP32 DACs (0–3.3 V) therefore feed
+  the EC618 through a voltage divider.
+
+## Running a dual-board test
+
+The two halves are launched independently and coordinate by signal + timing
+(the helper waits a generous window for the device under test to start). For an
+EC618-drives / ESP32-checks test:
+
+```sh
+TOIT=build/host/sdk/bin/toit
+
+# 1. Capture the ESP32 console.
+jag monitor -a --port /dev/ttyUSB0 > /tmp/jag_log 2>&1 &
+
+# 2. Start the ESP32 checker (returns after upload; it then waits for activity).
+jag run tests/hw/ec618/<name>-esp32.toit --device modest-affair
+
+# 3. Drive from the EC618 (blocks while it runs).
+$TOIT tests/hw/esp-tester/tester.toit run --chip ec618 --toit-exe $TOIT \
+    --port-board1 /dev/ttyUSB1 tests/hw/ec618/<name>-ec618.toit
+
+# 4. Read the ESP32 verdict.
+grep -i "<name>-esp32:" /tmp/jag_log
+```
+
+The EC618 half passes when its container exits cleanly (mini-jag verdict); the
+ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
+
+## Tests
+
+- `gpio-output-{ec618,esp32}` — EC618 drives GPIO11 (PAD26, board pin 5) as a
+  square wave; the ESP32 (IO27) counts edges. Confirms EC618 GPIO output.
