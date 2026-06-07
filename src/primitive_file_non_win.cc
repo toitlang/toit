@@ -409,7 +409,9 @@ const long kToitNow = (1l << 30) - 1l;  // Special value for now.
 const long kToitNoTime = (1l << 30) - 2l;  // Special value for no time change.
 
 PRIMITIVE(update_times) {
-  ARGS(cstring, path, int, atime_sec, int, atime_nsec, int, mtime_sec, int, mtime_nsec);
+  // Seconds-since-epoch exceed Smi range on 32-bit hosts (Smi max is ~1.07e9,
+  // current epoch is ~1.78e9), so we take them as int64.
+  ARGS(cstring, path, int64, atime_sec, int, atime_nsec, int64, mtime_sec, int, mtime_nsec);
 #ifndef TOIT_FREERTOS
   if (atime_nsec == kToitNow) {
     if (atime_sec != 0) FAIL(INVALID_ARGUMENT);
