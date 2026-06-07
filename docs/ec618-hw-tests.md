@@ -109,7 +109,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
 | I2C | ✅ implemented | `i2c_ec618.cc`. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
-| **ADC** | 🟡 implemented, untested on HW | `adc_ec618.cc` + `lib/ec618/adc.toit` (channel-addressed). Builds clean; functional test blocked (see below). |
+| **ADC** | ✅ implemented, smoke-tested on HW | `adc_ec618.cc` + `lib/ec618/adc.toit` (channel-addressed). On-device probe opens ch0/AIO3 and reads (floating pin ≈ 0.005 V), exits clean. Full DAC→ADC tracking test pending the test rig. |
 | DAC | ❌ missing | EC618 has no DAC need for these tests (the ESP32 provides DAC). |
 | PWM | ❌ missing | Wired (PWM01/04/10/14); implement + test next. |
 | SPI | ❌ missing | SPI0 wired; implement + test. |
@@ -131,9 +131,10 @@ few `luat_*` calls still in the glue.
   layout changed — the expected hook).
 
 ## In progress / blocked
-- **ADC functional test** (`adc-{ec618,esp32}.toit`, written) is blocked on two
-  things: (1) it needs the **test rig** (the dev-rig ESP32-C6 has no DAC); (2)
-  getting the ADC firmware onto the EC618 — OTA currently fails (below).
+- **ADC firmware**: full-flashed on the dev rig and **boots clean as slot A**;
+  on-device smoke test passes (the ADC primitive runs and returns a sane
+  voltage). The full **DAC→ADC tracking test** (`adc-{ec618,esp32}.toit`,
+  written) still needs the **test rig** (the dev-rig ESP32-C6 has no DAC).
 
 ## Known issues
 1. **OTA into slot B faults (suspected dual-slot relocate-on-write bug).** After
@@ -145,9 +146,15 @@ few `luat_*` calls still in the glue.
    runs) makes it a *silent* reset (no hardfault dump). The ADC firmware passes
    every host-side relocation check and no ADC code runs at boot, so this looks
    like a bug in the **recent OTA/relocation path**, exposed by the new image —
-   not the ADC. To debug: full-flash a known-good image on the dev rig, then OTA
-   and capture the slot-B fault. (`tester.toit firmware-update --debug-boot`
-   dumps the trial-boot console.)
+   not the ADC. **Confirmed**: the same image **full-flashed boots clean as slot
+   A** (firmware is good) — so the fault is purely in the **relocate-on-write /
+   slot-B** path. **Working hypothesis (Florian)**: the OTA breaks because the VM
+   **C code changed** — the relocate-on-write mishandles the new body layout.
+   **Experiment to run** (de-prioritized; full-flash recovers either way): revert
+   the ADC so the VM body matches the last-known-good, then OTA — if it works,
+   the body change is the trigger. Tools: `firmware-update --debug-boot` dumps
+   the trial-boot console; to get a fault PC, build a variant that delays
+   `FAULT_ACTION=1` so the hardfault dumper fires.
 2. **Per-rig UART** (UART0 test rig / UART1 dev rig) — see the UART gotcha above.
 3. **ADC accuracy / dead pin**: `trimAdcSetGolbalVar` is not in the jump table,
    so `HAL_ADC_CalibrateRawCode` uses its uncalibrated linear fallback (fine for

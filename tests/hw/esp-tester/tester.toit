@@ -136,6 +136,9 @@ main args:
         cli.Flag "validate"
             --help="Validate the trial slot after it boots (else it rolls back on the next reset)"
             --default=true,
+        cli.Flag "debug-boot"
+            --help="Log the raw console for a few seconds after the upgrade reboot (to debug a trial slot that never reconnects)"
+            --default=false,
       ]
       --run=:: | invocation/cli.Invocation |
         firmware-update invocation
@@ -504,6 +507,18 @@ class Ec618Link:
       catch: data = with-timeout --ms=quiet-ms: reader_.read
       if not data: return
 
+  // Reads and logs the raw console for $ms. Used to debug a trial boot that
+  // never reconnects (a fault/reset loop in the staged slot shows up as a
+  // hardfault dump or a repeating boot banner here, where the ack-oriented
+  // $handshake would silently consume it).
+  dump-raw --ms/int -> none:
+    deadline := Time.monotonic-us + ms * 1000
+    while Time.monotonic-us < deadline:
+      data/ByteArray? := null
+      catch: data = with-timeout --ms=1000: reader_.read
+      if data: emit-device-output (data.to-string-non-throwing)
+    flush-pending_
+
   // Sends the test argument (`<len:4 LE><bytes>`).
   send-arg arg/string -> none:
     bytes := arg.to-byte-array
@@ -709,6 +724,10 @@ firmware-update invocation/cli.Invocation:
       link.fw-commit checksum
       log "Committed; rebooting into the trial slot"
       link.fw-upgrade
+
+      if invocation["debug-boot"]:
+        log "Capturing the raw trial-boot console for 15s"
+        link.dump-raw --ms=15000
 
       log "Reconnecting after the reboot"
       sleep --ms=2000
