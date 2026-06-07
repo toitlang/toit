@@ -65,7 +65,7 @@
 // this value (via ec618.print-uart-id), so a rig switch only changes this line
 // — not the agent. The shared wire needs CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
 // below. (Known cosmetic issue with _ID=1: one garbled line on cold boot.)
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.
