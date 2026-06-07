@@ -33,6 +33,10 @@ TYPE_PRIMITIVE_ANY(slot_mark_invalid_and_reset)
 TYPE_PRIMITIVE_BOOL(slot_trial)
 TYPE_PRIMITIVE_ANY(slot_program_mode)
 TYPE_PRIMITIVE_INT(modem_set_function)
+TYPE_PRIMITIVE_INT(reset_reason)
+TYPE_PRIMITIVE_NULL(watchdog_init)
+TYPE_PRIMITIVE_NULL(watchdog_feed)
+TYPE_PRIMITIVE_NULL(watchdog_deinit)
 
 }  // namespace compiler
 }  // namespace toit

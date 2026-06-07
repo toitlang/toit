@@ -169,6 +169,16 @@ No test for `get-tower-info` in `lib/net/cellular.toit`.
   (millisecond granularity). A more precise timer source would improve
   performance measurement.
 
+### Watchdog: upstream into the toit-watchdog package
+
+- The EC618 now has a hardware watchdog (`lib/ec618/watchdog.toit`,
+  primitives in `src/primitive_ec618.cc`) and a `reset-reason` query
+  (`lib/ec618/ec618.toit`), so a watchdog reset is detectable on the next
+  boot (`RESET-WATCHDOG-HARDWARE`).
+- TODO: update [toit-watchdog](https://github.com/toitware/toit-watchdog) so
+  its portable watchdog API also works on the EC618, instead of relying on
+  this chip-specific library.
+
 ---
 
 ## 4. Flash Layout Reference

@@ -31,6 +31,10 @@ extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
   #include "slot_marker.h"
+  #include "reset.h"  // ResetStateGet / LastResetState_e.
+  #include "wdt.h"    // The hardware watchdog (WDT) driver.
+  #include "clock.h"  // GPR_setClock* for the WDT functional clock.
+  #include "slpman.h"  // slpManAonWdtFeed.
 
   // From ps_lib_api.h. CFUN=0 turns the modem off (RF + PS stack) — the
   // bulk of CP (cellular-processor) activity. The dual-slot OTA turns it
@@ -473,6 +477,52 @@ PRIMITIVE(modem_set_function) {
   return Smi::from(appSetCFUN(fun));
 }
 
+// Returns the AP-side reset reason of the most recent boot as a
+// LastResetState_e value (see lib/ec618 reset-reason constants). The CP
+// reset reason is read but not surfaced; the AP value is what application
+// code reacts to (e.g. distinguishing a watchdog reset from a power-on).
+PRIMITIVE(reset_reason) {
+  LastResetState_e ap = LAST_RESET_UNKNOWN;
+  LastResetState_e cp = LAST_RESET_UNKNOWN;
+  ResetStateGet(&ap, &cp);
+  return Smi::from(ap);
+}
+
+// EC618 hardware watchdog (WDT module). The PLAT ships a higher-level
+// luat_wdt_* wrapper, but it isn't linked into this firmware, so we drive
+// the WDT driver directly (this mirrors luat_wdt_setup). The watchdog runs
+// off the 32 kHz clock: with the functional-clock divider set to the
+// timeout in seconds and the counter reload fixed at 32768, one counter
+// period equals `seconds` seconds. In WDT_INTERRUPT_RESET_MODE the first
+// expiry only raises an (unhandled) interrupt; the chip resets on the
+// second expiry, so an unfed watchdog resets the device after up to twice
+// the timeout. Feeding (WDT_kick) clears the counter.
+PRIMITIVE(watchdog_init) {
+  ARGS(int, seconds);
+  if (seconds < 1 || seconds > 60) FAIL(INVALID_ARGUMENT);
+  GPR_setClockSrc(FCLK_WDG, FCLK_WDG_SEL_32K);
+  GPR_setClockDiv(FCLK_WDG, seconds);
+  WdtConfig_t config;
+  config.mode = WDT_INTERRUPT_RESET_MODE;
+  config.timeoutValue = 32768U;
+  WDT_init(&config);
+  WDT_start();
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_feed) {
+  WDT_kick();
+  slpManAonWdtFeed();  // No-op while the AON watchdog is stopped, but kept
+                       // in sync with the PLAT's own feed sequence.
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_deinit) {
+  WDT_stop();
+  WDT_deInit();
+  return process->null_object();
+}
+
 }  // namespace toit
 
 #else  // !TOIT_EC618
@@ -498,6 +548,10 @@ PRIMITIVE(slot_mark_invalid_and_reset) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_trial) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(watchdog_init) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(watchdog_feed) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(watchdog_deinit) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 

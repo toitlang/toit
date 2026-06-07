@@ -57,6 +57,87 @@ Use this to write tests that adapt to whichever firmware variant is
 print-uart-id -> int:
   #primitive.ec618.print-uart-id
 
+/** Reset after power was (re)applied (cold boot). */
+RESET-POWER-ON ::= 0
+/** Normal reset after waking from deep sleep (sleep2) or hibernate. */
+RESET-NORMAL ::= 1
+/** Software reset (an explicit system reset request). */
+RESET-SOFTWARE ::= 2
+/** Reset after a hard fault (see the fault dump on the console). */
+RESET-HARDFAULT ::= 3
+/** Reset after a failed runtime assertion in the platform. */
+RESET-ASSERT ::= 4
+/**
+Reset attributed to a watchdog via a software-recorded reason.
+
+Note: the application watchdog in the `ec618.watchdog` library does NOT produce
+  this. Its reset is an autonomous hardware reset that the chip reports as
+  $RESET-POWER-ON.
+*/
+RESET-WATCHDOG-SOFTWARE ::= 5
+/**
+Reset attributed to a hardware watchdog.
+
+Note: the application watchdog in the `ec618.watchdog` library does NOT produce
+  this. Its reset is an autonomous hardware reset that the chip reports as
+  $RESET-POWER-ON.
+*/
+RESET-WATCHDOG-HARDWARE ::= 6
+/** Reset after the CPU locked up. */
+RESET-LOCKUP ::= 7
+/** Reset by the always-on (sleep-manager) watchdog. */
+RESET-AON-WATCHDOG ::= 8
+/** Reset because the battery voltage was too low. */
+RESET-BATTERY-LOW ::= 9
+/** Reset because the temperature was too high. */
+RESET-TEMPERATURE-HIGH ::= 10
+/** Reset to apply a firmware-over-the-air update. */
+RESET-FOTA ::= 11
+/** Reset triggered by the cellular processor (CP). */
+RESET-CP-RESET ::= 12
+/** The reset reason could not be determined. */
+RESET-UNKNOWN ::= 13
+
+// Human-readable names indexed by the RESET-* value. Keep in sync with the
+// constants above (the SDK's LastResetState_e order).
+RESET-REASON-NAMES_/List ::= [
+  "power-on",
+  "normal",
+  "software",
+  "hardfault",
+  "assert",
+  "watchdog-software",
+  "watchdog-hardware",
+  "lockup",
+  "aon-watchdog",
+  "battery-low",
+  "temperature-high",
+  "fota",
+  "cp-reset",
+  "unknown",
+]
+
+/**
+Returns the reason for the most recent reset of the application processor.
+
+The result is one of the RESET-* constants ($RESET-POWER-ON,
+  $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
+  human-readable string.
+*/
+reset-reason -> int:
+  #primitive.ec618.reset-reason
+
+/**
+Returns a human-readable name for the given reset $reason.
+
+The $reason should be one of the RESET-* constants, typically the result of
+  $reset-reason. Unrecognized values are formatted as "reset-<n>".
+*/
+reset-reason-name reason/int -> string:
+  if 0 <= reason and reason < RESET-REASON-NAMES_.size:
+    return RESET-REASON-NAMES_[reason]
+  return "reset-$reason"
+
 /**
 Helpers for EC618 pin addressing and peripheral construction.
 
