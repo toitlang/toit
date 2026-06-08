@@ -77,8 +77,8 @@ PAD26 *and* PAD22), which is the hint for the duplicated "GPIO11"/"GPIO10" pins.
 ```
 ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 ---------   ----------------------------------   ----------------------  ----------
-25 (DAC1) -> [divider] -> ADC0 (pin 3)           ADC channel 0 (AIO3)    CONFIRMED (adc, tracks DAC)
-26 (DAC2) -> [divider] -> ADC1 (pin 4)           ADC channel 1 (AIO4)    CONFIRMED (adc, tracks DAC)
+25 (DAC1) -> [~2:1 divider] -> ADC0 (pin 3)      ADC channel 0 (AIO3)    CONFIRMED (exact, ratio ~0.47)
+26 (DAC2) -> [divider?] -> ADC1 (pin 4)          ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.91 — divider suspect)
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
 14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  to verify
 13        -> 09  (GPIO22, MAIN_DTR)              ?                       to verify
@@ -113,7 +113,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
 | I2C | ✅ implemented | `i2c_ec618.cc`. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
-| **ADC** | ✅ implemented, **HW-tested (DAC→ADC, both channels)** | `adc_ec618.cc` + `lib/ec618/adc.toit` (channels 0→AIO3, 1→AIO4). |
+| **ADC** | ✅ implemented, **HW-tested exact-value (both channels)** | `adc_ec618.cc`; `gpio.adc` channel ctor (0→AIO3, 1→AIO4). Self-calibrating ±60 mV. |
 | DAC | ❌ n/a | EC618 needs no DAC for these tests (the ESP32 provides DAC). |
 | PWM | ❌ missing | Wired (PWM01/04/10/14); implement + test next. |
 | SPI | ❌ missing | SPI0 wired; implement + test. |
@@ -127,9 +127,15 @@ calls still in the glue.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
-- **ADC implemented + `adc` DAC→ADC test passing** (2026-06-08, test rig): both
-  channels track the ESP32 DAC (ch0 spread 1.42 V, ch1 spread 2.76 V); neither
-  pin is dead. `adc-{ec618,esp32}.toit`.
+- **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
+  known DAC staircase; the EC618 self-calibrates the per-channel board divider
+  (2-point fit) and verifies every level within ±60 mV. Both channels pass
+  (errors <16 mV). Measured dividers: **ch0 ratio ~0.47** (a clean ~2:1), **ch1
+  ratio ~0.91** — ch1 reads ~2.89 V at a 3.0 V DAC step where a 2:1 divider would
+  give ~1.5 V, so **ch1's external divider looks missing/ineffective** (the ~0.91
+  vs 1.0 is just the ADC's uncalibrated gain/offset). The test is self-calibrating
+  and rig-agnostic, so it passes regardless; the divider asymmetry is a rig note,
+  not a test concern. `adc-{ec618,esp32}.toit`.
 - **OTA A≠B FIXED** (see below) — changed-firmware OTA now boots + validates, so
   real (non-smoke) dual-board tests can be delivered by OTA.
 - **EC618 mini-jag tester** on a configurable print UART (`ec618.print-uart-id`).
@@ -213,7 +219,8 @@ modes), not just "does it work."
   risky); EC618 UART RX (risky direction).
 - **PWM** (not yet implemented): EC618 drives, ESP32 measures freq/duty over a
   range — safe direction.
-- **ADC**: range/voltage sweep (EC618 measures the ESP32 DAC) — safe.
+- **ADC**: exact-value staircase (EC618 measures the ESP32 DAC, self-calibrating
+  the board divider, ±60 mV per level) — *done, safe*.
 - **GPIO**: output modes (safe); input + pull-up/down + open-drain (risky
   direction — needs the open-drain feature above).
 - **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
@@ -221,12 +228,14 @@ modes), not just "does it work."
 ### Status / blocker
 - UART2 baseline test committed (115200, RX integrity). The automated baud sweep
   is blocked on the control lane (jag-args) — next step.
-- **BLOCKER (2026-06-08):** the modest-affair EC618 went **unresponsive**
-  (mini-jag stopped answering, no auto-reboot, UART silent). The rig is
-  **manual-boot with no remote reset**, so it needs a **physical power-cycle** to
-  resume HW testing. Suspected mini-jag robustness issue: the agent stopped
-  responding while the VM stayed alive (so the AON watchdog didn't fire) — worth
-  investigating (a heartbeat / agent-watchdog in mini-jag would self-recover).
+- **RESOLVED (2026-06-08):** the earlier "modest-affair EC618 went unresponsive,
+  needs a physical power-cycle" blocker is fixed by the **general mini-jag
+  watchdog** (commit 92dde5d8): the agent now arms the hardware watchdog for its
+  whole life and feeds it on every host message, so an agent wedge / hung VM
+  resets straight back into a fresh agent (~60 s) with no external reset. A
+  device hang no longer stalls autonomous HW work. (A **short-circuit** can still
+  damage the boards — that risk is unchanged; follow the safe-direction +
+  gpio-toggle-first rule below.)
 
 ## TODO / roadmap
 - [x] Make mini-jag open `ec618.print-uart-id`'s controller.

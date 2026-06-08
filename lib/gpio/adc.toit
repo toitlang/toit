@@ -91,10 +91,12 @@ class Adc:
 
   # EC618
   Channel 0 -> AIO3 and channel 1 -> AIO4 (the board's "ADC0"/"ADC1" pins). The
-    converter core measures 0..1.2 V; $max-voltage selects the smallest internal
-    range (up to 3.8 V, via a resistor divider) that covers it, for the best
-    resolution. Supported maxima: 1.2, 1.4, 1.6, 1.9, 2.4, 2.7, 3.2, 3.8 V;
-    null uses the widest (3.8 V).
+    converter core measures 0..1.2 V; $max-voltage selects the smallest range
+    (up to 3.8 V) that covers it, for the best resolution. The higher ranges read
+    above 1.2 V by switching in a resistor divider *inside the chip*; $get
+    compensates for it and returns the true voltage at the pin, so callers see the
+    actual input regardless of range. Supported maxima: 1.2, 1.4, 1.6, 1.9, 2.4,
+    2.7, 3.2, 3.8 V; null uses the widest (3.8 V).
   */
   constructor.channel channel/int --max-voltage/float?=null:
     pin = null
