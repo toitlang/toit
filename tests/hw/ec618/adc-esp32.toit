@@ -20,8 +20,8 @@ Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
     compensated by the EC618 ADC driver, so adc.get returns the true pin volts.
 So a 1.0 V DAC step shows up as ~ratio V at the EC618; the test verifies that.
 
-Wiring: ESP32 IO25 (DAC1) -> divider -> EC618 ADC0 (pin 3)
-        ESP32 IO26 (DAC2) -> divider -> EC618 ADC1 (pin 4)
+Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC1 (pin 4)
+        ESP32 IO26 (DAC2) -> near-direct   -> EC618 ADC0 (pin 3)
 
 Run via Jaguar (start this BEFORE the EC618 half so the staircase is already
 running): jag run tests/hw/ec618/adc-esp32.toit --device <esp32>
