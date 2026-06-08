@@ -171,6 +171,63 @@ and validates. (Previously the changed `.data` wedged + rolled back.)
    ratiometric tracking; add it to the wrapped set for a calibrated reading —
    base-image change, needs a full flash).
 
+## Exhaustive dual-board testing — design + status (2026-06-08)
+
+Goal (Florian): tests should be **exhaustive** like `tests/hw/esp32` — exercise
+every config (baud rates, RTS/CTS, RS485, modes; PWM freq/duty; ADC ranges; GPIO
+modes), not just "does it work."
+
+### Verdict capture (how results come back)
+- **EC618 side**: the mini-jag tester reports the container's exit code — captured
+  directly by `tester.toit run`.
+- **ESP32 side**: `jag run` returns right after *deploy*; it does NOT stream the
+  program's `print` back. The ESP32's verdict goes to its **serial console**
+  (the CP2102N port) — read that port to get the "... PASS/FAIL" line. (This is
+  how gpio-output / uart2 verdicts are obtained.)
+
+### Control lane (Florian's suggestion) + the jag-args constraint
+- `jag run` **cannot pass program arguments** to a networked device (only
+  `-d host`). So the ESP32 half can't be parameterized per phase (baud, etc.)
+  from the host. The fix is an **in-device control lane**: the EC618 tells the
+  ESP32 each phase/param over a dedicated UART.
+- Plan: **control lane = UART1 when testing UART2; UART2 for everything else.**
+- The **safe** control direction is **EC618 → ESP32** (1.8 V → 3.3 V). A one-way
+  control lane (EC618 commands; ESP32 reports via its console) needs no risky
+  direction and is the place to start.
+
+### Safe vs. risky directions (the board-damage rule)
+- **EC618 drives → ESP32 reads = SAFE** (ESP32 high-Z input; 1.8 V→3.3 V is read
+  cleanly). Covers: UART TX, PWM, GPIO output, DAC→ADC (ESP32 drives its own DAC,
+  EC618 reads its own ADC). These can be made exhaustive now.
+- **ESP32 drives → EC618 reads = RISKY** (3.3 V into a 1.8 V pad). Covers: EC618
+  UART RX, CTS, GPIO input, I2C, SPI. Do **not** drive these directly. The safe
+  way is ESP32 **open-drain** (only ever pulls low, never outputs 3.3 V) + an
+  **EC618 input pull-up** (line idles at 1.8 V). That needs EC618 GPIO
+  pull-up/down + open-drain, which is **UNIMPLEMENTED** — implement + verify on a
+  gpio toggle first. Always gpio-toggle a wire (EC618 drives → ESP32 reads) to
+  confirm connectivity before relying on it.
+
+### Per-peripheral exhaustive plan
+- **UART2**: baud sweep (TX side, safe — *baseline committed*); RTS/CTS flow
+  control and RS485 (the EC618-output side is safe; the EC618-receive side is
+  risky); EC618 UART RX (risky direction).
+- **PWM** (not yet implemented): EC618 drives, ESP32 measures freq/duty over a
+  range — safe direction.
+- **ADC**: range/voltage sweep (EC618 measures the ESP32 DAC) — safe.
+- **GPIO**: output modes (safe); input + pull-up/down + open-drain (risky
+  direction — needs the open-drain feature above).
+- **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
+
+### Status / blocker
+- UART2 baseline test committed (115200, RX integrity). The automated baud sweep
+  is blocked on the control lane (jag-args) — next step.
+- **BLOCKER (2026-06-08):** the modest-affair EC618 went **unresponsive**
+  (mini-jag stopped answering, no auto-reboot, UART silent). The rig is
+  **manual-boot with no remote reset**, so it needs a **physical power-cycle** to
+  resume HW testing. Suspected mini-jag robustness issue: the agent stopped
+  responding while the VM stayed alive (so the AON watchdog didn't fire) — worth
+  investigating (a heartbeat / agent-watchdog in mini-jag would self-recover).
+
 ## TODO / roadmap
 - [x] Make mini-jag open `ec618.print-uart-id`'s controller.
 - [x] Full-flash + confirm firmware boots clean (isolates OTA from firmware).
