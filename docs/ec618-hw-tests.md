@@ -140,11 +140,19 @@ calls still in the glue.
   post-reset boot-ROM/bootloader banner before pinging, so the firmware-update
   reconnect/validate succeeds without `--debug-boot` (previously `read-ack` spent
   one ping attempt per backlog byte and never reached the agent's pong).
-- **Reset-on-VM-exit safety net** (2026-06-08, `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT`,
-  default 1): on a full-VM `EXIT_DONE` the firmware now resets (reboots into the
-  program) instead of deep-sleeping with no wakeup timer. This makes the rig
-  self-recover from a crash that brings the whole VM down — see the incident
-  below. *(Built but not yet HW-verified: the board was bricked when this landed.)*
+- **Resilience: reset-on-VM-exit + sleeper keep-alive** (2026-06-08): two layers
+  against the deep-sleep brick (see the incident below). (1)
+  `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT` (default 1): on a full-VM `EXIT_DONE` the
+  firmware resets (reboots into the program) instead of deep-sleeping with no
+  wakeup timer — **HW-verified**: a `gpio-map` teardown crash rebooted and
+  recovered the agent, no brick. (2) A separate **`sleeper`** keep-alive container
+  in the EC618 envelope (installed alongside mini-jag) so a crash of *just the
+  agent* never reaches EXIT_DONE/deep-sleep; the watchdog (fed only by host
+  messages) then resets a dead/silent agent. The agent arms the watchdog first
+  thing and spares the sleeper by name in clear-containers/run-installed.
+  `sleeper.toit`; HW: agent + sleeper coexist, basics pass. *(Sleeper-driven
+  watchdog recovery of an idle/dead agent is not yet HW-verified — the EC618
+  watchdog may be gated while the chip light-sleeps; TODO to confirm.)*
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass

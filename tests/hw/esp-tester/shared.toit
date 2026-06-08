@@ -53,3 +53,10 @@ ACK-TRIAL-NO   ::= 'n'
 MINI-JAG-TAG ::= "[mini-jag]"
 // Status line emitted once the EC618 resident agent is listening.
 MINI-JAG-EC618-READY ::= "[mini-jag] ec618 ready"
+
+// Name of the long-running keep-alive container the EC618 envelope installs
+// alongside the agent. It keeps the VM scheduling (never EXIT_DONE / deep sleep,
+// which would gate the watchdog and brick a no-remote-reset rig) even if the
+// agent crashes. The host's envelope build adds it under this name; the agent
+// spares it in clear-containers and skips it in run-installed (it is not a test).
+SLEEPER-NAME ::= "sleeper"

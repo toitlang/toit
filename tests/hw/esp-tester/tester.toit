@@ -786,21 +786,30 @@ firmware-update invocation/cli.Invocation:
     finally:
       link.close
 
-// Builds the EC618 canonical OTA image: embed the mini-jag agent in the target
+// Adds one container ($name from $source.toit, next to this program) to the
+// $in envelope, writing the result to $out.
+add-container_ toit-exe/string name/string source/string --in/string --out/string --tmp-dir/string --ui/cli.Ui -> none:
+  snapshot := fs.join tmp-dir "$(name).snap"
+  run-toit --ui=ui toit-exe ["compile", "--snapshot", "-o", snapshot, source]
+  run-toit --ui=ui toit-exe ["tool", "firmware", "container", "add", name, snapshot, "-e", in, "-o", out]
+
+// Embeds the EC618 agent containers in $envelope, writing the result to $out:
+// the mini-jag agent (so we can drive + validate it) plus the sleeper keep-alive
+// container (so a crash of the agent can't deep-sleep/brick the board — see
+// sleeper.toit).
+add-ec618-containers toit-exe/string envelope/string out/string --tmp-dir/string --ui/cli.Ui -> none:
+  my-dir := fs.dirname system.program-path
+  with-mini-jag := fs.join tmp-dir "with-mini-jag.envelope"
+  add-container_ toit-exe "mini-jag" (fs.join my-dir "mini-jag.toit") --in=envelope --out=with-mini-jag --tmp-dir=tmp-dir --ui=ui
+  add-container_ toit-exe SLEEPER-NAME (fs.join my-dir "sleeper.toit") --in=with-mini-jag --out=out --tmp-dir=tmp-dir --ui=ui
+
+// Builds the EC618 canonical OTA image: embed the agent containers in the target
 // envelope (so we can drive + validate it after the OTA), then extract the
 // canonical `[ size ][ table ][ body + extension ]` image the device's
 // FirmwareWriter consumes (relocate-on-write).
 build-canonical-firmware toit-exe/string envelope-path/string --tmp-dir/string --ui/cli.Ui -> ByteArray:
-  my-dir := fs.dirname system.program-path
-  mini-jag-source := fs.join my-dir "mini-jag.toit"
-  mini-jag-snapshot := fs.join tmp-dir "mini-jag.snap"
-  run-toit --ui=ui toit-exe ["compile", "--snapshot", "-o", mini-jag-snapshot, mini-jag-source]
   staged-envelope := fs.join tmp-dir "ota.envelope"
-  run-toit --ui=ui toit-exe [
-    "tool", "firmware", "container", "add", "mini-jag", mini-jag-snapshot,
-    "-e", envelope-path,
-    "-o", staged-envelope,
-  ]
+  add-ec618-containers toit-exe envelope-path staged-envelope --tmp-dir=tmp-dir --ui=ui
   canonical-path := fs.join tmp-dir "canonical.bin"
   run-toit --ui=ui toit-exe [
     "tool", "firmware", "extract",
@@ -819,16 +828,8 @@ setup-tester-ec618 invocation/cli.Invocation:
   envelope-path := invocation["envelope"]
 
   with-tmp-dir: | dir/string |
-    my-dir := fs.dirname system.program-path
-    mini-jag-source := fs.join my-dir "mini-jag.toit"
-    mini-jag-snapshot := fs.join dir "mini-jag.snap"
-    run-toit --ui=ui toit-exe ["compile", "--snapshot", "-o", mini-jag-snapshot, mini-jag-source]
     tester-envelope := fs.join dir "tester.envelope"
-    run-toit --ui=ui toit-exe [
-      "tool", "firmware", "container", "add", "mini-jag", mini-jag-snapshot,
-      "-e", envelope-path,
-      "-o", tester-envelope,
-    ]
+    add-ec618-containers toit-exe envelope-path tester-envelope --tmp-dir=dir --ui=ui
     // The EC618 flashes over the boot ROM (ectool); the operator must trigger
     // the boot ROM (power-cycle into download mode) while this runs.
     log "Flashing EC618 over the boot ROM — trigger boot/download mode now."

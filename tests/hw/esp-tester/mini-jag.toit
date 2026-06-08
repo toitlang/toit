@@ -68,11 +68,9 @@ with-client [block]:
     network.close
 
 clear-containers:
-  ids := containers.images.map: | image/containers.ContainerImage |
-    image.id
-  ids.do: | id/Uuid |
-    if id != containers.current:
-      containers.uninstall id
+  containers.images.do: | image/containers.ContainerImage |
+    if image.id != containers.current and image.name != SLEEPER-NAME:
+      catch: containers.uninstall image.id
 
 install-new-test reader/io.Reader:
   arg-size := reader.little-endian.read-int32
@@ -144,15 +142,22 @@ open-control-uart -> uart.Port:
   throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
 
 main-ec618:
+  // Arm the GENERAL watchdog FIRST, before anything that could wedge (e.g. opening
+  // the UART). It is fed below on every host message, so if the host goes quiet or
+  // our read wedges, the watchdog resets us straight back into a fresh agent.
+  watchdog.watchdog-start --timeout=WATCHDOG-HARDWARE-TIMEOUT
+  // The VM is kept alive by a SEPARATE "sleeper" container installed alongside us
+  // (see the tester's envelope build) — a task here would die with us if we throw.
+  // If this agent ever crashes, the sleeper keeps the VM scheduling so it never
+  // reaches EXIT_DONE / deep sleep (which would gate the watchdog and brick a
+  // no-remote-reset rig). The sleeper does NOT feed the watchdog — only host
+  // messages (below) do — so a dead/silent agent still gets reset. (A crash that
+  // ends the whole VM still resets via CONFIG_TOIT_EC618_RESET_ON_VM_EXIT.)
   port := open-control-uart
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason
   status out "ec618 ready reset=$reason active=$(string.from-rune slot.active)"
-  // Arm the GENERAL watchdog. It is fed below on every host message, so if this
-  // agent ever stops servicing the host (wedge / hung VM) the device resets
-  // itself straight back into a fresh agent.
-  watchdog.watchdog-start --timeout=WATCHDOG-HARDWARE-TIMEOUT
   // The host's running firmware writer survives across commands.
   writer/firmware.FirmwareWriter? := null
   arg/string := ""
@@ -265,7 +270,8 @@ test-running_/bool := false
 run-installed arg/string out/io.Writer -> none:
   test-image/containers.ContainerImage? := null
   containers.images.do: | image/containers.ContainerImage |
-    if not test-image and image.id != containers.current: test-image = image
+    if not test-image and image.id != containers.current and image.name != SLEEPER-NAME:
+      test-image = image
   if not test-image:
     status out "run: no container installed"
     return
