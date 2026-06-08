@@ -109,7 +109,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 
 | Peripheral | Status | Notes |
 |-----------|--------|-------|
-| GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. `set_pull`/`set_open_drain` UNIMPLEMENTED (pulls ignored). |
+| GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. Pull-up **HW-validated**; pull-down via `GPIO_PullConfig` (matches the SDK) but **pad-limited** — PAD26/UART pads are pull-up-only (pull-down is mainly on the wakeup pads). Input-buffer now enabled for input pins. **Open-drain: TODO** (emulate via output↔input). |
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
 | I2C | ✅ implemented | `i2c_ec618.cc`. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
@@ -127,6 +127,19 @@ calls still in the glue.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
+- **`gpio-pull`** (2026-06-08): **pull-up HW-validated** on PAD26 — with no pull
+  the floating line reads a noisy ~8-11/16, and enabling the internal pull-up pins
+  it to 16/16. **Pull-down does NOT pull PAD26 low** (reads 16/16 high even from a
+  floating start, and the no-pull "float" read is jittery, so it isn't an external
+  pull-up): PAD26 (UART2_TXD) is **pull-up-only**. The firmware's
+  `GPIO_PullConfig(pad, 1, 0)` matches the SDK's own pull-down usage, so this is a
+  pad/HW limitation (pull-down on the EC618 is mainly on the dedicated wakeup pads,
+  a separate `APmuWakeupPadSettings` path), not a firmware bug. A clean pull-down
+  check needs a pad that supports it — **rig-mapping TODO**. `gpio-pull-{ec618,esp32}.toit`.
+- **mini-jag reconnect-after-OTA fixed** (2026-06-08): the host now drains the
+  post-reset boot-ROM/bootloader banner before pinging, so the firmware-update
+  reconnect/validate succeeds without `--debug-boot` (previously `read-ack` spent
+  one ping attempt per backlog byte and never reached the agent's pong).
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass
@@ -253,7 +266,10 @@ modes), not just "does it work."
 - [ ] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty).
 - [ ] **UART2** loopback (EC618 TX → ESP32 RX; safe 1.8 V→3.3 V direction).
 - [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
-- [ ] More **GPIO**: input (ESP32 drives — level-shift first), interrupts, the
-      `set_pull`/`set_open_drain` gaps.
+- [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
+      for input pins.
+- [ ] **GPIO open-drain**: emulate via output↔input (separate commit; see the
+      `TODO(toit)` in `gpio_ec618.cc`).
+- [ ] More **GPIO**: input (ESP32 drives — level-shift first), interrupts.
 - [ ] Experimentally map the remaining `?` pads in the wiring table.
 - [ ] Eventually wire the EC618 tests into CTest (needs a rig power-cycle story).
