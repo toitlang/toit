@@ -140,6 +140,11 @@ calls still in the glue.
   post-reset boot-ROM/bootloader banner before pinging, so the firmware-update
   reconnect/validate succeeds without `--debug-boot` (previously `read-ack` spent
   one ping attempt per backlog byte and never reached the agent's pong).
+- **Reset-on-VM-exit safety net** (2026-06-08, `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT`,
+  default 1): on a full-VM `EXIT_DONE` the firmware now resets (reboots into the
+  program) instead of deep-sleeping with no wakeup timer. This makes the rig
+  self-recover from a crash that brings the whole VM down — see the incident
+  below. *(Built but not yet HW-verified: the board was bricked when this landed.)*
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass
@@ -192,6 +197,19 @@ and validates. (Previously the changed `.data` wedged + rolled back.)
    so `HAL_ADC_CalibrateRawCode` uses its uncalibrated linear fallback (fine for
    ratiometric tracking; add it to the wrapped set for a calibrated reading —
    base-image change, needs a full flash).
+4. **GPIO-service teardown crash → deep-sleep brick (2026-06-08).** Running
+   `gpio-map` (which opened/closed ~6 GPIO pins in a container, re-using
+   controller bit 11) crashed the device on container teardown: a `CLOSED`
+   exception in the shared GPIO service (decoded with the *agent's* snapshot, not
+   the test's) brought the whole VM down (`EXIT_DONE`), and the firmware deep-slept
+   with **no wakeup timer** → bricked until a physical power-cycle (watchdogs are
+   gated while asleep; the rig has no remote reset). Two follow-ups: **(a)**
+   `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT=1` (added, default on) turns that VM exit
+   into a self-recovering reboot — the rig-level safety net; **(b)** the GPIO
+   service should not crash on a normal multi-pin open/close/teardown — root-cause
+   the `CLOSED` exception in the gpio resource/service path (suspects: re-opening a
+   just-closed controller bit, or finalizer ordering). `gpio-map` is hardened to
+   not re-drive bit 11 and must only be run on `RESET_ON_VM_EXIT=1` firmware.
 
 ## Exhaustive dual-board testing — design + status (2026-06-08)
 
