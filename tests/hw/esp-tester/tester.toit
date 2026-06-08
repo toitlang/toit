@@ -26,13 +26,36 @@ JAG-DECODE ::= "jag decode"
 
 start-time-us/int := ?
 
+// All tester output is ALSO appended to this file (opened at startup), so device
+// output — including exceptions, crashes and boot banners the device prints
+// during a run — is always captured for inspection even when stdout isn't being
+// watched. Everything the tester emits, and every device line it reads, funnels
+// through $log, so teeing $log here captures it all. Override the path with the
+// TESTER_LOG env var.
+TESTER-LOG-ENV_ ::= "TESTER_LOG"
+TESTER-LOG-DEFAULT_ ::= "/tmp/ec618-tester.log"
+log-file_/file.Stream? := null
+
+open-log-file_ -> none:
+  path := os.env.get TESTER-LOG-ENV_
+  if not path or path == "": path = TESTER-LOG-DEFAULT_
+  catch --trace:
+    // O_WRONLY|O_APPEND|O_CREAT, mode 0644. write() is a syscall (no userspace
+    // buffering), so the file holds everything up to a crash.
+    log-file_ = file.Stream path (file.WRONLY | file.APPEND | file.CREAT) 0x1a4
+    log-file_.out.write "\n===== tester run =====\n"
+
 log message/string:
   duration := Duration --us=(Time.monotonic-us - start-time-us)
   lines := message.split "\n"
-  lines.do: print_ "--- $(%06d duration.in-ms): $it"
+  lines.do:
+    line := "--- $(%06d duration.in-ms): $it"
+    print_ line
+    if log-file_: catch: log-file_.out.write "$line\n"
 
 main args:
   start-time-us = Time.monotonic-us
+  open-log-file_
   root-cmd := cli.Command "tester"
       --help="Run tests on an ESP tester"
       --options=[
