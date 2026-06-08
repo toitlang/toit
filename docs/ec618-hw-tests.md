@@ -136,6 +136,20 @@ calls still in the glue.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
+- **`gpio-input`** (2026-06-08): the reverse — ESP32 drives, EC618 reads on
+  PAD26. Validates the receive direction at 3.3 V (172 edges read). The runner
+  sets the EC618 pad to input before the ESP32 drives, so two 3.3 V drivers never
+  fight. `gpio-input-{ec618,esp32}.toit`.
+- **`uart2-echo` exhaustive UART2 round-trip** (2026-06-08): the EC618 sweeps the
+  baud rates in BOTH modes (re-open per baud, and one open + set-baud), telling
+  the ESP32 the baud over a **control lane** (UART1 TX PAD34 → ESP32 IO4) so one
+  deploy covers the sweep; the ESP32 echoes on UART2 so the EC618 verifies TX **and**
+  RX. **Passes 9600..921600 in both modes.** This surfaced + fixed a real bug: the
+  generic uart lib auto-sets the ESP32-only `high-priority` tx-flag for
+  baud ≥ 460800, which the EC618 create primitive rejected → every ≥460800 open
+  failed `INVALID_ARGUMENT` (set-baud worked, the tell). Fixed by ignoring that
+  flag on EC618 (commit 96b9f86b). `uart2-echo-{ec618,esp32}.toit`,
+  `uart-reopen-ec618.toit` (open 9600..3 MHz regression).
 - **`gpio-pull`** (2026-06-08): **pull-up HW-validated** on PAD26 — with no pull
   the floating line reads a noisy ~8-11/16, and enabling the internal pull-up pins
   it to 16/16. **Pull-down does NOT pull PAD26 low** (reads 16/16 high even from a
