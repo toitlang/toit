@@ -155,13 +155,23 @@ calls still in the glue.
   firmware resets (reboots into the program) instead of deep-sleeping with no
   wakeup timer — **HW-verified**: a `gpio-map` teardown crash rebooted and
   recovered the agent, no brick. (2) A separate **`sleeper`** keep-alive container
-  in the EC618 envelope (installed alongside mini-jag) so a crash of *just the
-  agent* never reaches EXIT_DONE/deep-sleep; the watchdog (fed only by host
-  messages) then resets a dead/silent agent. The agent arms the watchdog first
-  thing and spares the sleeper by name in clear-containers/run-installed.
-  `sleeper.toit`; HW: agent + sleeper coexist, basics pass. *(Sleeper-driven
-  watchdog recovery of an idle/dead agent is not yet HW-verified — the EC618
-  watchdog may be gated while the chip light-sleeps; TODO to confirm.)*
+  in the EC618 envelope (installed alongside mini-jag) so the VM keeps a runnable
+  process and never falls into the `EXIT_DONE` deep-sleep-without-wakeup that the
+  watchdog can't escape (deep sleep ≈ power-off; the watchdogs are off there, which
+  is fair). `sleeper.toit`; **HW-verified**: agent + sleeper coexist, basics pass,
+  and the board survives a 90 s idle and stays responsive (an earlier "sleeper
+  breaks idle" claim was a misdiagnosis).
+  - **Watchdog model (clarified):** the EC618 has two watchdogs. The **main WDT**
+    (`ec618.watchdog`, fed by the agent on host messages) counts **active (awake)
+    time** — the SDK's `WDT_enterLowPowerStatePrepare` disables its clock before
+    any chip low-power sleep — so it catches **busy hangs**, not an idle-stuck
+    agent. The **AON watchdog** (`slpManAonWdt*`, fed by the scheduler tick) is the
+    always-on one and guards **VM liveness**. A Toit `sleep` is just a FreeRTOS
+    timer-wait (`xTaskNotifyWait`); the chip only low-power-sleeps when the *whole*
+    VM is idle (FreeRTOS tickless idle → slpman) — that's correct, not a misrouted
+    scheduler sleep. Gap: an agent stuck *while the VM idles* is covered by neither
+    (main WDT paused in sleep; AON fed by the still-ticking scheduler) — rare, and
+    a healthy idle agent is fine.
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass
