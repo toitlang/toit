@@ -96,16 +96,20 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 ```
 
 ### Voltage domains (important — corrected 2026-06-08)
-- **The dev-board IO rail is 3.3 V, not 1.8 V.** The bare EC618 pads are ~1.8 V,
-  but the Air-module dev-board level-shifts the broken-out IO to 3.3 V.
-  **Measured**: EC618 GPIO10 driven high reads **3.16 V** (saturated 11 dB range)
-  on the ESP32 ADC, vs 0.14 V idle (`gpio-vlevel-{ec618,esp32}.toit`).
+- **The EC618 IO rail is configured to 3.3 V — a CHIP setting, not the module.**
+  The EC618 has a software-configurable IO LDO (`slpManNormalIOVoltSet` /
+  `slpManAONIOVoltSet`, `IOVOLT_*` ~1.65–3.40 V, grouped "1.8 / 2.8 / 3.3 V
+  level"). It is a single shared IO rail, so **all** broken-out IO sits at the
+  configured level — on this dev-board the 3.3 V group, so the pads are genuinely
+  3.3 V-powered (NOT external level-shifters). **Measured**: EC618 GPIO10 high
+  reads **3.16 V** (saturated 11 dB range) on the ESP32 ADC, vs 0.14 V idle
+  (`gpio-vlevel-{ec618,esp32}.toit`). The Toit firmware doesn't touch the setting
+  (uses the PLAT default), so it stays 3.3 V — but a firmware that set IOVOLT to
+  the 1.8 V group would make every pad 1.8 V again (and ESP32→EC618 risky).
 - So **EC618 ↔ ESP32 is 3.3 V ↔ 3.3 V both ways**: EC618 → ESP32 reads cleanly
   (no marginal-VIH worry), and **ESP32 → EC618 is no longer the risky "3.3 V into
   1.8 V" case** — receiver tests (UART RX, CTS, I2C, SPI, GPIO input) can be driven
-  directly, no divider/open-drain needed. (Output is confirmed 3.3 V; module GPIO
-  level-shifters are normally bidirectional so inputs tolerate 3.3 V too — worth a
-  glance at the dev-board design before relying on it for a new wire.)
+  directly, no divider/open-drain needed.
 - EC618 ADC inputs (AIO3/AIO4) are separate analog pins (not the level-shifted
   GPIO); the wide range reads to 3.8 V. The ESP32 DACs (0–3.3 V) feed them through
   the rig's ~2:1 dividers to stay mid-range.
