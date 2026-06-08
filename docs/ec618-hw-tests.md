@@ -77,8 +77,8 @@ PAD26 *and* PAD22), which is the hint for the duplicated "GPIO11"/"GPIO10" pins.
 ```
 ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 ---------   ----------------------------------   ----------------------  ----------
-25 (DAC1) -> [~2:1 divider] -> ADC1 (pin 4)      ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.47)
-26 (DAC2) -> [near-direct]  -> ADC0 (pin 3)      ADC channel 0 (AIO3)    CONFIRMED (exact, ratio ~0.91 — divider missing on this path)
+25 (DAC1) -> [~2:1 divider] -> ADC0 (pin 3)      ADC channel 0 (AIO3)    CONFIRMED (exact, ratio ~0.47)
+26 (DAC2) -> [~2:1 divider] -> ADC1 (pin 4)      ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.46)
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
 14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  to verify
 13        -> 09  (GPIO22, MAIN_DTR)              ?                       to verify
@@ -148,15 +148,12 @@ calls still in the glue.
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass
-  (errors <16 mV). The two DAC→ADC paths have different dividers: one is a clean
-  **~2:1** (ratio ~0.47), the other is **near-direct** (ratio ~0.91 — it reads
-  ~2.89 V at a 3.0 V DAC step where a 2:1 divider would give ~1.5 V; the ~0.91 vs
-  1.0 is just the ADC's uncalibrated gain/offset). **Swapping the two DAC→ADC
-  wires moved the ratios with the DAC path, not the ADC channel** — so both EC618
-  ADC channels are healthy and the missing divider is on the **IO26/DAC2** rig
-  path. Current wiring: IO25(DAC1)→[~2:1]→ADC1, IO26(DAC2)→[near-direct]→ADC0. The
-  test self-calibrates per channel, so it passes regardless; the divider asymmetry
-  is a rig note, not a test concern. `adc-{ec618,esp32}.toit`.
+  (errors ≤8 mV) with a clean **~2:1 divider on both** paths (ratios ~0.47 / ~0.46).
+  Earlier one path read **near-direct** (ratio ~0.91); that was traced to a wrong
+  resistor in its divider (**1 MΩ instead of 1 kΩ**) and fixed on the rig — the
+  diagnosis "missing/ineffective divider" was right. Wiring restored to the
+  original IO25(DAC1)→ADC0, IO26(DAC2)→ADC1. The test self-calibrates per channel,
+  so it is robust to the actual ratio. `adc-{ec618,esp32}.toit`.
 - **OTA A≠B FIXED** (see below) — changed-firmware OTA now boots + validates, so
   real (non-smoke) dual-board tests can be delivered by OTA.
 - **EC618 mini-jag tester** on a configurable print UART (`ec618.print-uart-id`).

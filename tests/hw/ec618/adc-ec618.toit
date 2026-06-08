@@ -25,8 +25,8 @@ offset/gain), turning "does it swing" into "does it read the right value".
 Both channels must read accurately: a channel that does not swing
 ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
 
-Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC1 (channel 1 / AIO4, pin 4)
-        ESP32 IO26 (DAC2) -> near-direct   -> EC618 ADC0 (channel 0 / AIO3, pin 3)
+Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC0 (channel 0 / AIO3, pin 3)
+        ESP32 IO26 (DAC2) -> ~2:1 divider -> EC618 ADC1 (channel 1 / AIO4, pin 4)
 
 Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
 staircase is already running):
