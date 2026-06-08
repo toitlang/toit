@@ -121,4 +121,20 @@
 #define CONFIG_TOIT_EC618_VM_WATCHDOG 1
 #endif
 
+// Reset the chip when the boot program's VM exits "done" (all processes
+// finished) instead of deep-sleeping with no wakeup timer. Deep-sleep-without-
+// wakeup leaves the device dead until an external reset, which a rig with no
+// remote reset (e.g. the mini-jag test rig) cannot provide — and the watchdogs
+// are gated while the chip sleeps, so they cannot recover it either. A VM "done"
+// exit only happens on a full-VM teardown (e.g. a crash in a shared system
+// service brings the whole VM down); a long-running agent or a finishing test
+// *container* never triggers it, so this only fires on the unrecoverable case
+// and turns it into a reboot that lands straight back in the program.
+//
+// Set to 0 for the upstream/ESP32 behaviour (a finished program sleeps forever),
+// e.g. a genuine one-shot app that wants to power down until an external wake.
+#ifndef CONFIG_TOIT_EC618_RESET_ON_VM_EXIT
+#define CONFIG_TOIT_EC618_RESET_ON_VM_EXIT 1
+#endif
+
 #endif  // TOIT_EC618_CONFIG_H_

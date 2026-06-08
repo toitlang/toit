@@ -392,7 +392,17 @@ static void start() {
     }
 
     case Scheduler::EXIT_DONE: {
+#if CONFIG_TOIT_EC618_RESET_ON_VM_EXIT
+      // Deep-sleeping with no wakeup timer would leave the device dead until an
+      // external reset (impossible on a no-remote-reset rig; the watchdogs are
+      // gated while asleep). Reset instead so the device reboots straight back
+      // into the boot program and self-recovers. Only reached on a full-VM exit
+      // (e.g. a crash that brings the whole VM down), not on normal operation.
+      printf("[toit] INFO: VM done; resetting to recover (RESET_ON_VM_EXIT)\n");
+      ec618_system_reset();  // Does not return.
+#else
       printf("[toit] INFO: entering deep sleep without wakeup timer\n");
+#endif
       break;
     }
 
