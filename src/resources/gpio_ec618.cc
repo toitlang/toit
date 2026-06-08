@@ -42,6 +42,20 @@ static uint32_t to_port(int gpio_bit) { return gpio_bit >> 4; }
 static uint16_t to_pin_index(int gpio_bit) { return gpio_bit & 0xf; }
 static uint16_t to_pin_mask(int gpio_bit) { return 1 << (gpio_bit & 0xf); }
 
+// Applies (or clears) a pad's pull resistor. On the EC618 a pull is a pad-level
+// property set through GPIO_PullConfig(pad, enable, is_up); calling it also
+// turns off the iomux "auto pull", so our explicit choice wins. At most one of
+// pull_up/pull_down is set (the Toit gpio library enforces it).
+static void apply_pull(int pad, bool pull_up, bool pull_down) {
+  if (pull_up) {
+    GPIO_PullConfig(pad, 1, 1);
+  } else if (pull_down) {
+    GPIO_PullConfig(pad, 1, 0);
+  } else {
+    GPIO_PullConfig(pad, 0, 0);
+  }
+}
+
 class GpioResource : public EventResource {
  public:
   TAG(GpioResource);
@@ -142,16 +156,26 @@ PRIMITIVE(unuse) {
 PRIMITIVE(config) {
   ARGS(int, pad, bool, pull_up, bool, pull_down, bool, input,
        bool, output, bool, open_drain, int, value);
-  USE(pull_up); USE(pull_down); USE(open_drain);
 
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  // The EC618 GPIO controller has no native open-drain (the pad/iomux has no
+  // open-drain bit), so for now reject it rather than silently mis-driving.
+  // TODO(toit): emulate open-drain in a follow-up commit by making the pin
+  // direction track the value -- output-low for 0, input/high-Z (held high by a
+  // pull-up) for 1 -- which also makes `set` and `set_open_drain` direction-
+  // aware. Until then, open-drain buses on this chip use the dedicated I2C
+  // peripheral (i2c_ec618.cc), not bit-banged GPIO.
+  if (open_drain) FAIL(UNIMPLEMENTED);
 
-  // Switch the pad's iomux to plain-GPIO (function 0). Without this, the
-  // pad would stay in whatever role a previous peripheral left it in, and
-  // the controller bit's reads/writes would have no effect on the wire.
-  GPIO_IomuxEC618(pad, 0, 0, 0);
+  // Switch the pad's iomux to plain-GPIO (function 0). Without this, the pad
+  // would stay in whatever role a previous peripheral left it in, and the
+  // controller bit's reads/writes would have no effect on the wire. Enable the
+  // pad input buffer for input pins so reads see the live pad level (without it
+  // the read path is disconnected from the pin). AutoPull off — we set the pull
+  // explicitly below, and GPIO_PullConfig overrides the iomux auto-pull anyway.
+  GPIO_IomuxEC618(pad, 0, 0, input ? 1 : 0);
 
   GpioPinConfig_t config;
   memset(&config, 0, sizeof(config));
@@ -162,6 +186,8 @@ PRIMITIVE(config) {
     config.pinDirection = GPIO_DIRECTION_INPUT;
   }
   GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+
+  apply_pull(pad, pull_up, pull_down);
 
   return process->null_object();
 }
@@ -205,8 +231,22 @@ PRIMITIVE(last_edge_trigger_timestamp) {
   return Smi::from(0);
 }
 
-PRIMITIVE(set_open_drain) { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(set_pull) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(set_open_drain) {
+  ARGS(int, pad, bool, value);
+  USE(pad);
+  // No native open-drain on the EC618; only the push-pull default is accepted.
+  // TODO(toit): emulate open-drain (see PRIMITIVE(config)).
+  if (value) FAIL(UNIMPLEMENTED);
+  return process->null_object();
+}
+
+PRIMITIVE(set_pull) {
+  ARGS(int, pad, int, value);  // value: 1 pull-up, -1 pull-down, 0 none.
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  if (pad_to_gpio(pad) < 0) FAIL(INVALID_ARGUMENT);
+  apply_pull(pad, value > 0, value < 0);
+  return process->null_object();
+}
 
 }  // namespace toit
 
