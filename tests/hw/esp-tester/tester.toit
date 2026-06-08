@@ -511,7 +511,20 @@ class Ec618Link:
   // Pings until the resident agent answers, tolerating boot noise, then drains
   // the backlog of pong replies the agent buffered while booting.
   handshake --attempts/int=30 -> none:
-    sleep --ms=1000  // Let any boot banner pass.
+    sleep --ms=1000  // Let the boot banner start.
+    // Drain the post-reset boot backlog FIRST. After a reset the device streams a
+    // long boot-ROM + bootloader banner (hundreds of mostly non-'['-led bytes);
+    // read-ack treats each as a stray byte and consumes only ONE per ping attempt,
+    // so without clearing the backlog the 30 attempts run out long before reaching
+    // the agent's pong (this is why a plain reconnect failed while --debug-boot,
+    // which dumps the raw console first, succeeded). Bounded so a boot-looping
+    // device can't wedge us here; on a cold connect the line is already quiet so
+    // this returns after one short read timeout.
+    drain-deadline := Time.monotonic-us + 10_000_000
+    while Time.monotonic-us < drain-deadline:
+      data/ByteArray? := null
+      catch: data = with-timeout --ms=600: reader_.read
+      if not data: break  // ~600 ms quiet => backlog cleared, agent up and idle.
     succeeded := false
     attempts.repeat: | attempt/int |
       if not succeeded:
