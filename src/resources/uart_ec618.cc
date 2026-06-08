@@ -305,8 +305,13 @@ PRIMITIVE(create) {
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
   if (baud_rate <= 0 || baud_rate > 4000000) FAIL(INVALID_ARGUMENT);
 
-  if ((tx_flags & (kTxFlagInvertTx | kTxFlagInvertRx | kTxFlagHighPriority)) != 0) {
-    // ESP32-only knobs; fail clean rather than silently drop.
+  // TX/RX inversion has no EC618 equivalent — reject it rather than silently
+  // dropping it. Note: kTxFlagHighPriority is also an ESP32-only knob, but the
+  // generic uart library auto-sets it for baud >= 460800 (lib/uart.toit), so
+  // rejecting it would make EVERY open at >= 460800 baud fail. It is only a task-
+  // priority hint, so treat it as a harmless no-op here. (large-buffers, which the
+  // library auto-sets alongside it, is honored below as a bigger RX cache.)
+  if ((tx_flags & (kTxFlagInvertTx | kTxFlagInvertRx)) != 0) {
     FAIL(INVALID_ARGUMENT);
   }
   if (mode == kModeIrda) FAIL(INVALID_ARGUMENT);
