@@ -95,15 +95,20 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 16        -> 31  (GPIO18, UART1_RXD, PWM14)      UART1 RX (PAD33)        (= console on dev rig)
 ```
 
-### Voltage domains (important)
-- EC618 IO is ~1.8 V. The ESP32 (3.3 V) reads the EC618's 1.8 V high cleanly, so
-  **EC618 → ESP32 is safe and works** (verified by gpio-output).
-- **ESP32 → EC618 (3.3 V into 1.8 V) is risky** without a divider — only the ADC
-  lines have one. Prefer EC618-as-driver tests; for EC618-as-receiver (UART RX,
-  I2C, GPIO input) confirm 3.3 V tolerance or add a divider first.
-- EC618 ADC: with the wide range it reads well past 1.8 V (the adc test saw
-  2.894 V on ch1); the ESP32 DACs (0–3.3 V) still feed it through external
-  dividers to stay in range.
+### Voltage domains (important — corrected 2026-06-08)
+- **The dev-board IO rail is 3.3 V, not 1.8 V.** The bare EC618 pads are ~1.8 V,
+  but the Air-module dev-board level-shifts the broken-out IO to 3.3 V.
+  **Measured**: EC618 GPIO10 driven high reads **3.16 V** (saturated 11 dB range)
+  on the ESP32 ADC, vs 0.14 V idle (`gpio-vlevel-{ec618,esp32}.toit`).
+- So **EC618 ↔ ESP32 is 3.3 V ↔ 3.3 V both ways**: EC618 → ESP32 reads cleanly
+  (no marginal-VIH worry), and **ESP32 → EC618 is no longer the risky "3.3 V into
+  1.8 V" case** — receiver tests (UART RX, CTS, I2C, SPI, GPIO input) can be driven
+  directly, no divider/open-drain needed. (Output is confirmed 3.3 V; module GPIO
+  level-shifters are normally bidirectional so inputs tolerate 3.3 V too — worth a
+  glance at the dev-board design before relying on it for a new wire.)
+- EC618 ADC inputs (AIO3/AIO4) are separate analog pins (not the level-shifted
+  GPIO); the wide range reads to 3.8 V. The ESP32 DACs (0–3.3 V) feed them through
+  the rig's ~2:1 dividers to stay mid-range.
 
 ## Peripheral status (EC618 firmware)
 
@@ -240,28 +245,28 @@ modes), not just "does it work."
   control lane (EC618 commands; ESP32 reports via its console) needs no risky
   direction and is the place to start.
 
-### Safe vs. risky directions (the board-damage rule)
-- **EC618 drives → ESP32 reads = SAFE** (ESP32 high-Z input; 1.8 V→3.3 V is read
-  cleanly). Covers: UART TX, PWM, GPIO output, DAC→ADC (ESP32 drives its own DAC,
-  EC618 reads its own ADC). These can be made exhaustive now.
-- **ESP32 drives → EC618 reads = RISKY** (3.3 V into a 1.8 V pad). Covers: EC618
-  UART RX, CTS, GPIO input, I2C, SPI. Do **not** drive these directly. The safe
-  way is ESP32 **open-drain** (only ever pulls low, never outputs 3.3 V) + an
-  **EC618 input pull-up** (line idles at 1.8 V). That needs EC618 GPIO
-  pull-up/down + open-drain, which is **UNIMPLEMENTED** — implement + verify on a
-  gpio toggle first. Always gpio-toggle a wire (EC618 drives → ESP32 reads) to
-  confirm connectivity before relying on it.
+### Direction safety (UPDATED 2026-06-08 — both directions are 3.3 V)
+The dev-board level-shifts the EC618 IO to **3.3 V** (see Voltage domains above),
+so EC618 ↔ ESP32 is **3.3 V ↔ 3.3 V both ways** and the old "risky 3.3 V→1.8 V"
+rule no longer applies:
+- **EC618 drives → ESP32 reads = SAFE.** UART TX, PWM, GPIO output, DAC→ADC.
+- **ESP32 drives → EC618 reads = SAFE too** (3.3 V → 3.3 V dev-board input).
+  EC618 UART RX, CTS, GPIO input, I2C, SPI can be driven **directly** — no
+  open-drain / pull-up / divider tricks needed. (The EC618 open-drain emulation is
+  therefore no longer required for these tests; it stays a nice-to-have.)
+- Still **gpio-toggle a new wire first** to confirm connectivity (and that nothing
+  shorts) before relying on it — that habit is cheap and catches miswiring.
 
 ### Per-peripheral exhaustive plan
-- **UART2**: baud sweep (TX side, safe — *baseline committed*); RTS/CTS flow
-  control and RS485 (the EC618-output side is safe; the EC618-receive side is
-  risky); EC618 UART RX (risky direction).
+- **UART2**: baud sweep (TX side — *baseline committed*); RTS/CTS flow control and
+  RS485; EC618 UART RX — all safe now (3.3 V both ways), drive directly.
 - **PWM** (not yet implemented): EC618 drives, ESP32 measures freq/duty over a
-  range — safe direction.
+  range.
 - **ADC**: exact-value staircase (EC618 measures the ESP32 DAC, self-calibrating
-  the board divider, ±60 mV per level) — *done, safe*.
-- **GPIO**: output modes (safe); input + pull-up/down + open-drain (risky
-  direction — needs the open-drain feature above).
+  the board divider, ±60 mV per level) — *done*.
+- **GPIO**: output modes (done) + pull-up (done); input driven by the ESP32 is now
+  safe (drive directly). EC618 open-drain emulation is optional (no longer needed
+  for the rig's risky direction).
 - **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
 
 ### Status / blocker
