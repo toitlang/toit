@@ -149,20 +149,18 @@ main-ec618:
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason
   status out "ec618 ready reset=$reason active=$(string.from-rune slot.active)"
-  // Arm the GENERAL watchdog and start feeding it. It is fed only while the host
-  // keeps talking to us, so if this agent ever wedges (or the VM hangs) the
-  // device resets itself straight back into a fresh agent.
+  // Arm the GENERAL watchdog. It is fed below on every host message, so if this
+  // agent ever stops servicing the host (wedge / hung VM) the device resets
+  // itself straight back into a fresh agent.
   watchdog.watchdog-start --timeout=WATCHDOG-HARDWARE-TIMEOUT
-  watchdog-keep-alive HOST-IDLE-GRACE
-  task:: watchdog-feeder
   // The host's running firmware writer survives across commands.
   writer/firmware.FirmwareWriter? := null
   arg/string := ""
   while true:
     command := reader.read-byte
-    watchdog-keep-alive HOST-IDLE-GRACE  // The host is talking to us; stay alive.
+    watchdog.watchdog-feed  // The host is talking to us; we are alive.
     if command == CMD-PING:
-      out.write #[ACK-PONG]
+      if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
     else if command == CMD-ARG:
       size := reader.little-endian.read-int32
       arg = (reader.read-bytes size).to-string
@@ -231,7 +229,7 @@ install-container reader/io.Reader out/io.Writer -> bool:
     while written < size:
       length := reader.big-endian.read-uint32
       chunk := reader.read-bytes length
-      watchdog-keep-alive HOST-IDLE-GRACE  // Each chunk is host contact; a large install stays alive.
+      watchdog.watchdog-feed  // Each chunk is host contact; a large install stays alive.
       summer.add chunk
       image-writer.write chunk
       written += chunk.size
@@ -241,44 +239,29 @@ install-container reader/io.Reader out/io.Writer -> bool:
   status out "install size=$size written=$written$(error ? " error=$error" : " ok")"
   return error == null
 
-// A GENERAL hardware watchdog, armed for the agent's whole life (see
-// main-ec618) and fed by the $watchdog-feeder task for as long as the host has
-// been talking to us recently — i.e. a "feed window" that every host message
-// pushes forward ($watchdog-keep-alive), and that a running test widens to its
-// budget. If the agent stops making progress on host messages — its idle read
-// loop wedged, the VM hung, or a test hanging — the window lapses, feeding
-// stops, and the watchdog resets the chip straight back into a fresh agent. No
-// external reset needed (which matters on rigs with no remote reset). The
-// hardware timer tops out at 60s.
-WATCHDOG-HARDWARE-TIMEOUT ::= Duration --s=10
-WATCHDOG-FEED-INTERVAL ::= Duration --s=2
-HOST-IDLE-GRACE ::= Duration --s=30      // Stay alive this long after the last host message.
-TEST-WATCHDOG-BUDGET ::= Duration --m=3  // A running test may go this long before it counts as hung.
+// A GENERAL hardware watchdog, armed for the agent's whole life (main-ec618) and
+// fed DIRECTLY on every host message — the agent is "alive" exactly while it is
+// servicing the host. A test runs in the BACKGROUND so the command loop keeps
+// reading the UART while it runs; the host pings throughout, which keeps feeding
+// the watchdog. If the agent ever stops servicing host messages (wedged loop,
+// hung VM, or a test that wedges the device), the feeds stop and the watchdog
+// resets straight back into a fresh agent — no external reset needed (which
+// matters on a rig with no remote reset). The host pings far more often than
+// this while driving us; the watchdog is a rare recovery mechanism, so we use
+// the hardware MAX timeout — a slow (~1 min) reset is fine, and the generous
+// window also gives a freshly-OTA'd agent time for the host to reconnect before
+// any reset.
+WATCHDOG-HARDWARE-TIMEOUT ::= Duration --s=60
 
-// Monotonic time (us) up to which $watchdog-feeder should keep feeding. Bumped
-// by $watchdog-keep-alive on every host message and at the start of a test.
-feed-until-us_/int := 0
+// True while a test container runs in the background. While set, a CMD-PING is
+// fed but NOT acked, so the host's keep-alive pings don't interleave ack bytes
+// into the test's output stream.
+test-running_/bool := false
 
-// Extends the feed window to at least $duration from now (never shortens it), so
-// a responsive agent stays alive. Called whenever the host talks to us.
-watchdog-keep-alive duration/Duration -> none:
-  until := Time.monotonic-us + duration.in-us
-  if until > feed-until-us_: feed-until-us_ = until
-
-// Feeds the hardware watchdog every $WATCHDOG-FEED-INTERVAL while the feed window
-// is open. Runs as its own task for the agent's whole life; when host messages
-// stop arriving (wedge / hung VM / over-budget test) the window lapses, feeding
-// stops, and the watchdog fires.
-watchdog-feeder -> none:
-  while true:
-    if Time.monotonic-us < feed-until-us_: watchdog.watchdog-feed
-    sleep WATCHDOG-FEED-INTERVAL
-
-// Starts the installed test container and waits for it to exit. Its `print`
-// output streams to the host over the same UART while we wait; the host watches
-// that stream for the test's own completion marker. The test runs under the
-// general watchdog with a $TEST-WATCHDOG-BUDGET window, so a test that hangs (or
-// wedges the device) resets it back into a fresh agent.
+// Starts the installed test container in the BACKGROUND and reports its exit via
+// a status line, so the command loop keeps reading (and the watchdog keeps being
+// fed by the host's pings) while the test runs. The host watches for
+// "run: test exited code=" and pings throughout.
 run-installed arg/string out/io.Writer -> none:
   test-image/containers.ContainerImage? := null
   containers.images.do: | image/containers.ContainerImage |
@@ -286,11 +269,12 @@ run-installed arg/string out/io.Writer -> none:
   if not test-image:
     status out "run: no container installed"
     return
-  status out "run: starting test (watchdog budget $(TEST-WATCHDOG-BUDGET.in-s)s)"
-  watchdog-keep-alive TEST-WATCHDOG-BUDGET
-  container := containers.start test-image.id [arg]
-  code := container.wait
-  status out "run: test exited code=$code"
+  status out "run: starting test"
+  test-running_ = true
+  task::
+    code := (containers.start test-image.id [arg]).wait
+    test-running_ = false
+    status out "run: test exited code=$code"
 
 // Reads one OTA chunk (`<len:4 BE><bytes>`) and feeds it to the firmware
 // $writer. Acks ready before the payload so the host paces the transfer.

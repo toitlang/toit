@@ -578,7 +578,15 @@ class Ec618Link:
     deadline := Time.monotonic-us + timeout-ms * 1000
     marker := "$MINI-JAG-TAG run: test exited code="
     collected := ""
+    next-ping-us := Time.monotonic-us  // Feed the device watchdog right away.
     while Time.monotonic-us < deadline:
+      // The test runs in the BACKGROUND on the device, so its command loop keeps
+      // reading the UART. Keep its general watchdog fed with a fire-and-forget
+      // ping every few seconds (the agent feeds on it and stays silent while a
+      // test runs, so it doesn't pollute the test output stream).
+      if Time.monotonic-us >= next-ping-us:
+        send CMD-PING
+        next-ping-us = Time.monotonic-us + 3_000_000
       data/ByteArray? := null
       catch: data = with-timeout --ms=1000: reader_.read
       if not data: continue

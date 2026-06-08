@@ -64,12 +64,17 @@ boot-ROM trigger.
 
 ## Watchdog recovery (EC618)
 
-Each EC618 test runs under the hardware watchdog so a hang or a crash recovers
-the device on its own — no external reset needed. `mini-jag` arms the watchdog
-before starting the test container and feeds it from a separate task for up to a
-~3-minute budget. The hardware timer maxes out at 60 s, hence the feed-from-a-task
-approach. If the test exits first the watchdog is stopped; if it hangs past the
-budget — or wedges the whole device, taking the feeder task down with it — the
-feeding stops and the watchdog resets the chip, which reboots straight back into
-the resident agent. The host notices the agent's fresh boot banner mid-run and
-reports the test as a failed run that the watchdog recovered.
+The resident `mini-jag` agent runs under a **general** hardware watchdog for its
+whole life, so a hang or a crash recovers the device on its own — no external
+reset needed (which matters on a rig with no remote reset). The agent arms the
+watchdog at startup with the hardware **max** 60 s timeout and feeds it directly
+on **every host message** — it counts as alive exactly while it is servicing the
+host. A test runs in the **background**, so the command loop keeps reading the
+UART while the test runs and the host pings throughout to keep feeding the
+watchdog. If the agent ever stops servicing host messages — its read loop wedged,
+the VM hung, or a test wedging the whole device — the feeds stop and the watchdog
+resets the chip, which reboots straight back into a fresh agent. The host notices
+the agent's fresh boot banner mid-run and reports the test as a failed run that
+the watchdog recovered. The generous 60 s window also gives a freshly-OTA'd agent
+time for the host to reconnect before any reset (a shorter timeout boot-loops the
+trial slot during the post-upgrade reconnect).
