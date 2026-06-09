@@ -278,9 +278,16 @@ run-installed arg/string out/io.Writer -> none:
   status out "run: starting test"
   test-running_ = true
   task::
-    code := (containers.start test-image.id [arg]).wait
+    // The agent must survive anything the test (or the wait machinery)
+    // throws: an unhandled exception here kills the whole agent process and
+    // the device sits unresponsive until the watchdog resets it.
+    code/int? := null
+    error := catch --trace: code = (containers.start test-image.id [arg]).wait
     test-running_ = false
-    status out "run: test exited code=$code"
+    if error:
+      status out "run: test wait failed error=$error"
+    else:
+      status out "run: test exited code=$code"
 
 // Reads one OTA chunk (`<len:4 BE><bytes>`) and feeds it to the firmware
 // $writer. Acks ready before the payload so the host paces the transfer.

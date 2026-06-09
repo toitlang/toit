@@ -590,6 +590,7 @@ class Ec618Link:
     send CMD-RUN
     deadline := Time.monotonic-us + timeout-ms * 1000
     marker := "$MINI-JAG-TAG run: test exited code="
+    wait-failed-marker := "$MINI-JAG-TAG run: test wait failed"
     collected := ""
     next-ping-us := Time.monotonic-us  // Feed the device watchdog right away.
     while Time.monotonic-us < deadline:
@@ -612,6 +613,11 @@ class Ec618Link:
           code := -1
           catch: code = int.parse rest[..newline].trim
           return code == 0
+      // The agent survived but could not obtain the test's exit code (e.g. the
+      // container-wait machinery threw). The test's verdict is unknown — fail.
+      if collected.contains wait-failed-marker:
+        log "$name_: the agent could not obtain the test's exit code"
+        return false
       // The device reboots straight into the agent if the watchdog fires, so a
       // fresh ready banner mid-run means the test hung or crashed the device and
       // the watchdog recovered it — a failure, but the device is back on its own.

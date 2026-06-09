@@ -102,3 +102,34 @@ the WDT module (10 s of active time, interrupt+reset mode): a lockup hard
 enough to starve even this task accumulates active time on the unfed WDT and
 gets the hardware reset instead. The old scheduler-fed-AON "VM-liveness guard"
 is gone (`OS::feed_watchdog` is a no-op — the CP feeds the AON regardless).
+
+## 3. `Container.wait` throws a spurious `CLOSED` under GC pressure — FIXED
+
+**Status:** FIXED (lib/system/containers.toit), HW-verified 2026-06-10.
+
+**Symptom.** A test container that allocated heavily (uart2-bigdata) finished,
+and the mini-jag agent then *died*: its `(containers.start ...).wait` threw
+`CLOSED` instead of returning the exit code, the unhandled exception killed the
+agent process, watchdog feeds stopped, and the software watchdog reset the
+device 60 s later. Decoded trace: `Container.wait` → `throw "CLOSED"` from
+`run-installed.<lambda>`. A trivial failing container did NOT reproduce it —
+only memory-churning ones did. (Distinct from issue #1: there the agent stays
+alive but silent; here the agent process is gone and the watchdog does fire.)
+
+**Root cause (proven with host probes).** A task blocked on a monitor is not a
+GC root — it is only reachable through whatever can wake it. The exit-code
+notification that wakes `Container.wait` is delivered through
+`ServiceResourceProxyManager_`'s **weak** map, so a waited-on `Container` that
+is otherwise only referenced from the blocked task's stack forms an
+unreachable {container, latch, task} cluster. A GC collects it, the
+`ServiceResourceProxy` finalizer closes the proxy, `result_.set null` wakes the
+waiter, and `wait` throws `CLOSED`. Host probes: a temporary's finalizer fires
+mid-`wait` under forced GC; a strongly-rooted one never does.
+
+**The fix.** `Container.wait` registers the container in a static
+`waited-on_` set for the duration of the wait (plus an identity `hash-code`
+field, same pattern as `ContainerResource`). Containers with a pending wait
+are now strongly rooted, so the notification path stays alive. Defense in
+depth: mini-jag wraps the wait in `catch` (reports
+`run: test wait failed error=...` instead of dying) and the host tester
+recognizes that line and fails fast.
