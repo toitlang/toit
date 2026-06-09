@@ -1609,11 +1609,20 @@ find-ectool_ -> string:
     ectool = "$dir/../third_party/ectool/ectool$bin-extension"
     if file.is-file ectool: return ectool
 
-  // Try to find ectool in PATH.
+  // Try to find ectool in PATH. Probe PATH membership with `command -v`
+  // rather than running `ectool --version`: some ectool builds require an
+  // action argument (burn/unpack/erase/logs) and exit non-zero even for
+  // `--version`, which would falsely report ectool as missing.
   ectool := "ectool$bin-extension"
-  catch:
-    pipe.backticks ectool "--version"
-    return ectool
+  if platform != system.PLATFORM-WINDOWS:
+    location := pipe.backticks "/bin/sh" "-c" "command -v $ectool || true"
+    if location.trim != "": return location.trim
+  else:
+    // On Windows, fall back to an invocation probe; argparse-based builds
+    // support `--help` and exit 0 for it (unlike `--version`).
+    catch:
+      pipe.backticks ectool "--help"
+      return ectool
   throw "cannot find ectool"
 
 tool-cmd -> cli.Command:
