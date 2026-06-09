@@ -153,7 +153,15 @@ calls still in the glue.
 - **`uart2-ring` driver characterization** (2026-06-10, passing): locks in the
   measured PLAT RX-ring behavior — exactly 32 KiB capacity (independent of
   `RxCacheLen`), overflow silently discards the ENTIRE buffer, error callback
-  never fires. If an SDK change moves these, this test says so.
+  never fires, and **one overflow kills RX on the port until reopen** (set-baud
+  does not recover it). If an SDK change moves these, this test says so.
+- **`uart2-duplex` full-duplex stress** (2026-06-10): EC618 sends AND receives
+  256 KiB concurrently per baud — the historical lockup case, now split out of
+  bigdata per Florian. Result: **no lockup** (agent survives, watchdog never
+  fires), TX is flawless (ESP32 CRC-verifies all 256 KiB at every baud), but
+  **RX delivers 0 bytes** — the receiver falls behind the 32 KiB ring once and
+  the overflow-wedge (known-issues #4) kills RX for the rest of the run. The
+  test stays red until the RX path is fixed.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
@@ -341,15 +349,17 @@ rule no longer applies:
 - [ ] Add `trimAdcSetGolbalVar` + `delay_us` to the jump-table wrapped set
       (`gen-plat-jt`) for a calibrated ADC + clean conversion wait (base-image
       change; needs a full flash).
-- [ ] Add a periodic **state heartbeat** to the mini-jag agent (observability).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
 - [ ] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty).
 - [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata
       256 KiB/direction + ring characterization.
+- [ ] **UART RX overflow-wedge** (known-issues #4, the big one): try
+      `Uart_RxBufferClear` as an unwedge; real fix = move RX onto the open
+      CMSIS `bsp_usart.c` driver with our own ring; then RTS/CTS flow control.
 - [ ] **UART2 4 MBd RX loss** (known-issues #4): wire + test **RTS/CTS flow
       control**; investigate the IRQ-latency source.
-- [ ] **UART full-duplex stress** (EC618 TX+RX simultaneously at high baud —
-      the historical lockup; two-test split per Florian).
+- [x] **UART full-duplex stress** test written + run (uart2-duplex): no
+      lockup; TX clean; RX dead via the overflow-wedge — red until #4 is fixed.
 - [ ] **UART configs**: parity, stop bits, data bits, RS485 (DE pin path
       exists in the driver), error counter on induced parity errors.
 - [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
