@@ -32,9 +32,11 @@ extern "C" {
   #include "mem_map.h"
   #include "slot_marker.h"
   #include "reset.h"  // ResetStateGet / LastResetState_e.
-  #include "wdt.h"    // The hardware watchdog (WDT) driver.
+  #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
   #include "clock.h"  // GPR_setClock* for the WDT functional clock.
-  #include "slpman.h"  // slpManAonWdtFeed.
+  #include "FreeRTOS.h"
+  #include "task.h"        // xTaskCreate — the software-watchdog task.
+  #include "cmsis_os2.h"   // osDelay / osKernelGetTickCount.
 
   // From ps_lib_api.h. CFUN=0 turns the modem off (RF + PS stack) — the
   // bulk of CP (cellular-processor) activity. The dual-slot OTA turns it
@@ -493,38 +495,101 @@ PRIMITIVE(reset_reason) {
   return Smi::from(ap);
 }
 
-// EC618 hardware watchdog (WDT module). The PLAT ships a higher-level
-// luat_wdt_* wrapper, but it isn't linked into this firmware, so we drive
-// the WDT driver directly (this mirrors luat_wdt_setup). The watchdog runs
-// off the 32 kHz clock: with the functional-clock divider set to the
-// timeout in seconds and the counter reload fixed at 32768, one counter
-// period equals `seconds` seconds. In WDT_INTERRUPT_RESET_MODE the first
-// expiry only raises an (unhandled) interrupt; the chip resets on the
-// second expiry, so an unfed watchdog resets the device after up to twice
-// the timeout. Feeding (WDT_kick) clears the counter.
+// EC618 watchdog — a software watchdog with a hardware busy-lockup backstop.
+//
+// Neither hardware watchdog on this chip can catch an *idle* application
+// wedge (both HW-verified, 2026-06-09/10):
+//
+//  - The WDT module counts only CPU-ACTIVE time: its 32 kHz functional clock
+//    (CLK_32K_GATED) is gated whenever the chip enters tickless idle / WFI,
+//    and the clock mux has no always-on source. Verified with the vendor-
+//    exact luat_wdt_setup sequence: armed at 10 s, feeds stopped, 72 s of
+//    idle — no reset.
+//
+//  - The always-on (AON) watchdog belongs to the platform, not to us. The
+//    boot ROM arms it (~27 s) and the CP core then auto-feeds it every couple
+//    of seconds (its target register 0x4D020318 slides forward, target-now
+//    pinned at ~20 s, with every AP-side feeder provably silent). It guards
+//    whole-chip/CP liveness. It only ever fires when no healthy CP runs —
+//    the early-bring-up ~27 s reboot loops (CONFIG_TOIT_EC618_VM_WATCHDOG=0
+//    stops it at boot for CP-less debugging) — and it must be stopped before
+//    hibernate, where the CP stops feeding (toit_ec618.cc does).
+//
+// So the real timeout is enforced in software: a dedicated FreeRTOS task
+// (independent of the Toit scheduler thread, so it survives a wedged VM;
+// FreeRTOS timed waits wake the chip from tickless idle, so it works through
+// light sleep) checks a feed deadline and resets the chip when it passes.
+// The task also kicks the WDT module: if the CPU is busy-locked hard enough
+// to starve the task (IRQ-off spin, interrupt storm), the WDT accumulates
+// active time with nobody kicking it and fires the hardware reset instead.
+static volatile bool wd_armed = false;
+static volatile uint32_t wd_timeout_ms = 0;
+static volatile uint32_t wd_deadline = 0;     // In ticks (1 kHz, wraps; compared via int32 diff).
+static bool wd_task_created = false;
+
+// Cap on the task's sleep. Bounds the WDT-kick interval: legitimate heavy
+// compute accrues at most this much active time between kicks, far below the
+// backstop period, so the WDT only fires when the task is truly starved.
+static const uint32_t WD_MAX_SLEEP_MS = 5000;
+// The WDT backstop period in seconds of ACTIVE time (32 kHz / div(10) with a
+// 32768 reload; interrupt+reset mode resets on the second expiry, so a
+// starved-task busy lockup resets within 10-20 s of active time).
+static const int WD_BACKSTOP_S = 10;
+
+static void watchdog_task(void* arg) {
+  (void)arg;
+  while (true) {
+    uint32_t sleep_ms = WD_MAX_SLEEP_MS;
+    if (wd_armed) {
+      WDT_kick();
+      int32_t remain = (int32_t)(wd_deadline - osKernelGetTickCount());
+      if (remain <= 0) {
+        printf("[toit] FATAL: watchdog timeout (%u ms without feed) — resetting\n",
+               (unsigned)wd_timeout_ms);
+        ec618_system_reset();
+      }
+      if ((uint32_t)remain < sleep_ms) sleep_ms = (uint32_t)remain;
+    }
+    osDelay(sleep_ms);
+  }
+}
+
 PRIMITIVE(watchdog_init) {
   ARGS(int, seconds);
   if (seconds < 1 || seconds > 60) FAIL(INVALID_ARGUMENT);
-  GPR_setClockSrc(FCLK_WDG, FCLK_WDG_SEL_32K);
-  GPR_setClockDiv(FCLK_WDG, seconds);
-  WdtConfig_t config;
-  config.mode = WDT_INTERRUPT_RESET_MODE;
-  config.timeoutValue = 32768U;
-  WDT_init(&config);
-  WDT_start();
+  wd_timeout_ms = (uint32_t)seconds * 1000;
+  wd_deadline = osKernelGetTickCount() + wd_timeout_ms;
+  if (!wd_task_created) {
+    // Arm the busy-lockup backstop (see above) before the task that kicks it.
+    GPR_setClockSrc(FCLK_WDG, FCLK_WDG_SEL_32K);
+    GPR_setClockDiv(FCLK_WDG, WD_BACKSTOP_S);
+    WdtConfig_t config;
+    config.mode = WDT_INTERRUPT_RESET_MODE;
+    config.timeoutValue = 32768U;
+    WDT_init(&config);
+    WDT_start();
+    // Priority above the Toit task (20), so a spinning Toit process cannot
+    // starve the watchdog check. Stack in words; 1024 = 4 KB covers printf.
+    if (xTaskCreate(watchdog_task, "toit_wd", 1024, null, 30, null) != pdPASS) {
+      WDT_stop();
+      WDT_deInit();
+      FAIL(MALLOC_FAILED);
+    }
+    wd_task_created = true;
+  }
+  wd_armed = true;
   return process->null_object();
 }
 
 PRIMITIVE(watchdog_feed) {
-  WDT_kick();
-  slpManAonWdtFeed();  // No-op while the AON watchdog is stopped, but kept
-                       // in sync with the PLAT's own feed sequence.
+  if (wd_armed) wd_deadline = osKernelGetTickCount() + wd_timeout_ms;
   return process->null_object();
 }
 
 PRIMITIVE(watchdog_deinit) {
-  WDT_stop();
-  WDT_deInit();
+  wd_armed = false;
+  // The task stays parked (one wake per 5 s); the backstop WDT keeps being
+  // kicked by it, which is harmless and keeps the arm/disarm logic race-free.
   return process->null_object();
 }
 

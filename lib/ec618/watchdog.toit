@@ -18,42 +18,52 @@
 // works on the EC618 too, instead of relying on this chip-specific library.
 
 /**
-The EC618 hardware watchdog.
+The EC618 watchdog.
 
-The watchdog is a hardware timer that resets the device if the application
-  stops feeding it. Use it to recover automatically from a hang: arm it with
-  $watchdog-start, then call $watchdog-feed regularly from the code path you
-  want to keep alive. If the timeout passes without a feed, the device resets.
+The watchdog resets the device if the application stops feeding it. Use it to
+  recover automatically from a hang: arm it with $watchdog-start, then call
+  $watchdog-feed regularly from the code path you want to keep alive. If the
+  timeout passes without a feed, the device resets.
 
-There is a single hardware watchdog, so these are top-level functions rather
-  than objects: arming it twice without stopping in between has no effect
-  beyond the first call.
+There is a single watchdog, so these are top-level functions rather than
+  objects: arming it twice without stopping in between just updates the
+  deadline.
 
-# The reset reads as a power-on
+# How it works (and why it is a software watchdog)
 
-The EC618 has no application-side watchdog interrupt, so the watchdog reset is
-  an autonomous hardware reset with no chance for software to record why it
-  happened. On the next boot it is therefore reported as a power-on reset
-  (`RESET-POWER-ON`, via the `ec618` library's `reset-reason`), indistinguishable
-  from a real power cycle. If you need to know that *your* watchdog fired,
-  record your own breadcrumb (for example in flash or RTC storage) before the
-  reset and check it on boot.
+Neither of the EC618's hardware watchdogs can guard the application: the WDT
+  module's clock is gated whenever the chip idles (it counts only CPU-active
+  time), and the always-on (AON) watchdog belongs to the platform — the modem
+  core auto-feeds it. So the timeout is enforced by a small high-priority
+  RTOS task, independent of the Toit scheduler: it survives a wedged VM and
+  its timed waits wake the chip from light sleep, so the timeout is honored
+  in wall-clock time — idle, sleeping, or busy.
+
+The task also keeps the WDT module armed as a hardware backstop: a hang so
+  hard that even the watchdog task is starved (an interrupt-off spin, an
+  interrupt storm) accumulates CPU-active time on the unfed WDT and triggers
+  a hardware reset within roughly 10-20 s.
+
+A Toit `sleep` does NOT stop the watchdog. If you sleep past the timeout
+  without feeding, the device resets — feed around long waits, or stop the
+  watchdog first. (Deep sleep is different: entering hibernate tears the VM
+  down, and waking from it is a fresh boot.)
 
 # Timing
 
-The timeout is given in whole seconds, 1 to 60. A watchdog that is never fed
-  resets the device once the timeout elapses, so feed it at an interval
-  comfortably shorter than the timeout to stay safely armed.
+The timeout is given in whole seconds, 1 to 60, and is honored in wall-clock
+  time. Detection granularity is a few seconds at most, so feed at an
+  interval comfortably shorter than the timeout.
 
-# Caveats
+# The reset
 
-Long blocking operations count against the watchdog. A multi-second flash
-  erase, a blocking network call, or a busy loop that never returns to your
-  feeding code can trip the watchdog. Either feed from a separate task or
-  pick a timeout that comfortably covers the longest operation.
-
-The watchdog clock is gated while the chip is in deep sleep, so the timer
-  does not advance there; arrange your feeding around wake-ups accordingly.
+A software-watchdog reset prints
+  `[toit] FATAL: watchdog timeout (...) — resetting` before resetting, so the
+  cause is visible on the console. On the next boot the reset is reported as
+  a power-on reset (`RESET-POWER-ON`, via the `ec618` library's
+  `reset-reason`); if you need a durable record that *your* watchdog fired,
+  write your own breadcrumb (for example in flash) before relying on the
+  reset reason.
 
 # Example
 
@@ -71,19 +81,20 @@ main:
 ```
 */
 
-/** The shortest watchdog timeout the hardware supports. */
+/** The shortest timeout accepted by $watchdog-start. */
 WATCHDOG-MIN-TIMEOUT ::= Duration --s=1
-/** The longest watchdog timeout the hardware supports. */
+/** The longest timeout accepted by $watchdog-start. */
 WATCHDOG-MAX-TIMEOUT ::= Duration --s=60
 
 /**
-Arms the hardware watchdog with the given $timeout.
+Arms the watchdog with the given $timeout.
 
 The $timeout must be between $WATCHDOG-MIN-TIMEOUT and $WATCHDOG-MAX-TIMEOUT
   and is rounded down to whole seconds. After this call the device resets
-  unless $watchdog-feed is called within the $timeout.
+  unless $watchdog-feed is called within the $timeout (wall-clock time,
+  including light sleep).
 
-To change the timeout, call $watchdog-stop first and then arm again.
+Calling this while armed re-arms with the new $timeout.
 */
 watchdog-start --timeout/Duration -> none:
   seconds := timeout.in-s
@@ -99,7 +110,7 @@ watchdog-feed -> none:
   #primitive.ec618.watchdog-feed
 
 /**
-Stops and disables the watchdog.
+Stops the watchdog.
 
 After this call the watchdog no longer resets the device. Has no effect if
   the watchdog is not armed.

@@ -65,7 +65,9 @@
 // this value (via ec618.print-uart-id), so a rig switch only changes this line
 // — not the agent. The shared wire needs CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
 // below. (Known cosmetic issue with _ID=1: one garbled line on cold boot.)
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
+// NOTE: set to 1 for the quirky-plenty rig (UART1 -> /dev/ttyUSB0); revert to 0
+// before going back to the modest-affair dev board (UART0).
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.
@@ -102,21 +104,29 @@
 #define CONFIG_TOIT_EC618_DISABLE_UNILOG 1
 #endif
 
-// VM-liveness watchdog. When enabled (default), the always-on (AON) hardware
-// watchdog is kept running and fed from the Toit scheduler loop
-// (OS::feed_watchdog). If the VM wedges with the CPU busy — a stuck primitive,
-// a scheduler/GC deadlock — the scheduler stops cycling, the feed stops, and
-// the device is reset (~27 s) so it recovers instead of hanging forever. The
-// AON timeout is fixed in hardware (~27 s, no configuration API) and the AON
-// is gated while the chip sleeps, so it guards busy hangs, not idle sleep, and
-// never disturbs a legitimately sleeping device.
+// Whether to leave the always-on (AON) hardware watchdog running (default) or
+// stop it at boot.
 //
-// Note: on this chip the AON reset is reported as RESET-POWER-ON, not AONWDT
-// (the reset reason is not preserved), and it may clear RTC memory like a cold
-// boot. The cost is one watchdog kick per second from the scheduler.
+// The AON watchdog belongs to the PLATFORM, not to Toit (HW-verified
+// 2026-06-10): the boot ROM arms it (~27 s) and the CP core auto-feeds it
+// every couple of seconds for as long as a healthy CP runs — its target
+// register slides forward with no AP-side feeder. It is the whole-chip/CP
+// liveness guard, and Toit neither feeds nor uses it. (Toit's application
+// watchdog is a software watchdog — see lib/ec618/watchdog.toit.)
 //
-// When disabled, BSP_CustomInit stops the AON watchdog at boot (the original
-// behavior) and the scheduler feed becomes a no-op.
+// Consequences:
+//  - With a healthy CP image flashed (the normal case) the AON never fires
+//    and costs nothing. Keep this 1.
+//  - With NO running CP (early bring-up, missing/mismatched CP image) nothing
+//    feeds it and the device reboots every ~27 s. Set this to 0 for such
+//    CP-less debugging: BSP_CustomInit then stops the AON at boot.
+//  - Before hibernate the CP stops feeding while the AON domain keeps
+//    counting, so the deep-sleep path always stops the AON explicitly
+//    (toit_ec618.cc) regardless of this knob; the ROM re-arms it on the wake
+//    reboot and the CP resumes feeding.
+//
+// Note: an AON reset is reported as RESET-POWER-ON, not AONWDT (the reset
+// reason is not preserved), and it may clear RTC memory like a cold boot.
 #ifndef CONFIG_TOIT_EC618_VM_WATCHDOG
 #define CONFIG_TOIT_EC618_VM_WATCHDOG 1
 #endif

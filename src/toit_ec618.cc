@@ -430,11 +430,12 @@ static void start() {
   soc_power_mode(3, 0);
 
 #if CONFIG_TOIT_EC618_VM_WATCHDOG
-  // Stop the VM-liveness watchdog now that we are about to hibernate cleanly.
-  // It is kept running during execution (fed by the scheduler) and stopped
-  // here so it does not fire during deep sleep; a fresh boot on wake re-arms
-  // it automatically (it is always-on at start). Doing this last — after the
-  // teardown above — means a wedged shutdown is still caught by the watchdog.
+  // Stop the platform's always-on (AON) watchdog before hibernating: the CP
+  // — which auto-feeds it during normal operation — stops in hibernate while
+  // the AON domain keeps counting, so left running it would reset the chip
+  // ~20s into deep sleep. The wake reboot re-arms it (boot ROM) and the CP
+  // resumes feeding. Doing this last — after the teardown above — means a
+  // wedged shutdown is still caught.
   slpManAonWdtStop();
 #endif
 

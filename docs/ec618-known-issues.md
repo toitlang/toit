@@ -58,41 +58,47 @@ repro: "begin" without "end" confirms `Uart_DeInit` is the blocking call.
 work around this with `try/finally` — the VM must tear a crashed container down
 cleanly.)
 
-## 2. Neither watchdog catches an IDLE application wedge
+## 2. Neither HARDWARE watchdog catches an IDLE application wedge — FIXED with a software watchdog
 
-**Status:** root cause confirmed (code + empirical); fix TODO.
+**Status:** FIXED (2026-06-10, HW-verified). The `ec618.watchdog` API is now a
+software watchdog (a dedicated FreeRTOS task in
+[primitive_ec618.cc](../src/primitive_ec618.cc)) with the WDT module as a
+busy-lockup backstop. Verified on quirky-plenty: an idle, unfed device resets
+at exactly the configured timeout (60 s armed → `[toit] FATAL: watchdog
+timeout` + reset at +59.8 s, periodic), and a fed device (ping every 2 s)
+stays up indefinitely.
 
-**Symptom.** When issue #1 wedged the agent, NEITHER the user main watchdog nor the
-internal AON VM-liveness watchdog reset the device — a manual power-cycle was
-required.
+**Symptom (historical).** When issue #1 wedged the agent, NEITHER the main WDT
+nor the AON watchdog reset the device — a manual power-cycle was required.
 
-**Why the main WDT didn't fire.** It runs off the 32 kHz `FCLK_WDG`. The SDK
-registers `WDT_enterLowPowerStatePrepare` as a sleep callback
-([wdt.c:124](../third_party/luatos-soc-ec618/PLAT/driver/chip/ec618/ap/src/wdt.c#L124))
-that DISABLES `PCLK_WDG`+`FCLK_WDG` for `SLPMAN_SLEEP1_STATE`
-([wdt.c:36-44](../third_party/luatos-soc-ec618/PLAT/driver/chip/ec618/ap/src/wdt.c#L36))
-— the light sleep entered on *every* tickless idle. So the WDT counter FREEZES
-whenever the VM has no work: with no host data the agent blocks in `read-byte`, the
-chip idles into SLEEP1, and the WDT stops counting. **Empirically confirmed:** 140 s
-of pure idle (no host TX) → the device never reset. The main WDT only fires on a
-BUSY hang (CPU active the whole timeout without a feed). It is also fed on *every*
-host byte ([mini-jag.toit:166](../tests/hw/esp-tester/mini-jag.toit#L166)) before
-the agent decides it can act, so the tester's 3 s pings keep it fed whenever they
-reach the agent.
+**Why the main WDT can't do it (HW-verified).** Its 32 kHz functional clock
+(`FCLK_WDG` ← `CLK_32K_GATED`) is gated whenever the chip enters tickless
+idle/WFI, so it counts only CPU-ACTIVE time; the clock mux has no always-on
+source. (NOT the `WDT_enterLowPowerStatePrepare` SLEEP1 callback — an entry
+counter proved normal idle never enters `SLPMAN_SLEEP1_STATE`.) Verified with
+the vendor-exact `luat_wdt_setup` sequence: armed 10 s, feeds stopped, 72 s of
+idle — no reset. It DOES fire on a busy hang, which is exactly what the
+backstop role uses.
 
-**Why the AON WDT didn't fire.** It is SDK-armed (the API exposes only
-`slpManAonWdtFeed`/`slpManAonWdtStop` — no `Start`) and fed once a second from the
-scheduler loop (`OS::feed_watchdog`, [os.cc:130-135](../src/os.cc#L130)). The
-sleeper container's 1 s timer keeps the scheduler cycling, so the AON WDT stays
-fed. It only fires on a TOTAL scheduler stall (a stuck synchronous primitive / GC
-deadlock) — not an app-level wedge where the scheduler is healthy.
+**Why the AON watchdog can't do it (HW-verified).** It belongs to the
+PLATFORM: the boot ROM arms it (~27 s) and the CP core then auto-feeds it —
+its target register (`0x4D020318`) slides forward keeping `target − slowcnt`
+pinned at ~20 s with every AP-side feeder provably silent. Disassembly
+(`ApmuFeedWtdg`/`ApmuWtdgStop` in `libdriver_private.a`): feed writes
+`target = slowcnt + 0xA0000` (20 s) at `0x4D020318`; enable is bit 31 of
+`0x4D020320`; the API has no Start and feed preserves a cleared enable bit.
+It fires only when no healthy CP runs (the early-bring-up ~27 s reboot loops;
+`CONFIG_TOIT_EC618_VM_WATCHDOG=0` stops it at boot for CP-less debugging) and
+must be stopped before hibernate, where the CP stops feeding
+([toit_ec618.cc](../src/toit_ec618.cc)).
 
-**The gap.** An idle app wedge (CPU mostly asleep, scheduler healthy) is invisible
-to both: the main WDT is frozen by SLEEP1, and the AON WDT is fed by the sleeper.
-Both measure raw liveness (bytes arriving / scheduler cycling), not forward
-progress.
-
-**Fix direction.** Tie a watchdog feed to forward PROGRESS rather than raw
-liveness — e.g. the agent feeds only after completing a command (not on every raw
-byte), and/or a progress-gated AON feed — while still surviving legitimate idle.
-Resolving issue #1 also removes this specific wedge.
+**The fix.** `watchdog-start` spawns a high-priority FreeRTOS task (priority
+30, above the Toit task's 20 — independent of the Toit scheduler, so it
+survives a wedged VM; its timed waits wake the chip from tickless idle, so the
+timeout is wall-clock). It checks the feed deadline and calls
+`ec618_system_reset()` when it passes, printing
+`[toit] FATAL: watchdog timeout (...) — resetting` first. The task also kicks
+the WDT module (10 s of active time, interrupt+reset mode): a lockup hard
+enough to starve even this task accumulates active time on the unfed WDT and
+gets the hardware reset instead. The old scheduler-fed-AON "VM-liveness guard"
+is gone (`OS::feed_watchdog` is a no-op — the CP feeds the AON regardless).
