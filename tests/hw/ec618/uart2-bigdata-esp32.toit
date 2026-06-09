@@ -10,6 +10,9 @@ UART1 TX on IO4) for newline commands and acts on each over the TEST UART:
   "B <baud>"  (re)open the test UART at <baud>
   "R <n>"     receive <n> bytes, CRC-32 them, reply "C <crc> <count>"
   "S <n>"     send <n> deterministic bytes ($gen-byte)
+  "D <n>"     full-duplex: send <n> AND receive <n> concurrently. The verdict
+              for the received stream goes to the CONSOLE only — an in-band
+              reply would be eaten by the EC618's receiver if it lost bytes.
   "Q"         quit
 It never echoes, so it never has to read and write at once: under "R" it only
 reads + checksums (native CRC over whole chunks), under "S" it only writes. That
@@ -27,6 +30,7 @@ Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
 import crypto.crc show Crc32
 import gpio
+import monitor
 import uart
 
 CONTROL-RX ::= 4
@@ -69,6 +73,14 @@ main:
         n := int.parse parts[1]
         send-stream test n
         print "uart2-bigdata-esp32: S $n done"
+      else if cmd == "D":
+        n := int.parse parts[1]
+        received := monitor.Latch
+        task::
+          received.set (recv-stream test n)
+        send-stream test n
+        result := received.get               // [crc, count]
+        print "uart2-bigdata-esp32: D $n -> crc=$result[0] count=$result[1]"
       else if cmd == "Q":
         break
   finally:

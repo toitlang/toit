@@ -12,6 +12,9 @@ or config change that moves it gets noticed:
   - On overflow the driver silently discards the ENTIRE buffered content (a
     burst one byte over capacity leaves zero readable bytes, not capacity-many),
     and the error callback does not fire ($uart.Port.errors stays 0).
+  - WORSE: after one overflow, RX on the port is DEAD — later bursts that fit
+    comfortably also deliver nothing — until the port is closed and reopened
+    (Uart_BaseInitEx); set-baud (Uart_ChangeBR) does not recover it.
 These were measured on 2026-06-10 (see docs/ec618-known-issues.md); if this test
 fails after a third_party/SDK change, re-measure rather than assume a regression
 in Toit code.
@@ -75,6 +78,32 @@ main:
     if not ok: failures.add "burst=$send"
     sleep --ms=300
 
+  // The bursts above ended in an overflow, so the ring is now in its wedged
+  // state: even a small burst must deliver NOTHING until the port is reopened.
+  control.out.write "S 8192\n"
+  sleep --ms=600
+  wedged := 0
+  while true:
+    chunk/ByteArray? := null
+    catch: chunk = with-timeout --ms=400: test.in.read
+    if chunk == null: break
+    wedged += chunk.size
+  print "uart2-ring-ec618: post-overflow burst=8192 survived=$wedged (want 0: RX wedged until reopen)"
+  if wedged != 0: failures.add "post-overflow"
+
+  test.close
+  test = Ec618.uart2 --baud-rate=BAUD
+  control.out.write "S 8192\n"
+  sleep --ms=600
+  recovered := 0
+  while true:
+    chunk/ByteArray? := null
+    catch: chunk = with-timeout --ms=400: test.in.read
+    if chunk == null: break
+    recovered += chunk.size
+  print "uart2-ring-ec618: after-reopen burst=8192 survived=$recovered (want 8192)"
+  if recovered != 8192: failures.add "reopen-recovery"
+
   control.out.write "Q\n"
   control.close
   test.close
@@ -82,7 +111,7 @@ main:
   if not failures.is-empty:
     print "uart2-ring-ec618: FAIL $failures"
     throw "UART2 ring behavior changed: $failures"
-  print "uart2-ring-ec618: PASS ring=32KiB, overflow discards all, errors counter silent"
+  print "uart2-ring-ec618: PASS ring=32KiB, overflow discards all + wedges RX until reopen, errors counter silent"
 
 drain port/uart.Port -> none:
   while true:

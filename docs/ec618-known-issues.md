@@ -154,15 +154,41 @@ Regression canary: `tests/hw/ec618/uart2-ring-ec618.toit`.
   hardware RX FIFO overrun during interrupt-latency spikes, which the driver
   does not report. (IRQ priority setup lives in the prebuilt PLAT blob.)
 
+**Worse — overflow WEDGES RX until reopen (confirmed 2026-06-10).** After one
+ring overflow, RX on that port delivers NOTHING — including later bursts that
+fit comfortably — until the port is closed and reopened (`Uart_BaseInitEx`);
+`set-baud` (`Uart_ChangeBR`) does not recover it, and `errors` stays 0 at
+921600 (at 3 MBd the error callback fires, but only because the un-drained HW
+FIFO then overruns). Probe chain: overflow burst → 0 bytes; next 8 KiB burst →
+0 bytes; reopen → 8 KiB clean.
+
+This is what the full-duplex test (`uart2-duplex-ec618.toit`) hits: with the
+EC618 sending 256 KiB while receiving 256 KiB, the receiver task falls behind
+the 32 KiB ring once (TX writes block the VM in `Uart_TxTaskSafe` ~44 ms per
+4 KiB chunk at 921600), the ring overflows, and RX is dead for the rest of the
+run — `count=0` in every phase while the ESP32 receives the EC618's full
+stream with a perfect CRC. **TX under duplex is flawless; RX dies.** No
+lockup: the device survives and reports (the historical "lockup when sending
+and receiving at high rates" may well have been this plus the issue-#1 close
+hang / issue-#3 agent death on teardown). Duplex of ≤32 KiB with the reads
+deferred until after TX works perfectly — RX-during-TX itself is fine at the
+driver level.
+
 **Consequences.**
 - Sustained ≥4 MBd RX without flow control is lossy; the `errors` counter
   cannot be used to detect it.
 - Any reader stall > ring/baud (e.g. 80 ms at 3 MBd, 290 ms at 921600) does
-  not lose *some* data, it loses *everything buffered* — applications must
-  treat large RX gaps as total, not partial.
+  not just lose data — it silently KILLS RX on that port until reopen.
+- Full-duplex above trivial sizes is currently unusable without the fix below.
 
-**Fix path.** Implement + wire RTS/CTS flow control (the create primitive
-already resolves RTS/CTS pads; needs rig wiring + an exhaustive test), so the
-hardware paces the sender instead of dropping. Independently: consider sizing
-`RxCacheLen` by baud, and re-test whether the 32 KiB ring is connected to the
-requested cache length at all.
+**Fix path.**
+1. First try `Uart_RxBufferClear(id)` as an unwedge (the create path already
+   calls it) — if it revives the ring, the driver can detect-and-clear; the
+   hard part is detection (no error signal at ≤2 MBd).
+2. The real fix: move EC618 UART RX off the closed `Uart_*` core driver onto
+   the open CMSIS driver (`bsp_usart.c`) with our own ring — gives us overrun
+   accounting, drop-oldest/newest policy, and no wedge.
+3. RTS/CTS flow control (the create primitive already resolves RTS/CTS pads;
+   needs rig wiring + an exhaustive test) so the hardware paces the sender.
+4. Independently: re-test whether the 32 KiB ring tracks the requested
+   `RxCacheLen` at all (we pass 4 KiB and get 32 KiB).

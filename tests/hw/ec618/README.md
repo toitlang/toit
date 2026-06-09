@@ -97,4 +97,7 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   `docs/ec618-known-issues.md` #4.
 - `uart2-ring-ec618` (uses the `uart2-bigdata-esp32` helper) — locks in the
   measured PLAT driver RX-ring behavior: 32 KiB capacity, silent discard-ALL
-  on overflow, no error callback.
+  on overflow, no error callback, and RX dead-until-reopen after one overflow.
+- `uart2-duplex-ec618` (uses the `uart2-bigdata-esp32` helper's `D` command) —
+  full-duplex stress: 256 KiB each way simultaneously. Currently FAILS on the
+  RX side via the overflow-wedge — see `docs/ec618-known-issues.md` #4.
