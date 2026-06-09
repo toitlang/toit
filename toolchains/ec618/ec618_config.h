@@ -67,7 +67,7 @@
 // below. (Known cosmetic issue with _ID=1: one garbled line on cold boot.)
 // NOTE: set to 1 for the quirky-plenty rig (UART1 -> /dev/ttyUSB0); revert to 0
 // before going back to the modest-affair dev board (UART0).
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 1
+#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
 #endif
 
 // Baud rate used for the print UART when the redirect is enabled.
