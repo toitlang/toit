@@ -87,3 +87,14 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
 
 - `gpio-output-{ec618,esp32}` — EC618 drives GPIO11 (PAD26, board pin 5) as a
   square wave; the ESP32 (IO27) counts edges. Confirms EC618 GPIO output.
+- `uart2-echo-{ec618,esp32}` — exhaustive UART2 round-trip: the EC618 sweeps
+  9600..4 MHz in both reopen and set-baud modes, telling the ESP32 each baud
+  over the control lane (UART1 TX → IO4); the ESP32 echoes on UART2.
+- `uart2-bigdata-{ec618,esp32}` — throughput/keep-up + leak test: 256 KiB per
+  direction per baud as a deterministic CRC'd stream, never echoing (neither
+  side reads and writes at once). Diagnoses RX loss with max-read, first-bad
+  offset, and the driver error counter. 4 MBd RX currently FAILS — see
+  `docs/ec618-known-issues.md` #4.
+- `uart2-ring-ec618` (uses the `uart2-bigdata-esp32` helper) — locks in the
+  measured PLAT driver RX-ring behavior: 32 KiB capacity, silent discard-ALL
+  on overflow, no error callback.

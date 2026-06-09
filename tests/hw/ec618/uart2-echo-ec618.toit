@@ -29,7 +29,7 @@ Run via the mini-jag tester (start uart2-echo-esp32.toit on the ESP32 first):
 import ec618 show Ec618
 import uart
 
-BAUDS ::= [9600, 38400, 115200, 230400, 460800, 921600]
+BAUDS ::= [9600, 115200, 921600, 1500000, 2000000, 3000000, 4000000]
 CONTROL-BAUD ::= 115200
 TOKEN ::= "EC618-UART2-RT-0123456789ABCDEF"
 

@@ -133,6 +133,27 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **`Container.wait` spurious-CLOSED fix** (2026-06-10, HW-verified): a failing
+  memory-churning test killed the agent (watchdog reset 60 s later) because a
+  waited-on container is only weakly rooted while its waiter task is blocked —
+  GC collected it and the proxy finalizer closed it mid-wait. SDK fix
+  (`waited-on_` strong set in `lib/system/containers.toit`) + mini-jag catches
+  wait errors + the host tester fails fast on `run: test wait failed`. Found
+  with the new software watchdog. Details: `docs/ec618-known-issues.md` #3.
+- **`uart2-echo` extended to 4 MBd** (2026-06-10): the small-token round-trip
+  passes at 9600..4 MHz in both reopen and set-baud modes — the raw baud
+  config is fine all the way up; high-baud problems are load problems.
+- **`uart2-bigdata` throughput + leak test** (2026-06-10): 256 KiB per
+  direction per baud, deterministic stream + CRC, no echo (each side only
+  reads or only writes — per Florian: the ESP32 can't echo fast enough at high
+  baud, and the EC618 lockup case was simultaneous TX+RX, which gets its own
+  test). TX clean at all bauds; RX clean through 3 MBd; **4 MBd RX loses 8–21
+  bytes per 256 KiB** (known-issues #4). Reports max-read (ring fill),
+  first-bad offset, and the driver error counter per phase.
+- **`uart2-ring` driver characterization** (2026-06-10, passing): locks in the
+  measured PLAT RX-ring behavior — exactly 32 KiB capacity (independent of
+  `RxCacheLen`), overflow silently discards the ENTIRE buffer, error callback
+  never fires. If an SDK change moves these, this test says so.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
@@ -298,8 +319,11 @@ rule no longer applies:
 - **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
 
 ### Status / blocker
-- UART2 baseline test committed (115200, RX integrity). The automated baud sweep
-  is blocked on the control lane (jag-args) — next step.
+- The control lane works; the full baud sweep (uart2-echo, 9600..4 MHz, both
+  modes) and the bigdata throughput test ride on it. Current UART focus:
+  4 MBd RX loss (known-issues #4 — flow control is the fix path), then
+  RTS/CTS, RS485, parity/stop/data-bit configs, and a full-duplex stress test
+  (the historical lockup case: EC618 sending AND receiving at high rate).
 - **RESOLVED (2026-06-08):** the earlier "modest-affair EC618 went unresponsive,
   needs a physical power-cycle" blocker is fixed by the **general mini-jag
   watchdog** (commit 92dde5d8): the agent now arms the hardware watchdog for its
@@ -320,7 +344,14 @@ rule no longer applies:
 - [ ] Add a periodic **state heartbeat** to the mini-jag agent (observability).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
 - [ ] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty).
-- [ ] **UART2** loopback (EC618 TX → ESP32 RX; safe 1.8 V→3.3 V direction).
+- [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata
+      256 KiB/direction + ring characterization.
+- [ ] **UART2 4 MBd RX loss** (known-issues #4): wire + test **RTS/CTS flow
+      control**; investigate the IRQ-latency source.
+- [ ] **UART full-duplex stress** (EC618 TX+RX simultaneously at high baud —
+      the historical lockup; two-test split per Florian).
+- [ ] **UART configs**: parity, stop bits, data bits, RS485 (DE pin path
+      exists in the driver), error counter on induced parity errors.
 - [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.

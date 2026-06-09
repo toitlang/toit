@@ -133,3 +133,36 @@ are now strongly rooted, so the notification path stays alive. Defense in
 depth: mini-jag wraps the wait in `catch` (reports
 `run: test wait failed error=...` instead of dying) and the host tester
 recognizes that line and fails fast.
+
+## 4. UART RX silently loses data at high baud; driver ring discards ALL on overflow
+
+**Status:** confirmed + characterized 2026-06-10; fix TODO (flow control).
+Regression canary: `tests/hw/ec618/uart2-ring-ec618.toit`.
+
+**Symptoms** (modest-affair, uart2-bigdata, 256 KiB/direction, ESP32 sender):
+- RX is clean through 3 MBd (one marginal 8-byte loss seen once at 3 MBd),
+  but at 4 MBd every run loses 8–21 bytes mid-stream (`count` short, CRC
+  mismatch, `first-bad` mid-stream), with `uart.Port.errors` staying **0**.
+- The driver's RX ring is exactly **32 KiB** regardless of the 4 KiB
+  `RxCacheLen` we pass to `Uart_BaseInitEx`, and a burst that exceeds it while
+  the reader is stalled leaves **zero** readable bytes — the closed-source
+  driver throws away the whole buffer on overflow, silently (no
+  `UART_CB_ERROR`).
+- Reads of ~15 KiB were observed mid-test: the Toit reader can stall ~37 ms
+  (GC pause); the ring absorbs that at ≤3 MBd (≤11 KiB) with room to spare,
+  so the live 8–21-byte losses are NOT ring overflow — they look like
+  hardware RX FIFO overrun during interrupt-latency spikes, which the driver
+  does not report. (IRQ priority setup lives in the prebuilt PLAT blob.)
+
+**Consequences.**
+- Sustained ≥4 MBd RX without flow control is lossy; the `errors` counter
+  cannot be used to detect it.
+- Any reader stall > ring/baud (e.g. 80 ms at 3 MBd, 290 ms at 921600) does
+  not lose *some* data, it loses *everything buffered* — applications must
+  treat large RX gaps as total, not partial.
+
+**Fix path.** Implement + wire RTS/CTS flow control (the create primitive
+already resolves RTS/CTS pads; needs rig wiring + an exhaustive test), so the
+hardware paces the sender instead of dropping. Independently: consider sizing
+`RxCacheLen` by baud, and re-test whether the 32 KiB ring is connected to the
+requested cache length at all.
