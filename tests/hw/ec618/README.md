@@ -42,8 +42,8 @@ ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidat
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)    PAD24  (GPIO9)            [confirmed]
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     mirrors PAD26's net (NOT PAD22)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)         ?
-18        -> 22  (I2C0_SDA)                       UNREACHABLE: responds to no GPIO pad and no I2C controller (full gpio-map + I2C0/I2C1 SCL probes; always-high pull-ups)
-17        -> 23  (I2C0_SCL)                       UNREACHABLE: see pin 22
+18        -> 22  (I2C0_SDA)                       PAD14  (I2C0 SDA)         [confirmed via I2C0 traffic]
+17        -> 23  (I2C0_SCL)                       PAD13  (I2C0 SCL)         [confirmed via I2C0 traffic]
  2        -> 27  (GPIO27, NET_STATUS, PWM04)      ?
  4        -> 30  (UART1_TXD)                       UART1 TX (PAD34)
 16        -> 31  (GPIO18, UART1_RXD, PWM14)        UART1 RX (PAD33)
