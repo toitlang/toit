@@ -114,6 +114,10 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   timing: `out.flush` / `write --flush` returns no earlier than the payload's
   wire time and not much later, at 9600/115200/921600; plus no-garbage-on-open
   and `--break-length` rejection. PASSES.
+- `gpio-interrupt-{ec618,esp32}` — GPIO interrupts: the ESP32 drives pulse
+  trains into PAD26; the EC618 counts them with `Pin.wait-for` (the
+  interrupt path, not polling) — exact counts at 50 Hz and 250 Hz, plus a
+  no-spurious-wakeup check on a quiet line. PASSES.
 - `pwm-{ec618,esp32}` — PWM (generic `gpio.pwm` API): frequency via ESP32
   pulse counter, duty by polling, constant extremes, live set-frequency, two
   simultaneous channels (PAD33/TIMER4 -> IO16, PAD16/TIMER0 -> IO23), closed

@@ -72,11 +72,29 @@ class GpioResource : public EventResource {
   int gpio_bit_;
 };
 
+// Matches GPIO-STATE-EDGE-TRIGGERED_ in lib/gpio/gpio.toit.
+static const uint32_t kEdgeTriggeredState = 1;
+
+// The wait-for protocol: the gpio library treats the values returned by
+// the config_interrupt and last_edge_trigger_timestamp primitives as
+// timestamps from ONE clock — an interrupt only counts if it happened at
+// or after the arming. There is no convenient hardware timestamp here, so
+// both sides share a global trigger sequence number: arming captures it,
+// the ISR advances it and records it per GPIO bit.
+static volatile uint32_t edge_sequence = 0;
+static volatile uint32_t last_edge_seq[32] = {};
+
 class GpioResourceGroup : public ResourceGroup {
  public:
   TAG(GpioResourceGroup);
   explicit GpioResourceGroup(Process* process, EventSource* event_source)
     : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* r, word data, uint32_t state) override {
+    USE(r);
+    USE(data);
+    return state | kEdgeTriggeredState;
+  }
 };
 
 // GPIO ISR handler — dispatches events for all triggered pins.
@@ -88,11 +106,12 @@ static void gpio_isr_handler() {
       if (flags & (1 << bit)) {
         int gpio_bit = (port << 4) | bit;
         // Disable further interrupts on this pin (level-triggered would
-        // re-trigger immediately otherwise).
+        // re-trigger immediately otherwise). The next wait-for re-arms.
         GPIO_interruptConfig(port, bit, GPIO_INTERRUPT_DISABLED);
-        static uint32_t counter = 0;
+        uint32_t seq = ++edge_sequence;
+        last_edge_seq[gpio_bit] = seq;
         UartQcx216EventSource::send_event_from_isr(
-            Event::gpio_type(gpio_bit), counter++);
+            Event::gpio_type(gpio_bit), seq);
       }
     }
     GPIO_clearInterruptFlags(port, flags);
@@ -213,6 +232,9 @@ PRIMITIVE(set) {
 PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
   int gpio_bit = resource->gpio_bit();
+  // Capture the trigger sequence BEFORE arming: an interrupt firing
+  // between the arming and the return then still reads as "after".
+  uint32_t seq = edge_sequence;
   if (enable) {
     GpioInterruptConfig_e int_config = value
         ? GPIO_INTERRUPT_HIGH_LEVEL
@@ -221,14 +243,12 @@ PRIMITIVE(config_interrupt) {
   } else {
     GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), GPIO_INTERRUPT_DISABLED);
   }
-  static uint32_t counter = 0;
-  return Smi::from((counter++) & 0x3FFFFFFF);
+  return Smi::from(seq & 0x3FFFFFFF);
 }
 
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
-  USE(resource);
-  return Smi::from(0);
+  return Smi::from(last_edge_seq[resource->gpio_bit()] & 0x3FFFFFFF);
 }
 
 PRIMITIVE(set_open_drain) {

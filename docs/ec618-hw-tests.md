@@ -144,6 +144,21 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **GPIO interrupts fixed + `gpio-interrupt` test** (2026-06-10, passing):
+  `Pin.wait-for` NEVER worked on the EC618 — three driver bugs found by the
+  new test (ESP32 drives pulse trains into PAD26, the EC618 counts them via
+  wait-for): (1) `GpioResourceGroup` used the default `on_event`, which
+  returns state 0, so the edge event never set the lib's
+  GPIO-STATE-EDGE-TRIGGERED bit; (2) the `config_interrupt` /
+  `last_edge_trigger_timestamp` primitives returned values from two
+  unrelated counters (and a constant 0), while the gpio lib compares them
+  as timestamps of ONE clock to decide whether an edge arrived after
+  arming — they now share a global trigger sequence, captured before
+  arming and advanced+recorded per GPIO bit in the ISR; (3) the ISR's
+  event payload used a third counter (now the same sequence). Verified:
+  exactly 50/50 pulses counted at 50 Hz and at 250 Hz (2 ms phases — the
+  interrupt dispatch turnaround beats a phase), and a quiet line causes no
+  wakeups. `gpio-interrupt-{ec618,esp32}.toit`.
 - **PWM implemented + `pwm` dual-board test** (2026-06-10, passing): new
   `pwm_ec618.cc` behind the generic `gpio.pwm` API. PWM rides the AP TIMER
   instances (one output each; TIMER0/1/2/4 — 3 and 5 are platform-reserved),
@@ -437,6 +452,8 @@ rule no longer applies:
       for input pins.
 - [ ] **GPIO open-drain**: emulate via output↔input (separate commit; see the
       `TODO(toit)` in `gpio_ec618.cc`).
-- [ ] More **GPIO**: input (ESP32 drives — level-shift first), interrupts.
+- [x] **GPIO interrupts** (`Pin.wait-for`): was entirely broken — fixed
+      (on_event state bit + shared trigger-sequence protocol) and HW-tested
+      (gpio-interrupt, exact pulse counts at 50 and 250 Hz).
 - [ ] Experimentally map the remaining `?` pads in the wiring table.
 - [ ] Eventually wire the EC618 tests into CTest (needs a rig power-cycle story).
