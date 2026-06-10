@@ -462,7 +462,9 @@ PRIMITIVE(set_baud_rate) {
 
 PRIMITIVE(write) {
   ARGS(UartResource, resource, Blob, data, int, from, int, to, int, break_length);
-  USE(break_length);  // Not supported on EC618.
+  // The PLAT driver has no break-signal API. Reject rather than silently
+  // sending the data without the requested break.
+  if (break_length != 0) FAIL(UNIMPLEMENTED);
   if (from < 0 || to < from || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   int id = resource->uart_id();
@@ -523,6 +525,20 @@ PRIMITIVE(read) {
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, resource);
   int id = resource->uart_id();
+  if (Uart_IsTSREmpty(id)) return BOOL(true);
+  // There is no reliable line-idle event to retry on: the blob's
+  // TX_ALL_DONE is best-effort (see uart_cb), so a plain non-blocking
+  // TEMT check left flush waiting for an event that never comes — at
+  // 9600 baud it hung forever (uart2-flush-ec618). Poll TEMT instead,
+  // bounded by the drain time of everything that can still be in flight
+  // (TX cache + FIFO) at the current baud. This blocks the VM like
+  // Uart_TxTaskSafe itself does; the planned CMSIS rewrite gets a real
+  // TX-idle interrupt. A concurrent writer can keep the line busy past
+  // the bound; then we return false and the caller waits for that
+  // writer's TX events.
+  uint32_t baud = uart_states[id].baud_rate;
+  uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
+  while (!Uart_IsTSREmpty(id) && limit_ms-- > 0) osDelay(1);
   return BOOL(Uart_IsTSREmpty(id));
 }
 

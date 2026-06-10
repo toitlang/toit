@@ -144,6 +144,18 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **`uart2-flush` flush semantics** (2026-06-10, passing): `out.flush` /
+  `write --flush` must return when the last bit leaves the wire — verified by
+  pure timing (2 KiB cannot flush faster than its wire time, nor much slower)
+  at 9600/115200/921600, no helper board needed. Found a real bug: the
+  `wait_tx` primitive was a non-blocking TEMT check and the lib then waited
+  for a TX event to retry — but the blob's TX_ALL_DONE is best-effort (same
+  root cause as the RS485 DE bug), so **flush hung forever at 9600** (115200+
+  only worked by event-timing luck). `wait_tx` now polls LSR.TEMT bounded by
+  the cache+FIFO drain time. Also: `--break-length` now throws UNIMPLEMENTED
+  instead of silently sending break-less data (no break API in the PLAT
+  blob), and a fresh UART2 open is verified quiet (no garbage byte).
+  `uart2-flush-ec618.toit`.
 - **`uart2-rs485` RS485 half-duplex** (2026-06-10, passing 9600/115200/921600):
   UART2 in `MODE-RS485-HALF-DUPLEX` with the direction line on PAD33 (any
   GPIO-capable pad works; new `--rs485-de` pin on the `Ec618.uartN`

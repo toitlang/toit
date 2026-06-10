@@ -110,3 +110,7 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   the ESP32 on IO16. Verifies exactly one DE pulse per message, DE released
   right after the last bit (including a 4 KiB message), and DE low while the
   peer transmits, at 9600/115200/921600. PASSES.
+- `uart2-flush-ec618` (standalone, no helper board) — flush semantics by
+  timing: `out.flush` / `write --flush` returns no earlier than the payload's
+  wire time and not much later, at 9600/115200/921600; plus no-garbage-on-open
+  and `--break-length` rejection. PASSES.
