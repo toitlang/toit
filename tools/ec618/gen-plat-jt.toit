@@ -81,6 +81,17 @@ ALWAYS-INCLUDE-EXACT ::= {
   "fabs", "fmod", "ldexp", "frexp", "modf", "hypot", "copysign", "fmin", "fmax",
 }
 
+// CMSIS driver ACCESS STRUCTS — data, not functions (they live in flash,
+// so nm reports them as 'T' and the function filter doesn't catch them).
+// They must NOT be redefine-rewritten: routing their ADDRESS through a code
+// veneer makes the VM read "function pointers" out of stub machine code —
+// an instant fault (observed on I2C bring-up: &Driver_I2C0 resolved to the
+// veneer). They keep their table slot + stub purely for index stability
+// with already-flashed bases; the VM binds to the fixed-PLAT struct
+// directly, which is slot-safe. TODO(toit): drop them from the table at the
+// next intentional renumbering (= next planned full flash).
+DATA-SYMBOLS ::= {"Driver_I2C0", "Driver_I2C1", "Driver_USART0", "Driver_USART1"}
+
 // References with no PLAT definition — present only as dead, GC'd refs. A
 // table entry would emit an undefined `__real_*`. Add here if a build fails
 // with "undefined reference to ..." from plat_jt.o(.jt_data).
@@ -461,7 +472,8 @@ run invocation/cli.Invocation -> none:
       // only by PLAT and by this table entry.
       externs-lines.add "extern void *$s;"
       table-init-lines.add "    [PLAT_JT_$s] = &$s,"
-      redefine-lines.add "$s __wrap_$s"
+      if not DATA-SYMBOLS.contains s:
+        redefine-lines.add "$s __wrap_$s"
 
   slot-enum := slot-enum-lines.join "\n"
   externs := externs-lines.join "\n"
