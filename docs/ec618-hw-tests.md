@@ -536,28 +536,33 @@ rule no longer applies:
       length/speed — the master owns the clock); the async upgrade via the
       proven I2C no-block recipe is a follow-up (the jump table already
       carries SPI_TransferEx/SPI_SetNoBlock).
-- [~] **AON pads** (40..47) — partially resolved (2026-06-10 evening):
-      plain-GPIO drives stay silent (3 consistent sweeps). The new
-      `ec618.wakeup-pin-values` primitive (slpManGetWakeupPinValue) reads
-      the 6 wakeup pads — they idle 0b111111 — but pulling the rig's `?`
-      wires (IO13/IO19/IO2) low does NOT move the mask. Conclusion: the
-      board pins MAIN_DTR / MAIN_RI / NET_STATUS are most likely CP-OWNED
-      modem-function pins, not AP GPIOs — no AP-side path reaches them.
-      AGPIO OUTPUT (pads 43..47) has no JT-reachable API yet; wakeup-pad
-      INPUT/wake config (GPIO_WakeupPadConfig, slpManSetWakeupPadCfg) is
-      jump-tabled and waits for the deep-sleep work.
-- [x] **Pad/GPIO table re-verification** — DONE (2026-06-10 evening) to the
-      extent this rig allows. Exact-pulse-VERIFIED: pads 16 (GPIO1 — the
-      variant-1 GPIO5 row was wrong, caught by the rc522 RST), 22, 23, 24,
-      25, 26, 33, 34. DISPROVEN: pads 13/14/15 have NO GPIO function — both
-      the variant-1 bits (GPIO2/3/4) and the LuatOS-wiki labels (GPIO14/15
-      — its Lua-level numbering) leave the HW-confirmed wires silent; these
-      pads are peripheral-only (I2C0 etc.) and were dropped from the
-      tables. UNVERIFIABLE here (no wires): pads 17/18 (GPIO2/3-alt per the
-      SDK PWM map — same source that was right about pad 16), 21, 27/28,
-      31/32, 35..39. Pad 37's earlier IO16 echo did not reproduce (stale
-      mux state). The spooky PAD23->IO13 coupling is the unpowered BMP280
-      back-powering through its breakout pull-ups, not a wire.
+- [x] **AON pads** (40..48, GPIO20..28) — RESOLVED (2026-06-10, late
+      evening): they sit behind the AON IO LDO, which is OFF at boot. With
+      `slpManAONIOPowerOn()` (now called by the GPIO driver when an AON
+      pad is opened; jump-tabled together with PowerOff/VoltSet/VoltGet/
+      LatchEn) they drive as plain GPIOs: PAD44 (GPIO24, board pin 18) and
+      PAD47 (GPIO27, board pin 27) exact-pulse-confirmed. The earlier
+      "CP-owned modem pins" conclusion was wrong — the pads were simply
+      unpowered. PAD42 (GPIO22, board pin 9) stayed silent: the IO13 wire
+      is the BMP280 power switch, so board pin 9 appears to be unwired on
+      the rig (re-check the breadboard), not a mapping failure. The
+      `ec618.wakeup-pin-values` mask (idle 0b111111) and wakeup-pad wake
+      config remain for the deep-sleep work.
+- [x] **Pad/GPIO table — final** (2026-06-10, late evening). The
+      authoritative source turned out to be the SDK's own GPIO example
+      (`project_legacy/example_gpio`, `allGpioMap`) — the one table with
+      every GPIO's pad AND iomux function. Both tables (C++ and Toit) now
+      mirror it: GPIO0..7 = pads 15..22, GPIO8..11 = pads 23..26,
+      GPIO12..15 = pads 11..14 at iomux FUNCTION 4, GPIO16..19 = pads
+      31..34, GPIO20..28 = pads 40..48 (AON), GPIO29..31 = pads 35..37.
+      HW-confirmed by exact pulse counts on every wired pad: 13 (GPIO14,
+      ALT4!), 14 (GPIO15, ALT4!), 16, 23, 24, 25, 33, 34, 44, 47.
+      An interim conclusion that pads 13/14/15 had "no GPIO function" was
+      wrong — the sweep had driven them at function 0; at function 4 the
+      wires pulse. (Pads 29/30 = UART0 really have no GPIO function, which
+      exposed a latent bug: Pin construction on a GPIO-less pad used to
+      throw, killing the agent at boot when Ec618.uart0 built its Pins —
+      such pads are now legal "carrier" Pins.)
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.
 - [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /

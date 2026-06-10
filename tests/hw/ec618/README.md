@@ -35,16 +35,16 @@ ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidat
 26 (DAC2) -> [voltage divider] -> ADC1 (pin 4)    ADC ch1  (one ADC pin may be dead)
 27        -> 05  (GPIO11, uart2_txd)              PAD26  (GPIO11 primary)   [confirmed]
 14        -> 06  (GPIO10, uart2_rxd)              PAD25  (GPIO10 primary)
-13        -> 09  (GPIO22, MAIN_DTR)               CP-owned modem pin (no AP path; see note)
+13        -> 09  (GPIO22, MAIN_DTR)               IO13 is the BMP280 power switch; pin 9 appears UNWIRED (PAD42 drives don't reach it)
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)      PAD23  (GPIO8)            [confirmed]
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)    mirrors PAD25's net (gpio-map)
 23        -> 12  (GPIO01, PWM10)                  PAD16  (TIMER0 PWM out)   [confirmed]
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)    PAD24  (GPIO9)            [confirmed]
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     mirrors PAD26's net (NOT PAD22)
-19        -> 18  (GPIO24, MAIN_RI, PWM01)         CP-owned modem pin (no AP path; see note)
-18        -> 22  (I2C0_SDA)                       PAD14  (I2C0 SDA)         [confirmed via I2C0 traffic]
-17        -> 23  (I2C0_SCL)                       PAD13  (I2C0 SCL)         [confirmed via I2C0 traffic]
- 2        -> 27  (GPIO27, NET_STATUS, PWM04)      CP-owned modem pin (no AP path; see note)
+19        -> 18  (GPIO24, MAIN_RI, PWM01)         PAD44  (GPIO24, AON)      [confirmed]
+18        -> 22  (I2C0_SDA)                       PAD14  (GPIO15 alt4 / I2C0 SDA)  [confirmed]
+17        -> 23  (I2C0_SCL)                       PAD13  (GPIO14 alt4 / I2C0 SCL)  [confirmed]
+ 2        -> 27  (GPIO27, NET_STATUS, PWM04)      PAD47  (GPIO27, AON)      [confirmed]
  4        -> 30  (UART1_TXD)                       UART1 TX (PAD34)
 16        -> 31  (GPIO18, UART1_RXD, PWM14)        UART1 RX (PAD33)
 ```
@@ -56,15 +56,14 @@ Notes:
   one, so prefer EC618→ESP32 unless a pin is known to be 3.3 V tolerant.
 - The ADC inputs are limited to ~1.8 V; the ESP32 DACs (0–3.3 V) therefore feed
   the EC618 through a voltage divider.
-- The three "CP-owned" pins (MAIN_DTR / MAIN_RI / NET_STATUS) never moved under
-  any AP-side probe: full plain-GPIO sweeps over every candidate pad/bit, and
-  the AON wakeup-pad mask (`ec618.wakeup-pin-values`, which idles 0b111111)
-  while the ESP32 pulled them low. They appear to be modem-function pins owned
-  by the CP core — not controllable as AP GPIOs.
-- Pads 13/14/15 (board pins 22/23 + UART0 flow control) have NO GPIO function
-  at all — every candidate controller bit was driven with the pad muxed to
-  GPIO and the wires stayed silent. They are peripheral-only (I2C0 works on
-  them, HW-verified).
+- The AON-domain pads (40..48 = GPIO20..28, the "red" pins) are dead until the
+  AON IO LDO is powered (`slpManAONIOPowerOn`, done by the GPIO driver on
+  open). With power they drive normally: PAD44 and PAD47 confirmed. PAD42
+  (board pin 9) found no wire — IO13 doubles as the BMP280 power switch, so
+  pin 9 looks disconnected on this rig.
+- Pads 13/14 carry GPIO14/15 at iomux FUNCTION 4 (not 0) — the SDK's
+  example_gpio table is the authoritative GPIO/pad/mux source. Pads 29/30
+  (UART0) have no GPIO function; as Pins they are carriers only.
 
 ## Running a dual-board test
 

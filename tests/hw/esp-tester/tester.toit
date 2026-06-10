@@ -870,4 +870,18 @@ setup-tester-ec618 invocation/cli.Invocation:
       "-e", tester-envelope,
       "--port", port-path,
     ]
+    // A full flash has no validate/rollback safety net (unlike OTA, where an
+    // image that fails to come up never validates and the old slot returns).
+    // So verify the result actually boots and serves instead of reporting
+    // success on a dead board: poll the agent handshake while the operator
+    // boots the device. (Learned the hard way: a base image whose agent threw
+    // during startup flashed "successfully" and the failure surfaced only
+    // minutes later as silent watchdog resets.)
+    log "Flash done. Boot the device now (PWRKEY) — waiting for the agent."
+    link := Ec618Link --port-path=port-path
+    try:
+      link.handshake --attempts=90
+      log "Agent is up — the flashed image is healthy."
+    finally:
+      link.close
 
