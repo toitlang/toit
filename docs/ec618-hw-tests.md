@@ -140,7 +140,7 @@ revisit when one is.
 
 Design decision: bind the **PLAT driver/HAL directly**, do **not** use the
 LuatOS `luat_*` interface layer. A `TODO(toit)` in
-`third_party/.../project/toit/src/toit_main.c` tracks dropping the few `luat_*`
+`toolchains/ec618/project/src/toit_main.c` tracks dropping the few `luat_*`
 calls still in the glue.
 
 ## Done

@@ -10,8 +10,8 @@
 //
 // Build + run (one line):
 //   gcc -Wall -Wextra -O2 -I tools/slot_marker_test
-//   -I third_party/luatos-soc-ec618/project/toit/inc tools/slot_marker_test/test.c
-//   third_party/luatos-soc-ec618/project/toit/src/slot_marker.c
+//   -I toolchains/ec618/project/inc tools/slot_marker_test/test.c
+//   toolchains/ec618/project/src/slot_marker.c
 //   -o /tmp/slot_marker_test && /tmp/slot_marker_test
 
 #include <stdint.h>

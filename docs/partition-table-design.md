@@ -49,7 +49,7 @@ come in two flavors: **raw** (`0x000000`-based, used for erase/write) and
 The build runs with `__USER_CODE__` defined, which sets
 `AP_FLASH_LOAD_SIZE = 0x2E0000` (2.875 MB) — this absorbs the 384 KB `resv1`
 gap into the AP image. (Confirmed by the `_Static_assert` in
-[`sys_ro_override.c`](../third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c).)
+[`sys_ro_override.c`](../toolchains/ec618/project/src/sys_ro_override.c).)
 
 ### AP flash (4 MB) as Toit sees it
 
@@ -193,13 +193,13 @@ are dictated by hardware / the SDK bootloader / the modem:
 - **Tier 0 — frozen reader at 0x824000.** Reads the table, runs the
   trial/rollback state machine, jumps into the chosen partition. This is
   today's dispatcher
-  ([`toit_main.c`](../third_party/luatos-soc-ec618/project/toit/src/toit_main.c)),
+  ([`toit_main.c`](../toolchains/ec618/project/src/toit_main.c)),
   but to make the base resizable it must be **split out** of the monolithic
   PLAT runtime into a tiny, rarely-changed loader. Because it can't be
   OTA-fixed safely, it must stay minimal and well-tested.
 - **Tier 1 — the partition table, stored A/B.** This is a *generalization of
   the slot marker*: the existing
-  [`slot_marker.c`](../third_party/luatos-soc-ec618/project/toit/src/slot_marker.c)
+  [`slot_marker.c`](../toolchains/ec618/project/src/slot_marker.c)
   already implements the exact power-fail-safe primitive we need — two
   sectors, sequence number, CRC, write-the-other-sector, read-the-higher-seq.
   Reuse that machinery for the table. An atomic sector flip activates a new
@@ -235,9 +235,9 @@ for the inactive slot. So the slots are logically outside PLAT — what pins the
    ([`ec618_0h00_flash.ld`](../third_party/luatos-soc-ec618/PLAT/core/ld/ec618_0h00_flash.ld)).
 2. **The dispatcher reading those linker symbols** (`__vm_a_start` /
    `__vm_b_start`) to locate and jump to a slot
-   ([`toit_main.c`](../third_party/luatos-soc-ec618/project/toit/src/toit_main.c)).
+   ([`toit_main.c`](../toolchains/ec618/project/src/toit_main.c)).
 3. **The guard + primitives hardcoding the bounds**
-   ([`sys_ro_override.c`](../third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c),
+   ([`sys_ro_override.c`](../toolchains/ec618/project/src/sys_ro_override.c),
    [`primitive_ec618.cc`](../src/primitive_ec618.cc)).
 
 **To move them out:** make #2 and #3 read each slot's base + size from the
@@ -321,16 +321,16 @@ untouched (it's the SDK's own map for regions we don't manage); these are the
 | File | What it hardcodes |
 |---|---|
 | [`flash_registry_ec618.cc:30-31`](../src/flash_registry_ec618.cc) | `FLASH_REGISTRY_PHYSICAL_OFFSET = 0x3CC000`, size 64 KB |
-| [`sys_ro_override.c`](../third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c) | `BOOTLOADER_END 0x22000`, `AP_IMAGE_START 0x24000`, `AP_IMAGE_END 0x304000`; the `toit_ap_image_modify_{start,end}` writable window; `_Static_assert` on `AP_FLASH_LOAD_SIZE == 0x2E0000` |
-| [`slot_marker.c`](../third_party/luatos-soc-ec618/project/toit/src/slot_marker.c) | `__slot_marker_start`, `MARKER_SECTOR_SIZE 0x1000`, `MARKER_RECORD_SIZE 16`, 2-sector A/B scheme |
-| [`toit_main.c`](../third_party/luatos-soc-ec618/project/toit/src/toit_main.c) | `__vm_a_start`/`__vm_b_start`, `TOIT_VM_SLOT_SIZE 0x60000`, slot dispatch |
+| [`sys_ro_override.c`](../toolchains/ec618/project/src/sys_ro_override.c) | `BOOTLOADER_END 0x22000`, `AP_IMAGE_START 0x24000`, `AP_IMAGE_END 0x304000`; the `toit_ap_image_modify_{start,end}` writable window; `_Static_assert` on `AP_FLASH_LOAD_SIZE == 0x2E0000` |
+| [`slot_marker.c`](../toolchains/ec618/project/src/slot_marker.c) | `__slot_marker_start`, `MARKER_SECTOR_SIZE 0x1000`, `MARKER_RECORD_SIZE 16`, 2-sector A/B scheme |
+| [`toit_main.c`](../toolchains/ec618/project/src/toit_main.c) | `__vm_a_start`/`__vm_b_start`, `TOIT_VM_SLOT_SIZE 0x60000`, slot dispatch |
 | [`primitive_ec618.cc`](../src/primitive_ec618.cc) (slot primitives ~L380-440) | `SLOT_SIZE`, `inactive_slot_base()`, `AP_FLASH_XIP_ADDR`, writable-window juggling |
 | [`ec618_0h00_flash.ld`](../third_party/luatos-soc-ec618/PLAT/core/ld/ec618_0h00_flash.ld) | `FLASH_AREA` origin/length; `.jt_data`/`.vm_a`/`.vm_b`/`.slot_marker` fixed addresses; `totalFlashLimit`; size ASSERTs |
 | [`slot.toit`](../lib/ec618/slot.toit) | `SLOT-SIZE 0x60000`, `SECTOR-SIZE 0x1000` |
 | [`mem_map.h`](../third_party/luatos-soc-ec618/PLAT/device/target/board/ec618_0h00/common/inc/mem_map.h) | the vendor source of truth (leave as-is; the build parses it) |
 
 The **writable-window guard** is the safety-critical piece:
-[`sys_ro_override.c`](../third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c)
+[`sys_ro_override.c`](../toolchains/ec618/project/src/sys_ro_override.c)
 overrides the SDK's `sysROSpaceCheck`; a partition system must keep this guard
 in sync with the live table so a write can never land outside the intended
 partition. Per project memory, `BSP_QSPI_*_Safe` **hangs** (does not return)
@@ -429,9 +429,9 @@ else stays negotiable.
 
 - Vendor map: [`mem_map.h`](../third_party/luatos-soc-ec618/PLAT/device/target/board/ec618_0h00/common/inc/mem_map.h)
 - Linker carve: [`ec618_0h00_flash.ld`](../third_party/luatos-soc-ec618/PLAT/core/ld/ec618_0h00_flash.ld)
-- Dispatcher / trial-boot: [`toit_main.c`](../third_party/luatos-soc-ec618/project/toit/src/toit_main.c)
-- OTA-state record (reuse for the table): [`slot_marker.c`](../third_party/luatos-soc-ec618/project/toit/src/slot_marker.c) + [`slot_marker.h`](../third_party/luatos-soc-ec618/project/toit/inc/slot_marker.h)
-- Writable-window guard: [`sys_ro_override.c`](../third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c)
+- Dispatcher / trial-boot: [`toit_main.c`](../toolchains/ec618/project/src/toit_main.c)
+- OTA-state record (reuse for the table): [`slot_marker.c`](../toolchains/ec618/project/src/slot_marker.c) + [`slot_marker.h`](../toolchains/ec618/project/inc/slot_marker.h)
+- Writable-window guard: [`sys_ro_override.c`](../toolchains/ec618/project/src/sys_ro_override.c)
 - Slot primitives: [`primitive_ec618.cc`](../src/primitive_ec618.cc)
 - Flash registry (Toit storage): [`flash_registry_ec618.cc`](../src/flash_registry_ec618.cc)
 - Toit-side slot API: [`slot.toit`](../lib/ec618/slot.toit)

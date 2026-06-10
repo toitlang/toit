@@ -260,8 +260,8 @@ ec618: check-env host-tools
 	done
 	# Build the slot-A firmware (bootloader + AP + CP) via xmake.
 	cd $(EC618_SDK) && rm -rf build && \
-		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake config -p cross -y && \
-		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
+		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
+		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
 	cd $(CURDIR)
 	# Verify the slot-A VM image is position-independent (every VM->PLAT call
 	# goes through the jump table) — required for the relocate-on-write OTA.
@@ -294,7 +294,7 @@ ec618: check-env host-tools
 	# Re-link slot B (linker script only, a fast re-link) as an independent
 	# byte-identity oracle for the relocation table.
 	cd $(EC618_SDK) && rm -f build/toit/toit.elf build/toit/ap.bin build/toit/toit.bin && \
-		TOIT_VM_SLOT_B=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit xmake build
+		TOIT_VM_SLOT_B=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
 	cd $(CURDIR)
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-b.bin
 	# Build + verify the dual-slot relocation table. gen-slot-reloc relocates

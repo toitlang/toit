@@ -489,7 +489,7 @@ typical VM change).
 - Flash layout: `third_party/luatos-soc-ec618/PLAT/device/target/board/ec618_0h00/common/inc/mem_map.h`
 - Current OTA primitives: `src/primitive_ec618.cc`
 - Current OTA commit: `src/toit_ec618.cc:155-237`
-- Flash write guard: `third_party/luatos-soc-ec618/project/toit/src/sys_ro_override.c`
+- Flash write guard: `toolchains/ec618/project/src/sys_ro_override.c`
 - Firmware service: `system/extensions/ec618/firmware.toit`
 - Linker map: `third_party/luatos-soc-ec618/build/toit/toit_debug.map`
 - Porting guide OTA section: `docs/porting-guide.md` section 19
@@ -508,9 +508,9 @@ for the current binary and validated on hardware.
   `third_party/luatos-soc-ec618/xmake.lua`.
 - `tools/plat_jt_ldflags.lua` — generated symbol list, version-controlled
   so the build is reproducible without re-running the analysis.
-- `third_party/luatos-soc-ec618/project/toit/inc/plat_jt.h` — generated
+- `toolchains/ec618/project/inc/plat_jt.h` — generated
   slot enum + `extern const g_plat_jt[]`.
-- `third_party/luatos-soc-ec618/project/toit/src/plat_jt.c` — generated
+- `toolchains/ec618/project/src/plat_jt.c` — generated
   jump-table contents + per-symbol naked-Thumb-2 stubs.
 
 **How it works:**
@@ -594,7 +594,7 @@ Linker script (`PLAT/core/ld/ec618_0h00_flash.c`):
   (`__vm_init_array_start/end`); PLAT-side static initialisers stay
   in `.load_dram_shared` so PLAT's own startup is unchanged.
 
-Slot dispatcher (`project/toit/src/toit_main.c`):
+Slot dispatcher (`toolchains/ec618/project/src/toit_main.c`):
 - Reads `.slot_marker` (defaults to `'A'` on a fresh build).
 - Each slot's first word is a `.vm_entry` function pointer
   (defined in `src/toit_ec618.cc`); the linker emits each slot's
@@ -771,7 +771,7 @@ after the modem came up (see RESOLVED below).
 
 Writing the AP-image (slot) region needs firmware program/erase mode
 (`fotaNvmNfsPeInit(1)`, exposed as `slot.program-mode`): `sysROSpaceCheck`
-(`project/toit/src/sys_ro_override.c`) treats the AP image
+(`toolchains/ec618/project/src/sys_ro_override.c`) treats the AP image
 `[0x24000,0x304000)` as protected firmware, so the receiver opens it for
 writes the same way the SDK's own full-OTA does (it writes into
 `0x214000` after `fotaNvmNfsPeInit(1)`). The receiver brackets the slot
@@ -879,7 +879,7 @@ magic 'TS' | version | state | seq | active | pending | pad | crc32
   record, so the live record always survives an interrupted erase/write.
 
 Both ends use one shared module,
-`third_party/luatos-soc-ec618/project/toit/src/slot_marker.{c,h}` (in PLAT,
+`toolchains/ec618/project/src/slot_marker.{c,h}` (in PLAT,
 also on the VM include path via `toolchains/ec618.cmake`). Reads are plain
 XIP loads (safe at early boot); writes go through `BSP_QSPI_*_Safe` with the
 `sysROSpaceCheck` modify-window set internally. A host unit test

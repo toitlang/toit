@@ -105,7 +105,7 @@ run invocation/cli.Invocation -> none:
 /**
 Builds a 16-byte slot-marker record marking $active ('A'/'B') as known-good,
   no trial pending. Mirrors `slot_record` + `marker_crc32` in
-  third_party/.../project/toit/src/slot_marker.c.
+  toolchains/ec618/project/src/slot_marker.c.
 */
 marker-record active/int -> ByteArray:
   record := ByteArray 16
