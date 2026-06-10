@@ -144,6 +144,22 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **SPI master driver + `rc522` test** (2026-06-10, passing): spi_ec618.cc
+  on the core SPI driver — SPI0 pads 24/25/26 (ALT1, shared with
+  I2C1/UART2: one peripheral at a time), CS/DC as driver-managed GPIOs
+  (implements keep-cs-active), per-device frequency/mode, full-duplex
+  in-place reads. Tested against a real MFRC522 v2 RFID reader: version
+  register, 3x 64-byte FIFO write/read-back loopbacks, soft power-down
+  set/clear. The reader's RST hangs on PAD16 with a pull-down so it sits
+  in hard power-down (uA, passive pins) except during SPI tests — no
+  interference with the shared nets (bmp280 regression passes alongside).
+  Driver has ZERO file statics: measured, even a 4-byte static pointer
+  lands in the OTA-frozen shared dram; and implementing a NEW primitive
+  module adds one shared module-registry pointer regardless — a new
+  module can never ship via OTA (now part of the layout contract). Also
+  fixed: pad 16 is GPIO1, not GPIO5 (the rc522 RST proved it; the
+  variant-1 table strikes again). `rc522-ec618.toit`,
+  `rc522-probe-esp32.toit` (ESP32-side wiring checker).
 - **I2C works — `bmp280` test PASSING against a real sensor** (2026-06-10):
   a BMP280 (chip-id 0x58, SDO->GND = 0x76) on the EC618's I2C1, pads 23/24
   (the module's I2C1 pins, board pins 10/13; the sensor's SDA/SCL moved
@@ -508,10 +524,16 @@ rule no longer applies:
       Until the guard lands: builds that change VM statics/layout get a
       FULL FLASH; before any OTA, manually diff .jt_data content and
       .load_dram_* addresses against the flashed build's elf.
-- [ ] **SPI** (consider the 3.3 V→1.8 V direction / dividers first; the rig
-      is full 3.3 V so direct wiring is fine).
-- [ ] **SPI** (consider the 3.3 V→1.8 V direction / dividers first; the rig
-      is full 3.3 V so direct wiring is fine).
+- [x] **SPI** — driver implemented + HW-verified against a real MFRC522
+      RFID reader (rc522 test; see Done). Sync transfers (bounded by
+      length/speed — the master owns the clock); the async upgrade via the
+      proven I2C no-block recipe is a follow-up (the jump table already
+      carries SPI_TransferEx/SPI_SetNoBlock).
+- [x] **SPI** — driver implemented + HW-verified against a real MFRC522
+      RFID reader (rc522 test; see Done). Sync transfers (bounded by
+      length/speed — the master owns the clock); the async upgrade via the
+      proven I2C no-block recipe is a follow-up (the jump table already
+      carries SPI_TransferEx/SPI_SetNoBlock).
 - [ ] **AON pads** (40..47, GPIO20..27 guesses): driving them through the
       plain GPIO controller does nothing (gpio-map: silent everywhere) —
       they likely need the AON/wakeup-pad API. The rig's remaining `?`

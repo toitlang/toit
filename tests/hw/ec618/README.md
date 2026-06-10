@@ -114,6 +114,11 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   timing: `out.flush` / `write --flush` returns no earlier than the payload's
   wire time and not much later, at 9600/115200/921600; plus no-garbage-on-open
   and `--break-length` rejection. PASSES.
+- `rc522-ec618` (standalone) — SPI0 against a real MFRC522 v2 RFID reader:
+  version register, 64-byte FIFO loopbacks, soft power-down cycling; the
+  reader sits in hard power-down (RST on PAD16, external pull-down) outside
+  this test. `rc522-probe-esp32` checks the wiring from the ESP32 side.
+  PASSES.
 - `bmp280-{ec618,esp32}` — I2C against a real BMP280 on I2C1 (pads 23/24,
   board pins 10/13; sensor power switched by the ESP32 on IO13): scan,
   NACK probing, chip-id, forced measurements with datasheet compensation,
