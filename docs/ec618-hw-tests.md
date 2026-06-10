@@ -144,26 +144,26 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
-- **I2C driver rewritten + BMP280 test ready — BLOCKED on rig wiring**
-  (2026-06-10): i2c_ec618.cc had drifted from the current lib interface
-  (bus-create takes a pull-up bool, probe takes a timeout, device-create
-  carries frequency/timeout/ack-check — every call failed on argument
-  types; this is also why `scan` "couldn't send an empty message"). Now:
-  PAD addressing, per-device frequency switching, probe = SMBus
-  receive-byte judged by GetDataCount (the blob's polling driver has no
-  zero-length write), NACK detection on all transfers. Also fixed: taking
-  &Driver_I2C0 faulted (see the jump-table data-symbol commit). A real
-  BMP280 (chip-id 0x58, SDO->GND = 0x76) sits on the breadboard, verified
-  end-to-end from the ESP32 (bme280-probe-esp32) with its power switched
-  by IO13. BUT the sensor sits on the rig's "I2C0" board pins 22/23 —
-  measured UNREACHABLE from the EC618 (see the wiring table): no GPIO pad
-  and neither I2C controller reaches them. The EC618 test
-  (bmp280-{ec618,esp32}: scan + chip-id + forced measurement with
-  datasheet temperature compensation) is written and waits for the sensor
-  wires to move to reachable nets. Open question: which mux (if any) puts
-  I2C1 on pads 23/24 — ALT2 produces no SCL there; the blob is RTE-fixed
-  to pads 19/20 (unwired). Candidate paths: move wires + find the mux, or
-  bit-banged I2C over the (working) open-drain GPIO emulation.
+- **I2C works — `bmp280` test PASSING against a real sensor** (2026-06-10):
+  a BMP280 (chip-id 0x58, SDO->GND = 0x76) on the EC618's I2C1, pads 23/24
+  (the module's I2C1 pins, board pins 10/13; the sensor's SDA/SCL moved
+  there after the board's "I2C0" pins 22/23 measured unreachable — see the
+  wiring table). Verified: `Bus.scan` finds exactly the sensor (the old
+  scan failure is fixed), empty addresses NACK, chip-id reads, forced
+  measurements with the datasheet compensation give a stable ~27.6 degC,
+  and the `bmp280` package driver works on the same device (T+P, pressure
+  ~100.5 kPa). What it took, beyond the interface-drift rewrite and the
+  Driver_* veneer fix: (1) ALL pad routings from luat_i2c_ec618.c (I2C0:
+  13/14, 27/28, 31/32; I2C1: 19/20, 23/24 — the RTE comments only document
+  one each), and (2) when using a non-RTE routing the blob's RTE pads must
+  be muxed BACK to GPIO — two pads on one controller leave the input path
+  reading the floating RTE pad, so the controller sees a busy bus and
+  never clocks. Also: a DEAD bus (no pull-ups, e.g. sensor power off)
+  blocks the blob's polling transfer forever → watchdog reset (observed);
+  every transfer/probe is now preceded by a wire-level bus-free peek
+  (brief GPIO-mux sample of SDA/SCL). Remaining gap: transfers are
+  synchronous and a mid-transfer clock stretch has no timeout — see the
+  async-I2C TODO. `bmp280-{ec618,esp32}.toit`, `bme280-probe-esp32.toit`.
 - **GPIO open-drain emulation + `gpio-opendrain` test** (2026-06-10,
   passing): the EC618 GPIO has no open-drain bit, so the driver now
   emulates it — the pin DIRECTION tracks the value (0 = output-low,
@@ -484,7 +484,24 @@ rule no longer applies:
 - [x] **RS485 half-duplex** (uart2-rs485): DE timing verified at the ESP32;
       fixed the mixed-GPIO-stack DE drive and the best-effort TX_ALL_DONE
       reliance (synchronous TEMT drain in write).
-- [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
+- [x] **I2C**: working against a real BMP280 on I2C1 pads 23/24 (see Done).
+- [ ] **Async I2C** (clock-stretch-safe): the CMSIS blob driver is
+      polling-only with no timeout. Plan: switch i2c_ec618.cc to the luatos
+      core driver (soc_i2c.h: `I2C_MasterXfer` is IRQ-driven with a PER-BYTE
+      timeout, completion callback + non-blocking `I2C_WaitResult`) and grow
+      an async start/wait-for-state/collect protocol in lib/i2c.toit (the
+      ESP32 is synchronous today too). Needs I2C_MasterSetup/Prepare/
+      MasterXfer/WaitResult/ChangeBR/Reset/UsePollingMode in the jump table
+      = BASE-IMAGE change — bundle with dropping the dead Driver_* table
+      entries at the next planned full flash. Note soc_i2c.h forbids mixing
+      core and CMSIS I2C APIs: the switch must be wholesale.
+- [ ] **SPI** (consider the 3.3 V→1.8 V direction / dividers first; the rig
+      is full 3.3 V so direct wiring is fine).
+- [ ] **AON pads** (40..47, GPIO20..27 guesses): driving them through the
+      plain GPIO controller does nothing (gpio-map: silent everywhere) —
+      they likely need the AON/wakeup-pad API. The rig's remaining `?`
+      wires (IO19/IO2/IO13 and the unreachable "I2C0" pins 22/23) are all
+      candidates for AON pads.
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.
 - [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /

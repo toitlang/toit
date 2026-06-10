@@ -22,10 +22,13 @@
 #include "../process.h"
 #include "../resource.h"
 
+#include "pad_table_ec618.h"
+
 extern "C" {
   #include "Driver_I2C.h"
   #include "cmsis_os2.h"     // osDelay, for the completion guard.
-  #include "driver_gpio.h"   // GPIO_PullConfig, for the optional pull-ups.
+  #include "driver_gpio.h"   // GPIO_PullConfig / GPIO_IomuxEC618.
+  #include "gpio.h"          // OEM GPIO_pinConfig/pinRead, for the bus peek.
 
   // CMSIS I2C driver instances from the PLAT SDK. Both run in POLLING_MODE
   // (RTE_Device.h), so Master* calls block until the transfer is done.
@@ -36,13 +39,14 @@ extern "C" {
 namespace toit {
 
 // Pin arguments are PAD numbers (the EC618 addressing model). Controller
-// routings (iomux ALT2):
-//   I2C0: SDA=PAD27, SCL=PAD28   (per RTE_Device.h)
-//   I2C1: SDA=PAD19, SCL=PAD20   (per RTE_Device.h)
-//   I2C1: SDA=PAD23, SCL=PAD24   (the Air780E module's "I2C1" pins —
-//                                 GPIO8/9; HW-verified routing)
+// routings, all iomux ALT2 (the full set from the SDK's luat_i2c_ec618.c;
+// the RTE_Device.h comments only document one per controller):
+//   I2C0: SDA/SCL = 13/14, 27/28 (RTE default) or 31/32
+//   I2C1: SDA/SCL = 19/20 (RTE default) or 23/24 (the Air780E's I2C1 pins)
 static ARM_DRIVER_I2C* pads_to_driver(int sda, int scl) {
+  if (sda == 13 && scl == 14) return &Driver_I2C0;
   if (sda == 27 && scl == 28) return &Driver_I2C0;
+  if (sda == 31 && scl == 32) return &Driver_I2C0;
   if (sda == 19 && scl == 20) return &Driver_I2C1;
   if (sda == 23 && scl == 24) return &Driver_I2C1;
   return null;
@@ -55,12 +59,29 @@ static uint32_t frequency_to_speed(uint32_t frequency) {
   return ARM_I2C_BUS_SPEED_HIGH;
 }
 
+// Reads the wire level of an I2C pad: direction input, briefly mux to
+// plain GPIO, sample, restore the controller mux (ALT2).
+static bool wire_high(int pad) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return true;  // Cannot peek; assume fine.
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_INPUT;
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
+  GPIO_IomuxEC618(pad, 0, 0, 1);
+  int level = GPIO_pinRead(gpio_bit >> 4, gpio_bit & 0xf) ? 1 : 0;
+  GPIO_IomuxEC618(pad, 2, 1, 1);
+  return level != 0;
+}
+
 class I2cBusResource : public Resource {
  public:
   TAG(I2cBusResource);
-  I2cBusResource(ResourceGroup* group, ARM_DRIVER_I2C* driver)
+  I2cBusResource(ResourceGroup* group, ARM_DRIVER_I2C* driver, int sda, int scl)
     : Resource(group)
-    , driver_(driver) {}
+    , driver_(driver)
+    , sda_(sda)
+    , scl_(scl) {}
 
   ~I2cBusResource() override {
     driver_->PowerControl(ARM_POWER_OFF);
@@ -78,8 +99,18 @@ class I2cBusResource : public Resource {
     current_speed_ = speed;
   }
 
+  // Whether both lines idle high. A dead bus (no pull-ups, e.g. the
+  // peripheral powered off) MUST be caught before any transfer: the
+  // blob's polling driver has no timeout and a transfer on a stuck-low
+  // bus blocks the VM until the watchdog resets the chip (observed).
+  bool bus_free() const {
+    return (wire_high(sda_)) && (wire_high(scl_));
+  }
+
  private:
   ARM_DRIVER_I2C* driver_;
+  int sda_;
+  int scl_;
   uint32_t current_speed_ = 0;
 };
 
@@ -151,34 +182,37 @@ PRIMITIVE(bus_create) {
   ARM_DRIVER_I2C* driver = pads_to_driver(sda, scl);
   if (driver == null) FAIL(INVALID_ARGUMENT);
 
-  // TODO(toit): temporary bring-up tracing; drop once I2C is HW-validated.
-  printf("[toit] DEBUG: i2c bus_create driver=%p init=%p\n",
-         driver, driver->Initialize);
   int32_t status = driver->Initialize(null);
-  printf("[toit] DEBUG: i2c Initialize -> %d\n", (int)status);
   if (status != ARM_DRIVER_OK) FAIL(HARDWARE_ERROR);
 
   status = driver->PowerControl(ARM_POWER_FULL);
-  printf("[toit] DEBUG: i2c PowerControl -> %d\n", (int)status);
   if (status != ARM_DRIVER_OK) {
     driver->Uninitialize();
     FAIL(HARDWARE_ERROR);
   }
 
   status = driver->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
-  printf("[toit] DEBUG: i2c Control(speed) -> %d\n", (int)status);
   if (status != ARM_DRIVER_OK) {
     driver->PowerControl(ARM_POWER_OFF);
     driver->Uninitialize();
     FAIL(HARDWARE_ERROR);
   }
 
-  // Route the pads to the controller (ALT2 per RTE_Device.h, input buffer
-  // on, peripheral auto-pull). The CMSIS driver is supposed to do this
-  // itself; doing it explicitly costs nothing and removes a failure mode.
+  // The blob muxes its RTE-configured pads at init (I2C0: 27/28, I2C1:
+  // 19/20). When the caller picked a different routing, route the RTE
+  // pads back to plain GPIO: two pads muxed onto one controller leave
+  // the input path reading the floating RTE pad, which makes the
+  // controller see a busy bus — no SCL ever, transfers stall.
+  int rte_sda = (driver == &Driver_I2C0) ? 27 : 19;
+  if (sda != rte_sda) {
+    GPIO_IomuxEC618(rte_sda, 0, 0, 0);
+    GPIO_IomuxEC618(rte_sda + 1, 0, 0, 0);  // The matching SCL pad.
+  }
+
+  // Route the chosen pads to the controller (ALT2, input buffer on,
+  // peripheral auto-pull).
   GPIO_IomuxEC618(sda, 2, 1, 1);
   GPIO_IomuxEC618(scl, 2, 1, 1);
-  printf("[toit] DEBUG: i2c iomux done\n");
 
   if (pullup) {
     // Pad-level pulls on top of the ALT2 iomux.
@@ -187,9 +221,8 @@ PRIMITIVE(bus_create) {
   }
 
   driver->Control(ARM_I2C_BUS_CLEAR, 0);
-  printf("[toit] DEBUG: i2c bus clear done\n");
 
-  I2cBusResource* bus = _new I2cBusResource(group, driver);
+  I2cBusResource* bus = _new I2cBusResource(group, driver, sda, scl);
   if (bus == null) {
     driver->PowerControl(ARM_POWER_OFF);
     driver->Uninitialize();
@@ -215,6 +248,7 @@ PRIMITIVE(bus_probe) {
   // write is not reliably supported. A present device ACKs its address
   // and one byte transfers; an empty address NACKs and the data count
   // stays 0.
+  if (!bus->bus_free()) return BOOL(false);
   ARM_DRIVER_I2C* driver = bus->driver();
   uint8_t scratch;
   int32_t status = driver->MasterReceive(address, &scratch, 1, false);
@@ -277,6 +311,7 @@ static bool transfer_ok(I2cDeviceResource* device, int32_t status, int expected)
 
 PRIMITIVE(device_write) {
   ARGS(I2cDeviceResource, device, Blob, buffer);
+  if (!device->bus()->bus_free()) FAIL(HARDWARE_ERROR);
   device->bus()->ensure_speed(device->frequency());
   int32_t status = device->driver()->MasterTransmit(
       device->address(),
@@ -290,6 +325,7 @@ PRIMITIVE(device_write) {
 PRIMITIVE(device_read) {
   ARGS(I2cDeviceResource, device, MutableBlob, buffer, int, length);
   if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (!device->bus()->bus_free()) FAIL(HARDWARE_ERROR);
   device->bus()->ensure_speed(device->frequency());
   int32_t status = device->driver()->MasterReceive(
       device->address(), buffer.address(), length, false);
@@ -300,6 +336,7 @@ PRIMITIVE(device_read) {
 PRIMITIVE(device_write_read) {
   ARGS(I2cDeviceResource, device, Blob, tx_buffer, MutableBlob, rx_buffer, int, length);
   if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (!device->bus()->bus_free()) FAIL(HARDWARE_ERROR);
   device->bus()->ensure_speed(device->frequency());
   ARM_DRIVER_I2C* driver = device->driver();
 

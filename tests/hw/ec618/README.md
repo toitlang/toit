@@ -114,6 +114,11 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   timing: `out.flush` / `write --flush` returns no earlier than the payload's
   wire time and not much later, at 9600/115200/921600; plus no-garbage-on-open
   and `--break-length` rejection. PASSES.
+- `bmp280-{ec618,esp32}` — I2C against a real BMP280 on I2C1 (pads 23/24,
+  board pins 10/13; sensor power switched by the ESP32 on IO13): scan,
+  NACK probing, chip-id, forced measurements with datasheet compensation,
+  and the `bmp280` package driver. PASSES. (`bme280-probe-esp32` is the
+  ESP32-side hookup checker.)
 - `gpio-opendrain-{ec618,esp32}` — GPIO open-drain emulation as a real
   two-master wired-AND bus (PAD33 <-> IO16, both open-drain, pull-ups both
   sides): drive/release, wire readback, the wired-AND property, toggling,

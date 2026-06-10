@@ -7,10 +7,11 @@ ESP32-side BME/BMP280 probe — validates the breadboard hookup before the
 EC618 I2C bring-up uses the sensor.
 
 Powers the sensor from IO13, scans the I2C bus on the shared nets
-(SDA = IO18, SCL = IO17 — the wires that also reach the EC618's I2C0
-pads), reads the chip-id register (0xD0: 0x60 = BME280, 0x58 = BMP280,
-0x56/0x57 = BMP280 samples) and, for a BME280, takes real measurements
-via the driver package. SDO is tied to GND, so the address is 0x76.
+(SDA = IO33, SCL = IO22 — the wires that also reach the EC618's pads
+23/24, the module's I2C1 pins), reads the chip-id register (0xD0:
+0x60 = BME280, 0x58 = BMP280, 0x56/0x57 = BMP280 samples) and, for a
+BME280, takes real measurements via the driver package. SDO is tied to
+GND, so the address is 0x76.
 
 Run via Jaguar:
 
@@ -22,8 +23,8 @@ import gpio
 import i2c
 
 POWER ::= 13
-SDA ::= 18
-SCL ::= 17
+SDA ::= 33
+SCL ::= 22
 ADDRESS ::= 0x76     // SDO tied to GND.
 REG-CHIP-ID ::= 0xd0
 

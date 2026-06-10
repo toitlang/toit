@@ -35,12 +35,12 @@ import ec618 show Ec618
 // slot was implicated in the teardown crash; see the header). 29/30 are the
 // console. Pads without a GPIO controller bit can't be driven this way and
 // are not listed (the gpio.Pin constructor would reject them).
-PADS ::= [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34]
+PADS ::= [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
 SYNC-PAD ::= 26                  // -> ESP32 IO27, the confirmed anchor wire.
 SYNC-PULSES ::= 6
 SYNC-HALF ::= Duration --ms=80   // 6.25 Hz burst, distinct from the 25 Hz slot wave.
 LEAD-IN ::= Duration --ms=600    // Quiet gap after the sync burst, before slot 0.
-SLOT ::= Duration --s=3
+SLOT ::= Duration --s=2
 SLOT-HALF ::= Duration --ms=20   // 25 Hz square wave inside a slot.
 
 drive-square pin/gpio.Pin half/Duration duration/Duration -> none:

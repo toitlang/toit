@@ -24,12 +24,12 @@ ANCHOR ::= 27
 WATCH ::= [27, 21, 14, 16, 4, 13, 33, 32, 23, 22, 19, 18, 17, 2]
 // Slot order — MUST match PADS in gpio-map-ec618.toit. (PAD26 is not a slot;
 // it is the sync anchor on IO27.)
-EC618-PADS ::= [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34]
+EC618-PADS ::= [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
 
 // Schedule constants — MUST match gpio-map-ec618.toit.
 SYNC-MS ::= 6 * 2 * 80
 LEAD-IN-MS ::= 600
-SLOT-MS ::= 3000
+SLOT-MS ::= 2000
 WAIT-FOR-SYNC ::= Duration --s=40
 
 main:

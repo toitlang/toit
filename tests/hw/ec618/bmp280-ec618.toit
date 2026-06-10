@@ -5,23 +5,26 @@
 /**
 EC618 I2C bring-up test against a real BMP280 (device under test).
 
-The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C0 bus
-(SDA=PAD27, SCL=PAD28 — the module's I2C0 pins); the ESP32 only switches
-its power. Checks, all on this side:
+The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus
+(SDA=PAD23, SCL=PAD24 — the module's I2C1 pins, board pins 10/13; the
+module's "I2C0" board pins turned out to be unreachable); the ESP32 only
+switches its power. Checks, all on this side:
 
 - $i2c.Bus.scan finds exactly the sensor (this exercises the probe
   primitive — scanning previously failed on the EC618);
 - probing an empty address says no;
 - chip-id register reads 0x58 (BMP280);
 - a forced measurement: calibration registers + raw readout + the
-  datasheet temperature compensation give a plausible room temperature.
+  datasheet temperature compensation give a plausible room temperature;
+- the `bmp280` package driver works on top of the same device (plausible
+  temperature and pressure).
 
 The powered-off behavior is PRINTED, not asserted: with power off the
 sensor may stay half-alive through its breakout pull-ups (back-powering).
 
 Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = power-control lane;
-        sensor SDA/SCL on the nets joining ESP32 IO18/IO17 and the EC618's
-        I2C0 pads; sensor VCC from ESP32 IO13.
+        sensor SDA on the PAD23 <-> ESP32 IO33 net, SCL on the PAD24 <->
+        IO22 net (board pins 10/13); sensor VCC from ESP32 IO13.
 
 Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 
@@ -30,13 +33,14 @@ Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
       --port-board1 <ec618-uart0-port> tests/hw/ec618/bmp280-ec618.toit
 */
 
+import bmp280
 import ec618 show Ec618
 import i2c
 import io
 import uart
 
-SDA-PAD ::= 27
-SCL-PAD ::= 28
+SDA-PAD ::= 23
+SCL-PAD ::= 24
 ADDRESS ::= 0x76
 EMPTY-ADDRESS ::= 0x40
 
@@ -93,6 +97,15 @@ main:
     print "bmp280-ec618: measurement $i: T=$(%.2f temperature)C (raw T=$adc-t P=$adc-p)"
     check (5.0 < temperature and temperature < 45.0) "temperature-plausible-$i"
     sleep --ms=100
+
+  // The same sensor through the bmp280 package driver.
+  driver := bmp280.Bmp280 device
+  driver.on
+  temperature := driver.read-temperature
+  pressure := driver.read-pressure
+  print "bmp280-ec618: package driver: T=$(%.2f temperature)C P=$(%.1f pressure)Pa"
+  check (5.0 < temperature and temperature < 45.0) "package-temperature"
+  check (80000.0 < pressure and pressure < 110000.0) "package-pressure"
 
   // Power off: print what the bus sees, but don't assert — back-powering
   // through the breakout pull-ups can keep the sensor half-alive.
