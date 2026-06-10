@@ -179,7 +179,11 @@ class Ec618:
     // UART1.
     [
       [34, 33, 31, 32],   // Mapping 0 — only mapping for TX/RX/RTS.
-      [-1, -1, -1, 22],   // Mapping 1 — alt CTS pad only.
+      // Mapping 1 — the alt CTS pad. TX/RX have a single routing on UART1,
+      // so this mapping keeps them; only CTS differs. (With TX/RX as -1
+      // this mapping was unusable: open-uart_ rejects an enabled role
+      // without a pad.)
+      [34, 33, -1, 22],
     ],
     // UART2.
     [

@@ -80,20 +80,29 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 25 (DAC1) -> [~2:1 divider] -> ADC0 (pin 3)      ADC channel 0 (AIO3)    CONFIRMED (exact, ratio ~0.47)
 26 (DAC2) -> [~2:1 divider] -> ADC1 (pin 4)      ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.46)
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
-14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  to verify
+14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  CONFIRMED (uart2 tests; gpio-map)
 13        -> 09  (GPIO22, MAIN_DTR)              ?                       to verify
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     ?                       to verify
-32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   ?                       to verify
+32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   MIRRORS PAD25's net     CONFIRMED (gpio-map: GPIO10 hits IO14+IO32)
 23        -> 12  (GPIO01, PWM10)                 ?                       to verify
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)   ?                       to verify
-21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)    PAD22 (GPIO11 alt)      to verify
+21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)    MIRRORS PAD26's net     CONFIRMED (NOT PAD22: isolated PAD22 drive = quiet; bit-11 drive with PAD26 GPIO-muxed = IO21+IO27 toggle)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)        ?                       to verify
-18        -> 22  (I2C0_SDA)                      I2C0 SDA                to verify
-17        -> 23  (I2C0_SCL)                      I2C0 SCL                to verify
+18        -> 22  (I2C0_SDA)                      I2C0 SDA                to verify (always-high in gpio-map: pull-ups)
+17        -> 23  (I2C0_SCL)                      I2C0 SCL                to verify (always-high in gpio-map: pull-ups)
  2        -> 27  (GPIO27, NET_STATUS, PWM04)     ?                       to verify
- 4        -> 30  (UART1_TXD)                     UART1 TX (PAD34)        (= console on dev rig)
-16        -> 31  (GPIO18, UART1_RXD, PWM14)      UART1 RX (PAD33)        (= console on dev rig)
+ 4        -> 30  (UART1_TXD)                     UART1 TX (PAD34)        CONFIRMED (gpio-map: GPIO19 -> IO4)
+16        -> 31  (GPIO18, UART1_RXD, PWM14)      UART1 RX (PAD33)        CONFIRMED (gpio-map: GPIO18 -> IO16)
 ```
+
+**No hardware flow control is wireable as-is (measured 2026-06-10):** UART2 has
+no flow control in the chip; UART1's RTS/CTS pads (PAD31/PAD32 = GPIO16/17,
+mux ALT1 per RTE_Device.h — the only routing) reach **no** ESP32 pin, and
+neither do the alt-pad candidates PAD21/PAD22 (isolated GPIO drives, ESP32
+all-pin watch: silent). The two "duplicated GPIO" board pins are pad-net
+MIRRORS (pin 11 = PAD25's net, pin 14 = PAD26's net), not alternate pads.
+Testing RTS/CTS needs the board's MAIN_RTS/MAIN_CTS (GPIO16/17) pins — if the
+dev board exposes them — wired to free ESP32 GPIOs.
 
 ### Voltage domains (important — corrected 2026-06-08)
 - **The EC618 IO rail is configured to 3.3 V — a CHIP setting, not the module.**
@@ -356,8 +365,10 @@ rule no longer applies:
 - [ ] **UART RX overflow-wedge** (known-issues #4, the big one): try
       `Uart_RxBufferClear` as an unwedge; real fix = move RX onto the open
       CMSIS `bsp_usart.c` driver with our own ring; then RTS/CTS flow control.
-- [ ] **UART2 4 MBd RX loss** (known-issues #4): wire + test **RTS/CTS flow
-      control**; investigate the IRQ-latency source.
+- [ ] **UART2 4 MBd RX loss** (known-issues #4): investigate the IRQ-latency
+      source. RTS/CTS is BLOCKED on rig wiring (see the wiring note above):
+      UART1's PAD31/32 don't reach the ESP32 — needs Florian to check the
+      board for MAIN_RTS/MAIN_CTS pins and wire them.
 - [x] **UART full-duplex stress** test written + run (uart2-duplex): no
       lockup; TX clean; RX dead via the overflow-wedge — red until #4 is fixed.
 - [ ] **UART configs**: parity, stop bits, data bits, RS485 (DE pin path

@@ -37,10 +37,10 @@ ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidat
 14        -> 06  (GPIO10, uart2_rxd)              PAD25  (GPIO10 primary)
 13        -> 09  (GPIO22, MAIN_DTR)               ?
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)      ?
-32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)    ?
+32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)    mirrors PAD25's net (gpio-map)
 23        -> 12  (GPIO01, PWM10)                  ?
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)    ?
-21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     PAD22  (GPIO11 alt)
+21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     mirrors PAD26's net (NOT PAD22)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)         ?
 18        -> 22  (I2C0_SDA)                       I2C0 SDA
 17        -> 23  (I2C0_SCL)                       I2C0 SCL
