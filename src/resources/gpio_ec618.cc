@@ -95,6 +95,11 @@ class GpioResourceGroup : public ResourceGroup {
     USE(data);
     return state | kEdgeTriggeredState;
   }
+
+  // Runs on both the explicit close (the unuse primitive) and the forced
+  // teardown of a killed container — the pin must not keep driving or
+  // stay muxed once its resource is gone.
+  void on_unregister_resource(Resource* r) override;
 };
 
 // GPIO ISR handler — dispatches events for all triggered pins.
@@ -140,6 +145,28 @@ static void apply_open_drain_level(int gpio_bit, int value) {
     config.pinDirection = GPIO_DIRECTION_INPUT;
   }
   GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+}
+
+// See pad_table_ec618.h. Lives here because this is the file with the SDK
+// GPIO includes; all pad-muxing drivers (GPIO, I2C, SPI, PWM) share it.
+void pad_release(int pad) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit >= 0) {
+    GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
+                         GPIO_INTERRUPT_DISABLED);
+    GpioPinConfig_t config;
+    memset(&config, 0, sizeof(config));
+    config.pinDirection = GPIO_DIRECTION_INPUT;
+    GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+    GPIO_IomuxEC618(pad, 0, 0, 0);
+  }
+  GPIO_PullConfig(pad, 0, 0);
+}
+
+void GpioResourceGroup::on_unregister_resource(Resource* r) {
+  GpioResource* resource = static_cast<GpioResource*>(r);
+  open_drain_pads &= ~(1ULL << resource->pad());
+  pad_release(resource->pad());
 }
 
 static bool isr_installed = false;
@@ -189,9 +216,8 @@ PRIMITIVE(use) {
 
 PRIMITIVE(unuse) {
   ARGS(GpioResourceGroup, group, GpioResource, resource);
-  int gpio_bit = resource->gpio_bit();
-  open_drain_pads &= ~(1ULL << resource->pad());
-  GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), GPIO_INTERRUPT_DISABLED);
+  // The pad cleanup happens in on_unregister_resource, shared with the
+  // killed-container teardown path.
   group->unregister_resource(resource);
   resource_proxy->clear_external_address();
   return process->null_object();

@@ -130,8 +130,7 @@ class PwmResourceGroup : public ResourceGroup {
   void on_unregister_resource(Resource* r) override {
     PwmResource* channel = static_cast<PwmResource*>(r);
     TIMER_stop(channel->timer());
-    // Return the pad to plain GPIO (left unconfigured = not driven).
-    GPIO_IomuxEC618(channel->pad(), 0, 0, 0);
+    pad_release(channel->pad());
     timer_in_use[channel->timer()] = false;
   }
 

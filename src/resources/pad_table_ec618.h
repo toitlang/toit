@@ -67,6 +67,18 @@ enum class UartRole : uint8_t {
 
 int uart_pad(int uart_id, UartRole role, int mapping, int* out_mux);
 
+// Returns a pad to a defined, disconnected state: interrupt off, GPIO
+// controller bit (if the pad has one) released to input so nothing drives
+// the wire, iomux back to plain GPIO with the input buffer off, pulls off.
+// Peripheral-only pads keep their mux (function 0 is undefined for them);
+// an idle peripheral doesn't drive, so dropping the pulls releases them.
+//
+// Every driver that muxed a pad calls this when the owning resource goes
+// away — INCLUDING the forced teardown of a killed container. The contract
+// is "a closed pad is high-Z": a container can never leave a wire driven.
+// (Implemented in gpio_ec618.cc, which has the SDK GPIO includes.)
+void pad_release(int pad);
+
 }  // namespace toit
 
 #endif  // TOIT_EC618

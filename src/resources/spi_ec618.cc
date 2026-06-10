@@ -81,8 +81,18 @@ static void pad_set(int pad, int level) {
 class SpiResourceGroup : public ResourceGroup {
  public:
   TAG(SpiResourceGroup);
-  SpiResourceGroup(Process* process, int controller)
-    : ResourceGroup(process), controller_(controller) {}
+  SpiResourceGroup(Process* process, int controller,
+                   int mosi, int miso, int clock)
+    : ResourceGroup(process), controller_(controller)
+    , mosi_(mosi), miso_(miso), clock_(clock) {}
+
+  // Hands the bus pads back disconnected — also on the forced teardown of
+  // a killed container; the wires must not stay muxed to the controller.
+  ~SpiResourceGroup() override {
+    pad_release(mosi_);
+    pad_release(miso_);
+    pad_release(clock_);
+  }
 
   int controller() const { return controller_; }
 
@@ -97,6 +107,9 @@ class SpiResourceGroup : public ResourceGroup {
 
  private:
   int controller_;
+  int mosi_;
+  int miso_;
+  int clock_;
   uint32_t speed_ = 0;
   uint8_t mode_ = 0;
 };
@@ -114,7 +127,11 @@ class SpiDevice : public Resource {
     , mode_(mode) {}
 
   ~SpiDevice() override {
-    if (cs_ >= 0) pad_set(cs_, 1);  // Deselect.
+    if (cs_ >= 0) {
+      pad_set(cs_, 1);  // Deselect before letting go of the pad.
+      pad_release(cs_);
+    }
+    if (dc_ >= 0) pad_release(dc_);
   }
 
   int controller() const { return group_->controller(); }
@@ -150,7 +167,8 @@ PRIMITIVE(init) {
   // Mode/speed are per-device; start with a safe default.
   SPI_MasterInit(controller, 8, 0, 1000000, null, null);
 
-  SpiResourceGroup* group = _new SpiResourceGroup(process, controller);
+  SpiResourceGroup* group = _new SpiResourceGroup(process, controller,
+                                                  mosi, miso, clock);
   if (group == null) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(group);

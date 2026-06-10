@@ -130,6 +130,11 @@ class I2cBusResource : public Resource {
       state->transfer_active = false;
     }
     state->in_use = false;
+    // Hand the pads back disconnected (this also drops the pull-ups the
+    // bus may have enabled) — a container must leave the wires the way it
+    // found them, even when it is killed without closing the bus.
+    pad_release(sda_);
+    pad_release(scl_);
   }
 
   int controller() const { return controller_; }
