@@ -152,7 +152,7 @@ class Ec618:
   // src/resources/pad_table_ec618.cc. -1 means we don't have a mapping
   // documented yet.
   static GPIO-PRIMARY-PAD_/List ::= [
-    -1,  -1,  13,  14,  15,  16,  -1,  -1,
+    -1,  16,  13,  14,  15,  -1,  -1,  -1,
     23,  24,  25,  26,  27,  28,  29,  30,
     31,  32,  33,  34,  40,  41,  42,  43,
     44,  45,  46,  47,  37,  35,  36,  -1,

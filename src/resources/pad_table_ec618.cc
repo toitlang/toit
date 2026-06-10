@@ -31,8 +31,8 @@ namespace toit {
 // Sourced from RTE_Device.h pad-comment annotations; the SDK's
 // GPIO_ToPadEC618(gpio, 0) returns the same pad at runtime.
 static const int8_t kGpioPrimaryPad[32] = {
-  /*  0 */ -1, /*  1 */ -1, /*  2 */ 13, /*  3 */ 14,
-  /*  4 */ 15, /*  5 */ 16, /*  6 */ -1, /*  7 */ -1,
+  /*  0 */ -1, /*  1 */ 16, /*  2 */ 13, /*  3 */ 14,
+  /*  4 */ 15, /*  5 */ -1, /*  6 */ -1, /*  7 */ -1,
   /*  8 */ 23, /*  9 */ 24, /* 10 */ 25, /* 11 */ 26,
   /* 12 */ 27, /* 13 */ 28, /* 14 */ 29, /* 15 */ 30,
   /* 16 */ 31, /* 17 */ 32, /* 18 */ 33, /* 19 */ 34,
