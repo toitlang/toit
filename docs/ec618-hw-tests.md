@@ -485,16 +485,31 @@ rule no longer applies:
       fixed the mixed-GPIO-stack DE drive and the best-effort TX_ALL_DONE
       reliance (synchronous TEMT drain in write).
 - [x] **I2C**: working against a real BMP280 on I2C1 pads 23/24 (see Done).
-- [ ] **Async I2C** (clock-stretch-safe): the CMSIS blob driver is
-      polling-only with no timeout. Plan: switch i2c_ec618.cc to the luatos
-      core driver (soc_i2c.h: `I2C_MasterXfer` is IRQ-driven with a PER-BYTE
-      timeout, completion callback + non-blocking `I2C_WaitResult`) and grow
-      an async start/wait-for-state/collect protocol in lib/i2c.toit (the
-      ESP32 is synchronous today too). Needs I2C_MasterSetup/Prepare/
-      MasterXfer/WaitResult/ChangeBR/Reset/UsePollingMode in the jump table
-      = BASE-IMAGE change — bundle with dropping the dead Driver_* table
-      entries at the next planned full flash. Note soc_i2c.h forbids mixing
-      core and CMSIS I2C APIs: the switch must be wholesale.
+- [x] **Async I2C** (clock-stretch-safe) — DONE, HW-verified (bmp280 suite
+      through the async path; ESP32 through the sentinel sync fallback).
+      i2c_ec618.cc rides the luatos core driver: IRQ-driven transfers with
+      per-byte timeouts, completion via the event source, VM never blocks.
+      Gotcha for posterity: `I2C_SetNoBlock` must precede EVERY
+      `I2C_MasterXfer`, or the completion callback never fires.
+- [ ] **OTA layout-contract guard** (URGENT, from the async-I2C incident):
+      ANY VM change shifts the whole base link — base functions move AND
+      the shared RAM (.load_dram_*) can move; a slot-only OTA then runs
+      against a base whose layout it wasn't linked for → silent dumpless
+      resets on container spawns / slot-flash writes while the agent keeps
+      working (the smoke-validate passes: necessary, not sufficient).
+      Plan: stamp a base-ABI fingerprint (shared-RAM section map +
+      .jt_data content hash) into the base AND every OTA payload;
+      fw-begin + the host tester refuse on mismatch ("base epoch mismatch
+      — full flash required"). Extend check-slot-refs to reject direct
+      slot->base data relocations outside the JT. Longer-term: two-stage
+      linking (frozen base artifact + slots linked against its symbol
+      file) makes the base immune to VM changes by construction — and
+      then reconsider whether the jump table is still needed at all.
+      Until the guard lands: builds that change VM statics/layout get a
+      FULL FLASH; before any OTA, manually diff .jt_data content and
+      .load_dram_* addresses against the flashed build's elf.
+- [ ] **SPI** (consider the 3.3 V→1.8 V direction / dividers first; the rig
+      is full 3.3 V so direct wiring is fine).
 - [ ] **SPI** (consider the 3.3 V→1.8 V direction / dividers first; the rig
       is full 3.3 V so direct wiring is fine).
 - [ ] **AON pads** (40..47, GPIO20..27 guesses): driving them through the
