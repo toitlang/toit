@@ -84,7 +84,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 13        -> 09  (GPIO22, MAIN_DTR)              ?                       to verify
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     ?                       to verify
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   MIRRORS PAD25's net     CONFIRMED (gpio-map: GPIO10 hits IO14+IO32)
-23        -> 12  (GPIO01, PWM10)                 ?                       to verify
+23        -> 12  (GPIO01, PWM10)                 PAD16 (TIMER0 PWM)      CONFIRMED (pwm test: 1 kHz measured at IO23)
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)   ?                       to verify
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)    MIRRORS PAD26's net     CONFIRMED (NOT PAD22: isolated PAD22 drive = quiet; bit-11 drive with PAD26 GPIO-muxed = IO21+IO27 toggle)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)        ?                       to verify
@@ -144,6 +144,24 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **PWM implemented + `pwm` dual-board test** (2026-06-10, passing): new
+  `pwm_ec618.cc` behind the generic `gpio.pwm` API. PWM rides the AP TIMER
+  instances (one output each; TIMER0/1/2/4 — 3 and 5 are platform-reserved),
+  iomux ALT5, 26 MHz source; registers are programmed directly (the SDK's
+  `TIMER_setupPwm` isn't jump-tabled and is integer-percent only), clocks +
+  start/stop via the jump table — no base-image change. Test: EC618 commands
+  the ESP32 over UART2; ESP32 measures with a pulse counter (frequency) and
+  busy-polling (duty/level). Verified: 1/2 kHz frequency (~+1.2% measured —
+  crystal tolerance, consistent everywhere), duty 0.25/0.5/0.75 (±1%),
+  constant low/high extremes, live set-frequency, two simultaneous channels
+  (TIMER4/PAD33 -> IO16, TIMER0/PAD16 -> IO23 — confirming that wire),
+  closed channel goes silent while the other keeps running. TWO hardware
+  quirks found (vs the SDK's own code): `TMR[0] == TMR[1]` ("100%" per the
+  SDK) and `TMR[0] == 0` both give constant LOW — duty 1.0 is programmed as
+  high with a 2-tick (77 ns) low notch; and the constant-low state is a
+  one-way trap (compare writes latch on the match event, which never fires
+  — the SDK's `TIMER_updatePwmDutyCycle` has the same bug), so leaving it
+  restarts the timer via the TCCR enable bit. `pwm-{ec618,esp32}.toit`.
 - **`uart2-flush` flush semantics** (2026-06-10, passing): `out.flush` /
   `write --flush` must return when the last bit leaves the wire — verified by
   pure timing (2 KiB cannot flush faster than its wire time, nor much slower)
@@ -364,8 +382,7 @@ rule no longer applies:
 - **UART2**: baud sweep (TX side — *baseline committed*); RS485 *done*;
   RTS/CTS skipped (not wireable on this rig, no alternative board); EC618
   UART RX — all safe now (3.3 V both ways), drive directly.
-- **PWM** (not yet implemented): EC618 drives, ESP32 measures freq/duty over a
-  range.
+- **PWM** — *done* (implemented + HW-tested; see Done).
 - **ADC**: exact-value staircase (EC618 measures the ESP32 DAC, self-calibrating
   the board divider, ±60 mV per level) — *done*.
 - **GPIO**: output modes (done) + pull-up (done); input driven by the ESP32 is now
@@ -397,7 +414,8 @@ rule no longer applies:
       (`gen-plat-jt`) for a calibrated ADC + clean conversion wait (base-image
       change; needs a full flash).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
-- [ ] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty).
+- [x] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty;
+      pwm_ec618.cc on TIMER0/1/2/4, generic `gpio.pwm` API).
 - [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata
       256 KiB/direction + ring characterization.
 - [ ] **UART RX overflow-wedge** (known-issues #4, the big one): try

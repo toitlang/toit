@@ -38,7 +38,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidat
 13        -> 09  (GPIO22, MAIN_DTR)               ?
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)      ?
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)    mirrors PAD25's net (gpio-map)
-23        -> 12  (GPIO01, PWM10)                  ?
+23        -> 12  (GPIO01, PWM10)                  PAD16  (TIMER0 PWM out)   [confirmed]
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)    ?
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)     mirrors PAD26's net (NOT PAD22)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)         ?
@@ -114,3 +114,8 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   timing: `out.flush` / `write --flush` returns no earlier than the payload's
   wire time and not much later, at 9600/115200/921600; plus no-garbage-on-open
   and `--break-length` rejection. PASSES.
+- `pwm-{ec618,esp32}` — PWM (generic `gpio.pwm` API): frequency via ESP32
+  pulse counter, duty by polling, constant extremes, live set-frequency, two
+  simultaneous channels (PAD33/TIMER4 -> IO16, PAD16/TIMER0 -> IO23), closed
+  channel goes silent. The ESP32 half is a dumb measurement server commanded
+  over UART2; all assertions run on the EC618. PASSES.
