@@ -56,6 +56,11 @@ struct Event {
   static Type uart_type(int id) {
     return static_cast<Type>(UART_0 + id);
   }
+
+  // I2C controller completion events (after the 32 GPIO slots).
+  static Type i2c_type(int id) {
+    return static_cast<Type>(GPIO_NUM_0 + 32 + id);
+  }
 };
 
 // A resource that carries an event type for matching.

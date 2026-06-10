@@ -30,6 +30,8 @@ TYPE_PRIMITIVE_ANY(device_close)
 TYPE_PRIMITIVE_ANY(device_write)
 TYPE_PRIMITIVE_ANY(device_read)
 TYPE_PRIMITIVE_ANY(device_write_read)
+TYPE_PRIMITIVE_ANY(device_transfer_start)
+TYPE_PRIMITIVE_ANY(device_transfer_finish)
 
 }  // namespace toit::compiler
 }  // namespace toit

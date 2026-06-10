@@ -286,6 +286,18 @@ PRIMITIVE(device_write_read) {
   return process->null_object();
 }
 
+PRIMITIVE(device_transfer_start) {
+  // Asynchronous transfers are not implemented on the ESP32 (the driver
+  // calls are synchronous); the `false` sentinel sends the i2c library
+  // down its synchronous path.
+  return process->false_object();
+}
+
+PRIMITIVE(device_transfer_finish) {
+  // Unreachable: transfer_start never starts a transfer on the ESP32.
+  FAIL(UNIMPLEMENTED);
+}
+
 } // namespace toit
 
 #endif // TOIT_ESP32

@@ -465,6 +465,8 @@ namespace toit {
   PRIMITIVE(device_write, 2)                 \
   PRIMITIVE(device_read, 3)                  \
   PRIMITIVE(device_write_read, 4)            \
+  PRIMITIVE(device_transfer_start, 3)        \
+  PRIMITIVE(device_transfer_finish, 2)       \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \

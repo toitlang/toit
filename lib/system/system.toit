@@ -71,6 +71,9 @@ ARCHITECTURE-ESP32S2 ::= "esp32s2"
 /** Return value from $architecture. */
 ARCHITECTURE-ESP32S3 ::= "esp32s3"
 
+/** Return value from $architecture. */
+ARCHITECTURE-EC618 ::= "ec618"
+
 /** Returns a string identifying the underlying architecture. */
 architecture -> string:
   #primitive.core.architecture
