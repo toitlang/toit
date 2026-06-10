@@ -102,7 +102,9 @@ neither do the alt-pad candidates PAD21/PAD22 (isolated GPIO drives, ESP32
 all-pin watch: silent). The two "duplicated GPIO" board pins are pad-net
 MIRRORS (pin 11 = PAD25's net, pin 14 = PAD26's net), not alternate pads.
 Testing RTS/CTS needs the board's MAIN_RTS/MAIN_CTS (GPIO16/17) pins — if the
-dev board exposes them — wired to free ESP32 GPIOs.
+dev board exposes them — wired to free ESP32 GPIOs. **Skipped for now**
+(Florian, 2026-06-10): no board with exposed RTS/CTS pins is available;
+revisit when one is.
 
 ### Voltage domains (important — corrected 2026-06-08)
 - **The EC618 IO rail is configured to 3.3 V — a CHIP setting, not the module.**
@@ -142,6 +144,29 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **`uart2-rs485` RS485 half-duplex** (2026-06-10, passing 9600/115200/921600):
+  UART2 in `MODE-RS485-HALF-DUPLEX` with the direction line on PAD33 (any
+  GPIO-capable pad works; new `--rs485-de` pin on the `Ec618.uartN`
+  constructors); the ESP32 verifies exactly one DE pulse per message at IO16,
+  DE released right after the last bit, and DE low while it echoes. Found and
+  fixed TWO driver bugs: (1) the DE pad was driven through the luatos
+  core-driver `GPIO_Config`/`GPIO_Output` — a *different* GPIO stack than the
+  OEM `GPIO_pin*` API the gpio driver uses (mixing is forbidden by its own
+  header), and on hardware those calls never moved the pad; (2) the PLAT
+  blob's `UART_CB_TX_ALL_DONE` is **best-effort** — it samples LSR.TEMT once
+  at TX-DMA-done dispatch (disassembly of `prvUart_TxDone`,
+  `libcore_airm2m.a`) and stays silent if the FIFO is still draining, so at
+  ≤115200 DE stayed high forever. The write primitive now polls
+  `Uart_IsTSREmpty` and releases DE synchronously (ISR drop kept as the
+  zero-latency fast path at high baud). `uart2-rs485-{ec618,esp32}.toit`.
+- **`uart2-config` configuration matrix** (2026-06-10, passing): all 49
+  combinations — data bits 5..8 × parity none/even/odd × stop bits 1/2 (+ a
+  1.5-stop probe) at 115200 and 921600, reopening both sides per config —
+  round-trip correctly. A deliberate parity mismatch shows the error counter
+  fires once per bad byte while the bytes are still delivered intact
+  (detectable, not filtering). Gotcha: a fresh UART1 open can emit a glitch
+  byte that garbles the first control-lane line; tests flush a newline after
+  opening control. `uart2-config-{ec618,esp32}.toit`.
 - **`Container.wait` spurious-CLOSED fix** (2026-06-10, HW-verified): a failing
   memory-churning test killed the agent (watchdog reset 60 s later) because a
   waited-on container is only weakly rooted while its waiter task is blocked —
@@ -324,8 +349,9 @@ rule no longer applies:
   shorts) before relying on it — that habit is cheap and catches miswiring.
 
 ### Per-peripheral exhaustive plan
-- **UART2**: baud sweep (TX side — *baseline committed*); RTS/CTS flow control and
-  RS485; EC618 UART RX — all safe now (3.3 V both ways), drive directly.
+- **UART2**: baud sweep (TX side — *baseline committed*); RS485 *done*;
+  RTS/CTS skipped (not wireable on this rig, no alternative board); EC618
+  UART RX — all safe now (3.3 V both ways), drive directly.
 - **PWM** (not yet implemented): EC618 drives, ESP32 measures freq/duty over a
   range.
 - **ADC**: exact-value staircase (EC618 measures the ESP32 DAC, self-calibrating
@@ -366,13 +392,16 @@ rule no longer applies:
       `Uart_RxBufferClear` as an unwedge; real fix = move RX onto the open
       CMSIS `bsp_usart.c` driver with our own ring; then RTS/CTS flow control.
 - [ ] **UART2 4 MBd RX loss** (known-issues #4): investigate the IRQ-latency
-      source. RTS/CTS is BLOCKED on rig wiring (see the wiring note above):
-      UART1's PAD31/32 don't reach the ESP32 — needs Florian to check the
-      board for MAIN_RTS/MAIN_CTS pins and wire them.
+      source. RTS/CTS testing is SKIPPED for now (see the wiring note above):
+      UART1's PAD31/32 don't reach the ESP32 and no board with exposed
+      MAIN_RTS/MAIN_CTS pins is available (Florian, 2026-06-10).
 - [x] **UART full-duplex stress** test written + run (uart2-duplex): no
       lockup; TX clean; RX dead via the overflow-wedge — red until #4 is fixed.
-- [ ] **UART configs**: parity, stop bits, data bits, RS485 (DE pin path
-      exists in the driver), error counter on induced parity errors.
+- [x] **UART configs**: parity, stop bits, data bits + error counter on
+      induced parity errors (uart2-config, all 49 configs pass).
+- [x] **RS485 half-duplex** (uart2-rs485): DE timing verified at the ESP32;
+      fixed the mixed-GPIO-stack DE drive and the best-effort TX_ALL_DONE
+      reliance (synchronous TEMT drain in write).
 - [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.

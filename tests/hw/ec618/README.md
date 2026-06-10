@@ -105,3 +105,8 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
   parity none/even/odd × stop bits 1/2 (+ a 1.5-stop probe) at 115200 and
   921600, plus a deliberate parity mismatch verifying the error counter
   (one error per bad byte; bytes still delivered). PASSES.
+- `uart2-rs485-{ec618,esp32}` — RS485 half-duplex: UART2 in
+  `MODE-RS485-HALF-DUPLEX` with the direction (DE) line on PAD33, observed by
+  the ESP32 on IO16. Verifies exactly one DE pulse per message, DE released
+  right after the last bit (including a 4 KiB message), and DE low while the
+  peer transmits, at 9600/115200/921600. PASSES.

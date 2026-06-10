@@ -234,6 +234,10 @@ class Ec618:
     "ALREADY_IN_USE" unless the firmware was built with
     CONFIG_TOIT_EC618_PRINT_UART=0 or the redirect was pointed at a
     different controller via CONFIG_TOIT_EC618_PRINT_UART_ID.
+
+  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
+    direction (DE) pin as $rs485-de; any GPIO-capable pad works. See
+    $uart2 for details.
   */
   static uart0
       --mapping/int=0
@@ -246,6 +250,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
+      --rs485-de/Pin?=null
       -> uart.Port:
     return open-uart_
         --uart-id=0
@@ -259,6 +264,7 @@ class Ec618:
         --stop-bits=stop-bits
         --parity=parity
         --mode=mode
+        --rs485-de=rs485-de
 
   /**
   Opens UART1 (EC618 controller 1, the only one that can wake the chip
@@ -289,6 +295,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
+      --rs485-de/Pin?=null
       -> uart.Port:
     return open-uart_
         --uart-id=1
@@ -302,6 +309,7 @@ class Ec618:
         --stop-bits=stop-bits
         --parity=parity
         --mode=mode
+        --rs485-de=rs485-de
 
   /**
   Opens UART2 (EC618 controller 2). UART2 has no hardware flow control.
@@ -310,6 +318,14 @@ class Ec618:
   - 0 (default): TX=GPIO11, RX=GPIO10.
   - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules
                  use, because GPIO10/11 are taken by their GNSS subsystem).
+
+  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
+    RS485 direction (DE) pin: the driver raises it just before a
+    transmission starts and drops it once the last bit has left the shift
+    register. Unlike the fixed RTS/CTS routings, ANY GPIO-capable pad can
+    serve as DE (it is driven as a plain GPIO), so it is passed as a $Pin
+    (use $Ec618.gpio or $Ec618.pad). Required in RS485 mode; rejected
+    otherwise.
   */
   static uart2
       --mapping/int=0
@@ -320,6 +336,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
+      --rs485-de/Pin?=null
       -> uart.Port:
     return open-uart_
         --uart-id=2
@@ -333,6 +350,7 @@ class Ec618:
         --stop-bits=stop-bits
         --parity=parity
         --mode=mode
+        --rs485-de=rs485-de
 
   static open-uart_
       --uart-id/int
@@ -346,9 +364,14 @@ class Ec618:
       --stop-bits/uart.StopBits
       --parity/int
       --mode/int
+      --rs485-de/Pin?
       -> uart.Port:
     if uart-id < 0 or uart-id > 2: throw "INVALID_ARGUMENT"
     if mapping < 0 or mapping >= UART-PADS_[uart-id].size: throw "INVALID_ARGUMENT"
+
+    rs485 := mode == uart.Port.MODE-RS485-HALF-DUPLEX
+    if rs485 and (rts-enabled or cts-enabled): throw "INVALID_ARGUMENT"
+    if rs485 != (rs485-de != null): throw "INVALID_ARGUMENT"
 
     layout/List := UART-PADS_[uart-id][mapping]
     tx-pad := layout[0]
@@ -364,7 +387,9 @@ class Ec618:
 
     tx/Pin? := tx-disabled ? null : (Pin tx-pad)
     rx/Pin? := rx-disabled ? null : (Pin rx-pad)
-    rts/Pin? := rts-enabled ? (Pin rts-pad) : null
+    // In RS485 mode the generic uart API carries the direction pin in the
+    // rts slot (the driver takes it out of flow-control matching).
+    rts/Pin? := rs485 ? rs485-de : (rts-enabled ? (Pin rts-pad) : null)
     cts/Pin? := cts-enabled ? (Pin cts-pad) : null
 
     return uart.Port

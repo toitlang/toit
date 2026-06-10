@@ -28,8 +28,10 @@
 
 extern "C" {
   #include "bsp_common.h"
+  #include "cmsis_os2.h"  // osDelay, for the RS485 TX-drain poll.
   #include "driver_gpio.h"
   #include "driver_uart.h"
+  #include "gpio.h"
   #include "platform_define.h"
 }
 
@@ -114,6 +116,17 @@ class UartResourceGroup : public ResourceGroup {
   }
 };
 
+// Drives the RS485 direction line. Uses the OEM GPIO_pin* API (like
+// gpio_ec618.cc), NOT the luatos core-driver GPIO_Output/GPIO_Config:
+// the two stacks must not be mixed (driver_gpio.h's own warning), and on
+// hardware the core-driver calls silently failed to move the pad at all.
+static void set_de_level(int pad, int level) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return;
+  uint16_t mask = 1 << (gpio_bit & 0xf);
+  GPIO_pinWrite(gpio_bit >> 4, mask, level ? mask : 0);
+}
+
 // --- Driver callback (called by the PLAT UART ISR) --------------------------
 //
 // pData carries the UART id; pParam carries the UART_CB_* event kind.
@@ -133,12 +146,16 @@ static int32_t uart_cb(void* p_data, void* p_param) {
 
     case UART_CB_TX_ALL_DONE: {
       // RS485: drop the direction line once the last bit has left the shift
-      // register. Software-timed but good enough for standard transceivers.
+      // register. This is only a zero-latency FAST PATH: the PLAT blob
+      // samples LSR.TEMT exactly once when it processes the TX-DMA-done
+      // event and reports ALL_DONE only if the line already drained by then
+      // (disassembly of prvUart_TxDone in libcore_airm2m.a). That race is
+      // won at high baud and lost at low baud (e.g. 115200: FIFO drain
+      // outlives the event dispatch, only TX_BUFFER_DONE arrives, ever).
+      // The write primitive therefore drains synchronously as the
+      // correctness path; dropping DE twice is harmless.
       int de = uart_states[id].de_pad;
-      if (de >= 0) {
-        int de_bit = pad_to_gpio(de);
-        if (de_bit >= 0) GPIO_Output(de_bit, 0);
-      }
+      if (de >= 0) set_de_level(de, 0);
       UartQcx216EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_TX_DONE);
       break;
@@ -238,7 +255,11 @@ static void configure_de_pad(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) return;
   GPIO_IomuxEC618(pad, 0, 0, 0);
-  GPIO_Config(gpio_bit, 0 /*output*/, 0 /*idle level*/);
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_OUTPUT;
+  config.misc.initOutput = 0;  // Idle low = RX direction.
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
 }
 
 // --- Arg translation --------------------------------------------------------
@@ -449,10 +470,7 @@ PRIMITIVE(write) {
   // Raise the RS485 direction line before the first byte goes out; the
   // TX-done callback drops it once the shift register drains.
   int de = uart_states[id].de_pad;
-  if (de >= 0) {
-    int de_bit = pad_to_gpio(de);
-    if (de_bit >= 0) GPIO_Output(de_bit, 1);
-  }
+  if (de >= 0) set_de_level(de, 1);
 
   // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
   // status code, not a byte count. On success the full request was
@@ -460,6 +478,20 @@ PRIMITIVE(write) {
   int len = to - from;
   int status = Uart_TxTaskSafe(id, data.address() + from, len);
   int written = (status == 0) ? len : 0;
+
+  // RS485: drop the direction line once the line is idle. The TX_ALL_DONE
+  // fast path in uart_cb cannot be relied on (see the comment there), so
+  // poll the transmitter-empty flag here. Cost: Uart_TxTaskSafe already
+  // blocks for everything beyond its TX cache, so what remains in flight
+  // is at most the cache (1024) plus the hardware FIFO — bound the poll
+  // by that drain time at the current baud. RS485 writes are thereby
+  // synchronous: when write returns, the bus has been released.
+  if (de >= 0 && written > 0) {
+    uint32_t baud = uart_states[id].baud_rate;
+    uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
+    while (!Uart_IsTSREmpty(id) && limit_ms-- > 0) osDelay(1);
+    set_de_level(de, 0);
+  }
   return Primitive::integer(written, process);
 }
 
