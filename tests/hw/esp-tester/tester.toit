@@ -506,6 +506,13 @@ class Ec618Link:
   expect what/string want/int --timeout-ms/int=5000 -> none:
     got := read-ack --timeout-ms=timeout-ms
     if got != want:
+      // Dump whatever the device says next — the mismatch byte is usually
+      // the first character of an error/trace line that explains it.
+      catch:
+        with-timeout --ms=1500:
+          8.repeat:
+            line := reader_.read-line
+            if line: log "$name_ (post-mismatch): $line"
       throw "$what: expected '$(printable_ want)', got '$(printable_ got)'"
 
   // Pings until the resident agent answers, tolerating boot noise, then drains
@@ -784,6 +791,25 @@ firmware-update invocation/cli.Invocation:
       link.handshake
       if not link.trial: throw "device did not boot the trial slot"
       log "Booted the trial slot"
+
+      // The agent answering is NOT enough to validate: a firmware whose
+      // resident agent runs fine can still crash on container SPAWNS (seen
+      // in the wild — every test reset the device while ping/install were
+      // healthy, and the validated firmware had no working escape route).
+      // Spawn a real container before committing to this firmware.
+      log "Smoke test: spawning a container on the trial firmware"
+      smoke-path := fs.join dir "fw-smoke.toit"
+      file.write-contents --path=smoke-path """
+        main:
+          print "fw-smoke: container spawned"
+        """
+      smoke-image := compile-test-image toit-exe smoke-path --tmp-dir=dir --ui=ui
+      link.send-arg ""
+      link.install-container smoke-image
+      if not (link.run --timeout-ms=60_000):
+        throw "trial firmware failed the container smoke test — left unvalidated (next reset rolls back)"
+      log "Smoke test passed"
+
       if do-validate:
         link.validate
         log "Validated — the new firmware is now permanent"
