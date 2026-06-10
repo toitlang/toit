@@ -157,20 +157,24 @@ top-of-file comment for the addressing model.
 */
 class Ec618:
   // GPIO -> primary PAD lookup. Values must match `kGpioPrimaryPad` in
-  // src/resources/pad_table_ec618.cc. -1 means we don't have a mapping
-  // documented yet.
+  // src/resources/pad_table_ec618.cc (sourced from the SDK's own GPIO
+  // example; see there). GPIO20..28 (pads 40..48) are AON-domain GPIOs:
+  // the driver powers their LDO on first use and they keep working in
+  // sleep modes.
   static GPIO-PRIMARY-PAD_/List ::= [
-    -1,  16,  -1,  -1,  -1,  -1,  -1,  -1,
-    23,  24,  25,  26,  27,  28,  29,  30,
+    15,  16,  17,  18,  19,  20,  21,  22,
+    23,  24,  25,  26,  11,  12,  13,  14,
     31,  32,  33,  34,  40,  41,  42,  43,
-    44,  45,  46,  47,  37,  35,  36,  -1,
+    44,  45,  46,  47,  48,  35,  36,  37,
   ]
 
   // GPIO -> alternate PAD lookup. -1 means the GPIO has no alt pad.
+  // (The SDK's authoritative GPIO example maps every GPIO to exactly one
+  // pad, so there are currently no alternates.)
   static GPIO-ALT-PAD_/List ::= [
-    -1,  -1,  17,  18,  19,  20,  -1,  -1,
-    -1,  -1,  -1,  22,  -1,  -1,  -1,  -1,
-    21,  -1,  38,  39,  -1,  -1,  -1,  -1,
+    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
   ]
 
@@ -196,7 +200,7 @@ class Ec618:
     // UART2.
     [
       [26, 25, -1, -1],   // Mapping 0 — primary.
-      [28, 27, -1, -1],   // Mapping 1 — alt 1, GPIO12/13.
+      [28, 27, -1, -1],   // Mapping 1 — alt 1, pads 27/28.
     ],
   ]
 

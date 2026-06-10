@@ -250,11 +250,10 @@ static void configure_uart_pad(int pad, int mux, bool pull_up) {
 
 static void configure_de_pad(int pad) {
   // Any pad can serve as the RS485 direction line; we drive it as plain
-  // GPIO. Set iomux to function 0 and configure as output starting low
-  // (= RX direction).
+  // GPIO, configured as output starting low (= RX direction).
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) return;
-  GPIO_IomuxEC618(pad, 0, 0, 0);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
   GpioPinConfig_t config;
   memset(&config, 0, sizeof(config));
   config.pinDirection = GPIO_DIRECTION_OUTPUT;

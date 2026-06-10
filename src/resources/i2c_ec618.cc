@@ -104,7 +104,7 @@ static bool wire_high(int pad) {
   memset(&config, 0, sizeof(config));
   config.pinDirection = GPIO_DIRECTION_INPUT;
   GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
-  GPIO_IomuxEC618(pad, 0, 0, 1);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 1);
   int level = GPIO_pinRead(gpio_bit >> 4, gpio_bit & 0xf) ? 1 : 0;
   GPIO_IomuxEC618(pad, 2, 1, 1);
   return level != 0;

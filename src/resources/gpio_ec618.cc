@@ -28,6 +28,10 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "ic.h"
+
+  // From the PLAT slpman library (via the jump table): powers the AON IO
+  // LDO. The AON-domain GPIOs (pads 40..48) are dead until it is on.
+  void slpManAONIOPowerOn(void);
 }
 
 namespace toit {
@@ -158,7 +162,7 @@ void pad_release(int pad) {
     memset(&config, 0, sizeof(config));
     config.pinDirection = GPIO_DIRECTION_INPUT;
     GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
-    GPIO_IomuxEC618(pad, 0, 0, 0);
+    GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
   }
   GPIO_PullConfig(pad, 0, 0);
 }
@@ -231,15 +235,22 @@ PRIMITIVE(config) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
 
-  // Switch the pad's iomux to plain-GPIO (function 0). Without this, the pad
-  // would stay in whatever role a previous peripheral left it in, and the
-  // controller bit's reads/writes would have no effect on the wire. Enable the
-  // pad input buffer for input pins so reads see the live pad level (without it
-  // the read path is disconnected from the pin). Open-drain pins get it too:
-  // `get` on an open-drain pin must read the WIRE (someone else may be pulling
-  // it low). AutoPull off — we set the pull explicitly below, and
-  // GPIO_PullConfig overrides the iomux auto-pull anyway.
-  GPIO_IomuxEC618(pad, 0, 0, (input || open_drain) ? 1 : 0);
+  // AON-domain pads sit behind the AON IO LDO, which is off at boot —
+  // without power the pad neither drives nor reads. Turning it on is
+  // idempotent and it stays on (other AON pads may be in use; the cost is
+  // the LDO's standby draw, revisited with the deep-sleep work).
+  if (pad_is_aon(pad)) slpManAONIOPowerOn();
+
+  // Switch the pad's iomux to its GPIO function (0 for most pads — see
+  // pad_gpio_mux). Without this, the pad would stay in whatever role a
+  // previous peripheral left it in, and the controller bit's reads/writes
+  // would have no effect on the wire. Enable the pad input buffer for input
+  // pins so reads see the live pad level (without it the read path is
+  // disconnected from the pin). Open-drain pins get it too: `get` on an
+  // open-drain pin must read the WIRE (someone else may be pulling it low).
+  // AutoPull off — we set the pull explicitly below, and GPIO_PullConfig
+  // overrides the iomux auto-pull anyway.
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, (input || open_drain) ? 1 : 0);
 
   if (open_drain) {
     open_drain_pads |= 1ULL << pad;
@@ -315,7 +326,7 @@ PRIMITIVE(set_open_drain) {
   if (value) {
     // Carry the pin's current line level into the emulation (the input
     // buffer must be on before we can trust the read).
-    GPIO_IomuxEC618(pad, 0, 0, 1);
+    GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 1);
     int level = GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0;
     open_drain_pads |= 1ULL << pad;
     apply_open_drain_level(gpio_bit, level);

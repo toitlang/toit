@@ -99,9 +99,16 @@ FORCE-INCLUDE-EXACT ::= {
   "I2C_MasterSetup", "I2C_Prepare", "I2C_MasterXfer", "I2C_WaitResult",
   "I2C_BlockWrite", "I2C_BlockRead", "I2C_ChangeBR", "I2C_Reset",
   "I2C_UsePollingMode", "I2C_SetNoBlock",
-  // The AON/wakeup-pad surface (for the AON pads 40..47, which the plain
-  // GPIO controller cannot drive).
+  // The AON/wakeup-pad surface. The AON-domain GPIOs (pads 40..48) sit
+  // behind the AON IO LDO: slpManAONIOPowerOn powers them (the GPIO
+  // driver calls it when an AON pad is opened); the latch/voltage
+  // functions are for the deep-sleep work.
   "GPIO_WakeupPadConfig", "GPIO_GlobalInit",
+  // (slpManAONIOGetLatchCfg is declared in slpman.h but the PLAT libs
+  // don't define it — adding it makes the link fail.)
+  "slpManAONIOPowerOn", "slpManAONIOPowerOff",
+  "slpManAONIOVoltSet", "slpManAONIOVoltGet",
+  "slpManAONIOLatchEn",
   // The core SPI driver (soc_spi.h) — same IRQ-driven, no-block design as
   // the core I2C; the base links no SPI support otherwise.
   "SPI_MasterInit", "SPI_SetCallbackFun", "SPI_TransferEx",
@@ -348,7 +355,14 @@ extract-symbols --objdump/string --nm/string --elf/string --archives/List --excl
   exclude.add-all excludes
 
   result := {}
-  targets.do: | s/string |
+  targets.do: | sym/string |
+    // The archives may already be `objcopy --redefine-syms`-rewritten by a
+    // previous build (<sym> -> __wrap_<sym>). Extraction must see the plain
+    // name, or a regen against built archives emits double-wrapped entries
+    // (__real___wrap_<sym>). The manual libc time shims are the exception:
+    // their __wrap_ name is the real PLAT symbol.
+    s := sym
+    if s.starts-with "__wrap_" and not (MANUAL-WRAP.contains s[7..]): s = s[7..]
     if vm-defined.contains s: continue.do
     if exclude.contains s: continue.do
     // A mangled C++ reference that resolves to nothing in the final elf is

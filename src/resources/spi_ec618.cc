@@ -66,7 +66,7 @@ static bool pad_output(int pad, int level) {
   memset(&config, 0, sizeof(config));
   config.pinDirection = GPIO_DIRECTION_OUTPUT;
   config.misc.initOutput = level;
-  GPIO_IomuxEC618(pad, 0, 0, 0);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
   GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
   return true;
 }

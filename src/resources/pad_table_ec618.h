@@ -38,11 +38,20 @@ namespace toit {
 
 // Highest pad index we know about. Pads outside [1..kMaxPadIndex] or pads
 // that aren't listed in the table are rejected at the primitive boundary.
-static const int kMaxPadIndex = 47;
+static const int kMaxPadIndex = 48;
 
-// Returns the GPIO controller bit number (0..31) for a pad's mux=0
-// position, or -1 if the pad isn't a GPIO bit.
+// Returns the GPIO controller bit number (0..31) for the pad, or -1 if
+// the pad has no GPIO function.
 int pad_to_gpio(int pad);
+
+// The iomux function that selects GPIO on this pad (0 for most pads,
+// 4 for pads 11..14 / GPIO12..15).
+int pad_gpio_mux(int pad);
+
+// Whether the pad is an AON-domain GPIO (AGPIO, pads 40..48 / GPIO20..28).
+// These are powered by the AON IO LDO (slpManAONIOPowerOn) and keep
+// working in sleep modes.
+bool pad_is_aon(int pad);
 
 // Returns the primary pad for the given GPIO number (`alt=0`) or its
 // alternate pad if one exists (`alt=1`). Returns -1 if the GPIO has
