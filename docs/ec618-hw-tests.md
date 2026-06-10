@@ -102,9 +102,11 @@ neither do the alt-pad candidates PAD21/PAD22 (isolated GPIO drives, ESP32
 all-pin watch: silent). The two "duplicated GPIO" board pins are pad-net
 MIRRORS (pin 11 = PAD25's net, pin 14 = PAD26's net), not alternate pads.
 Testing RTS/CTS needs the board's MAIN_RTS/MAIN_CTS (GPIO16/17) pins — if the
-dev board exposes them — wired to free ESP32 GPIOs. **Skipped for now**
-(Florian, 2026-06-10): no board with exposed RTS/CTS pins is available;
-revisit when one is.
+dev board exposes them — wired to free ESP32 GPIOs. **DROPPED**
+(Florian, 2026-06-10): no board with exposed RTS/CTS pins is available; a
+temporary QCX216 dev-board rig (UART1+RTS/CTS to an ESP32-S3, 1.8 V IO)
+didn't boot our image and wasn't worth diagnosing. Revisit only if a
+suitable board appears.
 
 ### Voltage domains (important — corrected 2026-06-08)
 - **The EC618 IO rail is configured to 3.3 V — a CHIP setting, not the module.**
