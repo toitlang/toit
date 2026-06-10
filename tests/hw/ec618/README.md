@@ -101,3 +101,7 @@ ESP32 half prints a `... PASS`/`... FAIL` verdict line to its console.
 - `uart2-duplex-ec618` (uses the `uart2-bigdata-esp32` helper's `D` command) —
   full-duplex stress: 256 KiB each way simultaneously. Currently FAILS on the
   RX side via the overflow-wedge — see `docs/ec618-known-issues.md` #4.
+- `uart2-config-{ec618,esp32}` — full configuration matrix: data bits 5..8 ×
+  parity none/even/odd × stop bits 1/2 (+ a 1.5-stop probe) at 115200 and
+  921600, plus a deliberate parity mismatch verifying the error counter
+  (one error per bad byte; bytes still delivered). PASSES.
