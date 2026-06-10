@@ -102,6 +102,13 @@ FORCE-INCLUDE-EXACT ::= {
   // The AON/wakeup-pad surface (for the AON pads 40..47, which the plain
   // GPIO controller cannot drive).
   "GPIO_WakeupPadConfig", "GPIO_GlobalInit",
+  // The core SPI driver (soc_spi.h) — same IRQ-driven, no-block design as
+  // the core I2C; the base links no SPI support otherwise.
+  "SPI_MasterInit", "SPI_SetCallbackFun", "SPI_TransferEx",
+  "SPI_BlockTransfer", "SPI_FastTransfer", "SPI_SetNoBlock",
+  "SPI_FlashBlockTransfer", "SPI_TransferStop", "SPI_IsTransferBusy",
+  "SPI_WaitTransferNoBusy", "SPI_SetDMAEnable", "SPI_SetNewConfig",
+  "SPI_SetDMATrigger", "SPI_GetSpeed", "SPI_SetTxOnlyFlag",
 }
 
 // References with no PLAT definition — present only as dead, GC'd refs. A
