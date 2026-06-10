@@ -33,7 +33,7 @@ namespace toit {
 static const int8_t kGpioPrimaryPad[32] = {
   /*  0 */ -1, /*  1 */ -1, /*  2 */ 13, /*  3 */ 14,
   /*  4 */ 15, /*  5 */ 16, /*  6 */ -1, /*  7 */ -1,
-  /*  8 */ -1, /*  9 */ -1, /* 10 */ 25, /* 11 */ 26,
+  /*  8 */ 23, /*  9 */ 24, /* 10 */ 25, /* 11 */ 26,
   /* 12 */ 27, /* 13 */ 28, /* 14 */ 29, /* 15 */ 30,
   /* 16 */ 31, /* 17 */ 32, /* 18 */ 33, /* 19 */ 34,
   /* 20 */ -1, /* 21 */ -1, /* 22 */ -1, /* 23 */ -1,
@@ -43,11 +43,16 @@ static const int8_t kGpioPrimaryPad[32] = {
 
 // Alternate pad for the GPIOs that have one. -1 means the GPIO has no
 // alternate routing.
+//
+// Beware: the SDK's RTE_Device.h comment blocks ship TWO conflicting
+// pad-function tables (e.g. one claims pads 23/24 are GPIO14/15 + UART1
+// RX/TX). HW-verified on the Air780E: pads 23/24 are GPIO8/9 and UART1 is
+// on pads 33/34, i.e. the other variant is the one that matches.
 static const int8_t kGpioAltPad[32] = {
-  /*  0 */ -1, /*  1 */ -1, /*  2 */ -1, /*  3 */ -1,
+  /*  0 */ -1, /*  1 */ -1, /*  2 */ 17, /*  3 */ 18,
   /*  4 */ 19, /*  5 */ 20, /*  6 */ -1, /*  7 */ -1,
   /*  8 */ -1, /*  9 */ -1, /* 10 */ -1, /* 11 */ 22,
-  /* 12 */ -1, /* 13 */ -1, /* 14 */ 23, /* 15 */ 24,
+  /* 12 */ -1, /* 13 */ -1, /* 14 */ -1, /* 15 */ -1,
   /* 16 */ 21, /* 17 */ -1, /* 18 */ -1, /* 19 */ -1,
   /* 20 */ -1, /* 21 */ -1, /* 22 */ -1, /* 23 */ -1,
   /* 24 */ -1, /* 25 */ -1, /* 26 */ -1, /* 27 */ -1,

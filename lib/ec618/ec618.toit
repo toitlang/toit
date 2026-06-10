@@ -153,15 +153,15 @@ class Ec618:
   // documented yet.
   static GPIO-PRIMARY-PAD_/List ::= [
     -1,  -1,  13,  14,  15,  16,  -1,  -1,
-    -1,  -1,  25,  26,  27,  28,  29,  30,
+    23,  24,  25,  26,  27,  28,  29,  30,
     31,  32,  33,  34,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
   ]
 
   // GPIO -> alternate PAD lookup. -1 means the GPIO has no alt pad.
   static GPIO-ALT-PAD_/List ::= [
-    -1,  -1,  -1,  -1,  19,  20,  -1,  -1,
-    -1,  -1,  -1,  22,  -1,  -1,  23,  24,
+    -1,  -1,  17,  18,  19,  20,  -1,  -1,
+    -1,  -1,  -1,  22,  -1,  -1,  -1,  -1,
     21,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
   ]
@@ -205,8 +205,8 @@ class Ec618:
   Returns a $Pin for the EC618 logical GPIO with the given $num.
 
   Defaults to the primary pad of that GPIO. Pass $alt to address the
-    alternate pad where one exists (currently only GPIO4, GPIO5, GPIO11,
-    GPIO14, GPIO15, GPIO16).
+    alternate pad where one exists (currently GPIO2..GPIO5, GPIO11 and
+    GPIO16).
   */
   static gpio num/int --alt/bool=false -> Pin:
     if num < 0 or num >= 32: throw "INVALID_ARGUMENT"

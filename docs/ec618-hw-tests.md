@@ -82,14 +82,14 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
 14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  CONFIRMED (uart2 tests; gpio-map)
 13        -> 09  (GPIO22, MAIN_DTR)              ?                       to verify
-33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     ?                       to verify
+33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     PAD23 (GPIO8)           CONFIRMED (gpio-map: 23 pulses at IO33)
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   MIRRORS PAD25's net     CONFIRMED (gpio-map: GPIO10 hits IO14+IO32)
 23        -> 12  (GPIO01, PWM10)                 PAD16 (TIMER0 PWM)      CONFIRMED (pwm test: 1 kHz measured at IO23)
-22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)   ?                       to verify
+22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)   PAD24 (GPIO9)           CONFIRMED (gpio-map: 24 pulses at IO22)
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)    MIRRORS PAD26's net     CONFIRMED (NOT PAD22: isolated PAD22 drive = quiet; bit-11 drive with PAD26 GPIO-muxed = IO21+IO27 toggle)
 19        -> 18  (GPIO24, MAIN_RI, PWM01)        ?                       to verify
-18        -> 22  (I2C0_SDA)                      I2C0 SDA                to verify (always-high in gpio-map: pull-ups)
-17        -> 23  (I2C0_SCL)                      I2C0 SCL                to verify (always-high in gpio-map: pull-ups)
+18        -> 22  (I2C0_SDA)                      UNREACHABLE             measured 2026-06-10: responds to NO driveable pad (full gpio-map) and no I2C controller (I2C0 27/28 + I2C1 23/24 SCL probes silent); always-high pull-ups
+17        -> 23  (I2C0_SCL)                      UNREACHABLE             see pin 22
  2        -> 27  (GPIO27, NET_STATUS, PWM04)     ?                       to verify
  4        -> 30  (UART1_TXD)                     UART1 TX (PAD34)        CONFIRMED (gpio-map: GPIO19 -> IO4)
 16        -> 31  (GPIO18, UART1_RXD, PWM14)      UART1 RX (PAD33)        CONFIRMED (gpio-map: GPIO18 -> IO16)
