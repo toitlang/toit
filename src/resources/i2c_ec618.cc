@@ -39,12 +39,14 @@ extern "C" {
 namespace toit {
 
 // Pin arguments are PAD numbers (the EC618 addressing model). Controller
-// routings, all iomux ALT2 (the full set from the SDK's luat_i2c_ec618.c;
-// the RTE_Device.h comments only document one per controller):
-//   I2C0: SDA/SCL = 13/14, 27/28 (RTE default) or 31/32
+// routings, all iomux ALT2 (the full set from the SDK's luat_i2c_ec618.c
+// and the LuatOS Air780E iomux docs; the RTE_Device.h comments only
+// document one per controller):
+//   I2C0: SDA/SCL = 14/13 (the Air780E's I2C0 pins), 27/28 (RTE default)
+//         or 31/32
 //   I2C1: SDA/SCL = 19/20 (RTE default) or 23/24 (the Air780E's I2C1 pins)
 static ARM_DRIVER_I2C* pads_to_driver(int sda, int scl) {
-  if (sda == 13 && scl == 14) return &Driver_I2C0;
+  if (sda == 14 && scl == 13) return &Driver_I2C0;
   if (sda == 27 && scl == 28) return &Driver_I2C0;
   if (sda == 31 && scl == 32) return &Driver_I2C0;
   if (sda == 19 && scl == 20) return &Driver_I2C1;
