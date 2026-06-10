@@ -63,8 +63,12 @@ static void apply_pull(int pad, bool pull_up, bool pull_down) {
 class GpioResource : public EventResource {
  public:
   TAG(GpioResource);
+  // gpio_bit is -1 for pads with no GPIO function: such a Pin is a pure
+  // carrier (it hands the pad number to a peripheral, e.g. the UART0
+  // console pads 29/30); reads/writes/interrupts reject it.
   GpioResource(ResourceGroup* group, int pad, int gpio_bit)
-    : EventResource(group, Event::gpio_type(gpio_bit))
+    : EventResource(group, gpio_bit >= 0 ? Event::gpio_type(gpio_bit)
+                                         : Event::none_type())
     , pad_(pad)
     , gpio_bit_(gpio_bit) {}
 
@@ -207,8 +211,10 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  // Pads without a GPIO function are still legal Pins: peripherals (UART0
+  // on pads 30/29, I2C0 on 13/14, ...) take Pin arguments, and the pad
+  // number is all they need. gpio_bit stays -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
 
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
@@ -298,6 +304,7 @@ PRIMITIVE(set) {
 PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
   int gpio_bit = resource->gpio_bit();
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   // Capture the trigger sequence BEFORE arming: an interrupt firing
   // between the arming and the return then still reads as "after".
   uint32_t seq = edge_sequence;
@@ -314,6 +321,7 @@ PRIMITIVE(config_interrupt) {
 
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
+  if (resource->gpio_bit() < 0) FAIL(INVALID_ARGUMENT);
   return Smi::from(last_edge_seq[resource->gpio_bit()] & 0x3FFFFFFF);
 }
 

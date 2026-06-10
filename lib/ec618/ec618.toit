@@ -18,7 +18,7 @@ EC618 (Air780E) chip-specific helpers.
 
 # Addressing model
 
-On the EC618, $Pin numbers are physical PAD indices (1..47), not logical
+On the EC618, $Pin numbers are physical PAD indices (1..48), not logical
 GPIO numbers. PADs are unambiguous: each one is a single physical pin on
 the chip. A few PADs share a GPIO controller bit (e.g. PAD22 and PAD26
 both connect to GPIO11), so addressing by GPIO number alone is ambiguous

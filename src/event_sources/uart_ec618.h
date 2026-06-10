@@ -61,6 +61,13 @@ struct Event {
   static Type i2c_type(int id) {
     return static_cast<Type>(GPIO_NUM_0 + 32 + id);
   }
+
+  // A type no event is ever sent for. Used by resources that must exist
+  // without an event stream (e.g. a Pin on a pad with no GPIO function,
+  // held purely to carry the pad number into a peripheral).
+  static Type none_type() {
+    return static_cast<Type>(GPIO_NUM_0 + 34);
+  }
 };
 
 // A resource that carries an event type for matching.
