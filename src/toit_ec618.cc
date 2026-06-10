@@ -419,6 +419,15 @@ static void start() {
   // block sleep entry; appSetCFUN(0) releases them synchronously.
   appSetCFUN(0);
 
+  // Power off the AON IO LDO for the sleep. Toit has no pin-hold API yet
+  // (the ESP32 port's deep-sleep pin holds have no counterpart here, and
+  // pins are torn down with their container anyway), so an AON pad cannot
+  // be used *correctly* across deep sleep — a held level would be unowned
+  // state. Until holds exist, the rail goes down (all AON IOs drop low,
+  // the wakeup pads are on a separate domain and keep working); the GPIO
+  // driver powers it back up when an AON pad is opened after the wake.
+  slpManAONIOPowerOff();
+
   // Use HIBERNATE for all deep sleep cases. SLP2 does not reliably
   // preserve ASMB noinit data on this platform — the save/restore
   // mechanism corrupts user data. HIBERNATE wakes reliably via the
