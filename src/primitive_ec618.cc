@@ -33,6 +33,9 @@ extern "C" {
   #include "slot_marker.h"
   #include "reset.h"  // ResetStateGet / LastResetState_e.
   #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
+
+  // From slpman (jump-tabled): live AON wakeup-pad levels.
+  uint32_t slpManGetWakeupPinValue(void);
   #include "clock.h"  // GPR_setClock* for the WDT functional clock.
   #include "FreeRTOS.h"
   #include "task.h"        // xTaskCreate — the software-watchdog task.
@@ -488,6 +491,12 @@ PRIMITIVE(modem_set_function) {
 // LastResetState_e value (see lib/ec618 reset-reason constants). The CP
 // reset reason is read but not surfaced; the AP value is what application
 // code reacts to (e.g. distinguishing a watchdog reset from a power-on).
+PRIMITIVE(wakeup_pin_values) {
+  // Live levels of the AON wakeup pads (WAKEUP_PAD0.. as a bitmask) — the
+  // AON-domain pads are not readable through the plain GPIO controller.
+  return Primitive::integer(slpManGetWakeupPinValue(), process);
+}
+
 PRIMITIVE(reset_reason) {
   LastResetState_e ap = LAST_RESET_UNKNOWN;
   LastResetState_e cp = LAST_RESET_UNKNOWN;
@@ -606,6 +615,7 @@ namespace toit {
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
 PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(wakeup_pin_values) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }

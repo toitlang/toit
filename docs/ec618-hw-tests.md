@@ -536,23 +536,28 @@ rule no longer applies:
       length/speed — the master owns the clock); the async upgrade via the
       proven I2C no-block recipe is a follow-up (the jump table already
       carries SPI_TransferEx/SPI_SetNoBlock).
-- [ ] **AON pads** (40..47, GPIO20..27 guesses): driving them through the
-      plain GPIO controller does nothing (gpio-map: silent everywhere) —
-      they likely need the AON/wakeup-pad API. The rig's remaining `?`
-      wires (IO19/IO2/IO13 and the unreachable "I2C0" pins 22/23) are all
-      candidates for AON pads.
-- [ ] **RE-VERIFY the whole pad/GPIO table** (the SDK ships two CONFLICTING
-      pad-function comment tables, and we have already caught one wrong row
-      — pads 23/24 were listed as GPIO14/15+UART1 but are GPIO8/9). Treat a
-      mapping as TRUE only with an exact-pulse-count gpio-map hit. Verified
-      so far: pads 16(? via PWM mux only), 22, 23, 24, 25, 26, 33, 34.
-      SUSPECT: pads 13/14/15/16's GPIO bits (our table says GPIO2..5 from
-      variant 1, but the LuatOS wiki says pad13=GPIO14 / pad14=GPIO15 — if
-      so, the gpio-map slots for 13/14 drove the wrong bits and their
-      "silent" result is void); pads 17/18 (=GPIO2/3 alt, from the PWM map);
-      pad 37 (gpio-map echoed IO16 — inconsistent with the GPIO28 guess);
-      all AON guesses (40..47). Where a bit is ambiguous, drive BOTH
-      candidate bits with the pad muxed to GPIO and watch the rig.
+- [~] **AON pads** (40..47) — partially resolved (2026-06-10 evening):
+      plain-GPIO drives stay silent (3 consistent sweeps). The new
+      `ec618.wakeup-pin-values` primitive (slpManGetWakeupPinValue) reads
+      the 6 wakeup pads — they idle 0b111111 — but pulling the rig's `?`
+      wires (IO13/IO19/IO2) low does NOT move the mask. Conclusion: the
+      board pins MAIN_DTR / MAIN_RI / NET_STATUS are most likely CP-OWNED
+      modem-function pins, not AP GPIOs — no AP-side path reaches them.
+      AGPIO OUTPUT (pads 43..47) has no JT-reachable API yet; wakeup-pad
+      INPUT/wake config (GPIO_WakeupPadConfig, slpManSetWakeupPadCfg) is
+      jump-tabled and waits for the deep-sleep work.
+- [x] **Pad/GPIO table re-verification** — DONE (2026-06-10 evening) to the
+      extent this rig allows. Exact-pulse-VERIFIED: pads 16 (GPIO1 — the
+      variant-1 GPIO5 row was wrong, caught by the rc522 RST), 22, 23, 24,
+      25, 26, 33, 34. DISPROVEN: pads 13/14/15 have NO GPIO function — both
+      the variant-1 bits (GPIO2/3/4) and the LuatOS-wiki labels (GPIO14/15
+      — its Lua-level numbering) leave the HW-confirmed wires silent; these
+      pads are peripheral-only (I2C0 etc.) and were dropped from the
+      tables. UNVERIFIABLE here (no wires): pads 17/18 (GPIO2/3-alt per the
+      SDK PWM map — same source that was right about pad 16), 21, 27/28,
+      31/32, 35..39. Pad 37's earlier IO16 echo did not reproduce (stale
+      mux state). The spooky PAD23->IO13 coupling is the unpowered BMP280
+      back-powering through its breakout pull-ups, not a wire.
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.
 - [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /

@@ -37,6 +37,7 @@ TYPE_PRIMITIVE_INT(reset_reason)
 TYPE_PRIMITIVE_NULL(watchdog_init)
 TYPE_PRIMITIVE_NULL(watchdog_feed)
 TYPE_PRIMITIVE_NULL(watchdog_deinit)
+TYPE_PRIMITIVE_ANY(wakeup_pin_values)
 
 }  // namespace compiler
 }  // namespace toit

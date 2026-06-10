@@ -59,6 +59,14 @@ Use this to write tests that adapt to whichever firmware variant is
 print-uart-id -> int:
   #primitive.ec618.print-uart-id
 
+/**
+Returns the live levels of the AON wakeup pads as a bitmask (bit N =
+  WAKEUP_PAD N). The AON-domain pads are not readable through the plain
+  GPIO controller; this is the input path for them.
+*/
+wakeup-pin-values -> int:
+  #primitive.ec618.wakeup-pin-values
+
 /** Reset after power was (re)applied (cold boot). */
 RESET-POWER-ON ::= 0
 /** Normal reset after waking from deep sleep (sleep2) or hibernate. */
@@ -152,7 +160,7 @@ class Ec618:
   // src/resources/pad_table_ec618.cc. -1 means we don't have a mapping
   // documented yet.
   static GPIO-PRIMARY-PAD_/List ::= [
-    -1,  16,  13,  14,  15,  -1,  -1,  -1,
+    -1,  16,  -1,  -1,  -1,  -1,  -1,  -1,
     23,  24,  25,  26,  27,  28,  29,  30,
     31,  32,  33,  34,  40,  41,  42,  43,
     44,  45,  46,  47,  37,  35,  36,  -1,
