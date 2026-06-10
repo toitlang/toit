@@ -69,6 +69,7 @@ DMA_suspendChannel __wrap_DMA_suspendChannel
 DMA_transferSetup __wrap_DMA_transferSetup
 Driver_I2C0 __wrap_Driver_I2C0
 Driver_I2C1 __wrap_Driver_I2C1
+Driver_USART0 __wrap_Driver_USART0
 Driver_USART1 __wrap_Driver_USART1
 GPIO_Config __wrap_GPIO_Config
 GPIO_ExtiConfig __wrap_GPIO_ExtiConfig
@@ -282,6 +283,7 @@ calloc __wrap_calloc
 ceil __wrap_ceil
 cos __wrap_cos
 cosh __wrap_cosh
+delay_us __wrap_delay_us
 deregisterPSEventCallback __wrap_deregisterPSEventCallback
 exp __wrap_exp
 fabs __wrap_fabs
@@ -426,6 +428,7 @@ tcp_sent __wrap_tcp_sent
 tcp_shutdown __wrap_tcp_shutdown
 tcp_write __wrap_tcp_write
 tcpip_callback_with_block __wrap_tcpip_callback_with_block
+trimAdcSetGolbalVar __wrap_trimAdcSetGolbalVar
 trunc __wrap_trunc
 tzset __wrap_tzset
 udp_bind __wrap_udp_bind

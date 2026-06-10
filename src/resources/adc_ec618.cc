@@ -24,20 +24,19 @@
 
 extern "C" {
   #include "adc.h"
-  // hal_adc.h is not self-contained (dangling extern "C"), so declare the one
-  // HAL helper we need directly.
+  // hal_adc.h / hal_trim.h / bsp.h are not self-contained (dangling
+  // extern "C" / heavy includes), so declare the helpers we need directly.
   uint32_t HAL_ADC_CalibrateRawCode(uint32_t input);
+  void trimAdcSetGolbalVar(void);
+  void delay_us(uint32_t us);
 }
 
-// We deliberately call only PLAT symbols that the generated jump table already
-// wraps (the ADC_*/HAL_ADC_* driver surface, matched by gen-plat-jt's "ADC"/
-// "HAL_" prefixes). That keeps the VM dual-slot-relocatable and OTA-able onto
-// the existing PLAT. Two conveniences are therefore avoided on purpose:
-//   - delay_us(): replaced by a bare busy-spin (it isn't in the jump table).
-//   - trimAdcSetGolbalVar(): not called. HAL_ADC_CalibrateRawCode falls back
-//     to its uncalibrated linear map (raw * 1.2V / 4096) when the efuse trim
-//     struct is unset, which is accurate enough for ratiometric use; if the
-//     PLAT already loaded the trim at boot we get the calibrated path for free.
+// trimAdcSetGolbalVar and delay_us are in the generated jump table by name
+// (gen-plat-jt's ALWAYS-INCLUDE-EXACT); everything else used here is covered
+// by the ADC_*/HAL_* prefixes. NOTE: the two named entries were added
+// 2026-06-10 — a VM containing this code requires a base image (full flash)
+// at least that recent; the frozen table of an older base has no slots for
+// them.
 
 namespace toit {
 
@@ -109,18 +108,19 @@ class AdcResource : public SimpleResource {
   float ratio_;
 };
 
-// A busy-spin bound that comfortably outlasts a single conversion (well under
-// a millisecond) on this core without calling a PLAT delay helper.
-static const int kConversionSpinLimit = 2000000;
+// Poll bound that comfortably outlasts a single conversion (well under a
+// millisecond): 500 polls of 10 us = 5 ms.
+static const int kConversionPollLimit = 500;
 
 // Runs one conversion on `channel`. On success stores the input voltage (volts)
 // in `*out_volts` and returns true; returns false on timeout.
 static bool convert_once(int channel, float ratio, double* out_volts) {
   conversion_done[channel] = false;
   ADC_startConversion(aio_channel(channel), ADC_USER_APP);
-  // The conversion completes from the ADC ISR. `conversion_done` is volatile,
-  // so the compiler re-reads it each spin and cannot hoist the loop away.
-  for (int spins = 0; spins < kConversionSpinLimit && !conversion_done[channel]; spins++) {}
+  // The conversion completes from the ADC ISR; `conversion_done` is volatile.
+  for (int polls = 0; polls < kConversionPollLimit && !conversion_done[channel]; polls++) {
+    delay_us(10);
+  }
   if (!conversion_done[channel]) return false;
   // CalibrateRawCode returns the core ADC voltage in microvolts (0..1.2e6);
   // the range ratio scales it back to the (divided-down) input.
@@ -141,6 +141,14 @@ PRIMITIVE(init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   const AioRange* range = select_range(max);
+
+  // Load the efuse ADC trim once so HAL_ADC_CalibrateRawCode uses the
+  // chip's calibrated transfer curve instead of its linear fallback.
+  static bool trim_loaded = false;
+  if (!trim_loaded) {
+    trimAdcSetGolbalVar();
+    trim_loaded = true;
+  }
 
   AdcConfig_t config;
   ADC_getDefaultConfig(&config);

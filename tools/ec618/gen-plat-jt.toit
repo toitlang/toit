@@ -65,6 +65,9 @@ ALWAYS-INCLUDE-PREFIXES ::= [
 // Listed explicitly rather than by `mem`/`str` prefix to avoid pinning
 // unrelated internal symbols.
 ALWAYS-INCLUDE-EXACT ::= {
+  // Hardware helpers outside the prefix surface: the efuse ADC-trim loader
+  // (calibrated HAL_ADC_CalibrateRawCode path) and the busy-wait helper.
+  "trimAdcSetGolbalVar", "delay_us",
   "memcpy", "memmove", "memset", "memcmp", "memchr",
   "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strncat",
   "strchr", "strrchr", "strstr", "strtok", "strtol", "strtoul", "strtod",

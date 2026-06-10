@@ -441,9 +441,10 @@ rule no longer applies:
 - [x] Full-flash + confirm firmware boots clean (isolates OTA from firmware).
 - [x] Fix the OTA A≠B / per-slot `.data` bug.
 - [x] Run the ADC functional test on the test rig (both channels track; no dead pin).
-- [ ] Add `trimAdcSetGolbalVar` + `delay_us` to the jump-table wrapped set
-      (`gen-plat-jt`) for a calibrated ADC + clean conversion wait (base-image
-      change; needs a full flash).
+- [x] Add `trimAdcSetGolbalVar` + `delay_us` to the jump-table wrapped set
+      (`gen-plat-jt`) for a calibrated ADC + clean conversion wait — DONE
+      2026-06-10 (table renumbered: full flash required; rerun the ADC test
+      after flashing to validate the calibrated path).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
 - [x] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty;
       pwm_ec618.cc on TIMER0/1/2/4, generic `gpio.pwm` API).
