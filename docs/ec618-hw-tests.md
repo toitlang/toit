@@ -502,6 +502,18 @@ rule no longer applies:
       they likely need the AON/wakeup-pad API. The rig's remaining `?`
       wires (IO19/IO2/IO13 and the unreachable "I2C0" pins 22/23) are all
       candidates for AON pads.
+- [ ] **RE-VERIFY the whole pad/GPIO table** (the SDK ships two CONFLICTING
+      pad-function comment tables, and we have already caught one wrong row
+      — pads 23/24 were listed as GPIO14/15+UART1 but are GPIO8/9). Treat a
+      mapping as TRUE only with an exact-pulse-count gpio-map hit. Verified
+      so far: pads 16(? via PWM mux only), 22, 23, 24, 25, 26, 33, 34.
+      SUSPECT: pads 13/14/15/16's GPIO bits (our table says GPIO2..5 from
+      variant 1, but the LuatOS wiki says pad13=GPIO14 / pad14=GPIO15 — if
+      so, the gpio-map slots for 13/14 drove the wrong bits and their
+      "silent" result is void); pads 17/18 (=GPIO2/3 alt, from the PWM map);
+      pad 37 (gpio-map echoed IO16 — inconsistent with the GPIO28 guess);
+      all AON guesses (40..47). Where a bit is ambiguous, drive BOTH
+      candidate bits with the pad muxed to GPIO and watch the rig.
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.
 - [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /
