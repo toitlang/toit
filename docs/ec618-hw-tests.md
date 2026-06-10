@@ -144,6 +144,26 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **I2C driver rewritten + BMP280 test ready — BLOCKED on rig wiring**
+  (2026-06-10): i2c_ec618.cc had drifted from the current lib interface
+  (bus-create takes a pull-up bool, probe takes a timeout, device-create
+  carries frequency/timeout/ack-check — every call failed on argument
+  types; this is also why `scan` "couldn't send an empty message"). Now:
+  PAD addressing, per-device frequency switching, probe = SMBus
+  receive-byte judged by GetDataCount (the blob's polling driver has no
+  zero-length write), NACK detection on all transfers. Also fixed: taking
+  &Driver_I2C0 faulted (see the jump-table data-symbol commit). A real
+  BMP280 (chip-id 0x58, SDO->GND = 0x76) sits on the breadboard, verified
+  end-to-end from the ESP32 (bme280-probe-esp32) with its power switched
+  by IO13. BUT the sensor sits on the rig's "I2C0" board pins 22/23 —
+  measured UNREACHABLE from the EC618 (see the wiring table): no GPIO pad
+  and neither I2C controller reaches them. The EC618 test
+  (bmp280-{ec618,esp32}: scan + chip-id + forced measurement with
+  datasheet temperature compensation) is written and waits for the sensor
+  wires to move to reachable nets. Open question: which mux (if any) puts
+  I2C1 on pads 23/24 — ALT2 produces no SCL there; the blob is RTE-fixed
+  to pads 19/20 (unwired). Candidate paths: move wires + find the mux, or
+  bit-banged I2C over the (working) open-drain GPIO emulation.
 - **GPIO open-drain emulation + `gpio-opendrain` test** (2026-06-10,
   passing): the EC618 GPIO has no open-drain bit, so the driver now
   emulates it — the pin DIRECTION tracks the value (0 = output-low,

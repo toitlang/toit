@@ -1,0 +1,8 @@
+prefixes:
+  bme280: bme280-driver
+packages:
+  bme280-driver:
+    url: github.com/toitware/bme280-driver
+    name: bme280
+    version: 1.1.0
+    hash: e2220d286aad8bbb78e27ffcbf558cbec0e1c687
