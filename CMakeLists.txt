@@ -105,6 +105,11 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
 else()
   if (NOT ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "MSYS"))
     set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+    # Also remap __FILE__ (assert strings etc.): -fdebug-prefix-map only
+    # covers debug info, and an embedded absolute path makes the firmware
+    # image differ between checkouts — bad for reproducible builds and for
+    # diff-based OTA updates.
+    set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fmacro-prefix-map=${PROJECT_SOURCE_DIR}=.'")
   endif()
 endif()
 
