@@ -21,11 +21,11 @@
 
 namespace toit {
 
-UartQcx216EventSource* UartQcx216EventSource::instance_ = null;
+Ec618EventSource* Ec618EventSource::instance_ = null;
 
-UartQcx216EventSource::UartQcx216EventSource()
-    : EventSource("UartQcx216", 1)
-    , Thread("UartQcx216Event")
+Ec618EventSource::Ec618EventSource()
+    : EventSource("Ec618", 1)
+    , Thread("Ec618Event")
     , queue_(xQueueCreate(32, sizeof(Event)))
     , stop_(false) {
   ASSERT(instance_ == null);
@@ -33,7 +33,7 @@ UartQcx216EventSource::UartQcx216EventSource()
   spawn(4 * KB);
 }
 
-UartQcx216EventSource::~UartQcx216EventSource() {
+Ec618EventSource::~Ec618EventSource() {
   stop_ = true;
   Event stop_event = { Event::STOP, 0 };
   xQueueSend(queue_, &stop_event, portMAX_DELAY);
@@ -42,11 +42,11 @@ UartQcx216EventSource::~UartQcx216EventSource() {
   instance_ = null;
 }
 
-void UartQcx216EventSource::on_unregister_resource(Locker& locker, Resource* r) {
+void Ec618EventSource::on_unregister_resource(Locker& locker, Resource* r) {
   // Nothing special needed.
 }
 
-void UartQcx216EventSource::send_event_from_isr(Event::Type type, word data) {
+void Ec618EventSource::send_event_from_isr(Event::Type type, word data) {
   if (instance_ == null) return;
   Event event = { type, data };
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -54,7 +54,7 @@ void UartQcx216EventSource::send_event_from_isr(Event::Type type, word data) {
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void UartQcx216EventSource::entry() {
+void Ec618EventSource::entry() {
   while (!stop_) {
     Event event;
     if (xQueueReceive(queue_, &event, portMAX_DELAY) != pdTRUE) continue;

@@ -29,7 +29,7 @@ namespace toit {
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new CellularEventSource());
-  event_manager()->add_event_source(_new UartQcx216EventSource());
+  event_manager()->add_event_source(_new Ec618EventSource());
   event_manager()->add_event_source(_new LwipEventSource());
   event_manager()->add_event_source(_new TlsEventSource());
 }

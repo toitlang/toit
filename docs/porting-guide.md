@@ -905,8 +905,8 @@ Register three new primitive modules:
    `close(2)`, `read(1)`.
 
 Also:
-- Add unpacking macros for `UartQcx216ResourceGroup`, `CellularResourceGroup`,
-  `CellularEvents`, `UartQcx216Resource`.
+- Add unpacking macros for `UartEc618ResourceGroup`, `CellularResourceGroup`,
+  `CellularEvents`, `UartEc618Resource`.
 - Change `gpio.config_interrupt` from 2 args to 3 args (adds a `value`
   parameter for level-triggered interrupts).
 - Add `get_all_pages(1)` and `write_non_header_pages(2)` to
@@ -914,8 +914,8 @@ Also:
 
 ### Changes to `src/tags.h`
 
-Register new resource tags: `CellularEvents`, `UartQcx216Resource`,
-`UartQcx216ResourceGroup`, `CellularResourceGroup`.
+Register new resource tags: `CellularEvents`, `UartEc618Resource`,
+`UartEc618ResourceGroup`, `CellularResourceGroup`.
 
 ### Compiler Propagation Files
 
@@ -940,7 +940,7 @@ Toit event processing thread.
 
 **Architecture**:
 
-- `UartQcx216EventSource` extends both `EventSource` and `Thread`.
+- `Ec618EventSource` extends both `EventSource` and `Thread`.
 - It owns a FreeRTOS queue (`xQueueCreate(32, sizeof(Event))`).
 - ISR handlers (UART, GPIO) push events into this queue via
   `xQueueSendFromISR`.
@@ -953,7 +953,7 @@ Toit event processing thread.
 matching.
 
 This event source is shared by UART, GPIO, and potentially other peripherals.
-It's a singleton accessed via `UartQcx216EventSource::instance()`.
+It's a singleton accessed via `Ec618EventSource::instance()`.
 
 ### New Files: `src/event_sources/cellular_ec618.cc` and `.h`
 
@@ -971,7 +971,7 @@ Separate event source for cellular URC (unsolicited result codes):
 Register platform event sources:
 - `TimerEventSource` (from existing code)
 - `CellularEventSource` (new)
-- `UartQcx216EventSource` (new)
+- `Ec618EventSource` (new)
 - `LwipEventSource` (existing, conditional on `CONFIG_TOIT_ENABLE_IP`)
 - `TlsEventSource` (existing, conditional on `CONFIG_TOIT_ENABLE_IP`)
 

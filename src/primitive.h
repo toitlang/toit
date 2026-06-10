@@ -1125,7 +1125,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
-#define _A_T_UartQcx216ResourceGroup(N, name) MAKE_UNPACKING_MACRO(UartQcx216ResourceGroup, N, name)
+#define _A_T_UartEc618ResourceGroup(N, name) MAKE_UNPACKING_MACRO(UartEc618ResourceGroup, N, name)
 #define _A_T_CellularResourceGroup(N, name) MAKE_UNPACKING_MACRO(CellularResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
@@ -1150,7 +1150,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_CellularEvents(N, name)     MAKE_UNPACKING_MACRO(CellularEvents, N, name)
-#define _A_T_UartQcx216Resource(N, name) MAKE_UNPACKING_MACRO(UartQcx216Resource, N, name)
+#define _A_T_UartEc618Resource(N, name) MAKE_UNPACKING_MACRO(UartEc618Resource, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)

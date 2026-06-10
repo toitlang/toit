@@ -91,7 +91,7 @@ static int32_t i2c_done_cb(void* p_data, void* p_param) {
   USE(p_data);
   uintptr_t id = reinterpret_cast<uintptr_t>(p_param);
   if (id > 1) return 0;
-  UartQcx216EventSource::send_event_from_isr(Event::i2c_type(id), 0);
+  Ec618EventSource::send_event_from_isr(Event::i2c_type(id), 0);
   return 0;
 }
 
@@ -217,7 +217,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  UartQcx216EventSource* event_source = UartQcx216EventSource::instance();
+  Ec618EventSource* event_source = Ec618EventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
 
   I2cResourceGroup* group = _new I2cResourceGroup(process, event_source);

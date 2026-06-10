@@ -110,7 +110,7 @@ static void gpio_isr_handler() {
         GPIO_interruptConfig(port, bit, GPIO_INTERRUPT_DISABLED);
         uint32_t seq = ++edge_sequence;
         last_edge_seq[gpio_bit] = seq;
-        UartQcx216EventSource::send_event_from_isr(
+        Ec618EventSource::send_event_from_isr(
             Event::gpio_type(gpio_bit), seq);
       }
     }
@@ -157,7 +157,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  UartQcx216EventSource* event_source = UartQcx216EventSource::instance();
+  Ec618EventSource* event_source = Ec618EventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
 
   GpioResourceGroup* group = _new GpioResourceGroup(process, event_source);

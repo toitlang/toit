@@ -140,7 +140,7 @@ static int32_t uart_cb(void* p_data, void* p_param) {
     case UART_CB_RX_NEW:
     case UART_CB_RX_TIMEOUT:
     case UART_CB_RX_BUFFER_FULL:
-      UartQcx216EventSource::send_event_from_isr(
+      Ec618EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_RX);
       break;
 
@@ -156,19 +156,19 @@ static int32_t uart_cb(void* p_data, void* p_param) {
       // correctness path; dropping DE twice is harmless.
       int de = uart_states[id].de_pad;
       if (de >= 0) set_de_level(de, 0);
-      UartQcx216EventSource::send_event_from_isr(
+      Ec618EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_TX_DONE);
       break;
     }
 
     case UART_CB_TX_BUFFER_DONE:
-      UartQcx216EventSource::send_event_from_isr(
+      Ec618EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_TX_DONE);
       break;
 
     case UART_CB_ERROR:
       uart_states[id].errors++;
-      UartQcx216EventSource::send_event_from_isr(
+      Ec618EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_ERROR);
       break;
   }
@@ -290,7 +290,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  UartQcx216EventSource* event_source = UartQcx216EventSource::instance();
+  Ec618EventSource* event_source = Ec618EventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
 
   UartResourceGroup* group = _new UartResourceGroup(process, event_source);

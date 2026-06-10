@@ -79,12 +79,12 @@ class EventResource : public Resource {
 // Shared event source for UART and GPIO on EC618.
 // ISR handlers push events into a FreeRTOS queue; the event thread
 // dispatches them to matching resources.
-class UartQcx216EventSource : public EventSource, public Thread {
+class Ec618EventSource : public EventSource, public Thread {
  public:
-  static UartQcx216EventSource* instance() { return instance_; }
+  static Ec618EventSource* instance() { return instance_; }
 
-  UartQcx216EventSource();
-  ~UartQcx216EventSource();
+  Ec618EventSource();
+  ~Ec618EventSource();
 
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
@@ -96,7 +96,7 @@ class UartQcx216EventSource : public EventSource, public Thread {
  private:
   void entry() override;
 
-  static UartQcx216EventSource* instance_;
+  static Ec618EventSource* instance_;
   QueueHandle_t queue_;
   bool stop_;
 };
