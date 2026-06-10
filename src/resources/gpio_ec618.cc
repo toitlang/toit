@@ -118,6 +118,30 @@ static void gpio_isr_handler() {
   }
 }
 
+// The EC618 GPIO controller has no native open-drain (the pad/iomux has
+// no open-drain bit). Open-drain is emulated by making the pin DIRECTION
+// track the value: output-low for 0, input/high-Z for 1 (an internal or
+// external pull-up supplies the high level). Which pads are in that mode
+// is pad-level state, because `set` only receives the pad number.
+static uint64_t open_drain_pads = 0;
+
+static bool is_open_drain(int pad) {
+  return (open_drain_pads >> pad) & 1;
+}
+
+// Applies an emulated open-drain level: 0 drives, anything else releases.
+static void apply_open_drain_level(int gpio_bit, int value) {
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  if (value == 0) {
+    config.pinDirection = GPIO_DIRECTION_OUTPUT;
+    config.misc.initOutput = 0;
+  } else {
+    config.pinDirection = GPIO_DIRECTION_INPUT;
+  }
+  GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+}
+
 static bool isr_installed = false;
 
 static void ensure_isr() {
@@ -166,6 +190,7 @@ PRIMITIVE(use) {
 PRIMITIVE(unuse) {
   ARGS(GpioResourceGroup, group, GpioResource, resource);
   int gpio_bit = resource->gpio_bit();
+  open_drain_pads &= ~(1ULL << resource->pad());
   GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit), GPIO_INTERRUPT_DISABLED);
   group->unregister_resource(resource);
   resource_proxy->clear_external_address();
@@ -179,32 +204,32 @@ PRIMITIVE(config) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  // The EC618 GPIO controller has no native open-drain (the pad/iomux has no
-  // open-drain bit), so for now reject it rather than silently mis-driving.
-  // TODO(toit): emulate open-drain in a follow-up commit by making the pin
-  // direction track the value -- output-low for 0, input/high-Z (held high by a
-  // pull-up) for 1 -- which also makes `set` and `set_open_drain` direction-
-  // aware. Until then, open-drain buses on this chip use the dedicated I2C
-  // peripheral (i2c_ec618.cc), not bit-banged GPIO.
-  if (open_drain) FAIL(UNIMPLEMENTED);
 
   // Switch the pad's iomux to plain-GPIO (function 0). Without this, the pad
   // would stay in whatever role a previous peripheral left it in, and the
   // controller bit's reads/writes would have no effect on the wire. Enable the
   // pad input buffer for input pins so reads see the live pad level (without it
-  // the read path is disconnected from the pin). AutoPull off — we set the pull
-  // explicitly below, and GPIO_PullConfig overrides the iomux auto-pull anyway.
-  GPIO_IomuxEC618(pad, 0, 0, input ? 1 : 0);
+  // the read path is disconnected from the pin). Open-drain pins get it too:
+  // `get` on an open-drain pin must read the WIRE (someone else may be pulling
+  // it low). AutoPull off — we set the pull explicitly below, and
+  // GPIO_PullConfig overrides the iomux auto-pull anyway.
+  GPIO_IomuxEC618(pad, 0, 0, (input || open_drain) ? 1 : 0);
 
-  GpioPinConfig_t config;
-  memset(&config, 0, sizeof(config));
-  if (output) {
-    config.pinDirection = GPIO_DIRECTION_OUTPUT;
-    config.misc.initOutput = (value == -1) ? 0 : value;
+  if (open_drain) {
+    open_drain_pads |= 1ULL << pad;
+    apply_open_drain_level(gpio_bit, (value == -1) ? 0 : value);
   } else {
-    config.pinDirection = GPIO_DIRECTION_INPUT;
+    open_drain_pads &= ~(1ULL << pad);
+    GpioPinConfig_t config;
+    memset(&config, 0, sizeof(config));
+    if (output) {
+      config.pinDirection = GPIO_DIRECTION_OUTPUT;
+      config.misc.initOutput = (value == -1) ? 0 : value;
+    } else {
+      config.pinDirection = GPIO_DIRECTION_INPUT;
+    }
+    GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
   }
-  GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
 
   apply_pull(pad, pull_up, pull_down);
 
@@ -224,8 +249,12 @@ PRIMITIVE(set) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  uint16_t mask = to_pin_mask(gpio_bit);
-  GPIO_pinWrite(to_port(gpio_bit), mask, value ? mask : 0);
+  if (is_open_drain(pad)) {
+    apply_open_drain_level(gpio_bit, value);
+  } else {
+    uint16_t mask = to_pin_mask(gpio_bit);
+    GPIO_pinWrite(to_port(gpio_bit), mask, value ? mask : 0);
+  }
   return process->null_object();
 }
 
@@ -253,10 +282,27 @@ PRIMITIVE(last_edge_trigger_timestamp) {
 
 PRIMITIVE(set_open_drain) {
   ARGS(int, pad, bool, value);
-  USE(pad);
-  // No native open-drain on the EC618; only the push-pull default is accepted.
-  // TODO(toit): emulate open-drain (see PRIMITIVE(config)).
-  if (value) FAIL(UNIMPLEMENTED);
+  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (value == is_open_drain(pad)) return process->null_object();
+  if (value) {
+    // Carry the pin's current line level into the emulation (the input
+    // buffer must be on before we can trust the read).
+    GPIO_IomuxEC618(pad, 0, 0, 1);
+    int level = GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0;
+    open_drain_pads |= 1ULL << pad;
+    apply_open_drain_level(gpio_bit, level);
+  } else {
+    // Back to push-pull, driving the current line level.
+    int level = GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0;
+    open_drain_pads &= ~(1ULL << pad);
+    GpioPinConfig_t config;
+    memset(&config, 0, sizeof(config));
+    config.pinDirection = GPIO_DIRECTION_OUTPUT;
+    config.misc.initOutput = level;
+    GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+  }
   return process->null_object();
 }
 

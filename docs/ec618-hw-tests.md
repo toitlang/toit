@@ -144,6 +144,22 @@ LuatOS `luat_*` interface layer. A `TODO(toit)` in
 calls still in the glue.
 
 ## Done
+- **GPIO open-drain emulation + `gpio-opendrain` test** (2026-06-10,
+  passing): the EC618 GPIO has no open-drain bit, so the driver now
+  emulates it — the pin DIRECTION tracks the value (0 = output-low,
+  1 = input/high-Z; a pull-up supplies the high level). `config`, `set`
+  and `set-open-drain` are direction-aware; open-drain pins always get the
+  pad input buffer so `get` reads the WIRE. Tested as a real two-master
+  bus on PAD33 <-> ESP32 IO16 (both open-drain, pull-ups both sides,
+  commands over UART2): drive/release levels, `get` readback in both
+  states, the wired-AND property (EC618 released + ESP32 pulling low →
+  EC618 reads 0), 5× toggling, live `set-open-drain` flips to push-pull
+  and back, and open-drain WITHOUT the internal pull-up (external pull-up
+  only) including a high-Z proof — a released pin loses against the
+  peer's weak pull-DOWN, which a push-pull high would win. All 26 checks
+  pass. Notably the GPIO input register tracks the pad even in output
+  direction (the readback checks prove it).
+  `gpio-opendrain-{ec618,esp32}.toit`.
 - **GPIO interrupts fixed + `gpio-interrupt` test** (2026-06-10, passing):
   `Pin.wait-for` NEVER worked on the EC618 — three driver bugs found by the
   new test (ESP32 drives pulse trains into PAD26, the EC618 counts them via
@@ -450,8 +466,8 @@ rule no longer applies:
 - [ ] **SPI**, **I2C** (consider the 3.3 V→1.8 V direction / dividers first).
 - [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
       for input pins.
-- [ ] **GPIO open-drain**: emulate via output↔input (separate commit; see the
-      `TODO(toit)` in `gpio_ec618.cc`).
+- [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /
+      high-Z); HW-tested as a real two-master wired-AND bus (gpio-opendrain).
 - [x] **GPIO interrupts** (`Pin.wait-for`): was entirely broken — fixed
       (on_event state bit + shared trigger-sequence protocol) and HW-tested
       (gpio-interrupt, exact pulse counts at 50 and 250 Hz).
