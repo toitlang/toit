@@ -83,14 +83,26 @@ ALWAYS-INCLUDE-EXACT ::= {
 
 // CMSIS driver ACCESS STRUCTS — data, not functions (they live in flash,
 // so nm reports them as 'T' and the function filter doesn't catch them).
-// They must NOT be redefine-rewritten: routing their ADDRESS through a code
-// veneer makes the VM read "function pointers" out of stub machine code —
-// an instant fault (observed on I2C bring-up: &Driver_I2C0 resolved to the
-// veneer). They keep their table slot + stub purely for index stability
-// with already-flashed bases; the VM binds to the fixed-PLAT struct
-// directly, which is slot-safe. TODO(toit): drop them from the table at the
-// next intentional renumbering (= next planned full flash).
+// They must NOT be in the table at all: routing their ADDRESS through a
+// code veneer makes the VM read "function pointers" out of stub machine
+// code — an instant fault (observed on I2C bring-up: &Driver_I2C0 resolved
+// to the veneer). The VM binds to the fixed-PLAT structs directly, which
+// is slot-safe.
 DATA-SYMBOLS ::= {"Driver_I2C0", "Driver_I2C1", "Driver_USART0", "Driver_USART1"}
+
+// PLAT functions the table must carry even though the CURRENT image does
+// not reference them (they are defined in the PLAT archives; the table
+// entry itself pulls them into the base link). The async-I2C driver uses
+// the luatos core I2C API (soc_i2c.h: IRQ-driven, per-byte timeout,
+// completion callback — unlike the timeout-less polling CMSIS blob).
+FORCE-INCLUDE-EXACT ::= {
+  "I2C_MasterSetup", "I2C_Prepare", "I2C_MasterXfer", "I2C_WaitResult",
+  "I2C_BlockWrite", "I2C_BlockRead", "I2C_ChangeBR", "I2C_Reset",
+  "I2C_UsePollingMode", "I2C_SetNoBlock",
+  // The AON/wakeup-pad surface (for the AON pads 40..47, which the plain
+  // GPIO controller cannot drive).
+  "GPIO_WakeupPadConfig", "GPIO_GlobalInit",
+}
 
 // References with no PLAT definition — present only as dead, GC'd refs. A
 // table entry would emit an undefined `__real_*`. Add here if a build fails
@@ -325,6 +337,7 @@ extract-symbols --objdump/string --nm/string --elf/string --archives/List --excl
   elf-defined := all-symbols nm elf
   exclude := {}
   exclude.add-all DEFAULT-EXCLUDE
+  exclude.add-all DATA-SYMBOLS
   exclude.add-all excludes
 
   result := {}
@@ -348,6 +361,8 @@ extract-symbols --objdump/string --nm/string --elf/string --archives/List --excl
     if vm-defined.contains s: continue.do
     if exclude.contains s: continue.do
     result.add s
+
+  result.add-all FORCE-INCLUDE-EXACT
 
   sorted := []
   sorted.add-all result
@@ -472,8 +487,7 @@ run invocation/cli.Invocation -> none:
       // only by PLAT and by this table entry.
       externs-lines.add "extern void *$s;"
       table-init-lines.add "    [PLAT_JT_$s] = &$s,"
-      if not DATA-SYMBOLS.contains s:
-        redefine-lines.add "$s __wrap_$s"
+      redefine-lines.add "$s __wrap_$s"
 
   slot-enum := slot-enum-lines.join "\n"
   externs := externs-lines.join "\n"
