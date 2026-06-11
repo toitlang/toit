@@ -131,6 +131,78 @@ bool is_control_flow(Expression* e) {
   return e->is_If() || e->is_While() || e->is_For() || e->is_TryFinally();
 }
 
+// Rough token count of an expression; used to keep heavy suite bodies
+// off their header's line regardless of width.
+int token_count(Expression* e) {
+  if (e == null) return 0;
+  // Parens don't count: the formatter adds and removes them, and the
+  // count must be stable across formatting runs (idempotence).
+  if (e->is_Parenthesis()) {
+    return token_count(e->as_Parenthesis()->expression());
+  }
+  if (e->is_Binary()) {
+    Binary* binary = e->as_Binary();
+    return token_count(binary->left()) + 1 + token_count(binary->right());
+  }
+  if (e->is_Unary()) return 1 + token_count(e->as_Unary()->expression());
+  if (e->is_Dot()) return token_count(e->as_Dot()->receiver()) + 2;
+  if (e->is_Index()) {
+    Index* index = e->as_Index();
+    int count = token_count(index->receiver()) + 2;
+    for (auto argument : index->arguments()) count += token_count(argument);
+    return count;
+  }
+  if (e->is_IndexSlice()) {
+    IndexSlice* slice = e->as_IndexSlice();
+    return token_count(slice->receiver()) + 3
+        + token_count(slice->from()) + token_count(slice->to());
+  }
+  if (e->is_Call()) {
+    Call* call = e->as_Call();
+    int count = token_count(call->target());
+    for (auto argument : call->arguments()) count += token_count(argument);
+    return count;
+  }
+  if (e->is_NamedArgument()) {
+    return 1 + token_count(e->as_NamedArgument()->expression());
+  }
+  if (e->is_Return()) return 1 + token_count(e->as_Return()->value());
+  if (e->is_BreakContinue()) {
+    return 1 + token_count(e->as_BreakContinue()->value());
+  }
+  if (e->is_DeclarationLocal()) {
+    DeclarationLocal* declaration = e->as_DeclarationLocal();
+    return 2 + token_count(declaration->type()) + token_count(declaration->value());
+  }
+  if (e->is_LiteralList() || e->is_LiteralSet() || e->is_LiteralByteArray()) {
+    auto elements = e->is_LiteralList() ? e->as_LiteralList()->elements()
+        : e->is_LiteralSet() ? e->as_LiteralSet()->elements()
+        : e->as_LiteralByteArray()->elements();
+    int count = 2;
+    for (auto element : elements) count += token_count(element);
+    return count;
+  }
+  if (e->is_LiteralMap()) {
+    LiteralMap* map = e->as_LiteralMap();
+    int count = 2;
+    for (int i = 0; i < map->keys().length(); i++) {
+      count += token_count(map->keys()[i]) + 1 + token_count(map->values()[i]);
+    }
+    return count;
+  }
+  if (e->is_Block() || e->is_Lambda()) {
+    Sequence* body = e->is_Block() ? e->as_Block()->body()
+                                   : e->as_Lambda()->body();
+    int count = 1;
+    if (body != null) {
+      for (auto statement : body->expressions()) count += token_count(statement);
+    }
+    return count;
+  }
+  // Identifiers, literals, interpolated strings, ...
+  return 1;
+}
+
 class Lowering {
  public:
   Lowering(Unit* unit, List<Scanner::Comment> comments, const FormatStyle& style)
@@ -597,7 +669,8 @@ class Lowering {
         && Token::precedence(inner->as_Binary()->kind()) != PRECEDENCE_ASSIGNMENT) {
       Token::Kind kind = inner->as_Binary()->kind();
       int precedence = Token::precedence(kind);
-      bool must_paren = precedence <= PRECEDENCE_ASSIGNMENT
+      bool must_paren = style_.paren_binary_arguments
+          || precedence <= PRECEDENCE_ASSIGNMENT
           || contains_call(inner)
           || multi_arg;
       if (!must_paren) return expr(inner, PRECEDENCE_NONE);
@@ -630,7 +703,8 @@ class Lowering {
     Expression* inner = peel_parens(argument);
     bool differs_broken = inner != null
         && (inner->is_Call()
-            || (inner->is_Binary()
+            || (!style_.paren_binary_arguments
+                && inner->is_Binary()
                 && Token::precedence(inner->as_Binary()->kind()) != PRECEDENCE_ASSIGNMENT));
     if (differs_broken) {
       return b_.if_broken(expr(inner, PRECEDENCE_NONE),
@@ -683,7 +757,8 @@ class Lowering {
                                statements.is_empty() ? b_.nil()
                                                      : suite_body(body, true),
                                b_.if_broken(b_.concat({b_.hardline(), b_.text(")")}),
-                                            b_.text(")"))}));
+                                            b_.text(")"))}),
+                    style_.inline_suite_width);
   }
 
   Doc* block_suite_broken(Doc* intro, Expression* blockish) {
@@ -718,7 +793,8 @@ class Lowering {
     bool inline_ok = allow_inline
         && statements.length() == 1
         && !is_control_flow(peel_parens(statements.first()))
-        && !trivia_.is_frozen(statements.first());
+        && !trivia_.is_frozen(statements.first())
+        && token_count(statements.first()) <= style_.max_inline_suite_tokens;
     std::vector<Doc*> docs;
     bool first_entity = true;
     std::vector<Doc*> list;
@@ -857,7 +933,8 @@ class Lowering {
           Doc* intro = b_.concat({b_.text(named->inverted() ? "--no-" : "--"),
                                   node_text(named->name()),
                                   b_.text(value->is_Block() ? "=:" : "=::")});
-          argument_docs.push_back(b_.group(block_suite(intro, argument)));
+          argument_docs.push_back(b_.group(block_suite(intro, argument),
+                                           style_.inline_suite_width));
         } else {
           argument_docs.push_back(call_argument(argument, multi_arg));
         }
@@ -892,10 +969,12 @@ class Lowering {
       // Already rendered in the head.
     } else if (tail_count == 1 && is_blockish(arguments[first_blockish])) {
       // The classic trailing block: `foo a: body`, attached to the
-      // head; the body may stay inline.
+      // head. The body's inline-vs-broken break binds to the
+      // *statement's* group so the whole line is judged against the
+      // inline-suite budget.
       Expression* argument = arguments[first_blockish];
       Doc* intro = b_.text(argument->is_Block() ? ":" : "::");
-      docs.push_back(b_.group(block_suite(intro, argument)));
+      docs.push_back(block_suite(intro, argument));
     } else if (tail_count > 1) {
       // From the first suite argument on, every argument goes on its
       // own continuation line: suites would swallow same-line
@@ -923,14 +1002,21 @@ class Lowering {
         }
         docs.push_back(b_.indent(style_.continuation_step,
                                  b_.concat({b_.hardline(),
-                                            b_.group(line_doc)})));
+                                            b_.group(line_doc,
+                                                     style_.inline_suite_width)})));
       }
     }
 
-    // The whole call is one break unit: if it doesn't fit flat, the
-    // head group decides argument wrapping and suite bodies move to
-    // their own lines.
-    Doc* result = b_.concat(std::move(docs));
+    // A call carrying a suite is one break unit judged against the
+    // inline-suite budget: when the call's own extent exceeds it, the
+    // suite body moves to its own line (the head group decides
+    // argument wrapping independently). The group lives here, not at
+    // statement level, so the decision is the same wherever the call
+    // is embedded (statement, map value, argument).
+    bool has_suite = tail_count > 0 || named_suite_in_head;
+    Doc* result = has_suite
+        ? b_.group(b_.concat(std::move(docs)), style_.inline_suite_width)
+        : b_.concat(std::move(docs));
     if (!parens) return result;
     return b_.concat({b_.text("("), result, b_.text(")")});
   }
@@ -1040,6 +1126,10 @@ class Lowering {
       int from = start(statement_node);
       return b_.verbatim(frozen_bytes(statement_node), column_of(from));
     }
+    return statement_inner(statement_node);
+  }
+
+  Doc* statement_inner(Expression* statement_node) {
     if (statement_node->is_If()) {
       // A statement `if` has Sequence branches; the conditional
       // operator (`c ? a : b`) in statement position does not.
@@ -1093,7 +1183,7 @@ class Lowering {
       docs.push_back(suite_body(else_body, false));
       break;
     }
-    return b_.group(b_.concat(std::move(docs)));
+    return b_.group(b_.concat(std::move(docs)), style_.inline_suite_width);
   }
 
   Doc* while_statement(While* while_node) {
@@ -1102,7 +1192,8 @@ class Lowering {
                                expr(while_node->condition(), PRECEDENCE_NONE),
                                b_.text(":"),
                                body != null ? trailing_trivia(body) : b_.nil(),
-                               suite_body(body, true)}));
+                               suite_body(body, true)}),
+                    style_.inline_suite_width);
   }
 
   Doc* for_statement(For* for_node) {
@@ -1125,7 +1216,7 @@ class Lowering {
     Sequence* body = branch_sequence(for_node->body());
     if (body != null) docs.push_back(trailing_trivia(body));
     docs.push_back(suite_body(body, true));
-    return b_.group(b_.concat(std::move(docs)));
+    return b_.group(b_.concat(std::move(docs)), style_.inline_suite_width);
   }
 
   Doc* try_statement(TryFinally* try_node) {
@@ -1228,7 +1319,8 @@ class Lowering {
     return b_.group(b_.concat({header_doc,
                                b_.text(":"),
                                trailing_trivia(body),
-                               suite_body(body, true)}));
+                               suite_body(body, true)}),
+                    style_.inline_suite_width);
   }
 
   Doc* field_declaration(Field* field) {
@@ -1390,7 +1482,19 @@ uint8* format_unit(Unit* unit,
                    List<Scanner::Comment> comments,
                    int* formatted_size,
                    const FormatStyle& style) {
-  Lowering lowering(unit, comments, style);
+  FormatStyle effective = style;
+  // Experiment scaffolding for style calibration; remove once the
+  // style table is settled.
+  if (const char* width = getenv("TOIT_FORMAT_EXP_INLINE_WIDTH")) {
+    effective.inline_suite_width = atoi(width);
+  }
+  if (const char* tokens = getenv("TOIT_FORMAT_EXP_INLINE_TOKENS")) {
+    effective.max_inline_suite_tokens = atoi(tokens);
+  }
+  if (getenv("TOIT_FORMAT_EXP_PAREN_BINARY_ARGS") != null) {
+    effective.paren_binary_arguments = true;
+  }
+  Lowering lowering(unit, comments, effective);
   std::string formatted = lowering.run();
   *formatted_size = formatted.size();
   uint8* result = unvoid_cast<uint8*>(malloc(formatted.size() + 1));

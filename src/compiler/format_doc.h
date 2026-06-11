@@ -52,6 +52,16 @@ struct FormatStyle {
   // Prettier/Black): authors curate config-like collections line by
   // line. The one deliberate exception to pure-AST determinism.
   bool keep_multiline_collections = true;
+  // Constructs that pack a suite onto their header's line (`foo: body`,
+  // `if c: body`, `list.do: it`) use this tighter budget: two semantic
+  // chunks on one line are harder to scan than one wide expression.
+  int inline_suite_width = 100;
+  // An inline suite body may have at most this many tokens; heavier
+  // bodies go to their own line regardless of width.
+  int max_inline_suite_tokens = 1000;
+  // Parenthesize binary-operator arguments of calls even where the
+  // grammar doesn't require it (`foo (end - start)`).
+  bool paren_binary_arguments = false;
 };
 
 // A layout document. Lowering builds a Doc tree from the AST; the
