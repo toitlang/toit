@@ -72,3 +72,33 @@ per-transfer `GPR_swResetModule`).
 - DMA RX (RTE UART2) + idle-line timeout is the throughput path the
   4 MBd loss investigation needs (descriptor-chained DMA absorbs IRQ
   latency spikes that the blob's single buffer cannot).
+
+## Implementation map (from uart_ec618.cc, scouted 2026-06-11)
+
+Blob surfaces to replace for RX (UART2 first):
+- open: `Uart_BaseInitEx(id, baud, tx_cache, rx_cache, ...)` +
+  `Uart_RxBufferClear(id)` (uart_ec618.cc:416-425) — for the CMSIS path,
+  `Driver_USART2->Initialize(cb)/PowerControl(FULL)/Control(baud,framing)`
+  + first `Receive()` arm.
+- read primitive: `Uart_RxBufferRead(id, buf, n)` peek+drain
+  (uart_ec618.cc:503-512) — becomes a drain of OUR ring.
+- uart_cb RX cases (`UART_CB_RX_NEW/_TIMEOUT/_BUFFER_FULL`) — become the
+  CMSIS `cb_event` (`RECEIVE_COMPLETE`/`RX_TIMEOUT`/`RX_OVERFLOW`)
+  copying `GetRxCount()` bytes into the ring and re-arming `Receive()`.
+- close path + set_baud: today via blob; CMSIS `Control(ABORT_RECEIVE)`,
+  `ARM_USART_MODE_ASYNCHRONOUS` re-Control for baud.
+- `wait_tx` TEMT polling stays (TX remains on the blob in phase 1).
+
+**Base-change alert:** the per-uart RX context (ring pointer, head/tail,
+dropped-byte counter, armed-chunk bookkeeping) extends `uart_states[3]`
+— a shared-dram file static — so the first CMSIS build is a FULL FLASH
+(fingerprint will show the .data shift). Bundle any other pending base
+work with it.
+
+Phase plan:
+1. `CONFIG`-free branch: in create, `if (id == 2) cmsis_rx_open(...)`,
+   read/close/set-baud dispatch on a per-state `cmsis_rx` flag.
+2. Validate with uart2-echo (all bauds), then the #4 repros
+   (bigdata/ring/duplex — expect duplex to go green, overflow to become
+   counted + recoverable).
+3. Decide UART0/1 migration + TX migration afterwards.
