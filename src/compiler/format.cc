@@ -720,7 +720,7 @@ class Lowering {
         chain.push_back(b_.line());
         chain.push_back(b_.text(std::string(Token::symbol(kind).c_str()) + " "));
       }
-      chain.push_back(binary_operand(operands[i], operand_prec, kind));
+      chain.push_back(chain_operand(operands[i], operand_prec, kind));
     }
 
     Doc* chain_doc = chain.size() == 1
@@ -731,6 +731,49 @@ class Lowering {
                                             chain.begin() + 1, chain.end())))}));
     if (!parens) return chain_doc;
     return b_.concat({b_.text("("), chain_doc, b_.text(")")});
+  }
+
+  // A chain operand. In a mixed `and`/`or` chain, a nested logical
+  // chain stays bare while it renders on one line (the parse is
+  // unambiguous and `foo and bar or gee` reads fine), but gets parens
+  // the moment it breaks: its continuation lines would sit at the same
+  // indent as the outer chain's, hiding the nesting from the reader.
+  // The outer chain's break points are tried first (the nested group
+  // re-fits after the outer breaks), so the parenthesised form only
+  // appears when the nested chain alone is too wide.
+  Doc* chain_operand(Expression* operand, int operand_prec, Token::Kind chain_kind) {
+    int chain_prec = Token::precedence(chain_kind);
+    bool logical_chain = chain_prec == PRECEDENCE_OR || chain_prec == PRECEDENCE_AND;
+    if (logical_chain && operand != null && !operand->is_Parenthesis()
+        && operand->is_Binary()) {
+      int operand_op_prec = Token::precedence(operand->as_Binary()->kind());
+      if (operand_op_prec == PRECEDENCE_OR || operand_op_prec == PRECEDENCE_AND) {
+        return nested_logical_chain(operand->as_Binary());
+      }
+    }
+    return binary_operand(operand, operand_prec, chain_kind);
+  }
+
+  Doc* nested_logical_chain(Binary* binary_node) {
+    Token::Kind kind = binary_node->kind();
+    std::vector<Expression*> operands;
+    flatten_chain(binary_node, kind, &operands);
+    std::vector<Doc*> chain;
+    for (size_t i = 0; i < operands.size(); i++) {
+      if (i > 0) {
+        chain.push_back(b_.line());
+        chain.push_back(b_.text(std::string(Token::symbol(kind).c_str()) + " "));
+      }
+      // Both operand positions of `and` / `or` are statement-level
+      // boundaries.
+      chain.push_back(chain_operand(operands[i], PRECEDENCE_NONE, kind));
+    }
+    return b_.group(b_.concat({b_.if_broken(b_.text("("), b_.nil()),
+                               chain[0],
+                               b_.indent(style_.continuation_step,
+                                         b_.concat(std::vector<Doc*>(
+                                             chain.begin() + 1, chain.end()))),
+                               b_.if_broken(b_.text(")"), b_.nil())}));
   }
 
   Doc* named_argument(NamedArgument* argument, bool newline_position) {
