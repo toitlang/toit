@@ -55,8 +55,12 @@ main:
       if line == "": continue
       parts := line.split " "
       cmd := parts[0]
-      if cmd == "B":
-        baud := int.parse parts[1]
+      // The control wire carries garbage when the EC618 reboots (watchdog
+      // resets between runs) or hops bauds: ignore anything that isn't a
+      // well-formed command, and never act on R/S/D/Q before the first B
+      // — a stray byte decoding as 'Q' used to kill the helper mid-rig.
+      if cmd == "B" and parts.size == 2:
+        baud := int.parse parts[1] --if-error=: continue
         if test: test.close
         if rx: rx.close
         if tx: tx.close
@@ -64,17 +68,19 @@ main:
         tx = gpio.Pin TEST-TX
         test = uart.Port --rx=rx --tx=tx --baud-rate=baud
         print "uart2-bigdata-esp32: test UART @ $baud"
-      else if cmd == "R":
-        n := int.parse parts[1]
+      else if test == null:
+        continue
+      else if cmd == "R" and parts.size == 2:
+        n := int.parse parts[1] --if-error=: continue
         result := recv-stream test n         // [crc, count]
         test.out.write "C $result[0] $result[1]\n"
         print "uart2-bigdata-esp32: R $n -> crc=$result[0] count=$result[1]"
-      else if cmd == "S":
-        n := int.parse parts[1]
+      else if cmd == "S" and parts.size == 2:
+        n := int.parse parts[1] --if-error=: continue
         send-stream test n
         print "uart2-bigdata-esp32: S $n done"
-      else if cmd == "D":
-        n := int.parse parts[1]
+      else if cmd == "D" and parts.size == 2:
+        n := int.parse parts[1] --if-error=: continue
         received := monitor.Latch
         task::
           received.set (recv-stream test n)

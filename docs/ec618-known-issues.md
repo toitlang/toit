@@ -254,3 +254,102 @@ insufficient: the reference's error-only GPR reset, per-transfer
 
 **Real fix (future).** Move I2C off the closed blob onto the open CMSIS
 driver (`Driver_I2C1`), the same direction as the UART RX rewrite (#4).
+
+## 7. CMSIS UART DMA-RX engine corrupts the heap under flood — AVOIDED (IRQ mode)
+
+**Symptom.** Full-duplex flood on the CMSIS-driven UART2 (256 KiB each way,
+≥921600 baud) ends in heap corruption: hardfault inside the interpreter on
+a garbage address whose bytes look like RX stream data, or a VM fatal
+("Unexpected class tag"), or — when the scribble lands somewhere quieter —
+a container-exit wedge. One-direction traffic with a keeping-up reader is
+clean; corruption tracks bursty/starved RX (many mid-transfer rx-timeouts).
+
+**Root cause (two layers, both in `bsp_usart.c`).**
+
+1. *Protocol misunderstanding (ours, fixed in `uart_ec618.cc`):*
+   `ARM_USART_EVENT_RX_TIMEOUT` does NOT terminate the armed `Receive()` on
+   this driver. The timeout IRQ path reloads the DMA descriptor and keeps
+   streaming into the SAME buffer — and the driver can fire the callback
+   from *inside* `Receive()` itself. Our phase-1 callback re-armed
+   `Receive()` on every event, re-entering the driver's DMA state machine
+   against a live transfer. Fixed: track a `seen` offset, push only the
+   delta on RX_TIMEOUT, re-arm only on RECEIVE_COMPLETE.
+
+2. *Zero-length DMA descriptor (the SDK's):* `USART_DmaUpdateRxConfig`
+   unconditionally splits every (re)load into a 4-byte `desc[0]`
+   (`UART_DMA_BURST_SIZE`) plus a remainder `desc[1]`. The rx-timeout IRQ
+   calls it with `left_to_recv`; when a timeout catches the transfer with
+   <= 4 bytes left in the user buffer, `desc[1]` is programmed with length
+   ZERO — and a zero-length descriptor streams the wire PAST the buffer,
+   scribbling everything after the receive chunk on the C heap. With a
+   512-byte chunk that is a ~0.8% chance per mid-transfer timeout;
+   duplex-with-starved-reader produces hundreds of such timeouts per round,
+   so corruption was near-certain. (Same hazard exists in `USART_Receive`'s
+   own RECV_COMPLETE path, which loads a zero-length `desc[0]` — not
+   reachable with our 512-byte chunks.)
+
+**Resolution (shipped).** `RTE_UART2_RX_IO_MODE = IRQ_MODE` (our
+`RTE_Device.h`): UART2 RX uses the driver's IRQ paths — plain
+bounds-checked FIFO->buffer copies, no descriptor engine, no DMA aimed at
+heap memory, teardown trivially safe. Cost: one IRQ per ~30 RX bytes
+(FIFO trigger level), and the 32-deep hardware FIFO replaces the DMA
+catch buffer between transfers — overruns at multi-MBd are counted in
+`errors` and RX survives. The DMA engine should not be re-enabled for RX
+until `USART_DmaUpdateRxConfig` is fixed (e.g. chain `desc[0]` straight to
+`desc[2]` when `num <= UART_DMA_BURST_SIZE`) — that means patching the
+submodule, so it is documented here instead.
+
+**Note.** `IC_PowupInit` programs the SAME NVIC priority (0x20) for all
+XIC lines: the UART and DMA handlers never preempt each other, so ISR
+nesting is NOT among the failure modes (verified by disassembly).
+
+## 8. IRQ-mode UART RX: overrun starvation + empty-FIFO underflow in the SDK handler — MITIGATED
+
+Found while validating the IRQ-mode switch from #7 with full-duplex floods.
+
+**Starvation.** The USART irq handler is an else-if chain that checks
+LINE_STATUS *before* RX data. Once one hardware overrun latches, every
+ISR services the (re-asserting) overrun branch — which drains NOTHING —
+and the data branches are starved until the line idles: RX collapses to
+one 32-byte harvest per quiet gap while errors climb at irq rate. The
+initial overrun is easy to hit because the IRQ-mode default FIFO trigger
+(30 of 32) leaves 2 bytes (22 us at 921600) of headroom — less than one
+COMPLETE-event ring copy.
+
+**Underflow.** The RX_DATA_REQ branch computes `i = bytes_in_fifo - 1`
+with no zero guard: with an empty FIFO it underflows and the handler
+reads RBR hundreds of times off the empty FIFO (observed as a hard wedge
+that only the WDT busy-backstop clears). An empty FIFO with DATA_REQ
+pending is reachable: the rx-timeout branch drains the FIFO completely
+while a DATA_REQ is already latched.
+
+**Mitigations (uart_ec618.cc, all slot-side).**
+- RX FIFO trigger poked to 16 at open (headroom 16 bytes / ~170 us; the
+  clean RTE override is a base change, pending the next full flash).
+- The ring push is two memcpys, not a byte loop (the COMPLETE-event copy
+  must fit the FIFO headroom).
+- The event callback self-heals overruns: on RX_OVERFLOW it pushes the
+  chunk delta, then drains the FIFO **down to one byte** into the ring
+  (order-preserving; one byte left both stops the overrun from
+  re-asserting and keeps the SDK's underflow loop unreachable from our
+  drain — the SDK's own timeout-drain can still expose it).
+- All task-context driver entries (create-arm, set-baud, teardown) run
+  under PRIMASK: Receive() enables RX irqs mid-call and can invoke the
+  callback from task context — concurrent callbacks race the ring head
+  and a bogus head turns the push memcpy into a wild write.
+
+**Result.** Echo 14/14 (both modes, 9600..4M); TX flood 3x256 KiB with
+perfect helper-side CRC; RX flood 99.7% delivered with a deliberately
+starved reader, losses counted, clean exits.
+
+**OPEN residual.** The most abusive case — full-duplex 256 KiB each way
+with a starved reader, set-baud variant (uart2-duplex-ec618.toit) — still
+hits a VM fatal in ~1 of 3 runs mid-flood (signatures vary: "Unexpected
+class tag", "unreachable", "stack overflow detected"; a chunk canary and
+GetRxCount tripwires stayed silent, so the chunk path is exonerated).
+The reopen-per-round twin of the same flood has never fataled. Suspects
+for the next session: the multi-kHz error-event storm through the event
+source/dispatcher; the SDK timeout-drain underflow injecting a long
+RBR-stall mid-ISR; something in the test's pattern-compare hot loop.
+Exit behavior is CLEAN in all non-fatal runs (the historical 100%
+exit-wedge is gone).

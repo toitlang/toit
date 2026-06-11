@@ -20,7 +20,15 @@
 #define RTE_UART1_RX_IO_MODE    DMA_MODE
 
 #define RTE_UART2_TX_IO_MODE    POLLING_MODE
-#define RTE_UART2_RX_IO_MODE    DMA_MODE
+// IRQ_MODE, not DMA_MODE: the DMA RX engine in bsp_usart.c programs a
+// ZERO-length descriptor whenever an rx-timeout reload happens with <= 4
+// bytes left in the user buffer (USART_DmaUpdateRxConfig splits every
+// reload into a 4-byte desc[0] + remainder desc[1]; remainder 0 streams
+// the wire PAST the buffer and scribbles the heap — hardfaults/VM fatals
+// under full-duplex flood). IRQ mode is plain bounds-checked FIFO reads:
+// the whole descriptor engine is out of the path. See
+// docs/ec618-uart-cmsis-rewrite.md.
+#define RTE_UART2_RX_IO_MODE    IRQ_MODE
 
 #define RTE_SPI0_IO_MODE        POLLING_MODE
 

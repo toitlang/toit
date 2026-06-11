@@ -113,3 +113,65 @@ bindings do not. First OTA of the CMSIS UART2 code hardfaulted
 predated the cmpctmalloc move. Consequence: any build that adds/changes
 a Driver_* binding, or any base drift after one exists, requires a FULL
 FLASH. The planned frozen-base artifact removes this class entirely.
+
+## Phase 1.5 (2026-06-11): the duplex corruption arc — RX moved to IRQ mode
+
+The phase-1 design's transfer contract was wrong, and underneath it the
+SDK's DMA RX engine has a memory-corruption bug. Full story in
+known-issues #7; the operative facts:
+
+- **RX_TIMEOUT does not end the armed transfer** — the driver reloads the
+  descriptor and keeps filling the same buffer, and may invoke the event
+  callback from inside `Receive()`. The callback now tracks a `seen`
+  offset, pushes only the `[seen..GetRxCount())` delta on RX_TIMEOUT, and
+  re-arms ONLY on RECEIVE_COMPLETE (`CmsisRx.seen`, uart_ec618.cc).
+- **`USART_DmaUpdateRxConfig` programs a zero-length `desc[1]`** whenever a
+  timeout reload happens with <= `UART_DMA_BURST_SIZE` (4) bytes left in
+  the chunk; zero length streams the wire past the buffer and scribbles
+  the heap (hardfault in the interpreter / "Unexpected class tag" / exit
+  wedges). Sidestepped wholesale: `RTE_UART2_RX_IO_MODE = IRQ_MODE` (our
+  RTE_Device.h) — plain bounds-checked FIFO reads, no descriptors.
+- `ABORT_RECEIVE` is UNSUPPORTED in bsp_usart.c; the real quiesce is
+  `Control(ARM_USART_CONTROL_RX, 0)` (masks+clears RX irqs, clears
+  rx_busy). set_baud and teardown now use it; `Control(mode, baud)`
+  disables the whole UART while swapping the divisor, so it must never
+  run against a live transfer.
+- The event callback can run in task context (driver calls it from inside
+  `Receive()`): event posting picks `send_event` vs `send_event_from_isr`
+  by `__get_IPSR()`.
+- All XIC NVIC lines share priority 0x20 (`IC_PowupInit` disassembly):
+  the UART and DMA ISRs never nest. The PRIMASK guards added around the
+  callback body and set_baud/teardown are cheap insurance, not the fix.
+- Diagnosis trail: reopen-per-round duplex repro faulted WITHOUT set-baud
+  (killed the set-baud theory); RX-only smooth flood clean; TX-only flood
+  wedged only at exit; slot-B fault addresses symbolize via
+  `link_addr = PC - __vm_b_start + 0x01000000` against the slot-A elf.
+
+Switching RX_IO_MODE recompiles bsp_usart.c → BASE change → full flash
+(also dropped the now-undefined `USART2_DmaRxEvent` from the jump table
+via `gen-plat-jt --exclude`, which shifts JT indices — full flash covers
+that too).
+
+## Phase 1.6 (2026-06-12): IRQ-mode hardening — the flood battery
+
+Validating the IRQ-mode base surfaced three more layers (details in
+known-issues #8): the SDK irq handler's else-if overrun starvation, the
+2-byte FIFO headroom of the default 30-byte trigger, and the
+empty-FIFO `i = bytes_in_fifo - 1` underflow. Plus one of ours: the
+FIRST uart2 open since boot was wire-dead until a close/reopen had
+GPR-reset the block once — create now cycles FULL->OFF->FULL (the reset
+must run clocked; OFF before any FULL bus-hangs).
+
+Battery state (modest-affair, 2026-06-12):
+- uart2-echo: 14/14 (reopen + set-baud, 9600..4M).
+- TX flood: 3x256 KiB, helper CRC perfect, clean exits.
+- RX flood (starved reader): 99.7% delivered, losses counted, clean exits.
+- reopen-duplex flood: clean exits every run; RX limited by the polling-TX
+  scheduler hogging (phase-2: DMA TX).
+- set-baud duplex flood: ~1 in 3 runs hits a varying-signature VM fatal
+  mid-flood (OPEN — see #8); otherwise clean reported failures.
+
+The duplex RX numbers are reader-starvation-bound: the polling Send never
+blocks at the Toit level, so the writer task monopolizes the interpreter
+and the reader's with-timeout reads expire. DMA TX (RTE change, base) is
+the planned fix.

@@ -51,14 +51,19 @@ namespace toit {
 
 // Per-UART state.
 // CMSIS-path RX context (heap-allocated at open). The driver DMAs each
-// armed transfer into `chunk`; the event callback copies it into `ring`
-// and re-arms. Between transfers the driver's own 32-byte staging FIFO
-// catches the line, so the re-arm gap loses nothing at sane bauds.
+// armed transfer into `chunk`; the event callback copies it into `ring`.
+// RX_TIMEOUT does NOT end the armed transfer on this driver — bsp_usart.c
+// reloads the descriptor and keeps streaming into the same buffer — so the
+// callback tracks how much of `chunk` it has already pushed (`seen`) and
+// re-arms only on RECEIVE_COMPLETE. Between transfers the driver's own
+// 32-byte staging FIFO catches the line, so the re-arm gap loses nothing
+// at sane bauds.
 struct CmsisRx {
   uint8_t* ring;            // malloc'd ring buffer.
   uint32_t ring_size;
   volatile uint32_t head;   // Write index — IRQ context only.
   volatile uint32_t tail;   // Read index — primitive only.
+  uint32_t seen;            // Bytes of the CURRENT transfer already pushed.
   uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
   uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
   // Diagnostic counters (kept cheap; exposed to debugging sessions).
@@ -66,6 +71,21 @@ struct CmsisRx {
   uint32_t rearm_fails;     // Receive() re-arms that returned an error.
   uint8_t chunk[512];       // The armed receive target.
 };
+
+// PRIMASK guard, same pattern as bsp_usart.c's SaveAndSetIRQMask. The UART
+// irq and the DMA-end irq are separate vectors that both walk the driver's
+// transfer state; sections that read or reconfigure it must be atomic
+// against both.
+static inline uint32_t irq_save() {
+  uint32_t m = __get_PRIMASK();
+  __disable_irq();
+  return m;
+}
+static inline void irq_restore(uint32_t m) {
+  __DSB();
+  __ISB();
+  __set_PRIMASK(m);
+}
 
 struct UartState {
   bool in_use;          // Whether the controller currently has a Toit resource.
@@ -121,14 +141,19 @@ class UartResourceGroup : public ResourceGroup {
 #endif
       if (state.cmsis_rx != null) {
         // CMSIS teardown from a quiesced state — this is the path the
-        // blob's Uart_DeInit hangs on (known-issues #1).
-        Driver_USART2.Control(ARM_USART_ABORT_RECEIVE, 0);
+        // blob's Uart_DeInit hangs on (known-issues #1). CONTROL_RX 0 is
+        // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
+        // suspended, rx_busy cleared. POWER_OFF then resets the module
+        // and stops+resets the RX DMA channel, so nothing references
+        // `chunk` by the time it is freed below.
+        uint32_t mask = irq_save();
         Driver_USART2.Control(ARM_USART_CONTROL_RX, 0);
         Driver_USART2.Control(ARM_USART_CONTROL_TX, 0);
         Driver_USART2.PowerControl(ARM_POWER_OFF);
         Driver_USART2.Uninitialize();
         CmsisRx* rx = state.cmsis_rx;
         state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+        irq_restore(mask);
         free(rx->ring);
         free(rx);
       } else {
@@ -168,63 +193,122 @@ static void set_de_level(int pad, int level) {
 
 // --- CMSIS driver path (UART2) ----------------------------------------------
 //
-// One-shot transfers: both RECEIVE_COMPLETE and RX_TIMEOUT end the armed
-// Receive() with GetRxCount() bytes in `chunk` (bsp_usart.c reports the
-// timeout only when the line went idle). The callback copies them into
-// the ring — dropping the NEWEST bytes when full, counted in `dropped`
-// and `errors`, with RX staying alive — and re-arms.
+// Transfer protocol: only RECEIVE_COMPLETE ends an armed Receive(); on
+// RX_TIMEOUT the driver reloads the DMA descriptor and the SAME transfer
+// keeps filling `chunk`, with GetRxCount() growing monotonically. The
+// callback therefore pushes the [seen..GetRxCount()) delta into the ring
+// — dropping the NEWEST bytes when full, counted in `dropped` and
+// `errors`, with RX staying alive — and re-arms only on completion.
 
+// Posts a uart event from the driver callback. The callback usually runs
+// in ISR context (UART irq, DMA-end irq) but the driver also invokes it
+// from INSIDE Receive()/task context when bytes are already waiting —
+// FromISR queue ops from a task lose the event, so pick by IPSR.
+static void send_uart_event(int id, word kind) {
+  if (__get_IPSR() != 0) {
+    Ec618EventSource::send_event_from_isr(Event::uart_type(id), kind);
+  } else {
+    Ec618EventSource::send_event(Event::uart_type(id), kind);
+  }
+}
+
+// Mostly runs in ISR context with a tight clock: at a 16-byte FIFO trigger
+// and 921600 baud there are ~170 us before the hardware FIFO overruns, so
+// the copy is two memcpys, not a byte loop.
 static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
   CmsisRx* rx = uart_states[id].cmsis_rx;
-  for (uint32_t i = 0; i < n; i++) {
-    uint32_t next = rx->head + 1 == rx->ring_size ? 0 : rx->head + 1;
-    if (next == rx->tail) {
-      rx->dropped += n - i;
-      uart_states[id].errors += n - i;
-      Ec618EventSource::send_event_from_isr(
-          Event::uart_type(id), Event::UART_KIND_ERROR);
-      return;
-    }
-    rx->ring[rx->head] = data[i];
-    rx->head = next;
+  uint32_t head = rx->head;
+  uint32_t tail = rx->tail;
+  uint32_t used = head >= tail ? head - tail : rx->ring_size - tail + head;
+  uint32_t free_space = rx->ring_size - 1 - used;  // One slot separates full from empty.
+  uint32_t take = n < free_space ? n : free_space;
+  if (take < n) {
+    // Drop-NEWEST, counted; RX stays alive (known-issues #4 contract).
+    rx->dropped += n - take;
+    uart_states[id].errors += n - take;
+    send_uart_event(id, Event::UART_KIND_ERROR);
   }
+  uint32_t first = rx->ring_size - head;
+  if (first > take) first = take;
+  memcpy(rx->ring + head, data, first);
+  if (take > first) memcpy(rx->ring, data + first, take - first);
+  head += take;
+  if (head >= rx->ring_size) head -= rx->ring_size;
+  rx->head = head;
 }
 
 static void cmsis_rx_event2(uint32_t event) {
   const int id = 2;
+  uint32_t mask = irq_save();
   CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx == null) return;
+  if (rx == null) {
+    irq_restore(mask);
+    return;
+  }
   rx->cb_events++;
   if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
     uint32_t n = Driver_USART2.GetRxCount();
     if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
-    if (n > 0) cmsis_ring_push(id, rx->chunk, n);
-    if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
-      rx->rearm_fails++;
+    if (n > rx->seen) {
+      cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
+      rx->seen = n;
+      send_uart_event(id, Event::UART_KIND_RX);
     }
-    if (n > 0) {
-      Ec618EventSource::send_event_from_isr(
-          Event::uart_type(id), Event::UART_KIND_RX);
+    if (event & ARM_USART_EVENT_RECEIVE_COMPLETE) {
+      // Only RECEIVE_COMPLETE ends the armed transfer. RX_TIMEOUT leaves
+      // it RUNNING — bsp_usart.c reloads the descriptor and keeps
+      // streaming into the same buffer (and can fire this callback from
+      // inside Receive() itself) — so a Receive() here re-enters the
+      // driver's DMA state machine against a live transfer. Under flood
+      // that re-entrancy wrote received bytes outside `chunk` and
+      // corrupted the heap (hardfault in the interpreter). Push the
+      // delta above; arm a new transfer only when the old one is over.
+      rx->seen = 0;
+      if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
+        rx->rearm_fails++;
+      }
     }
   }
   if (event & ARM_USART_EVENT_RX_OVERFLOW) {
-    // The driver's 32-byte staging FIFO overflowed between transfers.
     uart_states[id].errors++;
-    Ec618EventSource::send_event_from_isr(
-        Event::uart_type(id), Event::UART_KIND_ERROR);
+    // Self-heal: the SDK irq handler is an else-if chain that services
+    // LINE_STATUS (the overrun) INSTEAD of draining data, and with the
+    // FIFO still full the overrun re-asserts on the next byte — RX
+    // death-spirals delivering nothing until the line idles. Empty the
+    // FIFO ourselves. Push the chunk delta first so byte order holds
+    // (everything in the FIFO is newer than everything in the chunk).
+    uint32_t n = Driver_USART2.GetRxCount();
+    if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
+    if (n > rx->seen) {
+      cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
+      rx->seen = n;
+    }
+    // Drain to ONE byte, never empty: the SDK's RX_DATA_REQ handler does
+    // `i = bytes_in_fifo - 1` with no zero guard — an empty FIFO underflows
+    // i to 0xFFFFFFFF and it reads RBR hundreds of times off an empty FIFO
+    // (observed as a hard wedge only the WDT backstop clears). One byte
+    // left still stops the overrun from re-asserting.
+    USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
+    uint8_t fifo_buf[32];
+    uint32_t got = 0;
+    while (got < sizeof(fifo_buf) &&
+           EIGEN_FLD2VAL(USART_FCNR_RX_FIFO_NUM, reg->FCNR) > 1) {
+      fifo_buf[got++] = (uint8_t)reg->RBR;
+    }
+    if (got > 0) cmsis_ring_push(id, fifo_buf, got);
+    send_uart_event(id, got > 0 ? Event::UART_KIND_RX : Event::UART_KIND_ERROR);
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
     int de = uart_states[id].de_pad;
     if (de >= 0 && (event & ARM_USART_EVENT_TX_COMPLETE)) set_de_level(de, 0);
-    Ec618EventSource::send_event_from_isr(
-        Event::uart_type(id), Event::UART_KIND_TX_DONE);
+    send_uart_event(id, Event::UART_KIND_TX_DONE);
   }
   if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR | ARM_USART_EVENT_RX_PARITY_ERROR |
                ARM_USART_EVENT_RX_BREAK)) {
     uart_states[id].errors++;
-    Ec618EventSource::send_event_from_isr(
-        Event::uart_type(id), Event::UART_KIND_ERROR);
+    send_uart_event(id, Event::UART_KIND_ERROR);
   }
+  irq_restore(mask);
 }
 
 // TX shift register + FIFO empty. The blob's Uart_IsTSREmpty consults
@@ -563,11 +647,39 @@ PRIMITIVE(create) {
     rx->control = cmsis_control_word(data_bits, parity, stop_bits);
     uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
     Driver_USART2.Initialize(cmsis_rx_event2);
+    // FULL -> OFF -> FULL: the OFF in the middle GPR-resets the UART block.
+    // Every close does this reset, but the FIRST open since boot starts
+    // from whatever state the ROM left the controller in — that first
+    // session was consistently dead on the wire (echo 9600/reopen cell,
+    // duplex round 1) until a close/reopen cycle had reset the block once.
+    // The reset must run with the block CLOCKED (OFF before any FULL = bus
+    // hang), hence the leading FULL.
     Driver_USART2.PowerControl(ARM_POWER_FULL);
+    Driver_USART2.PowerControl(ARM_POWER_OFF);
+    Driver_USART2.PowerControl(ARM_POWER_FULL);
+    {
+      // RX FIFO trigger 16, not the IRQ-mode default 30: the default
+      // leaves 2 bytes (22 us at 921600) of headroom before a hardware
+      // overrun, which one COMPLETE-event ring copy already overshoots.
+      // 16 gives 16 bytes (~170 us) at ~2x the irq rate. Slot-side poke;
+      // the clean RTE override (USART2_RX_TRIG_LVL) is a base change,
+      // bundled with the next full flash.
+      USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
+      reg->FCR = USART_FCR_FIFO_EN_Msk |
+                 (2U << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos);
+    }
     Driver_USART2.Control(rx->control, baud_rate);
     Driver_USART2.Control(ARM_USART_CONTROL_TX, 1);
     Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
-    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+    // Masked: Receive() enables the RX irqs mid-call and can invoke the
+    // event callback from THIS task context — an RX irq landing in that
+    // window runs a second callback concurrently, and two ring pushes
+    // racing on `head` turn the ring memcpy into a wild write.
+    uint32_t arm_mask = irq_save();
+    if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
+      rx->rearm_fails++;
+    }
+    irq_restore(arm_mask);
   } else {
     Uart_BaseInitEx(id, baud_rate, tx_cache, rx_cache,
                     static_cast<uint8_t>(data_bits),
@@ -613,11 +725,22 @@ PRIMITIVE(set_baud_rate) {
   int id = resource->uart_id();
   CmsisRx* rx = uart_states[id].cmsis_rx;
   if (rx != null) {
-    // Re-Control with the stored framing word. Abort the armed receive
-    // first (Control while rx_busy returns BUSY), then re-arm.
-    Driver_USART2.Control(ARM_USART_ABORT_RECEIVE, 0);
+    // Quiesce before reconfiguring: Control() with a mode word DISABLES
+    // the whole UART while it swaps the divisor (USART_SetBaudrate), so
+    // it must never run against a live transfer — and ABORT_RECEIVE is
+    // unsupported in bsp_usart.c (returns ERROR_UNSUPPORTED, a no-op).
+    // CONTROL_RX 0 is the real abort: RX irqs masked + cleared, DMA
+    // channel suspended, rx_busy forced 0. Masked so neither uart nor
+    // DMA irq interleaves with the reconfigure.
+    uint32_t mask = irq_save();
+    Driver_USART2.Control(ARM_USART_CONTROL_RX, 0);
     Driver_USART2.Control(rx->control, static_cast<uint32_t>(baud_rate));
-    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+    Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
+    rx->seen = 0;
+    if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
+      rx->rearm_fails++;
+    }
+    irq_restore(mask);
   } else {
     Uart_ChangeBR(id, static_cast<uint32_t>(baud_rate));
   }
