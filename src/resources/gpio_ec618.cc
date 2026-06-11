@@ -191,6 +191,17 @@ void pad_release(int pad) {
   if (pad_is_wakeup(pad)) wakeup_pad_set(pad, true, true);
 }
 
+void pad_emergency_high(int pad) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return;
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_OUTPUT;
+  config.misc.initOutput = 1;
+  GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+}
+
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
   open_drain_pads &= ~(1ULL << resource->pad());

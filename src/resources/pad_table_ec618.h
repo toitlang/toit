@@ -88,6 +88,11 @@ int uart_pad(int uart_id, UartRole role, int mapping, int* out_mux);
 // (Implemented in gpio_ec618.cc, which has the SDK GPIO includes.)
 void pad_release(int pad);
 
+// Emergency marker: mux the pad to GPIO and drive it HIGH, from any
+// context (fatal paths). Used as a scope trigger when diagnosing
+// resets — see the watchdog task. (Implemented in gpio_ec618.cc.)
+void pad_emergency_high(int pad);
+
 }  // namespace toit
 
 #endif  // TOIT_EC618

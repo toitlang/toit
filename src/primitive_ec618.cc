@@ -23,6 +23,7 @@
 #include "embedded_data.h"
 #include "objects_inline.h"
 #include "primitive.h"
+#include "resources/pad_table_ec618.h"
 #include "process.h"
 #include "sha.h"
 #include "slot_reloc_ec618.h"
@@ -553,6 +554,11 @@ static void watchdog_task(void* arg) {
       WDT_kick();
       int32_t remain = (int32_t)(wd_deadline - osKernelGetTickCount());
       if (remain <= 0) {
+        // Scope trigger (rail-drop diagnosis): PAD33 (board pin 31, the
+        // ESP32-IO16 wire) goes HIGH before anything else in this path.
+        // A rail drop WITHOUT this marker = the reset came from somewhere
+        // else (e.g. the WDT busy-backstop or the platform's AON guard).
+        pad_emergency_high(33);
         printf("[toit] FATAL: watchdog timeout (%u ms without feed) — resetting\n",
                (unsigned)wd_timeout_ms);
         ec618_system_reset();

@@ -61,6 +61,9 @@ struct CmsisRx {
   volatile uint32_t tail;   // Read index — primitive only.
   uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
   uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
+  // Diagnostic counters (kept cheap; exposed to debugging sessions).
+  uint32_t cb_events;       // Callback invocations.
+  uint32_t rearm_fails;     // Receive() re-arms that returned an error.
   uint8_t chunk[512];       // The armed receive target.
 };
 
@@ -191,11 +194,14 @@ static void cmsis_rx_event2(uint32_t event) {
   const int id = 2;
   CmsisRx* rx = uart_states[id].cmsis_rx;
   if (rx == null) return;
+  rx->cb_events++;
   if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
     uint32_t n = Driver_USART2.GetRxCount();
     if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
     if (n > 0) cmsis_ring_push(id, rx->chunk, n);
-    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+    if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
+      rx->rearm_fails++;
+    }
     if (n > 0) {
       Ec618EventSource::send_event_from_isr(
           Event::uart_type(id), Event::UART_KIND_RX);
@@ -219,6 +225,18 @@ static void cmsis_rx_event2(uint32_t event) {
     Ec618EventSource::send_event_from_isr(
         Event::uart_type(id), Event::UART_KIND_ERROR);
   }
+}
+
+// TX shift register + FIFO empty. The blob's Uart_IsTSREmpty consults
+// ITS OWN per-uart state, which is garbage for a controller the blob
+// never initialized (the CMSIS-owned UART2) — flush hung forever on it.
+// Read the hardware LSR directly for the CMSIS path.
+static bool tx_idle(int id) {
+  if (uart_states[id].cmsis_rx != null) {
+    USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
+    return (reg->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
+  }
+  return Uart_IsTSREmpty(id) != 0;
 }
 
 // Builds the ARM_USART_CONTROL word for mode + framing.
@@ -657,7 +675,7 @@ PRIMITIVE(write) {
   if (de >= 0 && written > 0) {
     uint32_t baud = uart_states[id].baud_rate;
     uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
-    while (!Uart_IsTSREmpty(id) && limit_ms-- > 0) osDelay(1);
+    while (!tx_idle(id) && limit_ms-- > 0) osDelay(1);
     set_de_level(de, 0);
   }
   return Primitive::integer(written, process);
@@ -711,7 +729,7 @@ PRIMITIVE(read) {
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, resource);
   int id = resource->uart_id();
-  if (Uart_IsTSREmpty(id)) return BOOL(true);
+  if (tx_idle(id)) return BOOL(true);
   // There is no reliable line-idle event to retry on: the blob's
   // TX_ALL_DONE is best-effort (see uart_cb), so a plain non-blocking
   // TEMT check left flush waiting for an event that never comes — at
@@ -724,8 +742,8 @@ PRIMITIVE(wait_tx) {
   // writer's TX events.
   uint32_t baud = uart_states[id].baud_rate;
   uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
-  while (!Uart_IsTSREmpty(id) && limit_ms-- > 0) osDelay(1);
-  return BOOL(Uart_IsTSREmpty(id));
+  while (!tx_idle(id) && limit_ms-- > 0) osDelay(1);
+  return BOOL(tx_idle(id));
 }
 
 PRIMITIVE(set_control_flags) {

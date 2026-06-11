@@ -533,7 +533,7 @@ class Ec618Link:
     // invocation may be lingering at the fast rate (until its 60 s idle
     // watchdog resets it). Alternate the ping attempts across both rates.
     rates := fast-baud_ != 115200 ? [115200, fast-baud_] : [115200]
-    port_.baud-rate = 115200
+    catch: port_.baud-rate = 115200
     sleep --ms=1000  // Let the boot banner start.
     // Drain the post-reset boot backlog FIRST. After a reset the device streams a
     // long boot-ROM + bootloader banner (hundreds of mostly non-'['-led bytes);
@@ -551,9 +551,12 @@ class Ec618Link:
     succeeded := false
     attempts.repeat: | attempt/int |
       if not succeeded:
-        port_.baud-rate = rates[attempt % rates.size]
-        send CMD-PING
+        // The host tty can transiently fail a rate change or a write
+        // (EBUSY/EIO); skip to the next attempt rather than killing the
+        // whole tool.
+        catch: port_.baud-rate = rates[attempt % rates.size]
         catch:
+          send CMD-PING
           if (read-ack --timeout-ms=1500) == ACK-PONG:
             log "$name_: agent responded (ping $(attempt + 1), $port_.baud-rate baud)"
             succeeded = true
@@ -571,7 +574,7 @@ class Ec618Link:
     writer_.write header
     catch:
       if (read-ack --timeout-ms=2000) == ACK-OK:
-        port_.baud-rate = baud
+        catch: port_.baud-rate = baud
         log "$name_: control UART now at $baud baud"
         // The agent's "baud=" status line arrives at the new rate; a
         // mismatch would surface here as garbage instead of an ack later.
@@ -672,7 +675,7 @@ class Ec618Link:
     // ready banner as garbage, so the recovery check above can't see it.
     // Probe at 115200 before declaring a plain timeout.
     if port_.baud-rate != 115200:
-      port_.baud-rate = 115200
+      catch: port_.baud-rate = 115200
       drain --quiet-ms=300
       send CMD-PING
       catch:
