@@ -26,6 +26,12 @@ The UART port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port extends Object with io.InMixin implements reader.Reader:
+  // The port borrows its pins from the caller. Keep them reachable: if the
+  // caller's Pin objects are temporaries, the garbage collector would
+  // otherwise finalize them while the port is live — and a finalized Pin
+  // releases its pad, unhooking the port from the wires.
+  pins_/List := []
+
   static STOP-BITS-1   ::= StopBits.private_ 1
   static STOP-BITS-1-5 ::= StopBits.private_ 2
   static STOP-BITS-2   ::= StopBits.private_ 3
@@ -176,6 +182,7 @@ class Port extends Object with io.InMixin implements reader.Reader:
     if large-buffers == null: large-buffers = high-priority
     if large-buffers:
       tx-flags |= 16
+    pins_ = [tx, rx, rts, cts]
     uart_ = uart-create_
       resource-group_
       tx ? tx.num : -1

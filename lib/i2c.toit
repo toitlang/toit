@@ -44,6 +44,11 @@ class Bus:
   frequency_/int
   // Serializes transfers: the controller runs one transaction at a time.
   mutex_ ::= monitor.Mutex
+  // The bus borrows its pins from the caller. Keep them reachable: if the
+  // caller's Pin objects are temporaries, the garbage collector would
+  // otherwise finalize them while the bus is live — and a finalized Pin
+  // releases its pad, unhooking the bus from the wires.
+  pins_/List ::= ?
 
   /**
   Deprecated. Use $(constructor --sda --scl --pull-up) instead.
@@ -91,6 +96,7 @@ class Bus:
       --frequency/int=DEFAULT-FREQUENCY
       --pull-up/bool=false:
     frequency_ = frequency
+    pins_ = [sda, scl]
     resource_ = i2c-bus-create_ resource-group_ sda.num scl.num pull-up
     add-finalizer this:: close
 
