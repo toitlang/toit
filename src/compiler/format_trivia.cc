@@ -143,6 +143,8 @@ class TriviaWalker {
     trivia.spans_lines = trivia.text.find('\n') != std::string::npos;
     trivia.blank_lines_before = blank_before;
     trivia.original_column = column_of(from);
+    trivia.attached = from > 0 && text_[from - 1] != ' '
+        && text_[from - 1] != '\t' && text_[from - 1] != '\n';
     return trivia;
   }
 
@@ -305,6 +307,12 @@ class TriviaWalker {
       for (auto parameter : method->parameters()) parameters.push_back(parameter);
       if (!parameters.empty()) {
         walk_slots(parameters, method, method, end(parameters.back()));
+        // Comments between the last parameter and the return arrow
+        // still belong to the signature, not the body.
+        int signature_limit = method->return_type() != null
+            ? start(method->return_type())
+            : -1;
+        consume_glued_comments(parameters.back(), signature_limit);
       }
       walk_sequence(method->body());
       return;
@@ -417,6 +425,31 @@ class TriviaWalker {
   // Collection elements. The list extends to the closing bracket so a
   // trailing comment on the last element (or a dangling comment line
   // before the bracket) is routed here.
+  // Consumes single-line block comments glued directly to the end of
+  // `target` (`bar/List/*<int>*/`): they annotate the token they touch
+  // and must stay its trailing trivia, even when the slot list they
+  // followed has already ended.
+  // `limit >= 0` additionally takes detached single-line block
+  // comments up to that offset (the return arrow): they sit between
+  // signature tokens and stay with the signature.
+  void consume_glued_comments(Node* target, int limit = -1) {
+    int expected = end(target);
+    while (next_ < comments_.size()) {
+      if (!comments_[next_].is_multiline()) break;
+      int c_start = comment_start(next_);
+      bool glued = c_start == expected;
+      bool in_signature = limit >= 0 && c_start < limit
+          && has_code_before_on_line(c_start);
+      if (!glued && !in_signature) break;
+      CommentTrivia trivia = make_trivia(next_, 0);
+      if (trivia.spans_lines) break;
+      table_->get(target)->trailing.push_back(std::move(trivia));
+      gap_anchor_ = comment_end(next_);
+      expected = comment_end(next_);
+      next_++;
+    }
+  }
+
   void walk_elements(List<Expression*> elements, Node* owner) {
     if (elements.is_empty()) return;
     std::vector<Node*> children;

@@ -39,6 +39,9 @@ struct CommentTrivia {
   // interior lines of line-spanning comments when their indentation
   // changes.
   int original_column = 0;
+  // The comment was glued to the previous token (`List/*<int>*/`);
+  // rendered without a gap so it stays part of what it annotates.
+  bool attached = false;
 };
 
 struct NodeTrivia {

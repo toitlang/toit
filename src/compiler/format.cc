@@ -390,7 +390,11 @@ class Lowering {
     if (trivia == null || trivia->trailing.empty()) return b_.nil();
     std::vector<Doc*> docs;
     for (auto& comment : trivia->trailing) {
-      docs.push_back(b_.text(std::string(style_.trailing_comment_gap, ' ')));
+      bool glued = comment.attached && comment.is_multiline
+          && !comment.spans_lines;
+      if (!glued) {
+        docs.push_back(b_.text(std::string(style_.trailing_comment_gap, ' ')));
+      }
       docs.push_back(comment_doc(comment));
       if (!comment.is_multiline || comment.spans_lines) {
         docs.push_back(b_.break_parent());
