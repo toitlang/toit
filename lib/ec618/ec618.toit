@@ -38,6 +38,8 @@ helpers on $Ec618:
 
 import gpio show Pin
 import gpio.adc
+import i2c
+import spi
 import uart
 
 /**
@@ -54,7 +56,9 @@ Returns the UART id (0/1/2) that the firmware redirects `print` output
 
 Use this to write tests that adapt to whichever firmware variant is
   loaded — opening the print UART via $Ec618.uart0/1/2 fails with
-  "ALREADY_IN_USE" when the redirect is on.
+  "ALREADY_IN_USE" when the redirect is on (unless the firmware was
+  built with CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE, which lets the
+  port adopt the console).
 */
 print-uart-id -> int:
   #primitive.ec618.print-uart-id
@@ -217,8 +221,8 @@ class Ec618:
   Returns a $Pin for the EC618 logical GPIO with the given $num.
 
   Defaults to the primary pad of that GPIO. Pass $alt to address the
-    alternate pad where one exists (currently GPIO2..GPIO5, GPIO11 and
-    GPIO16).
+    alternate pad where one exists (currently none — every GPIO maps to
+    exactly one pad).
   */
   static gpio num/int --alt/bool=false -> Pin:
     if num < 0 or num >= 32: throw "INVALID_ARGUMENT"
@@ -229,9 +233,10 @@ class Ec618:
   /**
   Opens UART0 (EC618 controller 0).
 
-  Default $mapping (0): TX=GPIO15, RX=GPIO14 (the chip's debug /
+  Default $mapping (0): TX=PAD30, RX=PAD29 (the chip's debug /
     firmware-download UART on most modules; data on these pads also
-    travels through the bootloader at chip reset). With $rts-enabled or
+    travels through the bootloader at chip reset; the pads have no GPIO
+    function). With $rts-enabled or
     $cts-enabled, RTS=GPIO12 and CTS=GPIO13.
 
   Alternate $mapping (1): TX=GPIO17, RX=GPIO16. No hardware flow
@@ -241,11 +246,13 @@ class Ec618:
     for general-purpose IO; address it via $gpio with the appropriate
     GPIO number.
 
-  Note: UART0 is normally the print/console UART of the Toit firmware;
-    constructing this with the default config will fail with
-    "ALREADY_IN_USE" unless the firmware was built with
-    CONFIG_TOIT_EC618_PRINT_UART=0 or the redirect was pointed at a
-    different controller via CONFIG_TOIT_EC618_PRINT_UART_ID.
+  Note: UART0 is normally the print/console UART of the Toit firmware.
+    Constructing this then fails with "ALREADY_IN_USE", unless the
+    firmware was built with CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
+    (then the port adopts the console: reads/writes share the wire with
+    `print` output — this is how the HW-test agent serves its control
+    protocol), with CONFIG_TOIT_EC618_PRINT_UART=0, or with the redirect
+    pointed elsewhere via CONFIG_TOIT_EC618_PRINT_UART_ID.
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
     direction (DE) pin as $rs485-de; any GPIO-capable pad works. See
@@ -363,6 +370,57 @@ class Ec618:
         --parity=parity
         --mode=mode
         --rs485-de=rs485-de
+
+  /**
+  Opens the I2C0 bus.
+
+  SDA=PAD14, SCL=PAD13 — the module pins labelled I2C0_SDA/I2C0_SCL
+    (peripheral-routed at iomux function 2; as GPIOs the same pads are
+    GPIO15/GPIO14 at function 4).
+
+  If $pull-up is true, the pads' internal pull-ups are enabled. Most
+    sensor breakouts carry their own bus pull-ups.
+  */
+  static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
+    return i2c.Bus
+        --sda=(pad 14)
+        --scl=(pad 13)
+        --frequency=frequency
+        --pull-up=pull-up
+
+  /**
+  Opens the I2C1 bus.
+
+  SDA=PAD23, SCL=PAD24 (GPIO8/GPIO9) — the module's I2C1/SPI0 pins; one
+    peripheral at a time.
+
+  If $pull-up is true, the pads' internal pull-ups are enabled.
+  */
+  static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
+    return i2c.Bus
+        --sda=(pad 23)
+        --scl=(pad 24)
+        --frequency=frequency
+        --pull-up=pull-up
+
+  /**
+  Opens the SPI0 bus (master).
+
+  MOSI=PAD24, MISO=PAD25, CLK=PAD26 — shared with I2C1 and UART2; one
+    peripheral at a time. Chip-select is a plain GPIO passed per device
+    (see $spi.Bus.device).
+  */
+  static spi0 -> spi.Bus:
+    return spi.Bus --mosi=(pad 24) --miso=(pad 25) --clock=(pad 26)
+
+  /**
+  Opens the SPI1 bus (master).
+
+  MOSI=PAD28, MISO=PAD29, CLK=PAD30 — shared with UART0, so this is
+    unusable while UART0 is the console. Accepted but untested.
+  */
+  static spi1 -> spi.Bus:
+    return spi.Bus --mosi=(pad 28) --miso=(pad 29) --clock=(pad 30)
 
   static open-uart_
       --uart-id/int

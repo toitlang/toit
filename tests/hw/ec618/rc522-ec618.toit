@@ -51,10 +51,7 @@ main:
   rst := gpio.Pin RST-PAD --output --value=1
   sleep --ms=50  // Crystal start-up out of hard power-down.
 
-  bus := spi.Bus
-      --clock=(Ec618.pad SCK-PAD)
-      --mosi=(Ec618.pad MOSI-PAD)
-      --miso=(Ec618.pad MISO-PAD)
+  bus := Ec618.spi0  // MOSI=PAD24, MISO=PAD25, CLK=PAD26.
   device := bus.device --cs=(Ec618.pad CS-PAD) --frequency=1_000_000
 
   version := read-reg device REG-VERSION

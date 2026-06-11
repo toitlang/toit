@@ -56,7 +56,7 @@ main:
   control := Ec618.uart2 --baud-rate=115200
   exchange control "P 1"
 
-  bus := i2c.Bus --sda=(Ec618.pad SDA-PAD) --scl=(Ec618.pad SCL-PAD)
+  bus := Ec618.i2c1  // SDA=PAD23, SCL=PAD24.
 
   devices := bus.scan
   print "bmp280-ec618: scan -> $(devices.map: "0x$(%02x it)")"
