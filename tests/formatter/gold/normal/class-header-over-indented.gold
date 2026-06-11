@@ -1,0 +1,6 @@
+class Foo:
+  x ::= 1
+
+main:
+  print 1
+  print 2

@@ -1,0 +1,14 @@
+main:
+  // RHS of an assignment is at a stmt-level boundary — no defensive
+  // parens get inserted around a Call there, even though it's not at
+  // outer NONE per the precedence walk.
+  x := compute a b c
+  y := other-call 1 2 3
+  // A Binary RHS (no Call) still renders without parens.
+  w := 1 + 2 * 3
+
+compute a b c -> any:
+  return null
+
+other-call a b c -> any:
+  return null

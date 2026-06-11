@@ -1,0 +1,29 @@
+// Determinism for class / interface / monitor / mixin headers. The
+// header is rendered from AST: single-line when it fits MAX_LINE_WIDTH,
+// otherwise broken with each clause (extends / with / implements) on
+// its own continuation line at indent + CALL_CONTINUATION_STEP.
+
+class Simple:
+  x ::= 1
+
+abstract class Base extends Simple:
+  abstract bar -> int
+
+interface I1:
+interface I2:
+mixin Helper:
+  helper-method -> int: return 7
+
+// Source-broken class header: collapsed to single-line when it fits.
+class Foo extends Base implements I1 I2:
+  x ::= 1
+
+// Source-broken header that doesn't fit single-line: stays broken,
+// each clause re-indented to the canonical continuation column.
+class Very-Long-Class-Name-That-Pushes-Things
+    extends Base
+    implements I1 I2 SomeOtherInterface AnotherInterface:
+  member ::= 1
+
+interface SomeOtherInterface:
+interface AnotherInterface:

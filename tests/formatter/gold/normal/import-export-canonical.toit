@@ -1,0 +1,15 @@
+// Determinism for Import / Export top-level decls. Rendered from
+// AST with single canonical spacing — source whitespace inside the
+// import is normalised away.
+
+import   foo
+import bar  show  *
+import bar.baz   show   A   B   C
+import qux  as  Q
+import .relative
+import ..deeper.relative
+
+export   *
+export   A   B   C
+
+main:

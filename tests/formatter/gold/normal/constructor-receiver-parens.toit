@@ -1,0 +1,25 @@
+// Without a resolver the formatter can't tell `Foo.bar` (named
+// constructor / static call) from `(Foo).bar` (instance method on
+// the class object). It honours what the source had: bare receivers
+// stay bare, source-provided parens stay parenthesised.
+
+class Point:
+  foo: return 42
+
+get-pos: return 0
+local-var := 7
+
+main:
+  // Source-bare: stays bare. Could be a static call or a named
+  // constructor; either way, formatter doesn't add parens.
+  a := Point.foo
+
+  // Source-bare with brackets: stays bare.
+  b := Point[0]
+
+  // Author-parenthesised: preserved.
+  c := (Point).foo
+
+  // Lowercase receiver: never gets parens added.
+  d := get-pos.x
+  e := local-var.x
