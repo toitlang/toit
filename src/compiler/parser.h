@@ -245,10 +245,12 @@ class Parser {
  public:
   Parser(Source* source,
          Scanner* scanner,
-         Diagnostics* diagnostics)
+         Diagnostics* diagnostics,
+         bool needs_token_nodes = false)
       : source_(source)
       , scanner_(scanner)
       , diagnostics_(diagnostics)
+      , needs_token_nodes_(needs_token_nodes)
       , scanner_state_queue_(scanner)
       , current_state_(State::invalid())
       , peek_state_(State::invalid()) {}
@@ -289,6 +291,7 @@ class Parser {
   Source* source_;
   Scanner* scanner_;
   Diagnostics* diagnostics_;
+  bool needs_token_nodes_;
 
   bool encountered_stack_overflow_ = false;
 
@@ -304,6 +307,8 @@ class Parser {
 
   Scanner* scanner() { return scanner_; }
   Diagnostics* diagnostics() const { return diagnostics_; }
+
+  bool needs_token_nodes() const { return needs_token_nodes_; }
 
   bool allowed_to_consume(Token::Kind token);
   bool consumer_exists(Token::Kind token, int next_line_indentation);
@@ -428,6 +433,9 @@ class Parser {
 
   // The previous token.
   Token::Kind previous_token();
+
+  ast::TokenNode* current_token_node();
+  ast::TokenNode* current_symbol_node();
 
   Symbol current_token_data() {
     if (current_state().scanner_state.data.is_valid()) {

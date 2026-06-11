@@ -234,6 +234,8 @@ void TraversingVisitor::visit_ToitdocReference(ToitdocReference* node) {
   }
 }
 
+void TraversingVisitor::visit_TokenNode(TokenNode* node) {}
+
 class AstPrinter : public Visitor {
  public:
   AstPrinter()
@@ -589,6 +591,8 @@ class AstPrinter : public Visitor {
     }
     if (node->is_signature_reference()) printf(")");
   }
+
+  void visit_TokenNode(TokenNode* node) {}
 
  private:
   int indentation_;
