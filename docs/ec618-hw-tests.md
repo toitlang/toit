@@ -481,8 +481,8 @@ rule no longer applies:
 - [x] Run the ADC functional test on the test rig (both channels track; no dead pin).
 - [x] Add `trimAdcSetGolbalVar` + `delay_us` to the jump-table wrapped set
       (`gen-plat-jt`) for a calibrated ADC + clean conversion wait — DONE
-      2026-06-10 (table renumbered: full flash required; rerun the ADC test
-      after flashing to validate the calibrated path).
+      2026-06-10; calibrated path re-validated on HW 2026-06-11 after the
+      latest table renumber (both channels, max err 8 mV).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
 - [x] **Tester baud-rate switch** — DONE: CMD-BAUD hops the control UART
       after every handshake (default 921600, --fast-baud); the handshake
