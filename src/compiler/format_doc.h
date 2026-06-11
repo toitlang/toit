@@ -62,6 +62,10 @@ struct FormatStyle {
   // Extra inline width for suite bodies that are a single `return` or
   // `throw`: terminal one-liners read well inline.
   int inline_return_throw_bonus = 0;
+  // Whether a suite body that itself contains a suite (`if o is List:
+  // return o.map: ...`) may go inline. Stacked `:` suites on one line
+  // make the reader resolve which colon owns which body.
+  bool inline_nested_suites = true;
   // Parenthesize binary-operator arguments of calls even where the
   // grammar doesn't require it (`foo (end - start)`).
   bool paren_binary_arguments = false;

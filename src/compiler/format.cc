@@ -204,6 +204,58 @@ int token_count(Expression* e) {
   return 1;
 }
 
+// Whether `e` contains a Block or Lambda anywhere: inlining such a
+// body stacks a second suite `:` onto the line.
+bool contains_suite(Expression* e) {
+  if (e == null) return false;
+  if (e->is_Block() || e->is_Lambda()) return true;
+  if (e->is_Parenthesis()) return contains_suite(e->as_Parenthesis()->expression());
+  if (e->is_Unary()) return contains_suite(e->as_Unary()->expression());
+  if (e->is_Binary()) {
+    Binary* binary = e->as_Binary();
+    return contains_suite(binary->left()) || contains_suite(binary->right());
+  }
+  if (e->is_Dot()) return contains_suite(e->as_Dot()->receiver());
+  if (e->is_Index()) {
+    Index* index = e->as_Index();
+    if (contains_suite(index->receiver())) return true;
+    for (auto argument : index->arguments()) {
+      if (contains_suite(argument)) return true;
+    }
+    return false;
+  }
+  if (e->is_IndexSlice()) {
+    IndexSlice* slice = e->as_IndexSlice();
+    return contains_suite(slice->receiver())
+        || contains_suite(slice->from())
+        || contains_suite(slice->to());
+  }
+  if (e->is_Call()) {
+    Call* call = e->as_Call();
+    if (contains_suite(call->target())) return true;
+    for (auto argument : call->arguments()) {
+      if (contains_suite(argument)) return true;
+    }
+    return false;
+  }
+  if (e->is_NamedArgument()) {
+    return contains_suite(e->as_NamedArgument()->expression());
+  }
+  if (e->is_Return()) return contains_suite(e->as_Return()->value());
+  if (e->is_BreakContinue()) return contains_suite(e->as_BreakContinue()->value());
+  if (e->is_DeclarationLocal()) {
+    DeclarationLocal* declaration = e->as_DeclarationLocal();
+    return contains_suite(declaration->value());
+  }
+  if (e->is_If()) {
+    If* ternary = e->as_If();
+    return contains_suite(ternary->expression())
+        || contains_suite(ternary->yes())
+        || contains_suite(ternary->no());
+  }
+  return false;
+}
+
 // A single `return` or `throw` statement: a terminal one-liner that
 // reads well inline, so it gets a small extra width allowance.
 bool is_return_or_throw(Expression* statement_node) {
@@ -829,7 +881,9 @@ class Lowering {
         && statements.length() == 1
         && !is_control_flow(peel_parens(statements.first()))
         && !trivia_.is_frozen(statements.first())
-        && token_count(statements.first()) <= style_.max_inline_suite_tokens;
+        && token_count(statements.first()) <= style_.max_inline_suite_tokens
+        && (style_.inline_nested_suites
+            || !contains_suite(statements.first()));
     std::vector<Doc*> docs;
     bool first_entity = true;
     std::vector<Doc*> list;
@@ -1534,6 +1588,9 @@ uint8* format_unit(Unit* unit,
   }
   if (const char* bonus = getenv("TOIT_FORMAT_EXP_RETURN_THROW_BONUS")) {
     effective.inline_return_throw_bonus = atoi(bonus);
+  }
+  if (getenv("TOIT_FORMAT_EXP_NO_NESTED_SUITE_INLINE") != null) {
+    effective.inline_nested_suites = false;
   }
   if (getenv("TOIT_FORMAT_EXP_PAREN_BINARY_ARGS") != null) {
     effective.paren_binary_arguments = true;
