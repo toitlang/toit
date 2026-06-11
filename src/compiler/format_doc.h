@@ -59,6 +59,9 @@ struct FormatStyle {
   // An inline suite body may have at most this many tokens; heavier
   // bodies go to their own line regardless of width.
   int max_inline_suite_tokens = 1000;
+  // Extra inline width for suite bodies that are a single `return` or
+  // `throw`: terminal one-liners read well inline.
+  int inline_return_throw_bonus = 0;
   // Parenthesize binary-operator arguments of calls even where the
   // grammar doesn't require it (`foo (end - start)`).
   bool paren_binary_arguments = false;
