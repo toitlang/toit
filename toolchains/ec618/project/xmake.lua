@@ -16,7 +16,7 @@ target(TARGET_NAME)
     set_targetdir(LIB_DIR)
 
     add_includedirs("./inc", {public = true})
-    add_includedirs(SDK_TOP .. "/PLAT/os/freertos/portable/mem/cmpctmalloc", {public = true})
+    add_includedirs(USER_PROJECT_DIR .. "/src/cmpctmalloc", {public = true})
     add_files("./src/*.c|bsp_custom.c|sys_ro_override.c", {public = true})
     add_cxflags("-include " .. TOIT_EC618_CONFIG, {force = true, public = true})
 
