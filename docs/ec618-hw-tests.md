@@ -484,6 +484,14 @@ rule no longer applies:
       2026-06-10 (table renumbered: full flash required; rerun the ADC test
       after flashing to validate the calibrated path).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
+- [ ] **Tester baud-rate switch** (Florian): a mini-jag command that hops the
+      control UART to a higher baud (agent acks at the old rate, both sides
+      switch, host re-handshakes; fall back on silence). Container installs
+      and OTA pushes currently crawl at 115200 — the UART0 CH340 is good to
+      ~2 MBd, an ~17x upload speedup.
+- [ ] Experimentally find why the blob's no-block I2C engine tolerates
+      400 kHz but swallows shape-changing transfers at 100 kHz (known-issues
+      #6) — academic once the CMSIS I2C rewrite lands.
 - [x] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty;
       pwm_ec618.cc on TIMER0/1/2/4, generic `gpio.pwm` API).
 - [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata
@@ -570,5 +578,6 @@ rule no longer applies:
 - [x] **GPIO interrupts** (`Pin.wait-for`): was entirely broken — fixed
       (on_event state bit + shared trigger-sequence protocol) and HW-tested
       (gpio-interrupt, exact pulse counts at 50 and 250 Hz).
-- [ ] Experimentally map the remaining `?` pads in the wiring table.
+- [ ] AGPIOWU output gate (known-issues #5): find what frees the GPIO output
+      path on pads 40..42 — fold into the deep-sleep work.
 - [ ] Eventually wire the EC618 tests into CTest (needs a rig power-cycle story).
