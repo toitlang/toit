@@ -625,9 +625,20 @@ PRIMITIVE(write) {
   int written;
   if (uart_states[id].cmsis_rx != null) {
     // CMSIS path: UART2 TX is POLLING_MODE (RTE_Device.h), so Send is
-    // synchronous — by return, every byte is at least in the FIFO.
-    int32_t status32 = Driver_USART2.Send(data.address() + from, len);
-    written = (status32 == ARM_DRIVER_OK) ? len : 0;
+    // synchronous. Cap each call so a large write cannot stall the VM
+    // (and starve the readers a full-duplex peer depends on) — the
+    // library loops on the partial count, re-entering between chunks.
+    int chunk = len > 512 ? 512 : len;
+    int32_t status32 = Driver_USART2.Send(data.address() + from, chunk);
+    written = (status32 == ARM_DRIVER_OK) ? chunk : 0;
+    if (written > 0 && written < len) {
+      // The library waits for a TX event before retrying the rest;
+      // polling-mode Send completes inline and may not signal one. This
+      // runs in task context — the FromISR variant would be unsafe here
+      // (and a lost event leaves the library waiting forever).
+      Ec618EventSource::send_event(
+          Event::uart_type(id), Event::UART_KIND_TX_DONE);
+    }
   } else {
     // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
     // status code, not a byte count. On success the full request was

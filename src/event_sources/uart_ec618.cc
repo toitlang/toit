@@ -46,6 +46,12 @@ void Ec618EventSource::on_unregister_resource(Locker& locker, Resource* r) {
   // Nothing special needed.
 }
 
+void Ec618EventSource::send_event(Event::Type type, word data) {
+  if (instance_ == null) return;
+  Event event = { type, data };
+  xQueueSend(instance_->queue_, &event, 0);
+}
+
 void Ec618EventSource::send_event_from_isr(Event::Type type, word data) {
   if (instance_ == null) return;
   Event event = { type, data };

@@ -97,6 +97,8 @@ class Ec618EventSource : public EventSource, public Thread {
 
   // Called from ISR context.
   static void send_event_from_isr(Event::Type type, word data);
+  // Thread-context variant (FromISR queue ops are not safe from tasks).
+  static void send_event(Event::Type type, word data);
 
   QueueHandle_t queue() const { return queue_; }
 
