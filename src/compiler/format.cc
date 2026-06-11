@@ -835,10 +835,12 @@ class Lowering {
                           named_argument(named, false));
     }
     Expression* inner = peel_parens(argument);
+    // On its own continuation line an argument is a full expression:
+    // binaries stay bare there even under paren_binary_arguments —
+    // the line break already delimits the argument.
     bool differs_broken = inner != null
         && (inner->is_Call()
-            || (!style_.paren_binary_arguments
-                && inner->is_Binary()
+            || (inner->is_Binary()
                 && Token::precedence(inner->as_Binary()->kind()) != PRECEDENCE_ASSIGNMENT));
     if (differs_broken) {
       return b_.if_broken(expr(inner, PRECEDENCE_NONE),
