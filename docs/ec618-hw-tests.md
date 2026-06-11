@@ -484,11 +484,12 @@ rule no longer applies:
       2026-06-10 (table renumbered: full flash required; rerun the ADC test
       after flashing to validate the calibrated path).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
-- [ ] **Tester baud-rate switch** (Florian): a mini-jag command that hops the
-      control UART to a higher baud (agent acks at the old rate, both sides
-      switch, host re-handshakes; fall back on silence). Container installs
-      and OTA pushes currently crawl at 115200 — the UART0 CH340 is good to
-      ~2 MBd, an ~17x upload speedup.
+- [x] **Tester baud-rate switch** — DONE: CMD-BAUD hops the control UART
+      after every handshake (default 921600, --fast-baud); the handshake
+      probes 115200 AND the fast rate (a device lingers fast until its idle
+      watchdog), and the run loop re-probes at 115200 before declaring a
+      timeout. OTA: 9.3 -> 32 KB/s, ~62 s -> ~24 s; the bottleneck is now
+      per-chunk acks + flash writes, not the wire.
 - [ ] Experimentally find why the blob's no-block I2C engine tolerates
       400 kHz but swallows shape-changing transfers at 100 kHz (known-issues
       #6) — academic once the CMSIS I2C rewrite lands.

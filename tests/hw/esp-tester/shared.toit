@@ -36,6 +36,9 @@ CMD-FW-UPGRADE ::= 'U'  // -> ACK-OK, then the device reboots into the trial slo
 CMD-TRIAL      ::= 'T'  // -> ACK-TRIAL-YES / ACK-TRIAL-NO.
 CMD-VALIDATE   ::= 'V'  // -> ACK-OK.
 CMD-ROLLBACK   ::= 'Z'  // -> ACK-OK, then the device reboots back to the good slot.
+CMD-BAUD       ::= 'B'  // <baud:4 LE> -> ACK-OK at the OLD baud, then both sides switch.
+                        // The device returns to 115200 on reboot, so a handshake
+                        // always starts at 115200.
 
 // Device -> host acks. Single bytes, none of which is '[' (the status-line
 // lead-in) or a CR/LF, so the host can always tell an ack from interleaved

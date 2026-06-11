@@ -118,6 +118,9 @@ main args:
         cli.Flag "flaky"
             --help="Run the test in flaky mode, which will retry on failure"
             --default=false,
+        cli.OptionInt "fast-baud"
+            --help="Hop the EC618 control UART to this baud after the handshake (115200 disables)"
+            --default=921600,
       ]
       --rest=[
         cli.Option "test"
@@ -162,6 +165,9 @@ main args:
         cli.Flag "debug-boot"
             --help="Log the raw console for a few seconds after the upgrade reboot (to debug a trial slot that never reconnects)"
             --default=false,
+        cli.OptionInt "fast-baud"
+            --help="Hop the control UART to this baud after each handshake (115200 disables)"
+            --default=921600,
       ]
       --run=:: | invocation/cli.Invocation |
         firmware-update invocation
@@ -473,12 +479,16 @@ class Ec618Link:
   reader_/io.Reader
   writer_/io.Writer
   name_/string
+  // The fast rate this link may hop to (see switch-baud); the handshake
+  // also probes it, in case the device lingers there from a previous run.
+  fast-baud_/int
   pending_/string := ""  // Partial line held until its newline arrives.
 
-  constructor --port-path/string --baud-rate/int=115200 --name/string="ec618":
+  constructor --port-path/string --baud-rate/int=115200 --fast-baud/int=921600 --name/string="ec618":
     port_ = uart.HostPort port-path --baud-rate=baud-rate
     reader_ = port_.in
     writer_ = port_.out
+    fast-baud_ = fast-baud
     name_ = name
 
   close -> none:
@@ -518,6 +528,12 @@ class Ec618Link:
   // Pings until the resident agent answers, tolerating boot noise, then drains
   // the backlog of pong replies the agent buffered while booting.
   handshake --attempts/int=30 -> none:
+    // A (re)booted device always talks 115200 (CMD-BAUD switches are lost
+    // on reset) — but a device still alive from a PREVIOUS tester
+    // invocation may be lingering at the fast rate (until its 60 s idle
+    // watchdog resets it). Alternate the ping attempts across both rates.
+    rates := fast-baud_ != 115200 ? [115200, fast-baud_] : [115200]
+    port_.baud-rate = 115200
     sleep --ms=1000  // Let the boot banner start.
     // Drain the post-reset boot backlog FIRST. After a reset the device streams a
     // long boot-ROM + bootloader banner (hundreds of mostly non-'['-led bytes);
@@ -535,13 +551,34 @@ class Ec618Link:
     succeeded := false
     attempts.repeat: | attempt/int |
       if not succeeded:
+        port_.baud-rate = rates[attempt % rates.size]
         send CMD-PING
         catch:
           if (read-ack --timeout-ms=1500) == ACK-PONG:
-            log "$name_: agent responded (ping $(attempt + 1))"
+            log "$name_: agent responded (ping $(attempt + 1), $port_.baud-rate baud)"
             succeeded = true
     if not succeeded: throw "no response from the mini-jag agent on $name_"
     drain
+
+  // Hops the control UART to $baud (e.g. 921600) for bulk transfers.
+  // Call after a successful handshake. Returns whether the device made
+  // the switch; on failure the link stays at 115200.
+  switch-baud baud/int -> bool:
+    if baud == 115200: return true
+    header := ByteArray 4
+    io.LITTLE-ENDIAN.put-uint32 header 0 baud
+    send CMD-BAUD
+    writer_.write header
+    catch:
+      if (read-ack --timeout-ms=2000) == ACK-OK:
+        port_.baud-rate = baud
+        log "$name_: control UART now at $baud baud"
+        // The agent's "baud=" status line arrives at the new rate; a
+        // mismatch would surface here as garbage instead of an ack later.
+        drain --quiet-ms=300
+        return true
+    log "$name_: baud switch to $baud failed; staying at 115200"
+    return false
 
   // Discards buffered input until the wire is quiet for $quiet-ms.
   drain --quiet-ms/int=400 -> none:
@@ -631,6 +668,17 @@ class Ec618Link:
       if collected.contains MINI-JAG-EC618-READY:
         log "$name_: the watchdog reset the device during the test (recovered, no external reset)"
         return false
+    // On a fast-baud link a rebooted device (back at 115200) prints its
+    // ready banner as garbage, so the recovery check above can't see it.
+    // Probe at 115200 before declaring a plain timeout.
+    if port_.baud-rate != 115200:
+      port_.baud-rate = 115200
+      drain --quiet-ms=300
+      send CMD-PING
+      catch:
+        if (read-ack --timeout-ms=1500) == ACK-PONG:
+          log "$name_: the watchdog reset the device during the test (recovered at 115200)"
+          return false
     log "$name_: timed out waiting for the test to finish"
     return false
 
@@ -741,10 +789,11 @@ run-test-ec618 invocation/cli.Invocation:
   with-tmp-dir: | dir/string |
     log "Compiling $test-path"
     image := compile-test-image toit-exe test-path --tmp-dir=dir --ui=ui
-    link := Ec618Link --port-path=port-path
+    link := Ec618Link --port-path=port-path --fast-baud=invocation["fast-baud"]
     try:
       log "Connecting to the mini-jag agent on $port-path"
       link.handshake
+      link.switch-baud invocation["fast-baud"]
       log "Installing test container ($image.size bytes)"
       link.send-arg arg
       link.install-container image
@@ -771,10 +820,12 @@ firmware-update invocation/cli.Invocation:
     checksum := sha256 image
     log "OTA image: $image.size bytes"
 
-    link := Ec618Link --port-path=port-path
+    fast-baud := invocation["fast-baud"]
+    link := Ec618Link --port-path=port-path --fast-baud=fast-baud
     try:
       log "Connecting to the mini-jag agent on $port-path"
       link.handshake
+      link.switch-baud fast-baud
       log "Streaming firmware to the inactive slot"
       link.fw-begin image.size
       link.fw-write-all image
@@ -789,6 +840,7 @@ firmware-update invocation/cli.Invocation:
       log "Reconnecting after the reboot"
       sleep --ms=2000
       link.handshake
+      link.switch-baud fast-baud
       if not link.trial: throw "device did not boot the trial slot"
       log "Booted the trial slot"
 

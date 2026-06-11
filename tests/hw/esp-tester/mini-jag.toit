@@ -171,6 +171,19 @@ main-ec618:
       arg = (reader.read-bytes size).to-string
       status out "arg=\"$arg\""
       out.write #[ACK-OK]
+    else if command == CMD-BAUD:
+      // Hop the control UART to a faster rate for bulk transfers. Ack at
+      // the OLD baud and drain it onto the wire before switching; the
+      // host switches after reading the ack. A reboot returns the UART
+      // to 115200, which is why handshakes always start there.
+      baud := reader.little-endian.read-int32
+      if 9600 <= baud and baud <= 4_000_000:
+        out.write #[ACK-OK]
+        out.flush
+        port.baud-rate = baud
+        status out "baud=$baud"
+      else:
+        out.write #[ACK-ERROR]
     else if command == CMD-INSTALL:
       out.write #[(install-container reader out ? ACK-OK : ACK-ERROR)]
     else if command == CMD-RUN:
