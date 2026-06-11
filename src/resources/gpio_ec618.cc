@@ -28,10 +28,10 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "ic.h"
-
-  // From the PLAT slpman library (via the jump table): powers the AON IO
-  // LDO. The AON-domain GPIOs (pads 40..48) are dead until it is on.
-  void slpManAONIOPowerOn(void);
+  // slpman.h (via the jump table): the AON IO LDO power (the AON-domain
+  // GPIOs, pads 40..48, are dead until it is on) and the wakeup-pad
+  // configuration shared with the GPIO-muxed wakeup pads.
+  #include "slpman.h"
 }
 
 namespace toit {
@@ -155,6 +155,23 @@ static void apply_open_drain_level(int gpio_bit, int value) {
   GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
 }
 
+// Pads 40..42 are the GPIO-muxed wakeup pads (WAKEUP_PAD_3..5; the board
+// "AGPIOWU" pins). The wakeup function owns the pad's output path while
+// enabled — GPIO writes never reach the wire (reads work; both functions
+// see the pad). It is enabled at boot (the wakeup mask idles 0b111111),
+// so opening one of these pads as GPIO must release it first.
+static bool pad_is_wakeup(int pad) {
+  return 40 <= pad && pad <= 42;
+}
+
+static void wakeup_pad_set(int pad, bool wakeup_en, bool pull_up) {
+  APmuWakeupPadSettings_t cfg = {};
+  cfg.pullUpEn = pull_up;
+  slpManSetWakeupPadCfg(
+      static_cast<APmuWakeupPad_e>(WAKEUP_PAD_3 + (pad - 40)),
+      wakeup_en, &cfg);
+}
+
 // See pad_table_ec618.h. Lives here because this is the file with the SDK
 // GPIO includes; all pad-muxing drivers (GPIO, I2C, SPI, PWM) share it.
 void pad_release(int pad) {
@@ -169,6 +186,9 @@ void pad_release(int pad) {
     GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
   }
   GPIO_PullConfig(pad, 0, 0);
+  // Hand the wakeup-capable pads back to wakeup duty in their boot state
+  // (wakeup input, pull-up — no wake edges armed).
+  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, true, true);
 }
 
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
@@ -246,6 +266,13 @@ PRIMITIVE(config) {
   // idempotent and it stays on (other AON pads may be in use; the cost is
   // the LDO's standby draw, revisited with the deep-sleep work).
   if (pad_is_aon(pad)) slpManAONIOPowerOn();
+
+  // Release the GPIO-muxed wakeup pads from wakeup duty (see
+  // pad_is_wakeup; documented in slpman.h as "set pin as wakeup pad or
+  // aonio"). Re-enabled in pad_release. KNOWN ISSUE: GPIO *input* on
+  // these pads works, but output still does not reach the wire — see
+  // docs/ec618-known-issues.md (AGPIOWU output).
+  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, false, false);
 
   // Switch the pad's iomux to its GPIO function (0 for most pads — see
   // pad_gpio_mux). Without this, the pad would stay in whatever role a

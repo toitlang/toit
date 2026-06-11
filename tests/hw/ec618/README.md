@@ -65,6 +65,17 @@ Notes:
   example_gpio table is the authoritative GPIO/pad/mux source. Pads 29/30
   (UART0) have no GPIO function; as Pins they are carriers only.
 
+## Net-sharing gotchas (hard-won)
+
+- The PAD25 net (SPI0 MISO) doubles as the UART2 control lane from the
+  ESP32 (IO14 = its TX, idle HIGH at 3.3 V). A resident ESP32 program
+  holding UART2 open (e.g. `bmp280-esp32`) jams every EC618 SPI read to
+  0xFF. Run a neutral program (`jag run` anything without UART2) before
+  SPI tests.
+- The unpowered BMP280 back-powers through its breakout pull-ups: pads
+  23/24 activity leaks onto the IO13 power wire and the sensor can look
+  half-alive.
+
 ## Running a dual-board test
 
 The two halves are launched independently and coordinate by signal + timing
