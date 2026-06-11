@@ -55,20 +55,19 @@ struct FormatStyle {
   // Constructs that pack a suite onto their header's line (`foo: body`,
   // `if c: body`, `list.do: it`) use this tighter budget: two semantic
   // chunks on one line are harder to scan than one wide expression.
-  int inline_suite_width = 100;
+  int inline_suite_width = 60;
   // An inline suite body may have at most this many tokens; heavier
   // bodies go to their own line regardless of width.
-  int max_inline_suite_tokens = 1000;
-  // Extra inline width for suite bodies that are a single `return` or
-  // `throw`: terminal one-liners read well inline.
-  int inline_return_throw_bonus = 0;
+  int max_inline_suite_tokens = 10;
   // Whether a suite body that itself contains a suite (`if o is List:
   // return o.map: ...`) may go inline. Stacked `:` suites on one line
   // make the reader resolve which colon owns which body.
-  bool inline_nested_suites = true;
-  // Parenthesize binary-operator arguments of calls even where the
-  // grammar doesn't require it (`foo (end - start)`).
-  bool paren_binary_arguments = false;
+  bool inline_nested_suites = false;
+  // Parenthesize binary-operator arguments on a call's own line even
+  // where the grammar doesn't require it (`foo (end - start)`) —
+  // greedy Calls make bare binaries read as multiple arguments.
+  // Arguments on their own continuation lines stay bare.
+  bool paren_binary_arguments = true;
 };
 
 // A layout document. Lowering builds a Doc tree from the AST; the

@@ -18,7 +18,8 @@ main:
   // Lambda variant.
   l := task:: print 2
 
-return-test_: return list.do: print 3
+return-test_:
+  return list.do: print 3
 
 list := null
 foo: return null

@@ -3,7 +3,8 @@
 // body.
 foo bar/List/*<int>*/ -> bool: return bar.is-empty
 
-baz value/Map/*<string, int>*/ other/int -> int: return other
+baz value/Map/*<string, int>*/ other/int -> int:
+  return other
 
 // Detached block comments keep the standard gap.
 gee x/int  /* detached */ -> int: return x

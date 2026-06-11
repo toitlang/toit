@@ -16,8 +16,10 @@ main:
   for j := 0; j < list.size; j++: list[j] = 0
 
   // Inline form too wide: stays / becomes broken.
-  for k := 0; k < list.size; k++: very-long-call-name list[k] another-arg yet-another-arg
-  for m := 0; m < list.size; m++: very-long-call-name list[m] another-arg yet-another-arg
+  for k := 0; k < list.size; k++:
+    very-long-call-name list[k] another-arg yet-another-arg
+  for m := 0; m < list.size; m++:
+    very-long-call-name list[m] another-arg yet-another-arg
 
 very-long-call-name a b c -> any: return 0
 another-arg := 0

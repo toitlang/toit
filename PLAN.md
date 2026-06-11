@@ -146,10 +146,22 @@ All in `FormatStyle`; corpus evidence in parentheses:
   class-header clauses, broken binary chains (576 occurrences of +4 vs 7 of
   +2 for named-arg continuations).
 - `max_width = 100`, `slack = 20` (p99 of all lines = 93, p99.9 = 120).
-- Inline `if c: body` / `while` / method bodies share the general budget —
-  no special tighter width (corpus inlines up to p99 = 98 columns; the
-  previous 60-column inline budget contradicted the corpus).
-- Broken calls put **every** argument on its own continuation line.
+- Inline suites (`if c: body`, `while`, method bodies, `list.do: it`)
+  use the tighter `inline_suite_width = 60` judged against the whole
+  construct, plus `max_inline_suite_tokens = 10` — packing two semantic
+  chunks on one line is harder to scan than one wide expression. A body
+  that itself contains a suite never inlines: at most one suite `:` per
+  line.
+- When a method header wraps, the body-separator `:` goes on its own
+  line at the method's indent.
+- Binary arguments on a call's line get parens
+  (`foo (end - start)` — bare binaries read as several arguments);
+  arguments on their own continuation lines stay bare.
+- In a mixed `and`/`or` chain, a nested chain gets parens exactly when
+  it breaks (its continuation lines would hide the nesting); the outer
+  chain's break points are preferred, so this is rare.
+- Broken calls keep the leading positional run on the target's line;
+  named arguments each get a continuation line.
 - Broken binary chains use **leading** operators (AST-safe for left-assoc,
   see contract #3; uniform across operators).
 - Collection literals: broken form puts each element at `indent_step`,

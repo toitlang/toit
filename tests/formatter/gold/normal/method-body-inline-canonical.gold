@@ -24,5 +24,6 @@ class Foo:
 
 // Top-level methods follow the same rule.
 top-getter: return 0
-top-too-long-to-inline x y z -> int: return some-fairly-long-expression-here
+top-too-long-to-inline x y z -> int:
+  return some-fairly-long-expression-here
 some-fairly-long-expression-here := 0

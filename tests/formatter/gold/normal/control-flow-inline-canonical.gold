@@ -19,10 +19,12 @@ main:
   while y: y++
 
   // Source-inline but > 60 cols: forced to broken.
-  if very-long-cond and another-long-cond: do-something with-many args here
+  if very-long-cond and another-long-cond:
+    do-something with-many args here
 
   // Source-broken and inline form > 60 cols: stays broken.
-  if very-long-cond and another-long-cond: do-something with-many args here
+  if very-long-cond and another-long-cond:
+    do-something with-many args here
 
   // Body has multiple stmts: must be broken regardless of width.
   if x:

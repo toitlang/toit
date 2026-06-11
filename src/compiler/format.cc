@@ -16,7 +16,6 @@
 #include "format.h"
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -256,20 +255,6 @@ bool contains_suite(Expression* e) {
   return false;
 }
 
-// A single `return` or `throw` statement: a terminal one-liner that
-// reads well inline, so it gets a small extra width allowance.
-bool is_return_or_throw(Expression* statement_node) {
-  Expression* s = peel_parens(statement_node);
-  if (s == null) return false;
-  if (s->is_Return()) return true;
-  if (s->is_Call()) {
-    Expression* target = peel_parens(s->as_Call()->target());
-    return target != null && target->is_Identifier()
-        && strcmp(target->as_Identifier()->data().c_str(), "throw") == 0;
-  }
-  return false;
-}
-
 class Lowering {
  public:
   Lowering(Unit* unit, List<Scanner::Comment> comments, const FormatStyle& style)
@@ -351,25 +336,6 @@ class Lowering {
             || trivia->frozen);
   }
 
-  // The inline-suite budget for a construct whose body is `body`.
-  int suite_budget(Sequence* body) const {
-    if (body != null && body->expressions().length() == 1
-        && is_return_or_throw(body->expressions().first())) {
-      return style_.inline_suite_width + style_.inline_return_throw_bonus;
-    }
-    return style_.inline_suite_width;
-  }
-
-  // The body sequence of a Block / Lambda argument (possibly behind a
-  // NamedArgument).
-  Sequence* blockish_body(Expression* argument) const {
-    Expression* value = argument;
-    if (value->is_NamedArgument()) value = value->as_NamedArgument()->expression();
-    if (value == null) return null;
-    if (value->is_Block()) return value->as_Block()->body();
-    if (value->is_Lambda()) return value->as_Lambda()->body();
-    return null;
-  }
 
   // ------------------------------------------------------- trivia
 
@@ -894,7 +860,7 @@ class Lowering {
                                                      : suite_body(body, true),
                                b_.if_broken(b_.concat({b_.hardline(), b_.text(")")}),
                                             b_.text(")"))}),
-                    suite_budget(body));
+                    style_.inline_suite_width);
   }
 
   Doc* block_suite_broken(Doc* intro, Expression* blockish) {
@@ -1072,7 +1038,7 @@ class Lowering {
                                   node_text(named->name()),
                                   b_.text(value->is_Block() ? "=:" : "=::")});
           argument_docs.push_back(b_.group(block_suite(intro, argument),
-                                           suite_budget(blockish_body(argument))));
+                                           style_.inline_suite_width));
         } else {
           argument_docs.push_back(call_argument(argument, multi_arg));
         }
@@ -1138,12 +1104,10 @@ class Lowering {
         } else {
           line_doc = expr(argument, PRECEDENCE_NONE);
         }
-        int line_budget = is_blockish(argument)
-            ? suite_budget(blockish_body(argument))
-            : style_.inline_suite_width;
         docs.push_back(b_.indent(style_.continuation_step,
                                  b_.concat({b_.hardline(),
-                                            b_.group(line_doc, line_budget)})));
+                                            b_.group(line_doc,
+                                                     style_.inline_suite_width)})));
       }
     }
 
@@ -1154,11 +1118,8 @@ class Lowering {
     // statement level, so the decision is the same wherever the call
     // is embedded (statement, map value, argument).
     bool has_suite = tail_count > 0 || named_suite_in_head;
-    Sequence* lone_suite_body = has_suite && arguments.length() - first_blockish == 1
-        ? blockish_body(arguments[first_blockish])
-        : null;
     Doc* result = has_suite
-        ? b_.group(b_.concat(std::move(docs)), suite_budget(lone_suite_body))
+        ? b_.group(b_.concat(std::move(docs)), style_.inline_suite_width)
         : b_.concat(std::move(docs));
     if (!parens) return result;
     return b_.concat({b_.text("("), result, b_.text(")")});
@@ -1298,7 +1259,6 @@ class Lowering {
   }
 
   Doc* if_statement(If* if_node) {
-    int budget = suite_budget(branch_sequence(if_node->yes()));
     std::vector<Doc*> docs;
     const char* keyword = "if ";
     If* current = if_node;
@@ -1327,7 +1287,7 @@ class Lowering {
       docs.push_back(suite_body(else_body, false));
       break;
     }
-    return b_.group(b_.concat(std::move(docs)), budget);
+    return b_.group(b_.concat(std::move(docs)), style_.inline_suite_width);
   }
 
   Doc* while_statement(While* while_node) {
@@ -1337,7 +1297,7 @@ class Lowering {
                                b_.text(":"),
                                body != null ? trailing_trivia(body) : b_.nil(),
                                suite_body(body, true)}),
-                    suite_budget(body));
+                    style_.inline_suite_width);
   }
 
   Doc* for_statement(For* for_node) {
@@ -1360,7 +1320,7 @@ class Lowering {
     Sequence* body = branch_sequence(for_node->body());
     if (body != null) docs.push_back(trailing_trivia(body));
     docs.push_back(suite_body(body, true));
-    return b_.group(b_.concat(std::move(docs)), suite_budget(body));
+    return b_.group(b_.concat(std::move(docs)), style_.inline_suite_width);
   }
 
   Doc* try_statement(TryFinally* try_node) {
@@ -1469,7 +1429,7 @@ class Lowering {
     return b_.group(b_.concat({header_doc,
                                trailing_trivia(body),
                                suite_body(body, true)}),
-                    suite_budget(body));
+                    style_.inline_suite_width);
   }
 
   Doc* field_declaration(Field* field) {
@@ -1631,25 +1591,7 @@ uint8* format_unit(Unit* unit,
                    List<Scanner::Comment> comments,
                    int* formatted_size,
                    const FormatStyle& style) {
-  FormatStyle effective = style;
-  // Experiment scaffolding for style calibration; remove once the
-  // style table is settled.
-  if (const char* width = getenv("TOIT_FORMAT_EXP_INLINE_WIDTH")) {
-    effective.inline_suite_width = atoi(width);
-  }
-  if (const char* tokens = getenv("TOIT_FORMAT_EXP_INLINE_TOKENS")) {
-    effective.max_inline_suite_tokens = atoi(tokens);
-  }
-  if (const char* bonus = getenv("TOIT_FORMAT_EXP_RETURN_THROW_BONUS")) {
-    effective.inline_return_throw_bonus = atoi(bonus);
-  }
-  if (getenv("TOIT_FORMAT_EXP_NO_NESTED_SUITE_INLINE") != null) {
-    effective.inline_nested_suites = false;
-  }
-  if (getenv("TOIT_FORMAT_EXP_PAREN_BINARY_ARGS") != null) {
-    effective.paren_binary_arguments = true;
-  }
-  Lowering lowering(unit, comments, effective);
+  Lowering lowering(unit, comments, style);
   std::string formatted = lowering.run();
   *formatted_size = formatted.size();
   uint8* result = unvoid_cast<uint8*>(malloc(formatted.size() + 1));
