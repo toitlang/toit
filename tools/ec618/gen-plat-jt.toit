@@ -88,7 +88,7 @@ ALWAYS-INCLUDE-EXACT ::= {
 // code — an instant fault (observed on I2C bring-up: &Driver_I2C0 resolved
 // to the veneer). The VM binds to the fixed-PLAT structs directly, which
 // is slot-safe.
-DATA-SYMBOLS ::= {"Driver_I2C0", "Driver_I2C1", "Driver_USART0", "Driver_USART1"}
+DATA-SYMBOLS ::= {"Driver_I2C0", "Driver_I2C1", "Driver_USART0", "Driver_USART1", "Driver_USART2"}
 
 // PLAT functions the table must carry even though the CURRENT image does
 // not reference them (they are defined in the PLAT archives; the table

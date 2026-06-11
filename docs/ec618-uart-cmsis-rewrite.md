@@ -102,3 +102,14 @@ Phase plan:
    (bigdata/ring/duplex — expect duplex to go green, overflow to become
    counted + recoverable).
 3. Decide UART0/1 migration + TX migration afterwards.
+
+## Lesson (2026-06-11): Driver_* struct bindings pin the base
+
+The slot binds `Driver_USART2` (and would any CMSIS access struct) by
+ABSOLUTE base address. That is only valid while the FLASHED base ==
+the BUILT base — the jump table tolerates base drift, direct data
+bindings do not. First OTA of the CMSIS UART2 code hardfaulted
+(INVSTATE, jump into rotted struct address) because the running base
+predated the cmpctmalloc move. Consequence: any build that adds/changes
+a Driver_* binding, or any base drift after one exists, requires a FULL
+FLASH. The planned frozen-base artifact removes this class entirely.

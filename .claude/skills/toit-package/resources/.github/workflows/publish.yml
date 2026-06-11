@@ -1,0 +1,16 @@
+name: Publish package
+on:
+  push:
+    tags:
+    - 'v[0-9]+.[0-9]+.[0-9]+'
+    - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions: {}
+
+jobs:
+  create-release:
+    name: Create new release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish
+        uses: toitlang/pkg-publish@v1.5.0

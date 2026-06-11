@@ -33,6 +33,13 @@ extern "C" {
   #include "driver_uart.h"
   #include "gpio.h"
   #include "platform_define.h"
+  // The OPEN CMSIS driver (bsp_usart.c) — UART2 runs on it instead of the
+  // closed Uart_* blob (docs/ec618-uart-cmsis-rewrite.md): the blob's RX
+  // ring silently discards everything on overflow and kills RX until
+  // reopen (known-issues #4). The access struct is DATA (never routed
+  // through the jump table — see gen-plat-jt's DATA-SYMBOLS).
+  #include "Driver_USART.h"
+  extern ARM_DRIVER_USART Driver_USART2;
 }
 
 namespace toit {
@@ -43,12 +50,27 @@ namespace toit {
 // physical pad carries which UART role.
 
 // Per-UART state.
+// CMSIS-path RX context (heap-allocated at open). The driver DMAs each
+// armed transfer into `chunk`; the event callback copies it into `ring`
+// and re-arms. Between transfers the driver's own 32-byte staging FIFO
+// catches the line, so the re-arm gap loses nothing at sane bauds.
+struct CmsisRx {
+  uint8_t* ring;            // malloc'd ring buffer.
+  uint32_t ring_size;
+  volatile uint32_t head;   // Write index — IRQ context only.
+  volatile uint32_t tail;   // Read index — primitive only.
+  uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
+  uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
+  uint8_t chunk[512];       // The armed receive target.
+};
+
 struct UartState {
   bool in_use;          // Whether the controller currently has a Toit resource.
   uint32_t baud_rate;   // Cached baud rate, for `get_baud_rate` without register reads.
   uint32_t errors;      // Counter incremented from the driver callback on
                         // parity/overrun/break.
   int de_pad;           // RS485 direction pin (PAD number), or -1.
+  CmsisRx* cmsis_rx;    // Non-null when this controller runs on the CMSIS driver.
 };
 
 static UartState uart_states[3] = {};
@@ -94,7 +116,21 @@ class UartResourceGroup : public ResourceGroup {
         return;
       }
 #endif
-      Uart_DeInit(id);
+      if (state.cmsis_rx != null) {
+        // CMSIS teardown from a quiesced state — this is the path the
+        // blob's Uart_DeInit hangs on (known-issues #1).
+        Driver_USART2.Control(ARM_USART_ABORT_RECEIVE, 0);
+        Driver_USART2.Control(ARM_USART_CONTROL_RX, 0);
+        Driver_USART2.Control(ARM_USART_CONTROL_TX, 0);
+        Driver_USART2.PowerControl(ARM_POWER_OFF);
+        Driver_USART2.Uninitialize();
+        CmsisRx* rx = state.cmsis_rx;
+        state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+        free(rx->ring);
+        free(rx);
+      } else {
+        Uart_DeInit(id);
+      }
       state.in_use = false;
       state.de_pad = -1;
     }
@@ -125,6 +161,84 @@ static void set_de_level(int pad, int level) {
   if (gpio_bit < 0) return;
   uint16_t mask = 1 << (gpio_bit & 0xf);
   GPIO_pinWrite(gpio_bit >> 4, mask, level ? mask : 0);
+}
+
+// --- CMSIS driver path (UART2) ----------------------------------------------
+//
+// One-shot transfers: both RECEIVE_COMPLETE and RX_TIMEOUT end the armed
+// Receive() with GetRxCount() bytes in `chunk` (bsp_usart.c reports the
+// timeout only when the line went idle). The callback copies them into
+// the ring — dropping the NEWEST bytes when full, counted in `dropped`
+// and `errors`, with RX staying alive — and re-arms.
+
+static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  for (uint32_t i = 0; i < n; i++) {
+    uint32_t next = rx->head + 1 == rx->ring_size ? 0 : rx->head + 1;
+    if (next == rx->tail) {
+      rx->dropped += n - i;
+      uart_states[id].errors += n - i;
+      Ec618EventSource::send_event_from_isr(
+          Event::uart_type(id), Event::UART_KIND_ERROR);
+      return;
+    }
+    rx->ring[rx->head] = data[i];
+    rx->head = next;
+  }
+}
+
+static void cmsis_rx_event2(uint32_t event) {
+  const int id = 2;
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  if (rx == null) return;
+  if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
+    uint32_t n = Driver_USART2.GetRxCount();
+    if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
+    if (n > 0) cmsis_ring_push(id, rx->chunk, n);
+    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+    if (n > 0) {
+      Ec618EventSource::send_event_from_isr(
+          Event::uart_type(id), Event::UART_KIND_RX);
+    }
+  }
+  if (event & ARM_USART_EVENT_RX_OVERFLOW) {
+    // The driver's 32-byte staging FIFO overflowed between transfers.
+    uart_states[id].errors++;
+    Ec618EventSource::send_event_from_isr(
+        Event::uart_type(id), Event::UART_KIND_ERROR);
+  }
+  if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
+    int de = uart_states[id].de_pad;
+    if (de >= 0 && (event & ARM_USART_EVENT_TX_COMPLETE)) set_de_level(de, 0);
+    Ec618EventSource::send_event_from_isr(
+        Event::uart_type(id), Event::UART_KIND_TX_DONE);
+  }
+  if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR | ARM_USART_EVENT_RX_PARITY_ERROR |
+               ARM_USART_EVENT_RX_BREAK)) {
+    uart_states[id].errors++;
+    Ec618EventSource::send_event_from_isr(
+        Event::uart_type(id), Event::UART_KIND_ERROR);
+  }
+}
+
+// Builds the ARM_USART_CONTROL word for mode + framing.
+static uint32_t cmsis_control_word(int data_bits, int parity, int stop_bits) {
+  uint32_t control = ARM_USART_MODE_ASYNCHRONOUS;
+  switch (data_bits) {
+    case 5: control |= ARM_USART_DATA_BITS_5; break;
+    case 6: control |= ARM_USART_DATA_BITS_6; break;
+    case 7: control |= ARM_USART_DATA_BITS_7; break;
+    default: control |= ARM_USART_DATA_BITS_8; break;
+  }
+  // Toit parity: 1 disabled, 2 even, 3 odd (lib/uart.toit).
+  if (parity == 2) control |= ARM_USART_PARITY_EVEN;
+  else if (parity == 3) control |= ARM_USART_PARITY_ODD;
+  else control |= ARM_USART_PARITY_NONE;
+  // Toit stop bits: 1 one, 2 one-and-half, 3 two (StopBits.value_).
+  if (stop_bits == 3) control |= ARM_USART_STOP_BITS_2;
+  else if (stop_bits == 2) control |= ARM_USART_STOP_BITS_1_5;
+  else control |= ARM_USART_STOP_BITS_1;
+  return control;
 }
 
 // --- Driver callback (called by the PLAT UART ISR) --------------------------
@@ -413,16 +527,41 @@ PRIMITIVE(create) {
   uint32_t rx_cache = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
   uint32_t tx_cache = 1024;
 
-  Uart_BaseInitEx(id, baud_rate, tx_cache, rx_cache,
-                  static_cast<uint8_t>(data_bits),
-                  to_plat_parity(parity),
-                  to_plat_stop_bits(stop_bits),
-                  uart_cb);
+  if (id == 2) {
+    // UART2 runs on the open CMSIS driver (see the include comment).
+    // Both TX (polling mode per RTE_Device.h — Send is synchronous like
+    // Uart_TxTaskSafe) and RX move together: the two stacks fight over
+    // the same registers, so they are never mixed on one controller.
+    uint32_t ring_size = (tx_flags & kTxFlagLargeBuffers) ? 32768 : 8192;
+    CmsisRx* rx = unvoid_cast<CmsisRx*>(calloc(1, sizeof(CmsisRx)));
+    uint8_t* ring = rx ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
+    if (rx == null || ring == null) {
+      free(rx);
+      delete resource;
+      FAIL(MALLOC_FAILED);
+    }
+    rx->ring = ring;
+    rx->ring_size = ring_size;
+    rx->control = cmsis_control_word(data_bits, parity, stop_bits);
+    uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
+    Driver_USART2.Initialize(cmsis_rx_event2);
+    Driver_USART2.PowerControl(ARM_POWER_FULL);
+    Driver_USART2.Control(rx->control, baud_rate);
+    Driver_USART2.Control(ARM_USART_CONTROL_TX, 1);
+    Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
+    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+  } else {
+    Uart_BaseInitEx(id, baud_rate, tx_cache, rx_cache,
+                    static_cast<uint8_t>(data_bits),
+                    to_plat_parity(parity),
+                    to_plat_stop_bits(stop_bits),
+                    uart_cb);
 
-  // Drop any bytes that were already in the RX buffer when we opened
-  // the controller — they come from before the application asked for
-  // this UART, not from data the application is supposed to see.
-  Uart_RxBufferClear(id);
+    // Drop any bytes that were already in the RX buffer when we opened
+    // the controller — they come from before the application asked for
+    // this UART, not from data the application is supposed to see.
+    Uart_RxBufferClear(id);
+  }
 
   uart_states[id].in_use = true;
   uart_states[id].baud_rate = baud_rate;
@@ -454,7 +593,16 @@ PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, resource, int, baud_rate);
   if (baud_rate <= 0 || baud_rate > 4000000) FAIL(INVALID_ARGUMENT);
   int id = resource->uart_id();
-  Uart_ChangeBR(id, static_cast<uint32_t>(baud_rate));
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  if (rx != null) {
+    // Re-Control with the stored framing word. Abort the armed receive
+    // first (Control while rx_busy returns BUSY), then re-arm.
+    Driver_USART2.Control(ARM_USART_ABORT_RECEIVE, 0);
+    Driver_USART2.Control(rx->control, static_cast<uint32_t>(baud_rate));
+    Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk));
+  } else {
+    Uart_ChangeBR(id, static_cast<uint32_t>(baud_rate));
+  }
   uart_states[id].baud_rate = baud_rate;
   return process->null_object();
 }
@@ -473,12 +621,20 @@ PRIMITIVE(write) {
   int de = uart_states[id].de_pad;
   if (de >= 0) set_de_level(de, 1);
 
-  // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
-  // status code, not a byte count. On success the full request was
-  // accepted; on failure nothing was written.
   int len = to - from;
-  int status = Uart_TxTaskSafe(id, data.address() + from, len);
-  int written = (status == 0) ? len : 0;
+  int written;
+  if (uart_states[id].cmsis_rx != null) {
+    // CMSIS path: UART2 TX is POLLING_MODE (RTE_Device.h), so Send is
+    // synchronous — by return, every byte is at least in the FIFO.
+    int32_t status32 = Driver_USART2.Send(data.address() + from, len);
+    written = (status32 == ARM_DRIVER_OK) ? len : 0;
+  } else {
+    // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
+    // status code, not a byte count. On success the full request was
+    // accepted; on failure nothing was written.
+    int status = Uart_TxTaskSafe(id, data.address() + from, len);
+    written = (status == 0) ? len : 0;
+  }
 
   // RS485: drop the direction line once the line is idle. The TX_ALL_DONE
   // fast path in uart_cb cannot be relied on (see the comment there), so
@@ -499,6 +655,26 @@ PRIMITIVE(write) {
 PRIMITIVE(read) {
   ARGS(UartResource, resource);
   int id = resource->uart_id();
+
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  if (rx != null) {
+    // Drain our ring (filled by cmsis_rx_event2). Snapshot head once: the
+    // IRQ only ever ADDS bytes, so the window we copy is stable.
+    uint32_t head = rx->head;
+    uint32_t tail = rx->tail;
+    uint32_t available = head >= tail ? head - tail
+                                      : rx->ring_size - tail + head;
+    if (available == 0) return process->null_object();
+    ByteArray* result = process->object_heap()->allocate_internal_byte_array(available);
+    if (result == null) FAIL(ALLOCATION_FAILED);
+    ByteArray::Bytes bytes(result);
+    for (uint32_t i = 0; i < available; i++) {
+      bytes.address()[i] = rx->ring[tail];
+      tail = tail + 1 == rx->ring_size ? 0 : tail + 1;
+    }
+    rx->tail = tail;
+    return result;
+  }
 
   // Peek the available byte count first so we can size the buffer right.
   int available = Uart_RxBufferRead(id, null, 0);

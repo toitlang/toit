@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        toit-version: [ oldest, latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve Toit version
+        id: toit-version
+        shell: bash
+        run: |
+          if [[ "${{ matrix.toit-version }}" == "oldest" ]]; then
+            sdk=$(grep -E '^[[:space:]]+sdk:' package.yaml | head -1 \
+              | sed -E 's/^[[:space:]]+sdk:[[:space:]]*//; s/^\^//' \
+              | tr -d "\"' ")
+            echo "version=v$sdk" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: toitlang/action-setup@v1
+        with:
+          toit-version: ${{ steps.toit-version.outputs.version }}
+      - name: Test
+        run: make test
