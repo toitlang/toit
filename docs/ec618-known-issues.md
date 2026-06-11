@@ -192,3 +192,65 @@ driver level.
    needs rig wiring + an exhaustive test) so the hardware paces the sender.
 4. Independently: re-test whether the 32 KiB ring tracks the requested
    `RxCacheLen` at all (we pass 4 KiB and get 32 KiB).
+
+## 5. AGPIOWU pads (40..42 / GPIO20..22): GPIO input works, OUTPUT never reaches the wire
+
+**Symptom.** With the AON IO LDO powered (`slpManAONIOPowerOn`), the plain
+AGPIO pads (43..48) drive fine as GPIO outputs (PAD44/PAD47 exact-pulse
+verified on the rig). The wakeup-capable trio (pads 40..42 = WAKEUP_PAD_3..5,
+the board's "AGPIOWU" pins) does NOT: GPIO *reads* follow the wire perfectly
+(PAD42 tracked an externally driven rail through 20 s steady-high and
+steady-low phases), but a configured GPIO *output* never appears on the wire.
+
+**What was tried (all HW-tested, none unblocked the output).**
+- `slpManSetWakeupPadCfg(WAKEUP_PAD_x, false, ...)` — the documented "set pin
+  as wakeup pad **or aonio**" release; tried per-pad and for all three at
+  once (the WAKEUP_PAD_3..5 <-> pad 40..42 order is unverified).
+- The vendor's undocumented AON register write `*(uint32_t*)0x4D020170 = 0x1`
+  (from `example_gpio`'s `all_gpio_init_output`, which precedes its AGPIOWU
+  output demo).
+- Iomux ALT0 + GPIO controller output config — identical to what works on
+  pads 43..48.
+
+**Not yet tried.** `slpManAONIOVoltSet(IOVOLT_3_30V)` (the example sets it;
+an output at a mis-set voltage could read as low, though pads 43..48 read
+fine at the default), the example's `slpManAONIOLatchEn` dance, and the
+ordering magic-write-BEFORE-first-LDO-power-on. Revisit with the deep-sleep
+work, where the wakeup-pad configuration gets exercised anyway.
+
+**Repro.** `tests/hw/ec618/aon-wu-output-repro-ec618.toit` (standalone;
+drives PAD42, whose net is the rig's BMP280 power rail — the sensor coming
+up, or the ESP32 reading IO13 high, would mean the output works).
+
+**Driver state.** `gpio_ec618.cc` releases the wakeup function on open and
+restores it (wakeup input, pull-up — the boot state) in `pad_release`;
+correct per the docs and harmless, but not sufficient for output.
+
+## 6. Blob I2C no-block engine swallows shape-changing transfers — WORKED AROUND
+
+**Symptom.** With consecutive `I2C_MasterXfer` no-block transfers of
+DIFFERENT shapes (e.g. a 1-byte register read followed by a 6-byte burst),
+the second transfer often never touches the bus: the completion callback
+fires instantly and `I2C_WaitResult` reports done/success while the rx
+buffer stays unwritten (reads "all 0xFF"). Sometimes the engine instead
+double-fires the callback or genuinely runs the transfer into a -13
+per-byte timeout. Deterministic for a given op sequence. Surfaced when the
+`Ec618.i2c1` factory defaulted the bus to 100 kHz; the same sequences at
+400 kHz behaved (not fully explained — same shapes, same code).
+
+**Diagnosis.** Driver-level tracing showed the swallowed transfer never
+takes the engine to the busy state (`I2C_WaitResult` stays "complete"
+through the whole window) — `I2C_MasterXfer` returns void, so the
+rejection is silent. The sensor and wiring were exonerated by replaying
+the exact failing sequence from the ESP32 (flawless), and the sync
+`I2C_BlockRead/Write` paths are unaffected.
+
+**Workaround (shipped).** `transfer_start` rebuilds the controller for
+every transfer: `GPR_swResetModule(I2Cx_RESET_VECTOR)` +
+`I2C_MasterSetup(speed)` + `I2C_UsePollingMode(0)`. Microseconds on an
+idle bus, and every transfer is the engine's first. (Tried and
+insufficient: the reference's error-only GPR reset, per-transfer
+`I2C_ChangeBR`, polling-mode reassertion alone.)
+
+**Real fix (future).** Move I2C off the closed blob onto the open CMSIS
+driver (`Driver_I2C1`), the same direction as the UART RX rewrite (#4).

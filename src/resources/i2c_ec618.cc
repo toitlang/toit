@@ -27,6 +27,8 @@
 #include "pad_table_ec618.h"
 
 extern "C" {
+  #include "gpr_common.h"  // ClockResetVector_t + the I2C reset vectors.
+  extern void GPR_swResetModule(const ClockResetVector_t *v);
   #include "bsp_common.h"
   #include "driver_gpio.h"   // GPIO_PullConfig / GPIO_IomuxEC618.
   #include "gpio.h"          // OEM GPIO_pinConfig/pinRead, for the bus peek.
@@ -66,6 +68,12 @@ static const uint8_t kOpRead    = 1;
 static const uint8_t kOpWrite   = 2;
 
 // The core driver supports 100 kHz and 400 kHz only.
+// Per-controller GPR reset vectors (const -> flash; no shared-dram
+// statics). Same table as the SDK's luat_i2c_ec618.c.
+static const ClockResetVector_t kI2cResetVectors[] = {
+  I2C0_RESET_VECTOR, I2C1_RESET_VECTOR,
+};
+
 static uint32_t frequency_to_speed(uint32_t frequency) {
   return frequency <= 100000 ? 100000 : 400000;
 }
@@ -416,6 +424,15 @@ PRIMITIVE(device_transfer_start) {
   // luat_i2c_no_block_transfer does the same); without it the transfer
   // runs in the internal blocking mode and the completion callback never
   // fires.
+  // Rebuild the controller for every transfer. The blob's no-block
+  // engine misbehaves when consecutive transfers differ in shape (the
+  // next I2C_MasterXfer is swallowed with an instant fake success —
+  // observed at 100 kHz; see docs/ec618-known-issues.md). A hard module
+  // reset + re-setup per transfer is microseconds on an idle bus and
+  // makes every transfer the engine's first.
+  GPR_swResetModule(&kI2cResetVectors[controller]);
+  I2C_MasterSetup(controller, frequency_to_speed(device->frequency()));
+  I2C_UsePollingMode(controller, 0);
   int32_t stale;
   I2C_WaitResult(controller, &stale);
   I2C_Prepare(controller, device->address(), 2, i2c_done_cb,
