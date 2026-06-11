@@ -1,7 +1,7 @@
 class Device:
   // Source has `-> Type` on the last line after all params — formatter
-  // moves it up next to the method name (or any same-line params), and
-  // the closing `:` ends up flush with the last continuation param.
+  // moves it up next to the method name. (When a header actually
+  // wraps, the `:` goes to its own line; see method-header-wrap-colon.)
   configure
       --cs/int?=null
       --dc/int?=null
@@ -15,7 +15,7 @@ class Device:
       --extra/int=0:
     return x + y + extra
 
-  // No return type: params break canonically with colon on last line.
+  // No return type: header fits flat.
   no-return-type
       --a/int
       --b/int=0:

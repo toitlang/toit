@@ -1385,19 +1385,25 @@ class Lowering {
                                  b_.concat(std::move(parameter_docs))));
     }
     header.push_back(b_.if_broken(b_.nil(), return_part));
-    Doc* header_doc = b_.group(b_.concat(std::move(header)));
 
     Sequence* body = method->body();
     if (body == null) {
       // `abstract foo` / interface signature: no body, no colon.
-      return header_doc;
+      return b_.group(b_.concat(std::move(header)));
     }
+    // The body-separator `:` follows the header group's mode: glued
+    // when the header is flat (`foo a b:`), on its own line at the
+    // method's indent when the parameters wrapped — the dedented colon
+    // marks where the signature ends and the body begins.
+    header.push_back(b_.if_broken(b_.concat({b_.hardline(), b_.text(":")}),
+                                  b_.text(":")));
+    Doc* header_doc = b_.group(b_.concat(std::move(header)));
+
     if (body->expressions().is_empty()) {
       // `foo:` with an empty body keeps its colon — possibly followed
       // by comment-only body lines.
       std::vector<Doc*> docs;
       docs.push_back(header_doc);
-      docs.push_back(b_.text(":"));
       const NodeTrivia* trivia = trivia_.find(method);
       if (trivia != null && !trivia->dangling.empty()) {
         std::vector<Doc*> comments;
@@ -1412,7 +1418,6 @@ class Lowering {
       return b_.concat(std::move(docs));
     }
     return b_.group(b_.concat({header_doc,
-                               b_.text(":"),
                                trailing_trivia(body),
                                suite_body(body, true)}),
                     suite_budget(body));
