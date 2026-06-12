@@ -77,7 +77,9 @@ Notes:
   half-alive.
 - The EC618 boot ROM sprays a banner on UART1 (`^boot.rom...`, binary, NO
   trailing newline) at every reset — including watchdog resets between test
-  runs. A resident ESP32 helper listening on the control lane buffers that
+  runs. This is mask-ROM behavior the vendor lives with too: the official
+  EC618 AT manual shows `^boot.rom'v'!` verbatim between `OK` and `RDY` in
+  its `AT+CFUN=1,1` restart example. A resident ESP32 helper listening on the control lane buffers that
   junk, the next real command glues onto it inside the helper's line
   reader, and BOTH the command and any follow-ups die (the helpers ignore
   everything until the first well-formed `B`). Every EC618-side test must
