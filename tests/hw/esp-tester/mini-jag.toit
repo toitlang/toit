@@ -136,9 +136,14 @@ run-test:
 // config changed (test rig uses UART0, the quirky-plenty dev rig uses UART1).
 open-control-uart -> uart.Port:
   id := ec618.print-uart-id
-  if id == 0: return ec618.Ec618.uart0 --baud-rate=115200
-  if id == 1: return ec618.Ec618.uart1 --baud-rate=115200
-  if id == 2: return ec618.Ec618.uart2 --baud-rate=115200
+  // --large-buffers: the port OPENS at 115200 (which would auto-select the
+  // small 8 KiB ring) but CMD-BAUD later hops it to ~921600 for bulk
+  // transfers — and a container install must ride out multi-hundred-ms
+  // flash stalls on RX buffering alone (no flow control). 32 KiB matches
+  // what the old blob driver always allocated.
+  if id == 0: return ec618.Ec618.uart0 --baud-rate=115200 --large-buffers
+  if id == 1: return ec618.Ec618.uart1 --baud-rate=115200 --large-buffers
+  if id == 2: return ec618.Ec618.uart2 --baud-rate=115200 --large-buffers
   throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
 
 main-ec618:
@@ -154,6 +159,24 @@ main-ec618:
   // messages (below) do — so a dead/silent agent still gets reset. (A crash that
   // ends the whole VM still resets via CONFIG_TOIT_EC618_RESET_ON_VM_EXIT.)
   port := open-control-uart
+  // RESCUE channel: if the host has not reached us on the control UART
+  // shortly after boot (e.g. a firmware change broke that controller), start
+  // serving the same protocol on UART2 as well — reachable through the
+  // ESP32 TCP bridge (uart-bridge-esp32.toit) + socat PTY on the host. On a
+  // healthy rig the host connects immediately, the rescue never arms, and
+  // UART2 stays free for tests.
+  if ec618.print-uart-id != 2:
+    task --background::
+      sleep --ms=20_000
+      if not host-contact_:
+        e := catch:
+          rescue := ec618.Ec618.uart2 --baud-rate=115200
+          serve rescue
+        if e: print "[mini-jag] rescue listener failed: $e"
+  serve port
+
+// Serves the request/ack protocol on $port until the device reboots.
+serve port/uart.Port -> none:
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason
@@ -163,6 +186,7 @@ main-ec618:
   arg/string := ""
   while true:
     command := reader.read-byte
+    host-contact_ = true
     watchdog.watchdog-feed  // The host is talking to us; we are alive.
     if command == CMD-PING:
       if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
@@ -185,7 +209,7 @@ main-ec618:
       else:
         out.write #[ACK-ERROR]
     else if command == CMD-INSTALL:
-      out.write #[(install-container reader out ? ACK-OK : ACK-ERROR)]
+      out.write #[(install-container reader out port ? ACK-OK : ACK-ERROR)]
     else if command == CMD-RUN:
       run-installed arg out
     else if command == CMD-FW-BEGIN:
@@ -235,7 +259,7 @@ status out/io.Writer message/string -> none:
 // flow-controls the transfer: the shared UART has no hardware flow control and
 // the device RX buffer is small, so the host waits for each chunk to reach
 // flash before sending the next.
-install-container reader/io.Reader out/io.Writer -> bool:
+install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
   size := reader.little-endian.read-int32
   expected-crc := reader.read-bytes 4
   clear-containers
@@ -243,10 +267,15 @@ install-container reader/io.Reader out/io.Writer -> bool:
   image-writer := containers.ContainerImageWriter size
   out.write #[ACK-READY]
   written := 0
+  errors-before := port.errors
   error := catch:
     while written < size:
-      length := reader.big-endian.read-uint32
-      chunk := reader.read-bytes length
+      // Bounded reads: a lost byte otherwise wedges the agent here until
+      // the watchdog (the host sees the error status + ACK-ERROR instead
+      // and can retry), and the rx-errs delta in the status line tells
+      // whether the device-side driver counted drops.
+      length := with-timeout --ms=8_000: reader.big-endian.read-uint32
+      chunk := with-timeout --ms=8_000: reader.read-bytes length
       watchdog.watchdog-feed  // Each chunk is host contact; a large install stays alive.
       summer.add chunk
       image-writer.write chunk
@@ -254,7 +283,7 @@ install-container reader/io.Reader out/io.Writer -> bool:
       out.write #[ACK-OK]
     if summer.get != expected-crc: throw "CRC mismatch"
     image-writer.commit
-  status out "install size=$size written=$written$(error ? " error=$error" : " ok")"
+  status out "install size=$size written=$written rx-errs=$(port.errors - errors-before)$(error ? " error=$error" : " ok")"
   return error == null
 
 // A GENERAL hardware watchdog, armed for the agent's whole life (main-ec618) and
@@ -275,6 +304,10 @@ WATCHDOG-HARDWARE-TIMEOUT ::= Duration --s=60
 // fed but NOT acked, so the host's keep-alive pings don't interleave ack bytes
 // into the test's output stream.
 test-running_/bool := false
+
+// Whether any host command ever arrived (on any channel) — gates the UART2
+// rescue listener in main-ec618.
+host-contact_/bool := false
 
 // Starts the installed test container in the BACKGROUND and reports its exit via
 // a status line, so the command loop keeps reading (and the watchdog keeps being

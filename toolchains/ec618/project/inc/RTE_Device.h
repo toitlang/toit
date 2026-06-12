@@ -12,12 +12,21 @@
 #define IRQ_MODE                0x3
 #define UNILOG_MODE             0x4
 
-#define RTE_UART0_TX_IO_MODE    UNILOG_MODE
+// ALL three UARTs use the same configuration — TX in DMA mode, RX in IRQ
+// mode — so Toit's uart driver behaves identically on every controller
+// (one driver path, one contract; the Uart_* blob is no longer used).
+// UART0 TX was UNILOG_MODE: unilog is disabled in this build
+// (CONFIG_TOIT_EC618_DISABLE_UNILOG) and printf goes through the CMSIS
+// print path, so nothing needed it.
+#define RTE_UART0_TX_IO_MODE    DMA_MODE
 #define RTE_UART0_RX_IO_MODE    IRQ_MODE
-#define USART0_RX_TRIG_LVL      (30)
+#define USART0_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 #define RTE_UART1_TX_IO_MODE    DMA_MODE
-#define RTE_UART1_RX_IO_MODE    DMA_MODE
+// IRQ_MODE, not DMA_MODE — same zero-length-descriptor hazard as UART2
+// below.
+#define RTE_UART1_RX_IO_MODE    IRQ_MODE
+#define USART1_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 // DMA_MODE for TX: a single-shot, auditable descriptor (no chaining). The
 // polling-mode Send blocked the VM one FIFO-drain per byte, starving every

@@ -270,6 +270,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
+      --large-buffers/bool?=null
       -> uart.Port:
     return open-uart_
         --uart-id=0
@@ -284,6 +285,7 @@ class Ec618:
         --parity=parity
         --mode=mode
         --rs485-de=rs485-de
+        --large-buffers=large-buffers
 
   /**
   Opens UART1 (EC618 controller 1, the only one that can wake the chip
@@ -315,6 +317,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
+      --large-buffers/bool?=null
       -> uart.Port:
     return open-uart_
         --uart-id=1
@@ -329,6 +332,7 @@ class Ec618:
         --parity=parity
         --mode=mode
         --rs485-de=rs485-de
+        --large-buffers=large-buffers
 
   /**
   Opens UART2 (EC618 controller 2). UART2 has no hardware flow control.
@@ -356,6 +360,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
+      --large-buffers/bool?=null
       -> uart.Port:
     return open-uart_
         --uart-id=2
@@ -370,6 +375,7 @@ class Ec618:
         --parity=parity
         --mode=mode
         --rs485-de=rs485-de
+        --large-buffers=large-buffers
 
   /**
   Opens the I2C0 bus.
@@ -435,6 +441,7 @@ class Ec618:
       --parity/int
       --mode/int
       --rs485-de/Pin?
+      --large-buffers/bool?
       -> uart.Port:
     if uart-id < 0 or uart-id > 2: throw "INVALID_ARGUMENT"
     if mapping < 0 or mapping >= UART-PADS_[uart-id].size: throw "INVALID_ARGUMENT"
@@ -467,6 +474,7 @@ class Ec618:
         --rx=rx
         --rts=rts
         --cts=cts
+        --large-buffers=large-buffers
         --baud-rate=baud-rate
         --data-bits=data-bits
         --stop-bits=stop-bits
@@ -491,3 +499,22 @@ class Ec618:
   */
   static adc1 --max-voltage/float?=null -> adc.Adc:
     return adc.Adc.channel 1 --max-voltage=max-voltage
+
+/**
+Reads a 32-bit word from a raw memory/peripheral address.
+
+Bring-up diagnostic: lets the HW test rig inspect live peripheral
+  registers from a test container instead of needing a JTAG debugger.
+The $address must be 4-byte aligned. Handle with care.
+*/
+peek32 address/int -> int:
+  #primitive.ec618.peek32
+
+/**
+Writes a 32-bit $value to a raw memory/peripheral $address.
+
+Bring-up diagnostic — see $peek32. The $address must be 4-byte aligned.
+Writing random addresses can corrupt or hang the system; handle with care.
+*/
+poke32 address/int value/int -> none:
+  #primitive.ec618.poke32

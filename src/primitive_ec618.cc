@@ -505,6 +505,24 @@ PRIMITIVE(reset_reason) {
   return Smi::from(ap);
 }
 
+// Raw 32-bit register/memory access for bring-up diagnostics (the rig can
+// inspect live peripheral state from a test container instead of needing a
+// debugger). Aligned addresses only. Dev-platform tool — handle with care.
+PRIMITIVE(peek32) {
+  ARGS(int64, address);
+  if (address < 0 || (address & 3) != 0) FAIL(INVALID_ARGUMENT);
+  uint32_t value = *reinterpret_cast<volatile uint32_t*>((uintptr_t)address);
+  return Primitive::integer((int64)value, process);
+}
+
+PRIMITIVE(poke32) {
+  ARGS(int64, address, int64, value);
+  if (address < 0 || (address & 3) != 0) FAIL(INVALID_ARGUMENT);
+  *reinterpret_cast<volatile uint32_t*>((uintptr_t)address) =
+      (uint32_t)(value & 0xffffffff);
+  return process->null_object();
+}
+
 // EC618 watchdog — a software watchdog with a hardware busy-lockup backstop.
 //
 // Neither hardware watchdog on this chip can catch an *idle* application
@@ -638,6 +656,8 @@ PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_init) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_feed) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_deinit) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(peek32) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(poke32) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 

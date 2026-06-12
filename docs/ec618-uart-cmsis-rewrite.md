@@ -219,3 +219,31 @@ wiring pending; the create primitive already resolves RTS/CTS pads).
 The uart2-duplex test now asserts the contract (accounting + delivery
 floor + integrity-when-undropped + clean exit) instead of demanding
 flow-control-grade 100% delivery.
+
+## Phase 3 (2026-06-12): UART0/1 migrated — uniform driver, one open edge
+
+All three UARTs now run the same CMSIS path (TX DMA from staging, RX IRQ
+mode); the Uart_* blob is gone from the driver, retiring #1 (close-hang)
+and #4 (discard-all + RX-wedge) for UART0/1. Pieces that mattered:
+
+- Print-UART sharing: create() must Uninitialize() first (Initialize is a
+  no-op on the boot-initialized console driver — the event callback would
+  silently never install); teardown for the print UART is partial (our RX
+  half only, controller stays powered for printf). _write retries
+  SendPolling on BUSY (an async agent Send on the shared controller used
+  to silently clip console lines the test rig parses).
+- 1-byte port writes use SendPolling (the driver's num==1 Send
+  special-case lost a protocol ack byte under load at least once).
+- The FIRST uart0 open had the same dead-session issue as uart2's
+  first-open (GPR reset cycle in create covers all controllers).
+- NEW: uart1-echo test pair (round-trips on the control-lane controller,
+  RX via the PAD33/IO16 wire); rescue control channel — mini-jag serves
+  UART2 if UART0 sees no host contact after boot, reachable through the
+  ESP32 TCP bridge + socat PTY (tester needs no changes).
+- peek32/poke32 primitives (lib/ec618): register-level autopsies from a
+  test container; with the rescue channel this replaced a JTAG debugger
+  during this work.
+
+OPEN: UART0 bulk-RX collapses after a set-baud at any rate > 115200
+(known-issues #9, fully characterized). The rig runs at --fast-baud
+115200 until fixed.

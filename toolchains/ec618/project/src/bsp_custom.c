@@ -44,13 +44,21 @@ extern ARM_DRIVER_USART Driver_USART2;
 #  error "CONFIG_TOIT_EC618_PRINT_UART_ID must be 0, 1 or 2"
 #endif
 
-// Newlib _write syscall: bridges printf -> io_putchar -> UART SendPolling.
-extern int io_putchar(int ch);
-
+// Newlib _write syscall: printf -> UART SendPolling on the print driver.
+//
+// SendPolling returns ARM_DRIVER_ERROR_BUSY while an asynchronous DMA
+// Send from the Toit uart driver is in flight on the SAME controller
+// (the agent shares the console UART). Without a retry, console bytes
+// are silently clipped exactly when the agent transmits — and the test
+// rig parses console lines. Spin bounded by roughly one staging-buffer
+// drain (2 KiB at 115200 ~= 180 ms); the SEND_COMPLETE irq that clears
+// the busy state keeps firing while we spin in task context.
 int _write(int file, char *ptr, int len) {
     (void)file;
-    for (int i = 0; i < len; i++) {
-        io_putchar(*ptr++);
+    if (UsartPrintHandle == NULL) return len;
+    for (volatile int spin = 0; spin < 30000000; spin++) {
+        int32_t status = UsartPrintHandle->SendPolling((const uint8_t*)ptr, len);
+        if (status != ARM_DRIVER_ERROR_BUSY) break;
     }
     return len;
 }

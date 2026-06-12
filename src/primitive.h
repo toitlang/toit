@@ -444,6 +444,8 @@ namespace toit {
   PRIMITIVE(watchdog_feed, 0)                \
   PRIMITIVE(watchdog_deinit, 0)              \
   PRIMITIVE(wakeup_pin_values, 0)            \
+  PRIMITIVE(peek32, 1)                       \
+  PRIMITIVE(poke32, 2)                       \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

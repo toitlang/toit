@@ -119,8 +119,8 @@ main args:
             --help="Run the test in flaky mode, which will retry on failure"
             --default=false,
         cli.OptionInt "fast-baud"
-            --help="Hop the EC618 control UART to this baud after the handshake (115200 disables)"
-            --default=921600,
+            --help="Hop the EC618 control UART to this baud after the handshake (115200 disables; >115200 currently trips known-issues #9 bulk-RX loss on the uart0 agent)"
+            --default=115200,
       ]
       --rest=[
         cli.Option "test"
@@ -166,8 +166,8 @@ main args:
             --help="Log the raw console for a few seconds after the upgrade reboot (to debug a trial slot that never reconnects)"
             --default=false,
         cli.OptionInt "fast-baud"
-            --help="Hop the control UART to this baud after each handshake (115200 disables)"
-            --default=921600,
+            --help="Hop the control UART to this baud after each handshake (115200 disables; >115200 currently trips known-issues #9 on the uart0 agent)"
+            --default=115200,
       ]
       --run=:: | invocation/cli.Invocation |
         firmware-update invocation
@@ -484,7 +484,7 @@ class Ec618Link:
   fast-baud_/int
   pending_/string := ""  // Partial line held until its newline arrives.
 
-  constructor --port-path/string --baud-rate/int=115200 --fast-baud/int=921600 --name/string="ec618":
+  constructor --port-path/string --baud-rate/int=115200 --fast-baud/int=115200 --name/string="ec618":
     port_ = uart.HostPort port-path --baud-rate=baud-rate
     reader_ = port_.in
     writer_ = port_.out

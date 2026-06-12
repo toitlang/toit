@@ -365,3 +365,48 @@ byte array above the internal limit. 5/5 clean runs on the previously
 Lesson for primitive authors: never call
 `object_heap()->allocate_internal_byte_array()` with an unbounded size —
 use `process->allocate_byte_array()` (same null-on-failure contract).
+
+## 9. UART0 bulk RX collapses after a set-baud — OPEN (rig pinned at 115200)
+
+Found while migrating the agent's UART0 from the blob to the CMSIS driver.
+
+**Symptom.** On the uniform CMSIS driver, the test agent on UART0 works
+completely at 115200 (handshake, installs, full 480 KB firmware OTAs). After
+a CMD-BAUD hop (set-baud power-cycle) to ANY higher rate, small messages
+still round-trip fine — but the first multi-KB burst into UART0 RX is
+swallowed: at 921600/460800 essentially nothing reaches the reader
+(rx-errs=2..4 counted, agent blocks); at 230400 one 2 KB chunk survives,
+then the same stall. The same bursts into UART1/UART2 deliver (uart1-echo,
+uart2 floods), and the blob-era UART0 did 921600 bulk for days.
+
+**Diagnosis trail (rescue-channel register autopsy + dual-channel watch).**
+- The divisor is NOT the problem: a peek32 watch sampling DLL through a
+  kill shows div=14 -> 1 at the hop and STAYS at the fast rate through and
+  after the swallowed burst. (An earlier div=14 autopsy was a post-reset
+  red herring.)
+- IER stays 0x15 (all RX irqs armed), ADCR=0 (no autobaud), MFCR sane.
+- The burst produces 2-4 RX_OVERFLOW/error events and then silence: the
+  overrun starvation of #8 eats the burst, and the storm can END with
+  bytes stranded in the hardware FIFO and no interrupt edge left to
+  deliver them (DATA_REQ appears edge-triggered at the threshold and the
+  idle-timeout was consumed during the storm).
+- An RX FIFO trigger of 1 is NOT a fix: the RX_DATA_REQ handler then
+  drains the FIFO completely, so the idle-timeout (which needs a byte
+  waiting) never fires for short messages — single-byte pings land in the
+  driver buffer with no completion event. Deaf agent; OTA trial rolled
+  back twice proving it.
+- Mitigations shipped (help but insufficient): the read primitive rescues
+  FIFO-stranded bytes whenever the reader looks, and ERROR events now also
+  wake blocked readers so the rescue is reachable.
+
+**State.** The rig runs with --fast-baud 115200 (tester default): fully
+functional, OTA ~61 s instead of ~24 s. The agent serves a RESCUE listener
+on UART2 (via the ESP32 TCP bridge + socat PTY, see
+tests/hw/esp-tester/uart-bridge-esp32.toit) when no host contact arrives
+on UART0 — built during this hunt and proven end-to-end.
+
+**Next angles.** Oscilloscope on UART0 RX during the burst (is the wire
+clean?); whether the set-baud power-cycle leaves an IRQ/FIFO state the
+fresh-boot path doesn't (a reopen instead of set-baud as the CMD-BAUD
+implementation); RTS/CTS once the rig wires it; per-chunk retransmit in
+the install protocol to tolerate residual loss at any rate.
