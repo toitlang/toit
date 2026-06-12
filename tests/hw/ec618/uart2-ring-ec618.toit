@@ -3,21 +3,21 @@
 // be found in the tests/LICENSE file.
 
 /**
-EC618 half of the UART2 driver RX-ring characterization test.
+EC618 half of the UART2 RX-ring contract test (CMSIS driver).
 
-Locks in the (closed-source) PLAT UART driver's RX buffering behavior so an SDK
-or config change that moves it gets noticed:
-  - The RX ring holds exactly 32 KiB (32000 B survives a no-reader burst,
-    33000 B does not).
-  - On overflow the driver silently discards the ENTIRE buffered content (a
-    burst one byte over capacity leaves zero readable bytes, not capacity-many),
-    and the error callback does not fire ($uart.Port.errors stays 0).
-  - WORSE: after one overflow, RX on the port is DEAD — later bursts that fit
-    comfortably also deliver nothing — until the port is closed and reopened
-    (Uart_BaseInitEx); set-baud (Uart_ChangeBR) does not recover it.
-These were measured on 2026-06-10 (see docs/ec618-known-issues.md); if this test
-fails after a third_party/SDK change, re-measure rather than assume a regression
-in Toit code.
+Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path
+(docs/ec618-uart-cmsis-rewrite.md, known-issues #7/#8) so a regression gets
+noticed:
+  - At >= 460800 baud the port defaults to --large-buffers: the ring holds
+    32 KiB (one slot reserved, so 32767 usable; the armed 512-byte chunk and
+    the 32-deep hardware FIFO add a little slack at the boundary).
+  - On overflow the ring drops the NEWEST bytes: the SURVIVING bytes are an
+    exact prefix of the sent stream (CRC-verified), and every dropped byte
+    is counted in $uart.Port.errors.
+  - RX SURVIVES an overflow: the next burst (with a reader) delivers fully.
+    (The old blob driver discarded the whole buffer, kept errors at 0, and
+    wedged RX until reopen — known-issues #4.)
+  - set-baud does not disturb RX (it is a full controller power-cycle).
 
 The ESP32 half is the uart2-bigdata-esp32.toit command server (B/S/Q over the
 control lane); the EC618 sleeps through each burst so the ring has no reader.
@@ -32,77 +32,88 @@ Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-ring-ec618.toit
 */
 
+import crypto.crc show Crc32
 import ec618 show Ec618
 import uart
 
 CONTROL-BAUD ::= 115200
 BAUD ::= 921600
-RING ::= 32768
+RING ::= 32768          // --large-buffers ring (default at this baud).
+SLACK ::= 512 + 32      // Armed chunk + hardware FIFO can add up to this.
 
 gen-byte i/int -> int: return (i * 31 + 7) & 0xff
-PATTERN ::= ByteArray 4096 + 256: gen-byte it
+
+// CRC-32 of the deterministic stream's first n bytes.
+crc-of-stream n/int -> int:
+  crc := Crc32
+  chunk := ByteArray 4096
+  off := 0
+  while off < n:
+    size := min chunk.size (n - off)
+    size.repeat: chunk[it] = gen-byte (off + it)
+    crc.add chunk 0 size
+    off += size
+  return crc.get-as-int
+
+// Drains the port, returning [bytes-read, crc-32 of them].
+drain-counted port/uart.Port -> List:
+  crc := Crc32
+  count := 0
+  while true:
+    chunk/ByteArray? := null
+    catch: chunk = with-timeout --ms=400: port.in.read
+    if chunk == null: return [count, crc.get-as-int]
+    crc.add chunk
+    count += chunk.size
+
+drain port/uart.Port -> none:
+  drain-counted port
 
 main:
   control := Ec618.uart1 --baud-rate=CONTROL-BAUD --rx-disabled
   test := Ec618.uart2 --baud-rate=BAUD
   failures := []
 
-  // [burst size, expected surviving bytes].
-  [[4000, 4000], [32000, 32000], [33000, 0], [RING * 2, 0]].do: | probe/List |
-    send := probe[0]
-    expected := probe[1]
+  // A no-reader burst: [send size, min survivors, max survivors].
+  // Fitting bursts survive completely; an over-capacity burst keeps an
+  // exact PREFIX of ring-capacity-ish bytes and counts the dropped rest.
+  probe := : | send/int lo/int hi/int label/string |
     control.out.write "B $BAUD\n"
     sleep --ms=500
     drain test
+    errors-before := test.errors
 
     control.out.write "S $send\n"
     wire-ms := send * 10 * 1000 / BAUD
     sleep --ms=wire-ms + 600          // No reader while the burst arrives.
 
-    count := 0
-    first-bad := -1
-    while count < send:
-      chunk/ByteArray? := null
-      catch: chunk = with-timeout --ms=400: test.in.read
-      if chunk == null: break
-      if first-bad < 0:
-        phase := count & 0xff
-        if phase + chunk.size <= PATTERN.size:
-          if chunk != PATTERN[phase .. phase + chunk.size]:
-            chunk.size.repeat:
-              if first-bad < 0 and chunk[it] != (gen-byte count + it):
-                first-bad = count + it
-      count += chunk.size
-    ok := count == expected and first-bad == -1 and test.errors == 0
-    print "uart2-ring-ec618: burst=$send survived=$count (want $expected) first-bad=$first-bad errors=$test.errors $(ok ? "ok" : "FAIL")"
-    if not ok: failures.add "burst=$send"
+    result := drain-counted test
+    count := result[0]
+    crc-ok := result[1] == (crc-of-stream count)
+    errs := test.errors - errors-before
+    counted := count + errs
+    ok := lo <= count and count <= hi
+        and crc-ok
+        and (send <= hi ? errs == 0 : errs > 0)
+        and counted <= send and counted >= send - 100
+    print "uart2-ring-ec618: $label burst=$send survived=$count (want $lo..$hi) prefix-crc=$(crc-ok ? "ok" : "BAD") errors=$errs accounted=$counted/$send $(ok ? "ok" : "FAIL")"
+    if not ok: failures.add label
     sleep --ms=300
 
-  // The bursts above ended in an overflow, so the ring is now in its wedged
-  // state: even a small burst must deliver NOTHING until the port is reopened.
-  control.out.write "S 8192\n"
-  sleep --ms=600
-  wedged := 0
-  while true:
-    chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=400: test.in.read
-    if chunk == null: break
-    wedged += chunk.size
-  print "uart2-ring-ec618: post-overflow burst=8192 survived=$wedged (want 0: RX wedged until reopen)"
-  if wedged != 0: failures.add "post-overflow"
+  probe.call 4000        4000        4000               "small"
+  probe.call 32000       32000       32000              "near-capacity"
+  probe.call 40000       (RING - 1)  (RING - 1 + SLACK) "overflow"
+  // THE contract change vs the blob: RX must survive the overflow above.
+  probe.call 4000        4000        4000               "post-overflow"
 
+  // set-baud must not disturb RX either (full controller power-cycle).
+  test.baud-rate = BAUD
+  probe.call 4000        4000        4000               "post-set-baud"
+
+  // And a reopen behaves like a fresh port.
   test.close
   test = Ec618.uart2 --baud-rate=BAUD
-  control.out.write "S 8192\n"
-  sleep --ms=600
-  recovered := 0
-  while true:
-    chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=400: test.in.read
-    if chunk == null: break
-    recovered += chunk.size
-  print "uart2-ring-ec618: after-reopen burst=8192 survived=$recovered (want 8192)"
-  if recovered != 8192: failures.add "reopen-recovery"
+  probe.call 4000        4000        4000               "post-reopen"
 
   control.out.write "Q\n"
   control.close
@@ -110,11 +121,5 @@ main:
 
   if not failures.is-empty:
     print "uart2-ring-ec618: FAIL $failures"
-    throw "UART2 ring behavior changed: $failures"
-  print "uart2-ring-ec618: PASS ring=32KiB, overflow discards all + wedges RX until reopen, errors counter silent"
-
-drain port/uart.Port -> none:
-  while true:
-    data/ByteArray? := null
-    catch: data = with-timeout --ms=150: port.in.read
-    if data == null: return
+    throw "UART2 ring contract broken: $failures"
+  print "uart2-ring-ec618: PASS ring=32KiB(large-buffers), drop-newest counted in errors, exact prefix survives, RX survives overflow + set-baud + reopen"
