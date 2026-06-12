@@ -92,13 +92,11 @@ DATA-SYMBOLS ::= {"Driver_I2C0", "Driver_I2C1", "Driver_USART0", "Driver_USART1"
 
 // PLAT functions the table must carry even though the CURRENT image does
 // not reference them (they are defined in the PLAT archives; the table
-// entry itself pulls them into the base link). The async-I2C driver uses
-// the luatos core I2C API (soc_i2c.h: IRQ-driven, per-byte timeout,
-// completion callback — unlike the timeout-less polling CMSIS blob).
+// entry itself pulls them into the base link). The soc_i2c core-driver
+// set is GONE: I2C now runs on the open bsp_i2c.c CMSIS driver through
+// the Driver_I2Cn DATA structs (docs/ec618-i2c-cmsis-rewrite.md), so the
+// VM no longer calls any closed I2C code.
 FORCE-INCLUDE-EXACT ::= {
-  "I2C_MasterSetup", "I2C_Prepare", "I2C_MasterXfer", "I2C_WaitResult",
-  "I2C_BlockWrite", "I2C_BlockRead", "I2C_ChangeBR", "I2C_Reset",
-  "I2C_UsePollingMode", "I2C_SetNoBlock",
   // The AON/wakeup-pad surface. The AON-domain GPIOs (pads 40..48) sit
   // behind the AON IO LDO: slpManAONIOPowerOn powers them (the GPIO
   // driver calls it when an AON pad is opened); the latch/voltage
@@ -125,6 +123,15 @@ DEFAULT-EXCLUDE ::= {
   // toit::OS::set_writable — only defined for host (os_linux/win/darwin),
   // dead on embedded.
   "_ZN4toit2OS12set_writableEPNS_12ProgramBlockEb",
+  // The closed soc_i2c core-driver stack, DELIBERATELY dropped from the
+  // ABI: I2C runs on the open bsp_i2c.c CMSIS driver, and the two stacks
+  // must never be mixed on a controller (soc_i2c.h's own warning). The
+  // generous elf-prefix rules would keep resurrecting these (the table
+  // entry keeps them linked, the link keeps them in the elf), so the cut
+  // has to be sticky.
+  "I2C_MasterSetup", "I2C_Prepare", "I2C_MasterXfer", "I2C_WaitResult",
+  "I2C_BlockWrite", "I2C_BlockRead", "I2C_ChangeBR", "I2C_Reset",
+  "I2C_UsePollingMode", "I2C_SetNoBlock",
 }
 
 // Relocation types that denote a VM->PLAT call/jump.

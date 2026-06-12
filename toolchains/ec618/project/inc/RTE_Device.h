@@ -54,8 +54,13 @@
 
 #define RTE_SPI1_IO_MODE        POLLING_MODE
 
-#define RTE_I2C0_IO_MODE        POLLING_MODE
-#define RTE_I2C1_IO_MODE        POLLING_MODE
+// I2C runs IRQ-driven on the (fork-completed) bsp_i2c.c engine: the
+// command engine does the transfer in hardware, the IRQ handler feeds and
+// drains the 16-deep FIFO, no DMA channels consumed (the 7-channel MP pool
+// is already 6/7 committed when all three UARTs are open). Upstream never
+// shipped this mode — see docs/ec618-i2c-cmsis-rewrite.md.
+#define RTE_I2C0_IO_MODE        IRQ_MODE
+#define RTE_I2C1_IO_MODE        IRQ_MODE
 
 
 // I2C0 (Inter-integrated Circuit Interface) [Driver_I2C0]
