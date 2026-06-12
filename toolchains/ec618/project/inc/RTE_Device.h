@@ -34,18 +34,20 @@
 // descriptor patch in bsp_usart.c, the DMA engine captures straight
 // through XIP flash stalls — full-speed agent installs/OTA at 921600
 // (the known-issues #9 fix; IRQ-mode handlers live in flash and are dead
-// during every flash erase/write). UART1/UART2 RX stay in the
-// battle-tested IRQ mode until DMA RX is validated for them too. Keep
-// kRxIsDma in uart_ec618.cc in sync with these.
+// during every flash erase/write). UART1/UART2 RX run in DMA mode for
+// the same reason — user UARTs must not drop bytes while a concurrent
+// flash write stalls XIP. Keep kRxIsDma in uart_ec618.cc in sync with
+// these. (The TRIG_LVL defines only matter in IRQ mode; kept for easy
+// fallback.)
 #define RTE_UART0_TX_IO_MODE    DMA_MODE
 #define RTE_UART0_RX_IO_MODE    DMA_MODE
 
 #define RTE_UART1_TX_IO_MODE    DMA_MODE
-#define RTE_UART1_RX_IO_MODE    IRQ_MODE
+#define RTE_UART1_RX_IO_MODE    DMA_MODE
 #define USART1_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 #define RTE_UART2_TX_IO_MODE    DMA_MODE
-#define RTE_UART2_RX_IO_MODE    IRQ_MODE
+#define RTE_UART2_RX_IO_MODE    DMA_MODE
 #define USART2_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 #define RTE_SPI0_IO_MODE        POLLING_MODE

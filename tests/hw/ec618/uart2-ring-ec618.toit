@@ -71,6 +71,12 @@ drain port/uart.Port -> none:
 
 main:
   control := Ec618.uart1 --baud-rate=CONTROL-BAUD --rx-disabled
+  // Terminate any junk in the helper's line buffer: a fresh UART1 open can
+  // emit a glitch byte, and the EC618 boot ROM sprays a newline-less banner
+  // on UART1 at every reset. Without this, that junk glues onto the first
+  // command and the helper drops it (plus every command until the next "B").
+  control.out.write "\n"
+  sleep --ms=100
   test := Ec618.uart2 --baud-rate=BAUD
   failures := []
 

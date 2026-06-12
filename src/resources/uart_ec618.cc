@@ -125,7 +125,7 @@ static USART_TypeDef* const kUartRegs[3] = {
 // Which controllers run RX in DMA mode (must mirror RTE_UARTn_RX_IO_MODE
 // in RTE_Device.h): the IRQ-mode controllers need the FIFO crutches
 // below, and manual RBR reads would corrupt a DMA-owned FIFO.
-static const bool kRxIsDma[3] = { true, false, false };
+static const bool kRxIsDma[3] = { true, true, true };
 
 // --- Toit state bits (match lib/uart.toit). --------------------------------
 static const uint32_t kReadState  = 1 << 0;

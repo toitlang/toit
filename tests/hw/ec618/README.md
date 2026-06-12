@@ -75,6 +75,16 @@ Notes:
 - The unpowered BMP280 back-powers through its breakout pull-ups: pads
   23/24 activity leaks onto the IO13 power wire and the sensor can look
   half-alive.
+- The EC618 boot ROM sprays a banner on UART1 (`^boot.rom...`, binary, NO
+  trailing newline) at every reset — including watchdog resets between test
+  runs. A resident ESP32 helper listening on the control lane buffers that
+  junk, the next real command glues onto it inside the helper's line
+  reader, and BOTH the command and any follow-ups die (the helpers ignore
+  everything until the first well-formed `B`). Every EC618-side test must
+  write a sacrificial `"\n"` right after opening the control lane (all
+  current tests do — see uart2-ring-ec618.toit). The symptom of forgetting:
+  the first control exchange of a run silently vanishes, but only when the
+  device rebooted while the helper was already running.
 
 ## Running a dual-board test
 

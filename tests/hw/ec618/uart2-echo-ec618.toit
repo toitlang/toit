@@ -35,6 +35,10 @@ TOKEN ::= "EC618-UART2-RT-0123456789ABCDEF"
 
 main:
   control := Ec618.uart1 --baud-rate=CONTROL-BAUD --rx-disabled
+  // Terminate any junk in the helper's line buffer (open-glitch byte +
+  // the boot-ROM banner on UART1 at reset) — see uart2-ring-ec618.toit.
+  control.out.write "\n"
+  sleep --ms=100
   failures := []
 
   // Mode "reopen": a fresh UART2 open per baud. Open BEFORE telling the ESP32, so

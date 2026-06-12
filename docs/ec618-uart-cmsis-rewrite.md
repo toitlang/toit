@@ -264,3 +264,30 @@ uart1-echo (sweep capped at 921600 — 2 MBd is wiring-marginal on the
 rig), ring contract, duplex PASS at 921600/2M/3M under the accounting
 contract (tolerance now scales with baud for uncounted hw overruns),
 sbdup/floods clean, RS485 PASS.
+
+## Phase 5 (2026-06-12, later): UART1/UART2 RX to DMA — all-DMA config
+
+kRxIsDma = {true, true, true}, RTE UART1/2 RX_IO_MODE = DMA_MODE (base
+change, full flash). The "fresh-boot UART2 DMA bulk wedge" that had
+blocked this flip dissolved under instrumentation — it was never a
+driver bug (see known-issues #9 addendum): the boot ROM sprays a
+newline-less banner on UART1 at every reset, a resident control-lane
+helper glues it onto the first command, and the whole first exchange
+silently dies. 6/6 reproducible with a helper that lived through a
+watchdog reset; register-level probes (pad mux PCR33/34, LSR/FCNR,
+SEND_COMPLETE counters) showed the EC618 transmitting identically in
+failing and passing rounds. Two harness fixes, both HW-verified:
+  - every control-lane test writes a sacrificial "\n" after open
+    (kills the glue; 2/2 green under the exact failing condition);
+  - uart1-echo gained uart2-echo's flush-rx-before-round-trip (the raw
+    echoer faithfully returns banner residue / float junk gathered
+    while the EC618 side was closed; the exact-compare needs a clean
+    start) and a got/want/timeout/head diag line on mismatch.
+
+Battery (all-DMA, 921600 fast-baud, helpers restarted per test):
+uart2-echo 14/14, ring contract (incl. 32767-prefix overflow + counted
+drops), duplex 256 KiB each way at 921600/2M/3M, bigdata 256 KiB clean
+at five bauds up to 4M with no leak, sbdup clean exit, rx/tx floods,
+RS485 3 bauds, uart2-config 25 configs x 2 bauds + parity detection,
+uart1-echo both modes (sweep capped at 921600). The IRQ-mode crutches
+remain in uart_ec618.cc behind kRxIsDma as the documented fallback.

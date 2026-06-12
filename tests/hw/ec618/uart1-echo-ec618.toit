@@ -48,8 +48,19 @@ switch-helper port/uart.Port new-baud/int -> none:
   // the hop, and at 2 MBd on jumper wiring the margins are thin.
   sleep --ms=600
 
+// Drains the RX buffer until the wire is quiet, so a round-trip starts
+// clean (same hardening as uart2-echo): the echo helper faithfully echoes
+// whatever the line carried while the EC618 side was closed/high-Z —
+// boot-ROM banner residue, float noise, open glitches.
+flush-rx port/uart.Port -> none:
+  while true:
+    data/ByteArray? := null
+    catch: data = with-timeout --ms=80: port.in.read
+    if data == null: return
+
 round-trip port/uart.Port -> bool:
   pattern := ByteArray PAYLOAD: gen-byte it
+  flush-rx port
   port.out.write pattern
   got := #[]
   e := catch:
@@ -58,7 +69,12 @@ round-trip port/uart.Port -> bool:
         data := port.in.read
         if not data: break
         got += data
-  return e == null and got == pattern
+  if e == null and got == pattern: return true
+  // Distinguish junk-prefix (floating-line bytes echoed ahead of the
+  // pattern) from RX loss (short read / timeout) at a glance.
+  head := got.size > 8 ? got[..8] : got
+  print "uart1-echo-ec618:   diag: got=$got.size want=$PAYLOAD timeout=$(e != null) errors=$port.errors head=$head"
+  return false
 
 main:
   failures := []

@@ -428,10 +428,23 @@ zero-length-descriptor bug (#7) directly in the submodule fork's
 bsp_usart.c (USART_DmaUpdateRxConfig chains desc[0] -> desc[2] when the
 remainder is zero; num==0 mirrors the catcher descriptor) and switching
 UART0 RX to DMA mode. Result: agent installs and full firmware OTAs at
-921600 with rx-errs=0 (~24 s OTA, back to blob parity). UART1/UART2 RX
-stay in IRQ mode until DMA RX is validated for them (a fresh-boot UART2
-DMA open still wedged on its first bulk burst in one trial — debug with
-the rescue toolkit before flipping kRxIsDma).
+921600 with rx-errs=0 (~24 s OTA, back to blob parity).
+
+2026-06-12 (later): UART1/UART2 RX flipped to DMA mode too and validated
+on hardware — all three UARTs now run DMA both directions. The
+"fresh-boot UART2 DMA open wedged on first bulk burst" trial that had
+blocked the flip turned out to be a HARNESS artifact, not a driver bug:
+the boot ROM sprays a newline-less banner on UART1 at every reset, a
+resident ESP32 helper glues it onto the first control command, and the
+whole first exchange dies — so the test saw zero bytes on uart2 because
+the burst was never requested. Root-caused with register-level probes
+(pad mux, LSR/FCNR, DMA-callback counters identical in failing and
+passing rounds — the EC618 transmitted every byte) plus a verbose helper
+that logged the glued line verbatim. Fix: every EC618-side test writes a
+sacrificial "\n" after opening the control lane (see the boot-ROM-banner
+gotcha in tests/hw/ec618/README.md). The IRQ-mode crutches in
+uart_ec618.cc (drain-to-1 self-heal, read-side FIFO rescue) remain in
+the code, gated off by kRxIsDma, as the documented fallback.
 
 Two rig bugs found while validating (both fixed): create() must not
 Uninitialize a never-initialized driver (closing never-opened DMA
