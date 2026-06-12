@@ -33,7 +33,18 @@ main:
   while true:
     nl := buffer.index-of '\n'
     if nl < 0:
-      chunk := control.in.read
+      chunk/ByteArray? := null
+      if buffer.is-empty:
+        chunk = control.in.read
+      else:
+        // A partial line that goes idle is reset junk — the EC618 boot ROM
+        // sprays a newline-less banner on UART1 at every reset. Discard it
+        // so it cannot glue onto the next real command.
+        e := catch: chunk = with-timeout --ms=300: control.in.read
+        if e:
+          print "gpio-interrupt-esp32: discarding $buffer.size idle junk bytes"
+          buffer = #[]
+          continue
       if chunk == null: break
       buffer += chunk
       continue

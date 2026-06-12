@@ -132,6 +132,18 @@ class LineReader:
         line := pending_[..nl].trim
         pending_ = pending_[nl + 1 ..]
         return line
-      chunk := port_.in.read
+      chunk/ByteArray? := null
+      if pending_ == "":
+        chunk = port_.in.read
+      else:
+        // A partial line that goes idle is reset junk — the EC618 boot ROM
+        // sprays a newline-less banner on UART1 at every reset. Discard it
+        // so it cannot glue onto (and eat) the next real command; real
+        // commands arrive in a single write, never with an idle gap inside.
+        e := catch: chunk = with-timeout --ms=300: port_.in.read
+        if e:
+          print "uart2-bigdata-esp32: discarding $pending_.size idle junk bytes"
+          pending_ = ""
+          continue
       if chunk == null: return "Q"
       pending_ += chunk.to-string-non-throwing
