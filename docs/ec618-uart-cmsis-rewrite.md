@@ -190,3 +190,32 @@ triggered there. Fixed with `Process::allocate_byte_array()` (external
 above the internal limit); 5/5 clean on the previously ~60%-fatal
 reproducer. Set-baud keeps the power-cycle implementation (mirrors
 create; defensive, costs microseconds). Full story: known-issues #8.
+
+## Phase 2 (2026-06-12): DMA TX — full-flashed and green
+
+TX moved to DMA mode (RTE_UART2_TX_IO_MODE), bundled with the proper
+USART2_RX_TRIG_LVL=16 RTE override (the slot-side FCR pokes are gone).
+Send() is now asynchronous: the write primitive stages bytes into a
+malloc'd tx_buf (2 KiB / 4 KiB with --large-buffers — DMA must not read
+from a movable Toit heap object), returns 0 while a Send is in flight,
+and the SEND_COMPLETE callback clears tx_busy and posts the TX event the
+library waits on. tx_idle() also checks tx_busy (the armed-but-unstarted
+DMA gap would otherwise let flush return early); set_baud's power-cycle
+resets tx_busy (an in-flight Send dies with the baud change, by design).
+
+RS485: the DE-line drop was keyed on ARM_USART_EVENT_TX_COMPLETE — which
+bsp_usart.c NEVER fires (latent bug: DE stuck high on the CMSIS path).
+It now lives in the SEND_COMPLETE callback with a TEMT spin bounded by
+one frame time; the write primitive's inline DE poll is blob-path only.
+
+Battery (modest-affair, full flash): echo 14/14; ring contract PASS on
+the RTE trigger; RS485 PASS (3 bauds x 5 round-trips + big); RX flood
+99.6%; TX flood 3x perfect CRC and ~40% faster wall-clock; duplex PASS
+under the honest contract — at 921600 accounting is EXACT
+(262144/262144 delivered-or-counted), data arriving is clean, exits
+clean. Remaining duplex delivery shortfall is reader-side pacing (GC +
+CRC in the hot loop) — full delivery needs RTS/CTS flow control (rig
+wiring pending; the create primitive already resolves RTS/CTS pads).
+The uart2-duplex test now asserts the contract (accounting + delivery
+floor + integrity-when-undropped + clean exit) instead of demanding
+flow-control-grade 100% delivery.

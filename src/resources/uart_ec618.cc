@@ -66,6 +66,13 @@ struct CmsisRx {
   uint32_t seen;            // Bytes of the CURRENT transfer already pushed.
   uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
   uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
+  // TX staging: Send() is asynchronous in DMA mode and keeps reading the
+  // buffer after the primitive returns, so the bytes are copied out of the
+  // (movable) Toit heap object first. `tx_busy` is set when a Send is in
+  // flight and cleared by the SEND_COMPLETE callback.
+  uint8_t* tx_buf;
+  uint32_t tx_buf_size;
+  volatile bool tx_busy;
   // Diagnostic counters (kept cheap; exposed to debugging sessions).
   uint32_t cb_events;       // Callback invocations.
   uint32_t rearm_fails;     // Receive() re-arms that returned an error.
@@ -154,6 +161,9 @@ class UartResourceGroup : public ResourceGroup {
         CmsisRx* rx = state.cmsis_rx;
         state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
         irq_restore(mask);
+        // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
+        // so nothing references tx_buf (or chunk) past this point.
+        free(rx->tx_buf);
         free(rx->ring);
         free(rx);
       } else {
@@ -300,7 +310,19 @@ static void cmsis_rx_event2(uint32_t event) {
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
     int de = uart_states[id].de_pad;
-    if (de >= 0 && (event & ARM_USART_EVENT_TX_COMPLETE)) set_de_level(de, 0);
+    if (de >= 0) {
+      // RS485 direction: SEND_COMPLETE means the FIFO drained, but up to
+      // one frame can still sit in the shift register. Spin for TEMT —
+      // bounded by one frame time (~1 ms at 9600) and rare (RS485 only);
+      // bsp_usart.c never fires TX_COMPLETE, so this is the only place
+      // the DE line can drop with correct timing.
+      USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
+      for (int spin = 0; spin < 2000000; spin++) {
+        if ((reg->LSR & USART_LSR_TX_EMPTY_Msk) != 0) break;
+      }
+      set_de_level(de, 0);
+    }
+    rx->tx_busy = false;
     send_uart_event(id, Event::UART_KIND_TX_DONE);
   }
   if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR | ARM_USART_EVENT_RX_PARITY_ERROR |
@@ -316,7 +338,11 @@ static void cmsis_rx_event2(uint32_t event) {
 // never initialized (the CMSIS-owned UART2) — flush hung forever on it.
 // Read the hardware LSR directly for the CMSIS path.
 static bool tx_idle(int id) {
-  if (uart_states[id].cmsis_rx != null) {
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  if (rx != null) {
+    // tx_busy covers the armed-but-not-yet-started DMA gap, where the
+    // FIFO is still empty and TEMT alone would report idle too early.
+    if (rx->tx_busy) return false;
     USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
     return (reg->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
   }
@@ -630,20 +656,25 @@ PRIMITIVE(create) {
   uint32_t tx_cache = 1024;
 
   if (id == 2) {
-    // UART2 runs on the open CMSIS driver (see the include comment).
-    // Both TX (polling mode per RTE_Device.h — Send is synchronous like
-    // Uart_TxTaskSafe) and RX move together: the two stacks fight over
+    // UART2 runs on the open CMSIS driver (see the include comment). TX is
+    // DMA mode (asynchronous Send from the malloc'd staging buffer), RX is
+    // IRQ mode; both move together: the CMSIS and blob stacks fight over
     // the same registers, so they are never mixed on one controller.
     uint32_t ring_size = (tx_flags & kTxFlagLargeBuffers) ? 32768 : 8192;
+    uint32_t tx_buf_size = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
     CmsisRx* rx = unvoid_cast<CmsisRx*>(calloc(1, sizeof(CmsisRx)));
     uint8_t* ring = rx ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
-    if (rx == null || ring == null) {
+    uint8_t* tx_buf = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
+    if (rx == null || ring == null || tx_buf == null) {
+      free(ring);
       free(rx);
       delete resource;
       FAIL(MALLOC_FAILED);
     }
     rx->ring = ring;
     rx->ring_size = ring_size;
+    rx->tx_buf = tx_buf;
+    rx->tx_buf_size = tx_buf_size;
     rx->control = cmsis_control_word(data_bits, parity, stop_bits);
     uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
     Driver_USART2.Initialize(cmsis_rx_event2);
@@ -657,17 +688,8 @@ PRIMITIVE(create) {
     Driver_USART2.PowerControl(ARM_POWER_FULL);
     Driver_USART2.PowerControl(ARM_POWER_OFF);
     Driver_USART2.PowerControl(ARM_POWER_FULL);
-    {
-      // RX FIFO trigger 16, not the IRQ-mode default 30: the default
-      // leaves 2 bytes (22 us at 921600) of headroom before a hardware
-      // overrun, which one COMPLETE-event ring copy already overshoots.
-      // 16 gives 16 bytes (~170 us) at ~2x the irq rate. Slot-side poke;
-      // the clean RTE override (USART2_RX_TRIG_LVL) is a base change,
-      // bundled with the next full flash.
-      USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
-      reg->FCR = USART_FCR_FIFO_EN_Msk |
-                 (2U << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos);
-    }
+    // (The RX FIFO trigger is 16 via USART2_RX_TRIG_LVL in RTE_Device.h —
+    // the IRQ-mode default of 30-of-32 left 2 bytes of overrun headroom.)
     Driver_USART2.Control(rx->control, baud_rate);
     Driver_USART2.Control(ARM_USART_CONTROL_TX, 1);
     Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
@@ -737,17 +759,14 @@ PRIMITIVE(set_baud_rate) {
     Driver_USART2.Control(ARM_USART_CONTROL_TX, 0);
     Driver_USART2.PowerControl(ARM_POWER_OFF);   // GPR block reset (clocked).
     Driver_USART2.PowerControl(ARM_POWER_FULL);
-    {
-      // Re-apply the open-time FIFO trigger override (POWER_FULL rewrote
-      // FCR with the 30-byte default; see create).
-      USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
-      reg->FCR = USART_FCR_FIFO_EN_Msk |
-                 (2U << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos);
-    }
     Driver_USART2.Control(rx->control, static_cast<uint32_t>(baud_rate));
     Driver_USART2.Control(ARM_USART_CONTROL_TX, 1);
     Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
     rx->seen = 0;
+    // The power cycle killed any in-flight Send (a baud change loses
+    // in-flight bytes by definition); without this the writer would wait
+    // forever for a SEND_COMPLETE that can no longer fire.
+    rx->tx_busy = false;
     if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
       rx->rearm_fails++;
     }
@@ -775,21 +794,28 @@ PRIMITIVE(write) {
 
   int len = to - from;
   int written;
-  if (uart_states[id].cmsis_rx != null) {
-    // CMSIS path: UART2 TX is POLLING_MODE (RTE_Device.h), so Send is
-    // synchronous. Cap each call so a large write cannot stall the VM
-    // (and starve the readers a full-duplex peer depends on) — the
-    // library loops on the partial count, re-entering between chunks.
-    int chunk = len > 512 ? 512 : len;
-    int32_t status32 = Driver_USART2.Send(data.address() + from, chunk);
-    written = (status32 == ARM_DRIVER_OK) ? chunk : 0;
-    if (written > 0 && written < len) {
-      // The library waits for a TX event before retrying the rest;
-      // polling-mode Send completes inline and may not signal one. This
-      // runs in task context — the FromISR variant would be unsafe here
-      // (and a lost event leaves the library waiting forever).
-      Ec618EventSource::send_event(
-          Event::uart_type(id), Event::UART_KIND_TX_DONE);
+  CmsisRx* rx = uart_states[id].cmsis_rx;
+  if (rx != null) {
+    // CMSIS path: UART2 TX is DMA_MODE (RTE_Device.h) — Send is
+    // ASYNCHRONOUS and keeps reading its buffer after this primitive
+    // returns, so the bytes are staged in tx_buf first (a Toit heap
+    // object can move under GC). One Send in flight at a time: while
+    // busy, accept nothing — the SEND_COMPLETE callback posts the TX
+    // event that makes the library retry the rest.
+    if (rx->tx_busy) {
+      written = 0;
+    } else {
+      int chunk = len;
+      if (chunk > (int)rx->tx_buf_size) chunk = (int)rx->tx_buf_size;
+      memcpy(rx->tx_buf, data.address() + from, chunk);
+      rx->tx_busy = true;
+      int32_t status32 = Driver_USART2.Send(rx->tx_buf, chunk);
+      if (status32 != ARM_DRIVER_OK) {
+        rx->tx_busy = false;
+        written = 0;
+      } else {
+        written = chunk;
+      }
     }
   } else {
     // Uart_TxTaskSafe returns 0 on success, non-zero on error — it is a
@@ -799,14 +825,14 @@ PRIMITIVE(write) {
     written = (status == 0) ? len : 0;
   }
 
-  // RS485: drop the direction line once the line is idle. The TX_ALL_DONE
-  // fast path in uart_cb cannot be relied on (see the comment there), so
-  // poll the transmitter-empty flag here. Cost: Uart_TxTaskSafe already
-  // blocks for everything beyond its TX cache, so what remains in flight
-  // is at most the cache (1024) plus the hardware FIFO — bound the poll
-  // by that drain time at the current baud. RS485 writes are thereby
-  // synchronous: when write returns, the bus has been released.
-  if (de >= 0 && written > 0) {
+  // RS485 on the BLOB path: drop the direction line once the line is
+  // idle. The TX_ALL_DONE fast path in uart_cb cannot be relied on (see
+  // the comment there), so poll the transmitter-empty flag here, bounded
+  // by the drain time of the TX cache (1024) + FIFO at the current baud.
+  // (On the CMSIS path Send is asynchronous and the SEND_COMPLETE
+  // callback drops DE after a TEMT spin — dropping it here would cut the
+  // line mid-transfer.)
+  if (de >= 0 && written > 0 && rx == null) {
     uint32_t baud = uart_states[id].baud_rate;
     uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
     while (!tx_idle(id) && limit_ms-- > 0) osDelay(1);

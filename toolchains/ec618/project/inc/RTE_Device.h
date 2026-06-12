@@ -19,7 +19,13 @@
 #define RTE_UART1_TX_IO_MODE    DMA_MODE
 #define RTE_UART1_RX_IO_MODE    DMA_MODE
 
-#define RTE_UART2_TX_IO_MODE    POLLING_MODE
+// DMA_MODE for TX: a single-shot, auditable descriptor (no chaining). The
+// polling-mode Send blocked the VM one FIFO-drain per byte, starving every
+// other Toit task for the duration of a flood (duplex RX collapsed to its
+// read timeouts). The write primitive stages bytes in a malloc'd buffer
+// (DMA must not read from a movable Toit heap object) and completion is
+// signalled via SEND_COMPLETE.
+#define RTE_UART2_TX_IO_MODE    DMA_MODE
 // IRQ_MODE, not DMA_MODE: the DMA RX engine in bsp_usart.c programs a
 // ZERO-length descriptor whenever an rx-timeout reload happens with <= 4
 // bytes left in the user buffer (USART_DmaUpdateRxConfig splits every
@@ -29,6 +35,12 @@
 // the whole descriptor engine is out of the path. See
 // docs/ec618-uart-cmsis-rewrite.md.
 #define RTE_UART2_RX_IO_MODE    IRQ_MODE
+// RX FIFO trigger 16, not the IRQ-mode default 30-of-32: the default
+// leaves 2 bytes (22 us at 921600) of headroom before a hardware overrun,
+// less than one COMPLETE-event ring copy. 16 gives ~170 us at ~2x the irq
+// rate. (Replaces the slot-side FCR pokes that bridged this until the
+// next base flash.)
+#define USART2_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 #define RTE_SPI0_IO_MODE        POLLING_MODE
 
