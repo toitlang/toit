@@ -366,7 +366,7 @@ Lesson for primitive authors: never call
 `object_heap()->allocate_internal_byte_array()` with an unbounded size —
 use `process->allocate_byte_array()` (same null-on-failure contract).
 
-## 9. UART0 bulk RX collapses after a set-baud — OPEN (rig pinned at 115200)
+## 9. UART0 bulk RX collapses after a set-baud — RESOLVED (DMA RX + descriptor patch)
 
 Found while migrating the agent's UART0 from the blob to the CMSIS driver.
 
@@ -418,12 +418,25 @@ exactly one chunk through). So the failure needs a burst landing in a
 chunk pacing is NOT an acceptable workaround (300 ms x N chunks is slower
 than just running at 115200).
 
-**Next angles.** What keeps the chip RX-deaf for >150 ms after its own
-ack + ContainerImageWriter work (XIP/IRQ stall? SendPolling/DMA-TX
-completion interaction?); the likely REAL fix: carve bsp_usart.c out of
-the submodule (cmpctmalloc precedent), fix USART_DmaUpdateRxConfig's
-zero-length descriptor (#7) — chain desc[0] -> desc[2] when the
-remainder is zero — and return RX to DMA mode on all three UARTs,
-restoring the closed blob's bulk robustness (it did 921600 for days on
-this wire); RTS/CTS once the rig wires it; per-chunk retransmit in the
-install protocol.
+**Root cause + resolution (2026-06-12).** The ">150 ms hot window" was
+XIP flash stalls: the IRQ-mode RX handlers live in flash and are dead for
+the entire duration of every ContainerImageWriter erase/write — exactly
+when install/OTA bursts arrive. The closed blob never failed because its
+RX was DMA-based: the DMA hardware (and the driver's PLAT_PA_RAMCODE
+paths) capture right through the stalls. Fixed by patching the
+zero-length-descriptor bug (#7) directly in the submodule fork's
+bsp_usart.c (USART_DmaUpdateRxConfig chains desc[0] -> desc[2] when the
+remainder is zero; num==0 mirrors the catcher descriptor) and switching
+UART0 RX to DMA mode. Result: agent installs and full firmware OTAs at
+921600 with rx-errs=0 (~24 s OTA, back to blob parity). UART1/UART2 RX
+stay in IRQ mode until DMA RX is validated for them (a fresh-boot UART2
+DMA open still wedged on its first bulk burst in one trial — debug with
+the rescue toolkit before flipping kRxIsDma).
+
+Two rig bugs found while validating (both fixed): create() must not
+Uninitialize a never-initialized driver (closing never-opened DMA
+channels wedges the next open — now tracked per controller), and the
+UART2 rescue listener now RELEASES the controller the moment the primary
+channel hears the host (it used to hold UART2 after any watchdog reset
+followed by a routine silence window, failing every uart2 test with
+ALREADY_IN_USE).

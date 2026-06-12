@@ -12,43 +12,40 @@
 #define IRQ_MODE                0x3
 #define UNILOG_MODE             0x4
 
-// ALL three UARTs use the same configuration — TX in DMA mode, RX in IRQ
-// mode — so Toit's uart driver behaves identically on every controller
-// (one driver path, one contract; the Uart_* blob is no longer used).
-// UART0 TX was UNILOG_MODE: unilog is disabled in this build
-// (CONFIG_TOIT_EC618_DISABLE_UNILOG) and printf goes through the CMSIS
-// print path, so nothing needed it.
+// ALL three UARTs use the same configuration — DMA for both directions —
+// so Toit's uart driver behaves identically on every controller (one
+// driver path, one contract; the Uart_* blob is no longer used).
+//
+// DMA TX: a single-shot, auditable descriptor. Polling-mode Send blocked
+// the VM one FIFO-drain per byte and starved every other Toit task; the
+// write primitive stages bytes in a malloc'd buffer (DMA must not read a
+// movable Toit heap object) and completion is signalled via SEND_COMPLETE.
+//
+// DMA RX: the engine's zero-length-descriptor bug (known-issues #7) is
+// FIXED by our patch in bsp_usart.c's USART_DmaUpdateRxConfig — IRQ mode
+// (the interim sidestep) lost multi-KB bursts whenever the CPU stalled on
+// XIP flash operations (known-issues #9): the IRQ handlers live in flash
+// and are dead for the stall, while the DMA hardware (and the driver's
+// RAMCODE paths) capture regardless. The closed blob was DMA-based too —
+// that is why it never showed these failures.
+// UART0 TX was UNILOG_MODE: unilog is disabled in this build and printf
+// goes through the CMSIS print path, so nothing needed it.
+// UART0 (console + agent) runs RX in DMA mode: with the zero-length-
+// descriptor patch in bsp_usart.c, the DMA engine captures straight
+// through XIP flash stalls — full-speed agent installs/OTA at 921600
+// (the known-issues #9 fix; IRQ-mode handlers live in flash and are dead
+// during every flash erase/write). UART1/UART2 RX stay in the
+// battle-tested IRQ mode until DMA RX is validated for them too. Keep
+// kRxIsDma in uart_ec618.cc in sync with these.
 #define RTE_UART0_TX_IO_MODE    DMA_MODE
-#define RTE_UART0_RX_IO_MODE    IRQ_MODE
-#define USART0_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
+#define RTE_UART0_RX_IO_MODE    DMA_MODE
 
 #define RTE_UART1_TX_IO_MODE    DMA_MODE
-// IRQ_MODE, not DMA_MODE — same zero-length-descriptor hazard as UART2
-// below.
 #define RTE_UART1_RX_IO_MODE    IRQ_MODE
 #define USART1_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
-// DMA_MODE for TX: a single-shot, auditable descriptor (no chaining). The
-// polling-mode Send blocked the VM one FIFO-drain per byte, starving every
-// other Toit task for the duration of a flood (duplex RX collapsed to its
-// read timeouts). The write primitive stages bytes in a malloc'd buffer
-// (DMA must not read from a movable Toit heap object) and completion is
-// signalled via SEND_COMPLETE.
 #define RTE_UART2_TX_IO_MODE    DMA_MODE
-// IRQ_MODE, not DMA_MODE: the DMA RX engine in bsp_usart.c programs a
-// ZERO-length descriptor whenever an rx-timeout reload happens with <= 4
-// bytes left in the user buffer (USART_DmaUpdateRxConfig splits every
-// reload into a 4-byte desc[0] + remainder desc[1]; remainder 0 streams
-// the wire PAST the buffer and scribbles the heap — hardfaults/VM fatals
-// under full-duplex flood). IRQ mode is plain bounds-checked FIFO reads:
-// the whole descriptor engine is out of the path. See
-// docs/ec618-uart-cmsis-rewrite.md.
 #define RTE_UART2_RX_IO_MODE    IRQ_MODE
-// RX FIFO trigger 16, not the IRQ-mode default 30-of-32: the default
-// leaves 2 bytes (22 us at 921600) of headroom before a hardware overrun,
-// less than one COMPLETE-event ring copy. 16 gives ~170 us at ~2x the irq
-// rate. (Replaces the slot-side FCR pokes that bridged this until the
-// next base flash.)
 #define USART2_RX_TRIG_LVL      RX_FIFO_TRIG_LVL_16BYTE
 
 #define RTE_SPI0_IO_MODE        POLLING_MODE

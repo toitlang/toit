@@ -247,3 +247,20 @@ and #4 (discard-all + RX-wedge) for UART0/1. Pieces that mattered:
 OPEN: UART0 bulk-RX collapses after a set-baud at any rate > 115200
 (known-issues #9, fully characterized). The rig runs at --fast-baud
 115200 until fixed.
+
+## Phase 4 (2026-06-12): DMA RX returns on UART0 — #9 resolved
+
+The zero-length-descriptor bug is fixed at the source (submodule fork
+commit "bsp_usart: never program a zero-length RX DMA descriptor") and
+UART0 RX runs in DMA mode again: agent installs + full OTAs at 921600
+with zero RX errors (~24 s OTA — blob parity). The #9 hot window was
+XIP flash stalls killing the flash-resident IRQ handlers; DMA hardware
+captures through them. UART1/UART2 RX remain IRQ-mode (kRxIsDma gates
+the FIFO crutches) until their DMA validation — one trial wedged a
+fresh-boot UART2 DMA open on its first bulk burst.
+
+Battery (mixed config, all at 921600 fast-baud): uart2-echo 14/14,
+uart1-echo (sweep capped at 921600 — 2 MBd is wiring-marginal on the
+rig), ring contract, duplex PASS at 921600/2M/3M under the accounting
+contract (tolerance now scales with baud for uncounted hw overruns),
+sbdup/floods clean, RS485 PASS.

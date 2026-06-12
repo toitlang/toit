@@ -167,16 +167,24 @@ main-ec618:
   // UART2 stays free for tests.
   if ec618.print-uart-id != 2:
     task --background::
-      sleep --ms=20_000
-      if not host-contact_:
+      sleep --ms=45_000
+      if not primary-contact_:
         e := catch:
           rescue := ec618.Ec618.uart2 --baud-rate=115200
-          serve rescue
-        if e: print "[mini-jag] rescue listener failed: $e"
+          // The rescue must NEVER starve the tests of UART2: release the
+          // controller the moment the PRIMARY channel hears the host
+          // (silence windows are routine in the rig's watchdog-recovery
+          // flow, so the rescue arms regularly on healthy rigs too).
+          task --background::
+            while not primary-contact_: sleep --ms=1_000
+            catch: rescue.close  // Unblocks the rescue serve loop.
+          serve rescue --primary=false
+        if e: print "[mini-jag] rescue listener stopped: $e"
   serve port
 
-// Serves the request/ack protocol on $port until the device reboots.
-serve port/uart.Port -> none:
+// Serves the request/ack protocol on $port until the device reboots (or,
+// for the non-primary rescue listener, until the port is closed under it).
+serve port/uart.Port --primary/bool=true -> none:
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason
@@ -186,7 +194,7 @@ serve port/uart.Port -> none:
   arg/string := ""
   while true:
     command := reader.read-byte
-    host-contact_ = true
+    if primary: primary-contact_ = true
     watchdog.watchdog-feed  // The host is talking to us; we are alive.
     if command == CMD-PING:
       if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
@@ -305,9 +313,9 @@ WATCHDOG-HARDWARE-TIMEOUT ::= Duration --s=60
 // into the test's output stream.
 test-running_/bool := false
 
-// Whether any host command ever arrived (on any channel) — gates the UART2
-// rescue listener in main-ec618.
-host-contact_/bool := false
+// Whether a host command ever arrived on the PRIMARY control UART — gates
+// (and releases) the UART2 rescue listener in main-ec618.
+primary-contact_/bool := false
 
 // Starts the installed test container in the BACKGROUND and reports its exit via
 // a status line, so the command loop keeps reading (and the watchdog keeps being

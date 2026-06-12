@@ -107,6 +107,10 @@ struct UartState {
 
 static UartState uart_states[3] = {};
 
+// Whether OUR code has run Initialize() on the controller (the boot-time
+// console init is handled separately in create).
+static bool cmsis_initialized[3] = {};
+
 // Per-controller CMSIS access. The driver structs are DATA bindings into
 // the base; the register pointers serve the few direct LSR/FCNR/RBR reads
 // the driver has no API for.
@@ -118,6 +122,10 @@ static USART_TypeDef* const kUartRegs[3] = {
   reinterpret_cast<USART_TypeDef*>(MP_UART1_BASE_ADDR),
   reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR),
 };
+// Which controllers run RX in DMA mode (must mirror RTE_UARTn_RX_IO_MODE
+// in RTE_Device.h): the IRQ-mode controllers need the FIFO crutches
+// below, and manual RBR reads would corrupt a DMA-owned FIFO.
+static const bool kRxIsDma[3] = { true, false, false };
 
 // --- Toit state bits (match lib/uart.toit). --------------------------------
 static const uint32_t kReadState  = 1 << 0;
@@ -186,6 +194,7 @@ class UartResourceGroup : public ResourceGroup {
         kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
         kDrivers[id]->PowerControl(ARM_POWER_OFF);
         kDrivers[id]->Uninitialize();
+        cmsis_initialized[id] = false;
         CmsisRx* rx = state.cmsis_rx;
         state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
         irq_restore(mask);
@@ -311,32 +320,33 @@ static void cmsis_uart_event(int id, uint32_t event) {
   }
   if (event & ARM_USART_EVENT_RX_OVERFLOW) {
     uart_states[id].errors++;
-    // Self-heal: the SDK irq handler is an else-if chain that services
-    // LINE_STATUS (the overrun) INSTEAD of draining data, and with the
-    // FIFO still full the overrun re-asserts on the next byte — RX
-    // death-spirals delivering nothing until the line idles. Empty the
-    // FIFO ourselves. Push the chunk delta first so byte order holds
-    // (everything in the FIFO is newer than everything in the chunk).
-    uint32_t n = driver->GetRxCount();
-    if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
-    if (n > rx->seen) {
-      cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
-      rx->seen = n;
+    if (!kRxIsDma[id]) {
+      // IRQ-mode self-heal: the SDK irq handler is an else-if chain that
+      // services LINE_STATUS (the overrun) INSTEAD of draining data; with
+      // the FIFO still full the overrun re-asserts and RX delivers
+      // nothing until the line idles. Drain the FIFO ourselves — to ONE
+      // byte, never empty (the RX_DATA_REQ handler underflows
+      // `i = bytes_in_fifo - 1` on an empty FIFO and hard-wedges reading
+      // RBR). Push the chunk delta first so byte order holds.
+      uint32_t n = driver->GetRxCount();
+      if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
+      if (n > rx->seen) {
+        cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
+        rx->seen = n;
+      }
+      USART_TypeDef* reg = kUartRegs[id];
+      uint8_t fifo_buf[32];
+      uint32_t got = 0;
+      while (got < sizeof(fifo_buf) &&
+             EIGEN_FLD2VAL(USART_FCNR_RX_FIFO_NUM, reg->FCNR) > 1) {
+        fifo_buf[got++] = (uint8_t)reg->RBR;
+      }
+      if (got > 0) cmsis_ring_push(id, fifo_buf, got);
+      send_uart_event(id, got > 0 ? Event::UART_KIND_RX : Event::UART_KIND_ERROR);
+    } else {
+      // DMA-owned FIFO: counted only; the engine captures through stalls.
+      send_uart_event(id, Event::UART_KIND_ERROR);
     }
-    // Drain to ONE byte, never empty: the SDK's RX_DATA_REQ handler does
-    // `i = bytes_in_fifo - 1` with no zero guard — an empty FIFO underflows
-    // i to 0xFFFFFFFF and it reads RBR hundreds of times off an empty FIFO
-    // (observed as a hard wedge only the WDT backstop clears). One byte
-    // left still stops the overrun from re-asserting.
-    USART_TypeDef* reg = kUartRegs[id];
-    uint8_t fifo_buf[32];
-    uint32_t got = 0;
-    while (got < sizeof(fifo_buf) &&
-           EIGEN_FLD2VAL(USART_FCNR_RX_FIFO_NUM, reg->FCNR) > 1) {
-      fifo_buf[got++] = (uint8_t)reg->RBR;
-    }
-    if (got > 0) cmsis_ring_push(id, fifo_buf, got);
-    send_uart_event(id, got > 0 ? Event::UART_KIND_RX : Event::UART_KIND_ERROR);
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
     int de = uart_states[id].de_pad;
@@ -640,17 +650,21 @@ PRIMITIVE(create) {
     rx->control = cmsis_control_word(data_bits, parity, stop_bits);
     uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
     ARM_DRIVER_USART* driver = kDrivers[id];
+    // Uninitialize first — but ONLY if the driver is genuinely
+    // initialized: Initialize() is a no-op on an INITIALIZED driver (the
+    // console controller is initialized at boot by the print path, so our
+    // event callback would silently never install), while Uninitialize()
+    // on a NEVER-initialized driver closes DMA channels that were never
+    // opened and wedges the device on the next open. Track it ourselves;
+    // the print-uart teardown intentionally leaves its driver
+    // initialized.
+    bool was_initialized = cmsis_initialized[id];
 #if CONFIG_TOIT_EC618_PRINT_UART
-    if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) {
-      // The console path initialized this controller at boot, and
-      // Initialize() is a no-op on an INITIALIZED driver — our event
-      // callback would silently never install. Uninitialize first;
-      // printf (SendPolling) survives the gap and works again as soon as
-      // Control() below re-sets the CONFIGURED flag.
-      driver->Uninitialize();
-    }
+    if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) was_initialized = true;
 #endif
+    if (was_initialized) driver->Uninitialize();
     driver->Initialize(kUartCallbacks[id]);
+    cmsis_initialized[id] = true;
     // FULL -> OFF -> FULL: the OFF in the middle GPR-resets the UART block.
     // Every close does this reset, but the FIRST open since boot starts
     // from whatever state the ROM left the controller in — that first
@@ -807,14 +821,11 @@ PRIMITIVE(read) {
 
   CmsisRx* rx = uart_states[id].cmsis_rx;
   if (rx != null) {
-    {
-      // Rescue any FIFO-stranded bytes: a full-rate burst can end an
-      // overrun storm (#8) with bytes left in the hardware FIFO and no
-      // interrupt edge to deliver them (DATA_REQ is edge-ish at the
-      // trigger and the idle-timeout was consumed by the storm). Pull
-      // them into the ring whenever the reader looks. Leave one byte if
-      // the line is mid-burst (the SDK's underflow guard, see the
-      // overflow handler); take everything when more than one waits.
+    if (!kRxIsDma[id]) {
+      // IRQ-mode rescue: a full-rate burst can end an overrun storm with
+      // bytes stranded in the hardware FIFO and no interrupt edge left to
+      // deliver them. Pull them in whenever the reader looks (to ONE
+      // byte, see the overflow handler). Never on a DMA-owned FIFO.
       uint32_t mask = irq_save();
       USART_TypeDef* reg = kUartRegs[id];
       uint8_t fifo_buf[32];
@@ -834,7 +845,7 @@ PRIMITIVE(read) {
       }
       irq_restore(mask);
     }
-    // Drain our ring (filled by cmsis_rx_event2). Snapshot head once: the
+    // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
     // IRQ only ever ADDS bytes, so the window we copy is stable.
     uint32_t head = rx->head;
     uint32_t tail = rx->tail;

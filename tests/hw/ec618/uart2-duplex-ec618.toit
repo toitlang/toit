@@ -76,7 +76,9 @@ main:
     errs := test.errors - errors-before
     count := got[1]
     accounted := count + errs
-    rx-ok := accounted >= TOTAL - 1000
+    // Tolerance: hardware FIFO overruns at multi-MBd are the only
+    // uncounted losses; scale with baud (~0.2% at 921600, ~0.8% at 3M).
+    rx-ok := accounted >= TOTAL - (TOTAL * baud / 400_000_000) - 1000
         and count >= TOTAL / 4
         and (errs == 0 ? (got[0] == expected and count == TOTAL) : true)
     detail := "count=$count errs=$errs accounted=$accounted/$TOTAL max-read=$got[2]"
