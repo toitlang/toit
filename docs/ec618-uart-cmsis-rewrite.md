@@ -175,3 +175,18 @@ The duplex RX numbers are reader-starvation-bound: the polling Send never
 blocks at the Toit level, so the writer task monopolizes the interpreter
 and the reader's with-timeout reads expire. DMA TX (RTE change, base) is
 the planned fix.
+
+## Phase 1.7 (2026-06-12): the residual fatal — our read primitive, not the driver
+
+The ~1-in-3 set-baud-duplex VM fatal was a VM-heap scribble by OUR `read`
+primitive: it drained the whole ring (up to 8/32 KiB) into
+`allocate_internal_byte_array`, whose ~4 KB page limit is ASSERT-only in
+release. Fingerprinted by dumping the corrupted object header at FATAL
+time — 0xf7d8b99a is four consecutive gen-byte stream bytes (deltas of
+31). The reopen-vs-set-baud difference that drove a whole misdirected
+bisect was a scheduling artifact: the reopen repro's reader starved out
+at its 2 s read timeout and never drained > 4 KB, so the OOB write never
+triggered there. Fixed with `Process::allocate_byte_array()` (external
+above the internal limit); 5/5 clean on the previously ~60%-fatal
+reproducer. Set-baud keeps the power-cycle implementation (mirrors
+create; defensive, costs microseconds). Full story: known-issues #8.

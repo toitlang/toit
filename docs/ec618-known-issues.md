@@ -342,14 +342,26 @@ while a DATA_REQ is already latched.
 perfect helper-side CRC; RX flood 99.7% delivered with a deliberately
 starved reader, losses counted, clean exits.
 
-**OPEN residual.** The most abusive case — full-duplex 256 KiB each way
-with a starved reader, set-baud variant (uart2-duplex-ec618.toit) — still
-hits a VM fatal in ~1 of 3 runs mid-flood (signatures vary: "Unexpected
-class tag", "unreachable", "stack overflow detected"; a chunk canary and
-GetRxCount tripwires stayed silent, so the chunk path is exonerated).
-The reopen-per-round twin of the same flood has never fataled. Suspects
-for the next session: the multi-kHz error-event storm through the event
-source/dispatcher; the SDK timeout-drain underflow injecting a long
-RBR-stall mid-ISR; something in the test's pattern-compare hot loop.
-Exit behavior is CLEAN in all non-fatal runs (the historical 100%
-exit-wedge is gone).
+**Residual — RESOLVED (2026-06-12).** The remaining ~1-in-3 VM fatal
+under set-baud duplex floods was OURS and had nothing to do with the
+UART driver: the `read` primitive drained the whole ring into
+`ObjectHeap::allocate_internal_byte_array(available)` — but internal
+byte arrays must fit one VM heap page (`max_allocation_size()` =
+TOIT_PAGE_SIZE - 96, ~4 KB) and the limit is enforced by an ASSERT that
+release builds compile out. Any drain > ~4 KB (8 KiB ring, 32 KiB with
+--large-buffers) wrote received STREAM BYTES across the following heap
+pages — random victims, varying fatal signatures ("Unexpected class
+tag" / guard-zone "stack overflow detected" / "unreachable"), and silent
+wedges when the scribble landed quietly. Caught by dumping the corrupted
+header at FATAL time: 0xf7d8b99a = four consecutive bytes of the test's
+gen-byte stream (deltas of 31). Only a reader that SURVIVES the flood
+ever drains > 4 KB in one read — which is why the reopen-per-round twin
+(whose reader starved out at 2 s and stopped reading) never fataled,
+masquerading as a set-baud bug for a whole debugging arc. Fix:
+`Process::allocate_byte_array()`, which switches to an external (malloc)
+byte array above the internal limit. 5/5 clean runs on the previously
+~60%-fatal reproducer.
+
+Lesson for primitive authors: never call
+`object_heap()->allocate_internal_byte_array()` with an unbounded size —
+use `process->allocate_byte_array()` (same null-on-failure contract).

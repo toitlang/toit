@@ -725,16 +725,27 @@ PRIMITIVE(set_baud_rate) {
   int id = resource->uart_id();
   CmsisRx* rx = uart_states[id].cmsis_rx;
   if (rx != null) {
-    // Quiesce before reconfiguring: Control() with a mode word DISABLES
-    // the whole UART while it swaps the divisor (USART_SetBaudrate), so
-    // it must never run against a live transfer — and ABORT_RECEIVE is
-    // unsupported in bsp_usart.c (returns ERROR_UNSUPPORTED, a no-op).
-    // CONTROL_RX 0 is the real abort: RX irqs masked + cleared, DMA
-    // channel suspended, rx_busy forced 0. Masked so neither uart nor
-    // DMA irq interleaves with the reconfigure.
+    // Set-baud is a full power-cycle of the controller, mirroring the
+    // create path exactly (one mental model, one tested sequence). A baud
+    // change loses in-flight bytes by definition, so the FIFO/GPR reset
+    // costs nothing semantically. ABORT_RECEIVE is a silent no-op in
+    // bsp_usart.c; CONTROL_RX 0 is the supported abort, and Control()
+    // with a mode word disables the whole UART while it swaps the
+    // divisor, so the quiesce must come first.
     uint32_t mask = irq_save();
     Driver_USART2.Control(ARM_USART_CONTROL_RX, 0);
+    Driver_USART2.Control(ARM_USART_CONTROL_TX, 0);
+    Driver_USART2.PowerControl(ARM_POWER_OFF);   // GPR block reset (clocked).
+    Driver_USART2.PowerControl(ARM_POWER_FULL);
+    {
+      // Re-apply the open-time FIFO trigger override (POWER_FULL rewrote
+      // FCR with the 30-byte default; see create).
+      USART_TypeDef* reg = reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR);
+      reg->FCR = USART_FCR_FIFO_EN_Msk |
+                 (2U << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos);
+    }
     Driver_USART2.Control(rx->control, static_cast<uint32_t>(baud_rate));
+    Driver_USART2.Control(ARM_USART_CONTROL_TX, 1);
     Driver_USART2.Control(ARM_USART_CONTROL_RX, 1);
     rx->seen = 0;
     if (Driver_USART2.Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
@@ -817,7 +828,7 @@ PRIMITIVE(read) {
     uint32_t available = head >= tail ? head - tail
                                       : rx->ring_size - tail + head;
     if (available == 0) return process->null_object();
-    ByteArray* result = process->object_heap()->allocate_internal_byte_array(available);
+    ByteArray* result = process->allocate_byte_array(available);
     if (result == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes bytes(result);
     for (uint32_t i = 0; i < available; i++) {
@@ -832,7 +843,7 @@ PRIMITIVE(read) {
   int available = Uart_RxBufferRead(id, null, 0);
   if (available <= 0) return process->null_object();
 
-  ByteArray* result = process->object_heap()->allocate_internal_byte_array(available);
+  ByteArray* result = process->allocate_byte_array(available);
   if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
 
@@ -840,7 +851,7 @@ PRIMITIVE(read) {
   if (read <= 0) return process->null_object();
   if (read < available) {
     // The driver drained fewer bytes than it reported; trim the result.
-    ByteArray* trimmed = process->object_heap()->allocate_internal_byte_array(read);
+    ByteArray* trimmed = process->allocate_byte_array(read);
     if (trimmed == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes tbytes(trimmed);
     memcpy(tbytes.address(), bytes.address(), read);
