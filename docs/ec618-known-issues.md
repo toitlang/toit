@@ -405,8 +405,25 @@ on UART2 (via the ESP32 TCP bridge + socat PTY, see
 tests/hw/esp-tester/uart-bridge-esp32.toit) when no host contact arrives
 on UART0 — built during this hunt and proven end-to-end.
 
-**Next angles.** Oscilloscope on UART0 RX during the burst (is the wire
-clean?); whether the set-baud power-cycle leaves an IRQ/FIFO state the
-fresh-boot path doesn't (a reopen instead of set-baud as the CMD-BAUD
-implementation); RTS/CTS once the rig wires it; per-chunk retransmit in
-the install protocol to tolerate residual loss at any rate.
+**Wire-tap findings (ESP32 IO18 on the RX net, tap-uart-esp32.toit).**
+The wire is BYTE-PERFECT: a failing 2053-byte burst at 921600 reaches the
+EC618's pad with the exact expected CRC and zero tap-side errors — the
+loss is entirely inside the chip. Sharper still: the same 2048-byte bulk
+as a CMD-ARG (no flash activity, ~300 ms gap after the previous exchange)
+now PASSES at 921600 on the shipped mitigations, and an install chunk
+sent 300 ms after ACK-READY passes too — but a chunk arriving within
+~150 ms of the agent's own ack/flash-write still dies (150 ms pacing got
+exactly one chunk through). So the failure needs a burst landing in a
+>150 ms "hot window" after the agent's own TX + flash work. Host-side
+chunk pacing is NOT an acceptable workaround (300 ms x N chunks is slower
+than just running at 115200).
+
+**Next angles.** What keeps the chip RX-deaf for >150 ms after its own
+ack + ContainerImageWriter work (XIP/IRQ stall? SendPolling/DMA-TX
+completion interaction?); the likely REAL fix: carve bsp_usart.c out of
+the submodule (cmpctmalloc precedent), fix USART_DmaUpdateRxConfig's
+zero-length descriptor (#7) — chain desc[0] -> desc[2] when the
+remainder is zero — and return RX to DMA mode on all three UARTs,
+restoring the closed blob's bulk robustness (it did 921600 for days on
+this wire); RTS/CTS once the rig wires it; per-chunk retransmit in the
+install protocol.
