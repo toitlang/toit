@@ -1407,6 +1407,35 @@ class Local : public Node {
 
 class Parameter : public Local {
  public:
+  /// A type alternative for a parameter that is declared as `any`, given
+  /// through a `// __TYPE-MIGRATION__ <name>: <type>` comment in front of the declaration.
+  ///
+  /// Temporary mechanism to migrate `any` parameters to concrete types.
+  class TypeAnnotation {
+   public:
+    TypeAnnotation(Type type, bool is_deprecated, Symbol deprecation_message)
+        : type_(type)
+        , is_deprecated_(is_deprecated)
+        , deprecation_message_(deprecation_message) {}
+
+    Type type() const { return type_; }
+    bool is_deprecated() const { return is_deprecated_; }
+    /// Either empty, or starting with ". ", so it can be appended
+    /// directly to a warning. Only valid if [is_deprecated].
+    Symbol deprecation_message() const { return deprecation_message_; }
+
+   private:
+    Type type_;
+    bool is_deprecated_;
+    Symbol deprecation_message_;
+
+    friend class ListBuilder<TypeAnnotation>;
+    TypeAnnotation()
+        : type_(Type::invalid())
+        , is_deprecated_(false)
+        , deprecation_message_(Symbol::invalid()) {}
+  };
+
   Parameter(Symbol name,
             Type type,
             bool is_block,
@@ -1444,10 +1473,18 @@ class Parameter : public Local {
   // -1 if the parameter was not explicitly written.
   int original_index() const { return original_index_; }
 
+  /// The type alternatives given through `// __TYPE-MIGRATION__` comments.
+  /// Only set for parameters of type `any`. Empty if there are none.
+  List<TypeAnnotation> type_annotations() const { return type_annotations_; }
+  void set_type_annotations(List<TypeAnnotation> annotations) {
+    type_annotations_ = annotations;
+  }
+
  private:
   bool has_default_value_;
   Source::Range default_value_range_;
   int original_index_;
+  List<TypeAnnotation> type_annotations_;
 };
 
 class CapturedLocal : public Parameter {

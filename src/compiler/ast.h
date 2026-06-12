@@ -872,6 +872,35 @@ class Call : public Expression {
   bool is_call_primitive_;
 };
 
+/// A type alternative for a parameter that is declared as `any`, given
+/// through a `// __TYPE-MIGRATION__ <name>: <type>` comment in front of the declaration.
+///
+/// Temporary mechanism to migrate `any` parameters to concrete types.
+class TypeAnnotation {
+ public:
+  TypeAnnotation(Expression* type,
+                 bool is_deprecated,
+                 Symbol deprecation_message,
+                 Source::Range range)
+      : type_(type)
+      , is_deprecated_(is_deprecated)
+      , deprecation_message_(deprecation_message)
+      , range_(range) {}
+
+  Expression* type() const { return type_; }
+  bool is_deprecated() const { return is_deprecated_; }
+  /// Either empty, or starting with ". ", so it can be appended
+  /// directly to a warning. Only valid if [is_deprecated].
+  Symbol deprecation_message() const { return deprecation_message_; }
+  Source::Range range() const { return range_; }
+
+ private:
+  Expression* type_;
+  bool is_deprecated_;
+  Symbol deprecation_message_;
+  Source::Range range_;
+};
+
 class Parameter : public Expression {
  public:
   Parameter(Identifier* name,
@@ -895,6 +924,11 @@ class Parameter : public Expression {
   bool is_field_storing() const { return is_field_storing_; }
   bool is_block() const { return is_block_; }
 
+  List<TypeAnnotation*> type_annotations() const { return type_annotations_; }
+  void set_type_annotations(List<TypeAnnotation*> annotations) {
+    type_annotations_ = annotations;
+  }
+
   Source::Range full_range() const override;
 
  private:
@@ -904,6 +938,7 @@ class Parameter : public Expression {
    bool is_named_;
    bool is_field_storing_;
    bool is_block_;
+   List<TypeAnnotation*> type_annotations_;
 };
 
 class LiteralNull : public Expression {

@@ -1,0 +1,61 @@
+tests/negative/type-migration-test.toit:41:22: error: Expected a parameter name in type-migration annotation
+// __TYPE-MIGRATION__
+                     ^
+tests/negative/type-migration-test.toit:44:25: error: Expected ':' in type-migration annotation
+// __TYPE-MIGRATION__ x int
+                        ^
+tests/negative/type-migration-test.toit:47:25: error: Expected a type in type-migration annotation
+// __TYPE-MIGRATION__ x:
+                        ^
+tests/negative/type-migration-test.toit:50:30: error: Unexpected text in type-migration annotation
+// __TYPE-MIGRATION__ x: int and then junk
+                             ^~~~~~~~~~~~~
+tests/negative/type-migration-test.toit:53:23: error: No parameter 'y' for type-migration annotation
+// __TYPE-MIGRATION__ y: int
+                      ^
+tests/negative/type-migration-test.toit:62:23: error: Can't use a type-migration annotation on a block parameter
+// __TYPE-MIGRATION__ b: int
+                      ^
+tests/negative/type-migration-test.toit:65:1: error: Type-migration annotation isn't attached to a method declaration
+// __TYPE-MIGRATION__ x: int
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/type-migration-test.toit:56:26: error: Unresolved type: 'NotAType'
+// __TYPE-MIGRATION__ x: NotAType
+                         ^~~~~~~~
+tests/negative/type-migration-test.toit:60:22: error: Type-migration annotations are only allowed on 'any' parameters
+not-an-any-parameter x/string:
+                     ^
+tests/negative/type-migration-test.toit:74:20: warning: Deprecated type 'Pin' for parameter 'rx'. Provide an integer instead
+  create-uart --rx=pin --tx=18      // Warning for rx: deprecated Pin.
+                   ^~~
+tests/negative/type-migration-test.toit:76:20: error: Type mismatch. Expected 'Pin' or 'int'. Got 'float'
+  create-uart --rx=17.5 --tx=18     // Error: float not allowed.
+                   ^~~~
+tests/negative/type-migration-test.toit:77:20: error: Type mismatch. Expected 'Pin' or 'int'. Got 'null'
+  create-uart --rx=null --tx=null   // Error for rx (no default value); OK for tx.
+                   ^~~~
+tests/negative/type-migration-test.toit:79:20: warning: Deprecated type 'Pin' for parameter 'rx'. Provide an integer instead
+  create-uart --rx=sub --tx=1       // Warning: subclass of deprecated Pin.
+                   ^~~
+tests/negative/type-migration-test.toit:83:20: error: Type mismatch. Expected 'string?'. Got 'int'
+  consume-nullable 5                // Error.
+                   ^
+tests/negative/type-migration-test.toit:85:18: warning: Deprecated type 'Reader' for parameter 'in'
+  consume-reader StringReader       // Warning: implements deprecated interface.
+                 ^~~~~~~~~~~~
+tests/negative/type-migration-test.toit:87:18: error: Type mismatch. Expected 'Reader' or 'int'. Got 'string'
+  consume-reader "x"                // Error.
+                 ^~~
+tests/negative/type-migration-test.toit:90:16: error: Type mismatch. Expected 'Port'. Got 'int'
+  consume-port 5                    // Error.
+               ^
+tests/negative/type-migration-test.toit:93:22: error: Type mismatch. Expected 'int'. Got 'string'
+  mixed-with-toitdoc "bad"          // Error.
+                     ^~~~~
+tests/negative/type-migration-test.toit:96:18: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  uart.configure pin                // Warning: deprecated Pin on virtual call.
+                 ^~~
+tests/negative/type-migration-test.toit:98:18: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  uart.configure "bad"              // Error.
+                 ^~~~~
+Compilation failed

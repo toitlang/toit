@@ -1342,6 +1342,26 @@ void MethodResolver::_resolve_parameters(
 
     (*ir_parameters)[index] = ir_parameter;
 
+    // Resolve the types of `// __TYPE-MIGRATION__` annotations.
+    auto ast_annotations = parameter->type_annotations();
+    if (!ast_annotations.is_empty()) {
+      if (has_explicit_type && !type.is_any()) {
+        report_error(parameter,
+                     "Type-migration annotations are only allowed on 'any' parameters");
+      } else {
+        auto annotations =
+            ListBuilder<ir::Parameter::TypeAnnotation>::allocate(ast_annotations.length());
+        for (int j = 0; j < ast_annotations.length(); j++) {
+          auto annotation = ast_annotations[j];
+          auto annotation_type = resolve_type(annotation->type(), false);
+          annotations[j] = ir::Parameter::TypeAnnotation(annotation_type,
+                                                         annotation->is_deprecated(),
+                                                         annotation->deprecation_message());
+        }
+        ir_parameter->set_type_annotations(annotations);
+      }
+    }
+
     if (parameter->is_field_storing() && !is_constructor) {
       diagnostics()->report_warning(parameter,
                                     "Field-storing parameters in non-constructors are deprecated");

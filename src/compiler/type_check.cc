@@ -16,6 +16,7 @@
 #include "type_check.h"
 
 #include <stdarg.h>
+#include <string>
 
 #include "cycle_detector.h"
 #include "deprecation.h"
@@ -356,7 +357,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         auto parameter = parameters[i + parameter_offset];
         auto parameter_type = parameter->type();
         if (parameter->has_default_value()) parameter_type = parameter_type.to_nullable();
-        check(arguments[i]->range(), parameter_type, argument_types[i]);
+        check_parameter(arguments[i]->range(), parameter, parameter_type, argument_types[i]);
       }
     }
     return method->return_type();
@@ -425,7 +426,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       if (is_equals_call) parameter_type = parameter_type.to_nullable();
 
       // TODO(florian): provide more context in the error message.
-      check(argument->range(), parameter_type, argument_type);
+      check_parameter(argument->range(), parameters[parameter_pos], parameter_type, argument_type);
     });
     if (method->is_FieldStub() && method->is_setter()) {
       auto field = method->as_FieldStub()->field();
@@ -790,18 +791,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       return;
     }
     ASSERT(receiver_type.is_class() && value_type.is_class());
-    for (Class* current = value_class; current != null; current = current->super()) {
-      if (current == receiver_class) return;
-      for (auto inter : current->interfaces()) {
-        // The interfaces list contains a flattened list of all interfaces this class implements.
-        if (inter == receiver_class) return;
-      }
-      for (auto mixin : current->mixins()) {
-        // The mixin list contains a flattened list of all mixins that are between this
-        // class and the super.
-        if (mixin == receiver_class) return;
-      }
-    }
+    if (is_subtype_of(value_class, receiver_class)) return;
     if (receiver_name.is_valid() && value_name.is_valid()) {
       // TODO(florian); fix internal names (such as "_SmallInteger").
       report_error(range,
@@ -825,6 +815,96 @@ class TypeChecker : public ReturningVisitor<Type> {
       //   return type.
       // Since we already reported an error, we don't report an error again.
     }
+  }
+
+  static bool is_subtype_of(Class* value_class, Class* receiver_class) {
+    for (Class* current = value_class; current != null; current = current->super()) {
+      if (current == receiver_class) return true;
+      for (auto inter : current->interfaces()) {
+        // The interfaces list contains a flattened list of all interfaces this class implements.
+        if (inter == receiver_class) return true;
+      }
+      for (auto mixin : current->mixins()) {
+        // The mixin list contains a flattened list of all mixins that are between this
+        // class and the super.
+        if (mixin == receiver_class) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Whether a value of [value_type] can be used where [receiver_type] is
+  /// expected, following the same rules as [check], but without reporting
+  /// any diagnostics.
+  bool is_assignable(Type receiver_type, Type value_type) {
+    ASSERT(receiver_type.is_valid());
+    ASSERT(value_type.is_valid());
+    if (receiver_type.is_any() || value_type.is_any()) return true;
+    if (receiver_type.is_none() || value_type.is_none()) return false;
+    if (receiver_type == value_type) return true;  // This also covers `Null_` == `null`.
+    if (value_type == null_type_) return receiver_type.is_nullable();
+    if (value_type == boolean_type_ && is_a_bool(receiver_type)) return true;
+    return is_subtype_of(value_type.klass(), receiver_type.klass());
+  }
+
+  /// Checks an argument against a parameter, taking `// __TYPE-MIGRATION__`
+  /// annotations into account.
+  ///
+  /// The [parameter_type] must be the parameter's type, potentially already
+  /// adjusted (made nullable) by the caller.
+  void check_parameter(Source::Range range,
+                       ir::Parameter* parameter,
+                       Type parameter_type,
+                       Type value_type) {
+    auto annotations = parameter->type_annotations();
+    if (annotations.is_empty()) {
+      check(range, parameter_type, value_type);
+      return;
+    }
+    ASSERT(parameter->type().is_any());
+    if (value_type.is_any()) return;
+    if (value_type.is_none()) {
+      report_error(range, "Can't use value that is typed 'none'");
+      return;
+    }
+    // Parameters with default values accept 'null' to request the default.
+    if (value_type == null_type_ && parameter->has_default_value()) return;
+    for (auto annotation : annotations) {
+      if (annotation.is_deprecated()) continue;
+      if (is_assignable(annotation.type(), value_type)) return;
+    }
+    for (auto annotation : annotations) {
+      if (!annotation.is_deprecated()) continue;
+      if (is_assignable(annotation.type(), value_type)) {
+        report_warning(range,
+                       "Deprecated type '%s' for parameter '%s'%s",
+                       type_name(annotation.type()).c_str(),
+                       parameter->name().c_str(),
+                       annotation.deprecation_message().c_str());
+        return;
+      }
+    }
+    std::string expected;
+    for (int i = 0; i < annotations.length(); i++) {
+      if (i != 0) expected += (i == annotations.length() - 1) ? " or " : ", ";
+      expected += "'";
+      expected += type_name(annotations[i].type());
+      expected += "'";
+    }
+    auto got = value_type == null_type_ ? std::string("null") : type_name(value_type);
+    report_error(range,
+                 "Type mismatch. Expected %s. Got '%s'",
+                 expected.c_str(),
+                 got.c_str());
+  }
+
+  std::string type_name(Type type) {
+    if (type.is_any()) return "any";
+    if (type.is_none()) return "none";
+    auto klass_name = type.klass()->name();
+    std::string result(klass_name.is_valid() ? klass_name.c_str() : "<unknown>");
+    if (type.is_nullable()) result += "?";
+    return result;
   }
 
   Type merge_types(Type type1, Type type2) {
