@@ -102,6 +102,13 @@ struct I2cState {
                                  // -> phantom HARDWARE_ERROR on whichever
                                  // transfer follows a probe).
   volatile uint32_t last_event;  // ARM_I2C_EVENT_* bits; 0 = running.
+  volatile uint8_t seq;          // Transfer sequence, bumped at every
+                                 // start; the completion dispatch carries
+                                 // it so on_event can DISCARD dispatches
+                                 // from earlier transfers (e.g. an async
+                                 // transfer the library deadline-aborted,
+                                 // whose late completion would otherwise
+                                 // claim the NEXT transfer's wait).
   uint8_t address;               // Target, for the chained read leg.
   bool owns_buffers;             // Async (malloc'd) vs sync (caller's).
   uint8_t* tx;
@@ -134,7 +141,9 @@ static void i2c_cmsis_event(int id, uint32_t event) {
   }
   state->last_event = event;
   if (state->notify_toit) {
-    Ec618EventSource::send_event_from_isr(Event::i2c_type(id), event);
+    // The dispatch word: event bits | originating transfer's sequence.
+    Ec618EventSource::send_event_from_isr(
+        Event::i2c_type(id), event | ((uint32_t)state->seq << 16));
   }
 }
 
@@ -359,8 +368,13 @@ class I2cResourceGroup : public ResourceGroup {
     : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* r, word data, uint32_t state) override {
-    USE(r);
-    USE(data);
+    // Only the CURRENT transfer's completion may set the done bit: a
+    // dispatch from an earlier (aborted or spin-consumed) transfer
+    // arriving late must not wake the next transfer's wait.
+    auto device = static_cast<I2cDeviceResource*>(r);
+    I2cState* i2c_state = &i2c_states[device->controller()];
+    uint8_t dispatch_seq = (data >> 16) & 0xff;
+    if (dispatch_seq != i2c_state->seq) return state;
     return state | 1;  // Transfer-done bit, matching lib/i2c.toit.
   }
 };
@@ -419,6 +433,7 @@ static int sync_transfer(I2cDeviceResource* device, const uint8_t* tx,
   ensure_setup(controller);
 
   state->address = device->address();
+  state->seq++;
   state->notify_toit = false;
   state->owns_buffers = false;
   state->tx = const_cast<uint8_t*>(tx);
@@ -541,6 +556,7 @@ PRIMITIVE(bus_probe) {
   int controller = bus->controller();
   ensure_setup(controller);
   state->address = address;
+  state->seq++;
   state->notify_toit = false;
   state->owns_buffers = false;
   state->tx = null;
@@ -680,6 +696,7 @@ PRIMITIVE(device_transfer_start) {
   }
 
   state->address = device->address();
+  state->seq++;
   state->notify_toit = true;
   state->owns_buffers = true;
   state->tx = tx_copy;
