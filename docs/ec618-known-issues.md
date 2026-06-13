@@ -226,7 +226,7 @@ up, or the ESP32 reading IO13 high, would mean the output works).
 restores it (wakeup input, pull-up — the boot state) in `pad_release`;
 correct per the docs and harmless, but not sufficient for output.
 
-## 6. Blob I2C no-block engine swallows shape-changing transfers — WORKED AROUND
+## 6. Blob I2C no-block engine swallows shape-changing transfers — RESOLVED (CMSIS rewrite)
 
 **Symptom.** With consecutive `I2C_MasterXfer` no-block transfers of
 DIFFERENT shapes (e.g. a 1-byte register read followed by a 6-byte burst),
@@ -252,8 +252,35 @@ idle bus, and every transfer is the engine's first. (Tried and
 insufficient: the reference's error-only GPR reset, per-transfer
 `I2C_ChangeBR`, polling-mode reassertion alone.)
 
-**Real fix (future).** Move I2C off the closed blob onto the open CMSIS
-driver (`Driver_I2C1`), the same direction as the UART RX rewrite (#4).
+**Real fix (SHIPPED, 2026-06-12).** I2C moved off the closed blob onto the
+open CMSIS driver — in IRQ mode, which our submodule fork had to IMPLEMENT
+(the upstream per-byte path shipped #if 0'd with nonexistent register and
+IRQn names; even LuatOS production uses the blob — bsp_i2c.c never shipped
+anywhere). The per-transfer GPR reset is gone; the engine is command-based
+(SCR carries the byte count, hardware runs the transfer, the IRQ handler
+feeds/drains the 16-deep FIFO), consumes no DMA channels, and reports
+NACK/bus-error/arbitration-lost as real events. HW-validated:
+i2c-torture-ec618 hammers 175 shape-changing, value-checked transfers per
+speed with zero swallows; i2c-stretch-ec618 proves >16-byte FIFO
+refill/drain and mid-transfer SCL clock-stretch tolerance (the ESP32
+squats the SCL net open-drain for 150 ms; the master pauses and resumes
+with intact data both directions). Discovered along the way: the engine's
+control mode IGNORES the TPR divisor entirely (hardware-measured: four
+different divisor values, identical wire pace) — SCL is the functional
+clock through a fixed internal divide, and that clock's SOURCE was
+unpinned (gated-26 MHz vs 51 MHz, drifting run to run: 46 vs 85 kHz for
+identical code; the 51 MHz input is not reliably running and pinning it
+dead-stalls every transfer). The driver pins the 26 MHz source before
+clock-enable: a deterministic ~46 kHz wire. The frequency parameter is
+advisory (>= 46 kHz runs at 46 kHz — slower than asked is I2C-legal;
+below 46 kHz is rejected as unhonorable); true fast-mode would need the
+engine's unexplored "automatic" mode. The command length field is 9-bit
+(512-byte transfer cap, longer rejected). The closed
+soc_i2c stack is deliberately dropped from the jump-table ABI (sticky
+exclude in gen-plat-jt: the two stacks must never be mixed). Remaining
+documented limitation: a clock stretch landing in the microsecond gap
+between the two legs of a chained write-then-read aborts that transfer
+cleanly (bounded chain wait) — retry-able, never corrupting.
 
 ## 7. CMSIS UART DMA-RX engine corrupts the heap under flood — AVOIDED (IRQ mode)
 
@@ -453,3 +480,41 @@ UART2 rescue listener now RELEASES the controller the moment the primary
 channel hears the host (it used to hold UART2 after any watchdog reset
 followed by a routine silence window, failing every uart2 test with
 ALREADY_IN_USE).
+
+## 10. Idle sleep entry kills armed UART receives — the "PWRKEY-latch" mysteries — FIXED (sleep vote)
+
+**Status:** root-caused + FIXED (2026-06-13, HW-verified A/B).
+
+**Symptom.** Ever since the UARTs moved to the CMSIS driver, the agent
+would sporadically go DEAF after an idle window: post-OTA validates and
+test-session gaps were the usual triggers. The byte-fed software watchdog
+then starves (no bytes ever arrive to feed it) and reboots ~60 s later, so
+the device "comes back by itself" — which masqueraded as everything from a
+PWRKEY power-latch quirk to PSU brownouts to slot-marker corruption.
+Reproduction turned out to be a one-liner: contact the agent, idle 35 s,
+contact again — deterministically deaf (35 s is past the sleep threshold
+but under the 60 s watchdog).
+
+**Root cause.** The closed blob UART driver held the system awake while a
+port was open, so the "normal idle never enters SLEEP1" finding from
+issue #2 (measured in the blob era) no longer holds: the CMSIS drivers
+lock sleep only around in-flight transfers. With every task idle the
+system now enters low-power sleep, and the armed DMA `Receive()` does not
+survive the sleep cycle — the SDK's restore callback restores REGISTERS,
+not in-flight transfers. The next host byte lands on a dead receive: the
+agent never hears it (and neither does the watchdog feeder, which is what
+lets the watchdog eventually rescue the device).
+
+**The fix** ([uart_ec618.cc](../src/resources/uart_ec618.cc)): any OPEN
+uart port votes SLEEP1 away (`slpManPlatVoteDisableSleep`, one vote
+handle per resource group, released on close/teardown). The vote state
+lives on the resource group (heap) deliberately — new VM file statics
+would shift the shared-DRAM layout and force a full flash. A/B on
+hardware: 35 s idle was deterministically deaf before, alive after (no
+reboot, same session); a 45 s+handshake window shows the watchdog still
+cycling correctly when genuinely unfed. Proper per-driver suspend/resume
+(re-arming receives on wake) belongs to the deep-sleep arc; this vote is
+the interim that also matches the blob era's implicit behavior. The same
+consideration applies to I2C transfers stretched across a sleep decision
+— today a sleep mid-transfer would lose the engine state and surface as a
+clean DEADLINE/quiesce, bounded by the transfer being ms-scale.

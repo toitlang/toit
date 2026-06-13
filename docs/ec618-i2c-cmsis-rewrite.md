@@ -1,7 +1,59 @@
 # EC618 I2C rewrite: blob engine -> CMSIS driver
 
-Status: design (2026-06-12). Pattern and lessons carried over from
-docs/ec618-uart-cmsis-rewrite.md — same driver family, same traps.
+Status: SHIPPED + HW-VALIDATED (2026-06-12). Pattern and lessons carried
+over from docs/ec618-uart-cmsis-rewrite.md — same driver family, same
+traps. Resolution summary lives in known-issues #6; the surprises found
+during implementation, beyond the design below:
+
+- bsp_i2c.c NEVER SHIPPED anywhere, in any mode: the IRQ glue used IRQn
+  names that don't exist (never compiled), the per-byte handlers were
+  #if 0'd referencing a removed register name, and LuatOS production
+  keeps the whole CMSIS branch behind a literal `#if 0` (their I2C is
+  the soc_i2c blob, with a GPR reset on error). Our fork implements the
+  IRQ-mode master engine: FIFO preload at command issue (the DMA flavor
+  arms its channel first the same way), refill/drain from the IRQ
+  handler on the FIFO-stall interrupts, real NACK/bus-error/arb-lost
+  completion events, single-shot completion behind a busy guard.
+- DMA mode was rejected for the channel budget: 7 usable MP channels
+  (allocator reserves ch0), the three all-DMA UARTs hold 6 when open,
+  and I2C-DMA wants 2 per open bus at Initialize — "2 user UARTs + an
+  I2C bus" would be the product ceiling. IRQ mode consumes none.
+- The control-mode engine IGNORES the TPR divisor (measured: four
+  divisor values, identical pace). SCL = functional clock / fixed
+  internal divide; the clock SOURCE was unpinned (gated-26M vs 51M —
+  the run-to-run 46/85 kHz drift), and the 51 MHz input is not reliably
+  running (pinning it dead-stalled every transfer: DEADLINE_EXCEEDED
+  with the engine never advancing). The driver pins 26 MHz before
+  clock-enable -> deterministic ~46 kHz; the frequency parameter is
+  advisory (floor-rejected below the wire pace); real speed control
+  means exploring the engine's "automatic" mode someday. SCR length
+  field is 9-bit -> 512-byte transfer cap (longer rejected; chunking
+  would insert STOP/START and change the wire protocol).
+- Validation: bmp280-ec618 PASS; i2c-torture-ec618 (175 shape-changing
+  value-checked transfers per speed, NO reset anywhere) PASS at both
+  speeds; i2c-stretch-ec618 PASS — >16-byte TX FIFO refill via a
+  25-byte BMP280 register-pair stream, and 150 ms mid-transfer SCL
+  squats (ESP32, open-drain only) on a 512-byte read AND write, data
+  intact, elapsed = baseline + hold; rc522 SPI regression PASS.
+- The nastiest backend bug arrived late: SPIN-CONSUMED transfers (the
+  sync paths and bus_probe poll the driver-level completion flag) were
+  still letting the completion callback post a Toit event-source
+  dispatch. That stale dispatch lands AFTER the next async transfer's
+  clear-state, wakes its wait immediately, and finish reports an
+  incomplete transfer — a phantom HARDWARE_ERROR on whichever transfer
+  happens to FOLLOW a probe (it masqueraded as a transfer-size bug for
+  hours because the victim op sat at a fixed position in the test
+  round). Fixed with a notify gate: only async transfers signal the
+  event source. Symptom fingerprint for posterity: instant
+  HARDWARE_ERROR, finish sees last_event==0, register snapshot shows
+  MCR=0 (the failing transfer never touched the hardware).
+- Debugging tax worth recording: several intermediate "regressions"
+  were GHOSTS — runs executing a STALE slot after the deafness/watchdog
+  cycle (whether OTA validate markers always survive a watchdog reset
+  is an OPEN question; one slot-flip was observed), plus one
+  unpowered-sensor episode (helpers are one-session: a test's Q kills
+  the power switch for the next run). Wire-state printfs in the rare
+  error paths stay in the driver for exactly this reason.
 
 ## Why
 

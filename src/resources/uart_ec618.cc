@@ -32,6 +32,7 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "platform_define.h"
+  #include "slpman.h"     // Sleep vote (via the jump table) — see uart_sleep_vote.
   // All three UARTs run on the OPEN CMSIS driver (bsp_usart.c) instead of
   // the closed Uart_* blob (docs/ec618-uart-cmsis-rewrite.md): the blob's
   // RX ring silently discarded everything on overflow and killed RX until
@@ -153,11 +154,51 @@ class UartResourceGroup : public ResourceGroup {
   explicit UartResourceGroup(Process* process, EventSource* event_source)
     : ResourceGroup(process, event_source) {}
 
+  ~UartResourceGroup() {
+    // on_unregister_resource already ran per port; belt and braces.
+    if (sleep_vote_held_) {
+      slpManPlatVoteEnableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
+    }
+    if (sleep_vote_handle_ != 0xff) {
+      slpManGivebackPlatVoteHandle(sleep_vote_handle_);
+    }
+  }
+
+  // Sleep vote: an open UART must keep the system out of SLEEP1. The
+  // armed DMA receive does not survive the SLEEP1 power cycle (the SDK
+  // restore callback restores registers, not in-flight transfers), so an
+  // idle system with an open port goes DEAF on wake — reproduced with a
+  // 35 s idle gap killing the agent; the byte-fed software watchdog then
+  // starves and reboots ~60 s later, which is what every "PWRKEY-latch"
+  // mystery actually was. The closed blob driver kept the system awake
+  // implicitly. Proper per-driver suspend/resume belongs to the
+  // deep-sleep work; until then any open port votes SLEEP1 away. The
+  // vote state lives on the GROUP (heap) deliberately: new VM file
+  // statics shift the shared-DRAM layout and would force a full flash.
+  // Concurrent groups each hold their own handle; if the vote pool runs
+  // dry the extra groups degrade gracefully (any one vote suffices).
+  void sleep_vote(int delta) {
+    open_ports_ += delta;
+    if (sleep_vote_handle_ == 0xff) {
+      if (open_ports_ <= 0) return;
+      slpManApplyPlatVoteHandle("TOITUART", &sleep_vote_handle_);
+      if (sleep_vote_handle_ == 0xff) return;
+    }
+    if (open_ports_ > 0 && !sleep_vote_held_) {
+      slpManPlatVoteDisableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
+      sleep_vote_held_ = true;
+    } else if (open_ports_ == 0 && sleep_vote_held_) {
+      slpManPlatVoteEnableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
+      sleep_vote_held_ = false;
+    }
+  }
+
   void on_unregister_resource(Resource* r) override {
     auto uart_res = static_cast<UartResource*>(r);
     int id = uart_res->uart_id();
     UartState& state = uart_states[id];
     if (state.in_use) {
+      sleep_vote(-1);
 #if CONFIG_TOIT_EC618_PRINT_UART
       // The print UART shares the controller with printf/monitor output:
       // tear down OUR half only (RX irqs + buffers) and leave the
@@ -227,6 +268,11 @@ class UartResourceGroup : public ResourceGroup {
     }
     return state;
   }
+
+ private:
+  uint8_t sleep_vote_handle_ = 0xff;
+  bool sleep_vote_held_ = false;
+  int open_ports_ = 0;
 };
 
 // Drives the RS485 direction line. Uses the OEM GPIO_pin* API (like
@@ -702,6 +748,7 @@ PRIMITIVE(create) {
   uart_states[id].de_pad = de_pad;
 
   group->register_resource(resource);
+  group->sleep_vote(1);
   proxy->set_external_address(resource);
   return proxy;
 }

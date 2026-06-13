@@ -28,6 +28,7 @@
 
 extern "C" {
   #include "bsp_common.h"
+  #include "clock.h"         // GPR_setClockSrc: pin the I2C functional clock.
   #include "driver_gpio.h"   // GPIO_PullConfig / GPIO_IomuxEC618.
   #include "gpio.h"          // OEM GPIO_pinConfig/pinRead, for the bus peek.
   // I2C runs on the OPEN CMSIS driver (bsp_i2c.c) in IRQ mode — a mode the
@@ -42,6 +43,7 @@ extern "C" {
   #include "Driver_I2C.h"
   extern ARM_DRIVER_I2C Driver_I2C0;
   extern ARM_DRIVER_I2C Driver_I2C1;
+  extern void delay_us(uint32_t us);  // PLAT busy-wait (jump table).
 }
 
 namespace toit {
@@ -87,10 +89,18 @@ struct I2cState {
                              // no-op on an initialized driver, and
                              // Uninitialize on a never-initialized one
                              // is undefined — the UART tracker lesson).
-  uint32_t functional_clk;   // Inferred once; 0 = not yet calibrated.
-  uint32_t current_hz;       // Applied divisor; 0 = must (re)apply.
+  uint32_t current_hz;       // Wire pace once SETUP ran; 0 = must rerun
+                             // (cleared by quiesce/power cycles).
   volatile bool transfer_active;
   volatile uint8_t stage;
+  volatile bool notify_toit;     // Async transfer: completion must wake the
+                                 // Toit event state. Spin-consumed transfers
+                                 // (sync paths, probe) MUST NOT notify: the
+                                 // stale dispatch would land after the NEXT
+                                 // transfer's clear-state and wake it early
+                                 // (finish then sees an incomplete transfer
+                                 // -> phantom HARDWARE_ERROR on whichever
+                                 // transfer follows a probe).
   volatile uint32_t last_event;  // ARM_I2C_EVENT_* bits; 0 = running.
   uint8_t address;               // Target, for the chained read leg.
   bool owns_buffers;             // Async (malloc'd) vs sync (caller's).
@@ -123,42 +133,58 @@ static void i2c_cmsis_event(int id, uint32_t event) {
     event = ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
   }
   state->last_event = event;
-  Ec618EventSource::send_event_from_isr(Event::i2c_type(id), event);
+  if (state->notify_toit) {
+    Ec618EventSource::send_event_from_isr(Event::i2c_type(id), event);
+  }
 }
 
 static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
 static void i2c1_event(uint32_t event) { i2c_cmsis_event(1, event); }
 static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event };
 
-// Applies an arbitrary bus frequency. The driver's Control(BUS_SPEED) only
-// knows 100k/400k/1M and ORs the divisor into TPR (accumulating stale
-// bits); we assign the SCLH/SCLL fields ourselves. The functional clock is
-// not exported by the driver, so it is inferred ONCE from the divisor that
-// Control() computes for 100 kHz — that call also sets the driver's
-// internal SETUP flag, which gates Master*.
-static void apply_speed(int controller, uint32_t hz) {
+// The wire pace is NOT configurable in the engine's control mode: the
+// TPR SCLH/SCLL divisor is IGNORED (hardware-measured — four different
+// divisor values, identical pace), and SCL comes out of the functional
+// clock through a fixed internal divide: ~46 kHz from the pinned 26 MHz
+// source. The requested device frequency is therefore advisory: anything
+// at or above the wire pace runs AT the wire pace (a slower bus is always
+// I2C-legal), and device_create rejects requests below it (they cannot be
+// honored and a deliberately-slow bus may be a hard requirement). True
+// fast-mode would need the engine's unexplored "automatic" mode — a
+// future arc. This call's only real job is the driver's internal SETUP
+// flag, which gates Master*; it must rerun after every power cycle.
+static const uint32_t kWireHz = 46000;  // Measured, deterministic (26 MHz pinned).
+
+static void ensure_setup(int controller) {
   I2cState* state = &i2c_states[controller];
-  if (state->current_hz == hz) return;
-  I2C_TypeDef* regs = kI2cRegs[controller];
+  if (state->current_hz != 0) return;
   kI2cDrivers[controller]->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
-  if (state->functional_clk == 0) {
-    uint32_t sclh = (regs->TPR & I2C_TPR_SCLH_Msk) >> I2C_TPR_SCLH_Pos;
-    state->functional_clk = sclh * 2 * 100000;
-  }
-  uint32_t half = (state->functional_clk / hz) / 2;
-  if (half < 1) half = 1;
-  if (half > 0xff) half = 0xff;
-  uint32_t tpr = regs->TPR & ~(I2C_TPR_SCLH_Msk | I2C_TPR_SCLL_Msk);
-  regs->TPR = tpr | (half << I2C_TPR_SCLH_Pos) | (half << I2C_TPR_SCLL_Pos);
-  state->current_hz = hz;
+  state->current_hz = kWireHz;
 }
 
 // Hard recovery: the CMSIS abort and bus-clear entry points are empty
 // stubs, so the reliable reset is a power cycle of the block (the UART
-// recipe). Clears the engine, FIFOs and the TPR divisor.
+// recipe). Clears the engine, FIFOs and the SETUP flag. The functional
+// clock source is RE-PINNED in the unclocked window between OFF and FULL:
+// the disable/enable cycle can drop the mux back to its floating default,
+// and the 51 MHz input it may land on is not reliably running (a transfer
+// on a dead clock stalls the engine and can wedge the device) — observed
+// as flaky HARDWARE_ERRORs that appeared with quiesce-heavy tests.
 static void quiesce(int controller) {
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
+  // Let a dying transaction finish its STOP first: the completion event
+  // (e.g. the NACK that brought us here) leads the STOP by up to a
+  // bit-time, and power-cycling the engine mid-STOP abandons the wire
+  // with a line held low — after which every transfer fails the
+  // bus_free() peek and nothing ever recovers (observed: torture-test
+  // HARDWARE_ERRORs whose register snapshot showed MCR=0 with the bus
+  // monitor stuck busy; twice as frequent at the slower 46 kHz wire,
+  // because the race window is a bit-time).
+  I2C_TypeDef* regs = kI2cRegs[controller];
+  for (int spin = 20000; (regs->STR & I2C_STR_BUSY_Msk) && spin > 0; spin--) {}
   driver->PowerControl(ARM_POWER_OFF);
+  GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
+                  controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
   driver->PowerControl(ARM_POWER_FULL);
   i2c_states[controller].current_hz = 0;
 }
@@ -176,6 +202,51 @@ static bool wire_high(int pad) {
   int level = GPIO_pinRead(gpio_bit >> 4, gpio_bit & 0xf) ? 1 : 0;
   GPIO_IomuxEC618(pad, 2, 1, 1);
   return level != 0;
+}
+
+// Standard 9-clock bus clear via the pad-GPIO trick: a slave (or an
+// abandoned transaction) holding SDA low releases it once it sees enough
+// SCL edges to finish whatever byte it believes it is transferring, and
+// the closing STOP pattern resets every state machine on the wire. The
+// CMSIS ARM_I2C_BUS_CLEAR entry point is an empty stub, so this is ours.
+// Open-drain semantics by direction switching (drive low = output-0,
+// release = input + pull-ups), so nothing ever fights the pull-ups.
+static void drive_low(int pad, int gpio_bit) {
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_OUTPUT;
+  config.misc.initOutput = 0;
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 1);
+}
+
+static void release_line(int pad, int gpio_bit) {
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_INPUT;
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 1);
+}
+
+static void bus_clear(int sda, int scl) {
+  int sda_bit = pad_to_gpio(sda);
+  int scl_bit = pad_to_gpio(scl);
+  if (sda_bit < 0 || scl_bit < 0) return;
+  release_line(sda, sda_bit);
+  release_line(scl, scl_bit);
+  delay_us(20);
+  for (int i = 0; i < 9; i++) {        // ~25 kHz clearing clock.
+    drive_low(scl, scl_bit);
+    delay_us(20);
+    release_line(scl, scl_bit);
+    delay_us(20);
+  }
+  drive_low(sda, sda_bit);             // STOP: SDA low -> high with SCL high.
+  delay_us(20);
+  release_line(sda, sda_bit);
+  delay_us(20);
+  GPIO_IomuxEC618(sda, 2, 1, 1);       // Back to the controller (ALT2).
+  GPIO_IomuxEC618(scl, 2, 1, 1);
 }
 
 // Releases a finished (or aborted) transfer's buffers.
@@ -228,6 +299,22 @@ class I2cBusResource : public Resource {
     return (wire_high(sda_)) && (wire_high(scl_));
   }
 
+  // bus_free with one recovery attempt: a held-low line gets the standard
+  // 9-clock bus clear (stuck slave, or a transaction the engine abandoned
+  // mid-STOP) before the verdict.
+  bool bus_usable() const {
+    if (bus_free()) return true;
+    printf("[i2c] bus stuck: sda=%d scl=%d - clearing\n",
+           wire_high(sda_) ? 1 : 0, wire_high(scl_) ? 1 : 0);
+    bus_clear(sda_, scl_);
+    bool ok = bus_free();
+    if (!ok) {
+      printf("[i2c] clear failed: sda=%d scl=%d\n",
+             wire_high(sda_) ? 1 : 0, wire_high(scl_) ? 1 : 0);
+    }
+    return ok;
+  }
+
  private:
   int controller_;
   int sda_;
@@ -278,6 +365,12 @@ class I2cResourceGroup : public ResourceGroup {
   }
 };
 
+// The hardware command register carries the transfer length in a 9-bit
+// field: 512 bytes is the longest single transfer the engine can run.
+// (Longer would silently truncate at the hardware; chunking would insert
+// STOP/START between chunks and change the wire protocol, so reject.)
+static const int kMaxTransfer = 512;
+
 // Maps the recorded completion event to the primitive result code
 // (0 = clean; the library turns nonzero into HARDWARE_ERROR).
 static int event_to_result(uint32_t event) {
@@ -304,6 +397,10 @@ static bool start_legs(I2cState* state, int controller) {
     rc = driver->MasterReceive(state->address, state->rx, state->rx_len, false);
   }
   if (rc != ARM_DRIVER_OK) {
+    printf("[i2c] start_legs rc=%ld stage=%d tx=%lu rx=%lu STR=%08lx\n",
+           (long)rc, (int)state->stage, (unsigned long)state->tx_len,
+           (unsigned long)state->rx_len,
+           (unsigned long)kI2cRegs[controller]->STR);
     quiesce(controller);
     release_transfer(state);
     return false;
@@ -319,9 +416,10 @@ static int sync_transfer(I2cDeviceResource* device, const uint8_t* tx,
                          uint32_t tx_len, uint8_t* rx, uint32_t rx_len) {
   int controller = device->controller();
   I2cState* state = &i2c_states[controller];
-  apply_speed(controller, device->frequency());
+  ensure_setup(controller);
 
   state->address = device->address();
+  state->notify_toit = false;
   state->owns_buffers = false;
   state->tx = const_cast<uint8_t*>(tx);
   state->tx_len = tx_len;
@@ -378,6 +476,18 @@ PRIMITIVE(bus_create) {
   if (state->initialized) driver->Uninitialize();
   driver->Initialize(kI2cCallbacks[controller]);
   state->initialized = true;
+  // Pin the functional clock to the 26 MHz source, BEFORE the block gets
+  // clocked (PowerControl FULL). The engine's control mode paces SCL from
+  // this clock with a fixed internal divide and IGNORES the TPR divisor
+  // (measured: four different TPR values, identical pace) — so the source
+  // selection is the only speed control, and an unpinned source made the
+  // wire drift between ~46 and ~85 kHz across runs as the selection
+  // floated between the 26 MHz and 51 MHz inputs. The 51 MHz input is
+  // NOT reliably running (pinning it dead-stalled every transfer:
+  // DEADLINE_EXCEEDED with the engine never advancing); 26 MHz is alive
+  // whenever the AP runs. Net: a deterministic ~46 kHz wire.
+  GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
+                  controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
   driver->PowerControl(ARM_POWER_FULL);
 
   // Initialize() muxed the driver's RTE pins; release them when the user
@@ -394,7 +504,7 @@ PRIMITIVE(bus_create) {
   }
 
   state->current_hz = 0;
-  apply_speed(controller, 100000);
+  ensure_setup(controller);
 
   I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
   if (bus == null) {
@@ -424,13 +534,14 @@ PRIMITIVE(bus_probe) {
   ARGS(I2cBusResource, bus, uint16, address, int, timeout_ms);
   I2cState* state = bus->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
-  if (!bus->bus_free()) return BOOL(false);
+  if (!bus->bus_usable()) return BOOL(false);
   // SMBus receive-byte probe: a present device ACKs its address and one
   // byte transfers; an absent one NACKs.
   uint8_t scratch;
   int controller = bus->controller();
-  apply_speed(controller, 100000);
+  ensure_setup(controller);
   state->address = address;
+  state->notify_toit = false;
   state->owns_buffers = false;
   state->tx = null;
   state->tx_len = 0;
@@ -469,6 +580,11 @@ PRIMITIVE(device_create) {
   // needed.
   if (address_bit_size != 7) FAIL(INVALID_ARGUMENT);
   if (frequency_hz == 0) FAIL(INVALID_ARGUMENT);
+  // The wire pace is fixed (~46 kHz; see ensure_setup): requests at or
+  // above it run at the wire pace (slower than asked is I2C-legal), but a
+  // request BELOW it cannot be honored — a deliberately slow bus may be a
+  // hard requirement, so reject instead of silently running faster.
+  if (frequency_hz < kWireHz) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -493,12 +609,13 @@ PRIMITIVE(device_close) {
 
 static bool sync_precheck(I2cDeviceResource* device) {
   if (device->bus()->state()->transfer_active) return false;
-  if (!device->bus()->bus_free()) return false;
+  if (!device->bus()->bus_usable()) return false;
   return true;
 }
 
 PRIMITIVE(device_write) {
   ARGS(I2cDeviceResource, device, Blob, buffer);
+  if (buffer.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
   if (sync_transfer(device, buffer.address(), buffer.length(), null, 0) != 0) {
     FAIL(HARDWARE_ERROR);
@@ -509,6 +626,7 @@ PRIMITIVE(device_write) {
 PRIMITIVE(device_read) {
   ARGS(I2cDeviceResource, device, MutableBlob, buffer, int, length);
   if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (length > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
   if (sync_transfer(device, null, 0, buffer.address(), length) != 0) {
     FAIL(HARDWARE_ERROR);
@@ -519,6 +637,7 @@ PRIMITIVE(device_read) {
 PRIMITIVE(device_write_read) {
   ARGS(I2cDeviceResource, device, Blob, tx_buffer, MutableBlob, rx_buffer, int, length);
   if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (length > kMaxTransfer || tx_buffer.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
   if (sync_transfer(device, tx_buffer.address(), tx_buffer.length(),
                     rx_buffer.address(), length) != 0) {
@@ -536,13 +655,14 @@ PRIMITIVE(device_write_read) {
 
 PRIMITIVE(device_transfer_start) {
   ARGS(I2cDeviceResource, device, Blob, tx, int, rx_length);
-  if (rx_length < 0 || rx_length > 0x10000) FAIL(OUT_OF_RANGE);
+  if (rx_length < 0 || rx_length > kMaxTransfer) FAIL(OUT_OF_RANGE);
+  if (tx.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (tx.length() == 0 && rx_length == 0) FAIL(INVALID_ARGUMENT);
 
   I2cState* state = device->bus()->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
-  if (!device->bus()->bus_free()) FAIL(HARDWARE_ERROR);
-  apply_speed(device->controller(), device->frequency());
+  if (!device->bus()->bus_usable()) FAIL(HARDWARE_ERROR);
+  ensure_setup(device->controller());
 
   uint8_t* tx_copy = null;
   if (tx.length() > 0) {
@@ -560,6 +680,7 @@ PRIMITIVE(device_transfer_start) {
   }
 
   state->address = device->address();
+  state->notify_toit = true;
   state->owns_buffers = true;
   state->tx = tx_copy;
   state->tx_len = tx.length();
@@ -590,7 +711,12 @@ PRIMITIVE(device_transfer_finish) {
     if (n > (uint32_t)rx_out.length()) n = rx_out.length();
     memcpy(rx_out.address(), state->rx, n);
   }
-  if (result != 0) quiesce(device->controller());
+  if (result != 0) {
+    printf("[i2c] finish event=%08lx stage=%d tx=%lu rx=%lu\n",
+           (unsigned long)event, (int)state->stage,
+           (unsigned long)state->tx_len, (unsigned long)state->rx_len);
+    quiesce(device->controller());
+  }
   release_transfer(state);
   return Primitive::integer(result, process);
 }
