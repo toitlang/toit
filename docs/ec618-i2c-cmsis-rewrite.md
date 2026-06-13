@@ -47,13 +47,19 @@ during implementation, beyond the design below:
   event source. Symptom fingerprint for posterity: instant
   HARDWARE_ERROR, finish sees last_event==0, register snapshot shows
   MCR=0 (the failing transfer never touched the hardware).
-- Debugging tax worth recording: several intermediate "regressions"
-  were GHOSTS — runs executing a STALE slot after the deafness/watchdog
-  cycle (whether OTA validate markers always survive a watchdog reset
-  is an OPEN question; one slot-flip was observed), plus one
-  unpowered-sensor episode (helpers are one-session: a test's Q kills
-  the power switch for the next run). Wire-state printfs in the rare
-  error paths stay in the driver for exactly this reason.
+- Debugging tax worth recording, with the post-mortem correction: the
+  "stale slot ghost" theory that grew during the hunt was WRONG. The
+  slot-marker machinery was subsequently live-verified end to end
+  (marker peeked before/after a full OTA: seq advances exactly +3 for
+  stage/consume/validate, records correct, right slot boots) — the
+  "evidence" was (a) slot-letter bookkeeping confusion (OTAs ping-pong
+  slots every cycle) and (b) instrumentation printfs that sat AFTER the
+  early-return on exactly the failing path, making the new build look
+  like the old one. Plus one unpowered-sensor episode (helpers are
+  one-session: a test's Q kills the power switch for the next run).
+  Lessons: instrument every exit of a function, not just the branch you
+  suspect; and record the slot letter with every OTA. Wire-state
+  printfs in the rare error paths stay in the driver.
 
 ## Why
 
