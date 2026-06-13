@@ -38,3 +38,8 @@ tedi_test.go
 
 GITIGNORE/
 /dev/ec618-rig/
+
+# Agent / build tooling — local, not part of the project source.
+/.agent/
+/.claude/
+/.xmake/
