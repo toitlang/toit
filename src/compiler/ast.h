@@ -876,12 +876,12 @@ class Call : public Expression {
 /// through a `// __TYPE-MIGRATION__ <name>: <type>` comment in front of the declaration.
 ///
 /// Temporary mechanism to migrate `any` parameters to concrete types.
-class TypeAnnotation {
+class MigrationType {
  public:
-  TypeAnnotation(Expression* type,
-                 bool is_deprecated,
-                 Symbol deprecation_message,
-                 Source::Range range)
+  MigrationType(Expression* type,
+                bool is_deprecated,
+                Symbol deprecation_message,
+                Source::Range range)
       : type_(type)
       , is_deprecated_(is_deprecated)
       , deprecation_message_(deprecation_message)
@@ -924,9 +924,9 @@ class Parameter : public Expression {
   bool is_field_storing() const { return is_field_storing_; }
   bool is_block() const { return is_block_; }
 
-  List<TypeAnnotation*> type_annotations() const { return type_annotations_; }
-  void set_type_annotations(List<TypeAnnotation*> annotations) {
-    type_annotations_ = annotations;
+  List<MigrationType*> migration_types() const { return migration_types_; }
+  void set_migration_types(List<MigrationType*> types) {
+    migration_types_ = types;
   }
 
   Source::Range full_range() const override;
@@ -938,7 +938,7 @@ class Parameter : public Expression {
    bool is_named_;
    bool is_field_storing_;
    bool is_block_;
-   List<TypeAnnotation*> type_annotations_;
+   List<MigrationType*> migration_types_;
 };
 
 class LiteralNull : public Expression {

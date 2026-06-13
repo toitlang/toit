@@ -29,6 +29,10 @@ consume-reader in/any:
 // __TYPE-MIGRATION__ port: lib.Port
 consume-port port/any:
 
+// __TYPE-MIGRATION__ p: lib.Port. Deprecated. Provide an integer instead.
+// __TYPE-MIGRATION__ p: int
+consume-deprecated-port p/any:
+
 /// Some toitdoc.
 // __TYPE-MIGRATION__ x: int
 mixed-with-toitdoc x/any:
@@ -88,6 +92,11 @@ main:
 
   consume-port lib.Port             // OK.
   consume-port 5                    // Error.
+
+  consume-deprecated-port lib.Port      // Warning: deprecated prefixed lib.Port.
+  consume-deprecated-port lib.SubPort   // Warning: subclass of deprecated prefixed lib.Port.
+  consume-deprecated-port 7             // OK.
+  consume-deprecated-port "bad"         // Error.
 
   mixed-with-toitdoc 7              // OK.
   mixed-with-toitdoc "bad"          // Error.

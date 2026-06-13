@@ -1411,9 +1411,9 @@ class Parameter : public Local {
   /// through a `// __TYPE-MIGRATION__ <name>: <type>` comment in front of the declaration.
   ///
   /// Temporary mechanism to migrate `any` parameters to concrete types.
-  class TypeAnnotation {
+  class MigrationType {
    public:
-    TypeAnnotation(Type type, bool is_deprecated, Symbol deprecation_message)
+    MigrationType(Type type, bool is_deprecated, Symbol deprecation_message)
         : type_(type)
         , is_deprecated_(is_deprecated)
         , deprecation_message_(deprecation_message) {}
@@ -1429,8 +1429,8 @@ class Parameter : public Local {
     bool is_deprecated_;
     Symbol deprecation_message_;
 
-    friend class ListBuilder<TypeAnnotation>;
-    TypeAnnotation()
+    friend class ListBuilder<MigrationType>;
+    MigrationType()
         : type_(Type::invalid())
         , is_deprecated_(false)
         , deprecation_message_(Symbol::invalid()) {}
@@ -1475,16 +1475,16 @@ class Parameter : public Local {
 
   /// The type alternatives given through `// __TYPE-MIGRATION__` comments.
   /// Only set for parameters of type `any`. Empty if there are none.
-  List<TypeAnnotation> type_annotations() const { return type_annotations_; }
-  void set_type_annotations(List<TypeAnnotation> annotations) {
-    type_annotations_ = annotations;
+  List<MigrationType> migration_types() const { return migration_types_; }
+  void set_migration_types(List<MigrationType> types) {
+    migration_types_ = types;
   }
 
  private:
   bool has_default_value_;
   Source::Range default_value_range_;
   int original_index_;
-  List<TypeAnnotation> type_annotations_;
+  List<MigrationType> migration_types_;
 };
 
 class CapturedLocal : public Parameter {

@@ -16,7 +16,7 @@
 #include <map>
 #include <string>
 
-#include "type_annotations.h"
+#include "migration_type.h"
 
 #include "ast.h"
 #include "comments.h"
@@ -30,12 +30,10 @@ namespace {  // anonymous
 
 static const char* const TYPE_MARKER = "__TYPE-MIGRATION__";
 
-static bool is_identifier_start(int c) {
-  return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
-}
-
+// Reuses the scanner's identifier-start rule. Unlike the scanner we allow '-'
+// anywhere, since we only scan our own annotation comments.
 static bool is_identifier_part(int c) {
-  return is_identifier_start(c) || ('0' <= c && c <= '9') || c == '-';
+  return Scanner::is_identifier_start(c) || is_decimal_digit(c) || c == '-';
 }
 
 static bool matches(const uint8* text, int pos, int to, const char* str) {
@@ -44,9 +42,10 @@ static bool matches(const uint8* text, int pos, int to, const char* str) {
   return memcmp(text + pos, str, len) == 0;
 }
 
-static std::string trim_whitespace(const std::string& str) {
-  auto start = str.find_first_not_of(" \t");
-  auto end = str.find_last_not_of(" \t");
+// We author the annotation comments ourselves, so trimming spaces is enough.
+static std::string trim_spaces(const std::string& str) {
+  auto start = str.find_first_not_of(' ');
+  auto end = str.find_last_not_of(' ');
   if (start == std::string::npos) return "";
   return str.substr(start, end - start + 1);
 }
@@ -54,15 +53,15 @@ static std::string trim_whitespace(const std::string& str) {
 struct ParsedAnnotation {
   Symbol name = Symbol::invalid();
   Source::Range name_range = Source::Range::invalid();
-  ast::TypeAnnotation* annotation = null;
+  ast::MigrationType* migration_type = null;
   bool is_used = false;
 
-  bool is_valid() const { return annotation != null; }
+  bool is_valid() const { return migration_type != null; }
 };
 
-class TypeAnnotationManager : public CommentsManager {
+class MigrationTypeManager : public CommentsManager {
  public:
-  TypeAnnotationManager(List<Scanner::Comment> comments,
+  MigrationTypeManager(List<Scanner::Comment> comments,
                         Source* source,
                         SymbolCanonicalizer* symbols,
                         Diagnostics* diagnostics)
@@ -101,45 +100,38 @@ class TypeAnnotationManager : public CommentsManager {
     while (first > 0 && is_attached(first - 1, first)) first--;
 
     auto parameters = method->parameters();
-    for (auto parameter : parameters) {
-      if (parameter->is_block()) continue;
-      ListBuilder<ast::TypeAnnotation*> annotations;
-      for (int i = first; i <= closest; i++) {
-        auto probe = parsed_.find(i);
-        if (probe == parsed_.end()) continue;
-        auto& parsed = probe->second;
-        if (!parsed.is_valid()) continue;
-        if (parsed.name != parameter->name()->data()) continue;
-        parsed.is_used = true;
-        annotations.add(parsed.annotation);
-      }
-      if (!annotations.is_empty()) {
-        parameter->set_type_annotations(annotations.build());
-      }
-    }
-
-    // Report annotations of this block that didn't match any parameter.
+    // Run through the comments and attach each annotation to its parameter,
+    // accumulating per parameter (in declaration order) and reporting the ones
+    // that don't have a matching target.
+    std::map<ast::Parameter*, ListBuilder<ast::MigrationType*>> per_parameter;
     for (int i = first; i <= closest; i++) {
       auto probe = parsed_.find(i);
       if (probe == parsed_.end()) continue;
       auto& parsed = probe->second;
-      if (!parsed.is_valid() || parsed.is_used) continue;
+      if (!parsed.is_valid()) continue;
       parsed.is_used = true;
-      bool is_block = false;
+
+      ast::Parameter* target = null;
       for (auto parameter : parameters) {
         if (parameter->name()->data() == parsed.name) {
-          is_block = parameter->is_block();
+          target = parameter;
           break;
         }
       }
-      if (is_block) {
-        diagnostics_->report_error(parsed.name_range,
-                                   "Can't use a type-migration annotation on a block parameter");
-      } else {
+      if (target == null) {
         diagnostics_->report_error(parsed.name_range,
                                    "No parameter '%s' for type-migration annotation",
                                    parsed.name.c_str());
+      } else if (target->is_block()) {
+        diagnostics_->report_error(parsed.name_range,
+                                   "Can't use a type-migration annotation on a block parameter");
+      } else {
+        per_parameter[target].add(parsed.migration_type);
       }
+    }
+
+    for (auto& entry : per_parameter) {
+      entry.first->set_migration_types(entry.second.build());
     }
   }
 
@@ -164,7 +156,7 @@ class TypeAnnotationManager : public CommentsManager {
   }
 
   int scan_identifier(const uint8* text, int pos, int to) {
-    if (pos < to && is_identifier_start(text[pos])) {
+    if (pos < to && Scanner::is_identifier_start(text[pos])) {
       while (pos < to && is_identifier_part(text[pos])) pos++;
     }
     return pos;
@@ -216,7 +208,7 @@ class TypeAnnotationManager : public CommentsManager {
         pos += strlen("Deprecated");
         if (pos < to && (text[pos] == '.' || text[pos] == ':')) pos++;
         std::string message(char_cast(text + pos), to - pos);
-        message = trim_whitespace(message);
+        message = trim_spaces(message);
         // Remove a trailing '.' if it exists.
         if (!message.empty() && message.back() == '.') message.pop_back();
         // If the message is not empty, add a '. ' to the beginning. This way
@@ -230,10 +222,10 @@ class TypeAnnotationManager : public CommentsManager {
       }
     }
 
-    result.annotation = _new ast::TypeAnnotation(type,
-                                                 is_deprecated,
-                                                 deprecation_message,
-                                                 comment_range);
+    result.migration_type = _new ast::MigrationType(type,
+                                                    is_deprecated,
+                                                    deprecation_message,
+                                                    comment_range);
     return result;
   }
 
@@ -265,7 +257,7 @@ class TypeAnnotationManager : public CommentsManager {
         dot->set_range(source_->range(start, pos));
         result = dot;
       }
-      if (pos + 1 < to && text[pos] == '.' && is_identifier_start(text[pos + 1])) {
+      if (pos + 1 < to && text[pos] == '.' && Scanner::is_identifier_start(text[pos + 1])) {
         pos++;
         continue;
       }
@@ -284,13 +276,13 @@ class TypeAnnotationManager : public CommentsManager {
 
 }  // anonymous namespace.
 
-void attach_type_annotations(ast::Unit* unit,
-                             List<Scanner::Comment> comments,
-                             Source* source,
-                             SymbolCanonicalizer* symbols,
-                             Diagnostics* diagnostics) {
+void attach_migration_types(ast::Unit* unit,
+                            List<Scanner::Comment> comments,
+                            Source* source,
+                            SymbolCanonicalizer* symbols,
+                            Diagnostics* diagnostics) {
   if (comments.is_empty()) return;
-  TypeAnnotationManager manager(comments, source, symbols, diagnostics);
+  MigrationTypeManager manager(comments, source, symbols, diagnostics);
   manager.collect();
   if (!manager.has_annotations()) return;
 

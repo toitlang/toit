@@ -19,7 +19,7 @@
 #include "outline_ranges.h"
 #include "symbol_canonicalizer.h"
 #include "toitdoc_parser.h"
-#include "type_annotations.h"
+#include "migration_type.h"
 #include "../flags.h"
 #include "../printing.h"
 
@@ -168,11 +168,11 @@ Unit* Parser::parse_unit(Source* override_source) {
                  scanner()->symbol_canonicalizer(),
                  diagnostics());
 
-  attach_type_annotations(result,
-                          scanner()->comments(),
-                          source_,
-                          scanner()->symbol_canonicalizer(),
-                          diagnostics());
+  attach_migration_types(result,
+                         scanner()->comments(),
+                         source_,
+                         scanner()->symbol_canonicalizer(),
+                         diagnostics());
 
   set_outline_ranges(result, scanner()->comments());
 

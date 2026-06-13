@@ -856,8 +856,8 @@ class TypeChecker : public ReturningVisitor<Type> {
                        ir::Parameter* parameter,
                        Type parameter_type,
                        Type value_type) {
-    auto annotations = parameter->type_annotations();
-    if (annotations.is_empty()) {
+    auto migration_types = parameter->migration_types();
+    if (migration_types.is_empty()) {
       check(range, parameter_type, value_type);
       return;
     }
@@ -869,26 +869,21 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
     // Parameters with default values accept 'null' to request the default.
     if (value_type == null_type_ && parameter->has_default_value()) return;
-    for (auto annotation : annotations) {
-      if (annotation.is_deprecated()) continue;
-      if (is_assignable(annotation.type(), value_type)) return;
-    }
-    for (auto annotation : annotations) {
-      if (!annotation.is_deprecated()) continue;
-      if (is_assignable(annotation.type(), value_type)) {
-        report_warning(range,
-                       "Deprecated type '%s' for parameter '%s'%s",
-                       type_name(annotation.type()).c_str(),
-                       parameter->name().c_str(),
-                       annotation.deprecation_message().c_str());
-        return;
-      }
+    for (auto migration_type : migration_types) {
+      if (!is_assignable(migration_type.type(), value_type)) continue;
+      if (!migration_type.is_deprecated()) return;
+      report_warning(range,
+                     "Deprecated type '%s' for parameter '%s'%s",
+                     type_name(migration_type.type()).c_str(),
+                     parameter->name().c_str(),
+                     migration_type.deprecation_message().c_str());
+      return;
     }
     std::string expected;
-    for (int i = 0; i < annotations.length(); i++) {
-      if (i != 0) expected += (i == annotations.length() - 1) ? " or " : ", ";
+    for (int i = 0; i < migration_types.length(); i++) {
+      if (i != 0) expected += (i == migration_types.length() - 1) ? " or " : ", ";
       expected += "'";
-      expected += type_name(annotations[i].type());
+      expected += type_name(migration_types[i].type());
       expected += "'";
     }
     auto got = value_type == null_type_ ? std::string("null") : type_name(value_type);

@@ -3,3 +3,4 @@
 // be found in the tests/LICENSE file.
 
 class Port:
+class SubPort extends Port:

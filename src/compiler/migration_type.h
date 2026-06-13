@@ -45,11 +45,11 @@ class Unit;
 ///     create-uart --rx/any:
 ///
 /// Temporary mechanism to migrate `any` parameters to concrete types.
-void attach_type_annotations(ast::Unit* unit,
-                             List<Scanner::Comment> comments,
-                             Source* source,
-                             SymbolCanonicalizer* symbols,
-                             Diagnostics* diagnostics);
+void attach_migration_types(ast::Unit* unit,
+                            List<Scanner::Comment> comments,
+                            Source* source,
+                            SymbolCanonicalizer* symbols,
+                            Diagnostics* diagnostics);
 
 } // namespace toit::compiler
 } // namespace toit
