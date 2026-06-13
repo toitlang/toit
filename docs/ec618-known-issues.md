@@ -506,15 +506,87 @@ agent never hears it (and neither does the watchdog feeder, which is what
 lets the watchdog eventually rescue the device).
 
 **The fix** ([uart_ec618.cc](../src/resources/uart_ec618.cc)): any OPEN
-uart port votes SLEEP1 away (`slpManPlatVoteDisableSleep`, one vote
-handle per resource group, released on close/teardown). The vote state
-lives on the resource group (heap) deliberately — new VM file statics
-would shift the shared-DRAM layout and force a full flash. A/B on
-hardware: 35 s idle was deterministically deaf before, alive after (no
-reboot, same session); a 45 s+handshake window shows the watchdog still
-cycling correctly when genuinely unfed. Proper per-driver suspend/resume
-(re-arming receives on wake) belongs to the deep-sleep arc; this vote is
-the interim that also matches the blob era's implicit behavior. The same
-consideration applies to I2C transfers stretched across a sleep decision
-— today a sleep mid-transfer would lose the engine state and surface as a
-clean DEADLINE/quiesce, bounded by the transfer being ms-scale.
+uart port votes SLEEP1 away (`slpManPlatVoteDisableSleep`, one shared
+`"TOITUART"` vote handle, released when the last port closes). The vote
+state is **module-global** (`uart_open_ports`/`uart_sleep_vote_*`) so the
+deep-sleep path can force-release a vote still held at VM exit (see #11)
+— a per-group handle could not be reached from there. These file statics
+shift the shared-DRAM layout, so introducing them is a base change (full
+flash + `gen-data-reloc`), done once. A/B on hardware: 35 s idle was
+deterministically deaf before, alive after (no reboot, same session); a
+45 s+handshake window shows the watchdog still cycling correctly when
+genuinely unfed. This plat-layer vote is distinct from the CMSIS
+drivers' own per-driver votes (`slpManDrvVoteSleep`), which gate deep
+sleep separately — see #11. The same consideration applies to I2C
+transfers stretched across a sleep decision — today a sleep mid-transfer
+would lose the engine state and surface as a clean DEADLINE/quiesce,
+bounded by the transfer being ms-scale.
+
+## 11. Deep sleep never actually hibernated — per-driver sleep votes cap it below HIB — FIXED
+
+**Status:** root-caused + FIXED (2026-06-13, HW-verified — 5 s and 25 s
+hibernate cycles, RTC persistence, `wake=rtc`).
+
+**Symptom.** `ec618.deep-sleep` *looked* like it worked — the device went
+quiet and "came back" a while later, and earlier notes recorded "two
+successful sleep-wake cycles." It never hibernated. After the VM exits
+for deep sleep, the chip sat in the post-exit idle loop until the **60 s
+software watchdog** reset it — and that reset is what looked like the
+wake. No power was saved, and the wake always reported `reset=power-on`
+`wake=power-on`. The "successful cycles" were watchdog resets misread as
+timer wakes (the deep-sleep timer was 5 s, the watchdog 60 s — the 12×
+discrepancy in the wake latency was the tell, once it was instrumented).
+
+**Root cause.** Two INDEPENDENT vote layers gate low-power entry, and only
+one is visible through `slpManPlatGetSlpState()`:
+
+1. **Plat votes** (`slpManPlatVoteDisableSleep`, handles like `"toit"` and
+   `"TOITUART"`). At deep-sleep entry these allowed hibernate —
+   `slpManPlatGetSlpState()` returned `4` (`SLP_HIB_STATE`).
+2. **Per-driver votes** (`slpManDrvVoteSleep`, one per `slpDrvVoteModule_t`
+   — USART, DMA, …). The CMSIS drivers raise these around their own
+   activity. They are NOT reflected in `slpManPlatGetSlpState()`. The
+   always-open **console UART** (the print redirect / agent console) keeps
+   its USART driver voting at most `SLP_SLP1_STATE` — capping the real
+   achievable state at SLEEP1, so HIBERNATE never engaged no matter what
+   the plat votes said.
+
+So the plat-vote instrumentation (`allow=4`) was misleading: the driver
+votes were the actual ceiling, and there is no `Get` for the aggregate
+driver-vote state — only `slpManGetLastSlpState()` (what was *entered*)
+tells the truth after the fact.
+
+**The fix** ([toit_ec618.cc](../src/toit_ec618.cc) deep-sleep path):
+before the tickless-idle loop, release **every** driver vote to HIB
+(`slpManDrvVoteSleep(module, SLP_HIB_STATE)` for all `slpDrvVoteModule_t`).
+Safe because deep sleep ends in a reboot — no in-flight driver state needs
+preserving. Two supporting changes in the same path: re-arm the software
+watchdog to 120 s at entry (`toit_watchdog_presleep`) so its stale 60 s
+deadline can't fire *during* a slow sleep entry and masquerade as a wake;
+and force-release the interim UART plat-vote (#10) in case a Toit port was
+still open at VM exit (containers are not torn down on a deep-sleep exit).
+
+**Wake cause** ([primitive_ec618.cc](../src/primitive_ec618.cc),
+[ec618.toit](../lib/ec618/ec618.toit)). After a hibernate wake the AP
+reset reason (`ResetStateGet`) reads **POR** — it cannot distinguish a
+timer wake from a cold boot. `slpManGetWakeupSrc()` *can* (returns
+`WAKEUP_FROM_RTC` for a deep-sleep-timer wake), but only if read **very
+early in boot**: the sleep-manager re-init in `start()` resets it to POR
+before application code runs. So `start()` snapshots it once
+(`toit_capture_boot_wakeup_src`) and `ec618.wakeup-cause` serves the
+snapshot — the same early-capture pattern as `reset-reason`.
+`slpManGetLastSlpState()` corroborates independently (`4`/HIB after a deep
+sleep, `0` after a cold or watchdog boot).
+
+**HW evidence.** `wake src=1 last_slp_state=4` at boot after a 5 s and a
+25 s `deep-sleep`; `rtc_checksum` matches across the wake and `boot_count`
+increments; agent banner `ec618 ready reset=power-on wake=rtc`. Before the
+fix: one `allow=4 last=0` line then a 60 s watchdog FATAL, every time.
+
+**Caveat / rig note.** Validating deep sleep over the console UART is
+inherently awkward: the console is the very peripheral whose driver vote
+caps sleep, and the wake reboots into a fresh agent at 115200 (an OTA
+leaves the console at the hopped baud, so the next connect must wait one
+watchdog cycle for it to return). The deep-sleep test exits the VM, so the
+host tester reports a (harmless) "watchdog reset during the test" — that
+is expected, not a failure.

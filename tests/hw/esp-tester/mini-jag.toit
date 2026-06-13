@@ -188,7 +188,8 @@ serve port/uart.Port --primary/bool=true -> none:
   reader := port.in
   out := port.out
   reason := ec618.reset-reason-name ec618.reset-reason
-  status out "ec618 ready reset=$reason active=$(string.from-rune slot.active)"
+  wake := ec618.wakeup-cause-name ec618.wakeup-cause
+  status out "ec618 ready reset=$reason wake=$wake active=$(string.from-rune slot.active)"
   // The host's running firmware writer survives across commands.
   writer/firmware.FirmwareWriter? := null
   arg/string := ""

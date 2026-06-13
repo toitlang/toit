@@ -152,6 +152,58 @@ reset-reason-name reason/int -> string:
     return RESET-REASON-NAMES_[reason]
   return "reset-$reason"
 
+/** Cold boot: power was (re)applied, or a reset that isn't a sleep wake. */
+WAKEUP-POWER-ON ::= 0
+/** Woke from deep sleep by the RTC deep-sleep timer (see $deep-sleep). */
+WAKEUP-RTC ::= 1
+/** Woke from deep sleep by an AON wakeup pad. */
+WAKEUP-PAD ::= 2
+/** Woke from sleep by activity on the low-power UART (UART1). */
+WAKEUP-LPUART ::= 3
+/** Woke from sleep by USB activity. */
+WAKEUP-LPUSB ::= 4
+/** Woke by the PWRKEY pin. */
+WAKEUP-PWRKEY ::= 5
+/** Woke by the charger (VBUS) detection. */
+WAKEUP-CHARGER ::= 6
+
+// Human-readable names indexed by the WAKEUP-* value. Keep in sync with
+// the constants above (the SDK's slpManWakeSrc_e order).
+WAKEUP-CAUSE-NAMES_/List ::= [
+  "power-on",
+  "rtc",
+  "pad",
+  "lpuart",
+  "lpusb",
+  "pwrkey",
+  "charger",
+]
+
+/**
+Returns what woke the chip at the most recent boot.
+
+The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON,
+  $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a
+  human-readable string.
+
+The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake
+  from deep sleep, so this is the call that tells a deep-sleep wake
+  (by timer or wakeup pad) apart from a cold boot.
+*/
+wakeup-cause -> int:
+  #primitive.ec618.wakeup-cause
+
+/**
+Returns a human-readable name for the given wakeup $cause.
+
+The $cause should be one of the WAKEUP-* constants, typically the result
+  of $wakeup-cause. Unrecognized values are formatted as "wakeup-<n>".
+*/
+wakeup-cause-name cause/int -> string:
+  if 0 <= cause and cause < WAKEUP-CAUSE-NAMES_.size:
+    return WAKEUP-CAUSE-NAMES_[cause]
+  return "wakeup-$cause"
+
 /**
 Helpers for EC618 pin addressing and peripheral construction.
 

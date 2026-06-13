@@ -103,6 +103,11 @@ static void run_static_initializers() {
 
 static uint8 sleep_vote_handle = 0;
 
+// Deep-sleep-path hooks into VM drivers (see the sleep path below).
+extern "C" bool toit_uart_sleep_vote_release_for_sleep();  // uart_ec618.cc.
+extern "C" void toit_watchdog_presleep();                  // primitive_ec618.cc.
+extern "C" int toit_capture_boot_wakeup_src();             // primitive_ec618.cc.
+
 // Callback for deep sleep timer expiration. Must be registered for
 // slpManDeepSlpTimerStart to work. The ID is ignored — the wake-up
 // itself is the important part.
@@ -301,14 +306,32 @@ static void start() {
            last_reset_name(ap), last_reset_name(cp));
   }
 
+  // Snapshot the sleep-manager wake source NOW: it reads correctly only this
+  // early — the sleep-manager re-init below resets it to POR before app code
+  // (ec618.wakeup-cause) can read it (HW-verified). slpManGetLastSlpState()
+  // corroborates: 4 (HIBERNATE) after a deep-sleep wake, 0 after a cold or
+  // watchdog boot.
+  int wakeup_src = toit_capture_boot_wakeup_src();
+  printf("[toit] DEBUG: wake src=%d last_slp_state=%d\n",
+         wakeup_src, static_cast<int>(slpManGetLastSlpState()));
+
   // Install a RAM-resident vector table so we can intercept HardFault,
   // print a register dump, and reset cleanly — otherwise the SDK
   // silently resets the chip with no diagnostic output.
   install_hardfault_dumper();
 
   // Vote against sleep1 during execution so the scheduler tick keeps running.
-  slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);
-  slpManPlatVoteDisableSleep(sleep_vote_handle, SLP_SLP1_STATE);
+  // OPEN QUESTION (idle-deafness post-mortem, docs/ec618-known-issues.md #10):
+  // this vote should have made SLEEP1 impossible while the VM runs, yet idle
+  // SLEEP1 demonstrably happened (it killed armed uart0 DMA receives) until
+  // the UART driver added its own, late-applied vote. Suspect: applying a
+  // vote handle this early in boot fails. Log the codes to settle it.
+  slpManRet_t vote_apply = slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);
+  slpManRet_t vote_disable = slpManPlatVoteDisableSleep(sleep_vote_handle, SLP_SLP1_STATE);
+  printf("[toit] DEBUG: sleep vote apply=%d disable=%d handle=%u allow=%d\n",
+         static_cast<int>(vote_apply), static_cast<int>(vote_disable),
+         static_cast<unsigned>(sleep_vote_handle),
+         static_cast<int>(slpManPlatGetSlpState()));
 
   // Set max sleep state to sleep2 (deep sleep with RAM preservation).
   slpManSetPmuSleepMode(true, SLP_SLP2_STATE, false);
@@ -415,6 +438,20 @@ static void start() {
   RtcMemory::on_deep_sleep_start();
   slpManPlatVoteEnableSleep(sleep_vote_handle, SLP_SLP1_STATE);
 
+  // A port still open at VM exit (the test agent's console port, say) keeps
+  // the UART driver's SLEEP1 veto held — containers are not torn down on a
+  // deep-sleep exit, and that vote blocks hibernate forever. Deep sleep ends
+  // in a reboot, so in-flight UART state is moot: release it here.
+  bool uart_vote_was_held = toit_uart_sleep_vote_release_for_sleep();
+  printf("[toit] DEBUG: pre-sleep: uart sleep vote held=%d\n",
+         uart_vote_was_held ? 1 : 0);
+
+  // Re-arm the software watchdog as a 120 s backstop: its stale deadline
+  // would otherwise fire while we wait for sleep entry (observed: a FATAL
+  // reset 60 s after the last feed, masquerading as the deep-sleep wake).
+  // A successful hibernate kills it; a blocked entry still self-recovers.
+  toit_watchdog_presleep();
+
   // Disable the modem before sleeping. The PS stack holds votes that
   // block sleep entry; appSetCFUN(0) releases them synchronously.
   appSetCFUN(0);
@@ -448,8 +485,26 @@ static void start() {
   slpManAonWdtStop();
 #endif
 
+  // The CMSIS peripheral drivers hold PER-DRIVER sleep votes
+  // (slpManDrvVoteSleep), a mechanism separate from the plat vote handles
+  // that slpManPlatGetSlpState() reports. The always-open console UART (and
+  // its DMA) vote at most SLP1 when idle — capping the achievable state
+  // below HIBERNATE no matter what the plat votes allow. Deep sleep ends in
+  // a reboot, so release every driver vote to HIB before idling.
+  for (int m = 0; m < SLP_VOTE_MAX_NUM; m++) {
+    slpManDrvVoteSleep(static_cast<slpDrvVoteModule_t>(m), SLP_HIB_STATE);
+  }
+
   // Enter idle loop — FreeRTOS tickless idle will enter deep sleep.
+  // allow = deepest state the PLAT votes permit; last = the state actually
+  // entered on the previous tickless idle (0=active 1=idle 2=slp1 3=slp2
+  // 4=hib). On a healthy hibernate entry the chip reboots before a second
+  // line; repeated lines mean entry is blocked and `last` says how deep it
+  // got.
   while (true) {
+    printf("[toit] DEBUG: pre-sleep: allow=%d last=%d\n",
+           static_cast<int>(slpManPlatGetSlpState()),
+           static_cast<int>(slpManGetLastSlpState()));
     osDelay(10000);
   }
 }

@@ -154,101 +154,7 @@ class UartResourceGroup : public ResourceGroup {
   explicit UartResourceGroup(Process* process, EventSource* event_source)
     : ResourceGroup(process, event_source) {}
 
-  ~UartResourceGroup() {
-    // on_unregister_resource already ran per port; belt and braces.
-    if (sleep_vote_held_) {
-      slpManPlatVoteEnableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
-    }
-    if (sleep_vote_handle_ != 0xff) {
-      slpManGivebackPlatVoteHandle(sleep_vote_handle_);
-    }
-  }
-
-  // Sleep vote: an open UART must keep the system out of SLEEP1. The
-  // armed DMA receive does not survive the SLEEP1 power cycle (the SDK
-  // restore callback restores registers, not in-flight transfers), so an
-  // idle system with an open port goes DEAF on wake — reproduced with a
-  // 35 s idle gap killing the agent; the byte-fed software watchdog then
-  // starves and reboots ~60 s later, which is what every "PWRKEY-latch"
-  // mystery actually was. The closed blob driver kept the system awake
-  // implicitly. Proper per-driver suspend/resume belongs to the
-  // deep-sleep work; until then any open port votes SLEEP1 away. The
-  // vote state lives on the GROUP (heap) deliberately: new VM file
-  // statics shift the shared-DRAM layout and would force a full flash.
-  // Concurrent groups each hold their own handle; if the vote pool runs
-  // dry the extra groups degrade gracefully (any one vote suffices).
-  void sleep_vote(int delta) {
-    open_ports_ += delta;
-    if (sleep_vote_handle_ == 0xff) {
-      if (open_ports_ <= 0) return;
-      slpManApplyPlatVoteHandle("TOITUART", &sleep_vote_handle_);
-      if (sleep_vote_handle_ == 0xff) return;
-    }
-    if (open_ports_ > 0 && !sleep_vote_held_) {
-      slpManPlatVoteDisableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
-      sleep_vote_held_ = true;
-    } else if (open_ports_ == 0 && sleep_vote_held_) {
-      slpManPlatVoteEnableSleep(sleep_vote_handle_, SLP_SLP1_STATE);
-      sleep_vote_held_ = false;
-    }
-  }
-
-  void on_unregister_resource(Resource* r) override {
-    auto uart_res = static_cast<UartResource*>(r);
-    int id = uart_res->uart_id();
-    UartState& state = uart_states[id];
-    if (state.in_use) {
-      sleep_vote(-1);
-#if CONFIG_TOIT_EC618_PRINT_UART
-      // The print UART shares the controller with printf/monitor output:
-      // tear down OUR half only (RX irqs + buffers) and leave the
-      // controller powered and configured so printf keeps flowing
-      // (SendPolling needs only the CONFIGURED flag).
-      if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) {
-        CmsisRx* rx = state.cmsis_rx;
-        if (rx != null) {
-          uint32_t mask = irq_save();
-          kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-          state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
-          irq_restore(mask);
-          // A DMA Send still in flight reads tx_buf: wait for it (bounded
-          // by the staging-buffer drain time) before freeing.
-          for (int spin = 0; rx->tx_busy && spin < 2000; spin++) osDelay(1);
-          free(rx->tx_buf);
-          free(rx->ring);
-          free(rx);
-        }
-        state.in_use = false;
-        state.de_pad = -1;
-        return;
-      }
-#endif
-      if (state.cmsis_rx != null) {
-        // CMSIS teardown from a quiesced state — this is the path the
-        // blob's Uart_DeInit hangs on (known-issues #1). CONTROL_RX 0 is
-        // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
-        // suspended, rx_busy cleared. POWER_OFF then resets the module
-        // and stops+resets the RX DMA channel, so nothing references
-        // `chunk` by the time it is freed below.
-        uint32_t mask = irq_save();
-        kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-        kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
-        kDrivers[id]->PowerControl(ARM_POWER_OFF);
-        kDrivers[id]->Uninitialize();
-        cmsis_initialized[id] = false;
-        CmsisRx* rx = state.cmsis_rx;
-        state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
-        irq_restore(mask);
-        // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
-        // so nothing references tx_buf (or chunk) past this point.
-        free(rx->tx_buf);
-        free(rx->ring);
-        free(rx);
-      }
-      state.in_use = false;
-      state.de_pad = -1;
-    }
-  }
+  void on_unregister_resource(Resource* r) override;
 
   uint32_t on_event(Resource* r, word data, uint32_t state) override {
     switch (data) {
@@ -268,12 +174,111 @@ class UartResourceGroup : public ResourceGroup {
     }
     return state;
   }
-
- private:
-  uint8_t sleep_vote_handle_ = 0xff;
-  bool sleep_vote_held_ = false;
-  int open_ports_ = 0;
 };
+
+// Sleep vote: an open UART must keep the system out of SLEEP1. The
+// armed DMA receive does not survive the SLEEP1 power cycle (the SDK
+// restore callback restores registers, not in-flight transfers), so an
+// idle system with an open port goes DEAF on wake — reproduced with a
+// 35 s idle gap killing the agent; the byte-fed software watchdog then
+// starves and reboots ~60 s later, which is what every "PWRKEY-latch"
+// mystery actually was. The closed blob driver kept the system awake
+// implicitly. Proper per-driver suspend/resume belongs to the
+// deep-sleep work; until then any open port votes SLEEP1 away.
+// Module-global (one vote across all groups): the deep-sleep path must
+// be able to release a vote leaked by an open port at VM exit (see
+// uart_sleep_vote_release_for_sleep), which per-group state can't offer.
+// (Statics are OTA-safe since the per-slot .data design — see
+// docs/ota-contract.md §5.)
+static uint8_t uart_sleep_vote_handle = 0xff;
+static bool uart_sleep_vote_held = false;
+static int uart_open_ports = 0;
+
+static void uart_sleep_vote(int delta) {
+  uart_open_ports += delta;
+  if (uart_sleep_vote_handle == 0xff) {
+    if (uart_open_ports <= 0) return;
+    slpManApplyPlatVoteHandle("TOITUART", &uart_sleep_vote_handle);
+    if (uart_sleep_vote_handle == 0xff) return;
+  }
+  if (uart_open_ports > 0 && !uart_sleep_vote_held) {
+    slpManPlatVoteDisableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+    uart_sleep_vote_held = true;
+  } else if (uart_open_ports == 0 && uart_sleep_vote_held) {
+    slpManPlatVoteEnableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+    uart_sleep_vote_held = false;
+  }
+}
+
+// Called from the deep-sleep path (toit_ec618.cc) after the VM has exited:
+// a port still open at that point (e.g. the test agent's console port —
+// its container is not torn down on a deep-sleep exit) would leave the
+// vote held and block hibernate forever. Deep sleep ends in a reboot, so
+// in-flight UART state is moot — release unconditionally. Returns whether
+// the vote was actually held (diagnostic).
+extern "C" bool toit_uart_sleep_vote_release_for_sleep() {
+  if (!uart_sleep_vote_held) return false;
+  slpManPlatVoteEnableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+  uart_sleep_vote_held = false;
+  return true;
+}
+
+void UartResourceGroup::on_unregister_resource(Resource* r) {
+  auto uart_res = static_cast<UartResource*>(r);
+  int id = uart_res->uart_id();
+  UartState& state = uart_states[id];
+  if (state.in_use) {
+    uart_sleep_vote(-1);
+#if CONFIG_TOIT_EC618_PRINT_UART
+    // The print UART shares the controller with printf/monitor output:
+    // tear down OUR half only (RX irqs + buffers) and leave the
+    // controller powered and configured so printf keeps flowing
+    // (SendPolling needs only the CONFIGURED flag).
+    if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) {
+      CmsisRx* rx = state.cmsis_rx;
+      if (rx != null) {
+        uint32_t mask = irq_save();
+        kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+        state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+        irq_restore(mask);
+        // A DMA Send still in flight reads tx_buf: wait for it (bounded
+        // by the staging-buffer drain time) before freeing.
+        for (int spin = 0; rx->tx_busy && spin < 2000; spin++) osDelay(1);
+        free(rx->tx_buf);
+        free(rx->ring);
+        free(rx);
+      }
+      state.in_use = false;
+      state.de_pad = -1;
+      return;
+    }
+#endif
+    if (state.cmsis_rx != null) {
+      // CMSIS teardown from a quiesced state — this is the path the
+      // blob's Uart_DeInit hangs on (known-issues #1). CONTROL_RX 0 is
+      // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
+      // suspended, rx_busy cleared. POWER_OFF then resets the module
+      // and stops+resets the RX DMA channel, so nothing references
+      // `chunk` by the time it is freed below.
+      uint32_t mask = irq_save();
+      kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+      kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
+      kDrivers[id]->PowerControl(ARM_POWER_OFF);
+      kDrivers[id]->Uninitialize();
+      cmsis_initialized[id] = false;
+      CmsisRx* rx = state.cmsis_rx;
+      state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+      irq_restore(mask);
+      // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
+      // so nothing references tx_buf (or chunk) past this point.
+      free(rx->tx_buf);
+      free(rx->ring);
+      free(rx);
+    }
+    state.in_use = false;
+    state.de_pad = -1;
+  }
+}
 
 // Drives the RS485 direction line. Uses the OEM GPIO_pin* API (like
 // gpio_ec618.cc), NOT the luatos core-driver GPIO_Output/GPIO_Config:
@@ -748,7 +753,7 @@ PRIMITIVE(create) {
   uart_states[id].de_pad = de_pad;
 
   group->register_resource(resource);
-  group->sleep_vote(1);
+  uart_sleep_vote(1);
   proxy->set_external_address(resource);
   return proxy;
 }

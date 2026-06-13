@@ -35,8 +35,10 @@ extern "C" {
   #include "reset.h"  // ResetStateGet / LastResetState_e.
   #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
 
-  // From slpman (jump-tabled): live AON wakeup-pad levels.
+  // From slpman (jump-tabled): live AON wakeup-pad levels, and the latched
+  // wakeup source of the most recent boot (slpManWakeSrc_e).
   uint32_t slpManGetWakeupPinValue(void);
+  int slpManGetWakeupSrc(void);
   #include "clock.h"  // GPR_setClock* for the WDT functional clock.
   #include "FreeRTOS.h"
   #include "task.h"        // xTaskCreate — the software-watchdog task.
@@ -488,21 +490,41 @@ PRIMITIVE(modem_set_function) {
   return Smi::from(appSetCFUN(fun));
 }
 
-// Returns the AP-side reset reason of the most recent boot as a
-// LastResetState_e value (see lib/ec618 reset-reason constants). The CP
-// reset reason is read but not surfaced; the AP value is what application
-// code reacts to (e.g. distinguishing a watchdog reset from a power-on).
 PRIMITIVE(wakeup_pin_values) {
   // Live levels of the AON wakeup pads (WAKEUP_PAD0.. as a bitmask) — the
   // AON-domain pads are not readable through the plain GPIO controller.
   return Primitive::integer(slpManGetWakeupPinValue(), process);
 }
 
+// Returns the AP-side reset reason of the most recent boot as a
+// LastResetState_e value (see lib/ec618 reset-reason constants). The CP
+// reset reason is read but not surfaced; the AP value is what application
+// code reacts to (e.g. distinguishing a watchdog reset from a power-on).
 PRIMITIVE(reset_reason) {
   LastResetState_e ap = LAST_RESET_UNKNOWN;
   LastResetState_e cp = LAST_RESET_UNKNOWN;
   ResetStateGet(&ap, &cp);
   return Smi::from(ap);
+}
+
+// The sleep manager's wake-source latch (slpManGetWakeupSrc) reads correctly
+// only very early in boot: the sleep-manager re-init in start() resets it to
+// POR before application code can read it (HW-verified — an early read returns
+// RTC after a timer wake, a late read returns POR). start() snapshots it once
+// via toit_capture_boot_wakeup_src(); the primitive serves the snapshot.
+static int boot_wakeup_src_ = 0;  // WAKEUP_FROM_POR until captured at boot.
+extern "C" int toit_capture_boot_wakeup_src() {
+  boot_wakeup_src_ = slpManGetWakeupSrc();
+  return boot_wakeup_src_;
+}
+
+// Returns what woke the chip at the most recent boot as a slpManWakeSrc_e
+// value (see lib/ec618 WAKEUP-* constants). The AP reset reason reads
+// power-on even after a hibernate wake (HW-verified), so this is the call
+// that tells a deep-sleep wake (RTC timer / wakeup pad) apart from a cold
+// boot.
+PRIMITIVE(wakeup_cause) {
+  return Smi::from(boot_wakeup_src_);
 }
 
 // Raw 32-bit register/memory access for bring-up diagnostics (the rig can
@@ -626,6 +648,21 @@ PRIMITIVE(watchdog_deinit) {
   return process->null_object();
 }
 
+// Called from the deep-sleep path (toit_ec618.cc) after the VM has exited.
+// An armed watchdog's deadline keeps counting while the chip waits to enter
+// hibernate, and nobody feeds it any more — observed live as a FATAL reset
+// 60 s after the last feed that masqueraded as a deep-sleep wake. Don't
+// disarm it (a blocked sleep entry would then hang the device forever, and
+// this rig has no remote reset); re-arm it as a generous backstop instead.
+// A successful hibernate kills the task with the rest of the AP; a blocked
+// entry self-recovers by reset after the sleep-path diagnostics have had
+// time to print.
+extern "C" void toit_watchdog_presleep() {
+  if (!wd_armed) return;
+  wd_timeout_ms = 120 * 1000;
+  wd_deadline = osKernelGetTickCount() + wd_timeout_ms;
+}
+
 }  // namespace toit
 
 #else  // !TOIT_EC618
@@ -653,6 +690,7 @@ PRIMITIVE(slot_trial) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(wakeup_cause) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_init) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_feed) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_deinit) { FAIL(UNIMPLEMENTED); }

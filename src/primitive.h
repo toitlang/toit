@@ -446,6 +446,7 @@ namespace toit {
   PRIMITIVE(wakeup_pin_values, 0)            \
   PRIMITIVE(peek32, 1)                       \
   PRIMITIVE(poke32, 2)                       \
+  PRIMITIVE(wakeup_cause, 0)                 \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \
