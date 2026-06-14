@@ -1,0 +1,16 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, registry, add, test-reg, --local, registry-many-versions]
+==================
+OK
+[pkg, list]
+test-reg (<[*WORKING-DIR*]>/registry-many-versions (local))
+  many - 1.0.0
+  many - 1.0.1
+  many - 1.1.0
+  many - 2.0.0
+  many - 2.3.5
+  many - 2.3.8
+  many - 3.0.2

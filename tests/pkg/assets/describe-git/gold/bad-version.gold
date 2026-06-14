@@ -1,0 +1,19 @@
+Aborted
+[pkg, describe, https://github.com/toitware/toit-morse, 1.0.0]
+Error: Version must start with 'v', for example 'v1.0.0'.
+==================
+Aborted
+[pkg, describe, https://github.com/toitware/toit-morse, bad-version]
+Error: Version must start with 'v', for example 'v1.0.0'.
+==================
+Aborted
+[pkg, describe, https://github.com/toitware/toit-morse, vbad-version]
+Error: Invalid version 'vbad-version': expected a numeric value at position 1
+==================
+Aborted
+[pkg, describe, https://github.com/toitware/toit-ignore, 1.0]
+Error: Version must start with 'v', for example 'v1.0.0'.
+==================
+Aborted
+[pkg, describe, https://github.com/toitware/toit-ignore, v1.0]
+Error: Invalid version 'v1.0': expected . at position 4

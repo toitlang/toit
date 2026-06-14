@@ -1,16 +1,23 @@
 sdk: ^2.0.0-alpha.190
 prefixes:
+  ar: pkg-ar
   certificate_roots: toit-cert-roots
   cli: pkg-cli
   fs: pkg-fs
   host: pkg-host
   http: pkg-http
+  lockfile: toit-lockfile
 packages:
+  pkg-ar:
+    url: github.com/toitlang/pkg-ar
+    name: ar
+    version: 1.4.1
+    hash: 66f0359ed405dbebbc06a0cda9864b10b2d6aa34
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 2.15.0
-    hash: 0df45c95994cbda72011cd062ac79983875b676f
+    version: 2.16.0
+    hash: 8b57ca731ab1798a2a97c4afc1ea464072cf2cbb
     prefixes:
       desktop: pkg-desktop
       fs: pkg-fs

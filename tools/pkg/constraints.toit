@@ -25,7 +25,10 @@ class Constraint:
   constructor --.simple-constraints --.source:
 
   static parse source/string -> Constraint:
-    parsed := (ConstraintParser source).constraints --consume-all
+    return parse source --on-error=: throw it
+
+  static parse source/string [--on-error] -> Constraint:
+    parsed := (ConstraintParser source).constraints --consume-all --on-error=on-error
     constraints := []
     parsed.do: | constraint/ConstraintParseResult |
       version := SemanticVersion.from-parse-result constraint.semantic-version
@@ -84,6 +87,15 @@ class Constraint:
     return source
 
   to-string -> string:
+    if simple-constraints.size == 2 and
+        simple-constraints[0].comparator == ">=" and
+        simple-constraints[1].comparator == "<":
+      min/SemanticVersion := simple-constraints[0].constraint-version
+      max/SemanticVersion := simple-constraints[1].constraint-version
+      if max.patch == 0 and max.minor == 0 and min.major + 1 == max.major:
+        return "^$min"
+      if max.patch == 0 and min.major == max.major and min.minor + 1 == max.minor:
+        return "~$min"
     return (simple-constraints.map: it.to-string).join ","
 
   operator == other -> bool:

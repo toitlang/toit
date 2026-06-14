@@ -31,7 +31,7 @@ interface Package:
   prefixes -> Map
   // TODO(florian): we should always have a name. For local packages we would extract it from the folder name.
   name -> string?
-  specification -> Specification
+  specification --fs-lock-token/Object -> Specification
 
   constructor.from-map name/string? map/Map project-specification/ProjectSpecification:
     map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
@@ -47,7 +47,8 @@ interface RepositoryPackage extends Package:
   ref-hash -> string
 
   cached-repository-dir -> string
-  ensure-downloaded -> none
+  is-downloaded -> bool
+  ensure-downloaded --fs-lock-token/Object -> none
 
 
 interface LocalPackage extends Package:
@@ -65,7 +66,7 @@ abstract class PackageBase implements Package:
 
   constructor .name .prefixes .project-specification:
 
-  abstract specification -> Specification
+  abstract specification --fs-lock-token/Object -> Specification
 
   cached-repository-dir url/string version/SemanticVersion:
     return project-specification.project.cached-repository-dir_ url version
@@ -95,12 +96,18 @@ class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
     map["version"] = version.stringify
     map["hash"] = ref-hash
 
-  specification -> Specification:
-    ensure-downloaded
+  specification --fs-lock-token/Object -> Specification:
+    ensure-downloaded --fs-lock-token=fs-lock-token
     return project-specification.project.load-package-specification url version
 
-  ensure-downloaded:
-    project-specification.project.ensure-downloaded url version --hash=ref-hash
+  is-downloaded -> bool:
+    return project-specification.project.is-downloaded url version --hash=ref-hash
+
+  ensure-downloaded --fs-lock-token/Object:
+    // TODO(floitsch): don't read the contents every time.
+    project-specification.project.ensure-downloaded url version
+        --hash=ref-hash
+        --fs-lock-token=fs-lock-token
 
   cached-repository-dir -> string:
     return cached-repository-dir url version
@@ -115,7 +122,7 @@ class LoadedLocalPackage extends PackageBase implements LocalPackage:
   enrich-map map/Map:
     map["path"] = path
 
-  specification -> Specification:
+  specification --fs-lock-token/Object -> Specification:
     return project-specification.project.load-local-specification path
 
 
@@ -170,50 +177,62 @@ class LockFile:
       map[LockFile.PACKAGES-KEY_] = packages-map
     return map
 
-  save:
+  sorted-deep-copy_ o/any -> any:
+    if o is Map:
+      result := {:}
+      sorted-keys := o.keys.sort
+      sorted-keys.do: | key/string |
+        result[key] = sorted-deep-copy_ o[key]
+      return result
+    if o is List:
+      return o.map: | it | sorted-deep-copy_ it
+    return o
+
+  save -> none:
     content := to-map_
     if content.is-empty:
-      file.write-contents "# Toit Package File." --path=file-name
-    else:
-      file.write-contents --path=file-name
-          yaml.encode content
+      file.write-contents "# Toit Package File.\n" --path=file-name
+      return
 
-  install:
+    sorted := content.copy
+    if sorted.contains LockFile.PREFIXES-KEY_:
+      sorted[LockFile.PREFIXES-KEY_] = sorted-deep-copy_ sorted[LockFile.PREFIXES-KEY_]
+    if sorted.contains LockFile.PACKAGES-KEY_:
+      sorted[LockFile.PACKAGES-KEY_] = sorted-deep-copy_ sorted[LockFile.PACKAGES-KEY_]
+    file.write-contents --path=file-name (yaml.encode sorted)
+
+  is-downloaded -> bool:
+    repository-packages := packages.filter : it is RepositoryPackage
+    return repository-packages.every: | package/RepositoryPackage |
+      package.is-downloaded
+
+  install --fs-lock-token/Object:
     (packages.filter : it is RepositoryPackage).do: | package/RepositoryPackage |
-      package.ensure-downloaded
+      package.ensure-downloaded --fs-lock-token=fs-lock-token
 
   update --remove-prefix/string:
     name := prefixes[remove-prefix]
+    prefixes.remove remove-prefix
 
-    // Build package=to-retain, mapping package name to package
     packages-by-name := {:}
     packages.do: | package/Package | packages-by-name[package.name] = package
 
+    retained := {}
+    queue := Deque
 
-    packages-to-remove := {}
-    new-packages-to-remove :=  { name }
-    // Calculate the transitive closure through prefixes from the name.
-    while not new-packages-to-remove.is-empty:
-      next := {}
-      new-packages-to-remove.do: | name |
-        package := packages-by-name[name]
-        next.add-all package.prefixes.values
-      next.remove-all packages-to-remove
-      packages-to-remove.add-all next
-      new-packages-to-remove = next
+    prefixes.do --values: | retained-package-name/string |
+      retained.add retained-package-name
+      queue.add retained-package-name
 
-    // Make sure that no retained package has a dependency on the packages-to-remove.
-    while true:
-      illegal-removed-packages := {}
-      packages.do: | package/Package |
-        if packages-to-remove.contains package.name: continue.do
-        package.prefixes.values.do:
-          if packages-to-remove.contains it:
-            illegal-removed-packages.add it
-      if illegal-removed-packages.is-empty: break
-      packages-to-remove.remove-all illegal-removed-packages
+    while not queue.is-empty:
+      retained-package-name := queue.remove-first
+      package := packages-by-name[retained-package-name]
+      package.prefixes.do --values: | retained-package-name/string |
+        if not retained.contains retained-package-name:
+          retained.add retained-package-name
+          queue.add retained-package-name
 
-    packages.filter --in-place: not packages-to-remove.contains it.name
+    packages.filter --in-place: retained.contains it.name
 
   repository-packages -> List:
     return (packages.filter : it is RepositoryPackage)
@@ -321,7 +340,7 @@ class LockFileBuilder:
       else:
         id := compute-local-id.call absolute-path
         packages[id] = {
-          "path": to-uri-path human-path,
+          "path": to-compiler-path human-path,
           "prefixes": local-prefixes
         }
 

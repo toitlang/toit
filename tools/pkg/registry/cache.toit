@@ -57,17 +57,14 @@ class DescriptionUrlCache:
   /**
   Returns a map, mapping urls to lists of descriptions.
   */
-  search needle/string version-constraint/Constraint? -> Map:
+  search needle/string -> Map:
     result := {:}
     cache_.do: | url/string version-cache/DescriptionVersionCache |
       is-match := url.ends-with needle or
           version-cache.all-descriptions.any: | description/Description |
             description.name == needle
       if is-match:
-        if not version-constraint:
-          result[url] = version-cache.all-descriptions
-        else:
-          result[url] = version-cache.filter version-constraint
+        result[url] = version-cache.all-descriptions
     return result
 
   recurse_ content/FileSystemView --path/string --ui/Ui:
@@ -106,7 +103,7 @@ class DescriptionUrlCache:
         e = catch:
           add_ description
         if e:
-          ui.emit --warning "Failed to add $description.url@$description.content[Description.VERSION-KEY_] to index."
+          ui.emit --warning "Failed to add $description.url@$description.version to index."
           ui.emit --warning "Skipping $path."
     if e:
       ui.emit --error "Failed to read $path: $e."

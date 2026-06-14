@@ -15,11 +15,15 @@
 
 import cli
 import host.file
+import host.os
 import fs
 
+import ..constraints
+import ..registry.description
 import ..project
 import ..project.specification
 import ..registry
+import ..utils
 
 import .base_
 import .utils_
@@ -44,6 +48,9 @@ class InstallCommand extends PkgProjectCommand:
 
     cli := invocation.cli
 
+    if os.env.contains "TOIT_PACKAGE_INSTALL_PATH":
+      cli.ui.abort "The environment variable 'TOIT_PACKAGE_INSTALL_PATH' is no longer supported."
+
     if local and packages.size != 1:
       cli.ui.abort "The '--local' flag requires exactly one path argument."
 
@@ -52,6 +59,8 @@ class InstallCommand extends PkgProjectCommand:
         cli.ui.abort "Can not specify a prefix without a package."
       else if packages.size > 1:
         cli.ui.abort "Can not specify multiple packages with '--prefix'."
+      if not is-valid-toit-identifier prefix:
+        cli.ui.abort "Invalid prefix '$prefix'. Prefixes must be valid Toit identifiers."
 
     if recompute and not packages.is-empty:
       cli.ui.abort "Recompute can only be specified with no other arguments."
@@ -74,19 +83,64 @@ class InstallCommand extends PkgProjectCommand:
 
     remote-packages := []
     prefixes := []
-    packages.do:
-      description := registries.search it
+    version-constraints := []
+    packages.do: | package-string/string |
+      package-name := package-string
+      version-constraint/Constraint? := null
+      if package-string.contains "@":
+        parts := package-string.split "@"
+        if parts.size != 2:
+          error "Invalid package name '$package-string'. Must be of the form 'name@version'."
+        package-name = parts[0]
+        version-constraint-str := parts[1]
+        if version-constraint-str == "":
+          error "Missing version after '@' in '$package-string'."
+        e := catch: version-constraint = Constraint.parse-range version-constraint-str
+        if e:
+          error "Invalid version constraint '$version-constraint-str' in '$package-string': $e"
+
+      description := registries.search package-name
+          --if-absent=: ui.abort "Package '$package-name' not found."
+          --if-ambiguous=: ui.abort "Multiple packages found for '$package-name'"
+
+      if version-constraint:
+        if not version-constraint.satisfies description.version:
+          // See if there is at least one version that satisfies the constraint.
+          all-versions := registries.retrieve-descriptions description.url
+          has-match := all-versions.any: | desc/Description |
+            version-constraint.satisfies desc.version
+          if not has-match:
+            error "Package '$package-name' exists, but no version satisfies the constraint '$version-constraint'."
+
       package-prefix := prefix or description.name
+      url := description.url
+      if not prefix and
+          not (url == package-name or url.ends-with "/$package-name") and
+          description.name != package-name:
+        // We found this package by using the name of an earlier version, but the name has changed.
+        // Revert to the given package-name, but warn the user.
+        package-prefix = package-name
+        ui.emit --warning "The latest version of package '$package-name' has changed its name to '$description.name'."
+
       if project.specification.has-package package-prefix:
         error "Project already has a package with prefix '$package-prefix'."
+
       remote-packages.add description
       prefixes.add package-prefix
+      version-constraints.add version-constraint
+
+    installed-versions := project.install-remote
+        --prefixes=prefixes
+        --remotes=remote-packages
+        --constraints=version-constraints
+        --registries=registries
 
     remote-packages.size.repeat: | i/int |
-      remote-package := remote-packages[i]
+      remote-package/Description := remote-packages[i]
       package-prefix := prefixes[i]
-      project.install-remote package-prefix remote-package --registries=registries
-      id := "$remote-package.name@$remote-package.version"
+      version := installed-versions[i]
+
+      id := "$remote-package.url@$version"
       ui.emit --info "Package '$id' installed with prefix '$package-prefix'."
 
   execute-local:

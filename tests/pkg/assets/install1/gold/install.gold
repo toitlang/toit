@@ -56,8 +56,8 @@ dependencies:
 == package.lock
 prefixes:
   pkg: pkg
-  prepkg: pkg2
   pkg3_modified: pkg3
+  prepkg: pkg2
 packages:
   pkg:
     path: pkg

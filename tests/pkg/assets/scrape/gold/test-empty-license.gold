@@ -1,0 +1,7 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/empty-license]
+Error: Empty LICENSE file.
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/empty-license]
+Error: Empty LICENSE file.

@@ -1,0 +1,39 @@
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 42.31.9
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 42.31.9
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 42.31.9
+==================
+// Install doesn't look at the version when there is a hash.
+==================
+OK
+[pkg, install]
+==================
+exec main.toit
+pkg1-1.0.0pkg2-2.4.2pkg3-3.1.2
+pkg2-2.4.2pkg3-3.1.2
+Exit Code: 0
+==================
+== contents.json
+localhost:<[*PORT*]>/pkg/pkg1:
+  42.31.9: localhost:<[*PORT*]>/pkg/pkg1/42.31.9
+localhost:<[*PORT*]>/pkg/pkg2:
+  42.31.9: localhost:<[*PORT*]>/pkg/pkg2/42.31.9
+localhost:<[*PORT*]>/pkg/pkg3:
+  42.31.9: localhost:<[*PORT*]>/pkg/pkg3/42.31.9

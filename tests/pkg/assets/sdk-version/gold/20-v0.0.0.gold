@@ -1,0 +1,4 @@
+Aborted
+[pkg, install, foo, --sdk-version, v0.0.0]
+Warning: No version of 'localhost:<[*PORT*]>/pkg/foo' satisfies constraint '^1.0.0' with SDK version '0.0.0'
+Error: Unable to resolve dependencies

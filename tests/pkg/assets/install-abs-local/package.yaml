@@ -1,0 +1,7 @@
+dependencies:
+  foo:
+    path: xxx
+  bar:
+    path: /c:/some/abs/path
+  gee:
+    path: /c:/some/other/abs/path/with/slash/

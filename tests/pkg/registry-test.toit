@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import certificate-roots
 import cli.test show TestUi
 import encoding.json
 import expect show *
@@ -43,18 +44,6 @@ test-git:
   morse-search := registry.search "toit-morse"
   expect-equals 1 morse-search.size
   expect-equals "1.0.6" (morse-search[0] as Description).version.stringify
-
-  morse-search = registry.search "toit-morse@1"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.6" (morse-search[0] as Description).version.stringify
-
-  morse-search = registry.search "toit-morse@1.0.2"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.2" (morse-search[0] as Description).version.stringify
-
-  morse-search = registry.search "morse@1.0.2"
-  expect-equals 1 morse-search.size
-  expect-equals "1.0.2" (morse-search[0] as Description).version.stringify
 
   morse-search = registry.search "morse"
   expect-equals 1 morse-search.size
@@ -120,7 +109,7 @@ expect-ui-throw test-ui/TestUi error/string [command]:
 test-registries source-dir/string:
   test-ui := TestUi --json
 
-  test-registries := Registries --ui=test-ui
+  test-registries := Registries --ui=test-ui --no-auto-sync
 
   test-registries.list
   expect-table-equals [
@@ -129,8 +118,8 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  test-registries.add --local "local" "input/registry"
   abs-path := "$source-dir/input/registry"
+  test-registries.add --local "local" abs-path
 
   test-registries.list
   expect-table-equals [
@@ -148,8 +137,8 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" "input/registry"
-  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" ""
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --local "toit" abs-path
+  expect-ui-throw test-ui "Registry toit already exists." : test-registries.add --git "toit" (fs.to-absolute "foo")
   expect-ui-throw test-ui "Registry abc does not exist." : test-registries.remove "abc"
 
   test-registries.add --git "toit2" "github.com/toitware/registry"
@@ -169,7 +158,7 @@ test-registries source-dir/string:
       test-ui.stdout
   test-ui.reset
 
-  test-registries.add --local "local" "input/registry"
+  test-registries.add --local "local" abs-path
   expect-equals 2 test-registries.list-packages.size
 
   morse-versions := test-registries.retrieve-versions "github.com/toitware/toit-morse"
@@ -186,15 +175,22 @@ test-registries source-dir/string:
 
   expect-equals 8 (test-registries.search --free-text "morse").size
 
-  description := test-registries.search --registry-name="local" "morse"
+  description := test-registries.search "morse"
+      --registry-name="local"
+      --if-absent=(: unreachable)
+      --if-ambiguous=(: unreachable)
   expect-equals "morse" description.name
 
-  expect-ui-throw test-ui "Package 'mrse' not found in any registry." : test-registries.search "mrse"
-  expect-ui-throw test-ui "Package 'morse' exists but not with version '2' in any registry." : test-registries.search "morse@2"
-  expect-ui-throw test-ui "Package 'morse-local' exists but not with version '2' in registry local." : test-registries.search --registry-name="local"  "morse-local@2"
-  expect-ui-throw test-ui "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
+  e := catch:
+    test-registries.search "mrse" --if-absent=(: throw "NOT-FOUND") --if-ambiguous=(: unreachable)
+  expect-equals "NOT-FOUND" e
+
+  e = catch:
+    test-registries.search  "local" --if-absent=(: unreachable) --if-ambiguous=(: throw "AMBIGUOUS")
+  expect-equals "AMBIGUOUS" e
 
 main:
+  certificate-roots.install-all-trusted-roots
   source-location := system.program-path
   source-dir := fs.dirname source-location
   directory.chdir source-dir
@@ -203,4 +199,3 @@ main:
     test-git
     test-local
     test-registries source-dir
-

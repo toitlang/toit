@@ -1,0 +1,26 @@
+OK
+[pkg, uninstall, pkg1]
+==================
+OK
+[pkg, clean]
+==================
+== contents.json
+localhost:<[*PORT*]>/pkg/pkg2:
+  2.4.2: localhost:<[*PORT*]>/pkg/pkg2/2.4.2
+localhost:<[*PORT*]>/pkg/pkg3:
+  3.1.2: localhost:<[*PORT*]>/pkg/pkg3/3.1.2
+==================
+== package.lock
+prefixes:
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2

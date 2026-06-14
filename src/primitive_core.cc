@@ -1468,10 +1468,13 @@ PRIMITIVE(printf_style_int64_to_string) {
 }
 
 // Safe way to ensure a double print without chopping off characters.
-static char* safe_double_print(const char* format, int precision, double value) {
-  int size = 16;
-  char* buffer = unvoid_cast<char*>(malloc(size));
-  if (buffer == null) return null;
+// The initial buffer is owned by the caller and must not be freed or reallocated
+// by this function. If a larger buffer is needed, a fresh one is malloc'd; the
+// caller is responsible for freeing the returned buffer iff it differs from the
+// one originally passed in.
+static char* safe_double_print(char* stack_buffer, int stack_size, const char* format, int precision, double value) {
+  char* buffer = stack_buffer;
+  int size = stack_size;
   while (true) {
     int required = snprintf(buffer, size, format, precision, value);
     // snprintf returns either -1 if the output was truncated or the number of chars
@@ -1486,15 +1489,21 @@ static char* safe_double_print(const char* format, int precision, double value) 
       }
       // Add the `.0`.
       if (size < required + 3) {
-        buffer = unvoid_cast<char*>(realloc(buffer, required + 3));
-        if (buffer == null) return null;
+        char* new_buffer = unvoid_cast<char*>(malloc(required + 3));
+        if (new_buffer == null) {
+          if (buffer != stack_buffer) free(buffer);
+          return null;
+        }
+        memcpy(new_buffer, buffer, required);
+        if (buffer != stack_buffer) free(buffer);
+        buffer = new_buffer;
       }
       buffer[required] = '.';
       buffer[required + 1] = '0';
       buffer[required + 2] = '\0';
       return buffer;
     }
-    free(buffer);
+    if (buffer != stack_buffer) free(buffer);
     // +3 for the potential ".0" and '\0'.
     size = required < 0 ? size * 2 : required + 1 + 2;
     buffer = unvoid_cast<char*>(malloc(size));
@@ -1513,7 +1522,8 @@ PRIMITIVE(float_to_string) {
       return process->allocate_string_or_error("inf");
     }
   }
-  const char* buffer;
+  char* buffer;
+  char stack_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
   if (precision == process->null_object()) {
     if (receiver == 0.0) {
       if (is_negative) {
@@ -1522,18 +1532,19 @@ PRIMITIVE(float_to_string) {
         return process->allocate_string_or_error("0.0");
       }
     }
-    char temp_buffer[MAX_BUFFER_SIZE_DOUBLE_TO_SHORTEST];
-    double_to_shortest(receiver, temp_buffer, sizeof(temp_buffer));
-    buffer = temp_buffer;
+    double_to_shortest(receiver, stack_buffer, sizeof(stack_buffer));
+    buffer = stack_buffer;
   } else {
     const char* format = "%.*lf";
     if (is_large_integer(precision)) FAIL(OUT_OF_BOUNDS);
     if (!is_smi(precision)) FAIL(WRONG_OBJECT_TYPE);
     word prec = Smi::value(precision);
     if (prec < 0 || prec > 64) FAIL(OUT_OF_BOUNDS);
-    buffer = safe_double_print(format, prec, receiver);
+    buffer = safe_double_print(stack_buffer, sizeof(stack_buffer), format, prec, receiver);
+    if (buffer == null) FAIL(MALLOC_FAILED);
   }
   Object* result = process->allocate_string(buffer);
+  if (buffer != stack_buffer) free(buffer);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 }

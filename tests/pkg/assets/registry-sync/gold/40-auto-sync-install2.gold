@@ -1,0 +1,3 @@
+OK
+[pkg, install, pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.

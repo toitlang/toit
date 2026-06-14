@@ -66,6 +66,9 @@ ARCHITECTURE-ESP32C3 ::= "esp32c3"
 ARCHITECTURE-ESP32C6 ::= "esp32c6"
 
 /** Return value from $architecture. */
+ARCHITECTURE-ESP32P4 ::= "esp32p4"
+
+/** Return value from $architecture. */
 ARCHITECTURE-ESP32S2 ::= "esp32s2"
 
 /** Return value from $architecture. */

@@ -1,0 +1,9 @@
+Aborted
+[pkg, describe, <[*WORKING-DIR*]>/packages/missing-description]
+Warning: Automatic description extraction from README has been removed.
+Error: Missing description
+==================
+Aborted
+[pkg, describe, --verbose, <[*WORKING-DIR*]>/packages/missing-description]
+Warning: Automatic description extraction from README has been removed.
+Error: Missing description

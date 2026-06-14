@@ -44,6 +44,9 @@ Pin 5 is an ADC pin of channel 2. However, the controller of ADC channel 2
 ADC1: Pins 0-6
 No ADC2.
 
+## ESP32P4
+ADC1: Pins 16-23, 49-54
+
 ## ESP32S2
 ADC1: Pins 1-10
 ADC2: Pins 11-20

@@ -257,7 +257,7 @@ class Port extends Object with io.InMixin implements reader.Reader:
       state_.clear-state WRITE-STATE_ | ERROR-STATE_
       flushed := uart-wait-tx_ uart_
       if flushed: return
-      state_.wait-for-state WRITE-STATE_ | ERROR_STATE_
+      state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
   try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
     if not uart_: throw "CLOSED"
@@ -377,8 +377,10 @@ class UartWriter extends io.Writer:
   write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
     data-size := to - from
     while not is-closed_:
-      from += try-write data from to --break-length=break-length --flush=flush
-      if from >= to: return data-size
+      from += try-write data from to --break-length=break-length
+      if from >= to:
+        if flush: this.flush
+        return data-size
       wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"

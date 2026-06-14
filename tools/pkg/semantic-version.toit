@@ -27,7 +27,10 @@ class SemanticVersion:
   build-numbers/List
 
   static parse version/string -> SemanticVersion:
-    parsed := (SemanticVersionParser version).semantic-version --consume-all
+    return parse version --on-error=: throw "Parse error: $it"
+
+  static parse version/string [--on-error] -> SemanticVersion:
+    parsed := (SemanticVersionParser version).semantic-version --consume-all --on-error=on-error
     return SemanticVersion.from-parse-result parsed
 
   constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:

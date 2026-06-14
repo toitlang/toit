@@ -29,7 +29,8 @@ import ..constraints
 import ..utils
 import .cache
 
-// registries ::= Registries
+export LocalRegistry
+export GitRegistry
 
 // TODO(florian): move this cache global to a better place. It is used by many other libraries.
 cache ::= Cache --app-name="toit_pkg"
@@ -41,10 +42,12 @@ This class groups all registries and provides a common interface for them.
 */
 class Registries:
   registries := {:}
+  should-sync_/bool := ?
   ui_/cli.Ui
 
-  constructor --ui/cli.Ui:
+  constructor --ui/cli.Ui --auto-sync/bool:
     ui_ = ui
+    should-sync_ = auto-sync
     encoded-registries := cache.get "registries.yaml": | store/FileStore |
       default-registry := {
         "toit": {
@@ -70,42 +73,45 @@ class Registries:
       else:
         ui_.abort "Registry $name has an unknown type '$type'"
 
-  constructor.filled .registries/Map --ui/cli.Ui:
+  constructor.filled .registries/Map --ui/cli.Ui --auto-sync/bool:
     ui_ = ui
+    should-sync_ = auto-sync
 
-  search --registry-name/string?=null search-string/string -> Description:
+  auto-sync_ -> none:
+    if should-sync_: sync --no-clear-cache
+
+  /**
+  Searches for the given $search-string in the registry.
+
+  Aborts if no package or multiple packages match the search string.
+
+  Returns the single description with the highest version of the matching package.
+  */
+  search -> Description
+      --registry-name/string?=null
+      search-string/string
+      [--if-absent]
+      [--if-ambiguous]:
+    auto-sync_
     search-results := search_ registry-name search-string
     if search-results.size == 1:
       return search-results[0][1]
 
-    if search-results.is-empty:
-      registry-info := registry-name != null ? "in registry $registry-name." : "in any registry."
-      if search-string.contains "@":
-        search-string-split := search-string.split "@"
-        search-name-suffix := search-string-split[0]
-        search-version-prefix := search-string-split[1]
-        package-exists := not (search_ registry-name search-name-suffix).is-empty
-        if package-exists:
-          ui_.abort "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
-      ui_.abort "Package '$search-string' not found $registry-info"
-    else:
-      if not registry-name:
-        // Test for the same package appearing in multiple registries.
-        urls := {}
-        search-results.do:
-          urls.add it[1].url
-        if urls.size == 1:
-          return search-results[0][1]
-
-      // If there is a full match, return that.
+    if search-results.is-empty: return if-absent.call
+    if not registry-name:
+      // Test for the same package appearing in multiple registries.
+      urls := {}
       search-results.do:
-        if it[1].url == search-string:
-          return it[1]
+        urls.add it[1].url
+      if urls.size == 1:
+        return search-results[0][1]
 
-      registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
-      ui_.abort "Multiple packages found for '$search-string' $registry-info"
+    // If there is a full match, return that.
+    search-results.do:
+      if it[1].url == search-string:
+        return it[1]
 
-    unreachable
+    return if-ambiguous.call
 
   /**
   Searches for the given $search-string in all registries.
@@ -113,6 +119,7 @@ class Registries:
   Returns a list of all descriptions that matches.
   */
   search --free-text search-string/string -> List:
+    auto-sync_
     result := []
     registries.do: | name registry/Registry |
       result.add-all
@@ -151,6 +158,7 @@ class Registries:
   The descriptions are sorted by version in descending order.
   */
   retrieve-descriptions url/string -> List:
+    auto-sync_
     seen-versions := {}
     result := []
     registries.do --values: | registry/Registry |
@@ -171,6 +179,7 @@ class Registries:
   The versions are sorted in descending order.
   */
   retrieve-versions url/string -> List:
+    auto-sync_
     all-versions := {}
     registries.do --values: | registry/Registry |
       if registry-versions := registry.retrieve-versions url:
@@ -188,12 +197,12 @@ class Registries:
     return result
 
   add --local/True name/string path/string:
+    if not fs.is-absolute path: throw "Path $path must be absolute"
     if not file.is-directory path: ui_.abort "Path $path is not a directory."
-    abs-path := fs.to-absolute path
-    add_ name (LocalRegistry name abs-path --ui=ui_)
+    add_ name (LocalRegistry name path --ui=ui_)
 
   add --git/True name/string url/string:
-    add_ name (GitRegistry name url null --ui=ui_)
+    add_ name (GitRegistry name url --ui=ui_)
 
   add_ name/string registry/Registry:
     if registries.contains name:
@@ -201,7 +210,7 @@ class Registries:
       if old-registry == registry: return
       ui_.abort "Registry $name already exists."
     registries[name] = registry
-    registry.sync  // To check that the url is valid.
+    registry.sync --no-clear-cache  // To check that the url is valid.
     registry.description-cache  // To report broken descriptions.
     registries[name] = registry
     save_
@@ -223,16 +232,18 @@ class Registries:
     ui_.emit-table --result --header={"name": "Name", "type": "Type", "path": "Url/Path"} data
 
   list-packages -> Map:
+    auto-sync_
     return registries.map: | name registry/Registry |
       { "registry" : registry, "descriptions": registry.list-all-descriptions }
 
-  sync:
-    registries.do --values: it.sync
+  sync --clear-cache/bool:
+    registries.do --values: | registry/Registry | registry.sync --clear-cache=clear-cache
     save_
+    should-sync_ = false
 
-  sync --name/string:
-    registry := registries.get name --if-absent=: ui_.abort "Registry $name does not exist"
-    registry.sync
+  sync --name/string --clear-cache/bool:
+    registry/Registry := registries.get name --if-absent=: ui_.abort "Registry $name does not exist"
+    registry.sync --clear-cache=clear-cache
     save_
 
   save_:
@@ -259,7 +270,7 @@ abstract class Registry:
   abstract type -> string
   abstract content -> FileSystemView
   abstract to-map -> Map
-  abstract sync
+  abstract sync --clear-cache/bool -> none
   abstract to-string -> string
 
   description-cache -> DescriptionUrlCache:
@@ -288,16 +299,18 @@ abstract class Registry:
   retrieve-descriptions url/string -> List?:
     return description-cache.get-descriptions url
 
-  search search-string/string -> List:
-    search-version-constraint/Constraint? := null
-    if search-string.contains "@":
-      split := search-string.split "@"
-      search-string = split[0]
-      search-version-str := split[1]
-      search-version-constraint = Constraint.parse-range search-version-str
+  /**
+  Searches for the given $search-string in the registry.
 
+  A description matches if the name is the same, or if the url ends with
+    the search string.
+
+  Returns a list of pairs, where each pair is a list containing the
+    registry name and the description with the highest version.
+  */
+  search search-string/string -> List:
     // Initially maps urls to list of descriptions.
-    search-result := description-cache.search search-string search-version-constraint
+    search-result := description-cache.search search-string
 
     // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
@@ -309,7 +322,15 @@ abstract class Registry:
     // Now maps from url to one description.
     return search-result.values
 
-  search --free-text search-string/string -> List:
+  /**
+  Searches for the given $search-string in the registry.
+
+  Returns a list of descriptions that match the search string.
+
+  A description matches if the $search-string is a substring of the
+    name, description or url. The search is case-insensitive.
+  */
+  search --free-text/True search-string/string -> List:
     search-string = search-string.to-ascii-lower
     return list-all-descriptions.filter: | description/Description |
       description.matches-free-text search-string

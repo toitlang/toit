@@ -237,7 +237,9 @@ bool MessageEncoder::encode_any(Object* object) {
     write_uint64(bit_cast<uint64>(LargeInteger::cast(object)->value()));
     return true;
   } else if (is_heap_object(object)) {
-    printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
+    if (!encoding_tison()) {
+      printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
+    }
   }
   return false;
 }
@@ -260,7 +262,9 @@ bool MessageEncoder::encode_list(Instance* instance, word from, word to) {
     Array* array = Array::cast(backing);
     return encode_array(array, from, to);
   } else if (class_id == program_->large_array_class_id()) {
-    printf("[message encoder: cannot encode large array]\n");
+    if (!encoding_tison()) {
+      printf("[message encoder: cannot encode large array]\n");
+    }
   }
   return false;
 }
@@ -527,17 +531,11 @@ Object* TisonDecoder::decode() {
   ASSERT(decoding_tison());
   uint32 expected = TISON_MARKER | (TISON_VERSION << TISON_VERSION_SHIFT);
   uint32 marker = read_uint32();
-  if (marker != expected) {
-    if ((marker & ~TISON_VERSION_MASK) == (expected & ~TISON_VERSION_MASK)) {
-      int version = (marker & TISON_VERSION_MASK) >> TISON_VERSION_SHIFT;
-      printf("[message decoder: wrong tison version %d - expected %d]\n",
-          version, TISON_VERSION);
-    } else {
-      printf("[message decoder: wrong tison marker 0x%" PRIx32 " - expected 0x%" PRIx32 "]\n",
-          marker, expected);
-    }
-    return mark_malformed();
-  }
+  // A wrong marker simply means the input isn't (this version of) TISON. This
+  // is a recoverable, caller-facing condition surfaced as a thrown exception,
+  // so we must not print diagnostics: callers routinely probe whether some
+  // bytes are TISON by decoding inside a 'catch' (see e.g. the assets tool).
+  if (marker != expected) return mark_malformed();
   word payload_size = read_cardinal();
   if (payload_size != remaining()) return mark_malformed();
   Object* result = decode_any();
@@ -578,7 +576,12 @@ Object* MessageDecoder::decode_any() {
     case TAG_LARGE_INTEGER:
       return decode_large_integer();
     default:
-      printf("[message decoder: unhandled message tag: %d]\n", tag);
+      // Only diagnose for the inter-process messaging system, where an
+      // unhandled tag is a genuine bug. For TISON it just means the input is
+      // malformed, which is surfaced to the caller as a thrown exception.
+      if (!decoding_tison()) {
+        printf("[message decoder: unhandled message tag: %d]\n", tag);
+      }
       return mark_malformed();
   }
   return null;

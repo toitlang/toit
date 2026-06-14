@@ -50,6 +50,8 @@
   #include <esp32c3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32P4
+  #include <esp32p4/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -322,6 +324,8 @@ void OS::set_up() {
   const char* chip_name = "ESP32C3";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   const char* chip_name = "ESP32C6";
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+  const char* chip_name = "ESP32P4";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   const char* chip_name = "ESP32S2";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -425,18 +429,17 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     return range;
   }
 
-  // In this case use hard coded ranges for internal RAM.
+  // In this case use hard coded ranges for internal RAM, covering the
+  // chip's main DRAM region. The GC's ONLY_FOR_MALLOC adjustment trims
+  // the low part of the range that's used for C allocations only.
   HeapMemoryRange range;
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-  range.address = reinterpret_cast<void*>(0x3fca0000);
-  range.size = 384 * KB;
+  range.address = reinterpret_cast<void*>(SOC_DRAM_LOW);
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+  // The top CONFIG_CACHE_L2_CACHE_SIZE bytes of HP L2MEM are
+  // used by the L2 cache and not available as heap.
+  range.size = SOC_DRAM_HIGH - CONFIG_CACHE_L2_CACHE_SIZE - SOC_DRAM_LOW;
 #else
-  //                           DRAM range            IRAM range
-  // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
-  // Internal SRAM 0 192k 3ffe_0000 - 4000_0000    4007_0000 - 400a_0000
-  // Internal SRAM 1 128k                          400a_0000 - 400c_0000
-  range.address = reinterpret_cast<void*>(0x3ffc0000);
-  range.size = 256 * KB;
+  range.size = SOC_DRAM_HIGH - SOC_DRAM_LOW;
 #endif
   return range;
 }
@@ -457,6 +460,8 @@ const char* OS::get_architecture() {
   return "esp32c3";
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
   return "esp32c6";
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+  return "esp32p4";
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   return "esp32s2";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)

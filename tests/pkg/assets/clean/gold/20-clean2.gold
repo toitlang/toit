@@ -1,0 +1,10 @@
+OK
+[pkg, uninstall, pkg2]
+==================
+OK
+[pkg, clean]
+==================
+== contents.json
+{}==================
+== package.lock
+# Toit Package File.

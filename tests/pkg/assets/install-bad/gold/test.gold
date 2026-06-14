@@ -1,0 +1,20 @@
+OK
+[pkg, init]
+==================
+// Prefix must be used with package name.
+==================
+Aborted
+[pkg, install, --prefix=foo]
+Error: Can not specify a prefix without a package.
+==================
+// Path must be used with path.
+==================
+Aborted
+[pkg, install, --local]
+Error: The '--local' flag requires exactly one path argument.
+==================
+// Prefix must be valid.
+==================
+Aborted
+[pkg, install, --prefix, invalid prefix, pkg2]
+Error: Invalid prefix 'invalid prefix'. Prefixes must be valid Toit identifiers.

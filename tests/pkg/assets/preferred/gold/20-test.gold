@@ -1,0 +1,97 @@
+// Add the git registry.
+==================
+OK
+[pkg, registry, add, test-reg, http://localhost:<[*PORT*]>/registry/git-pkgs]
+==================
+OK
+[pkg, list]
+test-reg (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
+  pkg1 - 1.0.0
+  pkg2 - 1.0.0
+  pkg2 - 2.4.2
+  pkg3 - 3.1.2
+  pkg4 - 4.9.9
+==================
+OK
+[pkg, install, pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+// Should have version 3.1.2 for pkg3
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
+==================
+OK
+[pkg, registry, add, test-reg3, http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions]
+==================
+OK
+[pkg, registry, add, --local, test-reg2, registry]
+==================
+OK
+[pkg, list]
+test-reg (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
+  pkg1 - 1.0.0
+  pkg2 - 1.0.0
+  pkg2 - 2.4.2
+  pkg3 - 3.1.2
+  pkg4 - 4.9.9
+test-reg3 (http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions (git))
+  pkg2 - 2.4.3
+  pkg3 - 3.1.3
+test-reg2 (<[*WORKING-DIR*]>/registry (local))
+  bar - 2.0.1
+  foo - 1.1.0
+  foo - 1.2.3
+  sub - 2.0.0
+  sub - 3.1.4
+==================
+OK
+[pkg, install, foo]
+Package 'localhost:<[*PORT*]>/pkg/foo@1.2.3' installed with prefix 'foo'.
+==================
+// Installing foo did not change the versions of existing packages.
+==================
+== package.lock
+sdk: ^0.1.30
+prefixes:
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+packages:
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.2.3
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
