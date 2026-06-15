@@ -943,17 +943,53 @@ class RsaGenerationResource : public Resource {
   }
 
   int bits() const { return bits_; }
+  bool is_thread_running() const { return thread_running_; }
+  int error() const { return error_; }
+  size_t prv_len() const { return prv_len_; }
+  size_t pub_len() const { return pub_len_; }
+  unsigned char* prv_buf() const { return prv_buf_; }
+  unsigned char* pub_buf() const { return pub_buf_; }
 
+  void set_buffers(unsigned char* prv, unsigned char* pub) {
+    prv_buf_ = prv;
+    pub_buf_ = pub;
+  }
+
+  void set_thread_running(bool running) { thread_running_ = running; }
+
+  void set_result(unsigned char* prv, size_t prv_len,
+                  unsigned char* pub, size_t pub_len) {
+    prv_buf_ = prv; prv_len_ = prv_len;
+    pub_buf_ = pub; pub_len_ = pub_len;
+  }
+
+  void set_error(int err) { error_ = err; }
+
+  void try_shrink_buffers() {
+    if (prv_buf_) {
+      unsigned char* p = unvoid_cast<unsigned char*>(realloc(prv_buf_, prv_len_));
+      if (p) prv_buf_ = p;
+    }
+    if (pub_buf_) {
+      unsigned char* p = unvoid_cast<unsigned char*>(realloc(pub_buf_, pub_len_));
+      if (p) pub_buf_ = p;
+    }
+  }
+
+  void free_and_release_buffers() {
+    free(prv_buf_); prv_buf_ = null;
+    free(pub_buf_); pub_buf_ = null;
+  }
+
+ private:
+  int bits_;
   bool thread_running_ = false;
+  bool destroy_when_done_ = false;
   unsigned char* prv_buf_ = null;
   unsigned char* pub_buf_ = null;
   int error_ = 0;
   size_t prv_len_ = 0;
   size_t pub_len_ = 0;
-
- private:
-  int bits_;
-  bool destroy_when_done_ = false;
 };
 
 uint32 RsaGenerationResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -977,9 +1013,10 @@ PRIMITIVE(rsa_generate_start) {
   RsaGenerationResource* resource = _new RsaGenerationResource(group, bits);
   if (!resource) FAIL(MALLOC_FAILED);
 
-  resource->prv_buf_ = unvoid_cast<unsigned char*>(malloc(RSA_PRV_DER_MAX_BYTES));
-  resource->pub_buf_ = unvoid_cast<unsigned char*>(malloc(RSA_PUB_DER_MAX_BYTES));
-  if (!resource->prv_buf_ || !resource->pub_buf_) {
+  resource->set_buffers(
+      unvoid_cast<unsigned char*>(malloc(RSA_PRV_DER_MAX_BYTES)),
+      unvoid_cast<unsigned char*>(malloc(RSA_PUB_DER_MAX_BYTES)));
+  if (!resource->prv_buf() || !resource->pub_buf()) {
     delete resource;
     FAIL(MALLOC_FAILED);
   }
@@ -996,7 +1033,7 @@ PRIMITIVE(rsa_generate_start) {
     FAIL(MALLOC_FAILED);
   }
 
-  resource->thread_running_ = true;
+  resource->set_thread_running(true);
   bool success = thread->run(resource, [](Resource* r) {
     RsaGenerationResource* res = static_cast<RsaGenerationResource*>(r);
     mbedtls_pk_context pk;
@@ -1007,8 +1044,8 @@ PRIMITIVE(rsa_generate_start) {
     }
 
     if (ret == 0) {
-      unsigned char* prv = res->prv_buf_;
-      unsigned char* pub = res->pub_buf_;
+      unsigned char* prv = res->prv_buf();
+      unsigned char* pub = res->pub_buf();
       int prv_len = mbedtls_pk_write_key_der(&pk, prv, RSA_PRV_DER_MAX_BYTES);
       int pub_len = mbedtls_pk_write_pubkey_der(&pk, pub, RSA_PUB_DER_MAX_BYTES);
       if (prv_len < 0 || pub_len < 0) {
@@ -1030,19 +1067,16 @@ PRIMITIVE(rsa_generate_start) {
         unsigned char* pub_resized = unvoid_cast<unsigned char*>(realloc(pub, pub_len));
         if (pub_resized) pub = pub_resized;
 
-        res->prv_buf_ = prv;
-        res->prv_len_ = prv_len;
-        res->pub_buf_ = pub;
-        res->pub_len_ = pub_len;
+        res->set_result(prv, prv_len, pub, pub_len);
       }
     }
     mbedtls_pk_free(&pk);
-    res->error_ = ret;
+    res->set_error(ret);
     return (word)1; // Indicate done.
   });
 
   if (!success) {
-    resource->thread_running_ = false;
+    resource->set_thread_running(false);
     delete resource;
     FAIL(INVALID_STATE);
   }
@@ -1054,8 +1088,13 @@ PRIMITIVE(rsa_generate_start) {
 
 PRIMITIVE(rsa_generate_finish) {
   ARGS(RsaGenerationResource, resource);
-  if (resource->error_ != 0) {
-    int err = resource->error_;
+
+  // Guard: if the worker thread is still running, buffers and lengths are
+  // not yet finalized. The caller should wait for the resource event first.
+  if (resource->is_thread_running()) FAIL(INVALID_STATE);
+
+  if (resource->error() != 0) {
+    int err = resource->error();
     resource->resource_group()->unregister_resource(resource);
     resource_proxy->clear_external_address();
     return tls_error(null, process, err);
@@ -1064,28 +1103,20 @@ PRIMITIVE(rsa_generate_finish) {
   // Attempt a best-effort final realloc in case the one in the generation
   // thread failed due to heap fragmentation at that point in time.
   // If this also fails, we harmlessly keep the original (larger) buffer.
-  if (resource->prv_buf_ != null) {
-    unsigned char* p = unvoid_cast<unsigned char*>(realloc(resource->prv_buf_, resource->prv_len_));
-    if (p != null) resource->prv_buf_ = p;
-  }
-  if (resource->pub_buf_ != null) {
-    unsigned char* p = unvoid_cast<unsigned char*>(realloc(resource->pub_buf_, resource->pub_len_));
-    if (p != null) resource->pub_buf_ = p;
-  }
+  resource->try_shrink_buffers();
 
-  // Use the copy pattern (allocate + memcpy). This is safer for GC retries than 
-  // transferring ownership, as the original buffers remain intact until 
+  // Use the copy pattern (allocate + memcpy). This is safer for GC retries than
+  // transferring ownership, as the original buffers remain intact until
   // the primitive is guaranteed to succeed.
-  ByteArray* prv_der = process->allocate_byte_array(resource->prv_len_);
-  ByteArray* pub_der = process->allocate_byte_array(resource->pub_len_);
-
+  ByteArray* prv_der = process->allocate_byte_array(resource->prv_len());
+  ByteArray* pub_der = process->allocate_byte_array(resource->pub_len());
   if (!prv_der || !pub_der) {
     // Do not call unregister_resource or clear_external_address on OOM error paths.
     FAIL(ALLOCATION_FAILED);
   }
 
-  memcpy(ByteArray::Bytes(prv_der).address(), resource->prv_buf_, resource->prv_len_);
-  memcpy(ByteArray::Bytes(pub_der).address(), resource->pub_buf_, resource->pub_len_);
+  memcpy(ByteArray::Bytes(prv_der).address(), resource->prv_buf(), resource->prv_len());
+  memcpy(ByteArray::Bytes(pub_der).address(), resource->pub_buf(), resource->pub_len());
 
   Array* pair = process->object_heap()->allocate_array(2, process->null_object());
   if (pair == null) {
@@ -1093,9 +1124,8 @@ PRIMITIVE(rsa_generate_finish) {
     FAIL(ALLOCATION_FAILED);
   }
 
-  // Success path: we can now safely free the original buffers as they have been copied.
-  free(resource->prv_buf_); resource->prv_buf_ = null;
-  free(resource->pub_buf_); resource->pub_buf_ = null;
+  // Success path: free the original buffers now that they have been copied.
+  resource->free_and_release_buffers();
 
   pair->at_put(0, prv_der);
   pair->at_put(1, pub_der);
