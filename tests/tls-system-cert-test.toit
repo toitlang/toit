@@ -94,6 +94,10 @@ working-site host port expected-certificate-name:
     error = false
   finally:
     if error:
+      // Print immediately: the underlying exception propagates and crashes the
+      // test before 'has-test-failure' is ever inspected, so otherwise the logs
+      // never reveal which host was the culprit.
+      print "*** Incorrectly failed to connect to $host ***"
       load-limiter.log-test-failure "*** Incorrectly failed to connect to $host ***"
     load-limiter.dec
 
