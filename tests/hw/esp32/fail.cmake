@@ -59,6 +59,11 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-philips24
   i2s-board1.toit-esp32-philips24-slave
   i2s-board1.toit-esp32-msb16-writer-fast-slave
+  # Broken on the esp32s3 (same esp-idf I2S issue). Consistently failing in the
+  # nightly (6/6) and reproduced locally; the generic philips16 variant still
+  # works and stays enabled.
+  i2s-board1.toit-esp32s3-pcm8
+  i2s-board1.toit-esp32s3-msb8-slave
 )
 
 set(TOIT_FAILING_TESTS
