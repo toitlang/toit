@@ -87,8 +87,12 @@ class DatagramPool {
     SpinLocker locker(&spinlock_);
     if (data_size > buffer_size_) return false;
 
+    // The newest (most recently enqueued) datagram is the last occupied slot,
+    // i.e. at `head_ + used_ - 1`. (`head_ + used_` is the next *free* slot.) Its
+    // offset+len is where the next datagram's data goes in the ring buffer; using
+    // the free slot here read stale offset/len and corrupted queued datagrams.
     Datagram* newest = used_ > 0
-        ? &datagrams_[(head_ + used_) % queue_size_]
+        ? &datagrams_[(head_ + used_ - 1) % queue_size_]
         : null;
 
     while (true) {
