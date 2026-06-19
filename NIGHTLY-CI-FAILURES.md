@@ -166,12 +166,42 @@ Confirmed locally on the s3:
 Same esp-idf I2S issue (#15275) as the already-skipped variants.
 `pcm32-inmonoleft` only failed 1/6 on CI (flaky) — left enabled, watch it.
 
-### Remaining esp32s3 items (not yet done)
-- `rmt-test.toit-esp32s3` — Timeout (single-board; board1 RMT pins + resistors).
-  Not started. NOTE: the committed `toolchains/esp32s3/sdkconfig` is stale vs the
-  current esp-idf (a build regenerates `CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` →
-  `..._SUPPORT_ASYNC_STOP`); worth checking whether that SOC-caps drift relates
-  to the RMT timeout.
+### rmt-test — INVESTIGATED, root cause narrowed (NOT yet fixed)
+`rmt-test.toit-esp32s3` Timeout (120s); `rmt-test.toit-esp32` also fails (~15s) —
+broken on **both** architectures, single-board.
+
+Where it hangs (s3): instrumented the `test` driver; it runs the sub-tests in
+sequence and hangs in **`test-bidirectional`** at `in2.wait-for-data` (the RMT
+rx-done event never fires). The earlier `test-resource` channel-alloc errors
+("no free rx channels") are the **expected** `ALREADY_IN_USE` throws the test
+asserts on — not the problem.
+
+Bisected with hardware experiments:
+- `test-bidirectional` **in isolation**: passes (`GOT 144 signals`).
+- `[test-resource, bidir]`: pass.   `[carrier, glitch-filter, bidir]`: pass.
+- `[simple, multiple, long, carrier, glitch, bidir]` (5 middle sub-tests): **HANGS**.
+- Simple in/out pulse channel churn (40×, shared pins): clean — no channel leak.
+- `test-bidirectional`'s own pattern churned 30×: clean — no self-leak.
+- (Gotcha: a `gpio.Pin` created per-iteration and not closed throws
+  `ALREADY_IN_USE` on the pin — a test-writing trap, not the bug. The real test
+  creates pin1/pin2 once and reuses them.)
+
+**Conclusion:** it is a *cumulative* state issue — only the combination/variety of
+the RMT sub-tests' configs (carrier, glitch-filter, open-drain, varying
+memory-blocks) leaves residual state that makes a later rx channel's done-event
+never fire. Not a Toit channel/pin leak (the close path is synchronous and churn
+is clean). Most likely an esp-idf RMT driver / interrupt / event-source state
+issue accumulated across many register/unregister cycles with different configs.
+
+**Next step (needs a decision):** either (a) instrument the esp-idf RMT rx path
+during the failing sequence to see why the done-interrupt stops firing (esp-idf
+patch territory), or (b) split `rmt-test` so each sub-test runs in its own process
+— every sub-test passes in isolation, so this restores green via correct test
+isolation rather than masking a product bug (the cumulative single-process pattern
+is not how RMT is used in practice). Recommend deciding (a) vs (b) before changing
+code. NOTE also: the committed `toolchains/esp32s3/sdkconfig` is stale vs current
+esp-idf (`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP`
+regenerates on build); worth ruling in/out.
 - `espnow2-board1.toit-esp32s3` — wireless. In a combined run it hung/timed out
   with no output (its UART `ok` handshake is fixed by the pull-up, but the
   ESP-NOW exchange is unverified). Needs a separate retest.
