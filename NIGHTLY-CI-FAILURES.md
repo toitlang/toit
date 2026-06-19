@@ -248,6 +248,44 @@ process on shared pins. Not a Toit channel/pin leak (churn is clean), not the
 spurious-rx disable/enable bug, not the tx. Likely esp-idf RMT-driver / event /
 interrupt cumulative state; un-instrumentable in the hot path.
 
+#### CORRECTION + precise root cause (register-level debug)
+
+Earlier "memory corruption (#13419)" was an over-claim — disabling ping-pong only
+proves the ping-pong RX path is *involved*, not that it corrupts memory. Ruled out
+by experiment: code/IRAM-layout (an unused IRAM fn changed nothing),
+`CONFIG_RMT_ISR_IRAM_SAFE=y` (no change), the RX-ISR `ESP_DRAM_LOGE` (LOGE→LOGD, no
+change), and the RMT clock (sys_conf is normal at the hang). The ping-pong handlers
+are byte-identical to esp-idf master (only LOGE→LOGD differs) → not fixed upstream
+in that path either.
+
+Instrumented the esp-idf RX ISRs (threshold/hw-done counters) + the transmit/
+tx-done paths + the RMT interrupt & clock registers, dumped by a watchdog task
+(sleeps, so no hot-path perturbation — validated by the layout-shift test). At the
+hang the counters are **frozen**:
+```
+tx_start=21 tx_done=19      <- TWO transmits never complete
+rx_arm=13   rx_hwdone=12     <- one rx armed, never completes
+int_raw=0  int_ena=0x1011000 (rx-ch0 DONE/ERR/THRES enabled)  sys_conf=normal
+```
+- The rx is innocent: armed, all its interrupts enabled, **but `int_raw=0`** — the
+  RX idle-done only fires *after* a pulse, so it is simply waiting for a signal
+  that never arrives.
+- The real stall is the **TX engine**: a transmit is issued (`rmt_transmit` returns
+  OK, `tx_start` increments) but the hardware never runs it (`tx_done` never fires,
+  `int_raw=0`, clock fine). In `test-loop-count` the stuck one is the `loop=4`
+  transmit that follows a `loop=-1` (infinite) + `out.reset` (disable/enable); in
+  `test-bidirectional` (the no-instrumentation hang) it's the open-drain write.
+
+**Precise root cause:** after the cumulative RMT activity, a subsequent **RMT
+transmit silently stalls** — `rmt_transmit` accepts it but the HW TX engine never
+starts/completes (no `tx_done`, no interrupt). The dependent receive then waits
+forever. Triggered via the ping-pong RX path (disabling ping-pong avoids it). It's
+an esp-idf new-driver (`esp_driver_rmt`) bug; the TX-after-abort / cumulative state
+isn't handled. Next: dump the per-channel TX conf/FSM to see whether `rmt_transmit`
+fails to set the TX-start bit (driver) vs. the HW engine ignoring it (state), then
+patch esp-idf and/or report upstream with this repro.
+
+(superseded heading kept below for history)
 #### ROOT CAUSE CONFIRMED: esp-idf RMT RX ping-pong memory corruption (#13419)
 
 It is **not** a timing race — it is **memory corruption** in the esp-idf RMT RX
