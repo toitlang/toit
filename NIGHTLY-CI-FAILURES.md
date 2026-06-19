@@ -240,3 +240,20 @@ receptions lose the end-marker outright.
 matching the workaround's own stated intent. Push-pull channels now idle low and don't
 glitch; open-drain channels are unchanged. Validated: `rmt-test` passes **3/3 on esp32
 and on esp32s3**.
+
+### espnow2-board1 — FIXED (ESP-NOW receive ring-buffer off-by-one)
+`espnow2-board1` timed out (360s; failed 6/6 nightlies). The UART RX pull-up fix did
+NOT help — it's a separate bug in our own code (`src/resources/espnow_esp32.cc`).
+
+Root cause: the `DatagramPool` receive ring buffer computed the newest queued datagram
+as the slot at `head_ + used_` (the next *free* slot) instead of `head_ + used_ - 1`.
+`enqueue()` uses the newest datagram's `offset + len` to decide where the next message
+goes in the byte ring, so it read stale offset/len and wrote new datagrams at an
+overlapping offset, corrupting datagrams already in the queue. Only triggers when more
+than one datagram is queued before being consumed: `espnow2` sends five messages
+back-to-back, so board2 received garbled, overlaid data (`<END>...` mixed with tails of
+other messages) and crashed; board1 then waited forever for the `ok` → timeout.
+`espnow1` (one message at a time) was unaffected.
+
+**Fix** (`6e85b07d`): `newest = datagrams_[(head_ + used_ - 1) % queue_size_]`.
+Validated: `espnow2-board1` passes 3/3 on esp32s3 and on esp32.
