@@ -248,13 +248,40 @@ process on shared pins. Not a Toit channel/pin leak (churn is clean), not the
 spurious-rx disable/enable bug, not the tx. Likely esp-idf RMT-driver / event /
 interrupt cumulative state; un-instrumentable in the hot path.
 
-**Recommended fix:** since every sub-test passes in isolation, split `rmt-test`
-so each sub-test runs in its own process (fresh boot). This is legitimate test
-isolation (the cumulative single-process churn is not a real RMT usage pattern),
-restores green, and the underlying cumulative race can be filed as a known
-esp-idf/RMT issue with this evidence. (Deeper alternative: reproduce the cumulative
-state in a controlled experiment and bisect the esp-idf driver state — expensive
-and fights the Heisenbug.)
+#### ROOT CAUSE CONFIRMED: esp-idf RMT RX ping-pong memory corruption (#13419)
+
+It is **not** a timing race — it is **memory corruption** in the esp-idf RMT RX
+ping-pong path. Key insight (Florian): a single `volatile` counter can't flip a
+*reproducible* failure via timing, but it CAN if the failure is memory corruption
+whose overwrite target moves with the **binary layout** ("code shifting"). That
+matches everything: deterministic-per-binary, "any code change moves the hang
+between sub-tests", cumulative (corruption accumulates / heap state), and
+un-instrumentable.
+
+Matches esp-idf issue **#13419 "RMT in RX Mode causes memory corruption with
+ESP32-S3 (SOC_RMT_SUPPORT_RX_PINGPONG)"** — new driver (`esp_driver_rmt`, which is
+what Toit uses via `rmt_new_rx_channel`/`rmt_receive`; NOT the legacy
+`rmt_legacy.c`). Still **open upstream, no fix**. S3-only (ESP32 has no ping-pong
+→ the ESP32 rmt-test fails with a different, non-hang symptom).
+
+Hardware-confirmed on our envelope (esp-idf v5.4.2):
+- **Disable `SOC_RMT_SUPPORT_RX_PINGPONG` on s3 → the 120s hang DISAPPEARS** (test
+  now Fails fast instead, because large receptions truncate / a follow-on Toit
+  "potential dead-lock" — so a blanket disable is too blunt, but it pinpoints the
+  ping-pong path as the cause).
+- **`CONFIG_RMT_ISR_IRAM_SAFE=y` (ISR in IRAM + buffer forced internal) → still
+  hangs.** So it is not ISR-latency / PSRAM-buffer; it is a genuine code bug in
+  the ping-pong copy (`rmt_isr_handle_rx_threshold` / `rmt_isr_handle_rx_done`).
+
+**Fix options (decision needed):**
+1. Patch the esp-idf RMT ping-pong copy bug in `rmt_rx.c` and upstream it
+   (it is Espressif's unfixed bug; needs careful analysis of the threshold/done
+   copy + memowner race). Best long-term; we can patch our esp-idf fork.
+2. Avoid ping-pong for the affected receives (size rx buffers / reduce reception
+   length so the RX never relies on ping-pong) — narrower, test-side.
+3. Skip the ping-pong-dependent sub-tests (bidirectional, long-sequence, etc.)
+   with a reference to #13419 until upstream fixes it (like the i2s skips).
+Report #13419 status to Espressif with our repro either way.
 
 NOTE: the committed `toolchains/esp32s3/sdkconfig` is stale vs current esp-idf
 (`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP` regenerates on
