@@ -193,15 +193,45 @@ never fire. Not a Toit channel/pin leak (the close path is synchronous and churn
 is clean). Most likely an esp-idf RMT driver / interrupt / event-source state
 issue accumulated across many register/unregister cycles with different configs.
 
-**Next step (needs a decision):** either (a) instrument the esp-idf RMT rx path
-during the failing sequence to see why the done-interrupt stops firing (esp-idf
-patch territory), or (b) split `rmt-test` so each sub-test runs in its own process
-— every sub-test passes in isolation, so this restores green via correct test
-isolation rather than masking a product bug (the cumulative single-process pattern
-is not how RMT is used in practice). Recommend deciding (a) vs (b) before changing
-code. NOTE also: the committed `toolchains/esp32s3/sdkconfig` is stale vs current
-esp-idf (`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP`
-regenerates on build); worth ruling in/out.
+#### esp-idf RMT instrumentation result (esp_rom_printf in rx_done/tx_done/arm/transmit)
+Built an instrumented s3 envelope and ran the full failing test. Findings:
+
+- **The hang is a timing race (Heisenbug).** With the printf delays added, the
+  hang *moved*: `test-bidirectional` now *completes* (`RMT RDONE n=72`) and the
+  hang lands one sub-test later, in **`test-loop-count`**. So the bug is
+  timing-sensitive, not a fixed location.
+- At the hang, the trace shows an armed rx (`RXARM err=0`) **and** a tx
+  (`TXSTART err=0`) where *neither* `rx_done` nor `tx_done` ever fires (the
+  printf is before the queue-send, so the ISRs genuinely never run — not a
+  dropped event). I.e. **the tx starts (`rmt_transmit` returns OK) but never
+  completes, so the dependent rx never receives a signal and never completes →
+  `wait-for-data` blocks forever.** Same shape for both hang locations: a tx that
+  silently fails to deliver hangs the rx that waits on it.
+- `test-loop-count` is the clearest case: it does an **infinite** transmit
+  (`TXSTART loop=-1`), then `out.reset` (which is `rmt_disable` + `rmt_enable`),
+  then `TXSTART loop=4`. For a `loop=-1` transmit `tx_done` never fires; aborting
+  it via disable/enable appears to leave the esp-idf tx transaction-queue
+  (`trans_queue_depth=1`) in a stuck state, so the following `loop=4` transmit is
+  accepted but never runs (no `tx_done`) and the rx waiting on it hangs.
+
+**Conclusion:** a timing-dependent esp-idf RMT **tx-completion** stuck state after
+the cumulative mixed tx/rx/loop/reset sequence — not a Toit channel/pin leak and
+not a lost rx interrupt per se. Likely an esp-idf RMT driver bug (the tx engine /
+transaction queue after an aborted infinite-loop transmit, and under load).
+
+**Next concrete step:** instrument the esp-idf RMT *tx* path (transaction queue
+state / `rmt_disable` of an in-flight infinite-loop transmit) to confirm the
+stuck transaction, then either patch esp-idf or change `out.reset` to fully
+flush/recreate the tx channel after a loop transmit. Pragmatic alternative still
+available: split `rmt-test` into per-sub-test processes (each passes in isolation).
+NOTE: the committed `toolchains/esp32s3/sdkconfig` is stale vs current esp-idf
+(`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP` regenerates on
+build); worth ruling in/out.
+
+#### Build note (resolved)
+`make esp32s3` works once the pyenv 3.8.18 venv is bypassed (this shell had it
+active via `VIRTUAL_ENV`; the build dir is configured for system python 3.14):
+`env -u VIRTUAL_ENV PATH=<path without .pyenv/versions> make esp32s3`.
 - `espnow2-board1.toit-esp32s3` — wireless. In a combined run it hung/timed out
   with no output (its UART `ok` handshake is fixed by the pull-up, but the
   ESP-NOW exchange is unverified). Needs a separate retest.
