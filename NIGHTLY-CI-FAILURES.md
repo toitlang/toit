@@ -166,222 +166,56 @@ Confirmed locally on the s3:
 Same esp-idf I2S issue (#15275) as the already-skipped variants.
 `pcm32-inmonoleft` only failed 1/6 on CI (flaky) — left enabled, watch it.
 
-### rmt-test — INVESTIGATED, root cause narrowed (NOT yet fixed)
-`rmt-test.toit-esp32s3` Timeout (120s); `rmt-test.toit-esp32` also fails (~15s) —
-broken on **both** architectures, single-board.
+### rmt-test — ROOT CAUSE FOUND & FIXED (open-drain mode leaks across channel close)
 
-Where it hangs (s3): instrumented the `test` driver; it runs the sub-tests in
-sequence and hangs in **`test-bidirectional`** at `in2.wait-for-data` (the RMT
-rx-done event never fires). The earlier `test-resource` channel-alloc errors
-("no free rx channels") are the **expected** `ALREADY_IN_USE` throws the test
-asserts on — not the problem.
+`rmt-test.toit-esp32s3` Timeout (120s); `rmt-test.toit-esp32` also fails. Now
+**fixed** and validated on s3 (3/3 clean runs, ~10s each, was a 120s timeout).
 
-Bisected with hardware experiments:
-- `test-bidirectional` **in isolation**: passes (`GOT 144 signals`).
-- `[test-resource, bidir]`: pass.   `[carrier, glitch-filter, bidir]`: pass.
-- `[simple, multiple, long, carrier, glitch, bidir]` (5 middle sub-tests): **HANGS**.
-- Simple in/out pulse channel churn (40×, shared pins): clean — no channel leak.
-- `test-bidirectional`'s own pattern churned 30×: clean — no self-leak.
-- (Gotcha: a `gpio.Pin` created per-iteration and not closed throws
-  `ALREADY_IN_USE` on the pin — a test-writing trap, not the bug. The real test
-  creates pin1/pin2 once and reuses them.)
+#### Symptom
+The full test runs its sub-tests in sequence and hangs in a `wait-for-data`
+(an RMT receive that never completes). Which sub-test hangs is timing-sensitive
+(any instrumentation shifts it between `test-bidirectional` and `test-loop-count`),
+which sent the earlier investigation down a "timing-dependent TX stall" path. That
+was a **mis-diagnosis**: the engine is fine, the receiver just never sees a signal.
 
-**Conclusion:** it is a *cumulative* state issue — only the combination/variety of
-the RMT sub-tests' configs (carrier, glitch-filter, open-drain, varying
-memory-blocks) leaves residual state that makes a later rx channel's done-event
-never fire. Not a Toit channel/pin leak (the close path is synchronous and churn
-is clean). Most likely an esp-idf RMT driver / interrupt / event-source state
-issue accumulated across many register/unregister cycles with different configs.
+#### Root cause (confirmed on hardware with a register monitor + an isolated repro)
+Open-drain GPIO mode leaks across an RMT channel's lifetime.
+- `rmt_new_tx_channel()` enables open-drain via `gpio_ll_od_enable()` (the
+  `pad_driver` bit) when a channel is created with `--open-drain`, but nothing ever
+  clears it. `gpio_output_disable()` on channel deletion only clears the GPIO
+  *output-enable* bit, **not** `pad_driver`.
+- `test-bidirectional` uses `pin1`/`pin2` as `--open-drain` (with `pin3` as a shared
+  pull-up). After it closes, `pin1`/`pin2` are **left in open-drain mode**.
+- The next push-pull user, `test-loop-count` (`out := rmt.Out pin1`, no pull-up),
+  therefore can only drive the line **low**; "high" becomes high-Z and floats. A
+  pulse counter still sees edges (so the old "TX emits / RX gets nothing" data), but
+  the RMT **receiver never sees a clean high level**, never detects the symbol /
+  idle, and `in.wait-for-data` blocks forever.
 
-#### esp-idf RMT instrumentation result (esp_rom_printf in rx_done/tx_done/arm/transmit)
-Built an instrumented s3 envelope and ran the full failing test. Findings:
+Definitive evidence at the s3 hang (passive per-channel register dump):
+`TX0` completed its loop (`loop-end` ISR fired once), but `RX0` was correctly armed
+(`rx_en=1`, `mem_owner=HW`, `idle_thres=120`) with its write pointer still at the
+memory base — i.e. **zero symbols received**. An isolated probe that merely
+pre-conditions `pin1`/`pin2` into open-drain (then closes those channels) and runs
+the push-pull loop sequence **reproduces the hang with no other sub-tests involved**.
 
-- **The hang is a timing race (Heisenbug).** With the printf delays added, the
-  hang *moved*: `test-bidirectional` now *completes* (`RMT RDONE n=72`) and the
-  hang lands one sub-test later, in **`test-loop-count`**. So the bug is
-  timing-sensitive, not a fixed location.
-- At the hang, the trace shows an armed rx (`RXARM err=0`) **and** a tx
-  (`TXSTART err=0`) where *neither* `rx_done` nor `tx_done` ever fires (the
-  printf is before the queue-send, so the ISRs genuinely never run — not a
-  dropped event). I.e. **the tx starts (`rmt_transmit` returns OK) but never
-  completes, so the dependent rx never receives a signal and never completes →
-  `wait-for-data` blocks forever.** Same shape for both hang locations: a tx that
-  silently fails to deliver hangs the rx that waits on it.
-- `test-loop-count` is the clearest case: it does an **infinite** transmit
-  (`TXSTART loop=-1`), then `out.reset` (which is `rmt_disable` + `rmt_enable`),
-  then `TXSTART loop=4`. For a `loop=-1` transmit `tx_done` never fires; aborting
-  it via disable/enable appears to leave the esp-idf tx transaction-queue
-  (`trans_queue_depth=1`) in a stuck state, so the following `loop=4` transmit is
-  accepted but never runs (no `tx_done`) and the rx waiting on it hangs.
+#### Fix
+`third_party/esp-idf/components/esp_driver_rmt/src/rmt_tx.c`, in
+`rmt_new_tx_channel()`: establish the configured drive mode explicitly —
+`gpio_ll_od_enable()` when `io_od_mode`, else `gpio_ll_od_disable()`. A push-pull
+channel now always gets push-pull regardless of the pin's prior history. (Upstream
+esp-idf master has the same latent bug; not fixed there. Architecture-independent —
+benefits esp32 too, where the same driver/test combination fails.)
 
-**Conclusion:** a timing-dependent esp-idf RMT **tx-completion** stuck state after
-the cumulative mixed tx/rx/loop/reset sequence — not a Toit channel/pin leak and
-not a lost rx interrupt per se. Likely an esp-idf RMT driver bug (the tx engine /
-transaction queue after an aborted infinite-loop transmit, and under load).
+**Validated:** clean s3 envelope (`make esp32s3`, no instrumentation),
+`rmt-test.toit-esp32s3` **Passed 3/3** (~10s). esp32 envelope still needs a rebuild
++ re-run to confirm the same fix there.
 
-#### Deep investigation results (esp-idf patch history + pulse-counter probing)
-
-1. **Dropped local patch lead (ruled out for s3).** The esp-idf submodule bump
-   `08e41458` once carried a Toit-local patch `d1e7c39b "Add workaround for
-   spurious RMT-RX events" (#106)` that applied the `fsm != RMT_FSM_RUN` check
-   **unconditionally**. The 5.4.2 roll dropped it; `ef015d0e` (May 23) re-added the
-   *official* esp-idf fix `ac781c7064` (issue #15948) which guards that check with
-   `#if !SOC_RMT_SUPPORT_ASYNC_STOP` → **skipped on esp32s3**. Re-applying it
-   unconditionally for s3 was tested on hardware: **does NOT fix the hang.**
-   Confirms the esp-idf maintainer's note that #15948 is ESP32-only.
-
-2. **It is a cumulative + timing-dependent race, not the disable/enable rx bug.**
-   - `test-bidirectional` and `test-loop-count` both **pass in isolation** and in
-     short subsequences; only the full cumulative run hangs.
-   - **Ultra timing-sensitive:** even ~10ns `volatile` counters (not just printf)
-     make `test-bidirectional` pass, and the hang then moves to `test-loop-count`.
-     So it can't be instrumented in the hot path without hiding it (Heisenbug).
-   - **The tx is fine.** Pulse-counter probing (non-perturbing) confirmed:
-     `out.reset` cleanly stops an infinite (`loop=-1`) transmit, and a subsequent
-     `loop=4` transmit produces the expected pulses. The hang is the **rx**
-     (`wait-for-data`) not completing (hardware idle never detected / event never
-     delivered) **after the cumulative sequence** of varied sub-tests.
-
-**Conclusion:** a cumulative, timing-sensitive RMT rx race that only appears after
-many varied RMT operations (carrier, glitch-filter, open-drain, loop) run in one
-process on shared pins. Not a Toit channel/pin leak (churn is clean), not the
-spurious-rx disable/enable bug, not the tx. Likely esp-idf RMT-driver / event /
-interrupt cumulative state; un-instrumentable in the hot path.
-
-#### TWO-BOARD WITNESS + tracker (latest, supersedes everything below)
-
-Used board2 as an independent witness: board1 runs the real rmt-test (reliably
-hangs) plus a concurrent task that transmits a probe on GPIO5 (a board-connection
-pin wired to board2); board2 counts pulses on GPIO5.
-
-Result: while the main test is hung, **all 116 probe transmits complete ("ok") and
-board2 keeps counting pulses** — i.e. the RMT engine is **NOT** stalled engine-wide;
-plain transmits keep working. So the hang is **a specific transmit configuration
-that stalls**, not a dead peripheral. (board2's count "freezing" earlier was just
-its 80s monitor loop ending, not the signal stopping — corrected.)
-
-Combined with the passive register watchdog (loop-count hang): `tx_start=21
-tx_done=19` (one real transmit — the `loop=4` after `loop=-1`+`out.reset` — never
-fires tx_done), `rx_arm=13 rx_hwdone=12` (the rx just waits for that transmit's
-signal), `int_raw=0`, clock fine.
-
-**Honest conclusion:** it is a **TX problem** — a specific RMT transmit stalls (no
-`tx_done`, no output) after the cumulative sub-test state; the receive that depends
-on it then hangs. It is config-specific (loop-TX after reset in `test-loop-count`;
-the dual independent open-drain TX in `test-bidirectional`), **not** engine-wide,
-**not** memory corruption, **not** layout/IRAM/ISR-log/clock. Reached via the
-ping-pong RX path (disabling ping-pong avoids it).
-
-Tracker: clusters with known, partly-unresolved esp-idf RMT **TX** bugs on the S3 —
-- #10429 ESP32-S3 RMT silently fails: a complementary TX channel stops with large
-  data (closed "Won't Do") — closest symptom, but uses the sync-manager.
-- #13003 ESP32-S3 consecutive RMT transmissions; #17692 rmt_transmit+rmt_disable.
-Not an exact match → likely a new variant worth reporting to Espressif with our
-repro + the `tx_start>tx_done`, `int_raw=0`, "probe still works" evidence.
-
-**Remaining precision (1 rebuild):** dump the per-channel TX conf/FSM at the hang to
-see whether `rmt_transmit` fails to set the TX-start bit (driver) or the HW ignores
-it (peripheral state). Then patch esp-idf and/or report upstream. Interim to get CI
-green: skip the ping-pong/loop-dependent sub-tests with a tracker reference.
-
----
-(Older notes below — partly superseded; kept for the investigation trail.)
-
-#### CORRECTION + precise root cause (register-level debug)
-
-Earlier "memory corruption (#13419)" was an over-claim — disabling ping-pong only
-proves the ping-pong RX path is *involved*, not that it corrupts memory. Ruled out
-by experiment: code/IRAM-layout (an unused IRAM fn changed nothing),
-`CONFIG_RMT_ISR_IRAM_SAFE=y` (no change), the RX-ISR `ESP_DRAM_LOGE` (LOGE→LOGD, no
-change), and the RMT clock (sys_conf is normal at the hang). The ping-pong handlers
-are byte-identical to esp-idf master (only LOGE→LOGD differs) → not fixed upstream
-in that path either.
-
-Instrumented the esp-idf RX ISRs (threshold/hw-done counters) + the transmit/
-tx-done paths + the RMT interrupt & clock registers, dumped by a watchdog task
-(sleeps, so no hot-path perturbation — validated by the layout-shift test). At the
-hang the counters are **frozen**:
-```
-tx_start=21 tx_done=19      <- TWO transmits never complete
-rx_arm=13   rx_hwdone=12     <- one rx armed, never completes
-int_raw=0  int_ena=0x1011000 (rx-ch0 DONE/ERR/THRES enabled)  sys_conf=normal
-```
-- The rx is innocent: armed, all its interrupts enabled, **but `int_raw=0`** — the
-  RX idle-done only fires *after* a pulse, so it is simply waiting for a signal
-  that never arrives.
-- The real stall is the **TX engine**: a transmit is issued (`rmt_transmit` returns
-  OK, `tx_start` increments) but the hardware never runs it (`tx_done` never fires,
-  `int_raw=0`, clock fine). In `test-loop-count` the stuck one is the `loop=4`
-  transmit that follows a `loop=-1` (infinite) + `out.reset` (disable/enable); in
-  `test-bidirectional` (the no-instrumentation hang) it's the open-drain write.
-
-**Precise root cause:** after the cumulative RMT activity, a subsequent **RMT
-transmit silently stalls** — `rmt_transmit` accepts it but the HW TX engine never
-starts/completes (no `tx_done`, no interrupt). The dependent receive then waits
-forever. Triggered via the ping-pong RX path (disabling ping-pong avoids it). It's
-an esp-idf new-driver (`esp_driver_rmt`) bug; the TX-after-abort / cumulative state
-isn't handled. Next: dump the per-channel TX conf/FSM to see whether `rmt_transmit`
-fails to set the TX-start bit (driver) vs. the HW engine ignoring it (state), then
-patch esp-idf and/or report upstream with this repro.
-
-(superseded heading kept below for history)
-#### ROOT CAUSE CONFIRMED: esp-idf RMT RX ping-pong memory corruption (#13419)
-
-It is **not** a timing race — it is **memory corruption** in the esp-idf RMT RX
-ping-pong path. Key insight (Florian): a single `volatile` counter can't flip a
-*reproducible* failure via timing, but it CAN if the failure is memory corruption
-whose overwrite target moves with the **binary layout** ("code shifting"). That
-matches everything: deterministic-per-binary, "any code change moves the hang
-between sub-tests", cumulative (corruption accumulates / heap state), and
-un-instrumentable.
-
-Matches esp-idf issue **#13419 "RMT in RX Mode causes memory corruption with
-ESP32-S3 (SOC_RMT_SUPPORT_RX_PINGPONG)"** — new driver (`esp_driver_rmt`, which is
-what Toit uses via `rmt_new_rx_channel`/`rmt_receive`; NOT the legacy
-`rmt_legacy.c`). Still **open upstream, no fix**. S3-only (ESP32 has no ping-pong
-→ the ESP32 rmt-test fails with a different, non-hang symptom).
-
-Hardware-confirmed on our envelope (esp-idf v5.4.2):
-- **Disable `SOC_RMT_SUPPORT_RX_PINGPONG` on s3 → the 120s hang DISAPPEARS** (test
-  now Fails fast instead, because large receptions truncate / a follow-on Toit
-  "potential dead-lock" — so a blanket disable is too blunt, but it pinpoints the
-  ping-pong path as the cause).
-- **`CONFIG_RMT_ISR_IRAM_SAFE=y` (ISR in IRAM + buffer forced internal) → still
-  hangs.** So it is not ISR-latency / PSRAM-buffer; it is a genuine code bug in
-  the ping-pong copy (`rmt_isr_handle_rx_threshold` / `rmt_isr_handle_rx_done`).
-
-**Fix options (decision needed):**
-1. Patch the esp-idf RMT ping-pong copy bug in `rmt_rx.c` and upstream it
-   (it is Espressif's unfixed bug; needs careful analysis of the threshold/done
-   copy + memowner race). Best long-term; we can patch our esp-idf fork.
-2. Avoid ping-pong for the affected receives (size rx buffers / reduce reception
-   length so the RX never relies on ping-pong) — narrower, test-side.
-3. Skip the ping-pong-dependent sub-tests (bidirectional, long-sequence, etc.)
-   with a reference to #13419 until upstream fixes it (like the i2s skips).
-Report #13419 status to Espressif with our repro either way.
-
-NOTE: the committed `toolchains/esp32s3/sdkconfig` is stale vs current esp-idf
-(`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP` regenerates on
-build) — a side effect of the #15948 patch's cap rename; harmless but worth a
-refresh.
-
-#### Build note (resolved)
-`make esp32s3` works once the pyenv 3.8.18 venv is bypassed (this shell had it
-active via VIRTUAL_ENV; the build dir is configured for system python 3.14):
-`env -u VIRTUAL_ENV PATH=<path without .pyenv/versions> make esp32s3`.
-
-#### Build note (resolved)
-`make esp32s3` works once the pyenv 3.8.18 venv is bypassed (this shell had it
-active via `VIRTUAL_ENV`; the build dir is configured for system python 3.14):
-`env -u VIRTUAL_ENV PATH=<path without .pyenv/versions> make esp32s3`.
-- `espnow2-board1.toit-esp32s3` — wireless. In a combined run it hung/timed out
-  with no output (its UART `ok` handshake is fixed by the pull-up, but the
-  ESP-NOW exchange is unverified). Needs a separate retest.
-- Rebuild the **esp32** envelope (`make esp32`) — shares the UART fix; only the
-  s3 envelope has been rebuilt/validated so far.
-
-#### Build-env note
-On a fresh shell `make esp32s3` fails: `export.sh` activates the py3.8 IDF env
-(system python is 3.8) but `build/esp32s3` was configured with the py3.14 env, so
-idf.py refuses without a `fullclean`. Worked around by invoking idf.py with the
-py3.14 python directly (recompiles `uart_esp32.cc` + relinks — equivalent result).
+#### Side finding (not a CI failure, not yet fixed)
+Our `rmt_encode_simple()` (`rmt_encoder.c`) has the bug fixed upstream by
+`e159e69c56 "fix(rmt): fix the state of the simple encoder with mem full"`: when the
+simple/custom encoder finishes exactly at a memory-block boundary it sets
+`RMT_ENCODING_COMPLETE` but not `RMT_ENCODING_MEM_FULL`, so the caller writes a stray
+EOF marker. Our copy encoder already handles the boundary; the simple encoder
+(`rmt.Encoder` byte/pattern path) does not. `test-encoder` does not currently hit the
+exact boundary, so the test passes — worth backporting regardless.
