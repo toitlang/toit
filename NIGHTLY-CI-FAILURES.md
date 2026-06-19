@@ -219,14 +219,52 @@ the cumulative mixed tx/rx/loop/reset sequence — not a Toit channel/pin leak a
 not a lost rx interrupt per se. Likely an esp-idf RMT driver bug (the tx engine /
 transaction queue after an aborted infinite-loop transmit, and under load).
 
-**Next concrete step:** instrument the esp-idf RMT *tx* path (transaction queue
-state / `rmt_disable` of an in-flight infinite-loop transmit) to confirm the
-stuck transaction, then either patch esp-idf or change `out.reset` to fully
-flush/recreate the tx channel after a loop transmit. Pragmatic alternative still
-available: split `rmt-test` into per-sub-test processes (each passes in isolation).
+#### Deep investigation results (esp-idf patch history + pulse-counter probing)
+
+1. **Dropped local patch lead (ruled out for s3).** The esp-idf submodule bump
+   `08e41458` once carried a Toit-local patch `d1e7c39b "Add workaround for
+   spurious RMT-RX events" (#106)` that applied the `fsm != RMT_FSM_RUN` check
+   **unconditionally**. The 5.4.2 roll dropped it; `ef015d0e` (May 23) re-added the
+   *official* esp-idf fix `ac781c7064` (issue #15948) which guards that check with
+   `#if !SOC_RMT_SUPPORT_ASYNC_STOP` → **skipped on esp32s3**. Re-applying it
+   unconditionally for s3 was tested on hardware: **does NOT fix the hang.**
+   Confirms the esp-idf maintainer's note that #15948 is ESP32-only.
+
+2. **It is a cumulative + timing-dependent race, not the disable/enable rx bug.**
+   - `test-bidirectional` and `test-loop-count` both **pass in isolation** and in
+     short subsequences; only the full cumulative run hangs.
+   - **Ultra timing-sensitive:** even ~10ns `volatile` counters (not just printf)
+     make `test-bidirectional` pass, and the hang then moves to `test-loop-count`.
+     So it can't be instrumented in the hot path without hiding it (Heisenbug).
+   - **The tx is fine.** Pulse-counter probing (non-perturbing) confirmed:
+     `out.reset` cleanly stops an infinite (`loop=-1`) transmit, and a subsequent
+     `loop=4` transmit produces the expected pulses. The hang is the **rx**
+     (`wait-for-data`) not completing (hardware idle never detected / event never
+     delivered) **after the cumulative sequence** of varied sub-tests.
+
+**Conclusion:** a cumulative, timing-sensitive RMT rx race that only appears after
+many varied RMT operations (carrier, glitch-filter, open-drain, loop) run in one
+process on shared pins. Not a Toit channel/pin leak (churn is clean), not the
+spurious-rx disable/enable bug, not the tx. Likely esp-idf RMT-driver / event /
+interrupt cumulative state; un-instrumentable in the hot path.
+
+**Recommended fix:** since every sub-test passes in isolation, split `rmt-test`
+so each sub-test runs in its own process (fresh boot). This is legitimate test
+isolation (the cumulative single-process churn is not a real RMT usage pattern),
+restores green, and the underlying cumulative race can be filed as a known
+esp-idf/RMT issue with this evidence. (Deeper alternative: reproduce the cumulative
+state in a controlled experiment and bisect the esp-idf driver state — expensive
+and fights the Heisenbug.)
+
 NOTE: the committed `toolchains/esp32s3/sdkconfig` is stale vs current esp-idf
 (`CONFIG_SOC_RMT_SUPPORT_TX_ASYNC_STOP` → `..._SUPPORT_ASYNC_STOP` regenerates on
-build); worth ruling in/out.
+build) — a side effect of the #15948 patch's cap rename; harmless but worth a
+refresh.
+
+#### Build note (resolved)
+`make esp32s3` works once the pyenv 3.8.18 venv is bypassed (this shell had it
+active via VIRTUAL_ENV; the build dir is configured for system python 3.14):
+`env -u VIRTUAL_ENV PATH=<path without .pyenv/versions> make esp32s3`.
 
 #### Build note (resolved)
 `make esp32s3` works once the pyenv 3.8.18 venv is bypassed (this shell had it
