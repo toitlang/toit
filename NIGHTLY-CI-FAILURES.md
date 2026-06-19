@@ -248,6 +248,45 @@ process on shared pins. Not a Toit channel/pin leak (churn is clean), not the
 spurious-rx disable/enable bug, not the tx. Likely esp-idf RMT-driver / event /
 interrupt cumulative state; un-instrumentable in the hot path.
 
+#### TWO-BOARD WITNESS + tracker (latest, supersedes everything below)
+
+Used board2 as an independent witness: board1 runs the real rmt-test (reliably
+hangs) plus a concurrent task that transmits a probe on GPIO5 (a board-connection
+pin wired to board2); board2 counts pulses on GPIO5.
+
+Result: while the main test is hung, **all 116 probe transmits complete ("ok") and
+board2 keeps counting pulses** — i.e. the RMT engine is **NOT** stalled engine-wide;
+plain transmits keep working. So the hang is **a specific transmit configuration
+that stalls**, not a dead peripheral. (board2's count "freezing" earlier was just
+its 80s monitor loop ending, not the signal stopping — corrected.)
+
+Combined with the passive register watchdog (loop-count hang): `tx_start=21
+tx_done=19` (one real transmit — the `loop=4` after `loop=-1`+`out.reset` — never
+fires tx_done), `rx_arm=13 rx_hwdone=12` (the rx just waits for that transmit's
+signal), `int_raw=0`, clock fine.
+
+**Honest conclusion:** it is a **TX problem** — a specific RMT transmit stalls (no
+`tx_done`, no output) after the cumulative sub-test state; the receive that depends
+on it then hangs. It is config-specific (loop-TX after reset in `test-loop-count`;
+the dual independent open-drain TX in `test-bidirectional`), **not** engine-wide,
+**not** memory corruption, **not** layout/IRAM/ISR-log/clock. Reached via the
+ping-pong RX path (disabling ping-pong avoids it).
+
+Tracker: clusters with known, partly-unresolved esp-idf RMT **TX** bugs on the S3 —
+- #10429 ESP32-S3 RMT silently fails: a complementary TX channel stops with large
+  data (closed "Won't Do") — closest symptom, but uses the sync-manager.
+- #13003 ESP32-S3 consecutive RMT transmissions; #17692 rmt_transmit+rmt_disable.
+Not an exact match → likely a new variant worth reporting to Espressif with our
+repro + the `tx_start>tx_done`, `int_raw=0`, "probe still works" evidence.
+
+**Remaining precision (1 rebuild):** dump the per-channel TX conf/FSM at the hang to
+see whether `rmt_transmit` fails to set the TX-start bit (driver) or the HW ignores
+it (peripheral state). Then patch esp-idf and/or report upstream. Interim to get CI
+green: skip the ping-pong/loop-dependent sub-tests with a tracker reference.
+
+---
+(Older notes below — partly superseded; kept for the investigation trail.)
+
 #### CORRECTION + precise root cause (register-level debug)
 
 Earlier "memory corruption (#13419)" was an over-claim — disabling ping-pong only
