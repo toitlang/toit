@@ -219,3 +219,24 @@ simple/custom encoder finishes exactly at a memory-block boundary it sets
 EOF marker. Our copy encoder already handles the boundary; the simple encoder
 (`rmt.Encoder` byte/pattern path) does not. `test-encoder` does not currently hit the
 exact boundary, so the test passes — worth backporting regardless.
+
+#### esp32 rmt-test — FIXED (TX idle-level switch glitch)
+The esp32 `rmt-test` failed early (`test-simple-pulse`: `Expected <2>, but was <4>`),
+returning a spurious leading signal, e.g. `(0:1)(1:50)(0:0)(1:50)` instead of
+`(1:50)(0:0)`. Originally mis-read as an RX "records the idle level" behavior.
+
+Real root cause (found with a hardware probe — pre-settling the line to the idle
+level makes the leading signal vanish): it is a **TX-side glitch**. `rmt_new_tx_channel`
+set the initial idle level high for `io_loop_back` channels, and Toit sets
+`io_loop_back` on *every* channel, so every push-pull output idled high. When it then
+transmits with `done-level=0`, the driver switches the idle level to 0 immediately
+before `tx_start`; on the esp32 a receiver records that idle-level switch as a brief
+leading glitch (the esp32s3 does not). A data-driven "strip the leading idle in the
+library" approach was tried and **rejected**: the receiver can't know the relevant idle
+level (start-level vs done-level differ — it broke esp32s3), and buffer-filling
+receptions lose the end-marker outright.
+
+**Fix:** key the high idle level on `io_od_mode` (open-drain) instead of `io_loop_back`,
+matching the workaround's own stated intent. Push-pull channels now idle low and don't
+glitch; open-drain channels are unchanged. Validated: `rmt-test` passes **3/3 on esp32
+and on esp32s3**.
