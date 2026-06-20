@@ -427,6 +427,16 @@ PRIMITIVE(create) {
   err = uart_param_config(port, &uart_config);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  // Make sure the RX line idles high *before* it is connected to the UART. The
+  // driver has already been installed (the receiver is running), and `uart_set_pin`
+  // no longer enables an RX pull-up, so connecting a floating-low RX pin makes the
+  // receiver see a start bit; once the pull-up below raises the line the receiver
+  // decodes a spurious 0xFF byte (which arrives after the flush below). Enabling the
+  // pull-up first keeps the hand-off glitch-free.
+  if (rx != -1) {
+    gpio_set_pull_mode(static_cast<gpio_num_t>(rx), GPIO_PULLUP_ONLY);
+  }
+
   err = uart_set_pin(port, tx, rx, rts, cts);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
