@@ -257,3 +257,26 @@ other messages) and crashed; board1 then waited forever for the `ok` → timeout
 
 **Fix** (`6e85b07d`): `newest = datagrams_[(head_ + used_ - 1) % queue_size_]`.
 Validated: `espnow2-board1` passes 3/3 on esp32s3 and on esp32.
+
+### uart-baud-rate-test — FIXED (RX pull-up enabled too late -> spurious 0xFF)
+`uart-baud-rate-test` was `#flaky` on CI (failed 3/6 nights); failed deterministically
+locally after the earlier UART RX pull-up fix landed.
+
+Root cause: the RX pull-up that restores the idle-high line was enabled *after*
+`uart_set_pin`, but `uart_driver_install` (which starts the receiver) already ran.
+Connecting a floating-low RX pin to the running receiver looks like a start bit; when
+the pull-up then raises the line the receiver decodes a spurious 0xFF, which arrives
+just after the create-time `uart_flush_input` and stays in the buffer. The test reads
+its RX port for the first time only near the end, so `port1.in.read` returned `#[0xff]`
+(and `.to-string` threw on the invalid UTF-8) instead of the expected data. Confirmed
+with a hardware probe: `DBG-DRAIN port1 after-create: #[0xff]` — present from creation,
+before any baud change (the baud-rate functionality itself was fine).
+
+The earlier pull-up fix (committed for the spi/uart-data failures) fixed a
+floating-low `0x00` in normal operation but, by pulling the line firmly high, turned
+this setup transition into a clean `0xFF` every time.
+
+**Fix** (`b7d7a297`, `src/resources/uart_esp32.cc`): enable the RX pull-up *before*
+`uart_set_pin` as well, so the line idles high before it is connected to the receiver
+and the hand-off no longer glitches. Validated: uart-baud-rate passes 8/8 on esp32s3
+and 5/5 on esp32; spi/uart-data tests still pass on both.
