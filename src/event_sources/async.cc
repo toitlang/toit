@@ -15,9 +15,9 @@
 
 #include "../top.h"
 
-#if defined(TOIT_POSIX)
+#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)
 
-#include "async_posix.h"
+#include "async.h"
 
 namespace toit {
 
@@ -106,4 +106,4 @@ void AsyncEventSource::on_event(Resource* resource, word data) {
 
 } // namespace toit
 
-#endif // TOIT_POSIX
+#endif // defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)

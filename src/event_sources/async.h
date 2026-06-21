@@ -17,7 +17,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_POSIX)
+#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)
 
 #include "../linked.h"
 #include "../resource.h"
@@ -87,4 +87,4 @@ class AsyncEventSource : public EventSource {
 
 } // namespace toit
 
-#endif // defined(TOIT_POSIX)
+#endif // defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)
