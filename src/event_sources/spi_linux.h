@@ -19,7 +19,7 @@
 
 #if defined(TOIT_LINUX)
 
-#include "./async_posix.h"
+#include "./async.h"
 namespace toit {
 
 class SpiEventSource : public AsyncEventSource {

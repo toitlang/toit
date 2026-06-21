@@ -45,7 +45,7 @@
 #include "vm.h"
 #include "scheduler.h"
 #include "os.h"
-#include "event_sources/async_posix.h"
+#include "event_sources/async.h"
 
 #if (defined(MBEDTLS_CHACHAPOLY_C) && defined(MBEDTLS_CHACHA20_C)) || (defined(CONFIG_MBEDTLS_POLY1305_C) && defined(CONFIG_MBEDTLS_CHACHA20_C))
 #define SUPPORT_CHACHA20_POLY1305 1
