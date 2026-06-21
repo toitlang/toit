@@ -25,7 +25,13 @@ test:
   if runtime-before-sleep:
     expect current-run-time-us > runtime-before-sleep
     diff := current-run-time-us - runtime-before-sleep
-    expect diff < 1_000_000  // 1s.
+    // The deep sleep above had a duration of 0, but a deep-sleep + wake cycle is
+    // not free: on the ESP32S3 the wake/bootloader alone takes ~0.5s (it is part
+    // of the total run-time, which includes deep sleep), and the app boot adds
+    // ~0.15s, for a measured diff of ~0.67s. A 1s bound left too little headroom
+    // for boot jitter and made the test flaky. This bound only guards against
+    // gross mis-accounting; monotonicity is checked above.
+    expect diff < 2_000_000  // 2s.
   else:
     // We can't expect the current time to have a certain value, as the mini-jag
     // (testing harness) might have delayed running the test.

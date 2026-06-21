@@ -40,18 +40,20 @@ test:
 
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
-  print value
+  print "ADC adc1 divided value=$value (expect 0.9..1.2)"
   expect 0.9 < value < 1.2
 
   raw-value := adc.get --raw
-  print raw-value
+  print "ADC adc1 divided raw=$raw-value (expect 1100..1500)"
   expect 1100 < raw-value < 1500
 
   control-pin.set 1
   // The voltage is now 3.3V.
   value = adc.get
+  print "ADC adc1 full value=$value (expect >3.0)"
   expect value > 3.0
   raw-value = adc.get --raw
+  print "ADC adc1 full raw=$raw-value (expect ==4095)"
   expect-equals 4095 raw-value
 
   // Test that we correctly measure when the sample size is big.
@@ -69,6 +71,7 @@ test:
   average := values.reduce: | a b | a + b
   average /= values.size
   diffs := values.map: | v | (v - average).abs
+  print "ADC adc1 samples=$values average=$average diffs=$diffs (expect each diff <0.1)"
   expect (diffs.every: it < 0.1)
 
   if not test-restricted: return
@@ -85,9 +88,11 @@ test:
   control-pin.set 0
   // The resistors create a voltage divider of ration 2/3.
   value = adc.get
+  print "ADC adc2 divided value=$value (expect 1.8..2.6)"
   expect 1.8 < value < 2.6
 
   control-pin.set 1
   // Now the voltage should be 3.3V.
   value = adc.get
+  print "ADC adc2 full value=$value (expect >3.0)"
   expect value > 3.0
