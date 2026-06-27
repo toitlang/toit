@@ -160,6 +160,60 @@ class _Reader:
                     return
 
 
+def build_name_map(toit: str, snap: str) -> tuple:
+    """Build name↔entry_bci maps by parsing ``toit tool snapshot bytecodes``.
+
+    Returns ``(name_to_entry, entry_to_name)`` where *entry_bci* is the
+    absolute bytecode position of the first instruction of each method.
+
+    Approach: ``toit tool snapshot bytecodes <snap>`` (no filter) emits one
+    method block per method.  Each block starts with a header line:
+
+        <dispatch_idx>: <name> <file>:<line>:<col>
+
+    followed immediately by bytecode lines indented with spaces:
+
+        <space>+<offset>/ <absolute_bci> [<opcode>] - …
+
+    The first bytecode (offset 0) carries the entry bci.  Because header
+    lines start with a digit while bytecode lines are indented, the two
+    patterns are unambiguous.
+
+    This is Approach 1 from the plan (CLI tooling); no snapshot-bundle
+    binary parsing is needed.  The entry_bci values produced here can be
+    cross-checked with the numeric method registry from ``dbg:methods`` by
+    matching on entry_bci (the pinned COUNT_TO_ENTRY_BCI=285 sanity anchor
+    confirms the cross-check works).
+    """
+    result = subprocess.run(
+        [toit, "tool", "snapshot", "bytecodes", snap],
+        capture_output=True, text=True, check=True)
+    name_to_entry: dict = {}
+    entry_to_name: dict = {}
+    current_name = None
+    for line in result.stdout.splitlines():
+        # Method-header lines start with "<idx>: " (no leading whitespace).
+        # Bytecode lines are indented, so this guard is unambiguous.
+        if re.match(r'^\d+: ', line):
+            # The trailing source-location token (<path>:<line>:<col>) is the
+            # last whitespace-separated field.  Strip it and parse the name.
+            parts = line.rsplit(None, 1)
+            if len(parts) == 2 and re.match(r'.+:\d+:\d+$', parts[1]):
+                m = re.match(r'^\d+: (.+)$', parts[0])
+                if m:
+                    current_name = m.group(1).strip()
+                    continue
+        # First bytecode of the current method: "  0/ <entry_bci> [...]"
+        if current_name is not None:
+            bm = re.match(r'^\s+0/\s*(\d+)\s+\[', line)
+            if bm:
+                entry_bci = int(bm.group(1))
+                name_to_entry[current_name] = entry_bci
+                entry_to_name[entry_bci] = current_name
+                current_name = None
+    return name_to_entry, entry_to_name
+
+
 def run_session(toit, snap, script_after_methods, timeout=20.0,
                 method_picker=lambda methods: min(methods) if methods else 1):
     """Drive a full debug session against a snapshot and return parsed lines.
