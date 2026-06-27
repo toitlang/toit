@@ -75,6 +75,13 @@ class Debugger {
   // Print the `dbg:paused ...` line for the current pause.
   void on_pause(Process* process, Program* program, word bci, int reason);
 
+  // Resolve the `<id> <off>` reported for a single-step pause at `bci`: finds
+  // the registered method that contains `bci` (the greatest entry bci <= bci)
+  // and records its id plus the method-relative offset, so a step pause is
+  // reported just like a breakpoint. Called from the interpreter (scheduler
+  // thread); guards the registry with `mutex_`.
+  void resolve_step_location(Program* program, word bci);
+
   // Install a breakpoint at `entry_bci + off` in `program`, reported as `id`.
   void add_breakpoint(Program* program, word entry_bci, word off, int id);
 
@@ -119,6 +126,9 @@ class Debugger {
   void cmd_clear(int id, int off);
   void cmd_inspect(int frame_index);
   void cmd_continue();
+  // Resume the parked process in a step mode (1 step, 2 over, 3 out) and
+  // acknowledge with `dbg:ok <verb>`.
+  void cmd_step(int step_mode, const char* verb);
 
   Scheduler* const scheduler_;
   ControllerThread* controller_ = null;

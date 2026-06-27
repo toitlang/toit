@@ -29,6 +29,24 @@ def _snapshot(tmp):
 # layout is stable.
 COUNT_TO_ENTRY_BCI = 285
 COUNT_TO_SUM_OFF = 10
+# `main` (arity 0) compiles to entry bci 263; it is the frame that calls
+# `count-to`, so a `dbg:out` from inside `count-to` lands back here.
+MAIN_ENTRY_BCI = 263
+
+# Pinned step/over/out landing sites, discovered empirically (like the ns-oevm
+# `assert_over`/`assert_out` harness) by scripting a session and reading the
+# actual `dbg:paused step <id> <off>` lines the VM emits. The session breaks at
+# the `sum += i` site (off 10), clears the breakpoint, then issues one
+# step/over/out and observes where it re-parks:
+#   - step: the very next bytecode in `count-to`            -> off 11 (same method)
+#   - over: the `sum += i` site makes no Toit call, so over
+#           behaves like step here: the next bytecode        -> off 11 (same method)
+#   - out:  runs the rest of `count-to` and returns to the
+#           caller `main`                                    -> main, off 5
+# Re-pin these if the count_to.snapshot bytecode layout changes.
+STEP_LANDING_OFF = 11
+OVER_LANDING_OFF = 11
+OUT_LANDING_OFF = 5
 
 
 def _count_to_id(methods):
@@ -36,6 +54,13 @@ def _count_to_id(methods):
         if entry_bci == COUNT_TO_ENTRY_BCI and arity == 1:
             return mid
     raise AssertionError(f"count-to (entry_bci={COUNT_TO_ENTRY_BCI}) not in registry: {methods}")
+
+
+def _main_id(methods):
+    for mid, (entry_bci, arity) in methods.items():
+        if entry_bci == MAIN_ENTRY_BCI and arity == 0:
+            return mid
+    raise AssertionError(f"main (entry_bci={MAIN_ENTRY_BCI}) not in registry: {methods}")
 
 
 def test_inspect_reads_live_locals(tmp_path):
@@ -101,4 +126,67 @@ def test_break_unknown_id_errors_and_clear_is_acknowledged(tmp_path):
     assert any(p["kind"] == "ok" and p["verb"] == "break" for p in out), out
     assert any(p["kind"] == "ok" and p["verb"] == "clear" for p in out), out
     # Cleared breakpoint means the app still runs to completion.
+    assert any(p.get("text") == "result=10" for p in out), out
+
+
+def _run_step_session(tmp_path, verb):
+    """Break inside `count-to`, clear the breakpoint, then issue one step verb.
+
+    Returns ``(out, count_to_id, main_id)``. The breakpoint is cleared before
+    the step so the only remaining pause is the step landing (the loop would
+    otherwise re-hit the breakpoint before an `out`/`over` completes).
+    """
+    snap = _snapshot(str(tmp_path))
+    from tools.debug.dbg_protocol import run_session
+    ids = {}
+
+    def picker(methods):
+        ids["count_to"] = _count_to_id(methods)
+        ids["main"] = _main_id(methods)
+        return ids["count_to"]
+
+    out = run_session(
+        TOIT, snap,
+        script_after_methods=lambda mid: [
+            f"dbg:break {mid} {COUNT_TO_SUM_OFF}", "dbg:continue",
+            f"dbg:clear {mid} {COUNT_TO_SUM_OFF}", f"dbg:{verb}", "dbg:continue"],
+        method_picker=picker)
+    return out, ids["count_to"], ids["main"]
+
+
+def test_step_advances_within_same_method(tmp_path):
+    out, count_to_id, _ = _run_step_session(tmp_path, "step")
+    assert any(p["kind"] == "ok" and p["verb"] == "step" for p in out), out
+    steps = [p for p in out if p["kind"] == "paused" and p["mode"] == "step"]
+    # A single step pauses exactly once, on the next bytecode of `count-to`
+    # (same method id, off advanced past the breakpoint's off 10).
+    assert len(steps) == 1, out
+    assert steps[0]["id"] == count_to_id, out
+    assert steps[0]["off"] == STEP_LANDING_OFF, out
+    assert steps[0]["off"] > COUNT_TO_SUM_OFF, out
+    # Clean resume to completion.
+    assert any(p.get("text") == "result=10" for p in out), out
+
+
+def test_over_stays_within_method(tmp_path):
+    out, count_to_id, _ = _run_step_session(tmp_path, "over")
+    assert any(p["kind"] == "ok" and p["verb"] == "over" for p in out), out
+    steps = [p for p in out if p["kind"] == "paused" and p["mode"] == "step"]
+    assert len(steps) == 1, out
+    # `over` does not descend into callees: it stays inside `count-to`.
+    assert steps[0]["id"] == count_to_id, out
+    assert steps[0]["off"] == OVER_LANDING_OFF, out
+    assert any(p.get("text") == "result=10" for p in out), out
+
+
+def test_out_returns_to_caller(tmp_path):
+    out, count_to_id, main_id = _run_step_session(tmp_path, "out")
+    assert any(p["kind"] == "ok" and p["verb"] == "out" for p in out), out
+    steps = [p for p in out if p["kind"] == "paused" and p["mode"] == "step"]
+    assert len(steps) == 1, out
+    # `out` runs until `count-to` returns: the landing is in the caller `main`,
+    # a shallower frame, NOT inside count-to.
+    assert steps[0]["id"] == main_id, out
+    assert steps[0]["id"] != count_to_id, out
+    assert steps[0]["off"] == OUT_LANDING_OFF, out
     assert any(p.get("text") == "result=10" for p in out), out

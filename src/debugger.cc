@@ -161,6 +161,12 @@ void Debugger::handle_command(const char* line) {
     if (sscanf(line + 12, "%d", &frame) == 1) cmd_inspect(frame);
   } else if (strcmp(line, "dbg:continue") == 0) {
     cmd_continue();
+  } else if (strcmp(line, "dbg:step") == 0) {
+    cmd_step(1, "step");
+  } else if (strcmp(line, "dbg:over") == 0) {
+    cmd_step(2, "over");
+  } else if (strcmp(line, "dbg:out") == 0) {
+    cmd_step(3, "out");
   }
   // Unknown verbs are silently ignored in this task; the full verb set and
   // error reporting arrive in later tasks.
@@ -177,16 +183,16 @@ Program* Debugger::await_target() {
 }
 
 void Debugger::build_registry(Program* program) {
-  // Cached per program: the registry is immutable for a given program, and is
-  // only ever read/written on the controller thread, so no lock is needed.
+  // Cached per program: the registry is immutable for a given program. It is
+  // built/read on the controller thread, but `resolve_step_location` reads it
+  // from the scheduler thread, so the mutation is guarded by `mutex_`.
   if (registry_program_ == program) return;
-  registry_program_ = program;
-  registry_.clear();
 
   // Enumerate the program's methods from its dispatch table, deduplicating by
   // entry bci (a method may appear under several dispatch indices). 1-based ids
   // are simply the position in `registry_`. We keep the dispatch-table order
   // (rather than sorting) so ids stay identical to Task 2's enumeration.
+  std::vector<MethodInfo> built;
   std::vector<word> seen;
   for (int i = 0; i < program->dispatch_table.length(); i++) {
     int32 header_bci = program->dispatch_table[i];
@@ -199,8 +205,30 @@ void Debugger::build_registry(Program* program) {
     }
     if (duplicate) continue;
     seen.push_back(entry_bci);
-    registry_.push_back(MethodInfo{entry_bci, method.arity()});
+    built.push_back(MethodInfo{entry_bci, method.arity()});
   }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  registry_program_ = program;
+  registry_ = std::move(built);
+}
+
+void Debugger::resolve_step_location(Program* program, word bci) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // The containing method is the one with the greatest entry bci <= bci. If the
+  // registry has not been built yet (no `dbg:methods` issued), fall back to the
+  // absolute bci with an unknown id, mirroring the stop-at-entry pause.
+  word best_entry = -1;
+  int best_id = -1;
+  for (int i = 0; i < static_cast<int>(registry_.size()); i++) {
+    word entry = registry_[i].entry_bci;
+    if (entry <= bci && entry > best_entry) {
+      best_entry = entry;
+      best_id = i + 1;
+    }
+  }
+  last_id_ = best_id;
+  last_off_ = best_entry < 0 ? bci : (bci - best_entry);
 }
 
 void Debugger::cmd_methods() {
@@ -302,6 +330,22 @@ void Debugger::cmd_continue() {
   }
   // Resume outside our own lock: resume_debug_process takes the scheduler lock.
   scheduler_->resume_debug_process(pid, 0);
+}
+
+void Debugger::cmd_step(int step_mode, const char* verb) {
+  int pid;
+  { std::unique_lock<std::mutex> lock(mutex_);
+    cond_.wait_for(lock, std::chrono::milliseconds(800),
+                   [this] { return paused_pid_ != -1 || stopped_; });
+    if (stopped_ || paused_pid_ == -1) return;  // Nothing parked: ignore.
+    pid = paused_pid_;
+    paused_pid_ = -1;
+  }
+  // Resume the target in the requested step mode. The interpreter captures the
+  // start depth on the resumed bytecode and pauses again per the step rule.
+  scheduler_->resume_debug_process(pid, step_mode);
+  printf("dbg:ok %s\n", verb);
+  fflush(stdout);
 }
 
 } // namespace toit

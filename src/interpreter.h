@@ -178,14 +178,19 @@ class Interpreter {
   // Preemption method.
   uint8* preemption_method_header_bcp_;
 
-  // Debugger support.
+  // Debugger support. The interpreter only holds the attach flag + debugger
+  // pointer; all per-step state (mode, skip-once, captured depth) lives on the
+  // Process so the shared per-thread interpreter never carries it across
+  // processes. See `Process::debug_begin_resume`.
   Debugger* debugger_ = null;
   bool debug_active_ = false;
-  bool debug_stepping_ = false;
-  bool debug_skip_once_ = false;
   // Called from the dispatch loop for every bytecode when `debug_active_`.
   // Returns true if execution should pause here (breakpoint or step).
   bool debug_check(uint8* bcp, Object** sp);
+  // Frame count between `sp` and the stack base, used as the stepping depth.
+  // Computed live (the Stack's stored top is -1 while running), so it counts
+  // frame markers directly rather than calling `Stack::frames_do`.
+  int debug_frame_depth(Object** sp);
 
   void trace(uint8* bcp);
   Method lookup_entry();
