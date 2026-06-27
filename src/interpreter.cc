@@ -15,11 +15,13 @@
 
 #include "interpreter.h"
 
+#include "debugger.h"
 #include "flags.h"
 #include "heap_report.h"
 #include "objects_inline.h"
 #include "printing.h"
 #include "process.h"
+#include "program.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -45,6 +47,38 @@ void Interpreter::deactivate() {
 
 void Interpreter::preempt() {
   watermark_ = PREEMPTION_MARKER;
+}
+
+void Interpreter::set_debugger(Debugger* debugger) {
+  debugger_ = debugger;
+  debug_active_ = debugger != null && debugger->active();
+}
+
+void Interpreter::debug_resume(int step_mode) {
+  // We are parked on the breakpoint bytecode. Skip the break check exactly
+  // once so we make progress past it, then resume normal (or stepping) checks.
+  debug_skip_once_ = true;
+  debug_stepping_ = step_mode != 0;
+}
+
+bool Interpreter::debug_check(uint8* bcp, Object** sp) {
+  if (debug_skip_once_) {
+    debug_skip_once_ = false;
+    return false;
+  }
+  // Never pause privileged (system) processes; the debugger targets user code.
+  if (process_->is_privileged()) return false;
+  Program* program = process_->program();
+  word bci = program->absolute_bci_from_bcp(bcp);
+  if (debugger_->should_break(program, bci)) {
+    debugger_->on_pause(process_, program, bci, Debugger::REASON_BREAK);
+    return true;
+  }
+  if (debug_stepping_) {
+    debugger_->on_pause(process_, program, bci, Debugger::REASON_STEP);
+    return true;
+  }
+  return false;
 }
 
 Method Interpreter::lookup_entry() {

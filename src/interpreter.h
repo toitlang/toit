@@ -42,6 +42,8 @@
 
 namespace toit {
 
+class Debugger;
+
 typedef double (double_op)(double a, double b);
 
 class Interpreter {
@@ -87,6 +89,7 @@ class Interpreter {
       YIELDED,
       TERMINATED,
       DEEP_SLEEP,
+      DEBUG_PAUSED,   // breakpoint/step hit: park the process for the debugger.
     };
 
     explicit Result(State state) : state_(state), value_(0) {}
@@ -148,6 +151,14 @@ class Interpreter {
   void preempt();
   uint8* preemption_method_header_bcp() const { return preemption_method_header_bcp_; }
 
+  // Debugger support. Attaching a (possibly null) debugger toggles the
+  // per-bytecode hook. When no debugger is attached, `debug_active_` is false
+  // and the hook is a single, well-predicted branch with no extra work.
+  void set_debugger(Debugger* debugger);
+  // Arrange for the next bytecode (the one we are parked on) to skip the break
+  // check once, and configure single-stepping for the resumed run.
+  void debug_resume(int step_mode);
+
   static bool are_smis(Object* a, Object* b);
   static bool are_floats(Object* a, Object* b);
 
@@ -166,6 +177,15 @@ class Interpreter {
 
   // Preemption method.
   uint8* preemption_method_header_bcp_;
+
+  // Debugger support.
+  Debugger* debugger_ = null;
+  bool debug_active_ = false;
+  bool debug_stepping_ = false;
+  bool debug_skip_once_ = false;
+  // Called from the dispatch loop for every bytecode when `debug_active_`.
+  // Returns true if execution should pause here (breakpoint or step).
+  bool debug_check(uint8* bcp, Object** sp);
 
   void trace(uint8* bcp);
   Method lookup_entry();

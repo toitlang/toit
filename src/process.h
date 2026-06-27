@@ -158,6 +158,17 @@ class Process : public ProcessListFromProcessGroup::Element,
   void clear_signal(Signal signal);
   uint32 signals() const { return signals_; }
 
+  // Debugger support. When a parked process is resumed by the debug controller,
+  // it stashes the step mode here; the scheduler consumes it (transfers it to
+  // the interpreter) the next time it runs the process. -1 means no pending
+  // debug resume.
+  void set_debug_resume(int step_mode) { debug_resume_ = step_mode; }
+  int take_debug_resume() {
+    int result = debug_resume_;
+    debug_resume_ = -1;
+    return result;
+  }
+
   // Processes have a priority in the range [0..255]. The scheduler
   // prioritizes running processes with higher priorities, so processes
   // with lower priorities might get starved by more important things.
@@ -299,6 +310,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   int const id_;
   int next_task_id_;
   bool is_privileged_ = false;
+  int debug_resume_ = -1;
 
   Program* program_;
   ProcessRunner* runner_;

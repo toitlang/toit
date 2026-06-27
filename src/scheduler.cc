@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "resource.h"
+#include "debugger.h"
 #include "flags.h"
 #include "interpreter.h"
 #include "objects_inline.h"
@@ -48,8 +49,9 @@ void SchedulerThread::entry() {
   scheduler_->run(this);
 }
 
-Scheduler::Scheduler()
-    : mutex_(OS::allocate_mutex(2, "Scheduler"))
+Scheduler::Scheduler(VM* vm)
+    : vm_(vm)
+    , mutex_(OS::allocate_mutex(2, "Scheduler"))
     , has_processes_(OS::allocate_condition_variable(mutex_))
     , has_threads_(OS::allocate_condition_variable(mutex_))
     , gc_condition_(OS::allocate_condition_variable(mutex_))
@@ -59,7 +61,10 @@ Scheduler::Scheduler()
     , next_group_id_(0)
     , next_process_id_(0)
     , num_threads_(0)
-    , max_threads_(OS::num_cores())
+    // When debugging we cap to a single scheduler thread so a parked process
+    // cannot race sibling threads. The activation condition matches the one the
+    // VM uses to start the debugger (the `--debug` flag sets OEVM_DEBUG).
+    , max_threads_((getenv("OEVM_DEBUG") || getenv("TOIT_DEBUG")) ? 1 : OS::num_cores())
     , boot_process_(null) {
   Locker locker(mutex_);
 #ifdef TOIT_FREERTOS
@@ -637,6 +642,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
+    // Attach the debugger (null when not debugging: zero-overhead). If this
+    // process is resuming from a debug pause, transfer the step mode.
+    interpreter->set_debugger(vm_->debugger());
+    int debug_resume = process->take_debug_resume();
+    if (debug_resume >= 0) interpreter->debug_resume(debug_resume);
     process->set_idle_since_gc(false);
     if (process->signals() == 0) {
       Unlocker unlock(locker);
@@ -742,7 +752,22 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       terminate_execution(locker, exit);
       break;
     }
+
+    case Interpreter::Result::DEBUG_PAUSED:
+      wait_for_any_gc_to_complete(locker, process, Process::IDLE);
+      // Do NOT process_ready: leave the target parked. The debug controller
+      // re-readies it via resume_debug_process when the operator continues.
+      vm_->debugger()->register_paused(locker, process);
+      break;
   }
+}
+
+void Scheduler::resume_debug_process(int pid, int step_mode) {
+  Locker locker(mutex_);
+  Process* process = find_process(locker, pid);
+  if (process == null) return;
+  process->set_debug_resume(step_mode);
+  process_ready(locker, process);
 }
 
 int Scheduler::get_priority(int pid) {

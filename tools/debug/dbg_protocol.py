@@ -1,4 +1,4 @@
-import os, re
+import os, re, subprocess, threading, time
 
 def parse_line(line: str) -> dict:
     s = line.rstrip("\n")
@@ -85,3 +85,139 @@ class FifoChannel:
     def close(self):
         os.close(self._fd)
         os.unlink(self.path)
+
+
+def _inner_toit_run(toit_path: str) -> str:
+    """Locate the inner ``toit.run`` executable next to the ``toit`` launcher.
+
+    ``<sdk>/bin/toit`` is the multiplexer CLI; the actual snapshot runner is
+    ``<sdk>/lib/toit/bin/toit.run``. We launch the inner runner directly so the
+    debugger activates in exactly one VM (the application's). Going through the
+    multiplexer would activate the debugger in the *launcher* VM too, since the
+    activation condition is inherited via the environment.
+    """
+    sdk = os.path.dirname(os.path.dirname(os.path.abspath(toit_path)))
+    inner = os.path.join(sdk, "lib", "toit", "bin", "toit.run")
+    if os.name == "nt":
+        inner += ".exe"
+    return inner
+
+
+class _Reader:
+    """Background thread that drains a process' stdout into a line buffer.
+
+    Synchronization strategy: a single reader thread blocks on ``readline`` and
+    appends each decoded line to a shared list under a lock, pulsing a condition
+    variable. The driver thread paces commands by waiting for the buffer to go
+    *quiet* (no new line for ``quiet`` seconds) after each send, which lets the
+    VM settle (re-park on a breakpoint or run to completion) before the next
+    command is issued. This avoids racing the controller thread with a flood of
+    commands while staying robust to the interleaving of app output and ``dbg:``
+    responses on the shared stdout.
+    """
+
+    def __init__(self, stream):
+        self._stream = stream
+        self.lines = []
+        self._cond = threading.Condition()
+        self.eof = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        for raw in self._stream:
+            with self._cond:
+                self.lines.append(raw.rstrip("\n"))
+                self._cond.notify_all()
+        with self._cond:
+            self.eof = True
+            self._cond.notify_all()
+
+    def wait_for(self, pred, timeout):
+        """Block until ``pred(lines)`` is true or timeout/EOF; return success."""
+        deadline = time.monotonic() + timeout
+        with self._cond:
+            while True:
+                if pred(self.lines):
+                    return True
+                if self.eof:
+                    return pred(self.lines)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return pred(self.lines)
+                self._cond.wait(remaining)
+
+    def settle(self, quiet=0.4, maxwait=5.0):
+        """Wait until no new output has arrived for ``quiet`` seconds."""
+        deadline = time.monotonic() + maxwait
+        with self._cond:
+            while time.monotonic() < deadline:
+                n = len(self.lines)
+                if self.eof:
+                    return
+                self._cond.wait(quiet)
+                if len(self.lines) == n:
+                    return
+
+
+def run_session(toit, snap, script_after_methods, timeout=20.0):
+    """Drive a full debug session against a snapshot and return parsed lines.
+
+    Launches ``toit.run --debug <snap>`` with stdin wired to a pipe and stdout
+    captured, waits for ``dbg:ready``, sends ``dbg:methods`` and parses the
+    method registry to find the target method id, then issues the scripted
+    follow-up commands (pacing each so the VM settles), and finally returns the
+    list of parsed VM stdout lines (via :func:`parse_line`).
+    """
+    inner = _inner_toit_run(toit)
+    proc = subprocess.Popen(
+        [inner, "--debug", snap],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1)
+    reader = _Reader(proc.stdout)
+
+    def send(cmd):
+        # The VM may have already finished and exited (e.g. surplus `continue`
+        # commands after the program ran to completion); tolerate a closed pipe.
+        try:
+            proc.stdin.write(cmd.rstrip("\n") + "\n")
+            proc.stdin.flush()
+        except (BrokenPipeError, ValueError):
+            pass
+
+    try:
+        reader.wait_for(
+            lambda ls: any(parse_line(l)["kind"] == "ready" for l in ls),
+            timeout)
+
+        send("dbg:methods")
+        reader.wait_for(
+            lambda ls: any(parse_line(l) == {"kind": "ok", "verb": "methods"} for l in ls),
+            timeout)
+        reader.settle()
+
+        methods = format_methods("\n".join(reader.lines))
+        mid = min(methods) if methods else 1
+
+        for cmd in script_after_methods(mid):
+            send(cmd)
+            reader.settle()
+
+        # Give the program a chance to run to completion after the last resume.
+        reader.wait_for(
+            lambda ls: any(parse_line(l).get("text") == "result=10" for l in ls),
+            timeout)
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=timeout)
+        except Exception:
+            proc.kill()
+
+    return [parse_line(l) for l in reader.lines]
+
