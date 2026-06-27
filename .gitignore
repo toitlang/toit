@@ -15,6 +15,7 @@ compile_commands.json
 *_mock.go
 tedi_test.go
 /third_party/benchmarks/java/*.class
+wifi.json
 
 **/node_modules/
 /tools/lsp/client/npm-debug.log
