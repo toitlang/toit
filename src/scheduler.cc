@@ -770,6 +770,14 @@ void Scheduler::resume_debug_process(int pid, int step_mode) {
   process_ready(locker, process);
 }
 
+void Scheduler::inspect_debug_process(int pid, Debugger* debugger, int frame_index) {
+  Locker locker(mutex_);
+  Process* process = find_process(locker, pid);
+  if (process == null) return;
+  // The process stays parked: we only read its stored stack, under the lock.
+  debugger->emit_stack(locker, process, frame_index);
+}
+
 int Scheduler::get_priority(int pid) {
   Locker locker(mutex_);
   Process* process = find_process(locker, pid);

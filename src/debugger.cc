@@ -154,6 +154,11 @@ void Debugger::handle_command(const char* line) {
     if (sscanf(line + 10, "%d %d", &id, &off) == 2) {
       cmd_clear(id, off);
     }
+  } else if (strcmp(line, "dbg:inspect") == 0) {
+    cmd_inspect(0);
+  } else if (strncmp(line, "dbg:inspect ", 12) == 0) {
+    int frame = 0;
+    if (sscanf(line + 12, "%d", &frame) == 1) cmd_inspect(frame);
   } else if (strcmp(line, "dbg:continue") == 0) {
     cmd_continue();
   }
@@ -248,6 +253,39 @@ void Debugger::cmd_clear(int id, int off) {
     }
   }
   printf("dbg:ok clear\n");
+  fflush(stdout);
+}
+
+void Debugger::cmd_inspect(int frame_index) {
+  int pid;
+  { std::unique_lock<std::mutex> lock(mutex_);
+    // Wait briefly for a parked process; do NOT clear paused_pid_ — inspection
+    // leaves the process parked so the operator can continue (or inspect again).
+    cond_.wait_for(lock, std::chrono::milliseconds(800),
+                   [this] { return paused_pid_ != -1 || stopped_; });
+    if (stopped_ || paused_pid_ == -1) return;  // Nothing parked: ignore.
+    pid = paused_pid_;
+  }
+  // Read the parked stack under the scheduler lock (emit_stack does the output).
+  scheduler_->inspect_debug_process(pid, this, frame_index);
+}
+
+void Debugger::emit_stack(Locker& locker, Process* process, int frame_index) {
+  Program* program = process->program();
+  Stack* stack = process->task()->stack();
+  word off = stack->frame_absolute_bci(program, frame_index);
+  int count = stack->frame_register_count(program, frame_index);
+  printf("dbg:stack off=%d", static_cast<int>(off));
+  for (int i = 0; i < count; i++) {
+    Object* value = stack->frame_register(program, frame_index, i);
+    if (is_smi(value)) {
+      printf(" r%d=%lld", i, static_cast<long long>(Smi::value(value)));
+    } else {
+      // Class-name resolution for heap objects is a later phase; emit a marker.
+      printf(" r%d=<obj>", i);
+    }
+  }
+  printf("\n");
   fflush(stdout);
 }
 

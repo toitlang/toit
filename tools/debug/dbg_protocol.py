@@ -160,7 +160,8 @@ class _Reader:
                     return
 
 
-def run_session(toit, snap, script_after_methods, timeout=20.0):
+def run_session(toit, snap, script_after_methods, timeout=20.0,
+                method_picker=lambda methods: min(methods) if methods else 1):
     """Drive a full debug session against a snapshot and return parsed lines.
 
     Launches ``toit.run --debug <snap>`` with stdin wired to a pipe and stdout
@@ -168,6 +169,11 @@ def run_session(toit, snap, script_after_methods, timeout=20.0):
     method registry to find the target method id, then issues the scripted
     follow-up commands (pacing each so the VM settles), and finally returns the
     list of parsed VM stdout lines (via :func:`parse_line`).
+
+    ``method_picker`` selects which method id is handed to ``script_after_methods``
+    from the parsed ``{id: (entry_bci, arity)}`` registry. It defaults to the
+    smallest id (a stable library method), but a test that must break inside a
+    specific method passes its own picker (e.g. look the id up by entry bci).
     """
     inner = _inner_toit_run(toit)
     proc = subprocess.Popen(
@@ -199,7 +205,7 @@ def run_session(toit, snap, script_after_methods, timeout=20.0):
         reader.settle()
 
         methods = format_methods("\n".join(reader.lines))
-        mid = min(methods) if methods else 1
+        mid = method_picker(methods)
 
         for cmd in script_after_methods(mid):
             send(cmd)

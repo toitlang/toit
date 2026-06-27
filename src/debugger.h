@@ -82,6 +82,11 @@ class Debugger {
   // DEBUG_PAUSED result. Records it and wakes a waiting controller command.
   void register_paused(Locker& locker, Process* process);
 
+  // Emit `dbg:stack off=<bci> r0=<v> r1=<v> …` for `frame_index` of the parked
+  // `process`. Called by the scheduler from `inspect_debug_process` while it
+  // holds the scheduler lock, so the parked stack is stable while we read it.
+  void emit_stack(Locker& locker, Process* process, int frame_index);
+
  private:
   struct Breakpoint {
     Program* program;
@@ -112,6 +117,7 @@ class Debugger {
   void cmd_methods();
   void cmd_break(int id, int off);
   void cmd_clear(int id, int off);
+  void cmd_inspect(int frame_index);
   void cmd_continue();
 
   Scheduler* const scheduler_;

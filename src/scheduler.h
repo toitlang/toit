@@ -26,6 +26,7 @@
 namespace toit {
 
 class VM;
+class Debugger;
 
 typedef LinkedList<SchedulerThread> SchedulerThreadList;
 
@@ -72,6 +73,12 @@ class Scheduler {
   // 3=out. The mode is stashed on the process and transferred to the
   // interpreter when the process next runs.
   void resume_debug_process(int pid, int step_mode);
+
+  // Inspect a parked process under the scheduler lock so its heap (and stack) is
+  // stable while the debugger reads it. Finds the process by `pid` and, if it is
+  // still parked, calls back into `debugger->emit_stack` to emit the requested
+  // frame. Called from the debugger's controller thread.
+  void inspect_debug_process(int pid, Debugger* debugger, int frame_index);
 
 #ifdef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
