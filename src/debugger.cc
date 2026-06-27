@@ -148,6 +148,12 @@ void Debugger::handle_command(const char* line) {
     if (sscanf(line + 10, "%d %d", &id, &off) == 2) {
       cmd_break(id, off);
     }
+  } else if (strncmp(line, "dbg:clear ", 10) == 0) {
+    int id = 0;
+    int off = 0;
+    if (sscanf(line + 10, "%d %d", &id, &off) == 2) {
+      cmd_clear(id, off);
+    }
   } else if (strcmp(line, "dbg:continue") == 0) {
     cmd_continue();
   }
@@ -155,21 +161,28 @@ void Debugger::handle_command(const char* line) {
   // error reporting arrive in later tasks.
 }
 
-void Debugger::cmd_methods() {
-  // Wait until the target program is known (it is captured when the first
-  // non-privileged process runs and parks at its entry).
-  Program* program;
-  { std::unique_lock<std::mutex> lock(mutex_);
-    cond_.wait(lock, [this] { return target_program_ != null || stopped_; });
-    if (stopped_) return;
-    program = target_program_;
-    registry_entry_bcis_.clear();
-  }
+// Returns the target program once it is known, or null if the session is
+// stopping. Blocks until the first non-privileged process has parked at its
+// entry (which is when `target_program_` is captured).
+Program* Debugger::await_target() {
+  std::unique_lock<std::mutex> lock(mutex_);
+  cond_.wait(lock, [this] { return target_program_ != null || stopped_; });
+  if (stopped_) return null;
+  return target_program_;
+}
 
-  // Minimal registry: enumerate the program's methods from the dispatch table,
-  // deduplicating by entry bci. 1-based ids; emit `<id> <entry_bci> <arity>`.
+void Debugger::build_registry(Program* program) {
+  // Cached per program: the registry is immutable for a given program, and is
+  // only ever read/written on the controller thread, so no lock is needed.
+  if (registry_program_ == program) return;
+  registry_program_ = program;
+  registry_.clear();
+
+  // Enumerate the program's methods from its dispatch table, deduplicating by
+  // entry bci (a method may appear under several dispatch indices). 1-based ids
+  // are simply the position in `registry_`. We keep the dispatch-table order
+  // (rather than sorting) so ids stay identical to Task 2's enumeration.
   std::vector<word> seen;
-  int id = 0;
   for (int i = 0; i < program->dispatch_table.length(); i++) {
     int32 header_bci = program->dispatch_table[i];
     if (header_bci < 0) continue;
@@ -181,26 +194,60 @@ void Debugger::cmd_methods() {
     }
     if (duplicate) continue;
     seen.push_back(entry_bci);
-    id++;
-    registry_entry_bcis_.push_back(entry_bci);
-    printf("%d %d %d\n", id, static_cast<int>(entry_bci), method.arity());
+    registry_.push_back(MethodInfo{entry_bci, method.arity()});
+  }
+}
+
+void Debugger::cmd_methods() {
+  Program* program = await_target();
+  if (program == null) return;
+  build_registry(program);
+
+  // One line per method: `<id> <entry_bci> <arity>`, then the terminator.
+  for (int i = 0; i < static_cast<int>(registry_.size()); i++) {
+    const MethodInfo& method = registry_[i];
+    printf("%d %d %d\n", i + 1, static_cast<int>(method.entry_bci), method.arity);
   }
   printf("dbg:ok methods\n");
   fflush(stdout);
 }
 
 void Debugger::cmd_break(int id, int off) {
-  Program* program;
-  word entry_bci;
-  { std::lock_guard<std::mutex> lock(mutex_);
-    program = target_program_;
-    if (program == null || id < 1 || id > static_cast<int>(registry_entry_bcis_.size())) {
-      return;
-    }
-    entry_bci = registry_entry_bcis_[id - 1];
+  Program* program = await_target();
+  if (program == null) return;
+  build_registry(program);
+  if (id < 1 || id > static_cast<int>(registry_.size())) {
+    printf("dbg:error no-method\n");
+    fflush(stdout);
+    return;
   }
-  add_breakpoint(program, entry_bci, off, id);
+  add_breakpoint(program, registry_[id - 1].entry_bci, off, id);
   printf("dbg:ok break\n");
+  fflush(stdout);
+}
+
+void Debugger::cmd_clear(int id, int off) {
+  Program* program = await_target();
+  if (program == null) return;
+  build_registry(program);
+  if (id < 1 || id > static_cast<int>(registry_.size())) {
+    printf("dbg:error no-method\n");
+    fflush(stdout);
+    return;
+  }
+  word entry_bci = registry_[id - 1].entry_bci;
+  // Clearing is idempotent: removing a breakpoint that was never set still
+  // reports `dbg:ok clear`. Only an unknown id is an error (handled above).
+  { std::lock_guard<std::mutex> lock(mutex_);
+    for (auto it = breakpoints_.begin(); it != breakpoints_.end();) {
+      if (it->program == program && it->entry_bci == entry_bci && it->off == off) {
+        it = breakpoints_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  printf("dbg:ok clear\n");
   fflush(stdout);
 }
 

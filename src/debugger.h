@@ -92,11 +92,26 @@ class Debugger {
 
   class ControllerThread;
 
+  // A registered method of the target program. `entry_bci` is program-relative
+  // (the bci of the method's first bytecode); breakpoints are keyed on it.
+  struct MethodInfo {
+    word entry_bci;
+    int arity;
+  };
+
   // Controller-thread command handling.
   void run_controller();
   void handle_command(const char* line);
+  // Block until the target program is captured (or the session stops); returns
+  // the program, or null if stopping.
+  Program* await_target();
+  // Build (once, then cache) the id->method registry for `program`. Enumerates
+  // the program's methods from its dispatch table, deduplicating by entry bci,
+  // and assigns 1-based ids. Only ever touched on the controller thread.
+  void build_registry(Program* program);
   void cmd_methods();
   void cmd_break(int id, int off);
+  void cmd_clear(int id, int off);
   void cmd_continue();
 
   Scheduler* const scheduler_;
@@ -121,9 +136,13 @@ class Debugger {
   int last_id_ = -1;
   word last_off_ = 0;
 
-  // Minimal id->entry_bci registry built by `cmd_methods`, used by `cmd_break`.
-  // (A full, name-resolving registry is Task 4.)
-  std::vector<word> registry_entry_bcis_;
+  // Numeric id -> method registry for the target program, built lazily by
+  // `build_registry` and cached per program. `registry_[id - 1]` holds the
+  // method for 1-based id. Used by `cmd_break`/`cmd_clear` to resolve ids.
+  // (Method-name resolution stays in the offline driver; the VM is numeric
+  // only.)
+  Program* registry_program_ = null;
+  std::vector<MethodInfo> registry_;
 };
 
 } // namespace toit
