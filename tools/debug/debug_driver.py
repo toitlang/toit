@@ -180,9 +180,6 @@ def run_driver(source: str, commands_iter, timeout: float = 30.0):
             # ------------------------------------------------------------------
             for raw_line in commands_iter:
                 raw_line = raw_line.rstrip("\n")
-                # Interactive prompt (only when reading from a tty).
-                if hasattr(commands_iter, '__self__'):
-                    pass  # file object — no prompt needed
                 cmd_line = raw_line.strip()
                 if not cmd_line or cmd_line.startswith("#"):
                     continue
@@ -270,7 +267,10 @@ def main():
             rc = run_driver(args.source, fh)
     else:
         # Interactive: read from stdin with a prompt.
-        import readline  # noqa: F401 — enables line editing on POSIX
+        try:
+            import readline  # noqa: F401 — enables line editing on POSIX
+        except ImportError:
+            pass  # readline is unavailable on some platforms; not required.
         def _prompt_iter():
             while True:
                 try:

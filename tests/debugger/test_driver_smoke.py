@@ -39,6 +39,9 @@ def test_driver_smoke_named_pause(tmp_path):
     assert result.returncode == 0, (
         f"driver exited {result.returncode}\n--- stdout ---\n{result.stdout}\n"
         f"--- stderr ---\n{result.stderr}")
-    # Name resolution must have produced a human-readable pause line.
-    assert "count-to" in transcript, (
-        f"expected 'count-to' in transcript, got:\n{transcript}")
+    # Name resolution must have produced a human-readable *pause* line — not
+    # merely list count-to in the methods registry. Asserting on the actual
+    # "paused in count-to" line means the test fails if the paused-line name
+    # resolution regresses (the registry listing alone would not catch that).
+    assert "paused in count-to" in transcript, (
+        f"expected 'paused in count-to' in transcript, got:\n{transcript}")
