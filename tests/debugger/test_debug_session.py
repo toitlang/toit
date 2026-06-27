@@ -48,6 +48,36 @@ STEP_LANDING_OFF = 11
 OVER_LANDING_OFF = 11
 OUT_LANDING_OFF = 5
 
+# A second target whose loop body invokes a *real* Toit method (`helper`), so a
+# step at the call site has a genuine callee frame to either descend into
+# (`step`) or skip (`over`). count_to.toit cannot exercise this: its `sum += i`
+# lowers to smi intrinsics with no Toit call frame.
+CALL_TARGET = os.path.join(HERE, "targets/call_in_loop.toit")
+
+# Pinned call_in_loop.toit constants, discovered with
+#   toit tool snapshot bytecodes <snap> run-loop   (and helper)
+# where each method's entry bci is the `0/<bci>` line of its dump:
+#   - run-loop (arity 1) entry bci 299; its loop body invokes `helper` via
+#     `invoke static` at off 12 (bci 311); the next bytecode, reached when the
+#     call returns, is off 15 (bci 314, `invoke add`).
+#   - helper   (arity 1) entry bci 285; its first bytecode is off 0.
+# Verified empirically by breaking at run-loop off 12 and issuing each verb:
+#   `over` re-parks at run-loop off 15 (callee skipped); `step` descends to
+#   helper off 0. Re-pin if the call_in_loop.snapshot bytecode layout changes.
+RUNLOOP_ENTRY_BCI = 299
+HELPER_ENTRY_BCI = 285
+CALL_SITE_OFF = 12
+OVER_AFTER_CALL_OFF = 15
+STEP_INTO_HELPER_OFF = 0
+
+
+def _id_by_entry(methods, entry_bci, arity):
+    for mid, (e, a) in methods.items():
+        if e == entry_bci and a == arity:
+            return mid
+    raise AssertionError(
+        f"method (entry_bci={entry_bci}, arity={arity}) not in registry: {methods}")
+
 
 def _count_to_id(methods):
     for mid, (entry_bci, arity) in methods.items():
@@ -190,3 +220,59 @@ def test_out_returns_to_caller(tmp_path):
     assert steps[0]["id"] != count_to_id, out
     assert steps[0]["off"] == OUT_LANDING_OFF, out
     assert any(p.get("text") == "result=10" for p in out), out
+
+
+def _run_call_loop_session(tmp_path, verb):
+    """Break at the `helper` call site inside `run-loop`, clear it, then step.
+
+    Returns ``(out, run_loop_id, helper_id)``. Breaking at run-loop off 12 (the
+    `invoke static helper`) gives a real callee frame; the breakpoint is cleared
+    before the verb so the only remaining pause is the step landing.
+    """
+    snap = os.path.join(str(tmp_path), "call_in_loop.snapshot")
+    subprocess.run([TOIT, "compile", "-s", "-o", snap, CALL_TARGET], check=True)
+    from tools.debug.dbg_protocol import run_session
+    ids = {}
+
+    def picker(methods):
+        ids["run_loop"] = _id_by_entry(methods, RUNLOOP_ENTRY_BCI, 1)
+        ids["helper"] = _id_by_entry(methods, HELPER_ENTRY_BCI, 1)
+        return ids["run_loop"]
+
+    out = run_session(
+        TOIT, snap,
+        script_after_methods=lambda mid: [
+            f"dbg:break {mid} {CALL_SITE_OFF}", "dbg:continue",
+            f"dbg:clear {mid} {CALL_SITE_OFF}", f"dbg:{verb}", "dbg:continue"],
+        method_picker=picker)
+    return out, ids["run_loop"], ids["helper"]
+
+
+def test_over_skips_callee_frame(tmp_path):
+    # The defining behavior of `over`: at a call site it executes the callee
+    # without descending. Contrast with test_step_descends_into_callee_frame.
+    out, run_loop_id, helper_id = _run_call_loop_session(tmp_path, "over")
+    assert any(p["kind"] == "ok" and p["verb"] == "over" for p in out), out
+    steps = [p for p in out if p["kind"] == "paused" and p["mode"] == "step"]
+    assert len(steps) == 1, out
+    # over never pauses inside `helper`; it re-parks in `run-loop` just after
+    # the call returns (same frame depth, off advanced past the call).
+    assert steps[0]["id"] == run_loop_id, out
+    assert steps[0]["id"] != helper_id, out
+    assert steps[0]["off"] == OVER_AFTER_CALL_OFF, out
+    assert steps[0]["off"] > CALL_SITE_OFF, out
+    assert any(p.get("text") == "result=6" for p in out), out
+
+
+def test_step_descends_into_callee_frame(tmp_path):
+    # The contrast to `over`: at the same call site, `step` descends into the
+    # callee. Together these two tests prove over != step across a call frame.
+    out, run_loop_id, helper_id = _run_call_loop_session(tmp_path, "step")
+    assert any(p["kind"] == "ok" and p["verb"] == "step" for p in out), out
+    steps = [p for p in out if p["kind"] == "paused" and p["mode"] == "step"]
+    assert len(steps) == 1, out
+    # step descends into `helper`, a deeper frame (its entry, off 0).
+    assert steps[0]["id"] == helper_id, out
+    assert steps[0]["id"] != run_loop_id, out
+    assert steps[0]["off"] == STEP_INTO_HELPER_OFF, out
+    assert any(p.get("text") == "result=6" for p in out), out
