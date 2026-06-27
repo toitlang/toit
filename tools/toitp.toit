@@ -98,6 +98,19 @@ print-bytecodes program/Program:
   print
   methods.do: it.output program
 
+print-positions program/Program:
+  program.methods.do: | method/ToitMethod |
+    info := program.method-info-for method.id
+    path := info.error-path
+    index := 0
+    length := method.bytecodes.size
+    while index < length:
+      absolute-bci := method.absolute-bci-from-bci index
+      pos/Position := info.position index
+      print "$absolute-bci $path $pos.line $pos.column"
+      opcode := method.bytecodes[index]
+      index += BYTE-CODES[opcode].size
+
 has-call program/Program method/ToitMethod:
   method.do-calls program: if matching it: return true
   return false
@@ -307,6 +320,24 @@ build-command -> cli.Command:
           with-filtered-cli-program invocation: | program/Program |
             print-bytecodes program
   snapshot-command.add bytecodes-command
+
+  positions-command := cli.Command "positions"
+      --help="""
+          Print the source position of every bytecode, one line per bytecode:
+          <absolute_bci> <error_path> <line> <col>.
+
+          Used by 'jag debug --web' to map a paused (method, offset) to a
+          source line. $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print bytecode positions for snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+      ]
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
+            print-positions program
+  snapshot-command.add positions-command
 
   uuid-command := cli.Command "uuid"
       --help="Print the UUID of the snapshot."
