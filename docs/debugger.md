@@ -134,6 +134,13 @@ Keeping resolution offline keeps the VM change minimal and matches `jag decode`.
   debuggee marker.
 - **Single worker thread under debug** — avoids cross‑thread pause hazards; the
   host has ample CPU, so this is a non‑issue for the host path.
+- **Tasks** — a breakpoint parks the whole process, so it is task‑aware: it stops
+  in whichever task runs the code, once per task per pass, and `inspect` reads the
+  paused task's stack. But the step/over/out depth is tracked against a single
+  task's stack, so **stepping over a `yield`** (a cooperative task switch) loses
+  the stop condition and runs to completion — the same class as stepping over an
+  exception unwind. Breakpoints (not single‑stepping) are the way to debug across
+  task switches.
 
 ## Out of scope / deferred
 
