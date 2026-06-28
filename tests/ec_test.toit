@@ -2,6 +2,10 @@ import crypto.ec
 import crypto.sha256
 import expect show *
 
+expect-throws expected-error [code]:
+  actual := catch code
+  expect-equals expected-error actual
+
 main:
   curves := [ec.EcKey.CURVE-SECP256R1, ec.EcKey.CURVE-SECP384R1, ec.EcKey.CURVE-SECP521R1]
   

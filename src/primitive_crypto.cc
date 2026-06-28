@@ -1354,10 +1354,10 @@ static Object* ec_get_der_helper(Process* process, ByteArray* result, Blob key, 
 
   int ret;
   if (is_private) {
-    ret = rsa_parse_key_from_blob(&pk, key, password, true);
+    ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
   } else {
-    ret = rsa_parse_key_from_blob(&pk, key, Blob(), true);
-    if (ret != 0) ret = rsa_parse_key_from_blob(&pk, key, Blob(), false);
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), true, process);
+    if (ret != 0) ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
   }
   if (ret != 0) {
     result->resize_external(process, 0);
@@ -1438,7 +1438,7 @@ PRIMITIVE(ec_sign) {
   mbedtls_pk_init(&pk);
   Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
   if (ret != 0) return tls_error(null, process, ret);
   if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
 
@@ -1465,7 +1465,7 @@ PRIMITIVE(ec_verify) {
   mbedtls_pk_init(&pk);
   Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
   if (ret != 0) return tls_error(null, process, ret);
   if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
 
@@ -1504,13 +1504,13 @@ PRIMITIVE(ec_compute_shared_secret) {
   Defer free_pk_prv{ [&pk_prv] { mbedtls_pk_free(&pk_prv); } };
   Defer free_pk_pub{ [&pk_pub] { mbedtls_pk_free(&pk_pub); } };
 
-  int ret = rsa_parse_key_from_blob(&pk_prv, private_key_der, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk_prv, private_key_der, Blob(), true, process);
   if (ret != 0) {
     result->resize_external(process, 0);
     return tls_error(null, process, ret);
   }
 
-  ret = rsa_parse_key_from_blob(&pk_pub, public_key_der, Blob(), false);
+  ret = rsa_parse_key_from_blob(&pk_pub, public_key_der, Blob(), false, process);
   if (ret != 0) {
     result->resize_external(process, 0);
     return tls_error(null, process, ret);
