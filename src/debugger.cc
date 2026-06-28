@@ -298,6 +298,35 @@ void Debugger::cmd_inspect(int frame_index) {
   scheduler_->inspect_debug_process(pid, this, frame_index);
 }
 
+void Debugger::emit_string(String* string) {
+  // Cap the emitted content so a huge string cannot flood the wire; the operator
+  // UI shows a value, not the whole heap. Truncation is marked with an ellipsis
+  // inside the quotes.
+  static const word MAX_CHARS = 128;
+  String::Bytes bytes(string);
+  word length = bytes.length();
+  word emit = length < MAX_CHARS ? length : MAX_CHARS;
+  putchar('"');
+  for (word i = 0; i < emit; i++) {
+    uint8 c = bytes.at(i);
+    switch (c) {
+      case '"':  printf("\\\""); break;
+      case '\\': printf("\\\\"); break;
+      case '\n': printf("\\n"); break;
+      case '\r': printf("\\r"); break;
+      case '\t': printf("\\t"); break;
+      default:
+        if (c < 0x20) {
+          printf("\\x%02x", c);
+        } else {
+          putchar(c);
+        }
+    }
+  }
+  if (length > emit) printf("...");
+  putchar('"');
+}
+
 void Debugger::emit_stack(Locker& locker, Process* process, int frame_index) {
   Program* program = process->program();
   Stack* stack = process->task()->stack();
@@ -308,9 +337,23 @@ void Debugger::emit_stack(Locker& locker, Process* process, int frame_index) {
     Object* value = stack->frame_register(program, frame_index, i);
     if (is_smi(value)) {
       printf(" r%d=%lld", i, static_cast<long long>(Smi::value(value)));
+    } else if (value == program->null_object()) {
+      printf(" r%d=null", i);
+    } else if (value == program->true_object()) {
+      printf(" r%d=true", i);
+    } else if (value == program->false_object()) {
+      printf(" r%d=false", i);
+    } else if (is_double(value)) {
+      printf(" r%d=%g", i, Double::cast(value)->value());
+    } else if (is_string(value)) {
+      printf(" r%d=", i);
+      emit_string(String::cast(value));
     } else {
-      // Class-name resolution for heap objects is a later phase; emit a marker.
-      printf(" r%d=<obj>", i);
+      // Heap object: emit the numeric class id. The operator-side tool resolves
+      // the class name offline (the wire protocol stays "VM numeric, names
+      // resolved offline").
+      int class_id = Smi::value(HeapObject::cast(value)->class_id());
+      printf(" r%d=<obj:%d>", i, class_id);
     }
   }
   printf("\n");

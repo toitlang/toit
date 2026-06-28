@@ -111,6 +111,10 @@ print-positions program/Program:
       opcode := method.bytecodes[index]
       index += BYTE-CODES[opcode].size
 
+print-class-names program/Program:
+  program.class-tags.size.repeat: | id/int |
+    print "$id $(program.class-name-for id)"
+
 has-call program/Program method/ToitMethod:
   method.do-calls program: if matching it: return true
   return false
@@ -338,6 +342,26 @@ build-command -> cli.Command:
           with-filtered-cli-program invocation: | program/Program |
             print-positions program
   snapshot-command.add positions-command
+
+  class-names-command := cli.Command "class-names"
+      --help="""
+          Print the name of every class, one line per class id:
+          <class_id> <name>.
+
+          Used by 'jag debug --web' to resolve the numeric class ids that the
+          debugger emits for heap-object registers (<obj:<class_id>>) into
+          class names.
+          """
+      --rest=[snapshot-option]
+      --examples=[
+        cli.Example "Print class names for snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+      ]
+      --run=:: | invocation/cli.Invocation |
+          snapshot := SnapshotBundle.from-file invocation["snapshot"]
+          program := snapshot.decode
+          print-class-names program
+  snapshot-command.add class-names-command
 
   uuid-command := cli.Command "uuid"
       --help="Print the UUID of the snapshot."

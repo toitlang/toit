@@ -94,6 +94,11 @@ class Debugger {
   // holds the scheduler lock, so the parked stack is stable while we read it.
   void emit_stack(Locker& locker, Process* process, int frame_index);
 
+  // Prints a String register value as a double-quoted, escaped token (escapes
+  // " \ and control chars so the value stays whitespace-delimited on the wire,
+  // and truncates over-long strings). Used by emit_stack.
+  void emit_string(String* string);
+
  private:
   struct Breakpoint {
     Program* program;
