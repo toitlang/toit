@@ -82,7 +82,7 @@ class EcKey:
 
   /** Produces a 20-byte digest. */
   static SHA-1 ::= 1
-  /** Default. Produces a 32-byte digest. */
+  /** Produces a 32-byte digest. */
   static SHA-256 ::= 256
   /** Produces a 48-byte digest. */
   static SHA-384 ::= 384

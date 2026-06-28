@@ -36,7 +36,7 @@ main:
 
     pub-pem := key-pair.public-key.to-pem
     parsed-pub := ec.EcKey.parse-public pub-pem
-    expect (parsed-pub.der == key-pair.public-key.der)
+    expect-equals key-pair.public-key.der parsed-pub.der
     print "  Parse Public: SUCCESS"
 
     // Test ECDH.
@@ -44,7 +44,7 @@ main:
     key-pair-b := ec.EcKeyPair.generate --curve=curve
     secret-a := key-pair.compute-shared-secret key-pair-b.public-key
     secret-b := key-pair-b.compute-shared-secret key-pair.public-key
-    expect (secret-a == secret-b)
+    expect-equals secret-a secret-b
     print "    Shared secret: MATCH (size: $secret-a.size)"
 
     // Test ECIES.
@@ -54,7 +54,7 @@ main:
     print "    Ciphertext size: $ciphertext.size"
     
     decrypted := key-pair.decrypt-ecies ciphertext
-    expect (decrypted.to-string == msg)
+    expect-equals msg decrypted.to-string
     print "    ECIES: SUCCESS"
       
     // Test tampering.

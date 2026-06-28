@@ -1505,27 +1505,23 @@ PRIMITIVE(ec_compute_shared_secret) {
   Defer free_pk_pub{ [&pk_pub] { mbedtls_pk_free(&pk_pub); } };
 
   int ret = rsa_parse_key_from_blob(&pk_prv, private_key_der, Blob(), true, process);
-  if (ret != 0) {
-    result->resize_external(process, 0);
+  if (ret != 0) {    
     return tls_error(null, process, ret);
   }
 
   ret = rsa_parse_key_from_blob(&pk_pub, public_key_der, Blob(), false, process);
   if (ret != 0) {
-    result->resize_external(process, 0);
     return tls_error(null, process, ret);
   }
 
-  if (!mbedtls_pk_can_do(&pk_prv, MBEDTLS_PK_ECKEY) || !mbedtls_pk_can_do(&pk_pub, MBEDTLS_PK_ECKEY)) {
-    result->resize_external(process, 0);
+  if (!mbedtls_pk_can_do(&pk_prv, MBEDTLS_PK_ECKEY) || !mbedtls_pk_can_do(&pk_pub, MBEDTLS_PK_ECKEY)) {    
     FAIL(INVALID_ARGUMENT);
   }
 
   mbedtls_ecp_keypair *ec_prv = mbedtls_pk_ec(pk_prv);
   mbedtls_ecp_keypair *ec_pub = mbedtls_pk_ec(pk_pub);
 
-  if (ec_prv->grp.id == MBEDTLS_ECP_DP_NONE || ec_prv->grp.id != ec_pub->grp.id) {
-    result->resize_external(process, 0);
+  if (ec_prv->grp.id == MBEDTLS_ECP_DP_NONE || ec_prv->grp.id != ec_pub->grp.id) {    
     FAIL(INVALID_ARGUMENT);
   }
 
@@ -1534,8 +1530,7 @@ PRIMITIVE(ec_compute_shared_secret) {
 
   ret = mbedtls_ecp_mul(&ec_prv->grp, &R, &ec_prv->d, &ec_pub->Q, rsa_rng, null);
   if (ret != 0) {
-    mbedtls_ecp_point_free(&R);
-    result->resize_external(process, 0);
+    mbedtls_ecp_point_free(&R);    
     return tls_error(null, process, ret);
   }
 
@@ -1546,8 +1541,7 @@ PRIMITIVE(ec_compute_shared_secret) {
   
   mbedtls_ecp_point_free(&R);
 
-  if (ret != 0) {
-    result->resize_external(process, 0);
+  if (ret != 0) {    
     return tls_error(null, process, ret);
   }
 

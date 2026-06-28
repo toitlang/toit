@@ -22,15 +22,12 @@ hkdf-sha256 --ikm/ByteArray --salt/ByteArray?=null --info/ByteArray?=null --size
 
 /**
 Generic HKDF implementation.
-The $hasher-creator is a lambda that creates an HMAC object for a given key.
+The $hasher-creator is a block that creates an HMAC object for a given key.
 The $size is the desired size of the output key in bytes.
 */
 hkdf --ikm/ByteArray --salt/ByteArray? --info/ByteArray? --size/int [hasher-creator] -> ByteArray:
-  prk := hkdf-extract --ikm=ikm --salt=salt:
-    hasher-creator.call it
-  
-  return hkdf-expand --prk=prk --info=info --size=size:
-    hasher-creator.call it
+  prk := hkdf-extract --ikm=ikm --salt=salt hasher-creator
+  return hkdf-expand --prk=prk --info=info --size=size hasher-creator
 
 /**
 HKDF-Extract step.
