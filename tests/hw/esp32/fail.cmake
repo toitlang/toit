@@ -59,9 +59,15 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-philips24
   i2s-board1.toit-esp32-philips24-slave
   i2s-board1.toit-esp32-msb16-writer-fast-slave
+  # The generic philips16 variant bricks board1: the ESP32 i2s RX DMA writes out
+  # of bounds into RTC_CNTL (setting STATE0.SLEEP_EN), spontaneously deep-sleeps
+  # the chip and corrupts the deep-sleep boot state, so the ROM boot-loops on a
+  # garbage wake stub until a power/EN reset. 100% reproducible in the nightly
+  # and locally. Same esp-idf I2S DMA family (#15275). See CI-NIGHTLY-FAILURES.md
+  # (section 2b) for the full root-cause and the strip-down debugging plan.
+  i2s-board1.toit-esp32-philips16
   # Broken on the esp32s3 (same esp-idf I2S issue). Consistently failing in the
-  # nightly (6/6) and reproduced locally; the generic philips16 variant still
-  # works and stays enabled.
+  # nightly (6/6) and reproduced locally.
   i2s-board1.toit-esp32s3-pcm8
   i2s-board1.toit-esp32s3-msb8-slave
   # Flaky on the esp32s3 (~1/6 nightlies); the esp32 variant is already skipped

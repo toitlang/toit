@@ -22,6 +22,20 @@ add_custom_target(update_pkg_gold)
 
 include(fail.cmake OPTIONAL)
 
+set(PKG_TEST_TIMEOUT 40)
+set(PKG_GOLD_TEST_TIMEOUT 100)
+
+# The propagated-types check and the optimization/assert overrides make the
+# `toit` binary significantly slower. Since the pkg tests spawn `toit` many
+# times (resolving packages, running git, compiling), the slowdown compounds
+# and the gold tests can exceed their timeout. Give them more time in those
+# configurations. See `tests/CMakeLists.txt` for the same idea applied to the
+# regular tests.
+if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES} OR DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE})
+  math(EXPR PKG_TEST_TIMEOUT "${PKG_TEST_TIMEOUT} * 3")
+  math(EXPR PKG_GOLD_TEST_TIMEOUT "${PKG_GOLD_TEST_TIMEOUT} * 3")
+endif()
+
 foreach(file ${TOIT_PKG_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
     continue()
@@ -38,10 +52,10 @@ foreach(file ${TOIT_PKG_TESTS})
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS slow
     )
-  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${PKG_TEST_TIMEOUT})
 
   if ("${file}" IN_LIST TOIT_PKG_GOLD_TESTS)
-    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 100)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${PKG_GOLD_TEST_TIMEOUT})
     string(REPLACE "/" "_" update_name "${file}")
     string(REPLACE "\\" "_" update_name "${update_name}")
     set(update_name "${update_name}-update-gold")
