@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2018 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -545,7 +545,13 @@ namespace toit {
   PRIMITIVE(rsa_generate_init, 0)            \
   PRIMITIVE(rsa_generate_start, 2)           \
   PRIMITIVE(rsa_generate_finish, 1)          \
-  PRIMITIVE(rsa_generate_close, 1)
+  PRIMITIVE(rsa_generate_close, 1)           \
+  PRIMITIVE(ec_generate_key, 1)              \
+  PRIMITIVE(ec_sign, 3)                      \
+  PRIMITIVE(ec_verify, 4)                    \
+  PRIMITIVE(ec_get_private_key_der, 2)       \
+  PRIMITIVE(ec_get_public_key_der, 1)        \
+  PRIMITIVE(ec_compute_shared_secret, 2)
   
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
