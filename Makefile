@@ -425,3 +425,22 @@ update-pkgs:
 	  toit pkg update --project-root $$(dirname $$d); \
 	done
 	toit pkg update --project-root tests/pkg
+
+# The firmware tool (tools/firmware.toit) uses the partition table as the source
+# of truth for the flash size when building/flashing an image. That only works
+# because nothing reads the compile-time flash size (CONFIG_ESPTOOLPY_FLASHSIZE)
+# at runtime: the size is taken solely from the bootloader image header
+# (g_rom_flashchip.chip_size), and the app derives its size from that. This target
+# fails if a change to esp-idf or to src/ reintroduces a compile-time flash-size
+# dependency, so the assumption is caught in CI instead of silently breaking
+# flashing on the next esp-idf bump.
+.PHONY: check-esp-idf-assumption
+check-esp-idf-assumption:
+	@if grep -rIn 'CONFIG_ESPTOOLPY_FLASHSIZE' third_party/esp-idf/components src \
+			--include='*.c' --include='*.h' --include='*.cc' --include='*.cpp'; then \
+		echo "ERROR: CONFIG_ESPTOOLPY_FLASHSIZE is referenced in runtime sources (see above)."; \
+		echo "tools/firmware.toit assumes the flash size is determined at runtime from the"; \
+		echo "bootloader image header only. Review it before updating esp-idf."; \
+		exit 1; \
+	fi
+	@echo "check-esp-idf-assumption: OK (flash size is not read from a compile-time constant)."
