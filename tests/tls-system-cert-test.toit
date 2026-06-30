@@ -61,6 +61,7 @@ run-tests:
     "pravda.ru",
     "elpriser.nu",
     "coinbase.com",
+    "helsinki.fi",
     "lund.se",
     "web.whatsapp.com",
     "digimedia.com",
