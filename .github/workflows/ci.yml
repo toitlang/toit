@@ -634,6 +634,11 @@ jobs:
           esp32: true
           cache-key-prefix: esp32
 
+      # Verify that the firmware tool's flash-size assumption still holds: the
+      # flash size must not be read from CONFIG_ESPTOOLPY_FLASHSIZE at runtime.
+      - name: Check esp-idf assumptions
+        run: make check-esp-idf-assumption
+
       # Build using make.
       - name: make
         run: |
