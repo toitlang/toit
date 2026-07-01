@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2018 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -29,6 +29,8 @@
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
+#include "mbedtls/ecdsa.h"
+#include "mbedtls/ecp.h"
 
 #include "aes.h"
 #include "objects.h"
@@ -42,6 +44,10 @@
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
+#include "vm.h"
+#include "scheduler.h"
+#include "os.h"
+#include "event_sources/async.h"
 
 #if (defined(MBEDTLS_CHACHAPOLY_C) && defined(MBEDTLS_CHACHA20_C)) || (defined(CONFIG_MBEDTLS_POLY1305_C) && defined(CONFIG_MBEDTLS_CHACHA20_C))
 #define SUPPORT_CHACHA20_POLY1305 1
@@ -758,7 +764,7 @@ PRIMITIVE(aes_ecb_close) {
 }
 
 
-static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
+static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
 #ifdef TOIT_ESP32
   esp_fill_random(buffer, len);
 #else
@@ -790,7 +796,7 @@ static bool is_pem(Blob key) {
 // For private keys, an optional password blob may be supplied (length 0 = none).
 // Returns 0 on success, a non-zero mbedtls error code on failure.
 // The caller is responsible for calling mbedtls_pk_free on *pk in all cases.
-static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private) {
+static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob password, bool is_private, Process* process) {
   // mbedtls_pk_parse_key / mbedtls_pk_parse_public_key require the buffer to
   // be null-terminated when the input is PEM. For DER, the null byte is
   // actually harmful if it's passed as part of the length.
@@ -816,11 +822,11 @@ static int rsa_parse_key_from_blob(mbedtls_pk_context* pk, Blob key, Blob passwo
 
   int ret;
   if (is_private) {
-    const unsigned char* pwd = password.length() > 0 ? password.address() : NULL;
+    const unsigned char* pwd = password.length() > 0 ? password.address() : null;
     ret = mbedtls_pk_parse_key(pk,
                                parse_buf, parse_len,
                                pwd, password.length(),
-                               rsa_rng, NULL);
+                               rsa_rng, null);
   } else {
     ret = mbedtls_pk_parse_public_key(pk, parse_buf, parse_len);
   }
@@ -870,6 +876,277 @@ static ByteArray* rsa_export_der(mbedtls_pk_context* pk, Process* process, bool 
 static const int RSA_PADDING_PKCS1_V15 = 0;
 static const int RSA_PADDING_OAEP_V21  = 1;
 
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+
+class RsaGenerationEventSource : public AsyncEventSource {
+ public:
+  static RsaGenerationEventSource* instance() {
+    static RsaGenerationEventSource* instance = _new RsaGenerationEventSource();
+    return instance;
+  }
+
+  AsyncEventThread* thread() {
+    if (thread_ == null) {
+      thread_ = _new AsyncEventThread("RSA Gen", this);
+      if (thread_) thread_->start();
+    }
+    return thread_;
+  }
+ private:
+  RsaGenerationEventSource() : AsyncEventSource("RsaGeneration") {}
+  AsyncEventThread* thread_ = null;
+};
+
+class RsaGenerationResourceGroup : public ResourceGroup {
+ public:
+  TAG(RsaGenerationResourceGroup);
+  explicit RsaGenerationResourceGroup(Process* process)
+      : ResourceGroup(process, RsaGenerationEventSource::instance()) {}
+
+ protected:
+  uint32 on_event(Resource* resource, word data, uint32_t state) override;
+};
+
+class RsaGenerationResource : public Resource {
+ public:
+  TAG(RsaGenerationResource);
+  explicit RsaGenerationResource(RsaGenerationResourceGroup* group, int bits)
+      : Resource(group), bits_(bits) {}
+
+  ~RsaGenerationResource() {
+    if (prv_buf_) free(prv_buf_);
+    if (pub_buf_) free(pub_buf_);
+  }
+
+  void delete_or_mark_for_deletion() override {
+    bool should_delete = false;
+    {
+      Locker locker(resource_group()->event_source()->mutex());
+      if (thread_running_) {
+        destroy_when_done_ = true;
+      } else {
+        should_delete = true;
+      }
+    }
+    if (should_delete) delete this;
+  }
+
+  void on_thread_done() {
+    bool should_delete = false;
+    {
+      Locker locker(resource_group()->event_source()->mutex());
+      if (destroy_when_done_) {
+        should_delete = true;
+      } else {
+        thread_running_ = false;
+      }
+    }
+    if (should_delete) delete this;
+  }
+
+  int bits() const { return bits_; }
+  bool is_thread_running() const { return thread_running_; }
+  int error() const { return error_; }
+  size_t prv_len() const { return prv_len_; }
+  size_t pub_len() const { return pub_len_; }
+  unsigned char* prv_buf() const { return prv_buf_; }
+  unsigned char* pub_buf() const { return pub_buf_; }
+
+  void set_buffers(unsigned char* prv, unsigned char* pub) {
+    prv_buf_ = prv;
+    pub_buf_ = pub;
+  }
+
+  void set_thread_running(bool running) { thread_running_ = running; }
+
+  void set_result(unsigned char* prv, size_t prv_len,
+                  unsigned char* pub, size_t pub_len) {
+    prv_buf_ = prv; prv_len_ = prv_len;
+    pub_buf_ = pub; pub_len_ = pub_len;
+  }
+
+  void set_error(int err) { error_ = err; }
+
+  void try_shrink_buffers() {
+    if (prv_buf_) {
+      unsigned char* p = unvoid_cast<unsigned char*>(realloc(prv_buf_, prv_len_));
+      if (p) prv_buf_ = p;
+    }
+    if (pub_buf_) {
+      unsigned char* p = unvoid_cast<unsigned char*>(realloc(pub_buf_, pub_len_));
+      if (p) pub_buf_ = p;
+    }
+  }
+
+  void free_and_release_buffers() {
+    free(prv_buf_); prv_buf_ = null;
+    free(pub_buf_); pub_buf_ = null;
+  }
+
+ private:
+  int bits_;
+  bool thread_running_ = false;
+  bool destroy_when_done_ = false;
+  unsigned char* prv_buf_ = null;
+  unsigned char* pub_buf_ = null;
+  int error_ = 0;
+  size_t prv_len_ = 0;
+  size_t pub_len_ = 0;
+};
+
+uint32 RsaGenerationResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
+  static_cast<RsaGenerationResource*>(resource)->on_thread_done();
+  return state | data;
+}
+
+PRIMITIVE(rsa_generate_init) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  RsaGenerationResourceGroup* group = _new RsaGenerationResourceGroup(process);
+  if (group == null) FAIL(MALLOC_FAILED);
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(rsa_generate_start) {
+  ARGS(RsaGenerationResourceGroup, group, int, bits);
+  if (bits != 1024 && bits != 2048 && bits != 3072 && bits != 4096) FAIL(INVALID_ARGUMENT);
+
+  RsaGenerationResource* resource = _new RsaGenerationResource(group, bits);
+  if (!resource) FAIL(MALLOC_FAILED);
+
+  resource->set_buffers(
+      unvoid_cast<unsigned char*>(malloc(RSA_PRV_DER_MAX_BYTES)),
+      unvoid_cast<unsigned char*>(malloc(RSA_PUB_DER_MAX_BYTES)));
+  if (!resource->prv_buf() || !resource->pub_buf()) {
+    delete resource;
+    FAIL(MALLOC_FAILED);
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) {
+    delete resource;
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  AsyncEventThread* thread = RsaGenerationEventSource::instance()->thread();
+  if (!thread) {
+    delete resource;
+    FAIL(MALLOC_FAILED);
+  }
+
+  resource->set_thread_running(true);
+  bool success = thread->run(resource, [](Resource* r) {
+    RsaGenerationResource* res = static_cast<RsaGenerationResource*>(r);
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+    int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+    if (ret == 0) {
+      ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, res->bits(), 65537);
+    }
+
+    if (ret == 0) {
+      unsigned char* prv = res->prv_buf();
+      unsigned char* pub = res->pub_buf();
+      int prv_len = mbedtls_pk_write_key_der(&pk, prv, RSA_PRV_DER_MAX_BYTES);
+      int pub_len = mbedtls_pk_write_pubkey_der(&pk, pub, RSA_PUB_DER_MAX_BYTES);
+      if (prv_len < 0 || pub_len < 0) {
+        ret = prv_len < 0 ? prv_len : pub_len;
+      } else {
+        // mbedtls writes from the end. Move to start.
+        memmove(prv, prv + RSA_PRV_DER_MAX_BYTES - prv_len, prv_len);
+        memmove(pub, pub + RSA_PUB_DER_MAX_BYTES - pub_len, pub_len);
+
+        // RSA_PRV_DER_MAX_BYTES is typically ~550 bytes, but generated keys
+        // usually only need ~300 bytes. The realloc shrinks the buffer to the
+        // actual size to recover the unused memory. If realloc fails, it returns
+        // null without freeing the original block, so the original pointer is
+        // preserved and no memory is leaked — it just means we keep the larger
+        // buffer, which is acceptable.
+        unsigned char* prv_resized = unvoid_cast<unsigned char*>(realloc(prv, prv_len));
+        if (prv_resized) prv = prv_resized;
+
+        unsigned char* pub_resized = unvoid_cast<unsigned char*>(realloc(pub, pub_len));
+        if (pub_resized) pub = pub_resized;
+
+        res->set_result(prv, prv_len, pub, pub_len);
+      }
+    }
+    mbedtls_pk_free(&pk);
+    res->set_error(ret);
+    return (word)1; // Indicate done.
+  });
+
+  if (!success) {
+    resource->set_thread_running(false);
+    delete resource;
+    FAIL(INVALID_STATE);
+  }
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  return proxy;
+}
+
+PRIMITIVE(rsa_generate_finish) {
+  ARGS(RsaGenerationResource, resource);
+
+  // Guard: if the worker thread is still running, buffers and lengths are
+  // not yet finalized. The caller should wait for the resource event first.
+  if (resource->is_thread_running()) FAIL(INVALID_STATE);
+
+  if (resource->error() != 0) {
+    int err = resource->error();
+    resource->resource_group()->unregister_resource(resource);
+    resource_proxy->clear_external_address();
+    return tls_error(null, process, err);
+  }
+
+  // Attempt a best-effort final realloc in case the one in the generation
+  // thread failed due to heap fragmentation at that point in time.
+  // If this also fails, we harmlessly keep the original (larger) buffer.
+  resource->try_shrink_buffers();
+
+  // Use the copy pattern (allocate + memcpy). This is safer for GC retries than
+  // transferring ownership, as the original buffers remain intact until
+  // the primitive is guaranteed to succeed.
+  ByteArray* prv_der = process->allocate_byte_array(resource->prv_len());
+  ByteArray* pub_der = process->allocate_byte_array(resource->pub_len());
+  if (!prv_der || !pub_der) {
+    // Do not call unregister_resource or clear_external_address on OOM error paths.
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  memcpy(ByteArray::Bytes(prv_der).address(), resource->prv_buf(), resource->prv_len());
+  memcpy(ByteArray::Bytes(pub_der).address(), resource->pub_buf(), resource->pub_len());
+
+  Array* pair = process->object_heap()->allocate_array(2, process->null_object());
+  if (pair == null) {
+    // Do not call unregister_resource or clear_external_address on OOM error paths.
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  // Success path: free the original buffers now that they have been copied.
+  resource->free_and_release_buffers();
+
+  pair->at_put(0, prv_der);
+  pair->at_put(1, pub_der);
+
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+
+  return pair;
+}
+
+PRIMITIVE(rsa_generate_close) {
+  ARGS(RsaGenerationResourceGroup, group);
+  group->tear_down();
+  group_proxy->clear_external_address();
+  return process->null_object();
+}
+
+#endif // CONFIG_TOIT_CRYPTO_EXTRA
+
 // rsa_generate returns [private_key_der, public_key_der] as a Toit Array.
 PRIMITIVE(rsa_generate) {
   ARGS(int, bits);
@@ -878,18 +1155,13 @@ PRIMITIVE(rsa_generate) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
   int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
+  if (ret != 0) return tls_error(null, process, ret);
 
-  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, NULL, bits, 65537);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
+  ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk), rsa_rng, null, bits, 65537);
+  if (ret != 0) return tls_error(null, process, ret);
 
   int prv_ret, pub_ret;
   ByteArray* prv_der = rsa_export_der(&pk, process, true, &prv_ret);
@@ -897,7 +1169,6 @@ PRIMITIVE(rsa_generate) {
   if (prv_der != null) {
     pub_der = rsa_export_der(&pk, process, false, &pub_ret);
   }
-  mbedtls_pk_free(&pk);
 
   if (prv_der == null) {
     if (prv_ret != 0) return tls_error(null, process, prv_ret);
@@ -925,22 +1196,16 @@ PRIMITIVE(rsa_sign) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true,process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
   size_t actual_len = 0;
   ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
-                        sig, sizeof(sig), &actual_len, rsa_rng, NULL);
-  mbedtls_pk_free(&pk);
+                        sig, sizeof(sig), &actual_len, rsa_rng, null);
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -960,19 +1225,13 @@ PRIMITIVE(rsa_verify) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   ret = mbedtls_pk_verify(&pk, md_alg, digest.address(), digest.length(), signature.address(), signature.length());
-  mbedtls_pk_free(&pk);
 
   return BOOL(ret == 0);
 }
@@ -982,20 +1241,14 @@ PRIMITIVE(rsa_get_private_key_der) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, key, password, true);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  int ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   int export_ret;
   ByteArray* result = rsa_export_der(&pk, process, true, &export_ret);
-  mbedtls_pk_free(&pk);
 
   if (result == null) {
     if (export_ret != 0) return tls_error(null, process, export_ret);
@@ -1009,25 +1262,19 @@ PRIMITIVE(rsa_get_public_key_der) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
   // Try parsing as a private key first (which contains the public key).
   // If that fails, try as a public key.
-  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true);
+  int ret = rsa_parse_key_from_blob(&pk, key, Blob(), true, process);
   if (ret != 0) {
-    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false);
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
   }
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   int export_ret;
   ByteArray* result = rsa_export_der(&pk, process, false, &export_ret);
-  mbedtls_pk_free(&pk);
 
   if (result == null) {
     if (export_ret != 0) return tls_error(null, process, export_ret);
@@ -1044,16 +1291,11 @@ PRIMITIVE(rsa_encrypt) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false,process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_md_type_t hash = get_md_alg(hash_id);
@@ -1061,15 +1303,11 @@ PRIMITIVE(rsa_encrypt) {
 
   size_t output_size = mbedtls_pk_get_len(&pk);
   ByteArray* result = process->allocate_byte_array(output_size, /*force_external*/ true);
-  if (result == null) {
-    mbedtls_pk_free(&pk);
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   size_t output_len = 0;
   ret = mbedtls_pk_encrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
-  mbedtls_pk_free(&pk);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
 
   if (ret != 0) return tls_error(null, process, ret);
 
@@ -1085,16 +1323,11 @@ PRIMITIVE(rsa_decrypt) {
 
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
 
-  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true);
-  if (ret != 0) {
-    mbedtls_pk_free(&pk);
-    return tls_error(null, process, ret);
-  }
-  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-    mbedtls_pk_free(&pk);
-    FAIL(INVALID_ARGUMENT);
-  }
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) FAIL(INVALID_ARGUMENT);
 
   int padding = (padding_mode == RSA_PADDING_OAEP_V21) ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15;
   mbedtls_md_type_t hash = get_md_alg(hash_id);
@@ -1102,19 +1335,217 @@ PRIMITIVE(rsa_decrypt) {
 
   size_t output_size = mbedtls_pk_get_len(&pk);
   ByteArray* result = process->allocate_byte_array(output_size, /*force_external*/ true);
-  if (result == null) {
-    mbedtls_pk_free(&pk);
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   size_t output_len = 0;
   ret = mbedtls_pk_decrypt(&pk, data.address(), data.length(),
-                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, NULL);
-  mbedtls_pk_free(&pk);
+                           ByteArray::Bytes(result).address(), &output_len, output_size, rsa_rng, null);
 
   if (ret != 0) return tls_error(null, process, ret);
 
   result->resize_external(process, output_len);
+  return result;
+}
+
+static Object* ec_get_der_helper(Process* process, ByteArray* result, Blob key, Blob password, bool is_private) {
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
+
+  int ret;
+  if (is_private) {
+    ret = rsa_parse_key_from_blob(&pk, key, password, true, process);
+  } else {
+    ret = rsa_parse_key_from_blob(&pk, key, Blob(), true, process);
+    if (ret != 0) ret = rsa_parse_key_from_blob(&pk, key, Blob(), false, process);
+  }
+  if (ret != 0) {
+    result->resize_external(process, 0);
+    return tls_error(null, process, ret);
+  }
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) {
+    result->resize_external(process, 0);
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  size_t buf_size = is_private ? RSA_PRV_DER_MAX_BYTES : RSA_PUB_DER_MAX_BYTES;
+  unsigned char* buf = unvoid_cast<unsigned char*>(malloc(buf_size));
+  if (!buf) FAIL(MALLOC_FAILED);
+
+  if (is_private) {
+    ret = mbedtls_pk_write_key_der(&pk, buf, buf_size);
+  } else {
+    ret = mbedtls_pk_write_pubkey_der(&pk, buf, buf_size);
+  }
+
+  if (ret < 0) {
+    free(buf);
+    result->resize_external(process, 0);
+    return tls_error(null, process, ret);
+  }
+
+  ASSERT(ret <= ByteArray::Bytes(result).length());
+  memcpy(ByteArray::Bytes(result).address(), buf + buf_size - ret, ret);
+  free(buf);
+  result->resize_external(process, ret);
+  return result;
+}
+
+PRIMITIVE(ec_generate_key) {
+  ARGS(cstring, curve_name);
+
+  const mbedtls_ecp_curve_info* info = mbedtls_ecp_curve_info_from_name(curve_name);
+  if (info == null) FAIL(INVALID_ARGUMENT);
+
+  Array* pair = process->object_heap()->allocate_array(2, process->null_object());
+  if (pair == null) FAIL(ALLOCATION_FAILED);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
+
+  int ret = mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+  if (ret != 0) return tls_error(null, process, ret);
+
+  ret = mbedtls_ecp_gen_key(info->grp_id, mbedtls_pk_ec(pk), rsa_rng, null);
+  if (ret != 0) return tls_error(null, process, ret);
+
+  int prv_ret, pub_ret;
+  ByteArray* prv_der = rsa_export_der(&pk, process, true, &prv_ret);
+  if (prv_der == null) {
+    if (prv_ret != 0) return tls_error(null, process, prv_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  ByteArray* pub_der = rsa_export_der(&pk, process, false, &pub_ret);
+  if (pub_der == null) {
+    if (pub_ret != 0) return tls_error(null, process, pub_ret);
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  pair->at_put(0, prv_der);
+  pair->at_put(1, pub_der);
+  return pair;
+}
+
+PRIMITIVE(ec_sign) {
+  ARGS(Blob, private_key_der, Blob, digest, int, hash_algo_id);
+
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
+
+  int ret = rsa_parse_key_from_blob(&pk, private_key_der, Blob(), true, process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
+
+  uint8_t sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
+  size_t actual_len = 0;
+  ret = mbedtls_pk_sign(&pk, md_alg, digest.address(), digest.length(),
+                        sig, sizeof(sig), &actual_len, rsa_rng, null);
+
+  if (ret != 0) return tls_error(null, process, ret);
+
+  ByteArray* result = process->allocate_byte_array(actual_len);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  memcpy(ByteArray::Bytes(result).address(), sig, actual_len);
+  return result;
+}
+
+PRIMITIVE(ec_verify) {
+  ARGS(Blob, public_key_der, Blob, digest, Blob, signature, int, hash_algo_id);
+
+  mbedtls_md_type_t md_alg = get_md_alg(hash_algo_id);
+  if (md_alg == MBEDTLS_MD_NONE) FAIL(INVALID_ARGUMENT);
+
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  Defer free_pk{ [&pk] { mbedtls_pk_free(&pk); } };
+
+  int ret = rsa_parse_key_from_blob(&pk, public_key_der, Blob(), false, process);
+  if (ret != 0) return tls_error(null, process, ret);
+  if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECKEY)) FAIL(INVALID_ARGUMENT);
+
+  ret = mbedtls_pk_verify(&pk, md_alg, digest.address(), digest.length(), signature.address(), signature.length());
+
+  return BOOL(ret == 0);
+}
+
+PRIMITIVE(ec_get_private_key_der) {
+  ARGS(Blob, key, Blob, password);
+  ByteArray* result = process->allocate_byte_array(RSA_PRV_DER_MAX_BYTES, /*force_external*/ true);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  return ec_get_der_helper(process, result, key, password, true);
+}
+
+PRIMITIVE(ec_get_public_key_der) {
+  ARGS(Blob, key);
+  ByteArray* result = process->allocate_byte_array(RSA_PUB_DER_MAX_BYTES, /*force_external*/ true);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  return ec_get_der_helper(process, result, key, Blob(), false);
+}
+
+PRIMITIVE(ec_compute_shared_secret) {
+  ARGS(Blob, private_key_der, Blob, public_key_der);
+
+  // GLEN_MAX is 66 for secp521r1.
+  static const int GLEN_MAX = 66;
+  ByteArray* result = process->allocate_byte_array(GLEN_MAX, /*force_external*/ true);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  mbedtls_pk_context pk_prv, pk_pub;
+  mbedtls_pk_init(&pk_prv);
+  mbedtls_pk_init(&pk_pub);
+  Defer free_pk_prv{ [&pk_prv] { mbedtls_pk_free(&pk_prv); } };
+  Defer free_pk_pub{ [&pk_pub] { mbedtls_pk_free(&pk_pub); } };
+
+  int ret = rsa_parse_key_from_blob(&pk_prv, private_key_der, Blob(), true, process);
+  if (ret != 0) {    
+    return tls_error(null, process, ret);
+  }
+
+  ret = rsa_parse_key_from_blob(&pk_pub, public_key_der, Blob(), false, process);
+  if (ret != 0) {
+    return tls_error(null, process, ret);
+  }
+
+  if (!mbedtls_pk_can_do(&pk_prv, MBEDTLS_PK_ECKEY) || !mbedtls_pk_can_do(&pk_pub, MBEDTLS_PK_ECKEY)) {    
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  mbedtls_ecp_keypair *ec_prv = mbedtls_pk_ec(pk_prv);
+  mbedtls_ecp_keypair *ec_pub = mbedtls_pk_ec(pk_pub);
+
+  if (ec_prv->grp.id == MBEDTLS_ECP_DP_NONE || ec_prv->grp.id != ec_pub->grp.id) {    
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  mbedtls_ecp_point R;
+  mbedtls_ecp_point_init(&R);
+
+  ret = mbedtls_ecp_mul(&ec_prv->grp, &R, &ec_prv->d, &ec_pub->Q, rsa_rng, null);
+  if (ret != 0) {
+    mbedtls_ecp_point_free(&R);    
+    return tls_error(null, process, ret);
+  }
+
+  size_t glen = (ec_prv->grp.pbits + 7) / 8;
+  ASSERT(glen <= ByteArray::Bytes(result).length());
+
+  ret = mbedtls_mpi_write_binary(&R.X, ByteArray::Bytes(result).address(), glen);
+  
+  mbedtls_ecp_point_free(&R);
+
+  if (ret != 0) {    
+    return tls_error(null, process, ret);
+  }
+
+  result->resize_external(process, glen);
   return result;
 }
 }

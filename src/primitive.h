@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2018 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -541,7 +541,17 @@ namespace toit {
   PRIMITIVE(rsa_get_private_key_der, 2)      \
   PRIMITIVE(rsa_get_public_key_der, 1)       \
   PRIMITIVE(rsa_encrypt, 4)                  \
-  PRIMITIVE(rsa_decrypt, 4)
+  PRIMITIVE(rsa_decrypt, 4)                  \
+  PRIMITIVE(rsa_generate_init, 0)            \
+  PRIMITIVE(rsa_generate_start, 2)           \
+  PRIMITIVE(rsa_generate_finish, 1)          \
+  PRIMITIVE(rsa_generate_close, 1)           \
+  PRIMITIVE(ec_generate_key, 1)              \
+  PRIMITIVE(ec_sign, 3)                      \
+  PRIMITIVE(ec_verify, 4)                    \
+  PRIMITIVE(ec_get_private_key_der, 2)       \
+  PRIMITIVE(ec_get_public_key_der, 1)        \
+  PRIMITIVE(ec_compute_shared_secret, 2)
   
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
@@ -1092,6 +1102,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
+#define _A_T_RsaGenerationResourceGroup(N, name) MAKE_UNPACKING_MACRO(RsaGenerationResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
@@ -1109,6 +1120,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_EthernetEvents(N, name)      MAKE_UNPACKING_MACRO(EthernetEvents, N, name)
 #define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
 #define _A_T_MbedTlsSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTlsSocket, N, name)
+#define _A_T_RsaGenerationResource(N, name) MAKE_UNPACKING_MACRO(RsaGenerationResource, N, name)
 #define _A_T_BaseMbedTlsSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTlsSocket, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)

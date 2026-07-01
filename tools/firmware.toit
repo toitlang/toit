@@ -851,11 +851,86 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
-write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
-  flash-size-string := flashing["flash_settings"]["flash_size"]
+/**
+Parses the flash size (a string like "16MB") from the flashing settings and
+  returns it in bytes.
+*/
+parse-flash-size_ flash-size-string/string --ui/cli.Ui -> int:
   if not flash-size-string.ends-with "MB":
     ui.abort "Unexpected flash size '$flash-size-string'."
-  flash-size := (int.parse flash-size-string[..flash-size-string.size - 2]) * 1024 * 1024
+  return (int.parse flash-size-string[..flash-size-string.size - 2]) * 1024 * 1024
+
+// The flash sizes (in MiB) that the ESP32 image header can encode. The index of
+// a size is the value stored in the high nibble of the 'spi_size' header byte.
+FLASH-SIZES-MB_ ::= [1, 2, 4, 8, 16, 32, 64, 128]
+
+/**
+Returns the smallest flash size (in bytes) that the ESP32 supports and that is
+  big enough to hold a partition table reaching up to $used-bytes.
+*/
+flash-size-covering_ used-bytes/int --ui/cli.Ui -> int:
+  FLASH-SIZES-MB_.do: | mb/int |
+    size := mb * 0x100000
+    if used-bytes <= size: return size
+  ui.abort "Partition table reaches 0x$(%x used-bytes), which is bigger than the largest supported flash size."
+  unreachable
+
+/**
+Updates the '--flash_size'/'--flash-size' value in the 'write_flash_args' of the
+  $flashing settings to $size-string.
+*/
+update-write-flash-size_ flashing/Map size-string/string -> none:
+  args := flashing.get "write_flash_args"
+  if not args: return
+  for i := 0; i < args.size - 1; i++:
+    if args[i] == "--flash_size" or args[i] == "--flash-size":
+      args[i + 1] = size-string
+
+/**
+Detects the flash size (in bytes) of the device on $port by asking 'esptool'.
+Returns null if the size could not be determined.
+
+This is best-effort: it parses the human-readable 'esptool flash-id' output,
+  which may change between esptool versions. Callers must treat a null result as
+  "unknown" and continue -- the flash size that actually ends up on the device
+  is taken from the partition table (see $build-esp32-image), not from here, so a
+  broken detection only skips the early sanity check, it never breaks flashing.
+
+Both stdout and stderr are captured (different esptool versions print the line
+  on different streams), and the exit code is ignored. The 'flash-id' output is
+  small, so the two pipes are drained sequentially, guarded by a timeout in case
+  one stream ever emits more than fits in its buffer (which would otherwise
+  deadlock the sequential drain).
+*/
+detect-flash-size_ esptool/List --port/string --chip/string -> int?:
+  command := esptool + ["--port", port, "--chip", chip, "flash-id"]
+  output/string? := null
+  catch:
+    process := pipe.fork --use-path --create-stdout --create-stderr command[0] command
+    stdout-stream/pipe.Stream := process.stdout
+    stderr-stream/pipe.Stream := process.stderr
+    try:
+      with-timeout --ms=30_000:
+        out := stdout-stream.in.read-all
+        err := stderr-stream.in.read-all
+        output = "$(out ? out.to-string : "")$(err ? err.to-string : "")"
+    finally:
+      stdout-stream.close
+      stderr-stream.close
+      process.wait
+  if not output: return null
+  // Look for a line like "Detected flash size: 16MB".
+  marker := "Detected flash size:"
+  marker-index := output.index-of marker
+  if marker-index < 0: return null
+  rest := output[marker-index + marker.size ..]
+  mb-index := rest.index-of "MB"
+  if mb-index < 0: return null
+  mb := int.parse rest[..mb-index].trim --if-error=: return null
+  return mb * 0x100000
+
+write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
+  flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
 
   out-image := ByteArray flash-size
   partitions.do: | offset/int content/ByteArray |
@@ -923,6 +998,25 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
 
   // The bootloader partition is not part of the partition-table.
   bootloader-bin := envelope.entries.get AR-ENTRY-ESP32-BOOTLOADER-BIN
+
+  // Use the partition table as the source of truth for the flash size. The
+  // bootloader stores the flash size in its image header, and the ROM rejects
+  // the whole partition table -- causing a silent boot loop -- if a partition
+  // extends beyond it. Pick the smallest supported flash size that fits the
+  // partition table (but never smaller than the size the envelope was built
+  // for) and stamp it into the bootloader header and the flashing settings. We
+  // only touch the bootloader when the size actually changes. When flashing to
+  // a real device the chip is additionally checked to be at least this big (see
+  // the 'flash' command).
+  envelope-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
+  needed-flash-size := flash-size-covering_ partition-table.find-first-free-offset --ui=ui
+  if needed-flash-size > envelope-flash-size:
+    flash-size-mb := needed-flash-size / 0x100000
+    bootloader-binary := Esp32Binary bootloader-bin
+    bootloader-binary.set-flash-size-mb flash-size-mb
+    bootloader-bin = bootloader-binary.bits
+    flashing["flash_settings"]["flash_size"] = "$(flash-size-mb)MB"
+    update-write-flash-size_ flashing "$(flash-size-mb)MB"
   bootloader-offset := int.parse flashing["bootloader"]["offset"][2..] --radix=16
   partitions[bootloader-offset] = bootloader-bin
 
@@ -1101,6 +1195,16 @@ flash invocation/cli.Invocation -> none:
             partition-args.add tmp-file
 
           esptool := find-esptool_
+
+          // Verify that the device's flash is big enough for the partition
+          // table. 'build-esp32-image' derived the required flash size from the
+          // partition table and stored it in the flashing settings.
+          required-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
+          detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip
+          if detected-flash-size and detected-flash-size < required-flash-size:
+            ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
+          if not detected-flash-size:
+            ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
 
           // The new esptool has deprecated underscores in some arguments.
           // TODO(floitsch): remove these replacements when the esp-idf has been updated
@@ -1715,6 +1819,7 @@ class Esp32S3AddressMap implements AddressMap:
 class Esp32Binary:
   static MAGIC-OFFSET_         ::= 0
   static SEGMENT-COUNT-OFFSET_ ::= 1
+  static SPI-SIZE-OFFSET_      ::= 3
   static CHIP-ID-OFFSET_       ::= 12
   static HASH-APPENDED-OFFSET_ ::= 23
   static HEADER-SIZE_          ::= 24
@@ -1771,6 +1876,16 @@ class Esp32Binary:
 
   chip-name -> string:
     return CHIP-NAMES_[chip-id_]
+
+  /**
+  Sets the flash size (in MiB) stored in the image header.
+  The $size-mb must be one of the sizes the ESP32 image format supports (see
+    $FLASH-SIZES-MB_). The change is reflected in the bytes returned by $bits.
+  */
+  set-flash-size-mb size-mb/int -> none:
+    nibble := FLASH-SIZES-MB_.index-of size-mb
+    if nibble < 0: throw "unsupported flash size: $(size-mb)MB"
+    header_[SPI-SIZE-OFFSET_] = (header_[SPI-SIZE-OFFSET_] & 0x0f) | (nibble << 4)
 
   bits -> ByteArray:
     // The total size of the resulting byte array must be

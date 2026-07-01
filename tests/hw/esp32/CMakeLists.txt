@@ -58,7 +58,12 @@ foreach(esp_variant ${VARIANTS})
       CONFIGURATIONS ${esp_variant} hw
       )
 
-    set_tests_properties("${test_name}" PROPERTIES TIMEOUT 80)
+    # Flashing the ~1MB firmware envelope over serial is slow, and `ctest -j2`
+    # runs two board setups at once, so the two flashes contend for the Pi's
+    # USB-serial bandwidth. Under that contention a full setup (flash + boot +
+    # wifi) can take well over 80s even though it is making steady progress, so
+    # give it a generous margin.
+    set_tests_properties("${test_name}" PROPERTIES TIMEOUT 150)
     set_tests_properties("${test_name}" PROPERTIES FIXTURES_SETUP "setup-boards-${esp_variant}")
   endforeach()
 endforeach()
