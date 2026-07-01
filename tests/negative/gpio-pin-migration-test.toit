@@ -5,6 +5,8 @@
 // Checks that the peripheral libraries accept an integer GPIO number (the new
 // API), warn when given a (deprecated) gpio.Pin, and reject other types.
 
+import esp32.net.ethernet as ethernet
+import flash
 import gpio
 import gpio.adc show Adc
 import i2c
@@ -42,3 +44,16 @@ main:
   Adc 34                                 // OK.
   Adc pin                                // Warning: deprecated Pin.
   Adc "x"                                // Error: string.
+
+  // Ethernet (esp32 network service; EMAC and W5500 over SPI).
+  ethernet.EthernetServiceProvider.mac-esp32 --phy-chip=ethernet.PHY-CHIP-LAN8720 --mac-mdc=23 --mac-mdio=18  // OK.
+  ethernet.EthernetServiceProvider.mac-esp32 --phy-chip=ethernet.PHY-CHIP-LAN8720 --mac-mdc=pin               // Warning: deprecated Pin.
+  ethernet.EthernetServiceProvider.mac-esp32 --phy-chip=ethernet.PHY-CHIP-LAN8720 --mac-mdc="x"               // Error: string.
+  ethernet.EthernetServiceProvider.w5500 --bus=bus --frequency=1_000_000 --cs=15 --interrupt=16   // OK.
+  ethernet.EthernetServiceProvider.w5500 --bus=bus --frequency=1_000_000 --cs=pin --interrupt=16  // Warning: deprecated Pin.
+  ethernet.EthernetServiceProvider.w5500 --bus=bus --frequency=1_000_000 --cs=1.5 --interrupt=16  // Error: float.
+
+  // Flash (esp32 external storage; cs on the SPI bus).
+  flash.Mount.sdcard --mount-point="/sd" --spi-bus=bus --cs=15    // OK.
+  flash.Mount.sdcard --mount-point="/sd" --spi-bus=bus --cs=pin   // Warning: deprecated Pin.
+  flash.Mount.nor --mount-point="/nor" --spi-bus=bus --cs="x"     // Error: string.

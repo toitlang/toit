@@ -32,6 +32,7 @@
 
 #include "../event_sources/system_esp32.h"
 #include "spi_esp32.h"
+#include "gpio_esp32.h"
 
 namespace toit {
 
@@ -87,6 +88,7 @@ class EthernetResourceGroup : public ResourceGroup {
     ethernet_pool.put(id_);
     phy_->del(phy_);
     mac_->del(mac_);
+    owned_pins_.release();
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
@@ -95,6 +97,8 @@ class EthernetResourceGroup : public ResourceGroup {
     return esp_netif_set_hostname(netif_, hostname);
   }
 
+  GpioPins& owned_pins() { return owned_pins_; }
+
  private:
   int id_;
   esp_eth_mac_t* mac_;
@@ -102,6 +106,7 @@ class EthernetResourceGroup : public ResourceGroup {
   esp_netif_t* netif_;
   esp_eth_handle_t eth_handle_;
   esp_eth_netif_glue_handle_t netif_glue_;
+  GpioPins owned_pins_;
  };
 
 class EthernetEvents : public SystemResource {
@@ -187,6 +192,15 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Decode the pins and reserve them from the shared pool. The reserver
+  // releases them again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int phy_reset = reserver.decode_and_take(phy_reset_num, &reserve_ok);
+  int mdc = reserver.decode_and_take(mdc_num, &reserve_ok);
+  int mdio = reserver.decode_and_take(mdio_num, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   int id = ethernet_pool.any();
   if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
@@ -202,13 +216,13 @@ PRIMITIVE(init) {
   eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
 
   phy_config.phy_addr = phy_addr;
-  phy_config.reset_gpio_num = phy_reset_num;
+  phy_config.reset_gpio_num = phy_reset;
 
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
     eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
-    emac_config.smi_gpio.mdc_num = mdc_num;
-    emac_config.smi_gpio.mdio_num = mdio_num;
+    emac_config.smi_gpio.mdc_num = mdc;
+    emac_config.smi_gpio.mdio_num = mdio;
     mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
 #ifdef CONFIG_ETH_USE_OPENETH
   } else if (mac_chip == MAC_CHIP_OPENETH) {
@@ -279,6 +293,9 @@ PRIMITIVE(init) {
     FAIL(MALLOC_FAILED);
   }
 
+  resource_group->owned_pins().adopt(reserver);
+  reserver.keep();
+
   proxy->set_external_address(resource_group);
   return proxy;
 #endif
@@ -295,6 +312,14 @@ PRIMITIVE(init_spi) {
 #endif
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // Decode the pins and reserve them from the shared pool. The reserver
+  // releases them again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int cs_num = reserver.decode_and_take(cs, &reserve_ok);
+  int interrupt_num = reserver.decode_and_take(int_num, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   int id = ethernet_pool.any();
   if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
@@ -319,7 +344,7 @@ PRIMITIVE(init_spi) {
     .clock_speed_hz   = frequency,
     .input_delay_ns   = 0,
     .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
-    .spics_io_num     = cs,
+    .spics_io_num     = cs_num,
     .flags            = 0,
     .queue_size       = 1,
     .pre_cb           = null,
@@ -337,7 +362,7 @@ PRIMITIVE(init_spi) {
 #ifdef CONFIG_ETH_SPI_ETHERNET_W5500
     case MAC_CHIP_W5500: {
       eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_host, &spi_config);
-      w5500_config.int_gpio_num = int_num;
+      w5500_config.int_gpio_num = interrupt_num;
       mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
       phy = esp_eth_phy_new_w5500(&phy_config);
       break;
@@ -390,6 +415,9 @@ PRIMITIVE(init_spi) {
     mac->del(mac);
     FAIL(MALLOC_FAILED);
   }
+
+  resource_group->owned_pins().adopt(reserver);
+  reserver.keep();
 
   proxy->set_external_address(resource_group);
   return proxy;

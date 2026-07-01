@@ -20,42 +20,57 @@ class Mount:
   Mounts an SD-card as a FAT file system under $mount-point on the $spi-bus without formatting the flash.
 
   The $cs is the chip select pin for the SD-card holder.
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.sdcard-unformatted
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin:
+      --cs/any:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
-    flash_ = init-sdcard_ mount-point spi-bus.spi_ cs.num 0 0 0
+    flash_ = init-sdcard_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) 0 0 0
 
   /**
   Mounts an SD-card as a FAT file system under $mount-point on the $spi-bus and formats the SD-card
     with $max-files and $allocation-unit-size if it is not already formatted.
 
   The $cs is the chip select pin for the SD-card holder.
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.sdcard
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin
+      --cs/any
       --max-files/int=5
       --allocation-unit-size/int=16384:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
-    flash_ = init-sdcard_ mount-point spi-bus.spi_ cs.num 1 max-files allocation-unit-size
+    flash_ = init-sdcard_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) 1 max-files allocation-unit-size
 
   /**
   Mounts an external NOR flash chip on the $spi-bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
     $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.nor-unformatted
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin
+      --cs/any
       --frequency/int=FREQUENCY-40MHZ:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
-    flash_ = init-nor-flash_ mount-point spi-bus.spi_ cs.num frequency 0 0 0
+    flash_ = init-nor-flash_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) frequency 0 0 0
 
   /**
   Mounts an external NOR flash chip on the $spi-bus and format the SD-card with $max-files and
@@ -63,32 +78,42 @@ class Mount:
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
     $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.nor
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin
+      --cs/any
       --frequency/int=FREQUENCY-40MHZ
       --max-files/int=5
       --allocation-unit-size/int=16384:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
-    flash_ = init-nor-flash_ mount-point spi-bus.spi_ cs.num frequency 1 max-files allocation-unit-size
+    flash_ = init-nor-flash_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) frequency 1 max-files allocation-unit-size
 
   /**
   Mounts an external NAND flash chip on the $spi-bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
     $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.nand-unformatted
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin
+      --cs/any
       --frequency/int=FREQUENCY-40MHZ:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
 
     frequency-mhz := frequency-to-mhz_ frequency
-    flash_ = init-nand-flash_ mount-point spi-bus.spi_ cs.num frequency-mhz 0 0 0
+    flash_ = init-nand-flash_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) frequency-mhz 0 0 0
 
   /**
   Mounts an external NAND flash chip on the $spi-bus and formats the flash with $max-files and
@@ -96,18 +121,23 @@ class Mount:
 
   The $cs is the chip select pin for the chip on the $spi-bus and $frequency is the SPI frequency.
     $frequency should be one of the FREQUENCY-* constants (such as $FREQUENCY-5MHZ).
+
+  Passing a $gpio.Pin as $cs is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
   constructor.nand
       --.mount-point/string
       --spi-bus/spi.Bus
-      --cs/gpio.Pin
+      --cs/any
       --frequency/int=FREQUENCY-40MHZ
       --max-files/int=5
       --allocation-unit-size/int=2048:
     if not mount-point.starts-with "/": throw "INVALID_ARGUMENT"
 
     frequency-mhz := frequency-to-mhz_ frequency
-    flash_ = init-nand-flash_ mount-point spi-bus.spi_ cs.num frequency-mhz 1 max-files allocation-unit-size
+    flash_ = init-nand-flash_ mount-point spi-bus.spi_ (gpio.to-pin-num_ cs) frequency-mhz 1 max-files allocation-unit-size
 
   /**
   Unmounts and releases resources for the external storage.
