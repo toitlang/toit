@@ -217,6 +217,8 @@ an output at a mis-set voltage could read as low, though pads 43..48 read
 fine at the default), the example's `slpManAONIOLatchEn` dance, and the
 ordering magic-write-BEFORE-first-LDO-power-on. Revisit with the deep-sleep
 work, where the wakeup-pad configuration gets exercised anyway.
+(Update: the *wake* function of these pads is now fully working — see #12
+— but that changed nothing here: the GPIO output gate is still closed.)
 
 **Repro.** `tests/hw/ec618/aon-wu-output-repro-ec618.toit` (standalone;
 drives PAD42, whose net is the rig's BMP280 power rail — the sensor coming
@@ -590,3 +592,59 @@ leaves the console at the hopped baud, so the next connect must wait one
 watchdog cycle for it to return). The deep-sleep test exits the VM, so the
 host tester reports a (harmless) "watchdog reset during the test" — that
 is expected, not a failure.
+
+## 12. Wakeup-pad wake from hibernate: config persisted but the edge never fired — missing NVIC enable — FIXED
+
+**Status:** root-caused + FIXED (2026-07-02, HW-verified twice — GPIO22
+pulse ends a 150 s hibernate at the first edge, `wake src=2`
+`last_slp_state=4`).
+
+**Symptom.** Arming a wakeup pad with `slpManSetWakeupPadCfg` (both
+edges, pull-down) demonstrably *took*: the pull configuration survived
+into hibernate (`wupins` read the armed pads at their pulled level) and
+`slpManGetWakeupPadCfg` read the config back. But an external edge on
+the pad never woke the chip — the RTC fallback timer always won.
+
+**Root cause.** `slpManSetWakeupPadCfg` records the edge/pull settings
+but does not *enable* the wake source. The enable is the pad's **NVIC
+interrupt line**: `PadWakeup0..5_IRQn` are IRQ numbers 0..5 — equal to
+the wakeup-pad index — and the hibernate entry flow latches the NVIC
+enable mask into the PMU as the wake-source mask. Established by
+disassembling the SDK's prebuilt `GPIO_WakeupPadConfig`
+(libcore_airm2m.a) — the call the field-proven LuatOS pm module uses.
+It does exactly two things:
+
+1. `NVIC->ISER = 1 << pad_index` (i.e. `NVIC_EnableIRQ(pad_index)`), and
+2. `slpManSetWakeupPadCfg(pad_index, edges-armed, &cfg)`.
+
+Nothing else: no AON IO LDO handling, no latch, no pad-mux change. The
+LuatOS `example_pm/example_socket_pm.c` demo wakes from HIBERNATE via
+wakeup pads 3/4 (the AGPIOWU trio) with this exact pair, confirming the
+GPIO-muxed pads 3..5 are full hibernate wake sources.
+
+**The fix** (`arm_wakeup_pads` in [toit_ec618.cc](../src/toit_ec618.cc)):
+at deep-sleep entry, for every pad configured via
+`ec618.configure-wakeup-pad`, enable its NVIC line (raw `ISER` write,
+same as the prebuilt driver) and apply `slpManSetWakeupPadCfg`. The AON
+IO LDO still powers off for the sleep (the wakeup-pad domain does not
+need it — HW-verified). A bring-up `wakeup-arm-flags` primitive can
+A/B sequence variants (skip-NVIC / keep-LDO / latch /
+`GPIO_WakeupPadConfig` path) from a test container without reflashing;
+the canonical pair (flags=0) is the verified default.
+
+**HW evidence.** Two identical runs
+(`tests/hw/ec618/wakeup-gpio22-ec618.toit` + the ESP32 pulser holding
+the net low, first rising edge 60 s in): boot banner lands at the pulse
+timestamp to the second, 109 s before the RTC fallback, with
+`wake src=2` (`WAKEUP-PAD`) `last_slp_state=4` and RTC memory intact.
+Before the fix the identical config always fell through to `wake src=1`
+(RTC).
+
+**API.** `ec618.configure-wakeup-pad index --pos-edge --neg-edge
+--pull-up --pull-down` (index 0..5; GPIO22 = PAD42 = wakeup pad 5;
+GPIO20/21 = pads 3/4; 0..2 are the dedicated WAKEUP pins). Takes effect
+at the next `ec618.deep-sleep`; the wake is a reboot whose
+`ec618.wakeup-cause` reads `WAKEUP-PAD`. Note the pad should rest at
+the level opposite the armed edge when the sleep starts (the SDK
+examples arm the falling edge with a pull-up, or the rising edge with a
+pull-down).

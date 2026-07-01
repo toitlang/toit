@@ -527,6 +527,50 @@ PRIMITIVE(wakeup_cause) {
   return Smi::from(boot_wakeup_src_);
 }
 
+// Deep-sleep wakeup-pad configuration. The primitives only record what to
+// arm; the deep-sleep path (toit_ec618.cc arm_wakeup_pads) applies it at VM
+// exit, right before hibernate entry — an armed pad then wakes the chip
+// (which reboots; ec618.wakeup-cause reads WAKEUP_FROM_PAD). Zero-initialized
+// statics live in .bss, so this state is OTA-slot-safe.
+//
+// Packed per-pad config: bit 0 enabled, bit 1 posEdge, bit 2 negEdge,
+// bit 3 pullUp, bit 4 pullDown.
+static const int kWakeupPadCount = 6;
+static uint8_t wakeup_pad_configs_[kWakeupPadCount];
+static int wakeup_arm_flags_ = 0;
+
+extern "C" int toit_wakeup_pad_config(int pad) {
+  if (pad < 0 || pad >= kWakeupPadCount) return 0;
+  return wakeup_pad_configs_[pad];
+}
+
+extern "C" int toit_wakeup_arm_flags() {
+  return wakeup_arm_flags_;
+}
+
+PRIMITIVE(wakeup_pad_configure) {
+  ARGS(int, pad, bool, enabled, bool, pos_edge, bool, neg_edge,
+       bool, pull_up, bool, pull_down);
+  if (pad < 0 || pad >= kWakeupPadCount) FAIL(OUT_OF_RANGE);
+  uint8_t packed = 0;
+  if (enabled) packed |= 1;
+  if (pos_edge) packed |= 2;
+  if (neg_edge) packed |= 4;
+  if (pull_up) packed |= 8;
+  if (pull_down) packed |= 16;
+  wakeup_pad_configs_[pad] = packed;
+  return process->null_object();
+}
+
+// Bring-up diagnostic: selects arming-sequence variants (see
+// toit_ec618.cc arm_wakeup_pads for the bit meanings) so the wake
+// sequence can be A/B-tested from a test container without reflashing.
+PRIMITIVE(wakeup_arm_flags) {
+  ARGS(int, flags);
+  wakeup_arm_flags_ = flags;
+  return process->null_object();
+}
+
 // Raw 32-bit register/memory access for bring-up diagnostics (the rig can
 // inspect live peripheral state from a test container instead of needing a
 // debugger). Aligned addresses only. Dev-platform tool — handle with care.
@@ -691,6 +735,8 @@ PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_cause) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(wakeup_pad_configure) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(wakeup_arm_flags) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_init) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_feed) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_deinit) { FAIL(UNIMPLEMENTED); }

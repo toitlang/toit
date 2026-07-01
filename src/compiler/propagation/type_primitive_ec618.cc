@@ -41,6 +41,8 @@ TYPE_PRIMITIVE_NULL(watchdog_init)
 TYPE_PRIMITIVE_NULL(watchdog_feed)
 TYPE_PRIMITIVE_NULL(watchdog_deinit)
 TYPE_PRIMITIVE_ANY(wakeup_pin_values)
+TYPE_PRIMITIVE_NULL(wakeup_pad_configure)
+TYPE_PRIMITIVE_NULL(wakeup_arm_flags)
 
 }  // namespace compiler
 }  // namespace toit

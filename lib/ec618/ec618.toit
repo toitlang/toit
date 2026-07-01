@@ -71,6 +71,44 @@ Returns the live levels of the AON wakeup pads as a bitmask (bit N =
 wakeup-pin-values -> int:
   #primitive.ec618.wakeup-pin-values
 
+/**
+Configures an AON wakeup pad as a deep-sleep wake source.
+
+The $index is the wakeup-pad number 0..5: pads 0..2 are the module's
+  dedicated WAKEUP pins, pads 3..5 are the GPIO-muxed trio GPIO20..22
+  (physical pads 40..42, the board's "AGPIOWU" pins). GPIO22 = wakeup
+  pad 5.
+
+The configuration only takes effect at the next $deep-sleep: an edge of
+  the enabled polarity ($pos-edge / $neg-edge, at least one required)
+  then ends the hibernate early. The wake is a reboot; $wakeup-cause
+  reports $WAKEUP-PAD on the boot it causes. $pull-up / $pull-down
+  select the pad's internal pull while asleep.
+
+Pass --no-enabled to remove a previously configured pad from the wake
+  set.
+*/
+configure-wakeup-pad index/int
+    --enabled/bool=true
+    --pos-edge/bool=false
+    --neg-edge/bool=false
+    --pull-up/bool=false
+    --pull-down/bool=false -> none:
+  configure-wakeup-pad_ index enabled pos-edge neg-edge pull-up pull-down
+
+configure-wakeup-pad_ index enabled pos-edge neg-edge pull-up pull-down -> none:
+  #primitive.ec618.wakeup-pad-configure
+
+/**
+Selects bring-up variants of the deep-sleep wakeup-pad arming sequence.
+
+Temporary diagnostic while the GPIO-wake bring-up settles — see
+  arm_wakeup_pads in toit_ec618.cc for the bit meanings. The default (0)
+  is the canonical sequence.
+*/
+wakeup-arm-flags_ flags/int -> none:
+  #primitive.ec618.wakeup-arm-flags
+
 /** Reset after power was (re)applied (cold boot). */
 RESET-POWER-ON ::= 0
 /** Normal reset after waking from deep sleep (sleep2) or hibernate. */
