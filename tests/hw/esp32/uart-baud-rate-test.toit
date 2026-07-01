@@ -9,7 +9,6 @@ For the setup see the comment near $Variant.uart-baud-rate-in1.
 */
 
 import expect show *
-import gpio
 import uart
 
 import .test
@@ -32,13 +31,13 @@ main:
 
 test:
   port1 := uart.Port
-      --rx=gpio.Pin RX1
-      --tx=gpio.Pin TX1
+      --rx=RX1
+      --tx=TX1
       --baud-rate=9600
 
   port2 := uart.Port
-      --rx=gpio.Pin RX2
-      --tx=gpio.Pin TX2
+      --rx=RX2
+      --tx=TX2
       --baud-rate=9600
 
   port1.out.write "toit" --flush

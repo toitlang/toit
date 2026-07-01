@@ -24,6 +24,9 @@ RMT-PIN-1 ::= Variant.CURRENT.rmt-pin1
 RMT-PIN-2 ::= Variant.CURRENT.rmt-pin2
 RMT-PIN-3 ::= Variant.CURRENT.rmt-pin3
 
+// A pool of distinct pins for the channel-resource test (see $test-resource).
+RESOURCE-PINS ::= Variant.CURRENT.rmt-resource-test-pins
+
 IN-CHANNEL-COUNT ::= Variant.CURRENT.rmt-in-channel-count
 OUT-CHANNEL-COUNT ::= Variant.CURRENT.rmt-out-channel-count
 TOTAL-CHANNEL-COUNT ::= Variant.CURRENT.rmt-total-channel-count
@@ -59,69 +62,79 @@ expect-equals-sequence expected/List actual/rmt.Signals:
 RESOLUTION ::= 1_000_000  // 1MHz.
 
 // Test that the channel resources are correctly handed out.
-test-resource pin/gpio.Pin:
+//
+// Every channel reserves its own pin, so we need a pool of distinct pins (at
+// least $TOTAL-CHANNEL-COUNT + 1). The pins are only reserved and released, never
+// driven, so they need no wiring. Each channel takes the next unused pin
+// (`pins[channels.size]`); every "expect ALREADY_IN_USE" also uses a fresh, unused
+// pin, so the failure comes from the exhausted RMT channel/memory pool and not
+// from a pin that is already reserved. A failed channel constructor releases its
+// pin again, so the same fresh pin can be reused right afterwards.
+test-resource pins/List:
+  expect pins.size >= TOTAL-CHANNEL-COUNT + 1
   // There are 8 channels, each having one memory block.
   // If we request a channel with more than one memory block, then the
   // next channel becomes unusable.
   channels := []
-  IN-CHANNEL-COUNT.repeat: channels.add (rmt.In pin --resolution=RESOLUTION)
+  IN-CHANNEL-COUNT.repeat: channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION)
   if IN-CHANNEL-COUNT != TOTAL-CHANNEL-COUNT:
     OUT-CHANNEL-COUNT.repeat:
-      channels.add (rmt.Out pin --resolution=RESOLUTION)
-  expect-throw "ALREADY_IN_USE": rmt.In pin --resolution=RESOLUTION
+      channels.add (rmt.Out pins[channels.size] --resolution=RESOLUTION)
+  expect-throw "ALREADY_IN_USE": rmt.In pins[channels.size] --resolution=RESOLUTION
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel := rmt.In pin --resolution=RESOLUTION
+  channel := rmt.In pins[0] --resolution=RESOLUTION
   channel.close
 
   channels = []
   // We should be able to allocate half of the channels with 2 memory blocks each.
-  (IN-CHANNEL-COUNT / 2).repeat: channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=2)
-  expect-throw "ALREADY_IN_USE": rmt.In pin --resolution=RESOLUTION
+  (IN-CHANNEL-COUNT / 2).repeat: channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=2)
+  expect-throw "ALREADY_IN_USE": rmt.In pins[channels.size] --resolution=RESOLUTION
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.In pin --resolution=RESOLUTION
+  channel = rmt.In pins[0] --resolution=RESOLUTION
   channel.close
 
   channels = []
   // We should be able to allocate at least on channel with 3 memory blocks.
   // If there are more than 4 in channels, we should be able to allocate two.
-  channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=3)
+  channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=3)
   if IN-CHANNEL-COUNT > 4:
-    channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=3)
-    channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=2)
+    channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=3)
+    channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=2)
   else:
-    channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=1)
-  expect-throw "ALREADY_IN_USE": rmt.In pin --resolution=RESOLUTION
+    channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=1)
+  expect-throw "ALREADY_IN_USE": rmt.In pins[channels.size] --resolution=RESOLUTION
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.In pin --resolution=RESOLUTION
+  channel = rmt.In pins[0] --resolution=RESOLUTION
   channel.close
 
   channels = []
   // We should be able to allocate at least one channel with 4 memory blocks.
   // If we have more than 4 in channels, we should be able to allocate two.
-  channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=4)
+  channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=4)
   if IN-CHANNEL-COUNT > 4:
-    channels.add (rmt.In pin --resolution=RESOLUTION --memory-blocks=4)
-  expect-throw "ALREADY_IN_USE": rmt.In pin --resolution=RESOLUTION
+    channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=4)
+  expect-throw "ALREADY_IN_USE": rmt.In pins[channels.size] --resolution=RESOLUTION
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.In pin --resolution=RESOLUTION
+  channel = rmt.In pins[0] --resolution=RESOLUTION
   channel.close
 
   // Test fragmentation.
   channels = []
-  IN-CHANNEL-COUNT.repeat: channels.add (rmt.In pin --resolution=RESOLUTION)
+  IN-CHANNEL-COUNT.repeat: channels.add (rmt.In pins[channels.size] --resolution=RESOLUTION)
   for i := 0; i < channels.size; i += 2: channels[i].close
-  expect-throw "ALREADY_IN_USE": rmt.In pin --resolution=RESOLUTION --memory-blocks=2
+  // A fresh pin, so this fails because the memory blocks are fragmented.
+  expect-throw "ALREADY_IN_USE": rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=2
   // Close one additional one, which makes 2 adjacent memory blocks free.
   channels[IN-CHANNEL-COUNT / 2 + 1].close
-  channel = rmt.In pin --resolution=RESOLUTION --memory-blocks=2
+  channel = rmt.In pins[channels.size] --resolution=RESOLUTION --memory-blocks=2
   channel.close
   channels.do: it.close
 
-test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
+test-simple-pulse pin-in/int pin-out/int:
   PULSE-LENGTH ::= 50
 
   out := rmt.Out pin-out --resolution=RESOLUTION
@@ -138,7 +151,7 @@ test-simple-pulse pin-in/gpio.Pin pin-out/gpio.Pin:
   in.close
 
 
-test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
+test-multiple-pulses pin-in/int pin-out/int:
   PULSE-LENGTH ::= 50
   // It's important that the count is odd, as we would otherwise end
   // low. The receiving end would not be able to see the last signal.
@@ -158,7 +171,7 @@ test-multiple-pulses pin-in/gpio.Pin pin-out/gpio.Pin:
   out.close
   in.close
 
-test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
+test-long-sequence pin-in/int pin-out/int:
   PULSE-LENGTH ::= 50
   MEMORY-BLOCKS ::= IN-CHANNEL-COUNT == TOTAL-CHANNEL-COUNT
       ? IN-CHANNEL-COUNT - 1
@@ -182,7 +195,7 @@ test-long-sequence pin-in/gpio.Pin pin-out/gpio.Pin:
   out.close
   in.close
 
-test-carrier pin1/gpio.Pin pin2/gpio.Pin:
+test-carrier pin1/int pin2/int:
   test-carrier pin1 pin2 --duty-factor=0.5 --active-low
   test-carrier pin1 pin2 --duty-factor=0.5
   test-carrier pin1 pin2 --duty-factor=0.25
@@ -193,7 +206,7 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin:
 
     test-carrier pin1 pin2 --always-on
 
-test-carrier pin1/gpio.Pin pin2/gpio.Pin
+test-carrier pin1/int pin2/int
     --duty-factor/float
     --active-low/bool=false
     --demodulate/bool=false:
@@ -298,7 +311,7 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin
     expect carrier-high-count >= (SIGNAL-PERIOD * 2) / CARRIER-PERIOD
     expect carrier-low-count >= SIGNAL-PERIOD / CARRIER-PERIOD - 2
 
-test-carrier pin1/gpio.Pin pin2/gpio.Pin --always-on/True:
+test-carrier pin1/int pin2/int --always-on/True:
   CARRIER-FREQUENCY ::= 5_000
   CARRIER-PERIOD ::= 1_000_000  / CARRIER_FREQUENCY
   SIGNAL-PERIOD ::= 1_000
@@ -339,7 +352,7 @@ test-carrier pin1/gpio.Pin pin2/gpio.Pin --always-on/True:
   out.close
   in.close
 
-test-glitch-filter pin1/gpio.Pin pin2/gpio.Pin:
+test-glitch-filter pin1/int pin2/int:
   out := rmt.Out pin1 --resolution=RESOLUTION
   in := rmt.In pin2 --resolution=RESOLUTION
 
@@ -368,17 +381,20 @@ test-glitch-filter pin1/gpio.Pin pin2/gpio.Pin:
   in.close
   out.close
 
-test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
+test-bidirectional pin1/int pin2/int:
   // Use pin3 as pull-up pin.
   pin3 := gpio.Pin RMT-PIN-3 --pull-up --input
 
   PULSE-LENGTH ::= 50
 
-  in1 := rmt.In pin1 --resolution=RESOLUTION --memory-blocks=1
-  in2 := rmt.In pin2 --resolution=RESOLUTION --memory-blocks=2
-
-  out1 := rmt.Out pin1 --resolution=RESOLUTION --open-drain
-  out2 := rmt.Out pin2 --resolution=RESOLUTION --open-drain
+  // Each pin needs both an input and an output channel sharing a single pin
+  // reservation, so we use $rmt.ChannelInOut instead of separate channels.
+  channels1 := rmt.ChannelInOut pin1 --resolution=RESOLUTION --in-memory-blocks=1 --open-drain
+  channels2 := rmt.ChannelInOut pin2 --resolution=RESOLUTION --in-memory-blocks=2 --open-drain
+  in1 := channels1.in
+  in2 := channels2.in
+  out1 := channels1.out
+  out2 := channels2.out
 
   // Do a lot of signals.
   out-signals1 := rmt.Signals.alternating 100 --first-level=1: 10
@@ -414,13 +430,11 @@ test-bidirectional pin1/gpio.Pin pin2/gpio.Pin:
     if saw-10us and saw-1000us: break
   expect (saw-10us and saw-1000us)
 
-  in1.close
-  out1.close
-  in2.close
-  out2.close
+  channels1.close
+  channels2.close
   pin3.close
 
-test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
+test-loop-count pin1/int pin2/int:
   out := rmt.Out pin1 --resolution=RESOLUTION
   pulse-channel := pulse-counter.Channel pin2
   pulse-unit := pulse-counter.Unit --channels=[pulse-channel]
@@ -454,17 +468,20 @@ test-loop-count pin1/gpio.Pin pin2/gpio.Pin:
   in.close
   out.close
 
-test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
+test-synchronized-write pin1/int pin2/int:
   if system.architecture == system.ARCHITECTURE-ESP32:
     // The ESP32 doesn't support synchronized writes.
     return
 
-  in := rmt.In pin1 --resolution=RESOLUTION
+  // pin1 needs both an input and an output channel sharing a single pin
+  // reservation, so we use $rmt.ChannelInOut.
+  channels1 := rmt.ChannelInOut pin1 --resolution=RESOLUTION --open-drain --pull-up
+  in := channels1.in
+  out1 := channels1.out
 
   idle-signals := rmt.Signals 2
   idle-signals.set 0 --level=1 --period=1
   idle-signals.set 1 --level=1 --period=1
-  out1 := rmt.Out pin1 --resolution=RESOLUTION --open-drain --pull-up
   out1.write idle-signals --done-level=1
   out2 := rmt.Out pin2 --resolution=RESOLUTION --open-drain
   out2.write idle-signals --done-level=1
@@ -502,15 +519,14 @@ test-synchronized-write pin1/gpio.Pin pin2/gpio.Pin:
     expect-equals 0 (in-signals.period 3)
 
   synchronizer.close
-  in.close
-  out1.close
+  channels1.close
   out2.close
 
-test-encoder pin1/gpio.Pin pin2/gpio.Pin:
+test-encoder pin1/int pin2/int:
   test-encoder-bytes pin1 pin2
   test-encoder-patterns pin1 pin2
 
-test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin:
+test-encoder-bytes pin1/int pin2/int:
   data := #[0xA3, 0x0F]
   bit-size := 15
   encoder-bytes := #[
@@ -664,7 +680,7 @@ test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin:
       --expected-periods=expected-periods
 
 
-test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin
+test-encoder-bytes pin1/int pin2/int
     --start-level/int=0
     --done-level/int=1
     --data/io.Data
@@ -701,11 +717,11 @@ test-encoder-bytes pin1/gpio.Pin pin2/gpio.Pin
   out-channel.close
   in-channel.close
 
-test-encoder-patterns pin1/gpio.Pin pin2/gpio.Pin:
+test-encoder-patterns pin1/int pin2/int:
   test-uart pin1 pin2
   test-individual-patterns pin1 pin2
 
-test-uart pin1/gpio.Pin pin2/gpio.Pin:
+test-uart pin1/int pin2/int:
   BAUD-RATE ::= 115200
 
   // Switch to 20MHz.
@@ -785,7 +801,7 @@ test-uart pin1/gpio.Pin pin2/gpio.Pin:
   encoder.close
   out-channel.close
 
-test-individual-patterns pin1/gpio.Pin pin2/gpio.Pin:
+test-individual-patterns pin1/int pin2/int:
   pattern-0 := rmt.Signals.alternating 2 --first-level=1: 15
   pattern-1 := rmt.Signals.alternating 2 --first-level=1: 25
   start := rmt.Signals.alternating --first-level=1 2: 35
@@ -897,20 +913,14 @@ main:
 test:
   print "$RMT-PIN-1 <-> $RMT-PIN-2 <-> $RMT-PIN-3"
 
-  pin1 := gpio.Pin RMT-PIN-1
-  pin2 := gpio.Pin RMT-PIN-2
+  test-resource RESOURCE-PINS
 
-  test-resource pin1
-
-  test-simple-pulse pin1 pin2
-  test-multiple-pulses pin1 pin2
-  test-long-sequence pin1 pin2
-  test-carrier pin1 pin2
-  test-glitch-filter pin1 pin2
-  test-bidirectional pin1 pin2
-  test-loop-count pin1 pin2
-  test-synchronized-write pin1 pin2
-  test-encoder pin1 pin2
-
-  pin1.close
-  pin2.close
+  test-simple-pulse RMT-PIN-1 RMT-PIN-2
+  test-multiple-pulses RMT-PIN-1 RMT-PIN-2
+  test-long-sequence RMT-PIN-1 RMT-PIN-2
+  test-carrier RMT-PIN-1 RMT-PIN-2
+  test-glitch-filter RMT-PIN-1 RMT-PIN-2
+  test-bidirectional RMT-PIN-1 RMT-PIN-2
+  test-loop-count RMT-PIN-1 RMT-PIN-2
+  test-synchronized-write RMT-PIN-1 RMT-PIN-2
+  test-encoder RMT-PIN-1 RMT-PIN-2

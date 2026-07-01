@@ -50,7 +50,7 @@ main-board1:
 test-board1:
   service ::= espnow.Service --key=PMK --channel=CHANNEL
 
-  port := uart.Port --rx=(gpio.Pin RX1) --tx=null --baud-rate=BAUD-RATE
+  port := uart.Port --rx=RX1 --tx=null --baud-rate=BAUD-RATE
   other-bytes := port.in.read-bytes 6  // Read MAC address of other board.
   other-address := espnow.Address other-bytes
   print "Other address: $other-address"
@@ -72,7 +72,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  port := uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
+  port := uart.Port --rx=null --tx=TX2 --baud-rate=BAUD-RATE
   port.out.write --flush esp32.mac-address
 
   service ::= espnow.Service --key=PMK --channel=CHANNEL

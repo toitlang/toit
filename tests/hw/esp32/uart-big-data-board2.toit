@@ -9,7 +9,6 @@ Setup: see uart-big-data-shared.toit.
 */
 
 import expect show *
-import gpio
 import system
 import system show platform
 import uart
@@ -23,7 +22,7 @@ main:
 test:
   port/uart.Port := ?
   if platform == system.PLATFORM-FREERTOS:
-    port = uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
+    port = uart.Port --rx=null --tx=TX2 --baud-rate=BAUD-RATE
   else:
     port = uart.Port UART-PATH --baud-rate=BAUD-RATE
 

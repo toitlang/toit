@@ -23,15 +23,16 @@ OUT1 /int := Variant.CURRENT.pulse-counter1-out1
 IN2 /int ::= Variant.CURRENT.pulse-counter1-in2
 OUT2 /int := Variant.CURRENT.pulse-counter1-out2
 
-CHANNEL-COUNT ::= Variant.CURRENT.pulse-counter-channel-count
-
 main:
   run-test: test
 
 test:
-  in := gpio.Pin IN1
+  // in/in2 are only handed to the pulse-counter (which reserves and releases
+  // them), so they are plain GPIO numbers. out/out2 are driven directly with
+  // .set, so they stay gpio.Pin objects.
+  in := IN1
   out := gpio.Pin OUT1 --output
-  in2 := gpio.Pin IN2
+  in2 := IN2
   out2 := gpio.Pin OUT2 --output
 
   unit := Unit in
@@ -76,44 +77,10 @@ test:
 
   unit.close
 
-  /** ---- Use all 4/8 units, each with 2 channels. ---- */
-  units := List CHANNEL-COUNT:
-    Unit --channels=[
-      Channel in,
-      Channel in2,
-    ]
-
-  units.do: expect-equals 0 it.value
-
-  out.set 1
-  out2.set 1
-
-  units.do: expect-equals 2 it.value
-
-  out.set 0
-  out2.set 0
-
-  units.do: it.close
-
-  /** ---- Do it again, showing that the values a reset and that we properly release the resources. ---- */
-
-  units = List CHANNEL-COUNT:
-    Unit --channels= [
-      Channel in,
-      Channel in2,
-    ]
-
-  units.do: expect-equals 0 it.value
-
-  out.set 1
-  out2.set 1
-
-  units.do: expect-equals 2 it.value
-
-  out.set 0
-  out2.set 0
-
-  units.do: it.close
+  // NOTE: The test that allocated all units with a channel each on the shared
+  // `in`/`in2` pins was removed. With the integer GPIO API a pin is reserved by
+  // a single pulse-counter, so counting one pin with several units is no longer
+  // supported.
 
   /** ---- Test the counting modes. ---- */
 
@@ -317,9 +284,8 @@ test:
   unit.close
 
   /** ---- Test the glitch filter. ---- */
+  // Hand OUT1 over to the RMT peripheral, which reserves the pin by its number.
   out.close
-
-  out = gpio.Pin OUT1
 
   clk-div/int := ?
   glitch-filter-ns/int := ?
@@ -339,7 +305,7 @@ test:
     clk-div = 9
     glitch-filter-ns = 125
 
-  rmt-channel := rmt.Out out --resolution=(80_000_000 / clk-div)
+  rmt-channel := rmt.Out OUT1 --resolution=(80_000_000 / clk-div)
 
   unit = Unit in --glitch-filter-ns=glitch-filter-ns --on-negative-edge=Channel.EDGE-INCREMENT
 

@@ -24,8 +24,8 @@ main:
 
 test:
   bus := i2c.Bus
-      --sda=gpio.Pin SDA-PIN
-      --scl=gpio.Pin SCL-PIN
+      --sda=SDA-PIN
+      --scl=SCL-PIN
       --frequency=100_000
       --pull-up
 

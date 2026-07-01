@@ -32,10 +32,9 @@ test:
   v33-pin := gpio.Pin Variant.CURRENT.adc-v33-pin --output
   v33-pin.set 1
 
-  adc1-pin := gpio.Pin Variant.CURRENT.adc1-pin
   control-pin := gpio.Pin Variant.CURRENT.adc-control-pin --output
 
-  adc := gpio.Adc adc1-pin
+  adc := gpio.Adc Variant.CURRENT.adc1-pin
   control-pin.set 0
 
   // The resistors create a voltage divider of ration 2/3.
@@ -79,12 +78,10 @@ test:
   print "This only works if no WiFi is running"
   print "There are other restrictions."
 
-  adc2-pin := gpio.Pin Variant.CURRENT.adc2-pin
-
   expect-throw "OUT_OF_RANGE":
-    adc = gpio.Adc adc2-pin
+    adc = gpio.Adc Variant.CURRENT.adc2-pin
 
-  adc = gpio.Adc --allow-restricted adc2-pin
+  adc = gpio.Adc --allow-restricted Variant.CURRENT.adc2-pin
   control-pin.set 0
   // The resistors create a voltage divider of ration 2/3.
   value = adc.get

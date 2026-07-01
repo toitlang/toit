@@ -19,8 +19,8 @@ main:
 
 test:
   port := uart.Port
-      --rx=gpio.Pin PIN-FREE-AND-UNUSED
-      --tx=gpio.Pin PIN-OUT1
+      --rx=PIN-FREE-AND-UNUSED
+      --tx=PIN-OUT1
       --baud-rate=115200
 
   channel := monitor.Channel 1

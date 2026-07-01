@@ -19,9 +19,9 @@ main:
   run-test: test
 
 test:
-  scl := gpio.Pin Variant.CURRENT.board2-i2c-scl-pin
-  sda := gpio.Pin Variant.CURRENT.board2-i2c-sda-pin
-  bus := i2c.Bus --scl=scl --sda=sda
+  bus := i2c.Bus
+      --scl=Variant.CURRENT.board2-i2c-scl-pin
+      --sda=Variant.CURRENT.board2-i2c-sda-pin
 
   devices := bus.scan
   print "i2c devices: $devices"
