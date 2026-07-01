@@ -944,6 +944,20 @@ class Stack : public HeapObject {
   // Iterates over all frames on this stack and returns the number of frames.
   int frames_do(Program* program, FrameCallback* cb);
 
+  // Debugger support: read the registers/locals of a single frame of a stored
+  // (parked) stack. `frame_index` 0 is the top (innermost) frame. These are
+  // only safe to call while the owning process is parked and the heap is stable
+  // under the scheduler lock; they walk the frame markers exactly like
+  // `frames_do` but expose one frame's slots instead of unwinding.
+  //
+  // Layout: a frame's marker sits at some slot, its saved bcp at slot+1, and
+  // its registers at slot+2 .. up to the next frame's marker. For the top frame
+  // this marker is the one the debug hook pushed before parking, so slot+1 is
+  // the bytecode the process paused on.
+  word frame_absolute_bci(Program* program, int frame_index);
+  int frame_register_count(Program* program, int frame_index);
+  Object* frame_register(Program* program, int frame_index, int reg_index);
+
   static INLINE word initial_length() { return 64; }
   static INLINE word max_length();
 
@@ -990,6 +1004,11 @@ class Stack : public HeapObject {
   static const word PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
   static const word GUARD_ZONE_OFFSET = PENDING_STACK_CHECK_METHOD_OFFSET + WORD_SIZE;
   static const word HEADER_SIZE = GUARD_ZONE_OFFSET + GUARD_ZONE_SIZE;
+
+  // Slot index of the `frame_index`-th frame marker counting from sp (0 == top
+  // frame's marker), or -1 if there is no such frame. Used by the debugger frame
+  // readers above.
+  word _frame_marker_slot(Program* program, int frame_index);
 
   void _set_length(word value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(word value) { _word_at_put(TOP_OFFSET, value); }

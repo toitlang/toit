@@ -15,6 +15,7 @@
 
 #include <errno.h>
 #include <libgen.h>
+#include <stdlib.h>
 
 #include "top.h"
 #include "run.h"
@@ -64,6 +65,11 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
+      // Activate the in-image debugger when requested. The `--debug` flag sets
+      // OEVM_DEBUG; the env vars also work directly.
+      if (getenv("OEVM_DEBUG") != null || getenv("TOIT_DEBUG") != null) {
+        vm.start_debugger();
+      }
       create_and_start_external_message_handlers(&vm);
       ProgramImage boot_image = read_image_from_bundle(boot_bundle);
       int group_id = vm.scheduler()->next_group_id();
