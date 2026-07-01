@@ -1017,6 +1017,82 @@ class Out extends Channel_:
       state_.wait-for-state WRITE-STATE_
 
 /**
+A bidirectional RMT setup that drives a single pin with both an $In and an $Out
+  channel.
+
+Single-wire, open-drain protocols (such as 1-Wire or DHTxx) need to both read
+  from and write to the same pin. Each $In or $Out reserves the pin on its own,
+  so two of them can't be created on the same GPIO independently. A
+  $ChannelInOut reserves the pin once, creates both channels on it, and releases
+  everything again when $close is called.
+
+The $in channel is created before the $out channel, which is required for
+  open-drain output to work.
+*/
+class ChannelInOut:
+  /** The input channel. */
+  in /In
+  /** The output channel. */
+  out /Out
+  /** The shared pin both channels drive. */
+  pin /gpio.Pin
+  // Whether this object created the pin from an integer and must close it again.
+  owns-pin_ /bool
+
+  /**
+  Constructs a bidirectional RMT setup on the given $pin (a GPIO number).
+
+  The $resolution, $in-memory-blocks and $out-memory-blocks are forwarded to the
+    underlying $In and $Out channels. See $In.constructor and $Out.constructor.
+
+  If $open-drain is set and $pull-up is true, the pin's internal pull-up resistor
+    is enabled.
+
+  Passing a $gpio.Pin as $pin is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
+  */
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor pin/any
+      --resolution/int
+      --in-memory-blocks/int=1
+      --out-memory-blocks/int=1
+      --open-drain/bool=false
+      --pull-up/bool=false:
+    // The two channels must share a single pin reservation, which neither could
+    // obtain on its own. When given an integer we reserve the pin here (as a
+    // gpio.Pin) and hand that shared pin to both channels so they don't reserve
+    // it themselves; a deprecated gpio.Pin is shared directly (the caller owns
+    // it). The pin is passed through an `any` variable so the channels'
+    // deprecated-Pin warning doesn't trigger.
+    if pin is int:
+      this.pin = gpio.Pin pin
+      owns-pin_ = true
+    else:
+      this.pin = pin as gpio.Pin
+      owns-pin_ = false
+    // Both channels receive the shared pin (through an `any` variable so their
+    // deprecated-Pin warning doesn't trigger). Passing a gpio.Pin makes each
+    // channel call the primitive with the negative "already reserved" encoding,
+    // so neither reserves the pin itself -- the shared pin holds the single
+    // reservation. This negative-encoding path must be kept even once the
+    // user-facing gpio.Pin form is removed.
+    shared /any := this.pin
+    // The input channel must be created before the output channel for open-drain.
+    in = In shared --resolution=resolution --memory-blocks=in-memory-blocks
+    out = Out shared
+        --resolution=resolution
+        --memory-blocks=out-memory-blocks
+        --open-drain=open-drain
+        --pull-up=pull-up
+
+  /** Closes both channels, and the pin if this object created it. */
+  close -> none:
+    in.close
+    out.close
+    if owns-pin_: pin.close
+
+/**
 Synchronizes the output of multiple $Out channels.
 
 Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
