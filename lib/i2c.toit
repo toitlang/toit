@@ -11,13 +11,15 @@ I2C is a serial communication bus able to address multiple devices along the sam
 
 To set up an I2C bus:
 ```
-import gpio
 import i2c
+
+SDA ::= 21
+SCL ::= 22
 
 main:
   bus := i2c.Bus
-    --sda=gpio.Pin 21
-    --scl=gpio.Pin 22
+    --sda=SDA
+    --scl=SCL
 ```
 
 An I2C bus can be associated with a number of devices. Each device must have a unique I2C address. The address can be found in the datasheet for the selected peripheral - it's a 7-bit integer.
@@ -48,9 +50,13 @@ class Bus:
   The $sda-pullup is not fully supported anymore. If either is
     true, then both are pulled up.
   */
+  // __TYPE-MIGRATION__ sda: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ sda: int
+  // __TYPE-MIGRATION__ scl: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ scl: int
   constructor
-      --sda/gpio.Pin
-      --scl/gpio.Pin
+      --sda/any
+      --scl/any
       --frequency/int=DEFAULT_FREQUENCY
       --sda-pullup/bool:
     return Bus --sda=sda --scl=scl --frequency=frequency --pull-up=sda-pullup
@@ -61,9 +67,13 @@ class Bus:
   The $sda-pullup and $scl-pullup flags are not fully supported anymore. If
     either is true, then both are pulled up.
   */
+  // __TYPE-MIGRATION__ sda: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ sda: int
+  // __TYPE-MIGRATION__ scl: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ scl: int
   constructor
-      --sda/gpio.Pin
-      --scl/gpio.Pin
+      --sda/any
+      --scl/any
       --frequency/int=DEFAULT_FREQUENCY
       --sda-pullup/bool=false
       --scl-pullup/bool:
@@ -71,6 +81,9 @@ class Bus:
 
   /**
   Constructs an I2C bus on the $sda (data) and the $scl (clock) pins.
+
+  The $sda and $scl are GPIO numbers. The bus reserves the pins and releases
+    them again when the bus is closed.
 
   The $frequency specifies the default frequency for devices that are
     created with $device. Individual devices can have their frequency
@@ -81,14 +94,21 @@ class Bus:
     Use external pull-up resistors if you need to communicate at high speeds.
     Many i2c modules have integrated built-in pull-up resistors, so this is typically not
     necessary.
+
+  Passing a $gpio.Pin as $sda or $scl is deprecated; provide the integer GPIO
+    number instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ sda: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ sda: int
+  // __TYPE-MIGRATION__ scl: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ scl: int
   constructor
-      --sda/gpio.Pin
-      --scl/gpio.Pin
+      --sda/any
+      --scl/any
       --frequency/int=DEFAULT-FREQUENCY
       --pull-up/bool=false:
     frequency_ = frequency
-    resource_ = i2c-bus-create_ resource-group_ sda.num scl.num pull-up
+    resource_ = i2c-bus-create_ resource-group_ (gpio.to-pin-num_ sda) (gpio.to-pin-num_ scl) pull-up
     add-finalizer this:: close
 
   /**

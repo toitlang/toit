@@ -54,6 +54,7 @@ namespace toit {
   fn(PcntUnitResource)                  \
   fn(PcntChannelResource)               \
   fn(PwmResource)                       \
+  fn(TouchResource)                     \
   fn(RmtResource)                       \
   fn(RmtSyncManagerResource)            \
   fn(RmtPatternEncoderResource)         \

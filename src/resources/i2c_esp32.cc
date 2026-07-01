@@ -28,6 +28,8 @@
 #include "../utils.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 namespace toit {
 
 // Should be lower than PROCESS_MAX_RUNTIME_US of scheduler.cc.
@@ -79,12 +81,16 @@ class I2cBusResource : public Resource, public DeviceList {
   void add_device(I2cDeviceResource* device);
   void remove_device(I2cDeviceResource* device);
 
+  GpioPins& owned_pins() { return owned_pins_; }
+
   I2cResourceGroup* resource_group() const {
     return static_cast<I2cResourceGroup*>(Resource::resource_group());
   }
 
  private:
   i2c_master_bus_handle_t handle_;
+  // GPIO pins reserved by this bus.
+  GpioPins owned_pins_;
 };
 
 I2cDeviceResource::~I2cDeviceResource() {
@@ -101,6 +107,8 @@ I2cBusResource::~I2cBusResource() {
     remove_device(DeviceList::first());
   }
   ESP_ERROR_CHECK(i2c_del_master_bus(handle()));
+  // Release any GPIO pins this bus reserved.
+  owned_pins_.release();
 }
 
 void I2cBusResource::add_device(I2cDeviceResource* device) {
@@ -137,12 +145,21 @@ PRIMITIVE(bus_create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Decode the pins and reserve them from the shared
+  // pool. The reserver releases everything again if we leave without calling
+  // `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int sda_num = reserver.decode_and_take(sda, &reserve_ok);
+  int scl_num = reserver.decode_and_take(scl, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   bool handed_to_proxy = false;
 
   i2c_master_bus_config_t config = {
     .i2c_port = -1,  // Auto select.
-    .sda_io_num = static_cast<gpio_num_t>(sda),
-    .scl_io_num = static_cast<gpio_num_t>(scl),
+    .sda_io_num = static_cast<gpio_num_t>(sda_num),
+    .scl_io_num = static_cast<gpio_num_t>(scl_num),
     .clk_source = I2C_CLK_SRC_DEFAULT,
     .glitch_ignore_cnt = 7,
     .intr_priority = 0,
@@ -160,6 +177,10 @@ PRIMITIVE(bus_create) {
 
   auto resource = _new I2cBusResource(group, handle);
   if (resource == null) FAIL(MALLOC_FAILED);
+
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
 
   group->register_resource(resource);
   proxy->set_external_address(resource);

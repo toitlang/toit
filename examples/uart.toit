@@ -3,7 +3,6 @@
 // be found in the examples/LICENSE file.
 
 import uart
-import gpio
 
 /**
 Example to demonstrate the use of the UART.
@@ -18,8 +17,8 @@ TX ::= 22
 
 main:
   port := uart.Port
-      --rx=gpio.Pin RX
-      --tx=gpio.Pin TX
+      --rx=RX
+      --tx=TX
       --baud-rate=115200
 
   task::

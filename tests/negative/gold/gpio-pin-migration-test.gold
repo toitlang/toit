@@ -1,0 +1,34 @@
+tests/negative/gpio-pin-migration-test.toit:20:11: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  rmt.Out pin --resolution=1_000_000     // Warning: deprecated Pin.
+          ^~~
+tests/negative/gpio-pin-migration-test.toit:21:11: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  rmt.Out "x" --resolution=1_000_000     // Error: string.
+          ^~~
+tests/negative/gpio-pin-migration-test.toit:23:10: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  rmt.In pin --resolution=1_000_000      // Warning: deprecated Pin.
+         ^~~
+tests/negative/gpio-pin-migration-test.toit:27:17: warning: Deprecated type 'Pin' for parameter 'sda'. Provide an integer instead
+  i2c.Bus --sda=pin --scl=22            // Warning: deprecated Pin for sda.
+                ^~~
+tests/negative/gpio-pin-migration-test.toit:28:26: error: Type mismatch. Expected 'Pin' or 'int'. Got 'float'
+  i2c.Bus --sda=21 --scl=1.5            // Error: float for scl.
+                         ^~~
+tests/negative/gpio-pin-migration-test.toit:33:19: warning: Deprecated type 'Pin' for parameter 'cs'. Provide an integer instead
+  bus.device --cs=pin --frequency=1_000_000       // Warning: deprecated Pin.
+                  ^~~
+tests/negative/gpio-pin-migration-test.toit:34:19: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  bus.device --dc="x" --frequency=1_000_000       // Error: string for dc.
+                  ^~~
+tests/negative/gpio-pin-migration-test.toit:38:18: warning: Deprecated type 'Pin' for parameter 'tx'. Provide an integer instead
+  uart.Port --tx=pin --baud-rate=115200           // Warning: deprecated Pin.
+                 ^~~
+tests/negative/gpio-pin-migration-test.toit:39:18: error: Type mismatch. Expected 'Pin' or 'int'. Got 'float'
+  uart.Port --tx=1.5 --baud-rate=115200           // Error: float.
+                 ^~~
+tests/negative/gpio-pin-migration-test.toit:43:7: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  Adc pin                                // Warning: deprecated Pin.
+      ^~~
+tests/negative/gpio-pin-migration-test.toit:44:7: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  Adc "x"                                // Error: string.
+      ^~~
+Compilation failed

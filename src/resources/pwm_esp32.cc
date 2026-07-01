@@ -27,6 +27,8 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 
 #if SOC_LEDC_SUPPORT_HS_MODE
     #define SPEED_MODE LEDC_HIGH_SPEED_MODE
@@ -74,17 +76,21 @@ const ledc_clk_cfg_t kDefaultClk = LEDC_USE_RC_FAST_CLK;
 class PwmResource : public Resource {
  public:
   TAG(PwmResource);
-  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num)
+  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num, bool owns_pin)
     : Resource(group)
     , channel_(channel)
-    , num_(num) {}
+    , num_(num)
+    , owns_pin_(owns_pin) {}
 
   ledc_channel_t channel() const { return channel_; }
   gpio_num_t num() const { return num_; }
+  // Whether this channel reserved its pin and must release it.
+  bool owns_pin() const { return owns_pin_; }
 
  private:
   ledc_channel_t channel_;
   gpio_num_t num_;
+  bool owns_pin_;
 };
 
 class PwmResourceGroup : public ResourceGroup {
@@ -107,14 +113,19 @@ class PwmResourceGroup : public ResourceGroup {
   virtual void on_unregister_resource(Resource* r) {
     PwmResource* pwm = reinterpret_cast<PwmResource*>(r);
     ledc_stop(SPEED_MODE, pwm->channel(), 0);
-    gpio_config_t cfg = {
-        .pin_bit_mask = BIT64(pwm->num()),
-        .mode = GPIO_MODE_DISABLE,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&cfg);
+    if (pwm->owns_pin()) {
+      // Reset the pin and return it to the shared pool.
+      gpio_pool_put(pwm->num());
+    } else {
+      gpio_config_t cfg = {
+          .pin_bit_mask = BIT64(pwm->num()),
+          .mode = GPIO_MODE_DISABLE,
+          .pull_up_en = GPIO_PULLUP_DISABLE,
+          .pull_down_en = GPIO_PULLDOWN_DISABLE,
+          .intr_type = GPIO_INTR_DISABLE,
+      };
+      gpio_config(&cfg);
+    }
     ledc_channels.put(pwm->channel());
   }
 
@@ -204,11 +215,19 @@ PRIMITIVE(start) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Decode the pin and reserve it from the shared
+  // pool. The reserver releases it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int pin_num = reserver.decode_and_take(pin, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+  bool owns_pin = reserver.any();
+
   ledc_channel_t channel = ledc_channels.any();
   if (channel == kInvalidLedcChannel) FAIL(ALREADY_IN_USE);
 
   ledc_channel_config_t config = {
-    .gpio_num = pin,
+    .gpio_num = pin_num,
     .speed_mode = SPEED_MODE,
     .channel = channel,
     .intr_type = LEDC_INTR_DISABLE,
@@ -226,12 +245,16 @@ PRIMITIVE(start) {
     return Primitive::os_error(err, process);
   }
 
-  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin));
+  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin_num), owns_pin);
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
     FAIL(MALLOC_FAILED);
   }
+
+  // The reservation now belongs to the resource (released in
+  // on_unregister_resource).
+  reserver.keep();
 
   resource_group->register_resource(pwm);
 

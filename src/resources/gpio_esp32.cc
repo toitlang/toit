@@ -31,6 +31,8 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 #include "../event_sources/ev_queue_esp32.h"
 #include "../event_sources/system_esp32.h"
 
@@ -125,6 +127,27 @@ static bool is_restricted_pin(int num) {
 
 #endif
 
+bool gpio_pool_take(int num) {
+  return gpio_pins.take(num);
+}
+
+void gpio_pool_put(int num) {
+  // Clear all state associated with the GPIO pin.
+  // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
+  // kept during deep sleep.
+  gpio_config_t cfg = {
+    .pin_bit_mask = 1ULL << num,
+    .mode = GPIO_MODE_DISABLE,
+    .pull_up_en = GPIO_PULLUP_DISABLE,
+    .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&cfg);
+  if (GPIO_IS_VALID_OUTPUT_GPIO(num)) gpio_set_level(static_cast<gpio_num_t>(num), 0);
+
+  gpio_pins.put(num);
+}
+
 class GpioResource : public EventQueueResource {
  public:
   TAG(GpioResource);
@@ -210,21 +233,7 @@ void GpioResourceGroup::on_unregister_resource(Resource* r) {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
   });
 
-  // Clear all state associated with the GPIO pin.
-  // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
-  // kept during deep sleep.
-
-  gpio_config_t cfg = {
-    .pin_bit_mask = 1ULL << pin,
-    .mode = GPIO_MODE_DISABLE,
-    .pull_up_en = GPIO_PULLUP_DISABLE,
-    .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    .intr_type = GPIO_INTR_DISABLE,
-  };
-  gpio_config(&cfg);
-  if (GPIO_IS_VALID_OUTPUT_GPIO(pin)) gpio_set_level(pin, 0);
-
-  gpio_pins.put(pin);
+  gpio_pool_put(pin);
 }
 
 QueueHandle_t GpioResourceGroup::queue;
@@ -280,7 +289,7 @@ PRIMITIVE(use) {
     FAIL(PERMISSION_DENIED);
   }
 
-  if (!gpio_pins.take(num)) FAIL(ALREADY_IN_USE);
+  if (!gpio_pool_take(num)) FAIL(ALREADY_IN_USE);
 
   GpioResource* resource = _new GpioResource(resource_group, num);
   if (!resource) {

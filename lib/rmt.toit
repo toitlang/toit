@@ -28,13 +28,11 @@ The number of bytes per memory block is 256 on the ESP32 and ESP32S2. It is
 ## Pulse
 Emits a precisely timed pulse of 50us on pin 18.
 ```
-import gpio
 import rmt
 
 main:
-  pin := gpio.Pin 18
-  // Create a channel on pin 18 with a resolution of 1MHz.
-  channel := rmt.Channel pin --output --resolution=1_000_000
+  // Create an output channel on pin 18 with a resolution of 1MHz.
+  channel := rmt.Out 18 --resolution=1_000_000
   pulse := rmt.Signals 2
   pulse.set 0 --level=1 --period=50  // In ticks of the specified resolution.
   pulse.set 1 --level=1 --period=50
@@ -312,7 +310,7 @@ class Channel:
   channel_/Channel_? := null
 
   // Configuration.
-  pin/gpio.Pin
+  pin/any
   input_/bool := false
   memory-block-count_/int := 0
   clk-div_/int := 0
@@ -375,7 +373,9 @@ class Channel:
     releasing channel A would free the second memory block (at location 1) and thus allow the creation
     of a channel with 7 memory blocks.
   */
-  constructor .pin/gpio.Pin --memory-block-count/int=1 --channel-id/int?=null:
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor .pin/any --memory-block-count/int=1 --channel-id/int?=null:
     memory-block-count_ = memory-block-count
 
   /**
@@ -383,7 +383,9 @@ class Channel:
 
   Configures the channel for input. See $(configure --input) for input parameters.
   */
-  constructor --input/bool .pin/gpio.Pin --memory-block-count/int=1
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor --input/bool .pin/any --memory-block-count/int=1
       --channel-id /int? = null
       --clk-div /int = DEFAULT-IN-CLK-DIV
       --flags /int = DEFAULT-IN-FLAGS
@@ -408,7 +410,9 @@ class Channel:
 
   Configures the channel for output. See $(configure --output) for output parameters.
   */
-  constructor --output/bool .pin/gpio.Pin --memory-block-count/int=1
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor --output/bool .pin/any --memory-block-count/int=1
       --channel-id /int? = null
       --clk-div /int = DEFAULT-OUT-CLK-DIV
       --flags /int = DEFAULT-OUT-FLAGS
@@ -772,6 +776,9 @@ class In extends Channel_:
   /**
   Constructs an input channel on the given $pin.
 
+  The $pin is the GPIO number the channel reads from. The channel reserves the
+    pin and releases it again when the channel is closed.
+
   The $resolution is the frequency of the clock that the RMT controller uses to
     sample the input signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz).
 
@@ -782,8 +789,13 @@ class In extends Channel_:
 
   Input channels can only receive as many signals (in one sequence) as there is space
     in the memory blocks.
+
+  Passing a $gpio.Pin as $pin is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
-  constructor pin/gpio.Pin
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor pin/any
       --resolution/int
       --memory-blocks/int=1:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
@@ -792,7 +804,7 @@ class In extends Channel_:
     memory-blocks_ = memory-blocks
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
-    resource := rmt-channel-new_ resource-group_ pin.num resolution hw-symbols Channel_.CHANNEL-KIND-INPUT_
+    resource := rmt-channel-new_ resource-group_ (gpio.to-pin-num_ pin) resolution hw-symbols Channel_.CHANNEL-KIND-INPUT_ false
     super.from-sub_ resource
 
   /** Closes the channel. */
@@ -883,6 +895,9 @@ class Out extends Channel_:
   /**
   Constructs an output channel on the given $pin.
 
+  The $pin is the GPIO number the channel drives. The channel reserves the pin
+    and releases it again when the channel is closed.
+
   The $resolution is the frequency of the clock that the RMT controller uses to
     emit the output signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz). Signals
     are specified in ticks of this frequency.
@@ -894,10 +909,17 @@ class Out extends Channel_:
   Generally, output channels don't need extra blocks as interrupts will copy data into
     the buffer when necessary.
 
+  If $open-drain is set and $pull-up is true, the internal pull-up resistor is enabled.
+
   If an $Out channel is in $open-drain mode, and an $In channel is on the same pin, then
     the $In channel must be created first.
+
+  Passing a $gpio.Pin as $pin is deprecated; provide the integer GPIO number
+    instead. The $gpio.Pin form will be removed in a future release.
   */
-  constructor pin/gpio.Pin
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  constructor pin/any
       --resolution/int
       --memory-blocks/int=1
       --open-drain/bool=false
@@ -907,8 +929,10 @@ class Out extends Channel_:
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
     kind := open-drain ? Channel_.CHANNEL-KIND-OUTPUT-OPEN-DRAIN_ : Channel_.CHANNEL-KIND-OUTPUT_
-    resource := rmt-channel-new_ resource-group_ pin.num resolution hw-symbols kind
-    if open-drain:
+    resource := rmt-channel-new_ resource-group_ (gpio.to-pin-num_ pin) resolution hw-symbols kind pull-up
+    // For the new (integer) API the primitive applies the pull when it owns the
+    // pin. For a deprecated $gpio.Pin the pin owns its own configuration.
+    if open-drain and pin is gpio.Pin:
       pin.set-pull --up=pull-up --off=(not pull-up)
     super.from-sub_ resource
 
@@ -1214,7 +1238,7 @@ rmt-bytes-per-memory-block_:
 rmt-init_:
   #primitive.rmt.init
 
-rmt-channel-new_ resource-group pin-num/int resolution/int symbols/int kind/int:
+rmt-channel-new_ resource-group pin-num/int resolution/int symbols/int kind/int pull-up/bool:
   #primitive.rmt.channel-new
 
 rmt-channel-delete_ resource-group resource:

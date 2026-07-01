@@ -437,7 +437,7 @@ namespace toit {
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 4)                       \
+  PRIMITIVE(create, 7)                       \
   PRIMITIVE(configure, 13)                   \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
@@ -481,7 +481,7 @@ namespace toit {
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(bytes_per_memory_block, 0)       \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 5)                  \
+  PRIMITIVE(channel_new, 6)                  \
   PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(enable, 1)                       \
   PRIMITIVE(disable, 1)                      \
@@ -1137,6 +1137,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
+#define _A_T_TouchResource(N, name)       MAKE_UNPACKING_MACRO(TouchResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)

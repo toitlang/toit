@@ -17,15 +17,12 @@ By default, ADC2 is disabled, and users need to pass in a flag to allow its use.
 
 # Examples
 ```
-import gpio
 import gpio.adc show Adc
 
 main:
-  pin := gpio.Pin 34
-  adc := Adc pin
+  adc := Adc 34
   print adc.get
   adc.close
-  pin.close
 ```
 
 # Pins
@@ -62,11 +59,14 @@ ADC unit for reading the voltage on GPIO Pins.
 class Adc:
   static MAX-SAMPLES-PER-CALL_ ::= 64
 
-  pin/Pin
+  pin/any
   resource_ := ?
 
   /**
   Initializes an Adc unit for the $pin.
+
+  The $pin is a GPIO number. The ADC reserves the pin and releases it again
+    when the ADC is closed.
 
   Use $max-voltage to indicate max voltage expected to measure. This helps to
     tune the attenuation of the underlying ADC unit. If no $max-voltage is
@@ -78,9 +78,14 @@ class Adc:
     used when WiFi is active, and some of the pins are strapping pins.
   By default, ADC2 is disabled, and users need to pass in the
     $allow-restricted flag to allow its use.
+
+  Passing a $Pin is deprecated; provide the integer GPIO number instead.
+    The $Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
   constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
-    resource_ = adc-init_ resource-freeing-module_ pin.num allow-restricted (max-voltage ? max-voltage : 0.0)
+    resource_ = adc-init_ resource-freeing-module_ (to-pin-num_ pin) allow-restricted (max-voltage ? max-voltage : 0.0)
 
   /**
   Measures the voltage on the pin.
