@@ -38,7 +38,6 @@ add_custom_target(
 set(SKIP_PREFIXES
     "${TOIT_SDK_SOURCE_DIR}/tests/negative/"
     "${TOIT_SDK_SOURCE_DIR}/tests/pkg/assets/"
-    "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/"
     "${TOIT_SDK_SOURCE_DIR}/.git/"
     # Don't go into the top-level external/ directory which is covered by
     # the external health tests.

@@ -5,7 +5,6 @@ Priority: optional
 Build-Depends:
  debhelper-compat (= 13),
  dh-cmake-compat (= 1),
- golang-go,
  cmake,
  ninja-build,
  xxd

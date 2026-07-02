@@ -118,11 +118,6 @@ jobs:
         with:
           name: ${{ needs.build-and-upload.outputs.archive_name }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: stable
-
       - name: Extract tarball
         shell: bash
         run: |
@@ -147,8 +142,8 @@ jobs:
           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.detect_cores.outputs.jobs }}
         run: |
           cd ${{ needs.build-and-upload.outputs.archive_prefix }}
-          # Note that we build without any special requisites. With the exception of 'go', the
-          # GitHub builders should have everything ready.
+          # Note that we build without any special requisites. The GitHub builders
+          # should have everything ready.
           mkdir build
           cmake -S . -B build --preset=default
           cmake --build build
@@ -160,7 +155,6 @@ jobs:
           out/usr/bin/toit version
           out/usr/lib/toit/bin/toit.compile --version
           out/usr/lib/toit/bin/toit.run --version
-          out/usr/lib/toit/bin/toit.pkg version
           ls out/usr/lib/toit/lib/core/core.toit
 
   debian:

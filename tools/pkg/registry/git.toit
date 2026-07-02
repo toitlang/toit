@@ -97,7 +97,10 @@ class GitRegistry extends Registry:
     store.save buffer.bytes
 
   load_ --sync/bool=false --clear-cache/bool=false -> FileSystemView:
-    key := "registry/git/$url"
+    // The cache entry is a single AR file. The extension keeps it distinct from
+    // the old directory-based cache (which was stored at "registry/git/$url"),
+    // so existing users aren't hit by a "cache entry is a directory" error.
+    key := "registry/git/$(url).ar"
 
     ar-contents/ByteArray := ?
     if sync or clear-cache:

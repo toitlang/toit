@@ -32,7 +32,3 @@ override_dh_auto_configure:
 # temporary staging area, and then 'dh_install' will move files to the final locations.
 override_dh_auto_install:
 	dh_auto_install --destdir=debian/tmp
-
-override_dh_dwz:
-	# Don't touch the go-generated executable.
-	dh_dwz -X 'debian/toit/usr/lib/toit/bin/toit.pkg'

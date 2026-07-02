@@ -264,7 +264,7 @@ jobs:
 
       # Floor the macOS deployment target so CI-produced binaries run on
       # Monterey. Exported via GITHUB_ENV so it's visible to CMake's toolchain
-      # detection, the linker, and `go build` for toit.pkg.
+      # detection and the linker.
       - name: Set macOS deployment target
         if: runner.os == 'macOS'
         run: echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
@@ -331,7 +331,6 @@ jobs:
 
       - name: Strip executables - Linux
         if: (runner.os == 'Linux' && env.DO_RELEASE == 'true')
-        # Note: Go executables may not be stripped on Windows.
         run: |
           strip -s build/host/sdk/bin/*
 
