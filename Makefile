@@ -262,42 +262,72 @@ ec618: check-env host-tools
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
 	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
-	# Build the slot-A firmware (bootloader + AP + CP) via xmake. VM->PLAT
-	# calls link DIRECTLY (no jump table — see docs/frozen-base-design.md);
-	# every such branch is captured as a Thumb-branch entry in the SRL2
-	# relocation table, proven complete by the slot-B byte-identity oracle.
-	cd $(EC618_SDK) && rm -rf build && \
-		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
-		GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
-	cd $(CURDIR)
-	# Verify: no FIXED (non-relocated) section points into the slot.
-	# The device relocates only the slot body (.vm_a, via the SRL1 table) and the
-	# shared .data (.load_dram_*, at boot); a pointer into the slot from anywhere
-	# else is fixed at link time and resolves to an unmapped (neutral-base) address
-	# after OTA — the invisible fault the relocation design fights, on the side no
-	# relocation can rescue.
+	# TWO-STAGE LINK (frozen-base phase 4, docs/frozen-base-phase4.md): the
+	# slot links SEPARATELY against the base's symbols (--just-symbols), so
+	# base and slot stop sharing a link. VM->PLAT calls resolve to the base's
+	# addresses and are captured as SRL2 branch entries; symbols the base does
+	# not export (the slot compiler's own libgcc/libstdc++ helpers) are pulled
+	# from the SLOT toolchain's archives and land in-slot — the structural fix
+	# for the C++ comdat spill. NOTE: the base is NOT rebuilt automatically —
+	# after base-side changes (toolchains/ec618/project/, the SDK submodule)
+	# rerun `make ec618-base`.
+	test -f $(BUILD)/ec618-base/base.elf || $(MAKE) ec618-base
+	# Generate the slot linker scripts from the base's geometry (correct for
+	# exactly this base, by construction), then link slot A (neutral link
+	# base) and slot B (its real flash address — the byte-identity oracle).
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--base-elf=$(BUILD)/ec618-base/base.elf --slot=a --out=$(BUILD)/ec618/slot-a.ld
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--base-elf=$(BUILD)/ec618-base/base.elf --slot=b --out=$(BUILD)/ec618/slot-b.ld
+	for s in a b; do \
+		arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
+			-T $(BUILD)/ec618/slot-$$s.ld \
+			-Wl,--just-symbols=$(BUILD)/ec618-base/base.elf \
+			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
+			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
+			-Wl,--whole-archive -Wl,--start-group \
+				$(BUILD)/ec618/src/libtoit_vm.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedtls.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedx509.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedcrypto.a \
+			-Wl,--end-group -Wl,--no-whole-archive \
+			-o $(BUILD)/ec618/toit-slot-$$s.elf || exit 1; \
+		$(EC618_GCC_PATH)/bin/arm-none-eabi-objcopy -O binary \
+			$(BUILD)/ec618/toit-slot-$$s.elf $(BUILD)/ec618/slot-$$s.slotbin || exit 1; \
+	done
+	# Assemble the full AP images: overlay each slot link onto the base image.
+	# The slot links confine all loadable bytes to the slot region (the .data
+	# init LMA rides in-slot, after the body), so this touches no base byte —
+	# and the result has the exact single-link ap.bin shape, so everything
+	# downstream (reloc gen, gold check, envelope, OTA) is unchanged.
+	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--slot-bin=$(BUILD)/ec618/slot-a.slotbin \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_a_start"{print $$1}') \
+		--out=$(BUILD)/ec618/ap-slot-a.bin
+	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--slot-bin=$(BUILD)/ec618/slot-b.slotbin \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
+		--out=$(BUILD)/ec618/ap-slot-b.bin
+	# Verify: no FIXED (non-relocated) section points into the slot. TODO
+	# (phase 4): rethink for the split world — the base cannot reference VM
+	# symbols at all now; the residual exposure is numeric slot addresses in
+	# base data, which this scan over the slot elf does not see.
 	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-refs.toit -- \
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
-		$(EC618_SDK)/build/toit/toit.elf
-	# Save the slot-A artifacts: the envelope is built from these, and the
-	# slot-B relink below overwrites build/toit.
-	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618/toit-slot-a.elf
+		$(BUILD)/ec618/toit-slot-a.elf
 	# Verify the checked-in shared-.data slot-pointer table (compiled into the
 	# VM as src/toit_data_reloc.c, applied at boot by relocate_data_slot_pointers)
-	# still matches the linker's .rel.load_dram_* -> .vm_a records. Regenerate
+	# still matches the linker's .rel.vm_dram_data -> slot records. Regenerate
 	# with `gen-data-reloc.toit --elf=... --out=src/toit_data_reloc.c` if stale.
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--out=$(CURDIR)/src/toit_data_reloc.c --check
-	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-a.bin
-	# Re-link slot B (linker script only, a fast re-link) as an independent
-	# byte-identity oracle for the relocation table.
-	cd $(EC618_SDK) && rm -f build/toit/toit.elf build/toit/ap.bin build/toit/toit.bin && \
-		TOIT_VM_SLOT_B=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
-	cd $(CURDIR)
-	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618/ap-slot-b.bin
 	# Build + verify the dual-slot relocation table. gen-slot-reloc relocates
 	# the slot-A image to slot B and proves byte-identity with the slot-B link
 	# — the guard that no --emit-relocs relocation was dropped. Runs BEFORE the

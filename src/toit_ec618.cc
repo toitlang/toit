@@ -78,10 +78,6 @@ extern "C" {
   extern uint8_t __vm_data_start[];
   extern uint8_t __vm_data_end[];
 
-  // Flash LMA of the base-carried VM .data init image (the .vm_dram_data
-  // section's load address) — the fallback when the slot carries no .data.
-  extern uint8_t __vm_data_load[];
-
   // The VM's .bss (the reserved .vm_dram_zi section). PLAT's startup ZI loop
   // does NOT cover it — the VM zeroes it itself at entry, in
   // load_active_slot_vm_data(), before anything reads a VM static.
@@ -290,12 +286,14 @@ static void load_active_slot_vm_data() {
     memcpy(__vm_data_start, active + table.body_size, table.data_size);
     return;
   }
-  // No per-slot .data (no trailer / legacy / size mismatch). Since .vm_dram_data
-  // moved out of the PLAT-copied dram regions, PLAT startup no longer
-  // initializes it either — fall back to the base-carried LMA init image
-  // (correct exactly when the running slot IS the base build's slot A).
-  printf("[toit] WARN: no usable per-slot VM .data; using the base init image\n");
-  memcpy(__vm_data_start, __vm_data_load, expected);
+  // No per-slot .data (no trailer / legacy / size mismatch). Nothing else
+  // initializes .vm_dram_data — PLAT startup does not cover it and, with the
+  // two-stage link, the base carries no init image for it at all. Continuing
+  // would run on garbage globals; reset instead. A trial slot in this state
+  // resets before validating, so the dispatcher rolls back to the known-good
+  // slot — the failure is self-healing, not a brick.
+  printf("[toit] ERROR: no usable per-slot VM .data init — resetting\n");
+  ec618_system_reset();
 }
 
 static void relocate_data_slot_pointers() {

@@ -26,6 +26,15 @@
 // libc/libm entries (memcpy, sqrt, ...) — harmless here, addresses only.
 #pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
 
+// CMSIS driver ACCESS STRUCTS (data, not functions): the VM binds to these
+// directly — the old jump table deliberately kept them OUT of the table
+// (routing a struct address through a code veneer faults). The base's own
+// code only references some of them, so the rest must be kept explicitly.
+extern void Driver_I2C0(void);
+extern void Driver_I2C1(void);
+extern void Driver_USART0(void);
+extern void Driver_USART1(void);
+extern void Driver_USART2(void);
 extern void ADC_channelDeInit(void);
 extern void ADC_channelInit(void);
 extern void ADC_getDefaultConfig(void);
@@ -391,6 +400,14 @@ extern void sinh(void);
 extern void slot_marker_read(void);
 extern void slot_marker_write(void);
 extern void slpManAONIOLatchEn(void);
+// The RTC-backed libc time shims (--wrap=time & friends): only slot code
+// references them (the base's own SDK paths do not call libc time), so
+// without keep entries the base link garbage-collects the definitions the
+// slot's --wrap flags rely on.
+extern void __wrap_time(void);
+extern void __wrap_clock(void);
+extern void __wrap_localtime(void);
+extern void __wrap_gmtime(void);
 extern void slpManAONIOPowerOff(void);
 extern void slpManAONIOPowerOn(void);
 extern void slpManAONIOVoltGet(void);
@@ -518,6 +535,11 @@ extern void xTaskNotifyWait(void);
 
 __attribute__((used, section(".rodata.toit_plat_keep")))
 const void* const toit_plat_keep[] = {
+  (const void*)&Driver_I2C0,
+  (const void*)&Driver_I2C1,
+  (const void*)&Driver_USART0,
+  (const void*)&Driver_USART1,
+  (const void*)&Driver_USART2,
   (const void*)&ADC_channelDeInit,
   (const void*)&ADC_channelInit,
   (const void*)&ADC_getDefaultConfig,
@@ -877,6 +899,10 @@ const void* const toit_plat_keep[] = {
   (const void*)&slot_marker_read,
   (const void*)&slot_marker_write,
   (const void*)&slpManAONIOLatchEn,
+  (const void*)&__wrap_time,
+  (const void*)&__wrap_clock,
+  (const void*)&__wrap_localtime,
+  (const void*)&__wrap_gmtime,
   (const void*)&slpManAONIOPowerOff,
   (const void*)&slpManAONIOPowerOn,
   (const void*)&slpManAONIOVoltGet,
