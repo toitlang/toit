@@ -1,6 +1,9 @@
 # EC618: the frozen-base contract — removing the jump table
 
-Status: agreed direction (2026-07-02), phased implementation in progress.
+Status: phases 1–3 DONE + HW-validated (2026-07-02): SRL2 (`43ea9e8a`),
+jump-table removal (`8d7dfb01`), pooled dram reserve (`c254f5fd`).
+Phase 4 is designed in [frozen-base-phase4.md](frozen-base-phase4.md)
+(base-vN publishing, two-stage link, device-side reject).
 
 ## Goal
 
