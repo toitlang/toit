@@ -17,10 +17,18 @@ model this is heading toward).
 ## The one rule
 
 **A slot runs only on the exact base build it was linked against.**
-Everything below is bookkeeping around that rule. Until the device-side
-`.base_id` reject lands (phase-4 step 3), nothing stops you from OTA'ing a
-mismatched slot — it faults in creative ways instead of erroring. Keep the
-discipline manual and boring.
+The device ENFORCES this: every base carries a `{ base-vN, fingerprint }`
+record (stamped by `gen-base-id.toit`, version from
+`toolchains/ec618/base-version`), every OTA payload carries the id it was
+linked against (SRL3), and a mismatch is refused before any flash write:
+
+    [toit] ERROR: base mismatch — image built for base-v2, device runs
+    base-v1; full-flash the matching base
+
+`ec618.base-id` returns the flashed identity. Bump the version file
+whenever a base change ships; the fingerprint catches everything else
+(including the UART0/UART1 console variants, which fingerprint
+differently by construction).
 
 ## When you must rebuild the base (and full-flash every device)
 
@@ -51,27 +59,26 @@ that `build/ec618-base/base.elf` exists. After base-side edits, run
   change.
 - New primitives, new drivers, mbedtls changes — slot-side, OTA-able.
 - The slot's own C++ runtime helpers (libgcc/libstdc++): pulled from the
-  slot toolchain, land in-slot. (Mixed slot *compilers* against one base
-  are the phase-4 goal; until the gcc-16 acceptance test passes, keep
-  slots on the pinned toolchain below.)
+  slot toolchain, land in-slot.
+- Slot compiler upgrades: HW-proven (a GCC-16 slot validated on a base
+  deployed from GCC-14-era builds).
 
 ## Toolchains
 
-- Base: the xmake-pinned arm-none-eabi GCC 10.3 (`EC618_GCC_PATH`).
-- Slot (and the VM archives): the PATH compiler. Until the repo pins it,
-  use the local pin — the system compiler is a rolling Arch package and
-  HAS drifted (14.2→16.1 broke builds once already):
-
-      PATH=~/.cache/ec618-gcc-14.2/usr/bin:$PATH make ec618
+- Base: the xmake-pinned arm-none-eabi GCC 10.3 (`EC618_GCC_PATH`) — the
+  base's bytes do not depend on the PATH compiler at all.
+- Slot: the system arm-none-eabi compiler (GCC 16 at the time of
+  writing). Slots are self-contained (they carry their own compiler
+  runtime), and the mixed-compiler acceptance is HW-proven: slots from
+  different GCC versions run on the same base. Compiler upgrades are
+  slot-only events; the base-id gate catches any genuine mismatch.
 
 ## Fingerprints and per-rig state
 
-The compatibility unit is `base.bin` — byte-identical base = slot-OTA
-compatible. Keep the deployed base's artifacts per rig (convention:
-`~/.cache/ec618-fp/`, e.g. `base-uart0-twostage.bin`,
-`fp-modest-affair-uart0-twostage.elf`) and diff before trusting a slot
-OTA. The device-side check will eventually make this automatic; the host
-discipline stays as the early warning.
+The compatibility unit is `base.bin`, and the device checks it itself
+(the base-id gate). Keeping the deployed base's artifacts per rig
+(convention: `~/.cache/ec618-fp/`) remains useful for building matching
+slots and for diagnosing a reject.
 
 ## Flashing and updating
 
@@ -98,8 +105,6 @@ Slot OTA (same base):
 
 ## Where this is going (phase 4, remaining)
 
-The base becomes a published, versioned release artifact — **base-vN** —
-with its fingerprint embedded in a `.base_id` record and in every OTA
-payload, so the device REJECTS mismatched slots instead of faulting, and
-CI links slots against the released base. When that lands, this README's
-manual discipline shrinks to "match the base-vN number".
+CI publishing: the base becomes a released artifact set
+(`base-vN.{elf,bin,manifest}`) and CI links PR slots against the
+released base — the last piece of docs/frozen-base-phase4.md.
