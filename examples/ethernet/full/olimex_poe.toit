@@ -49,8 +49,8 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
     super.mac-esp32
         --phy-chip=esp32.PHY-CHIP-LAN8720
         --phy-address=0
-        --mac-mdc=gpio.Pin 23
-        --mac-mdio=gpio.Pin 18
+        --mac-mdc=23
+        --mac-mdio=18
 
   on-module-opened module:
     super module
