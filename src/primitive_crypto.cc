@@ -14,8 +14,13 @@
 // directory of this repository.
 
 #include "top.h"
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32)
 #include <esp_random.h>
+#elif defined(TOIT_EC618)
+// The hardware TRNG, through the same entry the mbedtls entropy source uses
+// (os_ec618.cc, backed by rngGenRandom).
+extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
+                                     size_t len, size_t* olen);
 #else
 #include <random>
 #endif
@@ -759,8 +764,16 @@ PRIMITIVE(aes_ecb_close) {
 
 
 static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32)
   esp_fill_random(buffer, len);
+#elif defined(TOIT_EC618)
+  // The hardware TRNG (see the declaration at the top of this file);
+  // std::random_device on newlib is a deterministically seeded PRNG —
+  // unusable for RSA. Any nonzero return aborts the mbedtls operation.
+  size_t filled = 0;
+  if (mbedtls_hardware_poll(null, buffer, len, &filled) != 0 || filled != len) {
+    return -1;
+  }
 #else
   // Use std::random_device for non-ESP32 platforms.
   static thread_local std::random_device device;
