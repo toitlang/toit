@@ -209,10 +209,10 @@ run invocation/cli.Invocation -> none:
   // boot, then fixed up by relocate_data_slot_pointers (see docs/ota-contract.md).
   vm-data-start := syms.get "__vm_data_start"
   vm-data-end := syms.get "__vm_data_end"
-  dram-vma := syms.get "Image\$\$LOAD_DRAM_SHARED\$\$Base"
-  dram-lma := syms.get "Load\$\$LOAD_DRAM_SHARED\$\$Base"
+  dram-vma := syms.get "Image\$\$VM_DRAM_DATA\$\$Base"
+  dram-lma := syms.get "Load\$\$VM_DRAM_DATA\$\$Base"
   if vm-data-start == null or vm-data-end == null or dram-vma == null or dram-lma == null:
-    pipe.print-to-stderr "missing __vm_data_start/_end or .load_dram_shared load/image base in $elf (linker .data bracket present?)"
+    pipe.print-to-stderr "missing __vm_data_start/_end or .vm_dram_data load/image base in $elf (linker .data bracket present?)"
     exit 1
   data-size := vm-data-end - vm-data-start
   if data-size < 0 or (data-size & 3) != 0:
@@ -286,14 +286,14 @@ read-relocs readelf/string elf/string section/string -> List:
   return relocs
 
 // Symbols read from the link: the slot/link geometry, plus the VM .data bracket
-// (__vm_data_start/_end) and the .load_dram_shared section's VMA/LMA bases, used
+// (__vm_data_start/_end) and the .vm_dram_data section's VMA/LMA bases, used
 // to extract the VM's writable-.data init image from ap.bin (the per-slot data
 // region — see docs/ota-contract.md).
 WANTED-SYMBOLS ::= {
   "__vm_a_start", "__vm_a_end", "__vm_b_start", "__vm_b_end",
   "__vm_link_base", "__vm_link_end",
   "__vm_data_start", "__vm_data_end",
-  "Load\$\$LOAD_DRAM_SHARED\$\$Base", "Image\$\$LOAD_DRAM_SHARED\$\$Base",
+  "Load\$\$VM_DRAM_DATA\$\$Base", "Image\$\$VM_DRAM_DATA\$\$Base",
 }
 
 /** Reads the wanted symbol addresses (see $WANTED-SYMBOLS) from `$nm $elf`. */

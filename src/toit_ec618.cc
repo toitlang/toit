@@ -72,11 +72,21 @@ extern "C" {
   extern uint32_t __vm_link_base[];
 
   // The VM's writable-.data init image lives in RAM at [__vm_data_start,
-  // __vm_data_end) (the linker bracket inside .load_dram_shared). PLAT loads it
-  // from the base LMA at startup; load_active_slot_vm_data() overwrites it with
+  // __vm_data_end) (the reserved .vm_dram_data section). PLAT loads it from
+  // the base LMA at startup; load_active_slot_vm_data() overwrites it with
   // the ACTIVE slot's own per-slot copy before the slot pointers are relocated.
   extern uint8_t __vm_data_start[];
   extern uint8_t __vm_data_end[];
+
+  // Flash LMA of the base-carried VM .data init image (the .vm_dram_data
+  // section's load address) — the fallback when the slot carries no .data.
+  extern uint8_t __vm_data_load[];
+
+  // The VM's .bss (the reserved .vm_dram_zi section). PLAT's startup ZI loop
+  // does NOT cover it — the VM zeroes it itself at entry, in
+  // load_active_slot_vm_data(), before anything reads a VM static.
+  extern uint8_t __vm_zi_start[];
+  extern uint8_t __vm_zi_end[];
 
   // Generated table (toit_data_reloc.c): RAM addresses of the writable .data
   // words that hold VM-slot pointers, fixed up per-slot in start().
@@ -262,26 +272,30 @@ static const char* last_reset_name(LastResetState_e s) {
 // the (still link-base) slot pointers. A no-op for legacy images with no data
 // region (data_size == 0).
 static void load_active_slot_vm_data() {
+  // Zero the VM's .bss first: it lives in the reserved .vm_dram_zi section,
+  // which PLAT's startup ZI loop does not cover (see the linker script).
+  // This must precede every read of a VM static — start() calls this first.
+  memset(__vm_zi_start, 0, __vm_zi_end - __vm_zi_start);
+
+  const uint32_t expected = reinterpret_cast<uint32_t>(__vm_data_end) -
+                            reinterpret_cast<uint32_t>(__vm_data_start);
   const uint8_t* active = reinterpret_cast<const uint8_t*>(
       (toit_booted_slot == 'B') ? __vm_b_start : __vm_a_start);
   const uint32_t slot_size = reinterpret_cast<uint32_t>(__vm_b_start) -
                              reinterpret_cast<uint32_t>(__vm_a_start);
   SlotRelocTable table;
-  if (!slot_reloc_parse_trailer(active, slot_size, &table)) {
-    printf("[toit] WARN: active slot has no reloc trailer; VM .data not per-slot\n");
+  if (slot_reloc_parse_trailer(active, slot_size, &table) &&
+      table.data_size == expected) {
+    // The .data init rides at slot offset body_size (right after body+ext).
+    memcpy(__vm_data_start, active + table.body_size, table.data_size);
     return;
   }
-  if (table.data_size == 0) return;  // Legacy image: the base-loaded .data stands.
-  const uint32_t expected = reinterpret_cast<uint32_t>(__vm_data_end) -
-                            reinterpret_cast<uint32_t>(__vm_data_start);
-  if (table.data_size != expected) {
-    // A build inconsistency: refuse to copy rather than overrun the .data region.
-    printf("[toit] ERROR: VM .data size mismatch carried=0x%x linker=0x%x — skipping copy\n",
-           static_cast<unsigned>(table.data_size), static_cast<unsigned>(expected));
-    return;
-  }
-  // The .data init rides at slot offset body_size (right after body+extension).
-  memcpy(__vm_data_start, active + table.body_size, table.data_size);
+  // No per-slot .data (no trailer / legacy / size mismatch). Since .vm_dram_data
+  // moved out of the PLAT-copied dram regions, PLAT startup no longer
+  // initializes it either — fall back to the base-carried LMA init image
+  // (correct exactly when the running slot IS the base build's slot A).
+  printf("[toit] WARN: no usable per-slot VM .data; using the base init image\n");
+  memcpy(__vm_data_start, __vm_data_load, expected);
 }
 
 static void relocate_data_slot_pointers() {

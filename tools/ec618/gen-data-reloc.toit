@@ -28,7 +28,11 @@ import host.pipe
 TOOL-NAME ::= "tools/ec618/gen-data-reloc.toit"
 
 // The writable RAM .data PROGBITS sections that hold the shared VM globals.
-DATA-SECTIONS ::= {".load_dram_shared", ".load_dram_bsp"}
+// With the reserved .vm_dram_data section (frozen-base phase 3), the VM's
+// writable globals — the only legitimate home of shared-RAM slot pointers —
+// live there exclusively. A slot pointer in any OTHER dram section is a bug
+// that check-slot-refs reports.
+DATA-SECTIONS ::= {".vm_dram_data"}
 
 // Structural slot-boundary symbols are FIXED flash addresses (slot geometry),
 // not moving image content — a .data word holding one must NOT be relocated.

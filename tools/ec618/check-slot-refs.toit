@@ -30,7 +30,7 @@ import host.pipe
 
 // Sections the device DOES relocate, so a pointer into the slot is expected and
 // handled. Every other allocated section is fixed and must not reference the slot.
-RELOCATED-SECTIONS ::= {".vm_a", ".load_dram_shared", ".load_dram_bsp"}
+RELOCATED-SECTIONS ::= {".vm_a", ".vm_dram_data"}
 
 // Sanctioned fixed-region -> slot references (by target symbol name).
 //
