@@ -223,6 +223,18 @@ PRIMITIVE(transfer) {
   return process->null_object();
 }
 
+PRIMITIVE(device_transfer_start) {
+  // Asynchronous transfers are not implemented on the ESP32 (the driver's
+  // queued API would need a different resource shape); the `false` sentinel
+  // sends the spi library down its synchronous path.
+  return process->false_object();
+}
+
+PRIMITIVE(device_transfer_finish) {
+  // Unreachable: transfer_start never starts a transfer on the ESP32.
+  FAIL(UNIMPLEMENTED);
+}
+
 PRIMITIVE(acquire_bus) {
   ARGS(SpiDevice, device);
   esp_err_t err = spi_device_acquire_bus(device->handle(), portMAX_DELAY);

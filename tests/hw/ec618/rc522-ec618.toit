@@ -13,6 +13,10 @@ power-down except while this test runs). Checks:
 - version register reads an MFRC522 id (0x91/0x92; this unit: 0x92);
 - FIFO write/read-back loopback, 64 bytes (the FIFO depth), several
   patterns — exercises MOSI and MISO with real data both ways;
+- the same loopback as BURST transfers: one 65-byte transfer per
+  direction, which crosses the library's >=64-byte threshold and takes
+  the asynchronous DMA path (transfer-start/finish, completion by event)
+  on both a write and a full-duplex read;
 - soft power-down bit sets and clears on wake;
 - the reader is left in hard power-down (RST low) so it cannot disturb
   the I2C1/UART2 tests that share these nets.
@@ -71,6 +75,22 @@ main:
     print "rc522-ec618: fifo round $round $(ok ? "ok" : "FAIL") (level=$level drained=$drained match=$(got == pattern))"
     if not ok: failures.add "fifo-$round"
 
+  // Burst loopbacks: one 65-byte transfer per direction — crosses the
+  // library's >=64-byte threshold, so these run on the asynchronous DMA
+  // path (transfer-start, event wait, transfer-finish). The read is a
+  // full-duplex burst, exercising the driver's copy-back.
+  3.repeat: | round/int |
+    write-reg device REG-COMMAND COMMAND-IDLE
+    write-reg device REG-FIFO-LEVEL FIFO-FLUSH
+    pattern := ByteArray 64: (it * 17 + 3 + round * 29) & 0xff
+    write-fifo-burst device pattern
+    level := read-reg device REG-FIFO-LEVEL
+    got := read-fifo-burst device pattern.size
+    drained := read-reg device REG-FIFO-LEVEL
+    ok := level == 64 and got == pattern and drained == 0
+    print "rc522-ec618: burst round $round $(ok ? "ok" : "FAIL") (level=$level drained=$drained match=$(got == pattern))"
+    if not ok: failures.add "burst-$round"
+
   // Soft power-down: the bit must set, and clear again on wake.
   write-reg device REG-COMMAND POWER-DOWN-BIT
   sleep --ms=5
@@ -106,3 +126,21 @@ read-reg device/spi.Device register/int -> int:
 
 write-reg device/spi.Device register/int value/int -> none:
   device.transfer #[(register << 1) & 0x7e, value]
+
+// Writes all $bytes into a register in ONE transfer (the MFRC522 keeps
+// the address for every following byte; for the FIFO register each byte
+// enters the FIFO).
+write-fifo-burst device/spi.Device bytes/ByteArray -> none:
+  data := ByteArray bytes.size + 1
+  data[0] = (REG-FIFO-DATA << 1) & 0x7e
+  data.replace 1 bytes
+  device.transfer data
+
+// Reads $count FIFO bytes in ONE full-duplex transfer: every MOSI byte
+// but the last repeats the read address, and each MISO byte from index 1
+// on carries FIFO data (the MFRC522 burst-read convention).
+read-fifo-burst device/spi.Device count/int -> ByteArray:
+  data := ByteArray count + 1: (REG-FIFO-DATA << 1) | 0x80
+  data[count] = 0
+  device.transfer data --read
+  return data[1..]

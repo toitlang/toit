@@ -68,6 +68,11 @@ struct Event {
   static Type none_type() {
     return static_cast<Type>(GPIO_NUM_0 + 34);
   }
+
+  // SPI controller completion events (async transfers).
+  static Type spi_type(int id) {
+    return static_cast<Type>(GPIO_NUM_0 + 35 + id);
+  }
 };
 
 // A resource that carries an event type for matching.
