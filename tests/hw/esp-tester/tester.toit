@@ -935,6 +935,16 @@ setup-tester-ec618 invocation/cli.Invocation:
     // during startup flashed "successfully" and the failure surfaced only
     // minutes later as silent watchdog resets.)
     log "Flash done — the device auto-reboots; waiting for the agent."
+    // The burn itself does not use $port-path (ectool finds the boot-ROM
+    // ACM on its own), so a wrong or not-yet-enumerated --port only
+    // surfaces HERE — after a successful burn. Wait for the path instead
+    // of crashing, and if it never shows, be explicit that the flash
+    // itself went through.
+    port-deadline := Time.monotonic-us + 30_000_000
+    while (file.stat port-path) == null:
+      if Time.monotonic-us > port-deadline:
+        throw "flash succeeded, but cannot verify the image: port $port-path never appeared (wrong --port? adapter unplugged?)"
+      sleep --ms=500
     link := Ec618Link --port-path=port-path
     try:
       link.handshake --attempts=90
