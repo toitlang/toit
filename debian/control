@@ -6,8 +6,7 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-cmake-compat (= 1),
  cmake,
- ninja-build,
- xxd
+ ninja-build
 Standards-Version: 4.7.2
 Homepage: https://toitlang.org
 Vcs-Git: https://github.com/toitlang/toit.git

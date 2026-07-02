@@ -437,22 +437,27 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       DEPENDS "${HOST_TOIT}" "${embedded_snapshot}"
     )
 
-    set(snapshot_filename "${embedded_program}.snapshot")
+    # Embed the snapshot/image binaries into C++ source files instead of using
+    # `xxd -i` (see `tools/embed-binary.cmake`). This is a pure-CMake generator,
+    # so it needs no external tool and works with any compiler and C++ standard.
     add_custom_command(
       OUTPUT "${embedded_snapshot_cc}"
-      # Note: we can't use an absolute path for the '-i' argument..
-      COMMAND xxd -i "${snapshot_filename}" "${embedded_snapshot_cc}"
-      DEPENDS "${embedded_snapshot}"
-      WORKING_DIRECTORY "${GEN_DIR}"
+      COMMAND "${CMAKE_COMMAND}"
+          "-DSYMBOL=${embedded_program}_snapshot"
+          "-DINPUT=${embedded_snapshot}"
+          "-DOUTPUT=${embedded_snapshot_cc}"
+          -P "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+      DEPENDS "${embedded_snapshot}" "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
     )
 
-    set(image_filename "${embedded_program}.image")
     add_custom_command(
       OUTPUT "${embedded_image_cc}"
-      # Note: we can't use an absolute path for the '-i' argument..
-      COMMAND xxd -i "${image_filename}" "${embedded_image_cc}"
-      DEPENDS "${embedded_image}"
-      WORKING_DIRECTORY "${GEN_DIR}"
+      COMMAND "${CMAKE_COMMAND}"
+          "-DSYMBOL=${embedded_program}_image"
+          "-DINPUT=${embedded_image}"
+          "-DOUTPUT=${embedded_image_cc}"
+          -P "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+      DEPENDS "${embedded_image}" "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
     )
 
   endforeach()
