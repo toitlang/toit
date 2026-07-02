@@ -77,7 +77,7 @@ Writes a new firmware image to the INACTIVE VM slot via relocate-on-write.
 
 The stream is the standard CANONICAL firmware image, table-first:
 
-  [ table-size : u32 ][ SRL1 reloc table ][ VM body + extension ]
+  [ table-size : u32 ][ SRL2 reloc table ][ VM body + extension ]
 
 The writer accumulates the leading `[ size ][ table ]` and arms relocation
   ($slot.reloc-begin, which also lays the slot's self-locating tail trailer),

@@ -93,7 +93,7 @@ AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
 // CP — a mismatched CP resets the chip a few seconds after the modem is
 // enabled. See docs/ota-dual-slot-plan.md "RESOLVED (2026-05-29)".
 AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
-// The "SRL1" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
+// The "SRL2" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
 // from the slot-A link). Carried in the envelope so `extract` can place the
 // bundled extension inside the VM slot and relocate it with the VM body
 // (option A; see docs/ota-relocation-convergence.md). When absent, the
@@ -1010,7 +1010,7 @@ extract-ec618 -> none
 Builds the EC618 CANONICAL firmware image from the in-slot AP binary $ap and the
   base relocation $table (geometry). The canonical image is table-first
 
-    [ table-size : u32 ][ SRL1 table (merged) ][ VM body + extension ]
+    [ table-size : u32 ][ SRL2 table (merged) ][ VM body + extension ]
 
 — the exact bytes firmware.map returns and the device FirmwareWriter consumes
   (relocate-on-write). The body in $ap lives in slot A (relocated to slot A's
@@ -1146,14 +1146,14 @@ Produces the EC618 AP image with the bundled extension placed INSIDE the VM
   slot (option A; see docs/ota-relocation-convergence.md).
 
 The slot is laid out as
-  `[ VM body ][ extension ][ VM .data init ][ free ][ SRL1 table ][ size ]`,
+  `[ VM body ][ extension ][ VM .data init ][ free ][ SRL2 table ][ size ]`,
   where `size` (the slot's last word) locates the table. The extension's
   absolute pointers (the image-table program addresses, each container image's
   internal pointers, and the patched `DromData.extension`) are merged into the
   $reloc-table so the device relocates the whole slot uniformly on write and
   un-relocates it on read. The $vm-data init image (the per-slot data region)
   rides verbatim right after the extension — it is never relocated (it holds no
-  slot pointers the SRL1 table covers; the device fixes its slot pointers in RAM
+  slot pointers the SRL2 table covers; the device fixes its slot pointers in RAM
   at boot), so it sits past the relocatable populated front (`body_size`). A
   build-time fit check guarantees the slot is not overflowed.
 */
@@ -1224,10 +1224,10 @@ extract-binary-in-slot-ec618_ -> ByteArray
   // Pad the table to a word so the canonical image's body (which follows
   // [ size:u32 ][ table ]) starts on a 4-byte boundary. The device read path
   // (SlotFirmware) un-relocates the body word-by-word and so needs that
-  // alignment; the SRL1 parser ignores the trailing pad bytes.
+  // alignment; the SRL2 parser ignores the trailing pad bytes.
   table-bytes := pad merged.to-bytes 4
 
-  // Fit check: [ VM body ][ extension ][ VM .data ][ free ][ SRL1 table ][ size ].
+  // Fit check: [ VM body ][ extension ][ VM .data ][ free ][ SRL2 table ][ size ].
   // The OTA write path (slot_reloc_begin) lays the trailer in its own tail
   // sectors and streams the body+extension+.data front-to-back with a lazy
   // per-sector erase, so the populated front and the trailer must occupy

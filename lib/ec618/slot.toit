@@ -89,7 +89,7 @@ write-inactive offset/int bytes/ByteArray -> none:
   #primitive.ec618.slot-inactive-write
 
 /**
-Arms relocate-on-write with the new image's relocation $table (the "SRL1"
+Arms relocate-on-write with the new image's relocation $table (the "SRL2"
   artifact built by tools/ec618/gen-slot-reloc.toit), and writes that table as
   the inactive slot's tail trailer.
 

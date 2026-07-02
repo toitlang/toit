@@ -4,7 +4,7 @@
 //
 // The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
 // fixed flash image — the link slot's (slot A's) data-init — and the per-slot
-// SRL1 relocation (gen-slot-reloc.toit) only ever touches the VM slot itself,
+// SRL2 relocation (gen-slot-reloc.toit) only ever touches the VM slot itself,
 // never this shared RAM. So every word in .data that holds a VM-slot pointer —
 // the interpreter's computed-goto dispatch_table and the per-module
 // `*_primitives_` tables — is baked at slot A. When the device boots a

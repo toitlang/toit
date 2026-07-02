@@ -238,7 +238,7 @@ static const char* last_reset_name(LastResetState_e s) {
 
 // The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
 // fixed flash image — the data-init linked at the neutral __vm_link_base — and
-// the per-slot SRL1 relocation only ever touches the slot itself, never this
+// the per-slot SRL2 relocation only ever touches the slot itself, never this
 // shared RAM. So every VM-slot pointer that lives in .data — the interpreter's
 // computed-goto dispatch_table and the per-module *_primitives_ tables (see
 // toit_data_reloc.c) — is baked at the link base. On EVERY boot they point at

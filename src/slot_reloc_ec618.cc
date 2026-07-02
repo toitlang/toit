@@ -22,8 +22,8 @@
 
 namespace toit {
 
-static const uint8_t SRL1_MAGIC[4] = {'S', 'R', 'L', '1'};
-static const size_t SRL1_HEADER_SIZE = 28;  // magic + 6 little-endian uint32s.
+static const uint8_t SRL2_MAGIC[4] = {'S', 'R', 'L', '2'};
+static const size_t SRL2_HEADER_SIZE = 32;  // magic + 7 little-endian uint32s.
 
 static uint32_t load_le32(const uint8_t* p) {
   return static_cast<uint32_t>(p[0]) |
@@ -97,9 +97,9 @@ static void thumb_branch_encode(uint8_t* p, int32_t imm) {
 }
 
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
-  if (len < SRL1_HEADER_SIZE) return false;
+  if (len < SRL2_HEADER_SIZE) return false;
   for (int i = 0; i < 4; i++) {
-    if (blob[i] != SRL1_MAGIC[i]) return false;
+    if (blob[i] != SRL2_MAGIC[i]) return false;
   }
   table->link_base = load_le32(blob + 4);
   table->slot_size = load_le32(blob + 8);
@@ -107,8 +107,9 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   table->abs32_count = load_le32(blob + 16);
   table->thmbl_count = load_le32(blob + 20);
   table->data_size = load_le32(blob + 24);
+  table->straddle_count = load_le32(blob + 28);
   table->end = blob + len;
-  const uint8_t* p = blob + SRL1_HEADER_SIZE;
+  const uint8_t* p = blob + SRL2_HEADER_SIZE;
   table->abs32_varints = p;
   // Walk the ABS32 stream to locate the start of the branch stream.
   for (uint32_t i = 0; i < table->abs32_count; i++) {
@@ -117,20 +118,29 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
     if (p == nullptr) return false;
   }
   table->thmbl_varints = p;
-  // Validate that the branch stream is also well-formed and fully consumed.
+  // Walk the branch stream to locate the start of the straddle stream.
   for (uint32_t i = 0; i < table->thmbl_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
     if (p == nullptr) return false;
   }
+  table->straddle_entries = p;
+  // Validate the straddle stream (delta-varint offset + 4 canonical site
+  // bytes per entry) is well-formed and fully contained.
+  for (uint32_t i = 0; i < table->straddle_count; i++) {
+    uint32_t delta;
+    p = decode_varint(p, table->end, &delta);
+    if (p == nullptr || p + 4 > table->end) return false;
+    p += 4;
+  }
   return true;
 }
 
 bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table) {
-  if (slot_size < SRL1_HEADER_SIZE + 4) return false;
+  if (slot_size < SRL2_HEADER_SIZE + 4) return false;
   uint32_t n = load_le32(slot + slot_size - 4);
   // An erased tail reads as 0xffffffff; reject that and any implausible size.
-  if (n < SRL1_HEADER_SIZE || n > slot_size - 4) return false;
+  if (n < SRL2_HEADER_SIZE || n > slot_size - 4) return false;
   return slot_reloc_parse(slot + slot_size - 4 - n, n, table);
 }
 
@@ -169,6 +179,38 @@ static bool apply_stream(const uint8_t* p, const uint8_t* end, uint32_t count,
   return true;
 }
 
+// Applies the straddle stream to the window: entries carry the site's 4
+// CANONICAL bytes, so the full target site is computed chunk-locally — for
+// TO_SLOT the canonical immediate is re-encoded with `branch_delta`, for
+// TO_CANONICAL the canonical bytes ARE the target — and whichever part of the
+// site overlaps [window_off, window_end) is written. Stateless for any window
+// split, including a site split across two windows.
+static bool apply_straddles(const SlotRelocTable* table,
+                            uint8_t* buf, uint32_t window_off, uint32_t window_end,
+                            int32_t branch_delta, SlotRelocDir dir) {
+  const uint8_t* p = table->straddle_entries;
+  uint32_t off = 0;
+  for (uint32_t i = 0; i < table->straddle_count; i++) {
+    uint32_t step;
+    p = decode_varint(p, table->end, &step);
+    if (p == nullptr || p + 4 > table->end) return false;
+    const uint8_t* canonical = p;
+    p += 4;
+    off += step;
+    if (off >= window_end) break;            // Ascending: nothing more here.
+    if (off + 4 <= window_off) continue;     // Fully before the window.
+    uint8_t site[4];
+    memcpy(site, canonical, 4);
+    if (dir == SLOT_RELOC_TO_SLOT) {
+      thumb_branch_encode(site, thumb_branch_decode(site) + branch_delta);
+    }
+    uint32_t lo = off > window_off ? off : window_off;
+    uint32_t hi = (off + 4) < window_end ? (off + 4) : window_end;
+    for (uint32_t k = lo; k < hi; k++) buf[k - window_off] = site[k - off];
+  }
+  return true;
+}
+
 bool slot_reloc_apply(const SlotRelocTable* table,
                       uint8_t* buf, uint32_t window_off, uint32_t window_len,
                       int32_t delta, SlotRelocDir dir) {
@@ -182,19 +224,19 @@ bool slot_reloc_apply(const SlotRelocTable* table,
                     buf, window_off, window_end, word_delta, /*is_branch=*/false)) {
     return false;
   }
-  if (!apply_stream(table->thmbl_varints, table->end, table->thmbl_count,
+  if (!apply_stream(table->thmbl_varints, table->straddle_entries, table->thmbl_count,
                     buf, window_off, window_end, branch_delta, /*is_branch=*/true)) {
     return false;
   }
-  return true;
+  return apply_straddles(table, buf, window_off, window_end, branch_delta, dir);
 }
 
 bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t slot_size) {
   valid_ = false;
-  if (slot_size < SRL1_HEADER_SIZE + 4) return false;
+  if (slot_size < SRL2_HEADER_SIZE + 4) return false;
   uint32_t n = load_le32(slot + slot_size - 4);
   // An erased tail reads as 0xffffffff; reject that and any implausible size.
-  if (n < SRL1_HEADER_SIZE || n > slot_size - 4) return false;
+  if (n < SRL2_HEADER_SIZE || n > slot_size - 4) return false;
   // The builder pads the table to a word so the canonical body (at 4 + N)
   // starts on a 4-byte boundary — required for word-granular un-relocation.
   if ((n & 3) != 0) return false;
@@ -244,7 +286,7 @@ void SlotFirmware::unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) con
   off = 0;
   for (uint32_t i = 0; i < table_.thmbl_count; i++) {
     uint32_t step;
-    p = decode_varint(p, table_.end, &step);
+    p = decode_varint(p, table_.straddle_entries, &step);
     if (p == nullptr) return;
     off += step;
     if (off >= wt) break;            // Site starts at/after the window end.
@@ -255,6 +297,24 @@ void SlotFirmware::unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) con
     uint32_t lo = off > wf ? off : wf;
     uint32_t hi = (off + 4) < wt ? (off + 4) : wt;
     for (uint32_t k = lo; k < hi; k++) buf[k - wf] = site[k - off];
+  }
+
+  // Sector-straddling branch sites: their entries carry the site's canonical
+  // bytes, so un-relocation is a verbatim copy of the in-window overlap.
+  p = table_.straddle_entries;
+  off = 0;
+  for (uint32_t i = 0; i < table_.straddle_count; i++) {
+    uint32_t step;
+    p = decode_varint(p, table_.end, &step);
+    if (p == nullptr || p + 4 > table_.end) return;
+    const uint8_t* canonical = p;
+    p += 4;
+    off += step;
+    if (off >= wt) break;            // Site starts at/after the window end.
+    if (off + 4 <= wf) continue;     // Site ends at/before the window start.
+    uint32_t lo = off > wf ? off : wf;
+    uint32_t hi = (off + 4) < wt ? (off + 4) : wt;
+    for (uint32_t k = lo; k < hi; k++) buf[k - wf] = canonical[k - off];
   }
 }
 

@@ -4,7 +4,7 @@
 
 // Unit tests for the EC618 dual-slot relocation core (src/slot_reloc_ec618.*),
 // the engine behind the relocate-on-write / un-relocate-on-read OTA. Covers:
-//   - the "SRL1" table parse + the ABS32 / Thumb-branch transforms;
+//   - the "SRL2" table parse + the ABS32 / Thumb-branch transforms;
 //   - identity after relocation (relocate then un-relocate is a no-op);
 //   - a patch site straddling a window boundary is rejected;
 //   - the self-locating tail trailer round-trips;
@@ -44,21 +44,37 @@ static void put_le32(std::vector<uint8_t>* out, uint32_t v) {
   out->push_back(v); out->push_back(v >> 8); out->push_back(v >> 16); out->push_back(v >> 24);
 }
 
-// Builds an "SRL1" blob from ascending ABS32 / branch offset lists. `data_size`
-// is the verbatim VM .data init image that rides after the body (0 = none).
+// A sector-straddling branch entry: the site's slot-relative offset plus its
+// 4 CANONICAL bytes (carried in the table so the chunked applier can patch the
+// site without seeing the neighbouring chunk).
+struct StraddleSite {
+  uint32_t offset;
+  uint8_t bytes[4];
+};
+
+// Builds an "SRL2" blob from ascending ABS32 / branch offset lists and
+// straddle entries. `data_size` is the verbatim VM .data init image that rides
+// after the body (0 = none).
 static std::vector<uint8_t> build_table(uint32_t link_base, uint32_t slot_size, uint32_t body_size,
                                         const std::vector<uint32_t>& abs32,
                                         const std::vector<uint32_t>& thmbl,
-                                        uint32_t data_size = 0) {
+                                        uint32_t data_size = 0,
+                                        const std::vector<StraddleSite>& straddle = {}) {
   std::vector<uint8_t> t;
-  t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('1');
+  t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('2');
   put_le32(&t, link_base); put_le32(&t, slot_size); put_le32(&t, body_size);
   put_le32(&t, abs32.size()); put_le32(&t, thmbl.size());
   put_le32(&t, data_size);
+  put_le32(&t, straddle.size());
   uint32_t prev = 0;
   for (uint32_t o : abs32) { put_varint(&t, o - prev); prev = o; }
   prev = 0;
   for (uint32_t o : thmbl) { put_varint(&t, o - prev); prev = o; }
+  prev = 0;
+  for (const StraddleSite& s : straddle) {
+    put_varint(&t, s.offset - prev); prev = s.offset;
+    for (int i = 0; i < 4; i++) t.push_back(s.bytes[i]);
+  }
   return t;
 }
 
@@ -106,8 +122,93 @@ static void test_straddle() {
   CHECK(!slot_reloc_apply(&t, buf + 0x22, 0x22, BODY - 0x22, SIZE, SLOT_RELOC_TO_SLOT), "straddle at window start rejected");
 }
 
+// A Thumb-branch site at `sector_end - 2` (the device writes 4 KB sector
+// chunks) is carried in the SRL2 straddle stream with its canonical bytes, so
+// the chunked applier patches it without seeing the neighbouring chunk — the
+// case the regular streams reject above. The oracle: a table carrying the SAME
+// site as a regular branch entry, applied whole-body (the long-proven path).
+static void test_straddle_stream() {
+  const uint32_t LINK = 0x991000, SIZE = 0x60000, BODY = 0x2000, DELTA = SIZE;
+  const uint32_t SECTOR = 0x1000;
+  const uint32_t SITE = SECTOR - 2;  // BL spans [0xffe, 0x1002).
+
+  std::vector<uint8_t> body(BODY, 0);
+  // A real Thumb-2 BL split across the two sectors, plus an ABS32 in each
+  // sector so the regular machinery runs alongside.
+  body[SITE] = 0xf7; body[SITE+1] = 0xff; body[SITE+2] = 0xfc; body[SITE+3] = 0xd2;
+  uint32_t ptr = LINK + 0x80;
+  body[0x10] = ptr; body[0x11] = ptr >> 8; body[0x12] = ptr >> 16; body[0x13] = ptr >> 24;
+  body[0x1010] = ptr; body[0x1011] = ptr >> 8; body[0x1012] = ptr >> 16; body[0x1013] = ptr >> 24;
+
+  StraddleSite site;
+  site.offset = SITE;
+  memcpy(site.bytes, body.data() + SITE, 4);
+  std::vector<uint8_t> table =
+      build_table(LINK, SIZE, BODY, {0x10, 0x1010}, {}, 0, {site});
+  SlotRelocTable t;
+  CHECK(slot_reloc_parse(table.data(), table.size(), &t), "straddle table parses");
+  CHECK(t.straddle_count == 1, "straddle count");
+
+  // Oracle: the same site as a regular branch entry, applied whole-body.
+  std::vector<uint8_t> oracle_table =
+      build_table(LINK, SIZE, BODY, {0x10, 0x1010}, {SITE});
+  SlotRelocTable ot;
+  slot_reloc_parse(oracle_table.data(), oracle_table.size(), &ot);
+  std::vector<uint8_t> expected = body;
+  CHECK(slot_reloc_apply(&ot, expected.data(), 0, BODY, DELTA, SLOT_RELOC_TO_SLOT),
+        "oracle whole-body relocate ok");
+  CHECK(memcmp(expected.data() + SITE, body.data() + SITE, 4) != 0, "oracle changed the BL");
+
+  // Sector-chunked relocate through the straddle stream == the oracle.
+  std::vector<uint8_t> work = body;
+  bool ok = true;
+  for (uint32_t off = 0; off < BODY; off += SECTOR) {
+    ok = ok && slot_reloc_apply(&t, work.data() + off, off, SECTOR, DELTA, SLOT_RELOC_TO_SLOT);
+  }
+  CHECK(ok, "chunked relocate across straddle ok");
+  CHECK(memcmp(work.data(), expected.data(), BODY) == 0, "chunked relocate == whole-body oracle");
+
+  // Whole-body through the straddle stream agrees too.
+  std::vector<uint8_t> whole = body;
+  CHECK(slot_reloc_apply(&t, whole.data(), 0, BODY, DELTA, SLOT_RELOC_TO_SLOT), "whole-body via straddle ok");
+  CHECK(memcmp(whole.data(), expected.data(), BODY) == 0, "whole-body via straddle == oracle");
+
+  // Chunked un-relocate restores the canonical bytes exactly.
+  for (uint32_t off = 0; off < BODY; off += SECTOR) {
+    ok = ok && slot_reloc_apply(&t, work.data() + off, off, SECTOR, DELTA, SLOT_RELOC_TO_CANONICAL);
+  }
+  CHECK(ok, "chunked un-relocate across straddle ok");
+  CHECK(memcmp(work.data(), body.data(), BODY) == 0, "chunked round-trip is identity");
+
+  // SlotFirmware: two slots differing only by relocation read back the same
+  // canonical image through the straddle stream.
+  const uint32_t SLOT = 0x3000;
+  std::vector<uint8_t> blob = table;
+  while (blob.size() & 3) blob.push_back(0);
+  std::vector<uint8_t> a(SLOT, 0xff);
+  memcpy(a.data(), body.data(), BODY);
+  uint32_t region = blob.size() + 4;
+  memcpy(a.data() + SLOT - region, blob.data(), blob.size());
+  a[SLOT-4] = blob.size(); a[SLOT-3] = blob.size() >> 8;
+  a[SLOT-2] = blob.size() >> 16; a[SLOT-1] = blob.size() >> 24;
+  std::vector<uint8_t> b = a;
+  memcpy(b.data(), expected.data(), BODY);  // Slot B = relocated body.
+
+  SlotFirmware fa, fb;
+  CHECK(fa.open(a.data(), LINK, SLOT), "straddle slotfw open A");
+  CHECK(fb.open(b.data(), LINK + SIZE, SLOT), "straddle slotfw open B");
+  uint32_t n = fa.canonical_size();
+  int diff = 0;
+  for (uint32_t i = 0; i < n; i++) if (fa.at(i) != fb.at(i)) diff++;
+  CHECK(diff == 0, "straddle slotfw canonical A == B");
+  uint32_t bo = 4 + blob.size();
+  std::vector<uint8_t> blk(BODY);
+  CHECK(fb.copy(bo, bo + BODY, blk.data()), "straddle slotfw copy body");
+  CHECK(memcmp(blk.data(), body.data(), BODY) == 0, "straddle slotfw copy == canonical body");
+}
+
 static void test_trailer() {
-  // Build an SRL1 blob, lay it down as a tail trailer in a slot buffer, and
+  // Build an SRL2 blob, lay it down as a tail trailer in a slot buffer, and
   // recover it from the slot's last word.
   std::vector<uint8_t> blob = build_table(0x991000, 0x60000, 0x100, {0x10, 0x20}, {0x40});
   const uint32_t SLOT = 0x10000;
@@ -242,6 +343,8 @@ int main(int, char**) {
   test_relocate_identity();
   printf("window straddle rejection\n");
   test_straddle();
+  printf("sector-straddle stream (SRL2, embedded canonical bytes)\n");
+  test_straddle_stream();
   printf("self-locating tail trailer\n");
   test_trailer();
   printf("SlotFirmware canonical read (table-first, un-relocated)\n");

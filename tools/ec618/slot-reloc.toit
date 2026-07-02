@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Host-side reader + applier for the EC618 "SRL1" slot relocation table.
+// Host-side reader + applier for the EC618 "SRL2" slot relocation table.
 //
 // Mirrors the device C++ in src/slot_reloc_ec618.{h,cc}: the same table
 // format, the same ABS32 / Thumb-branch transforms, both directions. The build
@@ -13,15 +13,18 @@ import io show Buffer LITTLE-ENDIAN
 TO-SLOT ::= 1        // Canonical (link-base) image -> a destination slot.
 TO-CANONICAL ::= -1  // A slot -> canonical (link-base) image.
 
-/** The "SRL1" magic, little-endian. */
-MAGIC ::= #['S', 'R', 'L', '1']
+/** The "SRL2" magic, little-endian. */
+MAGIC ::= #['S', 'R', 'L', '2']
 
 /**
 A parsed EC618 slot relocation table.
 
-Holds the slot geometry and the slot-relative offsets of the two relocation
-  kinds: $abs32-offsets (4-byte absolute pointers into the slot) and
-  $thmbl-offsets (Thumb branches that escape the slot to a fixed address).
+Holds the slot geometry and the slot-relative offsets of the relocation
+  kinds: $abs32-offsets (4-byte absolute pointers into the slot),
+  $thmbl-offsets (Thumb branches that escape the slot to a fixed address) and
+  $straddle-entries (branch sites that straddle a 4 KB flash sector, carried
+  with their canonical bytes so the device's sector-chunked relocate-on-write
+  can patch them without seeing the neighbouring chunk).
 */
 class SlotRelocTable:
   link-base/int
@@ -34,20 +37,24 @@ class SlotRelocTable:
   data-size/int
   abs32-offsets/List
   thmbl-offsets/List
+  // Sector-straddling branch sites: `[offset, 4 canonical site bytes]` pairs,
+  // ascending by offset.
+  straddle-entries/List
 
-  constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets:
+  constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets --.straddle-entries=[]:
 
-  /** Parses an "SRL1" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
+  /** Parses an "SRL2" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
   constructor.parse blob/ByteArray:
-    if blob.size < 28: throw "SRL1 table too small"
-    4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL1 magic"
+    if blob.size < 32: throw "SRL2 table too small"
+    4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL2 magic"
     link-base = LITTLE-ENDIAN.uint32 blob 4
     slot-size = LITTLE-ENDIAN.uint32 blob 8
     body-size = LITTLE-ENDIAN.uint32 blob 12
     abs32-count := LITTLE-ENDIAN.uint32 blob 16
     thmbl-count := LITTLE-ENDIAN.uint32 blob 20
     data-size = LITTLE-ENDIAN.uint32 blob 24
-    pos := 28
+    straddle-count := LITTLE-ENDIAN.uint32 blob 28
+    pos := 32
     abs32 := []
     previous := 0
     abs32-count.repeat:
@@ -62,8 +69,17 @@ class SlotRelocTable:
       previous += result[0]
       thmbl.add previous
       pos = result[1]
+    straddle := []
+    previous = 0
+    straddle-count.repeat:
+      result := read-varint blob pos
+      previous += result[0]
+      pos = result[1]
+      straddle.add [previous, blob.copy pos (pos + 4)]
+      pos += 4
     abs32-offsets = abs32
     thmbl-offsets = thmbl
+    straddle-entries = straddle
 
   /**
   Relocates the slot content in $bytes in place by $delta.
@@ -84,15 +100,27 @@ class SlotRelocTable:
       p := base + offset
       imm := thumb-branch-imm bytes p
       put-thumb-branch-imm bytes p (imm + branch-delta)
+    // Straddle sites: compute the target site from the entry's CANONICAL
+    // bytes (verbatim for TO-CANONICAL, re-encoded for TO-SLOT) — the same
+    // chunk-local computation the device applies, here over a whole image.
+    straddle-entries.do: | entry/List |
+      p := base + entry[0]
+      site/ByteArray := entry[1].copy
+      if direction == TO-SLOT:
+        imm := thumb-branch-imm site 0
+        put-thumb-branch-imm site 0 (imm + branch-delta)
+      bytes.replace p site
 
   /**
-  Serializes this table to the "SRL1" wire format (the inverse of
+  Serializes this table to the "SRL2" wire format (the inverse of
     $SlotRelocTable.parse).
 
-  The header is $MAGIC followed by $link-base, $slot-size, $body-size and the
-    two counts (all little-endian uint32); the $abs32-offsets and $thmbl-offsets
-    lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128
-    varints. Mirrors `encode-table` in tools/ec618/gen-slot-reloc.toit.
+  The header is $MAGIC followed by $link-base, $slot-size, $body-size, the
+    three counts and $data-size (all little-endian uint32); the
+    $abs32-offsets and $thmbl-offsets lists (slot-relative, ascending) follow
+    as delta-encoded unsigned LEB128 varints, then the $straddle-entries
+    stream (delta-varint offset + 4 canonical site bytes per entry). Mirrors
+    `encode-table` in tools/ec618/gen-slot-reloc.toit.
   */
   to-bytes -> ByteArray:
     buffer := Buffer
@@ -104,8 +132,15 @@ class SlotRelocTable:
     le.write-uint32 abs32-offsets.size
     le.write-uint32 thmbl-offsets.size
     le.write-uint32 data-size
+    le.write-uint32 straddle-entries.size
     write-varint-deltas buffer abs32-offsets
     write-varint-deltas buffer thmbl-offsets
+    previous := 0
+    straddle-entries.do: | entry/List |
+      offset/int := entry[0]
+      write-varint buffer (offset - previous)
+      previous = offset
+      buffer.write entry[1]
     return buffer.bytes
 
   /**
@@ -137,6 +172,7 @@ class SlotRelocTable:
         --data-size=data-size
         --abs32-offsets=deduped
         --thmbl-offsets=thmbl-offsets
+        --straddle-entries=straddle-entries
 
 /** Reads an unsigned LEB128 varint at $pos in $bytes; returns `[value, next-pos]`. */
 read-varint bytes/ByteArray pos/int -> List:

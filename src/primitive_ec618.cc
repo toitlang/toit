@@ -163,13 +163,13 @@ bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
 
 // Relocate-on-write context. The OTA receiver streams the CANONICAL
 // (link-base) image; slot_reloc_begin arms relocation with that image's reloc
-// table (the "SRL1" artifact, see src/slot_reloc_ec618.h), and
+// table (the "SRL2" artifact, see src/slot_reloc_ec618.h), and
 // slot_inactive_write relocates each chunk onto the destination slot before
 // the flash write — so the relocation is invisible to the (architecture-
 // agnostic) Toit firmware code. `slot_reloc_delta = dest_slot_base - link_base`
 // is 0 when the canonical image lands in slot A (no work) and +/- SLOT_SIZE
 // for slot B.
-static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL1 table bytes.
+static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL2 table bytes.
 static SlotRelocTable slot_reloc_table;
 static int32_t slot_reloc_delta = 0;
 static bool slot_reloc_armed = false;

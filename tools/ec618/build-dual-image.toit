@@ -4,11 +4,11 @@
 //
 // Replaces tools/splice_dual_slot.py: instead of byte-splicing a second
 // (slot-B) link pass, this relocates the slot-A image to slot B using the
-// SRL1 relocation table — the same relocate-on-write the device does for OTA.
+// SRL2 relocation table — the same relocate-on-write the device does for OTA.
 // One link, one source image; slot B is produced by relocation.
 //
 // Input is the envelope-extracted AP binary (slot A populated, slot B
-// reserved) plus the SRL1 table (build/ec618/slot-reloc.bin, used only for the
+// reserved) plus the SRL2 table (build/ec618/slot-reloc.bin, used only for the
 // slot geometry). The output has both slots populated and boots slot A by
 // default (the slot marker reads as "no valid record" until the device stages
 // a trial).
@@ -37,7 +37,7 @@ main args:
             --help="The envelope-extracted slot-A AP binary."
             --required,
         cli.Option "reloc"
-            --help="The SRL1 relocation table (slot-reloc.bin)."
+            --help="The SRL2 relocation table (slot-reloc.bin)."
             --required,
         cli.Option "ap-load-addr"
             --help="XIP address of ap.bin byte 0 (hex or decimal)."

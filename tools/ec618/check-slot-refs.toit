@@ -5,7 +5,7 @@
 // WHY: the dual-slot OTA relocates the VM image on write, and a handful of
 // regions hold pointers INTO the slot that must move with it:
 //
-//   * the slot body itself (.vm_a)       -> relocated by the SRL1 table
+//   * the slot body itself (.vm_a)       -> relocated by the SRL2 table
 //                                           (tools/ec618/gen-slot-reloc.toit),
 //   * the shared writable .data          -> relocated at boot by
 //     (.load_dram_shared/.load_dram_bsp)    relocate_data_slot_pointers()

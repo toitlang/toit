@@ -30,8 +30,16 @@ import io show Buffer LITTLE-ENDIAN
 import host.file
 import host.pipe
 
-// Reloc-table artifact magic: "SRL1" (Slot ReLoc, version 1).
-MAGIC ::= #['S', 'R', 'L', '1']
+// Reloc-table artifact magic: "SRL2" (Slot ReLoc, version 2 — adds the
+// sector-straddle branch stream, whose entries carry the site's canonical
+// bytes so the device's chunked relocate-on-write can patch a Thumb branch
+// split across two 4 KB sectors without seeing both chunks).
+MAGIC ::= #['S', 'R', 'L', '2']
+
+// The device writes (and erases) the slot in 4 KB flash sectors; a 2-aligned
+// Thumb-branch site at `sector_end - 2` straddles two of them. Mirrors
+// FLASH_SECTOR_SIZE in src/primitive_ec618.cc.
+FLASH-SECTOR-SIZE ::= 0x1000
 
 // Default XIP address of `ap.bin` byte 0 (AP_FLASH_LOAD_ADDR in the linker
 // script). Used to map a relocation's virtual address to a file offset.
@@ -179,6 +187,18 @@ run invocation/cli.Invocation -> none:
   abs32.sort --in-place
   thmbl.sort --in-place
 
+  // Branch sites that straddle a 4 KB sector boundary go to the straddle
+  // stream, carrying their 4 CANONICAL bytes so the device's sector-chunked
+  // relocate-on-write can patch them without seeing the neighbouring chunk.
+  straddle := []  // Elements: [slot-relative offset, 4 canonical site bytes].
+  plain-thmbl := []
+  thmbl.do: | offset/int |
+    if offset % FLASH-SECTOR-SIZE == FLASH-SECTOR-SIZE - 2:
+      site := ap-a.copy (slot-a-file + offset) (slot-a-file + offset + 4)
+      straddle.add [offset, site]
+    else:
+      plain-thmbl.add offset
+
   // Extract the VM's writable-.data init image (the per-slot data region). It is
   // bracketed in .load_dram_shared by __vm_data_start/_end (VMA); its bytes live
   // in ap.bin at the section's LOAD base plus the same in-section offset. The
@@ -209,10 +229,11 @@ run invocation/cli.Invocation -> none:
       --body-size=body-size
       --data-size=data-size
       --abs32=abs32
-      --thmbl=thmbl
+      --thmbl=plain-thmbl
+      --straddle=straddle
   file.write-contents --path=out-path table
 
-  print "Slot reloc table: $abs32.size ABS32 + $thmbl.size branch reloc(s), $table.size bytes."
+  print "Slot reloc table: $abs32.size ABS32 + $plain-thmbl.size branch + $straddle.size sector-straddle reloc(s), $table.size bytes."
   print "  link-base=0x$(%x link-base) slot-a=0x$(%x slot-a-flash) slot-b=0x$(%x slot-b-flash) slot-size=0x$(%x slot-size) body=0x$(%x body-size)"
   print "  delta(A)=0x$(%x ((slot-a-flash - link-base) & 0xffffffff)) delta(B)=0x$(%x ((slot-b-flash - link-base) & 0xffffffff))"
   print "  VM .data init: 0x$(%x data-size) bytes @ ap file 0x$(%x vm-data-file) -> $data-out-path"
@@ -287,14 +308,17 @@ slot-symbols nm/string elf/string -> Map:
 /**
 Encodes the reloc-table artifact.
 
-The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the two
-  counts and $data-size (all little-endian uint32). The $abs32 and $thmbl offset
-  lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128
-  varints. $data-size is the verbatim VM .data init image that rides after the
-  body (0 when no .data region is carried). Mirrors `SlotRelocTable.to-bytes` in
-  tools/ec618/slot-reloc.toit and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
+The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the
+  three counts and $data-size (all little-endian uint32). The $abs32 and
+  $thmbl offset lists (slot-relative, ascending) follow as delta-encoded
+  unsigned LEB128 varints; the $straddle stream follows as a delta-varint
+  offset plus the site's 4 canonical bytes per entry (elements of $straddle
+  are `[offset, site-bytes]` pairs, ascending). $data-size is the verbatim VM
+  .data init image that rides after the body (0 when no .data region is
+  carried). Mirrors `SlotRelocTable.to-bytes` in tools/ec618/slot-reloc.toit
+  and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
 */
-encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --abs32/List --thmbl/List -> ByteArray:
+encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --abs32/List --thmbl/List --straddle/List -> ByteArray:
   buffer := Buffer
   buffer.write MAGIC
   le := buffer.little-endian
@@ -304,8 +328,15 @@ encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --a
   le.write-uint32 abs32.size
   le.write-uint32 thmbl.size
   le.write-uint32 data-size
+  le.write-uint32 straddle.size
   write-varint-deltas buffer abs32
   write-varint-deltas buffer thmbl
+  previous := 0
+  straddle.do: | entry/List |
+    offset/int := entry[0]
+    write-varint buffer (offset - previous)
+    previous = offset
+    buffer.write entry[1]
   return buffer.bytes
 
 /** Writes the ascending $offsets as delta-encoded unsigned LEB128 varints. */
