@@ -9,14 +9,16 @@
 //   1. ABS32 data pointers that point INTO the slot (vtables, const pointer
 //      tables, .init_array, the .vm_entry word, ...). They move with the
 //      slot, so the device adds `delta = dest_base - link_base` to each.
-//   2. The handful of Thumb BL branches that ESCAPE the slot to a fixed PLAT
-//      address (the `__wrap_time` shim). Their source moves but their target
-//      is fixed, so the device subtracts `delta` from the branch immediate.
+//   2. The Thumb BL/B.W branches that ESCAPE the slot to a fixed PLAT
+//      address — every direct VM->PLAT call (there is no jump table; see
+//      docs/frozen-base-design.md). Their source moves but their target is
+//      fixed, so the device subtracts `delta` from the branch immediate.
+//      The ones that straddle a 4 KB flash sector go to the SRL2 straddle
+//      stream with their canonical bytes (see encode-table).
 //
 // Everything else is already slot-independent: within-slot BL/B.W branches
-// (source and target move together) and the movw/movt loads of the fixed
-// `g_plat_jt[]` address (see tools/ec618/check-slot-pic.toit, which proves no
-// code branch escapes the slot except `__wrap_time`).
+// (source and target move together) and movw/movt loads of fixed PLAT
+// addresses.
 //
 // This tool reads the retained input relocations from `toit.elf` (linked with
 // `-Wl,--emit-relocs`), classifies them, and emits a compact delta-encoded
@@ -74,9 +76,10 @@ BRANCH-TYPES ::= {
 }
 
 // movw/movt absolute-address loads. The VM build uses `-mslow-flash-data`, so
-// addresses materialize via movw/movt; every current one targets the fixed
-// `g_plat_jt[]`, so none need relocation. An in-slot target would require
-// device-side movw/movt re-encoding (unimplemented) — the tool fails loudly.
+// some addresses materialize via movw/movt; every current one targets a FIXED
+// address (identical in both slots), so none need relocation. An in-slot
+// target would require device-side movw/movt re-encoding (unimplemented) —
+// the tool fails loudly.
 MOVW-MOVT-TYPES ::= {
   "R_ARM_THM_MOVW_ABS_NC", "R_ARM_THM_MOVT_ABS",
   "R_ARM_MOVW_ABS_NC", "R_ARM_MOVT_ABS",
