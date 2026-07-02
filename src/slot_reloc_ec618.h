@@ -17,7 +17,7 @@
 //
 // The Toit firmware is one position-independent image, linked once at slot A's
 // base. The handful of words that depend on the slot base are captured in a
-// relocation table (the "SRL2" artifact, see tools/ec618/gen-slot-reloc.toit).
+// relocation table (the "SRL3" artifact, see tools/ec618/gen-slot-reloc.toit).
 // This module applies that table, in BOTH directions, so the relocation is
 // invisible to the (architecture-agnostic) Toit firmware code:
 //
@@ -63,7 +63,7 @@ enum SlotRelocDir {
   SLOT_RELOC_TO_CANONICAL = -1, // Slot -> canonical (un-relocate, for reading).
 };
 
-// A parsed, zero-copy view over an "SRL2" reloc-table blob. The blob stays
+// A parsed, zero-copy view over an "SRL3" reloc-table blob. The blob stays
 // owned by the caller; this just points into it.
 struct SlotRelocTable {
   uint32_t link_base;            // Slot base the image was linked at.
@@ -75,6 +75,8 @@ struct SlotRelocTable {
   uint32_t abs32_count;          // Number of ABS32 entries.
   uint32_t thmbl_count;          // Number of Thumb-branch-escape entries.
   uint32_t straddle_count;       // Number of sector-straddling branch entries.
+  uint32_t base_version;         // base-vN the slot was linked against.
+  const uint8_t* base_fp;        // 16-byte base fingerprint (into the blob).
   const uint8_t* abs32_varints;  // Delta-varint stream of ABS32 offsets.
   const uint8_t* thmbl_varints;  // Delta-varint stream of branch offsets.
   const uint8_t* straddle_entries;  // Stream of sector-straddling branch
@@ -83,12 +85,12 @@ struct SlotRelocTable {
   const uint8_t* end;            // One past the blob's last byte.
 };
 
-// Parses the "SRL2" header of `blob` (`len` bytes) into `out`. Returns whether
+// Parses the "SRL3" header of `blob` (`len` bytes) into `out`. Returns whether
 // the magic, sizes and varint streams are well-formed.
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table);
 
 // Locates and parses the reloc table stored at the TAIL of a slot. It rides
-// there as `[ SRL2 table (N bytes) ][ N : uint32 little-endian ]`, with N the
+// there as `[ SRL3 table (N bytes) ][ N : uint32 little-endian ]`, with N the
 // slot's very last word — so it is variable-size and self-locating: read the
 // last word, then the N bytes before it. The running VM uses this to recover
 // its active slot's table and un-relocate reads. `slot` points at the slot
@@ -96,7 +98,7 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table);
 // table is present (e.g. an erased tail reads as 0xffffffff).
 bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table);
 
-// Serializes `table_blob` (an "SRL2" blob of `len` bytes) plus its trailing
+// Serializes `table_blob` (an "SRL3" blob of `len` bytes) plus its trailing
 // size word into `out`, padded at the FRONT to `out_size` so the result is
 // written as the last `out_size` bytes of the slot (the size word lands in the
 // slot's last word). `out_size` must be >= len + 4. Returns false otherwise.
@@ -128,15 +130,15 @@ bool slot_reloc_apply(const SlotRelocTable* table,
 // A read-only view that presents the CANONICAL firmware image of a slot and
 // un-relocates its body on the fly. The canonical image is table-first:
 //
-//   [ table_size : u32 ][ SRL2 table ][ VM body + extension ][ VM .data init ]
+//   [ table_size : u32 ][ SRL3 table ][ VM body + extension ][ VM .data init ]
 //
 // while the physical slot stores it tail-first:
 //
-//   [ VM body + ext ][ VM .data init ][ free ][ SRL2 table ][ table_size : word ].
+//   [ VM body + ext ][ VM .data init ][ free ][ SRL3 table ][ table_size : word ].
 //
 // The VM .data init image (`data_size` bytes) rides verbatim right after the
 // body in BOTH framings; it is never relocated (it holds no slot pointers that
-// the SRL2 table covers — those are fixed up in RAM at boot, see
+// the SRL3 table covers — those are fixed up in RAM at boot, see
 // toit_data_reloc.c), so the body-window machinery streams it through unchanged.
 //
 // SlotFirmware maps a canonical offset to its physical source and applies

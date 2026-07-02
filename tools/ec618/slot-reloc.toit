@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Host-side reader + applier for the EC618 "SRL2" slot relocation table.
+// Host-side reader + applier for the EC618 "SRL3" slot relocation table.
 //
 // Mirrors the device C++ in src/slot_reloc_ec618.{h,cc}: the same table
 // format, the same ABS32 / Thumb-branch transforms, both directions. The build
@@ -13,8 +13,8 @@ import io show Buffer LITTLE-ENDIAN
 TO-SLOT ::= 1        // Canonical (link-base) image -> a destination slot.
 TO-CANONICAL ::= -1  // A slot -> canonical (link-base) image.
 
-/** The "SRL2" magic, little-endian. */
-MAGIC ::= #['S', 'R', 'L', '2']
+/** The "SRL3" magic, little-endian. */
+MAGIC ::= #['S', 'R', 'L', '3']
 
 /**
 A parsed EC618 slot relocation table.
@@ -40,13 +40,17 @@ class SlotRelocTable:
   // Sector-straddling branch sites: `[offset, 4 canonical site bytes]` pairs,
   // ascending by offset.
   straddle-entries/List
+  // The base-id the slot was linked against (SRL3): the device rejects a
+  // slot whose id does not match its own .base_id record.
+  base-version/int
+  base-fp/ByteArray
 
-  constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets --.straddle-entries=[]:
+  constructor --.link-base --.slot-size --.body-size --.data-size=0 --.abs32-offsets --.thmbl-offsets --.straddle-entries=[] --.base-version=0 --.base-fp=(ByteArray 16):
 
-  /** Parses an "SRL2" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
+  /** Parses an "SRL3" $blob (as written by tools/ec618/gen-slot-reloc.toit). */
   constructor.parse blob/ByteArray:
-    if blob.size < 32: throw "SRL2 table too small"
-    4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL2 magic"
+    if blob.size < 52: throw "SRL3 table too small"
+    4.repeat: if blob[it] != MAGIC[it]: throw "bad SRL3 magic"
     link-base = LITTLE-ENDIAN.uint32 blob 4
     slot-size = LITTLE-ENDIAN.uint32 blob 8
     body-size = LITTLE-ENDIAN.uint32 blob 12
@@ -54,7 +58,9 @@ class SlotRelocTable:
     thmbl-count := LITTLE-ENDIAN.uint32 blob 20
     data-size = LITTLE-ENDIAN.uint32 blob 24
     straddle-count := LITTLE-ENDIAN.uint32 blob 28
-    pos := 32
+    base-version = LITTLE-ENDIAN.uint32 blob 32
+    base-fp = blob.copy 36 52
+    pos := 52
     abs32 := []
     previous := 0
     abs32-count.repeat:
@@ -112,7 +118,7 @@ class SlotRelocTable:
       bytes.replace p site
 
   /**
-  Serializes this table to the "SRL2" wire format (the inverse of
+  Serializes this table to the "SRL3" wire format (the inverse of
     $SlotRelocTable.parse).
 
   The header is $MAGIC followed by $link-base, $slot-size, $body-size, the
@@ -133,6 +139,8 @@ class SlotRelocTable:
     le.write-uint32 thmbl-offsets.size
     le.write-uint32 data-size
     le.write-uint32 straddle-entries.size
+    le.write-uint32 base-version
+    buffer.write base-fp
     write-varint-deltas buffer abs32-offsets
     write-varint-deltas buffer thmbl-offsets
     previous := 0
@@ -173,6 +181,8 @@ class SlotRelocTable:
         --abs32-offsets=deduped
         --thmbl-offsets=thmbl-offsets
         --straddle-entries=straddle-entries
+        --base-version=base-version
+        --base-fp=base-fp
 
 /** Reads an unsigned LEB128 varint at $pos in $bytes; returns `[value, next-pos]`. */
 read-varint bytes/ByteArray pos/int -> List:

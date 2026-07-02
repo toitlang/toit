@@ -109,6 +109,17 @@ Temporary diagnostic while the GPIO-wake bring-up settles — see
 wakeup-arm-flags_ flags/int -> none:
   #primitive.ec618.wakeup-arm-flags
 
+/**
+Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
+  "base-unknown" for a base without an id record.
+
+Slot OTAs are accepted only when the incoming image was linked against
+  exactly this base (docs/ec618-base-image.md); a mismatch fails the
+  firmware write with a "base mismatch" error on the console.
+*/
+base-id -> string:
+  #primitive.ec618.base-id
+
 /** Reset after power was (re)applied (cold boot). */
 RESET-POWER-ON ::= 0
 /** Normal reset after waking from deep sleep (sleep2) or hibernate. */

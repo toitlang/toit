@@ -22,8 +22,8 @@
 
 namespace toit {
 
-static const uint8_t SRL2_MAGIC[4] = {'S', 'R', 'L', '2'};
-static const size_t SRL2_HEADER_SIZE = 32;  // magic + 7 little-endian uint32s.
+static const uint8_t SRL3_MAGIC[4] = {'S', 'R', 'L', '3'};
+static const size_t SRL3_HEADER_SIZE = 52;  // magic + 7 u32s + base version + fp16.
 
 static uint32_t load_le32(const uint8_t* p) {
   return static_cast<uint32_t>(p[0]) |
@@ -97,9 +97,9 @@ static void thumb_branch_encode(uint8_t* p, int32_t imm) {
 }
 
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
-  if (len < SRL2_HEADER_SIZE) return false;
+  if (len < SRL3_HEADER_SIZE) return false;
   for (int i = 0; i < 4; i++) {
-    if (blob[i] != SRL2_MAGIC[i]) return false;
+    if (blob[i] != SRL3_MAGIC[i]) return false;
   }
   table->link_base = load_le32(blob + 4);
   table->slot_size = load_le32(blob + 8);
@@ -108,8 +108,10 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   table->thmbl_count = load_le32(blob + 20);
   table->data_size = load_le32(blob + 24);
   table->straddle_count = load_le32(blob + 28);
+  table->base_version = load_le32(blob + 32);
+  table->base_fp = blob + 36;  // 16 bytes.
   table->end = blob + len;
-  const uint8_t* p = blob + SRL2_HEADER_SIZE;
+  const uint8_t* p = blob + SRL3_HEADER_SIZE;
   table->abs32_varints = p;
   // Walk the ABS32 stream to locate the start of the branch stream.
   for (uint32_t i = 0; i < table->abs32_count; i++) {
@@ -137,10 +139,10 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
 }
 
 bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table) {
-  if (slot_size < SRL2_HEADER_SIZE + 4) return false;
+  if (slot_size < SRL3_HEADER_SIZE + 4) return false;
   uint32_t n = load_le32(slot + slot_size - 4);
   // An erased tail reads as 0xffffffff; reject that and any implausible size.
-  if (n < SRL2_HEADER_SIZE || n > slot_size - 4) return false;
+  if (n < SRL3_HEADER_SIZE || n > slot_size - 4) return false;
   return slot_reloc_parse(slot + slot_size - 4 - n, n, table);
 }
 
@@ -233,10 +235,10 @@ bool slot_reloc_apply(const SlotRelocTable* table,
 
 bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t slot_size) {
   valid_ = false;
-  if (slot_size < SRL2_HEADER_SIZE + 4) return false;
+  if (slot_size < SRL3_HEADER_SIZE + 4) return false;
   uint32_t n = load_le32(slot + slot_size - 4);
   // An erased tail reads as 0xffffffff; reject that and any implausible size.
-  if (n < SRL2_HEADER_SIZE || n > slot_size - 4) return false;
+  if (n < SRL3_HEADER_SIZE || n > slot_size - 4) return false;
   // The builder pads the table to a word so the canonical body (at 4 + N)
   // starts on a 4-byte boundary — required for word-granular un-relocation.
   if ((n & 3) != 0) return false;

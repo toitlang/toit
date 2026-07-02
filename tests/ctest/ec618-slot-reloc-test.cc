@@ -4,7 +4,7 @@
 
 // Unit tests for the EC618 dual-slot relocation core (src/slot_reloc_ec618.*),
 // the engine behind the relocate-on-write / un-relocate-on-read OTA. Covers:
-//   - the "SRL2" table parse + the ABS32 / Thumb-branch transforms;
+//   - the "SRL3" table parse + the ABS32 / Thumb-branch transforms;
 //   - identity after relocation (relocate then un-relocate is a no-op);
 //   - a patch site straddling a window boundary is rejected;
 //   - the self-locating tail trailer round-trips;
@@ -52,20 +52,22 @@ struct StraddleSite {
   uint8_t bytes[4];
 };
 
-// Builds an "SRL2" blob from ascending ABS32 / branch offset lists and
-// straddle entries. `data_size` is the verbatim VM .data init image that rides
-// after the body (0 = none).
+// Builds an "SRL3" blob from ascending ABS32 / branch offset lists and
+// straddle entries (with a dummy base-id). `data_size` is the verbatim VM
+// .data init image that rides after the body (0 = none).
 static std::vector<uint8_t> build_table(uint32_t link_base, uint32_t slot_size, uint32_t body_size,
                                         const std::vector<uint32_t>& abs32,
                                         const std::vector<uint32_t>& thmbl,
                                         uint32_t data_size = 0,
                                         const std::vector<StraddleSite>& straddle = {}) {
   std::vector<uint8_t> t;
-  t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('2');
+  t.push_back('S'); t.push_back('R'); t.push_back('L'); t.push_back('3');
   put_le32(&t, link_base); put_le32(&t, slot_size); put_le32(&t, body_size);
   put_le32(&t, abs32.size()); put_le32(&t, thmbl.size());
   put_le32(&t, data_size);
   put_le32(&t, straddle.size());
+  put_le32(&t, 1);                                    // Dummy base version.
+  for (int i = 0; i < 16; i++) t.push_back(0xAB);     // Dummy fingerprint.
   uint32_t prev = 0;
   for (uint32_t o : abs32) { put_varint(&t, o - prev); prev = o; }
   prev = 0;
@@ -208,7 +210,7 @@ static void test_straddle_stream() {
 }
 
 static void test_trailer() {
-  // Build an SRL2 blob, lay it down as a tail trailer in a slot buffer, and
+  // Build an SRL3 blob, lay it down as a tail trailer in a slot buffer, and
   // recover it from the slot's last word.
   std::vector<uint8_t> blob = build_table(0x991000, 0x60000, 0x100, {0x10, 0x20}, {0x40});
   const uint32_t SLOT = 0x10000;
@@ -343,7 +345,7 @@ int main(int, char**) {
   test_relocate_identity();
   printf("window straddle rejection\n");
   test_straddle();
-  printf("sector-straddle stream (SRL2, embedded canonical bytes)\n");
+  printf("sector-straddle stream (embedded canonical bytes)\n");
   test_straddle_stream();
   printf("self-locating tail trailer\n");
   test_trailer();

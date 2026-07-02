@@ -32,11 +32,11 @@ import io show Buffer LITTLE-ENDIAN
 import host.file
 import host.pipe
 
-// Reloc-table artifact magic: "SRL2" (Slot ReLoc, version 2 — adds the
-// sector-straddle branch stream, whose entries carry the site's canonical
-// bytes so the device's chunked relocate-on-write can patch a Thumb branch
-// split across two 4 KB sectors without seeing both chunks).
-MAGIC ::= #['S', 'R', 'L', '2']
+// Reloc-table artifact magic: "SRL3" (Slot ReLoc, version 3 — v2 added the
+// sector-straddle branch stream with embedded canonical bytes; v3 adds the
+// BASE ID the slot was linked against, so the device can reject a slot
+// built for a different base instead of faulting).
+MAGIC ::= #['S', 'R', 'L', '3']
 
 // The device writes (and erases) the slot in 4 KB flash sectors; a 2-aligned
 // Thumb-branch site at `sector_end - 2` straddles two of them. Mirrors
@@ -119,6 +119,9 @@ main args:
         cli.Option "ap"
             --help="The slot-A ap.bin (flat binary)."
             --required,
+        cli.Option "base"
+            --help="The stamped base image (build/ec618-base/base.bin) whose base-id the table carries."
+            --required,
         cli.Option "out"
             --help="The output reloc-table artifact path."
             --required,
@@ -166,6 +169,16 @@ run invocation/cli.Invocation -> none:
   slot-a-file := slot-a-flash - ap-load-addr
 
   ap-a := file.read-contents ap-path
+
+  // The base-id record the slot was linked against (see gen-base-id.toit).
+  base-bin := file.read-contents invocation["base"]
+  id-off := 0x990000 - ap-load-addr
+  if not (base-bin.size > id-off + 24 and base-bin[id-off] == 'T' and base-bin[id-off + 1] == 'B'
+      and base-bin[id-off + 2] == 'I' and base-bin[id-off + 3] == '1'):
+    pipe.print-to-stderr "no base-id record in $invocation["base"] — run gen-base-id first"
+    exit 1
+  base-version := LITTLE-ENDIAN.uint32 base-bin (id-off + 4)
+  base-fp := base-bin.copy (id-off + 8) (id-off + 24)
   relocs := read-relocs readelf elf ".rel.vm_a"
   if relocs.is-empty:
     pipe.print-to-stderr "no .rel.vm_a relocations in $elf (was it linked with -Wl,--emit-relocs?)"
@@ -227,6 +240,8 @@ run invocation/cli.Invocation -> none:
   file.write-contents --path=data-out-path vm-data
 
   table := encode-table
+      --base-version=base-version
+      --base-fp=base-fp
       --link-base=link-base
       --slot-size=slot-size
       --body-size=body-size
@@ -321,7 +336,7 @@ The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the
   carried). Mirrors `SlotRelocTable.to-bytes` in tools/ec618/slot-reloc.toit
   and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
 */
-encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --abs32/List --thmbl/List --straddle/List -> ByteArray:
+encode-table --base-version/int --base-fp/ByteArray --link-base/int --slot-size/int --body-size/int --data-size/int --abs32/List --thmbl/List --straddle/List -> ByteArray:
   buffer := Buffer
   buffer.write MAGIC
   le := buffer.little-endian
@@ -332,6 +347,8 @@ encode-table --link-base/int --slot-size/int --body-size/int --data-size/int --a
   le.write-uint32 thmbl.size
   le.write-uint32 data-size
   le.write-uint32 straddle.size
+  le.write-uint32 base-version
+  buffer.write base-fp
   write-varint-deltas buffer abs32
   write-varint-deltas buffer thmbl
   previous := 0

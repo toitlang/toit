@@ -79,6 +79,11 @@ static const uint32_t FLASH_SECTOR_SIZE = 0x1000;
 static_assert(FLASH_SECTOR_SIZE % FLASH_SEGMENT_SIZE == 0,
               "sector size must be a multiple of segment size");
 
+// XIP address of the base-id record: { 'T','B','I','1', version:u32 LE,
+// fingerprint:16 } — stamped by tools/ec618/gen-base-id.toit into the
+// reserved page. Mirrors TOIT_BASE_ID_ORIGIN in the linker template.
+static const uintptr_t BASE_ID_XIP = 0x00990000;
+
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
 PRIMITIVE(print_uart_id) {
@@ -210,6 +215,33 @@ PRIMITIVE(slot_reloc_begin) {
     free(copy);
     FAIL(INVALID_ARGUMENT);
   }
+
+  // Base-id gate (frozen-base phase 4): the incoming image's SRL3 table
+  // carries the base it was linked against; refuse it if that is not the
+  // base THIS device runs — a mismatched slot would branch to addresses the
+  // flashed base does not have, an undebuggable fault. The device's own
+  // record is stamped by gen-base-id.toit into the reserved flash page.
+  {
+    const uint8_t* record = reinterpret_cast<const uint8_t*>(BASE_ID_XIP);
+    bool device_ok = record[0] == 'T' && record[1] == 'B' &&
+                     record[2] == 'I' && record[3] == '1';
+    uint32_t device_version = device_ok
+        ? (record[4] | (record[5] << 8) | (record[6] << 16) |
+           (static_cast<uint32_t>(record[7]) << 24))
+        : 0;
+    bool match = device_ok && device_version == slot_reloc_table.base_version &&
+                 memcmp(record + 8, slot_reloc_table.base_fp, 16) == 0;
+    if (!match) {
+      printf("[toit] ERROR: base mismatch — image built for base-v%u, "
+             "device runs base-v%u%s; full-flash the matching base\n",
+             static_cast<unsigned>(slot_reloc_table.base_version),
+             static_cast<unsigned>(device_version),
+             device_ok ? "" : " (no base-id record)");
+      free(copy);
+      FAIL(OUT_OF_BOUNDS);
+    }
+  }
+
   const uint32_t dest_base = inactive_slot_base();
   slot_reloc_delta = static_cast<int32_t>(dest_base) -
                      static_cast<int32_t>(slot_reloc_table.link_base);
@@ -571,6 +603,27 @@ PRIMITIVE(wakeup_arm_flags) {
   return process->null_object();
 }
 
+// Returns the flashed base's identity as "base-v<N>+<fingerprint hex>", or
+// "base-unknown" when the reserved page carries no record (a pre-phase-4
+// base). Slot OTAs are accepted only when the incoming image's SRL3 table
+// matches this id (see slot_reloc_begin).
+PRIMITIVE(base_id) {
+  const uint8_t* record = reinterpret_cast<const uint8_t*>(BASE_ID_XIP);
+  if (!(record[0] == 'T' && record[1] == 'B' &&
+        record[2] == 'I' && record[3] == '1')) {
+    return process->allocate_string_or_error("base-unknown");
+  }
+  uint32_t version = record[4] | (record[5] << 8) | (record[6] << 16) |
+                     (static_cast<uint32_t>(record[7]) << 24);
+  char buffer[8 + 10 + 1 + 32 + 1];  // "base-v" + digits + '+' + hex + NUL.
+  int n = snprintf(buffer, sizeof(buffer), "base-v%u+",
+                   static_cast<unsigned>(version));
+  for (int i = 0; i < 16; i++) {
+    n += snprintf(buffer + n, sizeof(buffer) - n, "%02x", record[8 + i]);
+  }
+  return process->allocate_string_or_error(buffer);
+}
+
 // Raw 32-bit register/memory access for bring-up diagnostics (the rig can
 // inspect live peripheral state from a test container instead of needing a
 // debugger). Aligned addresses only. Dev-platform tool — handle with care.
@@ -737,6 +790,7 @@ PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_cause) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_pad_configure) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_arm_flags) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(base_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_init) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_feed) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(watchdog_deinit) { FAIL(UNIMPLEMENTED); }

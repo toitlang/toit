@@ -247,7 +247,7 @@ EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
 # needs a slot spliced in; this is the linking/assembly input and the
 # future base-vN release payload.
 .PHONY: ec618-base
-ec618-base: check-env
+ec618-base: check-env host-tools
 	mkdir -p $(BUILD)/ec618-base
 	cd $(EC618_SDK) && rm -rf build && \
 		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
@@ -255,7 +255,12 @@ ec618-base: check-env
 	cd $(CURDIR)
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618-base/base.elf
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618-base/base.bin
-	cp $(EC618_SDK)/out/toit/toit.binpkg $(BUILD)/ec618-base/base.binpkg
+	# Stamp the base-id record (magic + base-vN + fingerprint) into the
+	# reserved page; every slot build reads it into its SRL3 table and the
+	# device rejects slots built against a different base.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-base-id.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--version-file=$(CURDIR)/toolchains/ec618/base-version
 
 ec618: check-env host-tools
 	# Build the EC618 VM library.
@@ -338,6 +343,7 @@ ec618: check-env host-tools
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--ap=$(BUILD)/ec618/ap-slot-a.bin \
+		--base=$(BUILD)/ec618-base/base.bin \
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--data-out=$(BUILD)/ec618/slot-data.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
