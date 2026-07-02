@@ -119,9 +119,10 @@ Board pin  Functions (real)            Covered by                               
 14  (net)  mirrors PAD26's net         see pin 5                                     —
 18  PAD44  GPIO24 (AON)                gpio output (exact pulses),                   —
                                        gpio-aon-input (131 edges, wire-id proven)
-22  PAD14  GPIO15 (ALT4), I2C0_SDA     gpio pulses (lockstep with pin 23)            I2C0 transaction +
-                                                                                     which-wire-is-which
-23  PAD13  GPIO14 (ALT4), I2C0_SCL     gpio pulses (lockstep with pin 22)            (same)
+22  PAD14  GPIO15 (ALT4), I2C0_SDA     gpio pulses; i2c0-scan/i2c0-wire (SDA          —
+                                       confirmed: 1212 edges vs SCL's 3360)
+23  PAD13  GPIO14 (ALT4), I2C0_SCL     gpio pulses; i2c0-scan/i2c0-wire (SCL          —
+                                       confirmed by edge ratio)
 27  PAD47  GPIO27 (AON)                gpio output (exact pulses),                   —
                                        gpio-aon-input (59 edges, wire-id proven)
 30  PAD34  GPIO19, UART1_TX            control lane (every dual-board test),         —
@@ -136,11 +137,13 @@ Remaining gap work, in order:
    distinct frequencies per wire (10 Hz vs 4 Hz; 131 vs 59 edges) prove
    the wire identities — a swap or coupling would invert/equalize the
    ratio.
-2. **I2C0 bus-level test** (pins 22/23): EC618 drives real I2C0 traffic
-   (scan/write on pads 14/13); the ESP32 counts edges per wire — SCL
-   carries ~9 clocks per byte, SDA varies — which both proves the I2C0
-   controller through these pads and finally resolves which ESP32 pin is
-   SDA vs SCL (they have only ever moved in lockstep).
+2. **I2C0 bus-level test** (pins 22/23) — DONE 2026-07-02
+   (`i2c0-scan-ec618` + `i2c0-wire-esp32`): three full scans complete
+   cleanly (112 NACKs each, empty result, no wedge) through pads 14/13
+   with internal pull-ups both sides; the ESP32's hardware pulse
+   counters (the I2C clock is far too fast for GPIO polling) measured
+   scl=3360 vs sda=1212 rising edges — IO17=SCL, IO18=SDA, the lockstep
+   ambiguity resolved and it matches the table above.
 3. **Pads-40..42 output gate** (pin 9, known-issues #5): find what frees
    the AON GPIO output path on the low wakeup pads (input/wake work;
    output stays silent while PAD44/47 — same AON bank, higher pads —
