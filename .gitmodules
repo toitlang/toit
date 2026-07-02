@@ -6,4 +6,4 @@
 [submodule "third_party/luatos-soc-ec618"]
 	path = third_party/luatos-soc-ec618
 	url = https://github.com/toitlang/luatos-soc-2022.git
-	branch = toit
+	branch = floitsch/bring-up-cleaned
