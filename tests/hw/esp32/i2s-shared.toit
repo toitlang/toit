@@ -18,17 +18,17 @@ import .i2s-utils
 import .test
 import .variants
 
-DATA1 ::= Variant.CURRENT.board-connection-pin4
-DATA2 ::= Variant.CURRENT.board-connection-pin4
+DATA1 ::= Variant.CURRENT.i2s-board-data-pin
+DATA2 ::= Variant.CURRENT.i2s-board-data-pin
 
-CLK1 ::= Variant.CURRENT.board-connection-pin1
-CLK2 ::= Variant.CURRENT.board-connection-pin1
+CLK1 ::= Variant.CURRENT.i2s-board-clk-pin
+CLK2 ::= Variant.CURRENT.i2s-board-clk-pin
 
-WS1 ::= Variant.CURRENT.board-connection-pin3
-WS2 ::= Variant.CURRENT.board-connection-pin3
+WS1 ::= Variant.CURRENT.i2s-board-ws-pin
+WS2 ::= Variant.CURRENT.i2s-board-ws-pin
 
-MCLK1 ::= Variant.CURRENT.board-connection-pin2
-MCLK2 ::= Variant.CURRENT.board-connection-pin2
+MCLK1 ::= Variant.CURRENT.i2s-board-mclk-pin
+MCLK2 ::= Variant.CURRENT.i2s-board-mclk-pin
 
 SLOW-SAMPLE-RATE ::= 3_000
 FAST-SAMPLE-RATE ::= 70_000
