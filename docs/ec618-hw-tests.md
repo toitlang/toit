@@ -117,11 +117,13 @@ Board pin  Functions (real)            Covered by                               
 12  PAD16  GPIO1, PWM (TIMER0)         pwm (freq/duty measured), rc522 (RST drive)   —
 13  PAD24  GPIO9, SPI0_MOSI, I2C1_SCL  rc522 (MOSI), bmp280 (I2C1), gpio-map         —
 14  (net)  mirrors PAD26's net         see pin 5                                     —
-18  PAD44  GPIO24 (AON)                gpio output (exact pulses)                    GPIO INPUT
+18  PAD44  GPIO24 (AON)                gpio output (exact pulses),                   —
+                                       gpio-aon-input (131 edges, wire-id proven)
 22  PAD14  GPIO15 (ALT4), I2C0_SDA     gpio pulses (lockstep with pin 23)            I2C0 transaction +
                                                                                      which-wire-is-which
 23  PAD13  GPIO14 (ALT4), I2C0_SCL     gpio pulses (lockstep with pin 22)            (same)
-27  PAD47  GPIO27 (AON)                gpio output (exact pulses)                    GPIO INPUT
+27  PAD47  GPIO27 (AON)                gpio output (exact pulses),                   —
+                                       gpio-aon-input (59 edges, wire-id proven)
 30  PAD34  GPIO19, UART1_TX            control lane (every dual-board test),         —
                                        gpio-map
 31  PAD33  GPIO18, UART1_RX,           uart1-echo (RX), pwm (TIMER4),                —
@@ -129,8 +131,11 @@ Board pin  Functions (real)            Covered by                               
 ```
 
 Remaining gap work, in order:
-1. **AON-pad GPIO input** (pins 18/27): extend the gpio-input pair to
-   PAD44/PAD47 (ESP32 drives IO19/IO2) — completes both pins.
+1. **AON-pad GPIO input** (pins 18/27) — DONE 2026-07-02
+   (`gpio-aon-input-{ec618,esp32}`): both pads read the ESP32 drive, and
+   distinct frequencies per wire (10 Hz vs 4 Hz; 131 vs 59 edges) prove
+   the wire identities — a swap or coupling would invert/equalize the
+   ratio.
 2. **I2C0 bus-level test** (pins 22/23): EC618 drives real I2C0 traffic
    (scan/write on pads 14/13); the ESP32 counts edges per wire — SCL
    carries ~9 clocks per byte, SDA varies — which both proves the I2C0
