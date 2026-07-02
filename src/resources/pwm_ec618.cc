@@ -27,6 +27,7 @@ extern "C" {
   #include "clock.h"
   #include "driver_gpio.h"
   #include "ec618.h"
+  #include "slpman.h"  // slpManAONIOPowerOn for the AON-domain PWM pads.
   #include "timer.h"
 }
 
@@ -55,12 +56,15 @@ struct PwmPad {
 };
 
 // Pad -> timer routing, from the SDK's luat_pwm_ec618.c map (iomux ALT5
-// on every entry).
+// on every entry). Each timer routes to one pad per mux group: the RTE
+// group (AON pads 43/44/45/47 — the module's "PWM0x" silkscreen pins,
+// RTE_PWMn in the SDK project configs), the "PWM1x" group (16/17/31/33),
+// and the "PWM2x"/I2S group (39/35/36/38).
 static const PwmPad kPwmPads[] = {
-  {16, 0}, {39, 0},
-  {17, 1}, {35, 1},
-  {31, 2}, {36, 2},
-  {33, 4}, {38, 4},
+  {16, 0}, {39, 0}, {43, 0},
+  {17, 1}, {35, 1}, {44, 1},
+  {31, 2}, {36, 2}, {45, 2},
+  {33, 4}, {38, 4}, {47, 4},
 };
 
 static const ClockId_e kPClks[kTimerCount] = {
@@ -231,6 +235,10 @@ PRIMITIVE(start) {
   CLOCK_clockEnable(kPClks[timer]);
   CLOCK_clockEnable(kFClks[timer]);
   TIMER_driverInit();
+
+  // The AON pads (43/44/45/47) sit behind the AON IO LDO, off at boot —
+  // same rule as the GPIO path; idempotent, stays on.
+  if (pad_is_aon(pad)) slpManAONIOPowerOn();
 
   GPIO_IomuxEC618(pad, 5, 0, 0);  // ALT5 = the timer's PWM output.
   program_pwm(timer, group->period(), factor);

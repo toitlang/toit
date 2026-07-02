@@ -220,6 +220,35 @@ work, where the wakeup-pad configuration gets exercised anyway.
 (Update: the *wake* function of these pads is now fully working — see #12
 — but that changed nothing here: the GPIO output gate is still closed.)
 
+**Round 2 (2026-07-02, `aon-wu-output-experiments-ec618.toit` — poke32
+against the AON block; register map recovered by disassembling ioCtrl.o
+in libdriver_private.a, offsets from 0x4D020000):**
+
+    0x54   AONIO voltage    (slpManAONIOVoltSet; 3.3V-group v -> ((v-16)<<2)|1)
+    0x70   AONIO LDO power  (slpManAONIOPowerOn writes 1 + polls)
+    0xAC   bit 23           (slpManAONIOLatchEn)
+    0x148  WU pull banks    (bits 0..5 / 8..13)
+    0x14C  WU wake-enable   (bits 0..2 = WAKEUP_PAD_3..5 = pads 40..42)
+    0x150  WU aonio-release
+    0x170  the vendor magic
+
+ELIMINATED on hardware: volt-set to 3.30 V (poke 0x54=0x15 — and the PWM
+work proved pads 44/47 drive full-swing off the same LDO anyway),
+latch-disable (bit 23 idles clear), NVIC PadWakeup3..5 disable (ISER0
+idles 0xf400 — never enabled), and the magic write again (sticks, reads
+back 1, output still dead). Verified as a side effect: the driver's
+wake-release on open / re-arm on close hit the real banks (0x14C bit 2
+flips exactly as decoded). Writing 0x170=0x7 (probing it as a per-pad
+bank) wedges the container — treat bits 1+ as reserved.
+
+**Current lead.** The SDK example's own comments measured LOADED WU-pad
+outputs at only ~2.0 V ("异常" — abnormal); the WU trio's output cells
+may be intrinsically weak, and pin 9's net carries the BMP280's VCC plus
+bus pull-ups — a heavy load the sensor-based repro cannot separate from
+"no drive". Next measurement: high-Z probe via the ESP32 (IO13) with a
+long settle, and the cold-boot ordering variant (magic write before the
+first LDO power-on — needs a power-cycle).
+
 **Repro.** `tests/hw/ec618/aon-wu-output-repro-ec618.toit` (standalone;
 drives PAD42, whose net is the rig's BMP280 power rail — the sensor coming
 up, or the ESP32 reading IO13 high, would mean the output works).

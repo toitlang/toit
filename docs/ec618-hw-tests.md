@@ -87,10 +87,10 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 23        -> 12  (GPIO01, PWM10)                 PAD16 (TIMER0 PWM)      CONFIRMED (pwm test: 1 kHz measured at IO23)
 22        -> 13  (GPIO09, I2C1_SCL, SPI0_MOSI)   PAD24 (GPIO9)           CONFIRMED (gpio-map: 24 pulses at IO22)
 21        -> 14  (GPIO11, UART2_TX, SPI0_CLK)    MIRRORS PAD26's net     CONFIRMED (NOT PAD22: isolated PAD22 drive = quiet; bit-11 drive with PAD26 GPIO-muxed = IO21+IO27 toggle)
-19        -> 18  (GPIO24, MAIN_RI, PWM01)        PAD44 (GPIO24, AON)     CONFIRMED output (exact pulses, 2026-06-10); input untested; "PWM01" NOT AP-routable (SDK map: no PWM on PAD44)
+19        -> 18  (GPIO24, MAIN_RI, PWM01)        PAD44 (GPIO24, AON)     CONFIRMED output+input+PWM ("PWM01" = PWM ch1 = TIMER1 at ALT5, RTE_PWM1; pwm-aon test 2026-07-02)
 18        -> 22  (I2C0_SDA)                      PAD14 (I2C0 SDA)        CONFIRMED (I2C0 on sda=14/scl=13 toggles both wires; per LuatOS iomux docs. Which ESP32 pin carries SDA vs SCL is unverified — both moved in lockstep. NOTE: earlier "unreachable" verdict was wrong — the gpio-map drove pads 13/14 with the variant-1 GPIO bits 2/3, likely bogus)
 17        -> 23  (I2C0_SCL)                      PAD13 (I2C0 SCL)        see pin 22
- 2        -> 27  (GPIO27, NET_STATUS, PWM04)     PAD47 (GPIO27, AON)     CONFIRMED output (exact pulses, 2026-06-10); input untested; "PWM04" NOT AP-routable (SDK map: no PWM on PAD47)
+ 2        -> 27  (GPIO27, NET_STATUS, PWM04)     PAD47 (GPIO27, AON)     CONFIRMED output+input+PWM ("PWM04" = PWM ch4 = TIMER4 at ALT5, RTE_PWM4; pwm-aon test 2026-07-02)
  4        -> 30  (UART1_TXD)                     UART1 TX (PAD34)        CONFIRMED (gpio-map: GPIO19 -> IO4)
 16        -> 31  (GPIO18, UART1_RXD, PWM14)      UART1 RX (PAD33)        CONFIRMED (gpio-map: GPIO18 -> IO16)
 ```
@@ -98,9 +98,13 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 ## Per-pin coverage matrix (goal: every board pin demonstrates every function)
 
 Goal (Florian, 2026-07-01): each wired dev-board pin must have a test
-demonstrating that ALL of its functions work. Status per pin (functions =
-what the pad can actually do, not what the silkscreen claims — the two
-"PWM" labels below are Air780E module names with no AP-timer route):
+demonstrating that ALL of its functions work. The silkscreen "PWMxy"
+labels decode as mux-group x + PWM channel y (luat_pwm_ec618.c): group 0
+= the RTE/AON pads (43/44/45/47), group 1 = pads 16/17/31/33, group 2 =
+the I2S pads (39/35/36/38) — channel y rides TIMERy, iomux ALT5 in every
+group. (An earlier claim here that PWM01/PWM04 had "no AP-timer route"
+was wrong — the driver was missing the group-0 routings; Florian caught
+it.) Status per pin:
 
 ```
 Board pin  Functions (real)            Covered by                                   Gaps
@@ -117,14 +121,16 @@ Board pin  Functions (real)            Covered by                               
 12  PAD16  GPIO1, PWM (TIMER0)         pwm (freq/duty measured), rc522 (RST drive)   —
 13  PAD24  GPIO9, SPI0_MOSI, I2C1_SCL  rc522 (MOSI), bmp280 (I2C1), gpio-map         —
 14  (net)  mirrors PAD26's net         see pin 5                                     —
-18  PAD44  GPIO24 (AON)                gpio output (exact pulses),                   —
-                                       gpio-aon-input (131 edges, wire-id proven)
+18  PAD44  GPIO24 (AON), PWM ch1       gpio output (exact pulses),                   —
+           (TIMER1)                    gpio-aon-input (131 edges, wire-id proven),
+                                       pwm-aon (1 kHz + duty; first TIMER1 HW proof)
 22  PAD14  GPIO15 (ALT4), I2C0_SDA     gpio pulses; i2c0-scan/i2c0-wire (SDA          —
                                        confirmed: 1212 edges vs SCL's 3360)
 23  PAD13  GPIO14 (ALT4), I2C0_SCL     gpio pulses; i2c0-scan/i2c0-wire (SCL          —
                                        confirmed by edge ratio)
-27  PAD47  GPIO27 (AON)                gpio output (exact pulses),                   —
-                                       gpio-aon-input (59 edges, wire-id proven)
+27  PAD47  GPIO27 (AON), PWM ch4       gpio output (exact pulses),                   —
+           (TIMER4)                    gpio-aon-input (59 edges, wire-id proven),
+                                       pwm-aon (1 kHz, simultaneous with ch1)
 30  PAD34  GPIO19, UART1_TX            control lane (every dual-board test),         —
                                        gpio-map
 31  PAD33  GPIO18, UART1_RX,           uart1-echo (RX), pwm (TIMER4),                —
@@ -144,11 +150,20 @@ Remaining gap work, in order:
    counters (the I2C clock is far too fast for GPIO polling) measured
    scl=3360 vs sda=1212 rising edges — IO17=SCL, IO18=SDA, the lockstep
    ambiguity resolved and it matches the table above.
-3. **Pads-40..42 output gate** (pin 9, known-issues #5): find what frees
-   the AON GPIO output path on the low wakeup pads (input/wake work;
-   output stays silent while PAD44/47 — same AON bank, higher pads —
-   drive fine). Fold into deep-sleep follow-ups if it turns out to be a
-   wake-pad ownership bit.
+3. **Pads-40..42 output gate** (pin 9, known-issues #5): STILL OPEN.
+   Poke-based experiment rounds (2026-07-02,
+   `aon-wu-output-experiments-ec618.toit`) decoded the AON IO register
+   map (see the known-issue entry) and ELIMINATED: the vendor magic
+   write 0x4D020170=1, NVIC PadWakeup3..5 disable (they idle disabled),
+   AONIO volt-set to 3.30 V, and the AON IO latch (bit idles clear).
+   The wake-release/re-arm writes (0x14C/0x150 banks) demonstrably work.
+   Remaining leads: the WU trio's output cells may be intrinsically
+   weak (the SDK example itself measured only ~2.0 V on LOADED WU-pad
+   outputs, and pin 9's net carries the BMP280 VCC + pull-ups — a light
+   high-Z probe needs the ESP32 on IO13 instead of the sensor), and the
+   cold-boot ordering variant (magic write before the first LDO
+   power-on) needs a power-cycle to test. Fold into the deep-sleep
+   arc.
 
 **No hardware flow control is wireable as-is (measured 2026-06-10):** UART2 has
 no flow control in the chip; UART1's RTS/CTS pads (PAD31/PAD32 = GPIO16/17,
@@ -192,7 +207,7 @@ suitable board appears.
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
 | **ADC** | ✅ implemented, **HW-tested exact-value (both channels)** | `adc_ec618.cc`; `gpio.adc` channel ctor (0→AIO3, 1→AIO4). Self-calibrating ±60 mV. |
 | DAC | ❌ n/a | EC618 needs no DAC for these tests (the ESP32 provides DAC). |
-| PWM | ✅ implemented, HW-tested | `pwm_ec618.cc` on TIMER0/1/2/4 (ALT5). TIMER0 (PAD16) + TIMER4 (PAD33) HW-measured; TIMER1/2 pads reach no ESP32 wire. |
+| PWM | ✅ implemented, HW-tested | `pwm_ec618.cc` on TIMER0/1/2/4 (ALT5, all three mux groups incl. the AON pads 43/44/45/47). TIMER0 (PAD16), TIMER1 (PAD44) + TIMER4 (PAD33/47) HW-measured; TIMER2's pads (31/36/45) reach no ESP32 wire. |
 | SPI | ✅ implemented, HW-tested (sync + **async DMA**) | `spi_ec618.cc`; ≥64-byte transfers ride SPI_TransferEx DMA + event completion (2026-07-02, rc522 burst rounds). |
 
 Design decision: bind the **PLAT driver/HAL directly**, do **not** use the

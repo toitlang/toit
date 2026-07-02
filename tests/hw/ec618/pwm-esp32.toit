@@ -55,7 +55,10 @@ main:
 
     if parts[0] == "F":
       pin := gpio.Pin io --input --pull-down
-      unit := pulse-counter.Unit pin
+      // Glitch filter: the AON-pad wires (IO19/IO2) ring enough to
+      // double-count edges without it; the max ~12.8 us filter is still
+      // 40x shorter than a half-period at the fastest tested PWM (2 kHz).
+      unit := pulse-counter.Unit pin --glitch-filter-ns=12_000
       start := Time.monotonic-us
       sleep --ms=2000
       edges := unit.value
