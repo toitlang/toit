@@ -240,6 +240,23 @@ EC618_ENVELOPE = $(BUILD)/ec618/firmware.envelope
 EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
 
 .PHONY: ec618
+# The BASE half of the two-stage link (frozen-base phase 4,
+# docs/frozen-base-phase4.md): PLAT + dispatcher + keep-list, NO VM
+# archives. Produces the artifact set slots link against (base.elf) and
+# the flashable base image parts. NOT independently bootable — a device
+# needs a slot spliced in; this is the linking/assembly input and the
+# future base-vN release payload.
+.PHONY: ec618-base
+ec618-base: check-env
+	mkdir -p $(BUILD)/ec618-base
+	cd $(EC618_SDK) && rm -rf build && \
+		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
+		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
+	cd $(CURDIR)
+	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618-base/base.elf
+	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618-base/base.bin
+	cp $(EC618_SDK)/out/toit/toit.binpkg $(BUILD)/ec618-base/base.binpkg
+
 ec618: check-env host-tools
 	# Build the EC618 VM library.
 	mkdir -p $(BUILD)/ec618

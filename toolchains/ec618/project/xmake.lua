@@ -23,9 +23,14 @@ target(TARGET_NAME)
     -- Link the project's own library.
     LIB_USER = LIB_USER .. SDK_TOP .. "/" .. LIB_DIR .. LIB_NAME .. " "
 
-    -- Link the Toit VM library and mbedTLS libraries.
-    LIB_USER = LIB_USER .. TOIT_BUILD .. "/src/libtoit_vm.a "
-    LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedtls.a "
-    LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedx509.a "
-    LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedcrypto.a "
+    -- Link the Toit VM library and mbedTLS libraries — except in the BASE
+    -- link (frozen-base phase 4, docs/frozen-base-phase4.md):
+    -- TOIT_BASE_LINK=1 links the base alone, with no VM archives; slots
+    -- link separately against the resulting base.elf.
+    if os.getenv("TOIT_BASE_LINK") ~= "1" then
+        LIB_USER = LIB_USER .. TOIT_BUILD .. "/src/libtoit_vm.a "
+        LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedtls.a "
+        LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedx509.a "
+        LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedcrypto.a "
+    end
 target_end()
