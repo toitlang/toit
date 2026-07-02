@@ -34,8 +34,8 @@ jobs:
       - name: Build SDK
         run: make
 
-      - name: Build EC618
-        run: make ec618
+      - name: Build EC618 base
+        run: make ec618-base
 
-      - name: Build EC618 firmware
-        run: make ec618-firmware
+      - name: Build EC618 firmware (slot vs base + guards + envelope)
+        run: make ec618

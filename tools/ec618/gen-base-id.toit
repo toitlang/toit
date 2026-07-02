@@ -19,6 +19,7 @@
 
 import cli
 import crypto.sha256 show sha256
+import encoding.json
 import host.file
 import host.pipe
 import io show LITTLE-ENDIAN
@@ -43,6 +44,13 @@ main args:
         cli.Option "version-file"
             --help="File holding the base version number (base-vN)."
             --required,
+        cli.Option "elf"
+            --help="The base.elf, for the geometry section of the manifest.",
+        cli.Option "manifest"
+            --help="Write a JSON manifest (version, fingerprint, geometry) here.",
+        cli.Option "nm"
+            --help="The arm nm binary (for --manifest geometry)."
+            --default="arm-none-eabi-nm",
       ]
       --run=:: run it
   cmd.run args
@@ -72,3 +80,36 @@ run invocation/cli.Invocation -> none:
   hex := ""
   fingerprint.do: hex += "$(%02x it)"
   print "base-id: v$version fp=$hex -> $invocation["base"]"
+
+  manifest-path := invocation["manifest"]
+  if manifest-path:
+    elf := invocation["elf"]
+    if not elf:
+      pipe.print-to-stderr "--manifest requires --elf for the geometry"
+      exit 1
+    geometry := read-geometry invocation["nm"] elf
+    manifest := {
+      "base-version": version,
+      "fingerprint": hex,
+      "geometry": geometry,
+    }
+    file.write-contents --path=manifest-path (json.encode manifest)
+    print "manifest -> $manifest-path"
+
+/**
+Reads the base geometry symbols the slot link derives its script from
+  (see tools/ec618/gen-slot-ld.toit) plus the dram-reserve end.
+*/
+GEOMETRY-SYMBOLS ::= {
+  "__vm_link_base", "__vm_a_start", "__vm_b_start",
+  "__vm_data_start", "end_ap_data", "__toit_rtc_slot",
+}
+
+read-geometry nm/string elf/string -> Map:
+  result := {:}
+  out := pipe.backticks [nm, elf]
+  out.split "\n": | line/string |
+    parts := line.split " "
+    if parts.size >= 3 and GEOMETRY-SYMBOLS.contains parts.last:
+      result[parts.last] = "0x$(%x (int.parse parts[0] --radix=16))"
+  return result

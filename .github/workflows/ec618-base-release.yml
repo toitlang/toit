@@ -1,0 +1,90 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+# Publishes an EC618 base release: the artifact set slots link against
+# (docs/ec618-base-image.md, docs/frozen-base-phase4.md). The release is
+# named from toolchains/ec618/base-version (ec618-base-vN) and is
+# IMMUTABLE — bump the version file for a new base.
+#
+# Each release carries both console variants (uart0/uart1); they share
+# the version number and differ by fingerprint. Every variant's base is
+# proven by building a full slot against it (all build guards) before
+# anything is published.
+
+name: EC618 base release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: self-linux
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build SDK
+        run: make
+
+      - name: Check the release does not exist yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(cat toolchains/ec618/base-version | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if gh release view "ec618-base-v$VERSION" > /dev/null 2>&1; then
+            echo "Release ec618-base-v$VERSION already exists — bump toolchains/ec618/base-version."
+            exit 1
+          fi
+
+      - name: Build + prove base (uart0)
+        run: |
+          make ec618-base
+          make ec618
+          mkdir -p build/release-ec618-base
+          cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION-uart0.elf
+          cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION-uart0.bin
+          cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION-uart0.json
+
+      - name: Build + prove base (uart1)
+        run: |
+          sed -i 's/#define CONFIG_TOIT_EC618_PRINT_UART_ID 0/#define CONFIG_TOIT_EC618_PRINT_UART_ID 1/' toolchains/ec618/ec618_config.h
+          make ec618-base
+          rm -rf build/ec618
+          make ec618
+          cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION-uart1.elf
+          cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION-uart1.bin
+          cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION-uart1.json
+          git checkout toolchains/ec618/ec618_config.h
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ec618-base-v$VERSION" \
+            --title "EC618 base v$VERSION" \
+            --notes "EC618 base artifact set (frozen-base contract — see docs/ec618-base-image.md).
+
+          Slots link against base.elf; base.bin carries the stamped base-id
+          record the device checks before accepting a slot OTA. To build a
+          slot against this release: download a variant's files into a
+          directory as base.elf/base.bin and run
+          \`make ec618 EC618_BASE_DIR=<dir>\`." \
+            build/release-ec618-base/*

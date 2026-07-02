@@ -238,6 +238,11 @@ EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f
 EC618_SYSTEM_ENTRY = $(CURDIR)/system/extensions/ec618/boot.toit
 EC618_ENVELOPE = $(BUILD)/ec618/firmware.envelope
 EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
+# Where the slot build finds the base artifacts (base.elf + stamped
+# base.bin). Defaults to the locally built base; point it at a downloaded
+# base-vN release to build slots against a published base
+# (docs/ec618-base-image.md).
+EC618_BASE_DIR ?= $(BUILD)/ec618-base
 
 .PHONY: ec618
 # The BASE half of the two-stage link (frozen-base phase 4,
@@ -260,7 +265,10 @@ ec618-base: check-env host-tools
 	# device rejects slots built against a different base.
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-base-id.toit -- \
 		--base=$(BUILD)/ec618-base/base.bin \
-		--version-file=$(CURDIR)/toolchains/ec618/base-version
+		--version-file=$(CURDIR)/toolchains/ec618/base-version \
+		--elf=$(BUILD)/ec618-base/base.elf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--manifest=$(BUILD)/ec618-base/base-manifest.json
 
 ec618: check-env host-tools
 	# Build the EC618 VM library.
@@ -276,20 +284,20 @@ ec618: check-env host-tools
 	# for the C++ comdat spill. NOTE: the base is NOT rebuilt automatically —
 	# after base-side changes (toolchains/ec618/project/, the SDK submodule)
 	# rerun `make ec618-base`.
-	test -f $(BUILD)/ec618-base/base.elf || $(MAKE) ec618-base
+	test -f $(EC618_BASE_DIR)/base.elf || $(MAKE) ec618-base
 	# Generate the slot linker scripts from the base's geometry (correct for
 	# exactly this base, by construction), then link slot A (neutral link
 	# base) and slot B (its real flash address — the byte-identity oracle).
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
-		--base-elf=$(BUILD)/ec618-base/base.elf --slot=a --out=$(BUILD)/ec618/slot-a.ld
+		--base-elf=$(EC618_BASE_DIR)/base.elf --slot=a --out=$(BUILD)/ec618/slot-a.ld
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
-		--base-elf=$(BUILD)/ec618-base/base.elf --slot=b --out=$(BUILD)/ec618/slot-b.ld
+		--base-elf=$(EC618_BASE_DIR)/base.elf --slot=b --out=$(BUILD)/ec618/slot-b.ld
 	for s in a b; do \
 		arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
 			-T $(BUILD)/ec618/slot-$$s.ld \
-			-Wl,--just-symbols=$(BUILD)/ec618-base/base.elf \
+			-Wl,--just-symbols=$(EC618_BASE_DIR)/base.elf \
 			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
 			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
 			-Wl,--whole-archive -Wl,--start-group \
@@ -308,14 +316,14 @@ ec618: check-env host-tools
 	# and the result has the exact single-link ap.bin shape, so everything
 	# downstream (reloc gen, gold check, envelope, OTA) is unchanged.
 	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
-		--base=$(BUILD)/ec618-base/base.bin \
+		--base=$(EC618_BASE_DIR)/base.bin \
 		--slot-bin=$(BUILD)/ec618/slot-a.slotbin \
-		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_a_start"{print $$1}') \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(EC618_BASE_DIR)/base.elf | awk '$$3=="__vm_a_start"{print $$1}') \
 		--out=$(BUILD)/ec618/ap-slot-a.bin
 	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
-		--base=$(BUILD)/ec618-base/base.bin \
+		--base=$(EC618_BASE_DIR)/base.bin \
 		--slot-bin=$(BUILD)/ec618/slot-b.slotbin \
-		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(EC618_BASE_DIR)/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
 		--out=$(BUILD)/ec618/ap-slot-b.bin
 	# Verify: no FIXED (non-relocated) section points into the slot. TODO
 	# (phase 4): rethink for the split world — the base cannot reference VM
@@ -343,7 +351,7 @@ ec618: check-env host-tools
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--ap=$(BUILD)/ec618/ap-slot-a.bin \
-		--base=$(BUILD)/ec618-base/base.bin \
+		--base=$(EC618_BASE_DIR)/base.bin \
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--data-out=$(BUILD)/ec618/slot-data.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin

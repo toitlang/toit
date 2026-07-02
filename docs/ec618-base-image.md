@@ -103,8 +103,17 @@ Slot OTA (same base):
 
 (UART1-console rigs need `--fast-baud 115200`; the hop fails there.)
 
-## Where this is going (phase 4, remaining)
+## Releases
 
-CI publishing: the base becomes a released artifact set
-(`base-vN.{elf,bin,manifest}`) and CI links PR slots against the
-released base — the last piece of docs/frozen-base-phase4.md.
+The "EC618 base release" workflow (`workflow_dispatch`) publishes the
+artifact set as an immutable GitHub release `ec618-base-vN` (named from
+`toolchains/ec618/base-version`; bump it for every shipped base change):
+both console variants' `{elf, bin, json-manifest}`, each proven by a
+full slot build with all guards before publishing.
+
+To build a slot against a release, put a variant's files in a directory
+as `base.elf`/`base.bin` and:
+
+    make ec618 EC618_BASE_DIR=<dir>
+
+The CI job (`ci-ec618.yml`) builds base + slot + guards on every push.
