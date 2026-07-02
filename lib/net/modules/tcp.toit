@@ -170,7 +170,11 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
 
   read_ -> ByteArray?:
     while true:
-      state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
+      state := ensure-state_ TOIT-TCP-READ_ --failure=:
+        // A clean close from the peer is not an error for the read path:
+        // return null to signal EOF instead of throwing.
+        if it == "Connection closed": return null
+        throw it
       result := tcp-read_ state.group state.resource
       if result != -1: return result
       // TODO(anders): We could consider always clearing this after all reads.
