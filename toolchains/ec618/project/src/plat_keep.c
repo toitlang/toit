@@ -283,21 +283,13 @@ extern void WDT_stop(void);
 extern void WDT_unlock(void);
 extern void XIC_EnableIRQ(void);
 extern void XIC_SetVector(void);
-extern void _ZNSt13random_device7_M_finiEv(void);
-extern void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE(void);
-extern void _ZNSt13random_device9_M_getvalEv(void);
-extern void _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE10_M_disposeEv(void);
-extern void _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_S_copy_charsEPcPKcS7_(void);
-// std::string::_S_copy — GCC >= 16's std::random_device ctor calls it
-// out-of-line (GCC 14 inlines it). Measured as the ONE symbol a GCC-16
-// slot needs that a GCC-14 link garbage-collects: keeping it makes the
-// published base accept slots from either compiler. The libstdc++
-// out-of-line surface is discovered per-compiler; the gate for a mixed
-// build is base-bytes identity, not this list.
-extern void _ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7_S_copyEPcPKcj(void);
 extern void _ZSt25__throw_bad_function_callv(void);
 extern void _ZdaPv(void);
 extern void _ZdlPv(void);
+// NO C++ runtime symbols (std::*, libstdc++ helpers) in this list: with the
+// two-stage link each slot carries its OWN compiler runtime in-slot, and a
+// base export would silently re-couple slots to the base's libstdc++
+// (the comdat-spill class, docs/frozen-base-phase4.md).
 extern void __aeabi_atexit(void);
 extern void __aeabi_cdcmpeq(void);
 extern void __aeabi_cdcmple(void);
@@ -788,12 +780,6 @@ const void* const toit_plat_keep[] = {
   (const void*)&WDT_unlock,
   (const void*)&XIC_EnableIRQ,
   (const void*)&XIC_SetVector,
-  (const void*)&_ZNSt13random_device7_M_finiEv,
-  (const void*)&_ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE,
-  (const void*)&_ZNSt13random_device9_M_getvalEv,
-  (const void*)&_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE10_M_disposeEv,
-  (const void*)&_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_S_copy_charsEPcPKcS7_,
-  (const void*)&_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7_S_copyEPcPKcj,
   (const void*)&_ZSt25__throw_bad_function_callv,
   (const void*)&_ZdaPv,
   (const void*)&_ZdlPv,
