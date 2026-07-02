@@ -9,7 +9,6 @@ For the setup see the documentation near $Variant.i2s-data1.
 */
 
 import expect show *
-import gpio
 import i2s
 import monitor
 import system
@@ -36,18 +35,11 @@ main:
   run-test: test
 
 test:
-  data1 := gpio.Pin DATA1
-  data2 := gpio.Pin DATA2
-  clk1 := gpio.Pin CLK1
-  clk2 := gpio.Pin CLK2
-  ws1 := gpio.Pin WS1
-  ws2 := gpio.Pin WS2
-
   out := i2s.Bus
       --master=false
-      --tx=data1
-      --sck=clk1
-      --ws=ws1
+      --tx=DATA1
+      --sck=CLK1
+      --ws=WS1
   out.configure
       --sample-rate=SAMPLE_RATE
       --bits-per-sample=SAMPLE-SIZE
@@ -55,9 +47,9 @@ test:
 
   in := i2s.Bus
       --master
-      --rx=data2
-      --sck=clk2
-      --ws=ws2
+      --rx=DATA2
+      --sck=CLK2
+      --ws=WS2
   in.configure
       --sample-rate=SAMPLE_RATE
       --bits-per-sample=SAMPLE-SIZE

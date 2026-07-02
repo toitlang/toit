@@ -1,0 +1,6 @@
+<pkg:toit-hc-sr04>/driver.toit:49:24: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+    trigger_ = rmt.Out trigger --resolution=1_000_000
+                       ^~~~~~~
+<pkg:toit-hc-sr04>/driver.toit:50:20: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+    echo_ = rmt.In echo --resolution=(80_000_000 / 233)
+                   ^~~~

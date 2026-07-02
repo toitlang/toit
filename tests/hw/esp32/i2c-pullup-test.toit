@@ -23,8 +23,11 @@ main:
   run-test: test
 
 test:
-  test-pin := gpio.Pin TEST-PIN
-  other-pin := gpio.Pin OTHER-PIN
+  // test-pin and other-pin are only forwarded to the i2c bus (which reserves and
+  // releases them), so they are plain GPIO numbers. measure-pin is read directly,
+  // so it stays a gpio.Pin.
+  test-pin := TEST-PIN
+  other-pin := OTHER-PIN
   measure-pin := gpio.Pin MEASURE-PIN --input
 
   // Test no pull-up.

@@ -60,13 +60,12 @@ Pins 1-14 can be used as touch pads.
 
 # Examples
 ```
-import gpio
 import gpio.touch show Touch
 
 main:
   // Pin 32 is a touch pad on the original ESP32. See the per-chip sections
   // above for which pins are available on other chips.
-  touch := Touch (gpio.Pin 32)
+  touch := Touch 32
   touch.calibrate
   while not touch.get: sleep --ms=10
   print "touched"
@@ -83,23 +82,30 @@ Touch sensor.
 */
 class Touch:
 
-  pin/Pin
+  pin/any
   resource_ := ?
   baseline_/int? := null
 
   /**
   Creates a touch pad.
 
-  The $pin must refer to a touch-capable GPIO on the current chip. See the
-    class-level documentation for the set of supported pins.
+  The $pin is a GPIO number. It must refer to a touch-capable GPIO on the
+    current chip. See the class-level documentation for the set of supported
+    pins. The touch pad reserves the pin and releases it again when the touch
+    pad is closed.
 
   The $threshold is used by $get and for deep-sleep wakeup. A value of 0
     disables $get and makes the pin unavailable as a wakeup source. If left
     null, call $calibrate to pick one automatically.
+
+  Passing a $Pin is deprecated; provide the integer GPIO number instead.
+    The $Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
   constructor .pin --threshold/int?=null:
     group := resource-group_
-    resource_ = touch-use_ group pin.num (threshold or 0)
+    resource_ = touch-use_ group (to-pin-num_ pin) (threshold or 0)
 
   /**
   Reads the raw value of the touch pad.

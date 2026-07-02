@@ -34,38 +34,26 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  master-cs := gpio.Pin MASTER-CS
-  master-sclk := gpio.Pin MASTER-SCLK
-  master-mosi := gpio.Pin MASTER-MOSI
-  master-miso := gpio.Pin MASTER-MISO
-
-  rx := gpio.Pin RX1
-  tx := gpio.Pin TX1
-  port := uart.Port --rx=rx --tx=tx --baud-rate=115200
+  port := uart.Port --rx=RX1 --tx=TX1 --baud-rate=115200
 
   slave := SlaveRemote port
   slave.sync
 
   bus := spi.Bus
-      --clock=master-sclk
-      --mosi=master-mosi
-      --miso=master-miso
+      --clock=MASTER-SCLK
+      --mosi=MASTER-MOSI
+      --miso=MASTER-MISO
 
   // The minimum SPI frequency on the S3 is 100kHz. We can't bit-bang that.
   run-slave-receive := (system.architecture != system.ARCHITECTURE-ESP32S3)
   shared.test-spi
       --create-device=: | mode/int |
           bus.device
-              --cs=master-cs
+              --cs=MASTER-CS
               --frequency=FREQUENCY
               --mode=mode
       --slave=slave
       --run-slave-receive=run-slave-receive
-
-  master-cs.close
-  master-sclk.close
-  master-mosi.close
-  master-miso.close
 
 main-board2:
   run-test --background: test-board2
@@ -82,9 +70,7 @@ test-board2:
       --mosi=slave-mosi
       --miso=slave-miso
 
-  rx := gpio.Pin RX2
-  tx := gpio.Pin TX2
-  port := uart.Port --rx=rx --tx=tx --baud-rate=115200
+  port := uart.Port --rx=RX2 --tx=TX2 --baud-rate=115200
 
   in := port.in
   out := port.out

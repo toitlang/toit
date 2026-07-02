@@ -30,6 +30,8 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 namespace toit {
 
 static constexpr touch_pad_t kInvalidTouchPad = static_cast<touch_pad_t>(-1);
@@ -223,6 +225,25 @@ class TouchResourceGroup : public ResourceGroup {
 
 };
 
+// A touch resource. The stored id is the touch pad (see $on_unregister_resource).
+// It also owns the GPIO pin reservation.
+class TouchResource : public IntResource {
+ public:
+  TAG(TouchResource);
+  TouchResource(ResourceGroup* group, word id)
+      : IntResource(group, id) {}
+
+  ~TouchResource() override {
+    // Release the GPIO pin if it was reserved.
+    owned_pins_.release();
+  }
+
+  GpioPins& owned_pins() { return owned_pins_; }
+
+ private:
+  GpioPins owned_pins_;
+};
+
 MODULE_IMPLEMENTATION(touch, MODULE_TOUCH)
 
 PRIMITIVE(init) {
@@ -258,13 +279,19 @@ PRIMITIVE(init) {
 
 PRIMITIVE(use) {
   ARGS(TouchResourceGroup, resource_group, int, num, uint16, threshold);
-  // We assume that the process already owns the pin.
-  // This obviously fails, if someone calls the primitive directly without acquiring the pin first.
+
+  // Decode the pin and reserve it from the shared
+  // pool. The reserver releases it again if we leave without calling `keep()`.
+  // For a deprecated gpio.Pin the process already owns the pin.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  num = reserver.decode_and_take(num, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   touch_pad_t pad = get_touch_pad(num);
   if (pad == kInvalidTouchPad) FAIL(OUT_OF_RANGE);
 
-  auto resource = _new IntResource(resource_group, pad);
+  auto resource = _new TouchResource(resource_group, pad);
   if (!resource) FAIL(MALLOC_FAILED);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -284,6 +311,10 @@ PRIMITIVE(use) {
 #endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
+
   resource_group->register_resource(resource);
   proxy->set_external_address(resource);
 
@@ -291,7 +322,7 @@ PRIMITIVE(use) {
 }
 
 PRIMITIVE(unuse) {
-  ARGS(TouchResourceGroup, resource_group, IntResource, resource);
+  ARGS(TouchResourceGroup, resource_group, TouchResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(static_cast<IntResource*>(resource)->id());
 
   // This call is an explicit 'close' call, so make sure the touch pad is deactived.
@@ -305,7 +336,7 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(read) {
-  ARGS(IntResource, resource);
+  ARGS(TouchResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -325,7 +356,7 @@ PRIMITIVE(read) {
 }
 
 PRIMITIVE(get_threshold) {
-  ARGS(IntResource, resource);
+  ARGS(TouchResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
 #if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
@@ -339,7 +370,7 @@ PRIMITIVE(get_threshold) {
 }
 
 PRIMITIVE(set_threshold) {
-  ARGS(IntResource, resource, uint16, threshold);
+  ARGS(TouchResource, resource, uint16, threshold);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
   esp_err_t err = touch_pad_set_thresh(pad, threshold);

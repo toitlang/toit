@@ -33,10 +33,10 @@ test-no-pull-up --idle-level/int:
   print "Testing no pull up idle_level=$idle-level"
   measure-pin := gpio.Pin MEASURE-PIN --input
 
-  rmt-pin := gpio.Pin RMT-PIN
-
-  in := rmt.In rmt-pin --resolution=RESOLUTION
-  out := rmt.Out rmt-pin --resolution=RESOLUTION --open-drain
+  // The input and output channels share the pin, so use ChannelInOut. Its
+  // exposed `.pin` is used below to toggle open-drain dynamically.
+  channels := rmt.ChannelInOut RMT-PIN --resolution=RESOLUTION --open-drain
+  out := channels.out
 
   signals := rmt.Signals 2
   signals.set 0 --period=0 --level=idle-level
@@ -50,11 +50,11 @@ test-no-pull-up --idle-level/int:
   expect-equals 0 measure-pin.get
 
   // Disable open-drain.
-  rmt-pin.set-open-drain false
+  channels.pin.set-open-drain false
   expect-equals idle-level measure-pin.get
 
   // Enable it again.
-  rmt-pin.set-open-drain true
+  channels.pin.set-open-drain true
   // Give the 1M resistor time to drain.
   sleep --ms=1
   expect-equals 0 measure-pin.get
@@ -69,9 +69,7 @@ test-no-pull-up --idle-level/int:
   level-pin.set 0
   expect-equals 0 measure-pin.get
 
-  out.close
-  in.close
-  rmt-pin.close
+  channels.close
   measure-pin.close
   level-pin.close
 
@@ -79,10 +77,10 @@ test-pull-up --idle-level/int:
   print "Testing with pull up idle_level=$idle-level"
   measure-pin := gpio.Pin MEASURE-PIN --input
 
-  rmt-pin := gpio.Pin RMT-PIN
-
-  in := rmt.In rmt-pin --resolution=RESOLUTION
-  out := rmt.Out rmt-pin --resolution=RESOLUTION --open-drain --pull-up
+  // The input and output channels share the pin, so use ChannelInOut. Its
+  // exposed `.pin` is used below to toggle open-drain dynamically.
+  channels := rmt.ChannelInOut RMT-PIN --resolution=RESOLUTION --open-drain --pull-up
+  out := channels.out
 
   signals := rmt.Signals 2
   signals.set 0 --period=0 --level=idle-level
@@ -97,11 +95,11 @@ test-pull-up --idle-level/int:
     expect-equals 1 measure-pin.get
 
   // Disable open-drain.
-  rmt-pin.set-open-drain false
+  channels.pin.set-open-drain false
   expect-equals idle-level measure-pin.get
 
   // Enable it again.
-  rmt-pin.set-open-drain true
+  channels.pin.set-open-drain true
   if idle-level == 0:
     // The open drain wins over the 1M resistor.
     expect-equals 0 measure-pin.get
@@ -124,8 +122,6 @@ test-pull-up --idle-level/int:
   // Otherwise they both agree anyway.
   expect-equals 0 measure-pin.get
 
-  out.close
-  in.close
-  rmt-pin.close
+  channels.close
   measure-pin.close
   level-pin.close

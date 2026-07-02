@@ -30,8 +30,8 @@ main:
 
 test:
   port := uart.Port
-      --rx=gpio.Pin PIN-IN2
-      --tx=gpio.Pin PIN-FREE-AND-UNUSED
+      --rx=PIN-IN2
+      --tx=PIN-FREE-AND-UNUSED
       --baud-rate=115200
 
   test-steps := {

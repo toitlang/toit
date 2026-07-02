@@ -19,8 +19,7 @@ main:
   run-test: test
 
 test:
-  tx := gpio.Pin TX
-  port := uart.Port --tx=tx --rx=null --baud-rate=9600
+  port := uart.Port --tx=TX --rx=null --baud-rate=9600
 
   signal := gpio.Pin SIGNAL --output
 
@@ -31,5 +30,4 @@ test:
     sleep --ms=200
 
   port.close
-  tx.close
   signal.close

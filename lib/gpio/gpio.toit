@@ -913,6 +913,44 @@ class PinLinux_ extends PinBase:
     gpio-linux-pin-set-pull_ resource_ value
 
 
+/**
+Encodes a pin argument for a peripheral primitive.
+
+Peripheral primitives take a GPIO pin as a signed integer:
+- `-1` means "no pin".
+- A value `>= 0` is a GPIO number for which the primitive reserves the pin
+  itself and releases it again when the peripheral is closed.
+- A value `<= -2` encodes the (deprecated) case where the caller passed a
+  $Pin object that already owns the reservation. The GPIO number is then
+  `-value - 2`, and the primitive must not reserve or release it.
+
+The given $value is either `null` (no pin), an integer GPIO number (new API),
+  or a $Pin (deprecated). Any other value throws.
+*/
+to-pin-num_ value/any -> int:
+  if value == null: return -1
+  if value is int: return value
+  if value is Pin: return -((value as Pin).num + 2)
+  throw "INVALID_ARGUMENT"
+
+/**
+Returns the plain GPIO number for a pin argument.
+
+Unlike $to-pin-num_, this does not encode whether the primitive should reserve
+  the pin; it just returns the GPIO number ($Pin.num for a $Pin, the value for
+  an integer, or `-1` for `null`). This is for peripherals that pass the pin to
+  more than one primitive (such as i2s, which reserves the pin in one primitive
+  and configures it in another).
+
+The given $value is either `null` (no pin), an integer GPIO number (new API),
+  or a $Pin (deprecated). Any other value throws.
+*/
+to-gpio-num_ value/any -> int:
+  if value == null: return -1
+  if value is int: return value
+  if value is Pin: return (value as Pin).num
+  throw "INVALID_ARGUMENT"
+
 gpio-init_:
   #primitive.gpio.init
 

@@ -1,0 +1,6 @@
+<pkg:toit-dhtxx>/driver_.toit:43:26: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+    channel-in_ = rmt.In pin --resolution=1_000_000
+                         ^~~
+<pkg:toit-dhtxx>/driver_.toit:44:28: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+    channel-out_ = rmt.Out pin --resolution=1_000_000 --open-drain
+                           ^~~

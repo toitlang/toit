@@ -29,6 +29,8 @@
 #include "../process.h"
 #include "../resource.h"
 
+#include "gpio_esp32.h"
+
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
 
@@ -177,6 +179,8 @@ class RmtResource : public EventQueueResource {
   rmt_channel_handle_t handle() const { return handle_; }
   bool is_tx() const { return is_tx_; }
 
+  GpioPins& owned_pins() { return owned_pins_; }
+
   bool receive_event(word* data) override;
 
   State state() const { return state_; }
@@ -199,6 +203,9 @@ class RmtResource : public EventQueueResource {
   State state_ = DISABLED;
   bool is_tx_;
   RmtInOut* in_out_;
+  // GPIO pins reserved by this channel. Empty when the pin was provided as a
+  // (deprecated) gpio.Pin that owns its own reservation.
+  GpioPins owned_pins_;
 };
 
 class RmtSyncManagerResource : public Resource {
@@ -403,6 +410,8 @@ RmtResource::~RmtResource() {
   FATAL_IF_NOT_ESP_OK(rmt_del_channel(handle_));
   vQueueDelete(queue());
   delete in_out_;
+  // Release any GPIO pins this channel reserved.
+  owned_pins_.release();
 }
 
 bool RmtResource::receive_event(word* data) {
@@ -646,12 +655,20 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(channel_new) {
-  ARGS(RmtResourceGroup, resource_group, int, pin_num, uint32, resolution, uint32, block_symbols, int, kind)
+  ARGS(RmtResourceGroup, resource_group, int, pin_num, uint32, resolution, uint32, block_symbols, int, kind, bool, pull_up)
 
   if (block_symbols == 0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // Decode the pin and reserve it from the shared
+  // pool. The reserver releases the pin again if we leave the primitive without
+  // calling `keep()` (e.g. on a later failure).
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int gpio_num = reserver.decode_and_take(pin_num, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   bool handed_to_resource = false;
 
@@ -684,7 +701,7 @@ PRIMITIVE(channel_new) {
   if (is_tx) {
     bool open_drain = kind == 2;
     rmt_tx_channel_config_t cfg = {
-      .gpio_num = static_cast<gpio_num_t>(pin_num),
+      .gpio_num = static_cast<gpio_num_t>(gpio_num),
       .clk_src = RMT_CLK_SRC_DEFAULT,
       .resolution_hz = resolution,
       .mem_block_symbols = static_cast<size_t>(block_symbols),
@@ -702,7 +719,7 @@ PRIMITIVE(channel_new) {
   } else {
     // Input.
     rmt_rx_channel_config_t cfg = {
-      .gpio_num = static_cast<gpio_num_t>(pin_num),
+      .gpio_num = static_cast<gpio_num_t>(gpio_num),
       .clk_src = RMT_CLK_SRC_DEFAULT,
       .resolution_hz = resolution,
       .mem_block_symbols = static_cast<size_t>(block_symbols),
@@ -739,6 +756,19 @@ PRIMITIVE(channel_new) {
     delete resource;
     return Primitive::os_error(err, process);
   }
+
+  // In open-drain mode, apply the requested pull now that the channel has
+  // configured the pin. A deprecated gpio.Pin (old API) applies its pull on the
+  // Toit side instead.
+  if (is_tx && kind == 2 && reserver.any()) {
+    gpio_set_pull_mode(static_cast<gpio_num_t>(gpio_num),
+                       pull_up ? GPIO_PULLUP_ONLY : GPIO_FLOATING);
+  }
+
+  // The reservation now belongs to the resource and is released when the
+  // channel is closed.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
 
   resource_group->register_resource(resource);
   proxy->set_external_address(resource);

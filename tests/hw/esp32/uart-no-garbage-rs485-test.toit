@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import gpio
 import uart
 
 import .test
@@ -18,12 +17,10 @@ main:
   run-test: test
 
 test:
-  rx := gpio.Pin Variant.CURRENT.unconnected-pin1
-  rts := gpio.Pin Variant.CURRENT.unconnected-pin2
   port := uart.Port
-      --rx=rx
+      --rx=Variant.CURRENT.unconnected-pin1
       --tx=null
-      --rts=rts
+      --rts=Variant.CURRENT.unconnected-pin2
       --baud-rate=9600
       --mode=uart.Port.MODE-RS485-HALF-DUPLEX
   expect-throw DEADLINE-EXCEEDED-ERROR:
@@ -31,5 +28,3 @@ test:
       data := port.in.read
       print "Got garbage: $data"
   port.close
-  rts.close
-  rx.close

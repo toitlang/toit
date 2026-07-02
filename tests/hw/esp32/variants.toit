@@ -30,6 +30,15 @@ abstract class Variant:
   abstract rmt-total-channel-count -> int
 
   /**
+  A pool of distinct GPIO numbers for the RMT resource-allocation test.
+
+  Must contain at least $rmt-total-channel-count + 1 distinct pins. The test only
+    reserves and releases these pins (it never drives them), so they don't need to
+    be connected to anything.
+  */
+  abstract rmt-resource-test-pins -> List
+
+  /**
   A voltage divider consisting of three 330 Ohm resistors in series.
   The resistors must go from start->adc1->adc2->end.
 
@@ -428,6 +437,10 @@ class Esp32 extends Variant:
   rmt-out-channel-count ::= 8
   rmt-total-channel-count ::= 8
 
+  // Distinct, output-capable pins for the RMT resource test (needs total + 1 = 9).
+  // These are only reserved/released, never driven, so they need no wiring.
+  rmt-resource-test-pins ::= [13, 14, 15, 16, 17, 18, 19, 21, 22]
+
   voltage-divider-start-pin ::= 27
   voltage-divider-adc1-pin ::= 32
   voltage-divider-adc2-pin ::= 26
@@ -540,6 +553,10 @@ class Esp32s3 extends Variant:
   rmt-in-channel-count ::= 4
   rmt-out-channel-count ::= 4
   rmt-total-channel-count ::= 8
+
+  // Distinct, output-capable pins for the RMT resource test (needs total + 1 = 9).
+  // These are only reserved/released, never driven, so they need no wiring.
+  rmt-resource-test-pins ::= [1, 2, 4, 5, 8, 9, 10, 12, 13]
 
   voltage-divider-start-pin ::= 13
   voltage-divider-adc1-pin ::= 9

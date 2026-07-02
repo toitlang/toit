@@ -9,7 +9,6 @@ For the setup see the documentation near $Variant.i2s-data1.
 */
 
 import expect show *
-import gpio
 import i2s
 import monitor
 import system
@@ -80,27 +79,17 @@ extract-is-fast-test arg/string -> bool:
   return arg.contains "fast"
 
 board1 args/List:
-  data := gpio.Pin DATA1
-  clk := gpio.Pin CLK1
-  ws := gpio.Pin WS1
-  mclk := gpio.Pin MCLK1
-
-  test --board1 --data=data --clk=clk --ws=ws --mclk=mclk args
+  test --board1 --data=DATA1 --clk=CLK1 --ws=WS1 --mclk=MCLK1 args
 
 board2 args/List:
-  data := gpio.Pin DATA2
-  clk := gpio.Pin CLK2
-  ws := gpio.Pin WS2
-  mclk := gpio.Pin MCLK2
-
-  test --no-board1 --data=data --clk=clk --ws=ws --mclk=mclk args
+  test --no-board1 --data=DATA2 --clk=CLK2 --ws=WS2 --mclk=MCLK2 args
 
 test args/List
     --board1/bool
-    --data/gpio.Pin
-    --clk/gpio.Pin
-    --ws/gpio.Pin
-    --mclk/gpio.Pin:
+    --data/int
+    --clk/int
+    --ws/int
+    --mclk/int:
   arg := args[0]
   format := extract-format arg
   data-size := extract-data-size arg

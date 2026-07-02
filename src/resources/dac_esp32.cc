@@ -33,6 +33,8 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 namespace toit {
 
 static constexpr int kDacMinFrequency = 130;
@@ -104,6 +106,9 @@ class DacResource : public Resource {
   dac_oneshot_handle_t oneshot_handle() const { return oneshot_handle_; }
   dac_cosine_handle_t cosine_handle() const { return cosine_handle_; }
 
+  // GPIO pin reserved by this DAC.
+  GpioPins& owned_pins() { return owned_pins_; }
+
   void set_oneshot_handle(dac_oneshot_handle_t handle) {
     uses_cosine_ = false;
     oneshot_handle_ = handle;
@@ -119,6 +124,7 @@ class DacResource : public Resource {
  private:
   dac_channel_t channel_;
   bool uses_cosine_ = false;
+  GpioPins owned_pins_;
   // During construction we don't allocate the oneshot/cosine handle. Instead, we
   // wait for the first output-request to allocate the corresponding handle.
   union {
@@ -135,6 +141,8 @@ DacResource::~DacResource() {
   }
   ASSERT(!uses_cosine());
   dac_channels_.put(channel_);
+  // Release the GPIO pin if it was reserved.
+  owned_pins_.release();
 }
 
 void DacResource::release_oneshot() {
@@ -173,6 +181,13 @@ PRIMITIVE(init) {
 PRIMITIVE(use) {
   ARGS(ResourceGroup, group, int, pin);
 
+  // Decode the pin and reserve it from the shared
+  // pool. The reserver releases it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  pin = reserver.decode_and_take(pin, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   dac_channel_t channel = get_dac_channel(pin);
   if (channel == kInvalidChannel) FAIL(INVALID_ARGUMENT);
 
@@ -187,6 +202,10 @@ PRIMITIVE(use) {
   DacResource* resource = _new DacResource(group, channel);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
+
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
 
   group->register_resource(resource);
 

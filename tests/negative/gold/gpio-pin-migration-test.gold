@@ -1,0 +1,52 @@
+tests/negative/gpio-pin-migration-test.toit:22:11: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  rmt.Out pin --resolution=1_000_000     // Warning: deprecated Pin.
+          ^~~
+tests/negative/gpio-pin-migration-test.toit:23:11: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  rmt.Out "x" --resolution=1_000_000     // Error: string.
+          ^~~
+tests/negative/gpio-pin-migration-test.toit:25:10: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  rmt.In pin --resolution=1_000_000      // Warning: deprecated Pin.
+         ^~~
+tests/negative/gpio-pin-migration-test.toit:29:17: warning: Deprecated type 'Pin' for parameter 'sda'. Provide an integer instead
+  i2c.Bus --sda=pin --scl=22            // Warning: deprecated Pin for sda.
+                ^~~
+tests/negative/gpio-pin-migration-test.toit:30:26: error: Type mismatch. Expected 'Pin' or 'int'. Got 'float'
+  i2c.Bus --sda=21 --scl=1.5            // Error: float for scl.
+                         ^~~
+tests/negative/gpio-pin-migration-test.toit:35:19: warning: Deprecated type 'Pin' for parameter 'cs'. Provide an integer instead
+  bus.device --cs=pin --frequency=1_000_000       // Warning: deprecated Pin.
+                  ^~~
+tests/negative/gpio-pin-migration-test.toit:36:19: error: Type mismatch. Expected 'Pin' or 'int?'. Got 'string'
+  bus.device --dc="x" --frequency=1_000_000       // Error: string for dc.
+                  ^~~
+tests/negative/gpio-pin-migration-test.toit:40:18: warning: Deprecated type 'Pin' for parameter 'tx'. Provide an integer instead
+  uart.Port --tx=pin --baud-rate=115200           // Warning: deprecated Pin.
+                 ^~~
+tests/negative/gpio-pin-migration-test.toit:41:18: error: Type mismatch. Expected 'Pin' or 'int?'. Got 'float'
+  uart.Port --tx=1.5 --baud-rate=115200           // Error: float.
+                 ^~~
+tests/negative/gpio-pin-migration-test.toit:45:7: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  Adc pin                                // Warning: deprecated Pin.
+      ^~~
+tests/negative/gpio-pin-migration-test.toit:46:7: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  Adc "x"                                // Error: string.
+      ^~~
+tests/negative/gpio-pin-migration-test.toit:50:93: warning: Deprecated type 'Pin' for parameter 'mac-mdc'. Provide an integer instead
+  ethernet.EthernetServiceProvider.mac-esp32 --phy-chip=ethernet.PHY-CHIP-LAN8720 --mac-mdc=pin               // Warning: deprecated Pin.
+                                                                                            ^~~
+tests/negative/gpio-pin-migration-test.toit:51:93: error: Type mismatch. Expected 'Pin' or 'int?'. Got 'string'
+  ethernet.EthernetServiceProvider.mac-esp32 --phy-chip=ethernet.PHY-CHIP-LAN8720 --mac-mdc="x"               // Error: string.
+                                                                                            ^~~
+tests/negative/gpio-pin-migration-test.toit:53:79: warning: Deprecated type 'Pin' for parameter 'cs'. Provide an integer instead
+  ethernet.EthernetServiceProvider.w5500 --bus=bus --frequency=1_000_000 --cs=pin --interrupt=16  // Warning: deprecated Pin.
+                                                                              ^~~
+tests/negative/gpio-pin-migration-test.toit:54:79: error: Type mismatch. Expected 'Pin' or 'int'. Got 'float'
+  ethernet.EthernetServiceProvider.w5500 --bus=bus --frequency=1_000_000 --cs=1.5 --interrupt=16  // Error: float.
+                                                                              ^~~
+tests/negative/gpio-pin-migration-test.toit:58:61: warning: Deprecated type 'Pin' for parameter 'cs'. Provide an integer instead
+  flash.Mount.sdcard --mount-point="/sd" --spi-bus=bus --cs=pin   // Warning: deprecated Pin.
+                                                            ^~~
+tests/negative/gpio-pin-migration-test.toit:59:59: error: Type mismatch. Expected 'Pin' or 'int'. Got 'string'
+  flash.Mount.nor --mount-point="/nor" --spi-bus=bus --cs="x"     // Error: string.
+                                                          ^~~
+Compilation failed

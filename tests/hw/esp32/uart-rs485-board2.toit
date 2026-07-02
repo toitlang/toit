@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .test
@@ -22,14 +21,10 @@ main:
   run-test: test
 
 test:
-  rx := gpio.Pin RX
-  tx := gpio.Pin TX
-  rts := gpio.Pin RTS
-
   port := uart.Port
-      --rx=rx
-      --tx=tx
-      --rts=rts
+      --rx=RX
+      --tx=TX
+      --rts=RTS
       --baud-rate=9600
       --mode=uart.Port.MODE-RS485-HALF-DUPLEX
 

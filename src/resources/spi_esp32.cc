@@ -51,6 +51,8 @@ SpiResourceGroup::~SpiResourceGroup() {
     FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
   });
   spi_host_devices.put(host_device_);
+  // Release any GPIO pins this bus reserved (mosi/miso/clock).
+  owned_pins_.release();
 }
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
@@ -61,19 +63,28 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Decode the pins and reserve them from the shared
+  // pool. The reserver releases everything again if we leave without `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int mosi_num = reserver.decode_and_take(mosi, &reserve_ok);
+  int miso_num = reserver.decode_and_take(miso, &reserve_ok);
+  int clock_num = reserver.decode_and_take(clock, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   spi_host_device_t host_device = kInvalidHostDevice;
 
   // Check if there is a preferred device.
   // TODO(florian): match against the preferred pins for each device.
-  if ((mosi == -1 || mosi == 13) &&
-      (miso == -1 || miso == 12) &&
-      (clock == -1 || clock == 14)) {
+  if ((mosi_num == -1 || mosi_num == 13) &&
+      (miso_num == -1 || miso_num == 12) &&
+      (clock_num == -1 || clock_num == 14)) {
     host_device = SPI2_HOST;
   }
 #if SOC_SPI_PERIPH_NUM > 2
-  if ((mosi == -1 || mosi == 23) &&
-      (miso == -1 || miso == 19) &&
-      (clock == -1 || clock == 18)) {
+  if ((mosi_num == -1 || mosi_num == 23) &&
+      (miso_num == -1 || miso_num == 19) &&
+      (clock_num == -1 || clock_num == 18)) {
     host_device = SPI3_HOST;
   }
 #endif
@@ -81,9 +92,9 @@ PRIMITIVE(init) {
   if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
 
   spi_bus_config_t conf = {};
-  conf.mosi_io_num = mosi;
-  conf.miso_io_num = miso;
-  conf.sclk_io_num = clock;
+  conf.mosi_io_num = mosi_num;
+  conf.miso_io_num = miso_num;
+  conf.sclk_io_num = clock_num;
   conf.quadwp_io_num = -1;
   conf.quadhd_io_num = -1;
   conf.max_transfer_sz = 0;
@@ -104,6 +115,11 @@ PRIMITIVE(init) {
     spi_host_devices.put(host_device);
     FAIL(MALLOC_FAILED);
   }
+
+  // The reservation now belongs to the resource and is released on close.
+  spi->owned_pins().adopt(reserver);
+  reserver.keep();
+
   proxy->set_external_address(spi);
 
   return proxy;
@@ -130,6 +146,30 @@ PRIMITIVE(device) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // Decode the pins and reserve them from the shared
+  // pool. The reserver releases everything again if we leave without `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int cs_num = reserver.decode_and_take(cs, &reserve_ok);
+  bool dc_owned = false;
+  int dc_num = reserver.decode_and_take(dc, &reserve_ok, &dc_owned);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
+  // The dc pin is toggled in software, so it must be an output. We configure it
+  // here when we reserved it. A deprecated gpio.Pin (old API) is configured on
+  // the Toit side instead.
+  if (dc_owned) {
+    gpio_config_t dc_cfg = {
+      .pin_bit_mask = 1ULL << dc_num,
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t cfg_err = gpio_config(&dc_cfg);
+    if (cfg_err != ESP_OK) return Primitive::os_error(cfg_err, process);
+  }
+
   spi_device_interface_config_t conf = {
     .command_bits     = uint8(command_bits),
     .address_bits     = uint8(address_bits),
@@ -142,13 +182,13 @@ PRIMITIVE(device) {
     .clock_speed_hz   = frequency,
     .input_delay_ns   = 0,
     .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
-    .spics_io_num     = cs,
+    .spics_io_num     = cs_num,
     .flags            = 0,
     .queue_size       = 1,
     .pre_cb           = null,
     .post_cb          = null,
   };
-  if (dc != -1) {
+  if (dc_num != -1) {
     conf.pre_cb = spi_pre_transfer_callback;
   }
 
@@ -158,11 +198,15 @@ PRIMITIVE(device) {
     return Primitive::os_error(err, process);
   }
 
-  SpiDevice* spi_device = _new SpiDevice(spi, device, dc);
+  SpiDevice* spi_device = _new SpiDevice(spi, device, dc_num);
   if (spi_device == null) {
     spi_bus_remove_device(device);
     FAIL(MALLOC_FAILED);
   }
+
+  // The reservation now belongs to the resource and is released on close.
+  spi_device->owned_pins().adopt(reserver);
+  reserver.keep();
 
   spi->register_resource(spi_device);
   proxy->set_external_address(spi_device);

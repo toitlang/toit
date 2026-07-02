@@ -38,12 +38,12 @@ main:
 
 test:
   bus := spi.Bus
-      --clock=gpio.Pin SCK
-      --miso=gpio.Pin MISO
-      --mosi=gpio.Pin MOSI
+      --clock=SCK
+      --miso=MISO
+      --mosi=MOSI
 
   device := bus.device
-      --cs=gpio.Pin CS
+      --cs=CS
       --frequency=10_000_000
 
   in := gpio.Pin IN-CS --input

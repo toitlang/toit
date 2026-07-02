@@ -9,7 +9,6 @@ For the setup see the comment near $Variant.uart-baud-rate-in1.
 */
 
 import expect show *
-import gpio
 import uart
 import rmt
 
@@ -27,11 +26,11 @@ test:
   // Configure the UART similar to what we do for the pixel strip.
   port1 := uart.Port
       --rx=null
-      --tx=gpio.Pin TX
+      --tx=TX
       --data-bits=7
       --baud-rate=2_500_000
 
-  channel := rmt.In (gpio.Pin RX)
+  channel := rmt.In RX
       --resolution=4_000_000
       --memory-blocks=2
 

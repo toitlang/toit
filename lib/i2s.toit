@@ -42,24 +42,24 @@ The channels on the peripheral are independent. It's possible to have two simple
 # Examples
 
 ```
-import gpio
 import i2s
+
+TX ::= 32
+SCK ::= 26
+WS ::= 25
 
 // For this example, we just assume that this data should be
 // written repeatedly to the I2S channel.
 SOME-DATA ::= #[...]
 
 main:
-  tx := gpio.Pin 32
-  sck := gpio.Pin 26
-  ws := gpio.Pin 25
   // Since we only use the transmit channel, we call the variable
   // "channel" instead of "bus".
   channel := i2s.Bus
       --master=false
-      --tx=tx
-      --sck=sck
-      --ws=ws
+      --tx=TX
+      --sck=SCK
+      --ws=WS
 
   channel.configure
       --sample-rate=44100
@@ -304,11 +304,13 @@ class Bus:
   i2s_ := ?
   state_/ResourceState_ ::= ?
 
-  mclk_/gpio.Pin?
-  sck_/gpio.Pin?
-  ws_/gpio.Pin?
-  tx_/gpio.Pin?
-  rx_/gpio.Pin?
+  // The decoded GPIO numbers (or -1 for "no pin"). The channel reserves the
+  // pins in its constructor and uses them again in $configure.
+  mclk-num_/int
+  sck-num_/int
+  ws-num_/int
+  tx-num_/int
+  rx-num_/int
 
   invert-mclk_/bool
   invert-sck_/bool
@@ -332,14 +334,30 @@ class Bus:
 
   The $invert-sck, $invert-ws, $invert-mclk flags can be used to
     invert the signals.
+
+  The $mclk, $ws, $sck, $tx, and $rx are GPIO numbers. The channel reserves the
+    pins and releases them again when the channel is closed.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ mclk: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mclk: int?
+  // __TYPE-MIGRATION__ ws: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ ws: int?
+  // __TYPE-MIGRATION__ sck: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ sck: int?
+  // __TYPE-MIGRATION__ tx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ tx: int?
+  // __TYPE-MIGRATION__ rx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ rx: int?
   constructor
       --master/bool
-      --mclk/gpio.Pin?=null
-      --ws/gpio.Pin?
-      --sck/gpio.Pin?
-      --tx/gpio.Pin?=null
-      --rx/gpio.Pin?=null
+      --mclk/any=null
+      --ws/any=null
+      --sck/any=null
+      --tx/any=null
+      --rx/any=null
       --invert-mclk/bool=false
       --invert-ws/bool=false
       --invert-sck/bool=false:
@@ -349,26 +367,23 @@ class Bus:
 
     is-master = master
 
-    sck_ = sck
-    ws_ = ws
-    tx_ = tx
-    rx_ = rx
-    mclk_ = mclk
+    tx-num_ = gpio.to-gpio-num_ tx
+    rx-num_ = gpio.to-gpio-num_ rx
+    mclk-num_ = gpio.to-gpio-num_ mclk
+    sck-num_ = gpio.to-gpio-num_ sck
+    ws-num_ = gpio.to-gpio-num_ ws
 
     invert-mclk_ = invert-mclk
     invert-sck_ = invert-sck
     invert-ws_ = invert-ws
 
-    tx-pin := tx ? tx.num : -1
-    rx-pin := rx ? rx.num : -1
-    mclk-pin := mclk ? mclk.num : -1
-    sck-pin := sck ? sck.num : -1
-    ws-pin := ws ? ws.num : -1
-
     i2s_ = i2s-create_
         resource-group_
-        tx-pin
-        rx-pin
+        (gpio.to-pin-num_ tx)
+        (gpio.to-pin-num_ rx)
+        (gpio.to-pin-num_ mclk)
+        (gpio.to-pin-num_ sck)
+        (gpio.to-pin-num_ ws)
         master
     state_ = ResourceState_ resource-group_ i2s_
 
@@ -431,11 +446,11 @@ class Bus:
     if format != FORMAT-PHILIPS and format != FORMAT-MSB and format != FORMAT-PCM-SHORT:
       throw "INVALID_ARGUMENT"
 
-    tx-pin := tx_ ? tx_.num : -1
-    rx-pin := rx_ ? rx_.num : -1
-    mclk-pin := mclk_ ? mclk_.num : -1
-    sck-pin := sck_ ? sck_.num : -1
-    ws-pin := ws_ ? ws_.num : -1
+    tx-pin := tx-num_
+    rx-pin := rx-num_
+    mclk-pin := mclk-num_
+    sck-pin := sck-num_
+    ws-pin := ws-num_
     if mclk-pin != -1 and invert-mclk_: mclk-pin |= 0x1_0000
     if sck-pin != -1 and invert-sck_: sck-pin |= 0x1_0000
     if ws-pin != -1 and invert-ws_: ws-pin |= 0x1_0000
@@ -488,12 +503,22 @@ class Bus:
     $buffer-size is no longer supported.
     The bus must be constructed, configured, and started manually.
   */
+  // __TYPE-MIGRATION__ sck: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ sck: int?
+  // __TYPE-MIGRATION__ ws: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ ws: int?
+  // __TYPE-MIGRATION__ tx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ tx: int?
+  // __TYPE-MIGRATION__ rx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ rx: int?
+  // __TYPE-MIGRATION__ mclk: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mclk: int?
   constructor
-      --sck/gpio.Pin?=null
-      --ws/gpio.Pin?=null
-      --tx/gpio.Pin?=null
-      --rx/gpio.Pin?=null
-      --mclk/gpio.Pin?=null
+      --sck/any=null
+      --ws/any=null
+      --tx/any=null
+      --rx/any=null
+      --mclk/any=null
       --sample-rate/int
       --bits-per-sample/int
       --is-master/bool=true
@@ -691,6 +716,9 @@ i2s-create_
     resource-group
     tx-pin
     rx-pin
+    mclk-pin
+    sck-pin
+    ws-pin
     is-master:
   #primitive.i2s.create
 

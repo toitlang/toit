@@ -8,7 +8,6 @@ Tests the pulse_counter library is correctly releasing the resources
 */
 
 import expect show *
-import gpio
 import pulse-counter
 
 import .test
@@ -17,8 +16,7 @@ import .variants
 IN/int ::= Variant.CURRENT.unconnected-pin1
 
 allocate-unit --close/bool=false:
-  in := gpio.Pin IN
-  unit := pulse-counter.Unit in
+  unit := pulse-counter.Unit IN
   if close:
     unit.close
 

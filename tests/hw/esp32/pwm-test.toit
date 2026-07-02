@@ -28,18 +28,13 @@ main:
 test:
   // Run several times to make sure we release the resources correctly.
   10.repeat:
-    in1 := gpio.Pin IN1
-    out1 := gpio.Pin OUT1
-    in2 := gpio.Pin IN2
-    out2 := gpio.Pin OUT2
-
-    pulse-unit1 := pulse-counter.Unit in1
+    pulse-unit1 := pulse-counter.Unit IN1
 
     expect-equals 0 pulse-unit1.value
 
     generator := pwm.Pwm --frequency=1000
     start-us := Time.monotonic-us
-    pwm-channel1 := generator.start out1 --duty-factor=0.5
+    pwm-channel1 := generator.start OUT1 --duty-factor=0.5
     sleep --ms=1
     pwm-channel1.set-duty-factor 0.5
 
@@ -66,18 +61,20 @@ test:
     // expect_equals (unit_value1 + 1) pulse_unit1.value
 
     pwm-channel1.close
-    // At this point the pin is floating.
-    // Change it to pull-down to avoid accidental counting.
-    in1.configure --input --pull-down
+    // The pwm released OUT1. Drive it low ourselves so the floating line doesn't
+    // cause accidental counts on IN1 (which is owned by the pulse-counter now and
+    // can no longer be reconfigured directly).
+    out1-low := gpio.Pin OUT1 --output
+    out1-low.set 0
 
     unit-value1 = pulse-unit1.value
 
-    pulse-unit2 := pulse-counter.Unit in2
+    pulse-unit2 := pulse-counter.Unit IN2
 
     expect-equals 0 pulse-unit2.value
 
     start-us = Time.monotonic-us
-    pwm-channel2 := generator.start out2 --duty-factor=0.5
+    pwm-channel2 := generator.start OUT2 --duty-factor=0.5
 
     sleep --ms=15
 
@@ -99,9 +96,6 @@ test:
     expect-equals unit-value1 pulse-unit1.value
 
     generator.close
-    in1.close
-    out1.close
-    in2.close
-    out2.close
+    out1-low.close
     pulse-unit1.close
     pulse-unit2.close

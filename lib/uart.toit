@@ -89,9 +89,24 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   The ESP32 has hardware support for up to two UART ports (the third one is
     normally already taken for the USB connection/debugging console.
+
+  The $tx, $rx, $rts, and $cts are GPIO numbers. The port reserves the pins and
+    releases them again when the port is closed. At least one of $tx and $rx
+    must be given.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ tx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ tx: int?
+  // __TYPE-MIGRATION__ rx: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ rx: int?
+  // __TYPE-MIGRATION__ rts: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ rts: int?
+  // __TYPE-MIGRATION__ cts: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cts: int?
   constructor
-      --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
+      --tx/any=null --rx/any=null --rts/any=null --cts/any=null
       --baud-rate/int --data-bits/int=8 --stop-bits/StopBits=STOP-BITS-1
       --invert-tx/bool=false --invert-rx/bool=false
       --parity/int=PARITY-DISABLED
@@ -111,10 +126,10 @@ class Port extends Object with io.InMixin implements reader.Reader:
       tx-flags |= 16
     uart_ = uart-create_
       resource-group_
-      tx ? tx.num : -1
-      rx ? rx.num : -1
-      rts ? rts.num : -1
-      cts ? cts.num : -1
+      gpio.to-pin-num_ tx
+      gpio.to-pin-num_ rx
+      gpio.to-pin-num_ rts
+      gpio.to-pin-num_ cts
       baud-rate
       data-bits
       stop-bits.value_
