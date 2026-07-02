@@ -155,13 +155,9 @@ abstract class Variant:
   Board connections.
 
   Pins that are connected between the two boards.
-  Pin 1 and 2 are crossed, so that the same pin number can be
-    used as RX/TX on both boards.
-
-  Pin 3 goes to the same pin on both boards.
-  Pin 4 goes to the same pin on both boards.
-  Pin 5 goes to the same pin on both boards.
-  Pin 6 goes to the same pin on both boards.
+  Each pin goes to the same pin number on both boards (the wiring is
+    direct; earlier fixtures crossed pins 1 and 2, but that is no longer
+    the case).
 
   Pin 5 and 6 must be connected with a 5K resistor.
   */
@@ -171,6 +167,20 @@ abstract class Variant:
   abstract board-connection-pin4 -> int
   abstract board-connection-pin5 -> int
   abstract board-connection-pin6 -> int
+
+  /**
+  The cross-board pins used by the two-board i2s tests.
+
+  By default these map onto the board-connection pins: clk=pin1, ws=pin3,
+    data=pin4 and mclk=pin2.
+
+  Variants may override individual pins when a board-connection pin's
+    fixture wiring interferes with the i2s signals. See the Esp32 variant.
+  */
+  i2s-board-clk-pin -> int: return board-connection-pin1
+  i2s-board-ws-pin -> int: return board-connection-pin3
+  i2s-board-data-pin -> int: return board-connection-pin4
+  i2s-board-mclk-pin -> int: return board-connection-pin2
 
   /*
   ADC.
@@ -476,6 +486,16 @@ class Esp32 extends Variant:
   board-connection-pin4 ::= 27
   board-connection-pin5 ::= 17
   board-connection-pin6 ::= 13
+
+  // The i2s data must not use board-connection-pin4 (GPIO 27) on this rig:
+  // that pin also carries the voltage-divider network (3x330 Ohm into the
+  // RTC-domain pads GPIO 32/26/14), and an i2s data waveform coupling
+  // through it can trigger a spontaneous hardware deep-sleep mid-transfer.
+  // The abrupt sleep corrupts the SPI-flash read state and the DEEPSLEEP
+  // boot path never recovers it, bricking the board until a power cycle.
+  // Data therefore uses the plain pin2 wire, and mclk moves to pin5.
+  i2s-board-data-pin -> int: return board-connection-pin2
+  i2s-board-mclk-pin -> int: return board-connection-pin5
 
 /**
 A configuration for the ESP32-S3.
