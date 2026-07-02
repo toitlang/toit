@@ -31,9 +31,15 @@
 #ifdef TOIT_ESP32
 #include "spi_flash_mmap.h"
 #include "rtc_memory_esp32.h"
+#elif defined(TOIT_EC618)
+#include "rtc_memory_ec618.h"
+#include "embedded_data.h"
+extern "C" {
+  #include "mem_map.h"
+}
 #endif
 
-#ifndef RAW
+#if !defined(RAW) && !defined(TOIT_FREERTOS)
 #include "compiler/compiler.h"
 #endif
 
@@ -749,9 +755,57 @@ PRIMITIVE(smi_mod) {
 }
 
 // Signed for base 10, unsigned for bases 2, 8 or 16.
+#ifdef TOIT_EC618
+// Newlib nano doesn't support 64-bit printf specifiers (PRId64 etc.).
+// Manual int64-to-string conversion.
+static void int64_to_string(char* buffer, size_t size, int64 value, int base) {
+  if (value == 0) { buffer[0] = '0'; buffer[1] = '\0'; return; }
+  char tmp[70];
+  int i = 0;
+  bool negative = false;
+  uint64 uval;
+  if (base == 10 && value < 0) {
+    negative = true;
+    uval = static_cast<uint64>(-value);
+  } else {
+    uval = static_cast<uint64>(value);
+  }
+  while (uval > 0 && i < 68) {
+    int digit = uval % base;
+    tmp[i++] = digit < 10 ? '0' + digit : 'a' + digit - 10;
+    uval /= base;
+  }
+  char* p = buffer;
+  if (negative) *p++ = '-';
+  for (int j = i - 1; j >= 0; j--) *p++ = tmp[j];
+  *p = '\0';
+}
+#endif
+
 static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
   ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
   char buffer[70];
+#ifdef TOIT_EC618
+  // Newlib nano doesn't support 64-bit format specifiers.
+  // Use manual conversion for values that don't fit in int.
+  if (base == 2) {
+    char* p = buffer;
+    int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+    for (int i = first_bit; i >= 0; i--) {
+      *p++ = '0' + ((value >> i) & 1);
+    }
+    *p++ = '\0';
+  } else if (value >= INT_MIN && value <= INT_MAX && base != 2) {
+    int v = static_cast<int>(value);
+    switch (base) {
+      case 8:  snprintf(buffer, sizeof(buffer), "%o", static_cast<unsigned>(v)); break;
+      case 10: snprintf(buffer, sizeof(buffer), "%d", v); break;
+      case 16: snprintf(buffer, sizeof(buffer), "%x", static_cast<unsigned>(v)); break;
+    }
+  } else {
+    int64_to_string(buffer, sizeof(buffer), value, base);
+  }
+#else
   switch (base) {
     case 2: {
       char* p = buffer;
@@ -774,6 +828,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
     default:
       buffer[0] = '\0';
   }
+#endif
   return process->allocate_string_or_error(buffer);
 }
 
@@ -1454,7 +1509,12 @@ PRIMITIVE(string_rune_count) {
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
   char buffer[32];
+#ifdef TOIT_EC618
+  // Newlib nano's %zd outputs "zd" literally.
+  snprintf(buffer, sizeof(buffer), "%d", static_cast<int>(receiver));
+#else
   snprintf(buffer, sizeof(buffer), "%zd", receiver);
+#endif
   return process->allocate_string_or_error(buffer);
 }
 
@@ -2506,10 +2566,8 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifdef TOIT_CMPCTMALLOC
   ARGS(cstring, marker, int, max_pages);
   OS::heap_summary_report(max_pages, marker, process);
-#endif // def TOIT_CMPCTMALLOC
   return process->null_object();
 }
 
@@ -2562,14 +2620,20 @@ static spi_flash_mmap_handle_t firmware_mmap_handle;
 static bool firmware_is_mapped = false;
 #endif
 
+#ifdef TOIT_EC618
+// Canonical active-slot firmware view, implemented in primitive_ec618.cc. The
+// dual-slot relocation is hidden here: firmware.map reads the running slot as
+// its un-relocated, table-first canonical image so the SHA and delta-OTA are
+// slot-independent.
+uint32_t ec618_active_firmware_open(uint8** base_out);
+uint8 ec618_active_firmware_at(uint32 index);
+bool ec618_active_firmware_copy(uint32 from, uint32 to, uint8* dest);
+#endif
+
 PRIMITIVE(firmware_map) {
   ARGS(Object, bytes);
-#ifndef TOIT_ESP32
-  return bytes;
-#else
+#if defined(TOIT_ESP32)
   if (bytes != process->null_object()) {
-    // If we're passed non-null bytes, we use that as the
-    // firmware bits.
     return bytes;
   }
 
@@ -2577,18 +2641,14 @@ PRIMITIVE(firmware_map) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (firmware_is_mapped) {
-    // We unmap to allow the next attempt to get the current
-    // system image to succeed.
     spi_flash_munmap(firmware_mmap_handle);
     firmware_is_mapped = false;
-    FAIL(QUOTA_EXCEEDED);  // Quota is 1.
+    FAIL(QUOTA_EXCEEDED);
   }
 
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
   if (current_partition == null) FAIL(ERROR);
 
-  // On the ESP32, it is beneficial to map the partition in as instructions
-  // because there is a larger virtual address space for that.
   esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
 #if defined(CONFIG_IDF_TARGET_ESP32)
   memory = ESP_PARTITION_MMAP_INST;
@@ -2597,7 +2657,7 @@ PRIMITIVE(firmware_map) {
   const void* mapped_to = null;
   esp_err_t err = esp_partition_mmap(
       current_partition,
-      0,  // Offset from start of partition.
+      0,
       current_partition->size,
       memory,
       &mapped_to,
@@ -2613,6 +2673,26 @@ PRIMITIVE(firmware_map) {
       current_partition->size,
       const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
   return proxy;
+#elif defined(TOIT_EC618)
+  if (bytes != process->null_object()) {
+    return bytes;
+  }
+
+  // On EC618 the firmware is the active VM slot. firmware.map presents it as its
+  // CANONICAL image — table-first and un-relocated — so the SHA and delta-OTA
+  // are the same regardless of which slot is live; the dual-slot relocation is
+  // hidden in SlotFirmware (primitive_ec618.cc / slot_reloc_ec618.*). The proxy
+  // carries the slot's XIP base as a valid-but-unread external address; the
+  // firmware_mapping_at/copy primitives read canonical bytes through the view.
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  uint8* base = null;
+  uint32 canonical_size = ec618_active_firmware_open(&base);
+  if (canonical_size == 0) FAIL(ERROR);
+  proxy->set_external_address(canonical_size, base);
+  return proxy;
+#else
+  return bytes;
 #endif
 }
 
@@ -2622,6 +2702,9 @@ PRIMITIVE(firmware_unmap) {
   if (!firmware_is_mapped) process->null_object();
   spi_flash_munmap(firmware_mmap_handle);
   firmware_is_mapped = false;
+  proxy->clear_external_address();
+#elif defined(TOIT_EC618)
+  ARGS(ByteArray, proxy);
   proxy->clear_external_address();
 #endif
   return process->null_object();
@@ -2633,6 +2716,11 @@ PRIMITIVE(firmware_mapping_at) {
   word size = Smi::value(receiver->at(2));
   if (index < 0 || index >= size) FAIL(OUT_OF_BOUNDS);
 
+#ifdef TOIT_EC618
+  // The canonical byte is computed by the active-slot view (un-relocated),
+  // not read from the proxy's external address.
+  return Smi::from(ec618_active_firmware_at(static_cast<uint32>(offset + index)));
+#else
   Blob input;
   if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
     FAIL(WRONG_OBJECT_TYPE);
@@ -2645,6 +2733,7 @@ PRIMITIVE(firmware_mapping_at) {
   const uint32* words = reinterpret_cast<const uint32*>(input.address());
   uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
   return Smi::from(shifted & 0xff);
+#endif
 }
 
 PRIMITIVE(firmware_mapping_copy) {
@@ -2656,6 +2745,19 @@ PRIMITIVE(firmware_mapping_copy) {
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
 
+  ByteArray::Bytes output(into);
+  word bytes = to - from;
+  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
+
+#ifdef TOIT_EC618
+  // Copy canonical (un-relocated) bytes through the active-slot view. The
+  // window is word-aligned (checked above), so the body sub-window is too.
+  if (!ec618_active_firmware_copy(static_cast<uint32>(from + offset),
+                                  static_cast<uint32>(to + offset),
+                                  output.address() + index)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+#else
   Blob input;
   if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
     FAIL(WRONG_OBJECT_TYPE);
@@ -2664,14 +2766,12 @@ PRIMITIVE(firmware_mapping_copy) {
   // Firmware is potentially mapped into memory that only allow word
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.
-  ByteArray::Bytes output(into);
-  word bytes = to - from;
-  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
+#endif
   return Smi::from(index + bytes);
 }
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32) || defined(TOIT_EC618)
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
@@ -2715,6 +2815,8 @@ PRIMITIVE(hostname) {
   char* dot = strchr(buffer, '.');
   if (dot != null) *dot = '\0';
   return process->allocate_string_or_error(buffer);
+#elif defined(TOIT_EC618)
+  return process->allocate_string_or_error("ec618");
 #else
 #error "Unsupported platform"
 #endif

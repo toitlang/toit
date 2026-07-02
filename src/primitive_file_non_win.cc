@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
+
 #define _FILE_OFFSET_BITS 64
 
 #include "primitive_file.h"
@@ -20,7 +22,7 @@
 #include "process.h"
 #include "objects_inline.h"
 
-#if defined(TOIT_POSIX) || defined(TOIT_FREERTOS)
+#if !defined(TOIT_EC618) && (defined(TOIT_POSIX) || defined(TOIT_FREERTOS))
 
 #include <dirent.h>
 #include <errno.h>
@@ -620,4 +622,4 @@ PRIMITIVE(cwd) {
 }
 
 }
-#endif  // Linux and BSD.
+#endif  // !TOIT_EC618 && (TOIT_POSIX || TOIT_FREERTOS)

@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "top.h"
+
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>

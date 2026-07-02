@@ -82,6 +82,15 @@ class Container extends ServiceResourceProxy:
   on-event_/Lambda? := ?
   on-stopped_/Lambda? := ?
 
+  // Identity hash so containers can go in hashed collections (see $waited-on_);
+  // same pattern as the service framework's resources.
+  hash-code/int ::= hash-code-next_
+  static hash-code-counter_/int := 0
+  static hash-code-next_ -> int:
+    next := hash-code-counter_
+    hash-code-counter_ = (next + 1) & 0x1fff_ffff
+    return next
+
   constructor.internal_ --handle/int --.id --.gid --on-event/Lambda? --on-stopped/Lambda?:
     on-event_ = on-event
     on-stopped_ = on-stopped
@@ -97,8 +106,21 @@ class Container extends ServiceResourceProxy:
     _client_.stop-container handle_
     return wait
 
+  // Containers with a blocked $wait. The exit-code notification that wakes a
+  // waiter is delivered through the proxy manager's weak map, so a waited-on
+  // container must be strongly rooted: a task blocked on the latch is itself
+  // only reachable through the latch, so without this the GC can collect the
+  // {container, latch, task} cluster and the finalizer closes the proxy
+  // mid-wait (a spurious CLOSED instead of the exit code).
+  static waited-on_/Set ::= {}
+
   wait -> int:
-    code/int? := result_.get
+    code/int? := null
+    waited-on_.add this
+    try:
+      code = result_.get
+    finally:
+      waited-on_.remove this
     if not code: throw "CLOSED"
     return code
 

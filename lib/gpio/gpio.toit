@@ -577,7 +577,7 @@ class Pin_ extends PinBase:
   wait-for value -> none:
     if get == value: return
     state_.clear-state GPIO-STATE-EDGE-TRIGGERED_
-    config-timestamp := gpio-config-interrupt_ resource_ true
+    config-timestamp := gpio-config-interrupt_ resource_ true value
     try:
       // Make sure the pin didn't change to the expected value while we
       // were setting up the interrupt.
@@ -605,7 +605,7 @@ class Pin_ extends PinBase:
         if get == value: return
     finally:
       if resource_:
-        gpio-config-interrupt_ resource_ false
+        gpio-config-interrupt_ resource_ false 0
 
   /**
   See $Pin.set-open-drain.
@@ -934,7 +934,7 @@ gpio-get_ num:
 gpio-set_ num value:
   #primitive.gpio.set
 
-gpio-config-interrupt_ resource enabled/bool:
+gpio-config-interrupt_ resource enabled/bool value/int:
   #primitive.gpio.config-interrupt
 
 gpio-last-edge-trigger-timestamp_ resource:

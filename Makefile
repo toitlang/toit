@@ -232,6 +232,147 @@ endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 
+# EC618
+EC618_SDK = $(CURDIR)/third_party/luatos-soc-ec618
+EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f28701b1431e
+EC618_SYSTEM_ENTRY = $(CURDIR)/system/extensions/ec618/boot.toit
+EC618_ENVELOPE = $(BUILD)/ec618/firmware.envelope
+EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
+
+.PHONY: ec618
+# The BASE half of the two-stage link (frozen-base phase 4,
+# docs/frozen-base-phase4.md): PLAT + dispatcher + keep-list, NO VM
+# archives. Produces the artifact set slots link against (base.elf) and
+# the flashable base image parts. NOT independently bootable — a device
+# needs a slot spliced in; this is the linking/assembly input and the
+# future base-vN release payload.
+.PHONY: ec618-base
+ec618-base: check-env host-tools
+	mkdir -p $(BUILD)/ec618-base
+	cd $(EC618_SDK) && rm -rf build && \
+		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
+		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake build
+	cd $(CURDIR)
+	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618-base/base.elf
+	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618-base/base.bin
+	# Stamp the base-id record (magic + base-vN + fingerprint) into the
+	# reserved page; every slot build reads it into its SRL3 table and the
+	# device rejects slots built against a different base.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-base-id.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--version-file=$(CURDIR)/toolchains/ec618/base-version
+
+ec618: check-env host-tools
+	# Build the EC618 VM library.
+	mkdir -p $(BUILD)/ec618
+	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
+	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
+	# TWO-STAGE LINK (frozen-base phase 4, docs/frozen-base-phase4.md): the
+	# slot links SEPARATELY against the base's symbols (--just-symbols), so
+	# base and slot stop sharing a link. VM->PLAT calls resolve to the base's
+	# addresses and are captured as SRL2 branch entries; symbols the base does
+	# not export (the slot compiler's own libgcc/libstdc++ helpers) are pulled
+	# from the SLOT toolchain's archives and land in-slot — the structural fix
+	# for the C++ comdat spill. NOTE: the base is NOT rebuilt automatically —
+	# after base-side changes (toolchains/ec618/project/, the SDK submodule)
+	# rerun `make ec618-base`.
+	test -f $(BUILD)/ec618-base/base.elf || $(MAKE) ec618-base
+	# Generate the slot linker scripts from the base's geometry (correct for
+	# exactly this base, by construction), then link slot A (neutral link
+	# base) and slot B (its real flash address — the byte-identity oracle).
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--base-elf=$(BUILD)/ec618-base/base.elf --slot=a --out=$(BUILD)/ec618/slot-a.ld
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-ld.toit -- \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--base-elf=$(BUILD)/ec618-base/base.elf --slot=b --out=$(BUILD)/ec618/slot-b.ld
+	for s in a b; do \
+		arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
+			-T $(BUILD)/ec618/slot-$$s.ld \
+			-Wl,--just-symbols=$(BUILD)/ec618-base/base.elf \
+			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
+			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
+			-Wl,--whole-archive -Wl,--start-group \
+				$(BUILD)/ec618/src/libtoit_vm.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedtls.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedx509.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedcrypto.a \
+			-Wl,--end-group -Wl,--no-whole-archive \
+			-o $(BUILD)/ec618/toit-slot-$$s.elf || exit 1; \
+		$(EC618_GCC_PATH)/bin/arm-none-eabi-objcopy -O binary \
+			$(BUILD)/ec618/toit-slot-$$s.elf $(BUILD)/ec618/slot-$$s.slotbin || exit 1; \
+	done
+	# Assemble the full AP images: overlay each slot link onto the base image.
+	# The slot links confine all loadable bytes to the slot region (the .data
+	# init LMA rides in-slot, after the body), so this touches no base byte —
+	# and the result has the exact single-link ap.bin shape, so everything
+	# downstream (reloc gen, gold check, envelope, OTA) is unchanged.
+	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--slot-bin=$(BUILD)/ec618/slot-a.slotbin \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_a_start"{print $$1}') \
+		--out=$(BUILD)/ec618/ap-slot-a.bin
+	$(TOIT_BIN) run --project-root tools tools/ec618/splice-slot.toit -- \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--slot-bin=$(BUILD)/ec618/slot-b.slotbin \
+		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618-base/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
+		--out=$(BUILD)/ec618/ap-slot-b.bin
+	# Verify: no FIXED (non-relocated) section points into the slot. TODO
+	# (phase 4): rethink for the split world — the base cannot reference VM
+	# symbols at all now; the residual exposure is numeric slot addresses in
+	# base data, which this scan over the slot elf does not see.
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-refs.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		$(BUILD)/ec618/toit-slot-a.elf
+	# Verify the checked-in shared-.data slot-pointer table (compiled into the
+	# VM as src/toit_data_reloc.c, applied at boot by relocate_data_slot_pointers)
+	# still matches the linker's .rel.vm_dram_data -> slot records. Regenerate
+	# with `gen-data-reloc.toit --elf=... --out=src/toit_data_reloc.c` if stale.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--out=$(CURDIR)/src/toit_data_reloc.c --check
+	# Build + verify the dual-slot relocation table. gen-slot-reloc relocates
+	# the slot-A image to slot B and proves byte-identity with the slot-B link
+	# — the guard that no --emit-relocs relocation was dropped. Runs BEFORE the
+	# envelope so the bundled extension can be placed inside the VM slot and
+	# relocated with the VM body (carried into the envelope via --reloc.bin).
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-slot-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--ap=$(BUILD)/ec618/ap-slot-a.bin \
+		--base=$(BUILD)/ec618-base/base.bin \
+		--out=$(BUILD)/ec618/slot-reloc.bin \
+		--data-out=$(BUILD)/ec618/slot-data.bin \
+		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
+	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
+	# on the chip): relocate canonical == slot B and un-relocate slot B ==
+	# canonical, both whole-body and sector-chunked. The slot flash addresses are
+	# read from the link symbols (the image is linked at the neutral base, so the
+	# slots are no longer at the link base).
+	$(CXX) -Wall -Wextra -O2 -I src tools/slot_reloc_test/test.cc src/slot_reloc_ec618.cc -o $(BUILD)/ec618/slot_reloc_test
+	$(BUILD)/ec618/slot_reloc_test $(BUILD)/ec618/ap-slot-a.bin $(BUILD)/ec618/ap-slot-b.bin $(BUILD)/ec618/slot-reloc.bin \
+		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_a_start"{print $$1}') \
+		0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(BUILD)/ec618/toit-slot-a.elf | awk '$$3=="__vm_b_start"{print $$1}')
+	# Compile the system snapshot.
+	$(TOIT_BIN) compile --snapshot -o $(BUILD)/ec618/system.snapshot $(EC618_SYSTEM_ENTRY)
+	# Create the firmware envelope from the slot-A AP image + matching CP + the
+	# reloc table (which moves the bundled extension inside the VM slot).
+	rm -f $(EC618_ENVELOPE)
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) create ec618 \
+		--firmware.bin $(BUILD)/ec618/ap-slot-a.bin \
+		--cp.bin $(EC618_SDK)/PLAT/prebuild/FW/lib/cp-demo-flash.bin \
+		--reloc.bin $(BUILD)/ec618/slot-reloc.bin \
+		--data.bin $(BUILD)/ec618/slot-data.bin \
+		--system.snapshot $(BUILD)/ec618/system.snapshot
+	# Extract the binpkg (the extension now lives inside slot A).
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
+	@echo "Envelope: $(EC618_ENVELOPE)"
+	@echo "Binpkg:   $(EC618_BINPKG)"
+	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"
+
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
 check-esp32-env:

@@ -1,0 +1,74 @@
+// Copyright (C) 2026 Toit contributors.
+
+// Stamp the base-id record into the base AP image (frozen-base phase 4,
+// docs/frozen-base-phase4.md).
+//
+// The record identifies the exact base build a slot must be linked against:
+//
+//   [ 'T' 'B' 'I' '1' ][ version : u32 LE ][ fingerprint : 16 bytes ]
+//
+// It lives in the reserved flash page at TOIT_BASE_ID_ORIGIN (0x990000, the
+// page the retired jump table used to occupy). The fingerprint is the first
+// 16 bytes of the SHA-256 over the base image EXCLUDING this page (the
+// record cannot cover itself). The device reads the record over XIP and
+// compares it against the id carried in every OTA payload's SRL3 table —
+// a mismatched slot is rejected with a readable error instead of faulting.
+//
+// The version is a human-facing monotonic release number (base-vN, from
+// toolchains/ec618/base-version); the fingerprint is the machine truth.
+
+import cli
+import crypto.sha256 show sha256
+import host.file
+import host.pipe
+import io show LITTLE-ENDIAN
+
+MAGIC ::= #['T', 'B', 'I', '1']
+
+// Mirrors TOIT_BASE_ID_ORIGIN / AP_FLASH_LOAD_ADDR in the linker template.
+BASE-ID-ORIGIN ::= 0x990000
+AP-LOAD-ADDR ::= 0x824000
+PAGE-SIZE ::= 0x1000
+
+main args:
+  cmd := cli.Command "gen-base-id"
+      --help="""
+        Stamps the { magic, version, fingerprint } base-id record into the
+        base AP image (in place) and prints the resulting id.
+        """
+      --options=[
+        cli.Option "base"
+            --help="The base AP image (build/ec618-base/base.bin), patched in place."
+            --required,
+        cli.Option "version-file"
+            --help="File holding the base version number (base-vN)."
+            --required,
+      ]
+      --run=:: run it
+  cmd.run args
+
+run invocation/cli.Invocation -> none:
+  base := file.read-contents invocation["base"]
+  version-text := (file.read-contents invocation["version-file"]).to-string.trim
+  version := int.parse version-text
+
+  offset := BASE-ID-ORIGIN - AP-LOAD-ADDR
+  if offset + PAGE-SIZE > base.size:
+    pipe.print-to-stderr "base image ($base.size bytes) does not reach the base-id page (file 0x$(%x offset))"
+    exit 1
+
+  // Fingerprint everything except the record's own page.
+  pageless := (base.copy 0 offset) + (base.copy (offset + PAGE-SIZE))
+  fingerprint := (sha256 pageless)[..16]
+
+  record := ByteArray 24
+  record.replace 0 MAGIC
+  LITTLE-ENDIAN.put-uint32 record 4 version
+  record.replace 8 fingerprint
+  patched := base.copy
+  patched.replace offset record
+  file.write-contents --path=invocation["base"] patched
+
+  hex := ""
+  fingerprint.do: hex += "$(%02x it)"
+  print "base-id: v$version fp=$hex -> $invocation["base"]"

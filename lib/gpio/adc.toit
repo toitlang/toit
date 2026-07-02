@@ -62,7 +62,9 @@ ADC unit for reading the voltage on GPIO Pins.
 class Adc:
   static MAX-SAMPLES-PER-CALL_ ::= 64
 
-  pin/Pin
+  // The GPIO pin this ADC reads, or null for a channel-addressed ADC (a
+  // dedicated analog input that is not a GPIO pad — see $Adc.channel).
+  pin/Pin?
   resource_ := ?
 
   /**
@@ -79,8 +81,29 @@ class Adc:
   By default, ADC2 is disabled, and users need to pass in the
     $allow-restricted flag to allow its use.
   */
-  constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
+  constructor pin/Pin --max-voltage/float?=null --allow-restricted/bool=false:
+    this.pin = pin
     resource_ = adc-init_ resource-freeing-module_ pin.num allow-restricted (max-voltage ? max-voltage : 0.0)
+
+  /**
+  Initializes an Adc unit on a dedicated analog $channel rather than a GPIO pin.
+
+  Some chips expose the ADC as fixed analog inputs addressed by channel number
+    instead of as a function on a GPIO pad, so there is no $pin (it is null).
+    The $get/$close operations are the same; only the construction differs.
+
+  # EC618
+  Channel 0 -> AIO3 and channel 1 -> AIO4 (the board's "ADC0"/"ADC1" pins). The
+    converter core measures 0..1.2 V; $max-voltage selects the smallest range
+    (up to 3.8 V) that covers it, for the best resolution. The higher ranges read
+    above 1.2 V by switching in a resistor divider *inside the chip*; $get
+    compensates for it and returns the true voltage at the pin, so callers see the
+    actual input regardless of range. Supported maxima: 1.2, 1.4, 1.6, 1.9, 2.4,
+    2.7, 3.2, 3.8 V; null uses the widest (3.8 V).
+  */
+  constructor.channel channel/int --max-voltage/float?=null:
+    pin = null
+    resource_ = adc-init_ resource-freeing-module_ channel false (max-voltage ? max-voltage : 0.0)
 
   /**
   Measures the voltage on the pin.

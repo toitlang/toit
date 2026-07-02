@@ -65,10 +65,17 @@ class Bus:
   */
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
+  // The bus borrows its pins from the caller. Keep them reachable: if the
+  // caller's Pin objects are temporaries, the garbage collector would
+  // otherwise finalize them while the bus is live — and a finalized Pin
+  // releases its pad, unhooking the bus from the wires.
+  pins_/List ::= ?
+
   /**
   Constructs a new SPI bus using the given $mosi, $miso, and $clock pins.
   */
   constructor --mosi/gpio.Pin?=null --miso/gpio.Pin?=null --clock/gpio.Pin:
+    pins_ = [mosi, miso, clock]
     spi_ = spi-init_
       mosi ? mosi.num : -1
       miso ? miso.num : -1
@@ -121,7 +128,11 @@ class Bus:
       dc.configure --output
 
     d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
-    return Device_.init_ this d
+    device := Device_.init_ this d
+    // Same lifetime rule as the bus pins: the device borrows cs/dc, so it
+    // must keep them reachable for as long as it lives.
+    device.pins_ = [cs, dc]
+    return device
 
 /**
 A device connected with SPI.
@@ -277,6 +288,7 @@ class Device_ extends DeviceBase_:
   spi_/Bus := ?
   device_ := ?
   owning-bus_/bool := false
+  pins_/List := []
 
   registers_/Registers? := null
 

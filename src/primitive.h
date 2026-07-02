@@ -37,6 +37,8 @@ namespace toit {
   M(udp,     MODULE_UDP)                     \
   M(tls,     MODULE_TLS)                     \
   M(esp32,   MODULE_ESP32)                   \
+  M(ec618,   MODULE_EC618)                   \
+  M(cellular,MODULE_CELLULAR)                \
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
@@ -423,6 +425,42 @@ namespace toit {
   PRIMITIVE(pm_lock_release, 1)              \
   PRIMITIVE(pm_locks_dump, 0)                \
 
+#define MODULE_EC618(PRIMITIVE)              \
+  PRIMITIVE(print_uart_id, 0)                \
+  PRIMITIVE(slot_active, 0)                  \
+  PRIMITIVE(slot_inactive_erase, 1)          \
+  PRIMITIVE(slot_inactive_write, 2)          \
+  PRIMITIVE(slot_reloc_begin, 1)             \
+  PRIMITIVE(slot_reloc_end, 0)               \
+  PRIMITIVE(slot_stage_and_reset, 0)         \
+  PRIMITIVE(slot_stage, 0)                   \
+  PRIMITIVE(slot_mark_valid, 0)              \
+  PRIMITIVE(slot_mark_invalid_and_reset, 0)  \
+  PRIMITIVE(slot_trial, 0)                   \
+  PRIMITIVE(slot_program_mode, 1)            \
+  PRIMITIVE(modem_set_function, 1)           \
+  PRIMITIVE(reset_reason, 0)                 \
+  PRIMITIVE(watchdog_init, 1)                \
+  PRIMITIVE(watchdog_feed, 0)                \
+  PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(wakeup_pin_values, 0)            \
+  PRIMITIVE(peek32, 1)                       \
+  PRIMITIVE(poke32, 2)                       \
+  PRIMITIVE(wakeup_cause, 0)                 \
+  PRIMITIVE(wakeup_pad_configure, 6)         \
+  PRIMITIVE(wakeup_arm_flags, 1)             \
+  PRIMITIVE(base_id, 0)                      \
+
+#define MODULE_CELLULAR(PRIMITIVE)           \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(configure, 2)                    \
+  PRIMITIVE(connect, 1)                      \
+  PRIMITIVE(disconnect, 2)                   \
+  PRIMITIVE(disconnect_reason, 1)            \
+  PRIMITIVE(get_ip, 2)                       \
+  PRIMITIVE(get_cell_info, 0)                \
+
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(bus_create, 4)                   \
@@ -434,6 +472,8 @@ namespace toit {
   PRIMITIVE(device_write, 2)                 \
   PRIMITIVE(device_read, 3)                  \
   PRIMITIVE(device_write_read, 4)            \
+  PRIMITIVE(device_transfer_start, 3)        \
+  PRIMITIVE(device_transfer_finish, 2)       \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -593,7 +633,7 @@ namespace toit {
   PRIMITIVE(config, 7)                       \
   PRIMITIVE(get, 1)                          \
   PRIMITIVE(set, 2)                          \
-  PRIMITIVE(config_interrupt, 2)             \
+  PRIMITIVE(config_interrupt, 3)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
   PRIMITIVE(set_open_drain, 2)               \
   PRIMITIVE(set_pull, 2)                     \
@@ -1092,6 +1132,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
+#define _A_T_UartEc618ResourceGroup(N, name) MAKE_UNPACKING_MACRO(UartEc618ResourceGroup, N, name)
+#define _A_T_CellularResourceGroup(N, name) MAKE_UNPACKING_MACRO(CellularResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
@@ -1114,6 +1156,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
+#define _A_T_CellularEvents(N, name)     MAKE_UNPACKING_MACRO(CellularEvents, N, name)
+#define _A_T_UartEc618Resource(N, name) MAKE_UNPACKING_MACRO(UartEc618Resource, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)

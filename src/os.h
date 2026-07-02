@@ -114,6 +114,12 @@ class OS {
   static int64 get_monotonic_time();
   static void reset_monotonic_time();
 
+  // Feeds the platform's VM-liveness watchdog, if any. Called from the
+  // scheduler loop so that a wedged VM (a stuck primitive, a scheduler/GC
+  // deadlock) stops feeding and the device is reset. A no-op on platforms
+  // without such a guard. Self-throttled, so it is cheap to call often.
+  static void feed_watchdog();
+
   /// Computes the executable path.
   ///
   /// Returns a malloced data structure that should be freed

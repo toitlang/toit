@@ -4,6 +4,7 @@
 
 import gpio
 import io
+import monitor
 import serial
 
 /**
@@ -41,6 +42,13 @@ class Bus:
   resource_ := ?
   devices_ := {:}
   frequency_/int
+  // Serializes transfers: the controller runs one transaction at a time.
+  mutex_ ::= monitor.Mutex
+  // The bus borrows its pins from the caller. Keep them reachable: if the
+  // caller's Pin objects are temporaries, the garbage collector would
+  // otherwise finalize them while the bus is live — and a finalized Pin
+  // releases its pad, unhooking the bus from the wires.
+  pins_/List ::= ?
 
   /**
   Deprecated. Use $(constructor --sda --scl --pull-up) instead.
@@ -88,6 +96,7 @@ class Bus:
       --frequency/int=DEFAULT-FREQUENCY
       --pull-up/bool=false:
     frequency_ = frequency
+    pins_ = [sda, scl]
     resource_ = i2c-bus-create_ resource-group_ sda.num scl.num pull-up
     add-finalizer this:: close
 
@@ -162,6 +171,7 @@ class Device implements serial.Device:
   bus_/Bus? := ?
   resource_ := ?
   registers_/Registers? := null
+  state_/monitor.ResourceState_? := null
 
   constructor.init_ .bus_/Bus .address frequency/int:
     address-bit-size := 7
@@ -211,7 +221,44 @@ class Device implements serial.Device:
   - a 'stop'.
   */
   write bytes/ByteArray:
-    i2c-device-write_ resource_ bytes
+    transfer_ bytes null 0
+
+  // The transfer-done state bit set by the platform's event path.
+  static TRANSFER-DONE-STATE_ ::= 1
+
+  /**
+  Runs one I2C transaction: a write ($size == 0), a read (empty $tx), or a
+    write + repeated start + read into $rx.
+
+  Platforms with an asynchronous driver (the start primitive returns true,
+    e.g. the EC618: IRQ-driven with per-byte timeouts) run the transfer in
+    the background while this task waits on the resource state — the VM is
+    not blocked, and a clock-stretching or wedged slave is bounded by the
+    driver timeout. Other platforms take the synchronous primitives.
+  */
+  transfer_ tx/io.Data rx/ByteArray? size/int -> none:
+    if not resource_: throw "CLOSED"
+    bus_.mutex_.do:
+      if not state_: state_ = monitor.ResourceState_ resource-group_ resource_
+      state_.clear-state TRANSFER-DONE-STATE_
+      if i2c-device-transfer-start_ resource_ tx size:
+        // The driver bounds each byte by <= 1s; add headroom on top.
+        total := tx.byte-size + size
+        e := catch:
+          with-timeout --ms=(1_000 + total * 1_100):
+            state_.wait-for-state TRANSFER-DONE-STATE_
+        if e:
+          // Deadline fired: abort the transfer and release its buffers.
+          i2c-device-transfer-finish_ resource_ #[]
+          throw e
+        result := i2c-device-transfer-finish_ resource_ (rx ? rx : #[])
+        if result != 0: throw "HARDWARE_ERROR"
+      else if tx.byte-size > 0 and size > 0:
+        i2c-device-write-read_ resource_ tx rx size
+      else if size > 0:
+        i2c-device-read_ resource_ rx size
+      else:
+        i2c-device-write_ resource_ tx
 
   /**
   Variant of $(write bytes).
@@ -282,7 +329,7 @@ class Device implements serial.Device:
   */
   read size/int -> ByteArray:
     result := ByteArray size
-    i2c-device-read_ resource_ result size
+    transfer_ #[] result size
     return result
 
   /**
@@ -292,7 +339,7 @@ class Device implements serial.Device:
   */
   read-into buffer/ByteArray size/int=buffer.size -> none:
     if buffer.size < size: throw "OUT_OF_RANGE"
-    i2c-device-read_ resource_ buffer size
+    transfer_ #[] buffer size
 
   /**
   Variant of $(read size).
@@ -360,7 +407,7 @@ class Device implements serial.Device:
   */
   write-read tx-buffer/io.Data size/int -> ByteArray:
     rx-buffer := ByteArray size
-    i2c-device-write-read_ resource_ tx-buffer rx-buffer size
+    transfer_ tx-buffer rx-buffer size
     return rx-buffer
 
   /**
@@ -369,7 +416,7 @@ class Device implements serial.Device:
   */
   write-read-into --tx-buffer/io.Data --rx-buffer/ByteArray size/int=rx-buffer.size -> none:
     if rx-buffer.size < size: throw "OUT_OF_RANGE"
-    i2c-device-write-read_ resource_ tx-buffer rx-buffer size
+    transfer_ tx-buffer rx-buffer size
 
   /** Closes this device and releases the I2C address. */
   close -> none:
@@ -443,3 +490,18 @@ i2c-device-write-read_ device tx-buffer/io.Data rx-buffer/ByteArray size/int:
   #primitive.i2c.device-write-read:
     return io.primitive-redo-io-data_ it tx-buffer 0 tx-buffer.byte-size: | tx-bytes/ByteArray |
       i2c-device-write-read_ device tx-bytes rx-buffer size
+
+// Starts an asynchronous transfer. Returns true when started (completion
+// arrives through the resource state; collect with
+// $i2c-device-transfer-finish_), or false when the platform only has
+// synchronous transfers.
+i2c-device-transfer-start_ device tx-buffer/io.Data rx-size/int:
+  #primitive.i2c.device-transfer-start:
+    return io.primitive-redo-io-data_ it tx-buffer 0 tx-buffer.byte-size: | tx-bytes/ByteArray |
+      i2c-device-transfer-start_ device tx-bytes rx-size
+
+// Collects a finished transfer: copies received bytes into $rx-buffer and
+// returns the driver result (0 = success). Aborts the transfer if it is
+// still running.
+i2c-device-transfer-finish_ device rx-buffer/ByteArray:
+  #primitive.i2c.device-transfer-finish

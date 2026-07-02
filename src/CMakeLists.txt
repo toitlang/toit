@@ -24,7 +24,7 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "
   set(UTF_8_MANIFEST_LIB utf8_manifest)
 endif()
 
-if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+if (NOT ${TOIT_IS_EMBEDDED})
   add_custom_target(build_tools)
   add_subdirectory(compiler)
 endif()
@@ -144,7 +144,7 @@ endforeach()
 
 add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
 
-if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+if (NOT ${TOIT_IS_EMBEDDED})
   add_executable(
     toit
     toit.cc
@@ -253,7 +253,7 @@ target_link_libraries(
   ${UTF_8_MANIFEST_LIB}
 )
 
-if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+if (NOT ${TOIT_IS_EMBEDDED})
   add_custom_target(build_vessels)
   add_dependencies(build_tools build_vessels)
 
@@ -475,4 +475,4 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   install(TARGETS toit.run toit.compile
     RUNTIME DESTINATION lib/toit/bin
   )
-endif() # TOIT_SYSTEM_NAME != esp32
+endif() # NOT TOIT_IS_EMBEDDED

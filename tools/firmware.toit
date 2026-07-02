@@ -37,13 +37,26 @@ import partition-table show *
 import tar
 
 import ..system.extensions.host.run-image-boot-sh
+import .ec618.slot-reloc show SlotRelocTable TO-SLOT TO-CANONICAL
 import .image
 import .snapshot
 import .snapshot-to-image
 
 ENVELOPE-FORMAT-VERSION ::= 8
+ENVELOPE-FORMAT-VERSION-EC618 ::= 1000
 
 WORD-SIZE-ESP32 ::= 4
+WORD-SIZE-EC618 ::= 4
+
+// EC618 memory map constants (from mem_map.h).
+EC618-XIP-BASE_        ::= 0x00800000
+EC618-AP-LOAD-OFFSET_  ::= 0x00024000
+// Slot A's XIP flash address (TOIT_VM_A_ORIGIN in the linker script). The VM is
+// LINKED at the neutral reloc-table.link-base (NEITHER slot), so this slot-A
+// flash address is no longer the same as the link base: it is where the
+// (relocated) slot-A image physically lives and boots. Used to place/read the
+// slot within the AP image and to compute the slot-A relocation displacement.
+EC618-VM-SLOT-A-XIP_   ::= 0x00991000
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -73,6 +86,27 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
 
 // Host AR entries.
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
+
+// EC618 AR entries.
+AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
+// The CP (modem-core) image. Bundled so `flash` can program a matching
+// CP — a mismatched CP resets the chip a few seconds after the modem is
+// enabled. See docs/ota-dual-slot-plan.md "RESOLVED (2026-05-29)".
+AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
+// The "SRL2" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
+// from the slot-A link). Carried in the envelope so `extract` can place the
+// bundled extension inside the VM slot and relocate it with the VM body
+// (option A; see docs/ota-relocation-convergence.md). When absent, the
+// extension is appended after the AP image (legacy out-of-slot layout).
+AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
+// The VM's writable-.data init image (the per-slot data region, built by
+// tools/ec618/gen-slot-reloc.toit alongside the reloc table). Each firmware
+// carries its OWN .data so an A!=B OTA boots correct VM state: the bytes ride
+// inside the slot after the VM body+extension (verbatim, never relocated), and
+// the device copies the active slot's copy to __vm_data_start at boot. Its size
+// must equal the reloc table's data_size. See docs/ota-contract.md. (The AR
+// name must stay <=16 chars, like the other entries.)
+AR-ENTRY-EC618-VM-DATA ::= "\$ec618-data.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -142,6 +176,7 @@ build-command --create-esp32-only/bool=false -> cli.Command:
       ]
   if create-esp32-only:
     firmware-cmd.add (create-esp32-cmd --name="create")
+    firmware-cmd.add (create-ec618-cmd --name="create-ec618")
   else:
     firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
@@ -162,6 +197,7 @@ create-cmd -> cli.Command:
         Create a firmware envelope of the specified kind.
         """
   cmd.add (create-esp32-cmd --name="esp32")
+  cmd.add create-ec618-cmd
   cmd.add create-host-cmd
   return cmd
 
@@ -215,6 +251,70 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
+  envelope.store output-path --ui=ui
+
+create-ec618-cmd --name/string="ec618" -> cli.Command:
+  return cli.Command name
+      --help="""
+        Create a firmware envelope from an EC618 firmware binary.
+
+        The firmware binary is the AP binary produced by the EC618 build.
+        """
+      --options=[
+        cli.Option "firmware.bin"
+            --help="Set the firmware binary (the AP image)."
+            --type="file"
+            --required,
+        cli.Option "cp.bin"
+            --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
+            --type="file",
+        cli.Option "reloc.bin"
+            --help="Set the dual-slot relocation table (slot-reloc.bin), enabling the in-slot extension layout."
+            --type="file",
+        cli.Option "data.bin"
+            --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot."
+            --type="file",
+        cli.Option "system.snapshot"
+            --type="file"
+            --required,
+      ]
+      --run=:: create-envelope-ec618 it
+
+create-envelope-ec618 invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
+  input-path := invocation["firmware.bin"]
+
+  ui := invocation.cli.ui
+
+  firmware-bin-data := read-file input-path --ui=ui
+  system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
+  system-snapshot := SnapshotBundle system-snapshot-content
+
+  // For EC618, we include the raw firmware binary without stripping
+  // DROM extensions (no ESP32-style segment parsing needed).
+  entries := {
+    AR-ENTRY-EC618-FIRMWARE-BIN: firmware-bin-data,
+    SYSTEM-CONTAINER-NAME: system-snapshot-content,
+    AR-ENTRY-PROPERTIES: json.encode {
+      PROPERTY-CONTAINER-FLAGS: {
+        SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL,
+      },
+    },
+  }
+
+  cp-path := invocation["cp.bin"]
+  if cp-path: entries[AR-ENTRY-EC618-CP-BIN] = read-file cp-path --ui=ui
+
+  reloc-path := invocation["reloc.bin"]
+  if reloc-path: entries[AR-ENTRY-EC618-RELOC] = read-file reloc-path --ui=ui
+
+  data-path := invocation["data.bin"]
+  if data-path: entries[AR-ENTRY-EC618-VM-DATA] = read-file data-path --ui=ui
+
+  envelope := Envelope.create entries
+      --sdk-version=system-snapshot.sdk-version
+      --kind=Envelope.KIND-EC618
+      --word-size=WORD-SIZE-EC618
   envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
@@ -679,6 +779,8 @@ extract invocation/cli.Invocation -> none:
     extract-esp32 invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
+  else if envelope.kind == Envelope.KIND-EC618:
+    extract-ec618 invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
@@ -851,6 +953,489 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
+extract-ec618 -> none
+    invocation/cli.Invocation
+    envelope/Envelope
+    --config-encoded/ByteArray:
+  output-path := invocation[OPTION-OUTPUT]
+  ui := invocation.cli.ui
+
+  format := invocation["format"]
+  if format != "binary" and format != "ubjson" and format != "image":
+    ui.abort "Unsupported format for EC618 envelope: '$format'. Use 'binary', 'image' (binpkg), or 'ubjson'."
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+
+  if format == "image":
+    // Produce a .binpkg (the EC618 flashable format), including the CP
+    // (modem-core) zone when the envelope carries one.
+    cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+    binpkg := convert-to-binpkg firmware-bin --cp=cp
+    write-file output-path --ui=ui: it.write binpkg
+    return
+
+  if format == "binary":
+    // The OTA payload: the active slot's CANONICAL firmware (table-first,
+    // [ size ][ table ][ VM body + extension ]) — the exact bytes firmware.map
+    // returns and the device FirmwareWriter consumes (relocate-on-write). This
+    // matches the standard contract where `extract --format binary` is the
+    // image that is OTA'd. The flashable whole-AP image is the 'image'/binpkg
+    // format. Falls back to the raw AP for legacy envelopes without a table.
+    reloc-table/SlotRelocTable? := envelope.entries.get AR-ENTRY-EC618-RELOC
+        --if-present=: SlotRelocTable.parse it
+    output := reloc-table
+        ? (ec618-canonical-firmware firmware-bin reloc-table)
+        : firmware-bin
+    write-file output-path --ui=ui: it.write output
+    return
+
+  parts := extract-parts-ec618 firmware-bin
+  output := {
+    "parts"  : parts,
+    "binary" : firmware-bin,
+  }
+  write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+/**
+Builds the EC618 CANONICAL firmware image from the in-slot AP binary $ap and the
+  base relocation $table (geometry). The canonical image is table-first
+
+    [ table-size : u32 ][ SRL2 table (merged) ][ VM body + extension ]
+
+— the exact bytes firmware.map returns and the device FirmwareWriter consumes
+  (relocate-on-write). The body in $ap lives in slot A (relocated to slot A's
+  flash address), so it is UN-relocated back to the canonical (link-base) domain
+  here, the inverse of the relocate in extract-binary-in-slot-ec618_.
+*/
+ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
+  load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
+  slot-a-file := EC618-VM-SLOT-A-XIP_ - load-xip
+  size-pos := slot-a-file + table.slot-size - 4
+  table-length := LITTLE-ENDIAN.uint32 ap size-pos
+  table-bytes := ap.copy (size-pos - table-length) size-pos
+  merged := SlotRelocTable.parse table-bytes
+  populated := merged.body-size
+  body := ap.copy slot-a-file (slot-a-file + populated)
+  // Un-relocate the slot-A body back to canonical (link-base) so the device's
+  // relocate-on-write lands it in whichever slot it is OTA'd to.
+  merged.apply body
+      --base=0
+      --delta=(EC618-VM-SLOT-A-XIP_ - merged.link-base)
+      --direction=TO-CANONICAL
+  // The VM .data init image rides verbatim after the populated front (slot
+  // offset `populated`); it carries no relocations, so it is appended unchanged.
+  data := ap.copy (slot-a-file + populated) (slot-a-file + populated + merged.data-size)
+  size-word := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 size-word 0 table-length
+  return size-word + table-bytes + body + data
+
+extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
+  containers := []
+  entries := envelope.entries
+  properties := entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+      --if-absent=: {:}
+  flags := get-flags envelope
+
+  has-system-image := entries.contains SYSTEM-CONTAINER-NAME
+  if has-system-image: containers.add null
+
+  non-system-images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
+      continue.do
+    assets-data := entries.get "+$name"
+    entry := extract-container name flags content --assets=assets-data --word-size=envelope.word-size
+    containers.add entry
+    non-system-images[name] = entry.id.to-byte-array
+
+  if has-system-image:
+    name := SYSTEM-CONTAINER-NAME
+    content := entries[name]
+    system-assets := {:}
+    if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
+    assets-encoded := assets.encode system-assets
+    containers[0] = extract-container name flags content --assets=assets-encoded --word-size=envelope.word-size
+
+  firmware-bin := entries.get AR-ENTRY-EC618-FIRMWARE-BIN
+  if not firmware-bin:
+    throw "cannot find $AR-ENTRY-EC618-FIRMWARE-BIN entry in envelope '$envelope.path'"
+
+  system-uuid/Uuid? := null
+  if properties.contains "uuid":
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
+  system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
+
+  reloc-table/SlotRelocTable? := entries.get AR-ENTRY-EC618-RELOC
+      --if-present=: SlotRelocTable.parse it
+  vm-data/ByteArray? := entries.get AR-ENTRY-EC618-VM-DATA
+
+  return extract-binary-content-ec618
+      --binary-input=firmware-bin
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --reloc-table=reloc-table
+      --vm-data=vm-data
+
+extract-binary-content-ec618 -> ByteArray
+    --binary-input/ByteArray
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --reloc-table/SlotRelocTable?
+    --vm-data/ByteArray?:
+  if reloc-table:
+    return extract-binary-in-slot-ec618_
+        --binary-input=binary-input
+        --containers=containers
+        --system-uuid=system-uuid
+        --config-encoded=config-encoded
+        --reloc-table=reloc-table
+        --vm-data=vm-data
+
+  // Legacy out-of-slot layout (envelopes built without a relocation table):
+  // pad the AP binary up to a 4 KB boundary and append the extension after it.
+  // This forces the prefix size (= padded-binary size = extension - load-addr)
+  // to be a multiple of both FLASH_SECTOR_SIZE (4 KB, required for the OTA
+  // commit's destination erase) and FLASH_SEGMENT_SIZE (16 B, so ota_write
+  // never needs to straddle the prefix boundary mid-segment).
+  EC618-FLASH-SECTOR-SIZE_ ::= 4096
+  padded-binary := pad binary-input EC618-FLASH-SECTOR-SIZE_
+  binary-size := padded-binary.size
+
+  // The extension is appended at the end of the (padded) binary. The
+  // XIP address of the extension start is the padded binary size plus
+  // the XIP base and AP load offset.
+  // EC618 XIP base: 0x00800000, AP load offset: 0x00024000.
+  extension-xip-addr := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_ + binary-size
+  extension := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+
+  result := padded-binary.copy
+  patch-drom-extension-ec618_ result --extension-xip-addr=extension-xip-addr --system-uuid=system-uuid
+
+  // Append the extension to the binary.
+  result += extension.bytes
+
+  // Append a SHA-256 trailer over the whole image. The runtime
+  // (primitive_core.cc::firmware_map and primitive_ec618.cc::ota_end)
+  // both assume the last 32 bytes of the image are this digest:
+  // firmware_map adds SHA256_SIZE to the reported size and ota_end
+  // reads the 32-byte trailer to compare against the freshly
+  // re-computed hash. Without this append, ota_end always rejects
+  // the staged image with INVALID_ARGUMENT.
+  result += crypto.sha256 result
+  return result
+
+/**
+Produces the EC618 AP image with the bundled extension placed INSIDE the VM
+  slot (option A; see docs/ota-relocation-convergence.md).
+
+The slot is laid out as
+  `[ VM body ][ extension ][ VM .data init ][ free ][ SRL2 table ][ size ]`,
+  where `size` (the slot's last word) locates the table. The extension's
+  absolute pointers (the image-table program addresses, each container image's
+  internal pointers, and the patched `DromData.extension`) are merged into the
+  $reloc-table so the device relocates the whole slot uniformly on write and
+  un-relocates it on read. The $vm-data init image (the per-slot data region)
+  rides verbatim right after the extension — it is never relocated (it holds no
+  slot pointers the SRL2 table covers; the device fixes its slot pointers in RAM
+  at boot), so it sits past the relocatable populated front (`body_size`). A
+  build-time fit check guarantees the slot is not overflowed.
+*/
+extract-binary-in-slot-ec618_ -> ByteArray
+    --binary-input/ByteArray
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --reloc-table/SlotRelocTable
+    --vm-data/ByteArray?:
+  load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
+  link-base := reloc-table.link-base
+  slot-size := reloc-table.slot-size
+  vm-body := reloc-table.body-size  // The VM body is the populated slot front.
+  // The image is linked at the neutral link-base, but slot A lives at its own
+  // flash address; the body is placed/built canonically (link-base-relative)
+  // and relocated to slot A at the end so it boots in place.
+  slot-file := EC618-VM-SLOT-A-XIP_ - load-xip  // File offset of slot A's first byte.
+
+  if vm-body % 4 != 0: throw "EC618 VM body size 0x$(%x vm-body) is not word-aligned"
+
+  // The extension sits right after the VM body, still inside the slot.
+  extension-xip-addr := link-base + vm-body
+  extension := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+
+  // Self-check the extension relocation (the analog of gen-slot-reloc's
+  // --verify-slot-b, but for the bundled extension which that check does NOT
+  // cover): build the SAME extension at slot B's address and confirm that
+  // relocating the slot-A extension by the slot displacement reproduces it
+  // byte-for-byte. Any differing word is an address-dependent value that
+  // `pointer-offsets` failed to capture (or captured at the wrong offset) — it
+  // would leave a slot-A pointer in slot B and make the firmware service run
+  // from the wrong slot. See docs/ota-relocation-convergence.md.
+  verify-ec618-extension-relocation_ extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+      --slot-size=slot-size
+
+  result := binary-input.copy
+  details-offset := find-details-offset-esp32 result
+  if details-offset < slot-file or details-offset >= slot-file + vm-body:
+    throw "EC618 DromData at file 0x$(%x details-offset) is outside the VM slot"
+  patch-drom-extension-ec618_ result --extension-xip-addr=extension-xip-addr --system-uuid=system-uuid
+
+  // Merge the extension's absolute pointers into the slot relocation table, as
+  // slot-relative offsets. DromData.extension lives in the VM body; the
+  // image-table and container pointers live in the extension at `vm-body + ..`.
+  extra-abs32 := [details-offset - slot-file]
+  extension.pointer-offsets.do: | offset/int | extra-abs32.add (vm-body + offset)
+  populated := vm-body + extension.bytes.size
+  merged := reloc-table.merge-extension --extra-abs32=extra-abs32 --populated-size=populated
+
+  // The per-slot VM .data init image rides verbatim after the populated front
+  // (body + extension), at slot offset `populated`. Its size is fixed by the
+  // reloc table's data_size (set by gen-slot-reloc from __vm_data_start/_end);
+  // the carried bytes must match exactly so the device's boot-time copy and the
+  // canonical framing agree. `merged.body-size == populated`, so the slot reloc
+  // never touches this region.
+  data-size := merged.data-size
+  if data-size > 0 and (vm-data == null or vm-data.size != data-size):
+    throw "EC618 reloc table wants 0x$(%x data-size) bytes of VM .data but the envelope carries $(vm-data == null ? "none" : "0x$(%x vm-data.size)") ($AR-ENTRY-EC618-VM-DATA / --data.bin)"
+  // Pad the table to a word so the canonical image's body (which follows
+  // [ size:u32 ][ table ]) starts on a 4-byte boundary. The device read path
+  // (SlotFirmware) un-relocates the body word-by-word and so needs that
+  // alignment; the SRL2 parser ignores the trailing pad bytes.
+  table-bytes := pad merged.to-bytes 4
+
+  // Fit check: [ VM body ][ extension ][ VM .data ][ free ][ SRL2 table ][ size ].
+  // The OTA write path (slot_reloc_begin) lays the trailer in its own tail
+  // sectors and streams the body+extension+.data front-to-back with a lazy
+  // per-sector erase, so the populated front and the trailer must occupy
+  // DISJOINT 4 KB sectors — otherwise the front's erase would clobber the
+  // trailer. Enforce the same sector-disjoint bound at build time so every
+  // buildable image is also OTA-writable.
+  front := populated + data-size  // body + extension + .data init.
+  trailer-size := table-bytes.size + 4
+  EC618-SECTOR_ ::= 0x1000
+  block-size := round-up trailer-size 16              // Segment-aligned trailer block.
+  trailer-first-sector := (slot-size - block-size) / EC618-SECTOR_ * EC618-SECTOR_
+  if (round-up front EC618-SECTOR_) > trailer-first-sector:
+    throw "EC618 slot overflow: VM body 0x$(%x vm-body) + extension 0x$(%x extension.bytes.size) + .data 0x$(%x data-size) + reloc trailer 0x$(%x trailer-size) does not leave the trailer its own sector(s) in slot 0x$(%x slot-size)"
+
+  // Write the extension after the VM body, the .data init after the extension,
+  // and the tail trailer so the size word is the slot's last word (self-locating,
+  // see slot_reloc_parse_trailer).
+  result.replace (slot-file + vm-body) extension.bytes
+  if data-size > 0: result.replace (slot-file + populated) vm-data
+  result.replace (slot-file + slot-size - trailer-size) table-bytes
+  size-word := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 size-word 0 table-bytes.size
+  result.replace (slot-file + slot-size - 4) size-word
+
+  // The body + extension were built CANONICALLY (link-base-relative). Relocate
+  // the whole slot to slot A's flash address so the flashed image boots in
+  // place. delta is 0 only if the link base is set back to slot A; here it is
+  // non-zero, so slot A is relocated for real (exercising the same path as a
+  // slot-B OTA). The trailer (table + size word) is metadata and untouched.
+  merged.apply result
+      --base=slot-file
+      --delta=(EC618-VM-SLOT-A-XIP_ - link-base)
+      --direction=TO-SLOT
+
+  // Whole-image SHA-256 trailer (kept until the read path moves to the
+  // canonical per-slot hash in convergence #3).
+  result += crypto.sha256 result
+  return result
+
+/** The bundled EC618 extension bytes plus the offsets of the pointers it holds. */
+class Ec618Extension_:
+  bytes/ByteArray
+  // Extension-relative byte offsets of the absolute pointers the extension
+  // holds (image-table program addresses + each container's internal pointers).
+  pointer-offsets/List
+
+  constructor .bytes .pointer-offsets:
+
+/**
+Builds the EC618 embedded-data extension to live at $extension-xip-addr.
+
+The extension is `[ header (20B) ][ image table ][ container images ]
+  [ config-size (4B) ][ config ]`. Returns the bytes together with the
+  extension-relative offsets of every absolute pointer they contain, so the
+  in-slot layout can relocate the extension with the VM body.
+*/
+build-ec618-extension -> Ec618Extension_
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --extension-xip-addr/int:
+  image-count := containers.size
+  image-table := ByteArray 8 * image-count
+  header-size := 5 * 4
+  pointer-offsets := []
+
+  relocation-base := extension-xip-addr + header-size + image-table.size
+  images := []
+  index := 0
+  containers.do: | container/ContainerEntry |
+    image-size := container.relocated-size
+    LITTLE-ENDIAN.put-uint32 image-table (index * 8) relocation-base
+    LITTLE-ENDIAN.put-uint32 image-table (index * 8 + 4) image-size
+    // The image-table program-address word is an absolute pointer into the slot.
+    pointer-offsets.add (header-size + index * 8)
+    // The container image's own internal pointers, at the image's position.
+    container-offset := relocation-base - extension-xip-addr
+    (container-pointer-offsets container.relocatable --word-size=WORD-SIZE-EC618).do: | offset/int |
+      pointer-offsets.add (container-offset + offset)
+    image-bits := container.relocate
+        --relocation-base=relocation-base
+        --system-uuid=system-uuid
+        --attach-assets
+    images.add image-bits
+    relocation-base += image-bits.size
+    index++
+
+  extension-header := ByteArray header-size
+  LITTLE-ENDIAN.put-uint32 extension-header (0 * 4) 0x98dfc301
+  LITTLE-ENDIAN.put-uint32 extension-header (3 * 4) image-count
+  extension := extension-header + image-table
+  images.do: extension += it
+
+  used-size := extension.size
+  config-size-bytes := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 config-size-bytes 0 config-encoded.size
+  extension += config-size-bytes
+  extension += config-encoded
+
+  // On EC618, the "free" field is not used — config follows the used area.
+  free-size := 0
+  checksum := 0xb3147ee9
+  LITTLE-ENDIAN.put-uint32 extension (1 * 4) used-size
+  LITTLE-ENDIAN.put-uint32 extension (2 * 4) free-size
+  4.repeat: checksum ^= LITTLE-ENDIAN.uint32 extension (it * 4)
+  LITTLE-ENDIAN.put-uint32 extension (4 * 4) checksum
+  return Ec618Extension_ extension pointer-offsets
+
+/**
+Verifies the bundled extension relocates cleanly: builds the SAME extension one
+  slot displacement up (at $extension-xip-addr + $slot-size) and asserts that
+  relocating $ext-a's bytes by $slot-size — adding the displacement to every
+  word in ext-a's pointer-offsets — reproduces it byte-for-byte.
+
+Any differing word is an address-dependent value the pointer set missed (or
+  placed at the wrong offset). Such a word stays pointing into slot A after
+  relocate-on-write, so an image running in slot B resolves it back into slot A
+  — exactly the failure where the firmware service ran slot A's primitives.
+*/
+verify-ec618-extension-relocation_ ext-a/Ec618Extension_
+    --containers/List
+    --system-uuid/Uuid
+    --config-encoded/ByteArray
+    --extension-xip-addr/int
+    --slot-size/int -> none:
+  ext-b := build-ec618-extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=(extension-xip-addr + slot-size)
+  bytes-a := ext-a.bytes
+  bytes-b := ext-b.bytes
+  if bytes-a.size != bytes-b.size:
+    print "[ext-verify] FAIL: size differs A=$bytes-a.size B=$bytes-b.size"
+    return
+  relocated := bytes-a.copy
+  offsets := {}
+  ext-a.pointer-offsets.do: | off/int |
+    offsets.add off
+    LITTLE-ENDIAN.put-uint32 relocated off ((LITTLE-ENDIAN.uint32 relocated off) + slot-size)
+  diffs := 0
+  reported := 0
+  (bytes-a.size / 4).repeat: | i/int |
+    off := i * 4
+    vr := LITTLE-ENDIAN.uint32 relocated off
+    vb := LITTLE-ENDIAN.uint32 bytes-b off
+    if vr != vb:
+      diffs++
+      if reported < 40:
+        va := LITTLE-ENDIAN.uint32 bytes-a off
+        print "[ext-verify] DIFF ext-off=0x$(%x off): A=0x$(%x va) reloc=0x$(%x vr) B=0x$(%x vb) in-pointer-offsets=$(offsets.contains off)"
+        reported++
+  if diffs != 0:
+    throw "[ext-verify] extension relocation INCOMPLETE: $diffs differing words — pointer-offsets missed/misaligned an address-dependent value (see DIFFs above); a slot-A pointer would survive into slot B"
+  print "[ext-verify] OK: extension relocates cleanly ($(ext-a.pointer-offsets.size) pointers, $bytes-a.size bytes)"
+
+/** Patches the DromData in $result with the $extension-xip-addr and $system-uuid. */
+patch-drom-extension-ec618_ result/ByteArray --extension-xip-addr/int --system-uuid/Uuid -> none:
+  details-offset := find-details-offset-esp32 result
+  bundled-programs-table-address := ByteArray 4
+  LITTLE-ENDIAN.put-uint32 bundled-programs-table-address 0 extension-xip-addr
+  result.replace (details-offset + 0) bundled-programs-table-address
+  result.replace (details-offset + 4) system-uuid.to-byte-array
+
+/**
+Returns the relocated-image byte offsets of every pointer word in $relocatable.
+
+The relocatable image is a sequence of chunks, each a one-word relocation mask
+  followed by `$word-size * 8` data words; bit i of the mask marks data word i
+  as a pointer (the value the device shifts when the slot moves). The relocated
+  image that $ContainerEntry.relocate emits is the data words concatenated (the
+  masks dropped), so a pointer in chunk c at bit i lands at relocated offset
+  `c * (word-size*8*word-size) + i*word-size`.
+*/
+container-pointer-offsets relocatable/ByteArray --word-size/int -> List:
+  offsets := []
+  word-bits := word-size * 8
+  chunk-size := (word-bits + 1) * word-size
+  relocated-word := 0
+  pos := 0
+  while pos < relocatable.size:
+    end := min (pos + chunk-size) relocatable.size
+    mask/int := word-size == 4
+        ? LITTLE-ENDIAN.uint32 relocatable pos
+        : LITTLE-ENDIAN.int64 relocatable pos
+    data-words := (end - pos - word-size) / word-size
+    data-words.repeat: | i/int |
+      if (mask & (1 << i)) != 0: offsets.add (relocated-word + i * word-size)
+    relocated-word += data-words * word-size
+    pos = end
+  return offsets
+
+/**
+Extracts parts information from an EC618 firmware binary.
+
+The image ends with a 32-byte SHA-256 trailer that
+extract-binary-content-ec618 appends; report it as a separate part.
+*/
+extract-parts-ec618 firmware-bin/ByteArray -> List:
+  SHA256-SIZE ::= 32
+  parts := []
+  details-offset := find-details-offset-esp32 firmware-bin
+  extension-addr := LITTLE-ENDIAN.uint32 firmware-bin details-offset
+  if extension-addr == 0:
+    parts.add { "type": "binary", "from": 0, "to": firmware-bin.size }
+    return parts
+
+  extension-offset := extension-addr - EC618-XIP-BASE_ - EC618-AP-LOAD-OFFSET_
+
+  parts.add { "type": "binary", "from": 0, "to": extension-offset }
+  if extension-offset < firmware-bin.size:
+    used := LITTLE-ENDIAN.uint32 firmware-bin extension-offset + 4
+    config-end := firmware-bin.size - SHA256-SIZE
+    parts.add { "type": "images", "from": extension-offset, "to": extension-offset + used }
+    parts.add { "type": "config", "from": extension-offset + used, "to": config-end }
+    parts.add { "type": "checksum", "from": config-end, "to": firmware-bin.size }
+  return parts
+
 write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
   flash-size-string := flashing["flash_settings"]["flash_size"]
   if not flash-size-string.ends-with "MB":
@@ -992,11 +1577,50 @@ find-esptool_ -> List:
       return ["python3", location.trim]
   throw "cannot find esptool"
 
+find-ectool_ -> string:
+  bin-extension := ?
+  bin-name := system.program-path
+  if platform == system.PLATFORM-WINDOWS:
+    bin-name = bin-name.replace --all "\\" "/"
+    bin-extension = ".exe"
+  else:
+    bin-extension = ""
+
+  if ectool-path := os.env.get "ECTOOL_PATH":
+    return ectool-path
+
+  // Look next to the firmware binary.
+  list := bin-name.split "/"
+  dir := list[..list.size - 1].join "/"
+  if dir != "":
+    ectool := "$dir/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+    // Also look in third_party/ectool/.
+    ectool = "$dir/../third_party/ectool/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+
+  // Try to find ectool in PATH. Probe PATH membership with `command -v`
+  // rather than running `ectool --version`: some ectool builds require an
+  // action argument (burn/unpack/erase/logs) and exit non-zero even for
+  // `--version`, which would falsely report ectool as missing.
+  ectool := "ectool$bin-extension"
+  if platform != system.PLATFORM-WINDOWS:
+    location := pipe.backticks "/bin/sh" "-c" "command -v $ectool || true"
+    if location.trim != "": return location.trim
+  else:
+    // On Windows, fall back to an invocation probe; argparse-based builds
+    // support `--help` and exit 0 for it (unlike `--version`).
+    catch:
+      pipe.backticks ectool "--help"
+      return ectool
+  throw "cannot find ectool"
+
 tool-cmd -> cli.Command:
   return cli.Command "tool"
       --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
+        ectool-cmd,
       ]
 
 esptool-cmd -> cli.Command:
@@ -1021,6 +1645,23 @@ esptool invocation/cli.Invocation -> none:
     ui.emit --result "Command: $esptool\nVersion: $version"
   else:
     ui.emit --result "$command\n$version"
+
+ectool-cmd -> cli.Command:
+  return cli.Command "ectool"
+      --help="Prints the path of the found ectool."
+      --examples=[
+        cli.Example "Print the path of the found ectool."
+            --arguments="-e ignored-envelope",
+      ]
+      --run=:: ectool-info it
+
+ectool-info invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  ectool := find-ectool_
+  if ui.wants-structured:
+    ui.emit --result {"command": ectool}
+  else:
+    ui.emit --result "Command: $ectool"
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
@@ -1075,8 +1716,12 @@ flash invocation/cli.Invocation -> none:
 
   envelope := Envelope.load input-path --ui=ui
 
+  if envelope.kind == Envelope.KIND-EC618:
+    flash-ec618 invocation envelope
+    return
+
   if envelope.kind != Envelope.KIND-ESP32:
-    ui.abort "Only ESP32 envelopes can be flashed."
+    ui.abort "Only ESP32 and EC618 envelopes can be flashed."
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
@@ -1128,6 +1773,69 @@ flash invocation/cli.Invocation -> none:
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
+
+flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
+  ui := invocation.cli.ui
+  config-path := invocation["config"]
+  port := invocation["port"]
+
+  config-encoded := ByteArray 0
+  if config-path:
+    config-encoded = read-file config-path --ui=ui
+    exception := catch: ubjson.decode config-encoded
+    if exception: config-encoded = ubjson.encode (json.decode config-encoded)
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+
+  // Program the CP (modem-core) image when the envelope carries one. A CP
+  // that does not match the AP PLAT resets the chip a few seconds after the
+  // modem is enabled, so flashing the matching CP is the default.
+  // TODO(florian): add a command-line flag to skip the CP burn (e.g. for
+  // faster iteration when the CP is known to already match).
+  cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+  burn-cp := cp ? "y" : "n"
+
+  binpkg := convert-to-binpkg firmware-bin --cp=cp
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    binpkg-path := "$tmp/toit.binpkg"
+    write-file binpkg-path --ui=ui: it.write binpkg
+
+    ectool := find-ectool_
+    code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", burn-cp, "-f", binpkg-path]
+    if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
+
+/**
+Builds one .binpkg zone record: a 364-byte image header followed by the
+zone's data.
+
+The image header carries the application $name at offset 0, the data size
+at offset 76, and the subsystem identifier ($subsystem, e.g. "AP" or "CP")
+at offset 336. ectool burns each zone to a fixed address derived from the
+subsystem, so the other header fields can stay zero.
+*/
+binpkg-zone --name/string --subsystem/string data/ByteArray -> ByteArray:
+  IMAGE-HEADER-SIZE ::= 364
+  image-header := ByteArray IMAGE-HEADER-SIZE
+  image-header.replace 0 name.to-byte-array
+  LITTLE-ENDIAN.put-uint32 image-header 76 data.size
+  image-header.replace 336 subsystem.to-byte-array
+  return image-header + data
+
+/**
+Converts a raw AP firmware binary to .binpkg format, optionally appending
+a CP (modem-core) zone.
+
+The binpkg format is a 52-byte (zero-filled) file header followed by one
+or more zones, each a 364-byte image header plus the zone's data.
+*/
+convert-to-binpkg firmware-bin/ByteArray --cp/ByteArray?=null --app-name/string="toit" -> ByteArray:
+  BINPKG-HEADER-SIZE ::= 52
+  result := (ByteArray BINPKG-HEADER-SIZE) + (binpkg-zone --name=app-name --subsystem="AP" firmware-bin)
+  if cp: result += binpkg-zone --name="cp" --subsystem="CP" cp
+  return result
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES
@@ -1318,9 +2026,13 @@ show invocation/cli.Invocation -> none:
   ui := invocation.cli.ui
 
   envelope := Envelope.load input-path --ui=ui
-  kind-string := envelope.kind == Envelope.KIND-ESP32
-      ? Envelope.KIND-STRING-ESP32
-      : Envelope.KIND-STRING-HOST
+  kind-string := ?
+  if envelope.kind == Envelope.KIND-ESP32:
+    kind-string = Envelope.KIND-STRING-ESP32
+  else if envelope.kind == Envelope.KIND-EC618:
+    kind-string = Envelope.KIND-STRING-EC618
+  else:
+    kind-string = Envelope.KIND-STRING-HOST
 
   result := {
     "envelope-format-version": envelope.version_,
@@ -1332,6 +2044,8 @@ show invocation/cli.Invocation -> none:
     firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
     binary := Esp32Binary firmware-bin
     result["chip"] = binary.chip-name
+  else if envelope.kind == Envelope.KIND-EC618:
+    result["chip"] = "ec618"
 
   // Add the containers after the chip name for esthetical reasons.
   entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
@@ -1407,9 +2121,11 @@ class Envelope:
 
   static KIND-ESP32 ::= 0
   static KIND-HOST  ::= 1
+  static KIND-EC618 ::= 2
 
   static KIND-STRING-ESP32 ::= "esp32"
   static KIND-STRING-HOST  ::= "host"
+  static KIND-STRING-EC618 ::= "ec618"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1441,6 +2157,8 @@ class Envelope:
             kind = KIND-ESP32
           else if kind-string == KIND-STRING-HOST:
             kind = KIND-HOST
+          else if kind-string == KIND-STRING-EC618:
+            kind = KIND-EC618
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
@@ -1450,7 +2168,7 @@ class Envelope:
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = ENVELOPE-FORMAT-VERSION
+    version_ = kind == KIND-EC618 ? ENVELOPE-FORMAT-VERSION-EC618 : ENVELOPE-FORMAT-VERSION
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1467,6 +2185,8 @@ class Envelope:
         kind-string = KIND-STRING-ESP32
       else if kind == KIND-HOST:
         kind-string = KIND-STRING-HOST
+      else if kind == KIND-EC618:
+        kind-string = KIND-STRING-EC618
       else:
         throw "unsupported kind: $(kind)"
 
@@ -1488,8 +2208,8 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION, was $version"
+    if version != ENVELOPE-FORMAT-VERSION and version != ENVELOPE-FORMAT-VERSION-EC618:
+      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
     return version
 
 class RelocationInformation:

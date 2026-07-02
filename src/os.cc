@@ -17,13 +17,23 @@
 
 #include <errno.h>
 #include <limits.h>
+#ifndef TOIT_EC618
 #include <pthread.h>
-#include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#endif
+#include <stdlib.h>
 #include <time.h>
 
 #include "utils.h"
+
+#ifdef TOIT_EC618
+extern "C" {
+  #include <stdio.h>
+  #include "cmsis_os2.h"
+  #include "osasys.h"
+}
+#endif
 
 #ifndef TIMEVAL_TO_TIMESPEC
 #define TIMEVAL_TO_TIMESPEC(tv, ts) {                   \
@@ -72,12 +82,21 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
   ASSERT(ts->tv_nsec < ns_per_second);
 }
 
+#ifdef TOIT_EC618
+bool OS::monotonic_gettime(int64* timestamp) {
+  uint32_t ticks = osKernelGetTickCount();
+  // Convert ticks to microseconds via portTICK_PERIOD_MS.
+  *timestamp = static_cast<int64>(ticks) * portTICK_PERIOD_MS * 1000LL;
+  return true;
+}
+#else
 bool OS::monotonic_gettime(int64* timestamp) {
   struct timespec time{};
   if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return false;
   *timestamp = (time.tv_sec * 1000000LL) + (time.tv_nsec / 1000LL);
   return true;
 }
+#endif
 
 static int64 monotonic_adjustment = 0;
 
@@ -98,6 +117,31 @@ void OS::reset_monotonic_time() {
   monotonic_adjustment = timestamp;
 }
 
+void OS::feed_watchdog() {
+  // No-op on every platform. On the EC618 the scheduler used to feed the
+  // always-on (AON) watchdog here as a VM-liveness guard, but that was
+  // measurably pointless: the AON belongs to the platform — the CP core
+  // auto-feeds it every couple of seconds whenever a healthy CP runs (its
+  // target register slides forward with every AP-side feeder silent). The
+  // application watchdog is the software watchdog in primitive_ec618.cc.
+}
+
+#ifdef TOIT_EC618
+bool OS::get_real_time(struct timespec* time) {
+  utc_timer_value_t* utc = OsaSystemTimeReadRamUtc();
+  if (utc == null || utc->UTCsecs == 0) {
+    // RTC not set yet — fall back to monotonic time.
+    int64 timestamp = 0;
+    if (!monotonic_gettime(&timestamp)) return false;
+    time->tv_sec = timestamp / 1000000LL;
+    time->tv_nsec = (timestamp % 1000000LL) * 1000LL;
+    return true;
+  }
+  time->tv_sec = utc->UTCsecs;
+  time->tv_nsec = utc->UTCms * 1000000LL;
+  return true;
+}
+#else
 bool OS::get_real_time(struct timespec* time) {
   if (clock_gettime(CLOCK_REALTIME, time) == 0) return true;
 
@@ -117,6 +161,7 @@ bool OS::get_real_time(struct timespec* time) {
   TIMEVAL_TO_TIMESPEC(&timeofday, time);
   return true;
 }
+#endif
 
 AlignedMemoryBase::~AlignedMemoryBase() {}
 

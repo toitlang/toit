@@ -37,3 +37,9 @@ tedi_test.go
 /toolchains/esp32*/build/
 
 GITIGNORE/
+/dev/ec618-rig/
+
+# Agent / build tooling — local, not part of the project source.
+/.agent/
+/.claude/
+/.xmake/

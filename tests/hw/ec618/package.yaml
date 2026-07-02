@@ -1,0 +1,7 @@
+dependencies:
+  bme280:
+    url: github.com/toitware/bme280-driver
+    version: ^1.1.0
+  bmp280:
+    url: github.com/harshkc03/bmp280-driver
+    version: ^1.0.0

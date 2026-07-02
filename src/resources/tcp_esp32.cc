@@ -19,7 +19,7 @@
 #include <esp_wifi.h>
 #endif
 
-#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"
@@ -108,6 +108,10 @@ int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
   if (result != ERR_OK) {
     socket_error(err);
   }
+#ifdef TOIT_EC618
+  // EC618's lwIP has broken Nagle timers — force disable on accepted sockets.
+  tcp_nagle_disable(tpcb);
+#endif
   send_state();
   return result;
 }
@@ -117,6 +121,9 @@ int LwipSocket::on_connected(err_t err) {
   // to be defensive here.
   if (err == ERR_OK) {
     tcp_recv(tpcb_, on_read);
+#ifdef TOIT_EC618
+    tcp_nagle_disable(tpcb_);
+#endif
   } else {
     socket_error(err);
   }
@@ -460,7 +467,12 @@ PRIMITIVE(write) {
     int to = Utils::min<int>(tcp_sndbuf(capture.socket->tpcb()), capture.to);
     if (to == 0) return Smi::from(-1);
 
+#ifdef TOIT_EC618
+    // EC618's lwIP has extra parameters: RAI, exception data, sequence number.
+    err_t err = tcp_write(capture.socket->tpcb(), capture.content, to, TCP_WRITE_FLAG_COPY, 0, 0, 0);
+#else
     err_t err = tcp_write(capture.socket->tpcb(), capture.content, to, TCP_WRITE_FLAG_COPY);
+#endif
     if (err == ERR_OK) {
       if (tcp_nagle_disabled(capture.socket->tpcb())) {
         tcp_output(capture.socket->tpcb());
@@ -598,10 +610,14 @@ PRIMITIVE(set_option) {
       case TCP_NO_DELAY:
         if (capture.raw == process->true_object()) {
           tcp_nagle_disable(capture.socket->tpcb());
-          // Flush when disabling Nagle.
           tcp_output(capture.socket->tpcb());
         } else if (capture.raw == process->false_object()) {
+#ifdef TOIT_EC618
+          // EC618's lwIP has broken Nagle timers — keep Nagle disabled.
+          tcp_nagle_disable(capture.socket->tpcb());
+#else
           tcp_nagle_enable(capture.socket->tpcb());
+#endif
         } else {
           FAIL(WRONG_OBJECT_TYPE);
         }
@@ -632,4 +648,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)

@@ -352,7 +352,8 @@ PRIMITIVE(config) {
 }
 
 PRIMITIVE(config_interrupt) {
-  ARGS(GpioResource, resource, bool, enable);
+  ARGS(GpioResource, resource, bool, enable, int, value);
+  USE(value);  // Level-trigger value, not used on ESP32.
   esp_err_t err = ESP_OK;
   gpio_num_t num = static_cast<gpio_num_t>(resource->pin());
   if (enable) {

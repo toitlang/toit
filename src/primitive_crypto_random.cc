@@ -15,8 +15,13 @@
 
 #include "top.h"
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32)
 #include <esp_random.h>
+#elif defined(TOIT_EC618)
+// The hardware TRNG, through the same entry the mbedtls entropy source uses
+// (os_ec618.cc, backed by rngGenRandom).
+extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
+                                     size_t len, size_t* olen);
 #else
 #include <random>
 #endif
@@ -42,10 +47,18 @@ PRIMITIVE(random) {
 
   ByteArray::Bytes bytes(result);
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32)
   // We should eventually try to use std::random_device here too.
   // https://github.com/espressif/esp-idf/issues/11398
   esp_fill_random(bytes.address(), size);
+#elif defined(TOIT_EC618)
+  // The hardware TRNG. std::random_device is NOT an option here: on newlib
+  // it degenerates to a deterministically seeded PRNG.
+  size_t filled = 0;
+  if (mbedtls_hardware_poll(null, bytes.address(), size, &filled) != 0 ||
+      filled != static_cast<size_t>(size)) {
+    FAIL(ERROR);
+  }
 #else
   // The std::random_device is mapped to /dev/urandom on Linux/macOS and to
   // a cryptographic API on Windows.
