@@ -652,51 +652,133 @@ static const int IGNORE_UNSUPPORTED_HASH = 4;
 static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags);
 
 #ifdef TOIT_WINDOWS
-static Object* add_roots_from_store(const HCERTSTORE store, Process* process) {
+static Object* add_roots_from_store(const HCERTSTORE store, Process* process, bool* added_any) {
   if (!store) return process->null_object();
+  Object* result = process->null_object();
   const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
   while (cert_context) {
     if (cert_context->dwCertEncodingType == X509_ASN_ENCODING) {
       // The certificate is in DER format.
       const uint8* data = cert_context->pbCertEncoded;
       size_t size = cert_context->cbCertEncoded;
-      Object* result = add_global_root(data, size, process->null_object(), process, IGNORE_UNSUPPORTED_HASH);
       // Normally the result is a hash, but we don't need that here, so just
       // check for errors.
-      if (Primitive::is_error(result)) return result;
+      result = add_global_root(data, size, process->null_object(), process, IGNORE_UNSUPPORTED_HASH);
+      if (Primitive::is_error(result)) {
+        CertFreeCertificateContext(cert_context);
+        break;
+      }
+      result = process->null_object();
+      *added_any = true;
     }
     cert_context = CertEnumCertificatesInStore(store, cert_context);
   }
-  return process->null_object();
+  CertCloseStore(store, 0);
+  return result;
 }
 
-static Object* load_system_trusted_roots(Process* process) {
+static Object* load_system_trusted_roots(Process* process, bool* added_any) {
   const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
-  Object* result = add_roots_from_store(root_store, process);
+  Object* result = add_roots_from_store(root_store, process, added_any);
   if (Primitive::is_error(result)) return result;
 
   const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
-  return add_roots_from_store(ca_store, process);
+  return add_roots_from_store(ca_store, process, added_any);
+}
+#endif
+
+#if defined(TOIT_LINUX) || defined(TOIT_DARWIN)
+static const char* const SYSTEM_ROOT_BUNDLE_PATHS[] = {
+#ifdef TOIT_LINUX
+  "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Arch etc.
+  "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL 6.
+  "/etc/ssl/ca-bundle.pem",                             // OpenSUSE.
+  "/etc/pki/tls/cacert.pem",                            // OpenELEC.
+  "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // RHEL 7+/CentOS.
+  "/etc/ssl/cert.pem",                                  // Alpine Linux.
+#else
+  "/etc/ssl/cert.pem",                                  // Shipped with macOS.
+#endif
+};
+
+// Adds all certificates of the PEM bundle at the given path as global roots.
+// Silently returns without setting added_any if the bundle can't be read.
+static Object* add_roots_from_bundle(const char* path, Process* process, bool* added_any) {
+  FILE* file = fopen(path, "rb");
+  if (!file) return process->null_object();
+  int status = fseek(file, 0, SEEK_END);
+  long size = ftell(file);
+  if (status != 0 || size <= 0) {
+    fclose(file);
+    return process->null_object();
+  }
+  // The PEM parser needs a terminating null character, included in the length.
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size + 1));
+  if (!buffer) {
+    fclose(file);
+    FAIL(MALLOC_FAILED);
+  }
+  fseek(file, 0, SEEK_SET);
+  size_t bytes_read = fread(buffer, 1, size, file);
+  fclose(file);
+  if (bytes_read != static_cast<size_t>(size)) {
+    free(buffer);
+    return process->null_object();
+  }
+  buffer[size] = '\0';
+
+  mbedtls_x509_crt chain;
+  mbedtls_x509_crt_init(&chain);
+  // A positive result means some certificates were unparseable and skipped,
+  // but the rest were added to the chain, which is the behavior we want.
+  int ret = mbedtls_x509_crt_parse(&chain, buffer, size + 1);
+  free(buffer);
+  if (ret < 0) {
+    mbedtls_x509_crt_free(&chain);
+    return process->null_object();
+  }
+  Object* result = process->null_object();
+  for (mbedtls_x509_crt* cert = &chain; cert != null; cert = cert->next) {
+    if (cert->raw.p == null) continue;
+    // The result is normally a hash, which we don't need, so we only
+    // check for errors.
+    result = add_global_root(cert->raw.p, cert->raw.len, process->null_object(), process, IGNORE_UNSUPPORTED_HASH);
+    if (Primitive::is_error(result)) break;
+    result = process->null_object();
+    *added_any = true;
+  }
+  mbedtls_x509_crt_free(&chain);
+  return result;
+}
+
+static Object* load_system_trusted_roots(Process* process, bool* added_any) {
+  // Honor the conventional OpenSSL override. If it is set, the default
+  // locations are not consulted.
+  const char* env_path = getenv("SSL_CERT_FILE");
+  if (env_path != null && env_path[0] != '\0') {
+    return add_roots_from_bundle(env_path, process, added_any);
+  }
+  for (size_t i = 0; i < ARRAY_SIZE(SYSTEM_ROOT_BUNDLE_PATHS); i++) {
+    Object* result = add_roots_from_bundle(SYSTEM_ROOT_BUNDLE_PATHS[i], process, added_any);
+    if (Primitive::is_error(result)) return result;
+    if (*added_any) break;
+  }
+  return process->null_object();
 }
 #endif
 
 PRIMITIVE(use_system_trusted_root_certificates) {
-#ifdef TOIT_WINDOWS
-  static bool loaded_system_trusted_roots = false;
-  bool load = false;
-  { Locker locker(OS::tls_mutex());
-    load = !loaded_system_trusted_roots;
-  }
-  if (load) {
-    Object* result = load_system_trusted_roots(process);
-    if (Primitive::is_error(result)) return result;
-    loaded_system_trusted_roots = true;
-  }
-  { Locker locker(OS::tls_mutex());
-    loaded_system_trusted_roots = true;
-  }
+#if defined(TOIT_WINDOWS) || defined(TOIT_LINUX) || defined(TOIT_DARWIN)
+  // The roots are added to the current process, so this must run in every
+  // process that wants them. Adding a root that is already installed is a
+  // cheap no-op, so repeated calls are fine.
+  bool added_any = false;
+  Object* result = load_system_trusted_roots(process, &added_any);
+  if (Primitive::is_error(result)) return result;
+  return BOOL(added_any);
+#else
+  return BOOL(false);
 #endif
-  return process->null_object();
 }
 
 PRIMITIVE(add_global_root_certificate) {

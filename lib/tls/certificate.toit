@@ -106,13 +106,23 @@ add-global-root-certificate_ cert hash/int?=null -> int:
 /**
 Adds the trusted root certificates that are installed on the system.
 
-This is only supported on Windows.  On other platforms it currently does
-  nothing.
+This is supported on Windows, Linux and macOS. On Windows, the roots come
+  from the system's certificate stores. On Linux and macOS, they come from
+  the system's certificate bundle, found at well-known locations such as
+  /etc/ssl/certs/ca-certificates.crt or /etc/ssl/cert.pem. If the
+  environment variable SSL_CERT_FILE is set, the bundle it points to is
+  used instead.
 
-This need only be called once, then it is available for all TLS connections.
+This need only be called once per process, then the roots are available for
+  all TLS connections of that process.
+
+Returns whether any system roots were found and installed. Returns false on
+  platforms without system roots, such as embedded platforms, where callers
+  can fall back to installing a bundled set of roots, for example from the
+  certificate-roots package.
 
 Like $RootCertificate.install, this function is an alternative to adding
   root certificates to individual TLS sockets.
 */
-use-system-trusted-root-certificates -> none:
+use-system-trusted-root-certificates -> bool:
   #primitive.tls.use-system-trusted-root-certificates

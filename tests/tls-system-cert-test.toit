@@ -43,8 +43,9 @@ load-limiter := LimitLoad
 network/net.Client? := null
 
 main:
+  host-platforms := [system.PLATFORM-WINDOWS, system.PLATFORM-LINUX, system.PLATFORM-MACOS]
+  if not host-platforms.contains platform: return
   add-global-certs
-  if system.platform != "Windows": return
 
   network = net.open
   try:
@@ -128,6 +129,5 @@ connect-to-site host port expected-certificate-name:
     print "Read $bytes bytes from https://$host$(port == 443 ? "" : ":$port")/"
 
 add-global-certs -> none:
-  // Test that the built-in root certs in the Windows
-  // installation are sufficient.
-  tls.use-system-trusted-root-certificates
+  // Test that the root certs that come with the host system are sufficient.
+  expect tls.use-system-trusted-root-certificates
