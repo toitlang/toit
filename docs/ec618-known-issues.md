@@ -193,7 +193,36 @@ driver level.
 4. Independently: re-test whether the 32 KiB ring tracks the requested
    `RxCacheLen` at all (we pass 4 KiB and get 32 KiB).
 
-## 5. AGPIOWU pads (40..42 / GPIO20..22): GPIO input works, OUTPUT never reaches the wire
+## 5. AGPIOWU pads (40..42): "GPIO output never reaches the wire" — RESOLVED (2026-07-02, by oscilloscope)
+
+**Resolution.** The output worked ALL ALONG — at 1.8 V. The AON IO LDO
+**boots at IOVOLT_1_80V** (register 0x4D020054 reads 0x0c at boot) and
+nothing ever raised it, so every AON pad output swung 0..1.8 V. The rig's
+3.3 V observers were blind to it: 1.8 V sits below the ESP32's real input
+threshold, and pin 9's load (the BMP280's VCC) needs more. Florian's scope
+showed the driven square immediately — first at 1.8 V, then at full 3.3 V
+swing after the fix. Not a config gate, not a weak driver: a voltage-domain
+mismatch. (Bonus explanation: the pads 43..48 outputs "worked" pre-fix only
+because 1.8 V hovers right AT the ESP32's switching threshold — which is
+also what the pwm-aon "coupling" double-counts were.)
+
+**Fix.** `pad_aon_power_on()` (pad_table_ec618.h / gpio_ec618.cc):
+`slpManAONIOPowerOn()` + `slpManAONIOVoltSet(IOVOLT_3_30V)` — the same
+pair the SDK's example_gpio uses. Called by the GPIO and PWM paths for
+every AON pad. Regression: `aon-wu-output-repro-ec618.toit` (pin 9 high
+powers the BMP280, chip-id reads 0x58 — the once-impossible check).
+
+**Epilogue / rig lesson.** Validating the fix cost an extra hour on a red
+herring: the BMP280 had wedged into a bus-holding state (both I2C wires
+clamped low, immune to the driver's SCL-clocking unstick) after a day of
+1.8 V half-supply and parasitic feeding through its SDA/SCL clamp diodes —
+with the bus open, the sensor never truly powers off (and the released
+pin 9 carries the wake pull-up, feeding it between tests too). An
+ESP32-side session (clean strong-drive power cycle + a proper transaction)
+reset it. When this sensor acts dead: power it off with the BUS CLOSED for
+10+ s, or exercise it from the ESP32 (`bme280-probe-esp32.toit`).
+
+Everything below is the (pre-resolution) investigation record.
 
 **Symptom.** With the AON IO LDO powered (`slpManAONIOPowerOn`), the plain
 AGPIO pads (43..48) drive fine as GPIO outputs (PAD44/PAD47 exact-pulse

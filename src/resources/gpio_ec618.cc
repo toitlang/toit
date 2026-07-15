@@ -172,6 +172,16 @@ static void wakeup_pad_set(int pad, bool wakeup_en, bool pull_up) {
       wakeup_en, &cfg);
 }
 
+// See pad_table_ec618.h: LDO on + raise to 3.3 V. The LDO boots at
+// 1.80 V, and 1.8 V AON outputs read as LOW to the rig's 3.3 V logic —
+// that (not a config gate) was the whole "AGPIOWU output" mystery,
+// settled by oscilloscope 2026-07-02. The SDK example does this exact
+// pair before driving AON pads.
+void pad_aon_power_on() {
+  slpManAONIOPowerOn();
+  slpManAONIOVoltSet(IOVOLT_3_30V);
+}
+
 // See pad_table_ec618.h. Lives here because this is the file with the SDK
 // GPIO includes; all pad-muxing drivers (GPIO, I2C, SPI, PWM) share it.
 void pad_release(int pad) {
@@ -276,7 +286,7 @@ PRIMITIVE(config) {
   // without power the pad neither drives nor reads. Turning it on is
   // idempotent and it stays on (other AON pads may be in use; the cost is
   // the LDO's standby draw, revisited with the deep-sleep work).
-  if (pad_is_aon(pad)) slpManAONIOPowerOn();
+  if (pad_is_aon(pad)) pad_aon_power_on();
 
   // Release the GPIO-muxed wakeup pads from wakeup duty (see
   // pad_is_wakeup; documented in slpman.h as "set pin as wakeup pad or

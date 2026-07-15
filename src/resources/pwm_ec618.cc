@@ -236,9 +236,9 @@ PRIMITIVE(start) {
   CLOCK_clockEnable(kFClks[timer]);
   TIMER_driverInit();
 
-  // The AON pads (43/44/45/47) sit behind the AON IO LDO, off at boot —
-  // same rule as the GPIO path; idempotent, stays on.
-  if (pad_is_aon(pad)) slpManAONIOPowerOn();
+  // The AON pads (43/44/45/47) sit behind the AON IO LDO, off at boot
+  // and defaulting to 1.8 V — same rule as the GPIO path; idempotent.
+  if (pad_is_aon(pad)) pad_aon_power_on();
 
   GPIO_IomuxEC618(pad, 5, 0, 0);  // ALT5 = the timer's PWM output.
   program_pwm(timer, group->period(), factor);

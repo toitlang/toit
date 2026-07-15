@@ -53,6 +53,14 @@ int pad_gpio_mux(int pad);
 // working in sleep modes.
 bool pad_is_aon(int pad);
 
+// Powers the AON IO LDO and raises it to the 3.3 V group. The LDO BOOTS
+// AT 1.80 V (register 0x4D020054 reads IOVOLT_1_80V), so without the
+// volt-set every AON pad outputs 1.8 V highs — invisible to 3.3 V logic;
+// scope-diagnosed 2026-07-02 (the "AGPIOWU output gate" was exactly
+// this). The SDK's example_gpio does the same pair. Idempotent; call
+// before using any AON pad. (Implemented in gpio_ec618.cc.)
+void pad_aon_power_on();
+
 // Returns the primary pad for the given GPIO number (`alt=0`) or its
 // alternate pad if one exists (`alt=1`). Returns -1 if the GPIO has
 // no entry / no such alternate.

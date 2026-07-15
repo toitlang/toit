@@ -81,7 +81,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 26 (DAC2) -> [~2:1 divider] -> ADC1 (pin 4)      ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.46)
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
 14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  CONFIRMED (uart2 tests; gpio-map)
-13        -> 09  (GPIO22, MAIN_DTR)              PAD42 (GPIO22, AON/WU)  CONFIRMED input+wake (gpio22-read, wakeup-gpio22 hibernate wake); OUTPUT gated (known-issues #5)
+13        -> 09  (GPIO22, MAIN_DTR)              PAD42 (GPIO22, AON/WU)  CONFIRMED input+wake+output (gpio22-read, wakeup-gpio22, aon-wu-output; the "output gate" was the AON LDO's 1.8 V boot default — #5 resolved)
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     PAD23 (GPIO8)           CONFIRMED (gpio-map: 23 pulses at IO33)
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   MIRRORS PAD25's net     CONFIRMED (gpio-map: GPIO10 hits IO14+IO32)
 23        -> 12  (GPIO01, PWM10)                 PAD16 (TIMER0 PWM)      CONFIRMED (pwm test: 1 kHz measured at IO23)
@@ -114,8 +114,10 @@ Board pin  Functions (real)            Covered by                               
 5   PAD26  GPIO11, UART2_TX, SPI0_CLK  gpio-{output,input,pull,interrupt,map},       —
                                        uart2 battery, rc522 (CLK)
 6   PAD25  GPIO10, UART2_RX, SPI0_MISO uart2 battery, rc522 (MISO), gpio-map         —
-9   PAD42  GPIO22 (AON), wakeup pad    gpio22-read (input), wakeup-gpio22            OUTPUT (gated,
-                                       (hibernate wake)                              known-issues #5)
+9   PAD42  GPIO22 (AON), wakeup pad    gpio22-read (input), wakeup-gpio22            —
+                                       (hibernate wake), aon-wu-output (output
+                                       powers the BMP280; #5 resolved: the AON
+                                       LDO boots at 1.8 V — scope-diagnosed)
 10  PAD23  GPIO8, SPI0_CS, I2C1_SDA    rc522 (CS), bmp280 (I2C1), gpio-map           —
 11  (net)  mirrors PAD25's net         see pin 6                                     —
 12  PAD16  GPIO1, PWM (TIMER0)         pwm (freq/duty measured), rc522 (RST drive)   —
@@ -150,20 +152,16 @@ Remaining gap work, in order:
    counters (the I2C clock is far too fast for GPIO polling) measured
    scl=3360 vs sda=1212 rising edges — IO17=SCL, IO18=SDA, the lockstep
    ambiguity resolved and it matches the table above.
-3. **Pads-40..42 output gate** (pin 9, known-issues #5): STILL OPEN.
-   Poke-based experiment rounds (2026-07-02,
-   `aon-wu-output-experiments-ec618.toit`) decoded the AON IO register
-   map (see the known-issue entry) and ELIMINATED: the vendor magic
-   write 0x4D020170=1, NVIC PadWakeup3..5 disable (they idle disabled),
-   AONIO volt-set to 3.30 V, and the AON IO latch (bit idles clear).
-   The wake-release/re-arm writes (0x14C/0x150 banks) demonstrably work.
-   Remaining leads: the WU trio's output cells may be intrinsically
-   weak (the SDK example itself measured only ~2.0 V on LOADED WU-pad
-   outputs, and pin 9's net carries the BMP280 VCC + pull-ups — a light
-   high-Z probe needs the ESP32 on IO13 instead of the sensor), and the
-   cold-boot ordering variant (magic write before the first LDO
-   power-on) needs a power-cycle to test. Fold into the deep-sleep
-   arc.
+3. **Pads-40..42 output gate** (pin 9, known-issues #5) — RESOLVED
+   2026-07-02 **by oscilloscope**: the output worked all along, at
+   1.8 V — the AON IO LDO boots at IOVOLT_1_80V and nothing raised it,
+   so all AON outputs were invisible(-ish) to the rig's 3.3 V logic.
+   Fix: `pad_aon_power_on()` raises the LDO to 3.3 V (GPIO + PWM
+   paths); scope re-verified at full swing, and the reworked
+   `aon-wu-output-repro` now PASSES (pin 9 literally powers the
+   BMP280). The earlier poke rounds live on in the known-issue entry as
+   the investigation record. THE MATRIX IS COMPLETE — every wired pin
+   demonstrates all its functions.
 
 **No hardware flow control is wireable as-is (measured 2026-06-10):** UART2 has
 no flow control in the chip; UART1's RTS/CTS pads (PAD31/PAD32 = GPIO16/17,
