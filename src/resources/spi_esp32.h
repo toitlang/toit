@@ -25,6 +25,8 @@
 #include "../objects.h"
 #include "../resource.h"
 
+#include "gpio_esp32.h"
+
 namespace toit {
 
 class SpiResourceGroup : public ResourceGroup {
@@ -35,8 +37,12 @@ class SpiResourceGroup : public ResourceGroup {
 
   spi_host_device_t host_device() { return host_device_; }
 
+  // GPIO pins reserved by this bus (mosi/miso/clock).
+  GpioPins& owned_pins() { return owned_pins_; }
+
  private:
   spi_host_device_t host_device_;
+  GpioPins owned_pins_;
 };
 
 class SpiDevice : public Resource {
@@ -51,11 +57,16 @@ class SpiDevice : public Resource {
 
   ~SpiDevice() {
     spi_bus_remove_device(handle_);
+    // Release any GPIO pins this device reserved (cs/dc).
+    owned_pins_.release();
   }
 
   spi_device_handle_t handle() { return handle_; }
 
   int dc() { return dc_; }
+
+  // GPIO pins reserved by this device (cs/dc).
+  GpioPins& owned_pins() { return owned_pins_; }
 
   uint8_t* buffer() {
     return buffer_;
@@ -64,6 +75,7 @@ class SpiDevice : public Resource {
  private:
   spi_device_handle_t handle_;
   int dc_;
+  GpioPins owned_pins_;
 
   // Pre-allocated buffer for small transfers. Must be 4-byte aligned.
   alignas(4) uint8_t buffer_[BUFFER_SIZE];

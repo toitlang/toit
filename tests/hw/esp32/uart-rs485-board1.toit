@@ -5,9 +5,6 @@
 import gpio
 import uart
 
-import gpio
-import uart
-
 import .test
 import .uart-rs485-shared
 import .variants
@@ -20,11 +17,10 @@ main:
 
 test:
   rts := gpio.Pin --input RTS --pull-down
-  tx := gpio.Pin TX
 
   port := uart.Port
       --rx=null
-      --tx=tx
+      --tx=TX
       --baud-rate=9600
 
   5.repeat:

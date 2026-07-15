@@ -69,8 +69,8 @@ main:
   provider := esp32.EthernetServiceProvider.mac-esp32
       --phy-chip=esp32.PHY-CHIP-LAN8720
       --phy-address=0
-      --mac-mdc=gpio.Pin 23
-      --mac-mdio=gpio.Pin 18
+      --mac-mdc=23
+      --mac-mdio=18
   provider.install
   network := ethernet.open
   try:
@@ -123,15 +123,23 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
   Deprecated. Use $EthernetServiceProvider.mac-esp32,
     $EthernetServiceProvider.mac-openeth, or $EthernetServiceProvider.w5500 instead.
   */
+  // __TYPE-MIGRATION__ phy-reset: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ phy-reset: int?
+  // __TYPE-MIGRATION__ mac-mdc: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mac-mdc: int?
+  // __TYPE-MIGRATION__ mac-mdio: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mac-mdio: int?
+  // __TYPE-MIGRATION__ mac-interrupt: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mac-interrupt: int?
   constructor
       --phy-chip/int
       --phy-address/int=-1
-      --phy-reset/gpio.Pin?=null
+      --phy-reset/any=null
       --mac-chip/int
-      --mac-mdc/gpio.Pin?
-      --mac-mdio/gpio.Pin?
+      --mac-mdc/any
+      --mac-mdio/any
       --mac-spi-device/spi.Device?
-      --mac-interrupt/gpio.Pin?:
+      --mac-interrupt/any:
     if mac-chip != MAC-CHIP-ESP32 and mac-chip != MAC-CHIP-OPENETH:
       throw "unsupported mac type: $mac-chip"
     super::
@@ -139,56 +147,84 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
           mac-chip
           phy-chip
           phy-address
-          phy-reset ? phy-reset.num : -1
-          mac-mdc ? mac-mdc.num : -1
-          mac-mdio ? mac-mdio.num : -1
+          gpio.to-pin-num_ phy-reset
+          gpio.to-pin-num_ mac-mdc
+          gpio.to-pin-num_ mac-mdio
 
   /**
   The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
+
+  The $phy-reset, $mac-mdc, and $mac-mdio are GPIO numbers.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ phy-reset: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ phy-reset: int?
+  // __TYPE-MIGRATION__ mac-mdc: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mac-mdc: int?
+  // __TYPE-MIGRATION__ mac-mdio: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mac-mdio: int?
   constructor.mac-esp32
       --phy-chip/int
       --phy-address/int=-1
-      --phy-reset/gpio.Pin?=null
-      --mac-mdc/gpio.Pin?=null
-      --mac-mdio/gpio.Pin?=null:
+      --phy-reset/any=null
+      --mac-mdc/any=null
+      --mac-mdio/any=null:
     super::
       ethernet-init_
           MAC-CHIP-ESP32
           phy-chip
           phy-address
-          phy-reset ? phy-reset.num : -1
-          mac-mdc ? mac-mdc.num : -1
-          mac-mdio ? mac-mdio.num : -1
+          gpio.to-pin-num_ phy-reset
+          gpio.to-pin-num_ mac-mdc
+          gpio.to-pin-num_ mac-mdio
 
   /**
   The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
+
+  The $phy-reset is a GPIO number.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ phy-reset: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ phy-reset: int?
   constructor.mac-openeth
       --phy-chip/int
       --phy-address/int=-1
-      --phy-reset/gpio.Pin?=null:
+      --phy-reset/any=null:
     super::
       ethernet-init_
           MAC-CHIP-OPENETH
           phy-chip
           phy-address
-          phy-reset ? phy-reset.num : -1
+          gpio.to-pin-num_ phy-reset
           -1
           -1
 
+  /**
+  The $cs and $interrupt are GPIO numbers.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
+  */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int
+  // __TYPE-MIGRATION__ interrupt: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ interrupt: int
   constructor.w5500
       --bus/spi.Bus
       --frequency/int
-      --cs/gpio.Pin
-      --interrupt/gpio.Pin:
+      --cs/any
+      --interrupt/any:
     super::
       ethernet-init-spi_
           MAC-CHIP-W5500
           bus.spi_
           frequency
-          cs.num
-          interrupt.num
+          gpio.to-pin-num_ cs
+          gpio.to-pin-num_ interrupt
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == NetworkService.CONNECT-INDEX:

@@ -28,11 +28,11 @@ main:
     print "Woken up from touchpad"
     print esp32.touchpad-wakeup-status
   else:
-    touch1 := gpio.Touch (gpio.Pin TOUCH-PIN1)
+    touch1 := gpio.Touch TOUCH-PIN1
     touch1.calibrate
     print "pin $pin1-desc: $touch1.baseline $touch1.threshold $(touch1.read --raw)"
 
-    touch2 := gpio.Touch (gpio.Pin TOUCH-PIN2)
+    touch2 := gpio.Touch TOUCH-PIN2
     touch2.calibrate
     print "pin $pin2-desc: $touch2.baseline $touch2.threshold $(touch2.read --raw)"
 

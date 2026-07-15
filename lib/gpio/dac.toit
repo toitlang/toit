@@ -13,11 +13,10 @@ On the ESP32, pins 25 and 26 have an ADC converter.
 
 # Examples
 ```
-import gpio
 import gpio.dac show Dac
 
 main:
-  dac := Dac (gpio.Pin 25)
+  dac := Dac 25
   dac.set 2.3
   sleep --ms=1_000
   dac.close
@@ -42,18 +41,26 @@ class Dac:
   /** Phase shift constant of the cosine wave generator: 180° */
   static COSINE-WAVE-PHASE-180/int ::= 180
 
-  pin/Pin
+  pin/any
   resource_ := ?
 
   /**
   Initializes a DAC channel.
 
+  The $pin is a GPIO number. The DAC reserves the pin and releases it again
+    when the DAC is closed.
+
   If provided, sets the output of the dac to the given $initial-voltage. Otherwise, the
     pin is set to emit 0V.
+
+  Passing a $Pin is deprecated; provide the integer GPIO number instead.
+    The $Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
   constructor .pin --initial-voltage/float=0.0:
     group := resource-group_
-    resource_ = dac-use_ group pin.num
+    resource_ = dac-use_ group (to-pin-num_ pin)
     set initial-voltage
 
 

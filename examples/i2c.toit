@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import gpio
 import i2c
 
 /**
@@ -15,8 +14,8 @@ SCL ::= 22
 main:
   print "Creating i2c bus"
   bus := i2c.Bus
-      --sda=gpio.Pin SDA
-      --scl=gpio.Pin SCL
+      --sda=SDA
+      --scl=SCL
 
   print "Scanning"
   found := bus.scan

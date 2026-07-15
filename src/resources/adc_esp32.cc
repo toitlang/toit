@@ -29,6 +29,8 @@
 #include "../resource.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 #include "../event_sources/system_esp32.h"
 
 namespace toit {
@@ -356,16 +358,22 @@ class AdcResource : public SimpleResource {
     if (calibration_ != null) {
       calibration_deinit(calibration_);
     }
+    // Release the GPIO pin if it was reserved.
+    owned_pins_.release();
   }
 
   adc_oneshot_unit_handle_t* unit() const { return unit_; }
   adc_channel_t channel() const { return channel_; }
   adc_cali_handle_t calibration() const { return calibration_; }
 
+  // GPIO pin reserved by this ADC.
+  GpioPins& owned_pins() { return owned_pins_; }
+
  private:
   adc_oneshot_unit_handle_t* unit_;
   adc_channel_t channel_;
   adc_cali_handle_t calibration_;
+  GpioPins owned_pins_;
 };
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
@@ -379,6 +387,13 @@ PRIMITIVE(init) {
   // are memory issues.
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // Decode the pin and reserve it from the shared
+  // pool. The reserver releases it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  pin = reserver.decode_and_take(pin, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   int max_mv = static_cast<int>(max * 1000.0);
   if (max_mv == 0) max_mv = 3900;
@@ -436,6 +451,10 @@ PRIMITIVE(init) {
                                 calibration);
     if (!resource) FAIL(MALLOC_FAILED);
   }
+
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
 
   proxy->set_external_address(resource);
 

@@ -13,9 +13,12 @@ Connect pin 5 and 18 with a 330 Ohm resistor. The resistor isn't
 import pulse-counter
 import gpio
 
+OUT-PIN ::= 5
+IN-PIN ::= 18
+
 main:
-  // Pin 5 emits a square wave that can be counted by pin 18.
-  out := gpio.Pin 5 --output
+  // The out pin emits a square wave that can be counted by the in pin.
+  out := gpio.Pin OUT-PIN --output
   square-task := task::
     while true:
       out.set 1
@@ -23,8 +26,7 @@ main:
       out.set 0
       sleep --ms=20
 
-  pin := gpio.Pin 18
-  unit := pulse-counter.Unit pin
+  unit := pulse-counter.Unit IN-PIN
 
   5.repeat:
     print unit.value

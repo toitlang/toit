@@ -9,7 +9,6 @@ For the setup see the comment near $Variant.rmt-many-in1.
 */
 
 import rmt
-import gpio
 import monitor
 import expect show *
 
@@ -28,24 +27,15 @@ main:
   run-test: test
 
 test:
-  pin1 := gpio.Pin RMT-IN1
-  pin2 := gpio.Pin RMT-IN2
-  pin3 := gpio.Pin RMT-OUT1
-  pin4 := gpio.Pin RMT-OUT2
-
   // Just test that we can allocate 4 different rmt resources.
+  // Each channel reserves and releases its own pin.
 
-  rmt1 := rmt.In pin1 --resolution=RESOLUTION
-  rmt2 := rmt.In pin2 --resolution=RESOLUTION
-  rmt3 := rmt.Out pin3 --resolution=RESOLUTION
-  rmt4 := rmt.Out pin4 --resolution=RESOLUTION
+  rmt1 := rmt.In RMT-IN1 --resolution=RESOLUTION
+  rmt2 := rmt.In RMT-IN2 --resolution=RESOLUTION
+  rmt3 := rmt.Out RMT-OUT1 --resolution=RESOLUTION
+  rmt4 := rmt.Out RMT-OUT2 --resolution=RESOLUTION
 
   rmt1.close
   rmt2.close
   rmt3.close
   rmt4.close
-
-  pin1.close
-  pin2.close
-  pin3.close
-  pin4.close

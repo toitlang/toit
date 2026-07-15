@@ -13,7 +13,6 @@ Start the program, and let the device go into deep sleep.
 Touch pin 32. The device should wake up again.
 */
 
-import gpio
 import gpio.touch as gpio
 import esp32
 
@@ -34,7 +33,7 @@ main:
   // Before using touch, we need to calibrate it. This also applies to
   // the 'wakeup' which will trigger on any unclosed touch pins after
   // calling $esp32.enable-touchpad-wakeup when going into deep sleep.
-  touch := gpio.Touch (gpio.Pin TOUCH-PIN)
+  touch := gpio.Touch TOUCH-PIN
   calibrate touch
 
   // Calibrated. Let's report the threshold and read it!

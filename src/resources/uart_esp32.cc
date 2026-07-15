@@ -33,6 +33,8 @@
 #include "../event_sources/ev_queue_esp32.h"
 #include "../utils.h"
 
+#include "gpio_esp32.h"
+
 #ifndef FORCE_INLINE
 #error "FORCE_INLINE not defined"
 #endif
@@ -105,6 +107,9 @@ public:
 
   int tx_buffer_size() const { return tx_buffer_size_; }
 
+  // GPIO pins reserved by this port (tx/rx/rts/cts).
+  GpioPins& owned_pins() { return owned_pins_; }
+
  bool receive_event(word* data) override;
 
 #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
@@ -117,6 +122,7 @@ public:
   const uart_port_t port_;
   const int tx_buffer_size_;
   int64 errors_ = 0;
+  GpioPins owned_pins_;
 
   #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
   bool dropped_data_ = false;
@@ -156,6 +162,8 @@ UartResource::~UartResource() {
     esp_rom_printf("[uart] error: failed to delete UART driver\n");
     ESP_ERROR_CHECK(err);
   }
+  // Release any GPIO pins this port reserved.
+  owned_pins_.release();
 }
 
 bool UartResource::receive_event(word* data) {
@@ -294,6 +302,16 @@ PRIMITIVE(create) {
        int, baud_rate, int, data_bits, int, stop_bits, int, parity,
        int, options, int, mode)
 
+  // Keep the encoded pin values for reservation, then switch tx/rx/rts/cts to
+  // the decoded GPIO numbers so the validation and the rest of the primitive can
+  // use them directly. Pins to reserve (>= 0) are handled below, after validation.
+  int tx_encoded = tx, rx_encoded = rx, rts_encoded = rts, cts_encoded = cts;
+  bool decode_owned;
+  tx = gpio_decode_pin(tx, &decode_owned);
+  rx = gpio_decode_pin(rx, &decode_owned);
+  rts = gpio_decode_pin(rts, &decode_owned);
+  cts = gpio_decode_pin(cts, &decode_owned);
+
   if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
@@ -311,6 +329,16 @@ PRIMITIVE(create) {
   }
   if (rts >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(rts)) FAIL(INVALID_ARGUMENT);
   if (cts >= 0 && !GPIO_IS_VALID_GPIO(cts)) FAIL(INVALID_ARGUMENT);
+
+  // Reserve the pins from the shared pool. The reserver releases them
+  // again if we leave the primitive without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  reserver.decode_and_take(tx_encoded, &reserve_ok);
+  reserver.decode_and_take(rx_encoded, &reserve_ok);
+  reserver.decode_and_take(rts_encoded, &reserve_ok);
+  reserver.decode_and_take(cts_encoded, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -456,6 +484,10 @@ PRIMITIVE(create) {
   auto resource = _new UartResource(group, port, tx_buffer_size, queue);
   if (!resource) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
+
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
 
   group->register_resource(resource);
   proxy->set_external_address(resource);

@@ -11,17 +11,17 @@ Pulse-Width Modulation (PWM) support.
 
 A fading LED:
 ```
-import gpio
 import gpio.pwm
 
+LED-PIN ::= 5
+
 main:
-  led := gpio.Pin 5
   // Create a PWM square wave generator with frequency 400Hz.
   generator := pwm.Pwm --frequency=400
 
-  // Use it to drive the LED pin.
+  // Use it to drive the LED.
   // By default the duty factor is 0.
-  channel := generator.start led
+  channel := generator.start LED-PIN
 
   duty-percent := 0
   step := 1
@@ -36,11 +36,11 @@ main:
 
 Driving a servo:
 ```
-import gpio
 import gpio.pwm
 
+SERVO-PIN ::= 14
+
 main:
-  servo := gpio.Pin 14
   // Most servos need a 50Hz frequency. However, some models go up to
   // 400Hz. Consult the documentation for your servo.
 
@@ -49,7 +49,7 @@ main:
 
   // Generally, the acceptable duty-factor range of servos is 0.025 to 0.125.
   // Therefore start the pin with 0.075.
-  channel := generator.start servo --duty-factor=0.075
+  channel := generator.start SERVO-PIN --duty-factor=0.075
   sleep --ms=1000
 
   // Max angle.
@@ -106,12 +106,20 @@ class Pwm:
   Starts a new $PwmChannel on the provided pin. The channel is started,
     with the given $duty-factor.
 
+  The $pin is a GPIO number. The channel reserves the pin and releases it again
+    when the channel is closed.
+
   The default $duty-factor of 0.0 means the pin stays low until otherwise configured.
 
   See $PwmChannel.set-duty-factor for more information on duty factors.
+
+  Passing a $Pin is deprecated; provide the integer GPIO number instead.
+    The $Pin form will be removed in a future release.
   */
-  start pin/Pin --duty-factor/num=0.0 -> PwmChannel:
-    channel := pwm-start_ pwm_ pin.num duty-factor.to-float
+  // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  start pin/any --duty-factor/num=0.0 -> PwmChannel:
+    channel := pwm-start_ pwm_ (to-pin-num_ pin) duty-factor.to-float
     return PwmChannel.from-pwm_ this channel
 
   /** The frequency of this PWM. */

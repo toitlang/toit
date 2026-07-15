@@ -9,7 +9,6 @@ For the setup see the comment near $Variant.uart-error-in1.
 */
 
 import expect show *
-import gpio
 import uart
 
 import .test
@@ -27,19 +26,15 @@ main:
 
 test:
   succeeded := false
-  pin-rx1 := gpio.Pin RX1
-  pin-tx1 := gpio.Pin TX1
-  pin-rx2 := gpio.Pin RX2
-  pin-tx2 := gpio.Pin TX2
 
   port1 := uart.Port
-      --rx=pin-rx1
-      --tx=pin-tx1
+      --rx=RX1
+      --tx=TX1
       --baud-rate=115200
 
   port2 := uart.Port
-      --rx=pin-rx2
-      --tx=pin-tx2
+      --rx=RX2
+      --tx=TX2
       --baud-rate=115200
 
   expect-equals 0 port1.errors
@@ -67,8 +62,3 @@ test:
 
   port1.close
   port2.close
-
-  pin-rx1.close
-  pin-tx1.close
-  pin-rx2.close
-  pin-tx2.close

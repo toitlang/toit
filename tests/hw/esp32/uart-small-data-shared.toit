@@ -11,7 +11,6 @@ Run uart-small-data-board1.toit on one ESP32 and uart-small-data-board2.toit on 
 import crypto.md5
 import expect show *
 import io
-import gpio
 import system show platform
 import system
 import system.firmware
@@ -33,10 +32,8 @@ main-board1:
   run-test: test-board1
 
 test-board1:
-  rx := gpio.Pin RX1
-  tx := gpio.Pin TX1
   REPETITIONS.repeat:
-    port := uart.Port --rx=rx --tx=tx --baud-rate=BAUD-RATE
+    port := uart.Port --rx=RX1 --tx=TX1 --baud-rate=BAUD-RATE
     expected-size := port.in.little-endian.read-int32
     bytes16 := port.in.read-bytes 16
     received := 0
@@ -49,12 +46,10 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  rx := gpio.Pin RX2
-  tx := gpio.Pin TX2
   REPETITIONS.repeat:
     size := it * 100 + 17
     data := ByteArray size: it & 255
-    port := uart.Port --rx=rx --tx=tx --baud-rate=BAUD-RATE
+    port := uart.Port --rx=RX2 --tx=TX2 --baud-rate=BAUD-RATE
     port.out.little-endian.write-int32 data.size
     port.out.write (ByteArray 16)
     port.out.write data

@@ -11,7 +11,6 @@ Run uart-io-data-board1.toit on one ESP32 and uart-io-data-board2.toit on the ot
 import crypto.md5
 import expect show *
 import io
-import gpio
 import system show platform
 import system
 import system.firmware
@@ -50,7 +49,7 @@ main-board1:
 
 test-board1:
   port := uart.Port
-      --rx=(gpio.Pin RX1)
+      --rx=RX1
       --tx=null
       --baud-rate=BAUD-RATE
       --large-buffers
@@ -81,7 +80,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  port := uart.Port --rx=null --tx=(gpio.Pin TX2) --baud-rate=BAUD-RATE
+  port := uart.Port --rx=null --tx=TX2 --baud-rate=BAUD-RATE
 
   firmware.map: | mapping/firmware.FirmwareMapping |
     fw := FwData mapping 0 (32 * 1024)

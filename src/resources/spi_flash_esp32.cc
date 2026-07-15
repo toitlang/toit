@@ -21,6 +21,7 @@
 #include "../objects_inline.h"
 #include "../vm.h"
 #include "spi_esp32.h"
+#include "gpio_esp32.h"
 
 #include "driver/sdspi_host.h"
 #include "driver/spi_master.h"
@@ -55,6 +56,7 @@ class SpiFlashResourceGroup: public ResourceGroup {
     if (nand_spi_device_) spi_bus_remove_device(nand_spi_device_);
 #endif
     free(void_cast(const_cast<char*>(mount_point_)));
+    owned_pins_.release();
   }
 
   esp_flash_t* chip() { return chip_; }
@@ -67,8 +69,11 @@ class SpiFlashResourceGroup: public ResourceGroup {
   void set_card(sdmmc_card_t* card) { card_ = card; }
   void set_chip(esp_flash_t* chip) { chip_ = chip; }
 
+  GpioPins& owned_pins() { return owned_pins_; }
+
  private:
   const char* mount_point_;
+  GpioPins owned_pins_;
   sdmmc_card_t* card_ = null;
   esp_flash_t* chip_ = null;
   const esp_partition_t* data_partition_ = null;
@@ -115,6 +120,13 @@ PRIMITIVE(init_sdcard) {
   FAIL(UNIMPLEMENTED);
 #else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
+
+  // Decode the pin and reserve it from the shared pool. The reserver releases
+  // it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int cs = reserver.decode_and_take(gpio_cs, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
   SpiFlashResourceGroup* group;
   HeapObject* error;
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
@@ -125,7 +137,7 @@ PRIMITIVE(init_sdcard) {
 
   sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
   slot_config.host_id = static_cast<spi_host_device_t>(host.slot);
-  slot_config.gpio_cs = static_cast<gpio_num_t>(gpio_cs);
+  slot_config.gpio_cs = static_cast<gpio_num_t>(cs);
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
@@ -143,6 +155,9 @@ PRIMITIVE(init_sdcard) {
 
   group->set_card(card);
 
+  group->owned_pins().adopt(reserver);
+  reserver.keep();
+
   return proxy;
 #endif
 }
@@ -155,6 +170,13 @@ PRIMITIVE(init_nor_flash) {
 
   if (frequency < 0 || frequency > ESP_FLASH_80MHZ) FAIL(INVALID_ARGUMENT);
 
+  // Decode the pin and reserve it from the shared pool. The reserver releases
+  // it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int cs = reserver.decode_and_take(gpio_cs, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   SpiFlashResourceGroup* group;
   HeapObject* error;
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
@@ -166,7 +188,7 @@ PRIMITIVE(init_nor_flash) {
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
   esp_flash_spi_device_config_t conf = {
       .host_id = spi_bus->host_device(),
-      .cs_io_num = gpio_cs,
+      .cs_io_num = cs,
       .io_mode = SPI_FLASH_FASTRD,
       .input_delay_ns = 0,
       .cs_id = 0,
@@ -226,6 +248,9 @@ PRIMITIVE(init_nor_flash) {
 
   group->set_wl_handle(wl_handle);
 
+  group->owned_pins().adopt(reserver);
+  reserver.keep();
+
   return proxy;
 #endif
 }
@@ -233,6 +258,13 @@ PRIMITIVE(init_nor_flash) {
 PRIMITIVE(init_nand_flash) {
 #if defined(CONFIG_SPI_FLASH_NAND_ENABLED) && defined(CONFIG_TOIT_FATFS)
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
+
+  // Decode the pin and reserve it from the shared pool. The reserver releases
+  // it again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int cs = reserver.decode_and_take(gpio_cs, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   SpiFlashResourceGroup* group;
   HeapObject* error;
@@ -242,7 +274,7 @@ PRIMITIVE(init_nand_flash) {
   spi_device_interface_config_t dev_cfg = {
       .mode = 0,
       .clock_speed_hz = frequency,
-      .spics_io_num = gpio_cs,
+      .spics_io_num = cs,
       .flags = SPI_DEVICE_HALFDUPLEX,
       .queue_size = 1
   };
@@ -277,6 +309,9 @@ PRIMITIVE(init_nand_flash) {
     group->tear_down();
     return Primitive::os_error(ret, process);
   }
+
+  group->owned_pins().adopt(reserver);
+  reserver.keep();
 
   return proxy;
 #else

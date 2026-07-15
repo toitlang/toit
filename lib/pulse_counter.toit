@@ -19,11 +19,9 @@ The ESP32S3 has 4 units.
 # Example
 ```
 import pulse-counter
-import gpio
 
 main:
-  pin := gpio.Pin 18
-  unit := pulse-counter.Unit pin
+  unit := pulse-counter.Unit 18
   while true:
     print unit.value
     sleep --ms=500
@@ -55,17 +53,30 @@ class Channel:
   */
   static CONTROL-HOLD /int ::= 2
 
-  pin/gpio.Pin
+  pin/any
   on-positive-edge/int
   on-negative-edge/int
-  control-pin/gpio.Pin?
+  control-pin/any
   when-control-low/int
   when-control-high/int
 
-  constructor .pin/gpio.Pin
+  /**
+  Constructs a pulse-counter channel description for the given $pin.
+
+  The $pin and $control-pin are GPIO numbers. The pins are reserved when the
+    channel is added to a $Unit and released again when the unit is closed.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
+  */
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  // __TYPE-MIGRATION__ control-pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ control-pin: int?
+  constructor .pin/any
       --.on-positive-edge /int = EDGE-INCREMENT
       --.on-negative-edge /int = EDGE-HOLD
-      --.control-pin /gpio.Pin? = null
+      --.control-pin /any = null
       --.when-control-low /int = CONTROL-KEEP
       --.when-control-high /int = CONTROL-KEEP:
     check-edge-mode_ on-positive-edge
@@ -95,11 +106,21 @@ class Unit:
 
   /**
   Variant of $(constructor --channels) that creates a unit with a single channel.
+
+  The $pin and $control-pin are GPIO numbers. The unit reserves the pins and
+    releases them again when the unit is closed.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
-  constructor pin/gpio.Pin
+  // __TYPE-MIGRATION__ pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ pin: int
+  // __TYPE-MIGRATION__ control-pin: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ control-pin: int?
+  constructor pin/any
       --on-positive-edge /int = Channel.EDGE-INCREMENT
       --on-negative-edge /int = Channel.EDGE-HOLD
-      --control-pin /gpio.Pin? = null
+      --control-pin /any = null
       --when-control-low /int = Channel.CONTROL-KEEP
       --when-control-high /int = Channel.CONTROL-KEEP
       --low/int?=null
@@ -160,10 +181,9 @@ class Unit:
     unit-resource_ = pcnt-new-unit_ resource-freeing-module_ low high glitch-filter-ns
     add-finalizer this:: close
     channels.do: | channel/Channel |
-      control-pin-num := channel.control-pin ? channel.control-pin.num : -1
-      pcnt-new-channel_ unit-resource_ channel.pin.num \
+      pcnt-new-channel_ unit-resource_ (gpio.to-pin-num_ channel.pin) \
           channel.on-positive-edge channel.on-negative-edge \
-          control-pin-num channel.when-control-low channel.when-control-high
+          (gpio.to-pin-num_ channel.control-pin) channel.when-control-low channel.when-control-high
     if start: this.start
 
   /** Whether this unit is closed. */

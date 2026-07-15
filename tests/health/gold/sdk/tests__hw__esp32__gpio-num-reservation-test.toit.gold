@@ -1,0 +1,3 @@
+tests/hw/esp32/gpio-num-reservation-test.toit:44:19: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
+  out3 := rmt.Out deprecated-pin --resolution=1_000_000
+                  ^~~~~~~~~~~~~~

@@ -68,7 +68,10 @@ test:
     // We set the clk-div to 9, and the period to 1.
     clk-div = 9
 
-  channel := rmt.Out pin-out --resolution=(80_000_000 / clk-div)
+  // We are done driving the pin by hand. Release our direct reservation so the
+  // RMT peripheral can reserve the same GPIO by its number.
+  pin-out.close
+  channel := rmt.Out PIN-OUT1 --resolution=(80_000_000 / clk-div)
   signals := rmt.Signals 2
   signals.set 0 --period=1 --level=1
   signals.set 1 --period=0 --level=0

@@ -8,27 +8,35 @@ import serial
 import monitor
 
 /**
-SPI is a serial communication bus able to address multiple devices along a main 3-wire bus with an additional 1 wire per device.
+SPI is a serial communication bus able to address multiple devices along a main
+  3-wire bus with an additional 1 wire per device.
 
 To set up a SPI BUS:
 ```
-import gpio
 import spi
+
+MISO ::= 12
+MOSI ::= 13
+CLOCK ::= 14
 
 main:
   bus := spi.Bus
-    --miso=gpio.Pin 12
-    --mosi=gpio.Pin 13
-    --clock=gpio.Pin 14
+    --miso=MISO
+    --mosi=MOSI
+    --clock=CLOCK
 ```
 
-When communicating with a device, a unique chip-select (`cs`) Pin is used to signal when the chip in question is addressed. In addition, it's important to not select a device frequency that exceeds the capabilities of the device. The maximum frequency can be found in the datasheet for the selected peripheral.
+When communicating with a device, a unique chip-select (`cs`) pin is used to
+  signal when the chip in question is addressed. In addition, it's important
+  to not select a device frequency that exceeds the capabilities of the device.
+  The maximum frequency can be found in the datasheet for the selected peripheral.
 
-In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/BME280_Datasheet.pdf), the maximum frequency is 10MHz:
+In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/BME280_Datasheet.pdf),
+  the maximum frequency is 10MHz:
 
 ```
   device := bus.device
-    --cs=gpio.Pin 15
+    --cs=15
     --frequency=10_000_000
 ```
 
@@ -67,12 +75,24 @@ class Bus:
 
   /**
   Constructs a new SPI bus using the given $mosi, $miso, and $clock pins.
+
+  The $mosi, $miso, and $clock are GPIO numbers. The bus reserves the pins and
+    releases them again when the bus is closed.
+
+  Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
+    The $gpio.Pin form will be removed in a future release.
   */
-  constructor --mosi/gpio.Pin?=null --miso/gpio.Pin?=null --clock/gpio.Pin:
+  // __TYPE-MIGRATION__ mosi: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ mosi: int?
+  // __TYPE-MIGRATION__ miso: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ miso: int?
+  // __TYPE-MIGRATION__ clock: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ clock: int
+  constructor --mosi/any=null --miso/any=null --clock/any:
     spi_ = spi-init_
-      mosi ? mosi.num : -1
-      miso ? miso.num : -1
-      clock.num
+      gpio.to-pin-num_ mosi
+      gpio.to-pin-num_ miso
+      gpio.to-pin-num_ clock
 
   /** Closes this SPI bus and frees the associated resources. */
   close:
@@ -87,8 +107,10 @@ class Bus:
     100kHz.
 
   An optional $cs (chip select) and $dc (data/command) pin can be assigned
-    for this device. If no $cs pin is provided, then the chip must be enabled
-    in software (or hardware, tied to ground, if it's the only chip on the bus).
+    for this device. They are GPIO numbers. The device reserves the pins and
+    releases them again when the device is closed. If no $cs pin is provided,
+    then the chip must be enabled in software (or hardware, tied to ground, if
+    it's the only chip on the bus).
 
   The SPI $mode can further be configured in the range [0..3], defaulting
     to 0.
@@ -103,22 +125,28 @@ class Bus:
   - 1 (0b01): CPOL=0, CPHA=1
   - 2 (0b10): CPOL=1, CPHA=0
   - 3 (0b11): CPOL=1, CPHA=1
+
+  Passing a $gpio.Pin as $cs or $dc is deprecated; provide the integer GPIO
+    number instead. The $gpio.Pin form will be removed in a future release.
   */
+  // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ cs: int?
+  // __TYPE-MIGRATION__ dc: gpio.Pin. Deprecated. Provide an integer instead.
+  // __TYPE-MIGRATION__ dc: int?
   device
-      --cs/gpio.Pin?=null
-      --dc/gpio.Pin?=null
+      --cs/any=null
+      --dc/any=null
       --frequency/int
       --mode/int=0
       --command-bits/int=0
       --address-bits/int=0
       -> Device:
     if mode < 0 or mode > 3: throw "Argument Error"
-    cs-num := -1
-    if cs: cs-num = cs.num
-    dc-num := -1
-    if dc:
-      dc-num = dc.num
-      dc.configure --output
+    cs-num := gpio.to-pin-num_ cs
+    dc-num := gpio.to-pin-num_ dc
+    // For a deprecated gpio.Pin the dc pin is configured here; for the new
+    // integer API the primitive configures it as output.
+    if dc is gpio.Pin: dc.configure --output
 
     d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
     return Device_.init_ this d

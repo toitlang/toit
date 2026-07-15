@@ -28,6 +28,8 @@
 #include "../resource.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 #include "../event_sources/system_esp32.h"
 #include "../event_sources/ev_queue_esp32.h"
 
@@ -83,10 +85,15 @@ class I2sResource: public EventQueueResource {
     // The queue must be deleted after the channels have been deleted.
     // Otherwise there might still be interrupts using the queue before.
     vQueueDelete(queue());
+    // Release any GPIO pins this channel reserved.
+    owned_pins_.release();
   }
 
   i2s_chan_handle_t tx_handle() const { return tx_handle_; }
   i2s_chan_handle_t rx_handle() const { return rx_handle_; }
+
+  // GPIO pins reserved by this channel (mclk/sck/ws/tx/rx).
+  GpioPins& owned_pins() { return owned_pins_; }
 
   word take_pending_event() {
     portENTER_CRITICAL(&spinlock_);
@@ -161,6 +168,7 @@ class I2sResource: public EventQueueResource {
   int64 errors_underrun_ = 0;
   int64 errors_overrun_ = 0;
   int error_state_ = 0;
+  GpioPins owned_pins_;
 };
 
 bool I2sResource::receive_event(word* data) {
@@ -235,12 +243,28 @@ PRIMITIVE(create) {
   ARGS(I2sResourceGroup, group,
        int, tx_pin,
        int, rx_pin,
+       int, mclk_pin,
+       int, sck_pin,
+       int, ws_pin,
        bool, is_master);
   esp_err_t err;
   bool handed_to_resource = false;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // Decode the pins and reserve all of them from the
+  // shared pool. The actual GPIO matrix assignment happens in `configure`; here
+  // we just claim the pins for the lifetime of the channel. The reserver
+  // releases everything again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int tx_num = reserver.decode_and_take(tx_pin, &reserve_ok);
+  int rx_num = reserver.decode_and_take(rx_pin, &reserve_ok);
+  reserver.decode_and_take(mclk_pin, &reserve_ok);
+  reserver.decode_and_take(sck_pin, &reserve_ok);
+  reserver.decode_and_take(ws_pin, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
   // We need to allocate the resource in internal memory. Otherwise it's not ISR safe.
   const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
@@ -259,10 +283,10 @@ PRIMITIVE(create) {
   i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, role);
   i2s_chan_handle_t tx_handle = null;
   i2s_chan_handle_t rx_handle = null;
-  if (tx_pin != -1 && rx_pin != -1) {
+  if (tx_num != -1 && rx_num != -1) {
     // Duplex mode.
     err = i2s_new_channel(&channel_config, &tx_handle, &rx_handle);
-  } else if (tx_pin != -1) {
+  } else if (tx_num != -1) {
     // Simplex transmit.
     err = i2s_new_channel(&channel_config, &tx_handle, null);
   } else {
@@ -285,6 +309,9 @@ PRIMITIVE(create) {
   I2sResource* resource = new (resource_memory) I2sResource(group, tx_handle, rx_handle, queue);
   // From now on, it's the resource that is responsible for releasing resources.
   handed_to_resource = true;
+  // The reservation now belongs to the resource and is released on close.
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
   // We are going to do a "delete" on the memory that was allocated with malloc, but
   // there isn't really a good way around that.
   Defer free_resource { [&] { if (!successful_return) delete resource; } };

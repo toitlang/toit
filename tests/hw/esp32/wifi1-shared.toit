@@ -64,9 +64,7 @@ contains-ssid access-points/List ssid/string:
   return access-points.any: | ap/wifi.AccessPoint | ap.ssid == ssid
 
 test-board1:
-  tx := gpio.Pin TX1
-  rx := gpio.Pin RX1
-  port := uart.Port --tx=tx --rx=rx --baud-rate=BAUD-RATE
+  port := uart.Port --tx=TX1 --rx=RX1 --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
     // Wait for board 2 to be ready.
     port.in.read
@@ -102,9 +100,7 @@ main-board2:
   run-test: test-board2
 
 test-board2:
-  tx := gpio.Pin TX2
-  rx := gpio.Pin RX2
-  port := uart.Port --tx=tx --rx=rx --baud-rate=BAUD-RATE
+  port := uart.Port --tx=TX2 --rx=RX2 --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
     network-ap := wifi.establish
         --name=config.name

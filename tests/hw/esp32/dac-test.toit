@@ -49,10 +49,10 @@ main:
   run-test: test
 
 test:
-  dac1 := gpio.Dac (gpio.Pin DAC-OUT1)
-  dac2 := gpio.Dac (gpio.Pin DAC-OUT2)
-  adc1 := gpio.Adc (gpio.Pin ADC-IN1)
-  adc2 := gpio.Adc (gpio.Pin ADC-IN2)
+  dac1 := gpio.Dac DAC-OUT1
+  dac2 := gpio.Dac DAC-OUT2
+  adc1 := gpio.Adc ADC-IN1
+  adc2 := gpio.Adc ADC-IN2
 
   dac1.set 1.0
   dac2.set 2.0

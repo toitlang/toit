@@ -32,6 +32,8 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+#include "gpio_esp32.h"
+
 #define PCNT_MAX_GLITCH_WIDTH PCNT_LL_MAX_GLITCH_WIDTH
 
 namespace toit {
@@ -62,9 +64,15 @@ class PcntUnitResource : public Resource {
     }
 
     pcnt_del_unit(handle_);
+
+    // Release any GPIO pins the channels reserved.
+    owned_pins_.release();
   }
 
   pcnt_unit_handle_t handle() { return handle_; }
+
+  // GPIO pins reserved by this unit's channels (edge/control).
+  GpioPins& owned_pins() { return owned_pins_; }
 
   bool has_channel_space() const {
     for (int i = 0; i < SOC_PCNT_CHANNELS_PER_UNIT; i++) {
@@ -126,6 +134,7 @@ class PcntUnitResource : public Resource {
   pcnt_unit_handle_t handle_;
   pcnt_channel_handle_t channels_[SOC_PCNT_CHANNELS_PER_UNIT] = { null, };
   State state_ = DISABLED;
+  GpioPins owned_pins_;
 };
 
 MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
@@ -235,9 +244,17 @@ PRIMITIVE(new_channel) {
 
   if (!unit->has_channel_space()) FAIL(ALREADY_IN_USE);
 
+  // Decode the pins and reserve them from the shared
+  // pool. The reserver releases them again if we leave without calling `keep()`.
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int edge_num = reserver.decode_and_take(pin_number, &reserve_ok);
+  int level_num = reserver.decode_and_take(control_pin_number, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
   pcnt_chan_config_t config {
-    .edge_gpio_num = pin_number,
-    .level_gpio_num = control_pin_number,
+    .edge_gpio_num = edge_num,
+    .level_gpio_num = level_num,
     .flags = {
       .invert_edge_input = false,
       .invert_level_input = false,
@@ -256,7 +273,7 @@ PRIMITIVE(new_channel) {
                                      to_edge_action(on_negative_edge));
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  if (control_pin_number != -1) {
+  if (level_num != -1) {
     err = pcnt_channel_set_level_action(handle,
                                         to_level_action(when_control_high),
                                         to_level_action(when_control_low));
@@ -265,6 +282,10 @@ PRIMITIVE(new_channel) {
 
   unit->add_channel(handle);
   handed_to_unit = true;
+
+  // The reservation now belongs to the unit and is released when it is closed.
+  unit->owned_pins().append(reserver);
+  reserver.keep();
 
   return process->null_object();
 }
