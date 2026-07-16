@@ -79,6 +79,15 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    more; a handful of types: locked / base / base-id / marker / slot /
    data / free) and a correspondingly minimal packed record. Details of
    the binary layout are finalized with the marker-v2 work at the bump.
+   `offset` is optional in the YAML: an entry without one starts where
+   the previous entry ends, so the anchor chain (base-id, slots, marker)
+   is never pinned numerically — a future base-vN size change is a
+   one-line `size:` edit that reflows everything after it (Florian: don't
+   hard-code the anchor "too much"). Explicit offsets mark external
+   constraints (boot ROM, SDK, live on-flash data) and double as
+   assertions that the chain still lands on them. Host tools read the
+   descriptor via tools/ec618/partitions.toit instead of carrying their
+   own address constants.
 6. **OTA resize: later.** The record flip already gives the atomic
    swap; until a power-fail-safe data-migration journal exists, the
    writer REFUSES table changes that move or shrink a non-empty data

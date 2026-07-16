@@ -14,6 +14,8 @@ import cli
 import host.file
 import host.pipe
 
+import .partitions
+
 main args:
   cmd := cli.Command "splice-slot"
       --help="""
@@ -30,8 +32,8 @@ main args:
             --help="The slot's flash (XIP) address (hex or decimal)."
             --required,
         cli.Option "ap-load-addr"
-            --help="XIP address of the AP image's byte 0."
-            --default="0x824000",
+            --help="XIP address of the AP image's byte 0 (default: the base XIP address from the partition descriptor).",
+        partitions-option,
         cli.Option "out"
             --help="The output AP image."
             --required,
@@ -43,7 +45,9 @@ run invocation/cli.Invocation -> none:
   base := file.read-contents invocation["base"]
   slot := file.read-contents invocation["slot-bin"]
   slot-address := parse-int invocation["slot-address"]
-  ap-load-addr := parse-int invocation["ap-load-addr"]
+  ap-load-addr := invocation["ap-load-addr"]
+      ? parse-int invocation["ap-load-addr"]
+      : (Partitions.load invocation["partitions"]).xip "base"
 
   offset := slot-address - ap-load-addr
   if offset < 0 or offset + slot.size > base.size:

@@ -7,8 +7,10 @@
 //
 //   [ 'T' 'B' 'I' '1' ][ version : u32 LE ][ fingerprint : 16 bytes ]
 //
-// It lives in the reserved flash page at TOIT_BASE_ID_ORIGIN (0x990000, the
-// page the retired jump table used to occupy). The fingerprint is the first
+// It lives in the `base-id` partition directly after the base image (the
+// anchor — the partition descriptor is the source of truth for its
+// address, which the linker template's TOIT_BASE_ID_ORIGIN must mirror
+// until the base adopts the generated header). The fingerprint is the first
 // 16 bytes of the SHA-256 over the base image EXCLUDING this page (the
 // record cannot cover itself). The device reads the record over XIP and
 // compares it against the id carried in every OTA payload's SRL3 table —
@@ -24,12 +26,9 @@ import host.file
 import host.pipe
 import io show LITTLE-ENDIAN
 
-MAGIC ::= #['T', 'B', 'I', '1']
+import .partitions
 
-// Mirrors TOIT_BASE_ID_ORIGIN / AP_FLASH_LOAD_ADDR in the linker template.
-BASE-ID-ORIGIN ::= 0x990000
-AP-LOAD-ADDR ::= 0x824000
-PAGE-SIZE ::= 0x1000
+MAGIC ::= #['T', 'B', 'I', '1']
 
 main args:
   cmd := cli.Command "gen-base-id"
@@ -51,22 +50,25 @@ main args:
         cli.Option "nm"
             --help="The arm nm binary (for --manifest geometry)."
             --default="arm-none-eabi-nm",
+        partitions-option,
       ]
       --run=:: run it
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  parts := Partitions.load invocation["partitions"]
   base := file.read-contents invocation["base"]
   version-text := (file.read-contents invocation["version-file"]).to-string.trim
   version := int.parse version-text
 
-  offset := BASE-ID-ORIGIN - AP-LOAD-ADDR
-  if offset + PAGE-SIZE > base.size:
+  offset := (parts.xip "base-id") - (parts.xip "base")
+  page-size := parts["base-id"].size
+  if offset + page-size > base.size:
     pipe.print-to-stderr "base image ($base.size bytes) does not reach the base-id page (file 0x$(%x offset))"
     exit 1
 
   // Fingerprint everything except the record's own page.
-  pageless := (base.copy 0 offset) + (base.copy (offset + PAGE-SIZE))
+  pageless := (base.copy 0 offset) + (base.copy (offset + page-size))
   fingerprint := (sha256 pageless)[..16]
 
   record := ByteArray 24

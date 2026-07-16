@@ -32,6 +32,8 @@ import io show Buffer LITTLE-ENDIAN
 import host.file
 import host.pipe
 
+import .partitions
+
 // Reloc-table artifact magic: "SRL3" (Slot ReLoc, version 3 — v2 added the
 // sector-straddle branch stream with embedded canonical bytes; v3 adds the
 // BASE ID the slot was linked against, so the device can reject a slot
@@ -42,10 +44,6 @@ MAGIC ::= #['S', 'R', 'L', '3']
 // Thumb-branch site at `sector_end - 2` straddles two of them. Mirrors
 // FLASH_SECTOR_SIZE in src/primitive_ec618.cc.
 FLASH-SECTOR-SIZE ::= 0x1000
-
-// Default XIP address of `ap.bin` byte 0 (AP_FLASH_LOAD_ADDR in the linker
-// script). Used to map a relocation's virtual address to a file offset.
-DEFAULT-AP-LOAD-ADDR ::= 0x824000
 
 // Structural slot-boundary symbols denote FIXED flash addresses (the slot
 // reservation geometry the dual-slot dispatcher reads), not moving image
@@ -111,8 +109,8 @@ main args:
             --help="The arm nm binary."
             --default="arm-none-eabi-nm",
         cli.Option "ap-load-addr"
-            --help="XIP address of ap.bin byte 0 (hex or decimal)."
-            --default="0x824000",
+            --help="XIP address of ap.bin byte 0 (hex or decimal; default: the base XIP address from the partition descriptor).",
+        partitions-option,
         cli.Option "elf"
             --help="The slot-A toit.elf (linked with --emit-relocs)."
             --required,
@@ -142,7 +140,10 @@ run invocation/cli.Invocation -> none:
   out-path := invocation["out"]
   data-out-path := invocation["data-out"]
   verify-path := invocation["verify-slot-b"]
-  ap-load-addr := parse-int invocation["ap-load-addr"]
+  parts := Partitions.load invocation["partitions"]
+  ap-load-addr := invocation["ap-load-addr"]
+      ? parse-int invocation["ap-load-addr"]
+      : parts.xip "base"
 
   // The image is LINKED at the neutral __vm_link_base (the canonical VMA, NEITHER
   // slot) and lives in the flash at slot A's address __vm_a_start (the LMA). The
@@ -172,7 +173,7 @@ run invocation/cli.Invocation -> none:
 
   // The base-id record the slot was linked against (see gen-base-id.toit).
   base-bin := file.read-contents invocation["base"]
-  id-off := 0x990000 - ap-load-addr
+  id-off := (parts.xip "base-id") - ap-load-addr
   if not (base-bin.size > id-off + 24 and base-bin[id-off] == 'T' and base-bin[id-off + 1] == 'B'
       and base-bin[id-off + 2] == 'I' and base-bin[id-off + 3] == '1'):
     pipe.print-to-stderr "no base-id record in $invocation["base"] — run gen-base-id first"

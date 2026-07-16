@@ -8,8 +8,15 @@
 #       --out toolchains/ec618/project/inc/toit_partitions.h \
 #       toolchains/ec618/partitions.yaml
 #
-# The table must cover 0x000000..0x400000 contiguously (the generator
-# enforces coverage, ordering and 4 KiB alignment).
+# `offset` is OPTIONAL: an entry without one starts where the previous
+# entry ends. That keeps the anchor chain soft — base-id sits directly
+# after the base, the slots after base-id — so a future base-vN size
+# change is a one-line `size:` edit that reflows everything after it.
+# An explicit `offset` marks an EXTERNAL constraint (boot ROM, SDK,
+# live on-flash data) and doubles as an assertion: the chain must land
+# exactly there, or generation fails. The table must cover
+# 0x000000..0x400000 contiguously (tools/ec618/partitions.toit enforces
+# coverage, ordering and 4 KiB alignment).
 #
 # Types:
 #   locked   - vendor/boot territory; never managed or moved by Toit.
@@ -23,71 +30,59 @@
 xip-offset: 0x800000
 
 partitions:
-  - name: headers          # boot ROM flash headers (BLS/SYS).
+  - name: headers          # Boot ROM flash headers (BLS/SYS).
     type: locked
     offset: 0x000000
     size: 0x4000
   - name: bootloader
     type: locked
-    offset: 0x004000
     size: 0x20000
   - name: base             # PLAT + dispatcher; SDK bootloader jumps here.
     type: base
-    offset: 0x024000
+    offset: 0x024000       # Boot-ROM-fixed AP load address (XIP 0x824000).
     size: 0x16C000
-  - name: base-id          # 'TBI1' version + fingerprint (frozen anchor).
-    type: base-id
-    offset: 0x190000
+  - name: base-id          # 'TBI1' version + fingerprint; the frozen anchor
+    type: base-id          # directly after the base — derived, never pinned.
     size: 0x1000
   - name: ota-a
     type: slot
-    offset: 0x191000
     size: 0xC0000
   - name: ota-b
     type: slot
-    offset: 0x251000
     size: 0xC0000
-  - name: marker           # Moves to 0x191000 (after base-id) at base-v2.
+  - name: marker           # Moves directly after base-id at base-v2.
     type: marker
-    offset: 0x311000
     size: 0x2000
   - name: free             # Reclaimed FOTA band.
     type: free
-    offset: 0x313000
     size: 0x71000
   - name: littlefs         # SDK littlefs region; unused by Toit. Reclaim at base-v2.
     type: locked
-    offset: 0x384000
+    offset: 0x384000       # SDK mem_map.h fixed address.
     size: 0x48000
-  - name: registry         # Toit flash registry (storage buckets). Live data.
-    type: data
+  - name: registry         # Toit flash registry (storage buckets). LIVE data —
+    type: data             # the explicit offset guards against silent moves.
     offset: 0x3CC000
     size: 0x10000
   - name: nvram-factory    # Modem RF calibration — losing it bricks the modem.
     type: locked
-    offset: 0x3DC000
+    offset: 0x3DC000       # Vendor-fixed from here to the end of flash.
     size: 0x4000
   - name: nvram
     type: locked
-    offset: 0x3E0000
     size: 0x4000
   - name: hib-backup       # Deep-sleep/PSM memory backup.
     type: locked
-    offset: 0x3E4000
     size: 0x18000
   - name: plat-config
     type: locked
-    offset: 0x3FC000
     size: 0x1000
   - name: reset-info
     type: locked
-    offset: 0x3FD000
     size: 0x1000
   - name: excep-info       # SDK crash dump key info.
     type: locked
-    offset: 0x3FE000
     size: 0x1000
   - name: reserved-tail
     type: locked
-    offset: 0x3FF000
     size: 0x1000

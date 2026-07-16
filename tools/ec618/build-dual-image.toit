@@ -25,6 +25,8 @@ import cli
 import io show LITTLE-ENDIAN
 import host.file
 import host.pipe
+
+import .partitions
 import .slot-reloc
 
 main args:
@@ -40,8 +42,8 @@ main args:
             --help="The SRL2 relocation table (slot-reloc.bin)."
             --required,
         cli.Option "ap-load-addr"
-            --help="XIP address of ap.bin byte 0 (hex or decimal)."
-            --default="0x824000",
+            --help="XIP address of ap.bin byte 0 (hex or decimal; default: the base XIP address from the partition descriptor).",
+        partitions-option,
         cli.Option "out"
             --help="The output dual-slot AP binary."
             --required,
@@ -55,7 +57,9 @@ main args:
 run invocation/cli.Invocation -> none:
   ap-a := file.read-contents invocation["slot-a"]
   geometry := SlotRelocTable.parse (file.read-contents invocation["reloc"])
-  ap-load-addr := parse-int invocation["ap-load-addr"]
+  ap-load-addr := invocation["ap-load-addr"]
+      ? parse-int invocation["ap-load-addr"]
+      : (Partitions.load invocation["partitions"]).xip "base"
 
   link-base := geometry.link-base
   slot-size := geometry.slot-size
