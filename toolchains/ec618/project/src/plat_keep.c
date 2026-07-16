@@ -389,8 +389,10 @@ extern void rngGenRandom(void);
 extern void round(void);
 extern void sin(void);
 extern void sinh(void);
-extern void slot_marker_read(void);
-extern void slot_marker_write(void);
+extern void anchor_read(void);
+extern void anchor_table(void);
+extern void anchor_write(void);
+extern void anchor_write_table(void);
 extern void slpManAONIOLatchEn(void);
 // The RTC-backed libc time shims (--wrap=time & friends): only slot code
 // references them (the base's own SDK paths do not call libc time), so
@@ -882,8 +884,10 @@ const void* const toit_plat_keep[] = {
   (const void*)&round,
   (const void*)&sin,
   (const void*)&sinh,
-  (const void*)&slot_marker_read,
-  (const void*)&slot_marker_write,
+  (const void*)&anchor_read,
+  (const void*)&anchor_table,
+  (const void*)&anchor_write,
+  (const void*)&anchor_write_table,
   (const void*)&slpManAONIOLatchEn,
   (const void*)&__wrap_time,
   (const void*)&__wrap_clock,
