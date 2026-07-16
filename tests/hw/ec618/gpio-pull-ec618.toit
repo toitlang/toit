@@ -21,7 +21,7 @@ APmuWakeupPadSettings path). So this is a pad/HW limitation, not a firmware bug;
 the test reports it and a clean pull-down check is a rig-mapping TODO (see
 docs/ec618-hw-tests.md).
 
-Wiring: EC618 board pin 5 (GPIO11 / PAD26) <-> ESP32 IO27 (held high-Z).
+Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) <-> ESP32 IO27 (held high-Z).
 
 Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
 
@@ -33,7 +33,7 @@ Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
 import gpio
 import ec618 show Ec618
 
-GPIO-EC618 ::= 11               // PAD26, wired to ESP32 IO27.
+PAD-EC618 ::= 26                // GPIO11's primary pad, wired to ESP32 IO27.
 SETTLE ::= Duration --ms=20     // Let the weak pull + line capacitance settle.
 READS ::= 16                    // Sample several times to catch an unstable line.
 TOLERANCE ::= 2                 // Allow a couple of noisy samples either way.
@@ -52,7 +52,7 @@ read-with-pull pin/gpio.Pin --up/bool=false --down/bool=false --off/bool=false -
   return count-ones pin
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio PAD-EC618
   pin.configure --input
   // Pull-down first (from the floating state, so a high reading can't be residual
   // charge from a preceding pull-up), then pull-up, then no pull.

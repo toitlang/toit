@@ -10,7 +10,7 @@ Drives EC618 GPIO11 as a square wave so the ESP32 half
 pad PAD26 (board pin 5, "uart2_txd"); the same controller bit is also exposed at
 PAD22 (board pin 14), so both move together.
 
-Wiring: EC618 board pin 5 (GPIO11 / PAD26) -> ESP32 IO27.
+Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) -> ESP32 IO27.
 
 Run via the mini-jag tester (passes when the container exits cleanly; the real
 signal check happens on the ESP32 side):
@@ -23,14 +23,14 @@ signal check happens on the ESP32 side):
 import gpio
 import ec618 show Ec618
 
-GPIO-EC618 ::= 11                   // PAD26 (primary), wired to ESP32 IO27.
+PAD-EC618 ::= 26                    // GPIO11's primary pad, wired to ESP32 IO27.
 HALF-PERIOD ::= Duration --ms=50    // 10 Hz square wave.
 DRIVE-DURATION ::= Duration --s=20  // Long enough for the ESP32 to sample.
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio PAD-EC618
   pin.configure --output --value=0
-  print "gpio-output-ec618: driving GPIO$GPIO-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
+  print "gpio-output-ec618: driving GPIO$PAD-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
   deadline := Time.monotonic-us + DRIVE-DURATION.in-us
   value := 0
   toggles := 0

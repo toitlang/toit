@@ -14,7 +14,7 @@ the ESP32 output.
 
 Passes if the EC618 sees the square wave: both levels and enough edges.
 
-Wiring: ESP32 IO27 -> EC618 board pin 5 (GPIO11 / PAD26).
+Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): ESP32 IO27 -> EC618 board pin 5 (PAD26 = GPIO11).
 
 Run via the mini-jag tester (start gpio-input-esp32.toit on the ESP32 first):
 
@@ -26,7 +26,7 @@ Run via the mini-jag tester (start gpio-input-esp32.toit on the ESP32 first):
 import gpio
 import ec618 show Ec618
 
-GPIO-EC618 ::= 11               // PAD26, driven by ESP32 IO27.
+PAD-EC618 ::= 26                // GPIO11's primary pad, driven by ESP32 IO27.
 SAMPLE ::= Duration --ms=2      // Poll fast enough to catch a 10 Hz square wave.
 WINDOW ::= Duration --s=20      // Sample window. We configure the pad as INPUT first
                                 // (so the ESP32 can start driving without contention),
@@ -34,9 +34,9 @@ WINDOW ::= Duration --s=20      // Sample window. We configure the pad as INPUT 
 MIN-EDGES ::= 30                // A 10 Hz wave over the overlap gives 100s of edges.
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio PAD-EC618
   pin.configure --input
-  print "gpio-input-ec618: reading GPIO$GPIO-EC618 (driven by ESP32) for $(WINDOW.in-s)s"
+  print "gpio-input-ec618: reading GPIO$PAD-EC618 (driven by ESP32) for $(WINDOW.in-s)s"
   last := pin.get
   saw0 := last == 0
   saw1 := last == 1
