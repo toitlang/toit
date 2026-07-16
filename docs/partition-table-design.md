@@ -6,14 +6,44 @@
 > trade-offs, the risks, and a concrete incremental plan. Nothing here is
 > committed — challenge it.
 >
-> **Layout note (2026-06-07):** some flash-map specifics below have since
-> changed and are kept only for the reclaim *reasoning*. The VM slots are now
-> **768 KB each** (not 384 KB) — they absorbed the reclaimed **512 KB FOTA
-> region** (FOTA is gone) — `FLASH_AREA` is **3072 KB** ending past the old
-> FOTA boundary, the linker script is `ec618_0h00_flash.c` (not `.ld`), and the
-> VM image is linked at a **neutral base** and relocated per slot. See
-> [ota-relocation-convergence.md](ota-relocation-convergence.md) for the current
-> slot geometry.
+> **Layout note (updated 2026-07-16, post frozen-base):** the flash-map
+> specifics below are kept for the *reasoning*; the live geometry is:
+>
+> | XIP addr | Size | Region |
+> |---|---|---|
+> | 0x824000–0x990000 | ~1.42 MB | PLAT base (frozen, base-id versioned) |
+> | 0x990000–0x991000 | 4 KB | **base-id page** (was: jump table — the JT is GONE) |
+> | 0x991000–0xA51000 | 768 KB | VM slot A |
+> | 0xA51000–0xB11000 | 768 KB | VM slot B |
+> | 0xB11000–0xB13000 | 8 KB | slot marker (A/B seq+CRC) |
+> | 0xB13000–0xB84000 | ~452 KB | **free** (reclaimed FOTA) |
+> | 0xB84000–0xBCC000 | 288 KB | LittleFS (still reclaimable) |
+> | 0xBCC000–0xBDC000 | 64 KB | FDB / Toit flash registry — KEEP |
+> | 0xBDC000+ | | NVRAM / hib / plat — KEEP |
+>
+> The jump table is replaced by the **frozen-base architecture**: slots are
+> linked separately against the published `base.elf` (two-stage link), carry
+> SRL3 relocation tables (relocate-on-write to either slot), and the device
+> rejects slot OTAs whose base-id (version + fingerprint at 0x990000) does
+> not match — see [ec618-base-image.md](ec618-base-image.md). Linker
+> template: `ec618_0h00_flash.c` (preprocessed C, not `.ld`).
+>
+> **Consequences for this document:** (a) the SRL3 relocation machinery makes
+> *floating slots* (§6.3) far more natural — a slot image can already be
+> retargeted to any address in the veneer-free range at write time; (b) any
+> change to the linker template, dispatcher (`toit_main.c`), guard
+> (`sys_ro_override.c`) or `slot_marker.c` is a **BASE change** — a base
+> version bump + full reflash of both rigs — so Phase-1 adoption in those
+> files must be batched with the next base bump (together with, e.g., the
+> known-issues #13 TX-descriptor work). Slot-side consumers
+> (`primitive_ec618.cc`, `flash_registry_ec618.cc`, `lib/ec618/slot.toit`)
+> are OTA-able and can adopt the descriptor first.
+>
+> **Live proof of the §6.6 hazard (found 2026-07-16):** `toit_main.c` still
+> defines `TOIT_VM_SLOT_SIZE 0x60000` (384 KB) while the linker template
+> moved the slots to 768 KB (`0xC0000`) — the dispatcher's entry-point
+> validation window is silently half a slot. Benign only because entry
+> points sit near the slot start. Fix with the base bump; do not fix alone.
 
 Throughout, "partition" is used loosely for the hardcoded flash regions the
 EC618 image carves out today. It is not (yet) a real partition table; that is
