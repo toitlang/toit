@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import bitmap
+import crypto.crc show Crc
 import crypto.sha256 as crypto
 import io
 import io show LITTLE-ENDIAN
@@ -48,15 +49,41 @@ ENVELOPE-FORMAT-VERSION-EC618 ::= 1000
 WORD-SIZE-ESP32 ::= 4
 WORD-SIZE-EC618 ::= 4
 
-// EC618 memory map constants (from mem_map.h).
+// EC618 memory map constants (from mem_map.h). These are CHIP constants
+// (boot-ROM truths); everything layout-shaped comes from the anchor record
+// inside the image itself ($ec618-slot-a-xip_).
 EC618-XIP-BASE_        ::= 0x00800000
 EC618-AP-LOAD-OFFSET_  ::= 0x00024000
-// Slot A's XIP flash address (TOIT_VM_A_ORIGIN in the linker script). The VM is
-// LINKED at the neutral reloc-table.link-base (NEITHER slot), so this slot-A
-// flash address is no longer the same as the link base: it is where the
-// (relocated) slot-A image physically lives and boots. Used to place/read the
-// slot within the AP image and to compute the slot-A relocation displacement.
-EC618-VM-SLOT-A-XIP_   ::= 0x00991000
+
+/**
+Returns slot A's XIP flash address from the anchor record inside the EC618
+  AP $image.
+
+The anchor record (boot state + the active partition table, provisioned
+  into the image by tools/ec618/gen-anchor.toit; format in
+  toolchains/ec618/project/inc/anchor.h) is the single source of layout
+  truth — the VM is LINKED at the neutral reloc-table.link-base (NEITHER
+  slot), and this slot-A flash address is where the (relocated) slot-A
+  image physically lives and boots. Used to place/read the slot within the
+  AP image and to compute the slot-A relocation displacement. Located by
+  scanning 4 KiB-aligned offsets for the record magic + a valid CRC, so
+  this tool carries no layout constants of its own.
+*/
+ec618-slot-a-xip_ image/ByteArray -> int:
+  for off := 0; off + 32 <= image.size; off += 0x1000:
+    if (LITTLE-ENDIAN.uint16 image off) != 0x4154: continue  // 'T','A'.
+    if image[off + 2] != 2: continue  // Record version.
+    count := image[off + 10]
+    record-size := 16 + count * 32 + 16
+    if count == 0 or off + record-size > image.size: continue
+    crc := Crc.little-endian 32 --polynomial=0xEDB88320 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
+    crc.add image[off .. off + record-size - 16]
+    if crc.get-as-int != (LITTLE-ENDIAN.uint32 image (off + record-size - 16)): continue
+    count.repeat: | i/int |
+      entry := off + 16 + i * 32
+      if image[entry + 24] == 5:  // The FIRST `slot` entry is slot A.
+        return EC618-XIP-BASE_ + (LITTLE-ENDIAN.uint32 image (entry + 16))
+  throw "no anchor record in the AP image — it must be provisioned (tools/ec618/gen-anchor.toit)"
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -1019,7 +1046,8 @@ Builds the EC618 CANONICAL firmware image from the in-slot AP binary $ap and the
 */
 ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
   load-xip := EC618-XIP-BASE_ + EC618-AP-LOAD-OFFSET_
-  slot-a-file := EC618-VM-SLOT-A-XIP_ - load-xip
+  slot-a-xip := ec618-slot-a-xip_ ap
+  slot-a-file := slot-a-xip - load-xip
   size-pos := slot-a-file + table.slot-size - 4
   table-length := LITTLE-ENDIAN.uint32 ap size-pos
   table-bytes := ap.copy (size-pos - table-length) size-pos
@@ -1030,7 +1058,7 @@ ec618-canonical-firmware ap/ByteArray table/SlotRelocTable -> ByteArray:
   // relocate-on-write lands it in whichever slot it is OTA'd to.
   merged.apply body
       --base=0
-      --delta=(EC618-VM-SLOT-A-XIP_ - merged.link-base)
+      --delta=(slot-a-xip - merged.link-base)
       --direction=TO-CANONICAL
   // The VM .data init image rides verbatim after the populated front (slot
   // offset `populated`); it carries no relocations, so it is appended unchanged.
@@ -1171,7 +1199,8 @@ extract-binary-in-slot-ec618_ -> ByteArray
   // The image is linked at the neutral link-base, but slot A lives at its own
   // flash address; the body is placed/built canonically (link-base-relative)
   // and relocated to slot A at the end so it boots in place.
-  slot-file := EC618-VM-SLOT-A-XIP_ - load-xip  // File offset of slot A's first byte.
+  slot-a-xip := ec618-slot-a-xip_ binary-input  // From the image's anchor record.
+  slot-file := slot-a-xip - load-xip  // File offset of slot A's first byte.
 
   if vm-body % 4 != 0: throw "EC618 VM body size 0x$(%x vm-body) is not word-aligned"
 
@@ -1259,7 +1288,7 @@ extract-binary-in-slot-ec618_ -> ByteArray
   // slot-B OTA). The trailer (table + size word) is metadata and untouched.
   merged.apply result
       --base=slot-file
-      --delta=(EC618-VM-SLOT-A-XIP_ - link-base)
+      --delta=(slot-a-xip - link-base)
       --direction=TO-SLOT
 
   // Whole-image SHA-256 trailer (kept until the read path moves to the

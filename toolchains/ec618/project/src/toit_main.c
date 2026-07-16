@@ -151,7 +151,9 @@ static uint8_t choose_boot_slot(void) {
 }
 
 static void toit_task(void *param) {
+  printf("[toit] INFO: dispatcher starting\n");
   load_boot_table();
+  printf("[toit] INFO: anchor table: %d entries\n", boot_table_count);
   uint8_t slot = choose_boot_slot();
 
   // Refuse to jump into a slot whose entry pointer looks broken; prefer the
