@@ -730,7 +730,9 @@ at all. That is a BASE change (bsp_usart.c) — bundle with the next base
 version bump.
 
 **Guidance until then:** keep frames within one staging buffer (4 KiB with
---large-buffers, i.e. >=460800 baud — 341 WS2812-class LEDs at 4x
-encoding): a single Send never splices. RS485/DE ports intentionally keep
+--large-buffers, i.e. >=460800 baud). For WS2812B-over-UART at 2.5 MBd
+(9 inverted UART signals = 3 protocol bits, i.e. 8 bytes per 24-bit LED;
+the line needs an external NOT gate — the EC618 cannot invert TX) that is
+512 LEDs per gap-free frame at ~61 fps: a single Send never splices. RS485/DE ports intentionally keep
 the drained-FIFO SEND_COMPLETE semantics (no trigger boost): the DE drop
 needs it, and half-duplex messaging gains nothing from chaining.

@@ -39,8 +39,18 @@ Run via the mini-jag tester (start uart2-gapfree-esp32.toit FIRST):
 import ec618 show Ec618
 import uart
 
-BAUDS ::= [115_200, 921_600, 3_000_000]
-PAYLOAD-SIZE ::= 32 * 1024   // Crosses many TX staging chunks.
+// The SUPPORTED gap-free contract (Florian, 2026-07-16): any length up
+// to 921600 (multi-chunk seams are IRQ-chained); at pixel-strip rates
+// (2.5 MBd) a single write of at most one staging buffer. The WS2812B
+// recipe: 9 UART signals (start bit + 7 data bits + stop bit, line
+// INVERTED by an external NOT gate — the EC618 cannot invert TX) carry
+// 3 protocol bits, so one 24-bit LED = 8 UART bytes and a 4 KiB frame
+// = 512 LEDs (~61 fps) — enough for now. Multi-chunk at MBd rates has
+// ~3 us splice seams — known-issues #13 documents the (unplanned)
+// descriptor-chaining enhancement.
+BAUDS ::= [115_200, 921_600, 2_500_000]
+payload-size-for baud/int -> int:
+  return baud >= 2_000_000 ? 4 * 1024 : 32 * 1024
 
 failures := []
 
@@ -49,11 +59,12 @@ main:
   control := Ec618.uart1 --baud-rate=115200
   control.out.write "\n"     // Fresh-open glitch-byte flush (rig rule).
   print "uart2-gapfree-ec618: control lane open"
-  payload := ByteArray PAYLOAD-SIZE  // All zeros — exactly what we want.
 
   BAUDS.do: | baud/int |
+    size := payload-size-for baud
+    payload := ByteArray size  // All zeros — exactly what we want.
     test := Ec618.uart2 --baud-rate=baud
-    wire-ms := PAYLOAD-SIZE * 10 * 1000 / baud
+    wire-ms := size * 10 * 1000 / baud
     window-ms := wire-ms + 2_000  // Arm latency + margin + trailing idle.
     // Filter: must exceed the stop-bit high (1 bit) and stay below the
     // 9-bit low runs of the 0x00 payload; ~3 bit times, capped at PCNT's
@@ -63,9 +74,9 @@ main:
 
     // Phase 1: positive control — a deliberate pause must be detected.
     count := measure control window-ms filter-ns:
-      test.out.write payload[..PAYLOAD-SIZE / 2] --flush
+      test.out.write payload[..size / 2] --flush
       sleep --ms=20
-      test.out.write payload[PAYLOAD-SIZE / 2..] --flush
+      test.out.write payload[size / 2..] --flush
     check "$baud: detector sees the deliberate pause" (count >= 2)
         --detail="count=$count (want >= 2)"
 
@@ -82,7 +93,7 @@ main:
     // fast on this module, measured by the pwm tests), and big
     // accumulated pauses would show up here even below the detector's
     // floor.
-    wire-us := PAYLOAD-SIZE * 10 * 1_000_000 / baud
+    wire-us := size * 10 * 1_000_000 / baud
     timing-ok := elapsed-us >= wire-us * 97 / 100 and elapsed-us < wire-us + wire-us / 10 + 50_000
     check "$baud: flush matches wire time" timing-ok
         --detail="$(elapsed-us)us for $(wire-us)us of wire"
