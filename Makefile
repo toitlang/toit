@@ -325,6 +325,18 @@ ec618: check-env host-tools
 		--slot-bin=$(BUILD)/ec618/slot-b.slotbin \
 		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(EC618_BASE_DIR)/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
 		--out=$(BUILD)/ec618/ap-slot-b.bin
+	# Prove the anchor record module (boot state + partition table, the
+	# power-fail rules) on the host against a fault-injecting flash emulator.
+	$(CC) -Wall -Wextra -O2 -I tools/anchor_test -I toolchains/ec618/project/inc \
+		tools/anchor_test/test.c toolchains/ec618/project/src/anchor.c -o $(BUILD)/ec618/anchor_test
+	$(BUILD)/ec618/anchor_test
+	# Provision the anchor record (boot state + the ACTIVE partition table)
+	# into both AP images — a fresh flash without it refuses to boot, by
+	# design — and validate the region bytes through the REAL device reader.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-anchor.toit -- \
+		--out=$(BUILD)/ec618/anchor-region.bin \
+		--splice=$(BUILD)/ec618/ap-slot-a.bin --splice=$(BUILD)/ec618/ap-slot-b.bin
+	$(BUILD)/ec618/anchor_test $(BUILD)/ec618/anchor-region.bin
 	# Verify: no FIXED (non-relocated) section points into the slot. TODO
 	# (phase 4): rethink for the split world — the base cannot reference VM
 	# symbols at all now; the residual exposure is numeric slot addresses in

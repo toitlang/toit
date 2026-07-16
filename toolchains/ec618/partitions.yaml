@@ -1,12 +1,12 @@
-# EC618 flash partition descriptor — the single source of truth for the
-# flash layout (docs/partition-table-design.md §0). Offsets are RAW flash
+# EC618 flash partition descriptor — the DEFAULT layout, consumed by the
+# host tools (docs/partition-table-design.md §0). Offsets are RAW flash
 # addresses (erase/write view); the XIP view adds xip-offset.
 #
-# Regenerate the derived header after every change:
-#
-#   build/host/sdk/bin/toit tools/ec618/gen-partitions.toit \
-#       --out toolchains/ec618/project/inc/toit_partitions.h \
-#       toolchains/ec618/partitions.yaml
+# The device itself never sees this file: provisioning bakes it into the
+# anchor record (boot state + table, directly after the base image), and
+# both the dispatcher and the VM read THAT at runtime. The base's linker
+# template carries the matching frozen literals; gen-base-id.toit refuses
+# to stamp a base whose symbols disagree with this descriptor.
 #
 # `offset` is OPTIONAL: an entry without one starts where the previous
 # entry ends. That keeps the anchor chain soft — base-id sits directly
@@ -22,10 +22,10 @@
 #   locked   - vendor/boot territory; never managed or moved by Toit.
 #   base     - the frozen AP/PLAT base image (max extent; frozen ABI edge).
 #   base-id  - the base version+fingerprint page the OTA gate checks.
-#   marker   - the A/B power-fail-safe record (OTA state; table, from v2).
+#   anchor   - the anchor record (boot state + the active table).
 #   slot     - a VM slot (relocate-on-write target).
 #   data     - Toit-managed data (flash registry today).
-#   free     - available; becomes user-assignable with the marker-v2 work.
+#   free     - available; becomes user-assignable via table edits.
 
 xip-offset: 0x800000
 
@@ -41,23 +41,23 @@ partitions:
     type: base
     offset: 0x024000       # Boot-ROM-fixed AP load address (XIP 0x824000).
     size: 0x16C000
-  - name: base-id          # 'TBI1' version + fingerprint; the frozen anchor
-    type: base-id          # directly after the base — derived, never pinned.
+  - name: base-id          # 'TBI1' version + fingerprint, directly after
+    type: base-id          # the base — derived, never pinned.
     size: 0x1000
+  - name: anchor           # The anchor record: boot state + the ACTIVE table,
+    type: anchor           # directly after the base so it is findable
+    size: 0x2000           # without a table. Two ping-ponged sectors.
   - name: ota-a
     type: slot
     size: 0xC0000
   - name: ota-b
     type: slot
     size: 0xC0000
-  - name: marker           # Moves directly after base-id at base-v2.
-    type: marker
-    size: 0x2000
   - name: free             # Reclaimed FOTA band.
     type: free
     size: 0x71000
-  - name: littlefs         # SDK littlefs region; unused by Toit. Reclaim at base-v2.
-    type: locked
+  - name: littlefs         # SDK littlefs: the OSA config store (OsaGet/Set-
+    type: locked           # FlashValue) lives here — NOT reclaimable, §0.2.
     offset: 0x384000       # SDK mem_map.h fixed address.
     size: 0x48000
   - name: registry         # Toit flash registry (storage buckets). LIVE data —

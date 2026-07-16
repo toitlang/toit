@@ -7,19 +7,11 @@
 > committed — challenge it.
 >
 > **Layout note (updated 2026-07-16, post frozen-base):** the flash-map
-> specifics below are kept for the *reasoning*; the live geometry is:
->
-> | XIP addr | Size | Region |
-> |---|---|---|
-> | 0x824000–0x990000 | ~1.42 MB | PLAT base (frozen, base-id versioned) |
-> | 0x990000–0x991000 | 4 KB | **base-id page** (was: jump table — the JT is GONE) |
-> | 0x991000–0xA51000 | 768 KB | VM slot A |
-> | 0xA51000–0xB11000 | 768 KB | VM slot B |
-> | 0xB11000–0xB13000 | 8 KB | slot marker (A/B seq+CRC) |
-> | 0xB13000–0xB84000 | ~452 KB | **free** (reclaimed FOTA) |
-> | 0xB84000–0xBCC000 | 288 KB | LittleFS (still reclaimable) |
-> | 0xBCC000–0xBDC000 | 64 KB | FDB / Toit flash registry — KEEP |
-> | 0xBDC000+ | | NVRAM / hib / plat — KEEP |
+> specifics below are kept for the *reasoning*; the live geometry is
+> toolchains/ec618/partitions.yaml (the descriptor IS the map now —
+> base-v2: base-id 0x990000, anchor record 0x991000, slot A 0x993000,
+> slot B 0xA53000, free 0xB13000, littlefs 0xB84000 (kept, §0.2),
+> registry 0xBCC000, vendor NVRAM band from 0xBDC000).
 >
 > The jump table is replaced by the **frozen-base architecture**: slots are
 > linked separately against the published `base.elf` (two-stage link), carry
@@ -56,38 +48,44 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    table: the writer retargets it to whatever slot addresses the table
    declares (the same machinery every OTA uses). Compatibility at write
    time = base-id match (exists) + image-fits-declared-slot (trivial).
-2. **The table lives in the slot-marker A/B record** — record v2 =
-   { seq, crc, ota-state, table[] }. Boot state and layout are one atomic,
-   power-fail-safe unit, flipped together: rollback restores layout AND
-   image. (ESP-IDF-like table, but A/B and co-committed — their single
-   fixed table region cannot do either.)
+2. **The table lives in the ANCHOR RECORD** (the A/B two-sector record
+   at the anchor) — { seq, crc, boot state, table[] }. Boot state and
+   layout are one atomic, power-fail-safe unit, flipped together:
+   rollback restores layout AND image. (ESP-IDF-like table, but A/B and
+   co-committed — their single fixed table region cannot do either.)
 3. **Anchor directly after the base image.** Base ends below 0x990000
-   (frozen ABI), base-id page at 0x990000; the marker+table moves to
-   0x991000..0x993000 at the next base bump. The old post-slot-B location
-   existed for base-image flexibility that the frozen-base contract
-   retired. Everything ABOVE the anchor is table-described (slots,
-   registry, user data, free) up to the vendor NVRAM band at 0xBDC000;
-   everything below/around is fixed vendor/base territory, included in
-   the table as locked entries for tooling visibility.
-4. **Defaults + provisioning:** the base embeds a default table (today's
-   layout); an empty/corrupt record at the anchor → write the default.
-   Custom layout = a table JSON given to the envelope->binpkg/flash step
-   (Toit tooling), which relocates the canonical image to the declared
-   slot A and emits the marker sectors.
+   (frozen ABI), base-id page at 0x990000, anchor record at
+   0x991000..0x993000 (base-v2; the old post-slot-B location existed for
+   base-image flexibility that the frozen-base contract retired). The
+   fixed spot is what makes the record findable without a table.
+   Everything ABOVE the anchor is table-described (slots, registry, user
+   data, free) up to the vendor NVRAM band at 0xBDC000; everything
+   below/around is fixed vendor/base territory, included in the table as
+   locked entries for tooling visibility.
+4. **Provisioning, NO defaults (Florian):** the base embeds NO table —
+   gen-anchor.toit bakes the descriptor into the anchor record and
+   splices it into the flashable AP images (`make ec618`), so every
+   fresh flash carries a valid record. A device whose anchor is missing
+   or corrupt CANNOT boot: the dispatcher halts loudly instead of
+   guessing (the ping-ponged record makes power loss unable to cause
+   this). Custom layout = a different descriptor given to gen-anchor at
+   provision time; the canonical image is relocated to whatever slot
+   addresses the record declares.
 5. **Entry format: SIMPLE** (Florian: do not duplicate the complicated
    ESP32 table). A YAML source file (name, offset, size, type — nothing
-   more; a handful of types: locked / base / base-id / marker / slot /
-   data / free) and a correspondingly minimal packed record. Details of
-   the binary layout are finalized with the marker-v2 work at the bump.
+   more; a handful of types: locked / base / base-id / anchor / slot /
+   data / free) and a correspondingly minimal packed record (0.1).
    `offset` is optional in the YAML: an entry without one starts where
-   the previous entry ends, so the anchor chain (base-id, slots, marker)
-   is never pinned numerically — a future base-vN size change is a
-   one-line `size:` edit that reflows everything after it (Florian: don't
-   hard-code the anchor "too much"). Explicit offsets mark external
-   constraints (boot ROM, SDK, live on-flash data) and double as
-   assertions that the chain still lands on them. Host tools read the
-   descriptor via tools/ec618/partitions.toit instead of carrying their
-   own address constants.
+   the previous entry ends, so the chain after the base (base-id, the
+   anchor record, slots, free) is never pinned numerically — a future
+   base-vN size change is a one-line `size:` edit that reflows
+   everything after it (Florian: don't hard-code the anchor "too much").
+   Explicit offsets mark external constraints (boot ROM, SDK, live
+   on-flash data) and double as assertions that the chain still lands on
+   them. Host tools read the descriptor via tools/ec618/partitions.toit;
+   nothing on the device compiles the layout in (see 0.1) — the linker
+   template's frozen literals are the one exception, and gen-base-id
+   refuses to stamp a base whose symbols disagree with the descriptor.
 6. **OTA resize: later.** The record flip already gives the atomic
    swap; until a power-fail-safe data-migration journal exists, the
    writer REFUSES table changes that move or shrink a non-empty data
@@ -96,11 +94,74 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    demonstrably MOVE — flash a table with shifted ota-a/ota-b addresses
    and boot from them (nothing precious lives in the data partitions
    yet, so this is safe to exercise for real).
-7. **Phasing by reflash cost:** descriptor + generator + host tooling +
-   slot-side consumers (primitives, flash registry, Toit accessor) land
-   now via OTA against the CURRENT layout (byte-identity validated);
-   dispatcher, guard, marker v2 + anchor move, LFS reclaim and the
-   toit_main.c 384KB-drift fix land together in the base-v2 bump.
+7. **Phasing:** the descriptor + host tooling landed first against the
+   CURRENT layout (byte-identity validated). The anchor record, the
+   table-driven dispatcher, the VM's runtime geometry lookups, the
+   anchor move and the toit_main.c 384KB-drift fix land together in the
+   base-v2 bump — a HARD cutover: slots built from HEAD link against
+   base-v2's anchor ABI and no longer run on base-v1 rigs (the base-id
+   gate enforces exactly this). LFS reclaim is deferred out of the bump
+   entirely (0.2).
+
+### 0.1 The anchor record — binary format (DECIDED 2026-07-16)
+
+Terminology: "the anchor" is the fixed location directly after the base
+image; "the anchor record" is the two-sector, ping-ponged record living
+there (toolchains/ec618/project/{inc/anchor.h,src/anchor.c}). One record
+= header + table entries + trailer, all sizes multiples of 16 (the flash
+write segment), so any entry count writes cleanly and the CRC lands in
+the final segment (written last → a torn write is detected):
+
+    header (16 bytes):
+      0   u16  magic 'T','A' (0x4154)
+      2   u8   version = 2
+      3   u8   state                       (SLOT_STATE_*)
+      4   u32  seq                         — higher valid record wins
+      8   u8   active   'A'/'B'
+      9   u8   pending  'A'/'B' or 0
+      10  u8   table_count N               (0 = no table)
+      11  u8[5] reserved (0)
+    entries (N x 32 bytes), flash order:
+      0   char name[16]                    — NUL-padded
+      16  u32  offset                      — RAW flash address
+      20  u32  size
+      24  u8   type   (1=locked 2=base 3=base-id 4=anchor 5=slot 6=data 7=free)
+      25  u8[7] reserved (0)
+    trailer (16 bytes):
+      0   u32  crc32 over header+entries (poly 0xEDB88320)
+      4   u8[12] pad (0xff)
+
+The two-sector ping-pong, higher-seq-wins and write-the-other-sector
+rules carry over from the v1 slot marker. There is NO fallback anywhere:
+`anchor_table` returns 0 for a missing/corrupt record or one without a
+table, and the dispatcher then halts with a periodic console message —
+provisioning (gen-anchor.toit, run by `make ec618`) is what puts the
+record on flash. `anchor_write` keeps the 3-argument boot-state-flip
+signature and PRESERVES the stored table; `anchor_write_table` sets
+state+table atomically (the layout-change path). Consumers:
+
+- The DISPATCHER boots from the active table's `slot` entries (first =
+  'A', second = 'B'). The `__vm_a_start`/`__vm_b_start` linker symbols
+  remain as the link-time reservation only.
+- The VM reads everything at runtime over the frozen ABI: slot bases and
+  size via `anchor_table` (slot-size primitive included), the flash
+  registry by locating the `registry` data entry, and the base-id page
+  via the exported `__toit_base_id_start` symbol. Nothing layout-shaped
+  is compiled into the slot image.
+- Host tools read partitions.yaml directly (tools/ec618/partitions.toit);
+  the fault-injecting host test (tools/anchor_test, wired into
+  `make ec618`) proves the record rules AND validates gen-anchor's bytes
+  through the real device reader.
+
+### 0.2 LFS reclaim — DEFERRED out of base-v2 (2026-07-16)
+
+Disassembly of the linked base shows `mainTask` calls `LFS_init` at
+every boot and the SDK's OSA config layer (`OsaFopen`,
+`OsaGet/SetFlashValue`) stores its values in that littlefs — live PLAT
+middleware state, likely modem-adjacent, and the port FORMATS the region
+on mount failure. Reclaiming 0x384000..0x3CC000 is therefore not a
+"delete the mount" edit; a careful shrink (measure OSA's real usage
+first) can be its own change later. base-v2 keeps `littlefs: locked`.
 
 Throughout, "partition" is used loosely for the hardcoded flash regions the
 EC618 image carves out today. It is not (yet) a real partition table; that is

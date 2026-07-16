@@ -42,22 +42,39 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  parts := Partitions.load invocation["partitions"]
   base := file.read-contents invocation["base"]
   slot := file.read-contents invocation["slot-bin"]
   slot-address := parse-int invocation["slot-address"]
   ap-load-addr := invocation["ap-load-addr"]
       ? parse-int invocation["ap-load-addr"]
-      : (Partitions.load invocation["partitions"]).xip "base"
+      : parts.xip "base"
 
   offset := slot-address - ap-load-addr
-  if offset < 0 or offset + slot.size > base.size:
-    pipe.print-to-stderr "slot [file 0x$(%x offset), +0x$(%x slot.size)) does not fit the base image ($base.size bytes)"
+  if offset < 0:
+    pipe.print-to-stderr "slot address 0x$(%x slot-address) is below the image base 0x$(%x ap-load-addr)"
     exit 1
 
-  out := base.copy
+  // The output must span the WHOLE slot reservation, not just the link's
+  // bytes: downstream writes the reloc trailer at the reservation's tail.
+  // The base link stops where its own sections end (the anchor sits below
+  // the slots), so extend with 0xff — erased flash — up to the end of the
+  // partition containing the slot.
+  raw := slot-address - parts.xip-offset
+  reservation-end := offset + slot.size
+  parts.entries.do: | p/Partition |
+    if p.offset <= raw and raw < p.offset + p.size:
+      reservation-end = p.offset + p.size + parts.xip-offset - ap-load-addr
+      if offset + slot.size > reservation-end:
+        pipe.print-to-stderr "slot bytes [file 0x$(%x offset), +0x$(%x slot.size)) overflow the '$p.name' reservation (ends at file 0x$(%x reservation-end))"
+        exit 1
+
+  size := max base.size reservation-end
+  out := ByteArray size --initial=0xff
+  out.replace 0 base
   out.replace offset slot
   file.write-contents --path=invocation["out"] out
-  print "spliced 0x$(%x slot.size) slot bytes at file 0x$(%x offset) -> $invocation["out"]"
+  print "spliced 0x$(%x slot.size) slot bytes at file 0x$(%x offset) -> $invocation["out"] ($size bytes)"
 
 /** Parses an integer that may be hex (`0x`-prefixed) or decimal. */
 parse-int s/string -> int:

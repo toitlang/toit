@@ -7,10 +7,11 @@
 //
 //   [ 'T' 'B' 'I' '1' ][ version : u32 LE ][ fingerprint : 16 bytes ]
 //
-// It lives in the `base-id` partition directly after the base image (the
-// anchor — the partition descriptor is the source of truth for its
-// address, which the linker template's TOIT_BASE_ID_ORIGIN must mirror
-// until the base adopts the generated header). The fingerprint is the first
+// It lives in the `base-id` partition directly after the base image. The
+// partition descriptor is the source of truth for its address; the linker
+// template's TOIT_BASE_ID_ORIGIN mirrors it as a frozen literal, and this
+// tool REFUSES to stamp a base whose exported symbols disagree with the
+// descriptor (check-symbol below). The fingerprint is the first
 // 16 bytes of the SHA-256 over the base image EXCLUDING this page (the
 // record cannot cover itself). The device reads the record over XIP and
 // compares it against the id carried in every OTA payload's SRL3 table —
@@ -44,11 +45,12 @@ main args:
             --help="File holding the base version number (base-vN)."
             --required,
         cli.Option "elf"
-            --help="The base.elf, for the geometry section of the manifest.",
+            --help="The base.elf — its symbols are checked against the descriptor before stamping."
+            --required,
         cli.Option "manifest"
             --help="Write a JSON manifest (version, fingerprint, geometry) here.",
         cli.Option "nm"
-            --help="The arm nm binary (for --manifest geometry)."
+            --help="The arm nm binary."
             --default="arm-none-eabi-nm",
         partitions-option,
       ]
@@ -60,6 +62,15 @@ run invocation/cli.Invocation -> none:
   base := file.read-contents invocation["base"]
   version-text := (file.read-contents invocation["version-file"]).to-string.trim
   version := int.parse version-text
+
+  // The anti-drift gate: the base's linker template carries the layout as
+  // frozen literals and the descriptor is the source of truth — refuse to
+  // stamp (and thereby release) a base whose symbols disagree.
+  geometry := read-geometry invocation["nm"] invocation["elf"]
+  check-symbol geometry "__toit_base_id_start" (parts.xip "base-id")
+  check-symbol geometry "__toit_anchor_start" (parts.xip "anchor")
+  check-symbol geometry "__vm_a_start" (parts.xip "ota-a")
+  check-symbol geometry "__vm_b_start" (parts.xip "ota-b")
 
   offset := (parts.xip "base-id") - (parts.xip "base")
   page-size := parts["base-id"].size
@@ -85,11 +96,6 @@ run invocation/cli.Invocation -> none:
 
   manifest-path := invocation["manifest"]
   if manifest-path:
-    elf := invocation["elf"]
-    if not elf:
-      pipe.print-to-stderr "--manifest requires --elf for the geometry"
-      exit 1
-    geometry := read-geometry invocation["nm"] elf
     manifest := {
       "base-version": version,
       "fingerprint": hex,
@@ -105,6 +111,7 @@ Reads the base geometry symbols the slot link derives its script from
 GEOMETRY-SYMBOLS ::= {
   "__vm_link_base", "__vm_a_start", "__vm_b_start",
   "__vm_data_start", "end_ap_data", "__toit_rtc_slot",
+  "__toit_anchor_start", "__toit_base_id_start",
 }
 
 read-geometry nm/string elf/string -> Map:
@@ -115,3 +122,20 @@ read-geometry nm/string elf/string -> Map:
     if parts.size >= 3 and GEOMETRY-SYMBOLS.contains parts.last:
       result[parts.last] = "0x$(%x (int.parse parts[0] --radix=16))"
   return result
+
+/**
+Asserts that the base's linker $symbol (from $geometry) sits at the
+  $expected XIP address from the partition descriptor.
+
+Exits with an error when the symbol is missing or disagrees — a base
+  whose layout drifted from the descriptor must not be stamped.
+*/
+check-symbol geometry/Map symbol/string expected/int -> none:
+  value := geometry.get symbol
+  if value == null:
+    pipe.print-to-stderr "gen-base-id: base.elf does not define $symbol (template drift?)"
+    exit 1
+  actual := int.parse value[2..] --radix=16
+  if actual != expected:
+    pipe.print-to-stderr "gen-base-id: $symbol is $value but the descriptor says 0x$(%x expected) — refusing to stamp a drifted base"
+    exit 1

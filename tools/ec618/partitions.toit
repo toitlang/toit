@@ -21,6 +21,25 @@ FLASH-END ::= 0x40_0000
 SECTOR ::= 0x1000
 
 /**
+Partition types, numbered as stored in the anchor record's table entries.
+
+Mirrors the PARTITION_TYPE_* enum in toolchains/ec618/project/inc/anchor.h
+  (docs/partition-table-design.md §0.1).
+*/
+TYPE-CODES ::= {
+  "locked": 1,
+  "base": 2,
+  "base-id": 3,
+  "anchor": 4,
+  "slot": 5,
+  "data": 6,
+  "free": 7,
+}
+
+// The anchor record stores names as NUL-padded char[16].
+MAX-NAME-SIZE ::= 15
+
+/**
 Returns the shared --partitions option for host tools that read the
   descriptor. The default path is relative to the repository root, where
   the Makefile runs the tools.
@@ -67,6 +86,10 @@ class Partitions:
         throw "$name: offset/size not 4 KiB aligned"
       if size <= 0:
         throw "$name: empty"
+      if name.size > MAX-NAME-SIZE:
+        throw "$name: name longer than $MAX-NAME-SIZE bytes (anchor record limit)"
+      if not TYPE-CODES.contains p["type"]:
+        throw "$name: unknown type '$p["type"]'"
       if by-name_.contains name:
         throw "$name: duplicate entry"
       entry := Partition name p["type"] offset size
