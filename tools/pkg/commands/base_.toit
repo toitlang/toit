@@ -15,7 +15,6 @@
 
 import system
 
-import certificate-roots
 import cli
 
 import ..pkg
@@ -30,9 +29,6 @@ class PkgCommand:
   auto-sync_/bool
 
   constructor invocation/cli.Invocation:
-    // Install the trusted roots so that the package manager can talk to
-    // registries and download packages over HTTPS.
-    certificate-roots.install-all-trusted-roots
     ui = invocation.cli.ui
     auto-sync_ = invocation[OPTION-AUTO-SYNC]
 

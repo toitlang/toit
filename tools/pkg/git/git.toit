@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import certificate-roots
 import http
 import io
 import net
@@ -61,6 +62,10 @@ class GitProtocol_:
   version-2-header_/http.Headers
 
   constructor:
+    // Install the trusted roots so that we can talk to registries and download
+    // packages over HTTPS. This is a lazily initialized global, so this runs
+    // once, and only if we actually end up using the network.
+    certificate-roots.install-all-trusted-roots
     network_ = net.open
     client_ = http.Client network_
     server-capabilities-cache_ = {:}
