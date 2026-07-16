@@ -17,4 +17,3 @@ include(toit.cmake)
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
-toit_project(pkg "${CMAKE_CURRENT_LIST_DIR}/pkg")

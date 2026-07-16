@@ -16,7 +16,6 @@
 import system
 
 import cli show *
-import certificate-roots
 
 import .commands.install
 import .commands.version
@@ -32,14 +31,8 @@ import .commands.describe
 
 // TODO(florian): implement completion in the cli package
 
-main arguments/List:
-  main arguments --cli=null
-
-main arguments/List --cli/Cli?:
-  certificate-roots.install-all-trusted-roots
-
-  pkg := Command "pkg"
-      --usage="toit.pkg [command]"
+build-command -> Command:
+  return Command "pkg"
       --help="The Toit package manager"
       --subcommands=[
           CleanCommand.CLI-COMMAND,
@@ -66,8 +59,14 @@ main arguments/List --cli/Cli?:
               --help="Specify the SDK version."
               --default=system.vm-sdk-version
       ]
-  pkg.check
-  pkg.run arguments --cli=cli
+
+main arguments/List:
+  main arguments --cli=null
+
+main arguments/List --cli/Cli?:
+  command := build-command
+  command.check
+  command.run arguments --cli=cli
 
 OPTION-SDK-VERSION ::= "sdk-version"
 OPTION-PROJECT-ROOT ::= "project-root"

@@ -124,7 +124,7 @@ class GoldTester:
       throw "UNIMPLEMENTED"
     // The key-format might change in the future, but it would be easily detected
     // by the 'expect' below.
-    key := "registry/git/$(entry["url"])"
+    key := "registry/git/$(entry["url"]).ar"
     block.call cache key
 
   git-registry-path name/string -> string:

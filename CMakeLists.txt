@@ -191,29 +191,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_subdirectory(tools)
   add_subdirectory(system/extensions/host)
 
-  set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
-  separate_arguments(GO_ENV)
-  list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
-
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION} -X main.sdkVersion=${TOIT_GIT_VERSION}")
-
-  set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
-
-  add_custom_command(
-    OUTPUT "${TOITPKG_BIN}"
-    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
-  )
-
-  add_custom_target(
-    build_go_tools
-    ALL
-    DEPENDS "${TOITPKG_BIN}"
-  )
-  add_dependencies(build_tools build_go_tools)
-
-  install(PROGRAMS "${TOITPKG_BIN}" DESTINATION lib/toit/bin)
-
   # Copy the lib folder to /usr/lib/toit/lib (recursively).
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
     DESTINATION lib/toit/lib
