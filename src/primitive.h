@@ -450,6 +450,7 @@ namespace toit {
   PRIMITIVE(wakeup_pad_configure, 6)         \
   PRIMITIVE(wakeup_arm_flags, 1)             \
   PRIMITIVE(base_id, 0)                      \
+  PRIMITIVE(slot_size, 0)                    \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

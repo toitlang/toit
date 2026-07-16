@@ -17,7 +17,7 @@
 EC618 dual-slot OTA helpers with esp-idf-style trial boot + rollback.
 
 The EC618 AP image carries two VM slots — `.vm_a` and `.vm_b`, each
-384 KB at fixed XIP addresses. A power-fail-safe record (`.slot_marker`,
+$SLOT-SIZE bytes at fixed XIP addresses. A power-fail-safe record (`.slot_marker`,
 two flash sectors) tracks which slot is the known-good one and which, if
 any, is on trial. The PLAT dispatcher in `toit_main.c` reads it on every
 boot.
@@ -54,8 +54,16 @@ $trial reports whether the running image is an unconfirmed trial.
 SLOT-A ::= 'A'
 SLOT-B ::= 'B'
 
-/** Size of one VM slot, in bytes (768 KB). */
-SLOT-SIZE ::= 0xC0000
+/**
+Size of one VM slot, in bytes.
+
+Read from the running firmware (the layout it was built for), so this
+  library never carries its own copy of the flash geometry.
+*/
+SLOT-SIZE ::= slot-size_
+
+slot-size_ -> int:
+  #primitive.ec618.slot-size
 
 /**
 Returns the slot the runtime is currently executing from ($SLOT-A or

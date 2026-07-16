@@ -115,6 +115,13 @@ PRIMITIVE(slot_active) {
   return Smi::from(toit_booted_slot);
 }
 
+// Returns the slot size of the layout this firmware was built for, so the
+// Toit side never carries its own copy of the geometry. Once the active
+// table lives in the marker record (v2), this reads that instead.
+PRIMITIVE(slot_size) {
+  return Smi::from(SLOT_SIZE);
+}
+
 // The slot that is NOT the one we are running from (the OTA target).
 static uint8_t inactive_slot() {
   return (toit_booted_slot == 'B') ? 'A' : 'B';
@@ -776,6 +783,7 @@ MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_pin_values) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(slot_size) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_reloc_begin) { FAIL(UNIMPLEMENTED); }
