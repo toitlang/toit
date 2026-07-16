@@ -1,0 +1,14 @@
+// Completions must never go to the network:
+==================
+// an unsynced registry doesn't produce any candidates.
+==================
+[complete, install, ]
+:4
+Exit Code: 0
+==================
+// The registry names come from the local configuration and are still completed.
+==================
+[complete, registry, remove, ]
+git-pkgs	http://localhost:<[*PORT*]>/registry/git-pkgs (git)
+:1
+Exit Code: 0

@@ -273,6 +273,13 @@ abstract class Registry:
   abstract sync --clear-cache/bool -> none
   abstract to-string -> string
 
+  /**
+  Whether the contents of this registry are available locally.
+
+  If false, accessing $content needs to go to the network.
+  */
+  abstract is-cached -> bool
+
   description-cache -> DescriptionUrlCache:
     if not description-cache_:
       description-cache_ = DescriptionUrlCache content --ui=ui_

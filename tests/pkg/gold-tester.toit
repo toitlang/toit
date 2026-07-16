@@ -65,6 +65,7 @@ class GoldTester:
   gold-dir_/string
   working-dir_/string
   toit-exec_/string
+  pkg-entry_/string
   should-update_/bool
   port_/int
   registry-cache-dir_/string
@@ -72,6 +73,7 @@ class GoldTester:
 
   constructor
       --toit-exe/string
+      --pkg-entry/string
       --gold-dir/string
       --working-dir/string
       --registry-cache-dir/string
@@ -79,6 +81,7 @@ class GoldTester:
       --port/int
       --git-roots/Map:
     toit-exec_ = toit-exe
+    pkg-entry_ = pkg-entry
     gold-dir_ = gold-dir
     working-dir_ = working-dir
     registry-cache-dir_ = registry-cache-dir
@@ -196,6 +199,17 @@ class GoldTester:
           json-content := file.read-contents contents-path
           as-yaml := yaml.stringify (json.decode json-content)
           outputs.add "== contents.json\n$as-yaml"
+      else if command == "complete":
+        // Asks the pkg tool for shell completions.
+        // The words after "complete" are the words on the (virtual) command
+        // line, where the last one is the word that is being completed.
+        // Runs in a separate process, since the completion candidates are
+        // printed directly to stdout and not through the UI.
+        words := command-line[1..]
+        if set-project-root:
+          words = ["--project-root=$working-dir_"] + words
+        run-result := toit "run" ([pkg-entry_, "__complete", "--"] + words)
+        outputs.add "$command-line\n$run-result.full-output"
       else if command == "pkg":
         pkg-args := command-line[1..]  // Drop the "pkg"
         has-project-root := pkg-args.any: | arg/string | arg.starts-with "--project-root"
@@ -505,6 +519,7 @@ with-gold-tester args/List
   source-location := system.program-path
   source-dir := fs.dirname source-location
   source-name := (fs.basename source-location).trim --right "-gold-test.toit"
+  pkg-entry := fs.to-absolute (fs.join [source-dir, "..", "..", "tools", "pkg", "pkg.toit"])
   shared-dir := "$source-dir/assets/shared"
   assets-dir := "$source-dir/assets/$source-name"
   gold-dir := "$assets-dir/gold"
@@ -541,6 +556,7 @@ with-gold-tester args/List
       tester := GoldTester
           --port=port
           --toit-exe=toit-exe
+          --pkg-entry=pkg-entry
           --gold-dir=gold-dir
           --working-dir=tmp-dir
           --registry-cache-dir=registry-cache-dir

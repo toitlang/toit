@@ -1,0 +1,49 @@
+OK
+[pkg, sync]
+==================
+// After a sync the registry is cached and produces candidates.
+==================
+[complete, install, ]
+localhost:<[*PORT*]>/pkg/pkg1	git-package 1
+localhost:<[*PORT*]>/pkg/pkg2	git-package 2
+localhost:<[*PORT*]>/pkg/pkg3	git-package 3
+localhost:<[*PORT*]>/pkg/pkg4	git-package 4
+pkg1	git-package 1
+pkg2	git-package 2
+pkg3	git-package 3
+pkg4	git-package 4
+:4
+Exit Code: 0
+==================
+// A '@' in the prefix completes the version part.
+==================
+[complete, install, pkg2@]
+pkg2@2.4.2
+pkg2@1.0.0
+:4
+Exit Code: 0
+==================
+// With '--local' no candidates are produced; the shell falls back to file completion.
+==================
+[complete, install, --local, ]
+:4
+Exit Code: 0
+==================
+// Option names are completed as well.
+==================
+[complete, install, --]
+--auto-sync	Automatically synchronize registries.
+--no-auto-sync	Automatically synchronize registries.
+--sdk-version	Specify the SDK version.
+--output-format	Specify the format used when printing to the console.
+--verbose	Enable verbose output. Shorthand for --verbosity-level=verbose.
+--no-verbose	Enable verbose output. Shorthand for --verbosity-level=verbose.
+--verbosity-level	Specify the verbosity level.
+--local	Treat package argument as local path.
+--no-local	Treat package argument as local path.
+--prefix	The prefix used for the 'import' clause.
+--recompute	Recompute dependencies.
+--no-recompute	Recompute dependencies.
+--help	Show help for this command.
+:1
+Exit Code: 0

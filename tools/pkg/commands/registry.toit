@@ -23,6 +23,7 @@ import ..registry
 import ..registry.local
 
 import .base_
+import .completions_
 
 class RegistryCommand extends PkgCommand:
   static LOCAL     ::= "local"
@@ -141,6 +142,7 @@ class RegistryCommand extends PkgCommand:
                         cli.Option "name"
                             --help="Name of the registry"
                             --required
+                            --completion=:: complete-registry-names it
                       ]
                     --run=:: (RegistryCommand.remove it).remove,
 
@@ -164,6 +166,7 @@ class RegistryCommand extends PkgCommand:
                         cli.Option "name"
                             --help="Name of the registry"
                             --required=false
+                            --completion=:: complete-registry-names it
                       ]
                     --run=:: (RegistryCommand.sync it).sync,
           ]

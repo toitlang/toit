@@ -26,6 +26,7 @@ import ..registry
 import ..utils
 
 import .base_
+import .completions_
 import .utils_
 
 class InstallCommand extends PkgProjectCommand:
@@ -233,7 +234,11 @@ class InstallCommand extends PkgProjectCommand:
                   """,
           ]
           --rest=[
-              cli.Option --multi REST
+              // An OptionPath, so that the shell falls back to file completion
+              // when no package matches (for example for '--local' paths).
+              cli.OptionPath --multi REST
+                  --type="package|path"
+                  --completion=:: complete-packages it --skip-if-flag=LOCAL
           ]
           --options=[
               cli.Flag LOCAL

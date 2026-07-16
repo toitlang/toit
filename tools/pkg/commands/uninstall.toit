@@ -21,6 +21,7 @@ import ..pkg
 import ..project
 
 import .base_
+import .completions_
 import .utils_
 
 class UninstallCommand extends PkgProjectCommand:
@@ -45,6 +46,7 @@ class UninstallCommand extends PkgProjectCommand:
               cli.Option NAME
                   --help="The name of the package to uninstall."
                   --required
+                  --completion=:: complete-dependency-prefixes it --project-root-option=OPTION-PROJECT-ROOT
           ]
           --run=:: (UninstallCommand it).execute
 

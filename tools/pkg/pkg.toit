@@ -29,8 +29,6 @@ import .commands.list
 import .commands.search
 import .commands.describe
 
-// TODO(florian): implement completion in the cli package
-
 build-command -> Command:
   return Command "pkg"
       --help="The Toit package manager"
@@ -52,7 +50,8 @@ build-command -> Command:
               --help="Automatically synchronize registries."
               --default=true,
 
-          Option OPTION-PROJECT-ROOT
+          OptionPath OPTION-PROJECT-ROOT
+              --directory
               --help="Specify the project root.",
 
           Option OPTION-SDK-VERSION
