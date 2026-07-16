@@ -45,6 +45,54 @@
 > validation window is silently half a slot. Benign only because entry
 > points sit near the slot start. Fix with the base bump; do not fix alone.
 
+## 0. DECIDED design (2026-07-16, Florian) — supersedes the options below
+
+The brainstorm sections are kept for reasoning; the decided shape is:
+
+1. **Firmware and partition table are independent artifacts.** One published
+   envelope works with any compatible table — users choose layouts (more
+   program vs more data) at provision time. This is real on the EC618
+   because the envelope carries the canonical VM image + SRL3 relocation
+   table: the writer retargets it to whatever slot addresses the table
+   declares (the same machinery every OTA uses). Compatibility at write
+   time = base-id match (exists) + image-fits-declared-slot (trivial).
+2. **The table lives in the slot-marker A/B record** — record v2 =
+   { seq, crc, ota-state, table[] }. Boot state and layout are one atomic,
+   power-fail-safe unit, flipped together: rollback restores layout AND
+   image. (ESP-IDF-like table, but A/B and co-committed — their single
+   fixed table region cannot do either.)
+3. **Anchor directly after the base image.** Base ends below 0x990000
+   (frozen ABI), base-id page at 0x990000; the marker+table moves to
+   0x991000..0x993000 at the next base bump. The old post-slot-B location
+   existed for base-image flexibility that the frozen-base contract
+   retired. Everything ABOVE the anchor is table-described (slots,
+   registry, user data, free) up to the vendor NVRAM band at 0xBDC000;
+   everything below/around is fixed vendor/base territory, included in
+   the table as locked entries for tooling visibility.
+4. **Defaults + provisioning:** the base embeds a default table (today's
+   layout); an empty/corrupt record at the anchor → write the default.
+   Custom layout = a table JSON given to the envelope->binpkg/flash step
+   (Toit tooling), which relocates the canonical image to the declared
+   slot A and emits the marker sectors.
+5. **Entry format: SIMPLE** (Florian: do not duplicate the complicated
+   ESP32 table). A YAML source file (name, offset, size, type — nothing
+   more; a handful of types: locked / base / base-id / marker / slot /
+   data / free) and a correspondingly minimal packed record. Details of
+   the binary layout are finalized with the marker-v2 work at the bump.
+6. **OTA resize: later.** The record flip already gives the atomic
+   swap; until a power-fail-safe data-migration journal exists, the
+   writer REFUSES table changes that move or shrink a non-empty data
+   partition. The registry is movable-in-principle behind that guard.
+   **Acceptance test for the bump (Florian):** the slots themselves must
+   demonstrably MOVE — flash a table with shifted ota-a/ota-b addresses
+   and boot from them (nothing precious lives in the data partitions
+   yet, so this is safe to exercise for real).
+7. **Phasing by reflash cost:** descriptor + generator + host tooling +
+   slot-side consumers (primitives, flash registry, Toit accessor) land
+   now via OTA against the CURRENT layout (byte-identity validated);
+   dispatcher, guard, marker v2 + anchor move, LFS reclaim and the
+   toit_main.c 384KB-drift fix land together in the base-v2 bump.
+
 Throughout, "partition" is used loosely for the hardcoded flash regions the
 EC618 image carves out today. It is not (yet) a real partition table; that is
 what this document is about building.

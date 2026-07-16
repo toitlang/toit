@@ -32,6 +32,7 @@ extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
   #include "slot_marker.h"
+  #include "toit_partitions.h"  // Generated from toolchains/ec618/partitions.yaml.
   #include "reset.h"  // ResetStateGet / LastResetState_e.
   #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
 
@@ -81,8 +82,8 @@ static_assert(FLASH_SECTOR_SIZE % FLASH_SEGMENT_SIZE == 0,
 
 // XIP address of the base-id record: { 'T','B','I','1', version:u32 LE,
 // fingerprint:16 } — stamped by tools/ec618/gen-base-id.toit into the
-// reserved page. Mirrors TOIT_BASE_ID_ORIGIN in the linker template.
-static const uintptr_t BASE_ID_XIP = 0x00990000;
+// `base-id` partition (toolchains/ec618/partitions.yaml).
+static const uintptr_t BASE_ID_XIP = TOIT_PART_BASE_ID_XIP;
 
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
@@ -105,7 +106,7 @@ PRIMITIVE(print_uart_id) {
 // Size of one VM slot, mirrored from the linker script. Bounds-checked
 // here so a buggy Toit caller can't run off the end of slot B into the
 // marker region (or further into the extension data).
-static const uint32_t SLOT_SIZE = 0xC0000;  // 768 KB; mirrors TOIT_VM_SLOT_SIZE.
+static const uint32_t SLOT_SIZE = TOIT_PART_SLOT_SIZE;  // From partitions.yaml.
 
 // Returns the VM slot the runtime is currently executing from — 'A' or 'B'
 // as ASCII bytes. This is the slot the dispatcher booted, which during a

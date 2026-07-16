@@ -22,14 +22,16 @@
 extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
+  #include "toit_partitions.h"  // Generated from toolchains/ec618/partitions.yaml.
 }
 
 namespace toit {
 
-// The flash registry uses the FDB region (0x3CC000–0x3DC000, 64KB) which
-// is outside the AP image area and not protected by sysROSpaceCheck.
-static const uint32_t FLASH_REGISTRY_PHYSICAL_OFFSET = 0x003CC000;
-static const int FLASH_REGISTRY_SIZE = 64 * 1024;  // 64KB.
+// The flash registry uses the FDB region (the `registry` partition —
+// toolchains/ec618/partitions.yaml), which is outside the AP image area
+// and not protected by sysROSpaceCheck.
+static const uint32_t FLASH_REGISTRY_PHYSICAL_OFFSET = TOIT_PART_REGISTRY_OFFSET;
+static const int FLASH_REGISTRY_SIZE = TOIT_PART_REGISTRY_SIZE;
 
 uint8* FlashRegistry::allocations_memory_ = null;
 
