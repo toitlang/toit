@@ -17,8 +17,8 @@
 EC618 dual-slot OTA helpers with esp-idf-style trial boot + rollback.
 
 The EC618 AP image carries two VM slots — `.vm_a` and `.vm_b`, each
-$SLOT-SIZE bytes at fixed XIP addresses. A power-fail-safe record (`.slot_marker`,
-two flash sectors) tracks which slot is the known-good one and which, if
+$SLOT-SIZE bytes at fixed XIP addresses. A power-fail-safe record (the anchor record,
+two flash sectors directly after the base image) tracks which slot is the known-good one and which, if
 any, is on trial. The PLAT dispatcher in `toit_main.c` reads it on every
 boot.
 
@@ -68,7 +68,7 @@ slot-size_ -> int:
 /**
 Returns the slot the runtime is currently executing from ($SLOT-A or
 $SLOT-B). During a trial this is the slot under test, not necessarily
-the known-good one recorded in `.slot_marker`.
+the known-good one recorded in the anchor record.
 */
 active -> int:
   #primitive.ec618.slot-active

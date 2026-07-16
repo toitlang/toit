@@ -3,8 +3,8 @@
 // Entry point and slot dispatcher for the Toit runtime on EC618.
 //
 // This is the EC618 analogue of esp-idf's bootloader rollback logic. It
-// reads the power-fail-safe active-slot record (.slot_marker, two sectors,
-// see slot_marker.c), decides which VM slot to boot, and implements the
+// reads the power-fail-safe active-slot record (.toit_anchor, two sectors,
+// see anchor.c), decides which VM slot to boot, and implements the
 // trial/rollback state machine:
 //
 //   - No trial pending  -> boot the known-good `active` slot.
@@ -23,7 +23,9 @@
 // (.vm_entry); the dispatcher tail-calls through it, which is what makes
 // dual-linked A/B slots work without a fixed-offset entry symbol.
 
+#include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include "common_api.h"
 // TODO(toit): drop the LuatOS `luat_*` interface layer from the EC618 glue.
 // The Toit VM resources (gpio/i2c/uart/adc/...) bind the PLAT driver/HAL
@@ -32,18 +34,20 @@
 // jump-table entries (luat_rtos_task_*, luat_uart_*, luat_mobile_config).
 // Replace luat_rtos_task_* with the FreeRTOS task API directly.
 #include "luat_rtos.h"
-#include "slot_marker.h"
+#include "mem_map.h"    // AP_FLASH_XIP_ADDR.
+#include "anchor.h"
 
 // From the SDK FOTA layer: opens the protected AP-image region for
-// program/erase. Required around any marker write (the marker lives in
+// program/erase. Required around any anchor write (the anchor lives in
 // that region). Non-nested enable -> write -> disable, like the SDK FOTA.
 extern void fotaNvmNfsPeInit(unsigned char isSmall);
 
-// Anchors the .slot_marker output section so it is emitted as real bytes
+// Pins the .toit_anchor output section so it is emitted as real bytes
 // (the linker reserves both sectors after it). Fresh/erased contents read
-// as "no valid record", which slot_marker_read resolves to slot A.
-__attribute__((section(".slot_marker"), used))
-const uint8_t toit_slot_marker_anchor = 0xff;
+// as "no valid record": provisioning writes the real record; without one
+// the device refuses to boot (load_boot_table).
+__attribute__((section(".toit_anchor"), used))
+const uint8_t toit_anchor_section_byte = 0xff;
 
 // The slot the dispatcher actually booted ('A'/'B'). RAM global, set once
 // below before the VM runs. The VM primitives read this as "the slot I am
@@ -51,21 +55,34 @@ const uint8_t toit_slot_marker_anchor = 0xff;
 // slot, not the record's `active`, so the raw record is not authoritative.
 uint8_t toit_booted_slot = 'A';
 
-// Linker-script symbols marking the slot base addresses. Declared as
-// arrays so referring to them yields their address (the slot's first
-// flash word), not the bytes at that address.
-extern uint32_t __vm_a_start[];
-extern uint32_t __vm_b_start[];
-
-#define TOIT_VM_SLOT_SIZE 0x60000u
-
 typedef void (*toit_start_fn)(void);
 
 static luat_rtos_task_handle toit_task_handle;
 
-// Returns the base of slot `slot` ('A'/'B').
+// The ACTIVE partition table, read from the anchor record once at boot.
+// The dispatcher boots from ITS slot entries — this is what makes the
+// layout follow the record instead of the link: the first `slot` entry
+// is 'A', the second is 'B'. There is NO compiled-in fallback: the record
+// is written at provisioning time, and a device without a valid one
+// cannot boot (see load_boot_table).
+static partition_entry boot_table[ANCHOR_MAX_ENTRIES];
+static int boot_table_count;
+
+// Returns the table entry of slot `slot` ('A'/'B'), or NULL if the table
+// does not carry two slot entries.
+static const partition_entry* slot_entry(uint8_t slot) {
+  int seen = 0;
+  for (int i = 0; i < boot_table_count; i++) {
+    if (boot_table[i].type != PARTITION_TYPE_SLOT) continue;
+    if (seen == (slot == 'B' ? 1 : 0)) return &boot_table[i];
+    seen++;
+  }
+  return NULL;
+}
+
+// Returns the XIP base of slot `slot` ('A'/'B') per the active table.
 static const uint32_t* slot_base(uint8_t slot) {
-  return (slot == 'B') ? __vm_b_start : __vm_a_start;
+  return (const uint32_t*)(uintptr_t)(slot_entry(slot)->offset + AP_FLASH_XIP_ADDR);
 }
 
 // Sanity-checks that slot `slot` holds a plausible image: its first word
@@ -76,14 +93,29 @@ static bool slot_entry_ok(uint8_t slot) {
   const uint32_t* base = slot_base(slot);
   uint32_t entry = base[0];
   uint32_t lo = (uint32_t)(uintptr_t)base;
-  return (entry & 1u) && entry >= lo && entry < lo + TOIT_VM_SLOT_SIZE;
+  return (entry & 1u) && entry >= lo && entry < lo + slot_entry(slot)->size;
 }
 
-// Persists a marker transition, bracketed by program/erase mode (the
-// marker is in the protected AP image). Returns slot_marker_write's result.
+// Loads the active table. A device whose anchor record is missing,
+// corrupt, or has no two bootable slots CANNOT boot — halt loudly
+// (periodic print so a console shows why) instead of jumping into
+// garbage. Reaching this state means provisioning never ran or the
+// anchor sectors were destroyed; the ping-ponged record makes power
+// loss unable to cause it.
+static void load_boot_table(void) {
+  boot_table_count = anchor_table(boot_table, ANCHOR_MAX_ENTRIES);
+  while (boot_table_count == 0 || slot_entry('A') == NULL || slot_entry('B') == NULL) {
+    printf("[toit] ERROR: no valid partition table at the anchor — cannot boot. "
+           "Reflash the device (provisioning writes the table).\n");
+    luat_rtos_task_sleep(5000);
+  }
+}
+
+// Persists an anchor transition, bracketed by program/erase mode (the
+// marker is in the protected AP image). Returns anchor_write's result.
 static bool dispatcher_commit(uint8_t active, uint8_t pending, uint8_t state) {
   fotaNvmNfsPeInit(1);
-  bool ok = slot_marker_write(active, pending, state);
+  bool ok = anchor_write(active, pending, state);
   fotaNvmNfsPeInit(0);
   return ok;
 }
@@ -91,7 +123,7 @@ static bool dispatcher_commit(uint8_t active, uint8_t pending, uint8_t state) {
 // Runs the trial/rollback state machine and returns the slot to boot.
 static uint8_t choose_boot_slot(void) {
   slot_record rec;
-  slot_marker_read(&rec);
+  anchor_read(&rec);
 
   if (rec.pending != 0) {
     if (rec.state == SLOT_STATE_NEW) {
@@ -119,6 +151,7 @@ static uint8_t choose_boot_slot(void) {
 }
 
 static void toit_task(void *param) {
+  load_boot_table();
   uint8_t slot = choose_boot_slot();
 
   // Refuse to jump into a slot whose entry pointer looks broken; prefer the

@@ -31,8 +31,7 @@
 extern "C" {
   #include "flash_rt.h"
   #include "mem_map.h"
-  #include "slot_marker.h"
-  #include "toit_partitions.h"  // Generated from toolchains/ec618/partitions.yaml.
+  #include "anchor.h"
   #include "reset.h"  // ResetStateGet / LastResetState_e.
   #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
 
@@ -61,10 +60,10 @@ extern "C" {
   extern uint32_t toit_ap_image_modify_start;
   extern uint32_t toit_ap_image_modify_end;
 
-  // Linker-script symbols bracketing each VM slot. Declared as arrays so
-  // referring to them gives their address.
-  extern uint8_t __vm_a_start[];
-  extern uint8_t __vm_b_start[];
+  // Base linker-script symbol: the base-id record page (frozen contract,
+  // resolved per base via --just-symbols). Declared as an array so
+  // referring to it gives its address.
+  extern uint8_t __toit_base_id_start[];
 
   // The slot the dispatcher (toit_main.c) actually booted ('A'/'B') — set
   // before the VM runs. This, not the raw marker, is "the slot I run from".
@@ -82,8 +81,10 @@ static_assert(FLASH_SECTOR_SIZE % FLASH_SEGMENT_SIZE == 0,
 
 // XIP address of the base-id record: { 'T','B','I','1', version:u32 LE,
 // fingerprint:16 } — stamped by tools/ec618/gen-base-id.toit into the
-// `base-id` partition (toolchains/ec618/partitions.yaml).
-static const uintptr_t BASE_ID_XIP = TOIT_PART_BASE_ID_XIP;
+// base-id page directly after the base image.
+static uintptr_t base_id_xip() {
+  return reinterpret_cast<uintptr_t>(__toit_base_id_start);
+}
 
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
@@ -99,27 +100,59 @@ PRIMITIVE(print_uart_id) {
 }
 
 // Dual-slot OTA primitives. The current build dispatches between
-// .vm_a (slot A) and .vm_b (slot B) based on .slot_marker; these
+// .vm_a (slot A) and .vm_b (slot B) based on .toit_anchor; these
 // primitives let a Toit container receive a new VM image, write it
 // into whichever slot isn't currently active, and atomically switch.
 
-// Size of one VM slot, mirrored from the linker script. Bounds-checked
-// here so a buggy Toit caller can't run off the end of slot B into the
-// marker region (or further into the extension data).
-static const uint32_t SLOT_SIZE = TOIT_PART_SLOT_SIZE;  // From partitions.yaml.
+// The ACTIVE partition table, read from the anchor record on first use.
+// The dispatcher refuses to boot without a valid table, so the zero-count
+// case cannot happen in practice; it just makes every geometry lookup
+// (and with it every bounds check) fail closed.
+static partition_entry vm_table[ANCHOR_MAX_ENTRIES];
+static int vm_table_count = -1;
+
+// Returns the table entry of slot `slot` ('A'/'B' = first/second `slot`
+// entry), or null. Idempotent-fill: a racing first call writes identical
+// data, and the count is published after the entries.
+static const partition_entry* slot_entry(uint8_t slot) {
+  if (vm_table_count < 0) {
+    int count = anchor_table(vm_table, ANCHOR_MAX_ENTRIES);
+    vm_table_count = count;  // Published after the entries.
+  }
+  int seen = 0;
+  for (int i = 0; i < vm_table_count; i++) {
+    if (vm_table[i].type != PARTITION_TYPE_SLOT) continue;
+    if (seen == (slot == 'B' ? 1 : 0)) return &vm_table[i];
+    seen++;
+  }
+  return null;
+}
+
+// XIP base address of slot `slot` per the active table.
+static uint32_t slot_base_xip(uint8_t slot) {
+  const partition_entry* entry = slot_entry(slot);
+  return entry ? (entry->offset + AP_FLASH_XIP_ADDR) : 0;
+}
+
+// Size of one VM slot per the active table (both slots share one size).
+// Every erase/write below is bounds-checked against it so a buggy Toit
+// caller can't run off the end of a slot into neighboring regions.
+static uint32_t slot_size() {
+  const partition_entry* entry = slot_entry('A');
+  return entry ? entry->size : 0;
+}
 
 // Returns the VM slot the runtime is currently executing from — 'A' or 'B'
 // as ASCII bytes. This is the slot the dispatcher booted, which during a
-// trial is the pending slot (not the marker's known-good `active`).
+// trial is the pending slot (not the record's known-good `active`).
 PRIMITIVE(slot_active) {
   return Smi::from(toit_booted_slot);
 }
 
-// Returns the slot size of the layout this firmware was built for, so the
-// Toit side never carries its own copy of the geometry. Once the active
-// table lives in the marker record (v2), this reads that instead.
+// Returns the slot size of the ACTIVE layout (the anchor record's table),
+// so the Toit side never carries its own copy of the geometry.
 PRIMITIVE(slot_size) {
-  return Smi::from(SLOT_SIZE);
+  return Smi::from(slot_size());
 }
 
 // The slot that is NOT the one we are running from (the OTA target).
@@ -130,16 +163,12 @@ static uint8_t inactive_slot() {
 // Returns the XIP base address of the inactive slot — where
 // slot_inactive_write deposits new bytes.
 static uint32_t inactive_slot_base() {
-  if (inactive_slot() == 'A') {
-    return reinterpret_cast<uint32_t>(__vm_a_start);
-  }
-  return reinterpret_cast<uint32_t>(__vm_b_start);
+  return slot_base_xip(inactive_slot());
 }
 
 // Returns the XIP base address of the slot the runtime booted from.
 static uint32_t active_slot_base() {
-  return (toit_booted_slot == 'B') ? reinterpret_cast<uint32_t>(__vm_b_start)
-                                   : reinterpret_cast<uint32_t>(__vm_a_start);
+  return slot_base_xip(toit_booted_slot);
 }
 
 // Active-slot canonical firmware view (convergence #3 read path). firmware.map
@@ -157,7 +186,7 @@ static SlotFirmware g_active_firmware;
 uint32_t ec618_active_firmware_open(uint8_t** base_out) {
   uint32_t base = active_slot_base();
   *base_out = reinterpret_cast<uint8_t*>(base);
-  if (!g_active_firmware.open(reinterpret_cast<const uint8_t*>(base), base, SLOT_SIZE)) {
+  if (!g_active_firmware.open(reinterpret_cast<const uint8_t*>(base), base, slot_size())) {
     return 0;
   }
   return g_active_firmware.canonical_size();
@@ -180,8 +209,8 @@ bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
 // slot_inactive_write relocates each chunk onto the destination slot before
 // the flash write — so the relocation is invisible to the (architecture-
 // agnostic) Toit firmware code. `slot_reloc_delta = dest_slot_base - link_base`
-// is 0 when the canonical image lands in slot A (no work) and +/- SLOT_SIZE
-// for slot B.
+// is 0 when the canonical image lands at its link home and the slot
+// displacement otherwise.
 static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL2 table bytes.
 static SlotRelocTable slot_reloc_table;
 static int32_t slot_reloc_delta = 0;
@@ -230,7 +259,7 @@ PRIMITIVE(slot_reloc_begin) {
   // flashed base does not have, an undebuggable fault. The device's own
   // record is stamped by gen-base-id.toit into the reserved flash page.
   {
-    const uint8_t* record = reinterpret_cast<const uint8_t*>(BASE_ID_XIP);
+    const uint8_t* record = reinterpret_cast<const uint8_t*>(base_id_xip());
     bool device_ok = record[0] == 'T' && record[1] == 'B' &&
                      record[2] == 'I' && record[3] == '1';
     uint32_t device_version = device_ok
@@ -260,9 +289,9 @@ PRIMITIVE(slot_reloc_begin) {
   // trailer that this call writes.
   const uint32_t block_size = (static_cast<uint32_t>(length) + 4 +
                                FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
-  if (block_size > SLOT_SIZE) { free(copy); FAIL(OUT_OF_BOUNDS); }
+  if (block_size > slot_size()) { free(copy); FAIL(OUT_OF_BOUNDS); }
   const uint32_t trailer_first_sector =
-      (SLOT_SIZE - block_size) & ~(FLASH_SECTOR_SIZE - 1);
+      (slot_size() - block_size) & ~(FLASH_SECTOR_SIZE - 1);
   // The populated front is body + extension (body_size) PLUS the verbatim VM
   // .data init image that rides after it (data_size) — both are streamed
   // front-to-back with a lazy per-sector erase, so the whole front must clear
@@ -285,15 +314,15 @@ PRIMITIVE(slot_reloc_begin) {
   uint32_t saved_start = toit_ap_image_modify_start;
   uint32_t saved_end = toit_ap_image_modify_end;
   toit_ap_image_modify_start = base_phys;
-  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+  toit_ap_image_modify_end = base_phys + slot_size();
   // Erase the trailer's sectors, then write the block into them.
   int rc = QSPI_OK;
-  for (uint32_t s = trailer_first_sector; s < SLOT_SIZE; s += FLASH_SECTOR_SIZE) {
+  for (uint32_t s = trailer_first_sector; s < slot_size(); s += FLASH_SECTOR_SIZE) {
     rc = BSP_QSPI_Erase_Safe(base_phys + s, FLASH_SECTOR_SIZE);
     if (rc != QSPI_OK) break;
   }
   if (rc == QSPI_OK) {
-    rc = BSP_QSPI_Write_Safe(block, base_phys + SLOT_SIZE - block_size, block_size);
+    rc = BSP_QSPI_Write_Safe(block, base_phys + slot_size() - block_size, block_size);
   }
   toit_ap_image_modify_start = saved_start;
   toit_ap_image_modify_end = saved_end;
@@ -325,7 +354,7 @@ PRIMITIVE(slot_inactive_erase) {
   PRIVILEGED;  // The OTA writer runs in the system (firmware service) process.
   ARGS(int, offset);
   if (offset < 0 || (offset % FLASH_SECTOR_SIZE) != 0) FAIL(INVALID_ARGUMENT);
-  if (static_cast<uint32_t>(offset) >= SLOT_SIZE) FAIL(OUT_OF_BOUNDS);
+  if (static_cast<uint32_t>(offset) >= slot_size()) FAIL(OUT_OF_BOUNDS);
 
   const uint32_t base_xip = inactive_slot_base();
   const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
@@ -334,7 +363,7 @@ PRIMITIVE(slot_inactive_erase) {
   uint32_t saved_start = toit_ap_image_modify_start;
   uint32_t saved_end = toit_ap_image_modify_end;
   toit_ap_image_modify_start = base_phys;
-  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+  toit_ap_image_modify_end = base_phys + slot_size();
 
   int rc = BSP_QSPI_Erase_Safe(dest, FLASH_SECTOR_SIZE);
 
@@ -351,7 +380,7 @@ PRIMITIVE(slot_inactive_erase) {
 
 // Write `bytes` to the inactive slot at `offset`. Caller is responsible
 // for `slot_inactive_erase` first and for keeping offset + length within
-// SLOT_SIZE. Length must be a multiple of FLASH_SEGMENT_SIZE (16 B) —
+// slot_size(). Length must be a multiple of FLASH_SEGMENT_SIZE (16 B) —
 // BSP_QSPI_Write_Safe requires segment-aligned writes.
 PRIMITIVE(slot_inactive_write) {
   PRIVILEGED;
@@ -361,7 +390,7 @@ PRIMITIVE(slot_inactive_write) {
   if (bytes.length() % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
   const uint32_t off = static_cast<uint32_t>(offset);
   if (off % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
-  if (off > SLOT_SIZE || bytes.length() > SLOT_SIZE - off) FAIL(OUT_OF_BOUNDS);
+  if (off > slot_size() || bytes.length() > slot_size() - off) FAIL(OUT_OF_BOUNDS);
 
   const uint32_t base_xip = inactive_slot_base();
   const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
@@ -390,7 +419,7 @@ PRIMITIVE(slot_inactive_write) {
   uint32_t saved_start = toit_ap_image_modify_start;
   uint32_t saved_end = toit_ap_image_modify_end;
   toit_ap_image_modify_start = base_phys;
-  toit_ap_image_modify_end = base_phys + SLOT_SIZE;
+  toit_ap_image_modify_end = base_phys + slot_size();
 
   // BSP_QSPI_Write_Safe disables XIP for the duration of the call. The
   // source must live in RAM — both Blob::address() (a process-heap pointer)
@@ -432,7 +461,7 @@ PRIMITIVE(slot_inactive_write) {
 // flash primitives above). Returns only if the marker write fails.
 PRIMITIVE(slot_stage_and_reset) {
   PRIVILEGED;
-  if (!slot_marker_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+  if (!anchor_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
     printf("[toit] ERROR: slot stage (marker write) failed\n");
     FAIL(QUOTA_EXCEEDED);
   }
@@ -446,7 +475,7 @@ PRIMITIVE(slot_stage_and_reset) {
 // slot_stage_and_reset, minus the reset. Returns normally.
 PRIMITIVE(slot_stage) {
   PRIVILEGED;
-  if (!slot_marker_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+  if (!anchor_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
     printf("[toit] ERROR: slot stage (marker write) failed\n");
     FAIL(QUOTA_EXCEEDED);
   }
@@ -461,7 +490,7 @@ PRIMITIVE(slot_stage) {
 PRIMITIVE(slot_mark_valid) {
   PRIVILEGED;
   fotaNvmNfsPeInit(1);
-  bool ok = slot_marker_write(toit_booted_slot, 0, SLOT_STATE_NONE);
+  bool ok = anchor_write(toit_booted_slot, 0, SLOT_STATE_NONE);
   fotaNvmNfsPeInit(0);
   if (!ok) {
     printf("[toit] ERROR: slot validate (marker write) failed\n");
@@ -478,14 +507,14 @@ PRIMITIVE(slot_mark_valid) {
 PRIMITIVE(slot_mark_invalid_and_reset) {
   PRIVILEGED;
   slot_record rec;
-  slot_marker_read(&rec);
+  anchor_read(&rec);
   // If we are the pending trial, fall back to the record's active; otherwise
   // (already the active slot) there is nothing to roll back to but the
   // other slot, so target it.
   uint8_t fallback = (rec.pending == toit_booted_slot) ? rec.active : inactive_slot();
 
   fotaNvmNfsPeInit(1);
-  bool ok = slot_marker_write(fallback, 0, SLOT_STATE_NONE);
+  bool ok = anchor_write(fallback, 0, SLOT_STATE_NONE);
   fotaNvmNfsPeInit(0);
   if (!ok) {
     printf("[toit] ERROR: slot invalidate (marker write) failed\n");
@@ -502,7 +531,7 @@ PRIMITIVE(slot_mark_invalid_and_reset) {
 // the next reset).
 PRIMITIVE(slot_trial) {
   slot_record rec;
-  slot_marker_read(&rec);
+  anchor_read(&rec);
   bool trial = (rec.pending != 0) && (rec.pending == toit_booted_slot);
   return BOOL(trial);
 }
@@ -616,7 +645,7 @@ PRIMITIVE(wakeup_arm_flags) {
 // base). Slot OTAs are accepted only when the incoming image's SRL3 table
 // matches this id (see slot_reloc_begin).
 PRIMITIVE(base_id) {
-  const uint8_t* record = reinterpret_cast<const uint8_t*>(BASE_ID_XIP);
+  const uint8_t* record = reinterpret_cast<const uint8_t*>(base_id_xip());
   if (!(record[0] == 'T' && record[1] == 'B' &&
         record[2] == 'I' && record[3] == '1')) {
     return process->allocate_string_or_error("base-unknown");

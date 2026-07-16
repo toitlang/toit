@@ -20,18 +20,33 @@
 #include "flash_registry.h"
 
 extern "C" {
+  #include "anchor.h"
   #include "flash_rt.h"
   #include "mem_map.h"
-  #include "toit_partitions.h"  // Generated from toolchains/ec618/partitions.yaml.
 }
 
 namespace toit {
 
-// The flash registry uses the FDB region (the `registry` partition —
-// toolchains/ec618/partitions.yaml), which is outside the AP image area
-// and not protected by sysROSpaceCheck.
-static const uint32_t FLASH_REGISTRY_PHYSICAL_OFFSET = TOIT_PART_REGISTRY_OFFSET;
-static const int FLASH_REGISTRY_SIZE = TOIT_PART_REGISTRY_SIZE;
+// The flash registry lives in the `registry` partition of the ACTIVE
+// table (the anchor record) — historically the SDK's FDB region, which is
+// outside the AP image area and not protected by sysROSpaceCheck. Located
+// at runtime in set_up(); the zero fallback cannot happen in practice
+// (the dispatcher refuses to boot without a valid table) and just makes
+// every operation fail closed.
+static uint32_t registry_offset = 0;
+static int registry_size = 0;
+
+static void locate_registry() {
+  partition_entry table[ANCHOR_MAX_ENTRIES];
+  int count = anchor_table(table, ANCHOR_MAX_ENTRIES);
+  for (int i = 0; i < count; i++) {
+    if (table[i].type == PARTITION_TYPE_DATA && strncmp(table[i].name, "registry", sizeof(table[i].name)) == 0) {
+      registry_offset = table[i].offset;
+      registry_size = table[i].size;
+      return;
+    }
+  }
+}
 
 uint8* FlashRegistry::allocations_memory_ = null;
 
@@ -52,7 +67,7 @@ static bool ensure_erased(word offset, word size) {
         dirty_to += FLASH_PAGE_SIZE;
       }
       // Erase dirty range: [cursor, dirty_to).
-      uint32_t addr = FLASH_REGISTRY_PHYSICAL_OFFSET + cursor;
+      uint32_t addr = registry_offset + cursor;
       if (BSP_QSPI_Erase_Safe(addr, dirty_to - cursor) != QSPI_OK) {
         return false;
       }
@@ -64,8 +79,9 @@ static bool ensure_erased(word offset, word size) {
 
 void FlashRegistry::set_up() {
   ASSERT(allocations_memory() == null);
+  locate_registry();
   // The flash region is accessible via XIP (execute-in-place).
-  allocations_memory_ = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + FLASH_REGISTRY_PHYSICAL_OFFSET);
+  allocations_memory_ = reinterpret_cast<uint8*>(AP_FLASH_XIP_ADDR + registry_offset);
 }
 
 void FlashRegistry::tear_down() {
@@ -77,7 +93,7 @@ void FlashRegistry::flush() {
 }
 
 int FlashRegistry::allocations_size() {
-  return FLASH_REGISTRY_SIZE;
+  return registry_size;
 }
 
 int FlashRegistry::erase_chunk(word offset, word size) {
@@ -90,7 +106,7 @@ int FlashRegistry::erase_chunk(word offset, word size) {
 }
 
 bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
-  uint32_t addr = FLASH_REGISTRY_PHYSICAL_OFFSET + offset;
+  uint32_t addr = registry_offset + offset;
   // BSP_QSPI_Write_Safe disables XIP during the write, so the source
   // buffer must be in RAM (not flash). Copy to a stack/heap buffer first.
   uint8_t small_buf[256];
@@ -106,7 +122,7 @@ bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
 }
 
 bool FlashRegistry::erase_flash_registry() {
-  return BSP_QSPI_Erase_Safe(FLASH_REGISTRY_PHYSICAL_OFFSET, FLASH_REGISTRY_SIZE) == QSPI_OK;
+  return BSP_QSPI_Erase_Safe(registry_offset, registry_size) == QSPI_OK;
 }
 
 }  // namespace toit

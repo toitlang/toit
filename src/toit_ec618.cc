@@ -104,7 +104,7 @@ extern "C" {
 #include "vm.h"
 #include "third_party/dartino/gc_metadata.h"
 
-#include "slot_marker.h"
+#include "anchor.h"
 #include "slot_reloc_ec618.h"
 
 namespace toit {
@@ -482,17 +482,17 @@ static void start() {
     // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
     // and asks to reboot into it through firmware.upgrade, which exits the VM via
     // deep sleep. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a
-    // slot (marker state NEW — the analogue of ESP32's boot partition changing),
+    // slot (anchor state NEW — the analogue of ESP32's boot partition changing),
     // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
     // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
     // — before the VM destructor and OS::tear_down() — because EC618's external
     // handler teardown can block; a firmware-update reset needs no clean shutdown.
     {
-      slot_record marker;
-      slot_marker_read(&marker);
-      if (marker.state == SLOT_STATE_NEW) {
+      slot_record record;
+      anchor_read(&record);
+      if (record.state == SLOT_STATE_NEW) {
         printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
-               marker.pending);
+               record.pending);
         ec618_system_reset();  // Does not return.
       }
     }
