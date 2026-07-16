@@ -451,9 +451,15 @@ class UartWriter extends io.Writer:
   write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
     data-size := to - from
     while not is-closed_:
-      from += try-write data from to --break-length=break-length --flush=flush
+      written := try-write data from to --break-length=break-length --flush=flush
+      from += written
       if from >= to: return data-size
-      wait-for-more-room_
+      // Retry immediately as long as the port accepts bytes — it may
+      // have room for more than one chunk (e.g. a spare TX staging
+      // buffer that keeps the wire gapless across chunk seams). Only a
+      // zero-progress write means the pipeline is full and worth
+      // sleeping on.
+      if written == 0: wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
@@ -470,7 +476,12 @@ class UartWriter extends io.Writer:
   try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
     if is-closed_: throw "WRITER_CLOSED"
     result := port_.try-write_ data from to --break-length=break-length
-    if flush and (result > 0 or data.byte-size == 0): this.flush
+    // Flush only when everything requested was written: a partial write
+    // means the caller has more bytes coming, and draining the line
+    // between chunks would both serialize the TX pipeline and put a
+    // guaranteed gap on the wire (fatal when the UART drives protocols
+    // like LED strips that read an idle line as a latch).
+    if flush and result == to - from: this.flush
     return result
 
   try-write_ data/io.Data from/int to/int --break-length/int=0 -> int:
