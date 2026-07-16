@@ -71,10 +71,17 @@ struct CmsisRx {
   uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
   // TX staging: Send() is asynchronous in DMA mode and keeps reading the
   // buffer after the primitive returns, so the bytes are copied out of the
-  // (movable) Toit heap object first. `tx_busy` is set when a Send is in
-  // flight and cleared by the SEND_COMPLETE callback.
-  uint8_t* tx_buf;
+  // (movable) Toit heap object first. DOUBLE-buffered: while one buffer's
+  // Send is in flight the writer stages the next chunk into the other,
+  // and the SEND_COMPLETE IRQ chains it immediately — without this every
+  // staging-chunk boundary put a task-wake-roundtrip gap (~0.5 ms) on the
+  // wire (measured by uart2-gapfree; fatal for LED-strip streaming).
+  // `tx_busy` is set while a Send (or chain of Sends) is in flight and
+  // cleared by the SEND_COMPLETE callback once nothing is pending.
+  uint8_t* tx_bufs[2];
   uint32_t tx_buf_size;
+  volatile uint8_t tx_active;        // Buffer the current Send reads.
+  volatile uint32_t tx_pending_len;  // Bytes staged in the spare buffer (0 = none).
   volatile bool tx_busy;
   // Diagnostic counters (kept cheap; exposed to debugging sessions).
   uint32_t cb_events;       // Callback invocations.
@@ -107,6 +114,7 @@ struct UartState {
 };
 
 static UartState uart_states[3] = {};
+
 
 // Whether OUR code has run Initialize() on the controller (the boot-time
 // console init is handled separately in create).
@@ -241,10 +249,12 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
         kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
         state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
         irq_restore(mask);
-        // A DMA Send still in flight reads tx_buf: wait for it (bounded
-        // by the staging-buffer drain time) before freeing.
-        for (int spin = 0; rx->tx_busy && spin < 2000; spin++) osDelay(1);
-        free(rx->tx_buf);
+        // A DMA Send still in flight reads the staging buffers: wait for
+        // it (bounded by both buffers' drain time — a chain may still be
+        // running) before freeing.
+        for (int spin = 0; rx->tx_busy && spin < 4000; spin++) osDelay(1);
+        free(rx->tx_bufs[0]);
+        free(rx->tx_bufs[1]);
         free(rx->ring);
         free(rx);
       }
@@ -270,8 +280,10 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
       state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
       irq_restore(mask);
       // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
-      // so nothing references tx_buf (or chunk) past this point.
-      free(rx->tx_buf);
+      // so nothing references the staging buffers (or chunk) past this
+      // point.
+      free(rx->tx_bufs[0]);
+      free(rx->tx_bufs[1]);
       free(rx->ring);
       free(rx);
     }
@@ -400,20 +412,53 @@ static void cmsis_uart_event(int id, uint32_t event) {
     }
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
-    int de = uart_states[id].de_pad;
-    if (de >= 0) {
-      // RS485 direction: SEND_COMPLETE means the FIFO drained, but up to
-      // one frame can still sit in the shift register. Spin for TEMT —
-      // bounded by one frame time (~1 ms at 9600) and rare (RS485 only);
-      // bsp_usart.c never fires TX_COMPLETE, so this is the only place
-      // the DE line can drop with correct timing.
-      USART_TypeDef* reg = kUartRegs[id];
-      for (int spin = 0; spin < 2000000; spin++) {
-        if ((reg->LSR & USART_LSR_TX_EMPTY_Msk) != 0) break;
+    bool chained = false;
+    if (rx->tx_pending_len > 0) {
+      // Chain the staged next chunk right here in the IRQ: only the shift
+      // register is still draining, so a fast re-kick keeps the wire
+      // gapless (uart2-gapfree — a task-level re-stage costs ~0.5 ms of
+      // idle line per chunk boundary). bsp_usart clears send_active
+      // BEFORE invoking this callback, so the re-entrant Send is
+      // accepted. On the should-never-happen error path fall through to
+      // the idle handling so the writer wakes and can act, rather than
+      // waiting for a completion that will not come (the pending bytes
+      // are lost — like any hardware TX error).
+      rx->tx_active ^= 1;
+      uint32_t len = rx->tx_pending_len;
+      rx->tx_pending_len = 0;
+      uint8_t* buf = rx->tx_bufs[rx->tx_active];
+      // Pre-feed the FIFO from the CPU before arming the DMA: with the
+      // 8-byte TX trigger (tx_trigger_boost) the FIFO holds ~8 bytes at
+      // this point; 8 THR writes top it up to ~16 without tripping
+      // Send's FIFO-relax spin (> 16), and the DMA takes over well
+      // before that drains. Skipped for tiny chunks so the DMA remainder
+      // stays >= 2 (Send's num==1 path is lossy).
+      uint32_t prefeed = 0;
+      if (len > 10) {
+        prefeed = 8;
+        USART_TypeDef* reg = kUartRegs[id];
+        for (uint32_t i = 0; i < prefeed; i++) reg->THR = buf[i];
       }
-      set_de_level(de, 0);
+      chained = kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
     }
-    rx->tx_busy = false;
+    if (!chained) {
+      int de = uart_states[id].de_pad;
+      if (de >= 0) {
+        // RS485 direction: SEND_COMPLETE means the FIFO drained, but up to
+        // one frame can still sit in the shift register. Spin for TEMT —
+        // bounded by one frame time (~1 ms at 9600) and rare (RS485 only);
+        // bsp_usart.c never fires TX_COMPLETE, so this is the only place
+        // the DE line can drop with correct timing. (A chained Send keeps
+        // DE high — the message is not over.)
+        USART_TypeDef* reg = kUartRegs[id];
+        for (int spin = 0; spin < 2000000; spin++) {
+          if ((reg->LSR & USART_LSR_TX_EMPTY_Msk) != 0) break;
+        }
+        set_de_level(de, 0);
+      }
+      rx->tx_busy = false;
+    }
+    // Either way there is room now: idle, or the spare buffer just freed.
     send_uart_event(id, Event::UART_KIND_TX_DONE);
   }
   if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR | ARM_USART_EVENT_RX_PARITY_ERROR |
@@ -433,6 +478,20 @@ static void (* const kUartCallbacks[3])(uint32_t) = {
   cmsis_uart_event0, cmsis_uart_event1, cmsis_uart_event2,
 };
 
+// Raise the TX FIFO "empty" trigger from 0 to 8 bytes: SEND_COMPLETE then
+// fires with ~8 bytes still queued (8 byte-times of drain budget) instead
+// of with a bone-dry FIFO (1 byte-time), so the chained next chunk
+// splices in without the wire idling — the IRQ-latency jitter (4-10 us
+// measured at 921600) exceeded the drained-FIFO budget above ~460 kBd.
+// FCR is write-only: compose the full value (FIFO enable + the fork's
+// 8-byte RX trigger; DMA enable lives in MFCR, untouched). Re-applied
+// after every open and baud change (both rewrite FCR).
+static void tx_trigger_boost(int id) {
+  kUartRegs[id]->FCR = USART_FCR_FIFO_EN_Msk
+      | (1u << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos)   // 8-byte RX (fork default).
+      | (2u << USART_FCR_TX_FIFO_EMPTY_TRIG_LEVEL_Pos);  // 8-byte TX-empty.
+}
+
 // TX shift register + FIFO empty, read straight from the LSR (the driver
 // has no API for it).
 static bool tx_idle(int id) {
@@ -440,7 +499,8 @@ static bool tx_idle(int id) {
   if (rx == null) return true;
   // tx_busy covers the armed-but-not-yet-started DMA gap, where the
   // FIFO is still empty and TEMT alone would report idle too early.
-  if (rx->tx_busy) return false;
+  // (It stays true across chained Sends; the pending check is belt.)
+  if (rx->tx_busy || rx->tx_pending_len > 0) return false;
   return (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
 }
 
@@ -687,8 +747,10 @@ PRIMITIVE(create) {
     uint32_t tx_buf_size = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
     CmsisRx* rx = unvoid_cast<CmsisRx*>(calloc(1, sizeof(CmsisRx)));
     uint8_t* ring = rx ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
-    uint8_t* tx_buf = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
-    if (rx == null || ring == null || tx_buf == null) {
+    uint8_t* tx_buf0 = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
+    uint8_t* tx_buf1 = tx_buf0 ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
+    if (rx == null || ring == null || tx_buf0 == null || tx_buf1 == null) {
+      free(tx_buf0);
       free(ring);
       free(rx);
       delete resource;
@@ -696,7 +758,8 @@ PRIMITIVE(create) {
     }
     rx->ring = ring;
     rx->ring_size = ring_size;
-    rx->tx_buf = tx_buf;
+    rx->tx_bufs[0] = tx_buf0;
+    rx->tx_bufs[1] = tx_buf1;
     rx->tx_buf_size = tx_buf_size;
     rx->control = cmsis_control_word(data_bits, parity, stop_bits);
     uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
@@ -736,6 +799,11 @@ PRIMITIVE(create) {
     kUartRegs[id]->ADCR = 0;
     driver->Control(ARM_USART_CONTROL_TX, 1);
     driver->Control(ARM_USART_CONTROL_RX, 1);
+    // RS485 keeps the drained-FIFO SEND_COMPLETE semantics: its DE drop
+    // spins for TEMT from the completion callback, and the early trigger
+    // would put ~8 undrained frames under that spin (regressed the rs485
+    // test at 9600). Half-duplex messaging gains nothing from chaining.
+    if (de_pad < 0) tx_trigger_boost(id);
     // Masked: Receive() enables the RX irqs mid-call and can invoke the
     // event callback from THIS task context — an RX irq landing in that
     // window runs a second callback concurrently, and two ring pushes
@@ -797,11 +865,13 @@ PRIMITIVE(set_baud_rate) {
     driver->Control(rx->control, static_cast<uint32_t>(baud_rate));
     driver->Control(ARM_USART_CONTROL_TX, 1);
     driver->Control(ARM_USART_CONTROL_RX, 1);
+    if (uart_states[id].de_pad < 0) tx_trigger_boost(id);
     rx->seen = 0;
     // The power cycle killed any in-flight Send (a baud change loses
     // in-flight bytes by definition); without this the writer would wait
     // forever for a SEND_COMPLETE that can no longer fire.
     rx->tx_busy = false;
+    rx->tx_pending_len = 0;
     if (driver->Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
       rx->rearm_fails++;
     }
@@ -830,14 +900,28 @@ PRIMITIVE(write) {
   CmsisRx* rx = uart_states[id].cmsis_rx;
   if (rx == null) FAIL(ALREADY_CLOSED);
   {
-    // CMSIS path: UART2 TX is DMA_MODE (RTE_Device.h) — Send is
-    // ASYNCHRONOUS and keeps reading its buffer after this primitive
-    // returns, so the bytes are staged in tx_buf first (a Toit heap
-    // object can move under GC). One Send in flight at a time: while
-    // busy, accept nothing — the SEND_COMPLETE callback posts the TX
-    // event that makes the library retry the rest.
+    // CMSIS path: TX is DMA_MODE (RTE_Device.h) — Send is ASYNCHRONOUS
+    // and keeps reading its buffer after this primitive returns, so the
+    // bytes are staged in driver-owned buffers first (a Toit heap object
+    // can move under GC). While a Send is in flight, the next chunk is
+    // staged into the SPARE buffer for the completion IRQ to chain
+    // gaplessly; only with both buffers occupied does the writer wait
+    // for the TX event.
     if (rx->tx_busy) {
-      written = 0;
+      uint32_t mask = irq_save();
+      if (rx->tx_busy && rx->tx_pending_len == 0 && len > 1) {
+        // len == 1 stays on the SendPolling path below (via a retry once
+        // idle): a chained Send() of a single byte would hit the driver's
+        // lossy num==1 special case.
+        int chunk = len;
+        if (chunk > (int)rx->tx_buf_size) chunk = (int)rx->tx_buf_size;
+        memcpy(rx->tx_bufs[rx->tx_active ^ 1], data.address() + from, chunk);
+        rx->tx_pending_len = chunk;
+        written = chunk;
+      } else {
+        written = 0;
+      }
+      irq_restore(mask);
     } else if (len == 1) {
       // Send() special-cases num==1 (no DMA: IER |= TX_DATA_REQ + a direct
       // THR write) and that byte was observed to VANISH from the wire under
@@ -849,9 +933,9 @@ PRIMITIVE(write) {
     } else {
       int chunk = len;
       if (chunk > (int)rx->tx_buf_size) chunk = (int)rx->tx_buf_size;
-      memcpy(rx->tx_buf, data.address() + from, chunk);
+      memcpy(rx->tx_bufs[rx->tx_active], data.address() + from, chunk);
       rx->tx_busy = true;
-      int32_t status32 = kDrivers[id]->Send(rx->tx_buf, chunk);
+      int32_t status32 = kDrivers[id]->Send(rx->tx_bufs[rx->tx_active], chunk);
       if (status32 != ARM_DRIVER_OK) {
         rx->tx_busy = false;
         written = 0;
@@ -920,21 +1004,33 @@ PRIMITIVE(read) {
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, resource);
   int id = resource->uart_id();
-  if (tx_idle(id)) return BOOL(true);
-  // There is no reliable line-idle event to retry on: the blob's
-  // TX_ALL_DONE is best-effort (see uart_cb), so a plain non-blocking
-  // TEMT check left flush waiting for an event that never comes — at
-  // 9600 baud it hung forever (uart2-flush-ec618). Poll TEMT instead,
-  // bounded by the drain time of everything that can still be in flight
-  // (TX cache + FIFO) at the current baud. This blocks the VM like
-  // Uart_TxTaskSafe itself does; the planned CMSIS rewrite gets a real
-  // TX-idle interrupt. A concurrent writer can keep the line busy past
-  // the bound; then we return false and the caller waits for that
-  // writer's TX events.
-  uint32_t baud = uart_states[id].baud_rate;
-  uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
-  while (!tx_idle(id) && limit_ms-- > 0) osDelay(1);
-  return BOOL(tx_idle(id));
+  bool idle = tx_idle(id);
+  if (!idle) {
+    // There is no reliable line-idle event to retry on: the blob's
+    // TX_ALL_DONE is best-effort (see uart_cb), so a plain non-blocking
+    // TEMT check left flush waiting for an event that never comes — at
+    // 9600 baud it hung forever (uart2-flush-ec618). Poll TEMT instead,
+    // bounded by the drain time of everything that can still be in flight
+    // (TX cache + FIFO) at the current baud. This blocks the VM like
+    // Uart_TxTaskSafe itself does; the planned CMSIS rewrite gets a real
+    // TX-idle interrupt. A concurrent writer can keep the line busy past
+    // the bound; then we return false and the caller waits for that
+    // writer's TX events.
+    uint32_t baud = uart_states[id].baud_rate;
+    uint32_t limit_ms = (1024 + 64) * 10 * 1000 / baud + 50;
+    while (!tx_idle(id) && limit_ms-- > 0) osDelay(1);
+    idle = tx_idle(id);
+  }
+  // Contract hardening: a drained line means the TX path has room, but
+  // this driver's write state is EDGE-driven (set by SEND_COMPLETE,
+  // cleared by the library), unlike the ESP32's level-like state — so
+  // any code that flushes and THEN waits for write room would sleep on
+  // an idle pipeline forever. The library bug that actually did that
+  // (uart.toit `write --flush` used to flush per staged chunk; found by
+  // the gap-free-TX test's deadlock) is fixed, but the contract gap
+  // stays closed here: wait_tx returning true also signals the room.
+  if (idle) send_uart_event(id, Event::UART_KIND_TX_DONE);
+  return BOOL(idle);
 }
 
 PRIMITIVE(set_control_flags) {

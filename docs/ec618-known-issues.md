@@ -706,3 +706,31 @@ at the next `ec618.deep-sleep`; the wake is a reboot whose
 the level opposite the armed edge when the sleep starts (the SDK
 examples arm the falling edge with a pull-up, or the rising edge with a
 pull-down).
+
+## 13. TX chunk-splice gaps at 3 MBd — chained-DMA descriptors needed for full gap-free TX
+
+**Context.** The UART TX path is gap-free for LED-strip-style streaming
+(`uart2-gapfree-{ec618,esp32}` — the pulse-counter-behind-glitch-filter
+detector) after three layers of work: double-buffered TX staging with the
+next chunk CHAINED from the SEND_COMPLETE IRQ, an 8-byte TX FIFO trigger
+(SEND_COMPLETE fires with ~8 bytes still draining = 8 byte-times of splice
+budget instead of 1), and an 8-byte CPU pre-feed of the FIFO before the
+chained DMA arms. Measured: single-Send payloads are gap-free at any baud;
+multi-chunk bursts are gap-free at 115200 and 921600.
+
+**Open at 3 MBd:** every staging-chunk boundary (4 KiB) still shows a
+>=2.7 us line-idle splice (bracketed with detector filters; the 0x00-payload
+scheme cannot measure past 9 bit-times = 3 us there). The masked-IRQ path
+(USART ISR + callback + Send/DMA setup) exceeds the 26.7 us budget the
+trigger buys at that baud. The test's 3 MBd phase stays RED until fixed.
+
+**Fix path:** hardware-chained TX DMA descriptors in the bsp_usart fork
+(the RX path already chains descriptors), so the next chunk needs no CPU
+at all. That is a BASE change (bsp_usart.c) — bundle with the next base
+version bump.
+
+**Guidance until then:** keep frames within one staging buffer (4 KiB with
+--large-buffers, i.e. >=460800 baud — 341 WS2812-class LEDs at 4x
+encoding): a single Send never splices. RS485/DE ports intentionally keep
+the drained-FIFO SEND_COMPLETE semantics (no trigger boost): the DE drop
+needs it, and half-duplex messaging gains nothing from chaining.
