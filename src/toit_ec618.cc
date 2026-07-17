@@ -63,10 +63,12 @@ extern "C" {
   extern void (*__vm_init_array_start[])(void);
   extern void (*__vm_init_array_end[])(void);
 
-  // Slot geometry + the slot the dispatcher booted (set in toit_main.c).
+  // The slot the dispatcher booted (set in toit_main.c). The slot's
+  // ADDRESS comes from the anchor record's table (booted_slot_geometry
+  // below), never from link symbols: the __vm_*_start symbols only name
+  // the canonical link-time reservation and go stale when a table moves
+  // the slots.
   extern uint8_t toit_booted_slot;
-  extern uint32_t __vm_a_start[];
-  extern uint32_t __vm_b_start[];
   // The neutral base the VM image is linked at (NEITHER slot). The shared .data
   // slot pointers are link-base-relative, so they relocate to the booted slot.
   extern uint32_t __vm_link_base[];
@@ -255,6 +257,27 @@ static const char* last_reset_name(LastResetState_e s) {
 // non-zero on both slot A and slot B (the slot-A relocation is no longer a
 // no-op); it is only zero if the link base is set back to a real slot. This
 // function itself touches no .data slot pointer, so it is safe to run first.
+// Returns the BOOTED slot's XIP base and size per the anchor record's
+// table — the single layout authority. Safe in earliest boot: it reads
+// flash over XIP through the base's anchor_table and touches no VM
+// static. False only if no table is readable, which cannot happen on a
+// booted device (the dispatcher refuses to boot without one).
+static bool booted_slot_geometry(uint32_t* base, uint32_t* size) {
+  partition_entry table[ANCHOR_MAX_ENTRIES];
+  int count = anchor_table(table, ANCHOR_MAX_ENTRIES);
+  int seen = 0;
+  for (int i = 0; i < count; i++) {
+    if (table[i].type != PARTITION_TYPE_SLOT) continue;
+    if (seen == (toit_booted_slot == 'B' ? 1 : 0)) {
+      *base = table[i].offset + AP_FLASH_XIP_ADDR;
+      *size = table[i].size;
+      return true;
+    }
+    seen++;
+  }
+  return false;
+}
+
 // Loads the ACTIVE slot's OWN VM .data init image over the base-loaded RAM.
 //
 // PLAT loads .load_dram_shared once from the base image's fixed LMA — i.e. slot
@@ -275,16 +298,17 @@ static void load_active_slot_vm_data() {
 
   const uint32_t expected = reinterpret_cast<uint32_t>(__vm_data_end) -
                             reinterpret_cast<uint32_t>(__vm_data_start);
-  const uint8_t* active = reinterpret_cast<const uint8_t*>(
-      (toit_booted_slot == 'B') ? __vm_b_start : __vm_a_start);
-  const uint32_t slot_size = reinterpret_cast<uint32_t>(__vm_b_start) -
-                             reinterpret_cast<uint32_t>(__vm_a_start);
-  SlotRelocTable table;
-  if (slot_reloc_parse_trailer(active, slot_size, &table) &&
-      table.data_size == expected) {
-    // The .data init rides at slot offset body_size (right after body+ext).
-    memcpy(__vm_data_start, active + table.body_size, table.data_size);
-    return;
+  uint32_t slot_base = 0;
+  uint32_t slot_size = 0;
+  if (booted_slot_geometry(&slot_base, &slot_size)) {
+    const uint8_t* active = reinterpret_cast<const uint8_t*>(slot_base);
+    SlotRelocTable table;
+    if (slot_reloc_parse_trailer(active, slot_size, &table) &&
+        table.data_size == expected) {
+      // The .data init rides at slot offset body_size (right after body+ext).
+      memcpy(__vm_data_start, active + table.body_size, table.data_size);
+      return;
+    }
   }
   // No per-slot .data (no trailer / legacy / size mismatch). Nothing else
   // initializes .vm_dram_data — PLAT startup does not cover it and, with the
@@ -298,9 +322,9 @@ static void load_active_slot_vm_data() {
 
 static void relocate_data_slot_pointers() {
   const uint32_t link_base = reinterpret_cast<uint32_t>(__vm_link_base);
-  const uint32_t active_base = (toit_booted_slot == 'B')
-      ? reinterpret_cast<uint32_t>(__vm_b_start)
-      : reinterpret_cast<uint32_t>(__vm_a_start);
+  uint32_t active_base = 0;
+  uint32_t slot_size = 0;
+  if (!booted_slot_geometry(&active_base, &slot_size)) return;  // Unreachable on a booted device.
   const int32_t delta = static_cast<int32_t>(active_base) -
                         static_cast<int32_t>(link_base);
   if (delta == 0) return;
