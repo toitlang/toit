@@ -736,3 +736,55 @@ the line needs an external NOT gate — the EC618 cannot invert TX) that is
 512 LEDs per gap-free frame at ~61 fps: a single Send never splices. RS485/DE ports intentionally keep
 the drained-FIFO SEND_COMPLETE semantics (no trigger boost): the DE drop
 needs it, and half-duplex messaging gains nothing from chaining.
+
+## 14. quirky-plenty cold-boot RX deafness — OPEN (software path exonerated 2026-07-17)
+
+**Status:** OPEN — but the field of suspects narrowed sharply.
+
+**Symptom.** On `quirky-plenty` (the small EC618 module, shared
+console+control on UART1 through its CH340 dongle) the agent answers
+pings ~1.6 s after a SW reset (the post-`ectool`-burn golden window) but
+is deaf to ALL pings after a cold boot, and goes deaf by ~90 s of uptime.
+`modest-affair` on the identical universal base never showed it — but
+also never shared its console with the control lane (UART0 vs UART1),
+so the shared-UART1 path was the standing suspect.
+
+**What it is NOT (2026-07-17 campaign).** The shared-console-on-UART1
+software path is exonerated, warm case. `modest-affair` was flipped to
+quirky's exact configuration at runtime (`ec618.set-console-uart 1` +
+watchdog reboot — one universal base, no reflash) and probed over the
+wired UART1 lane (ESP32 IO16/IO4) through a TCP bridge
+(tests/hw/esp-tester/dual-bridge-esp32.toit + socat PTY). Boot-ROM
+banner noise on the lane included, the replica answered at ping 1 at
+t+5 s, t+40 s and t+55 s into idle watchdog cycles, and after 220 s of
+uptime followed by a 55 s idle window. The #10 sleep vote demonstrably
+holds on a UART1 control lane exactly as on UART0. The flip and the
+way back (the UART2 rescue lane, HW-validated the same day) are cheap
+to repeat.
+
+**Remaining suspects, in order.**
+1. **Quirky's CH340 dongle path** (host→device direction wedging looks
+   IDENTICAL to device RX deafness). Precedent: the modest-affair ESP32
+   IO27 input latch — an interface that reads frozen while the wire is
+   fine, cleared only by true POR. The "alive right after heavy flash
+   traffic, deaf later" pattern fits an adapter wedge as well as it fits
+   device sleep.
+2. **The small module's HW** (only quirky has it).
+3. **True cold-boot state** (unreachable on modest-affair without hands:
+   its dev board needs the PWRKEY press).
+
+**Next discriminators.** (a) While quirky is deaf, watch its CH340
+console PASSIVELY: the unfed software watchdog must print FATAL + a boot
+banner every ~65 s. Banners flowing = device alive and TX good, so the
+deafness is inbound-only; then ping inside a fresh banner's golden
+window — if even that fails while banners flow, swap the dongle before
+blaming the module. (b) Cold-boot modest-affair by hand (power-cycle +
+PWRKEY) and ping the golden window immediately.
+
+**Rig-tooling gotcha (cost ~40 min of phantom "wedges").** A socat PTY
+(`socat pty,link=/tmp/...,raw,echo=0 tcp:...`) comes up with termios
+`VMIN=0`: blocking-style readers (`cat`, `grep`) drain the buffer and
+hit EOF instead of waiting — a "silent lane" that is actually a lying
+observer. `stty -F /tmp/<pty> min 1 time 0` before reading, re-apply
+after any tester session on the PTY, and never point two readers at one
+PTY (they steal bytes from each other).
