@@ -89,8 +89,14 @@ struct I2cState {
                              // no-op on an initialized driver, and
                              // Uninitialize on a never-initialized one
                              // is undefined — the UART tracker lesson).
-  uint32_t current_hz;       // Wire pace once SETUP ran; 0 = must rerun
-                             // (cleared by quiesce/power cycles).
+  uint32_t current_hz;       // Programmed wire pace once SETUP ran; 0 =
+                             // must rerun (cleared by quiesce/power
+                             // cycles).
+  uint32_t src_hz;           // Selected functional-clock source (26 MHz
+                             // or 51.2 MHz); 0 = not yet pinned.
+  uint32_t bus_hz;           // Pace for bus-level probes: the most recent
+                             // device transfer's frequency (sticky across
+                             // quiesce), else kBusDefaultHz.
   volatile bool transfer_active;
   volatile uint8_t stage;
   volatile bool notify_toit;     // Async transfer: completion must wake the
@@ -151,24 +157,70 @@ static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
 static void i2c1_event(uint32_t event) { i2c_cmsis_event(1, event); }
 static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event };
 
-// The wire pace is NOT configurable in the engine's control mode: the
-// TPR SCLH/SCLL divisor is IGNORED (hardware-measured — four different
-// divisor values, identical pace), and SCL comes out of the functional
-// clock through a fixed internal divide: ~46 kHz from the pinned 26 MHz
-// source. The requested device frequency is therefore advisory: anything
-// at or above the wire pace runs AT the wire pace (a slower bus is always
-// I2C-legal), and device_create rejects requests below it (they cannot be
-// honored and a deliberately-slow bus may be a hard requirement). True
-// fast-mode would need the engine's unexplored "automatic" mode — a
-// future arc. This call's only real job is the driver's internal SETUP
-// flag, which gates Master*; it must rerun after every power cycle.
-static const uint32_t kWireHz = 46000;  // Measured, deterministic (26 MHz pinned).
+// Wire pace (HW-calibrated 2026-07-18, NACK-probe batch timing): the
+// control-mode engine counts SCL phases at the FULL functional clock and
+// the TPR divisor IS honored:
+//   period_ticks = SCLH + SCLL + kPaceOverheadTicks
+// The overhead is intrinsic to the engine's state machine; the
+// spike-filter/setup/hold fields contribute ~13 ticks even at max
+// (measured separately). The earlier "TPR is ignored" finding was an
+// artifact: quiesce power-cycles reset TPR and ensure_setup rewrote the
+// same STANDARD value before every measured transfer, so every probe ran
+// at SCLH=SCLL=130 -> 26 MHz/565 = 46 kHz. The historic "drift to
+// ~85 kHz" was the OTHER TPR state (SCLH=SCLL=0 -> 26 MHz/305 = 85 kHz),
+// not the 51.2 MHz source.
+//
+// Sources: 26 MHz (always running with the AP) covers ~32..85 kHz; the
+// 51.2 MHz root covers up to ~167 kHz but must be gate-enabled first
+// (CLOCK_clockEnable(CLK_HF51M) — the SDK LCD driver's recipe; the
+// historic "51 MHz dead-stalls every transfer" experiment predates that
+// enable). True 400 kHz fast mode needs the engine's unexplored
+// "automatic" mode — still a future arc. Requests above the ceiling run
+// AT the ceiling (advisory-fast: a slower bus is always I2C-legal);
+// requests below the floor are rejected in device_create (a deliberately
+// slow bus may be a hard requirement we cannot honor).
+static const uint32_t kPaceOverheadTicks = 305;
+static const uint32_t kSrc26M = 26000000;
+static const uint32_t kSrc51M = 51200000;
+// Fastest pace the 26 MHz source can honor (SCLH=SCLL=1); above this the
+// 51.2 MHz source is selected. ~84.7 kHz.
+static const uint32_t kMax26MHz = kSrc26M / (2 + kPaceOverheadTicks);
+// The floor: SCLH=SCLL=255 at 26 MHz. ~31.9 kHz.
+static const uint32_t kMinHz = kSrc26M / (510 + kPaceOverheadTicks);
+// Pace for bus-level operations (scan/probe) when no device transfer has
+// programmed the controller yet: the historic default.
+static const uint32_t kBusDefaultHz = 46000;
 
-static void ensure_setup(int controller) {
+// Programs the controller for the requested pace: functional-clock source
+// (26 vs 51.2 MHz), the driver's internal SETUP flag (gates Master*; must
+// rerun after every power cycle), and the TPR SCLH/SCLL divisor.
+static void ensure_setup(int controller, uint32_t hz) {
   I2cState* state = &i2c_states[controller];
-  if (state->current_hz != 0) return;
-  kI2cDrivers[controller]->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
-  state->current_hz = kWireHz;
+  if (state->current_hz == hz) return;
+  ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
+  bool fast_src = hz > kMax26MHz;
+  uint32_t src = fast_src ? kSrc51M : kSrc26M;
+  if (src != state->src_hz) {
+    // Source switches happen in the unclocked window (the mux-droop
+    // lesson — see quiesce), with the 51.2 MHz root gate-enabled first.
+    driver->PowerControl(ARM_POWER_OFF);
+    if (fast_src) CLOCK_clockEnable(CLK_HF51M);
+    if (controller == 0) {
+      GPR_setClockSrc(FCLK_I2C0, fast_src ? FCLK_I2C0_SEL_51M : FCLK_I2C0_SEL_26M);
+    } else {
+      GPR_setClockSrc(FCLK_I2C1, fast_src ? FCLK_I2C1_SEL_51M : FCLK_I2C1_SEL_26M);
+    }
+    driver->PowerControl(ARM_POWER_FULL);
+    state->src_hz = src;
+  }
+  driver->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
+  uint32_t period = src / hz;
+  uint32_t scl = period > kPaceOverheadTicks + 2 ? (period - kPaceOverheadTicks) / 2 : 1;
+  if (scl > 255) scl = 255;
+  I2C_TypeDef* regs = kI2cRegs[controller];
+  regs->TPR = (regs->TPR & ~(I2C_TPR_SCLH_Msk | I2C_TPR_SCLL_Msk))
+            | (scl << I2C_TPR_SCLH_Pos) | (scl << I2C_TPR_SCLL_Pos);
+  state->current_hz = hz;
 }
 
 // Hard recovery: the CMSIS abort and bus-clear entry points are empty
@@ -192,15 +244,40 @@ static void quiesce(int controller) {
   I2C_TypeDef* regs = kI2cRegs[controller];
   for (int spin = 20000; (regs->STR & I2C_STR_BUSY_Msk) && spin > 0; spin--) {}
   driver->PowerControl(ARM_POWER_OFF);
-  GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
-                  controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
+  // Re-pin the CURRENT source selection (re-enabling the 51.2 MHz root
+  // first when that is the selection): recovery must not silently change
+  // the pace, and dropping to 26 MHz here would make every NACK on a
+  // fast bus pay a double source-switch (measured ~104 us + two extra
+  // power cycles per probe) when ensure_setup re-elevates.
+  bool fast_src = i2c_states[controller].src_hz == kSrc51M;
+  if (fast_src) CLOCK_clockEnable(CLK_HF51M);
+  if (controller == 0) {
+    GPR_setClockSrc(FCLK_I2C0, fast_src ? FCLK_I2C0_SEL_51M : FCLK_I2C0_SEL_26M);
+  } else {
+    GPR_setClockSrc(FCLK_I2C1, fast_src ? FCLK_I2C1_SEL_51M : FCLK_I2C1_SEL_26M);
+  }
   driver->PowerControl(ARM_POWER_FULL);
   i2c_states[controller].current_hz = 0;
+}
+
+// The pad-GPIO tricks below (wire peek, 9-clock bus clear) commandeer the
+// pad's GPIO controller bit: they reconfigure its direction and, for the
+// clear, drive it. That is only safe while the bit is reachable from THIS
+// pad alone — a GPIO number with an ALTERNATE pad may be in use by the
+// user through that other pad, and reconfiguring the shared bit would
+// hijack their pin (direction and drive). Today the pad table is 1:1 (no
+// alternates), so the guard never fires; it fences the day alternates
+// appear.
+static bool gpio_bit_exclusive(int pad) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return false;
+  return gpio_to_pad(gpio_bit, 1) == -1;
 }
 
 // Reads the wire level of an I2C pad: direction input, briefly mux to
 // plain GPIO, sample, restore the controller mux (ALT2).
 static bool wire_high(int pad) {
+  if (!gpio_bit_exclusive(pad)) return true;  // Cannot peek safely; assume fine.
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) return true;  // Cannot peek; assume fine.
   GpioPinConfig_t config;
@@ -238,6 +315,7 @@ static void release_line(int pad, int gpio_bit) {
 }
 
 static void bus_clear(int sda, int scl) {
+  if (!gpio_bit_exclusive(sda) || !gpio_bit_exclusive(scl)) return;
   int sda_bit = pad_to_gpio(sda);
   int scl_bit = pad_to_gpio(scl);
   if (sda_bit < 0 || scl_bit < 0) return;
@@ -430,7 +508,8 @@ static int sync_transfer(I2cDeviceResource* device, const uint8_t* tx,
                          uint32_t tx_len, uint8_t* rx, uint32_t rx_len) {
   int controller = device->controller();
   I2cState* state = &i2c_states[controller];
-  ensure_setup(controller);
+  state->bus_hz = device->frequency();
+  ensure_setup(controller, device->frequency());
 
   state->address = device->address();
   state->seq++;
@@ -491,19 +570,17 @@ PRIMITIVE(bus_create) {
   if (state->initialized) driver->Uninitialize();
   driver->Initialize(kI2cCallbacks[controller]);
   state->initialized = true;
-  // Pin the functional clock to the 26 MHz source, BEFORE the block gets
-  // clocked (PowerControl FULL). The engine's control mode paces SCL from
-  // this clock with a fixed internal divide and IGNORES the TPR divisor
-  // (measured: four different TPR values, identical pace) — so the source
-  // selection is the only speed control, and an unpinned source made the
-  // wire drift between ~46 and ~85 kHz across runs as the selection
-  // floated between the 26 MHz and 51 MHz inputs. The 51 MHz input is
-  // NOT reliably running (pinning it dead-stalled every transfer:
-  // DEADLINE_EXCEEDED with the engine never advancing); 26 MHz is alive
-  // whenever the AP runs. Net: a deterministic ~46 kHz wire.
+  // Pin the functional clock to the always-running 26 MHz source BEFORE
+  // the block gets clocked (PowerControl FULL): unpinned, the selection
+  // floats, and a floating mux once dead-stalled every transfer (see the
+  // pace-model comment at ensure_setup — the historic ~46/~85 kHz "drift"
+  // was the two TPR states, and the 51.2 MHz stall was its ungated root).
+  // ensure_setup elevates to the 51.2 MHz source when a device's pace
+  // needs it.
   GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
                   controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
   driver->PowerControl(ARM_POWER_FULL);
+  state->src_hz = kSrc26M;
 
   // Initialize() muxed the driver's RTE pins; release them when the user
   // chose a different routing, then route the chosen pads (ALT2, input
@@ -519,7 +596,8 @@ PRIMITIVE(bus_create) {
   }
 
   state->current_hz = 0;
-  ensure_setup(controller);
+  state->bus_hz = kBusDefaultHz;
+  ensure_setup(controller, kBusDefaultHz);
 
   I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
   if (bus == null) {
@@ -554,7 +632,7 @@ PRIMITIVE(bus_probe) {
   // byte transfers; an absent one NACKs.
   uint8_t scratch;
   int controller = bus->controller();
-  ensure_setup(controller);
+  ensure_setup(controller, state->bus_hz != 0 ? state->bus_hz : kBusDefaultHz);
   state->address = address;
   state->seq++;
   state->notify_toit = false;
@@ -596,11 +674,12 @@ PRIMITIVE(device_create) {
   // needed.
   if (address_bit_size != 7) FAIL(INVALID_ARGUMENT);
   if (frequency_hz == 0) FAIL(INVALID_ARGUMENT);
-  // The wire pace is fixed (~46 kHz; see ensure_setup): requests at or
-  // above it run at the wire pace (slower than asked is I2C-legal), but a
-  // request BELOW it cannot be honored — a deliberately slow bus may be a
-  // hard requirement, so reject instead of silently running faster.
-  if (frequency_hz < kWireHz) FAIL(INVALID_ARGUMENT);
+  // Honorable paces span ~32..167 kHz (see the model at ensure_setup).
+  // Requests above the ceiling run AT the ceiling (slower than asked is
+  // I2C-legal), but a request BELOW the floor cannot be honored — a
+  // deliberately slow bus may be a hard requirement, so reject instead
+  // of silently running faster.
+  if (frequency_hz < kMinHz) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -678,7 +757,8 @@ PRIMITIVE(device_transfer_start) {
   I2cState* state = device->bus()->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
   if (!device->bus()->bus_usable()) FAIL(HARDWARE_ERROR);
-  ensure_setup(device->controller());
+  state->bus_hz = device->frequency();
+  ensure_setup(device->controller(), device->frequency());
 
   uint8_t* tx_copy = null;
   if (tx.length() > 0) {

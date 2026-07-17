@@ -324,17 +324,29 @@ i2c-torture-ec618 hammers 175 shape-changing, value-checked transfers per
 speed with zero swallows; i2c-stretch-ec618 proves >16-byte FIFO
 refill/drain and mid-transfer SCL clock-stretch tolerance (the ESP32
 squats the SCL net open-drain for 150 ms; the master pauses and resumes
-with intact data both directions). Discovered along the way: the engine's
-control mode IGNORES the TPR divisor entirely (hardware-measured: four
-different divisor values, identical wire pace) — SCL is the functional
-clock through a fixed internal divide, and that clock's SOURCE was
-unpinned (gated-26 MHz vs 51 MHz, drifting run to run: 46 vs 85 kHz for
-identical code; the 51 MHz input is not reliably running and pinning it
-dead-stalls every transfer). The driver pins the 26 MHz source before
-clock-enable: a deterministic ~46 kHz wire. The frequency parameter is
-advisory (>= 46 kHz runs at 46 kHz — slower than asked is I2C-legal;
-below 46 kHz is rejected as unhonorable); true fast-mode would need the
-engine's unexplored "automatic" mode. The command length field is 9-bit
+with intact data both directions). The wire pace saga (RESOLVED
+2026-07-18): the era-defining "the engine IGNORES the TPR divisor
+(four values, identical pace)" finding was an ARTIFACT — every NACK or
+error quiesces the block, which resets TPR, and ensure_setup rewrote
+the same STANDARD value before every measured transfer, so all four
+measurements ran the same effective divisor. The calibrated truth
+(NACK-probe batch timing, i2c-speed-ec618): SCL period = SCLH + SCLL +
+~305 ticks of the functional clock; the historic "46 vs 85 kHz drift"
+was the two TPR states (SCLH=SCLL=130 vs 0) on the SAME 26 MHz source,
+and the "51 MHz dead-stall" was its UNGATED root — CLOCK_clockEnable
+(CLK_HF51M) first (the SDK LCD driver's recipe) and it runs fine. The
+driver now honors the requested device frequency: ~32..85 kHz on the
+26 MHz source, up to ~167 kHz on the gate-enabled 51.2 MHz source
+(selected automatically; quiesce re-pins the current selection so
+recovery never changes the pace). Above ~167 kHz runs AT ~167 kHz
+(advisory-fast; a slower bus is I2C-legal); below ~32 kHz is rejected
+as unhonorable. True 400 kHz fast mode still needs the engine's
+unexplored "automatic" mode — a future arc. Bus-level probes ride the
+most recent device transfer's pace (sticky), else 46 kHz. The pad-GPIO
+bus-clear/peek tricks now refuse to commandeer a GPIO bit whose number
+is reachable from an ALTERNATE pad (reconfiguring the shared bit would
+hijack the user's other pin — today's pad table is 1:1 so the guard is
+dormant, but it fences the day alternates appear). The command length field is 9-bit
 (512-byte transfer cap, longer rejected). The closed
 soc_i2c stack is deliberately dropped from the jump-table ABI (sticky
 exclude in gen-plat-jt: the two stacks must never be mixed). Remaining
