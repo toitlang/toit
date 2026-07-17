@@ -57,7 +57,31 @@ static const int MAX_THREADS = 16;
 static struct {
   TaskHandle_t task;
   Thread* thread;
+  // Per-thread wake semaphore for the condition variables below. FreeRTOS
+  // task notifications are a single shared 32-bit slot per task; timed
+  // waits can leave stale bits that a LATER wait on a DIFFERENT condition
+  // variable consumes — a wakeup silently stolen from the original
+  // waiters. At boot the interleaving is instruction-timing-deterministic,
+  // which made the resulting hang track binary layout (the shifted-slot /
+  // console-arc "boot program never runs" bug). A binary semaphore owned
+  // by the thread cannot be stolen across threads: a stale give only
+  // causes one spurious recheck on its own thread.
+  SemaphoreHandle_t wake;
 } thread_map[MAX_THREADS];
+
+// Returns the calling task's wake semaphore, creating it on first use
+// (from task context only; creation races are impossible for one's own
+// slot). Falls back per-call if the task is not in the map yet.
+static SemaphoreHandle_t current_wake_semaphore() {
+  TaskHandle_t task = xTaskGetCurrentTaskHandle();
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (thread_map[i].task == task) {
+      if (thread_map[i].wake == null) thread_map[i].wake = xSemaphoreCreateBinary();
+      return thread_map[i].wake;
+    }
+  }
+  return null;
+}
 
 int64 OS::get_system_time() {
   // Combine the current tick count with accumulated time from previous
@@ -79,7 +103,7 @@ void OS::close(int fd) {
 // Condition variable implementation using FreeRTOS task notifications.
 // Inspired by the ESP32 implementation.
 struct ConditionVariableWaiter {
-  TaskHandle_t task;
+  SemaphoreHandle_t wake;
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
 
@@ -110,19 +134,17 @@ class ConditionVariable {
     }
 
     ConditionVariableWaiter w{};
-    w.task = xTaskGetCurrentTaskHandle();
+    w.wake = current_wake_semaphore();
+    if (w.wake == null) FATAL("wait from unregistered thread");
 
     TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
 
     mutex_->unlock();
 
-    uint32_t value = 0;
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
+    bool success = xSemaphoreTake(w.wake, ticks) == pdTRUE;
 
     mutex_->lock();
     TAILQ_REMOVE(&waiter_list_, &w, link);
-
-    if ((value & SIGNAL_ALL) != 0) signal_all();
     return success;
   }
 
@@ -132,7 +154,7 @@ class ConditionVariable {
     }
     ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
+      xSemaphoreGive(entry->wake);
     }
   }
 
@@ -140,9 +162,11 @@ class ConditionVariable {
     if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
+    // Every waiter has its own semaphore, so signal_all wakes them all
+    // DIRECTLY — no fragile wake-one-relay-next chain.
+    ConditionVariableWaiter* entry;
+    TAILQ_FOREACH(entry, &waiter_list_, link) {
+      xSemaphoreGive(entry->wake);
     }
   }
 
@@ -150,8 +174,6 @@ class ConditionVariable {
   Mutex* mutex_;
   TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
 
-  static const uint32 SIGNAL_ONE = 1 << 0;
-  static const uint32 SIGNAL_ALL = 1 << 1;
 };
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
