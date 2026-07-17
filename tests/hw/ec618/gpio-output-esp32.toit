@@ -34,7 +34,7 @@ main:
 
   saw-activity := (catch: with-timeout WAIT-FOR-FIRST: pin.wait-for 1) == null
   if not saw-activity:
-    print "gpio-output-esp32: FAIL no high level seen on IO$PIN-ESP32 within $(WAIT-FOR-FIRST.in-s)s (EC618 not driving, or level too low)"
+    print "gpio-output-esp32: FAIL no high level seen on IO$PIN-ESP32 within $(WAIT-FOR-FIRST.in-s)s (EC618 not driving or started late — settle and retry; if it persists, power-cycle the ESP32: a latched input reads frozen while the wire is fine)"
     pin.close
     return
 
@@ -56,4 +56,4 @@ main:
   if edges >= MIN-EDGES and saw-0 and saw-1:
     print "gpio-output-esp32: PASS edges=$edges (saw both 0 and 1)"
   else:
-    print "gpio-output-esp32: FAIL edges=$edges saw-0=$saw-0 saw-1=$saw-1 (expected >= $MIN-EDGES edges)"
+    print "gpio-output-esp32: FAIL edges=$edges saw-0=$saw-0 saw-1=$saw-1 (expected >= $MIN-EDGES; both levels + few edges usually means the EC618 session started late and we sampled the wave's tail — settle and retry)"
