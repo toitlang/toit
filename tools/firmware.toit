@@ -1226,6 +1226,16 @@ extract-binary-in-slot-ec618_ -> ByteArray
       --config-encoded=config-encoded
       --extension-xip-addr=extension-xip-addr
       --slot-size=slot-size
+  // Also verify at a single-page displacement: the slot-move machinery
+  // (tools/ec618/provision.toit) retargets slots by ARBITRARY sector
+  // deltas, not just the A/B slot distance — this guards the pointer
+  // capture for that path too.
+  verify-ec618-extension-relocation_ extension
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --extension-xip-addr=extension-xip-addr
+      --slot-size=0x1000
 
   result := binary-input.copy
   details-offset := find-details-offset-esp32 result
