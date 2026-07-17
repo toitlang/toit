@@ -196,6 +196,9 @@ class TestDevice:
   read-task/Task? := null
   is-active/bool := false
   collected-output/string := ""
+  // Offset into $collected-output up to which UART input requests have
+  // been answered.
+  uart-input-handled_/int := 0
   ready-latch/monitor.Latch := monitor.Latch
   installed-container/monitor.Latch := monitor.Latch
   running-container/monitor.Latch := monitor.Latch
@@ -231,6 +234,22 @@ class TestDevice:
           if collected-output.contains "\n$ALL-TESTS-DONE": set-latch_ all-tests-done
           if collected-output.contains "\n$INSTALLED-CONTAINER": set-latch_ installed-container
           if collected-output.contains "\n$RUNNING-CONTAINER": set-latch_ running-container
+          // Serve UART input requests: when the device prints a marker line,
+          // write the payload back to it over the serial connection.
+          while true:
+            request-index := collected-output.index-of "\n$UART-INPUT-REQUEST" uart-input-handled_
+            if request-index < 0: break
+            payload-start := request-index + 1 + UART-INPUT-REQUEST.size
+            request-end := collected-output.index-of "\n" payload-start
+            if request-end < 0:
+              // The trailing newline of a chunk is stripped and only added
+              // back with the next chunk, so a completed chunk means a
+              // completed line.
+              if not at-new-line: break  // Wait for the rest of the line.
+              request-end = collected-output.size
+            payload := collected-output[payload-start..request-end].trim
+            uart-input-handled_ = request-end
+            port.out.write "$payload\n"
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.

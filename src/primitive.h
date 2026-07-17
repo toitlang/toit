@@ -477,6 +477,7 @@ namespace toit {
   PRIMITIVE(set_control_flags, 2)            \
   PRIMITIVE(get_control_flags, 1)            \
   PRIMITIVE(errors, 1)                       \
+  PRIMITIVE(create_console, 3)               \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(bytes_per_memory_block, 0)       \
