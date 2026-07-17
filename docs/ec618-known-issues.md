@@ -773,13 +773,41 @@ to repeat.
 3. **True cold-boot state** (unreachable on modest-affair without hands:
    its dev board needs the PWRKEY press).
 
-**Next discriminators.** (a) While quirky is deaf, watch its CH340
-console PASSIVELY: the unfed software watchdog must print FATAL + a boot
-banner every ~65 s. Banners flowing = device alive and TX good, so the
-deafness is inbound-only; then ping inside a fresh banner's golden
-window — if even that fails while banners flow, swap the dongle before
-blaming the module. (b) Cold-boot modest-affair by hand (power-cycle +
-PWRKEY) and ping the golden window immediately.
+**2026-07-17 (late): NOT REPRODUCING on quirky itself.** Three relay
+cold boots (C6 GPIO23, `dev/ec618-rig/boot-run-hold.toit`) each answered
+a t+5 golden-window ping at ping 1 with a full doctor PASS, and a t+55
+late-idle probe answered at ping 1 too — all on the DIRECT dongle lane,
+same universal base and image as the deaf-era acceptance runs. Two
+things changed between the deaf era and this session and cannot be
+split retroactively: the console dongle was USB-replugged (a true POR
+for it) during the day's rig handling, and the module sat fully
+unpowered for hours. Suspect #1 (dongle wedge, cured by replug) fits
+both the timing and the IO27-latch precedent.
+
+**Next-occurrence protocol** (ordered; each step discriminates — do NOT
+start by replugging USB, that destroys the evidence):
+1. Touch nothing; watch the console PASSIVELY. The unfed software
+   watchdog must print FATAL + a boot banner every ~65 s. Banners
+   flowing = device alive and TX good → the deafness is inbound-only.
+2. Ping inside a fresh banner's golden window (t+2..5).
+3. Relay power-cycle (module POR, dongle untouched) + immediate ping.
+   Cured → module-side cold/latch state.
+4. Only now USB-replug the dongle (dongle POR, module untouched) +
+   ping. Cured → the dongle is CONVICTED; swap it.
+
+**Port-identification trap (cost a whole detour).** BOTH rigs' EC618
+consoles are serial-less classic CH340s: they share the single by-id
+name `usb-1a86_USB_Serial-if00-port0`, so only one gets the symlink,
+the other is invisible in by-id, and the link flip-flops between them
+on every re-enumeration. Identify them by `/dev/serial/by-path` (USB
+topology is stable) or by console output — never by the shared by-id
+link. The host doctor now warns when ttyUSB nodes outnumber their
+by-id links (the collision signature). An unpowered board on a shared
+net also shows up in odd ways: its protection diodes clamp the wire to
+its dead rail — e.g. the dev board's NET LED lights when the wired
+ESP32 loses USB power (the clamp completes the LED circuit); the same
+clamp loads any shared signal, so keep the helper ESP32s powered
+during tests.
 
 **Rig-tooling gotcha (cost ~40 min of phantom "wedges").** A socat PTY
 (`socat pty,link=/tmp/...,raw,echo=0 tcp:...`) comes up with termios

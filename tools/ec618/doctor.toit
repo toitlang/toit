@@ -160,18 +160,32 @@ run invocation/cli.Invocation -> none:
   else:
     stream := directory.DirectoryStream ports-dir
     count := 0
+    usb-link-count := 0
     while name := stream.next:
       count++
       kind := "unknown"
-      if name.contains "1a86": kind = "CH340 (an EC618 console: modest-affair UART0 or quirky UART1)"
-      else if name.contains "CP2102N": kind = "CP2102N (modest-affair ESP32 console)"
+      if name.contains "1a86_USB_Serial-": kind = "CH340 (an EC618 console — BOTH rigs use one; see the collision check below)"
+      else if name.contains "CP2102N_USB_to_UART_Bridge_Controller_10cbfb2c": kind = "CP2102N (modest-affair ESP32 console)"
+      else if name.contains "CP2102N": kind = "CP2102N (not a known rig role)"
       else if name.contains "Espressif": kind = "ESP32-C6 native USB (quirky)"
       target/string? := null
       catch: target = (pipe.backticks ["readlink", "-f", "$ports-dir/$name"]).trim
+      if target and target.contains "ttyUSB": usb-link-count++
       print "  info $(target ? "$target " : "")<- $kind"
     stream.close
     if count == 0: warn "no serial devices found"
     else: ok "$count serial device(s) enumerated"
+    // Serial-less dongles (classic CH340s — both EC618 consoles!) share ONE
+    // by-id name, so only one of them gets the symlink and the other is
+    // INVISIBLE here, and the link flip-flops between them on every
+    // re-enumeration. Count the raw nodes to detect the collision.
+    node-count := 0
+    dev-stream := directory.DirectoryStream "/dev"
+    while name := dev-stream.next:
+      if name.starts-with "ttyUSB": node-count++
+    dev-stream.close
+    if node-count > usb-link-count:
+      warn "$node-count ttyUSB nodes but only $usb-link-count by-id links to them — identical-ID dongles collide in by-id (the two CH340 EC618 consoles!); identify by /dev/serial/by-path or by console output, never by the shared by-id link"
 
   print ""
   print "doctor: $passes ok, $warns warnings, $fails failures"
