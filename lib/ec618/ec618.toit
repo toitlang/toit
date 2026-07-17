@@ -353,7 +353,7 @@ class Ec618:
     (then the port adopts the console: reads/writes share the wire with
     `print` output — this is how the HW-test agent serves its control
     protocol), with CONFIG_TOIT_EC618_PRINT_UART=0, or with the redirect
-    pointed elsewhere via CONFIG_TOIT_EC618_PRINT_UART_ID.
+    pointed elsewhere via the anchor record's console byte.
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
     direction (DE) pin as $rs485-de; any GPIO-capable pad works. See
@@ -398,7 +398,7 @@ class Ec618:
     to 1 along with $cts-enabled.
 
   Note on UART1 as the print UART: if the firmware was built with
-    CONFIG_TOIT_EC618_PRINT_UART_ID=1 (so Toit's `print` is routed
+    a console byte of 1 (so Toit's `print` is routed
     here), every cold-boot starts with a single garbled line on UART1
     before the first real output. The chip leaves some TX state on
     UART1 that we cannot fully drain from software. This is cosmetic
@@ -610,6 +610,17 @@ The $address must be 4-byte aligned. Handle with care.
 */
 peek32 address/int -> int:
   #primitive.ec618.peek32
+
+/**
+Sets the provisioned console/control UART in the anchor record.
+
+The $id selects UART 0, 1 or 2; 0xff disables the redirect. Takes effect
+  on the NEXT boot: the base reads the byte before its first print, and
+  the mini-jag agent follows it via $print-uart-id. Per-device
+  provisioning state — it survives OTAs and resets.
+*/
+set-console-uart id/int -> none:
+  #primitive.ec618.console-uart-set
 
 /**
 Writes a 32-bit $value to a raw memory/peripheral $address.

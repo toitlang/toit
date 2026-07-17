@@ -451,6 +451,7 @@ namespace toit {
   PRIMITIVE(wakeup_arm_flags, 1)             \
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
+  PRIMITIVE(console_uart_set, 1)             \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

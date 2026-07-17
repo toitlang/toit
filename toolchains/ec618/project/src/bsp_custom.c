@@ -13,6 +13,8 @@
 
 #include "Driver_USART.h"
 
+#include "anchor.h"
+
 #if CONFIG_TOIT_EC618_DISABLE_UNILOG
 // Defined in the prebuilt PLAT library — turns off the bottom-level UART0
 // log so the controller can be repurposed.
@@ -25,24 +27,26 @@ extern ARM_DRIVER_USART Driver_USART2;
 
 #if CONFIG_TOIT_EC618_PRINT_UART
 
-#if CONFIG_TOIT_EC618_PRINT_UART_ID == 0
-#  define TOIT_PRINT_UART_DRIVER Driver_USART0
-#  define TOIT_PRINT_UART_CLOCK  FCLK_UART0
-#  define TOIT_PRINT_UART_CLKSRC FCLK_UART0_SEL_26M
-#  define TOIT_PRINT_UART_RESET  RST_FCLK_UART0
-#elif CONFIG_TOIT_EC618_PRINT_UART_ID == 1
-#  define TOIT_PRINT_UART_DRIVER Driver_USART1
-#  define TOIT_PRINT_UART_CLOCK  FCLK_UART1
-#  define TOIT_PRINT_UART_CLKSRC FCLK_UART1_SEL_26M
-#  define TOIT_PRINT_UART_RESET  RST_FCLK_UART1
-#elif CONFIG_TOIT_EC618_PRINT_UART_ID == 2
-#  define TOIT_PRINT_UART_DRIVER Driver_USART2
-#  define TOIT_PRINT_UART_CLOCK  FCLK_UART2
-#  define TOIT_PRINT_UART_CLKSRC FCLK_UART2_SEL_26M
-#  define TOIT_PRINT_UART_RESET  RST_FCLK_UART2
-#else
-#  error "CONFIG_TOIT_EC618_PRINT_UART_ID must be 0, 1 or 2"
-#endif
+// The console UART is RUNTIME state from the anchor record (per-device
+// provisioning, gen-anchor --console-uart), so ONE base image serves
+// every rig — a compile-time id would fork the base fingerprint per
+// debug wire. Known issue with console=1: one garbled line at the start
+// of every cold boot ("boot.rom"-shaped fragment). Our SetPrintUart path
+// is the only code in the PLAT that initialises Driver_USART1 directly
+// via the CMSIS USART API; the init flushes chip-level TX state that is
+// otherwise invisible. ARM_USART_ABORT_SEND below reduces the noise from
+// many bytes to one; the last byte sits in the shift register and we
+// have not found a way to kill it from software. A warm reset is clean.
+static ARM_DRIVER_USART* const print_uart_drivers[3] = {
+    &Driver_USART0, &Driver_USART1, &Driver_USART2,
+};
+static const ClockId_e print_uart_clocks[3] = {FCLK_UART0, FCLK_UART1, FCLK_UART2};
+static const ClockSelect_e print_uart_clksrcs[3] = {
+    FCLK_UART0_SEL_26M, FCLK_UART1_SEL_26M, FCLK_UART2_SEL_26M,
+};
+static const ClockResetId_e print_uart_resets[3] = {
+    RST_FCLK_UART0, RST_FCLK_UART1, RST_FCLK_UART2,
+};
 
 // Newlib _write syscall: printf -> UART SendPolling on the print driver.
 //
@@ -64,27 +68,28 @@ int _write(int file, char *ptr, int len) {
 }
 
 static void SetPrintUart(void) {
-    GPR_setClockSrc(TOIT_PRINT_UART_CLOCK, TOIT_PRINT_UART_CLKSRC);
-    GPR_clockEnable(TOIT_PRINT_UART_CLOCK);
-    GPR_swReset(TOIT_PRINT_UART_RESET);
+    uint8_t console = anchor_console();
+    if (console > 2) return;  // ANCHOR_CONSOLE_OFF: no redirect.
+    ARM_DRIVER_USART* driver = print_uart_drivers[console];
 
-    TOIT_PRINT_UART_DRIVER.Initialize(NULL);
-    TOIT_PRINT_UART_DRIVER.PowerControl(ARM_POWER_FULL);
-    TOIT_PRINT_UART_DRIVER.Control(ARM_USART_MODE_ASYNCHRONOUS |
-                                   ARM_USART_DATA_BITS_8 |
-                                   ARM_USART_PARITY_NONE |
-                                   ARM_USART_STOP_BITS_1 |
-                                   ARM_USART_FLOW_CONTROL_NONE,
-                                   CONFIG_TOIT_EC618_PRINT_UART_BAUD);
-    // Best-effort mitigation for the UART1-cold-boot garbage described in
-    // toolchains/ec618/ec618_config.h: drop any bytes that were already
-    // in the controller's TX path. Reduces the count from many to one;
-    // we have not found a way to kill the remaining shift-register byte
-    // from software.
-    TOIT_PRINT_UART_DRIVER.Control(ARM_USART_ABORT_SEND, 0);
-    TOIT_PRINT_UART_DRIVER.Control(ARM_USART_CONTROL_TX, 1);
+    GPR_setClockSrc(print_uart_clocks[console], print_uart_clksrcs[console]);
+    GPR_clockEnable(print_uart_clocks[console]);
+    GPR_swReset(print_uart_resets[console]);
 
-    UsartPrintHandle = &TOIT_PRINT_UART_DRIVER;
+    driver->Initialize(NULL);
+    driver->PowerControl(ARM_POWER_FULL);
+    driver->Control(ARM_USART_MODE_ASYNCHRONOUS |
+                    ARM_USART_DATA_BITS_8 |
+                    ARM_USART_PARITY_NONE |
+                    ARM_USART_STOP_BITS_1 |
+                    ARM_USART_FLOW_CONTROL_NONE,
+                    CONFIG_TOIT_EC618_PRINT_UART_BAUD);
+    // Best-effort mitigation for the cold-boot TX garbage described above:
+    // drop any bytes already in the controller's TX path.
+    driver->Control(ARM_USART_ABORT_SEND, 0);
+    driver->Control(ARM_USART_CONTROL_TX, 1);
+
+    UsartPrintHandle = driver;
 }
 
 #else  // CONFIG_TOIT_EC618_PRINT_UART

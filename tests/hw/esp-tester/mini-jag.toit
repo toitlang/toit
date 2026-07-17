@@ -131,7 +131,7 @@ run-test:
 
 // Opens the UART the firmware redirects `print` to, so the agent's control
 // channel and the test's print output ride one wire. Which controller that is
-// depends on CONFIG_TOIT_EC618_PRINT_UART_ID; we follow it rather than
+// follows the anchor record's console byte (via ec618.print-uart-id); we
 // hardcoding, so a rig that breaks out a different UART only needs the build
 // config changed (test rig uses UART0, the quirky-plenty dev rig uses UART1).
 open-control-uart -> uart.Port:
@@ -158,7 +158,14 @@ main-ec618:
   // no-remote-reset rig). The sleeper does NOT feed the watchdog — only host
   // messages (below) do — so a dead/silent agent still gets reset. (A crash that
   // ends the whole VM still resets via CONFIG_TOIT_EC618_RESET_ON_VM_EXIT.)
-  port := open-control-uart
+  // The lane + any open failure go to the CONSOLE (print), which is
+  // visible even when the control lane itself is the thing that broke.
+  print "[mini-jag] starting; control uart=$ec618.print-uart-id"
+  port/uart.Port? := null
+  open-error := catch: port = open-control-uart
+  if open-error:
+    print "[mini-jag] control uart open FAILED: $open-error"
+    throw open-error
   // RESCUE channel: if the host has not reached us on the control UART
   // shortly after boot (e.g. a firmware change broke that controller), start
   // serving the same protocol on UART2 as well — reachable through the

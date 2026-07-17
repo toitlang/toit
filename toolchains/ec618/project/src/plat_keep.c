@@ -389,7 +389,9 @@ extern void rngGenRandom(void);
 extern void round(void);
 extern void sin(void);
 extern void sinh(void);
+extern void anchor_console(void);
 extern void anchor_read(void);
+extern void anchor_set_console(void);
 extern void anchor_table(void);
 extern void anchor_write(void);
 extern void anchor_write_table(void);
@@ -884,7 +886,9 @@ const void* const toit_plat_keep[] = {
   (const void*)&round,
   (const void*)&sin,
   (const void*)&sinh,
+  (const void*)&anchor_console,
   (const void*)&anchor_read,
+  (const void*)&anchor_set_console,
   (const void*)&anchor_table,
   (const void*)&anchor_write,
   (const void*)&anchor_write_table,

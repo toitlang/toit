@@ -126,11 +126,17 @@ anchor-crc_ bytes/ByteArray -> int:
   crc.add bytes
   return crc.get-as-int
 
+ANCHOR-CONSOLE-OFF ::= 0xff
+
 /**
 Encodes the provisioning anchor record for $parts: boot state
   { active='A', pending=0, state=NONE, seq=1 } plus the full table.
+
+The $console byte selects the console/control UART (0/1/2, or
+  $ANCHOR-CONSOLE-OFF) — per-device provisioning read by the base before
+  its first print.
 */
-encode-anchor-record parts/Partitions -> ByteArray:
+encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   entries := parts.entries
   if entries.size > ANCHOR-MAX-ENTRIES:
     throw "$entries.size entries exceed the device cap of $ANCHOR-MAX-ENTRIES"
@@ -143,6 +149,7 @@ encode-anchor-record parts/Partitions -> ByteArray:
   record[8] = 'A'  // Known-good slot.
   record[9] = 0    // No pending trial.
   record[10] = entries.size
+  record[11] = console
   offset := ANCHOR-HEADER-SIZE
   entries.do: | p/Partition |
     record.replace offset p.name.to-byte-array
@@ -159,10 +166,18 @@ encode-anchor-record parts/Partitions -> ByteArray:
 Encodes the full anchor region for $parts: sector 0 carries the
   provisioning record, sector 1 stays erased (the ping-pong partner).
 */
-encode-anchor-region parts/Partitions -> ByteArray:
+encode-anchor-region parts/Partitions --console/int=0 -> ByteArray:
   region := ByteArray (2 * ANCHOR-SECTOR) --initial=0xff
-  region.replace 0 (encode-anchor-record parts)
+  region.replace 0 (encode-anchor-record parts --console=console)
   return region
+
+/**
+Returns the console byte of the anchor record found in the AP $image, or
+  null when the image carries no valid record.
+*/
+find-anchor-console image/ByteArray -> int?:
+  offset := find-anchor-offset_ image
+  return offset == null ? null : image[offset + 11]
 
 /**
 Finds the anchor record in the AP $image (4 KiB-aligned scan for magic +
@@ -171,6 +186,25 @@ Finds the anchor record in the AP $image (4 KiB-aligned scan for magic +
 Returns null when the image carries no valid record.
 */
 find-anchor-table image/ByteArray -> List?:
+  off := find-anchor-offset_ image
+  if off == null: return null
+  count := image[off + 10]
+  codes := {:}  // Type code -> name.
+  TYPE-CODES.do: | name/string code/int | codes[code] = name
+  entries := []
+  count.repeat: | i/int |
+    entry := off + ANCHOR-HEADER-SIZE + i * ANCHOR-ENTRY-SIZE
+    name-bytes := image[entry .. entry + 16]
+    end := name-bytes.index-of 0
+    name := (name-bytes[.. end < 0 ? 16 : end]).to-string
+    entries.add (Partition name
+        codes[image[entry + 24]]
+        (LITTLE-ENDIAN.uint32 image (entry + 16))
+        (LITTLE-ENDIAN.uint32 image (entry + 20)))
+  return entries
+
+// Returns the file offset of the valid anchor record in $image, or null.
+find-anchor-offset_ image/ByteArray -> int?:
   for off := 0; off + 32 <= image.size; off += ANCHOR-SECTOR:
     if (LITTLE-ENDIAN.uint16 image off) != ANCHOR-MAGIC: continue
     if image[off + 2] != ANCHOR-VERSION: continue
@@ -178,17 +212,5 @@ find-anchor-table image/ByteArray -> List?:
     record-size := ANCHOR-HEADER-SIZE + count * ANCHOR-ENTRY-SIZE + ANCHOR-TRAILER-SIZE
     if count == 0 or off + record-size > image.size: continue
     if (anchor-crc_ image[off .. off + record-size - ANCHOR-TRAILER-SIZE]) != (LITTLE-ENDIAN.uint32 image (off + record-size - ANCHOR-TRAILER-SIZE)): continue
-    codes := {:}  // Type code -> name.
-    TYPE-CODES.do: | name/string code/int | codes[code] = name
-    entries := []
-    count.repeat: | i/int |
-      entry := off + ANCHOR-HEADER-SIZE + i * ANCHOR-ENTRY-SIZE
-      name-bytes := image[entry .. entry + 16]
-      end := name-bytes.index-of 0
-      name := (name-bytes[.. end < 0 ? 16 : end]).to-string
-      entries.add (Partition name
-          codes[image[entry + 24]]
-          (LITTLE-ENDIAN.uint32 image (entry + 16))
-          (LITTLE-ENDIAN.uint32 image (entry + 20)))
-    return entries
+    return off
   return null

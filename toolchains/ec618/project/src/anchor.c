@@ -42,7 +42,8 @@ typedef struct {
   uint8_t active;       // 'A'/'B'.
   uint8_t pending;      // 'A'/'B', or 0.
   uint8_t table_count;  // Entries after the header; 0 = no table.
-  uint8_t reserved[5];
+  uint8_t console;      // Console/control UART id, or ANCHOR_CONSOLE_OFF.
+  uint8_t reserved[4];
 } anchor_header;
 
 _Static_assert(sizeof(anchor_header) == ANCHOR_HEADER_SIZE,
@@ -133,6 +134,14 @@ bool anchor_read(slot_record* out) {
   return false;
 }
 
+uint8_t anchor_console(void) {
+  anchor_header h;
+  int current = anchor_current(&h);
+  if (current < 0) return 0;  // Unprovisioned: keep the halt loop visible on UART0.
+  if (h.console <= 2) return h.console;
+  return ANCHOR_CONSOLE_OFF;  // Anything else = console disabled.
+}
+
 int anchor_table(partition_entry* out, int max) {
   anchor_header h;
   int current = anchor_current(&h);
@@ -144,8 +153,9 @@ int anchor_table(partition_entry* out, int max) {
   return count;
 }
 
-bool anchor_write_table(uint8_t active, uint8_t pending, uint8_t state,
-                             const partition_entry* table, int count) {
+static bool anchor_write_full(uint8_t active, uint8_t pending, uint8_t state,
+                              const partition_entry* table, int count,
+                              uint8_t console) {
   if (count < 0 || count > ANCHOR_MAX_ENTRIES) return false;
   if (count > 0 && table == NULL) return false;
 
@@ -169,6 +179,7 @@ bool anchor_write_table(uint8_t active, uint8_t pending, uint8_t state,
   header->active = active;
   header->pending = pending;
   header->table_count = (uint8_t)count;
+  header->console = console;
   if (count > 0) {
     memcpy(anchor_staging + ANCHOR_HEADER_SIZE, table,
            (size_t)count * sizeof(partition_entry));
@@ -194,6 +205,21 @@ bool anchor_write_table(uint8_t active, uint8_t pending, uint8_t state,
   return ok;
 }
 
+bool anchor_write_table(uint8_t active, uint8_t pending, uint8_t state,
+                        const partition_entry* table, int count) {
+  return anchor_write_full(active, pending, state, table, count, anchor_console());
+}
+
+// Rewrites the record with a new console byte, preserving state + table.
+bool anchor_set_console(uint8_t console) {
+  static partition_entry preserved[ANCHOR_MAX_ENTRIES];
+  slot_record rec;
+  anchor_read(&rec);
+  int count = anchor_table(preserved, ANCHOR_MAX_ENTRIES);
+  return anchor_write_full(rec.active, rec.pending, rec.state,
+                           count > 0 ? preserved : NULL, count, console);
+}
+
 bool anchor_write(uint8_t active, uint8_t pending, uint8_t state) {
   // Preserve the stored table across the boot-state flip. A record
   // without a table stays without one (count 0), so plain state flips
@@ -208,6 +234,7 @@ bool anchor_write(uint8_t active, uint8_t pending, uint8_t state) {
     memcpy(preserved, anchor_sector_xip(current) + ANCHOR_HEADER_SIZE,
            (size_t)count * sizeof(partition_entry));
   }
-  return anchor_write_table(active, pending, state,
-                                 count > 0 ? preserved : NULL, count);
+  return anchor_write_full(active, pending, state,
+                            count > 0 ? preserved : NULL, count,
+                            anchor_console());
 }

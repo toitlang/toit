@@ -30,6 +30,9 @@ main args:
         cli.Option "splice"
             --help="AP image(s) to patch in place at the descriptor's anchor offset (repeatable)."
             --multi,
+        cli.OptionInt "console-uart"
+            --help="The console/control UART id for this device (0/1/2; 255 disables)."
+            --default=0,
         partitions-option,
       ]
       --run=:: run it
@@ -40,7 +43,7 @@ run invocation/cli.Invocation -> none:
   region/ByteArray? := null
   error := catch:
     parts = Partitions.load invocation["partitions"]
-    region = encode-anchor-region parts
+    region = encode-anchor-region parts --console=invocation["console-uart"]
   if error:
     pipe.print-to-stderr "gen-anchor: $error"
     exit 1

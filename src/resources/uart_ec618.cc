@@ -32,6 +32,7 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "platform_define.h"
+  #include "anchor.h"     // anchor_console — the provisioned console/control UART.
   #include "slpman.h"     // Sleep vote (via the jump table) — see uart_sleep_vote.
   // All three UARTs run on the OPEN CMSIS driver (bsp_usart.c) instead of
   // the closed Uart_* blob (docs/ec618-uart-cmsis-rewrite.md): the blob's
@@ -242,7 +243,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     // tear down OUR half only (RX irqs + buffers) and leave the
     // controller powered and configured so printf keeps flowing
     // (SendPolling needs only the CONFIGURED flag).
-    if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) {
+    if (id == anchor_console()) {
       CmsisRx* rx = state.cmsis_rx;
       if (rx != null) {
         uint32_t mask = irq_save();
@@ -712,7 +713,7 @@ PRIMITIVE(create) {
   //     mysterious mixed output at runtime.
   //
   // A user who really needs the print UART for application data should
-  // rebuild with CONFIG_TOIT_EC618_PRINT_UART_ID pointing at a
+  // reprovision the anchor record's console byte pointing at a
   // different controller, or with CONFIG_TOIT_EC618_PRINT_UART=0 to
   // disable the print redirect entirely.
   //
@@ -721,7 +722,7 @@ PRIMITIVE(create) {
   // wire that's also carrying print output. We've observed it working
   // in practice (TX and RX paths don't fight on this chip).
 #if CONFIG_TOIT_EC618_PRINT_UART && !CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
-  if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) FAIL(ALREADY_IN_USE);
+  if (id == anchor_console()) FAIL(ALREADY_IN_USE);
 #endif
 
   if (uart_states[id].in_use) FAIL(ALREADY_IN_USE);
@@ -774,7 +775,7 @@ PRIMITIVE(create) {
     // initialized.
     bool was_initialized = cmsis_initialized[id];
 #if CONFIG_TOIT_EC618_PRINT_UART
-    if (id == CONFIG_TOIT_EC618_PRINT_UART_ID) was_initialized = true;
+    if (id == anchor_console()) was_initialized = true;
 #endif
     if (was_initialized) driver->Uninitialize();
     driver->Initialize(kUartCallbacks[id]);

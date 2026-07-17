@@ -40,35 +40,11 @@
 #define CONFIG_TOIT_EC618_PRINT_UART 1
 #endif
 
-// Which UART controller takes the print redirect when
-// CONFIG_TOIT_EC618_PRINT_UART is 1. Valid values: 0, 1, 2.
-//
-// Defaults to UART0 — the conventional debug port. The bootloader / PLAT
-// unilog stream already comes out UART0, so consolidating Toit's `print`
-// onto the same channel keeps all debug output on one wire, and leaves
-// UART1 (the AT-style "user" port on most modules) free by default.
-//
-// Known issue with _ID=1: setting print to UART1 produces one garbled
-// line at the start of every cold-boot ("boot.rom"-shaped fragment).
-// Diagnosis: our SetPrintUart path is the only project in the PLAT that
-// initialises Driver_USART1 directly via the CMSIS USART API; every
-// other example uses unilog. The CMSIS init flushes some chip-level TX
-// state that's normally invisible because nothing else triggers it.
-// ARM_USART_ABORT_SEND in SetPrintUart reduces the noise from many
-// bytes to one, but the remaining byte is in the shift register and we
-// have not found a way to kill it from software. A warm reset is clean.
-// Pick _ID=0 or _ID=2, or set CONFIG_TOIT_EC618_PRINT_UART=0, to avoid.
-#ifndef CONFIG_TOIT_EC618_PRINT_UART_ID
-// Which UART carries `print` + the mini-jag control protocol. This is
-// rig-specific: the quirky-plenty dev rig breaks out UART1, the modest-affair
-// test rig breaks out UART0 (set this to 0 there). The mini-jag agent follows
-// this value (via ec618.print-uart-id), so a rig switch only changes this line
-// — not the agent. The shared wire needs CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
-// below. (Known cosmetic issue with _ID=1: one garbled line on cold boot.)
-// NOTE: set to 1 for the quirky-plenty rig (UART1 -> /dev/ttyUSB0); revert to 0
-// before going back to the modest-affair dev board (UART0).
-#define CONFIG_TOIT_EC618_PRINT_UART_ID 0
-#endif
+// The console/control UART id is NOT a compile-time knob: it is a byte
+// in the anchor record (per-device provisioning — gen-anchor.toit
+// --console-uart, provision.toit, or ec618.set-console-uart at runtime),
+// so ONE base image serves every rig. See
+// toolchains/ec618/project/inc/anchor.h.
 
 // Baud rate used for the print UART when the redirect is enabled.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_BAUD

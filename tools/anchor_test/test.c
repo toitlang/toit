@@ -206,6 +206,19 @@ int main(int argc, char** argv) {
   CHECK(anchor_read(&r), "record found");
   CHECK(anchor_table(table, ANCHOR_MAX_ENTRIES) == 0, "no table -> 0 (no fallback)");
 
+  printf("console byte: default, set, persistence\n");
+  CHECK(anchor_write_table('A', 0, SLOT_STATE_NONE, test_table, TEST_TABLE_COUNT), "reprovision");
+  CHECK(anchor_console() == 0, "console defaults to 0");
+  CHECK(anchor_set_console(1), "set console 1");
+  CHECK(anchor_console() == 1, "console reads back 1");
+  CHECK(anchor_write('A', 'B', SLOT_STATE_NEW), "state flip");
+  CHECK(anchor_console() == 1, "console survives a state flip");
+  CHECK(anchor_table(table, ANCHOR_MAX_ENTRIES) == TEST_TABLE_COUNT, "table intact after console ops");
+  CHECK(anchor_set_console(ANCHOR_CONSOLE_OFF), "set console off");
+  CHECK(anchor_console() == ANCHOR_CONSOLE_OFF, "console off reads back");
+  erase_all();
+  CHECK(anchor_console() == 0, "no record -> console 0 (halt loop stays visible)");
+
   printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED",
          g_failures, g_failures == 1 ? "" : "s");
   return g_failures ? 1 : 0;

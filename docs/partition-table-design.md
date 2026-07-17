@@ -90,10 +90,17 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    swap; until a power-fail-safe data-migration journal exists, the
    writer REFUSES table changes that move or shrink a non-empty data
    partition. The registry is movable-in-principle behind that guard.
-   **Acceptance test for the bump (Florian):** the slots themselves must
-   demonstrably MOVE — flash a table with shifted ota-a/ota-b addresses
-   and boot from them (nothing precious lives in the data partitions
-   yet, so this is safe to exercise for real).
+   **Acceptance test — PASSED 2026-07-19 on quirky-plenty:** slots moved
+   +0x1000 via tests/hw/ec618/partitions-shifted.yaml + provision.toit;
+   the device booted the moved slot A from the record, the agent came up
+   on the record-provisioned console (UART1), and a full OTA cycle
+   staged, trial-booted and VALIDATED the moved slot B — the complete
+   table-driven dual-slot machinery on a non-default layout.
+   (Hard-won test-harness lesson: `make`'s envelope carries ONLY the
+   bare system container — mini-jag/sleeper are injected by the tester's
+   flows. An image provisioned straight from toit.binpkg has NO agent:
+   silence is not death. Build acceptance images via the tester's
+   add-ec618-containers recipe.)
 7. **Phasing:** the descriptor + host tooling landed first against the
    CURRENT layout (byte-identity validated). The anchor record, the
    table-driven dispatcher, the VM's runtime geometry lookups, the
@@ -120,7 +127,9 @@ the final segment (written last → a torn write is detected):
       8   u8   active   'A'/'B'
       9   u8   pending  'A'/'B' or 0
       10  u8   table_count N               (0 = no table)
-      11  u8[5] reserved (0)
+      11  u8   console                     (0/1/2 = console+control UART;
+                                            0xff = no redirect)
+      12  u8[4] reserved (0)
     entries (N x 32 bytes), flash order:
       0   char name[16]                    — NUL-padded
       16  u32  offset                      — RAW flash address

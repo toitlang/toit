@@ -51,6 +51,8 @@ main args:
         cli.Option "out"
             --help="The output image (same container as the input)."
             --required,
+        cli.OptionInt "console-uart"
+            --help="Override the console/control UART id (default: preserve the source record's).",
         partitions-option,
       ]
       --run=:: run it
@@ -85,14 +87,14 @@ run invocation/cli.Invocation -> none:
       data := input.copy (pos + ZONE-HEADER-SIZE) (pos + ZONE-HEADER-SIZE + size)
       subsystem := header[336..340]
       if subsystem[0] == 'A' and subsystem[1] == 'P':
-        data = retarget data target
+        data = retarget data target --console=invocation["console-uart"]
         LITTLE-ENDIAN.put-uint32 header 76 data.size
         retargeted = true
       out += header + data
       pos += ZONE-HEADER-SIZE + size
     if not retargeted: fail "no AP zone in the binpkg"
   else:
-    out = retarget input target
+    out = retarget input target --console=invocation["console-uart"]
 
   file.write-contents --path=invocation["out"] out
   print "provision: $(target.entries.size)-entry table -> $invocation["out"] ($out.size bytes)"
@@ -101,7 +103,7 @@ run invocation/cli.Invocation -> none:
 Retargets the raw AP $image (its slots and anchor record) to the $target
   descriptor and returns the new image.
 */
-retarget image/ByteArray target/Partitions -> ByteArray:
+retarget image/ByteArray target/Partitions --console/int?=null -> ByteArray:
   source-entries := find-anchor-table image
   if source-entries == null:
     fail "no anchor record in the AP image — provision the default layout first (gen-anchor.toit)"
@@ -168,7 +170,10 @@ retarget image/ByteArray target/Partitions -> ByteArray:
   tgt-file := target-slot.offset - target-base.offset
   out.replace tgt-file slot-bytes
   anchor-file := source-anchor.offset - source-base.offset
-  out.replace anchor-file (encode-anchor-region target)
+  // Console byte: explicit override, else preserved from the source
+  // record (per-device provisioning survives a retarget).
+  effective-console := console or (find-anchor-console image) or 0
+  out.replace anchor-file (encode-anchor-region target --console=effective-console)
 
   print "provision: slot A 0x$(%x source-slot.offset) -> 0x$(%x target-slot.offset)"
   return out + (sha256 out)

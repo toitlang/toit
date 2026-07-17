@@ -93,10 +93,25 @@ PRIMITIVE(print_uart_id) {
   // if the redirect was disabled at build time. This lets test programs
   // adapt to whichever firmware variant is loaded without rebuilding.
 #if CONFIG_TOIT_EC618_PRINT_UART
-  return Smi::from(CONFIG_TOIT_EC618_PRINT_UART_ID);
+  int console = anchor_console();
+  return Smi::from(console > 2 ? -1 : console);
 #else
   return Smi::from(-1);
 #endif
+}
+
+// Sets the provisioned console/control UART in the anchor record (0/1/2,
+// or 0xff to disable the redirect). Takes effect on the NEXT boot — the
+// base reads the byte before its first print. Preserves boot state and
+// table; brackets the flash write in program mode like the dispatcher.
+PRIMITIVE(console_uart_set) {
+  ARGS(int, console);
+  if (console != 0xff && (console < 0 || console > 2)) FAIL(INVALID_ARGUMENT);
+  fotaNvmNfsPeInit(1);
+  bool ok = anchor_set_console((uint8_t)console);
+  fotaNvmNfsPeInit(0);
+  if (!ok) FAIL(ERROR);
+  return process->null_object();
 }
 
 // Dual-slot OTA primitives. The current build dispatches between
@@ -813,6 +828,7 @@ PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_pin_values) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_size) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(console_uart_set) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_erase) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_inactive_write) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_reloc_begin) { FAIL(UNIMPLEMENTED); }
