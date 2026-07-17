@@ -234,7 +234,7 @@ class TestDevice:
   socket_/tcp.Socket? := null
 
   constructor --.name --.toit-exe --port-path/string --.ui --.already-installed --.use-network:
-    port = uart.HostPort port-path --baud-rate=115200
+    port = uart.HostPort port-path --baud-rate=CONSOLE-BAUD-RATE
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
     read-task = task --background::
       try:
@@ -287,9 +287,6 @@ class TestDevice:
             rate := int.parse collected-output[rate-start..request-end].trim
             uart-baud-rate-handled_ = request-end
             port.out.write "$UART-BAUD-RATE-ACK\n" --flush
-            // Some USB-UART adapters report an empty host queue before their
-            // hardware has emitted the final bytes at the old rate.
-            sleep --ms=100
             port.baud-rate = rate
           // Grant one send permit per chunk request.
           while true:
@@ -410,6 +407,10 @@ class TestDevice:
     summer := crc.Crc32
     summer.add image
     out.write summer.get
+    // Send the header before waiting for the device to request image data.
+    // This is necessary for the serial transport, whose writer may buffer the
+    // small header at high baud rates.
+    out.flush
     // The device pulls the image chunk by chunk: it prints a request
     // whenever it is ready for more. Never send more than requested, since
     // the serial transport has no flow control.
@@ -425,7 +426,15 @@ class TestDevice:
 
   run-test -> none:
     log "Running test on device $name"
-    control-out.write RUN-TEST
+    if use-network:
+      socket_.out.write RUN-TEST
+    else:
+      port.out.write RUN-TEST --flush
+    // mini-jag receives the run signal at $CONTROL-BAUD-RATE, then resets
+    // before starting the test. The next container starts its console at the
+    // default rate, which lets console tests negotiate their own rate.
+    sleep --ms=100
+    port.baud-rate = CONSOLE-BAUD-RATE
 
 setup-tester invocation/cli.Invocation:
   if os.env.get "TOIT_SKIP_SETUP": return

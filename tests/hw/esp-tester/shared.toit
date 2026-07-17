@@ -14,9 +14,17 @@ UART-INPUT-REQUEST ::= "UART-INPUT-REQUEST: "
 // acknowledge at the current rate and then switch the serial connection.
 UART-BAUD-RATE-REQUEST ::= "UART-BAUD-RATE-REQUEST: "
 UART-BAUD-RATE-ACK ::= "UART-BAUD-RATE-ACK"
+// Gives the host time to apply the requested rate before the device transmits
+// at that rate.
+UART-BAUD-RATE-SWITCH-DELAY-MS ::= 10
 
 // The asset that selects mini-jag's control transport.
 CONTROL-ASSET ::= "control"
+
+// mini-jag starts at the default console rate, synchronizes with the host,
+// then switches to this rate while receiving a test container.
+CONSOLE-BAUD-RATE ::= 115_200
+CONTROL-BAUD-RATE ::= 921_600
 
 // The device pulls the container image in chunks of this size, requesting
 // each one with $CHUNK-REQUEST. The serial transport has no flow control,
