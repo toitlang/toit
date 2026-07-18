@@ -21,12 +21,12 @@ to the EC618 as described below. Each dual-board test is split in two files:
 ## Wiring (ESP32 GPIO ↔ EC618 board pin)
 
 The EC618 module's silkscreen / datasheet pin *labels* (e.g. `GPIO22`,
-`NET_STATUS`) are **Air780-module names and do not match the EC618 GPIO
-controller-bit numbers** that the `ec618` Toit library uses. So the physical
-pad behind each board pin has to be confirmed **experimentally** (toggle it,
-see which ESP32 pin moves). Two board pins are even labelled "GPIO11" and two
-"GPIO10": that is because one GPIO controller bit can surface on two pads (e.g.
-GPIO11 = PAD26 *and* PAD22), which is the clue for telling them apart.
+`NET_STATUS`) are not unique physical identifiers. The chip can mux one GPIO
+controller bit onto different pads: GPIO12..15 have ALT4 pads 11..14 in
+addition to primary pads 27..30, and GPIO18/19 have ALT4 pads 38/39 in
+addition to primary pads 33/34. Toit therefore uses the physical EC618 PAD
+index as the unique pin number. The physical pad behind each board contact is
+confirmed experimentally (toggle it, see which ESP32 pin moves).
 
 ```
 ESP32 pin   EC618 board pin (label)              EC618 pad (confirmed / candidate)
@@ -61,9 +61,10 @@ Notes:
   open). With power they drive normally: PAD44 and PAD47 confirmed. PAD42
   (board pin 9) found no wire — IO13 doubles as the BMP280 power switch, so
   pin 9 looks disconnected on this rig.
-- Pads 13/14 carry GPIO14/15 at iomux FUNCTION 4 (not 0) — the SDK's
-  example_gpio table is the authoritative GPIO/pad/mux source. Pads 29/30
-  (UART0) have no GPIO function; as Pins they are carriers only.
+- Pads 13/14 carry the alternate GPIO14/15 signals at iomux FUNCTION 4
+  (not 0); their primary pads are 29/30 at FUNCTION 0. The SDK's
+  `GPIO_ToPadEC618` mapping is authoritative. Pads 29/30 can also be UART0
+  at FUNCTION 3.
 
 ## Net-sharing gotchas (hard-won)
 

@@ -25,13 +25,13 @@ Run via the mini-jag tester (start gpio-vlevel-esp32.toit on the ESP32 first):
 import gpio
 import ec618 show Ec618
 
-PAD-EC618 ::= 25                // GPIO10's primary pad, wired to ESP32 IO32 (ADC1) + IO14 (ADC2).
+GPIO-EC618 ::= 10               // Primary PAD25, wired to ESP32 IO32 (ADC1) + IO14 (ADC2).
 HOLD ::= Duration --s=40
 
 main:
-  pin := Ec618.gpio PAD-EC618
+  pin := Ec618.gpio GPIO-EC618
   pin.configure --output --value=1
-  print "gpio-vlevel-ec618: driving GPIO$PAD-EC618 HIGH for $(HOLD.in-s)s (measure on the ESP32 ADC)"
+  print "gpio-vlevel-ec618: driving GPIO$GPIO-EC618 HIGH for $(HOLD.in-s)s (measure on the ESP32 ADC)"
   sleep HOLD
   pin.set 0
   pin.close

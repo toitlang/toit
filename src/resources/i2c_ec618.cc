@@ -289,9 +289,8 @@ static void quiesce(int controller) {
 // clear, drive it. That is only safe while the bit is reachable from THIS
 // pad alone — a GPIO number with an ALTERNATE pad may be in use by the
 // user through that other pad, and reconfiguring the shared bit would
-// hijack their pin (direction and drive). Today the pad table is 1:1 (no
-// alternates), so the guard never fires; it fences the day alternates
-// appear.
+// hijack their pin (direction and drive). Skip this optional recovery path
+// for shared controller bits; normal I2C transfers do not commandeer them.
 static bool gpio_bit_exclusive(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) return false;

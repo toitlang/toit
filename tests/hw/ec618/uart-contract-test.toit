@@ -185,28 +185,55 @@ run-tests -> none:
     p2 := Ec618.uart2 --baud-rate=9600
     p2.close
 
-  test "ec618-gpio-primary":
-    // GPIO11 primary pad is PAD26; address resolution should match.
-    p := Ec618.gpio 11
-    // Just construct/destruct; we'd need a primitive read to assert the
-    // pad number, which we don't expose. The fact that no exception
-    // fires is the contract.
-    p.close
+  test "ec618-gpio-primary-pads":
+    expected := [
+      15, 16, 17, 18, 19, 20, 21, 22,
+      23, 24, 25, 26, 27, 28, 29, 30,
+      31, 32, 33, 34, 40, 41, 42, 43,
+      44, 45, 46, 47, 48, 35, 36, 37,
+    ]
+    expected.size.repeat: | gpio/int |
+      pad := expected[gpio]
+      p := Ec618.gpio gpio
+      try:
+        if p.num != pad: throw "GPIO$gpio: expected PAD$pad, got PAD$(p.num)"
+      finally:
+        p.close
 
-  test "ec618-gpio-alt":
-    // GPIO11 alt pad is PAD22.
-    p := Ec618.gpio 11 --alt
-    p.close
+  test "ec618-gpio-alt-pads":
+    // GPIO12..15 and GPIO18..19 have distinct ALT4 physical pads.
+    mappings := [[12, 11], [13, 12], [14, 13], [15, 14], [18, 38], [19, 39]]
+    mappings.do: | mapping/List |
+      gpio := mapping[0]
+      pad := mapping[1]
+      p := Ec618.gpio gpio --alt
+      try:
+        if p.num != pad: throw "GPIO$gpio alt: expected PAD$pad, got PAD$(p.num)"
+      finally:
+        p.close
 
   test "ec618-gpio-no-alt-rejected":
-    // GPIO12 has no alt pad; --alt must fail.
+    // GPIO11 has no alt pad; --alt must fail.
     expect-throws "INVALID_ARGUMENT":
-      Ec618.gpio 12 --alt
+      Ec618.gpio 11 --alt
 
-  test "ec618-gpio-undocumented-rejected":
-    // GPIO0 is not in our table (yet).
-    expect-throws "INVALID_ARGUMENT":
-      Ec618.gpio 0
+  test "ec618-gpio-shared-bit-exclusive":
+    // GPIO12's PAD27 and PAD11 share one direction/data/interrupt register.
+    // Opening both as independent Pins must be rejected system-wide.
+    primary := Ec618.gpio 12
+    try:
+      expect-throws "ALREADY_IN_USE":
+        Ec618.gpio 12 --alt
+    finally:
+      primary.close
+
+    // Closing the owner releases the controller bit for its alternate pad.
+    alternate := Ec618.gpio 12 --alt
+    alternate.close
+
+  test "ec618-gpio-zero":
+    p := Ec618.gpio 0
+    p.close
 
   test "ec618-pad-out-of-range-rejected":
     // Constructing a Pin for an unknown pad fails when the resource is

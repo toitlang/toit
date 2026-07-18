@@ -28,21 +28,20 @@ namespace toit {
 // INVALID_ARGUMENT and we'll add the entry once we can confirm against the
 // chip datasheet.
 //
-// Sourced from the luatos SDK's own GPIO example
-// (project_legacy/example_gpio/src/example_main.c, allGpioMap) — the one
-// place in the SDK that lists every GPIO with its pad AND mux. It agrees
-// with every mapping we have HW-verified (pads 16, 22-26, 31-34) and
-// supersedes the RTE_Device.h comment blocks, which ship two conflicting
-// variants.
+// Sourced from the SDK's GPIO_ToPadEC618 implementation. Its alt-function
+// selector matters: GPIO12..15 and GPIO18..19 each have two physical pads.
+// The primary mapping below is the ALT0 pad; the alternate table is the ALT4
+// pad. This agrees with the SDK GPIO example, which deliberately selects the
+// ALT4 pads for GPIO12..15.
 //
-// All GPIOs mux at function 0 except GPIO12..15 (pads 11..14), which sit
-// at function 4 — see pad_gpio_mux below. (Our earlier sweep drove pads
-// 13/14 at function 0 and wrongly concluded they had no GPIO.)
+// All primary GPIO pads mux at function 0. The alternate pads 11..14 and
+// 38..39 use function 4 — see pad_gpio_mux below. (Our earlier sweep drove
+// pads 13/14 at function 0 and wrongly concluded they had no GPIO.)
 static const int8_t kGpioPrimaryPad[32] = {
   /*  0 */ 15, /*  1 */ 16, /*  2 */ 17, /*  3 */ 18,
   /*  4 */ 19, /*  5 */ 20, /*  6 */ 21, /*  7 */ 22,
   /*  8 */ 23, /*  9 */ 24, /* 10 */ 25, /* 11 */ 26,
-  /* 12 */ 11, /* 13 */ 12, /* 14 */ 13, /* 15 */ 14,
+  /* 12 */ 27, /* 13 */ 28, /* 14 */ 29, /* 15 */ 30,
   /* 16 */ 31, /* 17 */ 32, /* 18 */ 33, /* 19 */ 34,
   // The AON-domain GPIOs (AGPIO): 20..28 on pads 40..48. They are powered
   // by the AON IO LDO, which is off until slpManAONIOPowerOn() — the GPIO
@@ -53,15 +52,14 @@ static const int8_t kGpioPrimaryPad[32] = {
   /* 28 */ 48, /* 29 */ 35, /* 30 */ 36, /* 31 */ 37,
 };
 
-// Alternate pad for the GPIOs that have one. The SDK's example table maps
-// every GPIO to exactly one pad, so there are currently no alternates; the
-// mechanism stays for the lib/ec618 API.
+// Alternate ALT4 pads from GPIO_ToPadEC618. These are distinct physical pads
+// sharing the same controller bit as the primary ALT0 pad.
 static const int8_t kGpioAltPad[32] = {
   /*  0 */ -1, /*  1 */ -1, /*  2 */ -1, /*  3 */ -1,
   /*  4 */ -1, /*  5 */ -1, /*  6 */ -1, /*  7 */ -1,
   /*  8 */ -1, /*  9 */ -1, /* 10 */ -1, /* 11 */ -1,
-  /* 12 */ -1, /* 13 */ -1, /* 14 */ -1, /* 15 */ -1,
-  /* 16 */ -1, /* 17 */ -1, /* 18 */ -1, /* 19 */ -1,
+  /* 12 */ 11, /* 13 */ 12, /* 14 */ 13, /* 15 */ 14,
+  /* 16 */ -1, /* 17 */ -1, /* 18 */ 38, /* 19 */ 39,
   /* 20 */ -1, /* 21 */ -1, /* 22 */ -1, /* 23 */ -1,
   /* 24 */ -1, /* 25 */ -1, /* 26 */ -1, /* 27 */ -1,
   /* 28 */ -1, /* 29 */ -1, /* 30 */ -1, /* 31 */ -1,
@@ -86,9 +84,8 @@ int pad_to_gpio(int pad) {
 }
 
 int pad_gpio_mux(int pad) {
-  // GPIO12..15 (pads 11..14) sit at iomux function 4; every other GPIO
-  // pad muxes its GPIO at function 0.
-  return (pad >= 11 && pad <= 14) ? 4 : 0;
+  // The alternate pads sit at iomux function 4; primary pads use function 0.
+  return ((pad >= 11 && pad <= 14) || (pad >= 38 && pad <= 39)) ? 4 : 0;
 }
 
 bool pad_is_aon(int pad) {

@@ -20,8 +20,8 @@ EC618 (Air780E) chip-specific helpers.
 
 On the EC618, $Pin numbers are physical PAD indices (1..48), not logical
 GPIO numbers. PADs are unambiguous: each one is a single physical pin on
-the chip. A few PADs share a GPIO controller bit (e.g. PAD22 and PAD26
-both connect to GPIO11), so addressing by GPIO number alone is ambiguous
+the chip. A few PADs share a GPIO controller bit (e.g. PAD27 and PAD11
+both connect to GPIO12), so addressing by GPIO number alone is ambiguous
 in those cases — addressing by PAD never is.
 
 Most user code shouldn't construct $Pin directly on the EC618. Use the
@@ -263,23 +263,22 @@ top-of-file comment for the addressing model.
 class Ec618:
   // GPIO -> primary PAD lookup. Values must match `kGpioPrimaryPad` in
   // src/resources/pad_table_ec618.cc (sourced from the SDK's own GPIO
-  // example; see there). GPIO20..28 (pads 40..48) are AON-domain GPIOs:
-  // the driver powers their LDO on first use and they keep working in
-  // sleep modes.
+  // mapping helper; see there). GPIO20..28 (pads 40..48) are AON-domain
+  // GPIOs: the driver powers their LDO on first use and they keep working
+  // in sleep modes.
   static GPIO-PRIMARY-PAD_/List ::= [
     15,  16,  17,  18,  19,  20,  21,  22,
-    23,  24,  25,  26,  11,  12,  13,  14,
+    23,  24,  25,  26,  27,  28,  29,  30,
     31,  32,  33,  34,  40,  41,  42,  43,
     44,  45,  46,  47,  48,  35,  36,  37,
   ]
 
-  // GPIO -> alternate PAD lookup. -1 means the GPIO has no alt pad.
-  // (The SDK's authoritative GPIO example maps every GPIO to exactly one
-  // pad, so there are currently no alternates.)
+  // GPIO -> alternate ALT4 PAD lookup. -1 means the GPIO has no alt pad.
+  // Values match GPIO_ToPadEC618 in the SDK.
   static GPIO-ALT-PAD_/List ::= [
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+    -1,  -1,  -1,  -1,  11,  12,  13,  14,
+    -1,  -1,  38,  39,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
   ]
 
@@ -321,9 +320,9 @@ class Ec618:
   /**
   Returns a $Pin for the EC618 logical GPIO with the given $num.
 
-  Defaults to the primary pad of that GPIO. Pass $alt to address the
-    alternate pad where one exists (currently none — every GPIO maps to
-    exactly one pad).
+  Defaults to the primary ALT0 pad of that GPIO. Pass $alt to address its
+    alternate ALT4 pad where one exists. The returned $Pin still uses the
+    physical PAD number as its unique identity.
   */
   static gpio num/int --alt/bool=false -> Pin:
     if num < 0 or num >= 32: throw "INVALID_ARGUMENT"

@@ -23,14 +23,14 @@ signal check happens on the ESP32 side):
 import gpio
 import ec618 show Ec618
 
-PAD-EC618 ::= 26                    // GPIO11's primary pad, wired to ESP32 IO27.
+GPIO-EC618 ::= 11                   // Primary PAD26, wired to ESP32 IO27.
 HALF-PERIOD ::= Duration --ms=50    // 10 Hz square wave.
 DRIVE-DURATION ::= Duration --s=20  // Long enough for the ESP32 to sample.
 
 main:
-  pin := Ec618.gpio PAD-EC618
+  pin := Ec618.gpio GPIO-EC618
   pin.configure --output --value=0
-  print "gpio-output-ec618: driving GPIO$PAD-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
+  print "gpio-output-ec618: driving GPIO$GPIO-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
   deadline := Time.monotonic-us + DRIVE-DURATION.in-us
   value := 0
   toggles := 0

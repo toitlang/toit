@@ -26,7 +26,7 @@ namespace toit {
 // The chip has ~50 pads. Each pad has up to ~6 alt-functions (mux 0..5).
 // Mux 0 maps the pad to a GPIO controller bit for those pads that have
 // one; the GPIO controller bit can be shared between multiple pads (e.g.
-// GPIO11 lives at both PAD22 and PAD26), in which case the pad addresses
+// GPIO12 lives at PAD27 and PAD11), in which case the PAD number addresses
 // a *physical pin* and the GPIO bit is what reads/writes do at the
 // controller register.
 //
@@ -45,7 +45,7 @@ static const int kMaxPadIndex = 48;
 int pad_to_gpio(int pad);
 
 // The iomux function that selects GPIO on this pad (0 for most pads,
-// 4 for pads 11..14 / GPIO12..15).
+// 4 for the alternate pads 11..14 / GPIO12..15 and 38..39 / GPIO18..19).
 int pad_gpio_mux(int pad);
 
 // Whether the pad is an AON-domain GPIO (AGPIO, pads 40..48 / GPIO20..28).

@@ -33,7 +33,7 @@ Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
 import gpio
 import ec618 show Ec618
 
-PAD-EC618 ::= 26                // GPIO11's primary pad, wired to ESP32 IO27.
+GPIO-EC618 ::= 11               // Primary PAD26, wired to ESP32 IO27.
 SETTLE ::= Duration --ms=20     // Let the weak pull + line capacitance settle.
 READS ::= 16                    // Sample several times to catch an unstable line.
 TOLERANCE ::= 2                 // Allow a couple of noisy samples either way.
@@ -52,7 +52,7 @@ read-with-pull pin/gpio.Pin --up/bool=false --down/bool=false --off/bool=false -
   return count-ones pin
 
 main:
-  pin := Ec618.gpio PAD-EC618
+  pin := Ec618.gpio GPIO-EC618
   pin.configure --input
   // Pull-down first (from the floating state, so a high reading can't be residual
   // charge from a preceding pull-up), then pull-up, then no pull.

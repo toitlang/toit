@@ -38,7 +38,7 @@ namespace toit {
 
 // Pin numbers from Toit are PAD indices on the EC618. Each PAD has its
 // own iomux configuration; multiple PADs may share a GPIO controller bit
-// (e.g. PAD22 and PAD26 are both GPIO11). Plain-GPIO read/write goes
+// (e.g. PAD27 and PAD11 are both GPIO12). Plain-GPIO read/write goes
 // through the controller bit, while iomux affects the physical pad.
 
 // GPIO controller bit decomposition: port = bit / 16, index = bit % 16.
@@ -138,6 +138,20 @@ static void gpio_isr_handler() {
 // is pad-level state, because `set` only receives the pad number.
 static uint64_t open_drain_pads = 0;
 
+// One physical pad at a time may own a shared GPIO controller bit. Pad
+// identity remains unique, but direction/data/interrupt registers belong to
+// the controller bit and cannot represent independent configurations. Store
+// pad + 1 so the zero-initialized array means "unowned".
+static uint8_t gpio_pad_owner[32] = {};
+
+static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
+  return gpio_pad_owner[gpio_bit] != 0 && gpio_pad_owner[gpio_bit] != pad + 1;
+}
+
+static bool gpio_bit_is_shared(int gpio_bit) {
+  return gpio_to_pad(gpio_bit, 1) >= 0;
+}
+
 static bool is_open_drain(int pad) {
   return (open_drain_pads >> pad) & 1;
 }
@@ -187,13 +201,21 @@ void pad_aon_power_on() {
 void pad_release(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
-    GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
-                         GPIO_INTERRUPT_DISABLED);
-    GpioPinConfig_t config;
-    memset(&config, 0, sizeof(config));
-    config.pinDirection = GPIO_DIRECTION_INPUT;
-    GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
-    GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
+    // Do not disturb an alternate pad that owns the same GPIO bit.
+    if (!gpio_owned_by_other_pad(gpio_bit, pad)) {
+      GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
+                           GPIO_INTERRUPT_DISABLED);
+      GpioPinConfig_t config;
+      memset(&config, 0, sizeof(config));
+      config.pinDirection = GPIO_DIRECTION_INPUT;
+      GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
+    }
+    // A shared pad must be disconnected from the controller bit when closed;
+    // otherwise driving the alternate pad would drive both physical pins.
+    int mux = gpio_bit_is_shared(gpio_bit)
+        ? (pad_gpio_mux(pad) == 0 ? 4 : 0)
+        : pad_gpio_mux(pad);
+    GPIO_IomuxEC618(pad, mux, 0, 0);
   }
   GPIO_PullConfig(pad, 0, 0);
   // Hand the wakeup-capable pads back to wakeup duty in their boot state
@@ -215,6 +237,10 @@ void pad_emergency_high(int pad) {
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
   open_drain_pads &= ~(1ULL << resource->pad());
+  int gpio_bit = resource->gpio_bit();
+  if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] == resource->pad() + 1) {
+    gpio_pad_owner[gpio_bit] = 0;
+  }
   pad_release(resource->pad());
 }
 
@@ -257,9 +283,15 @@ PRIMITIVE(use) {
   // number is all they need. gpio_bit stays -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
 
+  // Pin ownership is system-wide. Alternate physical pads share direction,
+  // data and interrupt registers, so treating them as independent resources
+  // would let one container silently reconfigure another container's pin.
+  if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] != 0) FAIL(ALREADY_IN_USE);
+
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
 
+  if (gpio_bit >= 0) gpio_pad_owner[gpio_bit] = pad + 1;
   group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
