@@ -172,6 +172,15 @@ on mount failure. Reclaiming 0x384000..0x3CC000 is therefore not a
 "delete the mount" edit; a careful shrink (measure OSA's real usage
 first) can be its own change later. base-v2 keeps `littlefs: locked`.
 
+Follow-up measurement (2026-07-18): the linked base configures LittleFS as
+72 × 4 KB blocks (288 KB). Direct call-site inspection finds the live OSA
+users `plat_config` and `timer_values`. A read-only XIP scan on
+`quirky-plenty` found 16 non-erased blocks, spread across indices
+`0,1,3,4,12-15,17-23,62`. The high block is the expected consequence of
+LittleFS wear-leveling and means that lowering `FLASH_FS_REGION_END` is not an
+in-place shrink: the filesystem must be migrated or deliberately reformatted.
+The 64 KB Toit registry next to it is separate from LittleFS.
+
 Throughout, "partition" is used loosely for the hardcoded flash regions the
 EC618 image carves out today. It is not (yet) a real partition table; that is
 what this document is about building.
@@ -269,12 +278,10 @@ and the flash registry:
   (`luat_fota_ec618.c`, `LUA_SCRIPT_ADDR`) and the xmake build. Toit writes
   the VM slots directly and does its own trial/rollback, so FOTA is never on
   Toit's boot or OTA path. **Reclaimable.**
-- **LittleFS (288 KB)** — the SDK's `lfs_port_task.c` targets it, but Toit's
-  flash registry uses the **FDB** region directly (see §4), and the Toit
-  project does not mount LFS. **Reclaimable** — but verify via the link map
-  that `lfs_port_task` / fota writers are not pulled into the Toit `.elf`
-  (they're in `libstartup.a`/SDK libs; dead *data region* is certain, dead
-  *code* needs confirming).
+- **LittleFS (288 KB)** — live SDK storage, mounted by `mainTask` on every boot.
+  Toit does not mount it directly, but PLAT stores `plat_config` and
+  `timer_values` there. It is a **shrink candidate, not directly reclaimable**;
+  see §0.2 and §4.1.
 - **SoftSIM** — already disabled (size 0) in `__USER_CODE__`; the slot is the
   FDB registry. Nothing to reclaim.
 
@@ -291,16 +298,47 @@ plat/reset/excep info (SDK reads early at boot); the CP image + CP NVRAM
 
 Toit's persistent storage = the **FDB region**, NOT LittleFS:
 
-- [`flash_registry_ec618.cc:30`](../src/flash_registry_ec618.cc) —
-  `FLASH_REGISTRY_PHYSICAL_OFFSET = 0x003CC000`, `FLASH_REGISTRY_SIZE = 64 KB`.
-  Accessed via XIP for reads (`AP_FLASH_XIP_ADDR + offset`) and
-  `BSP_QSPI_*_Safe` for erase/write. The comment notes this region is
-  "outside the AP image area and not protected by `sysROSpaceCheck`."
+- [`flash_registry_ec618.cc`](../src/flash_registry_ec618.cc) locates the
+  `registry` data entry in the active anchor table. The default descriptor
+  places it at `0x003CC000` with size 64 KB. It is accessed via XIP for reads
+  (`AP_FLASH_XIP_ADDR + offset`) and `BSP_QSPI_*_Safe` for erase/write.
 - [`storage.toit`](../system/extensions/ec618/storage.toit) builds buckets on
   top of the registry.
 
 Any partition scheme must preserve this 64 KB of live data across both
 re-layout and OTA. It is the one data partition that already exists.
+
+### 4.1 Registry capacity and expansion choices (2026-07-18)
+
+64 KB is too small as a general container-and-storage partition. For a concrete
+bound, the O2 HTTPS hardware test produces a 92,928-byte binary image; after
+the 32-bit image relocation compaction it reserves 90,112 bytes (88 KB) in the
+registry. It therefore cannot fit even when the current registry is empty.
+
+There are two practical expansion paths:
+
+1. **Shrink LittleFS and grow the registry downward.** Keeping 128 KB (32
+   blocks) for LittleFS would move its end to `0x3a4000` and grow the contiguous
+   registry to `0x3a4000..0x3dc000` = 224 KB. The current 16 dirty blocks make
+   128 KB a reasonable size to test, not yet a proven production minimum.
+   This needs a new base because `FLASH_FS_REGION_END` and LittleFS's block
+   count are compiled into PLAT. It also needs an LFS migration/reformat plan.
+   The existing registry remains at the upper end of the enlarged range, so a
+   downward-only expansion may preserve its raw allocations without copying;
+   that behavior still needs a power-loss-safe acceptance test.
+2. **Move the registry into the existing free band.** The active table already
+   has 452 KB at `0x313000..0x384000`, so this can enlarge the registry without
+   touching LittleFS or changing the frozen base's filesystem constants. It is
+   a data-partition move, however, and `provision.toit` correctly refuses it
+   until a migration journal exists. A read-only scan on `quirky-plenty` found
+   stale data in 81 of the band's 113 sectors (likely an old FOTA payload), so
+   provisioning must erase the target rather than assume that `free` means
+   physically erased.
+
+Before the first public base dispatch, the first path is the simpler layout
+if 224 KB is sufficient and LFS state migration is implemented. Otherwise,
+keep base-v2's layout and implement general data-partition migration before
+using the larger free band.
 
 ## 5. FAT / filesystem support in the SDK
 
@@ -533,9 +571,10 @@ error, it's a hang.
    linker symbols). Reuses the existing `mem_map.h`-parsing precedent in
    `xmake.lua`. Pure refactor; removes the "edit one of six, corrupt flash"
    hazard.
-2. **Reclaim FOTA + LittleFS.** Confirm via link map + an SDK audit that
-   nothing writes them in the Toit build; extend the writable window; expose
-   the ~1.5 MB as a free/available partition. Validates the guard plumbing.
+2. **Reclaim FOTA and right-size LittleFS.** FOTA is unused by Toit. LittleFS
+   is live PLAT storage and must be migrated or reformatted before shrinking;
+   §4.1 records the measured starting point. Extend the writable window and
+   expose only the proven-safe remainder as free/available space.
 3. **Decouple the VM slots from PLAT, table at a fixed top anchor (§6.3).**
    Generalize `slot_marker.c`'s seq+CRC two-sector scheme to carry slot
    geometry; make the dispatcher, guard, and primitives read each slot's
@@ -555,10 +594,9 @@ else stays negotiable.
 
 ## 10. Open questions / verification TODOs
 
-- [ ] Link-map check: are `lfs_port_task` / fota writers actually linked into
-      the Toit `.elf`, or only present in the SDK source tree? (Dead data
-      region is certain; dead code needs confirming before we trust the
-      reclaim.)
+- [x] Link-map check: `LFS_init`, the LittleFS implementation, `OsaFopen`, and
+      the PLAT configuration/time callers are linked into base-v2; `mainTask`
+      calls `LFS_init` before loading PLAT configuration.
 - [ ] Does anything in the SDK boot path write FOTA/LFS without Toit asking
       (e.g. an auto-apply step, an fs auto-format on first boot)?
 - [ ] Is the hib-backup region (96 KB) actually required for the deep-sleep /
