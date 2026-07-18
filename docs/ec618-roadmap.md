@@ -136,13 +136,11 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 
 ## Standing conventions
 
-- Copyright header: `// Copyright (C) 2026 Toit contributors.` (not "Toitware
-  ApS. All rights reserved.").
 - **Commit after each section/arc**, not in batches.
 - EC618 is **additive** — add alongside ESP32, never replace it. Guard
   EC618 code with `#ifdef TOIT_EC618`; generalize shared guards to
   `TOIT_FREERTOS` where correct.
 - **Bring-up doctrine**: don't paper over a firmware/VM bug in test code — fix
-  it and log it in known-issues. Tests must not mask issue #1 with try/finally.
+  it and log it in known-issues. Tests must not mask issue #1 with catch.
 - The device IO rail is a **software-configurable LDO (1.65–3.4 V)**, measured
   3.3 V on the dev board — both drive directions are safe.

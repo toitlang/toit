@@ -42,13 +42,6 @@ Checked items are done and kept for context; unchecked are open.
   still uses the older task-notification pattern. Worth an upstream review.
 - [ ] **Retire `build-dual-image`.** `tools/ec618/provision.toit` supersedes it
   (retargets an image to another descriptor, round-trip byte-identical).
-- [ ] **Toit language / skill friction list.** Recurring papercuts recorded in
-  the `feedback_toit_language_friction` memory: multi-line named-arg
-  continuations and multi-line ternaries fail to parse (must single-line —
-  bit me again this session with the RMT constructor); `$x.y.size` interpolation
-  greediness (use `$(...)`); `lib/uart.toit` flush fixes are upstream-worthy;
-  no `file.read-link` in the host lib. We own Toit + the skills, so these are
-  fixable at the source.
 
 ## Watch / on-recurrence (not scheduled work)
 
@@ -60,6 +53,9 @@ Checked items are done and kept for context; unchecked are open.
   first destroys the evidence. The UART2 rescue lane
   (`dual-bridge-esp32.toit` + socat) is HW-validated as the way back after any
   console flip.
+
+## GPIO doesn't work on alts atm.
+All functionality (we can test) should work.
 
 ## Done this session (kept for context)
 

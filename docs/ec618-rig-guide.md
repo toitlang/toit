@@ -156,9 +156,6 @@ peripherals as instruments over the wired nets:
   # clk-div=4 on 80 MHz => 20 MHz ticks = 50 ns/tick; idle-threshold=4000 => 200 us gap ends a capture
   sigs := ch.read                                      # returns Signals; iterate: sigs.do: | level period | ...
   ```
-  **Toit gotcha:** the multi-line named-argument constructor call **fails to
-  parse** — keep the `rmt.Channel ...` call on **one line**. (Same friction as
-  multi-line ternaries; see the todo.)
 - **GPIO as a logic probe** — the EC618 can toggle a spare pin at a known point
   in its code and the ESP32 counts/timestamps it, to trace execution or UART
   timing without a scope.
@@ -179,12 +176,12 @@ traffic free-run.
 - **The bare envelope is agentless.** `make ec618` builds a BARE envelope (333
   ext pointers); the tester injects mini-jag + sleeper at run time (→856). A raw
   flash of the bare envelope has **no agent — silence is not death.** Use the
-  tester flows, not a raw flash, when you expect an agent.
+  tester flows, not a raw flash, when you expect an agent. You can also add other containers if you want to (in addition or as alternative).
 - **Sensor helpers quit on `Q`.** Every BMP280-family test ends by sending `Q`
   to the ESP32 power helper, which powers the sensor off **and exits**. A
   *chained* run then times out its `P 1` handshake at 10 s against a dead helper
   — a `DEADLINE_EXCEEDED` that looks exactly like an I2C stall. **Re-deploy
-  `bmp280-esp32.toit` fresh before every sensor test.**
+  `bmp280-esp32.toit` fresh before every sensor test.** Or, alternatively, establish a protocol with the esp32 to restart the sensor.
 - **socat PTYs default to `VMIN=0`.** For the UART2 rescue lane
   (`dual-bridge-esp32.toit` + `socat pty,link=/tmp/...,raw,echo=0 tcp:...`), a
   blocking reader (`cat`, `grep`) on the PTY drains-and-EOFs instead of waiting —
