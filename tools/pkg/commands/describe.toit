@@ -31,6 +31,7 @@ import ..file-system-view
 import ..semantic-version
 
 import .base_
+import .completions_
 import .list
 
 
@@ -230,16 +231,22 @@ class DescribeCommand extends PkgCommand:
                 directories to make the description path unique.
               """
           --rest=[
-              cli.Option URL-PATH-OPTION
+              // An OptionPath, so that the shell falls back to file completion
+              // when no package URL matches.
+              cli.OptionPath URL-PATH-OPTION
+                  --type="URL|path"
                   --help="The URL or path to the package."
-                  --required=false,
+                  --required=false
+                  --completion=:: complete-package-urls it,
 
               cli.Option VERSION-OPTION
                   --help="The version of the package."
-                  --required=false,
+                  --required=false
+                  --completion=:: complete-package-versions it --url-option=URL-PATH-OPTION,
             ]
           --options=[
-              cli.Option OUT-DIR-OPTION
+              cli.OptionPath OUT-DIR-OPTION
+                  --directory
                   --help="The directory to write the description file to."
                   --required=false,
 

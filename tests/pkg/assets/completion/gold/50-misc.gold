@@ -1,0 +1,38 @@
+// Subcommands are completed.
+==================
+[complete, ]
+clean	Removes unnecessary packages.
+describe	Generates a description of the given package.
+init	Initializes the current directory as the root of the project.
+install	Installs a package in the current project, or downloads all dependencies.
+list	Lists all packages.
+registry	Manages registries.
+search	Searches for the given name in all packages.
+sync	Synchronizes all registries.
+uninstall	Uninstalls the package with the given name.
+update	Updates all packages to their newest compatible version.
+version	Prints the version of the package manager
+completion	Generate shell completion scripts.
+help	Show help for a command.
+:1
+Exit Code: 0
+==================
+[complete, registry, ]
+add	Adds a registry.
+remove	Removes a registry.
+list	List registries
+sync	Synchronizes all registries.
+:1
+Exit Code: 0
+==================
+// Registry names for list and sync.
+==================
+[complete, list, ]
+git-pkgs	http://localhost:<[*PORT*]>/registry/git-pkgs (git)
+:4
+Exit Code: 0
+==================
+[complete, registry, sync, ]
+git-pkgs	http://localhost:<[*PORT*]>/registry/git-pkgs (git)
+:1
+Exit Code: 0

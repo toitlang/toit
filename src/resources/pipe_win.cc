@@ -570,6 +570,12 @@ static Object* fork_helper(
     WideCharAllocationManager allocation(process);
     auto utf_16_argument = allocation.to_wcs(&argument);
 
+    // The caller (pipe.toit's windows-escape_) already quotes arguments that
+    // contain spaces or quotes, but passes an empty argument through unchanged.
+    // Emit it as "" so it survives as a distinct argument instead of vanishing
+    // when the arguments are joined with spaces.
+    if (argument.length() == 0) utf_16_argument = const_cast<wchar_t*>(L"\"\"");
+
     if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) FAIL(OUT_OF_BOUNDS);
     pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }

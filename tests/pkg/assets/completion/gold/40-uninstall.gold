@@ -1,0 +1,18 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, pkg1]
+Package 'localhost:<[*PORT*]>/pkg/pkg1@1.0.0' installed with prefix 'pkg1'.
+==================
+OK
+[pkg, install, --prefix=other, pkg3]
+Package 'localhost:<[*PORT*]>/pkg/pkg3@3.1.2' installed with prefix 'other'.
+==================
+// Uninstall completes the prefixes of the installed packages.
+==================
+[complete, uninstall, ]
+pkg1	localhost:<[*PORT*]>/pkg/pkg1
+other	localhost:<[*PORT*]>/pkg/pkg3
+:1
+Exit Code: 0

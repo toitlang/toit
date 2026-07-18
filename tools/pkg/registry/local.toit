@@ -29,6 +29,9 @@ class LocalRegistry extends Registry:
 
   type -> string: return "local"
 
+  is-cached -> bool:
+    return file.is-directory path
+
   content -> FileSystemView:
     return FileSystemView_ path
 

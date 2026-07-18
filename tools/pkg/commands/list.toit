@@ -27,6 +27,7 @@ import ..registry.description
 import ..registry.local
 
 import .base_
+import .completions_
 
 class ListCommand extends PkgCommand:
   name-or-path/string?
@@ -121,8 +122,12 @@ class ListCommand extends PkgCommand:
                 In that case only the packages from that registry are shown.
               """
           --rest=[
-              cli.Option NAME-OR-PATH-OPTION
+              // An OptionPath, so that the shell falls back to file completion
+              // when no registry name matches.
+              cli.OptionPath NAME-OR-PATH-OPTION
+                  --type="name|path"
                   --required=false
+                  --completion=:: complete-registry-names it
             ]
           --run=:: (ListCommand it).execute
 

@@ -1,0 +1,21 @@
+[complete, describe, ]
+localhost:<[*PORT*]>/pkg/pkg1	git-package 1
+localhost:<[*PORT*]>/pkg/pkg2	git-package 2
+localhost:<[*PORT*]>/pkg/pkg3	git-package 3
+localhost:<[*PORT*]>/pkg/pkg4	git-package 4
+:4
+Exit Code: 0
+==================
+// The version argument completes the versions of the package given as first argument.
+==================
+[complete, describe, localhost:<[*PORT*]>/pkg/pkg2, ]
+2.4.2
+1.0.0
+:1
+Exit Code: 0
+==================
+[complete, describe, pkg2, ]
+2.4.2
+1.0.0
+:1
+Exit Code: 0
