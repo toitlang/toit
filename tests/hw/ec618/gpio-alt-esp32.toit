@@ -22,9 +22,10 @@ main:
   expected-max := [1000, 700]
 
   print "gpio-alt-esp32: waiting for EC618 alternate-pad activity"
+  idle := [pins[0].get, pins[1].get]
   caught := catch:
     with-timeout WAIT:
-      while pins[0].get == 0 and pins[1].get == 0: sleep SAMPLE
+      while pins[0].get == idle[0] and pins[1].get == idle[1]: sleep SAMPLE
   if caught:
     print "gpio-alt-esp32: FAIL no activity"
     pins.do: | pin/gpio.Pin | pin.close
