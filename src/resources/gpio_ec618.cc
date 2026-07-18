@@ -138,6 +138,12 @@ static void gpio_isr_handler() {
 // is pad-level state, because `set` only receives the pad number.
 static uint64_t open_drain_pads = 0;
 
+// Pin resources carry a physical PAD into peripheral drivers, so ownership at
+// this level is by PAD even when the pin is never configured as GPIO. Distinct
+// sibling PADs may be open concurrently; the controller-bit check below only
+// becomes relevant when one of them is actually used as GPIO.
+static uint64_t open_pads = 0;
+
 // A controller bit can be routed to more than one physical PAD, but its
 // direction, data and interrupt registers are shared. PADs remain the public
 // resource identity; only one sibling may own the controller bit at a time.
@@ -256,6 +262,7 @@ void pad_emergency_high(int pad) {
 
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
+  open_pads &= ~(1ULL << resource->pad());
   open_drain_pads &= ~(1ULL << resource->pad());
   int gpio_bit = resource->gpio_bit();
   if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] == resource->pad() + 1) {
@@ -298,6 +305,7 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
+  if ((open_pads >> pad) & 1) FAIL(ALREADY_IN_USE);
   // Pads without a GPIO function are still legal Pins: peripherals (UART0
   // on pads 30/29, I2C0 on 13/14, ...) take Pin arguments, and the pad
   // number is all they need. gpio_bit stays -1; config/get/set reject it.
@@ -306,6 +314,7 @@ PRIMITIVE(use) {
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
 
+  open_pads |= 1ULL << pad;
   group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
