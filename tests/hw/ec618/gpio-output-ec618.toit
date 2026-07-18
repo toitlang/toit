@@ -6,9 +6,9 @@
 EC618 half of the GPIO-output HW test.
 
 Drives EC618 GPIO11 as a square wave so the ESP32 half
-(gpio-output-esp32.toit) can confirm it sees the toggles. GPIO11 is the primary
-pad PAD26 (board pin 5, "uart2_txd"); the same controller bit is also exposed at
-PAD22 (board pin 14), so both move together.
+(gpio-output-esp32.toit) can confirm it sees the toggles. GPIO11's EC618 pad is
+PAD26 (board pin 5, "uart2_txd"). The dev board mirrors that module net at
+board pin 14; this is board wiring, not a second EC618 GPIO11 pad.
 
 Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) -> ESP32 IO27.
 

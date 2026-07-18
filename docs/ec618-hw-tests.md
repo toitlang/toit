@@ -71,11 +71,12 @@ runs the EC618 half; the helper prints a `... PASS`/`... FAIL` verdict.
 
 ## Wiring (test rig: ESP32 GPIO ↔ EC618 board pin)
 
-The EC618 module's silkscreen GPIO labels are **Air780 module names, not the
-EC618 GPIO controller-bit numbers** the `ec618` library uses, so the physical
-pad behind each board pin is confirmed **experimentally** (toggle it, see which
-ESP32 pin moves). One controller bit can surface on two pads (e.g. GPIO11 =
-PAD26 *and* PAD22), which is the hint for the duplicated "GPIO11"/"GPIO10" pins.
+The EC618 module's silkscreen GPIO labels are **Air780 module names, not unique
+physical-pad identifiers**, so the pad behind each board pin is confirmed
+**experimentally** (toggle it, see which ESP32 pin moves). Some controller bits
+really can surface on two pads: GPIO12..15 use primary pads 27..30 or ALT4 pads
+11..14, and GPIO18/19 use primary pads 33/34 or ALT4 pads 38/39. The duplicated
+"GPIO11"/"GPIO10" contacts on this dev board are instead mirrored board nets.
 
 ```
 ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status

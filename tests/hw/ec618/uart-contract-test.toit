@@ -194,11 +194,16 @@ run-tests -> none:
     ]
     expected.size.repeat: | gpio/int |
       pad := expected[gpio]
-      p := Ec618.gpio gpio
-      try:
-        if p.num != pad: throw "GPIO$gpio: expected PAD$pad, got PAD$(p.num)"
-      finally:
-        p.close
+      // UART2's rescue listener and the selected print UART own their pads in
+      // the mini-jag envelope. Those mappings are covered by the table/build
+      // checks; exercise every unoccupied primary pad here.
+      occupied-pad := pad == 25 or pad == 26 or (print-uart-id_ == 0 and (pad == 29 or pad == 30)) or (print-uart-id_ == 1 and (pad == 33 or pad == 34))
+      if not occupied-pad:
+        p := Ec618.gpio gpio
+        try:
+          if p.num != pad: throw "GPIO$gpio: expected PAD$pad, got PAD$(p.num)"
+        finally:
+          p.close
 
   test "ec618-gpio-alt-pads":
     // GPIO12..15 and GPIO18..19 have distinct ALT4 physical pads.
@@ -218,17 +223,21 @@ run-tests -> none:
       Ec618.gpio 11 --alt
 
   test "ec618-gpio-shared-bit-exclusive":
-    // GPIO12's PAD27 and PAD11 share one direction/data/interrupt register.
-    // Opening both as independent Pins must be rejected system-wide.
+    // GPIO12's PAD27 and PAD11 are distinct physical resources, but share
+    // direction/data/interrupt registers. They cannot be active as GPIO at
+    // the same time.
     primary := Ec618.gpio 12
     try:
+      primary.configure --output --value=0
       expect-throws "ALREADY_IN_USE":
-        Ec618.gpio 12 --alt
+        alternate := Ec618.gpio 12 --alt
+        alternate.configure --output --value=0
     finally:
       primary.close
 
-    // Closing the owner releases the controller bit for its alternate pad.
+    // Closing one PAD releases the shared controller for the other PAD.
     alternate := Ec618.gpio 12 --alt
+    alternate.configure --output --value=0
     alternate.close
 
   test "ec618-gpio-zero":

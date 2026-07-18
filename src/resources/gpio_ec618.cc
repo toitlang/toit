@@ -138,10 +138,10 @@ static void gpio_isr_handler() {
 // is pad-level state, because `set` only receives the pad number.
 static uint64_t open_drain_pads = 0;
 
-// One physical pad at a time may own a shared GPIO controller bit. Pad
-// identity remains unique, but direction/data/interrupt registers belong to
-// the controller bit and cannot represent independent configurations. Store
-// pad + 1 so the zero-initialized array means "unowned".
+// A controller bit can be routed to more than one physical PAD, but its
+// direction, data and interrupt registers are shared. PADs remain the public
+// resource identity; only one sibling may own the controller bit at a time.
+// Store pad + 1 so the zero-initialized array means "unowned".
 static uint8_t gpio_pad_owner[32] = {};
 
 static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
@@ -150,6 +150,26 @@ static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
 
 static bool gpio_bit_is_shared(int gpio_bit) {
   return gpio_to_pad(gpio_bit, 1) >= 0;
+}
+
+static int current_pad_mux(int pad) {
+  return (PAD->PCR[pad] & PAD_PCR_MUX_Msk) >> PAD_PCR_MUX_Pos;
+}
+
+// A shared controller may still be connected to its idle sibling. Disconnect
+// that sibling only when it is currently muxed to GPIO. Preserve a real
+// peripheral mux -- notably UART0 on primary pads 29/30 while GPIO14/15 use
+// the alternate pads 13/14.
+static void disconnect_idle_gpio_sibling(int gpio_bit, int pad) {
+  if (!gpio_bit_is_shared(gpio_bit)) return;
+  for (int alt = 0; alt <= 1; alt++) {
+    int sibling = gpio_to_pad(gpio_bit, alt);
+    if (sibling < 0 || sibling == pad) continue;
+    int gpio_mux = pad_gpio_mux(sibling);
+    if (current_pad_mux(sibling) != gpio_mux) continue;
+    GPIO_IomuxEC618(sibling, gpio_mux == 0 ? 4 : 0, 0, 0);
+    GPIO_PullConfig(sibling, 0, 0);
+  }
 }
 
 static bool is_open_drain(int pad) {
@@ -201,7 +221,7 @@ void pad_aon_power_on() {
 void pad_release(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
-    // Do not disturb an alternate pad that owns the same GPIO bit.
+    // Do not disturb a sibling that owns the shared controller bit.
     if (!gpio_owned_by_other_pad(gpio_bit, pad)) {
       GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
                            GPIO_INTERRUPT_DISABLED);
@@ -210,8 +230,8 @@ void pad_release(int pad) {
       config.pinDirection = GPIO_DIRECTION_INPUT;
       GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
     }
-    // A shared pad must be disconnected from the controller bit when closed;
-    // otherwise driving the alternate pad would drive both physical pins.
+    // Disconnect a shared PAD on close so later use of its sibling cannot
+    // also reach this physical pin through the same controller bit.
     int mux = gpio_bit_is_shared(gpio_bit)
         ? (pad_gpio_mux(pad) == 0 ? 4 : 0)
         : pad_gpio_mux(pad);
@@ -283,9 +303,6 @@ PRIMITIVE(use) {
   // number is all they need. gpio_bit stays -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
 
-  // Pin ownership is system-wide. Alternate physical pads share direction,
-  // data and interrupt registers, so treating them as independent resources
-  // would let one container silently reconfigure another container's pin.
   if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] != 0) FAIL(ALREADY_IN_USE);
 
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
@@ -336,6 +353,7 @@ PRIMITIVE(config) {
   // open-drain pin must read the WIRE (someone else may be pulling it low).
   // AutoPull off — we set the pull explicitly below, and GPIO_PullConfig
   // overrides the iomux auto-pull anyway.
+  disconnect_idle_gpio_sibling(gpio_bit, pad);
   GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, (input || open_drain) ? 1 : 0);
 
   if (open_drain) {
