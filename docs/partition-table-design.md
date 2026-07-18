@@ -1,17 +1,15 @@
 # EC618 Partition Table — Design Brainstorm
 
-> Status: **brainstorm / not yet implemented.** This is a thinking document
-> for a future agent (or human) picking up "partition support" on the EC618.
-> It captures the facts, the reclaim analysis, design options with their
-> trade-offs, the risks, and a concrete incremental plan. Nothing here is
-> committed — challenge it.
+> Status: **implemented.** The decided design in §0 is live; the later
+> brainstorm sections are retained as historical reasoning.
 >
 > **Layout note (updated 2026-07-16, post frozen-base):** the flash-map
 > specifics below are kept for the *reasoning*; the live geometry is
 > toolchains/ec618/partitions.yaml (the descriptor IS the map now —
-> base-v2: base-id 0x990000, anchor record 0x991000, slot A 0x993000,
-> slot B 0xA53000, free 0xB13000, littlefs 0xB84000 (kept, §0.2),
-> registry 0xBCC000, vendor NVRAM band from 0xBDC000).
+> base-v3 raw layout: base-id 0x190000, LittleFS 0x191000..0x1B1000,
+> anchor 0x1B1000..0x1B3000, slot A 0x1B3000, slot B 0x273000,
+> one free sector at 0x333000, registry 0x334000..0x3DC000, and the
+> vendor NVRAM band from 0x3DC000. Add 0x800000 for XIP addresses.
 >
 > The jump table is replaced by the **frozen-base architecture**: slots are
 > linked separately against the published `base.elf` (two-stage link), carry
@@ -31,11 +29,9 @@
 > (`primitive_ec618.cc`, `flash_registry_ec618.cc`, `lib/ec618/slot.toit`)
 > are OTA-able and can adopt the descriptor first.
 >
-> **Live proof of the §6.6 hazard (found 2026-07-16):** `toit_main.c` still
-> defines `TOIT_VM_SLOT_SIZE 0x60000` (384 KB) while the linker template
-> moved the slots to 768 KB (`0xC0000`) — the dispatcher's entry-point
-> validation window is silently half a slot. Benign only because entry
-> points sit near the slot start. Fix with the base bump; do not fix alone.
+> **Historical §6.6 hazard (found 2026-07-16, fixed in base-v2):**
+> `toit_main.c` retained a 384 KB validation window after the slots grew to
+> 768 KB. The table-driven dispatcher now validates against the live slot size.
 
 ## 0. DECIDED design (2026-07-16, Florian) — supersedes the options below
 
@@ -53,11 +49,10 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    layout are one atomic, power-fail-safe unit, flipped together:
    rollback restores layout AND image. (ESP-IDF-like table, but A/B and
    co-committed — their single fixed table region cannot do either.)
-3. **Anchor directly after the base image.** Base ends below 0x990000
-   (frozen ABI), base-id page at 0x990000, anchor record at
-   0x991000..0x993000 (base-v2; the old post-slot-B location existed for
-   base-image flexibility that the frozen-base contract retired). The
-   fixed spot is what makes the record findable without a table.
+3. **All frozen geometry first, then the anchor.** The base ends at raw
+   0x190000, followed by the base-id page and the SDK LittleFS reservation;
+   the anchor is fixed at 0x1B1000..0x1B3000 in base-v3. The fixed spot is
+   what makes the record findable without a table.
    Everything ABOVE the anchor is table-described (slots, registry, user
    data, free) up to the vendor NVRAM band at 0xBDC000; everything
    below/around is fixed vendor/base territory, included in the table as
@@ -76,7 +71,7 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    more; a handful of types: locked / base / base-id / anchor / slot /
    data / free) and a correspondingly minimal packed record (0.1).
    `offset` is optional in the YAML: an entry without one starts where
-   the previous entry ends, so the chain after the base (base-id, the
+   the previous entry ends, so the chain after the base (base-id, LittleFS,
    anchor record, slots, free) is never pinned numerically — a future
    base-vN size change is a one-line `size:` edit that reflows
    everything after it (Florian: don't hard-code the anchor "too much").
@@ -107,8 +102,8 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    anchor move and the toit_main.c 384KB-drift fix land together in the
    base-v2 bump — a HARD cutover: slots built from HEAD link against
    base-v2's anchor ABI and no longer run on base-v1 rigs (the base-id
-   gate enforces exactly this). LFS reclaim is deferred out of the bump
-   entirely (0.2).
+   gate enforces exactly this). Base-v3 then moved and shrank LittleFS,
+   moved the anchor after it, and expanded the registry (0.2).
 
 ### 0.1 The anchor record — binary format (DECIDED 2026-07-16)
 
@@ -162,15 +157,15 @@ state+table atomically (the layout-change path). Consumers:
   `make ec618`) proves the record rules AND validates gen-anchor's bytes
   through the real device reader.
 
-### 0.2 LFS reclaim — DEFERRED out of base-v2 (2026-07-16)
+### 0.2 LittleFS shrink — implemented in base-v3 (2026-07-18)
 
 Disassembly of the linked base shows `mainTask` calls `LFS_init` at
 every boot and the SDK's OSA config layer (`OsaFopen`,
 `OsaGet/SetFlashValue`) stores its values in that littlefs — live PLAT
 middleware state, likely modem-adjacent, and the port FORMATS the region
-on mount failure. Reclaiming 0x384000..0x3CC000 is therefore not a
-"delete the mount" edit; a careful shrink (measure OSA's real usage
-first) can be its own change later. base-v2 keeps `littlefs: locked`.
+on mount failure. Reclaiming 0x384000..0x3CC000 was therefore not a
+"delete the mount" edit; base-v2 kept `littlefs: locked` while its actual
+use was measured.
 
 Follow-up measurement (2026-07-18): the linked base configures LittleFS as
 72 × 4 KB blocks (288 KB). Direct call-site inspection finds the live OSA
@@ -180,6 +175,14 @@ users `plat_config` and `timer_values`. A read-only XIP scan on
 LittleFS wear-leveling and means that lowering `FLASH_FS_REGION_END` is not an
 in-place shrink: the filesystem must be migrated or deliberately reformatted.
 The 64 KB Toit registry next to it is separate from LittleFS.
+
+Base-v3 deliberately reformats LittleFS at its new 128 KB reservation
+(`0x191000..0x1B1000`, 32 blocks); preserving the old filesystem was not a
+safe in-place operation because live blocks were spread across the old range.
+The SDK successfully formatted/mounted the new region on hardware. The anchor
+now follows LittleFS, and the registry grows downward to 672 KB at
+`0x334000..0x3DC000`. Its old 64 KB range is the upper subset, so existing raw
+registry allocations retain their addresses.
 
 Throughout, "partition" is used loosely for the hardcoded flash regions the
 EC618 image carves out today. It is not (yet) a real partition table; that is
@@ -299,46 +302,30 @@ plat/reset/excep info (SDK reads early at boot); the CP image + CP NVRAM
 Toit's persistent storage = the **FDB region**, NOT LittleFS:
 
 - [`flash_registry_ec618.cc`](../src/flash_registry_ec618.cc) locates the
-  `registry` data entry in the active anchor table. The default descriptor
-  places it at `0x003CC000` with size 64 KB. It is accessed via XIP for reads
-  (`AP_FLASH_XIP_ADDR + offset`) and `BSP_QSPI_*_Safe` for erase/write.
+  `registry` data entry in the active anchor table. The base-v3 default
+  descriptor places it at `0x00334000` with size 672 KB. It is accessed via
+  XIP for reads (`AP_FLASH_XIP_ADDR + offset`) and `BSP_QSPI_*_Safe` for
+  erase/write.
 - [`storage.toit`](../system/extensions/ec618/storage.toit) builds buckets on
   top of the registry.
 
-Any partition scheme must preserve this 64 KB of live data across both
-re-layout and OTA. It is the one data partition that already exists.
+Any partition scheme must preserve this live data across both re-layout and
+OTA. It is the one data partition that already exists.
 
-### 4.1 Registry capacity and expansion choices (2026-07-18)
+### 4.1 Registry capacity (base-v3, 2026-07-18)
 
-64 KB is too small as a general container-and-storage partition. For a concrete
-bound, the O2 HTTPS hardware test produces a 92,928-byte binary image; after
-the 32-bit image relocation compaction it reserves 90,112 bytes (88 KB) in the
-registry. It therefore cannot fit even when the current registry is empty.
+The old 64 KB registry could not hold even the 90,112-byte relocated O2 HTTPS
+test container. Base-v3 resolves this by placing all frozen regions, including
+the 128 KB LittleFS, before the anchor and allocating the remaining high flash
+band to the registry. The default capacity is now 672 KB. A one-sector `free`
+partition immediately before it keeps the shifted-layout acceptance descriptor
+usable without moving live data.
 
-There are two practical expansion paths:
-
-1. **Shrink LittleFS and grow the registry downward.** Keeping 128 KB (32
-   blocks) for LittleFS would move its end to `0x3a4000` and grow the contiguous
-   registry to `0x3a4000..0x3dc000` = 224 KB. The current 16 dirty blocks make
-   128 KB a reasonable size to test, not yet a proven production minimum.
-   This needs a new base because `FLASH_FS_REGION_END` and LittleFS's block
-   count are compiled into PLAT. It also needs an LFS migration/reformat plan.
-   The existing registry remains at the upper end of the enlarged range, so a
-   downward-only expansion may preserve its raw allocations without copying;
-   that behavior still needs a power-loss-safe acceptance test.
-2. **Move the registry into the existing free band.** The active table already
-   has 452 KB at `0x313000..0x384000`, so this can enlarge the registry without
-   touching LittleFS or changing the frozen base's filesystem constants. It is
-   a data-partition move, however, and `provision.toit` correctly refuses it
-   until a migration journal exists. A read-only scan on `quirky-plenty` found
-   stale data in 81 of the band's 113 sectors (likely an old FOTA payload), so
-   provisioning must erase the target rather than assume that `free` means
-   physically erased.
-
-Before the first public base dispatch, the first path is the simpler layout
-if 224 KB is sufficient and LFS state migration is implemented. Otherwise,
-keep base-v2's layout and implement general data-partition migration before
-using the larger free band.
+The expansion is downward-only: `0x3CC000..0x3DC000`, the complete old
+registry, is the upper subset of the new range. Existing allocation addresses
+therefore remain stable. New pages in the expanded prefix are validated and
+erased lazily by the registry rather than assumed blank, because old FOTA/LFS
+bytes may remain after an upgrade.
 
 ## 5. FAT / filesystem support in the SDK
 
