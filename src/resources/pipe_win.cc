@@ -510,71 +510,6 @@ bool is_inherited(Object* object) {
 }
 const int MAX_COMMAND_LINE_LENGTH = 32768;
 
-// Appends a single wide character to `command_line`, returning false if that
-// would overflow the `capacity` (excluding the terminating null).
-static bool append_wchar(wchar_t* command_line, int* pos, int capacity, wchar_t c) {
-  if (*pos >= capacity) return false;
-  command_line[(*pos)++] = c;
-  return true;
-}
-
-// Appends `argument` to `command_line`, quoting it following the rules that
-// 'CommandLineToArgvW' reverses. We parse our own command line with that
-// function (see main_utf_8_helper.cc), so this quoting ensures that empty
-// arguments and arguments containing spaces or quotes survive the round-trip.
-// Returns false if the buffer would overflow.
-// See https://learn.microsoft.com/en-us/archive/blogs/twistylittlepassagesallalike/everyone-quotes-command-line-arguments-the-wrong-way
-static bool append_quoted_argument(wchar_t* command_line, int* pos, int capacity, const wchar_t* argument) {
-  size_t length = wcslen(argument);
-
-  // An argument only needs quoting if it is empty or contains a character that
-  // 'CommandLineToArgvW' would otherwise treat as a separator or metacharacter.
-  bool needs_quotes = (length == 0);
-  for (size_t i = 0; !needs_quotes && i < length; i++) {
-    wchar_t c = argument[i];
-    needs_quotes = (c == L' ' || c == L'\t' || c == L'\n' || c == L'\v' || c == L'"');
-  }
-
-  if (!needs_quotes) {
-    for (size_t i = 0; i < length; i++) {
-      if (!append_wchar(command_line, pos, capacity, argument[i])) return false;
-    }
-    return true;
-  }
-
-  if (!append_wchar(command_line, pos, capacity, L'"')) return false;
-  size_t i = 0;
-  while (true) {
-    int backslashes = 0;
-    while (i < length && argument[i] == L'\\') {
-      i++;
-      backslashes++;
-    }
-    if (i == length) {
-      // Escape all backslashes, but let the terminating quote we add below be
-      // interpreted as a metacharacter.
-      for (int b = 0; b < backslashes * 2; b++) {
-        if (!append_wchar(command_line, pos, capacity, L'\\')) return false;
-      }
-      break;
-    } else if (argument[i] == L'"') {
-      // Escape all backslashes and the following quote.
-      for (int b = 0; b < backslashes * 2 + 1; b++) {
-        if (!append_wchar(command_line, pos, capacity, L'\\')) return false;
-      }
-      if (!append_wchar(command_line, pos, capacity, argument[i])) return false;
-    } else {
-      // Backslashes aren't special here.
-      for (int b = 0; b < backslashes; b++) {
-        if (!append_wchar(command_line, pos, capacity, L'\\')) return false;
-      }
-      if (!append_wchar(command_line, pos, capacity, argument[i])) return false;
-    }
-    i++;
-  }
-  return append_wchar(command_line, pos, capacity, L'"');
-}
-
 // Forks and execs a program (optionally found using the PATH environment
 // variable.  The given file descriptors should be open file descriptors.  They
 // are attached to the stdin, stdout and stderr of the launched program, and
@@ -627,6 +562,7 @@ static Object* fork_helper(
 
   int pos = 0;
   for (int i = 0; i < arguments->length(); i++) {
+    const wchar_t* format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     Blob argument;
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       FAIL(WRONG_OBJECT_TYPE);
@@ -634,15 +570,15 @@ static Object* fork_helper(
     WideCharAllocationManager allocation(process);
     auto utf_16_argument = allocation.to_wcs(&argument);
 
-    // Separate arguments with a space.
-    if (i != 0 && !append_wchar(command_line, &pos, MAX_COMMAND_LINE_LENGTH, L' ')) {
-      FAIL(OUT_OF_BOUNDS);
-    }
-    if (!append_quoted_argument(command_line, &pos, MAX_COMMAND_LINE_LENGTH, utf_16_argument)) {
-      FAIL(OUT_OF_BOUNDS);
-    }
+    // The caller (pipe.toit's windows-escape_) already quotes arguments that
+    // contain spaces or quotes, but passes an empty argument through unchanged.
+    // Emit it as "" so it survives as a distinct argument instead of vanishing
+    // when the arguments are joined with spaces.
+    if (argument.length() == 0) utf_16_argument = const_cast<wchar_t*>(L"\"\"");
+
+    if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) FAIL(OUT_OF_BOUNDS);
+    pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
-  command_line[pos] = L'\0';
 
   // We allocate memory for the SubprocessResource early here so we can handle failure
   // and restart the primitive.  If we wait until after the fork, the
