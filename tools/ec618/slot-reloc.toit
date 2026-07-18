@@ -4,8 +4,8 @@
 //
 // Mirrors the device C++ in src/slot_reloc_ec618.{h,cc}: the same table
 // format, the same ABS32 / Thumb-branch transforms, both directions. The build
-// tools (the gen-slot-reloc byte-identity proof, the dual-image builder) share
-// this one Toit implementation so the host and device never diverge.
+// tools (the gen-slot-reloc byte-identity proof and the partition provisioner)
+// share this one Toit implementation so the host and device never diverge.
 
 import io show Buffer LITTLE-ENDIAN
 

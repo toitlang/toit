@@ -312,7 +312,12 @@ Because the firmware image is framed table-first, the writer stays a plain
 place that "knows" the EC618 image is table-first — the rest of `FirmwareWriter`
 is the shared, unmodified Toit code.
 
-## Initial full-flash image (replace `splice_dual_slot.py`)
+## Initial full-flash image (historical)
+
+The dual-image builder described below was an intermediate bring-up tool. It
+has been retired: production images provision slot A plus an erased slot B, and
+the normal OTA path is responsible for staging B. Alternate accepted layouts
+are produced by `tools/ec618/provision.toit`.
 
 New Toit builder (`tools/ec618/build-dual-image.toit`, replacing the Python
 splice): from the slot-A `ap.bin`, the bundled extension, and `slot-reloc.bin`,
@@ -351,7 +356,8 @@ the slot layout check.
 
 ## Proposed increments (each reviewable, hardware-testable where noted)
 
-1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`) — **DONE.**
+1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`) — **DONE,
+   THEN RETIRED.**
    From slot-A `ap.bin` + the SRL1 table, relocate slot A → slot B and write the
    active-slot marker. **Hardware:** the relocate-built dual image boots both
    slots — proven a *bootable* slot B, not just byte-identity.

@@ -168,7 +168,7 @@ __vm_a_start ─┐
   [ free ]
   [ SRL1 table ]         the MERGED table (VM body + extension pointers)
   [ size : u32 ]         the slot's last word — locates the table
-__vm_a_start + 0x60000 ─┘
+__vm_a_start + 0xC0000 ─┘
 ```
 
 `tools/firmware.toit` (`extract` with the envelope's `\$ec618-reloc.bin`) places
@@ -177,7 +177,7 @@ pointers — the image-table program addresses, each container image's internal
 pointers (read from its relocation bitmap), and the patched `DromData.extension`.
 So the slot is one relocatable unit (option A): the device relocates the VM body
 and the bundled containers in a single pass. A build-time fit check guarantees
-`VM body + extension + table + 4 ≤ 0x60000`.
+`VM body + extension + table + 4 ≤ 0xC0000`.
 
 `make ec618` **proves** the table on every build: it re-links slot B (only the
 linker script changes, so it is a fast re-link), relocates the slot-A image to
@@ -185,24 +185,24 @@ slot B, and asserts the result is byte-identical to the slot-B link. That
 byte-identity check is the guard against `--emit-relocs` dropping a relocation;
 if it fails, the relocation model is incomplete and the build stops.
 
-### Dual-slot flashable image
+### Flashable and provisioned images
 
-[tools/ec618/build-dual-image.toit](tools/ec618/build-dual-image.toit) produces
-a flashable AP image with **both** slots populated — slot B is the slot-A image
-**relocated** (`+0x60000`), not a second link pass. It replaces the old
-`tools/splice_dual_slot.py` (which spliced a second link). After `make ec618`:
+`make ec618` produces a flashable image with slot A populated, slot B erased,
+and an anchor record selecting slot A. The normal OTA path writes and validates
+slot B as a trial; pre-populating both slots is unnecessary and was removed.
+
+To retarget a built image to an accepted alternate partition descriptor, use
+[tools/ec618/provision.toit](tools/ec618/provision.toit). It reads the source
+anchor table, moves and relocates slot A, preserves the immutable/data geometry,
+and writes the target table atomically:
 
 ```sh
-toit tool firmware -e build/ec618/firmware.envelope extract --format binary -o ap.bin
-toit run --project-root tools tools/ec618/build-dual-image.toit -- \
-    --slot-a=ap.bin --reloc=build/ec618/slot-reloc.bin --out=ap-dual.bin
+toit run --project-root tools tools/ec618/provision.toit -- \
+    --image=build/ec618/toit.binpkg \
+    --partitions=partitions-custom.yaml \
+    --out=toit-custom.binpkg
 ```
 
-The image boots slot A by default (or pass `--active-slot=A|B` to pre-set the
-marker); the device otherwise stages slot B as a trial via the normal
-OTA/`slot.stage-and-reset` path. `build-dual-image` reads the **merged** table
-from slot A's tail and relocates the **whole** slot — the VM body *and* the
-in-slot extension — so `DromData.extension`, the image table, and every bundled
-container pointer shift into slot B. The relocation logic is shared with the
-device via [tools/ec618/slot-reloc.toit](tools/ec618/slot-reloc.toit), which
-mirrors `src/slot_reloc_ec618.{h,cc}`.
+The relocation logic is shared with the device via
+[tools/ec618/slot-reloc.toit](tools/ec618/slot-reloc.toit), which mirrors
+`src/slot_reloc_ec618.{h,cc}`.
