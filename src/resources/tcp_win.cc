@@ -592,6 +592,14 @@ PRIMITIVE(error_number) {
   return Smi::from(reinterpret_cast<TcpSocketBaseResource*>(resource)->error_code());
 }
 
+PRIMITIVE(error_kind) {
+  ARGS(int, error);
+  // A close event without an error code is a clean close from the peer.
+  if (error == 0) return Smi::from(TCP_ERROR_KIND_CLOSED);
+  if (error == WSAECONNRESET || error == WSAECONNABORTED) return Smi::from(TCP_ERROR_KIND_RESET);
+  return Smi::from(TCP_ERROR_KIND_OTHER);
+}
+
 PRIMITIVE(error) {
   ARGS(int, error);
   return Primitive::unmark_from_error(process->program(), windows_error(process, error));

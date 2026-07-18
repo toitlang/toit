@@ -316,6 +316,15 @@ PRIMITIVE(error_number) {
   return Smi::from(error);
 }
 
+PRIMITIVE(error_kind) {
+  ARGS(int, error);
+  // An error event without an error number is how a close from the peer
+  // surfaces when the kernel has nothing more specific to report.
+  if (error == 0) return Smi::from(TCP_ERROR_KIND_CLOSED);
+  if (error == ECONNRESET || error == ECONNABORTED) return Smi::from(TCP_ERROR_KIND_RESET);
+  return Smi::from(TCP_ERROR_KIND_OTHER);
+}
+
 PRIMITIVE(error) {
   ARGS(int, error);
   return process->allocate_string_or_error(strerror(error));

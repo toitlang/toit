@@ -161,7 +161,11 @@ void LwipSocket::on_error(err_t err) {
   // The tpcb_ has already been deallocated when this is called.
   tpcb_ = null;
   if (err == ERR_CLSD) {
+    // The remote end completed the close handshake while we had only shut
+    // down the sending direction. This is not an error, so error_ stays
+    // ERR_OK and primitives must cope with tpcb_ being null.
     read_closed_ = true;
+    send_state();
   } else if (err == ERR_MEM) {
     // If we got an allocation error that caused the connection to close
     // then it's too late for a GC and we have to throw something that
@@ -456,6 +460,8 @@ PRIMITIVE(write) {
     Process* process = capture.process;
 
     if (capture.socket->error() != ERR_OK) return lwip_error(process, capture.socket->error());
+    // The pcb is gone if the connection was closed with ERR_CLSD.
+    if (capture.socket->tpcb() == null) return lwip_error(process, ERR_CLSD);
 
     int to = Utils::min<int>(tcp_sndbuf(capture.socket->tpcb()), capture.to);
     if (to == 0) return Smi::from(-1);
@@ -489,6 +495,9 @@ PRIMITIVE(close_write) {
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     if (socket->error() != ERR_OK) return lwip_error(process, socket->error());
+    // The pcb is gone if the connection was closed with ERR_CLSD. There is
+    // nothing left to shut down.
+    if (socket->tpcb() == null) return process->null_object();
     socket->mark_send_closed();
 
     if (socket->send_pending() > 0) {
@@ -516,9 +525,21 @@ PRIMITIVE(error_number) {
   return Smi::from(socket->error());
 }
 
+PRIMITIVE(error_kind) {
+  ARGS(int, error);
+  if (error == ERR_CLSD) return Smi::from(TCP_ERROR_KIND_CLOSED);
+  if (error == ERR_RST || error == ERR_ABRT) return Smi::from(TCP_ERROR_KIND_RESET);
+  return Smi::from(TCP_ERROR_KIND_OTHER);
+}
+
 PRIMITIVE(error) {
   ARGS(int, error);
-  return lwip_error(process, error);
+  // Returns the message as a plain string. Do not use lwip_error here: it
+  // marks the string as an error, which would make this primitive throw
+  // instead of return.
+  String* str = lwip_strerror(process, error);
+  if (str == null) FAIL(ALLOCATION_FAILED);
+  return str;
 }
 
 static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
@@ -543,6 +564,8 @@ PRIMITIVE(get_option) {
     Process* process = capture.process;
 
     if (capture.socket->error() != ERR_OK) return lwip_error(process, capture.socket->error());
+    // The pcb is gone if the connection was closed with ERR_CLSD.
+    if (capture.socket->tpcb() == null) return lwip_error(process, ERR_CLSD);
 
     switch (capture.option) {
       case TCP_KEEP_ALIVE:
@@ -583,6 +606,8 @@ PRIMITIVE(set_option) {
     Process* process = capture.process;
 
     if (capture.socket->error() != ERR_OK) return lwip_error(process, capture.socket->error());
+    // The pcb is gone if the connection was closed with ERR_CLSD.
+    if (capture.socket->tpcb() == null) return lwip_error(process, ERR_CLSD);
 
     switch (capture.option) {
       case TCP_KEEP_ALIVE:

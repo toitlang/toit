@@ -33,6 +33,7 @@ TYPE_PRIMITIVE_ANY(error)
 TYPE_PRIMITIVE_ANY(get_option)
 TYPE_PRIMITIVE_ANY(set_option)
 TYPE_PRIMITIVE_ANY(gc)
+TYPE_PRIMITIVE_ANY(error_kind)
 
 }  // namespace toit::compiler
 }  // namespace toit

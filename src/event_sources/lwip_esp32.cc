@@ -69,6 +69,7 @@ static bool is_toit_error(int err) {
 String* lwip_strerror(Process* process, err_t err) {
   // Normal codes returned by LWIP, but LWIP does not have string versions
   // unless it is compiled with debug options.
+  // The table is indexed by the lwIP 2.x error numbers from lwip/err.h.
   static const char* error_names[] = {
              "OK",                       /* ERR_OK          0  */
              "Out of memory (lwip)",     /* ERR_MEM        -1  */
@@ -81,17 +82,19 @@ String* lwip_strerror(Process* process, err_t err) {
              "Address in use",           /* ERR_USE        -8  */
              "Already connecting",       /* ERR_ALREADY    -9  */
              "Conn already established", /* ERR_ISCONN     -10 */
-             "Connection aborted",       /* ERR_ABRT       -11 */
-             "Connection reset",         /* ERR_RST        -12 */
-             "Connection closed",        /* ERR_CLSD       -13 */
-             "Connection closed",        /* ERR_CONN       -14 */
-             "Illegal argument",         /* ERR_ARG        -15 */
-             "Low-level netif error",    /* ERR_IF         -16 */
+             "Not connected",            /* ERR_CONN       -11 */
+             "Low-level netif error",    /* ERR_IF         -12 */
+             "Connection aborted",       /* ERR_ABRT       -13 */
+             "Connection reset",         /* ERR_RST        -14 */
+             "Connection closed",        /* ERR_CLSD       -15 */
+             "Illegal argument",         /* ERR_ARG        -16 */
   };
+  static_assert(ERR_CLSD == -15, "unexpected lwIP error numbering");
+  static_assert(ERR_ARG == -16, "unexpected lwIP error numbering");
 
   static const char* custom_strerr[] = {
-             "Host name lookup failure"                 /* ERR_NAME_LOOKUP_FAILURE -126  */
-             "Connection closed due to memory pressure" /* ERR_MEM_NON_RECOVERABLE -127 */
+             "Host name lookup failure",                  /* ERR_NAME_LOOKUP_FAILURE -126 */
+             "Connection closed due to memory pressure",  /* ERR_MEM_NON_RECOVERABLE -127 */
   };
 
   const char* str = "Unknown network error";
@@ -99,7 +102,8 @@ String* lwip_strerror(Process* process, err_t err) {
   if (err <= 0 && static_cast<unsigned>(-err) < sizeof(error_names) / sizeof(error_names[0])) {
     str = error_names[-err];
   } else if (is_toit_error(err)) {
-    str = custom_strerr[err - FIRST_TOIT_ERROR];
+    unsigned index = FIRST_TOIT_ERROR - err;
+    if (index < sizeof(custom_strerr) / sizeof(custom_strerr[0])) str = custom_strerr[index];
   }
   return process->allocate_string(str);
 }

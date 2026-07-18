@@ -36,4 +36,14 @@ enum TcpOption {
   TCP_SEND_BUFFER  = 8,
 };
 
+// Classification of platform-specific socket error numbers. Lets the Toit
+// side make control-flow decisions without matching on error strings.
+// Must be kept in sync with the TCP-ERROR-KIND-* constants in
+// lib/net/modules/tcp.toit.
+enum TcpErrorKind {
+  TCP_ERROR_KIND_OTHER  = 0,
+  TCP_ERROR_KIND_CLOSED = 1,
+  TCP_ERROR_KIND_RESET  = 2,
+};
+
 } // namespace toit

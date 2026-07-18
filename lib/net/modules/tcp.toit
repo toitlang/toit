@@ -27,6 +27,12 @@ TOIT-TCP-OPTION-NO-DELAY_      ::= 6
 TOIT-TCP-OPTION-WINDOW-SIZE_   ::= 7
 TOIT-TCP-OPTION-SEND-BUFFER_   ::= 8
 
+// Classification of socket errors, as returned by $tcp-error-kind_.
+// Must be kept in sync with TcpErrorKind in src/resources/tcp.h.
+TCP-ERROR-KIND-OTHER_  ::= 0
+TCP-ERROR-KIND-CLOSED_ ::= 1
+TCP-ERROR-KIND-RESET_  ::= 2
+
 // Underlying TCP socket, used to implement the TcpSocket and TcpServerSocket
 // classes. It provides basic support for managing the underlying resource
 // state and for closing.
@@ -65,6 +71,9 @@ class TcpSocket_:
       // LSP protocol.
       close
 
+  // Waits for one of the given state bits.
+  // On error, calls the failure block with two arguments: one of the
+  // TCP-ERROR-KIND-* constants and a human-readable message.
   ensure-state_ bits --error-bits=TOIT-TCP-ERROR_ [--failure]:
     state := ensure-state_
     state-bits / int? := null
@@ -74,17 +83,17 @@ class TcpSocket_:
         state-bits = null
         tcp-gc_ state.group
     if state-bits == 0:
-      return failure.call "NOT_CONNECTED"
+      return failure.call TCP-ERROR-KIND-OTHER_ "NOT_CONNECTED"
     if (state-bits & error-bits) == 0:
       return state
     error-number := tcp-error-number_ state.resource
+    kind := tcp-error-kind_ error-number
     close
-    if error-number == 0:
-      // The kernel can signal an error event without setting errno (notably
-      // on a clean close from the peer). Surface it as a recognizable close
-      // event rather than the misleading "Success" string from strerror(0).
-      return failure.call "Connection closed"
-    return failure.call (tcp-error_ error-number)
+    if kind == TCP-ERROR-KIND-CLOSED_:
+      // Use a fixed message: the platform's message for a close without an
+      // error number would be the misleading "Success" from strerror(0).
+      return failure.call kind "Connection closed"
+    return failure.call kind (tcp-error_ error-number)
 
   ensure-state_:
     if state_: return state_
@@ -115,7 +124,8 @@ class TcpServerSocket extends TcpSocket_ implements tcp.ServerSocket:
     return accept: throw it
 
   accept [failure]:
-    state := ensure-state_ TOIT-TCP-READ_ --failure=failure
+    state := ensure-state_ TOIT-TCP-READ_ --failure=: | _ message |
+      failure.call message
     id := tcp-accept_ state.group state.resource
     if not id:
       state_.clear-state TOIT-TCP-READ_
@@ -128,6 +138,9 @@ class TcpServerSocket extends TcpSocket_ implements tcp.ServerSocket:
 
 class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements tcp.Socket Reader:
   window-size_ := 0
+  // Whether the peer closed the connection through the error path, which
+  // tears down the socket resource. Reads must keep returning null then.
+  peer-closed_ := false
 
   constructor network/udp.Interface:
     return TcpSocket network 0
@@ -156,25 +169,32 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
   connect hostname port [failure]:
     address := dns-lookup hostname --network=network_
     open_ (tcp-connect_ tcp-resource-group_ address.raw port window-size_)
-    error := catch:
-      ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=failure
-    if error:
-      // LwIP uses the same error code, ERR_CON, for connection refused and
-      // connection closed.
-      if error == "Connection closed": throw "Connection refused"
-      throw error
+    peer-closed_ = false
+    ensure-state_ TOIT-TCP-WRITE_
+        --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_)
+        --failure=: | kind/int message/string |
+          // A connection that is closed or reset before it becomes writable
+          // was refused by the peer.
+          if kind == TCP-ERROR-KIND-OTHER_:
+            failure.call message
+          else:
+            failure.call "Connection refused"
 
   /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
     return read_
 
   read_ -> ByteArray?:
+    if peer-closed_: return null
     while true:
-      state := ensure-state_ TOIT-TCP-READ_ --failure=:
-        // A clean close from the peer is not an error for the read path:
-        // return null to signal EOF instead of throwing.
-        if it == "Connection closed": return null
-        throw it
+      state := ensure-state_ TOIT-TCP-READ_ --failure=: | kind/int message/string |
+        // A close from the peer is not an error for the read path: return
+        // null to signal EOF instead of throwing. The error path has already
+        // torn down the socket, so remember the EOF for subsequent reads.
+        if kind == TCP-ERROR-KIND-CLOSED_:
+          peer-closed_ = true
+          return null
+        throw message
       result := tcp-read_ state.group state.resource
       if result != -1: return result
       // TODO(anders): We could consider always clearing this after all reads.
@@ -186,7 +206,8 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
 
   try-write_ data/io.Data from/int to/int -> int:
     while true:
-      state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
+      state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: | _ message |
+        throw message
       wrote := tcp-write_ state.group state.resource data from to
       if wrote != -1: return wrote
       state.clear-state TOIT-TCP-WRITE_
@@ -251,6 +272,9 @@ tcp-read_ socket-resource-group descriptor:
 
 tcp-error-number_ descriptor -> int:
   #primitive.tcp.error-number
+
+tcp-error-kind_ error/int -> int:
+  #primitive.tcp.error-kind
 
 tcp-error_ error/int -> string:
   #primitive.tcp.error

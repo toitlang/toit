@@ -35,7 +35,12 @@ static const int LAST_TOIT_ERROR = -128;
 // Only accessed from the LWIP thread.
 extern bool needs_gc;
 
-// Returns the error as a string. Returns null on allocation failure.
+// Returns the message for the error as a string. Returns null on allocation
+// failure.
+String* lwip_strerror(Process* process, err_t err);
+
+// Returns the error as a string that is marked as an error, ready to be
+// returned from a primitive. Returns null on allocation failure.
 Object* lwip_error(Process* process, err_t err);
 
 // The LwipEventSource handles the LwIP thread, which is system-wide.  All LwIP

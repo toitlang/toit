@@ -281,6 +281,7 @@ namespace toit {
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(gc, 1)                           \
+  PRIMITIVE(error_kind, 1)                   \
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
