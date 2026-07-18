@@ -67,12 +67,16 @@ with-client [block]:
     server-socket.close
     network.close
 
-clear-containers:
+clear-containers -> string?:
+  first-error/string? := null
   containers.images.do: | image/containers.ContainerImage |
     // ContainerImageWriter tests are anonymous. Preserve named containers
     // embedded in the firmware slot, including oversized hardware tests.
     if image.id != containers.current and image.name == null:
-      catch: containers.uninstall image.id
+      error := catch: containers.uninstall image.id
+      if error and not first-error:
+        first-error = "id=$image.id error=$error"
+  return first-error
 
 install-new-test reader/io.Reader:
   arg-size := reader.little-endian.read-int32
@@ -86,7 +90,8 @@ install-new-test reader/io.Reader:
     print "ALREADY INSTALLED"
     return
   print "Clearing old containers"
-  clear-containers
+  cleanup-error := clear-containers
+  if cleanup-error: throw "Failed to clear old containers: $cleanup-error"
   print "SIZE: $size"
   expected-crc := reader.read-bytes 4
   summer := crc.Crc32
@@ -282,7 +287,10 @@ status out/io.Writer message/string -> none:
 install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
   size := reader.little-endian.read-int32
   expected-crc := reader.read-bytes 4
-  clear-containers
+  cleanup-error := clear-containers
+  if cleanup-error:
+    status out "install cleanup failed $cleanup-error"
+    return false
   summer := crc.Crc32
   image-writer := containers.ContainerImageWriter size
   out.write #[ACK-READY]
@@ -350,9 +358,14 @@ run-installed arg/string out/io.Writer --embedded/bool=false -> none:
     // the device sits unresponsive until the watchdog resets it.
     code/int? := null
     error := catch --trace: code = (containers.start test-image.id [arg]).wait
+    cleanup-error/any? := null
+    if not embedded:
+      cleanup-error = catch: containers.uninstall test-image.id
     test-running_ = false
     if error:
       status out "run: test wait failed error=$error"
+    else if cleanup-error:
+      status out "run: test cleanup failed error=$cleanup-error"
     else:
       status out "run: test exited code=$code"
 
