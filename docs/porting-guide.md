@@ -738,21 +738,25 @@ bucket entries should persist data across reboots.
 ### New Files: `src/rtc_memory_ec618.cc` and `src/rtc_memory_ec618.h`
 
 Implement RTC memory (state that persists across deep-sleep reboots). The
-ESP32 version uses dedicated RTC RAM; the EC618 uses a noinit section.
+ESP32 version uses dedicated RTC RAM. The EC618 uses a noinit section while
+awake and the SDK's wear-levelled hibernation store across HIBERNATE.
 
 **Key design**:
 
 - Place `RtcData` struct and user data in a linker section `.toit.rtc.noinit`
   (using `__attribute__((__section__(".toit.rtc.noinit")))`). This section must
   not be zeroed on warm boot by the startup code.
+- Store the hibernation copy in sector 3 of the SDK's `apFlashMem` shadow,
+  which `AP_FLASHREQ_RSVD` reserves for the application. Call
+  `apmuSdkFlashWrReq(AP_FLASHREQ_RSVD)` before sleeping; the SDK restores that
+  sector before Toit starts and rotates its flash backing across four blocks.
 - Track `boot_count` and `wakeup_time` (accumulated FreeRTOS ticks across
   sleep cycles).
 - Validate with a CRC32 checksum that incorporates the embedded VM UUID. This
   ensures the RTC data is invalidated when firmware changes.
-- On cold boot (`SLP_ACTIVE_STATE`) or hibernation wake (`SLP_HIB_STATE`),
-  clear all RTC memory.
-- On warm boot (deep sleep wake), validate the checksum and increment
-  `boot_count`.
+- On startup, load the SDK shadow, validate the checksum, and increment
+  `boot_count`. A cold boot or incompatible firmware naturally fails the CRC
+  and clears the RTC memory.
 - `adjust_wakeup_time_before_sleep(ms)`: Add the current tick count plus the
   sleep duration to `wakeup_time` so the system time is approximately correct
   after waking.

@@ -24,14 +24,9 @@
 #include "uuid.h"
 
 extern "C" {
-  #include "slpman.h"
-}
-
-extern "C" {
+  #include "apmu_external.h"
   #include "cmsis_os2.h"
   #include "slpman.h"
-  #include "flash_rt.h"
-  #include "mem_map.h"
 }
 
 namespace toit {
@@ -56,16 +51,24 @@ static uint32 rtc_checksum __attribute__((used, section(".toit.rtc.noinit"))) = 
 static uint8 rtc_user_data[RtcMemory::RTC_USER_DATA_SIZE]
     __attribute__((used, section(".toit.rtc.noinit"))) = {};
 
-// Flash-backed persistence: a dedicated 4KB sector at the start of the
-// FS region (0x384000), which is unused in the Toit port. The noinit
-// section does not survive HIBERNATE, so we save to flash before sleep
-// and restore from flash on boot.
-static const uint32_t RTC_FLASH_OFFSET = 0x00384000;
-static const uint32_t RTC_FLASH_SIZE = 0x1000;
+// The SDK maintains a wear-levelled flash backup of four 4KB RAM sectors in
+// apFlashMem. Sector 3 is reserved for the application. It restores the RAM
+// shadow before Toit starts and writes requested sectors before HIBERNATE.
+// The last word of every sector is the SDK's erase counter.
+static const size_t RTC_BACKUP_SECTOR_SIZE = 0x1000;
+static const size_t RTC_BACKUP_OFFSET = 3 * RTC_BACKUP_SECTOR_SIZE;
+static const size_t RTC_BACKUP_SIZE = RTC_BACKUP_SECTOR_SIZE - sizeof(uint32_t);
 
-// Total size of the data we save/restore to/from flash.
+// Total size of the data we save and restore through the hibernation store.
 static const size_t RTC_PERSIST_SIZE =
     sizeof(RtcData) + sizeof(uint32) + RtcMemory::RTC_USER_DATA_SIZE;
+
+static_assert(RTC_PERSIST_SIZE <= RTC_BACKUP_SIZE,
+              "RTC data does not fit in the SDK application backup sector");
+
+static uint8* rtc_backup_address() {
+  return apFlashMem + RTC_BACKUP_OFFSET;
+}
 
 static uint32 compute_rtc_checksum() {
   uint32 vm_checksum = Utils::crc32(0x12345678, EmbeddedData::uuid(), UUID_SIZE);
@@ -80,13 +83,11 @@ static bool is_rtc_valid() {
   return rtc_checksum == compute_rtc_checksum();
 }
 
-static void load_from_flash() {
-  // Read via XIP (memory-mapped flash) into the noinit variables.
-  const uint8* flash_ptr = reinterpret_cast<const uint8*>(
-      AP_FLASH_XIP_ADDR + RTC_FLASH_OFFSET);
-  memcpy(&rtc, flash_ptr, sizeof(rtc));
-  memcpy(&rtc_checksum, flash_ptr + sizeof(rtc), sizeof(rtc_checksum));
-  memcpy(&rtc_user_data, flash_ptr + sizeof(rtc) + sizeof(rtc_checksum),
+static void load_from_hibernate_backup() {
+  const uint8* backup = rtc_backup_address();
+  memcpy(&rtc, backup, sizeof(rtc));
+  memcpy(&rtc_checksum, backup + sizeof(rtc), sizeof(rtc_checksum));
+  memcpy(&rtc_user_data, backup + sizeof(rtc) + sizeof(rtc_checksum),
          sizeof(rtc_user_data));
 }
 
@@ -99,8 +100,8 @@ static void reset_rtc(const char* reason) {
 }
 
 void RtcMemory::set_up() {
-  // Try to restore from flash (noinit section doesn't survive HIBERNATE).
-  load_from_flash();
+  // apFlashMem has already been restored by the SDK on a HIBERNATE wake.
+  load_from_hibernate_backup();
 
   // Use the CRC as the primary wake detector.
   uint32 expected = compute_rtc_checksum();
@@ -119,16 +120,15 @@ void RtcMemory::set_up() {
 }
 
 void RtcMemory::flush_to_flash() {
-  // Write the noinit section contents to flash as a contiguous block.
-  // Use a RAM buffer since BSP_QSPI_Write_Safe requires a RAM source.
-  uint8 buf[RTC_PERSIST_SIZE];
-  memcpy(buf, &rtc, sizeof(rtc));
-  memcpy(buf + sizeof(rtc), &rtc_checksum, sizeof(rtc_checksum));
-  memcpy(buf + sizeof(rtc) + sizeof(rtc_checksum),
+  // Update the SDK's RAM shadow and ask its hibernation store to persist the
+  // reserved application sector. The SDK rotates four flash blocks, avoiding
+  // the single-sector wear and LittleFS corruption of the old implementation.
+  uint8* backup = rtc_backup_address();
+  memcpy(backup, &rtc, sizeof(rtc));
+  memcpy(backup + sizeof(rtc), &rtc_checksum, sizeof(rtc_checksum));
+  memcpy(backup + sizeof(rtc) + sizeof(rtc_checksum),
          rtc_user_data, sizeof(rtc_user_data));
-
-  BSP_QSPI_Erase_Safe(RTC_FLASH_OFFSET, RTC_FLASH_SIZE);
-  BSP_QSPI_Write_Safe(buf, RTC_FLASH_OFFSET, RTC_PERSIST_SIZE);
+  apmuSdkFlashWrReq(AP_FLASHREQ_RSVD);
 }
 
 void RtcMemory::invalidate() {

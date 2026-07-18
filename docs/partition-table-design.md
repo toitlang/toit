@@ -226,11 +226,11 @@ gap into the AP image. (Confirmed by the `_Static_assert` in
 | 0x004000 | 0x804000 | 128 KB | bootloader | `BOOTLOADER_FLASH_LOAD_ADDR`/`_SIZE` | fixed |
 | 0x024000 | 0x824000 | 2.875 MB | **AP image** (see carve below) | `AP_FLASH_LOAD_ADDR`/`_SIZE` | **yes** |
 | 0x304000 | 0xb04000 | 512 KB | **FOTA** | `FLASH_FOTA_REGION_START`/`_LEN`/`_END` | **no** (LuatOS only) |
-| 0x384000 | 0xb84000 | 288 KB | **LittleFS** | `FLASH_FS_REGION_START`/`_END`/`_SIZE` | **no** (SDK fs, not mounted) |
+| 0x384000 | 0xb84000 | 288 KB | **LittleFS** | `FLASH_FS_REGION_START`/`_END`/`_SIZE` | SDK storage, mounted at boot |
 | 0x3cc000 | 0xbcc000 | 64 KB | **FDB = flash registry** | `FLASH_FDB_REGION_START`/`_END` (SoftSIM disabled, size 0) | **yes** (storage) |
 | 0x3dc000 | 0xbdc000 | 16 KB | NVRAM factory | `NVRAM_FACTORY_PHYSICAL_BASE`/`_SIZE` | modem (RF cal) |
 | 0x3e0000 | 0xbe0000 | 16 KB | NVRAM runtime | `NVRAM_PHYSICAL_BASE`/`_SIZE` | modem |
-| 0x3e4000 | 0xbe4000 | 96 KB | hib backup | `FLASH_MEM_BACKUP_*` | deep-sleep/PSM |
+| 0x3e4000 | 0xbe4000 | 96 KB | hib backup | `FLASH_MEM_BACKUP_*` | SDK deep-sleep/PSM + Toit RTC memory |
 | 0x3fc000 | 0xbfc000 | 4 KB | plat config | `FLASH_MEM_PLAT_INFO_ADDR`/`_SIZE` | SDK boot |
 | 0x3fd000 | 0xbfd000 | 4 KB | reset info | `FLASH_MEM_RESET_INFO_ADDR`/`_SIZE` | SDK |
 | 0x3fe000 | 0xbfe000 | 4 KB | excep key info | `FLASH_EXCEP_KEY_INFO_ADDR`/`_LEN` | SDK crash dump |
@@ -599,8 +599,11 @@ else stays negotiable.
       calls `LFS_init` before loading PLAT configuration.
 - [ ] Does anything in the SDK boot path write FOTA/LFS without Toit asking
       (e.g. an auto-apply step, an fs auto-format on first boot)?
-- [ ] Is the hib-backup region (96 KB) actually required for the deep-sleep /
-      PSM modes Toit uses, or can it be reclaimed too?
+- [x] The 96 KB hib-backup region is required. The SDK represents it as four
+      wear-levelled 24 KB blocks and restores a 16 KB `apFlashMem` shadow from
+      it. Toit RTC memory uses the shadow's application-reserved sector 3 and
+      requests writeback with `AP_FLASHREQ_RSVD`; 16 consecutive hardware
+      hibernation cycles preserved its checksum and user bytes (2026-07-18).
 - [ ] Exact RF-calibration footprint in NVRAM factory/runtime — confirm the
       32 KB band is the true immovable minimum (don't shrink blindly).
 - [ ] Where exactly does the SDK bootloader hand control to 0x824000, and what

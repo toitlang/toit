@@ -23,8 +23,8 @@ namespace toit {
 
 // RTC memory holds state that is preserved across deep-sleep reboots.
 // On EC618, this uses a noinit section in the always-on SRAM (ASMB area)
-// as a RAM cache, backed by a dedicated flash sector for persistence
-// across HIBERNATE (which does not preserve ASMB).
+// as a RAM cache, backed by the SDK's wear-levelled hibernation store for
+// persistence across HIBERNATE (which does not preserve ASMB).
 class RtcMemory {
  public:
   // Run at program startup (after FreeRTOS is initialized).
@@ -33,7 +33,7 @@ class RtcMemory {
   // Force clearing of the RTC memory on next boot.
   static void invalidate();
 
-  // Write the current RTC state to flash.
+  // Stage the current RTC state for the SDK's hibernation-store writeback.
   static void flush_to_flash();
 
   // Event registration.
