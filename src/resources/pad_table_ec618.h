@@ -30,9 +30,9 @@ namespace toit {
 // a *physical pin* and the GPIO bit is what reads/writes do at the
 // controller register.
 //
-// Toit-side pin addressing is by PAD number; GPIO numbers (which match
-// what Air780 silkscreens print) are exposed via the `ec618` Toit library
-// and resolved to pads through the helpers below.
+// Toit-side pin addressing is by PAD number. GPIO numbers (which match
+// what Air780 silkscreens print) are resolved exclusively by the `ec618`
+// Toit library; native code always receives a PAD.
 //
 // Data extracted from RTE_Device.h comments and luat_uart_ec618.c.
 
@@ -61,10 +61,8 @@ bool pad_is_aon(int pad);
 // before using any AON pad. (Implemented in gpio_ec618.cc.)
 void pad_aon_power_on();
 
-// Returns the primary pad for the given GPIO number (`alt=0`) or its
-// alternate pad if one exists (`alt=1`). Returns -1 if the GPIO has
-// no entry / no such alternate.
-int gpio_to_pad(int gpio_num, int alt);
+// Whether another physical PAD maps to the same GPIO controller bit.
+bool pad_gpio_is_shared(int pad);
 
 // UART function lookup. `mapping` selects between alternate routings:
 //   UART0:  0 = primary (TX=PAD30 RX=PAD29), 1 = alt (TX=PAD24 RX=PAD23)

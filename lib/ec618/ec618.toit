@@ -261,11 +261,11 @@ silkscreens and datasheets normally refer to logical GPIO numbers; see the
 top-of-file comment for the addressing model.
 */
 class Ec618:
-  // GPIO -> primary PAD lookup. Values must match `kGpioPrimaryPad` in
-  // src/resources/pad_table_ec618.cc (sourced from the SDK's own GPIO
-  // mapping helper; see there). GPIO20..28 (pads 40..48) are AON-domain
-  // GPIOs: the driver powers their LDO on first use and they keep working
-  // in sleep modes.
+  // GPIO -> primary PAD lookup. This is intentionally the only GPIO -> PAD
+  // resolver; native drivers receive PADs and only derive controller bits
+  // from them. Values come from the SDK's GPIO mapping helper. GPIO20..28
+  // (pads 40..48) are AON-domain GPIOs: the driver powers their LDO on first
+  // use and they keep working in sleep modes.
   static GPIO-PRIMARY-PAD_/List ::= [
     15,  16,  17,  18,  19,  20,  21,  22,
     23,  24,  25,  26,  27,  28,  29,  30,

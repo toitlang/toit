@@ -21,66 +21,47 @@
 
 namespace toit {
 
-// --- GPIO <-> PAD mapping --------------------------------------------------
-//
-// Primary pad for each GPIO controller bit (0..31). -1 means we don't have a
-// mapping documented for that GPIO yet; users targeting it will get an
-// INVALID_ARGUMENT and we'll add the entry once we can confirm against the
-// chip datasheet.
+// --- PAD -> GPIO-controller mapping ---------------------------------------
 //
 // Sourced from the SDK's GPIO_ToPadEC618 implementation. Its alt-function
 // selector matters: GPIO12..15 and GPIO18..19 each have two physical pads.
-// The primary mapping below is the ALT0 pad; the alternate table is the ALT4
-// pad. This agrees with the SDK GPIO example, which deliberately selects the
-// ALT4 pads for GPIO12..15.
+// This agrees with the SDK GPIO example, which deliberately selects the ALT4
+// pads for GPIO12..15.
 //
 // All primary GPIO pads mux at function 0. The alternate pads 11..14 and
 // 38..39 use function 4 — see pad_gpio_mux below. (Our earlier sweep drove
 // pads 13/14 at function 0 and wrongly concluded they had no GPIO.)
-static const int8_t kGpioPrimaryPad[32] = {
-  /*  0 */ 15, /*  1 */ 16, /*  2 */ 17, /*  3 */ 18,
-  /*  4 */ 19, /*  5 */ 20, /*  6 */ 21, /*  7 */ 22,
-  /*  8 */ 23, /*  9 */ 24, /* 10 */ 25, /* 11 */ 26,
-  /* 12 */ 27, /* 13 */ 28, /* 14 */ 29, /* 15 */ 30,
-  /* 16 */ 31, /* 17 */ 32, /* 18 */ 33, /* 19 */ 34,
-  // The AON-domain GPIOs (AGPIO): 20..28 on pads 40..48. They are powered
-  // by the AON IO LDO, which is off until slpManAONIOPowerOn() — the GPIO
-  // driver turns it on when one of these pads is opened. GPIO20
-  // (AGPIOWU0) and friends double as wakeup pads in sleep modes.
-  /* 20 */ 40, /* 21 */ 41, /* 22 */ 42, /* 23 */ 43,
-  /* 24 */ 44, /* 25 */ 45, /* 26 */ 46, /* 27 */ 47,
-  /* 28 */ 48, /* 29 */ 35, /* 30 */ 36, /* 31 */ 37,
+//
+// This table deliberately runs in the public direction: PAD in, controller
+// bit out. Logical GPIO -> PAD selection belongs in lib/ec618/ec618.toit.
+static const int8_t kPadToGpio[kMaxPadIndex + 1] = {
+  /*  0 */ -1,
+  /*  1 */ -1, /*  2 */ -1, /*  3 */ -1, /*  4 */ -1, /*  5 */ -1,
+  /*  6 */ -1, /*  7 */ -1, /*  8 */ -1, /*  9 */ -1, /* 10 */ -1,
+  /* 11 */ 12, /* 12 */ 13, /* 13 */ 14, /* 14 */ 15,
+  /* 15 */  0, /* 16 */  1, /* 17 */  2, /* 18 */  3,
+  /* 19 */  4, /* 20 */  5, /* 21 */  6, /* 22 */  7,
+  /* 23 */  8, /* 24 */  9, /* 25 */ 10, /* 26 */ 11,
+  /* 27 */ 12, /* 28 */ 13, /* 29 */ 14, /* 30 */ 15,
+  /* 31 */ 16, /* 32 */ 17, /* 33 */ 18, /* 34 */ 19,
+  /* 35 */ 29, /* 36 */ 30, /* 37 */ 31, /* 38 */ 18, /* 39 */ 19,
+  // The AON-domain GPIOs on pads 40..48 are powered by the AON IO LDO.
+  /* 40 */ 20, /* 41 */ 21, /* 42 */ 22, /* 43 */ 23, /* 44 */ 24,
+  /* 45 */ 25, /* 46 */ 26, /* 47 */ 27, /* 48 */ 28,
 };
-
-// Alternate ALT4 pads from GPIO_ToPadEC618. These are distinct physical pads
-// sharing the same controller bit as the primary ALT0 pad.
-static const int8_t kGpioAltPad[32] = {
-  /*  0 */ -1, /*  1 */ -1, /*  2 */ -1, /*  3 */ -1,
-  /*  4 */ -1, /*  5 */ -1, /*  6 */ -1, /*  7 */ -1,
-  /*  8 */ -1, /*  9 */ -1, /* 10 */ -1, /* 11 */ -1,
-  /* 12 */ 11, /* 13 */ 12, /* 14 */ 13, /* 15 */ 14,
-  /* 16 */ -1, /* 17 */ -1, /* 18 */ 38, /* 19 */ 39,
-  /* 20 */ -1, /* 21 */ -1, /* 22 */ -1, /* 23 */ -1,
-  /* 24 */ -1, /* 25 */ -1, /* 26 */ -1, /* 27 */ -1,
-  /* 28 */ -1, /* 29 */ -1, /* 30 */ -1, /* 31 */ -1,
-};
-
-int gpio_to_pad(int gpio_num, int alt) {
-  if (gpio_num < 0 || gpio_num >= 32) return -1;
-  if (alt == 0) return kGpioPrimaryPad[gpio_num];
-  if (alt == 1) return kGpioAltPad[gpio_num];
-  return -1;
-}
 
 int pad_to_gpio(int pad) {
   if (pad < 0 || pad > kMaxPadIndex) return -1;
-  // Linear scan; the table is small and lookups happen at construction
-  // time, not on the hot path.
-  for (int gpio = 0; gpio < 32; gpio++) {
-    if (kGpioPrimaryPad[gpio] == pad) return gpio;
-    if (kGpioAltPad[gpio] == pad) return gpio;
+  return kPadToGpio[pad];
+}
+
+bool pad_gpio_is_shared(int pad) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return false;
+  for (int sibling = 1; sibling <= kMaxPadIndex; sibling++) {
+    if (sibling != pad && pad_to_gpio(sibling) == gpio_bit) return true;
   }
-  return -1;
+  return false;
 }
 
 int pad_gpio_mux(int pad) {

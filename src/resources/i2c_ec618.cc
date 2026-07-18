@@ -287,14 +287,12 @@ static void quiesce(int controller) {
 // The pad-GPIO tricks below (wire peek, 9-clock bus clear) commandeer the
 // pad's GPIO controller bit: they reconfigure its direction and, for the
 // clear, drive it. That is only safe while the bit is reachable from THIS
-// pad alone — a GPIO number with an ALTERNATE pad may be in use by the
+// pad alone — the controller bit of a pad with a sibling may be in use by the
 // user through that other pad, and reconfiguring the shared bit would
 // hijack their pin (direction and drive). Skip this optional recovery path
 // for shared controller bits; normal I2C transfers do not commandeer them.
 static bool gpio_bit_exclusive(int pad) {
-  int gpio_bit = pad_to_gpio(pad);
-  if (gpio_bit < 0) return false;
-  return gpio_to_pad(gpio_bit, 1) == -1;
+  return pad_to_gpio(pad) >= 0 && !pad_gpio_is_shared(pad);
 }
 
 // Reads the wire level of an I2C pad: direction input, briefly mux to

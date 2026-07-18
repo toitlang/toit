@@ -138,12 +138,6 @@ static void gpio_isr_handler() {
 // is pad-level state, because `set` only receives the pad number.
 static uint64_t open_drain_pads = 0;
 
-// Pin resources carry a physical PAD into peripheral drivers, so ownership at
-// this level is by PAD even when the pin is never configured as GPIO. Distinct
-// sibling PADs may be open concurrently; the controller-bit check below only
-// becomes relevant when one of them is actually used as GPIO.
-static uint64_t open_pads = 0;
-
 // A controller bit can be routed to more than one physical PAD, but its
 // direction, data and interrupt registers are shared. PADs remain the public
 // resource identity; only one sibling may own the controller bit at a time.
@@ -152,30 +146,6 @@ static uint8_t gpio_pad_owner[32] = {};
 
 static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
   return gpio_pad_owner[gpio_bit] != 0 && gpio_pad_owner[gpio_bit] != pad + 1;
-}
-
-static bool gpio_bit_is_shared(int gpio_bit) {
-  return gpio_to_pad(gpio_bit, 1) >= 0;
-}
-
-static int current_pad_mux(int pad) {
-  return (PAD->PCR[pad] & PAD_PCR_MUX_Msk) >> PAD_PCR_MUX_Pos;
-}
-
-// A shared controller may still be connected to its idle sibling. Disconnect
-// that sibling only when it is currently muxed to GPIO. Preserve a real
-// peripheral mux -- notably UART0 on primary pads 29/30 while GPIO14/15 use
-// the alternate pads 13/14.
-static void disconnect_idle_gpio_sibling(int gpio_bit, int pad) {
-  if (!gpio_bit_is_shared(gpio_bit)) return;
-  for (int alt = 0; alt <= 1; alt++) {
-    int sibling = gpio_to_pad(gpio_bit, alt);
-    if (sibling < 0 || sibling == pad) continue;
-    int gpio_mux = pad_gpio_mux(sibling);
-    if (current_pad_mux(sibling) != gpio_mux) continue;
-    GPIO_IomuxEC618(sibling, gpio_mux == 0 ? 4 : 0, 0, 0);
-    GPIO_PullConfig(sibling, 0, 0);
-  }
 }
 
 static bool is_open_drain(int pad) {
@@ -238,7 +208,7 @@ void pad_release(int pad) {
     }
     // Disconnect a shared PAD on close so later use of its sibling cannot
     // also reach this physical pin through the same controller bit.
-    int mux = gpio_bit_is_shared(gpio_bit)
+    int mux = pad_gpio_is_shared(pad)
         ? (pad_gpio_mux(pad) == 0 ? 4 : 0)
         : pad_gpio_mux(pad);
     GPIO_IomuxEC618(pad, mux, 0, 0);
@@ -262,13 +232,12 @@ void pad_emergency_high(int pad) {
 
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
-  open_pads &= ~(1ULL << resource->pad());
   open_drain_pads &= ~(1ULL << resource->pad());
   int gpio_bit = resource->gpio_bit();
   if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] == resource->pad() + 1) {
     gpio_pad_owner[gpio_bit] = 0;
+    pad_release(resource->pad());
   }
-  pad_release(resource->pad());
 }
 
 static bool isr_installed = false;
@@ -305,16 +274,14 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  if ((open_pads >> pad) & 1) FAIL(ALREADY_IN_USE);
-  // Pads without a GPIO function are still legal Pins: peripherals (UART0
-  // on pads 30/29, I2C0 on 13/14, ...) take Pin arguments, and the pad
-  // number is all they need. gpio_bit stays -1; config/get/set reject it.
+  // Pads without a GPIO function are still legal Pins: peripheral drivers
+  // take Pin arguments, and the pad number is all they need. gpio_bit stays
+  // -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
 
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
 
-  open_pads |= 1ULL << pad;
   group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
@@ -361,7 +328,6 @@ PRIMITIVE(config) {
   // open-drain pin must read the WIRE (someone else may be pulling it low).
   // AutoPull off — we set the pull explicitly below, and GPIO_PullConfig
   // overrides the iomux auto-pull anyway.
-  disconnect_idle_gpio_sibling(gpio_bit, pad);
   GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, (input || open_drain) ? 1 : 0);
 
   if (open_drain) {

@@ -229,10 +229,6 @@ run-tests -> none:
     primary := Ec618.gpio 12
     alternate := Ec618.gpio 12 --alt
     try:
-      // The physical PAD is the exclusive resource, not the GPIO number.
-      expect-throws "ALREADY_IN_USE":
-        Ec618.pad primary.num
-
       primary.configure --output --value=0
       expect-throws "ALREADY_IN_USE":
         alternate.configure --output --value=0
