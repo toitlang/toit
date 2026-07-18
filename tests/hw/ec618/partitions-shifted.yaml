@@ -6,8 +6,8 @@
 # device really follows the anchor record, not the link: the dispatcher
 # boots the moved slot A, and an OTA stages the moved slot B.
 #
-# Everything below the slots is unchanged; the derived-offset chain
-# reflows the rest (free shrinks by the pad).
+# The default layout's one-sector free reserve moves in front of the slots;
+# the registry therefore stays at the same address and size.
 
 xip-offset: 0x800000
 
@@ -26,8 +26,11 @@ partitions:
   - name: base-id          # 'TBI1' version + fingerprint, directly after
     type: base-id          # the base — derived, never pinned.
     size: 0x1000
+  - name: littlefs         # SDK littlefs; frozen with the base.
+    type: locked
+    size: 0x20000
   - name: anchor           # The anchor record — must not move (it is the
-    type: anchor           # findable spot).
+    type: anchor           # boundary after all frozen regions).
     size: 0x2000
   - name: shift-pad        # THE ACCEPTANCE-TEST SHIFT: one free sector
     type: free             # pushing both slots +0x1000.
@@ -38,17 +41,10 @@ partitions:
   - name: ota-b
     type: slot
     size: 0xC0000
-  - name: free             # Reclaimed FOTA band, one sector smaller.
-    type: free
-    size: 0x70000
-  - name: littlefs         # SDK littlefs: the OSA config store lives here.
-    type: locked
-    offset: 0x384000       # SDK mem_map.h fixed address.
-    size: 0x48000
   - name: registry         # Toit flash registry. LIVE data — must not move.
     type: data
-    offset: 0x3CC000
-    size: 0x10000
+    offset: 0x334000
+    size: 0xA8000
   - name: nvram-factory    # Modem RF calibration — losing it bricks the modem.
     type: locked
     offset: 0x3DC000       # Vendor-fixed from here to the end of flash.

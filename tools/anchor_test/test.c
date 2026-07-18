@@ -77,11 +77,12 @@ static void erase_all(void) { memset(__toit_anchor_start, 0xff, sizeof(__toit_an
 // A small but representative table: base territory, the anchor itself,
 // two slots, one data partition.
 static const partition_entry test_table[] = {
-  { "base",     0x024000u, 0x16D000u, PARTITION_TYPE_BASE,   {0} },
-  { "anchor",   0x191000u, 0x002000u, PARTITION_TYPE_ANCHOR, {0} },
-  { "ota-a",    0x193000u, 0x0C0000u, PARTITION_TYPE_SLOT,   {0} },
-  { "ota-b",    0x253000u, 0x0C0000u, PARTITION_TYPE_SLOT,   {0} },
-  { "registry", 0x3CC000u, 0x010000u, PARTITION_TYPE_DATA,   {0} },
+  { "base",     0x024000u, 0x16C000u, PARTITION_TYPE_BASE,   {0} },
+  { "littlefs", 0x191000u, 0x020000u, PARTITION_TYPE_LOCKED, {0} },
+  { "anchor",   0x1B1000u, 0x002000u, PARTITION_TYPE_ANCHOR, {0} },
+  { "ota-a",    0x1B3000u, 0x0C0000u, PARTITION_TYPE_SLOT,   {0} },
+  { "ota-b",    0x273000u, 0x0C0000u, PARTITION_TYPE_SLOT,   {0} },
+  { "registry", 0x334000u, 0x0A8000u, PARTITION_TYPE_DATA,   {0} },
 };
 #define TEST_TABLE_COUNT ((int)(sizeof(test_table) / sizeof(test_table[0])))
 

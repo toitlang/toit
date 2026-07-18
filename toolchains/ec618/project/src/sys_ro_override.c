@@ -1,8 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 //
 // Override sysROSpaceCheck from libstartup.a to allow Toit to write
-// to the flash registry region, which falls inside the AP image area
-// when __USER_CODE__ is defined (AP_FLASH_LOAD_SIZE = 0x2E0000).
+// to Toit's writable flash regions inside the AP image area.
 //
 // The linker resolves object-file symbols before archive symbols, so
 // this definition takes precedence over the one in libstartup.a.
@@ -12,11 +11,8 @@
 
 #include "mem_map.h"
 
-// AP_IMAGE_END below assumes __USER_CODE__ is defined, which gives
-// AP_FLASH_LOAD_SIZE = 0x2E0000. If a future build drops that flag,
-// AP_FLASH_LOAD_SIZE shrinks to 0x280000 and the 384 KB reserved area
-// between 0x2A4000 and 0x304000 would silently fall outside the AP-image
-// guard and become writable here. Fail the build before that happens.
+// AP_IMAGE_END below assumes the Toit layout's __USER_CODE__ size. Fail
+// the build if the SDK map and this protection boundary drift apart.
 _Static_assert(AP_FLASH_LOAD_SIZE == 0x2E0000,
                "sys_ro_override.c hard-codes AP_IMAGE_END assuming __USER_CODE__");
 
@@ -27,11 +23,17 @@ uint32_t toit_ap_image_modify_end   = 0;
 
 #define BOOTLOADER_END  0x22000
 #define AP_IMAGE_START  0x24000
-#define AP_IMAGE_END    0x304000  // 0x24000 + 0x2E0000
+#define AP_IMAGE_END    0x304000  // 0x24000 + 0x2E0000.
 
 static uint8_t sysROAddrCheck(uint32_t addr) {
     if (addr < BOOTLOADER_END) {
         return 1;  // Bootloader — always read-only.
+    }
+    // The SDK owns LittleFS and may format or update it during early boot,
+    // before Toit's explicit flash-write windows exist. Its geometry is
+    // frozen with the base, but its contents are intentionally writable.
+    if (addr >= FLASH_FS_REGION_START && addr < FLASH_FS_REGION_END) {
+        return 0;
     }
     if (addr >= AP_IMAGE_START && addr < AP_IMAGE_END) {
         // Allow if inside the Toit-designated writable window.
