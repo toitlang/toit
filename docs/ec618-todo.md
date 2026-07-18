@@ -5,35 +5,20 @@ Checked items are done and kept for context; unchecked are open.
 
 ## Next up (technical)
 
-- [ ] **I2C 400 kHz via "dedicated" mode** (Florian: "look into automatic mode").
-  - **Terminology is inverted** in the vendor SDK. `bsp_i2c.c`'s
-    `I2C_TransferConfig` shows `AUTOMATIC_MODE1/2` **set** `MCR.CONTROL_MODE`,
-    and our engine already sets `CONTROL_MODE` — so **we already run "automatic
-    mode."** The unexplored path is **`DEDICATED_MODE` (CONTROL_MODE clear)**:
-    per-byte SCR commands driven by `TX_ONE_DATA`/`RX_ONE_DATA` interrupts,
-    instead of the byte-count state machine we use now. That per-cycle overhead
-    is what caps us at ~117 kHz; dedicated mode is the candidate for real
-    400 kHz.
-  - **Investigation started, INCOMPLETE.** I built an RMT wire-analyzer on the
-    ESP32 to measure real SCL phase widths (see the rig guide — reuse this
-    technique!). First and only clean data point before we stopped: at **46000
-    Hz requested the wire measured ~93 kHz** (high ≈ 5250 ns, low ≈ 5500 ns at
-    50 ns RMT ticks). That is ~2× the nominal 46 kHz and **does not match the
-    305-tick software-derived model** — it suggests the functional-clock source
-    or the tick model in the absolute calibration is off (the source pinning may
-    not be taking effect, or the clock is ~51 MHz where I assumed 26 MHz). The
-    shipped behavior is safe regardless (the `i2c-speed` test checks pace
-    **ordering**, not absolute Hz, and it passes), but **the absolute Hz labels
-    on the driver are suspect** — resolve this with the RMT bench before trusting
-    them or attempting dedicated mode.
-  - Plan: (1) finish the RMT sweep at 46k/100k/117k to pin the real wire freq vs
-    request and locate the true per-cycle overhead; (2) prototype dedicated mode
-    by peek/poke of MCR/SCR from Toit, watching the RMT analyzer, before touching
-    the C driver; (3) if it reaches 400 kHz cleanly against the BMP280 torture
-    test, wire it into `src/resources/i2c_ec618.cc`.
-  - Scratch files used (in the session scratchpad, not committed): an
-    `i2c-scl-analyzer-esp32.toit` (RMT capture) and an `i2c-pace-hold-ec618.toit`
-    (holds probe traffic at a requested pace). Rebuild from the rig-guide recipe.
+- [x] **I2C nominal 400 kHz mode** (2026-07-18).
+  - ESP32 RMT disproved the 305-tick batch model. The bounded linear region is
+    `2*SCLx+20` functional-clock ticks. The calibrated path uses 26 MHz through
+    ~206 kHz, 51.2 MHz for intermediate fast requests, and a dedicated
+    LuatOS-style timing word for the standard 400 kHz setting.
+  - LuatOS production does not use the open CMSIS branch; its closed `soc_i2c`
+    blob uses the same automatic/control mode as us and programs the complete
+    TPR word. Its nominal-400 word measures ~344 kHz. Toit retains its timing
+    fields on 26 MHz and uses the fastest bounded SCLx=30 variant: 1.25 us high
+    + 1.50 us low, or ~363 kHz. SCLx=28 can make NACK traffic free-run. Higher
+    requests clamp to the safe setting; dedicated controller mode is not needed.
+  - HW proof: RMT on ESP32 IO17, plus `i2c-torture-ec618` with 175
+    shape-changing/value-checked BMP280 transfers at each of 100 and 400 kHz
+    (`bad=0` at both speeds).
 
 - [ ] **Cellular HW exercise.** Code is complete (attach, appSetCFUN, PS events,
   TCP/UDP/TLS over lwIP) but HW coverage is thin. Note the **PSU caveat**: the

@@ -143,6 +143,12 @@ pin 23 / PAD13) and **IO18** taps **SDA** (board pin 22 / PAD14). Drive probe
 traffic from the EC618 with a small "hold at requested Hz" test while the RMT
 analyzer prints phase widths on the ESP32 console.
 
+High-speed calibration result (2026-07-18): intermediate fast requests use the
+gate-enabled 51.2 MHz source. The nominal 400 kHz path uses a complete
+LuatOS-style timing word on 26 MHz and measures **~363 kHz** (1.25 us high +
+1.50 us low) at the fastest bounded SCLH=SCLL=30 setting. SCLx=28 can make NACK
+traffic free-run.
+
 ## Rig gotchas (each of these cost real time)
 
 - **The bare envelope is agentless.** `make ec618` builds a BARE envelope (333

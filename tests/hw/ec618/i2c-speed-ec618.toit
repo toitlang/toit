@@ -15,13 +15,13 @@ wire component dominates. Software overhead is identical across batches
 and cancels in the deltas; the platform clock ticks in 1 ms steps, hence
 batches instead of per-probe timing.
 
-Model (HW-calibrated 2026-07-18): period = SCLH+SCLL+305 ticks of the
-functional clock, with SCLH/SCLL floored at 67 ticks (the fast-mode
-t_LOW minimum — smaller divisors make runt SCL phases that progressively
-glitch real slaves). 26 MHz source covers ~32..59 kHz, the 51.2 MHz
-source (gate-enabled on demand) up to the ~117 kHz ceiling. Requests
-above the ceiling run at the ceiling. The final 46 kHz batch re-crosses
-the source boundary downward, so both switch directions are exercised.
+Model (HW-calibrated 2026-07-18 with ESP32 RMT): the bounded linear region
+has period `2*SCLx+20` functional-clock ticks. The 26 MHz source covers
+through ~206 kHz and the gate-enabled 51.2 MHz source handles intermediate
+fast requests. At 400 kHz the driver switches to the LuatOS-style full timing
+word on 26 MHz; the fastest bounded SCLx=30 variant measures ~363 kHz. SCLx=28
+free-runs an address-NACK command. Higher requests clamp to the safe setting.
+The final 50 kHz batch re-crosses the source boundary downward.
 
 Run via the mini-jag tester:
 
@@ -35,22 +35,21 @@ import i2c
 
 EMPTY-ADDRESS ::= 0x40
 PROBES ::= 200
-// SCL cycles per NACK probe: START + 8 address bits + NACK slot + STOP.
-CYCLES-PER-PROBE ::= 11
 
 failures := []
 
 main:
   bus := Ec618.i2c0 --pull-up
 
-  // [requested Hz, expected wire Hz after clamping to the model].
+  // [requested Hz, approximate wire Hz after clamping to the model].
   configs := [
-    [46_000, 46_000],
-    [32_000, 32_000],
+    [50_000, 50_000],
     [100_000, 100_000],
-    [117_000, 116_600],
-    [400_000, 116_600],  // Above the ceiling: runs at the ceiling.
-    [46_000, 46_000],    // Back down: exercises the 51M->26M switch.
+    [200_000, 200_000],
+    [330_000, 330_000],
+    [400_000, 363_000],
+    [1_000_000, 363_000],  // Above the ceiling: same safe setting.
+    [50_000, 50_000],      // Back down: exercises the 51M->26M switch.
   ]
 
   batches := []
@@ -69,19 +68,16 @@ main:
 
   bus.close
 
-  // The wire component per probe is CYCLES-PER-PROBE * period; software
-  // overhead is identical across batches EXCEPT that every NACK probe
-  // quiesces, and recovery on the 51.2 MHz source costs ~70 us/probe more
-  // than on 26 MHz (root gate-enable + power cycle) — which damps the
-  // fast-pace deltas. These are pace-ORDER checks with that damping
-  // baked into the thresholds (wire-time predictions per probe: 46k
-  // 239 us, 32k 344 us, 100k 110 us, ceiling ~94 us).
+  // Software overhead is identical across batches except that every NACK
+  // probe quiesces. These are deliberately broad pace-order/clamp checks;
+  // RMT is the wire-side frequency oracle.
   base := batches[0]
-  check (batches[1] - base > 10) "32k slower than 46k (delta $(batches[1] - base) ms, want > 10)"
-  check (base - batches[2] > 6) "100k faster than 46k (delta $(base - batches[2]) ms, want > 6)"
-  check (base - batches[3] > 8) "ceiling faster than 46k (delta $(base - batches[3]) ms, want > 8)"
-  check ((batches[3] - batches[4]).abs < 8) "400k clamps to the ceiling (|$(batches[3] - batches[4])| ms, want < 8)"
-  check ((batches[5] - base).abs < 8) "return to 46k matches the first run (|$(batches[5] - base)| ms, want < 8)"
+  check (base - batches[1] > 12) "100k faster than 50k (delta $(base - batches[1]) ms, want > 12)"
+  check (batches[1] - batches[2] > 4) "200k faster than 100k (delta $(batches[1] - batches[2]) ms, want > 4)"
+  check (batches[2] - batches[3] > 1) "330k faster than 200k (delta $(batches[2] - batches[3]) ms, want > 1)"
+  check (batches[4] <= batches[3] + 5) "400k no slower than 330k (delta $(batches[4] - batches[3]) ms, want <= 5)"
+  check ((batches[4] - batches[5]).abs < 6) ">400k clamps to 400k (|$(batches[4] - batches[5])| ms, want < 6)"
+  check ((batches[6] - base).abs < 8) "return to 50k matches the first run (|$(batches[6] - base)| ms, want < 8)"
 
   if not failures.is-empty:
     print "i2c-speed-ec618: FAIL $failures"

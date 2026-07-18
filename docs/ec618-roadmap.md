@@ -68,19 +68,18 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 
 ## Major arcs completed (most recent first)
 
-- **I2C real speeds** (2026-07-18, `308ee13f`+`818097b3`). The "engine ignores
-  the TPR divisor, wire fixed at 46 kHz" belief was a measurement artifact
-  (quiesce resets TPR, `ensure_setup` rewrote the same value before every
-  measured transfer). Calibrated model: `SCL period ≈ SCLH+SCLL+305` functional-
-  clock ticks. Driver now honors the requested frequency: ~32–59 kHz on the
-  26 MHz source, up to a **~117 kHz ceiling** on the gate-enabled 51.2 MHz
-  source (`CLOCK_clockEnable(CLK_HF51M)` was the missing piece). The ceiling is
-  **slave-legality**, not divider range: an SCLH/SCLL floor of 67 ticks (the
-  fast-mode t_LOW min) — smaller divisors make runt SCL phases that
-  progressively glitch a real slave (HW-bisected against the BMP280). Torture
-  passes at 100 kHz and at the ceiling. True 400 kHz needs the engine's
-  **"dedicated" mode** — see the todo (this is the "automatic mode" arc; note
-  the vendor's terminology is inverted, we already run "automatic mode").
+- **I2C real speeds + nominal 400 kHz** (2026-07-18). The "engine ignores the TPR
+  divisor" belief was a measurement artifact: ESP32 RMT disproved the 305-tick
+  software-batch model. The bounded linear period is `2*SCLx+20`
+  functional-clock ticks. The calibrated driver covers ~49–206 kHz on 26 MHz
+  and uses the gate-enabled 51.2 MHz source for intermediate fast requests.
+  LuatOS's production `soc_i2c` blob supplied the key full-TPR/divisor clue but
+  its nominal-400 setup measures ~344 kHz. Toit's nominal **400 kHz** path uses
+  the same full timing word on 26 MHz with SCLx=30 and measures ~363 kHz
+  (1.25 us high + 1.50 us low); SCLx=28 can make a NACK free-run.
+  Requests above 400 kHz clamp to the same setting. `i2c-torture-ec618` passes
+  175 value-checked, shape-changing BMP280 transfers with zero bad reads at
+  both 100 and 400 kHz.
 - **Quirky RX deafness** (2026-07-17, `0c3840ff`+`ea760fda`) — **dormant, not
   fixed.** The shared-console-on-UART1 software path is exonerated (a
   runtime console-flip made modest an exact replica and it stayed responsive),

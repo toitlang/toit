@@ -78,6 +78,8 @@ static const uint8_t kStageSingle = 1;            // One leg only.
 static const uint8_t kStageWritePendingRead = 2;  // Write leg in flight.
 static const uint8_t kStageReading = 3;           // Chained read leg.
 
+class I2cDeviceResource;
+
 // Per-controller state. The async transfer buffers are driver-owned
 // copies: an asynchronous transfer outlives the primitive call, and the GC
 // moves Toit heap objects, so the hardware must never see a Toit buffer.
@@ -108,7 +110,7 @@ struct I2cState {
                                  // -> phantom HARDWARE_ERROR on whichever
                                  // transfer follows a probe).
   volatile uint32_t last_event;  // ARM_I2C_EVENT_* bits; 0 = running.
-  volatile uint8_t seq;          // Transfer sequence, bumped at every
+  volatile uint16_t seq;         // Transfer sequence, bumped at every
                                  // start; the completion dispatch carries
                                  // it so on_event can DISCARD dispatches
                                  // from earlier transfers (e.g. an async
@@ -116,6 +118,7 @@ struct I2cState {
                                  // whose late completion would otherwise
                                  // claim the NEXT transfer's wait).
   uint8_t address;               // Target, for the chained read leg.
+  I2cDeviceResource* active_device;  // Null for a bus-level probe.
   bool owns_buffers;             // Async (malloc'd) vs sync (caller's).
   uint8_t* tx;
   uint32_t tx_len;
@@ -157,50 +160,38 @@ static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
 static void i2c1_event(uint32_t event) { i2c_cmsis_event(1, event); }
 static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event };
 
-// Wire pace (HW-calibrated 2026-07-18, NACK-probe batch timing): the
-// control-mode engine counts SCL phases at the FULL functional clock and
-// the TPR divisor IS honored:
-//   period_ticks = SCLH + SCLL + kPaceOverheadTicks
-// The overhead is intrinsic to the engine's state machine; the
-// spike-filter/setup/hold fields contribute ~13 ticks even at max
-// (measured separately). The earlier "TPR is ignored" finding was an
-// artifact: quiesce power-cycles reset TPR and ensure_setup rewrote the
-// same STANDARD value before every measured transfer, so every probe ran
-// at SCLH=SCLL=130 -> 26 MHz/565 = 46 kHz. The historic "drift to
-// ~85 kHz" was the OTHER TPR state (SCLH=SCLL=0 -> 26 MHz/305 = 85 kHz),
-// not the 51.2 MHz source.
+// Wire pace (HW-calibrated 2026-07-18, ESP32 RMT): the automatic/control-
+// mode engine counts SCL phases at the full functional clock and honors
+// TPR. In its bounded linear region:
+//   period_ticks = 2 * SCLx + kPaceOverheadTicks
+// API sweeps on the 51.2 MHz source gave 253 kHz at SCLx=91 and 298..307
+// kHz at 74..75. The earlier 305-tick model came from batch timing, where
+// per-probe software/recovery time was incorrectly attributed to the
+// controller.
 //
-// Sources: 26 MHz (always running with the AP) covers ~32..85 kHz; the
-// 51.2 MHz root covers up to ~167 kHz but must be gate-enabled first
-// (CLOCK_clockEnable(CLK_HF51M) — the SDK LCD driver's recipe; the
-// historic "51 MHz dead-stalls every transfer" experiment predates that
-// enable). True 400 kHz fast mode needs the engine's unexplored
-// "automatic" mode — still a future arc. Requests above the ceiling run
-// AT the ceiling (advisory-fast: a slower bus is always I2C-legal);
-// requests below the floor are rejected in device_create (a deliberately
-// slow bus may be a hard requirement we cannot honor).
-static const uint32_t kPaceOverheadTicks = 305;
+// The 26 MHz source (always running with the AP) covers ~49..206 kHz; the
+// gate-enabled 51.2 MHz root covers intermediate fast requests. Source
+// switches use the SDK LCD driver's CLOCK_clockEnable(CLK_HF51M) recipe.
+// A 400 kHz request uses the fastest bounded LuatOS-style timing word on
+// 26 MHz: 363 kHz measured. Requests above 400 kHz use the same ceiling;
+// requests below the floor are rejected.
+static const uint32_t kPaceOverheadTicks = 20;
 static const uint32_t kSrc26M = 26000000;
 static const uint32_t kSrc51M = 51200000;
-// The SCL phase floor: 67 ticks of 51.2 MHz = 1.31 us, the I2C fast-mode
-// t_LOW minimum. Smaller divisors produce runt SCL phases that real
-// slaves cannot follow — HW-bisected against the BMP280: isolated reads
-// still pass at SCLx=1 (166 kHz), but sustained mixed traffic rots
-// progressively (2B reads 16/20 -> everything 0/20) as the illegal
-// waveform glitches the slave's state machine. The same floor governs
-// the 26 MHz source (its ceiling would otherwise degenerate the same
-// way), which sets the source boundary at ~59 kHz.
-static const uint32_t kMinScl = 67;
+static const uint32_t kFastRequestHz = 400000;
+// Separate measured-safe floors. On 51.2 MHz SCLx=62 is bounded while
+// SCLx=53 free-runs an address-NACK command; do not enter that gap.
+static const uint32_t kMinScl26 = 53;
+static const uint32_t kMinScl51 = 62;
 // Above this the 51.2 MHz source is selected: the fastest pace where the
-// 26 MHz source keeps SCLH=SCLL >= kMinScl. ~59.2 kHz.
-static const uint32_t kMax26MHz = kSrc26M / (2 * kMinScl + kPaceOverheadTicks);
-// The overall ceiling (SCLH=SCLL=kMinScl at 51.2 MHz): ~116.6 kHz.
-// Requests above it run at it.
-// The floor: SCLH=SCLL=255 at 26 MHz. ~31.9 kHz.
+// 26 MHz source keeps SCLH=SCLL >= kMinScl26. ~206 kHz.
+static const uint32_t kMax26MHz =
+    kSrc26M / (2 * kMinScl26 + kPaceOverheadTicks);
+// The floor: SCLH=SCLL=255 at 26 MHz. ~48.9 kHz.
 static const uint32_t kMinHz = kSrc26M / (510 + kPaceOverheadTicks);
-// Pace for bus-level operations (scan/probe) when no device transfer has
-// programmed the controller yet: the historic default.
-static const uint32_t kBusDefaultHz = 46000;
+// Pace for bus-level operations before a device transfer makes its pace
+// sticky. This is the slowest round standard value the engine can honor.
+static const uint32_t kBusDefaultHz = 50000;
 
 // Programs the controller for the requested pace: functional-clock source
 // (26 vs 51.2 MHz), the driver's internal SETUP flag (gates Master*; must
@@ -209,7 +200,12 @@ static void ensure_setup(int controller, uint32_t hz) {
   I2cState* state = &i2c_states[controller];
   if (state->current_hz == hz) return;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
-  bool fast_src = hz > kMax26MHz;
+  // LuatOS's production setup uses the complete 0x01882020 timing word on
+  // 26 MHz and measures 344 kHz. SCLx=30 keeps the same setup/hold/filter
+  // fields and is the HW-bisected fastest bounded variant: 1.25 us high +
+  // 1.50 us low = 363 kHz. SCLx=28 free-runs the NACK path.
+  bool luat_fast = hz >= kFastRequestHz;
+  bool fast_src = !luat_fast && hz > kMax26MHz;
   uint32_t src = fast_src ? kSrc51M : kSrc26M;
   if (src != state->src_hz) {
     // Source switches happen in the unclocked window (the mux-droop
@@ -225,11 +221,22 @@ static void ensure_setup(int controller, uint32_t hz) {
     state->src_hz = src;
   }
   driver->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
-  uint32_t period = src / hz;
-  uint32_t scl = period > kPaceOverheadTicks ? (period - kPaceOverheadTicks) / 2 : kMinScl;
-  if (scl < kMinScl) scl = kMinScl;
-  if (scl > 255) scl = 255;
   I2C_TypeDef* regs = kI2cRegs[controller];
+  if (luat_fast) {
+    static const uint32_t kFastScl = 30;
+    regs->TPR = 0x01880000
+              | (kFastScl << I2C_TPR_SCLH_Pos)
+              | (kFastScl << I2C_TPR_SCLL_Pos);
+    state->current_hz = hz;
+    return;
+  }
+  uint32_t period = src / hz;
+  uint32_t scl = period > kPaceOverheadTicks
+      ? (period - kPaceOverheadTicks) / 2
+      : (fast_src ? kMinScl51 : kMinScl26);
+  uint32_t min_scl = fast_src ? kMinScl51 : kMinScl26;
+  if (scl < min_scl) scl = min_scl;
+  if (scl > 255) scl = 255;
   regs->TPR = (regs->TPR & ~(I2C_TPR_SCLH_Msk | I2C_TPR_SCLL_Msk))
             | (scl << I2C_TPR_SCLH_Pos) | (scl << I2C_TPR_SCLL_Pos);
   state->current_hz = hz;
@@ -244,6 +251,11 @@ static void ensure_setup(int controller, uint32_t hz) {
 // on a dead clock stalls the engine and can wedge the device) — observed
 // as flaky HARDWARE_ERRORs that appeared with quiesce-heavy tests.
 static void quiesce(int controller) {
+  I2cState* state = &i2c_states[controller];
+  // Make an IRQ that races the abort stale before power-down. In
+  // particular, a late write-leg completion must not start the chained
+  // read while the block is being reset.
+  state->transfer_active = false;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   // Let a dying transaction finish its STOP first: the completion event
   // (e.g. the NACK that brought us here) leads the STOP by up to a
@@ -261,7 +273,7 @@ static void quiesce(int controller) {
   // the pace, and dropping to 26 MHz here would make every NACK on a
   // fast bus pay a double source-switch (measured ~104 us + two extra
   // power cycles per probe) when ensure_setup re-elevates.
-  bool fast_src = i2c_states[controller].src_hz == kSrc51M;
+  bool fast_src = state->src_hz == kSrc51M;
   if (fast_src) CLOCK_clockEnable(CLK_HF51M);
   if (controller == 0) {
     GPR_setClockSrc(FCLK_I2C0, fast_src ? FCLK_I2C0_SEL_51M : FCLK_I2C0_SEL_26M);
@@ -269,7 +281,7 @@ static void quiesce(int controller) {
     GPR_setClockSrc(FCLK_I2C1, fast_src ? FCLK_I2C1_SEL_51M : FCLK_I2C1_SEL_26M);
   }
   driver->PowerControl(ARM_POWER_FULL);
-  i2c_states[controller].current_hz = 0;
+  state->current_hz = 0;
 }
 
 // The pad-GPIO tricks below (wire peek, 9-clock bus clear) commandeer the
@@ -350,21 +362,27 @@ static void bus_clear(int sda, int scl) {
 
 // Releases a finished (or aborted) transfer's buffers.
 static void release_transfer(I2cState* state) {
+  // Make any late IRQ callback stale before releasing memory it could use.
+  state->transfer_active = false;
   if (state->owns_buffers) {
     free(state->tx);
     free(state->rx);
   }
+  state->owns_buffers = false;
+  state->notify_toit = false;
   state->tx = null;
+  state->tx_len = 0;
   state->rx = null;
+  state->rx_len = 0;
+  state->active_device = null;
   state->stage = kStageIdle;
-  state->transfer_active = false;
 }
 
-class I2cBusResource : public Resource {
+class I2cBusResource : public EventResource {
  public:
   TAG(I2cBusResource);
   I2cBusResource(ResourceGroup* group, int controller, int sda, int scl)
-    : Resource(group)
+    : EventResource(group, Event::none_type())
     , controller_(controller)
     , sda_(sda)
     , scl_(scl) {}
@@ -431,6 +449,14 @@ class I2cDeviceResource : public EventResource {
     , frequency_(frequency)
     , timeout_us_(timeout_us) {}
 
+  ~I2cDeviceResource() override {
+    I2cState* state = &i2c_states[controller()];
+    if (state->transfer_active && state->active_device == this) {
+      quiesce(controller());
+      release_transfer(state);
+    }
+  }
+
   I2cBusResource* bus() const { return bus_; }
   int controller() const { return bus_->controller(); }
   int address() const { return address_; }
@@ -438,7 +464,7 @@ class I2cDeviceResource : public EventResource {
 
   // Per-byte timeout for the bounded synchronous paths, in ms.
   uint16_t toms() const {
-    uint32_t ms = timeout_us_ / 1000;
+    uint32_t ms = timeout_us_ / 1000 + (timeout_us_ % 1000 != 0);
     if (ms < 1) ms = 1;
     if (ms > 1000) ms = 1000;
     return (uint16_t)ms;
@@ -463,8 +489,9 @@ class I2cResourceGroup : public ResourceGroup {
     // arriving late must not wake the next transfer's wait.
     auto device = static_cast<I2cDeviceResource*>(r);
     I2cState* i2c_state = &i2c_states[device->controller()];
-    uint8_t dispatch_seq = (data >> 16) & 0xff;
-    if (dispatch_seq != i2c_state->seq) return state;
+    uint16_t dispatch_seq = (data >> 16) & 0xffff;
+    if (device != i2c_state->active_device ||
+        dispatch_seq != i2c_state->seq) return state;
     return state | 1;  // Transfer-done bit, matching lib/i2c.toit.
   }
 };
@@ -482,6 +509,7 @@ static int event_to_result(uint32_t event) {
   if (event & ARM_I2C_EVENT_BUS_ERROR) return 2;
   if (event & ARM_I2C_EVENT_ARBITRATION_LOST) return 3;
   if (event & ARM_I2C_EVENT_TRANSFER_INCOMPLETE) return 4;
+  if (!(event & ARM_I2C_EVENT_TRANSFER_DONE)) return 4;
   return 0;
 }
 
@@ -524,6 +552,7 @@ static int sync_transfer(I2cDeviceResource* device, const uint8_t* tx,
   ensure_setup(controller, device->frequency());
 
   state->address = device->address();
+  state->active_device = device;
   state->seq++;
   state->notify_toit = false;
   state->owns_buffers = false;
@@ -579,8 +608,13 @@ PRIMITIVE(bus_create) {
   if (state->in_use) FAIL(ALREADY_IN_USE);
 
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
-  if (state->initialized) driver->Uninitialize();
-  driver->Initialize(kI2cCallbacks[controller]);
+  if (state->initialized) {
+    driver->Uninitialize();
+    state->initialized = false;
+  }
+  if (driver->Initialize(kI2cCallbacks[controller]) != ARM_DRIVER_OK) {
+    FAIL(HARDWARE_ERROR);
+  }
   state->initialized = true;
   // Pin the functional clock to the always-running 26 MHz source BEFORE
   // the block gets clocked (PowerControl FULL): unpinned, the selection
@@ -591,7 +625,11 @@ PRIMITIVE(bus_create) {
   // needs it.
   GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
                   controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
-  driver->PowerControl(ARM_POWER_FULL);
+  if (driver->PowerControl(ARM_POWER_FULL) != ARM_DRIVER_OK) {
+    driver->Uninitialize();
+    state->initialized = false;
+    FAIL(HARDWARE_ERROR);
+  }
   state->src_hz = kSrc26M;
 
   // Initialize() muxed the driver's RTE pins; release them when the user
@@ -639,6 +677,7 @@ PRIMITIVE(bus_probe) {
   ARGS(I2cBusResource, bus, uint16, address, int, timeout_ms);
   I2cState* state = bus->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
+  if (address > 0x7f) FAIL(INVALID_ARGUMENT);
   if (!bus->bus_usable()) return BOOL(false);
   // SMBus receive-byte probe: a present device ACKs its address and one
   // byte transfers; an absent one NACKs.
@@ -646,6 +685,7 @@ PRIMITIVE(bus_probe) {
   int controller = bus->controller();
   ensure_setup(controller, state->bus_hz != 0 ? state->bus_hz : kBusDefaultHz);
   state->address = address;
+  state->active_device = null;
   state->seq++;
   state->notify_toit = false;
   state->owns_buffers = false;
@@ -674,19 +714,26 @@ PRIMITIVE(bus_probe) {
 
 PRIMITIVE(bus_reset) {
   ARGS(I2cBusResource, bus);
+  I2cState* state = bus->state();
+  bool had_transfer = state->transfer_active;
   quiesce(bus->controller());
+  if (had_transfer) release_transfer(state);
   return process->null_object();
 }
 
 PRIMITIVE(device_create) {
   ARGS(I2cBusResource, bus, int, address_bit_size, uint16, address,
        uint32, frequency_hz, uint32, timeout_us, bool, disable_ack_check);
-  USE(disable_ack_check);  // The engine always checks ACKs.
   // 10-bit mode exists in the hardware but is untested; reject until
   // needed.
   if (address_bit_size != 7) FAIL(INVALID_ARGUMENT);
+  if (address > 0x7f) FAIL(INVALID_ARGUMENT);
+  // The controller always checks ACKs. Do not silently promise the caller
+  // the opposite behavior.
+  if (disable_ack_check) FAIL(INVALID_ARGUMENT);
   if (frequency_hz == 0) FAIL(INVALID_ARGUMENT);
-  // Honorable paces span ~32..167 kHz (see the model at ensure_setup).
+  // Honorable requests span ~49 kHz upward (see ensure_setup). A nominal
+  // 400 kHz request selects the measured-safe ~363 kHz wire ceiling.
   // Requests above the ceiling run AT the ceiling (slower than asked is
   // I2C-legal), but a request BELOW the floor cannot be honored — a
   // deliberately slow bus may be a hard requirement, so reject instead
@@ -732,6 +779,7 @@ PRIMITIVE(device_write) {
 
 PRIMITIVE(device_read) {
   ARGS(I2cDeviceResource, device, MutableBlob, buffer, int, length);
+  if (length < 0) FAIL(OUT_OF_BOUNDS);
   if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
   if (length > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
@@ -743,6 +791,7 @@ PRIMITIVE(device_read) {
 
 PRIMITIVE(device_write_read) {
   ARGS(I2cDeviceResource, device, Blob, tx_buffer, MutableBlob, rx_buffer, int, length);
+  if (length < 0) FAIL(OUT_OF_BOUNDS);
   if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
   if (length > kMaxTransfer || tx_buffer.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
   if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
@@ -788,6 +837,7 @@ PRIMITIVE(device_transfer_start) {
   }
 
   state->address = device->address();
+  state->active_device = device;
   state->seq++;
   state->notify_toit = true;
   state->owns_buffers = true;
@@ -805,7 +855,9 @@ PRIMITIVE(device_transfer_start) {
 PRIMITIVE(device_transfer_finish) {
   ARGS(I2cDeviceResource, device, MutableBlob, rx_out);
   I2cState* state = device->bus()->state();
-  if (!state->transfer_active) FAIL(INVALID_ARGUMENT);
+  if (!state->transfer_active || state->active_device != device) {
+    FAIL(INVALID_ARGUMENT);
+  }
 
   uint32_t event = state->last_event;
   if (event == 0) {

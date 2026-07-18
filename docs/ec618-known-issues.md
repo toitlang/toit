@@ -325,31 +325,30 @@ speed with zero swallows; i2c-stretch-ec618 proves >16-byte FIFO
 refill/drain and mid-transfer SCL clock-stretch tolerance (the ESP32
 squats the SCL net open-drain for 150 ms; the master pauses and resumes
 with intact data both directions). The wire pace saga (RESOLVED
-2026-07-18): the era-defining "the engine IGNORES the TPR divisor
-(four values, identical pace)" finding was an ARTIFACT — every NACK or
-error quiesces the block, which resets TPR, and ensure_setup rewrote
-the same STANDARD value before every measured transfer, so all four
-measurements ran the same effective divisor. The calibrated truth
-(NACK-probe batch timing, i2c-speed-ec618): SCL period = SCLH + SCLL +
-~305 ticks of the functional clock; the historic "46 vs 85 kHz drift"
-was the two TPR states (SCLH=SCLL=130 vs 0) on the SAME 26 MHz source,
-and the "51 MHz dead-stall" was its UNGATED root — CLOCK_clockEnable
-(CLK_HF51M) first (the SDK LCD driver's recipe) and it runs fine. The
-driver now honors the requested device frequency: ~32..59 kHz on the
-26 MHz source, up to the ~117 kHz ceiling on the gate-enabled 51.2 MHz
-source (selected automatically; quiesce re-pins the current selection
-so recovery never changes the pace). The ceiling comes from an
-SCLH/SCLL floor of 67 ticks (1.31 us — the fast-mode t_LOW minimum):
-smaller divisors make runt SCL phases that real slaves cannot follow,
-HW-bisected against the BMP280 — isolated reads still pass at SCLx=1
-(166 kHz) but sustained mixed traffic rots progressively as the
-illegal waveform glitches the slave's state machine (torture: 175
-transfers bad=0 at the 117 kHz ceiling; instant HARDWARE_ERROR storm
-at 166 kHz). Above the ceiling runs AT the ceiling (advisory-fast; a
-slower bus is I2C-legal); below ~32 kHz is rejected as unhonorable. True 400 kHz fast mode still needs the engine's
-unexplored "automatic" mode — a future arc. Bus-level probes ride the
-most recent device transfer's pace (sticky), else 46 kHz. The pad-GPIO
-bus-clear/peek tricks now refuse to commandeer a GPIO bit whose number
+2026-07-18): the era-defining "the engine IGNORES the TPR divisor"
+finding was an artifact — every NACK/error quiesces the block, which
+resets TPR, and ensure_setup rewrote the same STANDARD value before each
+measured transfer. ESP32 RMT showed that the earlier ~305-tick batch model
+had attributed software/recovery time to the wire. In the bounded linear
+region the controller period is `2*SCLx+20` functional-clock ticks. The
+historic "46 vs 85 kHz drift" was two TPR states on the same 26 MHz source,
+and the "51 MHz dead-stall" was its ungated root —
+CLOCK_clockEnable(CLK_HF51M) first and it runs normally. The calibrated path
+uses 26 MHz through ~206 kHz and the gate-enabled 51.2 MHz source for
+intermediate fast requests.
+
+For nominal 400 kHz, the active LuatOS port provided the final clue: it
+does not use the open CMSIS branch, but its closed `soc_i2c` blob uses
+the same automatic/control mode and writes the complete timing register.
+Its complete nominal-400 word on 26 MHz measures ~344 kHz. Toit preserves
+those setup/hold/filter fields and uses SCLH=SCLL=30, the hardware-bisected
+fastest bounded variant: 1.25 us high + 1.50 us low, about 363 kHz. SCLx=28
+can make an address-NACK command free-run. Requests above 400 kHz clamp to
+the same safe setting. `i2c-torture-ec618` validates 175 shape-changing
+transfers with bad=0 at both nominal 100 and 400 kHz. Below ~49 kHz is
+rejected as unhonorable. Bus-level probes ride the most recent device
+transfer's pace (sticky), else 50 kHz. The pad-GPIO bus-clear/peek tricks now
+refuse to commandeer a GPIO bit whose number
 is reachable from an ALTERNATE pad (reconfiguring the shared bit would
 hijack the user's other pin — today's pad table is 1:1 so the guard is
 dormant, but it fences the day alternates appear). The command length field is 9-bit
