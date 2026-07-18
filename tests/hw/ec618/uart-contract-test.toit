@@ -227,16 +227,15 @@ run-tests -> none:
     // direction/data/interrupt registers. They cannot be active as GPIO at
     // the same time.
     primary := Ec618.gpio 12
+    alternate := Ec618.gpio 12 --alt
     try:
       primary.configure --output --value=0
       expect-throws "ALREADY_IN_USE":
-        alternate := Ec618.gpio 12 --alt
         alternate.configure --output --value=0
     finally:
       primary.close
 
     // Closing one PAD releases the shared controller for the other PAD.
-    alternate := Ec618.gpio 12 --alt
     alternate.configure --output --value=0
     alternate.close
 

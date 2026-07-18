@@ -303,12 +303,9 @@ PRIMITIVE(use) {
   // number is all they need. gpio_bit stays -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
 
-  if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] != 0) FAIL(ALREADY_IN_USE);
-
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) FAIL(MALLOC_FAILED);
 
-  if (gpio_bit >= 0) gpio_pad_owner[gpio_bit] = pad + 1;
   group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
@@ -330,6 +327,8 @@ PRIMITIVE(config) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
+  gpio_pad_owner[gpio_bit] = pad + 1;
 
   // AON-domain pads sit behind the AON IO LDO, which is off at boot —
   // without power the pad neither drives nor reads. Turning it on is
@@ -382,6 +381,7 @@ PRIMITIVE(get) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   return Smi::from(GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0);
 }
 
@@ -390,6 +390,7 @@ PRIMITIVE(set) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   if (is_open_drain(pad)) {
     apply_open_drain_level(gpio_bit, value);
   } else {
@@ -403,6 +404,7 @@ PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
   int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, resource->pad())) FAIL(ALREADY_IN_USE);
   // Capture the trigger sequence BEFORE arming: an interrupt firing
   // between the arming and the return then still reads as "after".
   uint32_t seq = edge_sequence;
@@ -420,6 +422,7 @@ PRIMITIVE(config_interrupt) {
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
   if (resource->gpio_bit() < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(resource->gpio_bit(), resource->pad())) FAIL(ALREADY_IN_USE);
   return Smi::from(last_edge_seq[resource->gpio_bit()] & 0x3FFFFFFF);
 }
 
@@ -428,6 +431,7 @@ PRIMITIVE(set_open_drain) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   if (value == is_open_drain(pad)) return process->null_object();
   if (value) {
     // Carry the pin's current line level into the emulation (the input
@@ -452,7 +456,9 @@ PRIMITIVE(set_open_drain) {
 PRIMITIVE(set_pull) {
   ARGS(int, pad, int, value);  // value: 1 pull-up, -1 pull-down, 0 none.
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  if (pad_to_gpio(pad) < 0) FAIL(INVALID_ARGUMENT);
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   apply_pull(pad, value > 0, value < 0);
   return process->null_object();
 }
