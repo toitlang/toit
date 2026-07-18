@@ -48,10 +48,13 @@ them; only one is "live" at a time.
   `flash-full.sh`, …). `export ECTOOL_PATH=/home/flo/.pyenv/versions/3.8.18/bin/ectool`.
 
 > **UART per rig:** the print/console UART differs (UART0 on the test rig, UART1
-> on the dev rig). It is one build-time choice
-> (`CONFIG_TOIT_EC618_PRINT_UART_ID` in `toolchains/ec618/ec618_config.h`); the
-> mini-jag agent opens whatever `ec618.print-uart-id` reports, so a rig switch is
-> a **single config line + rebuild + (re)flash** — the agent needs no edit.
+> on the dev rig). **This is no longer a build-time choice** — the console UART
+> is a byte in the **anchor record**, chosen at runtime by `bsp_custom` from
+> `anchor_console()`, so **one universal base serves both rigs**. Set it with
+> `ec618.set-console-uart <id>` + reboot (or `tests/hw/ec618/console-set-ec618.toit
+> --arg <id>`). The old `CONFIG_TOIT_EC618_PRINT_UART_ID` knob is **deleted**.
+> The mini-jag agent still opens whatever `ec618.print-uart-id` reports.
+> See [ec618-rig-guide.md](ec618-rig-guide.md) and [ec618-roadmap.md](ec618-roadmap.md).
 
 ## Control planes
 
