@@ -95,6 +95,31 @@ Streams the image to the inactive slot, reboots on trial, smoke-tests, and
 validates (permanent) unless `--no-validate`. This is the fast inner loop for
 slot-side changes — no full flash needed.
 
+### Running a test larger than the 64 KiB flash registry
+
+The regular `tester run` path compiles EC618 tests at O2 with assertions and
+installs an anonymous image in the 64 KiB flash registry. If the resulting
+image is still too large (certificate-root TLS is one example), embed exactly
+one named test in a temporary envelope and run it from the VM slot:
+
+```
+build/host/sdk/bin/toit compile --snapshot -O2 --enable-asserts \
+    --project-root tests/hw/ec618 -o /tmp/ec618-test.snap \
+    tests/hw/ec618/net-https.toit
+build/host/sdk/bin/toit tool firmware --envelope=build/ec618/firmware.envelope \
+    container add --trigger=none -o /tmp/ec618-test.envelope \
+    test /tmp/ec618-test.snap
+build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
+    --toit-exe build/host/sdk/bin/toit --port <ec618-console> \
+    --envelope /tmp/ec618-test.envelope
+build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run-embedded \
+    --toit-exe build/host/sdk/bin/toit --port <ec618-console>
+```
+
+`run-embedded` selects a named slot container; ordinary `run` selects the
+anonymous registry test, so the OTA smoke test remains independent. Restore
+the standard agent-only envelope with the normal OTA command when finished.
+
 ## Full flash (quirky only — the safe recovery path)
 
 Only `quirky-plenty` can full-flash over the boot ROM, so it's where you iterate

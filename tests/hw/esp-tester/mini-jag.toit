@@ -69,7 +69,9 @@ with-client [block]:
 
 clear-containers:
   containers.images.do: | image/containers.ContainerImage |
-    if image.id != containers.current and image.name != SLEEPER-NAME:
+    // ContainerImageWriter tests are anonymous. Preserve named containers
+    // embedded in the firmware slot, including oversized hardware tests.
+    if image.id != containers.current and image.name == null:
       catch: containers.uninstall image.id
 
 install-new-test reader/io.Reader:
@@ -228,6 +230,8 @@ serve port/uart.Port --primary/bool=true -> none:
       out.write #[(install-container reader out port ? ACK-OK : ACK-ERROR)]
     else if command == CMD-RUN:
       run-installed arg out
+    else if command == CMD-RUN-EMBEDDED:
+      run-installed arg out --embedded
     else if command == CMD-FW-BEGIN:
       size := reader.little-endian.read-int32
       error := catch: writer = firmware.FirmwareWriter 0 size
@@ -329,11 +333,12 @@ primary-contact_/bool := false
 // a status line, so the command loop keeps reading (and the watchdog keeps being
 // fed by the host's pings) while the test runs. The host watches for
 // "run: test exited code=" and pings throughout.
-run-installed arg/string out/io.Writer -> none:
+run-installed arg/string out/io.Writer --embedded/bool=false -> none:
   test-image/containers.ContainerImage? := null
   containers.images.do: | image/containers.ContainerImage |
     if not test-image and image.id != containers.current and image.name != SLEEPER-NAME:
-      test-image = image
+      is-embedded := image.name != null
+      if is-embedded == embedded: test-image = image
   if not test-image:
     status out "run: no container installed"
     return

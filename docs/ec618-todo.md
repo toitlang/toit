@@ -20,8 +20,12 @@ Checked items are done and kept for context; unchecked are open.
     shape-changing/value-checked BMP280 transfers at each of 100 and 400 kHz
     (`bad=0` at both speeds).
 
-- [ ] **Cellular HW exercise.** Code is complete (attach, appSetCFUN, PS events,
-  TCP/UDP/TLS over lwIP) but HW coverage is thin. Note the **PSU caveat**: the
+- [x] **Cellular HW exercise** (2026-07-18). The standalone module on
+  `quirky-plenty` passed attach/PDP activation, three DNS lookups, TCP/HTTP,
+  UDP/NTP, and certificate-validated TLS/HTTPS over lwIP. The TLS test ran as a
+  slot-embedded container because its trusted roots exceed the 64 KiB flash
+  registry; normal network tests compile at O2 and fit. The total cellular
+  transfer was well under 1 MB. Note the **PSU caveat**: the
   modem POR-loop under RF draw was a **PSU brownout** — use a stiff supply; a
   UART-only agent keeps the modem off and is brownout-proof. Flashing uses
   `--burn_cp n` (Toit never flashes the CP); a stale/mismatched CP PORs the chip

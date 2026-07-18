@@ -1,7 +1,6 @@
 // Tests HTTPS (TLS) connection over cellular on EC618.
 
 import net
-import net.x509
 import tls
 import certificate-roots
 

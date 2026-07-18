@@ -138,6 +138,25 @@ main args:
           run-test invocation
   root-cmd.add run-cmd
 
+  run-embedded-cmd := cli.Command "run-embedded"
+      --help="Run a test container already embedded in the EC618 firmware slot"
+      --options=[
+        cli.Option "port"
+            --help="The path to the EC618 control UART"
+            --type="path"
+            --required,
+        cli.Option "arg"
+            --help="The argument to pass to the test"
+            --type="string"
+            --default="",
+        cli.OptionInt "fast-baud"
+            --help="Hop the EC618 control UART to this baud after the handshake (115200 disables)"
+            --default=921600,
+      ]
+      --run=:: | invocation/cli.Invocation |
+        run-embedded-ec618 invocation
+  root-cmd.add run-embedded-cmd
+
   firmware-update-cmd := cli.Command "firmware-update"
       --help="""
         Update the firmware over the air (EC618 only).
@@ -633,8 +652,8 @@ class Ec618Link:
 
   // Streams the running test's output to the log until the agent reports the
   // test's exit code. Returns whether it exited cleanly (code 0).
-  run --timeout-ms/int -> bool:
-    send CMD-RUN
+  run --timeout-ms/int --embedded/bool=false -> bool:
+    send (embedded ? CMD-RUN-EMBEDDED : CMD-RUN)
     deadline := Time.monotonic-us + timeout-ms * 1000
     marker := "$MINI-JAG-TAG run: test exited code="
     wait-failed-marker := "$MINI-JAG-TAG run: test wait failed"
@@ -769,7 +788,19 @@ class Ec618Link:
 // Compiles a test to a 32-bit container image (the EC618 is 32-bit).
 compile-test-image toit-exe/string test-path/string --tmp-dir/string --ui/cli.Ui -> ByteArray:
   snapshot-path := fs.join tmp-dir "test.snap"
-  run-toit --ui=ui toit-exe ["compile", "--snapshot", "-o", snapshot-path, test-path]
+  // The EC618 registry is 64 KiB. O2 keeps network test images below that
+  // limit, while --enable-asserts preserves the hardware tests' checks.
+  run-toit --ui=ui toit-exe [
+    "compile",
+    "--snapshot",
+    "-O2",
+    "--enable-asserts",
+    "--project-root",
+    fs.dirname test-path,
+    "-o",
+    snapshot-path,
+    test-path,
+  ]
   image-path := fs.join tmp-dir "test.image"
   run-toit --ui=ui toit-exe [
     "tool", "snapshot-to-image",
@@ -809,6 +840,21 @@ run-test-ec618 invocation/cli.Invocation:
       log "Test passed"
     finally:
       link.close
+
+run-embedded-ec618 invocation/cli.Invocation:
+  port-path := invocation["port"]
+  link := Ec618Link --port-path=port-path --fast-baud=invocation["fast-baud"]
+  try:
+    log "Connecting to the mini-jag agent on $port-path"
+    link.handshake
+    link.switch-baud invocation["fast-baud"]
+    link.send-arg invocation["arg"]
+    log "Running embedded test container"
+    passed := link.run --timeout-ms=240_000 --embedded
+    if not passed: throw "embedded test did not pass"
+    log "Embedded test passed"
+  finally:
+    link.close
 
 firmware-update invocation/cli.Invocation:
   ui := invocation.cli.ui
@@ -951,4 +997,3 @@ setup-tester-ec618 invocation/cli.Invocation:
       log "Agent is up — the flashed image is healthy."
     finally:
       link.close
-

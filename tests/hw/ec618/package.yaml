@@ -5,3 +5,6 @@ dependencies:
   bmp280:
     url: github.com/harshkc03/bmp280-driver
     version: ^1.0.0
+  certificate-roots:
+    url: github.com/toitware/toit-cert-roots
+    version: ^1.11.0

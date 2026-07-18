@@ -29,6 +29,7 @@ CMD-PING       ::= 'P'  // -> ACK-PONG.
 CMD-ARG        ::= 'A'  // <len:4 LE><bytes>          -> ACK-OK.
 CMD-INSTALL    ::= 'C'  // <size:4 LE><crc:4><bytes>  -> ACK-OK / ACK-ERROR.
 CMD-RUN        ::= 'R'  // (no ack) the test's console output then streams.
+CMD-RUN-EMBEDDED ::= 'E'  // (no ack) run a named slot-embedded test.
 CMD-FW-BEGIN   ::= 'F'  // <size:4 LE>                -> ACK-OK / ACK-ERROR.
 CMD-FW-WRITE   ::= 'W'  // <len:4 BE><bytes>          -> ACK-READY then ACK-OK / ACK-ERROR.
 CMD-FW-COMMIT  ::= 'M'  // <sha256:32>                -> ACK-OK / ACK-ERROR.

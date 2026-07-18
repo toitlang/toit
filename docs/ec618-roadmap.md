@@ -24,8 +24,7 @@ watchdog). The firmware is a **frozen universal base** (base-v2, fingerprint
 OTA; the active partition table and the console-UART selection live in an
 **anchor record** on flash, so one base image serves every rig. Both rigs
 currently run base-v2 + `22cfaacd`. The remaining work is not bring-up — it is
-cellular exercise, a base-image release dispatch, and a handful of polish arcs
-(see the todo).
+a base-image release dispatch and a handful of polish arcs (see the todo).
 
 ## Build & flash quickstart
 
@@ -63,11 +62,17 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 |-------|----------|--------|
 | 1 — Minimal boot | 1–9 | **DONE** (boot, OS layer, flash registry, RTC mem, embedded data) |
 | 2 — Interpreter + peripherals | 10–15 | **DONE** (UART, GPIO, I2C, primitive modules, event system) |
-| 3 — Networking | 16–18 | **DONE in code** (cellular, lwIP, TLS) — HW exercise still light (see todo) |
+| 3 — Networking | 16–18 | **DONE + HW-proven** (cellular attach, DNS, TCP, UDP, certificate-validated TLS) |
 | 4 — Production | 19–24 | OTA **DONE**; Toit libs / firmware tooling / CI **partially** — `lib/ec618`, `tools/ec618`, `tools/firmware.toit` all exist and work; CI workflow not started |
 
 ## Major arcs completed (most recent first)
 
+- **Cellular network exercise** (2026-07-18). The standalone EC618 module on
+  `quirky-plenty` passed attach/PDP activation and DNS, TCP/HTTP, UDP/NTP, and
+  certificate-validated TLS/HTTPS over lwIP. The 64 KiB flash registry fits the
+  O2-built DNS/TCP/UDP tests; the larger TLS container was embedded in a VM slot
+  and driven with the mini-jag `run-embedded` protocol. The standard agent-only
+  envelope was restored and OTA smoke-tested afterward.
 - **I2C real speeds + nominal 400 kHz** (2026-07-18). The "engine ignores the TPR
   divisor" belief was a measurement artifact: ESP32 RMT disproved the 305-tick
   software-batch model. The bounded linear period is `2*SCLx+20`
