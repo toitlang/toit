@@ -335,12 +335,18 @@ measurements ran the same effective divisor. The calibrated truth
 was the two TPR states (SCLH=SCLL=130 vs 0) on the SAME 26 MHz source,
 and the "51 MHz dead-stall" was its UNGATED root — CLOCK_clockEnable
 (CLK_HF51M) first (the SDK LCD driver's recipe) and it runs fine. The
-driver now honors the requested device frequency: ~32..85 kHz on the
-26 MHz source, up to ~167 kHz on the gate-enabled 51.2 MHz source
-(selected automatically; quiesce re-pins the current selection so
-recovery never changes the pace). Above ~167 kHz runs AT ~167 kHz
-(advisory-fast; a slower bus is I2C-legal); below ~32 kHz is rejected
-as unhonorable. True 400 kHz fast mode still needs the engine's
+driver now honors the requested device frequency: ~32..59 kHz on the
+26 MHz source, up to the ~117 kHz ceiling on the gate-enabled 51.2 MHz
+source (selected automatically; quiesce re-pins the current selection
+so recovery never changes the pace). The ceiling comes from an
+SCLH/SCLL floor of 67 ticks (1.31 us — the fast-mode t_LOW minimum):
+smaller divisors make runt SCL phases that real slaves cannot follow,
+HW-bisected against the BMP280 — isolated reads still pass at SCLx=1
+(166 kHz) but sustained mixed traffic rots progressively as the
+illegal waveform glitches the slave's state machine (torture: 175
+transfers bad=0 at the 117 kHz ceiling; instant HARDWARE_ERROR storm
+at 166 kHz). Above the ceiling runs AT the ceiling (advisory-fast; a
+slower bus is I2C-legal); below ~32 kHz is rejected as unhonorable. True 400 kHz fast mode still needs the engine's
 unexplored "automatic" mode — a future arc. Bus-level probes ride the
 most recent device transfer's pace (sticky), else 46 kHz. The pad-GPIO
 bus-clear/peek tricks now refuse to commandeer a GPIO bit whose number

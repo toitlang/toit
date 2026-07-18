@@ -16,10 +16,12 @@ and cancels in the deltas; the platform clock ticks in 1 ms steps, hence
 batches instead of per-probe timing.
 
 Model (HW-calibrated 2026-07-18): period = SCLH+SCLL+305 ticks of the
-functional clock; 26 MHz source covers ~32..85 kHz, the 51.2 MHz source
-(gate-enabled on demand) up to ~167 kHz. Requests above the ceiling run
-at the ceiling. The final 46 kHz batch re-crosses the source boundary
-downward, so both switch directions are exercised.
+functional clock, with SCLH/SCLL floored at 67 ticks (the fast-mode
+t_LOW minimum — smaller divisors make runt SCL phases that progressively
+glitch real slaves). 26 MHz source covers ~32..59 kHz, the 51.2 MHz
+source (gate-enabled on demand) up to the ~117 kHz ceiling. Requests
+above the ceiling run at the ceiling. The final 46 kHz batch re-crosses
+the source boundary downward, so both switch directions are exercised.
 
 Run via the mini-jag tester:
 
@@ -46,8 +48,8 @@ main:
     [46_000, 46_000],
     [32_000, 32_000],
     [100_000, 100_000],
-    [167_000, 167_000],
-    [400_000, 167_000],  // Above the 51.2 MHz ceiling: runs at the ceiling.
+    [117_000, 116_600],
+    [400_000, 116_600],  // Above the ceiling: runs at the ceiling.
     [46_000, 46_000],    // Back down: exercises the 51M->26M switch.
   ]
 
@@ -73,14 +75,12 @@ main:
   // than on 26 MHz (root gate-enable + power cycle) — which damps the
   // fast-pace deltas. These are pace-ORDER checks with that damping
   // baked into the thresholds (wire-time predictions per probe: 46k
-  // 239 us, 32k 344 us, 100k 110 us, 167k 66 us; measured deltas vs the
-  // 46k baseline: +20/-12/-19 ms per 200 probes).
+  // 239 us, 32k 344 us, 100k 110 us, ceiling ~94 us).
   base := batches[0]
   check (batches[1] - base > 10) "32k slower than 46k (delta $(batches[1] - base) ms, want > 10)"
   check (base - batches[2] > 6) "100k faster than 46k (delta $(base - batches[2]) ms, want > 6)"
-  check (base - batches[3] > 13) "167k faster than 46k (delta $(base - batches[3]) ms, want > 13)"
-  check (batches[2] - batches[3] > 3) "167k faster than 100k (delta $(batches[2] - batches[3]) ms, want > 3)"
-  check ((batches[3] - batches[4]).abs < 8) "400k clamps to the 167k ceiling (|$(batches[3] - batches[4])| ms, want < 8)"
+  check (base - batches[3] > 8) "ceiling faster than 46k (delta $(base - batches[3]) ms, want > 8)"
+  check ((batches[3] - batches[4]).abs < 8) "400k clamps to the ceiling (|$(batches[3] - batches[4])| ms, want < 8)"
   check ((batches[5] - base).abs < 8) "return to 46k matches the first run (|$(batches[5] - base)| ms, want < 8)"
 
   if not failures.is-empty:

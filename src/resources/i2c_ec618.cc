@@ -182,9 +182,20 @@ static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event }
 static const uint32_t kPaceOverheadTicks = 305;
 static const uint32_t kSrc26M = 26000000;
 static const uint32_t kSrc51M = 51200000;
-// Fastest pace the 26 MHz source can honor (SCLH=SCLL=1); above this the
-// 51.2 MHz source is selected. ~84.7 kHz.
-static const uint32_t kMax26MHz = kSrc26M / (2 + kPaceOverheadTicks);
+// The SCL phase floor: 67 ticks of 51.2 MHz = 1.31 us, the I2C fast-mode
+// t_LOW minimum. Smaller divisors produce runt SCL phases that real
+// slaves cannot follow — HW-bisected against the BMP280: isolated reads
+// still pass at SCLx=1 (166 kHz), but sustained mixed traffic rots
+// progressively (2B reads 16/20 -> everything 0/20) as the illegal
+// waveform glitches the slave's state machine. The same floor governs
+// the 26 MHz source (its ceiling would otherwise degenerate the same
+// way), which sets the source boundary at ~59 kHz.
+static const uint32_t kMinScl = 67;
+// Above this the 51.2 MHz source is selected: the fastest pace where the
+// 26 MHz source keeps SCLH=SCLL >= kMinScl. ~59.2 kHz.
+static const uint32_t kMax26MHz = kSrc26M / (2 * kMinScl + kPaceOverheadTicks);
+// The overall ceiling (SCLH=SCLL=kMinScl at 51.2 MHz): ~116.6 kHz.
+// Requests above it run at it.
 // The floor: SCLH=SCLL=255 at 26 MHz. ~31.9 kHz.
 static const uint32_t kMinHz = kSrc26M / (510 + kPaceOverheadTicks);
 // Pace for bus-level operations (scan/probe) when no device transfer has
@@ -215,7 +226,8 @@ static void ensure_setup(int controller, uint32_t hz) {
   }
   driver->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
   uint32_t period = src / hz;
-  uint32_t scl = period > kPaceOverheadTicks + 2 ? (period - kPaceOverheadTicks) / 2 : 1;
+  uint32_t scl = period > kPaceOverheadTicks ? (period - kPaceOverheadTicks) / 2 : kMinScl;
+  if (scl < kMinScl) scl = kMinScl;
   if (scl > 255) scl = 255;
   I2C_TypeDef* regs = kI2cRegs[controller];
   regs->TPR = (regs->TPR & ~(I2C_TPR_SCLH_Msk | I2C_TPR_SCLL_Msk))
