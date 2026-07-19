@@ -27,8 +27,8 @@ linked against (SRL3), and a mismatch is refused before any flash write:
 
 `ec618.base-id` returns the flashed identity. Bump the version file
 whenever a base change ships; the fingerprint catches everything else
-(including the UART0/UART1 console variants, which fingerprint
-differently by construction).
+that contributes to the base. The console UART is selected by the anchor
+record, so one universal base serves every rig.
 
 ## When you must rebuild the base (and full-flash every device)
 
@@ -36,8 +36,7 @@ Any change to a base-side input:
 
 - `toolchains/ec618/project/` (dispatcher, `bsp_custom.c`, `plat_keep.c`,
   `slot_marker.c`, cmpctmalloc, `xmake.lua`)
-- `toolchains/ec618/ec618_config.h` — **including `PRINT_UART_ID`: the
-  UART0 and UART1 console variants are DIFFERENT bases**
+- `toolchains/ec618/ec618_config.h`
 - the SDK submodule (`third_party/luatos-soc-ec618`), including the linker
   script template (geometry, reserves, exported anchors)
 - the PLAT toolchain (the pinned xmake GCC 10.3)
@@ -108,11 +107,11 @@ Slot OTA (same base):
 The "EC618 base release" workflow (`workflow_dispatch`) publishes the
 artifact set as an immutable GitHub release `ec618-base-vN` (named from
 `toolchains/ec618/base-version`; bump it for every shipped base change):
-both console variants' `{elf, bin, json-manifest}`, each proven by a
-full slot build with all guards before publishing.
+the universal base's `{elf, bin, json-manifest}`, proven by a full slot
+build with all guards before publishing.
 
-To build a slot against a release, put a variant's files in a directory
-as `base.elf`/`base.bin` and:
+To build a slot against a release, put its files in a directory as
+`base.elf`/`base.bin` and:
 
     make ec618 EC618_BASE_DIR=<dir>
 

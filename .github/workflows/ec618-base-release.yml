@@ -18,10 +18,9 @@
 # named from toolchains/ec618/base-version (ec618-base-vN) and is
 # IMMUTABLE — bump the version file for a new base.
 #
-# Each release carries both console variants (uart0/uart1); they share
-# the version number and differ by fingerprint. Every variant's base is
-# proven by building a full slot against it (all build guards) before
-# anything is published.
+# Each release carries the universal base. The console UART is selected by
+# the anchor record, so the same base runs every rig. The base is proven by
+# building a full slot against it (all build guards) before publication.
 
 name: EC618 base release
 
@@ -54,25 +53,14 @@ jobs:
             exit 1
           fi
 
-      - name: Build + prove base (uart0)
+      - name: Build + prove universal base
         run: |
           make ec618-base
           make ec618
           mkdir -p build/release-ec618-base
-          cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION-uart0.elf
-          cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION-uart0.bin
-          cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION-uart0.json
-
-      - name: Build + prove base (uart1)
-        run: |
-          sed -i 's/#define CONFIG_TOIT_EC618_PRINT_UART_ID 0/#define CONFIG_TOIT_EC618_PRINT_UART_ID 1/' toolchains/ec618/ec618_config.h
-          make ec618-base
-          rm -rf build/ec618
-          make ec618
-          cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION-uart1.elf
-          cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION-uart1.bin
-          cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION-uart1.json
-          git checkout toolchains/ec618/ec618_config.h
+          cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION.elf
+          cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION.bin
+          cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION.json
 
       - name: Publish
         env:
@@ -82,9 +70,10 @@ jobs:
             --title "EC618 base v$VERSION" \
             --notes "EC618 base artifact set (frozen-base contract — see docs/ec618-base-image.md).
 
-          Slots link against base.elf; base.bin carries the stamped base-id
-          record the device checks before accepting a slot OTA. To build a
-          slot against this release: download a variant's files into a
+          This is the universal base; the anchor record selects the console
+          UART. Slots link against base.elf; base.bin carries the stamped
+          base-id record the device checks before accepting a slot OTA. To
+          build a slot against this release: download the files into a
           directory as base.elf/base.bin and run
           \`make ec618 EC618_BASE_DIR=<dir>\`." \
             build/release-ec618-base/*

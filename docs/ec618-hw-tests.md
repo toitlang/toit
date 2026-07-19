@@ -459,8 +459,8 @@ slot A; OTA firmware-2 (no-ADC, 708 B `.data`) trial-boots slot B, reconnects,
 and validates. (Previously the changed `.data` wedged + rolled back.)
 
 ## Known issues
-1. **Per-rig UART** (UART0 test rig / UART1 dev rig) — one config line,
-   `CONFIG_TOIT_EC618_PRINT_UART_ID`; the agent auto-follows.
+1. **Per-rig UART** (UART0 test rig / UART1 dev rig) — the anchor record
+   selects the console UART; the agent auto-follows.
 2. **OTA'd VM `.data` must fit the base reservation.** The `__vm_data` bracket is
    sized to the base VM's `.data` (not padded), so a future OTA whose `.data` is
    *larger* than the base image's would overrun PLAT `.init_array`. Today's images
