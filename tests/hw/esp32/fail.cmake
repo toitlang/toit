@@ -15,10 +15,6 @@
 
 
 set(TOIT_SKIP_TESTS
-  # On the test rig the S3's board1 is connected through the USB-Serial-JTAG
-  # console, so data written by the tester doesn't reach the UART0 RX pin.
-  uart-console-test.toit-esp32s3
-
   # The S3 doesn't have a DAC.
   dac-test.toit-esp32s3
   # We are missing a DHT11.

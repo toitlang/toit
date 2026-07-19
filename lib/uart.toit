@@ -154,6 +154,9 @@ class Port extends Object with io.InMixin implements reader.Reader:
     port: it continues to be written directly to the console. Data written
     to this port may thus interleave with system output.
 
+  Changing this port's baud rate also changes the baud rate used for system
+    output.
+
   Use $large-buffers to increase the receive buffer from 768 bytes to
     4096 bytes.
 

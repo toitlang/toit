@@ -24,7 +24,6 @@
 #include "soc/uart_periph.h"
 #include "esp_log.h"
 #include "esp_rom_gpio.h"
-#include "esp_rom_uart.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 
@@ -538,8 +537,6 @@ PRIMITIVE(create_console) {
   // given during boot; only the driver is installed, which makes RX
   // interrupt driven. System output (logging, `print`) keeps going through
   // the polling VFS path and thus doesn't need the driver.
-  // Installing the driver resets the TX FIFO, so drain in-flight output first.
-  esp_rom_output_tx_wait_idle(port);
 
   esp_err_t err;
   QueueHandle_t queue;

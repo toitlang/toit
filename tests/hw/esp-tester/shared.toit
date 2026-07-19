@@ -10,3 +10,7 @@ RUNNING-CONTAINER ::= "RUNNING INSTALLED CONTAINER"
 // write the payload back over the serial connection. Used by tests that
 // exercise console UART input.
 UART-INPUT-REQUEST ::= "UART-INPUT-REQUEST: "
+// A test prints this marker followed by a baud rate to ask the tester to
+// acknowledge at the current rate and then switch the serial connection.
+UART-BAUD-RATE-REQUEST ::= "UART-BAUD-RATE-REQUEST: "
+UART-BAUD-RATE-ACK ::= "UART-BAUD-RATE-ACK"

@@ -199,6 +199,9 @@ class TestDevice:
   // Offset into $collected-output up to which UART input requests have
   // been answered.
   uart-input-handled_/int := 0
+  // Offset into $collected-output up to which UART baud-rate requests have
+  // been answered.
+  uart-baud-rate-handled_/int := 0
   ready-latch/monitor.Latch := monitor.Latch
   installed-container/monitor.Latch := monitor.Latch
   running-container/monitor.Latch := monitor.Latch
@@ -249,7 +252,24 @@ class TestDevice:
               request-end = collected-output.size
             payload := collected-output[payload-start..request-end].trim
             uart-input-handled_ = request-end
-            port.out.write "$payload\n"
+            port.out.write "$payload\n" --flush
+          // Acknowledge baud-rate requests at the current rate before both
+          // sides switch to the requested rate.
+          while true:
+            request-index := collected-output.index-of "\n$UART-BAUD-RATE-REQUEST" uart-baud-rate-handled_
+            if request-index < 0: break
+            rate-start := request-index + 1 + UART-BAUD-RATE-REQUEST.size
+            request-end := collected-output.index-of "\n" rate-start
+            if request-end < 0:
+              if not at-new-line: break  // Wait for the rest of the line.
+              request-end = collected-output.size
+            rate := int.parse collected-output[rate-start..request-end].trim
+            uart-baud-rate-handled_ = request-end
+            port.out.write "$UART-BAUD-RATE-ACK\n" --flush
+            // Some USB-UART adapters report an empty host queue before their
+            // hardware has emitted the final bytes at the old rate.
+            sleep --ms=100
+            port.baud-rate = rate
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.
@@ -404,4 +424,3 @@ setup-tester invocation/cli.Invocation:
       "--config", wifi-config-path,
       "--port", port-path,
     ]
-
