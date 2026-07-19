@@ -125,10 +125,22 @@ void OS::close(int fd) {
   // Do nothing.
 }
 
+// Condition variables must not share the task-notification slot. Other users
+// of that slot, or a timed-out wait, can leave notification bits behind for an
+// unrelated condition variable wait on the same task. A stale semaphore give
+// can only cause a conventional spurious wakeup on its owning thread.
+__thread SemaphoreHandle_t condition_wake_semaphore_ = null;
+
+static SemaphoreHandle_t current_condition_wake_semaphore() {
+  if (condition_wake_semaphore_ == null) {
+    condition_wake_semaphore_ = xSemaphoreCreateBinary();
+  }
+  return condition_wake_semaphore_;
+}
+
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
-  // Task to wait on.
-  TaskHandle_t task;
+  SemaphoreHandle_t wake;
   // Link to next semaphore to be notified.
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
@@ -162,19 +174,18 @@ class ConditionVariable {
     }
 
     ConditionVariableWaiter w{};
-    w.task = xTaskGetCurrentTaskHandle();
+    w.wake = current_condition_wake_semaphore();
+    if (w.wake == null) FATAL("unable to allocate condition wake semaphore");
 
     TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
 
     mutex_->unlock();
 
-    uint32_t value = 0;
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
+    bool success = xSemaphoreTake(w.wake, ticks) == pdTRUE;
 
     mutex_->lock();
     TAILQ_REMOVE(&waiter_list_, &w, link);
 
-    if ((value & SIGNAL_ALL) != 0) signal_all();
     return success;
   }
 
@@ -184,7 +195,7 @@ class ConditionVariable {
     }
     ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
+      xSemaphoreGive(entry->wake);
     }
   }
 
@@ -192,9 +203,9 @@ class ConditionVariable {
     if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
+    ConditionVariableWaiter* entry;
+    TAILQ_FOREACH(entry, &waiter_list_, link) {
+      xSemaphoreGive(entry->wake);
     }
   }
 
@@ -203,9 +214,6 @@ class ConditionVariable {
 
   // Head of the list of semaphores.
   TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
-
-  static const uint32 SIGNAL_ONE = 1 << 0;
-  static const uint32 SIGNAL_ALL = 1 << 1;
 };
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
@@ -242,6 +250,10 @@ void Thread::_boot() {
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
+  if (condition_wake_semaphore_ != null) {
+    vSemaphoreDelete(condition_wake_semaphore_);
+    condition_wake_semaphore_ = null;
+  }
   xSemaphoreGive(thread->terminated);
   vTaskDelete(null);
 }
