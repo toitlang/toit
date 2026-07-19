@@ -19,12 +19,13 @@ different machine against the same two rigs. Pairs with:
 The VM boots, runs, and does dual-slot OTA on the EC618. All the core
 peripherals are HW-proven (UART ×3 with DMA both directions, GPIO incl. AON
 pads, PWM incl. AON timers, I2C0/I2C1, async SPI, ADC, deep sleep + pad wake,
-watchdog). The firmware is a **frozen universal base** (base-v2, fingerprint
-`22cfaacd1b0c62ee44ea4d22744f4e0f`) plus **per-slot VM images** delivered by
-OTA; the active partition table and the console-UART selection live in an
-**anchor record** on flash, so one base image serves every rig. Both rigs
-currently run base-v2 + `22cfaacd`. The remaining work is not bring-up — it is
-a base-image release dispatch and a handful of polish arcs (see the todo).
+watchdog). The firmware is a **frozen universal base** (the current source is
+base-v3, fingerprint `f3f2cc332adbef676d88c1c75c492163`) plus **per-slot VM
+images** delivered by OTA; the active partition table and the console-UART
+selection live in an **anchor record** on flash, so one base image serves every
+rig. The remaining work is not bring-up — it is the first base-image release
+dispatch after the EC618 workflow reaches the default branch, plus a handful
+of polish arcs (see the todo).
 
 ## Build & flash quickstart
 
@@ -63,10 +64,15 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 | 1 — Minimal boot | 1–9 | **DONE** (boot, OS layer, flash registry, RTC mem, embedded data) |
 | 2 — Interpreter + peripherals | 10–15 | **DONE** (UART, GPIO, I2C, primitive modules, event system) |
 | 3 — Networking | 16–18 | **DONE + HW-proven** (cellular attach, DNS, TCP, UDP, certificate-validated TLS) |
-| 4 — Production | 19–24 | OTA **DONE**; Toit libs / firmware tooling / CI **partially** — `lib/ec618`, `tools/ec618`, `tools/firmware.toit` all exist and work; CI workflow not started |
+| 4 — Production | 19–24 | OTA, Toit libs, firmware tooling, and CI **DONE** — `lib/ec618`, `tools/ec618`, `tools/firmware.toit`, and the base+slot CI workflow exist; first base-release dispatch waits for the workflow to reach the default branch |
 
 ## Major arcs completed (most recent first)
 
+- **Production CI + upstream handoff** (2026-07-19). Shared build setup now
+  initializes every submodule, and the pinned LuatOS revision is published for
+  buildbots. The base-release workflow publishes one universal base rather than
+  obsolete UART-specific variants. The EC618 condition-variable hardening and
+  gap-free UART writer behavior were split into upstream PRs #3094 and #3095.
 - **Cellular network exercise** (2026-07-18). The standalone EC618 module on
   `quirky-plenty` passed attach/PDP activation and DNS, TCP/HTTP, UDP/NTP, and
   certificate-validated TLS/HTTPS over lwIP. The 64 KiB flash registry fits the

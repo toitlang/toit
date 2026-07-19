@@ -34,14 +34,16 @@ Checked items are done and kept for context; unchecked are open.
 ## Florian's queue (owner: Florian, or needs a decision)
 
 - [ ] **Base-image release dispatch.** The release workflow (`ec618-base-vN`)
-  and the consumer path (`EC618_BASE_DIR`) exist; the **first release dispatch
-  is still pending**. base-v2 now mints the universal `22cfaacd` fingerprint.
-  Nothing this session changed the base (all I2C work was slot-side).
-- [ ] **`os_esp32.cc` condvar review (upstream candidate).** We hardened the
-  EC618 condvar to per-thread binary wake semaphores (`5b97ff3e`); `os_esp32.cc`
-  still uses the older task-notification pattern. Worth an upstream review.
-- [ ] **Retire `build-dual-image`.** `tools/ec618/provision.toit` supersedes it
-  (retargets an image to another descriptor, round-trip byte-identical).
+  and the consumer path (`EC618_BASE_DIR`) exist. The workflow now builds and
+  proves one universal base-v3 (`f3f2cc33`) and its obsolete UART variants are
+  gone. The first dispatch is still pending because GitHub only registers a
+  `workflow_dispatch` workflow after it reaches the default branch; dispatch
+  `ec618-base-v3` immediately after PR #3075 merges.
+- [x] **`os_esp32.cc` condvar review.** Ported the per-thread binary wake
+  semaphore hardening to upstream PR #3094; full ESP32 firmware build passes.
+- [x] **Retire `build-dual-image`** (`56156ccb`). `tools/ec618/provision.toit`
+  supersedes it and retargets an image to another descriptor round-trip
+  byte-identically.
 
 ## Watch / on-recurrence (not scheduled work)
 
@@ -54,11 +56,13 @@ Checked items are done and kept for context; unchecked are open.
   (`dual-bridge-esp32.toit` + socat) is HW-validated as the way back after any
   console flip.
 
-## GPIO doesn't work on alts atm.
-All functionality (we can test) should work.
-
 ## Done this session (kept for context)
 
+- [x] Standard build setup initializes all submodules; published LuatOS commit
+  `c871d984` so GitHub buildbots can fetch the pinned EC618 tree (`0aed688c`).
+- [x] Upstream UART writer immediately retries productive partial writes, so a
+  driver's second TX staging buffer can be filled without an on-wire gap
+  (PR #3095).
 - [x] I2C real speeds + slave-legality ceiling (`308ee13f`, `818097b3`).
 - [x] Alt-pad GPIO guard for the I2C bus-clear/wire-peek (Florian's concern: a
   GPIO bit reachable from an alternate pad must not be commandeered; today's pad
