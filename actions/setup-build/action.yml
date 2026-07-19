@@ -34,17 +34,7 @@ runs:
         cd ${{inputs.toit-dir}}
         git fetch --tags --recurse-submodules=no
 
-      # We only need the mbedtls submodule for building.
-    - name: Initialize mbedtls submodule
-      if: inputs.esp32 == 'false'
-      shell: bash
-      run: |
-        cd ${{inputs.toit-dir}}/third_party/esp-idf
-        git submodule update --init .
-        git submodule update --init components/mbedtls
-
     - name: Initialize all submodules
-      if: inputs.esp32 == 'true'
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
