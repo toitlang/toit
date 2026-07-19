@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import expect show *
+
 import .gold-tester
 
 main args:
@@ -27,6 +29,17 @@ test tester/GoldTester:
     ["// Option names are completed as well."],
     ["complete", "install", "--"],
   ]
+
+  // The sync eagerly cached the parsed descriptions.
+  expect (tester.has-descriptions-cache "git-pkgs")
+
+  tester.corrupt-descriptions-cache "git-pkgs"
+  tester.gold "25-corrupt-descriptions" [
+    ["// A corrupt parsed-descriptions cache falls back to parsing the registry content."],
+    ["complete", "install", ""],
+  ]
+  // The fallback repaired the cached parsed descriptions.
+  expect (tester.has-descriptions-cache "git-pkgs")
 
   tester.gold "30-describe" [
     ["complete", "describe", ""],

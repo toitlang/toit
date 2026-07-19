@@ -1,0 +1,13 @@
+// A corrupt parsed-descriptions cache falls back to parsing the registry content.
+==================
+[complete, install, ]
+localhost:<[*PORT*]>/pkg/pkg1	git-package 1
+localhost:<[*PORT*]>/pkg/pkg2	git-package 2
+localhost:<[*PORT*]>/pkg/pkg3	git-package 3
+localhost:<[*PORT*]>/pkg/pkg4	git-package 4
+pkg1	git-package 1
+pkg2	git-package 2
+pkg3	git-package 3
+pkg4	git-package 4
+:4
+Exit Code: 0

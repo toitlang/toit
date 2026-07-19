@@ -118,6 +118,20 @@ class GoldTester:
       return cache.get-file-path key: unreachable
     unreachable
 
+  has-descriptions-cache name/string -> bool:
+    with-registry-cache_ name: | cache/Cache key/string |
+      return cache.contains (descriptions-key_ key)
+    unreachable
+
+  corrupt-descriptions-cache name/string -> none:
+    with-registry-cache_ name: | cache/Cache key/string |
+      path := cache.get-file-path (descriptions-key_ key): unreachable
+      file.write-contents --path=path "garbage"
+
+  // Mirrors the key computation of GitRegistry.
+  static descriptions-key_ ar-key/string -> string:
+    return (ar-key.trim --right ".ar") + ".descriptions"
+
   with-registry-cache_ name/string [block]:
     cache := Cache --app-name="toit_pkg" --path=registry-cache-dir_
     registry-data := cache.get "registries.yaml": unreachable

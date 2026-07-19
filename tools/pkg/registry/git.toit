@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import ar show ArReader ArWriter ArFile
+import encoding.ubjson
 import encoding.yaml
 import fs
 import host.file
@@ -26,6 +27,8 @@ import ..git
 import ..file-system-view
 import ..utils
 import ..semantic-version
+import .cache
+import .description
 import .registry
 
 class GitRegistry extends Registry:
@@ -34,9 +37,16 @@ class GitRegistry extends Registry:
   static PACK-FILE_ ::= "pack"
   static HASH-FILE_ ::= "hash"
 
+  static DESCRIPTIONS-FORMAT-VERSION_ ::= 1
+  static DESCRIPTIONS-VERSION-KEY_ ::= "version"
+  static DESCRIPTIONS-HASH-KEY_ ::= "hash"
+  static DESCRIPTIONS-KEY_ ::= "descriptions"
+
   url/string
   ref-hash/string
   content_/FileSystemView? := null
+  // The hash of the pack that $content_ was loaded from.
+  loaded-hash_/string? := null
 
   // The ref-hash is currently only used for testing.
   constructor name .url .ref-hash=HEAD-INDICATOR_ --ui/cli.Ui:
@@ -57,9 +67,63 @@ class GitRegistry extends Registry:
   cache-key_ -> string:
     return "registry/git/$(url).ar"
 
+  // The cache entry with the parsed descriptions of the pack at $cache-key_.
+  // Kept as a separate entry (instead of inside the AR file), so that older
+  // versions of the pkg tool are not affected by it.
+  descriptions-cache-key_ -> string:
+    return "registry/git/$(url).descriptions"
+
   content -> FileSystemView:
     if not content_: content_ = load_
     return content_
+
+  description-cache -> DescriptionUrlCache:
+    if not description-cache_:
+      description-cache_ = load-description-cache_
+    return description-cache_
+
+  /**
+  Loads the parsed descriptions of this registry.
+
+  Uses the cached parsed form if it matches the current registry
+    content. Otherwise parses all description files from the $content
+    and updates the cached parsed form, so that later invocations (in
+    particular shell completions) don't need to parse them again.
+  */
+  load-description-cache_ -> DescriptionUrlCache:
+    registry-content := content  // Also sets $loaded-hash_.
+    key := descriptions-cache-key_
+    hash := loaded-hash_
+    cached/DescriptionUrlCache? := null
+    cache-error := catch:
+      encoded := cache.get key: | store/FileStore |
+        descriptions := DescriptionUrlCache registry-content --ui=ui_
+        store.save (encode-description-cache_ descriptions hash)
+      decoded := ubjson.decode encoded
+      if decoded[DESCRIPTIONS-VERSION-KEY_] == DESCRIPTIONS-FORMAT-VERSION_ and
+          decoded[DESCRIPTIONS-HASH-KEY_] == hash:
+        descriptions := decoded[DESCRIPTIONS-KEY_].map: | description-content/Map |
+          Description description-content --path="<cached>" --ui=ui_
+        cached = DescriptionUrlCache.filled descriptions
+    if cache-error:
+      ui_.emit --verbose "Unable to read parsed descriptions cache for registry $name: $cache-error"
+    if cached: return cached
+
+    result := DescriptionUrlCache registry-content --ui=ui_
+    cache-error = catch:
+      cache.update key: | old-path/string store/FileStore |
+        store.save (encode-description-cache_ result hash)
+    if cache-error:
+      ui_.emit --verbose "Unable to update parsed descriptions cache for registry $name: $cache-error"
+    return result
+
+  encode-description-cache_ descriptions/DescriptionUrlCache hash/string -> ByteArray:
+    return ubjson.encode {
+      DESCRIPTIONS-VERSION-KEY_: DESCRIPTIONS-FORMAT-VERSION_,
+      DESCRIPTIONS-HASH-KEY_: hash,
+      DESCRIPTIONS-KEY_: descriptions.all-descriptions.map: | description/Description |
+          description.to-json,
+    }
 
   update-cache_ -> none
       --clear-cache/bool
@@ -149,12 +213,17 @@ class GitRegistry extends Registry:
 
       if entry.name == PACK-FILE_:
         pack := Pack entry.contents hash
+        loaded-hash_ = hash
         return pack.content
 
       ui_.emit --warning "Ignoring unknown cache entry for registry $name at $key: $entry.name"
 
   sync --clear-cache/bool -> FileSystemView:
     content_ = load_ --sync --clear-cache=clear-cache
+    // Parse the descriptions eagerly: this updates the cached parsed form if
+    // necessary, so that later invocations don't need to parse all
+    // description files again.
+    description-cache_ = load-description-cache_
     return content_
 
   to-map -> Map:

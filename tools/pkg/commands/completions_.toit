@@ -17,6 +17,7 @@ import cli
 import encoding.yaml
 import fs
 import host.file
+import log
 
 import ..project.specification
 import ..registry
@@ -56,8 +57,13 @@ Runs the $block and returns its result.
 
 Returns an empty list if the block throws or takes longer than
   $COMPLETION-TIMEOUT-MS_.
+
+Silences the default logger: the completion candidates are printed to
+  stdout, so any library logging (like the file-lock logging of the
+  cache) would corrupt the completion output.
 */
 guarded_ [block] -> List:
+  log.set-default (log.default.with-level log.FATAL-LEVEL)
   result := []
   catch:
     with-timeout --ms=COMPLETION-TIMEOUT-MS_:
