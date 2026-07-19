@@ -94,27 +94,36 @@ class GitRegistry extends Registry:
     registry-content := content  // Also sets $loaded-hash_.
     key := descriptions-cache-key_
     hash := loaded-hash_
-    if cache.contains key:
-      catch:  // On any error fall back to parsing the description files.
-        encoded := cache.get key: unreachable
-        decoded := ubjson.decode encoded
-        if decoded[DESCRIPTIONS-VERSION-KEY_] == DESCRIPTIONS-FORMAT-VERSION_ and
-            decoded[DESCRIPTIONS-HASH-KEY_] == hash:
-          descriptions := decoded[DESCRIPTIONS-KEY_].map: | description-content/Map |
-            Description description-content --path="<cached>" --ui=ui_
-          return DescriptionUrlCache.filled descriptions
+    cached/DescriptionUrlCache? := null
+    cache-error := catch:
+      encoded := cache.get key: | store/FileStore |
+        descriptions := DescriptionUrlCache registry-content --ui=ui_
+        store.save (encode-description-cache_ descriptions hash)
+      decoded := ubjson.decode encoded
+      if decoded[DESCRIPTIONS-VERSION-KEY_] == DESCRIPTIONS-FORMAT-VERSION_ and
+          decoded[DESCRIPTIONS-HASH-KEY_] == hash:
+        descriptions := decoded[DESCRIPTIONS-KEY_].map: | description-content/Map |
+          Description description-content --path="<cached>" --ui=ui_
+        cached = DescriptionUrlCache.filled descriptions
+    if cache-error:
+      ui_.emit --verbose "Unable to read parsed descriptions cache for registry $name: $cache-error"
+    if cached: return cached
 
     result := DescriptionUrlCache registry-content --ui=ui_
-    encoded := ubjson.encode {
+    cache-error = catch:
+      cache.update key: | old-path/string store/FileStore |
+        store.save (encode-description-cache_ result hash)
+    if cache-error:
+      ui_.emit --verbose "Unable to update parsed descriptions cache for registry $name: $cache-error"
+    return result
+
+  encode-description-cache_ descriptions/DescriptionUrlCache hash/string -> ByteArray:
+    return ubjson.encode {
       DESCRIPTIONS-VERSION-KEY_: DESCRIPTIONS-FORMAT-VERSION_,
       DESCRIPTIONS-HASH-KEY_: hash,
-      DESCRIPTIONS-KEY_: result.all-descriptions.map: | description/Description |
+      DESCRIPTIONS-KEY_: descriptions.all-descriptions.map: | description/Description |
           description.to-json,
     }
-    catch:  // Not being able to write the cache is not fatal.
-      cache.update key: | old-path/string store/FileStore |
-        store.save encoded
-    return result
 
   update-cache_ -> none
       --clear-cache/bool
