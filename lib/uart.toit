@@ -392,11 +392,14 @@ class UartWriter extends io.Writer:
   write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> int:
     data-size := to - from
     while not is-closed_:
-      from += try-write data from to --break-length=break-length
+      written := try-write data from to --break-length=break-length
+      from += written
       if from >= to:
         if flush: this.flush
         return data-size
-      wait-for-more-room_
+      // Retry immediately while the port accepts bytes. It may have another
+      // staging buffer available even though the first write was partial.
+      if written == 0: wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
