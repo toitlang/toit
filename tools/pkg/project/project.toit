@@ -117,7 +117,7 @@ class Project:
   with-package-cache-lock_ [block]:
     assert: not owns-fs-lock_
     ensure-packages-cache-dir_
-    fs-lock.with-lock packages-fs-lock-path_:
+    fs-lock.with-lock packages-fs-lock-path_ --logger=ui_.logger:
       owns-fs-lock_ = true
       try:
         token := Object
