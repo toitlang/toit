@@ -125,10 +125,23 @@ void OS::close(int fd) {
   // Do nothing.
 }
 
+// Condition variables must not share the task-notification slot. Other users
+// of that slot, or a timed-out wait, can leave notification bits behind for an
+// unrelated condition variable wait on the same task. A stale semaphore give
+// can only cause a conventional spurious wakeup on its owning thread.
+__thread SemaphoreHandle_t condition_wake_semaphore_ = null;
+
+static SemaphoreHandle_t current_condition_wake_semaphore() {
+  if (condition_wake_semaphore_ == null) {
+    condition_wake_semaphore_ = xSemaphoreCreateBinary();
+  }
+  return condition_wake_semaphore_;
+}
+
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
-  // Task to wait on.
-  TaskHandle_t task;
+  SemaphoreHandle_t wake;
+  bool signaled;
   // Link to next semaphore to be notified.
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
@@ -162,20 +175,30 @@ class ConditionVariable {
     }
 
     ConditionVariableWaiter w{};
-    w.task = xTaskGetCurrentTaskHandle();
+    w.wake = current_condition_wake_semaphore();
+    if (w.wake == null) FATAL("unable to allocate condition wake semaphore");
 
     TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
 
     mutex_->unlock();
 
-    uint32_t value = 0;
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
+    bool woke = xSemaphoreTake(w.wake, ticks) == pdTRUE;
 
     mutex_->lock();
-    TAILQ_REMOVE(&waiter_list_, &w, link);
+    if (w.signaled) {
+      // If the semaphore wait timed out, a signal claimed this waiter while it
+      // was reacquiring the mutex. Consume that signal before reusing the
+      // task-local semaphore for another condition-variable wait.
+      if (!woke && xSemaphoreTake(w.wake, 0) != pdTRUE) {
+        FATAL("condition-variable signal without semaphore wakeup");
+      }
+    } else {
+      // No signal claimed this waiter, so it is still on the list.
+      TAILQ_REMOVE(&waiter_list_, &w, link);
+      if (woke) FATAL("condition-variable wakeup without signal");
+    }
 
-    if ((value & SIGNAL_ALL) != 0) signal_all();
-    return success;
+    return w.signaled;
   }
 
   void signal() {
@@ -184,7 +207,11 @@ class ConditionVariable {
     }
     ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
+      TAILQ_REMOVE(&waiter_list_, entry, link);
+      entry->signaled = true;
+      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
     }
   }
 
@@ -192,9 +219,12 @@ class ConditionVariable {
     if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
+    while (ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_)) {
+      TAILQ_REMOVE(&waiter_list_, entry, link);
+      entry->signaled = true;
+      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
     }
   }
 
@@ -203,9 +233,6 @@ class ConditionVariable {
 
   // Head of the list of semaphores.
   TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
-
-  static const uint32 SIGNAL_ONE = 1 << 0;
-  static const uint32 SIGNAL_ALL = 1 << 1;
 };
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
@@ -242,6 +269,10 @@ void Thread::_boot() {
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
+  if (condition_wake_semaphore_ != null) {
+    vSemaphoreDelete(condition_wake_semaphore_);
+    condition_wake_semaphore_ = null;
+  }
   xSemaphoreGive(thread->terminated);
   vTaskDelete(null);
 }
