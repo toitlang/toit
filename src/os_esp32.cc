@@ -141,6 +141,7 @@ static SemaphoreHandle_t current_condition_wake_semaphore() {
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
   SemaphoreHandle_t wake;
+  bool signaled;
   // Link to next semaphore to be notified.
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
@@ -181,12 +182,23 @@ class ConditionVariable {
 
     mutex_->unlock();
 
-    bool success = xSemaphoreTake(w.wake, ticks) == pdTRUE;
+    bool woke = xSemaphoreTake(w.wake, ticks) == pdTRUE;
 
     mutex_->lock();
-    TAILQ_REMOVE(&waiter_list_, &w, link);
+    if (w.signaled) {
+      // If the semaphore wait timed out, a signal claimed this waiter while it
+      // was reacquiring the mutex. Consume that signal before reusing the
+      // task-local semaphore for another condition-variable wait.
+      if (!woke && xSemaphoreTake(w.wake, 0) != pdTRUE) {
+        FATAL("condition-variable signal without semaphore wakeup");
+      }
+    } else {
+      // No signal claimed this waiter, so it is still on the list.
+      TAILQ_REMOVE(&waiter_list_, &w, link);
+      if (woke) FATAL("condition-variable wakeup without signal");
+    }
 
-    return success;
+    return w.signaled;
   }
 
   void signal() {
@@ -195,7 +207,11 @@ class ConditionVariable {
     }
     ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
-      xSemaphoreGive(entry->wake);
+      TAILQ_REMOVE(&waiter_list_, entry, link);
+      entry->signaled = true;
+      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
     }
   }
 
@@ -203,9 +219,12 @@ class ConditionVariable {
     if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry;
-    TAILQ_FOREACH(entry, &waiter_list_, link) {
-      xSemaphoreGive(entry->wake);
+    while (ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_)) {
+      TAILQ_REMOVE(&waiter_list_, entry, link);
+      entry->signaled = true;
+      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
     }
   }
 
