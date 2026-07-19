@@ -15,11 +15,13 @@
 
 #include "interpreter.h"
 
+#include "debugger.h"
 #include "flags.h"
 #include "heap_report.h"
 #include "objects_inline.h"
 #include "printing.h"
 #include "process.h"
+#include "program.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -45,6 +47,70 @@ void Interpreter::deactivate() {
 
 void Interpreter::preempt() {
   watermark_ = PREEMPTION_MARKER;
+}
+
+void Interpreter::set_debugger(Debugger* debugger) {
+  debugger_ = debugger;
+  debug_active_ = debugger != null && debugger->active();
+}
+
+void Interpreter::debug_resume(int step_mode) {
+  // We are parked on the breakpoint bytecode. Record the step state on the
+  // *process* (not the shared interpreter) so it can never leak to another
+  // process. The skip-once lets us make progress past the bytecode we parked
+  // on; the start depth is captured lazily on that skipped bytecode below.
+  process_->debug_begin_resume(step_mode);
+}
+
+int Interpreter::debug_frame_depth(Object** sp) {
+  // While running, the Stack's stored top is -1, so `frames_do` is unusable.
+  // Count frame markers directly between the live `sp` and the stack base.
+  // This is a self-consistent depth metric: deeper calls push more markers, so
+  // the value rises on a call and falls on a return, which is all the step/over/
+  // out comparisons need.
+  Object* marker = process_->program()->frame_marker();
+  int depth = 0;
+  for (Object** p = sp; p < base_; p++) {
+    if (*p == marker) depth++;
+  }
+  return depth;
+}
+
+bool Interpreter::debug_check(uint8* bcp, Object** sp) {
+  Process* process = process_;
+  if (process->debug_skip_once()) {
+    process->clear_debug_skip_once();
+    // Capture the start depth at the resume site so over/out can compare
+    // against it. Only needed when actively stepping (mode != 0).
+    if (process->debug_step_mode() != 0) {
+      process->set_debug_step_depth(debug_frame_depth(sp));
+    }
+    return false;
+  }
+  // Never pause privileged (system) processes; the debugger targets user code.
+  if (process->is_privileged()) return false;
+  Program* program = process->program();
+  word bci = program->absolute_bci_from_bcp(bcp);
+  if (debugger_->should_break(program, bci)) {
+    debugger_->on_pause(process, program, bci, Debugger::REASON_BREAK);
+    return true;
+  }
+  int mode = process->debug_step_mode();
+  if (mode != 0) {
+    int depth = debug_frame_depth(sp);
+    // step (1): pause on every bytecode.
+    // over (2): pause when back at or above the start depth (don't descend).
+    // out  (3): pause only after returning to a shallower frame.
+    bool hit = (mode == 1) ||
+               (mode == 2 && depth <= process->debug_step_depth()) ||
+               (mode == 3 && depth < process->debug_step_depth());
+    if (hit) {
+      debugger_->resolve_step_location(program, bci);
+      debugger_->on_pause(process, program, bci, Debugger::REASON_STEP);
+      return true;
+    }
+  }
+  return false;
 }
 
 Method Interpreter::lookup_entry() {

@@ -25,6 +25,9 @@
 
 namespace toit {
 
+class VM;
+class Debugger;
+
 typedef LinkedList<SchedulerThread> SchedulerThreadList;
 
 class SchedulerThread : public Thread, public SchedulerThreadList::Element {
@@ -62,8 +65,20 @@ class Scheduler {
     int64 value;
   };
 
-  Scheduler();
+  explicit Scheduler(VM* vm);
   ~Scheduler();
+
+  // Re-ready a process that was parked on a DEBUG_PAUSED result. Called from the
+  // debugger's controller thread. `step_mode`: 0=continue, 1=step, 2=over,
+  // 3=out. The mode is stashed on the process and transferred to the
+  // interpreter when the process next runs.
+  void resume_debug_process(int pid, int step_mode);
+
+  // Inspect a parked process under the scheduler lock so its heap (and stack) is
+  // stable while the debugger reads it. Finds the process by `pid` and, if it is
+  // still parked, calls back into `debugger->emit_stack` to emit the requested
+  // frame. Called from the debugger's controller thread.
+  void inspect_debug_process(int pid, Debugger* debugger, int frame_index);
 
 #ifdef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
@@ -208,6 +223,7 @@ class Scheduler {
   // Get the time for the next tick for process preemption.
   int64 tick_next() const { return next_tick_; }
 
+  VM* const vm_;
   Mutex* mutex_;
   ConditionVariable* has_processes_;
   ConditionVariable* has_threads_;

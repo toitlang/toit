@@ -46,6 +46,8 @@ file(GLOB toit_core_SRC
   "*.c"
   "*.cc"
   )
+# Note: debugger.cc (the in-image bytecode debugger) is picked up by the glob
+# above and compiled into the core library.
 
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
