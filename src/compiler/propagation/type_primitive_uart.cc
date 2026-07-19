@@ -32,6 +32,7 @@ TYPE_PRIMITIVE_ANY(wait_tx)
 TYPE_PRIMITIVE_ANY(set_control_flags)
 TYPE_PRIMITIVE_ANY(get_control_flags)
 TYPE_PRIMITIVE_INT(errors)
+TYPE_PRIMITIVE_ANY(create_console)
 
 }  // namespace toit::compiler
 }  // namespace toit

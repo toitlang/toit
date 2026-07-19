@@ -141,6 +141,39 @@ class Port extends Object with io.InMixin implements reader.Reader:
     add-finalizer this:: close
 
   /**
+  Constructs a UART port for the console UART.
+
+  The console UART is the UART the system uses for logging and for the
+    output of $print. Opening it gives access to the data that is received
+    on that UART, which the system otherwise discards. This makes it
+    possible for a program to take input from the same serial connection
+    that shows its output.
+
+  The port keeps the configuration (such as the baud rate) that the console
+    was set up with during boot. System output is unaffected by opening the
+    port: it continues to be written directly to the console. Data written
+    to this port may thus interleave with system output.
+
+  Changing this port's baud rate also changes the baud rate used for system
+    output.
+
+  Use $large-buffers to increase the receive buffer from 768 bytes to
+    4096 bytes.
+
+  Only one console port can be open at a time.
+
+  Only supported on ESP32 variants, and only if the console is on a UART
+    (the default). Throws "UNSUPPORTED" otherwise.
+  */
+  constructor.console --large-buffers/bool=false:
+    rx-buffer-size := large-buffers ? 4096 : 768
+    tx-buffer-size := 1024
+    uart_ = uart-create-console_ resource-group_ rx-buffer-size tx-buffer-size
+    state_ = ResourceState_ resource-group_ uart_
+
+    add-finalizer this:: close
+
+  /**
   Constructs a UART port using a $device path.
 
   This constructor does not work on embedded devices, such as the ESP32.
@@ -444,6 +477,9 @@ uart-create_ group tx rx rts cts baud-rate data-bits stop-bits parity tx-flags m
 
 uart-create-path_ resource-group device baud-rate data-bits stop-bits parity:
   #primitive.uart.create-path
+
+uart-create-console_ resource-group rx-buffer-size tx-buffer-size:
+  #primitive.uart.create-console
 
 uart-set-baud-rate_ uart baud:
   #primitive.uart.set-baud-rate

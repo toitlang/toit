@@ -88,6 +88,14 @@ static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
 #endif
 );
 
+#ifdef CONFIG_ESP_CONSOLE_UART
+// The console UART is excluded from `uart_ports` above. It can only be
+// opened through the dedicated console primitive.
+static ResourcePool<uart_port_t, kInvalidUartPort> console_uart_port(
+    static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM)
+);
+#endif
+
 class UartResourceGroup;
 
 class UartResource : public EventQueueResource {
@@ -150,6 +158,12 @@ class UartResourceGroup : public ResourceGroup {
 
   void on_unregister_resource(Resource* r) override {
     auto uart_res = reinterpret_cast<UartResource*>(r);
+#ifdef CONFIG_ESP_CONSOLE_UART
+    if (uart_res->port() == CONFIG_ESP_CONSOLE_UART_NUM) {
+      console_uart_port.put(uart_res->port());
+      return;
+    }
+#endif
     uart_ports.put(uart_res->port());
   }
 
@@ -496,6 +510,71 @@ PRIMITIVE(create) {
 
 PRIMITIVE(create_path) {
   FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(create_console) {
+#ifndef CONFIG_ESP_CONSOLE_UART
+  FAIL(UNSUPPORTED);
+#else
+  ARGS(UartResourceGroup, group, int, rx_buffer_size, int, tx_buffer_size)
+
+  uart_port_t port = static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM);
+
+  // The driver requires the RX buffer to be bigger than the hardware FIFO.
+  if (rx_buffer_size <= UART_HW_FIFO_LEN(port) || rx_buffer_size > 32 * 1024) FAIL(INVALID_ARGUMENT);
+  if (tx_buffer_size < 0 || tx_buffer_size > 32 * 1024) FAIL(INVALID_ARGUMENT);
+
+  if (!console_uart_port.take(port)) FAIL(ALREADY_IN_USE);
+  // Whether the resource object has been created and is thus responsible
+  // for returning resources.
+  bool handed_to_resource = false;
+  Defer return_port { [&] { if (!handed_to_resource) console_uart_port.put(port); } };
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // The console UART keeps the configuration (baud rate, pins, ...) it was
+  // given during boot; only the driver is installed, which makes RX
+  // interrupt driven. System output (logging, `print`) keeps going through
+  // the polling VFS path and thus doesn't need the driver.
+
+  esp_err_t err;
+  QueueHandle_t queue;
+  DriverArgs args = {
+    .port = port,
+    .rx_buffer_size = static_cast<uint16_t>(rx_buffer_size),
+    .tx_buffer_size = static_cast<uint16_t>(tx_buffer_size),
+    // Level 3 interrupts are problematic on some chips (see `create`), so
+    // stick to the levels that are safe everywhere.
+    .interrupt_flags = ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1,
+    .queue = &queue,
+    .queue_size = UART_QUEUE_SIZE,
+  };
+  // Install the ISR on the SystemEventSource's main thread that runs on core 0,
+  // to allocate the interrupts on core 0.
+  SystemEventSource::instance()->run([&]() -> void {
+    err = uart_driver_install(args.port,
+                              args.rx_buffer_size,
+                              args.tx_buffer_size,
+                              args.queue_size,
+                              args.queue,
+                              args.interrupt_flags);
+  });
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer uninstall_driver { [&] { if (!handed_to_resource) uart_driver_delete(port); } };
+
+  // Discard anything that was received before the port was opened.
+  err = uart_flush_input(port);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  auto resource = _new UartResource(group, port, tx_buffer_size, queue);
+  if (!resource) FAIL(MALLOC_FAILED);
+  handed_to_resource = true;
+
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  return proxy;
+#endif
 }
 
 PRIMITIVE(close) {

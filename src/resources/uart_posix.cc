@@ -279,6 +279,10 @@ PRIMITIVE(create) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(create_console) {
+  FAIL(UNIMPLEMENTED);
+}
+
 PRIMITIVE(create_path) {
   ARGS(UartResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
