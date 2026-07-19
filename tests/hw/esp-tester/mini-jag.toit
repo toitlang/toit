@@ -7,9 +7,12 @@ import esp32
 import expect show *
 import io
 import net
+import system
+import system.assets
 import system.containers
 import system.storage
 import net.tcp
+import uart
 import uuid show Uuid
 
 import .shared
@@ -26,11 +29,26 @@ main:
     // It just makes sure that the run-time is properly reset when the device is
     // powered on through a reset.
     expect esp32.total-run-time < 500_000  // 0.5s
-    with-client: | socket/tcp.Socket |
-      install-new-test socket.in
-      wait-for-run-signal socket.in
+    with-control-channel: | reader/io.Reader |
+      install-new-test reader
+      wait-for-run-signal reader
     esp32.deep-sleep Duration.ZERO
   run-test
+
+with-control-channel [block]:
+  control := (assets.decode)[CONTROL-ASSET].to-string
+  if control == "serial":
+    port := uart.Port.console --large-buffers
+    try:
+      print MINI-JAG-LISTENING
+      block.call port.in
+    finally:
+      port.close
+  else if control == "network":
+    with-client: | socket/tcp.Socket |
+      block.call socket.in
+  else:
+    throw "Unknown control channel: $control"
 
 with-client [block]:
   network/net.Client? := null
@@ -74,10 +92,21 @@ install-new-test reader/io.Reader:
   print "SIZE: $size"
   expected-crc := reader.read-bytes 4
   summer := crc.Crc32
+  // Creating the writer erases the flash region, which can take a while.
+  // Only ask for data once that's done: the serial transport has no flow
+  // control, so anything sent while we are busy could overflow the
+  // receive buffer.
   writer := containers.ContainerImageWriter size
   written-size := 0
+  requested := 0
   while written-size < size:
-    data := reader.read --max-size=(size - written-size)
+    // Keep up to two chunks in flight: the next one streams in while the
+    // current one is written to flash.
+    while requested < size and requested - written-size < 2 * CHUNK-SIZE:
+      print CHUNK-REQUEST
+      requested += min CHUNK-SIZE (size - requested)
+    chunk-size := min CHUNK-SIZE (size - written-size)
+    data := reader.read-bytes chunk-size
     summer.add data
     writer.write data
     written-size += data.size

@@ -9,6 +9,7 @@ import host.directory
 import host.file
 import host.os
 import host.pipe
+import io
 import monitor
 import net
 import net.tcp
@@ -60,6 +61,9 @@ main args:
             --help="The WiFi password"
             --type="string"
             --required,
+        cli.OptionEnum "control" ["serial", "network"]
+            --help="The transport for the control channel"
+            --default="serial",
       ]
       --run=:: | invocation/cli.Invocation |
         setup-tester invocation
@@ -83,6 +87,9 @@ main args:
         cli.Flag "flaky"
             --help="Run the test in flaky mode, which will retry on failure"
             --default=false,
+        cli.OptionEnum "control" ["serial", "network"]
+            --help="The transport for the control channel"
+            --default="serial",
       ]
       --rest=[
         cli.Option "test"
@@ -121,6 +128,7 @@ run-test invocation/cli.Invocation:
   test2-path := invocation["test2"]
   arg := invocation["arg"]
   flaky := invocation["flaky"]
+  use-network := invocation["control"] == "network"
 
   already-installed := false
   attempts := flaky ? 3 : 1
@@ -135,6 +143,7 @@ run-test invocation/cli.Invocation:
           --ui=ui
           --toit-exe=toit-exe
           --already-installed=already-installed
+          --use-network=use-network
       board2/TestDevice? := null
 
       try:
@@ -143,7 +152,7 @@ run-test invocation/cli.Invocation:
         task::
           image/ByteArray? := null
           Task.group [
-            :: board1.connect-network,
+            :: board1.connect,
             :: image = board1.compile-test test-path,
           ]
           board1.install-test image arg
@@ -157,9 +166,10 @@ run-test invocation/cli.Invocation:
               --ui=ui
               --toit-exe=toit-exe
               --already-installed=already-installed
+              --use-network=use-network
           image2/ByteArray? := null
           Task.group [
-            :: board2.connect-network,
+            :: board2.connect,
             :: image2 = board2.compile-test test2-path,
           ]
           board2.install-test image2 arg
@@ -193,6 +203,10 @@ class TestDevice:
   toit-exe/string
   // Whether the test has already been installed on the device.
   already-installed/bool
+  // Whether the control channel rides on TCP over WiFi instead of the
+  // serial connection. The protocol is identical; only the transport
+  // bring-up differs.
+  use-network/bool
   read-task/Task? := null
   is-active/bool := false
   collected-output/string := ""
@@ -202,6 +216,13 @@ class TestDevice:
   // Offset into $collected-output up to which UART baud-rate requests have
   // been answered.
   uart-baud-rate-handled_/int := 0
+  // One permit per $CHUNK-REQUEST the device has printed. The install
+  // paces its writes on these, so the device is never sent data it
+  // hasn't asked for (the serial transport has no flow control).
+  chunk-requests_/monitor.Semaphore := monitor.Semaphore
+  // Offset into $collected-output up to which chunk requests have been
+  // counted.
+  chunk-requests-handled_/int := 0
   ready-latch/monitor.Latch := monitor.Latch
   installed-container/monitor.Latch := monitor.Latch
   running-container/monitor.Latch := monitor.Latch
@@ -212,7 +233,7 @@ class TestDevice:
   network_/net.Client? := null
   socket_/tcp.Socket? := null
 
-  constructor --.name --.toit-exe --port-path/string --.ui --.already-installed:
+  constructor --.name --.toit-exe --port-path/string --.ui --.already-installed --.use-network:
     port = uart.HostPort port-path --baud-rate=115200
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
     read-task = task --background::
@@ -270,6 +291,12 @@ class TestDevice:
             // hardware has emitted the final bytes at the old rate.
             sleep --ms=100
             port.baud-rate = rate
+          // Grant one send permit per chunk request.
+          while true:
+            request-index := collected-output.index-of "\n$CHUNK-REQUEST" chunk-requests-handled_
+            if request-index < 0: break
+            chunk-requests-handled_ = request-index + 1 + CHUNK-REQUEST.size
+            chunk-requests_.up
           if collected-output.contains JAG-DECODE:
             if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
               // Otherwise it's probably an error during setup.
@@ -303,7 +330,7 @@ class TestDevice:
   toit_ args/List:
     run-toit toit-exe args --ui=ui
 
-  connect-network:
+  connect:
     log "Connecting to $name"
     // Reset the device.
     ui.emit --verbose "Resetting $name."
@@ -317,6 +344,8 @@ class TestDevice:
     ready-latch.get
     ui.emit --verbose "Device $name is ready."
 
+    if not use-network: return
+
     lines/List := collected-output.split "\n"
     lines.map --in-place: it.trim
     listening-line-index := lines.index-of --last MINI-JAG-LISTENING
@@ -325,6 +354,12 @@ class TestDevice:
     network_ = net.open
     socket_ = network_.tcp-connect parts[0] (int.parse parts[1])
     ui.emit --info "Connected to $host-port-line."
+
+  // The writer of the control channel: the TCP socket for network control,
+  // the serial port itself for serial control.
+  control-out -> io.Writer:
+    if use-network: return socket_.out
+    return port.out
 
   disconnect-network:
     if socket_: socket_.close
@@ -359,29 +394,38 @@ class TestDevice:
 
   install-test image/ByteArray arg/string -> none:
     log "Sending test to device $name"
-    socket_.out.little-endian.write-int32 arg.size
-    socket_.out.write arg
+    out := control-out
+    out.little-endian.write-int32 arg.size
+    out.write arg
     if already-installed:
       log "Sending already installed signal"
-      socket_.out.little-endian.write-int32 -1
+      out.little-endian.write-int32 -1
       log "set"
       installed-container.set true
       log "return"
       return
 
-    socket_.out.little-endian.write-int32 image.size
+    out.little-endian.write-int32 image.size
 
     summer := crc.Crc32
     summer.add image
-    socket_.out.write summer.get
-    socket_.out.write image
+    out.write summer.get
+    // The device pulls the image chunk by chunk: it prints a request
+    // whenever it is ready for more. Never send more than requested, since
+    // the serial transport has no flow control.
+    sent := 0
+    while sent < image.size:
+      chunk-requests_.down
+      chunk-end := min (sent + CHUNK-SIZE) image.size
+      out.write image[sent..chunk-end]
+      sent = chunk-end
 
     log "Waiting for test to be fully installed"
     installed-container.get
 
   run-test -> none:
     log "Running test on device $name"
-    socket_.out.write RUN-TEST
+    control-out.write RUN-TEST
 
 setup-tester invocation/cli.Invocation:
   if os.env.get "TOIT_SKIP_SETUP": return
@@ -390,6 +434,7 @@ setup-tester invocation/cli.Invocation:
   toit-exe := invocation["toit-exe"]
   port-path := invocation["port"]
   envelope-path := invocation["envelope"]
+  control := invocation["control"]
 
   with-tmp-dir: | dir/string |
     tester-envelope-path := fs.join dir "tester.envelope"
@@ -397,15 +442,31 @@ setup-tester invocation/cli.Invocation:
     my-dir := fs.dirname my-path
     mini-jag-source := fs.join my-dir "mini-jag.toit"
     mini-jag-snapshot-path := "$dir/mini-jag.snap"
+    mini-jag-assets-path := "$dir/mini-jag.assets"
+    control-path := "$dir/control"
     run-toit --ui=ui toit-exe [
       "compile",
       "--snapshot",
       "-o", mini-jag-snapshot-path,
       mini-jag-source
     ]
+    file.write-contents --path=control-path control
+    run-toit --ui=ui toit-exe [
+      "tool", "assets",
+      "create",
+      "--assets", mini-jag-assets-path,
+    ]
+    run-toit --ui=ui toit-exe [
+      "tool", "assets",
+      "add",
+      "--assets", mini-jag-assets-path,
+      CONTROL-ASSET,
+      control-path,
+    ]
     run-toit --ui=ui toit-exe [
       "tool", "firmware",
       "container", "add", "mini-jag", mini-jag-snapshot-path,
+      "--assets", mini-jag-assets-path,
       "-e", envelope-path,
       "-o", tester-envelope-path,
     ]

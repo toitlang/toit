@@ -39,6 +39,13 @@ set(VARIANTS
 
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
+
+  # The control channel rides on the serial connection: all boards on the
+  # rig are connected through USB-UART bridges, so the console UART works
+  # in both directions. Switch to "network" only for boards whose console
+  # isn't reachable for input (e.g. native USB-Serial-JTAG); this must
+  # match 'use-serial-control' in mini-jag.toit.
+  set(control_flag "--control" "serial")
   foreach(board board1 board2)
     string(TOUPPER ${board} BOARD)
     set(port "$ENV{${ESP_VARIANT}_${BOARD}_PORT}")
@@ -50,6 +57,7 @@ foreach(esp_variant ${VARIANTS})
           --toit-exe "${TOIT_EXE_HW}"
           --port "${port}"
           --envelope "$ENV{${ESP_VARIANT}_ENVELOPE}"
+          ${control_flag}
           # Typically the SSID and password are the same for all variants, but
           # this makes it more consistent.
           --wifi-ssid "$ENV{${ESP_VARIANT}_WIFI_SSID}"
@@ -121,6 +129,13 @@ endfunction()
 
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
+
+  # The control channel rides on the serial connection: all boards on the
+  # rig are connected through USB-UART bridges, so the console UART works
+  # in both directions. Switch to "network" only for boards whose console
+  # isn't reachable for input (e.g. native USB-Serial-JTAG); this must
+  # match 'use-serial-control' in mini-jag.toit.
+  set(control_flag "--control" "serial")
   foreach(file ${SINGLE_TESTS})
     set(flaky FALSE)
     set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
@@ -158,6 +173,7 @@ foreach(esp_variant ${VARIANTS})
         NAME ${test_name}
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file}
             ${flaky_flag}
+            ${control_flag}
             --arg "${arg}"
             --verbose
             --toit-exe "${TOIT_EXE_HW}"
@@ -222,6 +238,7 @@ foreach(esp_variant ${VARIANTS})
         NAME "${test_name}"
         COMMAND ${TOIT_EXE_HW} "${TESTER}" run ${toit_file} ${toit_file_board2}
             ${flaky_flag}
+            ${control_flag}
             --verbose
             --arg "${arg}"
             --toit-exe "${TOIT_EXE_HW}"
