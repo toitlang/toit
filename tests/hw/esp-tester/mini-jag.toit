@@ -40,16 +40,30 @@ with-control-channel [block]:
   if control == "serial":
     port := uart.Port.console --large-buffers
     try:
+      switch-console-baud-rate port
       print MINI-JAG-LISTENING
       block.call port.in
     finally:
       port.close
   else if control == "network":
-    with-client: | socket/tcp.Socket |
-      block.call socket.in
+    port := uart.Port.console --large-buffers
+    try:
+      switch-console-baud-rate port
+      with-client: | socket/tcp.Socket |
+        block.call socket.in
+    finally:
+      port.close
   else:
     throw "Unknown control channel: $control"
 
+switch-console-baud-rate port/uart.Port:
+  // The host switches after flushing its acknowledgement. Give it a short
+  // scheduling margin before transmitting at the new rate.
+  print "$UART-BAUD-RATE-REQUEST$CONTROL-BAUD-RATE"
+  ack := port.in.read-string UART-BAUD-RATE-ACK.size + 1
+  if ack != "$UART-BAUD-RATE-ACK\n": throw "BAUD-RATE-ACK MISMATCH"
+  sleep --ms=UART-BAUD-RATE-SWITCH-DELAY-MS
+  port.baud-rate = CONTROL-BAUD-RATE
 with-client [block]:
   network/net.Client? := null
   for i := 0; i < NETWORK-RETRIES; i++:
