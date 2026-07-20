@@ -438,7 +438,7 @@ class Project:
           --hash=hash
           --fs-lock-token=fs-lock-token
       file.write-contents hash --path=repo-toit-git-path
-      make-read-only_ --recursive cached-repository-dir
+      make-files-read-only_ cached-repository-dir
     (cached-contents.get url --init=:{:})[version-string] = relative-dir
     write-cached-repository-contents_ cached-contents --fs-lock-token=fs-lock-token
     return cached-contents
