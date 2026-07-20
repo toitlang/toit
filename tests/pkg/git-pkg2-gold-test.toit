@@ -61,3 +61,13 @@ test tester/GoldTester:
   else:
     write-bits := 0b010_010_010
     expect-equals 0 (mode & write-bits)
+
+  [foo-path, fs.join foo-path "src"].do: | directory-path/string |
+    stat = file.stat directory-path
+    expect-not-null stat
+    mode = stat[file.ST-MODE]
+    if system.platform == system.PLATFORM-WINDOWS:
+      expect-equals 0 (mode & file.WINDOWS-FILE-ATTRIBUTE-READONLY)
+    else:
+      write-bits := 0b010_010_010
+      expect-equals write-bits (mode & write-bits)
