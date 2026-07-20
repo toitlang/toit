@@ -42,7 +42,15 @@ with-control-channel [block]:
     try:
       switch-console-baud-rate port
       print MINI-JAG-LISTENING
-      block.call port.in
+      error-monitor := task --background::
+        previous-errors := port.errors
+        while port.errors == previous-errors:
+          sleep --ms=1
+        print "$UART-TRANSFER-ERROR: $(port.errors)"
+      try:
+        block.call port.in
+      finally:
+        error-monitor.cancel
     finally:
       port.close
   else if control == "network":
@@ -114,8 +122,7 @@ install-new-test reader/io.Reader:
   written-size := 0
   requested := 0
   while written-size < size:
-    // Keep up to two chunks in flight: the next one streams in while the
-    // current one is written to flash.
+    // Keep two requested chunks outstanding while writing to flash.
     while requested < size and requested - written-size < 2 * CHUNK-SIZE:
       print CHUNK-REQUEST
       requested += min CHUNK-SIZE (size - requested)

@@ -68,6 +68,10 @@ const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 const int kBreakState = 1 << 3;
 
+const int kHighSpeedBaudRate = 460800;
+const uint8 kHighSpeedRxFullThreshold = 35;
+const uint8 kLowSpeedRxFullThreshold = 105;
+
 static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
 #ifndef CONFIG_ESP_CONSOLE_UART
     UART_NUM_0,
@@ -373,7 +377,7 @@ PRIMITIVE(create) {
   if ((options & 8) != 0) {
     // High speed setting.
     interrupt_flags |= HI;
-    full_interrupt_threshold = 35;
+    full_interrupt_threshold = kHighSpeedRxFullThreshold;
     tx_buffer_size = 2048;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
@@ -385,7 +389,7 @@ PRIMITIVE(create) {
   } else {
     // Low speed setting.
     interrupt_flags |= LO;
-    full_interrupt_threshold = 105;
+    full_interrupt_threshold = kLowSpeedRxFullThreshold;
     tx_buffer_size = 256;
     rx_buffer_size = 768;
   }
@@ -594,6 +598,17 @@ PRIMITIVE(get_baud_rate) {
 
 PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart, uint32, baud_rate)
+#ifdef CONFIG_ESP_CONSOLE_UART
+  if (uart->port() == CONFIG_ESP_CONSOLE_UART_NUM) {
+    // The console has no speed option. Leave enough room in the hardware FIFO
+    // for interrupt latency when flash operations temporarily stall the CPU.
+    uint8 threshold = baud_rate >= kHighSpeedBaudRate
+        ? kHighSpeedRxFullThreshold
+        : kLowSpeedRxFullThreshold;
+    esp_err_t err = uart_set_rx_full_threshold(uart->port(), threshold);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
+#endif
   esp_err_t err = uart_set_baudrate(uart->port(), baud_rate);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->null_object();
@@ -649,7 +664,7 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
 #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
-  if (uart->has_dropped_data() && uart->has_reported_dropped_data()) {
+  if (uart->has_dropped_data() && !uart->has_reported_dropped_data()) {
     uart->set_has_reported_dropped_data();
     ESP_LOGE("uart", "dropped data; no further warnings will be issued");
   }
