@@ -122,8 +122,8 @@ install-new-test reader/io.Reader:
   written-size := 0
   requested := 0
   while written-size < size:
-    // Keep only one requested chunk outstanding while writing to flash.
-    while requested < size and requested - written-size < CHUNK-SIZE:
+    // Keep two requested chunks outstanding while writing to flash.
+    while requested < size and requested - written-size < 2 * CHUNK-SIZE:
       print CHUNK-REQUEST
       requested += min CHUNK-SIZE (size - requested)
     chunk-size := min CHUNK-SIZE (size - written-size)

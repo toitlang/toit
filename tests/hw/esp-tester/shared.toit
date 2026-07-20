@@ -33,7 +33,8 @@ CONTROL-BAUD-RATE ::= 921_600
 // The device pulls the container image in chunks of this size, requesting
 // each one with $CHUNK-REQUEST. The serial transport has no flow control,
 // so the device must never have more data in flight than it asked for. It
-// keeps only one requested chunk outstanding so flash writes can't cause the
-// receive buffer to overflow.
-CHUNK-SIZE ::= 1920
+// keeps two requested chunks outstanding so the wire stays busy while a chunk
+// is written to flash. Together they use half of the 4096-byte receive buffer,
+// leaving the other half as headroom.
+CHUNK-SIZE ::= 1024
 CHUNK-REQUEST ::= "READY FOR CHUNK"
