@@ -14,9 +14,13 @@ UART-INPUT-REQUEST ::= "UART-INPUT-REQUEST: "
 // acknowledge at the current rate and then switch the serial connection.
 UART-BAUD-RATE-REQUEST ::= "UART-BAUD-RATE-REQUEST: "
 UART-BAUD-RATE-ACK ::= "UART-BAUD-RATE-ACK"
+UART-TRANSFER-ERROR ::= "UART TRANSFER ERROR"
 // Gives the host time to apply the requested rate before the device transmits
 // at that rate.
 UART-BAUD-RATE-SWITCH-DELAY-MS ::= 10
+// Gives USB-UART adapters time to transmit at the old rate before the host
+// changes rate. This must be shorter than $UART-BAUD-RATE-SWITCH-DELAY-MS.
+UART-HOST-BAUD-RATE-SWITCH-DELAY-MS ::= 5
 
 // The asset that selects mini-jag's control transport.
 CONTROL-ASSET ::= "control"
@@ -29,8 +33,7 @@ CONTROL-BAUD-RATE ::= 921_600
 // The device pulls the container image in chunks of this size, requesting
 // each one with $CHUNK-REQUEST. The serial transport has no flow control,
 // so the device must never have more data in flight than it asked for. It
-// keeps up to two chunks in flight (so the wire stays busy while a chunk
-// is written to flash), which means both must fit in the console UART's
-// 4096-byte receive buffer.
+// keeps only one requested chunk outstanding so flash writes can't cause the
+// receive buffer to overflow.
 CHUNK-SIZE ::= 1920
 CHUNK-REQUEST ::= "READY FOR CHUNK"

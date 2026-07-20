@@ -649,7 +649,7 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
 #ifdef CONFIG_TOIT_REPORT_UART_DATA_LOSS
-  if (uart->has_dropped_data() && uart->has_reported_dropped_data()) {
+  if (uart->has_dropped_data() && !uart->has_reported_dropped_data()) {
     uart->set_has_reported_dropped_data();
     ESP_LOGE("uart", "dropped data; no further warnings will be issued");
   }

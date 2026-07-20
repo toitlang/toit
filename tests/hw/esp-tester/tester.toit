@@ -133,68 +133,79 @@ run-test invocation/cli.Invocation:
   already-installed := false
   attempts := flaky ? 3 : 1
   attempts.repeat: | attempt/int |
-    print "\n"
-    log "Attempt $(attempt + 1) of $attempts"
-    // If we didn't manage to install the test something went wrong.
-    catch --unwind=(: not already-installed or attempt == attempts - 1):
-      board1 := TestDevice
-          --name="board1"
-          --port-path=port-board1
-          --ui=ui
-          --toit-exe=toit-exe
-          --already-installed=already-installed
-          --use-network=use-network
-      board2/TestDevice? := null
+    transfer-attempt := 0
+    while true:
+      print "\n"
+      log "Attempt $(attempt + 1) of $attempts"
+      error := catch:
+        board1 := TestDevice
+            --name="board1"
+            --port-path=port-board1
+            --ui=ui
+            --toit-exe=toit-exe
+            --already-installed=already-installed
+            --use-network=use-network
+        board2/TestDevice? := null
 
-      try:
-        board1-ready := monitor.Latch
+        try:
+          board1-ready := monitor.Latch
 
-        task::
-          image/ByteArray? := null
-          Task.group [
-            :: board1.connect,
-            :: image = board1.compile-test test-path,
-          ]
-          board1.install-test image arg
-          log "Board1 ready"
-          board1-ready.set true
+          task::
+            error := catch:
+              image/ByteArray? := null
+              Task.group [
+                :: board1.connect,
+                :: image = board1.compile-test test-path,
+              ]
+              board1.install-test image arg
+              log "Board1 ready"
+              board1-ready.set true
+            if error: board1-ready.set --exception error
 
-        if port-board2:
-          board2 = TestDevice
-              --name="board2"
-              --port-path=port-board2
-              --ui=ui
-              --toit-exe=toit-exe
-              --already-installed=already-installed
-              --use-network=use-network
-          image2/ByteArray? := null
-          Task.group [
-            :: board2.connect,
-            :: image2 = board2.compile-test test2-path,
-          ]
-          board2.install-test image2 arg
-          log "Board2 ready"
+          if port-board2:
+            board2 = TestDevice
+                --name="board2"
+                --port-path=port-board2
+                --ui=ui
+                --toit-exe=toit-exe
+                --already-installed=already-installed
+                --use-network=use-network
+            image2/ByteArray? := null
+            Task.group [
+              :: board2.connect,
+              :: image2 = board2.compile-test test2-path,
+            ]
+            board2.install-test image2 arg
+            log "Board2 ready"
 
-        board1-ready.get
-        already-installed = true
+          board1-ready.get
+          already-installed = true
 
-        board1.run-test
-        if port-board2:
-          board1.running-container.get
-          board2.run-test
+          board1.run-test
+          if port-board2:
+            board1.running-container.get
+            board2.run-test
 
-        ui.emit --verbose "Waiting for all tests to be done."
-        board1.all-tests-done.get
-        log "Board1 done"
-        if board2:
-          board2.all-tests-done.get
-          log "Board2 done"
+          ui.emit --verbose "Waiting for all tests to be done."
+          board1.all-tests-done.get
+          log "Board1 done"
+          if board2:
+            board2.all-tests-done.get
+            log "Board2 done"
 
-        // Success. No need to run another attempt.
-        return
-      finally:
-        board1.close
-        if board2: board2.close
+          // Success. No need to run another attempt.
+          return
+        finally:
+          board1.close
+          if board2: board2.close
+
+      if error == UART-TRANSFER-ERROR and transfer-attempt == 0:
+        transfer-attempt++
+        log "Retrying after a UART transfer error"
+        continue
+      // If we didn't manage to install the test something went wrong.
+      if not already-installed or attempt == attempts - 1: throw error
+      break
 
 class TestDevice:
   static SNAPSHOT-NAME ::= "test.snap"
@@ -256,6 +267,9 @@ class TestDevice:
           collected-output += data-str
           if collected-output.contains "\n$MINI-JAG-LISTENING": set-latch_ ready-latch
           if collected-output.contains "\n$ALL-TESTS-DONE": set-latch_ all-tests-done
+          if collected-output.contains "\n$UART-TRANSFER-ERROR":
+            if not installed-container.has-value:
+              installed-container.set --exception UART-TRANSFER-ERROR
           if collected-output.contains "\n$INSTALLED-CONTAINER": set-latch_ installed-container
           if collected-output.contains "\n$RUNNING-CONTAINER": set-latch_ running-container
           // Serve UART input requests: when the device prints a marker line,
@@ -287,6 +301,9 @@ class TestDevice:
             rate := int.parse collected-output[rate-start..request-end].trim
             uart-baud-rate-handled_ = request-end
             port.out.write "$UART-BAUD-RATE-ACK\n" --flush
+            // Some USB-UART adapters report an empty host queue before their
+            // hardware has emitted the final bytes at the old rate.
+            sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
             port.baud-rate = rate
           // Grant one send permit per chunk request.
           while true:
@@ -308,10 +325,13 @@ class TestDevice:
             all-tests-done.set --exception "Error detected"
 
       finally:
-        read-task = null
         if port:
           port.close
           port = null
+        // Publish termination only after the port has been released.  A UART
+        // transfer retry may otherwise race with this cleanup when reopening
+        // the same host serial device.
+        read-task = null
 
   set-latch_ latch/monitor.Latch:
     if latch.has-value: return
@@ -320,6 +340,11 @@ class TestDevice:
   close:
     if read-task:
       read-task.cancel
+      // Task.cancel is asynchronous.  Wait for the reader's finally block to
+      // close the serial device before a retry constructs another TestDevice.
+      critical-do --no-respect-deadline:
+        with-timeout --ms=1_000:
+          while read-task: sleep --ms=1
     if file.is-directory tmp-dir:
       directory.rmdir --recursive tmp-dir
     disconnect-network
@@ -433,7 +458,7 @@ class TestDevice:
     // mini-jag receives the run signal at $CONTROL-BAUD-RATE, then resets
     // before starting the test. The next container starts its console at the
     // default rate, which lets console tests negotiate their own rate.
-    sleep --ms=100
+    sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
     port.baud-rate = CONSOLE-BAUD-RATE
 
 setup-tester invocation/cli.Invocation:
