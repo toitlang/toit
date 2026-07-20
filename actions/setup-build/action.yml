@@ -64,7 +64,7 @@ runs:
         git submodule update --init --recursive -j 16
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: stable
         cache-dependency-path: |
