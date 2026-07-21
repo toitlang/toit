@@ -67,10 +67,21 @@ namespace compiler {
 
 static const int INITIALIZER_ID_INDEX = 0;
 
-TypePropagator::TypePropagator(Program* program)
+TypePropagator::TypePropagator(
+    Program* program,
+    const MethodSelectorOffsets* method_selector_offsets)
     : program_(program)
+    , method_selector_offsets_(method_selector_offsets)
     , words_per_type_(TypeSet::words_per_type(program)) {
   TypePrimitive::set_up();
+}
+
+int TypePropagator::selector_offset(Method method) const {
+  if (method_selector_offsets_ == null) return method.selector_offset();
+  int method_id = program_->absolute_bci_from_bcp(method.header_bcp());
+  auto probe = method_selector_offsets_->find(method_id);
+  ASSERT(probe != method_selector_offsets_->end());
+  return probe->second;
 }
 
 void TypePropagator::ensure_entry_main() {
@@ -473,7 +484,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
-  word offset = target.selector_offset();
+  word offset = selector_offset(target);
   bool handle_as_static = (offset == -1);
   if (offset >= 0) {
     ASSERT(arity > 0);
@@ -559,7 +570,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller,
     Method target = (entry_id >= 0)
         ? Method(program->bytecodes, entry_id)
         : Method::invalid();
-    if (!target.is_valid() || target.selector_offset() != offset) {
+    if (!target.is_valid() || selector_offset(target) != offset) {
       // There is a chance we'll get a lookup error thrown here.
       ensure_lookup_failure();
       scope->throw_maybe();
@@ -1588,7 +1599,8 @@ void MethodTemplate::propagate() {
   // concrete receiver type; not any.
   bool is_normal = method_.is_normal_method() ||
       method_.is_field_accessor();
-  bool is_virtual = is_normal && method_.selector_offset() >= 0;
+  int selector_offset = propagator_->selector_offset(method_);
+  bool is_virtual = is_normal && selector_offset >= 0;
   if (is_virtual) {
     ASSERT(arguments_.size() >= 1);
     ConcreteType receiver = argument(0);
@@ -1600,7 +1612,7 @@ void MethodTemplate::propagate() {
   // does a manual null check on both arguments, which means that null never
   // flows into the method body. We have to simulate that.
   Program* program = propagator_->program();
-  if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
+  if (selector_offset == program->invoke_bytecode_offset(INVOKE_EQ)) {
     ConcreteType null_type = ConcreteType(Smi::value(program->null_class_id()));
     ASSERT(!argument(0).is_any());  // Receiver is always a single type.
     bool receiver_is_null = argument(0).matches(null_type);

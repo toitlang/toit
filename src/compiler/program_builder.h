@@ -24,6 +24,7 @@
 
 #include "list.h"
 #include "map.h"
+#include "method_selector_offsets.h"
 #include "symbol.h"
 #include "util.h"
 
@@ -34,7 +35,7 @@ namespace compiler {
 // A simple stack avoids the need for handles to survive garbage collection.
 class ProgramBuilder {
  public:
-  explicit ProgramBuilder(Program* program);
+  ProgramBuilder(Program* program, MethodSelectorOffsets* method_selector_offsets);
 
   Program* program() const { return program_; }
   int size() const { return stack_.size(); }
@@ -64,7 +65,7 @@ class ProgramBuilder {
 
   // Removes the top 'len' elements and replaces them with an array containing those elements.
   void create_class(int id, const char* name, int instance_size, bool is_runtime);
-  int create_method(word selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height);
+  int create_method(int32 selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height);
   int create_lambda(int captured_count, int arity, List<uint8> codes, int max_height);
   int create_block(int arity, List<uint8> codes, int max_height);
   int absolute_bci_for(int method_id);
@@ -119,6 +120,7 @@ class ProgramBuilder {
 
   ProgramHeap program_heap_;
   Program* program_;
+  MethodSelectorOffsets* method_selector_offsets_;
 
   UnorderedMap<std::string, String*> symbols_;
   std::vector<Object*> stack_;

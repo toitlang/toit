@@ -1177,6 +1177,11 @@ build-image snapshot/snapshot.Program word-size/int -> Image
     --system-uuid/Uuid
     --snapshot-uuid/Uuid
     --id/Uuid:
+  if word-size == 4:
+    snapshot.methods.do: | method |
+      if (method.is-normal-method or method.is-field-accessor) and
+          method.selector-offset > 0x7fff:
+        throw "Selector offset $(method.selector-offset) does not fit in a 32-bit image"
   ToitProgram.init-constants snapshot
   image := Image snapshot word-size --id=id
   program := ToitProgram snapshot
