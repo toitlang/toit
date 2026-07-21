@@ -98,7 +98,7 @@ jobs:
           file: ${{ steps.create-tarball.outputs.archive_path }}
           asset_name: ${{ steps.create-tarball.outputs.archive_name }}
           tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          overwrite: false
 
     outputs:
       version: ${{ steps.create-tarball.outputs.version }}
@@ -226,7 +226,7 @@ jobs:
           file: "*.deb"
           file_glob: true
           tag: ${{ github.event.release.tag_name }}
-          overwrite: true
+          overwrite: false
 
   AUR:
     name: Update AUR package
