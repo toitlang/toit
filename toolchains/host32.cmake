@@ -33,5 +33,3 @@ set(CMAKE_SYSTEM_LIBRARY_PATH /lib32 /usr/lib32 CACHE PATH "The system library p
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF CACHE BOOL "Use lib64 paths for finding libraries")
 
 set(GOARCH "386" CACHE STRING "The GOARCH for the toolchain")
-
-enable_testing()

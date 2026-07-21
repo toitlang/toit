@@ -17,6 +17,7 @@ cmake_minimum_required(VERSION 3.20.0...4.0.1)
 
 project(toit)
 
+include(CTest)
 include(tools/toit.cmake)
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
@@ -197,8 +198,9 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     FILES_MATCHING PATTERN "*"
   )
 
-  enable_testing()
-  add_subdirectory(tests)
+  if (BUILD_TESTING)
+    add_subdirectory(tests)
+  endif()
 
   add_subdirectory(examples)
   # External Toit packages and projects.

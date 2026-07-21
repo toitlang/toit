@@ -53,5 +53,3 @@ set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
 set(GOOS "linux" CACHE STRING "The GOOS for the toolchain")
 set(GOARCH "riscv64" CACHE STRING "The GOARCH for the toolchain")
-
-enable_testing()
