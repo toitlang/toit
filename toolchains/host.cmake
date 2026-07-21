@@ -22,5 +22,3 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O1 -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" 
 set(CMAKE_C_FLAGS_RELEASE "-Os $ENV{LOCAL_CFLAGS}" CACHE STRING "c Release flags")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Release flags")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE "$ENV{LOCAL_LDFLAGS}" CACHE STRING "Linker flags for release builds")
-
-enable_testing()
