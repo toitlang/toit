@@ -26,9 +26,12 @@
 namespace toit {
 namespace compiler {
 
-ProgramBuilder::ProgramBuilder(Program* program)
+ProgramBuilder::ProgramBuilder(
+    Program* program,
+    MethodSelectorOffsets* method_selector_offsets)
     : program_heap_(program)
-    , program_(program) {}
+    , program_(program)
+    , method_selector_offsets_(method_selector_offsets) {}
 
 void ProgramBuilder::dup() {
   push(top());
@@ -135,7 +138,7 @@ void ProgramBuilder::push_lazy_initializer_id(int id) {
   push(lazy_initializer);
 }
 
-int ProgramBuilder::create_method(word selector_offset,
+int ProgramBuilder::create_method(int32 selector_offset,
                                   bool is_field_accessor,
                                   int arity,
                                   List<uint8> bytecodes,
@@ -143,6 +146,7 @@ int ProgramBuilder::create_method(word selector_offset,
   int method_id;
   auto method = Method::invalid();
   allocate_method(bytecodes.length(), max_height, &method_id, &method);
+  (*method_selector_offsets_)[method_id] = selector_offset;
   method._initialize_method(selector_offset, is_field_accessor, arity, bytecodes, max_height);
   global_max_stack_height_ = Utils::max(global_max_stack_height_, max_height);
   return method_id;

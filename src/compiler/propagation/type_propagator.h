@@ -23,6 +23,7 @@
 #include "worklist.h"
 
 #include "../map.h"
+#include "../method_selector_offsets.h"
 #include "../set.h"
 
 #include "../../top.h"
@@ -44,10 +45,13 @@ class TypeDatabase;
 
 class TypePropagator {
  public:
-  explicit TypePropagator(Program* program);
+  TypePropagator(
+      Program* program,
+      const MethodSelectorOffsets* method_selector_offsets = null);
 
   Program* program() const { return program_; }
   int words_per_type() const { return words_per_type_; }
+  int selector_offset(Method method) const;
 
   void propagate(TypeDatabase* types);
 
@@ -80,6 +84,7 @@ class TypePropagator {
 
  private:
   Program* const program_;
+  const MethodSelectorOffsets* method_selector_offsets_;
   int words_per_type_;
 
 #define HAS_ENTRY_POINT(name, symbol, arity) \

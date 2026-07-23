@@ -18,6 +18,7 @@
 #include "type_set.h"
 
 #include "../ir.h"
+#include "../method_selector_offsets.h"
 #include "../../objects.h"
 
 #include <unordered_map>
@@ -35,7 +36,9 @@ class SourceMapper;
 
 class TypeDatabase {
  public:
-  static TypeDatabase* compute(Program* program);
+  static TypeDatabase* compute(
+      Program* program,
+      const MethodSelectorOffsets* method_selector_offsets = null);
   ~TypeDatabase();
 
   const std::vector<Method> methods() const;
