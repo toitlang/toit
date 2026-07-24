@@ -231,10 +231,11 @@ class Device implements serial.Device:
     write + repeated start + read into $rx.
 
   Platforms with an asynchronous driver (the start primitive returns true,
-    e.g. the EC618: IRQ-driven with per-byte timeouts) run the transfer in
-    the background while this task waits on the resource state — the VM is
-    not blocked, and a clock-stretching or wedged slave is bounded by the
-    driver timeout. Other platforms take the synchronous primitives.
+    e.g. the EC618) run the transfer in the background while this task waits
+    on the resource state, so the VM is not blocked. There is no arbitrary
+    library timeout: canceling the calling task aborts the native transfer
+    and releases its buffers. Other platforms take the synchronous
+    primitives.
   */
   transfer_ tx/io.Data rx/ByteArray? size/int -> none:
     if not resource_: throw "CLOSED"
@@ -242,16 +243,17 @@ class Device implements serial.Device:
       if not state_: state_ = monitor.ResourceState_ resource-group_ resource_
       state_.clear-state TRANSFER-DONE-STATE_
       if i2c-device-transfer-start_ resource_ tx size:
-        // The driver bounds each byte by <= 1s; add headroom on top.
-        total := tx.byte-size + size
-        e := catch:
-          with-timeout --ms=(1_000 + total * 1_100):
-            state_.wait-for-state TRANSFER-DONE-STATE_
-        if e:
-          // Deadline fired: abort the transfer and release its buffers.
-          i2c-device-transfer-finish_ resource_ #[]
-          throw e
-        result := i2c-device-transfer-finish_ resource_ (rx ? rx : #[])
+        finished := false
+        result := 0
+        try:
+          state_.wait-for-state TRANSFER-DONE-STATE_
+          result = i2c-device-transfer-finish_ resource_ (rx ? rx : #[])
+          finished = true
+        finally:
+          if not finished:
+            // Cancellation or another exceptional exit must stop the engine
+            // and release the native transfer buffers.
+            catch: i2c-device-transfer-finish_ resource_ #[]
         if result != 0: throw "HARDWARE_ERROR"
       else if tx.byte-size > 0 and size > 0:
         i2c-device-write-read_ resource_ tx rx size

@@ -480,6 +480,10 @@ class Ec618:
 
   If $pull-up is true, the pads' internal pull-ups are enabled. Most
     sensor breakouts carry their own bus pull-ups.
+
+  $frequency is an upper bound. Values below about 49kHz are rejected.
+    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
+    or more use that ceiling.
   */
   static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return i2c.Bus
@@ -495,6 +499,10 @@ class Ec618:
     peripheral at a time.
 
   If $pull-up is true, the pads' internal pull-ups are enabled.
+
+  $frequency is an upper bound. Values below about 49kHz are rejected.
+    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
+    or more use that ceiling.
   */
   static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return i2c.Bus

@@ -21,6 +21,7 @@
 
 #include "../event_sources/uart_ec618.h"
 #include "../objects_inline.h"
+#include "../os.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
@@ -128,6 +129,20 @@ struct I2cState {
 
 static I2cState i2c_states[2] = {};
 
+static bool reserve_controller(int controller) {
+  Locker locker(OS::global_mutex());
+  I2cState* state = &i2c_states[controller];
+  if (state->in_use) return false;
+  state->in_use = true;
+  return true;
+}
+
+static void release_controller(int controller) {
+  Locker locker(OS::global_mutex());
+  ASSERT(i2c_states[controller].in_use);
+  i2c_states[controller].in_use = false;
+}
+
 // Completion callback, registered at Initialize; runs from the I2C IRQ.
 // Chains the read leg of a write+read transfer, and only signals the Toit
 // event source for the FINAL leg.
@@ -182,8 +197,11 @@ static const uint32_t kMinScl51 = 62;
 // 26 MHz source keeps SCLH=SCLL >= kMinScl26. ~206 kHz.
 static const uint32_t kMax26MHz =
     kSrc26M / (2 * kMinScl26 + kPaceOverheadTicks);
-// The floor: SCLH=SCLL=255 at 26 MHz. ~48.9 kHz.
-static const uint32_t kMinHz = kSrc26M / (510 + kPaceOverheadTicks);
+// The floor: SCLH=SCLL=255 at 26 MHz. Round up so the generated wire clock
+// never exceeds the requested maximum, even at the lowest accepted value.
+static const uint32_t kMinHz =
+    (kSrc26M + 510 + kPaceOverheadTicks - 1) /
+    (510 + kPaceOverheadTicks);
 // Pace for bus-level operations before a device transfer makes its pace
 // sticky. This is the slowest round standard value the engine can honor.
 static const uint32_t kBusDefaultHz = 50000;
@@ -225,9 +243,11 @@ static void ensure_setup(int controller, uint32_t hz) {
     state->current_hz = hz;
     return;
   }
-  uint32_t period = src / hz;
+  // Round the divisor upward: I2C frequency is an upper bound, so an
+  // inexact hardware divisor must make the wire slower, never faster.
+  uint32_t period = (src + hz - 1) / hz;
   uint32_t scl = period > kPaceOverheadTicks
-      ? (period - kPaceOverheadTicks) / 2
+      ? (period - kPaceOverheadTicks + 1) / 2
       : (fast_src ? kMinScl51 : kMinScl26);
   uint32_t min_scl = fast_src ? kMinScl51 : kMinScl26;
   if (scl < min_scl) scl = min_scl;
@@ -377,29 +397,41 @@ class I2cBusResource : public EventResource {
     : EventResource(group, Event::none_type())
     , controller_(controller)
     , sda_(sda)
-    , scl_(scl) {}
+    , scl_(scl)
+    , device_count_(0) {}
 
   ~I2cBusResource() override {
+    ASSERT(device_count_ == 0);
     I2cState* state = &i2c_states[controller_];
     if (state->transfer_active) {
       quiesce(controller_);
       release_transfer(state);
     }
-    ARM_DRIVER_I2C* driver = kI2cDrivers[controller_];
-    driver->PowerControl(ARM_POWER_OFF);
-    driver->Uninitialize();
+    if (state->initialized) {
+      ARM_DRIVER_I2C* driver = kI2cDrivers[controller_];
+      driver->PowerControl(ARM_POWER_OFF);
+      driver->Uninitialize();
+    }
     state->initialized = false;
     state->current_hz = 0;
-    state->in_use = false;
     // Hand the pads back disconnected (this also drops the pull-ups the
     // bus may have enabled) — a container must leave the wires the way it
     // found them, even when it is killed without closing the bus.
     pad_release(sda_);
     pad_release(scl_);
+    release_controller(controller_);
   }
 
   int controller() const { return controller_; }
   I2cState* state() const { return &i2c_states[controller_]; }
+  int device_count() const { return device_count_; }
+
+  void retain_device() { device_count_++; }
+
+  void release_device() {
+    ASSERT(device_count_ > 0);
+    device_count_--;
+  }
 
   // Whether both lines idle high. A dead bus (no pull-ups, e.g. the
   // peripheral powered off) fails every transfer; catching it up front
@@ -428,6 +460,7 @@ class I2cBusResource : public EventResource {
   int controller_;
   int sda_;
   int scl_;
+  int device_count_;
 };
 
 class I2cDeviceResource : public EventResource {
@@ -439,7 +472,9 @@ class I2cDeviceResource : public EventResource {
     , bus_(bus)
     , address_(address)
     , frequency_(frequency)
-    , timeout_us_(timeout_us) {}
+    , timeout_us_(timeout_us) {
+    bus_->retain_device();
+  }
 
   ~I2cDeviceResource() override {
     I2cState* state = &i2c_states[controller()];
@@ -447,6 +482,7 @@ class I2cDeviceResource : public EventResource {
       quiesce(controller());
       release_transfer(state);
     }
+    bus_->release_device();
   }
 
   I2cBusResource* bus() const { return bus_; }
@@ -596,8 +632,21 @@ PRIMITIVE(bus_create) {
 
   int controller = pads_to_controller(sda, scl);
   if (controller < 0) FAIL(INVALID_ARGUMENT);
+  if (!reserve_controller(controller)) FAIL(ALREADY_IN_USE);
+
+  I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
+  if (bus == null) {
+    release_controller(controller);
+    FAIL(MALLOC_FAILED);
+  }
+  bool handed_to_proxy = false;
+  Defer delete_bus {
+    [&] {
+      if (!handed_to_proxy) delete bus;
+    }
+  };
+
   I2cState* state = &i2c_states[controller];
-  if (state->in_use) FAIL(ALREADY_IN_USE);
 
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   if (state->initialized) {
@@ -616,8 +665,6 @@ PRIMITIVE(bus_create) {
   GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
                   controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
   if (driver->PowerControl(ARM_POWER_FULL) != ARM_DRIVER_OK) {
-    driver->Uninitialize();
-    state->initialized = false;
     FAIL(HARDWARE_ERROR);
   }
   state->src_hz = kSrc26M;
@@ -639,25 +686,15 @@ PRIMITIVE(bus_create) {
   state->bus_hz = kBusDefaultHz;
   ensure_setup(controller, kBusDefaultHz);
 
-  I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
-  if (bus == null) {
-    driver->PowerControl(ARM_POWER_OFF);
-    driver->Uninitialize();
-    state->initialized = false;
-    pad_release(sda);
-    pad_release(scl);
-    FAIL(MALLOC_FAILED);
-  }
-
-  state->in_use = true;
-
   group->register_resource(bus);
   proxy->set_external_address(bus);
+  handed_to_proxy = true;
   return proxy;
 }
 
 PRIMITIVE(bus_close) {
   ARGS(I2cBusResource, bus);
+  if (bus->device_count() != 0) FAIL(ALREADY_IN_USE);
   bus->resource_group()->unregister_resource(bus);
   bus_proxy->clear_external_address();
   return process->null_object();
@@ -807,24 +844,33 @@ PRIMITIVE(device_transfer_start) {
 
   I2cState* state = device->bus()->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
-  if (!device->bus()->bus_usable()) FAIL(HARDWARE_ERROR);
-  state->bus_hz = device->frequency();
-  ensure_setup(device->controller(), device->frequency());
 
   uint8_t* tx_copy = null;
+  uint8_t* rx_buffer = null;
+  bool buffers_handed_to_state = false;
+  Defer free_buffers {
+    [&] {
+      if (!buffers_handed_to_state) {
+        free(tx_copy);
+        free(rx_buffer);
+      }
+    }
+  };
   if (tx.length() > 0) {
     tx_copy = unvoid_cast<uint8_t*>(malloc(tx.length()));
     if (tx_copy == null) FAIL(MALLOC_FAILED);
     memcpy(tx_copy, tx.address(), tx.length());
   }
-  uint8_t* rx_buffer = null;
   if (rx_length > 0) {
     rx_buffer = unvoid_cast<uint8_t*>(malloc(rx_length));
-    if (rx_buffer == null) {
-      free(tx_copy);
-      FAIL(MALLOC_FAILED);
-    }
+    if (rx_buffer == null) FAIL(MALLOC_FAILED);
   }
+
+  // All fallible allocation is complete before bus recovery, clock changes,
+  // or an address phase can touch the wire.
+  if (!device->bus()->bus_usable()) FAIL(HARDWARE_ERROR);
+  state->bus_hz = device->frequency();
+  ensure_setup(device->controller(), device->frequency());
 
   state->address = device->address();
   state->active_device = device;
@@ -837,6 +883,7 @@ PRIMITIVE(device_transfer_start) {
   state->rx_len = rx_length;
   state->last_event = 0;
   state->transfer_active = true;
+  buffers_handed_to_state = true;
 
   if (!start_legs(state, device->controller())) FAIL(HARDWARE_ERROR);
   return process->true_object();
