@@ -54,11 +54,14 @@ namespace toit {
 // Task-to-thread map. We can't use FreeRTOS TLS pointers because the
 // prebuilt libfreertos.a was compiled with configNUM_THREAD_LOCAL_STORAGE_POINTERS=0
 // and changing it would break the TCB struct ABI.
-static const int MAX_THREADS = 16;
-static struct {
+static_assert(CONFIG_TOIT_EC618_MAX_THREADS > 0,
+              "EC618 must support at least one Toit thread");
+struct ThreadMapEntry {
   TaskHandle_t task;
   Thread* thread;
-} thread_map[MAX_THREADS];
+};
+static ThreadMapEntry thread_map[CONFIG_TOIT_EC618_MAX_THREADS];
+static ThreadMapEntry* cached_thread_entry;
 
 // Returns the awake time at the resolution of the hardware SysTick counter.
 // The kernel tick is 1 kHz, but the SysTick current-value register supplies
@@ -102,8 +105,13 @@ const int DEFAULT_STACK_SIZE = 2 * KB;
 static Thread* get_current_thread() {
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
   if (task == null) return null;
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (thread_map[i].task == task) return thread_map[i].thread;
+  ThreadMapEntry* cached = cached_thread_entry;
+  if (cached != null && cached->task == task) return cached->thread;
+  for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
+    if (thread_map[i].task == task) {
+      cached_thread_entry = &thread_map[i];
+      return thread_map[i].thread;
+    }
   }
   return null;
 }
@@ -112,9 +120,10 @@ static void set_current_thread(Thread* thread) {
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
   // Look for existing entry or empty slot.
   int empty = -1;
-  for (int i = 0; i < MAX_THREADS; i++) {
+  for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
     if (thread_map[i].task == task) {
       thread_map[i].thread = thread;
+      cached_thread_entry = &thread_map[i];
       return;
     }
     if (empty < 0 && thread_map[i].task == null) empty = i;
@@ -122,14 +131,16 @@ static void set_current_thread(Thread* thread) {
   if (empty < 0) FATAL("too many threads");
   thread_map[empty].task = task;
   thread_map[empty].thread = thread;
+  cached_thread_entry = &thread_map[empty];
 }
 
 static void clear_current_thread() {
   TaskHandle_t task = xTaskGetCurrentTaskHandle();
-  for (int i = 0; i < MAX_THREADS; i++) {
+  for (int i = 0; i < CONFIG_TOIT_EC618_MAX_THREADS; i++) {
     if (thread_map[i].task == task) {
       thread_map[i].task = null;
       thread_map[i].thread = null;
+      if (cached_thread_entry == &thread_map[i]) cached_thread_entry = null;
       return;
     }
   }

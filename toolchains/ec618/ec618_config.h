@@ -132,4 +132,11 @@
 #define CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS (2 * 60 * 60 * 1000)
 #endif
 
+// Maximum number of FreeRTOS tasks that may be associated with Toit Thread
+// objects at once. The vendor FreeRTOS library has no TLS pointer slots, so
+// the EC618 port uses a fixed task-to-thread map instead.
+#ifndef CONFIG_TOIT_EC618_MAX_THREADS
+#define CONFIG_TOIT_EC618_MAX_THREADS 16
+#endif
+
 #endif  // TOIT_EC618_CONFIG_H_
