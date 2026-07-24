@@ -38,7 +38,7 @@ namespace toit {
   M(tls,     MODULE_TLS)                     \
   M(esp32,   MODULE_ESP32)                   \
   M(ec618,   MODULE_EC618)                   \
-  M(cellular,MODULE_CELLULAR)                \
+  M(cellular, MODULE_CELLULAR)               \
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
@@ -48,16 +48,16 @@ namespace toit {
   M(pcnt,    MODULE_PCNT)                    \
   M(crypto,  MODULE_CRYPTO)                  \
   M(crypto_random,  MODULE_CRYPTO_RANDOM)    \
-  M(encoding,MODULE_ENCODING)                \
+  M(encoding, MODULE_ENCODING)               \
   M(font,    MODULE_FONT)                    \
   M(bitmap,  MODULE_BITMAP)                  \
   M(events,  MODULE_EVENTS)                  \
   M(wifi,    MODULE_WIFI)                    \
-  M(ethernet,MODULE_ETHERNET)                \
+  M(ethernet, MODULE_ETHERNET)               \
   M(ble,     MODULE_BLE)                     \
   M(dhcp,    MODULE_DHCP)                    \
-  M(snapshot,MODULE_SNAPSHOT)                \
-  M(image,   MODULE_IMAGE)                   \
+  M(snapshot, MODULE_SNAPSHOT)               \
+  M(image,    MODULE_IMAGE)                  \
   M(gpio,    MODULE_GPIO)                    \
   M(gpio_linux, MODULE_GPIO_LINUX)           \
   M(adc,     MODULE_ADC)                     \
@@ -1136,7 +1136,6 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
-#define _A_T_UartEc618ResourceGroup(N, name) MAKE_UNPACKING_MACRO(UartEc618ResourceGroup, N, name)
 #define _A_T_CellularResourceGroup(N, name) MAKE_UNPACKING_MACRO(CellularResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
@@ -1160,8 +1159,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
-#define _A_T_CellularEvents(N, name)     MAKE_UNPACKING_MACRO(CellularEvents, N, name)
-#define _A_T_UartEc618Resource(N, name) MAKE_UNPACKING_MACRO(UartEc618Resource, N, name)
+#define _A_T_CellularEvents(N, name)      MAKE_UNPACKING_MACRO(CellularEvents, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)

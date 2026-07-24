@@ -68,7 +68,6 @@ namespace toit {
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
   fn(CellularEvents)                    \
-  fn(UartEc618Resource)                \
   fn(MbedTlsSocket)                                              
 
 // When adding a class make sure that they all are subclasses of
@@ -114,7 +113,6 @@ namespace toit {
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
-  fn(UartEc618ResourceGroup)           \
   fn(CellularResourceGroup)             \
 
 #define MAKE_ENUM(name)                 \
