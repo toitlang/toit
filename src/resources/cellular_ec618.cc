@@ -58,6 +58,31 @@ class CellularEvents : public Resource {
   int state_;
 };
 
+static bool modem_initialized = false;
+static CellularEvents* active_connection = null;
+
+static void initialize_modem() {
+  Locker locker(OS::global_mutex());
+  if (modem_initialized) return;
+  appSetCFUN(0);
+  modem_initialized = true;
+}
+
+static bool activate_modem(CellularEvents* events) {
+  Locker locker(OS::global_mutex());
+  if (active_connection != null) return false;
+  active_connection = events;
+  appSetCFUN(1);
+  return true;
+}
+
+static void deactivate_modem(CellularEvents* events) {
+  Locker locker(OS::global_mutex());
+  if (active_connection != events) return;
+  appSetCFUN(0);
+  active_connection = null;
+}
+
 class CellularResourceGroup : public ResourceGroup {
  public:
   TAG(CellularResourceGroup);
@@ -94,6 +119,11 @@ class CellularResourceGroup : public ResourceGroup {
     return state;
   }
 
+ protected:
+  void on_unregister_resource(Resource* resource) override {
+    deactivate_modem(static_cast<CellularEvents*>(resource));
+  }
+
  private:
   uint32 ipv4_addr_;
 };
@@ -104,8 +134,9 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  // Ensure modem starts from a clean state.
-  appSetCFUN(0);
+  // Ensure the modem starts from a clean state, without letting a later
+  // resource group disrupt an existing connection.
+  initialize_modem();
 
   CellularEventSource* event_source = CellularEventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
@@ -119,7 +150,6 @@ PRIMITIVE(init) {
 
 PRIMITIVE(close) {
   ARGS(CellularResourceGroup, group);
-  appSetCFUN(0);
   group->tear_down();
   group_proxy->clear_external_address();
   return process->null_object();
@@ -152,17 +182,16 @@ PRIMITIVE(connect) {
   if (events == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(events);
+  AutoUnregisteringResource<CellularEvents> allocation(group, events);
 
-  // Enable the modem.
-  appSetCFUN(1);
+  if (!activate_modem(events)) FAIL(ALREADY_IN_USE);
 
-  proxy->set_external_address(events);
+  allocation.set_external_address(proxy);
   return proxy;
 }
 
 PRIMITIVE(disconnect) {
   ARGS(CellularResourceGroup, group, CellularEvents, events);
-  appSetCFUN(0);
   group->unregister_resource(events);
   events_proxy->clear_external_address();
   return process->null_object();
