@@ -31,6 +31,15 @@ extern "C" {
 #define ANCHOR_MAGIC ((uint16_t)0x4154)  // bytes 'T','A'
 #define ANCHOR_VERSION ((uint8_t)2)
 
+// The unprovisioned base carries these bytes at the exact start of the
+// anchor region. gen-anchor verifies them before replacing both sectors,
+// preventing a stale/mismatched descriptor from overwriting an arbitrary
+// part of the AP image. This is a locator sentinel, not part of a written
+// anchor record.
+#define ANCHOR_SENTINEL_SIZE 16
+#define ANCHOR_SENTINEL_BYTES \
+  { 'T', 'O', 'I', 'T', '-', 'A', 'N', 'C', 'H', 'O', 'R', '-', 'V', '1', 0xa5, 0x5a }
+
 // Cap on table entries the module stages in RAM (the on-flash format
 // allows up to 127 in a sector; the default table has 17).
 #define ANCHOR_MAX_ENTRIES 32

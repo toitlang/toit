@@ -41,12 +41,13 @@
 // that region). Non-nested enable -> write -> disable, like the SDK FOTA.
 extern void fotaNvmNfsPeInit(unsigned char isSmall);
 
-// Pins the .toit_anchor output section so it is emitted as real bytes
-// (the linker reserves both sectors after it). Fresh/erased contents read
-// as "no valid record": provisioning writes the real record; without one
-// the device refuses to boot (load_boot_table).
+// Pins the .toit_anchor output section so it is emitted as real bytes.
+// gen-anchor verifies this locator sentinel before replacing the two
+// reserved sectors with the provisioning record. Without provisioning,
+// the sentinel is not a valid record and the device refuses to boot
+// (load_boot_table).
 __attribute__((section(".toit_anchor"), used))
-const uint8_t toit_anchor_section_byte = 0xff;
+const uint8_t toit_anchor_sentinel[ANCHOR_SENTINEL_SIZE] = ANCHOR_SENTINEL_BYTES;
 
 // The slot the dispatcher actually booted ('A'/'B'). RAM global, set once
 // below before the VM runs. The VM primitives read this as "the slot I am

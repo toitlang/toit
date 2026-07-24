@@ -46,16 +46,23 @@ run invocation/cli.Invocation -> none:
     region = encode-anchor-region parts --console=invocation["console-uart"]
   if error: ui.abort "$error"
 
-  file.write-contents --path=invocation["out"] region
-  print "gen-anchor: $parts.entries.size entries -> $invocation["out"]"
-
   // The AP image's byte 0 is the base partition's first byte, so the
   // anchor region sits at a descriptor-derived file offset.
   file-offset := (parts["anchor"].offset) - (parts["base"].offset)
+  splices := {:}
   invocation["splice"].do: | path/string |
     image := file.read-contents path
     if file-offset + region.size > image.size:
       ui.abort "$path ($image.size bytes) does not reach the anchor region (file 0x$(%x file-offset))"
+    if image[file-offset .. file-offset + ANCHOR-SENTINEL.size] != ANCHOR-SENTINEL:
+      ui.abort "$path does not contain the unprovisioned anchor sentinel at file 0x$(%x file-offset) (wrong descriptor, wrong base, or already provisioned)"
+    splices[path] = image
+
+  // Validate every input before writing any output, so one mismatched image
+  // cannot leave a multi-image provisioning operation half-applied.
+  file.write-contents --path=invocation["out"] region
+  print "gen-anchor: $parts.entries.size entries -> $invocation["out"]"
+  splices.do: | path/string image/ByteArray |
     patched := image.copy
     patched.replace file-offset region
     file.write-contents --path=path patched

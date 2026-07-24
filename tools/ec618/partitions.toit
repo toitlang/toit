@@ -120,6 +120,14 @@ ANCHOR-TRAILER-SIZE ::= 16
 // Mirrors ANCHOR_MAX_ENTRIES in anchor.h — the device-side staging cap.
 ANCHOR-MAX-ENTRIES ::= 32
 
+// Mirrors ANCHOR_SENTINEL_BYTES in anchor.h. An unprovisioned base carries
+// this locator at the descriptor-selected anchor offset; gen-anchor replaces
+// it with the first record only after checking it.
+ANCHOR-SENTINEL ::= #[
+  'T', 'O', 'I', 'T', '-', 'A', 'N', 'C',
+  'H', 'O', 'R', '-', 'V', '1', 0xa5, 0x5a,
+]
+
 anchor-crc_ bytes/ByteArray -> int:
   crc := Crc.little-endian 32 --polynomial=0xEDB88320 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
   crc.add bytes
