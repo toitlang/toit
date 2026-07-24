@@ -15,11 +15,10 @@
 
 #pragma once
 
-#include "top.h"
-
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/aes.h>
 
+#include "top.h"
 #include "resource.h"
 #include "tags.h"
 

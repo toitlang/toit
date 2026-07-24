@@ -15,12 +15,11 @@
 
 #pragma once
 
-#include "top.h"
-
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/error.h>
 #include <mbedtls/entropy.h>
 
+#include "top.h"
 #include "os.h"
 #include "utils.h"
 
