@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import system.api.firmware show FirmwareService
-import system.services show ServiceProvider ServiceResource
+import system.services show ServiceResource
 import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 import ec618
@@ -26,6 +26,7 @@ import io show Buffer LITTLE-ENDIAN
 
 class FirmwareServiceProvider extends FirmwareServiceProviderBase:
   config_/Map ::= {:}
+  writer_/FirmwareWriter_? := null
 
   constructor:
     catch: config_ = ubjson.decode firmware-embedded-config_
@@ -70,7 +71,23 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     return "flash:ec618"
 
   firmware-writer-open client/int from/int to/int -> FirmwareWriter:
-    return FirmwareWriter_ this client from to
+    if writer_: throw "ALREADY_IN_USE"
+    // Firmware-sector program/erase mode and relocation are global too. Enter
+    // program mode before publishing the resource and unwind it if resource
+    // construction/registration fails. The modem stays on: with a matched CP
+    // the flash is CP-safe, and a cellular OTA needs the link up.
+    slot.program-mode 1
+    opened := false
+    try:
+      writer := FirmwareWriter_ this client from to
+      writer_ = writer
+      opened = true
+      return writer
+    finally:
+      if not opened: slot.program-mode 0
+
+  on-writer-closed_ writer/FirmwareWriter_ -> none:
+    if writer_ == writer: writer_ = null
 
 /**
 Writes a new firmware image to the INACTIVE VM slot via relocate-on-write.
@@ -110,13 +127,10 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
 
   sha_/Sha256 := Sha256               // Over the whole canonical image.
   staged_/bool := false
+  service_/FirmwareServiceProvider
 
-  constructor provider/ServiceProvider client/int from/int to/int:
-    // Firmware-sector program/erase mode is required for any write into the
-    // protected AP-image region (the inactive slot). The modem stays on — with
-    // a matched CP the flash is CP-safe, and a cellular OTA needs the link up.
-    slot.program-mode 1
-    super provider client
+  constructor .service_ client/int from/int to/int:
+    super service_ client
 
   write bytes/ByteArray -> int:
     sha_.add bytes
@@ -198,8 +212,13 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
     staged_ = true
 
   on-closed -> none:
-    if not staged_: slot.reloc-end
-    slot.program-mode 0
+    try:
+      if not staged_: slot.reloc-end
+    finally:
+      try:
+        slot.program-mode 0
+      finally:
+        service_.on-writer-closed_ this
 
 // ----------------------------------------------------------------------------
 
