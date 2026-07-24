@@ -123,4 +123,13 @@
 #define CONFIG_TOIT_EC618_RESET_ON_VM_EXIT 1
 #endif
 
+// Maximum interval accepted by one EC618 deep-sleep timer. Longer requested
+// sleeps are split across timer wakes; the intermediate boots re-enter
+// hibernate before starting the Toit VM. Keep the production value at the
+// hardware limit. A shorter compiler-command-line override is useful for
+// exercising the multi-wake path on a hardware test rig.
+#ifndef CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS
+#define CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS (2 * 60 * 60 * 1000)
+#endif
+
 #endif  // TOIT_EC618_CONFIG_H_

@@ -33,6 +33,10 @@ namespace toit {
 
 struct RtcData {
   int64 wakeup_time;  // Accumulated ticks in ms across sleep cycles.
+  int64 deep_sleep_remaining_ms;
+
+  uint8 deep_sleep_wakeup_pad_configs[RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT];
+  int32 deep_sleep_wakeup_arm_flags;
 
   uint32 boot_count;
   uint32 out_of_memory_count;
@@ -157,9 +161,51 @@ int64 RtcMemory::wakeup_time() {
   return rtc.wakeup_time;
 }
 
-void RtcMemory::adjust_wakeup_time_before_sleep(uint32 sleep_ms) {
-  rtc.wakeup_time = OS::get_system_time() / 1000 + sleep_ms;
+static uint32 next_deep_sleep_chunk() {
+  static_assert(CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS > 0,
+                "deep-sleep timer interval must be positive");
+  static_assert(CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS <= UINT32_MAX,
+                "deep-sleep timer interval must fit uint32");
+  uint32 chunk = rtc.deep_sleep_remaining_ms > CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS
+      ? CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS
+      : static_cast<uint32>(rtc.deep_sleep_remaining_ms);
+  rtc.deep_sleep_remaining_ms -= chunk;
+  rtc.wakeup_time = OS::get_system_time() / 1000 + chunk;
   update_rtc_checksum();
+  return chunk;
+}
+
+uint32 RtcMemory::prepare_deep_sleep(
+    int64 sleep_ms,
+    const uint8* wakeup_pad_configs,
+    int wakeup_arm_flags) {
+  ASSERT(sleep_ms > 0);
+  rtc.deep_sleep_remaining_ms = sleep_ms;
+  memcpy(rtc.deep_sleep_wakeup_pad_configs,
+         wakeup_pad_configs,
+         sizeof(rtc.deep_sleep_wakeup_pad_configs));
+  rtc.deep_sleep_wakeup_arm_flags = wakeup_arm_flags;
+  return next_deep_sleep_chunk();
+}
+
+uint32 RtcMemory::continue_deep_sleep(
+    bool timer_wakeup,
+    uint8* wakeup_pad_configs,
+    int* wakeup_arm_flags) {
+  if (!timer_wakeup || rtc.deep_sleep_remaining_ms <= 0) {
+    rtc.deep_sleep_remaining_ms = 0;
+    memset(rtc.deep_sleep_wakeup_pad_configs,
+           0,
+           sizeof(rtc.deep_sleep_wakeup_pad_configs));
+    rtc.deep_sleep_wakeup_arm_flags = 0;
+    update_rtc_checksum();
+    return 0;
+  }
+  memcpy(wakeup_pad_configs,
+         rtc.deep_sleep_wakeup_pad_configs,
+         sizeof(rtc.deep_sleep_wakeup_pad_configs));
+  *wakeup_arm_flags = rtc.deep_sleep_wakeup_arm_flags;
+  return next_deep_sleep_chunk();
 }
 
 uint8* RtcMemory::user_data_address() {

@@ -129,6 +129,10 @@ extern "C" void toit_watchdog_presleep();                  // primitive_ec618.cc
 extern "C" int toit_capture_boot_wakeup_src();             // primitive_ec618.cc.
 extern "C" int toit_wakeup_pad_config(int pad);            // primitive_ec618.cc.
 extern "C" int toit_wakeup_arm_flags();                    // primitive_ec618.cc.
+// Restores wake-pad state before an intermediate deep-sleep continuation.
+extern "C" void toit_restore_wakeup_config(
+    const uint8_t* configs,
+    int flags);
 
 // Callback for deep sleep timer expiration. Must be registered for
 // slpManDeepSlpTimerStart to work. The ID is ignored — the wake-up
@@ -406,154 +410,20 @@ static bool arm_wakeup_pads() {
   return any;
 }
 
-static void start() {
-  // Load the booted slot's OWN VM .data init image (overriding the base image's
-  // slot-A copy), THEN fix that .data's VM-slot pointers for the booted slot —
-  // both BEFORE anything (static constructors, the interpreter) reads .data.
-  load_active_slot_vm_data();
-  relocate_data_slot_pointers();
-
-  // Run C++ static initializers (the linker script must capture .init_array).
-  run_static_initializers();
-
-  // Log the previous reset reason. After a HardFault dump-and-reset
-  // (see toit_hardfault_dump below) this prints "ap=HARDFAULT", but it
-  // also catches watchdog/lockup/assert/POR resets that bypass our
-  // handler.
-  {
-    LastResetState_e ap = LAST_RESET_UNKNOWN;
-    LastResetState_e cp = LAST_RESET_UNKNOWN;
-    ResetStateGet(&ap, &cp);
-    printf("[toit] INFO: last reset ap=%s cp=%s\n",
-           last_reset_name(ap), last_reset_name(cp));
+static uint32 prepare_deep_sleep(int64 sleep_ms) {
+  uint8_t wakeup_pad_configs[RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT];
+  for (int pad = 0; pad < RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT; pad++) {
+    wakeup_pad_configs[pad] = toit_wakeup_pad_config(pad);
   }
+  return RtcMemory::prepare_deep_sleep(
+      sleep_ms,
+      wakeup_pad_configs,
+      toit_wakeup_arm_flags());
+}
 
-  // Snapshot the sleep-manager wake source NOW: it reads correctly only this
-  // early — the sleep-manager re-init below resets it to POR before app code
-  // (ec618.wakeup-cause) can read it (HW-verified). slpManGetLastSlpState()
-  // corroborates: 4 (HIBERNATE) after a deep-sleep wake, 0 after a cold or
-  // watchdog boot.
-  int wakeup_src = toit_capture_boot_wakeup_src();
-  printf("[toit] DEBUG: wake src=%d last_slp_state=%d\n",
-         wakeup_src, static_cast<int>(slpManGetLastSlpState()));
-
-  // Install a RAM-resident vector table so we can intercept HardFault,
-  // print a register dump, and reset cleanly — otherwise the SDK
-  // silently resets the chip with no diagnostic output.
-  install_hardfault_dumper();
-
-  // Vote against sleep1 during execution so the scheduler tick keeps running.
-  // OPEN QUESTION from the idle-RX investigation:
-  // this vote should have made SLEEP1 impossible while the VM runs, yet idle
-  // SLEEP1 demonstrably happened (it killed armed uart0 DMA receives) until
-  // the UART driver added its own, late-applied vote. Suspect: applying a
-  // vote handle this early in boot fails. Log the codes to settle it.
-  slpManRet_t vote_apply = slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);
-  slpManRet_t vote_disable = slpManPlatVoteDisableSleep(sleep_vote_handle, SLP_SLP1_STATE);
-  printf("[toit] DEBUG: sleep vote apply=%d disable=%d handle=%u allow=%d\n",
-         static_cast<int>(vote_apply), static_cast<int>(vote_disable),
-         static_cast<unsigned>(sleep_vote_handle),
-         static_cast<int>(slpManPlatGetSlpState()));
-
-  // Set max sleep state to sleep2 (deep sleep with RAM preservation).
-  slpManSetPmuSleepMode(true, SLP_SLP2_STATE, false);
-
-  // Register a wake-up callback for all deep sleep timers. Without this,
-  // slpManDeepSlpTimerStart silently fails.
-  for (uint8_t i = 0; i <= DEEPSLP_TIMER_ID6; i++) {
-    slpManDeepSlpTimerRegisterExpCb((slpManTimerID_e)i, deep_sleep_timer_cb);
-  }
-
-  // Initialize subsystems.
-  RtcMemory::set_up();
-  FlashRegistry::set_up();
-  OS::set_up();
-  ObjectMemory::set_up();
-  extern void set_up_mbedtls_threading();
-  set_up_mbedtls_threading();
-
-  // Set fault action to reset after platform init is done. Setting it
-  // earlier causes bootloops because the PS stack hits transient
-  // assertions during startup that resolve on their own.
-  BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_FAULT_ACTION, 1);
-
-  const EmbeddedDataExtension* extension = EmbeddedData::extension();
-  if (extension == null || extension->images() == 0) {
-    FATAL("no embedded program found");
-  }
-  EmbeddedImage boot = extension->image(0);
-  const Program* program = boot.program;
-
-  Scheduler::ExitState exit_state;
-  { VM vm;
-    vm.load_platform_event_sources();
-    create_and_start_external_message_handlers(&vm);
-    int group_id = vm.scheduler()->next_group_id();
-    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
-
-    printf("[toit] INFO: VM exited (reason=%d)\n", static_cast<int>(exit_state.reason));
-
-    // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
-    // and asks to reboot into it through firmware.upgrade, which exits the VM via
-    // deep sleep. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a
-    // slot (anchor state NEW — the analogue of ESP32's boot partition changing),
-    // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
-    // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
-    // — before the VM destructor and OS::tear_down() — because EC618's external
-    // handler teardown can block; a firmware-update reset needs no clean shutdown.
-    {
-      slot_record record;
-      anchor_read(&record);
-      if (record.state == SLOT_STATE_NEW) {
-        printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
-               record.pending);
-        ec618_system_reset();  // Does not return.
-      }
-    }
-  }
-
-  GcMetadata::tear_down();
-  OS::tear_down();
-  FlashRegistry::tear_down();
-
-  switch (exit_state.reason) {
-    case Scheduler::EXIT_DEEP_SLEEP: {
-      const int64 MIN_MS = 1000;       // Deep-sleep timer minimum is ~1s on EC618.
-      const int64 MAX_MS = 2 * 60 * 60 * 1000;  // 2 hours.
-      int64 ms = exit_state.value;
-      if (ms < MIN_MS) ms = MIN_MS;
-      else if (ms > MAX_MS) ms = MAX_MS;
-      printf("[toit] INFO: entering deep sleep for %dms\n", static_cast<int>(ms));
-      RtcMemory::adjust_wakeup_time_before_sleep(ms);
-      slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, ms);
-      break;
-    }
-
-    case Scheduler::EXIT_ERROR: {
-      printf("[toit] WARN: entering deep sleep for 1s due to error\n");
-      RtcMemory::adjust_wakeup_time_before_sleep(1000);
-      slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, 1000);
-      break;
-    }
-
-    case Scheduler::EXIT_DONE: {
-#if CONFIG_TOIT_EC618_RESET_ON_VM_EXIT
-      // Deep-sleeping with no wakeup timer would leave the device dead until an
-      // external reset (impossible on a no-remote-reset rig; the watchdogs are
-      // gated while asleep). Reset instead so the device reboots straight back
-      // into the boot program and self-recovers. Only reached on a full-VM exit
-      // (e.g. a crash that brings the whole VM down), not on normal operation.
-      printf("[toit] INFO: VM done; resetting to recover (RESET_ON_VM_EXIT)\n");
-      ec618_system_reset();  // Does not return.
-#else
-      printf("[toit] INFO: entering deep sleep without wakeup timer\n");
-#endif
-      break;
-    }
-
-    case Scheduler::EXIT_NONE: {
-      UNREACHABLE();
-    }
+[[noreturn]] static void enter_deep_sleep(uint32 timer_ms) {
+  if (timer_ms != 0) {
+    slpManDeepSlpTimerStart(DEEPSLP_TIMER_ID0, timer_ms);
   }
 
   // Re-enable sleep voting and let FreeRTOS put the system to sleep.
@@ -638,6 +508,169 @@ static void start() {
            static_cast<int>(slpManGetLastSlpState()));
     osDelay(10000);
   }
+}
+
+static void start() {
+  // Load the booted slot's OWN VM .data init image (overriding the base image's
+  // slot-A copy), THEN fix that .data's VM-slot pointers for the booted slot —
+  // both BEFORE anything (static constructors, the interpreter) reads .data.
+  load_active_slot_vm_data();
+  relocate_data_slot_pointers();
+
+  // Run C++ static initializers (the linker script must capture .init_array).
+  run_static_initializers();
+
+  // Log the previous reset reason. After a HardFault dump-and-reset
+  // (see toit_hardfault_dump below) this prints "ap=HARDFAULT", but it
+  // also catches watchdog/lockup/assert/POR resets that bypass our
+  // handler.
+  {
+    LastResetState_e ap = LAST_RESET_UNKNOWN;
+    LastResetState_e cp = LAST_RESET_UNKNOWN;
+    ResetStateGet(&ap, &cp);
+    printf("[toit] INFO: last reset ap=%s cp=%s\n",
+           last_reset_name(ap), last_reset_name(cp));
+  }
+
+  // Snapshot the sleep-manager wake source NOW: it reads correctly only this
+  // early — the sleep-manager re-init below resets it to POR before app code
+  // (ec618.wakeup-cause) can read it (HW-verified). slpManGetLastSlpState()
+  // corroborates: 4 (HIBERNATE) after a deep-sleep wake, 0 after a cold or
+  // watchdog boot.
+  int wakeup_src = toit_capture_boot_wakeup_src();
+  printf("[toit] DEBUG: wake src=%d last_slp_state=%d\n",
+         wakeup_src, static_cast<int>(slpManGetLastSlpState()));
+
+  // Install a RAM-resident vector table so we can intercept HardFault,
+  // print a register dump, and reset cleanly — otherwise the SDK
+  // silently resets the chip with no diagnostic output.
+  install_hardfault_dumper();
+
+  // Vote against sleep1 during execution so the scheduler tick keeps running.
+  // OPEN QUESTION from the idle-RX investigation:
+  // this vote should have made SLEEP1 impossible while the VM runs, yet idle
+  // SLEEP1 demonstrably happened (it killed armed uart0 DMA receives) until
+  // the UART driver added its own, late-applied vote. Suspect: applying a
+  // vote handle this early in boot fails. Log the codes to settle it.
+  slpManRet_t vote_apply = slpManApplyPlatVoteHandle("toit", &sleep_vote_handle);
+  slpManRet_t vote_disable = slpManPlatVoteDisableSleep(sleep_vote_handle, SLP_SLP1_STATE);
+  printf("[toit] DEBUG: sleep vote apply=%d disable=%d handle=%u allow=%d\n",
+         static_cast<int>(vote_apply), static_cast<int>(vote_disable),
+         static_cast<unsigned>(sleep_vote_handle),
+         static_cast<int>(slpManPlatGetSlpState()));
+
+  // Set max sleep state to sleep2 (deep sleep with RAM preservation).
+  slpManSetPmuSleepMode(true, SLP_SLP2_STATE, false);
+
+  // Register a wake-up callback for all deep sleep timers. Without this,
+  // slpManDeepSlpTimerStart silently fails.
+  for (uint8_t i = 0; i <= DEEPSLP_TIMER_ID6; i++) {
+    slpManDeepSlpTimerRegisterExpCb((slpManTimerID_e)i, deep_sleep_timer_cb);
+  }
+
+  // Initialize subsystems.
+  RtcMemory::set_up();
+  {
+    uint8_t wakeup_pad_configs[RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT] = {};
+    int wakeup_arm_flags = 0;
+    uint32_t continuation_ms = RtcMemory::continue_deep_sleep(
+        wakeup_src == WAKEUP_FROM_RTC,
+        wakeup_pad_configs,
+        &wakeup_arm_flags);
+    if (continuation_ms != 0) {
+      toit_restore_wakeup_config(wakeup_pad_configs, wakeup_arm_flags);
+      printf("[toit] INFO: continuing deep sleep for %ums without starting the VM\n",
+             static_cast<unsigned>(continuation_ms));
+      enter_deep_sleep(continuation_ms);
+    }
+  }
+  FlashRegistry::set_up();
+  OS::set_up();
+  ObjectMemory::set_up();
+  extern void set_up_mbedtls_threading();
+  set_up_mbedtls_threading();
+
+  // Set fault action to reset after platform init is done. Setting it
+  // earlier causes bootloops because the PS stack hits transient
+  // assertions during startup that resolve on their own.
+  BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_FAULT_ACTION, 1);
+
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  if (extension == null || extension->images() == 0) {
+    FATAL("no embedded program found");
+  }
+  EmbeddedImage boot = extension->image(0);
+  const Program* program = boot.program;
+
+  Scheduler::ExitState exit_state;
+  { VM vm;
+    vm.load_platform_event_sources();
+    create_and_start_external_message_handlers(&vm);
+    int group_id = vm.scheduler()->next_group_id();
+    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
+
+    printf("[toit] INFO: VM exited (reason=%d)\n", static_cast<int>(exit_state.reason));
+
+    // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
+    // and asks to reboot into it through firmware.upgrade, which exits the VM via
+    // deep sleep. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a
+    // slot (anchor state NEW — the analogue of ESP32's boot partition changing),
+    // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
+    // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
+    // — before the VM destructor and OS::tear_down() — because EC618's external
+    // handler teardown can block; a firmware-update reset needs no clean shutdown.
+    {
+      slot_record record;
+      anchor_read(&record);
+      if (record.state == SLOT_STATE_NEW) {
+        printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
+               record.pending);
+        ec618_system_reset();  // Does not return.
+      }
+    }
+  }
+
+  GcMetadata::tear_down();
+  OS::tear_down();
+  FlashRegistry::tear_down();
+
+  switch (exit_state.reason) {
+    case Scheduler::EXIT_DEEP_SLEEP: {
+      const int64 MIN_MS = 1000;  // Deep-sleep timer minimum is ~1s on EC618.
+      int64 ms = exit_state.value;
+      if (ms < MIN_MS) ms = MIN_MS;
+      uint32 chunk_ms = prepare_deep_sleep(ms);
+      printf("[toit] INFO: entering deep sleep (first chunk %ums%s)\n",
+             static_cast<unsigned>(chunk_ms),
+             ms > chunk_ms ? ", continuation pending" : "");
+      enter_deep_sleep(chunk_ms);
+    }
+
+    case Scheduler::EXIT_ERROR: {
+      printf("[toit] WARN: entering deep sleep for 1s due to error\n");
+      enter_deep_sleep(prepare_deep_sleep(1000));
+    }
+
+    case Scheduler::EXIT_DONE: {
+#if CONFIG_TOIT_EC618_RESET_ON_VM_EXIT
+      // Deep-sleeping with no wakeup timer would leave the device dead until an
+      // external reset (impossible on a no-remote-reset rig; the watchdogs are
+      // gated while asleep). Reset instead so the device reboots straight back
+      // into the boot program and self-recovers. Only reached on a full-VM exit
+      // (e.g. a crash that brings the whole VM down), not on normal operation.
+      printf("[toit] INFO: VM done; resetting to recover (RESET_ON_VM_EXIT)\n");
+      ec618_system_reset();  // Does not return.
+#else
+      printf("[toit] INFO: entering deep sleep without wakeup timer\n");
+      enter_deep_sleep(0);
+#endif
+    }
+
+    case Scheduler::EXIT_NONE: {
+      UNREACHABLE();
+    }
+  }
+  UNREACHABLE();
 }
 
 }  // namespace toit

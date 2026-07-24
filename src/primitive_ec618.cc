@@ -615,7 +615,8 @@ PRIMITIVE(wakeup_cause) {
 // arm; the deep-sleep path (toit_ec618.cc arm_wakeup_pads) applies it at VM
 // exit, right before hibernate entry — an armed pad then wakes the chip
 // (which reboots; ec618.wakeup-cause reads WAKEUP_FROM_PAD). Zero-initialized
-// statics live in .bss, so this state is OTA-slot-safe.
+// statics live in .bss, so this state is OTA-slot-safe. The deep-sleep chain
+// stores and restores them across intermediate timer wakes.
 //
 // Packed per-pad config: bit 0 enabled, bit 1 posEdge, bit 2 negEdge,
 // bit 3 pullUp, bit 4 pullDown.
@@ -630,6 +631,13 @@ extern "C" int toit_wakeup_pad_config(int pad) {
 
 extern "C" int toit_wakeup_arm_flags() {
   return wakeup_arm_flags_;
+}
+
+extern "C" void toit_restore_wakeup_config(
+    const uint8_t* configs,
+    int flags) {
+  memcpy(wakeup_pad_configs_, configs, sizeof(wakeup_pad_configs_));
+  wakeup_arm_flags_ = flags;
 }
 
 PRIMITIVE(wakeup_pad_configure) {

@@ -42,6 +42,11 @@ Most user code should use the helpers on $Ec618:
 /**
 Enters deep sleep for the specified $duration and does not return.
   Exiting deep sleep causes the device to start over from main.
+
+Durations longer than one hardware-timer interval are split across hibernate
+  cycles. Intermediate timer wakes re-enter hibernate without starting the
+  Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels
+  the remaining duration and starts the device normally.
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
